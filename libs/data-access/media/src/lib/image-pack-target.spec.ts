@@ -1,6 +1,15 @@
-import { ClientEvent, type MatrixClient } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  MatrixError,
+  RoomStateEvent,
+  type MatrixClient,
+} from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { AccountPackTarget, packEntries } from './image-pack-target';
+import {
+  AccountPackTarget,
+  RoomPackTarget,
+  packEntries,
+} from './image-pack-target';
 
 const content = {
   pack: { display_name: 'Mine' },
@@ -11,6 +20,7 @@ function fake(data: Record<string, unknown> = {}) {
   const listeners = new Set<(e: unknown) => void>();
   const client = {
     getUserId: () => '@me:hs',
+    http: { authedRequest: vi.fn() },
     getAccountData: (type: string) =>
       type in data ? { getContent: () => data[type] } : undefined,
     setAccountDataRaw: vi.fn().mockResolvedValue({}),
@@ -97,5 +107,174 @@ describe('AccountPackTarget', () => {
     stop();
     emit('m.image_pack');
     expect(onChange).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('AccountPackTarget.readServer', () => {
+  const target = new AccountPackTarget();
+  const notFound = () => new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
+
+  it('reads m.image_pack, then im.ponies.user_emotes, then nothing', async () => {
+    const { client, raw } = fake();
+    raw.http.authedRequest
+      .mockRejectedValueOnce(notFound())
+      .mockResolvedValueOnce(content);
+    expect(await target.readServer(client)).toEqual(content);
+    expect(raw.http.authedRequest.mock.calls.map((call) => call[1])).toEqual([
+      '/user/%40me%3Ahs/account_data/m.image_pack',
+      '/user/%40me%3Ahs/account_data/im.ponies.user_emotes',
+    ]);
+    raw.http.authedRequest.mockRejectedValue(notFound());
+    expect(await target.readServer(client)).toEqual({ pack: {}, images: {} });
+  });
+
+  it('names the pack Your emoji', () => {
+    expect(target.defaultName(fake().client)).toBe('Your emoji');
+  });
+});
+
+describe('RoomPackTarget', () => {
+  const roomId = '!room:hs';
+  const target = new RoomPackTarget(roomId);
+  const legacy = {
+    pack: { display_name: 'Old' },
+    images: { old: { url: 'mxc://hs/old' } },
+  };
+
+  function room(
+    state: Record<string, unknown> = {},
+    { mayEdit = true, name = 'Party room' } = {},
+  ) {
+    const listeners = new Set<(e: unknown) => void>();
+    const roomState = {
+      getStateEvents: (type: string, key: string) =>
+        key === '' && type in state ? { getContent: () => state[type] } : null,
+      maySendStateEvent: vi.fn(() => mayEdit),
+    };
+    const raw = {
+      getUserId: () => '@me:hs',
+      getRoom: (id: string) =>
+        id === roomId
+          ? {
+              roomId,
+              name,
+              getLiveTimeline: () => ({ getState: () => roomState }),
+            }
+          : null,
+      sendStateEvent: vi.fn().mockResolvedValue({ event_id: '$e' }),
+      getStateEvent: vi.fn(),
+      on: vi.fn((_: string, l: (e: unknown) => void) => listeners.add(l)),
+      off: vi.fn((_: string, l: (e: unknown) => void) => listeners.delete(l)),
+    };
+    return {
+      client: raw as unknown as MatrixClient,
+      raw,
+      roomState,
+      emit: (type: string, inRoom = roomId, stateKey = '') =>
+        listeners.forEach((l) =>
+          l({
+            getType: () => type,
+            getRoomId: () => inRoom,
+            getStateKey: () => stateKey,
+          }),
+        ),
+    };
+  }
+
+  it('prefers m.room.image_pack over the legacy pack', () => {
+    const { client } = room({
+      'm.room.image_pack': content,
+      'im.ponies.room_emotes': legacy,
+    });
+    expect(target.read(client)).toEqual(content);
+  });
+
+  it('falls back to im.ponies.room_emotes', () => {
+    const { client } = room({ 'im.ponies.room_emotes': legacy });
+    expect(target.read(client)).toEqual(legacy);
+  });
+
+  it('reads an unknown room as empty', () => {
+    const { client } = room();
+    expect(new RoomPackTarget('!other:hs').read(client)).toEqual({
+      pack: {},
+      images: {},
+    });
+  });
+
+  it('writes only m.room.image_pack under the empty state key', async () => {
+    const { client, raw } = room({ 'im.ponies.room_emotes': legacy });
+    await target.write(client, content);
+    expect(raw.sendStateEvent).toHaveBeenCalledOnce();
+    expect(raw.sendStateEvent).toHaveBeenCalledWith(
+      roomId,
+      'm.room.image_pack',
+      content,
+      '',
+    );
+  });
+
+  it('readServer reads the stable pack, then the legacy one, then nothing', async () => {
+    const { client, raw } = room();
+    const notFound = new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
+    raw.getStateEvent
+      .mockRejectedValueOnce(notFound)
+      .mockResolvedValueOnce(legacy);
+    expect(await target.readServer(client)).toEqual(legacy);
+    expect(raw.getStateEvent.mock.calls).toEqual([
+      [roomId, 'm.room.image_pack', ''],
+      [roomId, 'im.ponies.room_emotes', ''],
+    ]);
+    raw.getStateEvent.mockRejectedValue(notFound);
+    expect(await target.readServer(client)).toEqual({ pack: {}, images: {} });
+  });
+
+  it('readServer rethrows other errors', async () => {
+    const { client, raw } = room();
+    raw.getStateEvent.mockRejectedValue(
+      new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
+    );
+    await expect(target.readServer(client)).rejects.toMatchObject({
+      errcode: 'M_FORBIDDEN',
+    });
+  });
+
+  it('watch fires only for this room’s own pack and stops on cleanup', () => {
+    const { client, raw, emit } = room();
+    const onChange = vi.fn();
+    const stop = target.watch(client, onChange);
+    expect(raw.on).toHaveBeenCalledWith(
+      RoomStateEvent.Events,
+      expect.any(Function),
+    );
+    emit('m.room.image_pack');
+    emit('im.ponies.room_emotes');
+    emit('m.room.image_pack', '!other:hs');
+    emit('m.room.image_pack', roomId, 'other-pack');
+    emit('m.room.name');
+    expect(onChange).toHaveBeenCalledTimes(2);
+    stop();
+    emit('m.room.image_pack');
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('canWrite follows the power to send m.room.image_pack', () => {
+    const allowed = room();
+    expect(target.canWrite(allowed.client)).toBe(true);
+    expect(allowed.roomState.maySendStateEvent).toHaveBeenCalledWith(
+      'm.room.image_pack',
+      '@me:hs',
+    );
+    expect(target.canWrite(room({}, { mayEdit: false }).client)).toBe(false);
+    expect(new RoomPackTarget('!other:hs').canWrite(allowed.client)).toBe(
+      false,
+    );
+  });
+
+  it('is named after the room, or Room emoji without a name', () => {
+    expect(target.defaultName(room().client)).toBe('Party room');
+    expect(target.defaultName(room({}, { name: ' ' }).client)).toBe(
+      'Room emoji',
+    );
   });
 });

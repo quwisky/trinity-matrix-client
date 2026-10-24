@@ -493,3 +493,154 @@ describe('ImagePackEditorService', () => {
     expect(sanitizeShortcode('a'.repeat(120) + '.png')).toHaveLength(100);
   });
 });
+
+describe('ImagePackEditorService room packs', () => {
+  const roomId = '!party:hs';
+  const ref = { kind: 'room', accountId: '@bob:hs', roomId } as const;
+  const legacy = {
+    pack: { display_name: 'Old pack' },
+    images: { old: { url: 'mxc://hs/old' } },
+  };
+
+  function roomSetup(
+    state: Record<string, Content> = {},
+    { signedIn = true } = {},
+  ) {
+    const local: Record<string, Content> = structuredClone(state);
+    const listeners = new Set<(event: unknown) => void>();
+    const roomState = {
+      getStateEvents: (type: string, key: string) =>
+        key === '' && local[type] ? { getContent: () => local[type] } : null,
+      maySendStateEvent: () => true,
+    };
+    const bob = {
+      getUserId: () => '@bob:hs',
+      getRoom: (id: string) =>
+        id === roomId
+          ? {
+              roomId,
+              name: 'Party room',
+              getLiveTimeline: () => ({ getState: () => roomState }),
+            }
+          : null,
+      getStateEvent: vi.fn(async (_room: string, type: string) => {
+        if (!state[type]) {
+          throw new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
+        }
+        return structuredClone(state[type]);
+      }),
+      sendStateEvent: vi.fn(
+        async (_room: string, type: string, content: Content, _key: string) => {
+          state[type] = structuredClone(content);
+        },
+      ),
+      on: vi.fn((_name: string, listener: (event: unknown) => void) =>
+        listeners.add(listener),
+      ),
+      off: vi.fn((_name: string, listener: (event: unknown) => void) =>
+        listeners.delete(listener),
+      ),
+    };
+    const sync = (type: string, content: Content) => {
+      local[type] = content;
+      for (const listener of listeners) {
+        listener({
+          getType: () => type,
+          getRoomId: () => roomId,
+          getStateKey: () => '',
+        });
+      }
+    };
+    const env = setup();
+    Object.assign(env.matrix, {
+      clientFor: (userId: string) =>
+        signedIn && userId === '@bob:hs' ? bob : null,
+    });
+    return { ...env, bob, sync };
+  }
+
+  it('the first add keeps a legacy-only pack and writes the stable type on that account', async () => {
+    const { service, bob, media, write } = roomSetup({
+      'im.ponies.room_emotes': legacy,
+    });
+
+    await firstValueFrom(
+      service.add({ kind: 'file', file: png() }, 'wave', ['emoticon'], ref),
+    );
+
+    expect(bob.sendStateEvent).toHaveBeenCalledOnce();
+    const [room, type, content, key] = bob.sendStateEvent.mock.calls[0];
+    expect([room, type, key]).toEqual([roomId, 'm.room.image_pack', '']);
+    expect(content).toEqual({
+      pack: { display_name: 'Old pack' },
+      images: {
+        old: { url: 'mxc://hs/old' },
+        wave: { url: 'mxc://hs/up1', info: UPLOAD_INFO, usage: ['emoticon'] },
+      },
+    });
+    expect((media.uploadMedia.mock.calls[0] as unknown[])[4]).toBe(bob);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('names a new room pack after the room', async () => {
+    const { service, bob } = roomSetup();
+    await firstValueFrom(
+      service.add(existing('mxc://hs/a'), 'a', ['sticker'], ref),
+    );
+    expect(bob.sendStateEvent.mock.calls[0][2]).toMatchObject({
+      pack: { display_name: 'Party room' },
+    });
+  });
+
+  it('rename, setUsage and remove write the room pack', async () => {
+    const { service, bob } = roomSetup({
+      'm.room.image_pack': {
+        pack: {},
+        images: { a: { url: 'mxc://hs/a' }, b: { url: 'mxc://hs/b' } },
+      },
+    });
+    await firstValueFrom(service.rename('a', 'c', ref));
+    await firstValueFrom(service.setUsage('b', ['sticker'], ref));
+    await firstValueFrom(service.remove('c', ref));
+    expect(bob.sendStateEvent.mock.calls.at(-1)?.[2]).toEqual({
+      pack: { display_name: 'Party room' },
+      images: { b: { url: 'mxc://hs/b', usage: ['sticker'] } },
+    });
+  });
+
+  it('a pack the server finds too large is full', async () => {
+    const { service, bob } = roomSetup();
+    bob.sendStateEvent.mockRejectedValueOnce(
+      new MatrixError({ errcode: 'M_TOO_LARGE' }, 413),
+    );
+    const error = await codeOf(
+      firstValueFrom(
+        service.add(existing('mxc://hs/a'), 'a', ['sticker'], ref),
+      ),
+    );
+    expect(error.code).toBe('pack-full');
+  });
+
+  it('fails with not-signed-in when the account is gone', async () => {
+    const { service } = roomSetup({}, { signedIn: false });
+    const error = await codeOf(firstValueFrom(service.remove('a', ref)));
+    expect(error.code).toBe('not-signed-in');
+  });
+
+  it('entries$ follows the room pack', async () => {
+    const { service, sync } = roomSetup({
+      'm.room.image_pack': { pack: {}, images: { a: { url: 'mxc://hs/a' } } },
+    });
+    const seen: string[][] = [];
+    const subscription = service
+      .entries$(ref)
+      .subscribe((entries) => seen.push(entries.map((e) => e.shortcode)));
+    sync('m.room.image_pack', {
+      pack: {},
+      images: { a: { url: 'mxc://hs/a' }, b: { url: 'mxc://hs/b' } },
+    });
+    subscription.unsubscribe();
+    sync('m.room.image_pack', { pack: {}, images: {} });
+    expect(seen).toEqual([['a'], ['a', 'b']]);
+  });
+});

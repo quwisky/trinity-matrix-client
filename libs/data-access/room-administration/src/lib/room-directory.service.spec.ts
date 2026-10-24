@@ -37,6 +37,7 @@ function setup(
   };
   const settingsFor = vi.fn(() => ({
     directory: options.directory ?? ALLOWED,
+    imagePack: ALLOWED,
   }));
   TestBed.configureTestingModule({
     providers: [

@@ -7,27 +7,25 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { defer, firstValueFrom, from, type Observable } from 'rxjs';
-import { MatrixError, Method, type MatrixClient } from 'matrix-js-sdk';
+import { Observable, defer, firstValueFrom, from } from 'rxjs';
+import { MatrixError, type MatrixClient } from 'matrix-js-sdk';
 import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { SHORTCODE_CHARACTERS } from '@trinity/util/matrix';
 import {
-  LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
   MAX_PERSONAL_IMAGES,
-  PERSONAL_IMAGE_PACK_EVENT_TYPE,
-  PERSONAL_IMAGE_PACK_NAME,
   isValidMxcUri,
   type ImagePackUsage,
 } from './image-pack.model';
 import { ImagePackImageError, prepareImagePackImage } from './image-pack-image';
 import {
   AccountPackTarget,
+  RoomPackTarget,
   packEntries,
-  type PackContent,
   type PackEntry,
+  type PackTarget,
 } from './image-pack-target';
 import { MediaService } from './media.service';
 
@@ -86,6 +84,22 @@ export function sanitizeShortcode(name: string): string {
 
 type Images = Record<string, unknown>;
 
+/** Which pack an edit applies to: the Active Account's own, or a room's on an exact account. */
+export type PackRef =
+  | { readonly kind: 'personal' }
+  | {
+      readonly kind: 'room';
+      readonly accountId: string;
+      readonly roomId: string;
+    };
+
+const PERSONAL: PackRef = { kind: 'personal' };
+
+interface Pack {
+  readonly client: MatrixClient;
+  readonly target: PackTarget;
+}
+
 interface Upload {
   readonly client: MatrixClient;
   readonly sticker: boolean;
@@ -93,7 +107,7 @@ interface Upload {
   readonly info: Record<string, unknown>;
 }
 
-/** Edits the Active Account's personal MSC2545 pack. Writes are queued per client. */
+/** Edits the Active Account's personal MSC2545 pack, or a room's own pack. Writes are queued per client. */
 @Injectable({ providedIn: 'root' })
 export class ImagePackEditorService {
   private readonly matrix = inject(MatrixClientService);
@@ -146,15 +160,29 @@ export class ImagePackEditorService {
     input: AddInput,
     shortcode: string,
     usage: readonly ImagePackUsage[],
+    ref: PackRef = PERSONAL,
   ): Observable<PackEntry> {
     return defer(() =>
-      from(this.addEntry(this.client(), input, shortcode, usage)),
+      from(this.addEntry(this.resolve(ref), input, shortcode, usage)),
     );
   }
 
+  /** A room pack's valid entries, now and on every change. Cold. */
+  entries$(
+    ref: Extract<PackRef, { kind: 'room' }>,
+  ): Observable<readonly PackEntry[]> {
+    return new Observable((subscriber) => {
+      const { client, target } = this.resolve(ref);
+      const emit = (): void =>
+        subscriber.next(packEntries(target.read(client)));
+      emit();
+      return target.watch(client, emit);
+    });
+  }
+
   /** Move an entry to a free shortcode, keeping its place in the pack. Cold. */
-  rename(from_: string, to: string): Observable<void> {
-    return this.edit((images) => {
+  rename(from_: string, to: string, ref: PackRef = PERSONAL): Observable<void> {
+    return this.edit(ref, (images) => {
       if (from_ === to || !Object.hasOwn(images, from_)) return null;
       assertShortcode(to);
       if (Object.hasOwn(images, to)) {
@@ -173,8 +201,9 @@ export class ImagePackEditorService {
   setUsage(
     shortcode: string,
     usage: readonly ImagePackUsage[],
+    ref: PackRef = PERSONAL,
   ): Observable<void> {
-    return this.edit((images) => {
+    return this.edit(ref, (images) => {
       assertUsage(usage);
       const raw = images[shortcode];
       if (!isRecord(raw)) return null;
@@ -183,16 +212,28 @@ export class ImagePackEditorService {
   }
 
   /** Cold. */
-  remove(shortcode: string): Observable<void> {
-    return this.edit((images) => {
+  remove(shortcode: string, ref: PackRef = PERSONAL): Observable<void> {
+    return this.edit(ref, (images) => {
       if (!Object.hasOwn(images, shortcode)) return null;
       const { [shortcode]: _removed, ...rest } = images;
       return rest;
     });
   }
 
-  private edit(change: (images: Images) => Images | null): Observable<void> {
-    return defer(() => from(this.enqueue(this.client(), change)));
+  private edit(
+    ref: PackRef,
+    change: (images: Images) => Images | null,
+  ): Observable<void> {
+    return defer(() => from(this.enqueue(this.resolve(ref), change)));
+  }
+
+  private resolve(ref: PackRef): Pack {
+    if (ref.kind === 'personal') {
+      return { client: this.client(), target: this.target };
+    }
+    const client = this.matrix.clientFor(ref.accountId);
+    if (!client) throw new ImagePackEditError('not-signed-in');
+    return { client, target: new RoomPackTarget(ref.roomId) };
   }
 
   private client(): MatrixClient {
@@ -203,7 +244,7 @@ export class ImagePackEditorService {
   }
 
   private async addEntry(
-    client: MatrixClient,
+    pack: Pack,
     input: AddInput,
     shortcode: string,
     usage: readonly ImagePackUsage[],
@@ -211,13 +252,13 @@ export class ImagePackEditorService {
     assertShortcode(shortcode);
     assertUsage(usage);
     // Fails early before an upload; the queued step checks again against the server copy.
-    assertRoomFor(this.target.read(client).images, shortcode);
+    assertRoomFor(pack.target.read(pack.client).images, shortcode);
     if (input.kind === 'existing' && !isValidMxcUri(input.url)) {
       throw new ImagePackImageError('unsupported-type');
     }
     const media =
       input.kind === 'file'
-        ? await this.upload(client, input.file, usage)
+        ? await this.upload(pack.client, input.file, usage)
         : input;
     const entry: PackEntry = {
       shortcode,
@@ -227,7 +268,7 @@ export class ImagePackEditorService {
       usage: [...usage],
     };
     const { shortcode: _key, ...raw } = entry;
-    await this.enqueue(client, (images) => {
+    await this.enqueue(pack, (images) => {
       assertRoomFor(images, shortcode);
       return { ...images, [shortcode]: raw };
     });
@@ -267,13 +308,14 @@ export class ImagePackEditorService {
 
   /** Each step reads the server copy once the steps before it have written. */
   private enqueue(
-    client: MatrixClient,
+    pack: Pack,
     change: (images: Images) => Images | null,
   ): Promise<void> {
+    const { client } = pack;
     const previous = this.queues.get(client) ?? Promise.resolve();
     const operation = previous
       .catch(() => undefined)
-      .then(() => this.applyChange(client, change));
+      .then(() => this.applyChange(pack, change));
     this.queues.set(client, operation);
     const cleanup = (): void => {
       if (this.queues.get(client) === operation) this.queues.delete(client);
@@ -283,54 +325,33 @@ export class ImagePackEditorService {
   }
 
   private async applyChange(
-    client: MatrixClient,
+    { client, target }: Pack,
     change: (images: Images) => Images | null,
   ): Promise<void> {
-    // Account data has no compare-and-set: a write from another device that lands between
-    // this read and the write below is overwritten. Reading just before narrows the window.
-    const content = await serverContent(client);
+    // Neither account data nor room state has compare-and-set: a write from elsewhere that
+    // lands between this read and the write below is overwritten. Reading just before narrows
+    // the window.
+    const content = await target.readServer(client);
     const images = change(content.images);
     if (!images) return;
     const pack =
       typeof content.pack['display_name'] === 'string'
         ? content.pack
-        : { ...content.pack, display_name: PERSONAL_IMAGE_PACK_NAME };
+        : { ...content.pack, display_name: target.defaultName(client) };
     const next = { pack, images };
-    await this.target.write(client, next);
-    if (this.projection.client() === client) {
+    try {
+      await target.write(client, next);
+    } catch (error) {
+      // A room pack is one state event, which servers cap at 64 KiB.
+      if (error instanceof MatrixError && error.errcode === 'M_TOO_LARGE') {
+        throw new ImagePackEditError('pack-full');
+      }
+      throw error;
+    }
+    if (target === this.target && this.projection.client() === client) {
       this.personalState.set(packEntries(next));
     }
   }
-}
-
-/**
- * The server's pack, read past the SDK store, which a raw write does not update until sync
- * echoes it. The legacy type stands in while the stable one does not exist.
- */
-async function serverContent(client: MatrixClient): Promise<PackContent> {
-  const userId = client.getUserId();
-  if (!userId) throw new ImagePackEditError('not-signed-in');
-  for (const type of [
-    PERSONAL_IMAGE_PACK_EVENT_TYPE,
-    LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
-  ]) {
-    try {
-      const content = await client.http.authedRequest<unknown>(
-        Method.Get,
-        `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(type)}`,
-      );
-      const record = isRecord(content) ? content : {};
-      return {
-        pack: isRecord(record['pack']) ? record['pack'] : {},
-        images: isRecord(record['images']) ? record['images'] : {},
-      };
-    } catch (error) {
-      if (!(error instanceof MatrixError && error.errcode === 'M_NOT_FOUND')) {
-        throw error;
-      }
-    }
-  }
-  return { pack: {}, images: {} };
 }
 
 function assertUsage(usage: readonly ImagePackUsage[]): void {

@@ -67,6 +67,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   upgrade: ALLOWED,
   encryption: ALLOWED,
   directory: ALLOWED,
+  imagePack: ALLOWED,
 };
 
 const ADVANCED: RoomAdvancedInfo = {
