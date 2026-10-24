@@ -76,6 +76,9 @@ export const PACK_COPY = {
       `You already have :${code}:. Choose another shortcode.`,
     addTitle: 'Add to your emoji',
     adding: 'Adding to your emoji…',
+    signInToAdd: 'Sign in to add emoji.',
+    signInToChange: 'Sign in to change your emoji.',
+    notAllowed: 'Your server doesn’t let you change your emoji.',
   },
   room: {
     title: 'Room emoji',
@@ -88,6 +91,9 @@ export const PACK_COPY = {
       `This room already has :${code}:. Choose another shortcode.`,
     addTitle: 'Add to room emoji',
     adding: 'Adding to room emoji…',
+    signInToAdd: "Sign in again to change this room's emoji.",
+    signInToChange: "Sign in again to change this room's emoji.",
+    notAllowed: "Your role can no longer change this room's emoji.",
   },
 } as const satisfies Record<PackRef['kind'], unknown>;
 
@@ -119,7 +125,9 @@ export function addFailure(
           `This image is larger than your server allows (max ${error.limitMb} MB).`,
         );
       case 'not-signed-in':
-        return plain('Sign in to add emoji.');
+        return plain(copy.signInToAdd);
+      case 'not-allowed':
+        return plain(copy.notAllowed);
       case 'invalid-usage':
         return plain('Choose how to use this image.');
     }

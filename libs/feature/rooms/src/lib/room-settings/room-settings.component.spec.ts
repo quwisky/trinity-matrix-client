@@ -866,6 +866,11 @@ describe('RoomSettingsComponent', () => {
     const { cmp, fixture, container, emit } = await build();
     cmp.selectSection('emoji');
     await fixture.whenStable();
+    const panel = container.querySelector<HTMLElement>(
+      '[data-testid="room-settings-panel-emoji"]',
+    )!;
+    panel.tabIndex = -1;
+    panel.focus();
 
     emit(roomSnapshot({ permissions: { imagePack: DENIED } }));
     await fixture.whenStable();
@@ -873,6 +878,7 @@ describe('RoomSettingsComponent', () => {
 
     expect(container.querySelector('trn-room-settings-emoji')).toBeNull();
     expect(container.querySelector('h1')?.textContent?.trim()).toBe('General');
+    expect(document.activeElement).toBe(container.querySelector('h1'));
   });
 
   it('keeps Room addresses reachable in their own section', async () => {

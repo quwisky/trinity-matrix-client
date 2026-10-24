@@ -45,6 +45,7 @@ import {
   EMPTY,
   catchError,
   concatMap,
+  distinctUntilChanged,
   filter,
   finalize,
   from,
@@ -81,7 +82,8 @@ function changeFailure(
   kind: PackRef['kind'],
 ): string {
   if (error instanceof ImagePackEditError) {
-    if (error.code === 'not-signed-in') return 'Sign in to change your emoji.';
+    if (error.code === 'not-signed-in') return PACK_COPY[kind].signInToChange;
+    if (error.code === 'not-allowed') return PACK_COPY[kind].notAllowed;
     if (
       error.code === 'shortcode-taken' ||
       error.code === 'invalid-shortcode'
@@ -90,6 +92,10 @@ function changeFailure(
     }
   }
   return PACK_COPY[kind].changeFailed;
+}
+
+function packKey(ref: PackRef): string {
+  return ref.kind === 'personal' ? '' : `${ref.accountId} ${ref.roomId}`;
 }
 
 function useAsOf(entry: PackEntry): UseAs {
@@ -143,6 +149,9 @@ export class PersonalPackComponent {
 
   private readonly roomEntries = signal<readonly PackEntry[] | null>(null);
 
+  /** Why a room's pack could not be shown. */
+  protected readonly loadFailure = signal<string | null>(null);
+
   protected readonly copy = computed(() => PACK_COPY[this.ref().kind]);
   protected readonly entries = computed(() =>
     this.ref().kind === 'personal'
@@ -177,13 +186,19 @@ export class PersonalPackComponent {
   constructor() {
     toObservable(this.ref)
       .pipe(
+        // Room settings rebuilds the ref when the room's encryption changes; keep the grid.
+        distinctUntilChanged((a, b) => packKey(a) === packKey(b)),
         switchMap((ref) => {
           this.roomEntries.set(null);
+          this.loadFailure.set(null);
           return ref.kind === 'personal'
             ? this.editor.run()
             : this.editor.entries$(ref).pipe(
                 map((entries) => this.roomEntries.set(entries)),
-                catchError(() => EMPTY),
+                catchError((error: unknown) => {
+                  this.loadFailure.set(changeFailure(error, '', ref.kind));
+                  return EMPTY;
+                }),
               );
         }),
         takeUntilDestroyed(),

@@ -6,6 +6,7 @@ import {
   effect,
   inject,
   input,
+  untracked,
   viewChild,
 } from '@angular/core';
 import {
@@ -191,7 +192,8 @@ export class RoomSettingsComponent implements OnInit {
         this.selectedSection() === 'emoji' &&
         !this.draft.permissions().imagePack.available
       ) {
-        this.selectedSection.set('general');
+        // Through the hub, so focus moves to the heading rather than off the removed panel.
+        untracked(() => this.hub.selectSection('general'));
       }
     });
   }

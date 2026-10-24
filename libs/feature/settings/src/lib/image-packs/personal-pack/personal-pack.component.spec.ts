@@ -41,9 +41,10 @@ const ROOM = { kind: 'room', accountId: '@a:hs', roomId: '!r:hs' } as const;
 async function build(
   entries: readonly PackEntry[] | null = [FOX],
   inputs: Record<string, unknown> = {},
+  roomEntries$: Observable<readonly PackEntry[]> = of(entries ?? []),
 ) {
   const personal = signal<readonly PackEntry[] | null>(entries);
-  const entries$ = vi.fn(() => of(entries ?? []));
+  const entries$ = vi.fn(() => roomEntries$);
   const activeUserId = signal<string | null>('@a:hs');
   let running = 0;
   const run = vi.fn(
@@ -483,5 +484,41 @@ describe('PersonalPackComponent', () => {
     expect(
       screen.getByText("This room's emoji pack is full."),
     ).toBeInTheDocument();
+  }, 30_000);
+
+  it("keeps a room's grid when its ref is rebuilt for the same room", async () => {
+    const view = await build([FOX], { ref: ROOM });
+    view.fixture.componentRef.setInput('ref', { ...ROOM });
+    view.settle();
+    expect(view.entries$).toHaveBeenCalledTimes(1);
+  });
+
+  it("says why a room's pack can't be shown", async () => {
+    await build(
+      [FOX],
+      { ref: ROOM },
+      throwError(() => new ImagePackEditError('not-signed-in')),
+    );
+    expect(
+      screen.getByText("Sign in again to change this room's emoji."),
+    ).toBeInTheDocument();
+  });
+
+  it("words a room's failed changes for the room", async () => {
+    const view = await build([FOX], { ref: ROOM });
+    view.remove.mockReturnValueOnce(
+      throwError(() => new ImagePackEditError('not-signed-in')),
+    );
+    view.pick('fox', 'Delete');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Sign in again to change this room's emoji.",
+    );
+    view.setUsage.mockReturnValueOnce(
+      throwError(() => new ImagePackEditError('not-allowed')),
+    );
+    view.pick('fox', 'Use as sticker');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Your role can no longer change this room's emoji.",
+    );
   });
 });

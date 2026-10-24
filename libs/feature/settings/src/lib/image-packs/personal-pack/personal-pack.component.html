@@ -120,4 +120,6 @@
     data-testid="personal-pack-files"
     (change)="addFiles($event)"
   />
+} @else if (loadFailure(); as message) {
+  <p class="text-sm text-danger">{{ message }}</p>
 }

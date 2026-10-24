@@ -195,4 +195,22 @@ describe('AddToPackDialogComponent', () => {
       screen.getAllByText("This room's emoji pack is full.").length,
     ).toBeGreaterThan(0);
   });
+
+  it.each([
+    ['not-signed-in', "Sign in again to change this room's emoji."],
+    ['not-allowed', "Your role can no longer change this room's emoji."],
+  ] as const)(
+    'words a room add that fails with %s for the room, without a retry',
+    async (code, copy) => {
+      const ref = { kind: 'room', accountId: '@me:hs', roomId: '!r:hs' };
+      const view = await build(
+        () => throwError(() => new ImagePackEditError(code)),
+        FILE_INPUT,
+        { ref },
+      );
+      view.submit();
+      expect(screen.getAllByText(copy).length).toBeGreaterThan(0);
+      expect(view.byTestId('add-to-pack-retry')).toBeNull();
+    },
+  );
 });
