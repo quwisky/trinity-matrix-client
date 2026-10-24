@@ -196,7 +196,11 @@ export class PersonalPackComponent {
             : this.editor.entries$(ref).pipe(
                 map((entries) => this.roomEntries.set(entries)),
                 catchError((error: unknown) => {
-                  this.loadFailure.set(changeFailure(error, '', ref.kind));
+                  this.loadFailure.set(
+                    error instanceof ImagePackEditError
+                      ? changeFailure(error, '', ref.kind)
+                      : PACK_COPY[ref.kind].loadFailed,
+                  );
                   return EMPTY;
                 }),
               );

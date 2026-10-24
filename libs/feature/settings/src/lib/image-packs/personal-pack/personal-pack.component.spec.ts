@@ -521,4 +521,15 @@ describe('PersonalPackComponent', () => {
       "Your role can no longer change this room's emoji.",
     );
   });
+
+  it("announces that a room's pack couldn't load", async () => {
+    await build(
+      [FOX],
+      { ref: ROOM },
+      throwError(() => new Error('offline')),
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Couldn’t load this room's emoji.",
+    );
+  });
 });

@@ -881,6 +881,27 @@ describe('RoomSettingsComponent', () => {
     expect(document.activeElement).toBe(container.querySelector('h1'));
   });
 
+  it('keeps the mobile directory open when the power to change emoji is lost', async () => {
+    const { cmp, fixture, container, emit } = await build({ compact: true });
+    cmp.selectSection('emoji');
+    cmp.showDirectory();
+    await fixture.whenStable();
+    expect(cmp.directoryVisible()).toBe(true);
+    container
+      .querySelector<HTMLElement>('[data-testid="room-settings-tab-emoji"]')!
+      .focus();
+
+    emit(roomSnapshot({ permissions: { imagePack: DENIED } }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(cmp.directoryVisible()).toBe(true);
+    expect(cmp.selectedSection()).toBe('general');
+    expect(document.activeElement).toBe(
+      container.querySelector('[data-testid="room-settings-tab-general"]'),
+    );
+  });
+
   it('keeps Room addresses reachable in their own section', async () => {
     const { cmp, fixture, container, emit } = await build();
 

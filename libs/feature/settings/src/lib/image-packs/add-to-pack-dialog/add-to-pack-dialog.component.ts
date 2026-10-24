@@ -79,6 +79,7 @@ export const PACK_COPY = {
     signInToAdd: 'Sign in to add emoji.',
     signInToChange: 'Sign in to change your emoji.',
     notAllowed: 'Your server doesn’t let you change your emoji.',
+    loadFailed: 'Couldn’t load your emoji.',
   },
   room: {
     title: 'Room emoji',
@@ -94,6 +95,7 @@ export const PACK_COPY = {
     signInToAdd: "Sign in again to change this room's emoji.",
     signInToChange: "Sign in again to change this room's emoji.",
     notAllowed: "Your role can no longer change this room's emoji.",
+    loadFailed: "Couldn’t load this room's emoji.",
   },
 } as const satisfies Record<PackRef['kind'], unknown>;
 

@@ -121,5 +121,5 @@
     (change)="addFiles($event)"
   />
 } @else if (loadFailure(); as message) {
-  <p class="text-sm text-danger">{{ message }}</p>
+  <p class="text-sm text-danger" role="status">{{ message }}</p>
 }
