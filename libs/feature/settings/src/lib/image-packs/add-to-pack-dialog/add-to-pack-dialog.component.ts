@@ -41,6 +41,7 @@ import {
   type AddInput,
   type ImagePackUsage,
   type PackEntry,
+  type PackRef,
 } from '@trinity/data-access/media';
 import type { Subscription } from 'rxjs';
 import { packImagePayload } from '../pack-image-payload';
@@ -61,11 +62,53 @@ export const USAGES: Record<UseAs, readonly ImagePackUsage[]> = {
   both: ['emoticon', 'sticker'],
 };
 
+export const PERSONAL_PACK: PackRef = { kind: 'personal' };
+
+/** What a pack editor calls its pack, per kind. */
+export const PACK_COPY = {
+  personal: {
+    title: 'Your emoji',
+    empty: 'Add images to use your own emoji and stickers in every room.',
+    full: 'Your emoji pack is full.',
+    remove: (code: string) => `Remove :${code}: from your emoji?`,
+    changeFailed: 'Couldn’t change your emoji. Try again.',
+    taken: (code: string) =>
+      `You already have :${code}:. Choose another shortcode.`,
+    addTitle: 'Add to your emoji',
+    adding: 'Adding to your emoji…',
+    signInToAdd: 'Sign in to add emoji.',
+    signInToChange: 'Sign in to change your emoji.',
+    notAllowed: 'Your server doesn’t let you change your emoji.',
+    loadFailed: 'Couldn’t load your emoji.',
+  },
+  room: {
+    title: 'Room emoji',
+    empty:
+      'Add images to give everyone in this room its own emoji and stickers.',
+    full: "This room's emoji pack is full.",
+    remove: (code: string) => `Remove :${code}: from this room's emoji?`,
+    changeFailed: "Couldn’t change this room's emoji. Try again.",
+    taken: (code: string) =>
+      `This room already has :${code}:. Choose another shortcode.`,
+    addTitle: 'Add to room emoji',
+    adding: 'Adding to room emoji…',
+    signInToAdd: "Sign in again to change this room's emoji.",
+    signInToChange: "Sign in again to change this room's emoji.",
+    notAllowed: "Your role can no longer change this room's emoji.",
+    loadFailed: "Couldn’t load this room's emoji.",
+  },
+} as const satisfies Record<PackRef['kind'], unknown>;
+
 export const SHORTCODE_HINT =
   'Use 1–100 letters, digits, underscores or hyphens.';
 
 /** The dialog's copy for a failed add of `shortcode`. */
-export function addFailure(error: unknown, shortcode: string): Failure {
+export function addFailure(
+  error: unknown,
+  shortcode: string,
+  kind: PackRef['kind'] = 'personal',
+): Failure {
+  const copy = PACK_COPY[kind];
   const plain = (message: string, field = false): Failure => ({
     message,
     field,
@@ -74,20 +117,19 @@ export function addFailure(error: unknown, shortcode: string): Failure {
   if (error instanceof ImagePackEditError) {
     switch (error.code) {
       case 'shortcode-taken':
-        return plain(
-          `You already have :${shortcode}:. Choose another shortcode.`,
-          true,
-        );
+        return plain(copy.taken(shortcode), true);
       case 'invalid-shortcode':
         return plain(SHORTCODE_HINT, true);
       case 'pack-full':
-        return plain('Your emoji pack is full.');
+        return plain(copy.full);
       case 'too-large-for-server':
         return plain(
           `This image is larger than your server allows (max ${error.limitMb} MB).`,
         );
       case 'not-signed-in':
-        return plain('Sign in to add emoji.');
+        return plain(copy.signInToAdd);
+      case 'not-allowed':
+        return plain(copy.notAllowed);
       case 'invalid-usage':
         return plain('Choose how to use this image.');
     }
@@ -103,10 +145,11 @@ export function addFailure(error: unknown, shortcode: string): Failure {
 }
 
 /**
- * "Add to your emoji": names an image and adds it to the personal pack. Shared by Settings and,
- * through `ADD_TO_IMAGE_PACK_DIALOG`, the rooms feature. Closes with the added entry, or null;
- * an account switch closes it with null so nothing is written to the other account. An add
- * already started when the account switches still finishes on the original account.
+ * "Add to your emoji": names an image and adds it to the personal pack, or to `ref`'s room
+ * pack. Shared by Settings, room settings and, through `ADD_TO_IMAGE_PACK_DIALOG`, the rooms
+ * feature. Closes with the added entry, or null. For the personal pack, an account switch
+ * closes it with null so nothing is written to the other account; an add already started
+ * still finishes on the original account. A room ref pins its own account.
  */
 @Component({
   selector: 'trn-add-to-pack-dialog',
@@ -167,13 +210,21 @@ export class AddToPackDialogComponent {
     return failure && !failure.field ? failure : null;
   });
   protected readonly preview = signal<string | null>(null);
+  protected readonly copy = computed(() => PACK_COPY[this.ref().kind]);
 
   readonly input = input.required<AddInput>();
   readonly suggestedName = input.required<string>();
+  readonly ref = input<PackRef>(PERSONAL_PACK);
 
   constructor() {
     effect(() => {
-      if (this.matrix.activeUserId() !== this.account) this.close(null);
+      // A room ref pins its own account, so only the personal pack follows the active one.
+      if (
+        this.ref().kind === 'personal' &&
+        this.matrix.activeUserId() !== this.account
+      ) {
+        this.close(null);
+      }
     });
     effect((onCleanup) => {
       const source = this.input();
@@ -223,13 +274,16 @@ export class AddToPackDialogComponent {
     this.busy.set(true);
     this.failure.set(null);
     this.running = this.editor
-      .add(this.input(), shortcode, USAGES[useAs])
+      .add(this.input(), shortcode, USAGES[useAs], this.ref())
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (entry) => this.close(entry),
         error: (error: unknown) => {
           this.busy.set(false);
-          this.failure.set({ ...addFailure(error, shortcode), shortcode });
+          this.failure.set({
+            ...addFailure(error, shortcode, this.ref().kind),
+            shortcode,
+          });
         },
       });
   }

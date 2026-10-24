@@ -35,8 +35,16 @@ const PARTY: PackEntry = {
   usage: ['sticker'],
 };
 
-async function build(entries: readonly PackEntry[] | null = [FOX]) {
+const PERSONAL = { kind: 'personal' } as const;
+const ROOM = { kind: 'room', accountId: '@a:hs', roomId: '!r:hs' } as const;
+
+async function build(
+  entries: readonly PackEntry[] | null = [FOX],
+  inputs: Record<string, unknown> = {},
+  roomEntries$: Observable<readonly PackEntry[]> = of(entries ?? []),
+) {
   const personal = signal<readonly PackEntry[] | null>(entries);
+  const entries$ = vi.fn(() => roomEntries$);
   const activeUserId = signal<string | null>('@a:hs');
   let running = 0;
   const run = vi.fn(
@@ -60,10 +68,12 @@ async function build(entries: readonly PackEntry[] | null = [FOX]) {
     return closed;
   });
   const rendered = await render(PersonalPackComponent, {
+    inputs,
     providers: [
       provideTrnIcons(),
       MockProvider(ImagePackEditorService, {
         personal,
+        entries$,
         run,
         rename,
         setUsage,
@@ -97,6 +107,7 @@ async function build(entries: readonly PackEntry[] | null = [FOX]) {
   return {
     ...rendered,
     personal,
+    entries$,
     activeUserId,
     running: () => running,
     rename,
@@ -174,6 +185,7 @@ describe('PersonalPackComponent', () => {
         inputs: {
           input: { kind: 'file', file: fox },
           suggestedName: 'fox.png',
+          ref: PERSONAL,
         },
         autoFocus: '[data-autofocus]',
       }),
@@ -193,6 +205,7 @@ describe('PersonalPackComponent', () => {
         inputs: {
           input: { kind: 'file', file: leaf },
           suggestedName: 'leaf.webp',
+          ref: PERSONAL,
         },
       }),
     );
@@ -210,6 +223,19 @@ describe('PersonalPackComponent', () => {
     view.dialogs[0].complete();
 
     expect(view.openAndWait$).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a room's queued files when the active account changes", async () => {
+    const view = await build([FOX], { ref: ROOM });
+    const input = view.byTestId('personal-pack-files') as HTMLInputElement;
+    const fox = new File(['x'], 'fox.png', { type: 'image/png' });
+
+    choose(input, [fox, fox]);
+    view.activeUserId.set('@b:hs');
+    view.dialogs[0].next(FOX);
+    view.dialogs[0].complete();
+
+    expect(view.openAndWait$).toHaveBeenCalledTimes(2);
   });
 
   it('disables Add with the full-pack copy at 500', async () => {
@@ -232,7 +258,7 @@ describe('PersonalPackComponent', () => {
         variant: 'danger',
       }),
     );
-    expect(view.remove).toHaveBeenCalledWith('fox');
+    expect(view.remove).toHaveBeenCalledWith('fox', PERSONAL);
   });
 
   it('changes how an image is used from its menu', async () => {
@@ -249,7 +275,11 @@ describe('PersonalPackComponent', () => {
       'Cancel',
     ]);
     expect(view.openActions.mock.lastCall![0].buttons[1].icon).toBe('check');
-    expect(view.setUsage).toHaveBeenCalledWith('fox', ['emoticon', 'sticker']);
+    expect(view.setUsage).toHaveBeenCalledWith(
+      'fox',
+      ['emoticon', 'sticker'],
+      PERSONAL,
+    );
   });
 
   it('rename validates inline', async () => {
@@ -277,7 +307,7 @@ describe('PersonalPackComponent', () => {
     type(field, 'leaf');
     screen.getByRole('button', { name: 'Save' }).click();
     view.settle();
-    expect(view.rename).toHaveBeenCalledWith('fox', 'leaf');
+    expect(view.rename).toHaveBeenCalledWith('fox', 'leaf', PERSONAL);
     expect(view.byTestId('personal-pack-rename-error')).toHaveTextContent(
       'You already have :leaf:. Choose another shortcode.',
     );
@@ -285,7 +315,7 @@ describe('PersonalPackComponent', () => {
     type(field, 'kitsune');
     screen.getByRole('button', { name: 'Save' }).click();
     view.settle();
-    expect(view.rename).toHaveBeenLastCalledWith('fox', 'kitsune');
+    expect(view.rename).toHaveBeenLastCalledWith('fox', 'kitsune', PERSONAL);
     expect(screen.queryByLabelText('New shortcode for :fox:')).toBeNull();
   });
 
@@ -398,5 +428,108 @@ describe('PersonalPackComponent', () => {
     expect(screen.getByRole('button', { name: ':leaf:' })).toBeTruthy();
     expect(screen.getByAltText('fox')).toHaveAttribute('src', 'blob:image');
     expect(view.container.querySelectorAll('img')).toHaveLength(2);
+  });
+
+  it("edits a room's pack with the room's copy", async () => {
+    const view = await build([FOX], { ref: ROOM });
+    expect(view.entries$).toHaveBeenCalledWith(ROOM);
+    expect(screen.getByText('Room emoji')).toBeInTheDocument();
+    expect(
+      screen.getByRole('list', { name: 'Room emoji' }),
+    ).toBeInTheDocument();
+
+    view.pick('fox', 'Delete');
+    expect(view.confirm$).toHaveBeenCalledWith(
+      expect.objectContaining({
+        header: "Remove :fox: from this room's emoji?",
+      }),
+    );
+    expect(view.remove).toHaveBeenCalledWith('fox', ROOM);
+  });
+
+  it("shows the room's empty state and adds files to the room", async () => {
+    const view = await build([], { ref: ROOM });
+    expect(
+      screen.getByText(
+        'Add images to give everyone in this room its own emoji and stickers.',
+      ),
+    ).toBeInTheDocument();
+    const fox = new File(['f'], 'fox.png', { type: 'image/png' });
+    choose(view.byTestId('personal-pack-files') as HTMLInputElement, [fox]);
+    await tick();
+    expect(view.openAndWait$).toHaveBeenCalledWith(
+      AddToPackDialogComponent,
+      expect.objectContaining({
+        inputs: {
+          input: { kind: 'file', file: fox },
+          suggestedName: 'fox.png',
+          ref: ROOM,
+        },
+      }),
+    );
+  });
+
+  it('notes that an encrypted room stores its emoji unencrypted', async () => {
+    const note =
+      'Images added here are stored unencrypted on the server, like the room photo.';
+    await build([FOX], { ref: ROOM, encrypted: true });
+    expect(screen.getByText(note)).toBeInTheDocument();
+  });
+
+  it("a room's pack-full copy names the room", async () => {
+    await build(
+      Array.from({ length: 500 }, (_, i) => ({ ...FOX, shortcode: `e${i}` })),
+      { ref: ROOM },
+    );
+    expect(
+      screen.getByText("This room's emoji pack is full."),
+    ).toBeInTheDocument();
+  }, 30_000);
+
+  it("keeps a room's grid when its ref is rebuilt for the same room", async () => {
+    const view = await build([FOX], { ref: ROOM });
+    view.fixture.componentRef.setInput('ref', { ...ROOM });
+    view.settle();
+    expect(view.entries$).toHaveBeenCalledTimes(1);
+  });
+
+  it("says why a room's pack can't be shown", async () => {
+    await build(
+      [FOX],
+      { ref: ROOM },
+      throwError(() => new ImagePackEditError('not-signed-in')),
+    );
+    expect(
+      screen.getByText("Sign in again to change this room's emoji."),
+    ).toBeInTheDocument();
+  });
+
+  it("words a room's failed changes for the room", async () => {
+    const view = await build([FOX], { ref: ROOM });
+    view.remove.mockReturnValueOnce(
+      throwError(() => new ImagePackEditError('not-signed-in')),
+    );
+    view.pick('fox', 'Delete');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Sign in again to change this room's emoji.",
+    );
+    view.setUsage.mockReturnValueOnce(
+      throwError(() => new ImagePackEditError('not-allowed')),
+    );
+    view.pick('fox', 'Use as sticker');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Your role can no longer change this room's emoji.",
+    );
+  });
+
+  it("announces that a room's pack couldn't load", async () => {
+    await build(
+      [FOX],
+      { ref: ROOM },
+      throwError(() => new Error('offline')),
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Couldn’t load this room's emoji.",
+    );
   });
 });

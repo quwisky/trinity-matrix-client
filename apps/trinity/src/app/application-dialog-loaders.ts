@@ -25,6 +25,10 @@ export const APPLICATION_DIALOG_LOADERS = {
     defer(() => import('@trinity/feature/settings')).pipe(
       map((module) => module.AddToPackDialogComponent),
     ),
+  imagePackEditor: () =>
+    defer(() => import('@trinity/feature/settings')).pipe(
+      map((module) => module.PersonalPackComponent),
+    ),
   whatsNew: () =>
     defer(() => import('@trinity/feature/whats-new')).pipe(
       map((module) => module.WhatsNewDialogComponent),

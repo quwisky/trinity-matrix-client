@@ -86,6 +86,28 @@ export class SettingsHubController<Section extends string> {
     });
   }
 
+  /**
+   * Moves off a section that is no longer offered, without the unsaved-changes guard, keeping
+   * the directory in place. Focus moves only if it was lost with the removed section.
+   */
+  fallBackTo(section: Section): void {
+    this.selectedSection.set(section);
+    afterNextRender(
+      () => {
+        const active = this.host.nativeElement.ownerDocument.activeElement;
+        if (active && active !== active.ownerDocument.body) return;
+        this.host.nativeElement
+          .querySelector<HTMLElement>(
+            this.directoryVisible()
+              ? `[data-testid="${this.config.testIdPrefix}-tab-${section}"]`
+              : `[data-testid="${this.config.testIdPrefix}-section-heading"]`,
+          )
+          ?.focus();
+      },
+      { injector: this.injector },
+    );
+  }
+
   showDirectory(): void {
     this.guardUnsavedNavigation(() => {
       this.directoryVisible.set(true);

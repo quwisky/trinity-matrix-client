@@ -7,3 +7,5 @@ export * from './lib/settings-dialog/settings-dialog.component';
 export * from './lib/advanced/report-bug/report-bug-dialog.component';
 // "Add to your emoji", which the rooms feature opens through ADD_TO_IMAGE_PACK_DIALOG.
 export { AddToPackDialogComponent } from './lib/image-packs/add-to-pack-dialog/add-to-pack-dialog.component';
+// The pack grid, which room settings loads through IMAGE_PACK_EDITOR.
+export { PersonalPackComponent } from './lib/image-packs/personal-pack/personal-pack.component';
