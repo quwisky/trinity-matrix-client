@@ -70,7 +70,8 @@ export type ImagePackEditErrorCode =
   | 'pack-full'
   | 'invalid-usage'
   | 'too-large-for-server'
-  | 'not-signed-in';
+  | 'not-signed-in'
+  | 'not-allowed';
 
 export class ImagePackEditError extends Error {
   constructor(
@@ -353,6 +354,9 @@ export class ImagePackEditorService {
       // A room pack is one state event, which servers cap at 64 KiB.
       if (error instanceof MatrixError && error.errcode === 'M_TOO_LARGE') {
         throw new ImagePackEditError('pack-full');
+      }
+      if (error instanceof MatrixError && error.errcode === 'M_FORBIDDEN') {
+        throw new ImagePackEditError('not-allowed');
       }
       throw error;
     }

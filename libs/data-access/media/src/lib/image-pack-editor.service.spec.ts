@@ -621,6 +621,19 @@ describe('ImagePackEditorService room packs', () => {
     expect(error.code).toBe('pack-full');
   });
 
+  it('a write the server forbids is not allowed', async () => {
+    const { service, bob } = roomSetup();
+    bob.sendStateEvent.mockRejectedValueOnce(
+      new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
+    );
+    const error = await codeOf(
+      firstValueFrom(
+        service.add(existing('mxc://hs/a'), 'a', ['sticker'], ref),
+      ),
+    );
+    expect(error.code).toBe('not-allowed');
+  });
+
   it('fails with not-signed-in when the account is gone', async () => {
     const { service } = roomSetup({}, { signedIn: false });
     const error = await codeOf(firstValueFrom(service.remove('a', ref)));

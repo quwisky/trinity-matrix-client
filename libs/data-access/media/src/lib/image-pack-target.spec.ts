@@ -129,7 +129,7 @@ describe('AccountPackTarget.readServer', () => {
   });
 
   it('names the pack Your emoji', () => {
-    expect(target.defaultName(fake().client)).toBe('Your emoji');
+    expect(target.defaultName()).toBe('Your emoji');
   });
 });
 
