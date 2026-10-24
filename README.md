@@ -90,21 +90,21 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 | Android   | 🚧                 | —                   | ✅        | ✅         | —     |
 | iOS       | 🚧                 | —                   | ✅        | ✅         | —     |
 
-| Features                          | Trinity           | Element Web/Desktop | Element X | FluffyChat | Cinny |
-| --------------------------------- | ----------------- | ------------------- | --------- | ---------- | ----- |
-| End-to-end encryption             | ✅                | ✅                  | ✅        | ✅         | ✅    |
-| Spaces                            | ✅                | ✅                  | ✅        | ✅         | ✅    |
-| Threads                           | ✅                | ✅                  | 🟡        | ✅         | 🟡    |
-| Multiple accounts                 | ✅                | ❌                  | ❌        | ✅         | ❌    |
-| OAuth 2.0 (next-gen auth)         | ✅                | ✅                  | ✅        | ✅         | ❌    |
-| Legacy SSO                        | ✅ (not Android)  | ✅                  | ❌        | ✅         | ✅    |
-| Emoji and image packs             | ✅                | 🟡                  | ❌        | ✅         | ✅    |
-| Voice/video calls (1:1)           | ❌                | ✅                  | ❌        | ❌         | ❌    |
-| Voice/video calls (Jitsi)         | ❌                | ✅                  | ❌        | ❌         | ❌    |
-| Voice/video calls (MatrixRTC)     | ❌                | ✅                  | ✅        | ✅         | ✅    |
-| Invisible cryptography (MSC4153)  | ❌                | 🟡                  | 🟡        | 🟡         | ❌    |
-| Simplified sliding sync (MSC4186) | ❌                | 🟡                  | ✅        | ❌         | ❌    |
-| Multi-language interface          | ❌ (English only) | ✅                  | ✅        | ✅         | ❌    |
+| Features                          | Trinity                         | Element Web/Desktop | Element X | FluffyChat | Cinny |
+| --------------------------------- | ------------------------------- | ------------------- | --------- | ---------- | ----- |
+| End-to-end encryption             | ✅                              | ✅                  | ✅        | ✅         | ✅    |
+| Spaces                            | ✅                              | ✅                  | ✅        | ✅         | ✅    |
+| Threads                           | ✅                              | ✅                  | 🟡        | ✅         | 🟡    |
+| Multiple accounts                 | ✅                              | ❌                  | ❌        | ✅         | ❌    |
+| OAuth 2.0 (next-gen auth)         | ✅                              | ✅                  | ✅        | ✅         | ❌    |
+| Legacy SSO                        | ✅ (not Android)                | ✅                  | ❌        | ✅         | ✅    |
+| Emoji and image packs             | ✅ (one editable pack per room) | 🟡                  | ❌        | ✅         | ✅    |
+| Voice/video calls (1:1)           | ❌                              | ✅                  | ❌        | ❌         | ❌    |
+| Voice/video calls (Jitsi)         | ❌                              | ✅                  | ❌        | ❌         | ❌    |
+| Voice/video calls (MatrixRTC)     | ❌                              | ✅                  | ✅        | ✅         | ✅    |
+| Invisible cryptography (MSC4153)  | ❌                              | 🟡                  | 🟡        | 🟡         | ❌    |
+| Simplified sliding sync (MSC4186) | ❌                              | 🟡                  | ✅        | ❌         | ❌    |
+| Multi-language interface          | ❌ (English only)               | ✅                  | ✅        | ✅         | ❌    |
 
 ✅ supported · 🟡 partial · ❌ not supported · ❔ unknown · 🚧 in development ·
 — not offered by that app. Element X is Element's mobile app, so Element Web/Desktop
