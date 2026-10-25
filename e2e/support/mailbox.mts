@@ -43,3 +43,46 @@ export async function latestLink(
   url.host = base.host;
   return url.toString();
 }
+
+/**
+ * Confirm the password-reset link the way a person does: Synapse shows a page whose form
+ * must be posted before the reset is accepted (the add-address link validates on a GET).
+ */
+export async function confirmResetLink(
+  request: APIRequestContext,
+  to: string,
+  hs: string,
+): Promise<void> {
+  const link = await latestLink(request, to, hs);
+  const page = await request.get(link);
+  const html = await page.text();
+  expect(page.ok(), `reset link page: ${page.status()} ${html}`).toBe(true);
+
+  const hidden = (name: string): string => {
+    const input = html
+      .match(/<input\b[^>]*>/giu)
+      ?.find((tag) => new RegExp(`name=["']${name}["']`, 'iu').test(tag));
+    const value = input?.match(/value=["']([^"']*)["']/iu)?.[1];
+    if (value === undefined) {
+      throw new Error(`the reset link page has no "${name}" field:\n${html}`);
+    }
+    return value.replaceAll('&amp;', '&');
+  };
+  const action = html.match(/<form\b[^>]*\baction=["']([^"']*)["']/iu)?.[1];
+  const url = new URL((action ?? '').replaceAll('&amp;', '&') || link, link);
+  const base = new URL(hs);
+  url.protocol = base.protocol;
+  url.host = base.host;
+
+  const res = await request.post(url.toString(), {
+    form: {
+      sid: hidden('sid'),
+      token: hidden('token'),
+      client_secret: hidden('client_secret'),
+    },
+  });
+  expect(
+    res.ok(),
+    `confirm reset link: ${res.status()} ${await res.text()}`,
+  ).toBe(true);
+}
