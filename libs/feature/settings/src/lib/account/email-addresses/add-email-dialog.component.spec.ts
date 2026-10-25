@@ -117,7 +117,7 @@ describe('AddEmailDialogComponent', () => {
     await sendLink(test);
 
     fireEvent.click(screen.getByTestId('add-email-continue'));
-    test.confirmed.next({ kind: 'refused', reason: 'not-verified' });
+    test.confirmed.next({ kind: 'not-verified', pending: PENDING });
     await test.settle();
 
     expect(screen.getByTestId('add-email-not-verified').textContent).toContain(
@@ -126,6 +126,20 @@ describe('AddEmailDialogComponent', () => {
     expect(
       (screen.getByTestId('add-email-continue') as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it('continues with the session the server already accepted', async () => {
+    const test = await setup();
+    await sendLink(test);
+    const accepted = { ...PENDING, uiaSession: 's' };
+
+    fireEvent.click(screen.getByTestId('add-email-continue'));
+    test.confirmed.next({ kind: 'not-verified', pending: accepted });
+    await test.settle();
+    fireEvent.click(screen.getByTestId('add-email-continue'));
+
+    expect(test.workflow.add).toHaveBeenCalledTimes(2);
+    expect(test.workflow.add.mock.calls[1][0]).toEqual(accepted);
   });
 
   it('disables Continue and Resend while a request runs', async () => {

@@ -272,12 +272,14 @@ export class AddEmailDialogComponent {
     }
     this.resent.set(false);
     this.sentError.set('');
+    if (result.kind === 'not-verified') {
+      this.sent = { kind: 'sent', pending: result.pending, notVerified: true };
+      this.step.set(this.sent);
+      return;
+    }
     switch (result.reason) {
       case 'cancelled':
         this.step.set(sent);
-        return;
-      case 'not-verified':
-        this.step.set({ ...sent, notVerified: true });
         return;
       // Brief failures keep the verified link, so Continue can be tried again.
       case 'unreachable':

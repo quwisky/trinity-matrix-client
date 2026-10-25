@@ -17,7 +17,8 @@ import { latestLink } from '../../../support/mailbox.mts';
 // Adding and removing an email address from Settings › Account. Synapse mails the
 // validation link to the harness Mailpit; the spec opens it the way a mail client would.
 // Synapse asks for the password before it checks the link, so an early Continue goes
-// through the password step and then reports the link unopened.
+// through the password step and then reports the link unopened; the next Continue
+// reuses that accepted session and adds the address without asking again.
 const session = homeserverSession();
 
 interface Account {
@@ -97,10 +98,11 @@ test.describe('Email addresses', () => {
     );
 
     await openLink(request, account.address);
-    await continueWithPassword(page, account.pass);
+    await page.getByTestId('add-email-continue').click();
     await expect(
       page.getByRole('button', { name: `Remove ${account.address}` }),
     ).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('add-email-password')).toHaveCount(0);
     await expect(
       page
         .getByLabel('Notifications alt+T')

@@ -38,6 +38,8 @@ export interface PendingEmail {
   readonly sid: string;
   readonly clientSecret: string;
   readonly sendAttempt: number;
+  /** A re-authentication session the server already accepted, reused so the next attempt does not ask again. */
+  readonly uiaSession?: string;
 }
 
 export type EmailLinkResult =
@@ -54,7 +56,11 @@ export interface EmailAddressStages {
   }) => Promise<boolean>;
 }
 
-export type EmailAddResult = { readonly kind: 'added' } | EmailAddressRefused;
+export type EmailAddResult =
+  | { readonly kind: 'added' }
+  /** The link has not been opened yet; retry with this pending email. */
+  | { readonly kind: 'not-verified'; readonly pending: PendingEmail }
+  | EmailAddressRefused;
 
 export type EmailRemoveResult =
   { readonly kind: 'removed' } | EmailAddressRefused;

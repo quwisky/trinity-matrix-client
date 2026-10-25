@@ -266,7 +266,8 @@ server asks, type your password; an account without a password confirms in the b
 The address then appears in the list.
 
 If you choose **Continue** before you open the link, Trinity asks for your password and then says
-the link hasn't been opened. After you open the link, **Continue** asks for your password again.
+the link hasn't been opened. Open the link and choose **Continue** again; you don't need to type
+your password a second time.
 
 **Remove one.** Choose **Remove** next to the address and confirm.
 

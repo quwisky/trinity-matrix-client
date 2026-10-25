@@ -252,7 +252,7 @@ describe('EmailAddressesWorkflow.add', () => {
     });
   });
 
-  it('maps M_THREEPID_AUTH_FAILED to not-verified', async () => {
+  it('answers not-verified with the pending email when the link was not opened', async () => {
     const workflow = setup({
       addThreePidOnly: vi
         .fn()
@@ -261,9 +261,56 @@ describe('EmailAddressesWorkflow.add', () => {
         ),
     });
     expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
-      kind: 'refused',
-      reason: 'not-verified',
+      kind: 'not-verified',
+      pending,
     });
+  });
+
+  it('reuses the completed session once the link is opened', async () => {
+    const notOpened = new MatrixError(
+      { errcode: 'M_THREEPID_AUTH_FAILED' },
+      400,
+    );
+    const addThreePidOnly = vi
+      .fn()
+      .mockRejectedValueOnce(uia(['m.login.password']))
+      .mockRejectedValueOnce(notOpened)
+      .mockResolvedValueOnce({});
+    const workflow = setup({ addThreePidOnly });
+    const s = stages();
+
+    const first = await firstValueFrom(workflow.add(pending, s));
+    expect(first).toEqual({
+      kind: 'not-verified',
+      pending: { ...pending, uiaSession: 's' },
+    });
+    if (first.kind !== 'not-verified') return;
+
+    const second = await firstValueFrom(workflow.add(first.pending, s));
+    expect(second).toEqual({ kind: 'added' });
+    expect(addThreePidOnly.mock.calls[2][0].auth).toEqual({ session: 's' });
+    expect(s.password).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again when the remembered session has expired', async () => {
+    const addThreePidOnly = vi
+      .fn()
+      .mockRejectedValueOnce(uia(['m.login.password']))
+      .mockResolvedValueOnce({});
+    const workflow = setup({ addThreePidOnly });
+    const s = stages();
+    const result = await firstValueFrom(
+      workflow.add({ ...pending, uiaSession: 'expired' }, s),
+    );
+    expect(result).toEqual({ kind: 'added' });
+    expect(addThreePidOnly.mock.calls[0][0].auth).toEqual({
+      session: 'expired',
+    });
+    expect(addThreePidOnly.mock.calls[1][0].auth).toMatchObject({
+      type: 'm.login.password',
+      session: 's',
+    });
+    expect(s.password).toHaveBeenCalledTimes(1);
   });
 
   it('maps a cancelled prompt to cancelled', async () => {

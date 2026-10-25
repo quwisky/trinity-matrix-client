@@ -72,10 +72,17 @@ export class EmailAddressesWorkflow {
     return defer(() => {
       const client = this.matrix.clientFor(pending.accountId);
       if (!client) return of(refused('account-unavailable'));
+      // Synapse checks re-authentication before the link, so an early Continue completes
+      // the session; sending it back skips a second password prompt.
+      let session = pending.uiaSession;
       return from(
         driveUia(
-          (auth) =>
-            client.addThreePidOnly({
+          (probe) => {
+            const auth = probe ?? (session ? { session } : null);
+            if (auth && 'session' in auth && typeof auth.session === 'string') {
+              session = auth.session;
+            }
+            return client.addThreePidOnly({
               sid: pending.sid,
               client_secret: pending.clientSecret,
               // The SDK types `auth` as `{ type }`, but a fallback stage answers with `{ session }` alone.
@@ -86,7 +93,8 @@ export class EmailAddressesWorkflow {
                     >[0]['auth'],
                   }
                 : {}),
-            }),
+            });
+          },
           {
             password: { user: pending.accountId, prompt: stages.password },
             fallback: ({ stage, session, pending: stillPending }) =>
@@ -98,7 +106,19 @@ export class EmailAddressesWorkflow {
         ),
       ).pipe(
         map((): EmailAddResult => ({ kind: 'added' })),
-        catchError((err: unknown) => of(refusalOf(err))),
+        catchError((err: unknown): Observable<EmailAddResult> => {
+          const refusal = refusalOf(err);
+          return of(
+            refusal.reason === 'not-verified'
+              ? {
+                  kind: 'not-verified',
+                  pending: session
+                    ? { ...pending, uiaSession: session }
+                    : pending,
+                }
+              : refusal,
+          );
+        }),
       );
     });
   }
