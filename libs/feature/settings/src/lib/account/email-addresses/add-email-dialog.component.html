@@ -11,6 +11,9 @@
         (submit)="submitAddress()"
         class="flex flex-col gap-4"
       >
+        <p id="add-email-body" class="m-0 text-sm text-muted-foreground">
+          {{ copy.addressBody }}
+        </p>
         <div>
           <label trnLabel for="add-email-input">Email address</label>
           <input

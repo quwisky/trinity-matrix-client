@@ -161,7 +161,7 @@ export class DeleteAccountDialogComponent {
       }
       untracked(() => this.focusStep(step));
     });
-    this.destroyRef.onDestroy(() => this.prompts.abandon());
+    this.destroyRef.onDestroy(() => this.prompts.dispose());
   }
 
   /** Escape and the close control are ignored once the request cannot be called back. */

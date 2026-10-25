@@ -13,11 +13,13 @@ export type ReauthStep =
 export class ReauthPrompts {
   private passwordAnswer: ((password: string | null) => void) | null = null;
   private browserAnswer: ((finished: boolean) => void) | null = null;
+  private disposed = false;
 
   constructor(private readonly show: (step: ReauthStep) => void) {}
 
   readonly password: UiaPasswordPrompt = ({ rejected }) =>
     new Promise((resolve) => {
+      if (this.disposed) return resolve(null);
       this.passwordAnswer = resolve;
       this.show({ kind: 'password', rejected });
     });
@@ -30,6 +32,7 @@ export class ReauthPrompts {
     readonly pending: boolean;
   }): Promise<boolean> =>
     new Promise((resolve) => {
+      if (this.disposed) return resolve(false);
       this.browserAnswer = resolve;
       this.show({ kind: 'browser', url, pending });
     });
@@ -58,5 +61,11 @@ export class ReauthPrompts {
     this.browserAnswer = null;
     password?.(null);
     browser?.(false);
+  }
+
+  /** Abandons waiting prompts and answers every later one as cancelled, once the dialog is gone. */
+  dispose(): void {
+    this.disposed = true;
+    this.abandon();
   }
 }

@@ -356,6 +356,17 @@ describe('DeleteAccountDialogComponent', () => {
     await expect(answer).resolves.toBeNull();
   });
 
+  it('settles a prompt that arrives after the dialog went away', async () => {
+    const test = await setup();
+    await typeAndSubmit(test, 'DELETE');
+
+    test.fixture.destroy();
+
+    await expect(
+      test.prompts().password({ rejected: false }),
+    ).resolves.toBeNull();
+  });
+
   it('keeps the re-authentication actions destructive', async () => {
     const test = await setup();
     await typeAndSubmit(test, 'DELETE');

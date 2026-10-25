@@ -48,6 +48,20 @@ describe('ReauthPrompts', () => {
     expect(prompts.answerBrowser(true)).toBe(false);
   });
 
+  it('after dispose, later prompts settle at once without showing a step', async () => {
+    const { prompts, shown } = setup();
+    const waiting = prompts.password({ rejected: false });
+
+    prompts.dispose();
+
+    await expect(waiting).resolves.toBeNull();
+    await expect(prompts.password({ rejected: false })).resolves.toBeNull();
+    await expect(
+      prompts.confirmInBrowser({ url: 'https://x/', pending: false }),
+    ).resolves.toBe(false);
+    expect(shown).toEqual([{ kind: 'password', rejected: false }]);
+  });
+
   it('answerPassword returns false when nothing waits', () => {
     expect(setup().prompts.answerPassword('secret')).toBe(false);
   });

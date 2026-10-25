@@ -308,6 +308,26 @@ describe('AddEmailDialogComponent', () => {
     }
   });
 
+  it('describes the first step with the dialog’s described-by target', async () => {
+    const test = await setup();
+
+    const body = test.container.querySelector('#add-email-body');
+    expect(body?.textContent?.trim()).toBeTruthy();
+    expect(test.container.querySelectorAll('#add-email-body')).toHaveLength(1);
+  });
+
+  it('settles a prompt that arrives after the dialog went away', async () => {
+    const test = await setup();
+    await sendLink(test);
+    fireEvent.click(screen.getByTestId('add-email-continue'));
+
+    test.fixture.destroy();
+
+    await expect(
+      test.stages().password({ rejected: false }),
+    ).resolves.toBeNull();
+  });
+
   it('uses a neutral action to add the address after re-authentication', async () => {
     const test = await setup();
     await sendLink(test);

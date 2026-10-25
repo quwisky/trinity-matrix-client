@@ -11,6 +11,7 @@ export const EMAIL_ADDRESSES_COPY = {
   removeBody: 'You won’t be able to reset your password with it.',
   addButton: 'Add email address',
   addressTitle: 'Add an email address',
+  addressBody: 'We’ll send a link to this address to check that it’s yours.',
   sendLink: 'Send link',
   sentTitle: 'Check your email',
   sentBody: (email: string) =>

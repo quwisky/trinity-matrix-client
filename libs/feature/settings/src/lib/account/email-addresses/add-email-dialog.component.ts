@@ -169,7 +169,7 @@ export class AddEmailDialogComponent {
     });
     this.destroyRef.onDestroy(() => {
       this.waitTimers.forEach(clearTimeout);
-      this.prompts.abandon();
+      this.prompts.dispose();
     });
   }
 
