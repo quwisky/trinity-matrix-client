@@ -256,12 +256,12 @@ screen offers **Retry**, the system prompt where you have one, and
 ## Email addresses {#email-addresses}
 
 Settings › Account has an **Email addresses** group, above **Delete account**. It lists the
-email addresses on your account, and any phone numbers your server already has. Your server uses
-these addresses to contact you. They stay on your homeserver: Trinity doesn't share them with an
-identity server.
+email addresses on your account, and any phone numbers your server already has. Your server can
+use an email address to reset your password. The addresses stay on your homeserver: Trinity
+doesn't share them with an identity server.
 
-**Add one.** Choose **Add email address**, type the address and confirm. Trinity sends a link to
-that address. Open the link first, then come back to Trinity and choose **Continue**. If your
+**Add one.** Choose **Add email address**, type the address and choose **Send link**. Trinity sends
+a link to that address. Open the link first, then come back to Trinity and choose **Continue**. If your
 server asks, type your password; an account without a password confirms in the browser instead.
 The address then appears in the list.
 
