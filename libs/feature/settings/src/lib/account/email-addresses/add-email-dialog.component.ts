@@ -40,6 +40,12 @@ import { ReauthPrompts, type ReauthStep } from '../reauth/reauth-prompts';
 import { EMAIL_ADDRESSES_COPY, refusalMessage } from './email-addresses.copy';
 import { VerifyLinkStepComponent } from './verify-link-step.component';
 
+/** What the add dialog closes with once the address is bound. */
+export interface AddEmailClosed {
+  readonly kind: 'added';
+  readonly email: string;
+}
+
 /** Where the add dialog is; each step is one screen of the same dialog. */
 export type AddEmailStep =
   | { readonly kind: 'address' }
@@ -263,7 +269,7 @@ export class AddEmailDialogComponent {
     this.busy.set(false);
     if (result.kind === 'added') {
       // With a result, so the dismiss guard that holds it open while working lets go.
-      this.ref?.close('added');
+      this.ref?.close({ kind: 'added', email: sent.pending.email });
       return;
     }
     this.resent.set(false);

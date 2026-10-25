@@ -22,7 +22,10 @@ import {
   type EmailAddressesLoad,
 } from '@trinity/data-access/contact-addresses';
 import { serverNameOf } from '../delete-account/delete-account.copy';
-import { AddEmailDialogComponent } from './add-email-dialog.component';
+import {
+  AddEmailDialogComponent,
+  type AddEmailClosed,
+} from './add-email-dialog.component';
 import { EMAIL_ADDRESSES_COPY, refusalMessage } from './email-addresses.copy';
 import { RemoveEmailDialogComponent } from './remove-email-dialog.component';
 
@@ -41,7 +44,6 @@ export class EmailAddressesGroupComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly reloads = signal(0);
-  private announceAdded = false;
   private shownId = '';
 
   protected readonly copy = EMAIL_ADDRESSES_COPY;
@@ -74,7 +76,7 @@ export class EmailAddressesGroupComponent {
         switchMap(({ id }) => this.workflow.load(id)),
         takeUntilDestroyed(),
       )
-      .subscribe((load) => this.loaded(load));
+      .subscribe((load) => this.state.set(load));
   }
 
   retry(): void {
@@ -83,25 +85,24 @@ export class EmailAddressesGroupComponent {
   }
 
   add(): void {
+    const accountId = this.accountId();
     this.surfaces
-      .open(AddEmailDialogComponent, {
+      .open<AddEmailClosed, AddEmailDialogComponent>(AddEmailDialogComponent, {
         ariaDescribedBy: 'add-email-body',
         autoFocus: '[data-autofocus]',
-        inputs: { accountId: this.accountId() },
+        inputs: { accountId },
         dismissGuard: (dialog) => dialog?.canDismiss() ?? true,
       })
-      .closed.pipe(
-        take(1),
-        filter((result) => result === 'added'),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe(() => {
-        this.announceAdded = true;
-        this.reloads.update((n) => n + 1);
+      .closed.pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe((result) => {
+        if (result?.kind !== 'added') return;
+        this.say(this.copy.added(result.email));
+        if (this.accountId() === accountId) this.reloads.update((n) => n + 1);
       });
   }
 
   remove(address: ContactAddress): void {
+    const accountId = this.accountId();
     this.surfaces
       .open(RemoveEmailDialogComponent, {
         ariaDescribedBy: 'remove-email-body',
@@ -111,13 +112,16 @@ export class EmailAddressesGroupComponent {
       .closed.pipe(
         take(1),
         filter((result) => result === 'remove'),
-        switchMap(() => this.workflow.remove(this.accountId(), address)),
+        switchMap(() => this.workflow.remove(accountId, address)),
         tap((result) => {
+          const current = this.accountId() === accountId;
           if (result.kind === 'removed') {
-            this.actionError.set('');
             this.say(this.copy.removed(address.address));
-            this.reloads.update((n) => n + 1);
-          } else {
+            if (current) {
+              this.actionError.set('');
+              this.reloads.update((n) => n + 1);
+            }
+          } else if (current) {
             const message = refusalMessage(
               result.reason,
               this.server(),
@@ -130,19 +134,6 @@ export class EmailAddressesGroupComponent {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe();
-  }
-
-  private loaded(load: EmailAddressesLoad): void {
-    const before = this.state();
-    if (this.announceAdded && load.kind === 'loaded') {
-      this.announceAdded = false;
-      const known = new Set(
-        before.kind === 'loaded' ? before.addresses.map((a) => a.address) : [],
-      );
-      const added = load.addresses.find((a) => !known.has(a.address));
-      if (added) this.say(this.copy.added(added.address));
-    }
-    this.state.set(load);
   }
 
   private say(message: string): void {

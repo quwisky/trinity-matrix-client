@@ -235,7 +235,7 @@ describe('AddEmailDialogComponent', () => {
     await expect(answer).resolves.toBe('pw');
 
     test.confirmed.next({ kind: 'added' });
-    expect(test.close).toHaveBeenCalledWith('added');
+    expect(test.close).toHaveBeenCalledWith({ kind: 'added', email: 'a@b.c' });
   });
 
   it('returns to the sent step when re-authentication is backed out of', async () => {

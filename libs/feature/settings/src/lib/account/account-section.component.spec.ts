@@ -86,11 +86,18 @@ describe('AccountSectionComponent', () => {
     );
   });
 
-  it('shows the Email addresses group for legacy and oauth accounts, not before the server answers', async () => {
+  it('shows the Email addresses group for legacy accounts', async () => {
     await renderSection();
     expect(
       screen.getByRole('heading', { name: 'Email addresses' }),
     ).toBeTruthy();
+  });
+
+  it('shows no Email addresses group before the server answers', async () => {
+    await renderSection(null);
+    expect(
+      screen.queryByRole('heading', { name: 'Email addresses' }),
+    ).toBeNull();
   });
 
   it('shows the provider line in the Email addresses group on oauth', async () => {

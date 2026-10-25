@@ -29,7 +29,7 @@ async function setup(
   first: EmailAddressesLoad,
   kind: 'legacy' | 'oauth' = 'legacy',
 ) {
-  const closed = new Subject<string | undefined>();
+  const closed = new Subject<unknown>();
   const workflow = {
     load: vi.fn((): Observable<EmailAddressesLoad> => of(first)),
     remove: vi.fn((): Observable<EmailRemoveResult> => of({ kind: 'removed' })),
@@ -189,13 +189,55 @@ describe('EmailAddressesGroupComponent', () => {
     );
 
     test.workflow.load.mockReturnValue(of(loaded([ADDRESS])));
-    test.closed.next('added');
+    test.closed.next({ kind: 'added', email: 'a@b.c' });
     await test.fixture.whenStable();
 
     expect(test.workflow.load).toHaveBeenCalledTimes(2);
+    expect(test.toast.show).toHaveBeenCalledWith('a@b.c was added.');
     expect(screen.getByRole('status').textContent).toContain(
       'a@b.c was added.',
     );
+  });
+
+  it('names the added address once even when the reload fails', async () => {
+    const test = await setup(loaded([ADDRESS]));
+    fireEvent.click(screen.getByRole('button', { name: 'Add email address' }));
+    test.workflow.load.mockReturnValue(
+      of({ kind: 'refused', reason: 'unreachable' } as const),
+    );
+    test.closed.next({ kind: 'added', email: 'new@b.c' });
+    await test.fixture.whenStable();
+
+    test.workflow.load.mockReturnValue(of(loaded([ADDRESS])));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('button', { name: 'Remove a@b.c' });
+
+    expect(test.toast.show).toHaveBeenCalledTimes(1);
+    expect(test.toast.show).toHaveBeenCalledWith('new@b.c was added.');
+  });
+
+  it('confirms an added address that was already listed', async () => {
+    const test = await setup(loaded([ADDRESS]));
+    fireEvent.click(screen.getByRole('button', { name: 'Add email address' }));
+    test.closed.next({ kind: 'added', email: 'a@b.c' });
+    await test.fixture.whenStable();
+
+    expect(test.toast.show).toHaveBeenCalledWith('a@b.c was added.');
+  });
+
+  it('removes from the account the confirmation was opened for', async () => {
+    const test = await setup(loaded([ADDRESS]));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove a@b.c' }));
+
+    test.fixture.componentRef.setInput('accountId', '@bob:example.org');
+    await test.fixture.whenStable();
+    test.workflow.load.mockClear();
+    test.closed.next('remove');
+    await test.fixture.whenStable();
+
+    expect(test.workflow.remove).toHaveBeenCalledWith(ALICE, ADDRESS);
+    expect(test.toast.show).toHaveBeenCalledWith('a@b.c was removed.');
+    expect(test.workflow.load).not.toHaveBeenCalled();
   });
 
   it('does not reload when the add dialog was dismissed', async () => {
