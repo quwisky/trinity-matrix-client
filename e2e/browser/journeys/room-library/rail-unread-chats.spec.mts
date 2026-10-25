@@ -96,6 +96,29 @@ async function seedUnreadRoom(
   return roomId;
 }
 
+/** `user` reads `roomId` up to its latest event. */
+async function markRead(
+  request: APIRequestContext,
+  hs: string,
+  user: ApiUser,
+  roomId: string,
+): Promise<void> {
+  const room = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}`;
+  const latest = await request.get(`${room}/messages`, {
+    headers: user.headers,
+    params: { dir: 'b', limit: '1' },
+  });
+  expect(latest.ok(), `latest event in ${roomId}`).toBe(true);
+  const [event] = ((await latest.json()) as { chunk: { event_id: string }[] })
+    .chunk;
+  expect(event, `an event in ${roomId}`).toBeDefined();
+  const read = await request.post(`${room}/read_markers`, {
+    headers: user.headers,
+    data: { 'm.fully_read': event.event_id, 'm.read': event.event_id },
+  });
+  expect(read.ok(), `read markers in ${roomId}`).toBe(true);
+}
+
 async function setDisplayName(
   request: APIRequestContext,
   hs: string,
@@ -533,6 +556,9 @@ test.describe('Space rail unread chats', () => {
         { headers: b.headers },
       ),
     );
+    // A's invite notifies B, and Synapse sometimes still counts it after the join. B reads up
+    // to its join, so only the message below is unread.
+    await markRead(request, hs, b, sharedId);
     await sendWithRetry(`m.space.child ${shared}`, () =>
       request.put(
         `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
