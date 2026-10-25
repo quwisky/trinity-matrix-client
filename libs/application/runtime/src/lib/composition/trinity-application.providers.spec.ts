@@ -180,6 +180,7 @@ describe('Trinity application provider composition', () => {
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
             addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
           },
         }),
       ],
@@ -211,6 +212,7 @@ describe('Trinity application provider composition', () => {
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
             addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
           },
         }),
         {
@@ -340,6 +342,7 @@ describe('Trinity application provider composition', () => {
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
             addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
           },
         }),
       ],
@@ -371,6 +374,7 @@ describe('Trinity application provider composition', () => {
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
             addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
           },
         }),
       ],
@@ -402,6 +406,7 @@ describe('Trinity application provider composition', () => {
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
             addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
           },
         }),
       ],
@@ -433,6 +438,7 @@ describe('Trinity application provider composition', () => {
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
             addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
           },
         }),
       ],
@@ -466,6 +472,7 @@ describe('Trinity application provider composition', () => {
         reportBug: () => NEVER,
         whatsNew: () => NEVER,
         addToImagePack: () => NEVER,
+        imagePackEditor: () => NEVER,
       },
     };
     for (const [options, allowSkip] of [
@@ -502,6 +509,7 @@ describe('Trinity application provider composition', () => {
             reportBug: () => of(ReportBugDependencyProbeComponent),
             whatsNew: () => NEVER,
             addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
           },
         }),
         {

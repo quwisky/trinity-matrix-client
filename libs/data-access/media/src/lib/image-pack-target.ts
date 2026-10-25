@@ -134,7 +134,7 @@ export class AccountPackTarget implements PackTarget {
     return !!client.getUserId();
   }
 
-  defaultName(_client: MatrixClient): string {
+  defaultName(): string {
     return PERSONAL_IMAGE_PACK_NAME;
   }
 }

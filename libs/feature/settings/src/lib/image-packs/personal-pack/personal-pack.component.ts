@@ -8,10 +8,11 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
   FormField,
   FormRoot,
@@ -37,19 +38,25 @@ import {
   MAX_PERSONAL_IMAGES,
   SHORTCODE_PATTERN,
   type PackEntry,
+  type PackRef,
 } from '@trinity/data-access/media';
 import { TrackFileChooserDirective } from '@trinity/platform-native';
 import {
   EMPTY,
+  catchError,
   concatMap,
+  distinctUntilChanged,
   filter,
   finalize,
   from,
+  map,
   switchMap,
   type Observable,
 } from 'rxjs';
 import {
   AddToPackDialogComponent,
+  PACK_COPY,
+  PERSONAL_PACK,
   SHORTCODE_HINT,
   USAGES,
   addFailure,
@@ -57,7 +64,6 @@ import {
 } from '../add-to-pack-dialog/add-to-pack-dialog.component';
 import { PackImageComponent } from './pack-image.component';
 
-const CHANGE_FAILED = 'Couldn’t change your emoji. Try again.';
 const USE_AS_LABELS: Record<UseAs, string> = {
   emoticon: 'Emoji',
   sticker: 'Sticker',
@@ -70,17 +76,26 @@ const USE_AS_ACTIONS: Record<UseAs, string> = {
 };
 
 /** Copy for a failed rename, usage change or delete. */
-function changeFailure(error: unknown, shortcode: string): string {
+function changeFailure(
+  error: unknown,
+  shortcode: string,
+  kind: PackRef['kind'],
+): string {
   if (error instanceof ImagePackEditError) {
-    if (error.code === 'not-signed-in') return 'Sign in to change your emoji.';
+    if (error.code === 'not-signed-in') return PACK_COPY[kind].signInToChange;
+    if (error.code === 'not-allowed') return PACK_COPY[kind].notAllowed;
     if (
       error.code === 'shortcode-taken' ||
       error.code === 'invalid-shortcode'
     ) {
-      return addFailure(error, shortcode).message;
+      return addFailure(error, shortcode, kind).message;
     }
   }
-  return CHANGE_FAILED;
+  return PACK_COPY[kind].changeFailed;
+}
+
+function packKey(ref: PackRef): string {
+  return ref.kind === 'personal' ? '' : `${ref.accountId} ${ref.roomId}`;
 }
 
 function useAsOf(entry: PackEntry): UseAs {
@@ -90,7 +105,10 @@ function useAsOf(entry: PackEntry): UseAs {
   return 'emoticon';
 }
 
-/** Settings' "Your emoji": the personal image pack as a grid, with add, rename, usage and delete. */
+/**
+ * Settings' "Your emoji", or with a room `ref` a room's own emoji: the pack as a grid, with add,
+ * rename, usage and delete. Room settings loads it through `IMAGE_PACK_EDITOR`.
+ */
 @Component({
   selector: 'trn-personal-pack',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -129,7 +147,17 @@ export class PersonalPackComponent {
     readonly message: string;
   } | null>(null);
 
-  protected readonly entries = this.editor.personal;
+  private readonly roomEntries = signal<readonly PackEntry[] | null>(null);
+
+  /** Why a room's pack could not be shown. */
+  protected readonly loadFailure = signal<string | null>(null);
+
+  protected readonly copy = computed(() => PACK_COPY[this.ref().kind]);
+  protected readonly entries = computed(() =>
+    this.ref().kind === 'personal'
+      ? this.editor.personal()
+      : this.roomEntries(),
+  );
   protected readonly full = computed(
     () => (this.entries()?.length ?? 0) >= MAX_PERSONAL_IMAGES,
   );
@@ -151,8 +179,35 @@ export class PersonalPackComponent {
   });
   protected readonly status = signal('');
 
+  readonly ref = input<PackRef>(PERSONAL_PACK);
+  /** A room ref's room is encrypted, so the editor notes that its images are not. */
+  readonly encrypted = input(false);
+
   constructor() {
-    this.editor.run().pipe(takeUntilDestroyed()).subscribe();
+    toObservable(this.ref)
+      .pipe(
+        // Room settings rebuilds the ref when the room's encryption changes; keep the grid.
+        distinctUntilChanged((a, b) => packKey(a) === packKey(b)),
+        switchMap((ref) => {
+          this.roomEntries.set(null);
+          this.loadFailure.set(null);
+          return ref.kind === 'personal'
+            ? this.editor.run()
+            : this.editor.entries$(ref).pipe(
+                map((entries) => this.roomEntries.set(entries)),
+                catchError((error: unknown) => {
+                  this.loadFailure.set(
+                    error instanceof ImagePackEditError
+                      ? changeFailure(error, '', ref.kind)
+                      : PACK_COPY[ref.kind].loadFailed,
+                  );
+                  return EMPTY;
+                }),
+              );
+        }),
+        takeUntilDestroyed(),
+      )
+      .subscribe();
     effect(() => {
       const code = this.focusPending();
       if (code && this.entries()?.some((entry) => entry.shortcode === code)) {
@@ -169,8 +224,10 @@ export class PersonalPackComponent {
     const account = this.matrix.activeUserId();
     from(files)
       .pipe(
-        // An account switch drops the files still queued; the open dialog closes itself.
+        // For the personal pack, an account switch drops the files still queued; the open dialog
+        // closes itself. A room ref pins its account.
         concatMap((file) =>
+          this.ref().kind === 'personal' &&
           this.matrix.activeUserId() !== account
             ? EMPTY
             : this.surfaces.openAndWait$<PackEntry, AddToPackDialogComponent>(
@@ -179,6 +236,7 @@ export class PersonalPackComponent {
                   inputs: {
                     input: { kind: 'file', file },
                     suggestedName: file.name,
+                    ref: this.ref(),
                   },
                   autoFocus: '[data-autofocus]',
                   dismissGuard: (dialog) => dialog?.canDismiss() ?? true,
@@ -243,7 +301,7 @@ export class PersonalPackComponent {
     this.renameFailure.set(null);
     this.renameRunning = true;
     this.editor
-      .rename(original, to)
+      .rename(original, to, this.ref())
       .pipe(
         finalize(() => (this.renameRunning = false)),
         takeUntilDestroyed(this.destroyRef),
@@ -259,7 +317,7 @@ export class PersonalPackComponent {
         error: (error: unknown) => {
           this.renameFailure.set({
             shortcode: to,
-            message: changeFailure(error, to),
+            message: changeFailure(error, to, this.ref().kind),
           });
           this.renameInput()?.nativeElement.focus();
         },
@@ -269,7 +327,7 @@ export class PersonalPackComponent {
   private setUsage(entry: PackEntry, useAs: UseAs): void {
     if (useAsOf(entry) === useAs) return;
     this.change(
-      this.editor.setUsage(entry.shortcode, USAGES[useAs]),
+      this.editor.setUsage(entry.shortcode, USAGES[useAs], this.ref()),
       entry.shortcode,
     );
   }
@@ -278,13 +336,13 @@ export class PersonalPackComponent {
     this.change(
       this.alert
         .confirm$({
-          header: `Remove :${entry.shortcode}: from your emoji?`,
+          header: this.copy().remove(entry.shortcode),
           confirmText: 'Remove',
           variant: 'danger',
         })
         .pipe(
           filter(Boolean),
-          switchMap(() => this.editor.remove(entry.shortcode)),
+          switchMap(() => this.editor.remove(entry.shortcode, this.ref())),
         ),
       entry.shortcode,
     );
@@ -294,7 +352,7 @@ export class PersonalPackComponent {
     this.status.set('');
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       error: (error: unknown) =>
-        this.status.set(changeFailure(error, shortcode)),
+        this.status.set(changeFailure(error, shortcode, this.ref().kind)),
     });
   }
 

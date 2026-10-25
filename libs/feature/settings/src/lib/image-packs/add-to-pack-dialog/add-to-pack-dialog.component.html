@@ -1,7 +1,7 @@
 <!-- `[formRoot]` sets novalidate and preventDefaults the submit. -->
 <form [formRoot]="addForm" (submit)="add()" data-testid="add-to-pack-dialog">
   <trn-dialog-shell
-    title="Add to your emoji"
+    [title]="copy().addTitle"
     [closable]="!busy()"
     (closed)="cancel()"
   >
@@ -77,7 +77,7 @@
         </div>
       }
       <p class="sr-only" role="status">
-        {{ busy() ? 'Adding to your emoji…' : (failure()?.message ?? '') }}
+        {{ busy() ? copy().adding : (failure()?.message ?? '') }}
       </p>
     </div>
 

@@ -3,7 +3,7 @@
   noun="Room"
   [accountName]="accountLabel()"
   [targetName]="draft.model().name || roomDisplayName()"
-  [sections]="sections"
+  [sections]="sections()"
   [selectedSection]="selectedSection()"
   [sectionTitle]="sectionTitle()"
   [compactNavigation]="compactNavigation()"
@@ -70,6 +70,15 @@
         <trn-room-widgets
           [target]="widgetTarget()"
           [available]="draft.targetAvailable()"
+        />
+      </section>
+    }
+    @case ('emoji') {
+      <section data-testid="room-settings-panel-emoji">
+        <trn-room-settings-emoji
+          [accountId]="accountId()"
+          [roomId]="roomId()"
+          [encrypted]="draft.snapshot()?.encrypted ?? false"
         />
       </section>
     }
