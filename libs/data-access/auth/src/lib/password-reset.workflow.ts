@@ -47,7 +47,7 @@ export class PasswordResetWorkflow {
         clientSecret,
         sendAttempt: 1,
       });
-    });
+    }).pipe(catchError((err: unknown) => of(refusalOf(err, 'send'))));
   }
 
   resend(pending: PendingReset): Observable<ResetLinkResult> {

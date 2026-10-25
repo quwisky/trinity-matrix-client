@@ -201,6 +201,15 @@ describe('PasswordResetWorkflow', () => {
       ).toEqual({ kind: 'refused', refusal: 'unreachable' });
     });
 
+    it('refuses instead of erroring when the client cannot be created', async () => {
+      vi.mocked(createClient).mockImplementation(() => {
+        throw new Error('boom');
+      });
+      expect(
+        await firstValueFrom(workflow.sendLink('https://hs', 'a@b.c')),
+      ).toEqual({ kind: 'refused', refusal: 'failed' });
+    });
+
     it('maps anything else to failed', async () => {
       client.requestPasswordEmailToken.mockRejectedValue(
         matrix('M_UNKNOWN', 500),

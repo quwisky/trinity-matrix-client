@@ -260,9 +260,9 @@ on your account and choose **Send link**. Open the link in the email and confirm
 Trinity and choose a new password. Trinity then takes you back to sign in.
 
 This needs an email address on the account, so add one under [Email addresses](#email-addresses)
-while you can still sign in. **Sign out of all devices** is on by default. A device without a key
-backup loses access to its encrypted messages, so leave it on only if you want every device signed
-out. An account that signs in through a provider resets its password there, not in Trinity.
+while you can still sign in. **Sign out of all devices** is on by default. Clear the box to keep
+your other devices signed in. If you leave it on, a device without a key backup loses access to its
+encrypted messages. An account that signs in through a provider resets its password there, not in Trinity.
 
 ## Email addresses {#email-addresses}
 

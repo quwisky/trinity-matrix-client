@@ -76,6 +76,8 @@ export class ResetPasswordPage {
     ...(this.homeserverInput ? { homeserver: this.homeserverInput } : {}),
     ...(this.addMode ? { add: '' } : {}),
   };
+  // Reset spends its single-use credentials, so the page stays busy once it succeeds.
+  private resetDone = false;
   private waitTimer: ReturnType<typeof setInterval> | undefined;
 
   protected readonly copy = RESET_PASSWORD_COPY;
@@ -165,6 +167,7 @@ export class ResetPasswordPage {
           this.refuse(result);
           return;
         }
+        this.resetDone = true;
         void this.router.navigate(['/login'], {
           queryParams: {
             homeserver: this.homeserverInput,
@@ -189,7 +192,7 @@ export class ResetPasswordPage {
     this.refusal.set(null);
     source
       .pipe(
-        finalize(() => this.busy.set(false)),
+        finalize(() => this.busy.set(this.resetDone)),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe(onResult);

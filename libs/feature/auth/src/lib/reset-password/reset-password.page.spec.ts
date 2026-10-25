@@ -197,6 +197,19 @@ describe('ResetPasswordPage', () => {
     expect(page.workflow.reset).toHaveBeenCalledTimes(1);
   });
 
+  it('stays busy after a successful reset while navigation is blocked', async () => {
+    const page = await renderPage();
+    vi.spyOn(page.router, 'navigate').mockResolvedValue(false);
+    await toPassword(page);
+    type('reset-password-input', 'pw');
+    type('reset-confirm-input', 'pw');
+    await click(page.fixture, 'reset-submit');
+    await click(page.fixture, 'reset-submit');
+
+    expect(screen.getByTestId('reset-submit')).toBeDisabled();
+    expect(page.workflow.reset).toHaveBeenCalledTimes(1);
+  });
+
   it('counts the wait down on the button while the alert text stays constant', async () => {
     const page = await renderPage({
       reset: () =>
