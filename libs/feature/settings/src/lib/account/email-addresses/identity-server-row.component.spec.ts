@@ -113,6 +113,21 @@ describe('IdentityServerRowComponent', () => {
     expect(test.changed).toHaveBeenCalledTimes(1);
   });
 
+  it('opens Change with no old server when the choice is only the suggestion', async () => {
+    const test = await setup(
+      { kind: 'set', url: 'https://vector.im', source: 'well-known' },
+      ['a@b.c'],
+    );
+    fireEvent.click(screen.getByTestId('identity-server-change'));
+
+    expect(test.surfaces.open).toHaveBeenCalledWith(
+      ChangeIdentityServerDialogComponent,
+      expect.objectContaining({
+        inputs: { accountId: ALICE, current: '', published: [] },
+      }),
+    );
+  });
+
   it('turns off after a plain confirm when nothing is published', async () => {
     const test = await setup(SET);
     fireEvent.click(screen.getByTestId('identity-server-turn-off'));

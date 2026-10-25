@@ -51,6 +51,18 @@ describe('IdentityTermsDialogComponent', () => {
     expect(links[0].getAttribute('rel')).toBe('noopener noreferrer');
   });
 
+  it('puts Not now and Accept in the dialog footer', async () => {
+    await setup();
+    const footer = screen.getByTestId('dialog-footer');
+
+    expect(footer.contains(screen.getByTestId('identity-terms-decline'))).toBe(
+      true,
+    );
+    expect(footer.contains(screen.getByTestId('identity-terms-accept'))).toBe(
+      true,
+    );
+  });
+
   it('closes with true on Accept and with nothing on Not now', async () => {
     const { close } = await setup();
 

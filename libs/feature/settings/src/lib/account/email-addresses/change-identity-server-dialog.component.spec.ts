@@ -7,7 +7,10 @@ import { ChangeIdentityServerDialogComponent } from './change-identity-server-di
 
 const ALICE = '@alice:example.org';
 
-async function setup(published: readonly string[] = []) {
+async function setup(
+  published: readonly string[] = [],
+  current = 'https://vector.im',
+) {
   const confirmed = new Subject<boolean>();
   const calls: string[] = [];
   const identity = {
@@ -27,7 +30,7 @@ async function setup(published: readonly string[] = []) {
   const close = vi.fn();
   const confirm$ = vi.fn(() => confirmed.asObservable());
   const rendered = await render(ChangeIdentityServerDialogComponent, {
-    inputs: { accountId: ALICE, current: 'https://vector.im', published },
+    inputs: { accountId: ALICE, current, published },
     providers: [
       { provide: IdentityServerService, useValue: identity },
       { provide: TrnAlertService, useValue: { confirm$ } },
@@ -198,6 +201,15 @@ describe('ChangeIdentityServerDialogComponent', () => {
     expect(test.confirm$).not.toHaveBeenCalled();
     expect(test.identity.unpublishAll).not.toHaveBeenCalled();
     expect(test.identity.use).not.toHaveBeenCalled();
+  });
+
+  it('saves the same address when no server was chosen before', async () => {
+    const test = await setup([], '');
+    await save(test, 'https://vector.im');
+
+    expect(test.identity.use).toHaveBeenCalled();
+    expect(test.identity.unpublishAll).not.toHaveBeenCalled();
+    expect(test.close).toHaveBeenCalledWith({ kind: 'changed' });
   });
 
   it('names the new server when use is unreachable after unpublishing', async () => {

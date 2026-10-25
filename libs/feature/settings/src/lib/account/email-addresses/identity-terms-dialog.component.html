@@ -3,44 +3,42 @@
   size="md"
   (closed)="close()"
 >
-  <div class="flex flex-col gap-4">
-    <div id="identity-terms-body">
-      <p class="m-0 text-sm text-muted-foreground">
-        {{ copy.termsBody(host()) }}
-      </p>
-      <ul class="m-0 mt-2 list-none p-0 text-sm">
-        @for (policy of policies(); track policy.id) {
-          <li>
-            <a
-              class="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-              [href]="policy.url"
-              >{{ policy.name }}</a
-            >
-          </li>
-        }
-      </ul>
-    </div>
-    <div trnDialogActions>
-      <button
-        trnBtn
-        type="button"
-        presentation="outline"
-        data-autofocus
-        (click)="close()"
-        data-testid="identity-terms-decline"
-      >
-        {{ copy.termsDecline }}
-      </button>
-      <button
-        trnBtn
-        type="button"
-        (click)="close(true)"
-        data-testid="identity-terms-accept"
-      >
-        {{ copy.termsAccept }}
-      </button>
-    </div>
+  <div id="identity-terms-body">
+    <p class="m-0 text-sm text-muted-foreground">
+      {{ copy.termsBody(host()) }}
+    </p>
+    <ul class="m-0 mt-2 list-none p-0 text-sm">
+      @for (policy of policies(); track policy.id) {
+        <li>
+          <a
+            class="underline"
+            target="_blank"
+            rel="noopener noreferrer"
+            [href]="policy.url"
+            >{{ policy.name }}</a
+          >
+        </li>
+      }
+    </ul>
+  </div>
+  <div trnDialogActions>
+    <button
+      trnBtn
+      type="button"
+      presentation="outline"
+      data-autofocus
+      (click)="close()"
+      data-testid="identity-terms-decline"
+    >
+      {{ copy.termsDecline }}
+    </button>
+    <button
+      trnBtn
+      type="button"
+      (click)="close(true)"
+      data-testid="identity-terms-accept"
+    >
+      {{ copy.termsAccept }}
+    </button>
   </div>
 </trn-dialog-shell>

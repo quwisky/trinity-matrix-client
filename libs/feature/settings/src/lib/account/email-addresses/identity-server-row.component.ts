@@ -80,8 +80,9 @@ export class IdentityServerRowComponent {
 
   change(): void {
     const choice = this.choice();
-    const set = choice.kind === 'set';
-    this.open(set ? choice.url : '', set ? this.published() : []);
+    // Only the account's own server is "old": typing the homeserver's suggestion is a choice to save.
+    const own = choice.kind === 'set' && choice.source === 'account';
+    this.open(own ? choice.url : '', own ? this.published() : []);
   }
 
   turnOff(): void {
