@@ -67,7 +67,10 @@ const TERMS = {
   },
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('IdentityServerService.choice', () => {
   it('reads the account choice', async () => {
@@ -95,6 +98,13 @@ describe('IdentityServerService.choice', () => {
       url: IS,
       source: 'well-known',
     });
+  });
+
+  it('ignores a non-https well-known', async () => {
+    const s = setup({
+      wellKnown: { 'm.identity_server': { base_url: 'http://is.example' } },
+    });
+    expect(await firstValueFrom(s.choice(ALICE))).toEqual({ kind: 'none' });
   });
 
   it('is none when nothing is stored or advertised', async () => {
@@ -130,6 +140,26 @@ describe('IdentityServerService.use and turnOff', () => {
       reason: 'not-identity-server',
     });
     expect(s.fake.setAccountData).not.toHaveBeenCalled();
+  });
+
+  it('reports an unreachable server', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
+    );
+    expect(await firstValueFrom(setup().use(ALICE, IS))).toEqual({
+      kind: 'refused',
+      reason: 'unreachable',
+    });
+  });
+
+  it('makes no request for an unavailable account', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    expect(
+      await firstValueFrom(setup({ client: false }).use(ALICE, IS)),
+    ).toEqual({ kind: 'refused', reason: 'account-unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('saves the url without a trailing slash', async () => {
@@ -191,6 +221,95 @@ describe('IdentityServerService terms', () => {
     });
   });
 
+  it('counts a policy accepted when any language url is recorded', async () => {
+    const s = setup({
+      terms: TERMS,
+      accountData: {
+        'm.accepted_terms': {
+          accepted: ['https://is.example/fr', 'https://is.example/de'],
+        },
+      },
+    });
+    expect(await firstValueFrom(s.terms(ALICE, IS))).toEqual({
+      kind: 'accepted',
+    });
+  });
+
+  it('asks again for a new version served at a new url', async () => {
+    const s = setup({
+      terms: {
+        policies: {
+          privacy: {
+            version: '2.0',
+            en: { name: 'Privacy', url: 'https://is.example/privacy-2' },
+          },
+          tos: {
+            version: '1',
+            en: { name: 'ToS', url: 'https://is.example/tos' },
+          },
+        },
+      },
+      accountData: {
+        'm.accepted_terms': {
+          accepted: ['https://is.example/privacy-1', 'https://is.example/tos'],
+        },
+      },
+    });
+    expect(await firstValueFrom(s.terms(ALICE, IS))).toEqual({
+      kind: 'needs-consent',
+      policies: [
+        {
+          id: 'privacy',
+          name: 'Privacy',
+          url: 'https://is.example/privacy-2',
+          version: '2.0',
+        },
+      ],
+    });
+  });
+
+  it('drops malformed policies', async () => {
+    const s = setup({
+      terms: {
+        policies: {
+          noVersion: { en: { name: 'A', url: 'https://is.example/a' } },
+          badUrl: {
+            version: '1',
+            en: { name: 'B', url: 'http://is.example/b' },
+          },
+          badName: {
+            version: '1',
+            en: { name: 3, url: 'https://is.example/c' },
+          },
+          good: {
+            version: '1',
+            en: { name: 'G', url: 'https://is.example/g' },
+          },
+        },
+      },
+    });
+    expect(await firstValueFrom(s.terms(ALICE, IS))).toEqual({
+      kind: 'needs-consent',
+      policies: [
+        { id: 'good', name: 'G', url: 'https://is.example/g', version: '1' },
+      ],
+    });
+  });
+
+  it('does not substring-match a string accepted value', async () => {
+    const s = setup({
+      terms: TERMS,
+      accountData: {
+        'm.accepted_terms': {
+          accepted: 'https://is.example/en https://is.example/de',
+        },
+      },
+    });
+    expect(await firstValueFrom(s.terms(ALICE, IS))).toMatchObject({
+      kind: 'needs-consent',
+    });
+  });
+
   it('agrees to terms and appends the urls', async () => {
     const s = setup({
       accountData: { 'm.accepted_terms': { accepted: ['https://old'] } },
@@ -229,6 +348,14 @@ describe('IdentityServerService token', () => {
     await firstValueFrom(s.acceptTerms(ALICE, IS, policies));
     expect(s.fake.registerWithIdentityServer).toHaveBeenCalledTimes(1);
     expect(s.fake.setIdentityServerUrl).toHaveBeenCalledWith(IS);
+  });
+
+  it('shares one token between a url and its trailing-slash form', async () => {
+    const s = setup();
+    await firstValueFrom(s.acceptTerms(ALICE, IS, policies));
+    await firstValueFrom(s.acceptTerms(ALICE, `${IS}/`, policies));
+    expect(s.fake.registerWithIdentityServer).toHaveBeenCalledTimes(1);
+    expect(s.fake.agreeToTerms.mock.calls[1][1]).toBe(IS);
   });
 
   it('is renewed once after a 401 and retried once', async () => {

@@ -14,8 +14,15 @@ import type {
   TermsCheck,
 } from './identity-server.models';
 
+type Client = NonNullable<ReturnType<MatrixClientService['clientFor']>>;
+
 interface AcceptedTerms {
-  accepted?: string[];
+  readonly accepted?: readonly string[];
+}
+
+interface OfferedPolicy {
+  readonly policy: IdentityPolicy;
+  readonly urls: readonly string[];
 }
 
 /** Which identity server an account uses, and the access it needs to talk to it. */
@@ -37,7 +44,7 @@ export class IdentityServerService {
       }
       const wellKnown =
         client.getClientWellKnown()?.['m.identity_server']?.base_url;
-      return wellKnown
+      return wellKnown && isHttps(wellKnown)
         ? ({ kind: 'set', url: wellKnown, source: 'well-known' } as const)
         : ({ kind: 'none' } as const);
     });
@@ -50,22 +57,26 @@ export class IdentityServerService {
     { readonly kind: 'saved'; readonly url: string } | IdentityServerRefused
   > {
     return defer(() => {
-      const base = url.trim().replace(/\/+$/, '');
+      const base = normalizeUrl(url);
       if (!isHttps(base)) return of(refused('not-https'));
-      return from(this.probe(base)).pipe(
-        switchMap((ok) =>
-          ok
-            ? this.withClient(accountId, async (client) => {
-                await client.setAccountData('m.identity_server', {
-                  base_url: base,
-                });
-                return { kind: 'saved', url: base } as const;
-              })
-            : of(refused('not-identity-server')),
-        ),
-        catchError((err: unknown) => of(refusalOf(err))),
+      const client = this.client(accountId);
+      return from(probe(base)).pipe(
+        switchMap((answer) => {
+          if (answer !== 'ok') {
+            return of(
+              refused(
+                answer === 'unreachable'
+                  ? 'unreachable'
+                  : 'not-identity-server',
+              ),
+            );
+          }
+          return from(
+            client.setAccountData('m.identity_server', { base_url: base }),
+          ).pipe(switchMap(() => of({ kind: 'saved', url: base } as const)));
+        }),
       );
-    });
+    }).pipe(catchError((err: unknown) => of(refusalOf(err))));
   }
 
   turnOff(
@@ -78,14 +89,15 @@ export class IdentityServerService {
   }
 
   terms(accountId: string, url: string): Observable<TermsCheck> {
+    const base = normalizeUrl(url);
     return this.withClient(accountId, async (client): Promise<TermsCheck> => {
       const [terms, accepted] = await Promise.all([
-        client.getTerms(SERVICE_TYPES.IS, url),
+        client.getTerms(SERVICE_TYPES.IS, base),
         acceptedUrls(client),
       ]);
-      const missing = policiesOf(terms.policies).filter(
-        (policy) => !accepted.includes(policy.url),
-      );
+      const missing = offeredPolicies(terms.policies)
+        .filter(({ urls }) => !urls.some((u) => accepted.includes(u)))
+        .map(({ policy }) => policy);
       return missing.length
         ? { kind: 'needs-consent', policies: missing }
         : { kind: 'accepted' };
@@ -97,9 +109,10 @@ export class IdentityServerService {
     url: string,
     policies: readonly IdentityPolicy[],
   ): Observable<{ readonly kind: 'accepted' } | IdentityServerRefused> {
+    const base = normalizeUrl(url);
     const urls = policies.map((policy) => policy.url);
-    return this.withToken(accountId, url, (token) =>
-      this.client(accountId).agreeToTerms(SERVICE_TYPES.IS, url, token, urls),
+    return this.withToken(accountId, base, (token) =>
+      this.client(accountId).agreeToTerms(SERVICE_TYPES.IS, base, token, urls),
     ).pipe(
       switchMap(() =>
         this.withClient(accountId, async (client) => {
@@ -122,9 +135,11 @@ export class IdentityServerService {
   ): Observable<T> {
     return defer(() => {
       const client = this.client(accountId);
-      const key = `${accountId}\n${url}`;
+      const base = normalizeUrl(url);
+      const key = `${accountId}\n${base}`;
+      // shortcut: concurrent first calls each register (both tokens stay valid); dedupe if it shows up as load.
       const fresh = async (): Promise<string> => {
-        client.setIdentityServerUrl(url);
+        client.setIdentityServerUrl(base);
         const { access_token } = await client.registerWithIdentityServer(
           await client.getOpenIdToken(),
         );
@@ -133,7 +148,8 @@ export class IdentityServerService {
       };
       return from(
         (async () => {
-          client.setIdentityServerUrl(url);
+          // The identity server URL is per-client state shared by every account call.
+          client.setIdentityServerUrl(base);
           try {
             return await call(this.tokens.get(key) ?? (await fresh()));
           } catch (err) {
@@ -146,7 +162,7 @@ export class IdentityServerService {
     });
   }
 
-  private client(accountId: string) {
+  private client(accountId: string): Client {
     const client = this.matrix.clientFor(accountId);
     if (!client) throw new AccountUnavailableError();
     return client;
@@ -154,18 +170,11 @@ export class IdentityServerService {
 
   private withClient<T>(
     accountId: string,
-    run: (client: ReturnType<IdentityServerService['client']>) => Promise<T>,
+    run: (client: Client) => Promise<T>,
   ): Observable<T | IdentityServerRefused> {
     return defer(() => from(run(this.client(accountId)))).pipe(
       catchError((err: unknown) => of(refusalOf(err))),
     );
-  }
-
-  private async probe(base: string): Promise<boolean> {
-    const response = await fetch(`${base}/_matrix/identity/v2`, {
-      signal: AbortSignal.timeout(10_000),
-    });
-    return response.status === 200;
   }
 }
 
@@ -186,41 +195,68 @@ function isUnauthorized(err: unknown): boolean {
   );
 }
 
-type Client = NonNullable<ReturnType<MatrixClientService['clientFor']>>;
+function normalizeUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '');
+}
 
-// `m.accepted_terms` is not in the SDK's account-data typing.
+async function probe(base: string): Promise<'ok' | 'no' | 'unreachable'> {
+  try {
+    const response = await fetch(`${base}/_matrix/identity/v2`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    return response.status === 200 ? 'ok' : 'no';
+  } catch {
+    // fetch rejects with a bare TypeError (or a timeout) when the host cannot be reached.
+    return 'unreachable';
+  }
+}
+
+// The SDK's account-data map is closed over spec events; `m.accepted_terms` is
+// reached through a narrow string-keyed view.
 async function acceptedUrls(client: Client): Promise<string[]> {
-  const data = (await client.getAccountDataFromServer(
-    'm.accepted_terms' as never,
-  )) as AcceptedTerms | null;
-  return data?.accepted ?? [];
+  const read = client.getAccountDataFromServer.bind(client) as (
+    type: string,
+  ) => Promise<unknown>;
+  const data = (await read('m.accepted_terms')) as AcceptedTerms | null;
+  return Array.isArray(data?.accepted)
+    ? data.accepted.filter((u): u is string => typeof u === 'string')
+    : [];
 }
 
 async function setAcceptedTerms(
   client: Client,
   content: AcceptedTerms,
 ): Promise<void> {
-  await client.setAccountData('m.accepted_terms' as never, content as never);
+  const write = client.setAccountData.bind(client) as (
+    type: string,
+    content: unknown,
+  ) => Promise<unknown>;
+  await write('m.accepted_terms', content);
 }
 
-function policiesOf(
+// Consent is recorded as URLs only, so a version bump served at the same URL is not
+// asked again (protocol limit); a new version at a new URL is.
+function offeredPolicies(
   policies: Readonly<Record<string, Record<string, unknown>>>,
-): IdentityPolicy[] {
+): OfferedPolicy[] {
   return Object.entries(policies).flatMap(([id, policy]) => {
-    const languages = Object.entries(policy).filter(
-      (entry): entry is [string, { name: string; url: string }] =>
-        entry[0] !== 'version' &&
-        typeof entry[1] === 'object' &&
-        entry[1] !== null,
-    );
-    const chosen = languages.find(([lang]) => lang === 'en') ?? languages[0];
+    const version = policy['version'];
+    if (typeof version !== 'string') return [];
+    const languages = Object.entries(policy).flatMap(([lang, entry]) => {
+      if (lang === 'version' || typeof entry !== 'object' || entry === null) {
+        return [];
+      }
+      const { name, url } = entry as { name?: unknown; url?: unknown };
+      return typeof name === 'string' && typeof url === 'string' && isHttps(url)
+        ? [{ lang, name, url }]
+        : [];
+    });
+    const chosen = languages.find(({ lang }) => lang === 'en') ?? languages[0];
     return chosen
       ? [
           {
-            id,
-            name: chosen[1].name,
-            url: chosen[1].url,
-            version: String(policy['version']),
+            policy: { id, name: chosen.name, url: chosen.url, version },
+            urls: languages.map(({ url }) => url),
           },
         ]
       : [];
