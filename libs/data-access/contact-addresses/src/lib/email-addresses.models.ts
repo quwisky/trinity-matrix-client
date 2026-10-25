@@ -29,3 +29,15 @@ export type EmailAddressesLoad =
       readonly canChange: boolean;
     }
   | EmailAddressRefused;
+
+export interface PendingEmail {
+  readonly accountId: string;
+  readonly email: string;
+  readonly sid: string;
+  readonly clientSecret: string;
+  readonly sendAttempt: number;
+}
+
+export type EmailLinkResult =
+  | { readonly kind: 'sent'; readonly pending: PendingEmail }
+  | EmailAddressRefused;

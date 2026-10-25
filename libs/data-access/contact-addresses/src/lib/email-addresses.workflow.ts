@@ -6,6 +6,8 @@ import type {
   ContactAddress,
   EmailAddressRefused,
   EmailAddressesLoad,
+  EmailLinkResult,
+  PendingEmail,
 } from './email-addresses.models';
 
 /** Reads and changes the email addresses bound to one account on its homeserver. */
@@ -34,7 +36,56 @@ export class EmailAddressesWorkflow {
       );
     });
   }
+
+  sendLink(accountId: string, email: string): Observable<EmailLinkResult> {
+    const client = this.matrix.clientFor(accountId);
+    return this.requestLink({
+      accountId,
+      email: email.trim(),
+      sid: '',
+      clientSecret: client?.generateClientSecret() ?? '',
+      sendAttempt: 1,
+    });
+  }
+
+  resend(pending: PendingEmail): Observable<EmailLinkResult> {
+    return this.requestLink({
+      ...pending,
+      sendAttempt: pending.sendAttempt + 1,
+    });
+  }
+
+  private requestLink(pending: PendingEmail): Observable<EmailLinkResult> {
+    return defer(() => {
+      const client = this.matrix.clientFor(pending.accountId);
+      if (!client) return of(refused('account-unavailable'));
+      return from(
+        client.requestAdd3pidEmailToken(
+          pending.email,
+          pending.clientSecret,
+          pending.sendAttempt,
+        ),
+      ).pipe(
+        map(({ sid }): EmailLinkResult => ({
+          kind: 'sent',
+          pending: { ...pending, sid },
+        })),
+        catchError((err: unknown) => of(refusalOf(err))),
+      );
+    });
+  }
 }
+
+const REFUSAL_BY_ERRCODE: Readonly<
+  Record<string, EmailAddressRefused['reason']>
+> = {
+  M_THREEPID_IN_USE: 'in-use',
+  M_THREEPID_DENIED: 'cannot-send',
+  M_THREEPID_MEDIUM_NOT_SUPPORTED: 'cannot-send',
+  M_SERVER_NOT_TRUSTED: 'cannot-send',
+  M_INVALID_PARAM: 'invalid',
+  M_INVALID_EMAIL: 'invalid',
+};
 
 function refused(reason: EmailAddressRefused['reason']): EmailAddressRefused {
   return { kind: 'refused', reason };
@@ -52,5 +103,6 @@ function refusalOf(err: unknown): EmailAddressRefused {
       ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     };
   }
-  return refused('failed');
+  const errcode = failure.diagnostic.errcode;
+  return refused((errcode && REFUSAL_BY_ERRCODE[errcode]) || 'failed');
 }
