@@ -42,6 +42,23 @@ describe('VerifyLinkStepComponent', () => {
     expect(screen.queryByTestId('add-email-continue')).toBeNull();
   });
 
+  it('builds the body id from the prefix, so each dialog describes itself', async () => {
+    const { container } = await setup();
+    expect(container.querySelector('#add-email-body')).toBeTruthy();
+  });
+
+  it('uses a prefixed body id and a caller-given body', async () => {
+    const { container } = await setup({
+      testIdPrefix: 'publish-email',
+      body: 'vector.im sent a link.',
+    });
+
+    expect(
+      container.querySelector('#publish-email-body')?.textContent?.trim(),
+    ).toBe('vector.im sent a link.');
+    expect(container.querySelector('#add-email-body')).toBeNull();
+  });
+
   it('disables Continue and Resend while busy', async () => {
     await setup({ busy: true });
 

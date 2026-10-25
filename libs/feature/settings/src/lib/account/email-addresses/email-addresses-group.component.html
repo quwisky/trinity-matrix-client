@@ -41,18 +41,36 @@
         track address.medium + address.address
       ) {
         <trn-settings-row [label]="address.address">
-          @if (current.canChange) {
-            <button
-              trnBtn
-              type="button"
-              presentation="outline"
-              size="sm"
-              [attr.aria-label]="copy.removeLabel(address.address)"
-              (click)="remove(address)"
-            >
-              Remove
-            </button>
-          }
+          <div class="flex items-center gap-3">
+            @if (identity(); as server) {
+              @if (server.choice.kind === 'set' && address.medium === 'email') {
+                <span class="flex items-center gap-1 text-sm">
+                  <span aria-hidden="true">{{ copy.findableLabel }}</span>
+                  <trn-switch
+                    [attr.data-testid]="'findable-' + $index"
+                    [aria-label]="copy.findableAriaLabel(address.address)"
+                    [checked]="server.published.includes(address.address)"
+                    [disabled]="
+                      server.failed || busyAddresses().has(address.address)
+                    "
+                    (checkedChange)="toggle(address.address, $event)"
+                  />
+                </span>
+              }
+            }
+            @if (current.canChange) {
+              <button
+                trnBtn
+                type="button"
+                presentation="outline"
+                size="sm"
+                [attr.aria-label]="copy.removeLabel(address.address)"
+                (click)="remove(address)"
+              >
+                Remove
+              </button>
+            }
+          </div>
         </trn-settings-row>
       } @empty {
         <p
@@ -69,6 +87,13 @@
           [published]="server.published"
           (changed)="refresh()"
         />
+      }
+      @if (identity(); as server) {
+        @if (server.failed && server.choice.kind === 'set') {
+          <p class="m-0 py-3 text-sm text-danger" data-testid="findable-error">
+            {{ copy.serverUnreachable(hostOf(server.choice.url)) }}
+          </p>
+        }
       }
       @if (actionError(); as message) {
         <p

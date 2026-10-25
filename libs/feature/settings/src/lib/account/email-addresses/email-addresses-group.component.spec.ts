@@ -20,6 +20,8 @@ import {
 import { fireEvent, render, screen } from '@trinity/testing';
 import { AddEmailDialogComponent } from './add-email-dialog.component';
 import { EmailAddressesGroupComponent } from './email-addresses-group.component';
+import { IdentityTermsDialogComponent } from './identity-terms-dialog.component';
+import { PublishEmailDialogComponent } from './publish-email-dialog.component';
 
 const ALICE = '@alice:example.org';
 const ADDRESS: ContactAddress = { medium: 'email', address: 'a@b.c' };
@@ -35,6 +37,8 @@ async function setup(
   findable?: Observable<unknown>,
 ) {
   const closed = new Subject<unknown>();
+  const closers: Subject<unknown>[] = [closed];
+  let opened = 0;
   const confirmed = new Subject<boolean>();
   const workflow = {
     load: vi.fn((): Observable<EmailAddressesLoad> => of(first)),
@@ -46,6 +50,16 @@ async function setup(
     choice: vi.fn(() => of(choice)),
     unpublishAll: vi.fn(() => of({ kind: 'unpublished' } as const)),
     turnOff: vi.fn(() => of({ kind: 'saved' } as const)),
+    use: vi.fn((): Observable<unknown> =>
+      of({ kind: 'saved', url: 'https://vector.im' } as const),
+    ),
+    terms: vi.fn((): Observable<unknown> => of({ kind: 'accepted' } as const)),
+    acceptTerms: vi.fn((): Observable<unknown> =>
+      of({ kind: 'accepted' } as const),
+    ),
+    unpublish: vi.fn((): Observable<unknown> =>
+      of({ kind: 'unpublished' } as const),
+    ),
     findable: vi.fn(
       (): Observable<unknown> =>
         findable ??
@@ -58,7 +72,10 @@ async function setup(
       { provide: EmailAddressesWorkflow, useValue: workflow },
       { provide: IdentityServerService, useValue: identity },
       MockProvider(TrnSurfaceService, {
-        open: vi.fn(() => ({ closed }) as never),
+        open: vi.fn(() => {
+          closers[opened] ??= new Subject<unknown>();
+          return { closed: closers[opened++] } as never;
+        }),
       }),
       MockProvider(TrnAlertService, {
         confirm$: vi.fn(() => confirmed.asObservable()),
@@ -71,6 +88,7 @@ async function setup(
     workflow,
     identity,
     closed,
+    closers,
     confirmed,
     alert: TestBed.inject(TrnAlertService),
     surfaces: TestBed.inject(TrnSurfaceService),
@@ -409,5 +427,224 @@ describe('EmailAddressesGroupComponent', () => {
     await test.fixture.whenStable();
 
     expect(test.toast.show).toHaveBeenCalledWith('a@b.c was removed.');
+  });
+});
+
+describe('EmailAddressesGroupComponent findable switches', () => {
+  const ACCOUNT: IdentityServerChoice = {
+    kind: 'set',
+    url: 'https://vector.im',
+    source: 'account',
+  };
+  const found = (...emails: string[]) =>
+    of({ kind: 'loaded', published: new Set(emails) } as const);
+  const toggle = (index = 0) =>
+    screen
+      .getByTestId(`findable-${index}`)
+      .querySelector<HTMLInputElement>('input')!;
+
+  async function ready(
+    findable: Observable<unknown> = found(),
+    choice: IdentityServerChoice = ACCOUNT,
+  ) {
+    const test = await setup(loaded([ADDRESS]), 'legacy', choice, findable);
+    await test.fixture.whenStable();
+    test.fixture.detectChanges();
+    return test;
+  }
+  const settle = async (test: Awaited<ReturnType<typeof ready>>) => {
+    await test.fixture.whenStable();
+    test.fixture.detectChanges();
+  };
+
+  it('shows each switch from what the server finds, named by its email', async () => {
+    await ready(found('a@b.c'));
+
+    expect(toggle().checked).toBe(true);
+    expect(toggle().getAttribute('aria-label')).toBe(
+      'Let people find you by a@b.c',
+    );
+    expect(screen.getByText('Findable')).toBeTruthy();
+  });
+
+  it('shows the failure line and disables the switches when findable is refused', async () => {
+    await ready(of({ kind: 'refused', reason: 'unreachable' } as const));
+
+    expect(toggle().checked).toBe(false);
+    expect(toggle().disabled).toBe(true);
+    expect(screen.getByTestId('findable-error').textContent).toContain(
+      'Trinity couldn’t reach vector.im. Try again later.',
+    );
+  });
+
+  it.each([{ kind: 'off' }, { kind: 'none' }] as const)(
+    'renders no switches for %j',
+    async (choice) => {
+      await ready(found(), choice);
+
+      expect(screen.queryByTestId('findable-0')).toBeNull();
+    },
+  );
+
+  it('goes straight to the publish dialog when terms are accepted', async () => {
+    const test = await ready();
+
+    fireEvent.click(toggle());
+    await settle(test);
+
+    expect(test.identity.terms).toHaveBeenCalledWith(
+      ALICE,
+      'https://vector.im',
+    );
+    expect(test.surfaces.open).toHaveBeenCalledWith(
+      PublishEmailDialogComponent,
+      expect.objectContaining({
+        ariaDescribedBy: 'publish-email-body',
+        inputs: { accountId: ALICE, url: 'https://vector.im', email: 'a@b.c' },
+      }),
+    );
+  });
+
+  const POLICIES = [
+    { id: 'tos', name: 'Terms', url: 'https://vector.im/tos', version: '1' },
+  ];
+  const needsConsent = (test: Awaited<ReturnType<typeof ready>>) =>
+    test.identity.terms.mockReturnValue(
+      of({ kind: 'needs-consent', policies: POLICIES } as const),
+    );
+
+  it('Not now sends nothing further and leaves the switch off', async () => {
+    const test = await ready();
+    needsConsent(test);
+
+    fireEvent.click(toggle());
+    await settle(test);
+    expect(test.surfaces.open).toHaveBeenCalledWith(
+      IdentityTermsDialogComponent,
+      expect.objectContaining({
+        ariaDescribedBy: 'identity-terms-body',
+        inputs: { host: 'vector.im', policies: POLICIES },
+      }),
+    );
+    test.closers[0].next(undefined);
+    await settle(test);
+
+    expect(test.identity.acceptTerms).not.toHaveBeenCalled();
+    expect(test.surfaces.open).toHaveBeenCalledTimes(1);
+    expect(toggle().checked).toBe(false);
+    expect(toggle().disabled).toBe(false);
+  });
+
+  it('Accept saves the consent, then opens the publish dialog', async () => {
+    const test = await ready();
+    needsConsent(test);
+
+    fireEvent.click(toggle());
+    await settle(test);
+    test.closers[0].next(true);
+    await settle(test);
+
+    expect(test.identity.acceptTerms).toHaveBeenCalledWith(
+      ALICE,
+      'https://vector.im',
+      POLICIES,
+    );
+    expect(vi.mocked(test.surfaces.open).mock.calls[1][0]).toBe(
+      PublishEmailDialogComponent,
+    );
+  });
+
+  it('a published result toasts, re-reads and sets the switch on', async () => {
+    const test = await ready();
+
+    fireEvent.click(toggle());
+    await settle(test);
+    test.identity.findable.mockReturnValue(found('a@b.c'));
+    test.closers[0].next({ kind: 'published' });
+    await settle(test);
+
+    expect(test.toast.show).toHaveBeenCalledWith(
+      'People who know a@b.c can now find you.',
+    );
+    expect(test.identity.findable).toHaveBeenCalledTimes(2);
+    expect(toggle().checked).toBe(true);
+  });
+
+  it('first saves a well-known server as the account’s choice', async () => {
+    const test = await ready(found(), {
+      kind: 'set',
+      url: 'https://vector.im',
+      source: 'well-known',
+    });
+    expect(test.identity.findable).not.toHaveBeenCalled();
+
+    fireEvent.click(toggle());
+    await settle(test);
+
+    expect(test.identity.use).toHaveBeenCalledWith(ALICE, 'https://vector.im');
+    expect(test.identity.use.mock.invocationCallOrder[0]).toBeLessThan(
+      test.identity.terms.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('stops with the failure line when the well-known server cannot be saved', async () => {
+    const test = await ready(found(), {
+      kind: 'set',
+      url: 'https://vector.im',
+      source: 'well-known',
+    });
+    test.identity.use.mockReturnValue(
+      of({ kind: 'refused', reason: 'unreachable' } as const),
+    );
+
+    fireEvent.click(toggle());
+    await settle(test);
+
+    expect(test.identity.terms).not.toHaveBeenCalled();
+    expect(screen.getByTestId('email-addresses-error').textContent).toContain(
+      'Trinity couldn’t reach vector.im.',
+    );
+  });
+
+  it('turning off unpublishes, re-reads, toasts and sets the switch off', async () => {
+    const test = await ready(found('a@b.c'));
+    test.identity.findable.mockReturnValue(found());
+
+    fireEvent.click(toggle());
+    await settle(test);
+
+    expect(test.identity.unpublish).toHaveBeenCalledWith(
+      ALICE,
+      'https://vector.im',
+      'a@b.c',
+    );
+    expect(test.toast.show).toHaveBeenCalledWith(
+      'People can no longer find you by a@b.c.',
+    );
+    expect(toggle().checked).toBe(false);
+  });
+
+  it('does not claim success when the server still lists the address', async () => {
+    const test = await ready(found('a@b.c'));
+
+    fireEvent.click(toggle());
+    await settle(test);
+
+    expect(test.toast.show).not.toHaveBeenCalled();
+    expect(toggle().checked).toBe(true);
+    expect(screen.getByTestId('email-addresses-error')).toBeTruthy();
+  });
+
+  it('disables the switch and ignores a second toggle while a request is in flight', async () => {
+    const test = await ready(found('a@b.c'));
+    const pending = new Subject<unknown>();
+    test.identity.unpublish.mockReturnValue(pending);
+
+    fireEvent.click(toggle());
+    test.fixture.detectChanges();
+    expect(toggle().disabled).toBe(true);
+    fireEvent.click(toggle());
+
+    expect(test.identity.unpublish).toHaveBeenCalledTimes(1);
   });
 });

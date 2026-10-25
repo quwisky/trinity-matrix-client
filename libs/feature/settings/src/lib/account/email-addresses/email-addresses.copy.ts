@@ -1,4 +1,7 @@
-import type { EmailAddressRefusal } from '@trinity/data-access/contact-addresses';
+import type {
+  EmailAddressRefusal,
+  IdentityServerRefusal,
+} from '@trinity/data-access/contact-addresses';
 
 export const EMAIL_ADDRESSES_COPY = {
   groupDescription: 'Addresses on your account, used to reset your password.',
@@ -49,6 +52,18 @@ export const EMAIL_ADDRESSES_COPY = {
     `Trinity couldn’t save that change on ${server}. Try again.`,
   loadFailed: (server: string) =>
     `Trinity couldn’t load your email addresses from ${server}.`,
+  findableLabel: 'Findable',
+  findableAriaLabel: (email: string) => `Let people find you by ${email}`,
+  termsTitle: (host: string) => `Accept ${host}’s terms`,
+  termsBody: (host: string) =>
+    `To let people find you by email, ${host} needs you to accept:`,
+  termsAccept: 'Accept',
+  termsDecline: 'Not now',
+  publishBody: (host: string, email: string) =>
+    `${host} sent a link to ${email}. Open it, then select Continue.`,
+  publishSending: 'Sending the link…',
+  published: (email: string) => `People who know ${email} can now find you.`,
+  unpublished: (email: string) => `People can no longer find you by ${email}.`,
   stoppedTitle: 'The address wasn’t added',
   passwordTitle: 'Enter your password',
   passwordBody: (accountId: string) =>
@@ -97,6 +112,22 @@ export function refusalMessage(
     case 'account-unavailable':
     case 'failed':
       return 'Something went wrong. Try again.';
+  }
+}
+
+/** Why an identity server refused, in plain words. */
+export function identityRefusalMessage(
+  reason: IdentityServerRefusal,
+  host: string,
+  retryAfterMs?: number,
+): string {
+  switch (reason) {
+    case 'unreachable':
+      return EMAIL_ADDRESSES_COPY.serverUnreachable(host);
+    case 'rate-limited':
+      return refusalMessage('rate-limited', host, retryAfterMs);
+    default:
+      return refusalMessage('failed', host);
   }
 }
 

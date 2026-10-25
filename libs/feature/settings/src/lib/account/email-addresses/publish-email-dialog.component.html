@@ -1,0 +1,54 @@
+<trn-dialog-shell
+  [title]="copy.sentTitle"
+  size="md"
+  [closable]="!busy()"
+  (closed)="close()"
+>
+  @if (pending(); as sent) {
+    <trn-verify-link-step
+      testIdPrefix="publish-email"
+      [email]="sent.email"
+      [body]="copy.publishBody(host(), sent.email)"
+      [busy]="busy()"
+      [notVerified]="notVerified()"
+      [resendWaitMs]="resendWaitMs()"
+      [continueWaitMs]="continueWaitMs()"
+      [resent]="resent()"
+      [error]="sentError()"
+      (continue)="publish()"
+      (resend)="resend()"
+      (cancelled)="close()"
+    />
+  } @else if (stopped(); as message) {
+    <div class="flex flex-col gap-4">
+      <p
+        id="publish-email-body"
+        class="m-0 text-sm"
+        aria-live="polite"
+        data-testid="publish-email-stopped"
+      >
+        {{ message }}
+      </p>
+      <div trnDialogActions>
+        <button
+          trnBtn
+          type="button"
+          presentation="outline"
+          (click)="close()"
+          data-testid="publish-email-close"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  } @else {
+    <p
+      id="publish-email-body"
+      role="status"
+      class="m-0 text-sm text-muted-foreground"
+      data-testid="publish-email-sending"
+    >
+      {{ copy.publishSending }}
+    </p>
+  }
+</trn-dialog-shell>

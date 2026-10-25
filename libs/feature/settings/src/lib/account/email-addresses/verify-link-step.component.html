@@ -1,10 +1,10 @@
 <div class="flex flex-col gap-4">
   <p
-    id="add-email-body"
+    [attr.id]="testIdPrefix() + '-body'"
     class="m-0 text-sm text-muted-foreground"
     [attr.data-testid]="testIdPrefix() + '-sent'"
   >
-    {{ copy.sentBody(email()) }}
+    {{ body() || copy.sentBody(email()) }}
   </p>
   <p
     class="m-0 text-13 text-danger"
