@@ -253,6 +253,26 @@ storage. If that storage can't be read, for example while a Linux keyring is loc
 screen offers **Retry**, the system prompt where you have one, and
 **Erase all data on this device**. Unlock your keyring, then choose **Retry**.
 
+## Email addresses {#email-addresses}
+
+Settings › Account has an **Email addresses** group, above **Delete account**. It lists the
+email addresses on your account, and any phone numbers your server already has. Your server uses
+these addresses to contact you. They stay on your homeserver: Trinity doesn't share them with an
+identity server.
+
+**Add one.** Choose **Add email address**, type the address and confirm. Trinity sends a link to
+that address. Open the link first, then come back to Trinity and choose **Continue**. If your
+server asks, type your password; an account without a password confirms in the browser instead.
+The address then appears in the list.
+
+If you choose **Continue** before you open the link, Trinity asks for your password and then says
+the link hasn't been opened. After you open the link, **Continue** asks for your password again.
+
+**Remove one.** Choose **Remove** next to the address and confirm.
+
+If your server doesn't allow changes, the list is read-only and says so. If you sign in through a
+provider, you manage your addresses at the provider, and the group says so.
+
 ## Get help {#get-help}
 
 Report problems on [GitHub Issues](https://github.com/quwisky/trinity-matrix-client/issues).
