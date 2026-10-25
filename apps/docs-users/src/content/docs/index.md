@@ -280,14 +280,15 @@ the link hasn't been opened. Open the link and choose **Continue** again; you do
 your password a second time.
 
 **Let people find you.** An identity server lets people who know your email address find you on
-Matrix. Trinity sends nothing to one until you choose a server under **Identity server** (choose
-**Change**) and turn **Findable** on next to an address. Trinity then sends the server that address
-and your Matrix ID, and it asks the server about your own addresses to show which ones are
-findable. If the server has terms, Trinity shows them first and you choose **Accept** or **Not now**.
-The server then emails a link to the address; open it, then choose **Continue**. Turn **Findable**
-off to stop people finding you by that address. Choose **Turn off** next to **Identity server** to
-stop using it. Changing or turning off the server first stops it finding you by every address you
-published, and Trinity asks you to confirm.
+Matrix. Choose **Change** next to **Identity server** to pick one. Trinity then asks that server,
+using hashed lookups, which of your addresses already find you, so it can show the **Findable**
+switches. A server your homeserver suggests is not contacted until you turn **Findable** on.
+Trinity sends the server your address and your Matrix ID only when you turn **Findable** on. If the
+server has terms, Trinity shows them first and you choose **Accept** or **Not now**. The server
+then emails a link to the address; open it, then choose **Continue**. Turn **Findable** off to stop
+people finding you by that address. Choose **Turn off** next to **Identity server** to stop using
+it. Changing or turning off the server first stops it finding you by every address you published
+(if Trinity can't tell which, by every address on your account), and Trinity asks you to confirm.
 
 **Remove one.** Choose **Remove** next to the address and confirm. This also stops the identity
 server finding you by that address. If the server can't do that, Trinity says it may still let

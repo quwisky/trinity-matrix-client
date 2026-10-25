@@ -35,7 +35,7 @@ async function accountWithEmail(request: APIRequestContext): Promise<Account> {
   const pass = `${user}-pass`;
   const address = `${user}@example.test`;
   await registerUser(request, user, pass);
-  const { accessToken } = await passwordLogin(request, hs, user, pass);
+  const { accessToken, userId } = await passwordLogin(request, hs, user, pass);
   const headers = { Authorization: `Bearer ${accessToken}` };
   const clientSecret = `secret-${user}`;
 
@@ -72,7 +72,7 @@ async function accountWithEmail(request: APIRequestContext): Promise<Account> {
     },
   });
   expect(added.ok(), `add 3pid: ${await added.text()}`).toBe(true);
-  return { user, pass, address, userId: `@${user}:${new URL(hs).hostname}` };
+  return { user, pass, address, userId };
 }
 
 /** Account B: registers with the identity server, accepts its terms and looks addresses up. */
@@ -82,8 +82,7 @@ async function finder(
 ): Promise<(address: string) => Promise<string | undefined>> {
   const pass = `${asker}-pass`;
   await registerUser(request, asker, pass);
-  const { accessToken } = await passwordLogin(request, hs, asker, pass);
-  const userId = `@${asker}:${new URL(hs).hostname}`;
+  const { accessToken, userId } = await passwordLogin(request, hs, asker, pass);
   const openid = await request.post(
     `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/openid/request_token`,
     { headers: { Authorization: `Bearer ${accessToken}` }, data: {} },
@@ -184,7 +183,7 @@ test.describe('Finding someone by email', () => {
   test.skip(
     !session.available ||
       (session.unavailable ?? []).some((f) => f === 'mail' || f === 'identity'),
-    'needs a homeserver that sends email and the harness identity server (native Sydent, or Synapse on Docker)',
+    'needs a homeserver that sends email and the harness identity server (Synapse on Docker, or native with Sydent and mailpit)',
   );
 
   test('publishes an address, then stops it being found', async ({
@@ -217,11 +216,37 @@ test.describe('Finding someone by email', () => {
     await publish(page, request, account);
     expect(await lookup(account.address)).toBe(account.userId);
 
+    // A fresh load asks the real server what it lists now that the terms are signed.
+    await page.reload();
+    await openSettingsSection(page, 'account');
+    await expect(toggle(page)).toBeChecked({ timeout: 20_000 });
+
     await page.getByTestId('identity-server-turn-off').click();
     await page.getByTestId('alert-confirm').click();
     await expect(page.getByTestId('identity-server-value')).toHaveText('Off', {
       timeout: 20_000,
     });
-    expect(await lookup(account.address)).toBeUndefined();
+    await expect
+      .poll(() => lookup(account.address), { timeout: 20_000 })
+      .toBeUndefined();
+  });
+
+  test('turns off a server whose terms are unsigned, unbinding an address never bound', async ({
+    page,
+    request,
+  }) => {
+    const account = await accountWithEmail(request);
+    await signIn(page, account);
+    await chooseServer(page);
+    await expect(toggle(page)).toBeEnabled();
+    await expect(toggle(page)).not.toBeChecked();
+
+    await page.getByTestId('identity-server-turn-off').click();
+    await expect(page.getByTestId('alert-confirm')).toBeVisible();
+    await expect(page.getByText('finding you by 1 address.')).toBeVisible();
+    await page.getByTestId('alert-confirm').click();
+    await expect(page.getByTestId('identity-server-value')).toHaveText('Off', {
+      timeout: 20_000,
+    });
   });
 });

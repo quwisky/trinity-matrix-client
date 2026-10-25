@@ -20,6 +20,7 @@ import {
 } from '@trinity/data-access/contact-addresses';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { AddEmailDialogComponent } from './add-email-dialog.component';
+import { ChangeIdentityServerDialogComponent } from './change-identity-server-dialog.component';
 import { EmailAddressesGroupComponent } from './email-addresses-group.component';
 import { IdentityServerRowComponent } from './identity-server-row.component';
 import { IdentityTermsDialogComponent } from './identity-terms-dialog.component';
@@ -477,6 +478,63 @@ describe('EmailAddressesGroupComponent findable switches', () => {
     expect(screen.getByTestId('findable-error').textContent).toContain(
       'Trinity couldn’t reach vector.im. Try again later.',
     );
+  });
+
+  describe('when the server needs the terms signed', () => {
+    const TERMS = of({ kind: 'terms-needed' } as const);
+    const EMAILS = loaded([
+      ADDRESS,
+      { medium: 'email', address: 'd@e.f' },
+      { medium: 'msisdn', address: '+31600000000' },
+    ]);
+    const readyWithTerms = async () => {
+      const test = await setup(EMAILS, 'legacy', ACCOUNT, TERMS);
+      await settle(test);
+      return test;
+    };
+
+    it('shows enabled switches that are off', async () => {
+      await readyWithTerms();
+
+      expect(toggle().checked).toBe(false);
+      expect(toggle().disabled).toBe(false);
+      expect(screen.queryByTestId('findable-error')).toBeNull();
+    });
+
+    it('unpublishes every email before turning off', async () => {
+      const test = await readyWithTerms();
+      fireEvent.click(screen.getByTestId('identity-server-turn-off'));
+
+      expect(test.alert.confirm$).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message:
+            'Trinity will first stop vector.im from finding you by 2 addresses.',
+        }),
+      );
+      test.confirmed.next(true);
+
+      expect(test.identity.unpublishAll).toHaveBeenCalledWith(
+        ALICE,
+        'https://vector.im',
+        ['a@b.c', 'd@e.f'],
+      );
+    });
+
+    it('offers every email to unpublish before changing', async () => {
+      const test = await readyWithTerms();
+      fireEvent.click(screen.getByTestId('identity-server-change'));
+
+      expect(test.surfaces.open).toHaveBeenCalledWith(
+        ChangeIdentityServerDialogComponent,
+        expect.objectContaining({
+          inputs: {
+            accountId: ALICE,
+            current: 'https://vector.im',
+            published: ['a@b.c', 'd@e.f'],
+          },
+        }),
+      );
+    });
   });
 
   it.each([{ kind: 'off' }, { kind: 'none' }] as const)(

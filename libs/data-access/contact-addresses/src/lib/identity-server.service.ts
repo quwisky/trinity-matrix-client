@@ -171,6 +171,7 @@ export class IdentityServerService {
     emails: readonly string[],
   ): Observable<
     | { readonly kind: 'loaded'; readonly published: ReadonlySet<string> }
+    | { readonly kind: 'terms-needed' }
     | IdentityServerRefused
   > {
     return this.withToken(accountId, url, async (token) => {
@@ -192,7 +193,7 @@ export class IdentityServerService {
       catchError((err: unknown) =>
         of(
           isTermsNotSigned(err)
-            ? ({ kind: 'loaded', published: new Set<string>() } as const)
+            ? ({ kind: 'terms-needed' } as const)
             : refusalOf(err),
         ),
       ),
@@ -357,7 +358,7 @@ function isNotValidated(err: unknown): boolean {
   );
 }
 
-// Nothing can be published on a server whose terms the account has not signed.
+// Sydent also asks again after changing its policies, when addresses may still be bound.
 function isTermsNotSigned(err: unknown): boolean {
   return err instanceof MatrixError && err.errcode === 'M_TERMS_NOT_SIGNED';
 }

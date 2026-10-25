@@ -49,7 +49,7 @@
                   <trn-switch
                     [attr.data-testid]="'findable-' + $index"
                     [aria-label]="copy.findableAriaLabel(address.address)"
-                    [checked]="server.published.includes(address.address)"
+                    [checked]="isPublished(address.address)"
                     [disabled]="server.failed"
                     [aria-disabled]="
                       busyAddresses().has(address.address) || identityRowBusy()
@@ -85,7 +85,7 @@
         <trn-identity-server-row
           [accountId]="accountId()"
           [choice]="server.choice"
-          [published]="server.published"
+          [published]="toUnpublish()"
           [disabled]="identityBusy()"
           (busyChange)="identityRowBusy.set($event)"
           (changed)="refresh()"

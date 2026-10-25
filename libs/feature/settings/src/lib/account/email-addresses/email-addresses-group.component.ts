@@ -18,6 +18,7 @@ import {
   take,
   tap,
   type Observable,
+  type ObservedValueOf,
 } from 'rxjs';
 import { TrnButton, TrnSwitchComponent } from '@trinity/components/controls';
 import {
@@ -59,9 +60,21 @@ type GroupState = { readonly kind: 'loading' } | EmailAddressesLoad;
 /** The identity server in use and which of the account's emails it lets people find it by. */
 interface IdentityState {
   readonly choice: IdentityServerChoice;
-  readonly published: readonly string[];
+  /** 'unknown' while the server wants its terms signed; it may still list addresses. */
+  readonly published: readonly string[] | 'unknown';
   /** The server could not say what it lists, so the switches are off and disabled. */
   readonly failed: boolean;
+}
+
+function foundState(
+  found: ObservedValueOf<ReturnType<IdentityServerService['findable']>>,
+): Pick<IdentityState, 'published' | 'failed'> {
+  if (found.kind === 'loaded') {
+    return { published: [...found.published], failed: false };
+  }
+  return found.kind === 'terms-needed'
+    ? { published: 'unknown', failed: false }
+    : { published: [], failed: true };
 }
 
 /** Settings › Account › Email addresses: list, add and remove the account's 3PIDs. */
@@ -105,6 +118,16 @@ export class EmailAddressesGroupComponent {
     () => this.busyAddresses().size > 0,
   );
   protected readonly server = computed(() => serverNameOf(this.accountId()));
+  /** What Turn off and Change unpublish first: when unsure, every email on the account. */
+  protected readonly toUnpublish = computed(() => {
+    const published = this.identity()?.published ?? [];
+    const current = this.state();
+    return published === 'unknown' && current.kind === 'loaded'
+      ? this.emailsOf(current)
+      : published === 'unknown'
+        ? []
+        : published;
+  });
 
   constructor() {
     toObservable(
@@ -277,6 +300,11 @@ export class EmailAddressesGroupComponent {
     );
   }
 
+  protected isPublished(address: string): boolean {
+    const published = this.identity()?.published;
+    return Array.isArray(published) && published.includes(address);
+  }
+
   private turnOff(
     accountId: string,
     address: string,
@@ -291,7 +319,7 @@ export class EmailAddressesGroupComponent {
           tap(() => {
             if (result.kind === 'refused') return;
             // A server without unbind support reports success and keeps listing the address.
-            if (this.identity()?.published.includes(address)) {
+            if (this.isPublished(address)) {
               this.actionError.set(
                 this.copy.stillFindable(hostOf(url), address),
               );
@@ -363,8 +391,7 @@ export class EmailAddressesGroupComponent {
           if (this.accountId() !== accountId) return;
           this.identity.set({
             choice,
-            published: found.kind === 'loaded' ? [...found.published] : [],
-            failed: found.kind !== 'loaded',
+            ...foundState(found),
           });
         }),
       );
@@ -423,8 +450,7 @@ export class EmailAddressesGroupComponent {
           .pipe(
             map((found) => ({
               choice,
-              published: found.kind === 'loaded' ? [...found.published] : [],
-              failed: found.kind !== 'loaded',
+              ...foundState(found),
             })),
           );
       }),
