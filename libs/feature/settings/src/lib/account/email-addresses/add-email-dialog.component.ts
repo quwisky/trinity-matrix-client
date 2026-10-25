@@ -11,6 +11,7 @@ import {
   input,
   signal,
   untracked,
+  type WritableSignal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -29,6 +30,7 @@ import {
 import {
   EmailAddressesWorkflow,
   type EmailAddressRefusal,
+  type EmailAddressRefused,
   type EmailAddResult,
   type EmailLinkResult,
   type PendingEmail,
@@ -88,7 +90,7 @@ export class AddEmailDialogComponent {
   private readonly destroyRef = inject(DestroyRef);
   /** The sent step to return to when re-authentication is backed out of. */
   private sent: Extract<AddEmailStep, { kind: 'sent' }> | null = null;
-  private resendTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly waitTimers: ReturnType<typeof setTimeout>[] = [];
   private readonly prompts = new ReauthPrompts((step) => this.step.set(step));
 
   protected readonly copy = EMAIL_ADDRESSES_COPY;
@@ -100,8 +102,10 @@ export class AddEmailDialogComponent {
   protected readonly busy = signal(false);
   protected readonly addressError = signal('');
   protected readonly resent = signal(false);
-  protected readonly resendError = signal('');
+  /** Why the last Resend or Continue failed, shown on the sent step. */
+  protected readonly sentError = signal('');
   protected readonly resendWaitMs = signal(0);
+  protected readonly continueWaitMs = signal(0);
 
   private readonly model = signal({ email: '' });
   protected readonly addressForm = form(this.model, (path) => {
@@ -164,7 +168,7 @@ export class AddEmailDialogComponent {
       untracked(() => this.focusStep(step));
     });
     this.destroyRef.onDestroy(() => {
-      clearTimeout(this.resendTimer);
+      this.waitTimers.forEach(clearTimeout);
       this.prompts.abandon();
     });
   }
@@ -244,19 +248,13 @@ export class AddEmailDialogComponent {
     this.busy.set(false);
     if (result.kind === 'refused') {
       this.resent.set(false);
-      this.resendError.set(
+      this.sentError.set(
         refusalMessage(result.reason, this.server(), result.retryAfterMs),
       );
-      if (result.reason === 'rate-limited' && result.retryAfterMs) {
-        this.resendWaitMs.set(result.retryAfterMs);
-        this.resendTimer = setTimeout(
-          () => this.resendWaitMs.set(0),
-          result.retryAfterMs,
-        );
-      }
+      this.waitOut(this.resendWaitMs, result);
       return;
     }
-    this.resendError.set('');
+    this.sentError.set('');
     this.resent.set(true);
     this.sent = { kind: 'sent', pending: result.pending, notVerified: false };
     this.step.set(this.sent);
@@ -273,17 +271,41 @@ export class AddEmailDialogComponent {
       return;
     }
     this.resent.set(false);
-    if (result.reason === 'cancelled') {
-      this.step.set(sent);
-    } else if (result.reason === 'not-verified') {
-      this.step.set({ ...sent, notVerified: true });
-    } else {
-      this.step.set({
-        kind: 'stopped',
-        reason: result.reason,
-        retryAfterMs: result.retryAfterMs,
-      });
+    this.sentError.set('');
+    switch (result.reason) {
+      case 'cancelled':
+        this.step.set(sent);
+        return;
+      case 'not-verified':
+        this.step.set({ ...sent, notVerified: true });
+        return;
+      // Brief failures keep the verified link, so Continue can be tried again.
+      case 'unreachable':
+      case 'rate-limited':
+      case 'failed':
+        this.sentError.set(
+          refusalMessage(result.reason, this.server(), result.retryAfterMs),
+        );
+        this.waitOut(this.continueWaitMs, result);
+        this.step.set(sent);
+        return;
+      default:
+        this.step.set({
+          kind: 'stopped',
+          reason: result.reason,
+          retryAfterMs: result.retryAfterMs,
+        });
     }
+  }
+
+  /** Holds an action off for as long as a rate limit asks. */
+  private waitOut(
+    wait: WritableSignal<number>,
+    { reason, retryAfterMs }: EmailAddressRefused,
+  ): void {
+    if (reason !== 'rate-limited' || !retryAfterMs) return;
+    wait.set(retryAfterMs);
+    this.waitTimers.push(setTimeout(() => wait.set(0), retryAfterMs));
   }
 
   /** A field step focuses its field; any other step its heading, so the change is announced. */

@@ -22,9 +22,10 @@ export class VerifyLinkStepComponent {
   readonly busy = input(false);
   readonly notVerified = input(false);
   readonly resendWaitMs = input(0);
+  readonly continueWaitMs = input(0);
   /** The fresh-link line, shown after a resend. */
   readonly resent = input(false);
-  /** Why the last resend failed, if it did. */
+  /** Why the last Resend or Continue failed, if it did. */
   readonly error = input('');
 
   readonly continue = output<void>();

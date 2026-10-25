@@ -253,6 +253,61 @@ describe('AddEmailDialogComponent', () => {
     expect(screen.getByTestId('add-email-sent')).toBeTruthy();
   });
 
+  it('keeps the verified address and Continue working when the server is unreachable', async () => {
+    const test = await setup();
+    await sendLink(test);
+    fireEvent.click(screen.getByTestId('add-email-continue'));
+
+    test.confirmed.next({ kind: 'refused', reason: 'unreachable' });
+    await test.settle();
+
+    expect(screen.getByTestId('add-email-sent')).toBeTruthy();
+    expect(screen.getByTestId('add-email-resend-error').textContent).toContain(
+      'Trinity couldn’t reach example.org.',
+    );
+    const continueButton = screen.getByTestId(
+      'add-email-continue',
+    ) as HTMLButtonElement;
+    expect(continueButton.disabled).toBe(false);
+    fireEvent.click(continueButton);
+    expect(test.workflow.add).toHaveBeenCalledTimes(2);
+    expect(test.workflow.add).toHaveBeenLastCalledWith(
+      PENDING,
+      expect.anything(),
+    );
+  });
+
+  it('waits out a rate limit on Continue before it can be tried again', async () => {
+    const test = await setup();
+    await sendLink(test);
+    const continueButton = () =>
+      screen.getByTestId('add-email-continue') as HTMLButtonElement;
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(continueButton());
+      test.confirmed.next({
+        kind: 'refused',
+        reason: 'rate-limited',
+        retryAfterMs: 3000,
+      });
+      test.fixture.detectChanges();
+      expect(
+        screen.getByTestId('add-email-resend-error').textContent,
+      ).toContain('Too many tries. Try again in 3 seconds.');
+      expect(continueButton().disabled).toBe(true);
+
+      vi.advanceTimersByTime(2999);
+      test.fixture.detectChanges();
+      expect(continueButton().disabled).toBe(true);
+
+      vi.advanceTimersByTime(1);
+      test.fixture.detectChanges();
+      expect(continueButton().disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('uses a neutral action to add the address after re-authentication', async () => {
     const test = await setup();
     await sendLink(test);

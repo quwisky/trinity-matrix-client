@@ -54,7 +54,7 @@
     <button
       trnBtn
       type="button"
-      [disabled]="busy()"
+      [disabled]="busy() || continueWaitMs() > 0"
       (click)="continue.emit()"
       data-testid="add-email-continue"
     >
