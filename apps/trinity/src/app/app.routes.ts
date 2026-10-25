@@ -30,6 +30,12 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@trinity/feature/auth').then((m) => m.RegistrationPage),
   },
+  {
+    path: 'reset-password',
+    canDeactivate: [workspaceBrowserBackGuard],
+    loadComponent: () =>
+      import('@trinity/feature/auth').then((m) => m.ResetPasswordPage),
+  },
   // `/rooms` and `/rooms/<segment>` are ONE route, via a matcher rather than two entries:
   // Angular's DefaultRouteReuseStrategy compares `routeConfig` by identity, so two entries
   // sharing a `loadComponent` would destroy and rebuild `RoomsPage` on every open-a-room and
