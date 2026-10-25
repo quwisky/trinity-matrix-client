@@ -33,7 +33,9 @@ async function setup(
   const confirmed = new Subject<boolean>();
   const workflow = {
     load: vi.fn((): Observable<EmailAddressesLoad> => of(first)),
-    remove: vi.fn((): Observable<EmailRemoveResult> => of({ kind: 'removed' })),
+    remove: vi.fn((): Observable<EmailRemoveResult> =>
+      of({ kind: 'removed', unbind: 'success' }),
+    ),
   };
   const rendered = await render(EmailAddressesGroupComponent, {
     inputs: { accountId: ALICE, accountKind: kind },

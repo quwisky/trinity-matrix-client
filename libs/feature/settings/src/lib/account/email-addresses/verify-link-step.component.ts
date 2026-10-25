@@ -19,6 +19,8 @@ export class VerifyLinkStepComponent {
   protected readonly copy = EMAIL_ADDRESSES_COPY;
 
   readonly email = input.required<string>();
+  /** Prefix of every `data-testid`, so a second dialog can reuse the step. */
+  readonly testIdPrefix = input('add-email');
   readonly busy = input(false);
   readonly notVerified = input(false);
   readonly resendWaitMs = input(0);

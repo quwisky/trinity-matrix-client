@@ -392,11 +392,36 @@ describe('EmailAddressesWorkflow.remove', () => {
     const workflow = setup();
     expect(await firstValueFrom(workflow.remove(ALICE, address))).toEqual({
       kind: 'removed',
+      unbind: 'success',
     });
     expect(workflow.client.deleteThreePid).toHaveBeenCalledWith(
       'email',
       'a@b.c',
     );
+  });
+
+  it('reports an identity server that could not unbind', async () => {
+    const workflow = setup({
+      deleteThreePid: vi
+        .fn()
+        .mockResolvedValue({ id_server_unbind_result: 'no-support' }),
+    });
+    expect(await firstValueFrom(workflow.remove(ALICE, address))).toEqual({
+      kind: 'removed',
+      unbind: 'no-support',
+    });
+  });
+
+  it('passes a successful unbind through', async () => {
+    const workflow = setup({
+      deleteThreePid: vi
+        .fn()
+        .mockResolvedValue({ id_server_unbind_result: 'success' }),
+    });
+    expect(await firstValueFrom(workflow.remove(ALICE, address))).toEqual({
+      kind: 'removed',
+      unbind: 'success',
+    });
   });
 
   it('maps a failure to failed', async () => {

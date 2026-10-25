@@ -21,6 +21,8 @@ export const EMAIL_ADDRESSES_COPY = {
   resent: (email: string) => `We sent a new link to ${email}.`,
   added: (email: string) => `${email} was added.`,
   removed: (address: string) => `${address} was removed.`,
+  removedStillFindable: (address: string, host: string) =>
+    `${address} was removed. ${host} may still let people find you by it.`,
   loadFailed: (server: string) =>
     `Trinity couldn’t load your email addresses from ${server}.`,
   stoppedTitle: 'The address wasn’t added',

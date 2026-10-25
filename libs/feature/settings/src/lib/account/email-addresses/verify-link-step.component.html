@@ -2,14 +2,14 @@
   <p
     id="add-email-body"
     class="m-0 text-sm text-muted-foreground"
-    data-testid="add-email-sent"
+    [attr.data-testid]="testIdPrefix() + '-sent'"
   >
     {{ copy.sentBody(email()) }}
   </p>
   <p
     class="m-0 text-13 text-danger"
     aria-live="polite"
-    data-testid="add-email-not-verified"
+    [attr.data-testid]="testIdPrefix() + '-not-verified'"
   >
     @if (notVerified()) {
       {{ copy.notVerified }}
@@ -18,7 +18,7 @@
   <p
     class="m-0 text-13 text-muted-foreground"
     aria-live="polite"
-    data-testid="add-email-resent"
+    [attr.data-testid]="testIdPrefix() + '-resent'"
   >
     @if (resent()) {
       {{ copy.resent(email()) }}
@@ -27,7 +27,7 @@
   <p
     class="m-0 text-13 text-danger"
     aria-live="polite"
-    data-testid="add-email-resend-error"
+    [attr.data-testid]="testIdPrefix() + '-resend-error'"
   >
     {{ error() }}
   </p>
@@ -37,7 +37,7 @@
       type="button"
       presentation="outline"
       (click)="cancelled.emit()"
-      data-testid="add-email-cancel"
+      [attr.data-testid]="testIdPrefix() + '-cancel'"
     >
       Cancel
     </button>
@@ -47,7 +47,7 @@
       presentation="outline"
       [disabled]="busy() || resendWaitMs() > 0"
       (click)="resend.emit()"
-      data-testid="add-email-resend"
+      [attr.data-testid]="testIdPrefix() + '-resend'"
     >
       {{ copy.resend }}
     </button>
@@ -56,7 +56,7 @@
       type="button"
       [disabled]="busy() || continueWaitMs() > 0"
       (click)="continue.emit()"
-      data-testid="add-email-continue"
+      [attr.data-testid]="testIdPrefix() + '-continue'"
     >
       Continue
     </button>

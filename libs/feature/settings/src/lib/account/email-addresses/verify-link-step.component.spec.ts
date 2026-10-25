@@ -30,6 +30,18 @@ describe('VerifyLinkStepComponent', () => {
     expect(emitted).toEqual(['continue', 'resend', 'cancel']);
   });
 
+  it('builds its test ids from testIdPrefix', async () => {
+    const { emitted } = await setup({ testIdPrefix: 'publish-email' });
+
+    fireEvent.click(screen.getByTestId('publish-email-continue'));
+    fireEvent.click(screen.getByTestId('publish-email-resend'));
+    fireEvent.click(screen.getByTestId('publish-email-cancel'));
+
+    expect(emitted).toEqual(['continue', 'resend', 'cancel']);
+    expect(screen.getByTestId('publish-email-sent')).toBeTruthy();
+    expect(screen.queryByTestId('add-email-continue')).toBeNull();
+  });
+
   it('disables Continue and Resend while busy', async () => {
     await setup({ busy: true });
 

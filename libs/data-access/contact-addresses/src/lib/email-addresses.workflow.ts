@@ -131,7 +131,10 @@ export class EmailAddressesWorkflow {
       const client = this.matrix.clientFor(accountId);
       if (!client) return of(refused('account-unavailable'));
       return from(client.deleteThreePid(address.medium, address.address)).pipe(
-        map((): EmailRemoveResult => ({ kind: 'removed' })),
+        map(({ id_server_unbind_result }): EmailRemoveResult => ({
+          kind: 'removed',
+          unbind: id_server_unbind_result ?? 'success',
+        })),
         catchError((err: unknown) => of(refusalOf(err))),
       );
     });
