@@ -253,6 +253,17 @@ storage. If that storage can't be read, for example while a Linux keyring is loc
 screen offers **Retry**, the system prompt where you have one, and
 **Erase all data on this device**. Unlock your keyring, then choose **Retry**.
 
+## Reset a forgotten password {#forgot-password}
+
+On the sign-in page, choose your server, then select **Forgot password?**. Enter an email address
+on your account and choose **Send link**. Open the link in the email and confirm, then return to
+Trinity and choose a new password. Trinity then takes you back to sign in.
+
+This needs an email address on the account, so add one under [Email addresses](#email-addresses)
+while you can still sign in. **Sign out of all devices** is on by default. A device without a key
+backup loses access to its encrypted messages, so leave it on only if you want every device signed
+out. An account that signs in through a provider resets its password there, not in Trinity.
+
 ## Email addresses {#email-addresses}
 
 Settings › Account has an **Email addresses** group, above **Delete account**. It lists the

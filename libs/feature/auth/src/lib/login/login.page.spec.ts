@@ -1,6 +1,12 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router } from '@angular/router';
+import {
+  ActivatedRoute,
+  DefaultUrlSerializer,
+  Router,
+  type UrlCreationOptions,
+  type UrlTree,
+} from '@angular/router';
 import {
   ReauthAccountMismatchError,
   UnacceptableAccountError,
@@ -27,7 +33,15 @@ import {
 import { TrnAlertService } from '@trinity/components/overlay';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, Subject, map, of, throwError, type Observable } from 'rxjs';
+import {
+  EMPTY,
+  NEVER,
+  Subject,
+  map,
+  of,
+  throwError,
+  type Observable,
+} from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './login.page';
 
@@ -75,6 +89,8 @@ async function renderLogin(
     qrSupported?: boolean;
     /** The states a QR sign-in emits; it never moves unless a test says so. */
     qrFlow?: Observable<NewDeviceState>;
+    /** The navigation state the reset-password page leaves when it signs the person back in. */
+    navigationState?: { passwordReset: true };
   } = {},
 ): Promise<{
   fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
@@ -112,7 +128,22 @@ async function renderLogin(
       MockProvider(RegistrationService, {
         getAvailability: vi.fn(() => of('unknown' as const)),
       }),
-      MockProvider(Router),
+      MockProvider(Router, {
+        // routerLink builds its href and watches events through the router.
+        events: EMPTY,
+        createUrlTree: (commands: unknown[], extras?: UrlCreationOptions) =>
+          new DefaultUrlSerializer().parse(
+            `${(commands as string[]).join('/')}?${new URLSearchParams(
+              extras?.queryParams as Record<string, string>,
+            )}`,
+          ),
+        serializeUrl: (tree: UrlTree) =>
+          new DefaultUrlSerializer().serialize(tree),
+        currentNavigation: () =>
+          opts.navigationState
+            ? { extras: { state: opts.navigationState } }
+            : null,
+      } as unknown as Partial<Router>),
       MockProvider(SignInRedirectService, {
         startSso: vi.fn(() => of(undefined)),
         startOidc: vi.fn(() => of(undefined)),
@@ -731,6 +762,103 @@ describe('LoginPage', () => {
     fixture.detectChanges();
 
     expect(cmp.credentialsError()).toBe('This account has been deleted.');
+  });
+
+  describe('forgot password', () => {
+    async function discovered(
+      flows: string[],
+      oidc: object | null,
+      opts: Parameters<typeof renderLogin>[1] = {},
+    ) {
+      const rendered = await renderLogin(
+        {
+          discoverHomeserver: vi.fn(() => of('https://hs.example')),
+          getSupportedFlows: vi.fn(() => of(flows)),
+          getDelegatedAuthConfig: vi.fn(() => of(oidc)),
+        } as unknown as Partial<AuthService>,
+        opts,
+      );
+      rendered.cmp.homeserverForm.homeserver().value.set('hs.example');
+      rendered.cmp.discover();
+      rendered.fixture.detectChanges();
+      return rendered.fixture.nativeElement.querySelector(
+        '[data-testid="password-forgot"]',
+      ) as HTMLAnchorElement | null;
+    }
+
+    it('links a password server to the reset page with the chosen server', async () => {
+      const link = await discovered(['m.login.password'], null);
+
+      expect(link?.textContent?.trim()).toBe('Forgot password?');
+      expect(link?.getAttribute('href')).toBe(
+        '/reset-password?homeserver=hs.example',
+      );
+    });
+
+    it('carries add mode to the reset page', async () => {
+      const link = await discovered(['m.login.password'], null, { add: true });
+
+      expect(link?.getAttribute('href')).toBe(
+        '/reset-password?homeserver=hs.example&add=',
+      );
+    });
+
+    it('offers no link on an SSO-only server', async () => {
+      expect(await discovered(['m.login.sso'], null)).toBeNull();
+    });
+
+    it('offers no link on an OIDC server', async () => {
+      const oidc = { issuer: 'https://auth.example' };
+      expect(await discovered(['m.login.password'], oidc)).toBeNull();
+    });
+
+    it('offers no link when re-authenticating', async () => {
+      const { fixture } = await renderLogin(
+        {
+          getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+          getDelegatedAuthConfig: vi.fn(() => of(null)),
+        } as unknown as Partial<AuthService>,
+        {
+          reauth: '@bob:hs',
+          record: { baseUrl: 'https://hs.example', userId: '@bob:hs' },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="password-forgot"]'),
+      ).toBeNull();
+    });
+  });
+
+  describe('after a password reset', () => {
+    it('opens with a focused notice that the password was changed', async () => {
+      const { fixture } = await renderLogin(
+        {},
+        { navigationState: { passwordReset: true } },
+      );
+      await fixture.whenStable();
+
+      const notice = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="login-password-reset"]',
+      );
+      expect(notice?.textContent?.trim()).toBe(
+        'Your password was changed. Sign in with your new password.',
+      );
+      expect(document.activeElement).toBe(notice);
+    });
+
+    it('shows no notice on a fresh load', async () => {
+      const { fixture } = await renderLogin({});
+      await fixture.whenStable();
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="login-password-reset"]',
+        ),
+      ).toBeNull();
+    });
   });
 
   it('opens with a focused notice naming the account that was deleted', async () => {
