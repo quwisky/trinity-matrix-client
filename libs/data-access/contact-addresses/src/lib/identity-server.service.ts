@@ -63,6 +63,31 @@ export class IdentityServerService {
     });
   }
 
+  /** Whether `url` is an https identity server, without touching any client state. */
+  check(
+    url: string,
+  ): Observable<
+    { readonly kind: 'ok'; readonly url: string } | IdentityServerRefused
+  > {
+    return defer(() => {
+      const base = normalizeUrl(url);
+      if (!isHttps(base)) return of(refused('not-https'));
+      return from(probe(base)).pipe(
+        switchMap((answer) =>
+          of(
+            answer === 'ok'
+              ? ({ kind: 'ok', url: base } as const)
+              : refused(
+                  answer === 'unreachable'
+                    ? 'unreachable'
+                    : 'not-identity-server',
+                ),
+          ),
+        ),
+      );
+    });
+  }
+
   use(
     accountId: string,
     url: string,

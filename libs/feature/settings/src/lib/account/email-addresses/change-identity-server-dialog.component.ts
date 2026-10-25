@@ -15,7 +15,7 @@ import {
   pattern,
   required,
 } from '@angular/forms/signals';
-import { filter, of, switchMap, take } from 'rxjs';
+import { map, of, switchMap, take } from 'rxjs';
 import { TrnButton, TrnInput, TrnLabel } from '@trinity/components/controls';
 import {
   TrnAlertService,
@@ -27,12 +27,13 @@ import {
   IdentityServerService,
   type IdentityServerRefusal,
 } from '@trinity/data-access/contact-addresses';
+import { serverNameOf } from '../delete-account/delete-account.copy';
 import { EMAIL_ADDRESSES_COPY, hostOf } from './email-addresses.copy';
 
-/** What the dialog closes with once the server is saved. */
-export interface IdentityServerChanged {
-  readonly kind: 'changed';
-}
+/** What the dialog closes with: the server saved, or addresses were unpublished but saving failed. */
+export type IdentityServerClosed =
+  | { readonly kind: 'changed' }
+  | { readonly kind: 'partial'; readonly message: string };
 
 /** Settings › Account › Change identity server. */
 @Component({
@@ -89,43 +90,95 @@ export class ChangeIdentityServerDialogComponent {
     }
     this.error.set('');
     const accountId = this.accountId();
-    const url = this.model().url;
     const old = this.current();
     const published = this.published();
-    const release$ =
-      old === '' || published.length === 0
-        ? of(true)
-        : this.alert.confirm$({
-            header: this.copy.changeServerQuestion,
-            message: this.copy.unpublishBody(hostOf(old), published.length),
-            confirmText: this.copy.changeButton,
-          });
-    release$
+    this.busy.set(true);
+    this.identity
+      .check(this.model().url)
       .pipe(
-        take(1),
-        filter(Boolean),
-        switchMap(() => {
-          this.busy.set(true);
-          // The identity server URL is shared client state, so the old server finishes first.
-          return old === '' || published.length === 0
-            ? of({ kind: 'unpublished' } as const)
-            : this.identity.unpublishAll(accountId, old, published);
+        switchMap((checked) => {
+          if (checked.kind === 'refused') {
+            return of({ kind: 'invalid', refusal: checked } as const);
+          }
+          const next = checked.url;
+          if (published.length === 0) {
+            return this.identity
+              .use(accountId, next)
+              .pipe(map((used) => ({ kind: 'used', used, next }) as const));
+          }
+          this.busy.set(false);
+          return this.alert
+            .confirm$({
+              header: this.copy.changeServerQuestion,
+              message: this.copy.unpublishBody(hostOf(old), published.length),
+              confirmText: this.copy.changeButton,
+            })
+            .pipe(
+              take(1),
+              switchMap((yes) => {
+                if (!yes) return of({ kind: 'cancelled' } as const);
+                this.busy.set(true);
+                // The identity server URL is shared client state, so the old server finishes first.
+                return this.identity
+                  .unpublishAll(accountId, old, published)
+                  .pipe(
+                    switchMap((released) =>
+                      released.kind === 'unpublished'
+                        ? this.identity
+                            .use(accountId, next)
+                            .pipe(
+                              map(
+                                (used) =>
+                                  ({ kind: 'used', used, next }) as const,
+                              ),
+                            )
+                        : of({ kind: 'unpublish-refused' } as const),
+                    ),
+                  );
+              }),
+            );
         }),
-        switchMap((released) =>
-          released.kind === 'unpublished'
-            ? this.identity.use(accountId, url)
-            : of(released),
-        ),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((result) => {
+      .subscribe((outcome) => {
         this.busy.set(false);
-        if (result.kind === 'saved') {
-          this.ref?.close({ kind: 'changed' } satisfies IdentityServerChanged);
-        } else {
-          this.error.set(this.message(result.reason, old || url));
+        const partial = published.length > 0;
+        switch (outcome.kind) {
+          case 'cancelled':
+            return;
+          case 'invalid':
+            this.error.set(
+              this.message(outcome.refusal.reason, this.model().url),
+            );
+            return;
+          case 'unpublish-refused':
+            this.stop(this.copy.serverUnreachable(hostOf(old)), partial);
+            return;
+          case 'used':
+            if (outcome.used.kind === 'saved') {
+              this.ref?.close({
+                kind: 'changed',
+              } satisfies IdentityServerClosed);
+            } else {
+              this.stop(
+                this.message(outcome.used.reason, outcome.next),
+                partial,
+              );
+            }
         }
       });
+  }
+
+  /** After addresses were unpublished, the row must reload even though the change failed. */
+  private stop(message: string, partial: boolean): void {
+    if (!partial) {
+      this.error.set(message);
+      return;
+    }
+    this.ref?.close({
+      kind: 'partial',
+      message,
+    } satisfies IdentityServerClosed);
   }
 
   private message(reason: IdentityServerRefusal, url: string): string {
@@ -134,8 +187,10 @@ export class ChangeIdentityServerDialogComponent {
         return this.copy.notHttps;
       case 'not-identity-server':
         return this.copy.notIdentityServer;
-      default:
+      case 'unreachable':
         return this.copy.serverUnreachable(hostOf(url));
+      default:
+        return this.copy.saveFailed(serverNameOf(this.accountId()));
     }
   }
 }

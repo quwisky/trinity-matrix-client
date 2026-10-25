@@ -12,6 +12,8 @@
       type="button"
       presentation="outline"
       size="sm"
+      #changeButton
+      [attr.aria-label]="copy.changeServerTitle"
       [disabled]="busy()"
       (click)="change()"
       data-testid="identity-server-change"
@@ -24,6 +26,7 @@
         type="button"
         presentation="outline"
         size="sm"
+        [attr.aria-label]="copy.turnOffAriaLabel"
         [disabled]="busy()"
         (click)="turnOff()"
         data-testid="identity-server-turn-off"
@@ -37,7 +40,7 @@
   <p
     class="m-0 pb-3 text-sm text-danger"
     role="alert"
-    data-testid="identity-server-error"
+    data-testid="identity-server-row-error"
   >
     {{ message }}
   </p>

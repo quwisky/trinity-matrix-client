@@ -2,14 +2,18 @@ import {
   ChangeDetectionStrategy,
   DestroyRef,
   Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   inject,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { filter, of, switchMap, take } from 'rxjs';
+import { filter, map, of, switchMap, take } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import {
   TrnAlertService,
@@ -22,8 +26,9 @@ import {
 } from '@trinity/data-access/contact-addresses';
 import {
   ChangeIdentityServerDialogComponent,
-  type IdentityServerChanged,
+  type IdentityServerClosed,
 } from './change-identity-server-dialog.component';
+import { serverNameOf } from '../delete-account/delete-account.copy';
 import { EMAIL_ADDRESSES_COPY, hostOf } from './email-addresses.copy';
 
 /** Settings › Account › Email addresses › Identity server: which server lets people find you. */
@@ -38,6 +43,9 @@ export class IdentityServerRowComponent {
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly changeButton =
+    viewChild<ElementRef<HTMLElement>>('changeButton');
 
   protected readonly copy = EMAIL_ADDRESSES_COPY;
   protected readonly error = signal('');
@@ -89,30 +97,53 @@ export class IdentityServerRowComponent {
         filter(Boolean),
         switchMap(() => {
           this.busy.set(true);
-          return published.length === 0
-            ? of({ kind: 'unpublished' } as const)
-            : this.identity.unpublishAll(accountId, choice.url, published);
+          const released$ =
+            published.length === 0
+              ? of({ kind: 'unpublished' } as const)
+              : this.identity.unpublishAll(accountId, choice.url, published);
+          return released$.pipe(
+            switchMap((released) =>
+              released.kind === 'unpublished'
+                ? this.identity
+                    .turnOff(accountId)
+                    .pipe(map((saved) => ({ stage: 'save', saved }) as const))
+                : of({ stage: 'unpublish' } as const),
+            ),
+          );
         }),
-        switchMap((released) =>
-          released.kind === 'unpublished'
-            ? this.identity.turnOff(accountId)
-            : of(released),
-        ),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((result) => {
+      .subscribe((outcome) => {
         this.busy.set(false);
-        if (result.kind === 'saved') this.changed.emit();
-        else this.error.set(this.copy.serverUnreachable(host));
+        if (outcome.stage === 'unpublish') {
+          this.error.set(this.copy.serverUnreachable(host));
+        } else if (outcome.saved.kind === 'saved') {
+          this.focusChange();
+        } else {
+          this.error.set(this.copy.saveFailed(serverNameOf(accountId)));
+        }
+        // Some addresses may already be unpublished, so the group re-reads what is findable.
+        if (
+          published.length > 0 ||
+          (outcome.stage === 'save' && outcome.saved.kind === 'saved')
+        ) {
+          this.changed.emit();
+        }
       });
+  }
+
+  /** Turn off disappears once the server is off, so focus moves to the control that stays. */
+  private focusChange(): void {
+    afterNextRender(() => this.changeButton()?.nativeElement.focus(), {
+      injector: this.injector,
+    });
   }
 
   private open(current: string, published: readonly string[]): void {
     this.surfaces
-      .open<IdentityServerChanged, ChangeIdentityServerDialogComponent>(
+      .open<IdentityServerClosed, ChangeIdentityServerDialogComponent>(
         ChangeIdentityServerDialogComponent,
         {
-          ariaDescribedBy: 'identity-server-body',
           autoFocus: '[data-autofocus]',
           inputs: { accountId: this.accountId(), current, published },
           dismissGuard: (dialog) => dialog?.canDismiss() ?? true,
@@ -120,10 +151,9 @@ export class IdentityServerRowComponent {
       )
       .closed.pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
-        if (result?.kind === 'changed') {
-          this.error.set('');
-          this.changed.emit();
-        }
+        if (!result) return;
+        this.error.set(result.kind === 'partial' ? result.message : '');
+        this.changed.emit();
       });
   }
 }

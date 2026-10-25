@@ -15,6 +15,7 @@ import {
   type EmailAddressesLoad,
   type EmailRemoveResult,
   type IdentityServerChoice,
+  type IdentityServerRefused,
 } from '@trinity/data-access/contact-addresses';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { AddEmailDialogComponent } from './add-email-dialog.component';
@@ -30,7 +31,8 @@ const loaded = (
 async function setup(
   first: EmailAddressesLoad,
   kind: 'legacy' | 'oauth' = 'legacy',
-  choice: IdentityServerChoice = { kind: 'none' },
+  choice: IdentityServerChoice | IdentityServerRefused = { kind: 'none' },
+  findable?: Observable<unknown>,
 ) {
   const closed = new Subject<unknown>();
   const confirmed = new Subject<boolean>();
@@ -42,8 +44,12 @@ async function setup(
   };
   const identity = {
     choice: vi.fn(() => of(choice)),
-    findable: vi.fn(() =>
-      of({ kind: 'loaded', published: new Set(['a@b.c']) } as const),
+    unpublishAll: vi.fn(() => of({ kind: 'unpublished' } as const)),
+    turnOff: vi.fn(() => of({ kind: 'saved' } as const)),
+    findable: vi.fn(
+      (): Observable<unknown> =>
+        findable ??
+        of({ kind: 'loaded', published: new Set(['a@b.c']) } as const),
     ),
   };
   const rendered = await render(EmailAddressesGroupComponent, {
@@ -122,6 +128,7 @@ describe('EmailAddressesGroupComponent', () => {
     const test = await setup(loaded([ADDRESS], false));
 
     expect(screen.queryByRole('button', { name: /^(Remove|Add)/ })).toBeNull();
+    expect(screen.getByTestId('identity-server-row')).toBeTruthy();
     expect(screen.getByText('a@b.c')).toBeTruthy();
     expect(
       screen.getByText('example.org manages the addresses on this account.'),
@@ -290,6 +297,73 @@ describe('EmailAddressesGroupComponent', () => {
     expect(screen.getByTestId('identity-server-value').textContent).toBe(
       'vector.im',
     );
+  });
+
+  it('does not contact a well-known identity server on load', async () => {
+    const test = await setup(loaded([ADDRESS]), 'legacy', {
+      kind: 'set',
+      url: 'https://vector.im',
+      source: 'well-known',
+    });
+
+    expect(test.identity.findable).not.toHaveBeenCalled();
+    expect(screen.getByTestId('identity-server-value').textContent).toBe(
+      'vector.im',
+    );
+  });
+
+  it('treats a refused findable as nothing published', async () => {
+    await setup(
+      loaded([ADDRESS]),
+      'legacy',
+      { kind: 'set', url: 'https://vector.im', source: 'account' },
+      of({ kind: 'refused', reason: 'unreachable' }),
+    );
+    const test = TestBed.inject(TrnAlertService);
+    fireEvent.click(screen.getByTestId('identity-server-turn-off'));
+
+    expect(test.confirm$).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        message:
+          'Nobody will be able to find you by email until you choose one again.',
+      }),
+    );
+  });
+
+  it('shows no row when the choice cannot be read', async () => {
+    await setup(loaded([ADDRESS]), 'legacy', {
+      kind: 'refused',
+      reason: 'unreachable',
+    });
+
+    expect(screen.queryByTestId('identity-server-row')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove a@b.c' })).toBeTruthy();
+  });
+
+  it('lists the addresses while what is findable is still loading', async () => {
+    await setup(
+      loaded([ADDRESS]),
+      'legacy',
+      { kind: 'set', url: 'https://vector.im', source: 'account' },
+      new Subject<never>(),
+    );
+
+    expect(screen.getByRole('button', { name: 'Remove a@b.c' })).toBeTruthy();
+    expect(screen.queryByTestId('identity-server-row')).toBeNull();
+  });
+
+  it('reloads the list and what is findable when the row changed', async () => {
+    const test = await setup(loaded([ADDRESS]), 'legacy', {
+      kind: 'set',
+      url: 'https://vector.im',
+      source: 'account',
+    });
+    test.workflow.load.mockClear();
+    fireEvent.click(screen.getByTestId('identity-server-turn-off'));
+    test.confirmed.next(true);
+    await test.fixture.whenStable();
+
+    expect(test.workflow.load).toHaveBeenCalledTimes(1);
   });
 
   it('shows the row for an off server without asking what is findable', async () => {

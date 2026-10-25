@@ -128,6 +128,45 @@ describe('IdentityServerService.choice', () => {
   });
 });
 
+describe('IdentityServerService.check', () => {
+  it('accepts an identity server and returns the normalized url', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 200 }));
+    const s = setup();
+    expect(await firstValueFrom(s.check(` ${IS}/ `))).toEqual({
+      kind: 'ok',
+      url: IS,
+    });
+    expect(s.fake.setIdentityServerUrl).not.toHaveBeenCalled();
+    expect(s.fake.setAccountData).not.toHaveBeenCalled();
+  });
+
+  it('refuses http without a request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await firstValueFrom(setup().check('http://is.example'))).toEqual({
+      kind: 'refused',
+      reason: 'not-https',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a server without the versions endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 404 }));
+    expect(await firstValueFrom(setup().check(IS))).toEqual({
+      kind: 'refused',
+      reason: 'not-identity-server',
+    });
+  });
+
+  it('reports an unreachable server', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('x')));
+    expect(await firstValueFrom(setup().check(IS))).toEqual({
+      kind: 'refused',
+      reason: 'unreachable',
+    });
+  });
+});
+
 describe('IdentityServerService.use and turnOff', () => {
   it('refuses http without a request', async () => {
     const fetchMock = vi.fn();

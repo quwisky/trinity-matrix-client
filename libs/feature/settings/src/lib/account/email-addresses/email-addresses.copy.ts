@@ -30,6 +30,7 @@ export const EMAIL_ADDRESSES_COPY = {
     'Lets people who know one of your email addresses find you on Matrix.',
   changeButton: 'Change',
   turnOffButton: 'Turn off',
+  turnOffAriaLabel: 'Turn off identity server',
   changeServerTitle: 'Change identity server',
   changeServerQuestion: 'Change identity server?',
   serverFieldLabel: 'Identity server address',
@@ -44,6 +45,8 @@ export const EMAIL_ADDRESSES_COPY = {
     `Trinity will first stop ${host} from finding you by ${count} ${count === 1 ? 'address' : 'addresses'}.`,
   serverUnreachable: (host: string) =>
     `Trinity couldn’t reach ${host}. Try again later.`,
+  saveFailed: (server: string) =>
+    `Trinity couldn’t save that change on ${server}. Try again.`,
   loadFailed: (server: string) =>
     `Trinity couldn’t load your email addresses from ${server}.`,
   stoppedTitle: 'The address wasn’t added',

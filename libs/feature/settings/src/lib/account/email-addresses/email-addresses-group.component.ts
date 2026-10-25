@@ -96,24 +96,17 @@ export class EmailAddressesGroupComponent {
           this.actionError.set('');
         }),
         switchMap(({ id }) =>
-          this.workflow
-            .load(id)
-            .pipe(
-              switchMap((load) =>
-                load.kind === 'loaded'
-                  ? this.loadIdentity(id, load).pipe(
-                      map((identity) => ({ load, identity })),
-                    )
-                  : of({ load, identity: null }),
-              ),
+          this.workflow.load(id).pipe(
+            // The list must not wait on the identity server.
+            tap((load) => this.state.set(load)),
+            switchMap((load) =>
+              load.kind === 'loaded' ? this.loadIdentity(id, load) : of(null),
             ),
+          ),
         ),
         takeUntilDestroyed(),
       )
-      .subscribe(({ load, identity }) => {
-        this.identity.set(identity);
-        this.state.set(load);
-      });
+      .subscribe((identity) => this.identity.set(identity));
   }
 
   retry(): void {
@@ -193,7 +186,10 @@ export class EmailAddressesGroupComponent {
     return this.identityServer.choice(accountId).pipe(
       switchMap((choice) => {
         if (choice.kind === 'refused') return of(null);
-        if (choice.kind !== 'set') return of({ choice, published: [] });
+        // Only a server the person chose is asked; a well-known one is not contacted until they act.
+        if (choice.kind !== 'set' || choice.source !== 'account') {
+          return of({ choice, published: [] });
+        }
         const emails = load.addresses
           .filter(({ medium }) => medium === 'email')
           .map(({ address }) => address);

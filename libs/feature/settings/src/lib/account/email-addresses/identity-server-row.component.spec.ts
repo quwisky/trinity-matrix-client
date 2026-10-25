@@ -165,10 +165,60 @@ describe('IdentityServerRowComponent', () => {
     test.fixture.detectChanges();
 
     expect(test.identity.turnOff).not.toHaveBeenCalled();
-    expect(test.changed).not.toHaveBeenCalled();
-    expect(screen.getByTestId('identity-server-error').textContent).toContain(
-      'Trinity couldn’t reach vector.im. Try again later.',
+    expect(test.changed).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId('identity-server-row-error').textContent,
+    ).toContain('Trinity couldn’t reach vector.im. Try again later.');
+  });
+
+  it('emits changed after a partial unpublish so the list is re-read', async () => {
+    const test = await setup(SET, ['a@b.c']);
+    test.identity.unpublishAll.mockReturnValue(
+      of({ kind: 'refused', reason: 'unreachable' }),
     );
+    fireEvent.click(screen.getByTestId('identity-server-turn-off'));
+    test.confirmed.next(true);
+
+    expect(test.changed).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the homeserver could not save when turning off is refused', async () => {
+    const test = await setup(SET);
+    test.identity.turnOff.mockReturnValue(
+      of({ kind: 'refused', reason: 'failed' }) as never,
+    );
+    fireEvent.click(screen.getByTestId('identity-server-turn-off'));
+    test.confirmed.next(true);
+    await test.fixture.whenStable();
+    test.fixture.detectChanges();
+
+    expect(
+      screen.getByTestId('identity-server-row-error').textContent,
+    ).toContain('Trinity couldn’t save that change on example.org. Try again.');
+    expect(test.changed).not.toHaveBeenCalled();
+  });
+
+  it('names the buttons in context', async () => {
+    await setup(SET);
+
+    expect(
+      screen.getByRole('button', { name: 'Change identity server' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Turn off identity server' }),
+    ).toBeTruthy();
+  });
+
+  it('emits changed and shows the message after a partial dialog close', async () => {
+    const test = await setup(SET, ['a@b.c']);
+    fireEvent.click(screen.getByTestId('identity-server-change'));
+    test.closed.next({ kind: 'partial', message: 'Trinity couldn’t reach x.' });
+    test.fixture.detectChanges();
+
+    expect(test.changed).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId('identity-server-row-error').textContent,
+    ).toContain('couldn’t reach x');
   });
 
   it('does nothing when the confirm is cancelled', async () => {
