@@ -6,6 +6,7 @@ import {
   seedFormattedRoom,
   sendMessage,
   signInAndOpen,
+  waitForSettledTimeline,
   uploadPng,
 } from '../../support/formatted-message-journey.mts';
 import { sendWithRetry } from '../../support/cs-api.mts';
@@ -423,6 +424,8 @@ test.describe('Maths', () => {
       const shield = page.locator('.scroll [data-testid^="msg-shield-"]');
       await expect(shield).toBeVisible({ timeout: 30_000 });
       await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      // The hit test, the screenshots and the hover all need the rows where they will stay.
+      await waitForSettledTimeline(shield);
 
       // The shield's centre is still the shield's to hit.
       const hitsShield = await shield.evaluate((element) => {
