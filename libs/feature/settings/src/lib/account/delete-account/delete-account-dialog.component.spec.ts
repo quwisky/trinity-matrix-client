@@ -193,8 +193,13 @@ describe('DeleteAccountDialogComponent', () => {
       target: { value: 'secret' },
     });
     fireEvent.click(screen.getByTestId('delete-account-password-submit'));
+    await test.settle();
+    void test.prompts().password({ rejected: true });
+    await test.settle();
 
-    expect(test.cmp.passwordForm.password().value()).toBe('');
+    expect(
+      (screen.getByTestId('delete-account-password') as HTMLInputElement).value,
+    ).toBe('');
   });
 
   it('titles a refusal as nothing deleted and names one control Cancel', async () => {

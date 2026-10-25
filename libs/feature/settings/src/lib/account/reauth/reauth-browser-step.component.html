@@ -1,0 +1,44 @@
+<div class="flex flex-col gap-4">
+  <p [id]="testIdPrefix() + '-body'" class="m-0 text-sm text-muted-foreground">
+    {{ body() }}
+  </p>
+  <p
+    class="m-0 text-13 text-danger"
+    aria-live="polite"
+    [attr.data-testid]="testIdPrefix() + '-browser-pending'"
+  >
+    @if (pending()) {
+      {{ pendingMessage() }}
+    }
+  </p>
+  <div trnDialogActions>
+    <button
+      trnBtn
+      type="button"
+      presentation="ghost"
+      (click)="back.emit()"
+      [attr.data-testid]="testIdPrefix() + '-back'"
+    >
+      Back
+    </button>
+    <button
+      trnBtn
+      type="button"
+      presentation="outline"
+      (click)="open()"
+      [attr.data-testid]="testIdPrefix() + '-open-page'"
+    >
+      Open confirmation page
+    </button>
+    <button
+      trnBtn
+      type="button"
+      variant="danger"
+      [disabled]="!opened()"
+      (click)="done.emit()"
+      [attr.data-testid]="testIdPrefix() + '-browser-confirm'"
+    >
+      {{ doneLabel() }}
+    </button>
+  </div>
+</div>

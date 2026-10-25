@@ -13,13 +13,12 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormField, FormRoot, form, required } from '@angular/forms/signals';
+import { FormField, FormRoot, form } from '@angular/forms/signals';
 import {
   TrnButton,
   TrnCheckboxComponent,
   TrnInput,
   TrnLabel,
-  TrnPasswordInputComponent,
 } from '@trinity/components/controls';
 import {
   TrnDialogActions,
@@ -35,11 +34,12 @@ import {
 import {
   ACCOUNT_DELETION_LAUNCHER,
   ACCOUNT_REMOVAL_LAUNCHER,
-  ExternalBrowserService,
   type AccountDeletionOutcome,
-  type AccountDeletionPrompts,
   type AccountDeletionRefusal,
 } from '@trinity/platform-native';
+import { ReauthBrowserStepComponent } from '../reauth/reauth-browser-step.component';
+import { ReauthPasswordStepComponent } from '../reauth/reauth-password-step.component';
+import { ReauthPrompts, type ReauthStep } from '../reauth/reauth-prompts';
 import {
   DELETE_ACCOUNT_COPY,
   canRetry,
@@ -50,12 +50,7 @@ import {
 /** Where the deletion dialog is; each step is one screen of the same dialog. */
 export type DeleteAccountStep =
   | { readonly kind: 'confirm' }
-  | { readonly kind: 'password'; readonly rejected: boolean }
-  | {
-      readonly kind: 'browser';
-      readonly url: string;
-      readonly pending: boolean;
-    }
+  | ReauthStep
   | { readonly kind: 'deleting' }
   | {
       readonly kind: 'stopped';
@@ -76,25 +71,24 @@ export type DeleteAccountStep =
   imports: [
     FormField,
     FormRoot,
+    ReauthBrowserStepComponent,
+    ReauthPasswordStepComponent,
     TrnButton,
     TrnCheckboxComponent,
     TrnDialogActions,
     TrnDialogShellComponent,
     TrnInput,
     TrnLabel,
-    TrnPasswordInputComponent,
   ],
 })
 export class DeleteAccountDialogComponent {
   private readonly launcher = inject(ACCOUNT_DELETION_LAUNCHER);
   private readonly removal = inject(ACCOUNT_REMOVAL_LAUNCHER);
-  private readonly browser = inject(ExternalBrowserService);
   private readonly ref = inject(TrnDialogRef, { optional: true });
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
-  private answerPassword: ((password: string | null) => void) | null = null;
-  private answerBrowser: ((finished: boolean) => void) | null = null;
+  private readonly prompts = new ReauthPrompts((step) => this.step.set(step));
 
   protected readonly copy = DELETE_ACCOUNT_COPY;
   protected readonly mistypedMessage = ACCOUNT_DELETION_MISTYPED_MESSAGE;
@@ -105,14 +99,9 @@ export class DeleteAccountDialogComponent {
   readonly step = signal<DeleteAccountStep>({ kind: 'confirm' });
   readonly erase = signal(true);
   readonly mistyped = signal(false);
-  readonly browserOpened = signal(false);
 
   private readonly confirmation = signal({ typed: '' });
   readonly confirmForm = form(this.confirmation);
-  private readonly credentials = signal({ password: '' });
-  readonly passwordForm = form(this.credentials, (path) => {
-    required(path.password);
-  });
 
   protected readonly server = computed(() => serverNameOf(this.accountId()));
   protected readonly consequences = computed(() =>
@@ -145,6 +134,10 @@ export class DeleteAccountDialogComponent {
     const step = this.step();
     return step.kind === 'password' && step.rejected;
   });
+  protected readonly browserUrl = computed(() => {
+    const step = this.step();
+    return step.kind === 'browser' ? step.url : '';
+  });
   protected readonly browserPending = computed(() => {
     const step = this.step();
     return step.kind === 'browser' && step.pending;
@@ -158,21 +151,6 @@ export class DeleteAccountDialogComponent {
     return step.kind === 'stopped' && canRetry(step.reason);
   });
 
-  private readonly prompts: AccountDeletionPrompts = {
-    password: ({ rejected }) =>
-      new Promise((resolve) => {
-        this.answerPassword = resolve;
-        this.credentials.set({ password: '' });
-        this.step.set({ kind: 'password', rejected });
-      }),
-    confirmInBrowser: ({ url, pending }) =>
-      new Promise((resolve) => {
-        this.answerBrowser = resolve;
-        if (!pending) this.browserOpened.set(false);
-        this.step.set({ kind: 'browser', url, pending });
-      }),
-  };
-
   constructor() {
     let first = true;
     effect(() => {
@@ -183,7 +161,7 @@ export class DeleteAccountDialogComponent {
       }
       untracked(() => this.focusStep(step));
     });
-    this.destroyRef.onDestroy(() => this.abandonPrompts());
+    this.destroyRef.onDestroy(() => this.prompts.abandon());
   }
 
   /** Escape and the close control are ignored once the request cannot be called back. */
@@ -201,41 +179,18 @@ export class DeleteAccountDialogComponent {
     this.start();
   }
 
-  submitPassword(): void {
-    const answer = this.answerPassword;
-    if (!answer) return;
-    if (this.passwordForm().invalid()) {
-      this.focus('#delete-account-password');
-      return;
-    }
-    const { password } = this.credentials();
-    this.credentials.set({ password: '' });
-    this.answerPassword = null;
-    this.step.set({ kind: 'deleting' });
-    answer(password);
-  }
-
-  openConfirmationPage(): void {
-    const step = this.step();
-    if (step.kind !== 'browser') return;
-    this.browserOpened.set(true);
-    this.browser
-      .open(step.url)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+  submitPassword(password: string): void {
+    if (this.prompts.answerPassword(password))
+      this.step.set({ kind: 'deleting' });
   }
 
   confirmInBrowserDone(): void {
-    const answer = this.answerBrowser;
-    if (!answer) return;
-    this.answerBrowser = null;
-    this.step.set({ kind: 'deleting' });
-    answer(true);
+    if (this.prompts.answerBrowser(true)) this.step.set({ kind: 'deleting' });
   }
 
   /** Back to the first step; the workflow sees the re-authentication cancelled. */
   back(): void {
-    this.abandonPrompts();
+    this.prompts.abandon();
   }
 
   close(): void {
@@ -274,8 +229,6 @@ export class DeleteAccountDialogComponent {
   }
 
   private settle(outcome: AccountDeletionOutcome): void {
-    this.answerPassword = null;
-    this.answerBrowser = null;
     switch (outcome.kind) {
       case 'deleted':
         // With a result, so the dismiss guard that holds it open while deleting lets go.
@@ -295,15 +248,6 @@ export class DeleteAccountDialogComponent {
               },
         );
     }
-  }
-
-  private abandonPrompts(): void {
-    const password = this.answerPassword;
-    const browser = this.answerBrowser;
-    this.answerPassword = null;
-    this.answerBrowser = null;
-    password?.(null);
-    browser?.(false);
   }
 
   /** A field step focuses its field; any other step its heading, so the change is announced. */

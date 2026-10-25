@@ -100,106 +100,27 @@
       </form>
     }
     @case ('password') {
-      <form
-        [formRoot]="passwordForm"
-        (submit)="submitPassword()"
-        class="flex flex-col gap-4"
-      >
-        <p id="delete-account-body" class="m-0 text-sm text-muted-foreground">
-          {{ copy.passwordBody(accountId()) }}
-        </p>
-        <div>
-          <label trnLabel for="delete-account-password">Password</label>
-          <trn-password-input class="mt-1">
-            <input
-              trnInput
-              id="delete-account-password"
-              autocomplete="current-password"
-              [formField]="passwordForm.password"
-              [explicitInvalid]="passwordRejected()"
-              [aria-describedby]="
-                passwordRejected() ? 'delete-account-password-error' : null
-              "
-              data-testid="delete-account-password"
-            />
-          </trn-password-input>
-          <p
-            id="delete-account-password-error"
-            class="m-0 pt-1 text-13 text-danger"
-            aria-live="polite"
-            data-testid="delete-account-password-error"
-          >
-            @if (passwordRejected()) {
-              {{ copy.passwordRejected }}
-            }
-          </p>
-        </div>
-        <div trnDialogActions>
-          <button
-            trnBtn
-            type="button"
-            presentation="outline"
-            (click)="back()"
-            data-testid="delete-account-back"
-          >
-            Back
-          </button>
-          <button
-            trnBtn
-            type="submit"
-            variant="danger"
-            data-testid="delete-account-password-submit"
-          >
-            Delete account
-          </button>
-        </div>
-      </form>
+      <trn-reauth-password-step
+        testIdPrefix="delete-account"
+        [body]="copy.passwordBody(accountId())"
+        [rejected]="passwordRejected()"
+        [rejectedMessage]="copy.passwordRejected"
+        submitLabel="Delete account"
+        (submitted)="submitPassword($event)"
+        (back)="back()"
+      />
     }
     @case ('browser') {
-      <div class="flex flex-col gap-4">
-        <p id="delete-account-body" class="m-0 text-sm text-muted-foreground">
-          {{ copy.browserBody(server()) }}
-        </p>
-        <p
-          class="m-0 text-13 text-danger"
-          aria-live="polite"
-          data-testid="delete-account-browser-pending"
-        >
-          @if (browserPending()) {
-            {{ copy.browserPending(server()) }}
-          }
-        </p>
-        <div trnDialogActions>
-          <button
-            trnBtn
-            type="button"
-            presentation="ghost"
-            (click)="back()"
-            data-testid="delete-account-back"
-          >
-            Back
-          </button>
-          <button
-            trnBtn
-            type="button"
-            presentation="outline"
-            (click)="openConfirmationPage()"
-            data-testid="delete-account-open-page"
-          >
-            Open confirmation page
-          </button>
-          <button
-            trnBtn
-            type="button"
-            variant="danger"
-            [disabled]="!browserOpened()"
-            (click)="confirmInBrowserDone()"
-            data-testid="delete-account-browser-confirm"
-          >
-            I’ve confirmed, delete account
-          </button>
-        </div>
-      </div>
+      <trn-reauth-browser-step
+        testIdPrefix="delete-account"
+        [url]="browserUrl()"
+        [pending]="browserPending()"
+        [body]="copy.browserBody(server())"
+        [pendingMessage]="copy.browserPending(server())"
+        doneLabel="I’ve confirmed, delete account"
+        (done)="confirmInBrowserDone()"
+        (back)="back()"
+      />
     }
     @case ('deleting') {
       <div
