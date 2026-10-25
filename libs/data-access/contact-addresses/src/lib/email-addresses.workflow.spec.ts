@@ -157,6 +157,8 @@ describe('EmailAddressesWorkflow.sendLink and resend', () => {
     ['M_INVALID_PARAM', 'invalid'],
     ['M_INVALID_EMAIL', 'invalid'],
     ['M_UNKNOWN', 'failed'],
+    ['constructor', 'failed'],
+    ['toString', 'failed'],
   ])('maps %s to %s', async (errcode, reason) => {
     const workflow = setup({
       requestAdd3pidEmailToken: vi

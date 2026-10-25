@@ -172,5 +172,9 @@ function refusalOf(err: unknown): EmailAddressRefused {
     };
   }
   const errcode = failure.diagnostic.errcode;
-  return refused((errcode && REFUSAL_BY_ERRCODE[errcode]) || 'failed');
+  return refused(
+    errcode && Object.hasOwn(REFUSAL_BY_ERRCODE, errcode)
+      ? REFUSAL_BY_ERRCODE[errcode]
+      : 'failed',
+  );
 }
