@@ -175,6 +175,49 @@ describe('AddEmailDialogComponent', () => {
     ).toBe(true);
   });
 
+  it('re-enables Resend exactly when the rate-limit wait ends', async () => {
+    const test = await setup();
+    await sendLink(test);
+    const resend = () =>
+      screen.getByTestId('add-email-resend') as HTMLButtonElement;
+    vi.useFakeTimers();
+    try {
+      test.workflow.resend.mockReturnValueOnce(
+        of({
+          kind: 'refused',
+          reason: 'rate-limited',
+          retryAfterMs: 3000,
+        } as EmailLinkResult),
+      );
+      fireEvent.click(resend());
+      test.fixture.detectChanges();
+      expect(resend().disabled).toBe(true);
+
+      vi.advanceTimersByTime(2999);
+      test.fixture.detectChanges();
+      expect(resend().disabled).toBe(true);
+
+      vi.advanceTimersByTime(1);
+      test.fixture.detectChanges();
+      expect(resend().disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('acts on the account it was opened for, never the active one', async () => {
+    const test = await setup();
+
+    await sendLink(test);
+    fireEvent.click(screen.getByTestId('add-email-continue'));
+
+    expect(test.workflow.sendLink).toHaveBeenCalledWith(ALICE, 'a@b.c');
+    expect(test.workflow.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: ALICE, email: 'a@b.c' }),
+      expect.anything(),
+    );
+  });
+
   it('answers the password stage and closes with added', async () => {
     const test = await setup();
     await sendLink(test);
