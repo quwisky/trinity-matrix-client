@@ -100,6 +100,7 @@
 @if (accountId(); as id) {
   @if (serverApi(); as api) {
     @if (api.kind !== 'unknown') {
+      <trn-email-addresses-group [accountId]="id" [accountKind]="api.kind" />
       <trn-delete-account-group [accountId]="id" />
     }
   }

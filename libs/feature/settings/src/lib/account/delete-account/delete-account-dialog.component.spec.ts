@@ -193,8 +193,13 @@ describe('DeleteAccountDialogComponent', () => {
       target: { value: 'secret' },
     });
     fireEvent.click(screen.getByTestId('delete-account-password-submit'));
+    await test.settle();
+    void test.prompts().password({ rejected: true });
+    await test.settle();
 
-    expect(test.cmp.passwordForm.password().value()).toBe('');
+    expect(
+      (screen.getByTestId('delete-account-password') as HTMLInputElement).value,
+    ).toBe('');
   });
 
   it('titles a refusal as nothing deleted and names one control Cancel', async () => {
@@ -349,6 +354,39 @@ describe('DeleteAccountDialogComponent', () => {
     test.fixture.destroy();
 
     await expect(answer).resolves.toBeNull();
+  });
+
+  it('settles a prompt that arrives after the dialog went away', async () => {
+    const test = await setup();
+    await typeAndSubmit(test, 'DELETE');
+
+    test.fixture.destroy();
+
+    await expect(
+      test.prompts().password({ rejected: false }),
+    ).resolves.toBeNull();
+  });
+
+  it('keeps the re-authentication actions destructive', async () => {
+    const test = await setup();
+    await typeAndSubmit(test, 'DELETE');
+    const answer = test.prompts().password({ rejected: false });
+    await test.settle();
+    expect(
+      screen
+        .getByTestId('delete-account-password-submit')
+        .getAttribute('data-trn-variant'),
+    ).toBe('danger');
+
+    fireEvent.click(screen.getByTestId('delete-account-back'));
+    await expect(answer).resolves.toBeNull();
+    void test.prompts().confirmInBrowser({ url: 'https://x/', pending: false });
+    await test.settle();
+    expect(
+      screen
+        .getByTestId('delete-account-browser-confirm')
+        .getAttribute('data-trn-variant'),
+    ).toBe('danger');
   });
 
   it('passes axe on each step', async () => {

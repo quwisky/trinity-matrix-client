@@ -37,3 +37,9 @@ services:
     network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
     ports: !reset []
     networks: !reset null
+
+  # Synapse sends mail to localhost:1025 here, for the same reason.
+  mailpit:
+    network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
+    ports: !reset []
+    networks: !reset null

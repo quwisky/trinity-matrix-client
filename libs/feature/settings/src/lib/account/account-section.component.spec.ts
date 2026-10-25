@@ -11,6 +11,7 @@ import {
   ACCOUNT_DELETION_LAUNCHER,
   ExternalBrowserService,
 } from '@trinity/platform-native';
+import { EmailAddressesWorkflow } from '@trinity/data-access/contact-addresses';
 import { AccountSectionComponent } from './account-section.component';
 
 /**
@@ -50,6 +51,14 @@ describe('AccountSectionComponent', () => {
         MockProvider(TrnToastService),
         MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
         {
+          provide: EmailAddressesWorkflow,
+          useValue: {
+            load: vi.fn(() =>
+              of({ kind: 'loaded', addresses: [], canChange: true }),
+            ),
+          },
+        },
+        {
           provide: ACCOUNT_DELETION_LAUNCHER,
           useValue: { plan: vi.fn(() => of({ kind: 'in-app' })) },
         },
@@ -75,6 +84,29 @@ describe('AccountSectionComponent', () => {
     expect(auth.accountManagementFor).toHaveBeenCalledWith(
       '@alice:example.org',
     );
+  });
+
+  it('shows the Email addresses group for legacy accounts', async () => {
+    await renderSection();
+    expect(
+      screen.getByRole('heading', { name: 'Email addresses' }),
+    ).toBeTruthy();
+  });
+
+  it('shows no Email addresses group before the server answers', async () => {
+    await renderSection(null);
+    expect(
+      screen.queryByRole('heading', { name: 'Email addresses' }),
+    ).toBeNull();
+  });
+
+  it('shows the provider line in the Email addresses group on oauth', async () => {
+    await renderSection({ kind: 'oauth', management: null });
+    expect(
+      screen.getByText(
+        'Your email addresses are managed by your identity provider.',
+      ),
+    ).toBeTruthy();
   });
 
   it('ends with the Delete account group for the account it shows', async () => {
@@ -124,6 +156,9 @@ describe('AccountSectionComponent', () => {
     expect(screen.queryByTestId('manage-account')).toBeNull();
     expect(
       screen.queryByRole('heading', { name: 'Delete account' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Email addresses' }),
     ).toBeNull();
     expect(screen.getByTestId('account-options-unknown').textContent).toContain(
       'Trinity couldn’t load the account options from example.org.',

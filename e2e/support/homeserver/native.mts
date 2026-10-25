@@ -1,7 +1,8 @@
 // The native homeserver runtime (TRINITY_E2E_HOMESERVER_RUNTIME=native): Synapse from a
 // pinned venv and Caddy run as detached host processes, for hosts without Docker (the
 // macOS runner the iOS suite needs). Dex joins them when a `dex` binary is on PATH
-// (`brew install dexidp`), which turns SSO on. Primary server only: no federated secondary.
+// (`brew install dexidp`), which turns SSO on, and Mailpit when a `mailpit` binary is
+// (`brew install mailpit`), which turns mail on. Primary server only: no federated secondary.
 // Detached like Compose containers: a run that dies leaves them up, and the PID file is
 // how the lease notices them and stop.mjs removes them.
 import { execFile, execFileSync, spawn } from 'node:child_process';
@@ -18,7 +19,12 @@ import { promisify } from 'node:util';
 
 /** The Synapse the Docker stack runs (synapse/docker-compose.yml); a test keeps them equal. */
 export const SYNAPSE_VERSION = '1.161.0';
-export const NATIVE_SERVICES = ['homeserver', 'caddy', 'dex'] as const;
+export const NATIVE_SERVICES = [
+  'homeserver',
+  'caddy',
+  'dex',
+  'mailpit',
+] as const;
 export type NativeService = (typeof NATIVE_SERVICES)[number];
 
 export interface NativePaths {
@@ -59,6 +65,7 @@ export function nativePaths(stateDir: string, dataDir: string): NativePaths {
       homeserver: join(dataDir, 'synapse.out.log'),
       caddy: join(dataDir, 'caddy.log'),
       dex: join(dataDir, 'dex.log'),
+      mailpit: join(dataDir, 'mailpit.log'),
     },
     homeserverLog: join(dataDir, 'homeserver.log'),
     caddyAccessLog: join(dataDir, 'caddy-access.log'),
@@ -259,6 +266,20 @@ export async function nativeDexVersion(
   );
 }
 
+/** The installed Mailpit's version, or null when there is no `mailpit` on PATH. */
+export async function nativeMailpitVersion(
+  api: NativeProcessApi,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  // Without the flag it asks GitHub for the latest release, and fails when offline.
+  return api
+    .exec('mailpit', ['version', '--no-release-check'], { signal })
+    .then(
+      ({ stdout }) => /\b(v\d+\.\d+\.\d+\S*)/u.exec(stdout)?.[1] ?? 'unknown',
+      () => null,
+    );
+}
+
 /**
  * The shared dex.yaml, served on loopback only: Docker publishes 127.0.0.1:5556, and a
  * host process listening on every interface would put the test provider on the LAN.
@@ -336,6 +357,7 @@ const IDENTITY: Record<NativeService, RegExp> = {
   homeserver: /synapse\.app\.homeserver/u,
   caddy: /\bcaddy\b.*\brun\b/u,
   dex: /\bdex\b.*\bserve\b/u,
+  mailpit: /\bmailpit\b.*--smtp\b/u,
 };
 
 function isOurs(
@@ -355,12 +377,18 @@ export function runningNativeServices(
     .map(([service]) => service as NativeService);
 }
 
-/** Spawn Synapse, then Caddy, then Dex if asked, recording each PID as soon as it exists. */
+/**
+ * Spawn Synapse, then Caddy, then Dex and Mailpit if asked, recording each PID as soon as
+ * it exists.
+ */
 export function startNativeServices(
   paths: NativePaths,
   api: NativeProcessApi,
   env: NodeJS.ProcessEnv,
-  { dex = false }: { readonly dex?: boolean } = {},
+  {
+    dex = false,
+    mailpit = false,
+  }: { readonly dex?: boolean; readonly mailpit?: boolean } = {},
 ): void {
   const pids: Partial<Record<NativeService, number>> = {};
   const record = (): void =>
@@ -385,12 +413,22 @@ export function startNativeServices(
     },
   );
   record();
-  if (!dex) return;
-  pids.dex = api.spawnDetached('dex', ['serve', paths.dexConfig], {
-    env,
-    logFile: paths.logs.dex,
-  });
-  record();
+  if (dex) {
+    pids.dex = api.spawnDetached('dex', ['serve', paths.dexConfig], {
+      env,
+      logFile: paths.logs.dex,
+    });
+    record();
+  }
+  if (mailpit) {
+    // Loopback only, on the ports Docker publishes; Synapse sends to localhost:1025.
+    pids.mailpit = api.spawnDetached(
+      'mailpit',
+      ['--listen', '127.0.0.1:8025', '--smtp', '127.0.0.1:1025'],
+      { env, logFile: paths.logs.mailpit },
+    );
+    record();
+  }
 }
 
 /** SIGTERM each recorded process group, SIGKILL what outlives the grace period. */

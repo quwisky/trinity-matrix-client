@@ -16,6 +16,8 @@ export const tuwunel = {
   },
   // The primary lives in Dex's network namespace; restarting Dex takes its network away.
   restartWith: { dex: ['homeserver'] },
+  /** Tuwunel sends no email: start.mjs lists `mail` as unavailable. */
+  mail: false,
   async prepare() {
     // Created here, as us: the daemon would create a missing bind source as root, and the
     // container (running as us) could then not open its database.

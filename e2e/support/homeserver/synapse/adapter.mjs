@@ -264,6 +264,16 @@ export async function ensureConfig(ctx) {
       '  burst_count: 1000',
     );
   }
+  // Synapse allows a burst of 5 validation emails, then about one per 5.5 minutes per IP
+  // and per address (rc_3pid_validation; 429), so rerunning the email-address journeys
+  // would be refused. Guarded on its own key for the same reason as the rules above.
+  if (!/^rc_3pid_validation:/m.test(yaml)) {
+    additions.push(
+      'rc_3pid_validation:',
+      '  per_second: 100',
+      '  burst_count: 100',
+    );
+  }
   // Synapse answers a repeated, identical /sync from a response cache for two minutes
   // (caches.sync_response_cache_duration), so a journey that polls the same sync URL
   // while it waits for a receipt or a count can keep reading the first answer. Zero keeps
@@ -279,6 +289,21 @@ export async function ensureConfig(ctx) {
     } else {
       additions.push('caches:', '  sync_response_cache_duration: 0');
     }
+  }
+  // Email validation for the email-address journeys, sent to Mailpit. Notifications stay
+  // off so no other spec's traffic lands in the mailbox. Guarded on its own key for the
+  // same reason as the publication rules above.
+  if (!/^email:/m.test(yaml)) {
+    // Mailpit's `mailpit` DNS name exists only on the compose network, as with Dex.
+    const smtpHost =
+      ctx.networkContainer || ctx.native ? 'localhost' : 'mailpit';
+    additions.push(
+      'email:',
+      `  smtp_host: "${smtpHost}"`,
+      '  smtp_port: 1025',
+      '  notif_from: "Trinity e2e <noreply@localhost>"',
+      '  enable_notifs: false',
+    );
   }
   if (!/^federation_verify_certificates:/m.test(yaml)) {
     // The harness Caddy uses its own disposable CA. Federation is still real — only

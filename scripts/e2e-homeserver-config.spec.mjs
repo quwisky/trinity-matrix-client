@@ -321,26 +321,34 @@ describe('Synapse adapter config generation', () => {
     expect(yaml).toContain('display_name_template: "{{ user.name }}"');
   });
 
-  it('raises the room-creation limit above its default burst of 10, also on an existing config', async () => {
+  it('raises the room-creation and validation-email limits, also on an existing config', async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);
     const ctx = { log: () => undefined, generate: generateInto(stateDir) };
     const config = join(stateDir, 'data/homeserver.yaml');
     const roomCreation =
       /^rc_room_creation:\n {2}per_second: 100\n {2}burst_count: 1000$/m;
+    const validation =
+      /^rc_3pid_validation:\n {2}per_second: 100\n {2}burst_count: 100$/m;
 
     await ensureConfig(ctx);
     expect(readFileSync(config, 'utf8')).toMatch(roomCreation);
+    expect(readFileSync(config, 'utf8')).toMatch(validation);
 
-    // A stack patched before this limit was added keeps its once-only extras block.
+    // A stack patched before these limits were added keeps its once-only extras block.
     writeFileSync(
       config,
-      readFileSync(config, 'utf8').replace(roomCreation, ''),
+      readFileSync(config, 'utf8')
+        .replace(roomCreation, '')
+        .replace(validation, ''),
     );
+    await ensureConfig(ctx);
     await ensureConfig(ctx);
     const yaml = readFileSync(config, 'utf8');
     expect(yaml).toMatch(roomCreation);
     expect(yaml.match(/^rc_room_creation:/gm)).toHaveLength(1);
+    expect(yaml).toMatch(validation);
+    expect(yaml.match(/^rc_3pid_validation:/gm)).toHaveLength(1);
   });
 
   it('turns off the sync response cache, also on an existing config', async () => {
@@ -369,6 +377,33 @@ describe('Synapse adapter config generation', () => {
     expect(yaml).toMatch(
       /^caches:\n {2}sync_response_cache_duration: 0\n {2}global_factor: 1\.0$/m,
     );
+  });
+
+  it('sends email through Mailpit, by its compose name only on the compose network', async () => {
+    const emailBlock = async (ctx) => {
+      stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+      const { ensureConfig } = await adapterIn(stateDir);
+      await ensureConfig({
+        log: () => undefined,
+        generate: generateInto(stateDir),
+        ...ctx,
+      });
+      const yaml = parse(
+        readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8'),
+      );
+      rmSync(stateDir, { recursive: true, force: true });
+      return yaml.email;
+    };
+    expect(await emailBlock({})).toEqual({
+      smtp_host: 'mailpit',
+      smtp_port: 1025,
+      notif_from: 'Trinity e2e <noreply@localhost>',
+      enable_notifs: false,
+    });
+    expect((await emailBlock({ native: true })).smtp_host).toBe('localhost');
+    expect(
+      (await emailBlock({ networkContainer: 'job-container' })).smtp_host,
+    ).toBe('localhost');
   });
 
   it('keeps the Dex block for the Docker runtime', async () => {
