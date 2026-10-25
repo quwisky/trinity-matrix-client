@@ -199,7 +199,7 @@ export class AddEmailDialogComponent {
     if (this.busy() || !sent) return;
     this.busy.set(true);
     this.workflow
-      .confirm(sent.pending, this.prompts)
+      .add(sent.pending, this.prompts)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => this.confirmed(result, sent));
   }

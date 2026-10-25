@@ -201,7 +201,7 @@ describe('EmailAddressesWorkflow.sendLink and resend', () => {
   });
 });
 
-describe('EmailAddressesWorkflow.confirm', () => {
+describe('EmailAddressesWorkflow.add', () => {
   const pending = {
     accountId: ALICE,
     email: 'a@b.c',
@@ -218,7 +218,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
 
   it('adds with the pending session and no auth on the probe', async () => {
     const workflow = setup();
-    const result = await firstValueFrom(workflow.confirm(pending, stages()));
+    const result = await firstValueFrom(workflow.add(pending, stages()));
     expect(result).toEqual({ kind: 'added' });
     expect(workflow.client.addThreePidOnly).toHaveBeenCalledTimes(1);
     const body = workflow.client.addThreePidOnly.mock.calls[0][0];
@@ -229,7 +229,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
   it('uses the pending account, not the active one', async () => {
     const workflow = setup();
     await firstValueFrom(
-      workflow.confirm({ ...pending, accountId: '@bob:example.org' }, stages()),
+      workflow.add({ ...pending, accountId: '@bob:example.org' }, stages()),
     );
     expect(workflow.clientFor).toHaveBeenCalledWith('@bob:example.org');
   });
@@ -240,7 +240,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
       .mockRejectedValueOnce(uia(['m.login.password']))
       .mockResolvedValueOnce({});
     const workflow = setup({ addThreePidOnly });
-    const result = await firstValueFrom(workflow.confirm(pending, stages()));
+    const result = await firstValueFrom(workflow.add(pending, stages()));
     expect(result).toEqual({ kind: 'added' });
     expect(addThreePidOnly.mock.calls[1][0].auth).toEqual({
       type: 'm.login.password',
@@ -258,7 +258,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
           new MatrixError({ errcode: 'M_THREEPID_AUTH_FAILED' }, 400),
         ),
     });
-    expect(await firstValueFrom(workflow.confirm(pending, stages()))).toEqual({
+    expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
       kind: 'refused',
       reason: 'not-verified',
     });
@@ -268,9 +268,10 @@ describe('EmailAddressesWorkflow.confirm', () => {
     const workflow = setup({
       addThreePidOnly: vi.fn().mockRejectedValue(uia(['m.login.password'])),
     });
-    expect(
-      await firstValueFrom(workflow.confirm(pending, stages(null))),
-    ).toEqual({ kind: 'refused', reason: 'cancelled' });
+    expect(await firstValueFrom(workflow.add(pending, stages(null)))).toEqual({
+      kind: 'refused',
+      reason: 'cancelled',
+    });
   });
 
   it('opens the fallback page for a non-password stage', async () => {
@@ -280,7 +281,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
       .mockResolvedValueOnce({});
     const workflow = setup({ addThreePidOnly });
     const s = stages();
-    const result = await firstValueFrom(workflow.confirm(pending, s));
+    const result = await firstValueFrom(workflow.add(pending, s));
     expect(result).toEqual({ kind: 'added' });
     expect(s.confirmInBrowser).toHaveBeenCalledWith({
       url: workflow.client.getFallbackAuthUrl('m.login.sso', 's'),
@@ -296,7 +297,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
       .mockResolvedValueOnce({});
     const workflow = setup({ addThreePidOnly });
     const s = stages();
-    await firstValueFrom(workflow.confirm(pending, s));
+    await firstValueFrom(workflow.add(pending, s));
     expect(s.confirmInBrowser.mock.calls.map(([step]) => step.pending)).toEqual(
       [false, true],
     );
@@ -310,7 +311,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
           new MatrixError({ session: 's', flows: [{ stages: [] }] }, 401),
         ),
     });
-    expect(await firstValueFrom(workflow.confirm(pending, stages()))).toEqual({
+    expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
       kind: 'refused',
       reason: 'no-usable-stage',
     });
@@ -320,7 +321,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
     const workflow = setup({
       addThreePidOnly: vi.fn().mockRejectedValue(uia(['m.login.password'])),
     });
-    expect(await firstValueFrom(workflow.confirm(pending, stages()))).toEqual({
+    expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
       kind: 'refused',
       reason: 'attempts-exceeded',
     });
@@ -328,7 +329,7 @@ describe('EmailAddressesWorkflow.confirm', () => {
 
   it('refuses with account-unavailable when the account has no client', async () => {
     const workflow = setup({ client: false });
-    expect(await firstValueFrom(workflow.confirm(pending, stages()))).toEqual({
+    expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
       kind: 'refused',
       reason: 'account-unavailable',
     });

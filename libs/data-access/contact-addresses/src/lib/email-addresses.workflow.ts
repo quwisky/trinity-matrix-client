@@ -65,7 +65,7 @@ export class EmailAddressesWorkflow {
   }
 
   /** Binds the verified address, completing the re-authentication the homeserver asks for. */
-  confirm(
+  add(
     pending: PendingEmail,
     stages: EmailAddressStages,
   ): Observable<EmailAddResult> {

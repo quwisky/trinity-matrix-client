@@ -28,7 +28,7 @@ async function setup() {
   const workflow = {
     sendLink: vi.fn((): Observable<EmailLinkResult> => of(SENT)),
     resend: vi.fn((): Observable<EmailLinkResult> => of(SENT)),
-    confirm: vi.fn((_pending: PendingEmail, given: EmailAddressStages) => {
+    add: vi.fn((_pending: PendingEmail, given: EmailAddressStages) => {
       stages = given;
       return confirmed;
     }),
@@ -137,7 +137,7 @@ describe('AddEmailDialogComponent', () => {
     fireEvent.click(screen.getByTestId('add-email-continue'));
     fireEvent.click(screen.getByTestId('add-email-resend'));
 
-    expect(test.workflow.confirm).toHaveBeenCalledTimes(1);
+    expect(test.workflow.add).toHaveBeenCalledTimes(1);
     expect(test.workflow.resend).not.toHaveBeenCalled();
     expect(
       (screen.getByTestId('add-email-continue') as HTMLButtonElement).disabled,
@@ -212,7 +212,7 @@ describe('AddEmailDialogComponent', () => {
     fireEvent.click(screen.getByTestId('add-email-continue'));
 
     expect(test.workflow.sendLink).toHaveBeenCalledWith(ALICE, 'a@b.c');
-    expect(test.workflow.confirm).toHaveBeenCalledWith(
+    expect(test.workflow.add).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: ALICE, email: 'a@b.c' }),
       expect.anything(),
     );
