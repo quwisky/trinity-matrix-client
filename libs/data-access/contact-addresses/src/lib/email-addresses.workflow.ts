@@ -1,12 +1,21 @@
 import { Injectable, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { describeMatrixRequestFailure } from '@trinity/util/matrix';
+import {
+  UiaAttemptsExceededError,
+  UiaCancelledError,
+  UiaUnsupportedError,
+  describeMatrixRequestFailure,
+  driveUia,
+} from '@trinity/util/matrix';
 import { Observable, catchError, defer, forkJoin, from, map, of } from 'rxjs';
 import type {
   ContactAddress,
+  EmailAddResult,
   EmailAddressRefused,
+  EmailAddressStages,
   EmailAddressesLoad,
   EmailLinkResult,
+  EmailRemoveResult,
   PendingEmail,
 } from './email-addresses.models';
 
@@ -55,6 +64,59 @@ export class EmailAddressesWorkflow {
     });
   }
 
+  /** Binds the verified address, completing the re-authentication the homeserver asks for. */
+  confirm(
+    pending: PendingEmail,
+    stages: EmailAddressStages,
+  ): Observable<EmailAddResult> {
+    return defer(() => {
+      const client = this.matrix.clientFor(pending.accountId);
+      if (!client) return of(refused('account-unavailable'));
+      return from(
+        driveUia(
+          (auth) =>
+            client.addThreePidOnly({
+              sid: pending.sid,
+              client_secret: pending.clientSecret,
+              // The SDK types `auth` as `{ type }`, but a fallback stage answers with `{ session }` alone.
+              ...(auth
+                ? {
+                    auth: auth as Parameters<
+                      typeof client.addThreePidOnly
+                    >[0]['auth'],
+                  }
+                : {}),
+            }),
+          {
+            password: { user: pending.accountId, prompt: stages.password },
+            fallback: ({ stage, session }) =>
+              stages.confirmInBrowser({
+                url: client.getFallbackAuthUrl(stage, session),
+                pending: false,
+              }),
+          },
+        ),
+      ).pipe(
+        map((): EmailAddResult => ({ kind: 'added' })),
+        catchError((err: unknown) => of(refusalOf(err))),
+      );
+    });
+  }
+
+  remove(
+    accountId: string,
+    address: ContactAddress,
+  ): Observable<EmailRemoveResult> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) return of(refused('account-unavailable'));
+      return from(client.deleteThreePid(address.medium, address.address)).pipe(
+        map((): EmailRemoveResult => ({ kind: 'removed' })),
+        catchError((err: unknown) => of(refusalOf(err))),
+      );
+    });
+  }
+
   private requestLink(pending: PendingEmail): Observable<EmailLinkResult> {
     return defer(() => {
       const client = this.matrix.clientFor(pending.accountId);
@@ -85,6 +147,7 @@ const REFUSAL_BY_ERRCODE: Readonly<
   M_SERVER_NOT_TRUSTED: 'cannot-send',
   M_INVALID_PARAM: 'invalid',
   M_INVALID_EMAIL: 'invalid',
+  M_THREEPID_AUTH_FAILED: 'not-verified',
 };
 
 function refused(reason: EmailAddressRefused['reason']): EmailAddressRefused {
@@ -92,6 +155,11 @@ function refused(reason: EmailAddressRefused['reason']): EmailAddressRefused {
 }
 
 function refusalOf(err: unknown): EmailAddressRefused {
+  if (err instanceof UiaCancelledError) return refused('cancelled');
+  if (err instanceof UiaAttemptsExceededError) {
+    return refused('attempts-exceeded');
+  }
+  if (err instanceof UiaUnsupportedError) return refused('no-usable-stage');
   const failure = describeMatrixRequestFailure(err);
   if (failure.kind === 'network' || failure.kind === 'timeout') {
     return refused('unreachable');

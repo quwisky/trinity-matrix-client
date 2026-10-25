@@ -1,3 +1,5 @@
+import type { UiaPasswordPrompt } from '@trinity/util/matrix';
+
 export interface ContactAddress {
   readonly medium: 'email' | 'msisdn';
   readonly address: string;
@@ -41,3 +43,18 @@ export interface PendingEmail {
 export type EmailLinkResult =
   | { readonly kind: 'sent'; readonly pending: PendingEmail }
   | EmailAddressRefused;
+
+/** The re-authentication answers the person gives while an address is added. */
+export interface EmailAddressStages {
+  readonly password: UiaPasswordPrompt;
+  /** Resolves true once the person reports the fallback page finished, false to go back. */
+  readonly confirmInBrowser: (step: {
+    readonly url: string;
+    readonly pending: boolean;
+  }) => Promise<boolean>;
+}
+
+export type EmailAddResult = { readonly kind: 'added' } | EmailAddressRefused;
+
+export type EmailRemoveResult =
+  { readonly kind: 'removed' } | EmailAddressRefused;
