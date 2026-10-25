@@ -626,10 +626,15 @@ describe('ReportBugDialogComponent', () => {
       ],
     });
 
-    await vi.waitFor(() => {
-      rendered.fixture.detectChanges();
-      expect(screen.getByTestId('report-bug-preview-toggle')).toBeTruthy();
-    });
+    // The real export lazy-loads its chunk and builds in slices, so a loaded CI runner can
+    // take well over waitFor's default 1 s before the preview toggle appears.
+    await vi.waitFor(
+      () => {
+        rendered.fixture.detectChanges();
+        expect(screen.getByTestId('report-bug-preview-toggle')).toBeTruthy();
+      },
+      { timeout: 10_000 },
+    );
     screen.getByTestId('report-bug-preview-toggle').click();
     rendered.fixture.detectChanges();
 
@@ -640,5 +645,5 @@ describe('ReportBugDialogComponent', () => {
     expect(TestBed.inject(DIAGNOSTIC_REPORT_CONFIG).issueRepositoryUrl).toBe(
       null,
     );
-  });
+  }, 15_000);
 });
