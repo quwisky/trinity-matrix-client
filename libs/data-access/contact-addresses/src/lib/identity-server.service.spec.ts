@@ -469,6 +469,20 @@ describe('IdentityServerService.findable', () => {
     );
   });
 
+  it('lists nothing when the account has not signed the server’s terms', async () => {
+    const s = setup();
+    s.fake.identityHashedLookup.mockRejectedValue(
+      new MatrixError(
+        { errcode: 'M_TERMS_NOT_SIGNED', error: 'Terms not signed' },
+        403,
+      ),
+    );
+    expect(await firstValueFrom(s.findable(ALICE, IS, ['a@x.org']))).toEqual({
+      kind: 'loaded',
+      published: new Set(),
+    });
+  });
+
   it('refuses on failure', async () => {
     const s = setup();
     s.fake.identityHashedLookup.mockRejectedValue(new Error('x'));

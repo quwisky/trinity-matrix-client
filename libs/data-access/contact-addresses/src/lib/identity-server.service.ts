@@ -188,7 +188,15 @@ export class IdentityServerService {
             .map(({ address }) => address),
         ),
       } as const;
-    }).pipe(catchError((err: unknown) => of(refusalOf(err))));
+    }).pipe(
+      catchError((err: unknown) =>
+        of(
+          isTermsNotSigned(err)
+            ? ({ kind: 'loaded', published: new Set<string>() } as const)
+            : refusalOf(err),
+        ),
+      ),
+    );
   }
 
   sendPublishLink(
@@ -347,6 +355,11 @@ function isNotValidated(err: unknown): boolean {
   return (
     err instanceof MatrixError && err.errcode === 'M_SESSION_NOT_VALIDATED'
   );
+}
+
+// Nothing can be published on a server whose terms the account has not signed.
+function isTermsNotSigned(err: unknown): boolean {
+  return err instanceof MatrixError && err.errcode === 'M_TERMS_NOT_SIGNED';
 }
 
 function normalizeUrl(url: string): string {
