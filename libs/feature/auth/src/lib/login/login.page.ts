@@ -346,7 +346,13 @@ export class LoginPage {
   //
   // Disabled rules live in the schema: Signal Forms owns disabled state, and binding
   // [disabled] on a [formField] node is a compile error (NG8022).
-  private readonly homeserverModel = signal({ homeserver: 'matrix.org' });
+  // Prefilled only: discovering a server straight from a link would put an arbitrary
+  // server's password form in front of the person without them choosing it.
+  private readonly homeserverModel = signal({
+    homeserver:
+      this.route.snapshot.queryParamMap.get('homeserver')?.trim() ||
+      'matrix.org',
+  });
   readonly homeserverForm = form(this.homeserverModel, (path) => {
     disabled(path.homeserver, { when: () => this.busy() });
   });

@@ -131,6 +131,9 @@ test.describe('Password reset', () => {
     await expect(page.getByTestId('login-password-reset')).toBeVisible({
       timeout: 20_000,
     });
+    await expect(page.getByLabel('Homeserver', { exact: true })).toHaveValue(
+      hs,
+    );
 
     await passwordLogin(request, hs, account.user, newPass);
     await expect(
@@ -159,6 +162,9 @@ test.describe('Password reset', () => {
     await expect(page.getByTestId('login-password-reset')).toBeVisible({
       timeout: 20_000,
     });
+    await expect(page.getByLabel('Homeserver', { exact: true })).toHaveValue(
+      hs,
+    );
 
     await passwordLogin(request, hs, account.user, newPass);
     expect(await whoami(request, account.accessToken)).toBe(200);

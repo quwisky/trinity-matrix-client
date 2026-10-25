@@ -91,6 +91,8 @@ async function renderLogin(
     qrFlow?: Observable<NewDeviceState>;
     /** The navigation state the reset-password page leaves when it signs the person back in. */
     navigationState?: { passwordReset: true };
+    /** `?homeserver=`, as the reset and registration pages hand back. */
+    homeserver?: string;
   } = {},
 ): Promise<{
   fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
@@ -109,7 +111,9 @@ async function renderLogin(
         ? (opts.reauth ?? null)
         : key === 'device' && opts.newDevice
           ? 'new'
-          : null,
+          : key === 'homeserver'
+            ? (opts.homeserver ?? null)
+            : null,
   };
   const discoverHomeserver = auth.discoverHomeserver;
   const { fixture } = await render(LoginPage, {
@@ -829,6 +833,35 @@ describe('LoginPage', () => {
       expect(
         fixture.nativeElement.querySelector('[data-testid="password-forgot"]'),
       ).toBeNull();
+    });
+  });
+
+  describe('?homeserver=', () => {
+    function homeserverValue(fixture: { nativeElement: HTMLElement }): string {
+      return (
+        fixture.nativeElement.querySelector(
+          'input[name="homeserver"], #homeserver, input',
+        ) as HTMLInputElement
+      ).value;
+    }
+
+    it('prefills the server it is given without looking it up', async () => {
+      const discoverHomeserver = vi.fn(() => of('https://hs.example'));
+      const { cmp, fixture } = await renderLogin(
+        { discoverHomeserver } as unknown as Partial<AuthService>,
+        { homeserver: 'hs.example' },
+      );
+      fixture.detectChanges();
+
+      expect(cmp.homeserverForm.homeserver().value()).toBe('hs.example');
+      expect(homeserverValue(fixture)).toBe('hs.example');
+      expect(discoverHomeserver).not.toHaveBeenCalled();
+    });
+
+    it('keeps matrix.org without one', async () => {
+      const { cmp } = await renderLogin({});
+
+      expect(cmp.homeserverForm.homeserver().value()).toBe('matrix.org');
     });
   });
 
