@@ -81,12 +81,12 @@ async function toSent(page: Awaited<ReturnType<typeof renderPage>>) {
 async function toPassword(
   page: Awaited<ReturnType<typeof renderPage>>,
   password = 'pw',
-  confirm = password,
+  repeat = password,
 ) {
   await toSent(page);
   await click(page.fixture, 'reset-continue');
   type('reset-password-input', password);
-  type('reset-confirm-input', confirm);
+  type('reset-confirm-input', repeat);
 }
 
 const logoutBox = () =>

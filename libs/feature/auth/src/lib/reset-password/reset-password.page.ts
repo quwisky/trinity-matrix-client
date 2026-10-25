@@ -102,19 +102,21 @@ export class ResetPasswordPage {
 
   private readonly passwordModel = signal({
     password: '',
-    confirm: '',
+    confirmation: '',
     logoutDevices: true,
   });
   protected readonly passwordForm = form(this.passwordModel, (path) => {
     required(path.password, { message: RESET_PASSWORD_COPY.passwordRequired });
-    required(path.confirm, { message: RESET_PASSWORD_COPY.confirmRequired });
-    validate(path.confirm, ({ value, valueOf }) =>
+    required(path.confirmation, {
+      message: RESET_PASSWORD_COPY.confirmRequired,
+    });
+    validate(path.confirmation, ({ value, valueOf }) =>
       value() === valueOf(path.password)
         ? undefined
         : { kind: 'passwordMismatch', message: RESET_PASSWORD_COPY.mismatch },
     );
     disabled(path.password, { when: () => this.busy() });
-    disabled(path.confirm, { when: () => this.busy() });
+    disabled(path.confirmation, { when: () => this.busy() });
   });
 
   constructor() {
@@ -151,7 +153,7 @@ export class ResetPasswordPage {
   protected submitReset(): void {
     if (this.busy()) return;
     this.passwordForm.password().markAsTouched();
-    this.passwordForm.confirm().markAsTouched();
+    this.passwordForm.confirmation().markAsTouched();
     const pending = this.pending();
     if (!pending || this.passwordForm().invalid()) return;
     const { password, logoutDevices } = this.passwordModel();
