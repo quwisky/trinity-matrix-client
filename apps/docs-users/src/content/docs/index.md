@@ -268,8 +268,7 @@ encrypted messages. An account that signs in through a provider resets its passw
 
 Settings › Account has an **Email addresses** group, above **Delete account**. It lists the
 email addresses on your account, and any phone numbers your server already has. Your server can
-use an email address to reset your password. The addresses stay on your homeserver: Trinity
-doesn't share them with an identity server.
+use an email address to reset your password.
 
 **Add one.** Choose **Add email address**, type the address and choose **Send link**. Trinity sends
 a link to that address. Open the link first, then come back to Trinity and choose **Continue**. If your
@@ -280,7 +279,19 @@ If you choose **Continue** before you open the link, Trinity asks for your passw
 the link hasn't been opened. Open the link and choose **Continue** again; you don't need to type
 your password a second time.
 
-**Remove one.** Choose **Remove** next to the address and confirm.
+**Let people find you.** An identity server lets people who know your email address find you on
+Matrix. Trinity sends nothing to one until you choose a server under **Identity server** (choose
+**Change**) and turn **Findable** on next to an address. Trinity then sends the server that address
+and your Matrix ID, and it asks the server about your own addresses to show which ones are
+findable. If the server has terms, Trinity shows them first and you choose **Accept** or **Not now**.
+The server then emails a link to the address; open it, then choose **Continue**. Turn **Findable**
+off to stop people finding you by that address. Choose **Turn off** next to **Identity server** to
+stop using it. Changing or turning off the server first stops it finding you by every address you
+published, and Trinity asks you to confirm.
+
+**Remove one.** Choose **Remove** next to the address and confirm. This also stops the identity
+server finding you by that address. If the server can't do that, Trinity says it may still let
+people find you by it.
 
 If your server doesn't allow changes, the list is read-only and says so. If you sign in through a
 provider, you manage your addresses at the provider, and the group says so.
