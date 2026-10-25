@@ -115,7 +115,7 @@ test.describe('Email addresses', () => {
     await page
       .getByRole('button', { name: `Remove ${account.address}` })
       .click();
-    await page.getByTestId('remove-email-confirm').click();
+    await page.getByTestId('alert-confirm').click();
     await expect(
       page.getByRole('button', { name: `Remove ${account.address}` }),
     ).toHaveCount(0, { timeout: 20_000 });
