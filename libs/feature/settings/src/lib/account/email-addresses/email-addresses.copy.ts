@@ -26,6 +26,8 @@ export const EMAIL_ADDRESSES_COPY = {
   removed: (address: string) => `${address} was removed.`,
   removedStillFindable: (address: string, host: string) =>
     `${address} was removed. ${host} may still let people find you by it.`,
+  removedMayStillFindable: (address: string) =>
+    `${address} was removed. An identity server may still let people find you by it.`,
   identityServerLabel: 'Identity server',
   identityServerOff: 'Off',
   identityServerNone: 'None',
@@ -44,6 +46,12 @@ export const EMAIL_ADDRESSES_COPY = {
   turnOffTitle: 'Turn off the identity server?',
   turnOffBody:
     'Nobody will be able to find you by email until you choose one again.',
+  turnOffAnywayTitle: 'Turn off anyway?',
+  turnOffAnyway: 'Turn off anyway',
+  changeAnywayTitle: 'Change anyway?',
+  changeAnyway: 'Change anyway',
+  mayStillFindAll: (host: string) =>
+    `${host} may still let people find you by your email addresses.`,
   unpublishBody: (host: string, count: number) =>
     `Trinity will first stop ${host} from finding you by ${count} ${count === 1 ? 'address' : 'addresses'}.`,
   serverUnreachable: (host: string) =>

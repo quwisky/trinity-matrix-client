@@ -41,6 +41,10 @@ function setup(
     agreeToTerms: vi.fn().mockResolvedValue({}),
     getUserId: vi.fn(() => ALICE),
     generateClientSecret: vi.fn(() => 'secret'),
+    getIdentityHashDetails: vi.fn().mockResolvedValue({
+      algorithms: ['none', 'sha256'],
+      lookup_pepper: 'p',
+    }),
     identityHashedLookup: vi.fn().mockResolvedValue([]),
     requestEmailToken: vi.fn().mockResolvedValue({ sid: 'sid1' }),
     bindThreePid: vi.fn().mockResolvedValue({}),
@@ -480,6 +484,58 @@ describe('IdentityServerService.findable', () => {
     expect(await firstValueFrom(s.findable(ALICE, IS, ['a@x.org']))).toEqual({
       kind: 'terms-needed',
     });
+  });
+
+  it('answers an empty list without contacting the server', async () => {
+    const s = setup();
+    expect(await firstValueFrom(s.findable(ALICE, IS, []))).toEqual({
+      kind: 'loaded',
+      published: new Set(),
+    });
+    expect(s.fake.registerWithIdentityServer).not.toHaveBeenCalled();
+    expect(s.fake.getOpenIdToken).not.toHaveBeenCalled();
+    expect(s.fake.identityHashedLookup).not.toHaveBeenCalled();
+  });
+
+  it('refuses a server that does not offer sha256 lookups', async () => {
+    const s = setup();
+    s.fake.getIdentityHashDetails.mockResolvedValue({
+      algorithms: ['none'],
+      lookup_pepper: 'p',
+    });
+    expect(await firstValueFrom(s.findable(ALICE, IS, ['a@x.org']))).toEqual({
+      kind: 'refused',
+      reason: 'failed',
+    });
+    expect(s.fake.getIdentityHashDetails).toHaveBeenCalledWith('is-token');
+    expect(s.fake.identityHashedLookup).not.toHaveBeenCalled();
+  });
+
+  it('starts a second server’s lookup only after the first settles', async () => {
+    const s = setup();
+    let finish: (value: never[]) => void = () => undefined;
+    s.fake.identityHashedLookup.mockImplementationOnce(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    const first = firstValueFrom(s.findable(ALICE, IS, ['a@x.org']));
+    const second = firstValueFrom(
+      s.findable(ALICE, 'https://other.example', ['a@x.org']),
+    );
+    await vi.waitFor(() =>
+      expect(s.fake.identityHashedLookup).toHaveBeenCalledTimes(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(s.fake.setIdentityServerUrl).not.toHaveBeenCalledWith(
+      'https://other.example',
+    );
+
+    finish([]);
+    await first;
+    await second;
+    expect(s.fake.identityHashedLookup).toHaveBeenCalledTimes(2);
+    expect(s.fake.setIdentityServerUrl).toHaveBeenLastCalledWith(
+      'https://other.example',
+    );
   });
 
   it('refuses on failure', async () => {

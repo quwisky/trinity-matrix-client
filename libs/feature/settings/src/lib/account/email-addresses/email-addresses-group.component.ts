@@ -60,7 +60,7 @@ type GroupState = { readonly kind: 'loading' } | EmailAddressesLoad;
 /** The identity server in use and which of the account's emails it lets people find it by. */
 interface IdentityState {
   readonly choice: IdentityServerChoice;
-  /** 'unknown' while the server wants its terms signed; it may still list addresses. */
+  /** 'unknown' while the server wants its terms signed or can't answer; it may still list addresses. */
   readonly published: readonly string[] | 'unknown';
   /** The server could not say what it lists, so the switches are off and disabled. */
   readonly failed: boolean;
@@ -72,9 +72,7 @@ function foundState(
   if (found.kind === 'loaded') {
     return { published: [...found.published], failed: false };
   }
-  return found.kind === 'terms-needed'
-    ? { published: 'unknown', failed: false }
-    : { published: [], failed: true };
+  return { published: 'unknown', failed: found.kind !== 'terms-needed' };
 }
 
 /** Settings › Account › Email addresses: list, add and remove the account's 3PIDs. */
@@ -107,8 +105,10 @@ export class EmailAddressesGroupComponent {
   protected readonly actionError = signal('');
   protected readonly state = signal<GroupState>({ kind: 'loading' });
   protected readonly identity = signal<IdentityState | null>(null);
-  /** Addresses with a request or dialog open; a second change to one is ignored. */
+  /** Why the identity server choice couldn't be read, or empty. */
+  protected readonly identityError = signal('');
   protected readonly identityRowBusy = signal(false);
+  /** Addresses with a request or dialog open; a second change to one is ignored. */
   protected readonly busyAddresses = signal<ReadonlySet<string>>(new Set());
 
   readonly accountId = input.required<string>();
@@ -205,12 +205,14 @@ export class EmailAddressesGroupComponent {
           if (result.kind === 'removed') {
             const choice = this.identity()?.choice;
             this.say(
-              result.unbind === 'no-support' && choice?.kind === 'set'
-                ? this.copy.removedStillFindable(
-                    address.address,
-                    hostOf(choice.url),
-                  )
-                : this.copy.removed(address.address),
+              result.unbind !== 'no-support'
+                ? this.copy.removed(address.address)
+                : choice?.kind === 'set'
+                  ? this.copy.removedStillFindable(
+                      address.address,
+                      hostOf(choice.url),
+                    )
+                  : this.copy.removedMayStillFindable(address.address),
             );
             if (current) {
               this.actionError.set('');
@@ -267,36 +269,34 @@ export class EmailAddressesGroupComponent {
       this.failWith(accountId, result, host);
       return EMPTY;
     };
-    // A well-known server is only the person's choice once they act, so it is saved before it is used.
-    const url$ =
+    const url = choice.url;
+    // A well-known server becomes the person's choice only once its terms are accepted.
+    const chosen$ = (): Observable<string> =>
       choice.source === 'account'
-        ? of(choice.url)
-        : this.identityServer.use(accountId, choice.url).pipe(
+        ? of(url)
+        : this.identityServer.use(accountId, url).pipe(
             switchMap((saved) => {
               if (saved.kind === 'refused') return refused(saved);
               this.chosen(accountId, saved.url);
               return of(saved.url);
             }),
           );
-    return url$.pipe(
-      switchMap((url) =>
-        this.identityServer.terms(accountId, url).pipe(
-          switchMap((terms) => {
-            if (terms.kind === 'refused') return refused(terms);
-            if (terms.kind === 'accepted') return of(url);
-            return this.askTerms(host, terms.policies).pipe(
-              filter(Boolean),
-              switchMap(() =>
-                this.identityServer.acceptTerms(accountId, url, terms.policies),
-              ),
-              switchMap((accepted) =>
-                accepted.kind === 'refused' ? refused(accepted) : of(url),
-              ),
-            );
-          }),
-        ),
-      ),
-      switchMap((url) => this.publish(accountId, address, url)),
+    return this.identityServer.terms(accountId, url).pipe(
+      switchMap((terms) => {
+        if (terms.kind === 'refused') return refused(terms);
+        if (terms.kind === 'accepted') return of(true);
+        return this.askTerms(host, terms.policies).pipe(
+          filter(Boolean),
+          switchMap(() =>
+            this.identityServer.acceptTerms(accountId, url, terms.policies),
+          ),
+          switchMap((accepted) =>
+            accepted.kind === 'refused' ? refused(accepted) : of(true),
+          ),
+        );
+      }),
+      switchMap(chosen$),
+      switchMap((saved) => this.publish(accountId, address, saved)),
     );
   }
 
@@ -320,9 +320,9 @@ export class EmailAddressesGroupComponent {
             if (result.kind === 'refused') return;
             // A server without unbind support reports success and keeps listing the address.
             if (this.isPublished(address)) {
-              this.actionError.set(
-                this.copy.stillFindable(hostOf(url), address),
-              );
+              const message = this.copy.stillFindable(hostOf(url), address);
+              this.actionError.set(message);
+              this.announcement.set(message);
             } else {
               this.say(this.copy.unpublished(address));
             }
@@ -438,9 +438,19 @@ export class EmailAddressesGroupComponent {
     accountId: string,
     load: Extract<EmailAddressesLoad, { kind: 'loaded' }>,
   ): Observable<IdentityState | null> {
+    this.identityError.set('');
     return this.identityServer.choice(accountId).pipe(
       switchMap((choice) => {
-        if (choice.kind === 'refused') return of(null);
+        if (choice.kind === 'refused') {
+          this.identityError.set(
+            identityRefusalMessage(
+              choice.reason,
+              this.server(),
+              choice.retryAfterMs,
+            ),
+          );
+          return of(null);
+        }
         // Only a server the person chose is asked; a well-known one is not contacted until they act.
         if (choice.kind !== 'set' || choice.source !== 'account') {
           return of({ choice, published: [], failed: false });

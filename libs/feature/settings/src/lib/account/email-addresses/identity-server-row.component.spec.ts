@@ -163,13 +163,22 @@ describe('IdentityServerRowComponent', () => {
     );
   });
 
-  it('leaves the server unchanged when unpublishing is refused', async () => {
+  it('asks to turn off anyway when unpublishing is refused, and cancelling leaves the server', async () => {
     const test = await setup(SET, ['a@b.c']);
     test.identity.unpublishAll.mockReturnValue(
       of({ kind: 'refused', reason: 'unreachable' } as never),
     );
     fireEvent.click(screen.getByTestId('identity-server-turn-off'));
     test.confirmed.next(true);
+
+    expect(test.alert.confirm$).toHaveBeenLastCalledWith({
+      header: 'Turn off anyway?',
+      message:
+        'vector.im may still let people find you by your email addresses.',
+      confirmText: 'Turn off anyway',
+      variant: 'danger',
+    });
+    test.confirmed.next(false);
     await test.fixture.whenStable();
     test.fixture.detectChanges();
 
@@ -187,8 +196,25 @@ describe('IdentityServerRowComponent', () => {
     );
     fireEvent.click(screen.getByTestId('identity-server-turn-off'));
     test.confirmed.next(true);
+    test.confirmed.next(false);
 
     expect(test.changed).toHaveBeenCalledTimes(1);
+  });
+
+  it('turns off anyway when that is confirmed after a refused unpublish', async () => {
+    const test = await setup(SET, ['a@b.c']);
+    test.identity.unpublishAll.mockReturnValue(
+      of({ kind: 'refused', reason: 'unreachable' }),
+    );
+    fireEvent.click(screen.getByTestId('identity-server-turn-off'));
+    test.confirmed.next(true);
+    test.confirmed.next(true);
+    await test.fixture.whenStable();
+    test.fixture.detectChanges();
+
+    expect(test.identity.turnOff).toHaveBeenCalledWith(ALICE);
+    expect(test.changed).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('identity-server-row-error')).toBeNull();
   });
 
   it('says the homeserver could not save when turning off is refused', async () => {

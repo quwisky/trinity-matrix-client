@@ -110,14 +110,30 @@ export class IdentityServerRowComponent {
             published.length === 0
               ? of({ kind: 'unpublished' } as const)
               : this.identity.unpublishAll(accountId, choice.url, published);
+          const turnOff$ = () =>
+            this.identity
+              .turnOff(accountId)
+              .pipe(map((saved) => ({ stage: 'save', saved }) as const));
           return released$.pipe(
-            switchMap((released) =>
-              released.kind === 'unpublished'
-                ? this.identity
-                    .turnOff(accountId)
-                    .pipe(map((saved) => ({ stage: 'save', saved }) as const))
-                : of({ stage: 'unpublish' } as const),
-            ),
+            switchMap((released) => {
+              if (released.kind === 'unpublished') return turnOff$();
+              this.busy.set(false);
+              return this.alert
+                .confirm$({
+                  header: this.copy.turnOffAnywayTitle,
+                  message: this.copy.mayStillFindAll(host),
+                  confirmText: this.copy.turnOffAnyway,
+                  variant: 'danger',
+                })
+                .pipe(
+                  take(1),
+                  switchMap((anyway) => {
+                    if (!anyway) return of({ stage: 'unpublish' } as const);
+                    this.busy.set(true);
+                    return turnOff$();
+                  }),
+                );
+            }),
           );
         }),
         takeUntilDestroyed(this.destroyRef),

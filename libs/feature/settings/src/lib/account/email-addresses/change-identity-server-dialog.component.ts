@@ -92,6 +92,10 @@ export class ChangeIdentityServerDialogComponent {
     const accountId = this.accountId();
     const old = this.current();
     const published = this.published();
+    if (old && normalizeUrl(this.model().url) === normalizeUrl(old)) {
+      this.ref?.close();
+      return;
+    }
     this.busy.set(true);
     this.identity
       .check(this.model().url)
@@ -118,22 +122,36 @@ export class ChangeIdentityServerDialogComponent {
               switchMap((yes) => {
                 if (!yes) return of({ kind: 'cancelled' } as const);
                 this.busy.set(true);
+                const use$ = () =>
+                  this.identity
+                    .use(accountId, next)
+                    .pipe(
+                      map((used) => ({ kind: 'used', used, next }) as const),
+                    );
                 // The identity server URL is shared client state, so the old server finishes first.
                 return this.identity
                   .unpublishAll(accountId, old, published)
                   .pipe(
-                    switchMap((released) =>
-                      released.kind === 'unpublished'
-                        ? this.identity
-                            .use(accountId, next)
-                            .pipe(
-                              map(
-                                (used) =>
-                                  ({ kind: 'used', used, next }) as const,
-                              ),
-                            )
-                        : of({ kind: 'unpublish-refused' } as const),
-                    ),
+                    switchMap((released) => {
+                      if (released.kind === 'unpublished') return use$();
+                      this.busy.set(false);
+                      return this.alert
+                        .confirm$({
+                          header: this.copy.changeAnywayTitle,
+                          message: this.copy.mayStillFindAll(hostOf(old)),
+                          confirmText: this.copy.changeAnyway,
+                        })
+                        .pipe(
+                          take(1),
+                          switchMap((anyway) => {
+                            if (!anyway) {
+                              return of({ kind: 'unpublish-refused' } as const);
+                            }
+                            this.busy.set(true);
+                            return use$();
+                          }),
+                        );
+                    }),
                   );
               }),
             );
@@ -193,4 +211,8 @@ export class ChangeIdentityServerDialogComponent {
         return this.copy.saveFailed(serverNameOf(this.accountId()));
     }
   }
+}
+
+function normalizeUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '');
 }

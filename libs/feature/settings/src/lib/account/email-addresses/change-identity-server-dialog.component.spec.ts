@@ -150,7 +150,7 @@ describe('ChangeIdentityServerDialogComponent', () => {
     expect(test.close).not.toHaveBeenCalled();
   });
 
-  it('names the old server and closes as partial when unpublishing is refused', async () => {
+  it('names the old server and closes as partial when unpublishing is refused and Change anyway is cancelled', async () => {
     const test = await setup(['a@b.c']);
     test.identity.unpublishAll.mockReturnValue(
       of({ kind: 'refused', reason: 'unreachable' }),
@@ -158,11 +158,46 @@ describe('ChangeIdentityServerDialogComponent', () => {
     await save(test, 'https://new.example');
     test.confirmed.next(true);
 
+    expect(test.confirm$).toHaveBeenLastCalledWith({
+      header: 'Change anyway?',
+      message:
+        'vector.im may still let people find you by your email addresses.',
+      confirmText: 'Change anyway',
+    });
+    test.confirmed.next(false);
+
     expect(test.identity.use).not.toHaveBeenCalled();
     expect(test.close).toHaveBeenCalledWith({
       kind: 'partial',
       message: 'Trinity couldn’t reach vector.im. Try again later.',
     });
+  });
+
+  it('changes anyway when that is confirmed after a refused unpublish', async () => {
+    const test = await setup(['a@b.c']);
+    test.identity.unpublishAll.mockReturnValue(
+      of({ kind: 'refused', reason: 'unreachable' }),
+    );
+    await save(test, 'https://new.example');
+    test.confirmed.next(true);
+    test.confirmed.next(true);
+
+    expect(test.identity.use).toHaveBeenCalledWith(
+      ALICE,
+      'https://new.example',
+    );
+    expect(test.close).toHaveBeenCalledWith({ kind: 'changed' });
+  });
+
+  it('closes without unpublishing when the address is the current server', async () => {
+    const test = await setup(['a@b.c']);
+    await save(test, ' https://vector.im/ ');
+
+    expect(test.close).toHaveBeenCalledWith();
+    expect(test.identity.check).not.toHaveBeenCalled();
+    expect(test.confirm$).not.toHaveBeenCalled();
+    expect(test.identity.unpublishAll).not.toHaveBeenCalled();
+    expect(test.identity.use).not.toHaveBeenCalled();
   });
 
   it('names the new server when use is unreachable after unpublishing', async () => {

@@ -91,6 +91,26 @@
           (changed)="refresh()"
         />
       }
+      @if (identityError(); as message) {
+        <div class="flex flex-col items-start gap-2 py-3">
+          <p
+            class="m-0 text-sm text-danger"
+            data-testid="identity-server-error"
+          >
+            {{ message }}
+          </p>
+          <button
+            trnBtn
+            size="sm"
+            presentation="outline"
+            type="button"
+            (click)="refresh()"
+            data-testid="identity-server-retry"
+          >
+            Try again
+          </button>
+        </div>
+      }
       @if (identity(); as server) {
         @if (server.failed && server.choice.kind === 'set') {
           <div class="flex flex-col items-start gap-2 py-3">

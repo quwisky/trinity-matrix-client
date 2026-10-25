@@ -333,32 +333,50 @@ describe('EmailAddressesGroupComponent', () => {
     );
   });
 
-  it('treats a refused findable as nothing published', async () => {
-    await setup(
+  it('treats a refused findable as unknown and offers every email to unpublish', async () => {
+    const test = await setup(
       loaded([ADDRESS]),
       'legacy',
       { kind: 'set', url: 'https://vector.im', source: 'account' },
       of({ kind: 'refused', reason: 'unreachable' }),
     );
-    const test = TestBed.inject(TrnAlertService);
     fireEvent.click(screen.getByTestId('identity-server-turn-off'));
 
-    expect(test.confirm$).toHaveBeenLastCalledWith(
+    expect(test.alert.confirm$).toHaveBeenLastCalledWith(
       expect.objectContaining({
         message:
-          'Nobody will be able to find you by email until you choose one again.',
+          'Trinity will first stop vector.im from finding you by 1 address.',
       }),
+    );
+    test.confirmed.next(true);
+
+    expect(test.identity.unpublishAll).toHaveBeenCalledWith(
+      ALICE,
+      'https://vector.im',
+      ['a@b.c'],
     );
   });
 
-  it('shows no row when the choice cannot be read', async () => {
-    await setup(loaded([ADDRESS]), 'legacy', {
+  it('says why the choice cannot be read and Try again reloads it', async () => {
+    const test = await setup(loaded([ADDRESS]), 'legacy', {
       kind: 'refused',
       reason: 'unreachable',
     });
 
     expect(screen.queryByTestId('identity-server-row')).toBeNull();
     expect(screen.getByRole('button', { name: 'Remove a@b.c' })).toBeTruthy();
+    expect(screen.getByTestId('identity-server-error').textContent).toContain(
+      'Trinity couldn’t reach example.org. Try again later.',
+    );
+
+    test.identity.choice.mockReturnValue(of({ kind: 'off' }));
+    fireEvent.click(screen.getByTestId('identity-server-retry'));
+    await test.fixture.whenStable();
+    test.fixture.detectChanges();
+
+    expect(test.identity.choice).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('identity-server-value').textContent).toBe('Off');
+    expect(screen.queryByTestId('identity-server-error')).toBeNull();
   });
 
   it('lists the addresses while what is findable is still loading', async () => {
@@ -420,7 +438,7 @@ describe('EmailAddressesGroupComponent', () => {
     expect(screen.getByRole('status').textContent).toContain(line);
   });
 
-  it('keeps the plain removed line when there is no identity server', async () => {
+  it('warns without a host when no identity server is chosen and it cannot unbind', async () => {
     const test = await setup(loaded([ADDRESS]));
     test.workflow.remove.mockReturnValue(
       of({ kind: 'removed', unbind: 'no-support' }),
@@ -429,7 +447,9 @@ describe('EmailAddressesGroupComponent', () => {
     test.confirmed.next(true);
     await test.fixture.whenStable();
 
-    expect(test.toast.show).toHaveBeenCalledWith('a@b.c was removed.');
+    expect(test.toast.show).toHaveBeenCalledWith(
+      'a@b.c was removed. An identity server may still let people find you by it.',
+    );
   });
 });
 
@@ -630,21 +650,69 @@ describe('EmailAddressesGroupComponent findable switches', () => {
     expect(toggle().checked).toBe(true);
   });
 
-  it('first saves a well-known server as the account’s choice', async () => {
-    const test = await ready(found(), {
-      kind: 'set',
-      url: 'https://vector.im',
-      source: 'well-known',
+  const WELL_KNOWN: IdentityServerChoice = {
+    kind: 'set',
+    url: 'https://vector.im',
+    source: 'well-known',
+  };
+
+  it('does not save a well-known server when its terms get Not now', async () => {
+    const test = await ready(found(), WELL_KNOWN);
+    needsConsent(test);
+
+    fireEvent.click(toggle());
+    await settle(test);
+    test.closers[0].next(undefined);
+    await settle(test);
+
+    expect(test.identity.use).not.toHaveBeenCalled();
+  });
+
+  it('saves a well-known server after its terms are accepted, before publishing', async () => {
+    const test = await ready(found(), WELL_KNOWN);
+    needsConsent(test);
+    const order: string[] = [];
+    test.identity.acceptTerms.mockImplementation(() => {
+      order.push('acceptTerms');
+      return of({ kind: 'accepted' } as const);
     });
+    test.identity.use.mockImplementation(() => {
+      order.push('use');
+      return of({ kind: 'saved', url: 'https://vector.im' } as const);
+    });
+    vi.mocked(test.surfaces.open).mockImplementation(((component: unknown) => {
+      order.push(
+        component === PublishEmailDialogComponent ? 'publish' : 'terms',
+      );
+      const index = order.filter(
+        (o) => o === 'publish' || o === 'terms',
+      ).length;
+      test.closers[index - 1] ??= new Subject<unknown>();
+      return { closed: test.closers[index - 1] };
+    }) as never);
+
+    fireEvent.click(toggle());
+    await settle(test);
+    test.closers[0].next(true);
+    await settle(test);
+
+    expect(order).toEqual(['terms', 'acceptTerms', 'use', 'publish']);
+  });
+
+  it('first saves a well-known server as the account’s choice', async () => {
+    const test = await ready(found(), WELL_KNOWN);
     expect(test.identity.findable).not.toHaveBeenCalled();
 
     fireEvent.click(toggle());
     await settle(test);
 
     expect(test.identity.use).toHaveBeenCalledWith(ALICE, 'https://vector.im');
-    expect(test.identity.use.mock.invocationCallOrder[0]).toBeLessThan(
-      test.identity.terms.mock.invocationCallOrder[0],
+    expect(test.identity.terms.mock.invocationCallOrder[0]).toBeLessThan(
+      test.identity.use.mock.invocationCallOrder[0],
     );
+    expect(
+      vi.mocked(test.surfaces.open).mock.invocationCallOrder[0],
+    ).toBeGreaterThan(test.identity.use.mock.invocationCallOrder[0]);
     const row = test.fixture.debugElement.query(
       By.directive(IdentityServerRowComponent),
     );
@@ -668,7 +736,7 @@ describe('EmailAddressesGroupComponent findable switches', () => {
     fireEvent.click(toggle());
     await settle(test);
 
-    expect(test.identity.terms).not.toHaveBeenCalled();
+    expect(test.surfaces.open).not.toHaveBeenCalled();
     expect(screen.getByTestId('email-addresses-error').textContent).toContain(
       'Trinity couldn’t reach vector.im.',
     );
@@ -703,7 +771,9 @@ describe('EmailAddressesGroupComponent findable switches', () => {
       'vector.im may still let people find you by a@b.c.',
     );
     expect(toggle().checked).toBe(true);
-    expect(screen.getByTestId('email-addresses-error')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain(
+      'vector.im may still let people find you by a@b.c.',
+    );
   });
 
   it('keeps a busy switch focusable and ignores a second toggle while a request is in flight', async () => {

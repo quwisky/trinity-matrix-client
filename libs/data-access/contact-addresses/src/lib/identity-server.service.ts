@@ -44,6 +44,8 @@ export class IdentityServerService {
   private readonly matrix = inject(MatrixClientService);
   // Memory only: an identity access token is never persisted or logged.
   private readonly tokens = new Map<string, string>();
+  // The identity server URL is per-client state, so one account's identity calls run in turn.
+  private readonly queues = new Map<string, Promise<unknown>>();
 
   choice(
     accountId: string,
@@ -174,8 +176,14 @@ export class IdentityServerService {
     | { readonly kind: 'terms-needed' }
     | IdentityServerRefused
   > {
+    if (emails.length === 0) {
+      return of({ kind: 'loaded', published: new Set<string>() } as const);
+    }
     return this.withToken(accountId, url, async (token) => {
       const client = this.client(accountId);
+      // Without sha256 the SDK falls back to sending the addresses in plain text.
+      const { algorithms } = await client.getIdentityHashDetails(token);
+      if (!algorithms.includes('sha256')) return refused('failed');
       const found = await client.identityHashedLookup(
         emails.map((email) => [email, 'email']),
         token,
@@ -249,13 +257,15 @@ export class IdentityServerService {
     url: string,
     email: string,
   ): Observable<{ readonly kind: 'unpublished' } | IdentityServerRefused> {
-    return this.withClient(accountId, async (client) => {
-      // unbindThreePid reads the identity server from the client, not from an argument.
-      client.setIdentityServerUrl(normalizeUrl(url));
-      // 'no-support' counts as unpublished so such a server cannot block changing servers; the UI re-reads findable.
-      await client.unbindThreePid('email', email);
-      return { kind: 'unpublished' } as const;
-    });
+    return this.withClient(accountId, (client) =>
+      this.inTurn(accountId, async () => {
+        // unbindThreePid reads the identity server from the client, not from an argument.
+        client.setIdentityServerUrl(normalizeUrl(url));
+        // 'no-support' counts as unpublished so such a server cannot block changing servers; the UI re-reads findable.
+        await client.unbindThreePid('email', email);
+        return { kind: 'unpublished' } as const;
+      }),
+    );
   }
 
   unpublishAll(
@@ -303,8 +313,7 @@ export class IdentityServerService {
         return access_token;
       };
       return from(
-        (async () => {
-          // The identity server URL is per-client state shared by every account call.
+        this.inTurn(accountId, async () => {
           client.setIdentityServerUrl(base);
           try {
             return await call(this.tokens.get(key) ?? (await fresh()));
@@ -313,9 +322,22 @@ export class IdentityServerService {
             this.tokens.delete(key);
             return call(await fresh());
           }
-        })(),
+        }),
       );
     });
+  }
+
+  /** Runs `run` once the account's earlier identity calls have settled. */
+  private inTurn<T>(accountId: string, run: () => Promise<T>): Promise<T> {
+    const next = (this.queues.get(accountId) ?? Promise.resolve()).then(
+      run,
+      run,
+    );
+    this.queues.set(
+      accountId,
+      next.catch(() => undefined),
+    );
+    return next;
   }
 
   private client(accountId: string): Client {
