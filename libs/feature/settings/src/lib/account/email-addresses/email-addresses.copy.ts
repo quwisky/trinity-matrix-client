@@ -23,6 +23,27 @@ export const EMAIL_ADDRESSES_COPY = {
   removed: (address: string) => `${address} was removed.`,
   removedStillFindable: (address: string, host: string) =>
     `${address} was removed. ${host} may still let people find you by it.`,
+  identityServerLabel: 'Identity server',
+  identityServerOff: 'Off',
+  identityServerNone: 'None',
+  identityServerDescription:
+    'Lets people who know one of your email addresses find you on Matrix.',
+  changeButton: 'Change',
+  turnOffButton: 'Turn off',
+  changeServerTitle: 'Change identity server',
+  changeServerQuestion: 'Change identity server?',
+  serverFieldLabel: 'Identity server address',
+  useServer: 'Use this server',
+  notHttps: 'Use an address that starts with https://.',
+  notIdentityServer:
+    'Trinity couldn’t find an identity server at that address.',
+  turnOffTitle: 'Turn off the identity server?',
+  turnOffBody:
+    'Nobody will be able to find you by email until you choose one again.',
+  unpublishBody: (host: string, count: number) =>
+    `Trinity will first stop ${host} from finding you by ${count} ${count === 1 ? 'address' : 'addresses'}.`,
+  serverUnreachable: (host: string) =>
+    `Trinity couldn’t reach ${host}. Try again later.`,
   loadFailed: (server: string) =>
     `Trinity couldn’t load your email addresses from ${server}.`,
   stoppedTitle: 'The address wasn’t added',
@@ -73,5 +94,14 @@ export function refusalMessage(
     case 'account-unavailable':
     case 'failed':
       return 'Something went wrong. Try again.';
+  }
+}
+
+/** The host part of an identity server URL, for display. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
   }
 }

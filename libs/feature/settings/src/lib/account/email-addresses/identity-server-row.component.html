@@ -1,0 +1,44 @@
+<trn-settings-row
+  [label]="copy.identityServerLabel"
+  [description]="copy.identityServerDescription"
+  data-testid="identity-server-row"
+>
+  <div class="flex items-center gap-2">
+    <span class="text-sm" data-testid="identity-server-value">{{
+      value()
+    }}</span>
+    <button
+      trnBtn
+      type="button"
+      presentation="outline"
+      size="sm"
+      [disabled]="busy()"
+      (click)="change()"
+      data-testid="identity-server-change"
+    >
+      {{ copy.changeButton }}
+    </button>
+    @if (choice().kind === 'set') {
+      <button
+        trnBtn
+        type="button"
+        presentation="outline"
+        size="sm"
+        [disabled]="busy()"
+        (click)="turnOff()"
+        data-testid="identity-server-turn-off"
+      >
+        {{ copy.turnOffButton }}
+      </button>
+    }
+  </div>
+</trn-settings-row>
+@if (error(); as message) {
+  <p
+    class="m-0 pb-3 text-sm text-danger"
+    role="alert"
+    data-testid="identity-server-error"
+  >
+    {{ message }}
+  </p>
+}

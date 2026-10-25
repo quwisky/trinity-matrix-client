@@ -62,6 +62,14 @@
           {{ copy.empty }}
         </p>
       }
+      @if (identity(); as server) {
+        <trn-identity-server-row
+          [accountId]="accountId()"
+          [choice]="server.choice"
+          [published]="server.published"
+          (changed)="refresh()"
+        />
+      }
       @if (actionError(); as message) {
         <p
           class="m-0 py-3 text-sm text-danger"

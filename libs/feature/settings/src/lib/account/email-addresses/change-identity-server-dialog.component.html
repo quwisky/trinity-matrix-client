@@ -1,0 +1,57 @@
+<trn-dialog-shell
+  [title]="copy.changeServerTitle"
+  size="md"
+  [closable]="!busy()"
+  (closed)="close()"
+>
+  <form [formRoot]="urlForm" (submit)="submit()" class="flex flex-col gap-4">
+    <div id="identity-server-body">
+      <label trnLabel for="identity-server-input">{{
+        copy.serverFieldLabel
+      }}</label>
+      <input
+        trnInput
+        id="identity-server-input"
+        type="url"
+        class="mt-1 w-full"
+        autocomplete="url"
+        spellcheck="false"
+        placeholder="https://"
+        data-autofocus
+        [formField]="urlForm.url"
+        [explicitInvalid]="error() !== ''"
+        [aria-describedby]="
+          error() !== '' ? 'identity-server-dialog-error' : null
+        "
+        data-testid="identity-server-url-input"
+      />
+      <p
+        id="identity-server-dialog-error"
+        class="m-0 pt-1 text-13 text-danger"
+        aria-live="polite"
+        data-testid="identity-server-error"
+      >
+        {{ error() }}
+      </p>
+    </div>
+    <div trnDialogActions>
+      <button
+        trnBtn
+        type="button"
+        presentation="outline"
+        [disabled]="busy()"
+        (click)="close()"
+      >
+        Cancel
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [disabled]="busy()"
+        data-testid="identity-server-save"
+      >
+        {{ copy.useServer }}
+      </button>
+    </div>
+  </form>
+</trn-dialog-shell>

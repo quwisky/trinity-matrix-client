@@ -10,9 +10,11 @@ import {
 } from '@trinity/components/overlay';
 import {
   EmailAddressesWorkflow,
+  IdentityServerService,
   type ContactAddress,
   type EmailAddressesLoad,
   type EmailRemoveResult,
+  type IdentityServerChoice,
 } from '@trinity/data-access/contact-addresses';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { AddEmailDialogComponent } from './add-email-dialog.component';
@@ -28,6 +30,7 @@ const loaded = (
 async function setup(
   first: EmailAddressesLoad,
   kind: 'legacy' | 'oauth' = 'legacy',
+  choice: IdentityServerChoice = { kind: 'none' },
 ) {
   const closed = new Subject<unknown>();
   const confirmed = new Subject<boolean>();
@@ -37,10 +40,17 @@ async function setup(
       of({ kind: 'removed', unbind: 'success' }),
     ),
   };
+  const identity = {
+    choice: vi.fn(() => of(choice)),
+    findable: vi.fn(() =>
+      of({ kind: 'loaded', published: new Set(['a@b.c']) } as const),
+    ),
+  };
   const rendered = await render(EmailAddressesGroupComponent, {
     inputs: { accountId: ALICE, accountKind: kind },
     providers: [
       { provide: EmailAddressesWorkflow, useValue: workflow },
+      { provide: IdentityServerService, useValue: identity },
       MockProvider(TrnSurfaceService, {
         open: vi.fn(() => ({ closed }) as never),
       }),
@@ -53,6 +63,7 @@ async function setup(
   return {
     ...rendered,
     workflow,
+    identity,
     closed,
     confirmed,
     alert: TestBed.inject(TrnAlertService),
@@ -110,7 +121,7 @@ describe('EmailAddressesGroupComponent', () => {
   it('read-only server hides Add and Remove and shows readOnlyLine', async () => {
     const test = await setup(loaded([ADDRESS], false));
 
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Remove|Add)/ })).toBeNull();
     expect(screen.getByText('a@b.c')).toBeTruthy();
     expect(
       screen.getByText('example.org manages the addresses on this account.'),
@@ -257,5 +268,72 @@ describe('EmailAddressesGroupComponent', () => {
     await test.fixture.whenStable();
 
     expect(test.workflow.load).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads the choice and the findable emails only for a set server on a legacy account', async () => {
+    const set: IdentityServerChoice = {
+      kind: 'set',
+      url: 'https://vector.im',
+      source: 'account',
+    };
+    const test = await setup(
+      loaded([ADDRESS, { medium: 'msisdn', address: '+4912345' }]),
+      'legacy',
+      set,
+    );
+
+    expect(test.identity.findable).toHaveBeenCalledWith(
+      ALICE,
+      'https://vector.im',
+      ['a@b.c'],
+    );
+    expect(screen.getByTestId('identity-server-value').textContent).toBe(
+      'vector.im',
+    );
+  });
+
+  it('shows the row for an off server without asking what is findable', async () => {
+    const test = await setup(loaded([ADDRESS]), 'legacy', { kind: 'off' });
+
+    expect(test.identity.findable).not.toHaveBeenCalled();
+    expect(screen.getByTestId('identity-server-value').textContent).toBe('Off');
+  });
+
+  it('oauth accounts get no identity server row and no lookups', async () => {
+    const test = await setup(loaded([]), 'oauth');
+
+    expect(screen.queryByTestId('identity-server-row')).toBeNull();
+    expect(test.identity.choice).not.toHaveBeenCalled();
+  });
+
+  it('warns that the server may still list a removed address when it cannot unbind', async () => {
+    const test = await setup(loaded([ADDRESS]), 'legacy', {
+      kind: 'set',
+      url: 'https://vector.im',
+      source: 'account',
+    });
+    test.workflow.remove.mockReturnValue(
+      of({ kind: 'removed', unbind: 'no-support' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove a@b.c' }));
+    test.confirmed.next(true);
+    await test.fixture.whenStable();
+
+    const line =
+      'a@b.c was removed. vector.im may still let people find you by it.';
+    expect(test.toast.show).toHaveBeenCalledWith(line);
+    expect(screen.getByRole('status').textContent).toContain(line);
+  });
+
+  it('keeps the plain removed line when there is no identity server', async () => {
+    const test = await setup(loaded([ADDRESS]));
+    test.workflow.remove.mockReturnValue(
+      of({ kind: 'removed', unbind: 'no-support' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove a@b.c' }));
+    test.confirmed.next(true);
+    await test.fixture.whenStable();
+
+    expect(test.toast.show).toHaveBeenCalledWith('a@b.c was removed.');
   });
 });
