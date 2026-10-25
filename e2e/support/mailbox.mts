@@ -53,7 +53,14 @@ export async function confirmResetLink(
   to: string,
   hs: string,
 ): Promise<void> {
-  const link = await latestLink(request, to, hs);
+  // The newest mail may still be the add-address one until the reset mail arrives.
+  let link = '';
+  await expect
+    .poll(async () => (link = await latestLink(request, to, hs)), {
+      timeout: 30_000,
+      message: `no password-reset mail for ${to}`,
+    })
+    .toContain('password_reset');
   const page = await request.get(link);
   const html = await page.text();
   expect(page.ok(), `reset link page: ${page.status()} ${html}`).toBe(true);
@@ -64,7 +71,9 @@ export async function confirmResetLink(
       ?.find((tag) => new RegExp(`name=["']${name}["']`, 'iu').test(tag));
     const value = input?.match(/value=["']([^"']*)["']/iu)?.[1];
     if (value === undefined) {
-      throw new Error(`the reset link page has no "${name}" field:\n${html}`);
+      throw new Error(
+        `the reset link page has no "${name}" field; starts: ${html.slice(0, 200)}`,
+      );
     }
     return value.replaceAll('&amp;', '&');
   };

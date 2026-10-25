@@ -121,9 +121,12 @@ test.describe('Password reset', () => {
     await expect(page.getByTestId('reset-error')).toHaveText(NOT_CONFIRMED, {
       timeout: 20_000,
     });
+    await expect(page.getByTestId('reset-sent')).toBeVisible();
 
     await confirmResetLink(request, account.address, hs);
+    await page.getByTestId('reset-continue').click();
     await expect(page.getByTestId('reset-password-input')).toHaveValue(newPass);
+    await expect(page.getByTestId('reset-confirm-input')).toHaveValue(newPass);
     await page.getByTestId('reset-submit').click();
     await expect(page.getByTestId('login-password-reset')).toBeVisible({
       timeout: 20_000,
