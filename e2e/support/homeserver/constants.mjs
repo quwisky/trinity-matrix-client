@@ -16,6 +16,10 @@ export const TEST_PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
 // need it for.
 // These must match e2e/support/homeserver/dex.yaml.
 export const DEX_ISSUER = 'http://localhost:5556/dex';
+
+// Mailpit's HTTP API, where the specs read the mail the homeserver sends. Synapse reaches
+// its SMTP listener on port 1025 (see synapse/adapter.mjs).
+export const MAILPIT_HTTP = 'http://127.0.0.1:8025';
 export const SSO_EMAIL = 'sso-e2e@trinity.test';
 export const SSO_PASS = 'sso-e2e-pass-123';
 /**

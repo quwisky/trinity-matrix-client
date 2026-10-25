@@ -17,6 +17,7 @@ import {
   nativeCaddyfile,
   nativeDexConfig,
   nativeDexVersion,
+  nativeMailpitVersion,
   nativePaths,
   readNativePids,
   runningNativeServices,
@@ -204,6 +205,45 @@ describe('native homeserver runtime', () => {
     });
     expect(fake.signals).toContainEqual([-4102, 'SIGTERM']);
     expect(fake.live.size).toBe(0);
+  });
+
+  it('starts Mailpit on loopback when asked, and stops it with the rest', async () => {
+    const paths = layout();
+    const fake = fakeProcesses();
+    startNativeServices(paths, fake.api, { PATH: '/bin' }, { mailpit: true });
+    expect(fake.spawns[2]).toMatchObject({
+      file: 'mailpit',
+      args: ['--listen', '127.0.0.1:8025', '--smtp', '127.0.0.1:1025'],
+      logFile: paths.logs.mailpit,
+    });
+    expect(runningNativeServices(paths.pidFile, fake.api)).toEqual([
+      'homeserver',
+      'caddy',
+      'mailpit',
+    ]);
+    await stopNativeServices(paths.pidFile, fake.api, {
+      graceMs: 50,
+      pollMs: 1,
+    });
+    expect(fake.live.size).toBe(0);
+  });
+
+  it('reads the installed Mailpit version, or null without a mailpit on PATH', async () => {
+    const versionOf = (exec: NativeProcessApi['exec']) =>
+      nativeMailpitVersion({ ...fakeProcesses().api, exec });
+    await expect(
+      versionOf(async () => ({
+        stdout:
+          '/opt/homebrew/bin/mailpit v1.31.4 compiled with go1.25.1 on darwin/arm64\n',
+      })),
+    ).resolves.toBe('v1.31.4');
+    await expect(
+      versionOf(async () => {
+        throw Object.assign(new Error('spawn mailpit ENOENT'), {
+          code: 'ENOENT',
+        });
+      }),
+    ).resolves.toBeNull();
   });
 
   it('serves the shared dex.yaml on loopback only', () => {

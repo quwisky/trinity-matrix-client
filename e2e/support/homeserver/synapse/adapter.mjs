@@ -280,6 +280,21 @@ export async function ensureConfig(ctx) {
       additions.push('caches:', '  sync_response_cache_duration: 0');
     }
   }
+  // Email validation for the email-address journeys, sent to Mailpit. Notifications stay
+  // off so no other spec's traffic lands in the mailbox. Guarded on its own key for the
+  // same reason as the publication rules above.
+  if (!/^email:/m.test(yaml)) {
+    // Mailpit's `mailpit` DNS name exists only on the compose network, as with Dex.
+    const smtpHost =
+      ctx.networkContainer || ctx.native ? 'localhost' : 'mailpit';
+    additions.push(
+      'email:',
+      `  smtp_host: "${smtpHost}"`,
+      '  smtp_port: 1025',
+      '  notif_from: "Trinity e2e <noreply@localhost>"',
+      '  enable_notifs: false',
+    );
+  }
   if (!/^federation_verify_certificates:/m.test(yaml)) {
     // The harness Caddy uses its own disposable CA. Federation is still real — only
     // certificate-chain verification is relaxed inside this isolated test network.

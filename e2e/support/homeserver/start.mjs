@@ -5,8 +5,8 @@
 // owns its compose services and config; this driver owns everything they share:
 //   1. Let the adapter write its config (Synapse generates and patches homeserver.yaml;
 //      Tuwunel's TOML is committed) and prepare its state directories.
-//   2. docker compose up -d (homeserver, remote homeserver, Dex, Caddy), restarting any
-//      service whose bind-mounted config changed under a running container.
+//   2. docker compose up -d (homeserver, remote homeserver, Dex, Mailpit, Caddy),
+//      restarting any service whose bind-mounted config changed under a running container.
 //   3. Poll /_matrix/client/versions on both servers, Dex's discovery document, the
 //      primary's own `m.login.sso` flow, and Caddy's TLS well-known. A timeout prints the
 //      failing service's log tail.
@@ -33,6 +33,7 @@ import {
   DEX_ISSUER,
   HOMESERVER_HTTP,
   HS_TLS,
+  MAILPIT_HTTP,
   MAS_HS_TLS,
   MAS_ISSUER,
   MAS_PASS,
@@ -64,6 +65,7 @@ import {
   nativeDexConfig,
   nativeDexVersion,
   nativeLogTail,
+  nativeMailpitVersion,
   nativePaths,
   nodeProcessApi,
   startNativeServices,
@@ -355,6 +357,14 @@ async function ssoLoginFlowReady() {
   return flows.some((flow) => flow.type === 'm.login.sso');
 }
 
+/** Mailpit answers its readiness probe once its SMTP and HTTP listeners are up. */
+async function mailpitReady() {
+  const res = await fetch(`${MAILPIT_HTTP}/readyz`, {
+    signal: operationSignal,
+  });
+  return res.ok;
+}
+
 /** The SSO identities in dex.yaml, which the homeserver creates on first sign-in. */
 const ssoAccounts = () => ({
   // The SSO accounts are not registered here: the homeserver creates each the first
@@ -390,16 +400,22 @@ const mockSsoAccount = () => ({
 /**
  * Native runtime: Synapse from a venv and Caddy as host processes, primary server only.
  * Dex runs too when a `dex` binary is on PATH (`brew install dexidp`), and then SSO is
- * available. The secondary server always is not, nor SSO without Dex, and the session
- * says so (`unavailable`) instead of inventing values. With TRINITY_E2E_SSO_PROVIDER=mock
- * Dex signs in through its mock connector, so the session offers only that identity.
+ * available; likewise Mailpit (`brew install mailpit`) and mail. The secondary server
+ * always is not, nor SSO without Dex or mail without Mailpit, and the session says so
+ * (`unavailable`) instead of inventing values. With TRINITY_E2E_SSO_PROVIDER=mock Dex
+ * signs in through its mock connector, so the session offers only that identity.
  */
 async function startNative() {
   const paths = nativePaths(STATE_DIR, DATA);
   const dexVersion = await nativeDexVersion(nodeProcessApi, operationSignal);
   const sso = dexVersion !== null;
+  const mailpitVersion = await nativeMailpitVersion(
+    nodeProcessApi,
+    operationSignal,
+  );
+  const mail = mailpitVersion !== null;
   log(
-    `${kind}, native runtime (host processes, primary server only; ${sso ? `Dex ${dexVersion}${ssoMock ? ', mock connector' : ''}` : 'no dex on PATH, so no SSO'})`,
+    `${kind}, native runtime (host processes, primary server only; ${sso ? `Dex ${dexVersion}${ssoMock ? ', mock connector' : ''}` : 'no dex on PATH, so no SSO'}; ${mail ? `Mailpit ${mailpitVersion}` : 'no mailpit on PATH, so no mail'})`,
   );
   await prepareStateDir();
   await ensureSynapseVenv(paths, nodeProcessApi, {
@@ -437,7 +453,10 @@ async function startNative() {
       'utf8',
     );
   }
-  startNativeServices(paths, nodeProcessApi, process.env, { dex: sso });
+  startNativeServices(paths, nodeProcessApi, process.env, {
+    dex: sso,
+    mailpit: mail,
+  });
   await waitFor(
     'homeserver client versions',
     'homeserver',
@@ -447,6 +466,7 @@ async function startNative() {
     await waitFor('dex discovery', 'dex', dexDiscoveryReady);
     await waitFor('homeserver sso login flow', 'homeserver', ssoLoginFlowReady);
   }
+  if (mail) await waitFor('mailpit', 'mailpit', mailpitReady);
   await registerUser();
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
   const version = await serverVersion();
@@ -466,7 +486,7 @@ async function startNative() {
     kind,
     version,
     runtime,
-    unavailable: sso ? ['remote'] : ['remote', 'sso'],
+    unavailable: ['remote', ...(sso ? [] : ['sso']), ...(mail ? [] : ['mail'])],
     caddyRoot: paths.caddyRoot,
     ...(sso ? (ssoMock ? mockSsoAccount() : ssoAccounts()) : {}),
   };
@@ -572,6 +592,8 @@ export async function start({ signal } = {}) {
     await waitFor('dex discovery', 'dex', dexDiscoveryReady);
     await waitFor('homeserver sso login flow', 'homeserver', ssoLoginFlowReady);
   }
+  const mail = adapter.mail !== false;
+  if (mail) await waitFor('mailpit', 'mailpit', mailpitReady);
 
   await registerUser();
 
@@ -613,7 +635,7 @@ export async function start({ signal } = {}) {
     kind,
     version,
     runtime,
-    unavailable: sso ? [] : ['sso'],
+    unavailable: [...(sso ? [] : ['sso']), ...(mail ? [] : ['mail'])],
     secondary: {
       hs: SECONDARY_HTTP,
       serverName: secondaryServerName(),

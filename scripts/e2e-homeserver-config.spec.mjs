@@ -371,6 +371,33 @@ describe('Synapse adapter config generation', () => {
     );
   });
 
+  it('sends email through Mailpit, by its compose name only on the compose network', async () => {
+    const emailBlock = async (ctx) => {
+      stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+      const { ensureConfig } = await adapterIn(stateDir);
+      await ensureConfig({
+        log: () => undefined,
+        generate: generateInto(stateDir),
+        ...ctx,
+      });
+      const yaml = parse(
+        readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8'),
+      );
+      rmSync(stateDir, { recursive: true, force: true });
+      return yaml.email;
+    };
+    expect(await emailBlock({})).toEqual({
+      smtp_host: 'mailpit',
+      smtp_port: 1025,
+      notif_from: 'Trinity e2e <noreply@localhost>',
+      enable_notifs: false,
+    });
+    expect((await emailBlock({ native: true })).smtp_host).toBe('localhost');
+    expect(
+      (await emailBlock({ networkContainer: 'job-container' })).smtp_host,
+    ).toBe('localhost');
+  });
+
   it('keeps the Dex block for the Docker runtime', async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);

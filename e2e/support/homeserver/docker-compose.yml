@@ -1,4 +1,4 @@
-# Shared half of the disposable e2e stack: Dex and Caddy. The homeserver itself comes
+# Shared half of the disposable e2e stack: Dex, Mailpit and Caddy. The homeserver itself comes
 # from the adapter selected by TRINITY_E2E_HOMESERVER — synapse/docker-compose.yml or
 # tuwunel/docker-compose.yml, layered on top of this file by paths.mjs.
 #
@@ -24,6 +24,18 @@ services:
       - ${TRINITY_E2E_STATE_DIR:-.}/dex.yaml:/etc/dex/trinity-e2e.yaml:ro
     ports:
       - '127.0.0.1:5556:5556'
+    networks:
+      - trinity-e2e
+
+  # Throwaway mail server: Synapse sends its email-validation links here over SMTP (1025,
+  # network-internal), and the specs read them from the published HTTP API. Nothing
+  # outlives the container.
+  mailpit:
+    image: mirror.gcr.io/axllent/mailpit:v1.31.4
+    container_name: trinity-e2e-mailpit
+    restart: 'no'
+    ports:
+      - '127.0.0.1:8025:8025'
     networks:
       - trinity-e2e
 
