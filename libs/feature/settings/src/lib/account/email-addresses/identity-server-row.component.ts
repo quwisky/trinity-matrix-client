@@ -8,6 +8,7 @@ import {
   computed,
   inject,
   input,
+  effect,
   output,
   signal,
   viewChild,
@@ -55,7 +56,11 @@ export class IdentityServerRowComponent {
   readonly choice = input.required<IdentityServerChoice>();
   /** The addresses the current server lets people find the account by. */
   readonly published = input<readonly string[]>([]);
+  /** Set while a toggle in the group holds the identity server. */
+  readonly disabled = input(false);
   readonly changed = output<void>();
+  /** Whether Turn off is working, so the group can hold its Findable switches. */
+  readonly busyChange = output<boolean>();
 
   protected readonly value = computed(() => {
     const choice = this.choice();
@@ -69,6 +74,10 @@ export class IdentityServerRowComponent {
     }
   });
 
+  constructor() {
+    effect(() => this.busyChange.emit(this.busy()));
+  }
+
   change(): void {
     const choice = this.choice();
     const set = choice.kind === 'set';
@@ -77,7 +86,7 @@ export class IdentityServerRowComponent {
 
   turnOff(): void {
     const choice = this.choice();
-    if (choice.kind !== 'set' || this.busy()) return;
+    if (choice.kind !== 'set' || this.busy() || this.disabled()) return;
     const accountId = this.accountId();
     const published = this.published();
     const host = hostOf(choice.url);

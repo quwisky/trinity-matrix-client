@@ -95,11 +95,15 @@ export class EmailAddressesGroupComponent {
   protected readonly state = signal<GroupState>({ kind: 'loading' });
   protected readonly identity = signal<IdentityState | null>(null);
   /** Addresses with a request or dialog open; a second change to one is ignored. */
+  protected readonly identityRowBusy = signal(false);
   protected readonly busyAddresses = signal<ReadonlySet<string>>(new Set());
 
   readonly accountId = input.required<string>();
   readonly accountKind = input.required<'legacy' | 'oauth'>();
 
+  protected readonly identityBusy = computed(
+    () => this.busyAddresses().size > 0,
+  );
   protected readonly server = computed(() => serverNameOf(this.accountId()));
 
   constructor() {
@@ -211,6 +215,7 @@ export class EmailAddressesGroupComponent {
     if (
       choice?.kind !== 'set' ||
       identity?.failed ||
+      this.identityRowBusy() ||
       this.busyAddresses().has(address)
     ) {
       return;
@@ -287,7 +292,9 @@ export class EmailAddressesGroupComponent {
             if (result.kind === 'refused') return;
             // A server without unbind support reports success and keeps listing the address.
             if (this.identity()?.published.includes(address)) {
-              this.actionError.set(refusalMessage('failed', ''));
+              this.actionError.set(
+                this.copy.stillFindable(hostOf(url), address),
+              );
             } else {
               this.say(this.copy.unpublished(address));
             }

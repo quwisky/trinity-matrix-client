@@ -14,7 +14,7 @@
       size="sm"
       #changeButton
       [attr.aria-label]="copy.changeServerTitle"
-      [disabled]="busy()"
+      [disabled]="busy() || disabled()"
       (click)="change()"
       data-testid="identity-server-change"
     >
@@ -27,7 +27,7 @@
         presentation="outline"
         size="sm"
         [attr.aria-label]="copy.turnOffAriaLabel"
-        [disabled]="busy()"
+        [disabled]="busy() || disabled()"
         (click)="turnOff()"
         data-testid="identity-server-turn-off"
       >

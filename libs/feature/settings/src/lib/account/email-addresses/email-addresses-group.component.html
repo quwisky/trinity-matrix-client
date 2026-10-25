@@ -50,8 +50,9 @@
                     [attr.data-testid]="'findable-' + $index"
                     [aria-label]="copy.findableAriaLabel(address.address)"
                     [checked]="server.published.includes(address.address)"
-                    [disabled]="
-                      server.failed || busyAddresses().has(address.address)
+                    [disabled]="server.failed"
+                    [aria-disabled]="
+                      busyAddresses().has(address.address) || identityRowBusy()
                     "
                     (checkedChange)="toggle(address.address, $event)"
                   />
@@ -85,14 +86,28 @@
           [accountId]="accountId()"
           [choice]="server.choice"
           [published]="server.published"
+          [disabled]="identityBusy()"
+          (busyChange)="identityRowBusy.set($event)"
           (changed)="refresh()"
         />
       }
       @if (identity(); as server) {
         @if (server.failed && server.choice.kind === 'set') {
-          <p class="m-0 py-3 text-sm text-danger" data-testid="findable-error">
-            {{ copy.serverUnreachable(hostOf(server.choice.url)) }}
-          </p>
+          <div class="flex flex-col items-start gap-2 py-3">
+            <p class="m-0 text-sm text-danger" data-testid="findable-error">
+              {{ copy.serverUnreachable(hostOf(server.choice.url)) }}
+            </p>
+            <button
+              trnBtn
+              size="sm"
+              presentation="outline"
+              type="button"
+              (click)="refresh()"
+              data-testid="findable-retry"
+            >
+              Try again
+            </button>
+          </div>
         }
       }
       @if (actionError(); as message) {

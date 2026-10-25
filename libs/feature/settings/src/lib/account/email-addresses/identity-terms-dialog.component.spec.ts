@@ -60,6 +60,14 @@ describe('IdentityTermsDialogComponent', () => {
     expect(close).toHaveBeenLastCalledWith(true);
   });
 
+  it('marks Not now, not Accept, for initial focus', async () => {
+    const { container } = await setup();
+
+    expect(container.querySelector('[data-autofocus]')).toBe(
+      screen.getByTestId('identity-terms-decline'),
+    );
+  });
+
   it('passes axe', async () => {
     const { container } = await setup();
     const results = await axe.run(container, {

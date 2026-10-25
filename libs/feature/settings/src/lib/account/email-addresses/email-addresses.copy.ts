@@ -53,7 +53,10 @@ export const EMAIL_ADDRESSES_COPY = {
   loadFailed: (server: string) =>
     `Trinity couldn’t load your email addresses from ${server}.`,
   findableLabel: 'Findable',
-  findableAriaLabel: (email: string) => `Let people find you by ${email}`,
+  findableAriaLabel: (email: string) =>
+    `Findable: let people find you by ${email}`,
+  stillFindable: (host: string, email: string) =>
+    `${host} may still let people find you by ${email}.`,
   termsTitle: (host: string) => `Accept ${host}’s terms`,
   termsBody: (host: string) =>
     `To let people find you by email, ${host} needs you to accept:`,

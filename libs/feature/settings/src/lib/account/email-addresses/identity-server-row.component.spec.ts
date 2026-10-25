@@ -24,6 +24,7 @@ const SET: IdentityServerChoice = {
 async function setup(
   choice: IdentityServerChoice,
   published: readonly string[] = [],
+  disabled = false,
 ) {
   const closed = new Subject<unknown>();
   const confirmed = new Subject<boolean>();
@@ -40,7 +41,7 @@ async function setup(
   };
   const changed = vi.fn();
   const rendered = await render(IdentityServerRowComponent, {
-    inputs: { accountId: ALICE, choice, published },
+    inputs: { accountId: ALICE, choice, published, disabled },
     on: { changed },
     providers: [
       { provide: IdentityServerService, useValue: identity },
@@ -65,6 +66,14 @@ async function setup(
 }
 
 describe('IdentityServerRowComponent', () => {
+  it('disables Change and Turn off when disabled', async () => {
+    await setup(SET, [], true);
+
+    for (const id of ['identity-server-change', 'identity-server-turn-off']) {
+      expect((screen.getByTestId(id) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
   it('shows the host, Change and Turn off for a set server', async () => {
     await setup(SET);
 

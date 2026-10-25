@@ -1,3 +1,4 @@
+import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import axe from 'axe-core';
 import { MockProvider } from 'ng-mocks';
@@ -20,6 +21,7 @@ import {
 import { fireEvent, render, screen } from '@trinity/testing';
 import { AddEmailDialogComponent } from './add-email-dialog.component';
 import { EmailAddressesGroupComponent } from './email-addresses-group.component';
+import { IdentityServerRowComponent } from './identity-server-row.component';
 import { IdentityTermsDialogComponent } from './identity-terms-dialog.component';
 import { PublishEmailDialogComponent } from './publish-email-dialog.component';
 
@@ -462,7 +464,7 @@ describe('EmailAddressesGroupComponent findable switches', () => {
 
     expect(toggle().checked).toBe(true);
     expect(toggle().getAttribute('aria-label')).toBe(
-      'Let people find you by a@b.c',
+      'Findable: let people find you by a@b.c',
     );
     expect(screen.getByText('Findable')).toBeTruthy();
   });
@@ -585,6 +587,14 @@ describe('EmailAddressesGroupComponent findable switches', () => {
     expect(test.identity.use.mock.invocationCallOrder[0]).toBeLessThan(
       test.identity.terms.mock.invocationCallOrder[0],
     );
+    const row = test.fixture.debugElement.query(
+      By.directive(IdentityServerRowComponent),
+    );
+    expect(row.componentInstance.choice()).toEqual({
+      kind: 'set',
+      url: 'https://vector.im',
+      source: 'account',
+    });
   });
 
   it('stops with the failure line when the well-known server cannot be saved', async () => {
@@ -631,20 +641,91 @@ describe('EmailAddressesGroupComponent findable switches', () => {
     await settle(test);
 
     expect(test.toast.show).not.toHaveBeenCalled();
+    expect(screen.getByTestId('email-addresses-error').textContent).toContain(
+      'vector.im may still let people find you by a@b.c.',
+    );
     expect(toggle().checked).toBe(true);
     expect(screen.getByTestId('email-addresses-error')).toBeTruthy();
   });
 
-  it('disables the switch and ignores a second toggle while a request is in flight', async () => {
+  it('keeps a busy switch focusable and ignores a second toggle while a request is in flight', async () => {
     const test = await ready(found('a@b.c'));
-    const pending = new Subject<unknown>();
-    test.identity.unpublish.mockReturnValue(pending);
+    test.identity.unpublish.mockReturnValue(new Subject<unknown>());
 
     fireEvent.click(toggle());
     test.fixture.detectChanges();
-    expect(toggle().disabled).toBe(true);
+    expect(toggle().disabled).toBe(false);
+    expect(toggle().getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(toggle());
 
     expect(test.identity.unpublish).toHaveBeenCalledTimes(1);
+    expect(test.identity.terms).not.toHaveBeenCalled();
+  });
+
+  it('disables the identity server row while a toggle is in flight', async () => {
+    const test = await ready(found('a@b.c'));
+    test.identity.unpublish.mockReturnValue(new Subject<unknown>());
+
+    fireEvent.click(toggle());
+    test.fixture.detectChanges();
+
+    for (const id of ['identity-server-change', 'identity-server-turn-off']) {
+      expect((screen.getByTestId(id) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
+  it('declines toggles while the row is turning the server off', async () => {
+    const test = await ready(found('a@b.c'));
+    test.identity.unpublishAll.mockReturnValue(new Subject<never>() as never);
+
+    fireEvent.click(screen.getByTestId('identity-server-turn-off'));
+    test.confirmed.next(true);
+    test.fixture.detectChanges();
+    await test.fixture.whenStable();
+    test.fixture.detectChanges();
+    expect(toggle().getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(toggle());
+
+    expect(test.identity.unpublish).not.toHaveBeenCalled();
+  });
+
+  it('offers Try again after a failed read, which reloads', async () => {
+    const test = await ready(
+      of({ kind: 'refused', reason: 'unreachable' } as const),
+    );
+
+    test.identity.findable.mockReturnValue(found('a@b.c'));
+    fireEvent.click(screen.getByTestId('findable-retry'));
+    await settle(test);
+
+    expect(test.workflow.load).toHaveBeenCalledTimes(2);
+    expect(toggle().checked).toBe(true);
+    expect(screen.queryByTestId('findable-error')).toBeNull();
+  });
+
+  it('gives a phone number no switch', async () => {
+    const test = await setup(
+      loaded([ADDRESS, { medium: 'msisdn', address: '+4912345' }]),
+      'legacy',
+      ACCOUNT,
+    );
+    await settle(test);
+
+    expect(screen.getByTestId('findable-0')).toBeTruthy();
+    expect(screen.queryByTestId('findable-1')).toBeNull();
+  });
+
+  it('opens the terms dialog focused on Not now, not Accept', async () => {
+    const test = await ready();
+    test.identity.terms.mockReturnValue(
+      of({ kind: 'needs-consent', policies: [] } as const),
+    );
+
+    fireEvent.click(toggle());
+    await settle(test);
+
+    expect(vi.mocked(test.surfaces.open).mock.calls[0][1]?.autoFocus).toBe(
+      '[data-autofocus]',
+    );
   });
 });
