@@ -9,7 +9,6 @@ import {
   Observable,
   catchError,
   concatMap,
-  defaultIfEmpty,
   defer,
   from,
   last,
@@ -219,6 +218,7 @@ export class IdentityServerService {
     return this.withClient(accountId, async (client) => {
       // unbindThreePid reads the identity server from the client, not from an argument.
       client.setIdentityServerUrl(normalizeUrl(url));
+      // 'no-support' counts as unpublished so such a server cannot block changing servers; the UI re-reads findable.
       await client.unbindThreePid('email', email);
       return { kind: 'unpublished' } as const;
     });
@@ -232,8 +232,7 @@ export class IdentityServerService {
     return from(emails).pipe(
       concatMap((email) => this.unpublish(accountId, url, email)),
       takeWhile((result) => result.kind === 'unpublished', true),
-      last(),
-      defaultIfEmpty({ kind: 'unpublished' } as const),
+      last(undefined, { kind: 'unpublished' } as const),
     );
   }
 
@@ -318,12 +317,10 @@ function isUnauthorized(err: unknown): boolean {
   );
 }
 
-// Observed on Sydent via Synapse: M_SESSION_NOT_VALIDATED; the message match covers a bare 400.
+// Synapse 1.161 + Sydent 2.6.1 answer a bind before the link is opened with 400 M_SESSION_NOT_VALIDATED.
 function isNotValidated(err: unknown): boolean {
   return (
-    err instanceof MatrixError &&
-    (err.errcode === 'M_SESSION_NOT_VALIDATED' ||
-      (err.httpStatus === 400 && /not.*validated/i.test(err.error ?? '')))
+    err instanceof MatrixError && err.errcode === 'M_SESSION_NOT_VALIDATED'
   );
 }
 

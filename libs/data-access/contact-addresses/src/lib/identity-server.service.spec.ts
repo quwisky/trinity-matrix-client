@@ -483,15 +483,17 @@ describe('IdentityServerService publish', () => {
     });
   });
 
-  it.each([
-    new MatrixError({ errcode: 'M_SESSION_NOT_VALIDATED', error: 'x' }, 400),
-    new MatrixError(
-      { errcode: 'M_UNKNOWN', error: 'Session is not validated' },
-      400,
-    ),
-  ])('reports not-verified for %s', async (err) => {
+  it('reports not-verified before the link is opened', async () => {
     const s = setup();
-    s.fake.bindThreePid.mockRejectedValue(err);
+    s.fake.bindThreePid.mockRejectedValue(
+      new MatrixError(
+        {
+          errcode: 'M_SESSION_NOT_VALIDATED',
+          error: 'This validation session has not yet been completed',
+        },
+        400,
+      ),
+    );
     expect(await firstValueFrom(s.publish(PENDING))).toEqual({
       kind: 'not-verified',
       pending: PENDING,
@@ -518,6 +520,24 @@ describe('IdentityServerService unpublish', () => {
     });
     expect(s.fake.setIdentityServerUrl).toHaveBeenCalledWith(IS);
     expect(s.fake.unbindThreePid).toHaveBeenCalledWith('email', 'a@x.org');
+  });
+
+  it('treats a no-support server as unpublished', async () => {
+    const s = setup();
+    s.fake.unbindThreePid.mockResolvedValue({
+      id_server_unbind_result: 'no-support',
+    });
+    expect(await firstValueFrom(s.unpublish(ALICE, IS, 'a@x.org'))).toEqual({
+      kind: 'unpublished',
+    });
+  });
+
+  it('unpublishAll of nothing unpublishes nothing', async () => {
+    const s = setup();
+    expect(await firstValueFrom(s.unpublishAll(ALICE, IS, []))).toEqual({
+      kind: 'unpublished',
+    });
+    expect(s.fake.unbindThreePid).not.toHaveBeenCalled();
   });
 
   it('unpublishAll stops at the first refusal and emits it', async () => {
