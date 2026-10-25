@@ -264,6 +264,16 @@ export async function ensureConfig(ctx) {
       '  burst_count: 1000',
     );
   }
+  // Synapse allows a burst of 5 validation emails, then about one per 5.5 minutes per IP
+  // and per address (rc_3pid_validation; 429), so rerunning the email-address journeys
+  // would be refused. Guarded on its own key for the same reason as the rules above.
+  if (!/^rc_3pid_validation:/m.test(yaml)) {
+    additions.push(
+      'rc_3pid_validation:',
+      '  per_second: 100',
+      '  burst_count: 100',
+    );
+  }
   // Synapse answers a repeated, identical /sync from a response cache for two minutes
   // (caches.sync_response_cache_duration), so a journey that polls the same sync URL
   // while it waits for a receipt or a count can keep reading the first answer. Zero keeps
