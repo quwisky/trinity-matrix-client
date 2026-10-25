@@ -15,7 +15,7 @@ import {
 } from '@angular/core';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   Observable,
   catchError,
@@ -129,6 +129,7 @@ function hostOf(url: string): string {
     AuthCardComponent,
     FormField,
     QrSignInPanelComponent,
+    RouterLink,
     TrnButton,
     TrnCardImports,
     TrnFieldImports,
@@ -159,6 +160,9 @@ export class LoginPage {
     viewChild<ElementRef<HTMLInputElement>>('usernameInput');
   private readonly deletedNoticeHeading =
     viewChild<ElementRef<HTMLElement>>('deletedNotice');
+  private readonly passwordResetNoticeHeading = viewChild<
+    ElementRef<HTMLElement>
+  >('passwordResetNotice');
   private readonly otherSiteNotice =
     viewChild<ElementRef<HTMLElement>>('otherSiteNotice');
   private readonly deletion = inject(ACCOUNT_DELETION_LAUNCHER, {
@@ -168,6 +172,10 @@ export class LoginPage {
   /** The account whose deletion left none behind; its confirmation is read first. */
   readonly deletedAccountId: Signal<string | null> =
     this.deletion?.deletedNotice ?? signal(null);
+
+  /** Navigation state, not a query param, so a reload does not repeat the notice. */
+  readonly passwordReset =
+    this.router.currentNavigation()?.extras.state?.['passwordReset'] === true;
 
   /** `/login?add` — add a second account instead of replacing the current one. */
   readonly addMode = this.route.snapshot.queryParamMap.has('add');
@@ -255,6 +263,12 @@ export class LoginPage {
         );
       }
     });
+    if (this.passwordReset) {
+      afterNextRender(
+        () => this.passwordResetNoticeHeading()?.nativeElement.focus(),
+        { injector: this.injector },
+      );
+    }
     this.destroyRef.onDestroy(() => {
       if (this.deletedAccountId()) this.deletion?.dismissDeletedNotice();
     });
@@ -332,7 +346,13 @@ export class LoginPage {
   //
   // Disabled rules live in the schema: Signal Forms owns disabled state, and binding
   // [disabled] on a [formField] node is a compile error (NG8022).
-  private readonly homeserverModel = signal({ homeserver: 'matrix.org' });
+  // Prefilled only: discovering a server straight from a link would put an arbitrary
+  // server's password form in front of the person without them choosing it.
+  private readonly homeserverModel = signal({
+    homeserver:
+      this.route.snapshot.queryParamMap.get('homeserver')?.trim() ||
+      'matrix.org',
+  });
   readonly homeserverForm = form(this.homeserverModel, (path) => {
     disabled(path.homeserver, { when: () => this.busy() });
   });
