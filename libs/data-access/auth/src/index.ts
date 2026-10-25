@@ -50,3 +50,11 @@ export {
   type QrLinkIdentityCheck,
   type QrSignInCompletion,
 } from './lib/qr-sign-in/qr-sign-in-completion.port';
+export { PasswordResetWorkflow } from './lib/password-reset.workflow';
+export type {
+  PendingReset,
+  ResetLinkResult,
+  ResetRefusal,
+  ResetRefused,
+  ResetResult,
+} from './lib/password-reset.workflow';
