@@ -356,6 +356,28 @@ describe('DeleteAccountDialogComponent', () => {
     await expect(answer).resolves.toBeNull();
   });
 
+  it('keeps the re-authentication actions destructive', async () => {
+    const test = await setup();
+    await typeAndSubmit(test, 'DELETE');
+    const answer = test.prompts().password({ rejected: false });
+    await test.settle();
+    expect(
+      screen
+        .getByTestId('delete-account-password-submit')
+        .getAttribute('data-trn-variant'),
+    ).toBe('danger');
+
+    fireEvent.click(screen.getByTestId('delete-account-back'));
+    await expect(answer).resolves.toBeNull();
+    void test.prompts().confirmInBrowser({ url: 'https://x/', pending: false });
+    await test.settle();
+    expect(
+      screen
+        .getByTestId('delete-account-browser-confirm')
+        .getAttribute('data-trn-variant'),
+    ).toBe('danger');
+  });
+
   it('passes axe on each step', async () => {
     const test = await setup();
     await expectNoAxeViolations(test.container);

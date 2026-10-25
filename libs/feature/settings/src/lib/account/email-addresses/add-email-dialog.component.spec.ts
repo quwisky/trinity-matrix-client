@@ -253,6 +253,20 @@ describe('AddEmailDialogComponent', () => {
     expect(screen.getByTestId('add-email-sent')).toBeTruthy();
   });
 
+  it('uses a neutral action to add the address after re-authentication', async () => {
+    const test = await setup();
+    await sendLink(test);
+    fireEvent.click(screen.getByTestId('add-email-continue'));
+    void test.stages().password({ rejected: false });
+    await test.settle();
+
+    expect(
+      screen
+        .getByTestId('add-email-password-submit')
+        .getAttribute('data-trn-variant'),
+    ).toBe('primary');
+  });
+
   it('stops on other refusals', async () => {
     const test = await setup();
     await sendLink(test);

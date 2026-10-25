@@ -33,7 +33,7 @@
     <button
       trnBtn
       type="button"
-      variant="danger"
+      [variant]="variant()"
       [disabled]="!opened()"
       (click)="done.emit()"
       [attr.data-testid]="testIdPrefix() + '-browser-confirm'"

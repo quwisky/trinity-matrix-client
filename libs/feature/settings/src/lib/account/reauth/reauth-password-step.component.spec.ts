@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { ReauthPasswordStepComponent } from './reauth-password-step.component';
 
-async function setup(rejected = false) {
+async function setup(rejected = false, variant?: 'danger' | 'primary') {
   const submitted = vi.fn();
   const back = vi.fn();
   const rendered = await render(ReauthPasswordStepComponent, {
@@ -13,6 +13,7 @@ async function setup(rejected = false) {
       rejected,
       rejectedMessage: 'That password is incorrect.',
       submitLabel: 'Continue',
+      ...(variant ? { variant } : {}),
     },
     on: { submitted, back },
   });
@@ -20,6 +21,19 @@ async function setup(rejected = false) {
 }
 
 describe('ReauthPasswordStepComponent', () => {
+  it.each([
+    [undefined, 'primary'],
+    ['danger', 'danger'],
+  ] as const)('renders submit with variant %s as %s', async (given, shown) => {
+    await setup(false, given);
+
+    expect(
+      screen
+        .getByTestId('add-email-password-submit')
+        .getAttribute('data-trn-variant'),
+    ).toBe(shown);
+  });
+
   it('emits the typed password and forgets it', async () => {
     const test = await setup();
     const field = screen.getByLabelText('Password') as HTMLInputElement;

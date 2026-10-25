@@ -6,7 +6,7 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { ReauthBrowserStepComponent } from './reauth-browser-step.component';
 
-async function setup(pending = false) {
+async function setup(pending = false, variant?: 'danger' | 'primary') {
   const done = vi.fn();
   const back = vi.fn();
   const rendered = await render(ReauthBrowserStepComponent, {
@@ -17,6 +17,7 @@ async function setup(pending = false) {
       body: 'Confirm this in your browser.',
       pendingMessage: 'Not received yet.',
       doneLabel: 'I’ve confirmed',
+      ...(variant ? { variant } : {}),
     },
     on: { done, back },
     providers: [
@@ -27,6 +28,19 @@ async function setup(pending = false) {
 }
 
 describe('ReauthBrowserStepComponent', () => {
+  it.each([
+    [undefined, 'primary'],
+    ['danger', 'danger'],
+  ] as const)('renders Done with variant %s as %s', async (given, shown) => {
+    await setup(false, given);
+
+    expect(
+      screen
+        .getByTestId('add-email-browser-confirm')
+        .getAttribute('data-trn-variant'),
+    ).toBe(shown);
+  });
+
   it('enables Done only after the page was opened', async () => {
     const test = await setup();
     const confirm = screen.getByTestId(

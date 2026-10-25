@@ -49,6 +49,8 @@ export class ReauthPasswordStepComponent {
   readonly rejected = input(false);
   readonly rejectedMessage = input.required<string>();
   readonly submitLabel = input.required<string>();
+  /** Danger when submitting completes a destructive action. */
+  readonly variant = input<'danger' | 'primary'>('primary');
 
   readonly submitted = output<string>();
   readonly back = output<void>();

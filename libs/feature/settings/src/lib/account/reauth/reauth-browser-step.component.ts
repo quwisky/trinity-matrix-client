@@ -31,6 +31,8 @@ export class ReauthBrowserStepComponent {
   readonly body = input.required<string>();
   readonly pendingMessage = input.required<string>();
   readonly doneLabel = input.required<string>();
+  /** Danger when Done completes a destructive action. */
+  readonly variant = input<'danger' | 'primary'>('primary');
 
   readonly done = output<void>();
   readonly back = output<void>();
