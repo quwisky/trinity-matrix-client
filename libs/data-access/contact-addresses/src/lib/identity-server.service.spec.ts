@@ -39,6 +39,14 @@ function setup(
       .mockResolvedValue({ access_token: 'is-token', token: 'is-token' }),
     getTerms: vi.fn().mockResolvedValue(options.terms ?? { policies: {} }),
     agreeToTerms: vi.fn().mockResolvedValue({}),
+    getUserId: vi.fn(() => ALICE),
+    generateClientSecret: vi.fn(() => 'secret'),
+    identityHashedLookup: vi.fn().mockResolvedValue([]),
+    requestEmailToken: vi.fn().mockResolvedValue({ sid: 'sid1' }),
+    bindThreePid: vi.fn().mockResolvedValue({}),
+    unbindThreePid: vi.fn().mockResolvedValue({
+      id_server_unbind_result: 'success',
+    }),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -389,5 +397,148 @@ describe('IdentityServerService token', () => {
     await firstValueFrom(s.acceptTerms(ALICE, IS, policies));
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     spies.forEach((spy) => spy.mockRestore());
+  });
+});
+
+const PENDING = {
+  accountId: ALICE,
+  url: IS,
+  email: 'a@x.org',
+  sid: 'sid1',
+  clientSecret: 'secret',
+  sendAttempt: 1,
+};
+
+describe('IdentityServerService.findable', () => {
+  it('counts only addresses mapped to this account', async () => {
+    const s = setup();
+    s.fake.identityHashedLookup.mockResolvedValue([
+      { address: 'a@x.org', mxid: ALICE },
+      { address: 'b@x.org', mxid: '@bob:example.org' },
+    ]);
+    const result = await firstValueFrom(
+      s.findable(ALICE, IS, ['a@x.org', 'b@x.org', 'c@x.org']),
+    );
+    expect(result).toEqual({ kind: 'loaded', published: new Set(['a@x.org']) });
+    expect(s.fake.identityHashedLookup).toHaveBeenCalledWith(
+      [
+        ['a@x.org', 'email'],
+        ['b@x.org', 'email'],
+        ['c@x.org', 'email'],
+      ],
+      'is-token',
+    );
+  });
+
+  it('refuses on failure', async () => {
+    const s = setup();
+    s.fake.identityHashedLookup.mockRejectedValue(new Error('x'));
+    expect(await firstValueFrom(s.findable(ALICE, IS, ['a@x.org']))).toEqual({
+      kind: 'refused',
+      reason: 'failed',
+    });
+  });
+});
+
+describe('IdentityServerService publish', () => {
+  it('sends the link', async () => {
+    const s = setup();
+    expect(
+      await firstValueFrom(s.sendPublishLink(ALICE, IS, 'a@x.org')),
+    ).toEqual({ kind: 'sent', pending: PENDING });
+    expect(s.fake.requestEmailToken).toHaveBeenCalledWith(
+      'a@x.org',
+      'secret',
+      1,
+      undefined,
+      'is-token',
+    );
+  });
+
+  it('resends with the same secret and a higher attempt', async () => {
+    const s = setup();
+    expect(await firstValueFrom(s.resendPublishLink(PENDING))).toEqual({
+      kind: 'sent',
+      pending: { ...PENDING, sendAttempt: 2 },
+    });
+    expect(s.fake.requestEmailToken).toHaveBeenCalledWith(
+      'a@x.org',
+      'secret',
+      2,
+      undefined,
+      'is-token',
+    );
+  });
+
+  it('binds with the host only', async () => {
+    const s = setup();
+    expect(await firstValueFrom(s.publish(PENDING))).toEqual({
+      kind: 'published',
+    });
+    expect(s.fake.bindThreePid).toHaveBeenCalledWith({
+      sid: 'sid1',
+      client_secret: 'secret',
+      id_server: 'is.example',
+      id_access_token: 'is-token',
+    });
+  });
+
+  it.each([
+    new MatrixError({ errcode: 'M_SESSION_NOT_VALIDATED', error: 'x' }, 400),
+    new MatrixError(
+      { errcode: 'M_UNKNOWN', error: 'Session is not validated' },
+      400,
+    ),
+  ])('reports not-verified for %s', async (err) => {
+    const s = setup();
+    s.fake.bindThreePid.mockRejectedValue(err);
+    expect(await firstValueFrom(s.publish(PENDING))).toEqual({
+      kind: 'not-verified',
+      pending: PENDING,
+    });
+  });
+
+  it('refuses other errors', async () => {
+    const s = setup();
+    s.fake.bindThreePid.mockRejectedValue(
+      new MatrixError({ errcode: 'M_UNKNOWN', error: 'boom' }, 500),
+    );
+    expect(await firstValueFrom(s.publish(PENDING))).toEqual({
+      kind: 'refused',
+      reason: 'failed',
+    });
+  });
+});
+
+describe('IdentityServerService unpublish', () => {
+  it('unbinds against the given server', async () => {
+    const s = setup();
+    expect(await firstValueFrom(s.unpublish(ALICE, IS, 'a@x.org'))).toEqual({
+      kind: 'unpublished',
+    });
+    expect(s.fake.setIdentityServerUrl).toHaveBeenCalledWith(IS);
+    expect(s.fake.unbindThreePid).toHaveBeenCalledWith('email', 'a@x.org');
+  });
+
+  it('unpublishAll stops at the first refusal and emits it', async () => {
+    const s = setup();
+    s.fake.unbindThreePid
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('x'));
+    expect(
+      await firstValueFrom(s.unpublishAll(ALICE, IS, ['a', 'b', 'c'])),
+    ).toEqual({ kind: 'refused', reason: 'failed' });
+    expect(s.fake.unbindThreePid).toHaveBeenCalledTimes(2);
+  });
+
+  it('unpublishAll unpublishes every address in order', async () => {
+    const s = setup();
+    expect(await firstValueFrom(s.unpublishAll(ALICE, IS, ['a', 'b']))).toEqual(
+      { kind: 'unpublished' },
+    );
+    expect(s.fake.unbindThreePid.mock.calls.map((c) => c[1])).toEqual([
+      'a',
+      'b',
+    ]);
   });
 });

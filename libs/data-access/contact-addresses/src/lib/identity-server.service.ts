@@ -5,12 +5,26 @@ import {
   describeMatrixRequestFailure,
 } from '@trinity/util/matrix';
 import { SERVICE_TYPES } from 'matrix-js-sdk';
-import { Observable, catchError, defer, from, of, switchMap } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  concatMap,
+  defaultIfEmpty,
+  defer,
+  from,
+  last,
+  of,
+  switchMap,
+  takeWhile,
+} from 'rxjs';
 import type {
   IdentityPolicy,
   IdentityServerChoice,
   IdentityServerRefusal,
   IdentityServerRefused,
+  PendingPublish,
+  PublishLinkResult,
+  PublishResult,
   TermsCheck,
 } from './identity-server.models';
 
@@ -127,6 +141,115 @@ export class IdentityServerService {
     );
   }
 
+  findable(
+    accountId: string,
+    url: string,
+    emails: readonly string[],
+  ): Observable<
+    | { readonly kind: 'loaded'; readonly published: ReadonlySet<string> }
+    | IdentityServerRefused
+  > {
+    return this.withToken(accountId, url, async (token) => {
+      const client = this.client(accountId);
+      const found = await client.identityHashedLookup(
+        emails.map((email) => [email, 'email']),
+        token,
+      );
+      const self = client.getUserId();
+      return {
+        kind: 'loaded',
+        published: new Set(
+          found
+            .filter(({ mxid }) => mxid === self)
+            .map(({ address }) => address),
+        ),
+      } as const;
+    }).pipe(catchError((err: unknown) => of(refusalOf(err))));
+  }
+
+  sendPublishLink(
+    accountId: string,
+    url: string,
+    email: string,
+  ): Observable<PublishLinkResult> {
+    return defer(() =>
+      this.requestLink({
+        accountId,
+        url: normalizeUrl(url),
+        email,
+        sid: '',
+        clientSecret: this.client(accountId).generateClientSecret(),
+        sendAttempt: 1,
+      }),
+    ).pipe(catchError((err: unknown) => of(refusalOf(err))));
+  }
+
+  resendPublishLink(pending: PendingPublish): Observable<PublishLinkResult> {
+    return this.requestLink({
+      ...pending,
+      sendAttempt: pending.sendAttempt + 1,
+    }).pipe(catchError((err: unknown) => of(refusalOf(err))));
+  }
+
+  publish(pending: PendingPublish): Observable<PublishResult> {
+    return this.withToken(pending.accountId, pending.url, async (token) => {
+      await this.client(pending.accountId).bindThreePid({
+        sid: pending.sid,
+        client_secret: pending.clientSecret,
+        id_server: new URL(normalizeUrl(pending.url)).host,
+        id_access_token: token,
+      });
+      return { kind: 'published' } as const;
+    }).pipe(
+      catchError((err: unknown) =>
+        of(
+          isNotValidated(err)
+            ? ({ kind: 'not-verified', pending } as const)
+            : refusalOf(err),
+        ),
+      ),
+    );
+  }
+
+  unpublish(
+    accountId: string,
+    url: string,
+    email: string,
+  ): Observable<{ readonly kind: 'unpublished' } | IdentityServerRefused> {
+    return this.withClient(accountId, async (client) => {
+      // unbindThreePid reads the identity server from the client, not from an argument.
+      client.setIdentityServerUrl(normalizeUrl(url));
+      await client.unbindThreePid('email', email);
+      return { kind: 'unpublished' } as const;
+    });
+  }
+
+  unpublishAll(
+    accountId: string,
+    url: string,
+    emails: readonly string[],
+  ): Observable<{ readonly kind: 'unpublished' } | IdentityServerRefused> {
+    return from(emails).pipe(
+      concatMap((email) => this.unpublish(accountId, url, email)),
+      takeWhile((result) => result.kind === 'unpublished', true),
+      last(),
+      defaultIfEmpty({ kind: 'unpublished' } as const),
+    );
+  }
+
+  private requestLink(pending: PendingPublish): Observable<PublishLinkResult> {
+    return this.withToken(pending.accountId, pending.url, async (token) => {
+      const { sid } = await this.client(pending.accountId).requestEmailToken(
+        pending.email,
+        pending.clientSecret,
+        pending.sendAttempt,
+        undefined,
+        token,
+      );
+      return { kind: 'sent', pending: { ...pending, sid } } as const;
+    });
+  }
+
   /** Runs `call` with an identity access token, registering once and renewing it after a 401. */
   private withToken<T>(
     accountId: string,
@@ -192,6 +315,15 @@ function isUnauthorized(err: unknown): boolean {
   return (
     err instanceof MatrixError &&
     (err.httpStatus === 401 || err.errcode === 'M_UNAUTHORIZED')
+  );
+}
+
+// Observed on Sydent via Synapse: M_SESSION_NOT_VALIDATED; the message match covers a bare 400.
+function isNotValidated(err: unknown): boolean {
+  return (
+    err instanceof MatrixError &&
+    (err.errcode === 'M_SESSION_NOT_VALIDATED' ||
+      (err.httpStatus === 400 && /not.*validated/i.test(err.error ?? '')))
   );
 }
 

@@ -35,3 +35,21 @@ export type TermsCheck =
       readonly policies: readonly IdentityPolicy[];
     }
   | IdentityServerRefused;
+
+export interface PendingPublish {
+  readonly accountId: string;
+  readonly url: string;
+  readonly email: string;
+  readonly sid: string;
+  readonly clientSecret: string;
+  readonly sendAttempt: number;
+}
+
+export type PublishLinkResult =
+  | { readonly kind: 'sent'; readonly pending: PendingPublish }
+  | IdentityServerRefused;
+
+export type PublishResult =
+  | { readonly kind: 'published' }
+  | { readonly kind: 'not-verified'; readonly pending: PendingPublish }
+  | IdentityServerRefused;
