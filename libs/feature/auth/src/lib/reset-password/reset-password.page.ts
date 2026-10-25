@@ -19,7 +19,7 @@ import {
   required,
   validate,
 } from '@angular/forms/signals';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   TrnButton,
   TrnCheckboxComponent,
@@ -51,6 +51,7 @@ type ResetStep = 'email' | 'sent' | 'password';
   imports: [
     AuthCardComponent,
     FormField,
+    RouterLink,
     TrnButton,
     TrnCardImports,
     TrnCheckboxComponent,
@@ -71,6 +72,10 @@ export class ResetPasswordPage {
   private readonly homeserverInput =
     this.queryParams.get('homeserver')?.trim() ?? '';
   private readonly addMode = this.queryParams.has('add');
+  protected readonly loginParams = {
+    ...(this.homeserverInput ? { homeserver: this.homeserverInput } : {}),
+    ...(this.addMode ? { add: '' } : {}),
+  };
   private waitTimer: ReturnType<typeof setInterval> | undefined;
 
   protected readonly copy = RESET_PASSWORD_COPY;
@@ -85,7 +90,7 @@ export class ResetPasswordPage {
   protected readonly waitSeconds = signal(0);
   protected readonly errorMessage = computed(() => {
     const refusal = this.refusal();
-    return refusal ? refusalMessage(refusal, this.waitSeconds()) : '';
+    return refusal ? refusalMessage(refusal) : '';
   });
 
   private readonly emailModel = signal({ email: '' });
@@ -174,12 +179,6 @@ export class ResetPasswordPage {
     this.step.set(step);
     afterNextRender(() => this.heading()?.nativeElement.focus(), {
       injector: this.injector,
-    });
-  }
-
-  protected backToLogin(): void {
-    void this.router.navigate(['/login'], {
-      queryParams: this.addMode ? { add: '' } : {},
     });
   }
 

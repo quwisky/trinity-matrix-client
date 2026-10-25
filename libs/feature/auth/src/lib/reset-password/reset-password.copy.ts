@@ -9,6 +9,7 @@ export const RESET_PASSWORD_COPY = {
   emailRequired: 'Enter your email address.',
   emailInvalid: 'Enter a valid email address.',
   sendLink: 'Send link',
+  emailTitle: 'Find your account',
   sentTitle: 'Check your email',
   passwordTitle: 'Choose a new password',
   sent: (email: string) =>
@@ -30,12 +31,12 @@ export const RESET_PASSWORD_COPY = {
 } as const;
 
 /** Why a step was refused, in plain words. */
-export function refusalMessage(refused: ResetRefused, seconds: number): string {
+export function refusalMessage(refused: ResetRefused): string {
   switch (refused.refusal) {
     case 'unknown-address':
-      return 'Trinity couldn’t send a link to that address. Check it, or use the address on your account.';
+      return "Trinity couldn't send a link to that address. Check it, or use the address on your account.";
     case 'invalid-address':
-      return 'That doesn’t look like a valid email address.';
+      return "That doesn't look like a valid email address.";
     case 'not-confirmed':
       return 'Confirm the link in the email first, then try again.';
     case 'weak-password':
@@ -43,11 +44,9 @@ export function refusalMessage(refused: ResetRefused, seconds: number): string {
         refused.reason ?? 'That password is too weak. Choose a stronger one.'
       );
     case 'rate-limited':
-      return seconds > 0
-        ? `Too many tries. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`
-        : 'Too many tries. Try again shortly.';
+      return 'Too many tries. Wait a moment, then try again.';
     case 'unreachable':
-      return 'Trinity couldn’t reach your server. Check your connection and try again.';
+      return "Trinity couldn't reach your server. Check your connection and try again.";
     case 'failed':
       return 'Something went wrong. Try again.';
   }

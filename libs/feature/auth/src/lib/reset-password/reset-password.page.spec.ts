@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import {
   AUTHENTICATION_HOMESERVER_DISCOVERY,
   PasswordResetWorkflow,
@@ -7,8 +7,7 @@ import {
   type ResetLinkResult,
   type ResetResult,
 } from '@trinity/data-access/auth';
-import { fireEvent, render, screen } from '@trinity/testing';
-import { MockProvider } from 'ng-mocks';
+import { TIMERS, fireEvent, render, screen } from '@trinity/testing';
 import { Subject, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ResetPasswordPage } from './reset-password.page';
@@ -52,12 +51,14 @@ async function renderPage(options: Options = {}) {
           ),
         },
       },
-      MockProvider(Router),
+      provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap } } },
     ],
   });
   await fixture.whenStable();
-  return { fixture, workflow, router: TestBed.inject(Router) };
+  const router = TestBed.inject(Router);
+  vi.spyOn(router, 'navigate').mockResolvedValue(true);
+  return { fixture, workflow, router };
 }
 
 function type(testId: string, value: string) {
@@ -152,7 +153,7 @@ describe('ResetPasswordPage', () => {
     await toSent(page);
 
     expect(screen.getByTestId('reset-error')).toHaveTextContent(
-      'Trinity couldn’t send a link to that address. Check it, or use the address on your account.',
+      "Trinity couldn't send a link to that address. Check it, or use the address on your account.",
     );
     expect(screen.getByTestId('reset-email-input')).toBeInTheDocument();
   });
@@ -196,17 +197,40 @@ describe('ResetPasswordPage', () => {
     expect(page.workflow.reset).toHaveBeenCalledTimes(1);
   });
 
-  it('disables the submit button and shows the wait after a rate limit', async () => {
+  it('counts the wait down on the button while the alert text stays constant', async () => {
     const page = await renderPage({
       reset: () =>
         of({ kind: 'refused', refusal: 'rate-limited', retryAfterMs: 30_000 }),
     });
     await toPassword(page);
-    await click(page.fixture, 'reset-submit');
+    vi.useFakeTimers(TIMERS);
+    fireEvent.click(screen.getByTestId('reset-submit'));
+    page.fixture.detectChanges();
 
+    const alert = screen.getByTestId('reset-error').textContent?.trim();
+
+    expect(alert).toBe('Too many tries. Wait a moment, then try again.');
     expect(screen.getByTestId('reset-submit')).toBeDisabled();
     expect(screen.getByTestId('reset-submit')).toHaveTextContent(
       'Try again in 30s',
+    );
+
+    vi.advanceTimersByTime(1000);
+    page.fixture.detectChanges();
+
+    expect(screen.getByTestId('reset-submit')).toHaveTextContent(
+      'Try again in 29s',
+    );
+    expect(screen.getByTestId('reset-error').textContent?.trim()).toBe(alert);
+    vi.useRealTimers();
+  });
+
+  it('gives the email step a focusable heading', async () => {
+    await renderPage();
+
+    expect(screen.getByRole('heading', { level: 2 })).toHaveAttribute(
+      'tabindex',
+      '-1',
     );
   });
 
@@ -231,16 +255,16 @@ describe('ResetPasswordPage', () => {
   });
 
   it('asks for a server when discovery fails', async () => {
-    const page = await renderPage({
+    await renderPage({
       discover: () => throwError(() => new Error('no')),
     });
 
     expect(screen.getByTestId('reset-no-server')).toBeInTheDocument();
     expect(screen.queryByTestId('reset-email-input')).toBeNull();
 
-    await click(page.fixture, 'reset-back');
-    expect(page.router.navigate).toHaveBeenCalledWith(['/login'], {
-      queryParams: {},
-    });
+    expect(screen.getByTestId('reset-back')).toHaveAttribute(
+      'href',
+      '/login?homeserver=hs.test',
+    );
   });
 });
