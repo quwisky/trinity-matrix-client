@@ -56,9 +56,10 @@ function validateInstalledPackage(entry, errors) {
     errors.push(`${entry.id} package is not installed: ${entry.package}`);
     return;
   }
-  if (installed !== entry.version) {
+  // Patch and minor updates rely on the module markers; a major update needs a fresh audit.
+  if (Number(installed.split('.')[0]) !== entry.major) {
     errors.push(
-      `${entry.id} was audited at ${entry.version}, but ${entry.package} ${installed} is installed`,
+      `${entry.id} was audited for ${entry.package} ${entry.major}.x, but ${installed} is installed`,
     );
   }
 

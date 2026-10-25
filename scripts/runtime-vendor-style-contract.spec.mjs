@@ -38,6 +38,19 @@ describe('runtime vendor style contract', () => {
     );
   });
 
+  it('rejects a package whose installed major version was not audited', () => {
+    const changed = copyCatalog();
+    changed.staticStyles[0].major = 21;
+
+    expect(validateRuntimeVendorStyles(changed)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^cdk-overlay-static was audited for @angular\/cdk 21\.x, but 22\./u,
+        ),
+      ]),
+    );
+  });
+
   it('rejects runtime imports that escape their audited source prefixes', () => {
     const changed = copyCatalog();
     const overlay = changed.runtimeStyles.find(
