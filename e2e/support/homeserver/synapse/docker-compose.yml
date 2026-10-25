@@ -49,10 +49,11 @@ services:
   # Sydent verifies OpenID tokens with Synapse through Caddy's localhost:8448. Its config
   # (written by synapse/adapter.mjs) and database live in ./data/sydent.
   sydent:
-    image: docker.io/matrixdotorg/sydent:v2.6.1
+    image: mirror.gcr.io/matrixdotorg/sydent:v2.6.1
     container_name: trinity-e2e-sydent
     restart: 'no'
-    # Sydent rewrites its config to save its signing key: run as us, as Synapse does.
+    # Sydent rewrites its config to save its signing key: run as us, as Synapse does. The
+    # fallback is the image's own sydent user (993), as 991 is the Synapse image's.
     user: '${TRINITY_E2E_UID:-993}:${TRINITY_E2E_GID:-993}'
     # The image's own venv, through the harness launcher (see sydent/launch.py).
     command: ['/home/sydent/venv/bin/python', '/trinity-sydent/launch.py']
@@ -65,7 +66,7 @@ services:
   # forward that port, still TLS, to Caddy. The netns override drops this, since there
   # Synapse already shares Caddy's loopback.
   identity-forward:
-    image: docker.io/alpine/socat:1.8.0.3
+    image: mirror.gcr.io/alpine/socat:1.8.0.3
     container_name: trinity-e2e-identity-forward
     restart: 'no'
     command: ['TCP-LISTEN:8452,fork,reuseaddr,bind=127.0.0.1', 'TCP:caddy:8452']

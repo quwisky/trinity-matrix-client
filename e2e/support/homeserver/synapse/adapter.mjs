@@ -319,7 +319,11 @@ export async function ensureConfig(ctx) {
   // Synapse calls the identity server (Sydent behind Caddy's internal CA) over https with
   // its plain HTTP client, which federation_verify_certificates does not cover. Its
   // address passes federation_ip_range_blacklist below, which identity servers share.
-  if (!/^use_insecure_ssl_client_just_for_testing_do_not_use:/m.test(yaml)) {
+  // Only with Sydent: without it Synapse keeps verifying TLS.
+  if (
+    ctx.identity &&
+    !/^use_insecure_ssl_client_just_for_testing_do_not_use:/m.test(yaml)
+  ) {
     additions.push('use_insecure_ssl_client_just_for_testing_do_not_use: true');
   }
   if (!/^federation_verify_certificates:/m.test(yaml)) {
@@ -503,7 +507,7 @@ export const synapse = {
   /** Sydent runs beside Synapse under Docker: start.mjs waits for it and offers `identity`. */
   identity: true,
   async prepare(ctx) {
-    await ensureConfig(ctx);
+    await ensureConfig({ ...ctx, identity: true });
     await ensureSecondaryConfig(ctx);
     await ensureSydentConfig(ctx);
   },

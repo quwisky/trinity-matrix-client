@@ -55,10 +55,12 @@ import {
   TEST_USER,
 } from './constants.mjs';
 import {
+  optionalReady,
   resolveHomeserverKind,
   resolveHomeserverRuntime,
   resolveMasEnabled,
   resolveSsoMock,
+  unavailableFeatures,
 } from './kind.mts';
 import {
   ensureSydentVenv,
@@ -71,6 +73,7 @@ import {
   nativeMailpitVersion,
   nativePaths,
   nodeProcessApi,
+  runningNativeServices,
   startNativeServices,
 } from './native.mts';
 import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
@@ -228,10 +231,12 @@ async function waitFor(
   label,
   service,
   fn,
-  { tries = 60, delayMs = 1000 } = {},
+  { tries = 60, delayMs = 1000, exited = () => false } = {},
 ) {
   for (let i = 0; i < tries; i++) {
     operationSignal?.throwIfAborted();
+    // A process that already exited will not become ready: stop waiting for it.
+    if (exited()) break;
     try {
       if (await fn()) {
         log(`${label} ready`);
@@ -245,6 +250,14 @@ async function waitFor(
   }
   console.error(`[homeserver] ${service} logs:\n${await logTail(service)}`);
   throw new Error(`timed out waiting for ${label}`);
+}
+
+/** Sydent's readiness, or false (identity unavailable) when it never answers. */
+function identityReadiness(options) {
+  return optionalReady(
+    () => waitFor('sydent (https)', 'sydent', identityReady, options),
+    { name: 'Sydent', log, signal: operationSignal },
+  );
 }
 
 /** Shared-secret registration (`/_synapse/admin/v1/register`), served by both kinds. */
@@ -460,6 +473,7 @@ async function startNative() {
     signal: operationSignal,
     log,
     native: true,
+    identity,
     sso,
     ssoMock,
     generate: () =>
@@ -505,14 +519,12 @@ async function startNative() {
   await registerUser();
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
   if (identity) {
-    identity = await waitFor('sydent (https)', 'sydent', identityReady).then(
-      () => true,
-      (error) => {
-        if (operationSignal?.aborted) throw error;
-        log('Sydent did not become ready, so no identity server');
-        return false;
-      },
-    );
+    identity = await identityReadiness({
+      exited: () =>
+        !runningNativeServices(paths.pidFile, nodeProcessApi).includes(
+          'sydent',
+        ),
+    });
   }
   const version = await serverVersion();
   if (!existsSync(paths.caddyRoot)) {
@@ -531,12 +543,7 @@ async function startNative() {
     kind,
     version,
     runtime,
-    unavailable: [
-      'remote',
-      ...(sso ? [] : ['sso']),
-      ...(mail ? [] : ['mail']),
-      ...(identity ? [] : ['identity']),
-    ],
+    unavailable: unavailableFeatures({ remote: false, sso, mail, identity }),
     caddyRoot: paths.caddyRoot,
     ...(sso ? (ssoMock ? mockSsoAccount() : ssoAccounts()) : {}),
   };
@@ -607,7 +614,13 @@ export async function start({ signal } = {}) {
   );
   for (const service of [...stale]) {
     for (const dependent of adapter.restartWith[service] ?? []) {
-      if (!stale.includes(dependent)) stale.push(dependent);
+      // A dependent with no container (disabled by a profile under netns) has nothing to restart.
+      if (
+        !stale.includes(dependent) &&
+        (await runningServices([dependent])).length
+      ) {
+        stale.push(dependent);
+      }
     }
   }
   if (stale.length) {
@@ -649,8 +662,7 @@ export async function start({ signal } = {}) {
 
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
 
-  const identity = adapter.identity === true;
-  if (identity) await waitFor('sydent (https)', 'sydent', identityReady);
+  const identity = adapter.identity === true && (await identityReadiness());
 
   if (masEnabled) {
     await waitFor('mas discovery (https)', 'mas', async () => {
@@ -688,11 +700,7 @@ export async function start({ signal } = {}) {
     kind,
     version,
     runtime,
-    unavailable: [
-      ...(sso ? [] : ['sso']),
-      ...(mail ? [] : ['mail']),
-      ...(identity ? [] : ['identity']),
-    ],
+    unavailable: unavailableFeatures({ remote: true, sso, mail, identity }),
     secondary: {
       hs: SECONDARY_HTTP,
       serverName: secondaryServerName(),
