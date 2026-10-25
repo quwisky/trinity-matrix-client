@@ -11,6 +11,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { filter, switchMap, take, tap } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import {
+  TrnAlertService,
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
   TrnSurfaceService,
@@ -27,7 +28,6 @@ import {
   type AddEmailClosed,
 } from './add-email-dialog.component';
 import { EMAIL_ADDRESSES_COPY, refusalMessage } from './email-addresses.copy';
-import { RemoveEmailDialogComponent } from './remove-email-dialog.component';
 
 type GroupState = { readonly kind: 'loading' } | EmailAddressesLoad;
 
@@ -41,6 +41,7 @@ type GroupState = { readonly kind: 'loading' } | EmailAddressesLoad;
 export class EmailAddressesGroupComponent {
   private readonly workflow = inject(EmailAddressesWorkflow);
   private readonly surfaces = inject(TrnSurfaceService);
+  private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly reloads = signal(0);
@@ -103,15 +104,16 @@ export class EmailAddressesGroupComponent {
 
   remove(address: ContactAddress): void {
     const accountId = this.accountId();
-    this.surfaces
-      .open(RemoveEmailDialogComponent, {
-        ariaDescribedBy: 'remove-email-body',
-        autoFocus: '[data-autofocus]',
-        inputs: { address: address.address },
+    this.alert
+      .confirm$({
+        header: this.copy.removeTitle(address.address),
+        message: this.copy.removeBody,
+        confirmText: 'Remove',
+        variant: 'danger',
       })
-      .closed.pipe(
+      .pipe(
         take(1),
-        filter((result) => result === 'remove'),
+        filter(Boolean),
         switchMap(() => this.workflow.remove(accountId, address)),
         tap((result) => {
           const current = this.accountId() === accountId;

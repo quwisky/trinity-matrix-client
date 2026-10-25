@@ -4,6 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, of, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  TrnAlertService,
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -16,7 +17,6 @@ import {
 import { fireEvent, render, screen } from '@trinity/testing';
 import { AddEmailDialogComponent } from './add-email-dialog.component';
 import { EmailAddressesGroupComponent } from './email-addresses-group.component';
-import { RemoveEmailDialogComponent } from './remove-email-dialog.component';
 
 const ALICE = '@alice:example.org';
 const ADDRESS: ContactAddress = { medium: 'email', address: 'a@b.c' };
@@ -30,6 +30,7 @@ async function setup(
   kind: 'legacy' | 'oauth' = 'legacy',
 ) {
   const closed = new Subject<unknown>();
+  const confirmed = new Subject<boolean>();
   const workflow = {
     load: vi.fn((): Observable<EmailAddressesLoad> => of(first)),
     remove: vi.fn((): Observable<EmailRemoveResult> => of({ kind: 'removed' })),
@@ -41,6 +42,9 @@ async function setup(
       MockProvider(TrnSurfaceService, {
         open: vi.fn(() => ({ closed }) as never),
       }),
+      MockProvider(TrnAlertService, {
+        confirm$: vi.fn(() => confirmed.asObservable()),
+      }),
       MockProvider(TrnToastService),
     ],
   });
@@ -48,6 +52,8 @@ async function setup(
     ...rendered,
     workflow,
     closed,
+    confirmed,
+    alert: TestBed.inject(TrnAlertService),
     surfaces: TestBed.inject(TrnSurfaceService),
     toast: TestBed.inject(TrnToastService),
   };
@@ -130,14 +136,16 @@ describe('EmailAddressesGroupComponent', () => {
     const test = await setup(loaded([ADDRESS]));
     fireEvent.click(screen.getByRole('button', { name: 'Remove a@b.c' }));
 
-    expect(test.surfaces.open).toHaveBeenCalledWith(
-      RemoveEmailDialogComponent,
-      expect.objectContaining({ inputs: { address: 'a@b.c' } }),
-    );
+    expect(test.alert.confirm$).toHaveBeenCalledWith({
+      header: 'Remove a@b.c?',
+      message: 'You won’t be able to reset your password with it.',
+      confirmText: 'Remove',
+      variant: 'danger',
+    });
     expect(test.workflow.remove).not.toHaveBeenCalled();
 
     test.workflow.load.mockReturnValue(of(loaded([])));
-    test.closed.next('remove');
+    test.confirmed.next(true);
     await test.fixture.whenStable();
 
     expect(test.workflow.remove).toHaveBeenCalledWith(ALICE, ADDRESS);
@@ -151,7 +159,7 @@ describe('EmailAddressesGroupComponent', () => {
   it('does not remove when the confirmation is cancelled', async () => {
     const test = await setup(loaded([ADDRESS]));
     fireEvent.click(screen.getByRole('button', { name: 'Remove a@b.c' }));
-    test.closed.next(undefined);
+    test.confirmed.next(false);
     await test.fixture.whenStable();
 
     expect(test.workflow.remove).not.toHaveBeenCalled();
@@ -163,7 +171,7 @@ describe('EmailAddressesGroupComponent', () => {
       of({ kind: 'refused', reason: 'failed' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Remove a@b.c' }));
-    test.closed.next('remove');
+    test.confirmed.next(true);
     await test.fixture.whenStable();
 
     expect(screen.getByTestId('email-addresses-error').textContent).toContain(
@@ -232,7 +240,7 @@ describe('EmailAddressesGroupComponent', () => {
     test.fixture.componentRef.setInput('accountId', '@bob:example.org');
     await test.fixture.whenStable();
     test.workflow.load.mockClear();
-    test.closed.next('remove');
+    test.confirmed.next(true);
     await test.fixture.whenStable();
 
     expect(test.workflow.remove).toHaveBeenCalledWith(ALICE, ADDRESS);
