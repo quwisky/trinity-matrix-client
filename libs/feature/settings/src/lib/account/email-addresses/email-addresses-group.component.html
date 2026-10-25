@@ -1,0 +1,95 @@
+<p class="sr-only" role="status" data-testid="email-addresses-status">
+  {{ announcement() }}
+</p>
+
+<trn-settings-group
+  title="Email addresses"
+  partId="email-addresses"
+  [description]="copy.groupDescription"
+>
+  @if (accountKind() === 'oauth') {
+    <p
+      class="m-0 py-3 text-sm text-muted-foreground"
+      data-testid="email-addresses-provider"
+    >
+      {{ copy.providerLine }}
+    </p>
+  } @else {
+    @let current = state();
+    @if (current.kind === 'refused') {
+      <div
+        class="flex flex-col items-start gap-2 py-3"
+        data-testid="email-addresses-load-failed"
+      >
+        <p class="m-0 text-sm text-muted-foreground">
+          {{ copy.loadFailed(server()) }}
+        </p>
+        <button
+          trnBtn
+          size="sm"
+          presentation="outline"
+          type="button"
+          (click)="retry()"
+          data-testid="email-addresses-retry"
+        >
+          Try again
+        </button>
+      </div>
+    } @else if (current.kind === 'loaded') {
+      @for (
+        address of current.addresses;
+        track address.medium + address.address
+      ) {
+        <trn-settings-row [label]="address.address">
+          @if (current.canChange) {
+            <button
+              trnBtn
+              type="button"
+              presentation="outline"
+              size="sm"
+              [attr.aria-label]="copy.removeLabel(address.address)"
+              (click)="remove(address)"
+            >
+              Remove
+            </button>
+          }
+        </trn-settings-row>
+      } @empty {
+        <p
+          class="m-0 py-3 text-sm text-muted-foreground"
+          data-testid="email-addresses-empty"
+        >
+          {{ copy.empty }}
+        </p>
+      }
+      @if (actionError(); as message) {
+        <p
+          class="m-0 py-3 text-sm text-danger"
+          data-testid="email-addresses-error"
+        >
+          {{ message }}
+        </p>
+      }
+      @if (current.canChange) {
+        <div class="py-3">
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            (click)="add()"
+            data-testid="email-addresses-add"
+          >
+            {{ copy.addButton }}
+          </button>
+        </div>
+      } @else {
+        <p
+          class="m-0 py-3 text-sm text-muted-foreground"
+          data-testid="email-addresses-read-only"
+        >
+          {{ copy.readOnlyLine(server()) }}
+        </p>
+      }
+    }
+  }
+</trn-settings-group>

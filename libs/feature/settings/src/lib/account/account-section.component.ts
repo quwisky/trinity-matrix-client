@@ -30,6 +30,7 @@ import { runWithBusy } from '@trinity/util/ui';
 import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
+import { EmailAddressesGroupComponent } from './email-addresses/email-addresses-group.component';
 import { DeleteAccountGroupComponent } from './delete-account/delete-account-group.component';
 import { serverNameOf } from './delete-account/delete-account.copy';
 import {
@@ -99,6 +100,7 @@ const passwordSchema = schema<PasswordModel>((path) => {
   templateUrl: './account-section.component.html',
   imports: [
     DeleteAccountGroupComponent,
+    EmailAddressesGroupComponent,
     TrnSettingsRowComponent,
     TrnSettingsGroupComponent,
     FormField,
