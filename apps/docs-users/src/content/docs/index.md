@@ -280,19 +280,23 @@ the link hasn't been opened. Open the link and choose **Continue** again; you do
 your password a second time.
 
 **Let people find you.** An identity server lets people who know your email address find you on
-Matrix. Choose **Change** next to **Identity server** to pick one. Trinity then asks that server,
-using hashed lookups, which of your addresses already find you, so it can show the **Findable**
-switches. A server your homeserver suggests is not contacted until you turn **Findable** on.
-Trinity sends the server your address and your Matrix ID only when you turn **Findable** on. If the
-server has terms, Trinity shows them first and you choose **Accept** or **Not now**. The server
-then emails a link to the address; open it, then choose **Continue**. Turn **Findable** off to stop
-people finding you by that address. Choose **Turn off** next to **Identity server** to stop using
-it. Changing or turning off the server first stops it finding you by every address you published
-(if Trinity can't tell which, by every address on your account), and Trinity asks you to confirm.
+Matrix. Choose **Change** next to **Identity server** to pick one. Once you choose a server with
+**Change**, Trinity signs in to it with your Matrix ID and asks, using hashed lookups, which of your
+addresses it lists, so it can show the **Findable** switches. A server your homeserver only
+suggests isn't contacted until you turn **Findable** on. Trinity sends an address in plain form
+only when you turn **Findable** on for it, or when it asks the server to stop finding you by it. If
+the server has terms, Trinity shows them first and you choose **Accept** or **Not now**; a
+suggested server becomes your choice only once you accept. The server then emails a link to the
+address; open it, then choose **Continue**. Turn **Findable** off to stop people finding you by
+that address. Choose **Turn off** next to **Identity server** to stop using it. Changing or turning
+off the server first stops it finding you by every address you published (if Trinity can't tell
+which, by every address on your account), and Trinity asks you to confirm. If the server can't do
+that, Trinity asks whether to go ahead anyway; the server may then still let people find you by
+your addresses.
 
 **Remove one.** Choose **Remove** next to the address and confirm. This also stops the identity
-server finding you by that address. If the server can't do that, Trinity says it may still let
-people find you by it.
+server finding you by that address. If that can't be done, Trinity says the identity server may
+still let people find you by it.
 
 If your server doesn't allow changes, the list is read-only and says so. If you sign in through a
 provider, you manage your addresses at the provider, and the group says so.
