@@ -1,0 +1,64 @@
+<div class="flex flex-col gap-4">
+  <p
+    id="add-email-body"
+    class="m-0 text-sm text-muted-foreground"
+    data-testid="add-email-sent"
+  >
+    {{ copy.sentBody(email()) }}
+  </p>
+  <p
+    class="m-0 text-13 text-danger"
+    aria-live="polite"
+    data-testid="add-email-not-verified"
+  >
+    @if (notVerified()) {
+      {{ copy.notVerified }}
+    }
+  </p>
+  <p
+    class="m-0 text-13 text-muted-foreground"
+    aria-live="polite"
+    data-testid="add-email-resent"
+  >
+    @if (resent()) {
+      {{ copy.resent(email()) }}
+    }
+  </p>
+  <p
+    class="m-0 text-13 text-danger"
+    aria-live="polite"
+    data-testid="add-email-resend-error"
+  >
+    {{ error() }}
+  </p>
+  <div trnDialogActions>
+    <button
+      trnBtn
+      type="button"
+      presentation="outline"
+      (click)="cancelled.emit()"
+      data-testid="add-email-cancel"
+    >
+      Cancel
+    </button>
+    <button
+      trnBtn
+      type="button"
+      presentation="outline"
+      [disabled]="busy() || resendWaitMs() > 0"
+      (click)="resend.emit()"
+      data-testid="add-email-resend"
+    >
+      {{ copy.resend }}
+    </button>
+    <button
+      trnBtn
+      type="button"
+      [disabled]="busy()"
+      (click)="continue.emit()"
+      data-testid="add-email-continue"
+    >
+      Continue
+    </button>
+  </div>
+</div>

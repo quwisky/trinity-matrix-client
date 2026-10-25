@@ -1,0 +1,131 @@
+<trn-dialog-shell
+  [title]="title()"
+  size="md"
+  [closable]="step().kind !== 'working'"
+  (closed)="close()"
+>
+  @switch (step().kind) {
+    @case ('address') {
+      <form
+        [formRoot]="addressForm"
+        (submit)="submitAddress()"
+        class="flex flex-col gap-4"
+      >
+        <div>
+          <label trnLabel for="add-email-input">Email address</label>
+          <input
+            trnInput
+            id="add-email-input"
+            type="email"
+            class="mt-1 w-full"
+            autocomplete="email"
+            spellcheck="false"
+            data-autofocus
+            [formField]="addressForm.email"
+            [explicitInvalid]="addressError() !== ''"
+            [aria-describedby]="
+              addressError() !== '' ? 'add-email-error' : null
+            "
+            data-testid="add-email-input"
+          />
+          <p
+            id="add-email-error"
+            class="m-0 pt-1 text-13 text-danger"
+            aria-live="polite"
+            data-testid="add-email-error"
+          >
+            {{ addressError() }}
+          </p>
+        </div>
+        <div trnDialogActions>
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            (click)="close()"
+            data-testid="add-email-cancel"
+          >
+            Cancel
+          </button>
+          <button
+            trnBtn
+            type="submit"
+            [disabled]="busy()"
+            data-testid="add-email-submit"
+          >
+            {{ copy.sendLink }}
+          </button>
+        </div>
+      </form>
+    }
+    @case ('sent') {
+      <trn-verify-link-step
+        [email]="sentEmail()"
+        [busy]="busy()"
+        [notVerified]="notVerified()"
+        [resendWaitMs]="resendWaitMs()"
+        [resent]="resent()"
+        [error]="resendError()"
+        (continue)="continueAdding()"
+        (resend)="resend()"
+        (cancelled)="close()"
+      />
+    }
+    @case ('password') {
+      <trn-reauth-password-step
+        testIdPrefix="add-email"
+        [body]="copy.passwordBody(accountId())"
+        [rejected]="passwordRejected()"
+        [rejectedMessage]="copy.passwordRejected"
+        [submitLabel]="copy.submitLabel"
+        (submitted)="submitPassword($event)"
+        (back)="back()"
+      />
+    }
+    @case ('browser') {
+      <trn-reauth-browser-step
+        testIdPrefix="add-email"
+        [url]="browserUrl()"
+        [pending]="browserPending()"
+        [body]="copy.browserBody(server())"
+        [pendingMessage]="copy.browserPending(server())"
+        [doneLabel]="copy.doneLabel"
+        (done)="confirmInBrowserDone()"
+        (back)="back()"
+      />
+    }
+    @case ('working') {
+      <p
+        id="add-email-body"
+        role="status"
+        class="m-0 text-sm text-muted-foreground"
+        data-testid="add-email-working"
+      >
+        {{ copy.workingTitle }}
+      </p>
+    }
+    @case ('stopped') {
+      <div class="flex flex-col gap-4">
+        <p
+          id="add-email-body"
+          class="m-0 text-sm"
+          aria-live="polite"
+          data-testid="add-email-stopped"
+        >
+          {{ stoppedMessage() }}
+        </p>
+        <div trnDialogActions>
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            (click)="close()"
+            data-testid="add-email-close"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    }
+  }
+</trn-dialog-shell>
