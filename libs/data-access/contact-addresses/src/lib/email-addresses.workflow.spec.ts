@@ -288,6 +288,34 @@ describe('EmailAddressesWorkflow.confirm', () => {
     });
   });
 
+  it('flags the fallback step pending when the server repeats the stage', async () => {
+    const addThreePidOnly = vi
+      .fn()
+      .mockRejectedValueOnce(uia(['m.login.sso']))
+      .mockRejectedValueOnce(uia(['m.login.sso']))
+      .mockResolvedValueOnce({});
+    const workflow = setup({ addThreePidOnly });
+    const s = stages();
+    await firstValueFrom(workflow.confirm(pending, s));
+    expect(s.confirmInBrowser.mock.calls.map(([step]) => step.pending)).toEqual(
+      [false, true],
+    );
+  });
+
+  it('maps a challenge with no stage left to no-usable-stage', async () => {
+    const workflow = setup({
+      addThreePidOnly: vi
+        .fn()
+        .mockRejectedValue(
+          new MatrixError({ session: 's', flows: [{ stages: [] }] }, 401),
+        ),
+    });
+    expect(await firstValueFrom(workflow.confirm(pending, stages()))).toEqual({
+      kind: 'refused',
+      reason: 'no-usable-stage',
+    });
+  });
+
   it('maps repeated rejected passwords to attempts-exceeded', async () => {
     const workflow = setup({
       addThreePidOnly: vi.fn().mockRejectedValue(uia(['m.login.password'])),

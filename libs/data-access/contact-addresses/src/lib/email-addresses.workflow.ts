@@ -89,10 +89,10 @@ export class EmailAddressesWorkflow {
             }),
           {
             password: { user: pending.accountId, prompt: stages.password },
-            fallback: ({ stage, session }) =>
+            fallback: ({ stage, session, pending: stillPending }) =>
               stages.confirmInBrowser({
                 url: client.getFallbackAuthUrl(stage, session),
-                pending: false,
+                pending: stillPending,
               }),
           },
         ),
