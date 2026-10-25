@@ -23,6 +23,7 @@ export declare const TEST_USER: string;
 export declare const TEST_PASS: string;
 export declare const DEX_ISSUER: string;
 export declare const MAILPIT_HTTP: string;
+export declare const IDENTITY_SERVER_URL: string;
 export declare const SSO_EMAIL: string;
 export declare const SSO_PASS: string;
 export declare const SSO_USER: string;

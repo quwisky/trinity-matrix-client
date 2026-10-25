@@ -2,13 +2,14 @@
 // `generate`, then patches in what the e2e suites need. The compose services are in
 // docker-compose.yml beside this file; start.mjs drives readiness and registration.
 import { execFile } from 'node:child_process';
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { DATA, REMOTE_DATA } from '../paths.mjs';
+import { DATA, HERE, REMOTE_DATA } from '../paths.mjs';
 import {
   DEX_ISSUER,
   HS_TLS,
+  IDENTITY_SERVER_URL,
   REGISTRATION_SHARED_SECRET,
   SERVER_NAME,
 } from '../constants.mjs';
@@ -16,6 +17,16 @@ import {
 const exec = promisify(execFile);
 const CONFIG = join(DATA, 'homeserver.yaml');
 const REMOTE_CONFIG = join(REMOTE_DATA, 'homeserver.yaml');
+/** Sydent's state: its config (which it rewrites to save its signing key) and database. */
+export const SYDENT_DATA = join(DATA, 'sydent');
+export const SYDENT_CONFIG = join(SYDENT_DATA, 'sydent.conf');
+/** The committed terms and email templates, copied into a separate state directory. */
+const SYDENT_FILES = [
+  'sydent/launch.py',
+  'sydent/terms.yaml',
+  'sydent/res/trinity/verification_template.eml',
+  'sydent/res/trinity/verify_response_template.html',
+];
 
 async function exists(p) {
   try {
@@ -305,6 +316,12 @@ export async function ensureConfig(ctx) {
       '  enable_notifs: false',
     );
   }
+  // Synapse calls the identity server (Sydent behind Caddy's internal CA) over https with
+  // its plain HTTP client, which federation_verify_certificates does not cover. Its
+  // address passes federation_ip_range_blacklist below, which identity servers share.
+  if (!/^use_insecure_ssl_client_just_for_testing_do_not_use:/m.test(yaml)) {
+    additions.push('use_insecure_ssl_client_just_for_testing_do_not_use: true');
+  }
   if (!/^federation_verify_certificates:/m.test(yaml)) {
     // The harness Caddy uses its own disposable CA. Federation is still real — only
     // certificate-chain verification is relaxed inside this isolated test network.
@@ -430,14 +447,65 @@ async function ensureSecondaryConfig(ctx) {
   await writeFile(REMOTE_CONFIG, yaml, 'utf8');
 }
 
+/**
+ * Write Sydent's config on first run. Sydent appends a generated signing key to it, so it
+ * is never rewritten while ./data lives. Docker mounts SYDENT_DATA at /data and the
+ * committed sydent/ directory at /trinity-sydent; the native runtime uses both in place.
+ */
+export async function ensureSydentConfig(ctx) {
+  await mkdir(SYDENT_DATA, { recursive: true });
+  if (await exists(SYDENT_CONFIG)) return;
+  const data = ctx.native ? SYDENT_DATA : '/data';
+  const assets = ctx.native ? join(HERE, 'sydent') : '/trinity-sydent';
+  // Mailpit's DNS name exists only on the compose network, as for Synapse's mail.
+  const smtpHost = ctx.networkContainer || ctx.native ? 'localhost' : 'mailpit';
+  const config = [
+    '[general]',
+    `server.name = ${new URL(IDENTITY_SERVER_URL).host}`,
+    `pidfile.path = ${data}/sydent.pid`,
+    `templates.path = ${assets}/res`,
+    'brand.default = trinity',
+    `terms.path = ${assets}/terms.yaml`,
+    // Sydent blocks private ranges by default; it reaches Synapse's OpenID userinfo on
+    // loopback (federation to `localhost` falls back to Caddy's localhost:8448).
+    'ip.whitelist = 127.0.0.0/8,::1/128',
+    '',
+    '[db]',
+    `db.file = ${data}/sydent.db`,
+    '',
+    '[http]',
+    'clientapi.http.bind_address = 127.0.0.1',
+    'clientapi.http.port = 8090',
+    `client_http_base = ${IDENTITY_SERVER_URL}`,
+    // Caddy's internal CA again, this time on Synapse's federation front.
+    'federation.verifycerts = false',
+    '',
+    '[email]',
+    `email.smtphost = ${smtpHost}`,
+    'email.smtpport = 1025',
+    'email.hostname = localhost',
+    'email.from = Trinity e2e identity <noreply@localhost>',
+    // The default (5, then one per 5 minutes per address) would refuse reruns.
+    'email.ratelimit_sender.burst = 1000',
+    'email.ratelimit_sender.rate_hz = 100',
+    '',
+  ].join('\n');
+  await writeFile(SYDENT_CONFIG, config, 'utf8');
+  ctx.log('wrote sydent.conf');
+}
+
 export const synapse = {
   kind: 'synapse',
-  configFiles: [],
+  configFiles: SYDENT_FILES,
   mountedConfig: { homeserver: CONFIG, 'homeserver-remote': REMOTE_CONFIG },
-  restartWith: {},
+  // Each lives in that service's network namespace, which a restart replaces.
+  restartWith: { homeserver: ['identity-forward'], caddy: ['sydent'] },
+  /** Sydent runs beside Synapse under Docker: start.mjs waits for it and offers `identity`. */
+  identity: true,
   async prepare(ctx) {
     await ensureConfig(ctx);
     await ensureSecondaryConfig(ctx);
+    await ensureSydentConfig(ctx);
   },
   /** The primary server only: the native runtime has no secondary homeserver. */
   async preparePrimary(ctx) {

@@ -2,7 +2,8 @@
 // pinned venv and Caddy run as detached host processes, for hosts without Docker (the
 // macOS runner the iOS suite needs). Dex joins them when a `dex` binary is on PATH
 // (`brew install dexidp`), which turns SSO on, and Mailpit when a `mailpit` binary is
-// (`brew install mailpit`), which turns mail on. Primary server only: no federated secondary.
+// (`brew install mailpit`), which turns mail on; with mail, Sydent from its own pinned
+// venv turns the identity server on. Primary server only: no federated secondary.
 // Detached like Compose containers: a run that dies leaves them up, and the PID file is
 // how the lease notices them and stop.mjs removes them.
 import { execFile, execFileSync, spawn } from 'node:child_process';
@@ -19,11 +20,14 @@ import { promisify } from 'node:util';
 
 /** The Synapse the Docker stack runs (synapse/docker-compose.yml); a test keeps them equal. */
 export const SYNAPSE_VERSION = '1.161.0';
+/** The Sydent the Docker stack runs (synapse/docker-compose.yml); a test keeps them equal. */
+export const SYDENT_VERSION = '2.6.1';
 export const NATIVE_SERVICES = [
   'homeserver',
   'caddy',
   'dex',
   'mailpit',
+  'sydent',
 ] as const;
 export type NativeService = (typeof NATIVE_SERVICES)[number];
 
@@ -31,6 +35,9 @@ export interface NativePaths {
   readonly data: string;
   readonly venv: string;
   readonly python: string;
+  /** Sydent's own venv, kept between runs like the Synapse one. */
+  readonly sydentVenv: string;
+  readonly sydentPython: string;
   readonly config: string;
   readonly caddyfile: string;
   /** The shared dex.yaml, bound to loopback; written only when Dex runs. */
@@ -52,11 +59,14 @@ export interface NativePaths {
  */
 export function nativePaths(stateDir: string, dataDir: string): NativePaths {
   const venv = join(stateDir, 'native-venv');
+  const sydentVenv = join(stateDir, 'native-sydent-venv');
   const caddyData = join(dataDir, 'caddy-data');
   return {
     data: dataDir,
     venv,
     python: join(venv, 'bin', 'python'),
+    sydentVenv,
+    sydentPython: join(sydentVenv, 'bin', 'python'),
     config: join(dataDir, 'homeserver.yaml'),
     caddyfile: join(dataDir, 'Caddyfile.native'),
     dexConfig: join(dataDir, 'dex.native.yaml'),
@@ -66,6 +76,7 @@ export function nativePaths(stateDir: string, dataDir: string): NativePaths {
       caddy: join(dataDir, 'caddy.log'),
       dex: join(dataDir, 'dex.log'),
       mailpit: join(dataDir, 'mailpit.log'),
+      sydent: join(dataDir, 'sydent.log'),
     },
     homeserverLog: join(dataDir, 'homeserver.log'),
     caddyAccessLog: join(dataDir, 'caddy-access.log'),
@@ -150,39 +161,93 @@ export const nodeProcessApi: NativeProcessApi = {
 const SYNAPSE_VERSION_PROBE =
   'import authlib; from importlib.metadata import version; print(version("matrix-synapse"))';
 
-/** Create the venv once and (re)install Synapse only when the pin changed. */
-export async function ensureSynapseVenv(
-  paths: NativePaths,
+// Sydent 2.6.1 signs and verifies requests whose `method` is bytes, which canonicaljson 2
+// refuses: the pin is its own lockfile's. It imports prometheus_client unconditionally,
+// which only its `prometheus` extra installs.
+const SYDENT_CANONICALJSON = '1.5.0';
+const SYDENT_VERSION_PROBE =
+  'import prometheus_client; from importlib.metadata import version; print(version("matrix-sydent"), version("canonicaljson"))';
+
+interface VenvOptions {
+  readonly signal?: AbortSignal;
+  readonly log: (message: string) => void;
+}
+
+/** Create a venv once and (re)install its package only when the pin changed. */
+async function ensureVenv(
   api: NativeProcessApi,
-  {
-    signal,
-    log,
-  }: { readonly signal?: AbortSignal; readonly log: (message: string) => void },
+  venv: { readonly dir: string; readonly python: string },
+  pin: {
+    readonly name: string;
+    readonly version: string;
+    readonly probe: string;
+    /** What the probe prints once the pins are installed. */
+    readonly installed: string;
+    readonly requirements: readonly string[];
+  },
+  { signal, log }: VenvOptions,
 ): Promise<void> {
-  if (!existsSync(paths.python)) {
-    log(`creating the Synapse venv at ${paths.venv}…`);
-    await api.exec('python3', ['-m', 'venv', paths.venv], { signal });
+  if (!existsSync(venv.python)) {
+    log(`creating the ${pin.name} venv at ${venv.dir}…`);
+    await api.exec('python3', ['-m', 'venv', venv.dir], { signal });
   }
   const installed = await api
-    .exec(paths.python, ['-c', SYNAPSE_VERSION_PROBE], { signal })
+    .exec(venv.python, ['-c', pin.probe], { signal })
     .then(
       ({ stdout }) => stdout.trim(),
       () => '',
     );
-  if (installed === SYNAPSE_VERSION) return;
-  log(`installing Synapse ${SYNAPSE_VERSION} (found ${installed || 'none'})…`);
-  // url-preview: the shared config patch enables previews, which need lxml. oidc: the
-  // Dex provider block, which Synapse refuses to load without authlib.
+  if (installed === pin.installed) return;
+  log(`installing ${pin.name} ${pin.version} (found ${installed || 'none'})…`);
   await api.exec(
-    paths.python,
-    [
-      '-m',
-      'pip',
-      'install',
-      '--quiet',
-      `matrix-synapse[url-preview,oidc]==${SYNAPSE_VERSION}`,
-    ],
+    venv.python,
+    ['-m', 'pip', 'install', '--quiet', ...pin.requirements],
     { signal },
+  );
+}
+
+/** Create the venv once and (re)install Synapse only when the pin changed. */
+export function ensureSynapseVenv(
+  paths: NativePaths,
+  api: NativeProcessApi,
+  options: VenvOptions,
+): Promise<void> {
+  return ensureVenv(
+    api,
+    { dir: paths.venv, python: paths.python },
+    {
+      name: 'Synapse',
+      version: SYNAPSE_VERSION,
+      probe: SYNAPSE_VERSION_PROBE,
+      installed: SYNAPSE_VERSION,
+      // url-preview: the shared config patch enables previews, which need lxml. oidc: the
+      // Dex provider block, which Synapse refuses to load without authlib.
+      requirements: [`matrix-synapse[url-preview,oidc]==${SYNAPSE_VERSION}`],
+    },
+    options,
+  );
+}
+
+/** The same for Sydent, in its own venv: its pins conflict with nothing of Synapse's. */
+export function ensureSydentVenv(
+  paths: NativePaths,
+  api: NativeProcessApi,
+  options: VenvOptions,
+): Promise<void> {
+  return ensureVenv(
+    api,
+    { dir: paths.sydentVenv, python: paths.sydentPython },
+    {
+      name: 'Sydent',
+      version: SYDENT_VERSION,
+      probe: SYDENT_VERSION_PROBE,
+      installed: `${SYDENT_VERSION} ${SYDENT_CANONICALJSON}`,
+      requirements: [
+        `matrix-sydent[prometheus]==${SYDENT_VERSION}`,
+        `canonicaljson==${SYDENT_CANONICALJSON}`,
+      ],
+    },
+    options,
   );
 }
 
@@ -214,18 +279,23 @@ export async function generateSynapseConfig(
 }
 
 /**
- * The shared Caddyfile's https://localhost:8448 and link-preview (:8080) sites, verbatim,
- * under native-only global options; `default_bind` keeps both on loopback. The other sites
- * serve the secondary server and federation, which do not run natively, and :443 cannot be
- * bound unprivileged on Linux.
+ * The shared Caddyfile's https://localhost:8448, identity server (8452) and link-preview
+ * (:8080) sites, verbatim, under native-only global options; `default_bind` keeps them on
+ * loopback. The other sites serve the secondary server and federation, which do not run
+ * natively, and :443 cannot be bound unprivileged on Linux.
  */
 export function nativeCaddyfile(shared: string, accessLog: string): string {
-  const site = /^https:\/\/localhost:8448 \{\n[\s\S]*?^\}$/mu.exec(shared)?.[0];
-  if (!site)
-    throw new Error('the shared Caddyfile has no https://localhost:8448 site');
-  const preview = /^:8080 \{\n[\s\S]*?^\}$/mu.exec(shared)?.[0];
-  if (!preview)
-    throw new Error('the shared Caddyfile has no :8080 link-preview site');
+  const siteOf = (address: string, label = address): string => {
+    const escaped = address.replace(/[.*+?^${}()|[\]\\/]/gu, '\\$&');
+    const found = new RegExp(`^${escaped} \\{\\n[\\s\\S]*?^\\}$`, 'mu').exec(
+      shared,
+    )?.[0];
+    if (!found) throw new Error(`the shared Caddyfile has no ${label} site`);
+    return found;
+  };
+  const site = siteOf('https://localhost:8448');
+  const preview = siteOf(':8080', ':8080 link-preview');
+  const identity = siteOf('https://localhost:8452');
   return [
     '# Generated by e2e/support/homeserver/native.mts from the shared Caddyfile.',
     '{',
@@ -236,6 +306,8 @@ export function nativeCaddyfile(shared: string, accessLog: string): string {
     // Go logs failed or abandoned TLS handshakes ("TLS handshake error from …") at debug.
     '\tdebug',
     '\tauto_https disable_redirects',
+    // As in the shared Caddyfile: Synapse calls the identity server without SNI.
+    '\tdefault_sni localhost',
     // Docker publishes 127.0.0.1:8448 only; the LAN must not reach the admin API.
     '\tdefault_bind 127.0.0.1 [::1]',
     // TCP only, as Docker publishes it: HTTP/3 advertised over Alt-Svc makes WebKit race QUIC.
@@ -249,6 +321,8 @@ export function nativeCaddyfile(shared: string, accessLog: string): string {
       // Method, URI, status and duration only: no headers, so no bearer tokens.
       `{\n\tlog {\n\t\toutput file ${accessLog}\n\t\tformat filter {\n\t\t\twrap json\n\t\t\tfields {\n\t\t\t\trequest>headers delete\n\t\t\t\tresp_headers delete\n\t\t\t}\n\t\t}\n\t}\n`,
     ),
+    '',
+    identity,
     '',
     preview,
     '',
@@ -358,6 +432,7 @@ const IDENTITY: Record<NativeService, RegExp> = {
   caddy: /\bcaddy\b.*\brun\b/u,
   dex: /\bdex\b.*\bserve\b/u,
   mailpit: /\bmailpit\b.*--smtp\b/u,
+  sydent: /\bsydent\/launch\.py\b/u,
 };
 
 function isOurs(
@@ -378,8 +453,8 @@ export function runningNativeServices(
 }
 
 /**
- * Spawn Synapse, then Caddy, then Dex and Mailpit if asked, recording each PID as soon as
- * it exists.
+ * Spawn Synapse, then Caddy, then Dex, Mailpit and Sydent if asked, recording each PID as
+ * soon as it exists. `sydent` is the path of its config.
  */
 export function startNativeServices(
   paths: NativePaths,
@@ -388,7 +463,12 @@ export function startNativeServices(
   {
     dex = false,
     mailpit = false,
-  }: { readonly dex?: boolean; readonly mailpit?: boolean } = {},
+    sydent,
+  }: {
+    readonly dex?: boolean;
+    readonly mailpit?: boolean;
+    readonly sydent?: string;
+  } = {},
 ): void {
   const pids: Partial<Record<NativeService, number>> = {};
   const record = (): void =>
@@ -426,6 +506,14 @@ export function startNativeServices(
       'mailpit',
       ['--listen', '127.0.0.1:8025', '--smtp', '127.0.0.1:1025'],
       { env, logFile: paths.logs.mailpit },
+    );
+    record();
+  }
+  if (sydent) {
+    pids.sydent = api.spawnDetached(
+      paths.sydentPython,
+      [join(import.meta.dirname, 'sydent', 'launch.py')],
+      { env: { ...env, SYDENT_CONF: sydent }, logFile: paths.logs.sydent },
     );
     record();
   }

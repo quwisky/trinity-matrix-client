@@ -36,7 +36,12 @@ export const HOMESERVER_RUNTIMES = ['docker', 'native'] as const;
 export type HomeserverRuntime = (typeof HOMESERVER_RUNTIMES)[number];
 
 /** Harness features a runtime may not provide; a session lists the missing ones. */
-export const HOMESERVER_FEATURES = ['remote', 'sso', 'mail'] as const;
+export const HOMESERVER_FEATURES = [
+  'remote',
+  'sso',
+  'mail',
+  'identity',
+] as const;
 export type HomeserverFeature = (typeof HOMESERVER_FEATURES)[number];
 
 /**

@@ -11,7 +11,9 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import {
+  SYDENT_VERSION,
   SYNAPSE_VERSION,
+  ensureSydentVenv,
   ensureSynapseVenv,
   generateSynapseConfig,
   nativeCaddyfile,
@@ -110,6 +112,48 @@ describe('native homeserver runtime', () => {
     ].map((m) => m[1]);
     expect(images.length).toBeGreaterThan(0);
     expect(new Set(images)).toEqual(new Set([SYNAPSE_VERSION]));
+  });
+
+  it('runs the same Sydent as the Docker stack', () => {
+    const compose = readFileSync(
+      join(import.meta.dirname, 'synapse/docker-compose.yml'),
+      'utf8',
+    );
+    expect(compose).toContain(`matrixdotorg/sydent:v${SYDENT_VERSION}`);
+  });
+
+  it('installs the pinned Sydent into its own venv', async () => {
+    const paths = layout();
+    const fake = fakeProcesses();
+    await ensureSydentVenv(paths, fake.api, { log: () => undefined });
+    expect(paths.sydentVenv).not.toBe(paths.venv);
+    expect(fake.execCalls[0]).toEqual([
+      'python3',
+      '-m',
+      'venv',
+      paths.sydentVenv,
+    ]);
+    expect(fake.execCalls[2]).toEqual([
+      paths.sydentPython,
+      '-m',
+      'pip',
+      'install',
+      '--quiet',
+      `matrix-sydent[prometheus]==${SYDENT_VERSION}`,
+      'canonicaljson==1.5.0',
+    ]);
+  });
+
+  it('reinstalls a Sydent venv whose canonicaljson is not the pinned one', async () => {
+    const paths = layout();
+    mkdirSync(dirname(paths.sydentPython), { recursive: true });
+    writeFileSync(paths.sydentPython, '');
+    const current = fakeProcesses({ installed: `${SYDENT_VERSION} 1.5.0` });
+    await ensureSydentVenv(paths, current.api, { log: () => undefined });
+    expect(current.execCalls).toHaveLength(1);
+    const drifted = fakeProcesses({ installed: `${SYDENT_VERSION} 2.0.0` });
+    await ensureSydentVenv(paths, drifted.api, { log: () => undefined });
+    expect(drifted.execCalls.at(-1)).toContain('canonicaljson==1.5.0');
   });
 
   it('creates the venv and installs the pinned Synapse', async () => {
@@ -220,6 +264,34 @@ describe('native homeserver runtime', () => {
       'homeserver',
       'caddy',
       'mailpit',
+    ]);
+    await stopNativeServices(paths.pidFile, fake.api, {
+      graceMs: 50,
+      pollMs: 1,
+    });
+    expect(fake.live.size).toBe(0);
+  });
+
+  it('starts Sydent through the launcher with its config, and stops it with the rest', async () => {
+    const paths = layout();
+    const fake = fakeProcesses();
+    startNativeServices(
+      paths,
+      fake.api,
+      { PATH: '/bin' },
+      { mailpit: true, sydent: '/data/sydent/sydent.conf' },
+    );
+    expect(fake.spawns[3]).toMatchObject({
+      file: paths.sydentPython,
+      args: [join(import.meta.dirname, 'sydent', 'launch.py')],
+      env: { PATH: '/bin', SYDENT_CONF: '/data/sydent/sydent.conf' },
+      logFile: paths.logs.sydent,
+    });
+    expect(runningNativeServices(paths.pidFile, fake.api)).toEqual([
+      'homeserver',
+      'caddy',
+      'mailpit',
+      'sydent',
     ]);
     await stopNativeServices(paths.pidFile, fake.api, {
       graceMs: 50,
@@ -401,7 +473,7 @@ describe('native homeserver runtime', () => {
     expect(existsSync(paths.pidFile)).toBe(false);
   });
 
-  it('serves the 8448 and link-preview sites, without the admin API or a trust-store install', () => {
+  it('serves the 8448, identity server and link-preview sites, without the admin API or a trust-store install', () => {
     const shared = readFileSync(join(import.meta.dirname, 'Caddyfile'), 'utf8');
     const caddyfile = nativeCaddyfile(shared, '/data/caddy-access.log');
     expect(caddyfile).toContain('https://localhost:8448 {');
@@ -413,6 +485,7 @@ describe('native homeserver runtime', () => {
       'auto_https disable_redirects',
       'default_bind 127.0.0.1 [::1]',
       'protocols h1 h2',
+      'default_sni localhost',
     ]) {
       expect(caddyfile).toContain(option);
     }
@@ -421,6 +494,8 @@ describe('native homeserver runtime', () => {
     expect(caddyfile).toContain('request>headers delete');
     expect(caddyfile).not.toContain('https://localhost {');
     expect(caddyfile).not.toContain('9448');
+    expect(caddyfile).toContain('https://localhost:8452 {');
+    expect(caddyfile).toContain('reverse_proxy 127.0.0.1:8090');
     expect(caddyfile).toContain(':8080 {');
     expect(caddyfile).toContain('respond @og 200');
     expect(() => nativeCaddyfile(':8080 {\n}\n', '/x')).toThrow(

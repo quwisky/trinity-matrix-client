@@ -1,0 +1,13 @@
+Date: %(date)s
+From: %(from)s
+To: %(to)s
+Message-ID: %(messageid)s
+Subject: Confirm your email address for the Trinity e2e identity server
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Open this link to confirm your email address:
+
+%(link)s
+
+If your client requires a code, the code is %(token)s
