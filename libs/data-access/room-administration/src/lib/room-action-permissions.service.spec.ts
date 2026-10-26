@@ -352,6 +352,37 @@ describe('RoomActionPermissionsService', () => {
     expect(service.member('!room:hs', '@me:hs').kick.available).toBe(false);
   });
 
+  it.each([KnownMembership.Invite, KnownMembership.Knock])(
+    'lets a higher-ranked moderator remove someone whose membership is %s',
+    (targetMembership) => {
+      const fixture = clientFixture('@me:hs', { targetMembership });
+      const { service } = setup(fixture);
+
+      expect(service.member('!room:hs', '@target:hs').kick.available).toBe(
+        true,
+      );
+      fixture.members.get('@target:hs')!.powerLevel = 50;
+      expect(service.member('!room:hs', '@target:hs').kick.reason).toContain(
+        'lower role',
+      );
+      fixture.members.get('@target:hs')!.powerLevel = 0;
+      fixture.rules.kick = 60;
+      expect(service.member('!room:hs', '@target:hs').kick.available).toBe(
+        false,
+      );
+    },
+  );
+
+  it('still refuses to remove someone who has left', () => {
+    const { service } = setup(
+      clientFixture('@me:hs', { targetMembership: KnownMembership.Leave }),
+    );
+
+    expect(service.member('!room:hs', '@target:hs').kick.reason).toContain(
+      'no longer joined',
+    );
+  });
+
   it('requires ban and kick thresholds plus strict rank to unban', () => {
     const fixture = clientFixture('@me:hs', {
       myPower: 50,

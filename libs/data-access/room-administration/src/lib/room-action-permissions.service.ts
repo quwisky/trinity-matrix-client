@@ -97,6 +97,13 @@ const denied = (reason: string): ActionAvailability => ({
  * a permission revoked while a picker or confirmation is open is checked again immediately
  * before the homeserver write.
  */
+/** Matrix lets a higher-ranked moderator remove invited and knocking users, not only joined ones. */
+const MANAGEABLE_MEMBERSHIPS: ReadonlySet<string> = new Set([
+  KnownMembership.Join,
+  KnownMembership.Invite,
+  KnownMembership.Knock,
+]);
+
 @Injectable({ providedIn: 'root' })
 export class RoomActionPermissionsService {
   private readonly matrix = inject(MatrixClientService);
@@ -249,7 +256,7 @@ export class RoomActionPermissionsService {
         targetPower,
       );
     }
-    if (targetMember?.membership !== KnownMembership.Join) {
+    if (!MANAGEABLE_MEMBERSHIPS.has(targetMember?.membership ?? '')) {
       return this.deniedMember(
         'This member is no longer joined to the room.',
         context.myPower,

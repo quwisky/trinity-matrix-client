@@ -93,6 +93,16 @@ describe('RoomModerationService', () => {
     expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'spam');
   });
 
+  it.each(['invite', 'knock'])(
+    'kicks a target whose membership is %s',
+    async (targetMembership) => {
+      const { svc, kick } = setup({ targetMembership });
+
+      await firstValueFrom(svc.kick('!r:hs', '@bob:hs', 'no'));
+      expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'no');
+    },
+  );
+
   it('keeps an exact command on the opening Account after the active client changes', async () => {
     const { svc, matrix, kick } = setup();
     const otherKick = vi.fn().mockResolvedValue({});
