@@ -202,6 +202,7 @@ export async function openSettingsTab(
     | 'access'
     | 'contents'
     | 'members'
+    | 'permissions'
     | 'addresses'
     | 'widgets',
 ): Promise<void> {
