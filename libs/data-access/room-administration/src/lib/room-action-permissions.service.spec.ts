@@ -379,7 +379,7 @@ describe('RoomActionPermissionsService', () => {
     );
 
     expect(service.member('!room:hs', '@target:hs').kick.reason).toContain(
-      'no longer joined',
+      'no longer in the room',
     );
   });
 
