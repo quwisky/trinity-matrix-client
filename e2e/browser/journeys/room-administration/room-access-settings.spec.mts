@@ -137,6 +137,52 @@ test.describe('Room settings', () => {
     });
   });
 
+  // #1726: a dropdown's overlay stays attached while its close animation runs, and an Escape
+  // pressed in that window went to it instead of the dialog, so the dialog stayed open.
+  test('Escape closes Room settings straight after a dropdown choice', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}ae`;
+    const user = `access-esc-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Access escape ${runId}`;
+    await registerUser(request, user, pass);
+    const { access_token } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    await createRoom(request, hs, { accessToken: access_token }, roomName);
+
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'access');
+
+    // Escape on an open dropdown still closes only the dropdown.
+    await page.getByTestId('room-settings-join-rule').click();
+    await expect(page.getByRole('listbox')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+    await expect(page.getByTestId('room-settings')).toBeVisible();
+
+    // Choosing the current rule leaves nothing unsaved, so closing needs no confirmation.
+    await page.getByTestId('room-settings-join-rule').click();
+    await page
+      .getByRole('option', { name: 'Invite only', exact: true })
+      .click();
+    await page.keyboard.press('Escape');
+
+    await expect(page.getByTestId('room-settings')).toHaveCount(0);
+  });
+
   test('an admin lets a space’s members join the room', async ({
     page,
     request,
