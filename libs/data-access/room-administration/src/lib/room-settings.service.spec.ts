@@ -161,6 +161,7 @@ function setup(
           encryption: permissionFor('m.room.encryption'),
           directory: permissionFor('m.room.canonical_alias'),
           imagePack: permissionFor('m.room.image_pack'),
+          permissions: permissionFor('m.room.power_levels'),
         }),
         settingsFor: () => ({
           name: permissionFor('m.room.name'),
@@ -173,6 +174,7 @@ function setup(
           encryption: permissionFor('m.room.encryption'),
           directory: permissionFor('m.room.canonical_alias'),
           imagePack: permissionFor('m.room.image_pack'),
+          permissions: permissionFor('m.room.power_levels'),
         }),
         assert: (permission: { available: boolean }) => {
           if (!permission.available) throw new Error('Not allowed.');

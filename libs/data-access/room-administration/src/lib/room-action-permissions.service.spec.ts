@@ -223,7 +223,10 @@ describe('RoomActionPermissionsService', () => {
     const fixture = clientFixture('@me:hs', { myPower: 49 });
     const { service } = setup(fixture);
 
-    expect(Object.values(service.settings('!room:hs'))).toHaveLength(10);
+    expect(Object.values(service.settings('!room:hs'))).toHaveLength(11);
+    expect(service.settings('!room:hs').permissions.reason).toBe(
+      "Your role cannot change this room's permissions.",
+    );
     expect(
       Object.values(service.settings('!room:hs')).every(
         (permission) => !permission.available && !!permission.reason,

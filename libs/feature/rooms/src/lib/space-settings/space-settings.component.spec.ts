@@ -53,6 +53,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   encryption: ALLOWED,
   directory: ALLOWED,
   imagePack: ALLOWED,
+  permissions: ALLOWED,
 };
 
 function spaceSnapshot(

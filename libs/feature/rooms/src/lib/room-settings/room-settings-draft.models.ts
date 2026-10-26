@@ -33,6 +33,7 @@ export const DENIED_ROOM_SETTINGS: RoomSettingsPermissions = {
   encryption: { available: false, reason: 'Room settings are unavailable.' },
   directory: { available: false, reason: 'Room settings are unavailable.' },
   imagePack: { available: false, reason: 'Room settings are unavailable.' },
+  permissions: { available: false, reason: 'Room settings are unavailable.' },
 };
 
 export const JOIN_RULE_OPTIONS = [
