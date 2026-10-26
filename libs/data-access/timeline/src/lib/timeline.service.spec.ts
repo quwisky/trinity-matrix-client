@@ -257,7 +257,7 @@ describe('TimelineService', () => {
     expect(svc.canRedactOthers()).toBe(false);
   });
 
-  it('canSendMessages updates when power levels change', () => {
+  it('canSendMessages updates when power levels change', async () => {
     const power = { mine: 0, send: 0 };
     const svc = setup([], [], {}, false, power);
     expect(svc.canSendMessages()).toBe(true);
@@ -270,7 +270,28 @@ describe('TimelineService', () => {
       getRoomId: () => '!r:hs',
       getType: () => 'm.room.power_levels',
     });
+    await Promise.resolve();
     expect(svc.canSendMessages()).toBe(false);
+  });
+
+  it('canSendMessages follows a change to only my own level once the SDK applies it', async () => {
+    const power = { mine: 0, send: 50, redact: 50 };
+    const svc = setup([], [], {}, false, power);
+    expect(svc.canSendMessages()).toBe(false);
+
+    const room = TestBed.inject(MatrixClientService).instance as unknown as {
+      getRoom: () => { handlers: Map<string, (event: unknown) => void> };
+    };
+    // matrix-js-sdk emits RoomState.events before it updates member.powerLevel.
+    room.getRoom().handlers.get(RoomStateEvent.Events)?.({
+      getRoomId: () => '!r:hs',
+      getType: () => 'm.room.power_levels',
+    });
+    power.mine = 50;
+    await Promise.resolve();
+
+    expect(svc.canSendMessages()).toBe(true);
+    expect(svc.canRedactOthers()).toBe(true);
   });
 
   it('canSendMessages resets to true when the room closes', () => {

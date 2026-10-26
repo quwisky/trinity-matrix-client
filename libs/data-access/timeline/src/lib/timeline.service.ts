@@ -222,9 +222,9 @@ export class TimelineService {
   private readonly _typingNames = signal<string[]>([]);
   readonly typingNames = this._typingNames.asReadonly();
 
-  // Whether the user's power level lets them redact OTHER users' messages. Computed on open;
-  // the homeserver is the authority, so a mid-session power change is picked up on the next
-  // open and the server rejects a redaction we shouldn't have sent.
+  // Whether the user's power level lets them redact OTHER users' messages. Recomputed on open
+  // and on every power-levels change; the homeserver stays the authority and rejects a
+  // redaction we shouldn't have sent.
   private readonly _canRedactOthers = signal(false);
   readonly canRedactOthers = this._canRedactOthers.asReadonly();
   private readonly _canSendMessages = signal(true);
@@ -425,7 +425,13 @@ export class TimelineService {
       event.getType() === EventType.RoomPowerLevels
     ) {
       this.rows.notePollPermissions();
-      if (this.room) this.updateMessagePermissions(this.room);
+      // The SDK emits this before it updates member.powerLevel, which the policy reads.
+      const room = this.room;
+      if (room) {
+        queueMicrotask(() => {
+          if (this.room === room) this.updateMessagePermissions(room);
+        });
+      }
       this.scheduleRefresh();
     }
   };
