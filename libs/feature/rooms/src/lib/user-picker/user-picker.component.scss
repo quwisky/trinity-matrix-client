@@ -11,6 +11,13 @@
     gap: var(--trinity-space-3);
   }
 
+  .picker__note {
+    margin: var(--trinity-space-2) 0 0;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+  }
+
   .picker__result {
     @include interactive-row;
 

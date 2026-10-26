@@ -50,6 +50,12 @@ export interface PickedUser {
   readonly displayName: string | null;
 }
 
+/** A line under the search field, with an optional button that closes the picker first. */
+export interface UserPickerNote {
+  readonly text: string;
+  readonly action?: { readonly label: string; readonly run: () => void };
+}
+
 @Component({
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,6 +82,8 @@ export class UserPickerComponent {
   readonly confirmLabel = input('Select');
   /** Search placeholder. */
   readonly placeholder = input('@user:server or a name');
+  /** A line under the search field, such as what an invitee will be able to read. */
+  readonly note = input<UserPickerNote | null>(null);
 
   readonly term = signal('');
   readonly searching = signal(false);
@@ -141,6 +149,12 @@ export class UserPickerComponent {
 
   cancel(): void {
     this.dialogRef.close(null);
+  }
+
+  /** Run the note's action once the picker is out of the way. */
+  runNoteAction(action: NonNullable<UserPickerNote['action']>): void {
+    this.cancel();
+    action.run();
   }
 
   readonly initialOf = initialOf;

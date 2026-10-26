@@ -20,6 +20,7 @@ import {
 import { runWithBusy } from '@trinity/util/ui';
 import { ReportService } from '../report/report.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import type { PickedUser } from '../user-picker/user-picker.component';
 import {
   RoomDirectoryComponent,
@@ -68,6 +69,7 @@ export class RoomActionsService {
   private readonly publicRooms = inject(PublicRoomsService);
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly userPicker = inject(UserPickerService);
+  private readonly historyNotes = inject(InviteHistoryNoteService);
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly reports = inject(ReportService);
@@ -353,6 +355,7 @@ export class RoomActionsService {
       .pickUser$({
         title: `Invite to ${label}`,
         confirmLabel: 'Invite',
+        note: this.historyNotes.noteFor(targetId),
       })
       .pipe(
         filter((picked): picked is PickedUser => picked !== null),

@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal, untracked } from '@angular/core';
 import {
   ClientEvent,
   EventType,
+  HistoryVisibility,
   MatrixEventEvent,
   Preset,
   ReceiptType,
@@ -182,6 +183,12 @@ function isInviteBlocked(error: unknown): boolean {
     INVITE_BLOCKED_ERRCODES.has(error.errcode ?? '')
   );
 }
+
+/**
+ * Which earlier messages an invitee will be able to read in an encrypted room: everything the
+ * room shares (when the inviter's device can share it), or only from their invite or join on.
+ */
+export type InviteHistory = 'shared' | 'from-invite' | 'from-join';
 
 /**
  * Read model over the synced `MatrixClient`: joined rooms as plain view models (components
@@ -662,12 +669,7 @@ export class RoomLibraryService {
       if (!isValidUserId(userId)) {
         return throwError(() => new Error(`Invalid user id: ${userId}`));
       }
-      const client =
-        typeof target === 'string'
-          ? this.matrix.isInitialized
-            ? this.matrix.instance
-            : null
-          : this.matrix.clientFor(target.accountId);
+      const client = this.clientForTarget(target);
       if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
@@ -686,6 +688,35 @@ export class RoomLibraryService {
         ),
       );
     });
+  }
+
+  /**
+   * What someone invited to `target` now will be able to read, or null for an unencrypted or
+   * unknown room. A synchronous read for the invite dialog's note.
+   */
+  inviteHistory(
+    target: string | RoomLibraryGovernanceKey,
+  ): InviteHistory | null {
+    const roomId = typeof target === 'string' ? target : target.roomId;
+    const room = this.clientForTarget(target)?.getRoom(roomId);
+    if (!room?.hasEncryptionStateEvent()) return null;
+    switch (room.getHistoryVisibility()) {
+      case HistoryVisibility.Invited:
+        return 'from-invite';
+      case HistoryVisibility.Joined:
+        return 'from-join';
+      default:
+        return 'shared';
+    }
+  }
+
+  /** The active client for a bare room id, else the key's exact account. */
+  private clientForTarget(
+    target: string | RoomLibraryGovernanceKey,
+  ): MatrixClient | null {
+    if (typeof target !== 'string')
+      return this.matrix.clientFor(target.accountId);
+    return this.matrix.isInitialized ? this.matrix.instance : null;
   }
 
   private refresh(): void {

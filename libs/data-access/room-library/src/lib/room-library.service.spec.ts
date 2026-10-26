@@ -1773,6 +1773,50 @@ describe('RoomLibraryService writes', () => {
     expect(invite).toHaveBeenCalledWith('!r:hs', '@bob:hs');
   });
 
+  describe('inviteHistory', () => {
+    const roomWith = (encrypted: boolean, visibility: string) => ({
+      hasEncryptionStateEvent: () => encrypted,
+      getHistoryVisibility: () => visibility,
+    });
+
+    it.each([
+      ['shared', 'shared'],
+      ['world_readable', 'shared'],
+      ['invited', 'from-invite'],
+      ['joined', 'from-join'],
+    ] as const)(
+      'maps an encrypted room with %s visibility to %s',
+      (visibility, expected) => {
+        const { svc, client } = setupWrites();
+        client.getRoom = (() => roomWith(true, visibility)) as never;
+
+        expect(svc.inviteHistory('!r:hs')).toBe(expected);
+      },
+    );
+
+    it('is null for an unencrypted or unknown room', () => {
+      const { svc, client } = setupWrites();
+      client.getRoom = (() => roomWith(false, 'shared')) as never;
+      expect(svc.inviteHistory('!r:hs')).toBeNull();
+
+      client.getRoom = (() => null) as never;
+      expect(svc.inviteHistory('!r:hs')).toBeNull();
+    });
+
+    it('reads the exact account of a governance key', () => {
+      const { svc, matrix } = setupWrites();
+      const room = vi.fn(() => roomWith(true, 'joined'));
+      ngMocks.stubMember(matrix, 'clientFor', (accountId: string) =>
+        accountId === '@other:hs' ? asClient({ getRoom: room }) : null,
+      );
+
+      expect(
+        svc.inviteHistory({ accountId: '@other:hs', roomId: '!r:hs' }),
+      ).toBe('from-join');
+      expect(room).toHaveBeenCalledWith('!r:hs');
+    });
+  });
+
   it('inviteUser keeps an exact Space invite on the opening Account', async () => {
     const { svc, matrix, client, invite } = setupWrites();
     const otherInvite = vi.fn().mockResolvedValue({});

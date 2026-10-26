@@ -1,13 +1,20 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import { map, type Observable } from 'rxjs';
-import { UserPickerComponent, type PickedUser } from './user-picker.component';
+import {
+  UserPickerComponent,
+  type PickedUser,
+  type UserPickerNote,
+} from './user-picker.component';
+
+export type { UserPickerNote } from './user-picker.component';
 
 /** Heading / labels for a {@link UserPickerService.pick$} presentation. */
 export interface UserPickerOptions {
   title: string;
   confirmLabel: string;
   placeholder?: string;
+  note?: UserPickerNote | null;
 }
 
 /**
@@ -34,6 +41,7 @@ export class UserPickerService {
           title: options.title,
           confirmLabel: options.confirmLabel,
           ...(options.placeholder ? { placeholder: options.placeholder } : {}),
+          ...(options.note ? { note: options.note } : {}),
         },
       },
     );
