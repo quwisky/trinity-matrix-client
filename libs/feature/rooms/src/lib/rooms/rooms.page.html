@@ -149,6 +149,9 @@
           (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
         />
         <trn-identity-change-banner />
+        <trn-join-requests-banner
+          (review)="roomActions.onOpenRoomSettings('members')"
+        />
       }
 
       <div

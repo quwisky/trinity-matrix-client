@@ -1,0 +1,20 @@
+<!-- Always-mounted live region: a role="status" node inserted with the banner (via @if)
+     isn't reliably announced, so mirror the message here. -->
+<span class="sr-only" role="status" aria-live="polite">{{ message() }}</span>
+@if (message(); as message) {
+  <trn-banner variant="accent" data-testid="join-requests-banner">
+    <trn-icon trnBannerIcon name="user-plus" />
+    {{ message }}
+    <span trnBannerActions>
+      <button
+        trnBtn
+        size="sm"
+        type="button"
+        (click)="review.emit()"
+        data-testid="join-requests-review"
+      >
+        Review
+      </button>
+    </span>
+  </trn-banner>
+}

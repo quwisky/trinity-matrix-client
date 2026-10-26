@@ -55,6 +55,7 @@ import {
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { IdentityChangeBannerComponent } from '../identity-change/identity-change-banner.component';
+import { JoinRequestsBannerComponent } from '../join-requests-banner/join-requests-banner.component';
 import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
 import { MemberActionsService } from './member-actions.service';
@@ -257,6 +258,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
         IdentityChangeBannerComponent,
+        JoinRequestsBannerComponent,
       ],
     },
     add: {
@@ -311,6 +313,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),
         MockComponent(IdentityChangeBannerComponent),
+        MockComponent(JoinRequestsBannerComponent),
       ],
     },
   });

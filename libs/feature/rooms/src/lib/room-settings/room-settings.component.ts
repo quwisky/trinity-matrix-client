@@ -34,7 +34,7 @@ import { RoomSettingsForYouDraftService } from './room-settings-for-you/room-set
 import type { ParentSpace, RoomSettingsResult } from './room-settings.models';
 import { RoomWidgetsComponent } from './room-widgets.component';
 
-type RoomSettingsSection =
+export type RoomSettingsSection =
   | 'general'
   | 'for-you'
   | 'access'
