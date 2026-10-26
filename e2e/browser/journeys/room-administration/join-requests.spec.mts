@@ -118,7 +118,15 @@ test.describe('Ask to join', () => {
     await expect
       .poll(() => joinRule(request, hs, alice, roomId), { timeout: 30_000 })
       .toBe('knock');
-    await page.keyboard.press('Escape');
+    // Close with the X once the saved rule has synced back: right after a save, Escape did not
+    // always reach the dialog on CI.
+    await expect(page.getByTestId('room-settings-save')).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    await page
+      .getByRole('dialog', { name: 'Room settings' })
+      .getByRole('button', { name: 'Close settings' })
+      .click();
     await expect(page.getByTestId('room-settings')).toHaveCount(0);
 
     await knock(request, hs, bob, roomId, 'From the meetup');
