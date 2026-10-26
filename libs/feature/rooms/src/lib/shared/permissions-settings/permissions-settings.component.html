@@ -1,0 +1,80 @@
+<section data-testid="permissions-settings">
+  @if (!view().editable) {
+    <p class="permissions__note" data-testid="permissions-readonly">
+      {{ view().reason }}
+    </p>
+  }
+
+  @for (group of groups(); track group.title) {
+    <trn-settings-group [title]="group.title">
+      @for (item of group.rows; track item.row.id) {
+        <div [attr.data-testid]="'permissions-row-' + item.row.id">
+          <trn-settings-row
+            [label]="item.row.label"
+            [labelId]="'permissions-label-' + item.row.id"
+            [description]="
+              view().editable ? (item.reason ?? undefined) : undefined
+            "
+          >
+            <trn-select
+              class="w-48 max-sm:w-full"
+              [aria-labelledby]="'permissions-label-' + item.row.id"
+              [options]="optionsFor(item)"
+              [value]="choiceOf(item)"
+              [disabled]="!item.editable"
+              (valueChange)="choose(item, $event)"
+            />
+          </trn-settings-row>
+          @if (customText().get(item.row.id) !== undefined) {
+            <input
+              trnInput
+              type="text"
+              inputmode="numeric"
+              class="permissions__custom"
+              [attr.aria-label]="item.row.label + ' custom level'"
+              [explicitInvalid]="invalidIds().has(item.row.id)"
+              [value]="customText().get(item.row.id)"
+              [disabled]="!item.editable"
+              (input)="typeCustom(item, $any($event.target).value)"
+              [attr.data-testid]="'permissions-custom-' + item.row.id"
+            />
+            @if (invalidIds().has(item.row.id)) {
+              <p class="permissions__error">{{ customError() }}</p>
+            }
+          }
+        </div>
+      }
+    </trn-settings-group>
+  }
+
+  @if (error(); as message) {
+    <p class="permissions__error" role="alert" data-testid="permissions-error">
+      {{ message }}
+    </p>
+  }
+
+  @if (dirty()) {
+    <div class="permissions__actions">
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="ghost"
+        [disabled]="saving()"
+        (click)="discard()"
+        data-testid="permissions-discard"
+      >
+        Discard
+      </button>
+      <button
+        trnBtn
+        type="button"
+        [disabled]="!canSave()"
+        (click)="save()"
+        data-testid="permissions-save"
+      >
+        {{ saving() ? 'Saving…' : 'Save permissions' }}
+      </button>
+    </div>
+  }
+</section>

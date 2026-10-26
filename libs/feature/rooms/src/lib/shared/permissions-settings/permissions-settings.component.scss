@@ -1,0 +1,17 @@
+@use '../../room-settings/room-settings-panel' as panel;
+
+@layer components {
+  @include panel.layout('permissions');
+
+  .permissions__custom {
+    width: 100%;
+    margin-block: var(--trinity-space-2);
+  }
+
+  .permissions__error {
+    margin: 0;
+    padding-block: var(--trinity-space-2);
+    color: var(--trinity-danger);
+    font-size: var(--trinity-type-caption-size);
+  }
+}
