@@ -119,12 +119,6 @@ const DEFAULT_JOIN_RULE = JoinRule.Invite;
 /** A room with no history-visibility state defaults to `shared`, per the spec. */
 const DEFAULT_HISTORY_VISIBILITY = HistoryVisibility.Shared;
 
-/**
- * Writes a room's editable metadata — display name (`m.room.name`) and topic
- * (`m.room.topic`) — and reports which the current user may change, from the room's
- * power levels. Writes are cold Observables (fire on subscribe); the synced client
- * reflects the change through its state listeners, so no manual refresh is needed.
- */
 /** MSC3787 join rule; matrix-js-sdk's `JoinRule` enum has no member for it. */
 export const KNOCK_RESTRICTED = 'knock_restricted' as JoinRule;
 
@@ -133,6 +127,12 @@ export function takesAllowList(rule: JoinRule): boolean {
   return rule === JoinRule.Restricted || rule === KNOCK_RESTRICTED;
 }
 
+/**
+ * Writes a room's editable metadata — display name (`m.room.name`) and topic
+ * (`m.room.topic`) — and reports which the current user may change, from the room's
+ * power levels. Writes are cold Observables (fire on subscribe); the synced client
+ * reflects the change through its state listeners, so no manual refresh is needed.
+ */
 @Injectable({ providedIn: 'root' })
 export class RoomSettingsService {
   private readonly matrix = inject(MatrixClientService);
