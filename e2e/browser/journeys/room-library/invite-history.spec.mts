@@ -119,6 +119,14 @@ test.describe('Earlier messages for invited members', () => {
     // Two signed-in pages, two encryption setups and a key bundle round trip.
     test.setTimeout(240_000);
     const bobPage = await secondaryApp.launch();
+    // At invite the SDK downloads the room's backed-up keys to share; #1722 failed on that body.
+    const backupFailures: string[] = [];
+    page.on('console', (message) => {
+      if (
+        message.text().includes('Failed to decrypt megolm session from backup')
+      )
+        backupFailures.push(message.text());
+    });
     const { runId, roomName, bob, alicePass, bobPass } = await setUp(
       page,
       bobPage,
@@ -156,6 +164,7 @@ test.describe('Earlier messages for invited members', () => {
     for (const body of earlier) {
       await expect(rowOf(bobPage, body)).toBeVisible({ timeout: 60_000 });
     }
+    expect(backupFailures).toEqual([]);
   });
 
   test('an invitee to a room shown only to members sees nothing from before', async ({

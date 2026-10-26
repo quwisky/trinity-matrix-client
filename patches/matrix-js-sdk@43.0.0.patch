@@ -357,6 +357,23 @@ index e5f15214886cca4fa33073e684f954c75df50ddd..aecf44dbe42681dbe13f6486e1053404
        // We use the request start time to calculate the expiry time as we don't know when the server received our request
        expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined
      };
+diff --git a/lib/rust-crypto/backup.js b/lib/rust-crypto/backup.js
+index 97a01598f3c0328fd6b8684e2879719e9461f7e0..ab8b12b181a58e3d5fba221a9b2d29b322026daf 100644
+--- a/lib/rust-crypto/backup.js
++++ b/lib/rust-crypto/backup.js
+@@ -628,7 +628,11 @@ export class RustBackupManager extends TypedEventEmitter {
+       this.logger.warn(`downloadLatestRoomKeyBackup: Could not download backup (backupVersion=${backupVersion}, hasDecryptionKey=${!!decryptionKey})`);
+       return;
+     }
+-    const sessions = await this.downloadRoomKeyBackup(backupVersion, roomId);
++    // Trinity patch: the endpoint returns `{ sessions }`; wrapping that whole body as the room's
++    // sessions made the importer read the key "sessions" as a session id with no session_data.
++    const {
++      sessions
++    } = await this.downloadRoomKeyBackup(backupVersion, roomId);
+     const backupDecryptor = this.createBackupDecryptor(decryptionKey);
+     this.importKeyBackup({
+       rooms: {
 diff --git a/src/http-api/fetch.ts b/src/http-api/fetch.ts
 index 387c1ebc6087adaf4947a377be434b9f56e05fe9..4e7ac563a10e8074aae034c8854706a707c7fc50 100644
 --- a/src/http-api/fetch.ts
@@ -662,3 +679,35 @@ index d19d64c4820e63a4030b056ab331912ad9589833..86f925c45aca236c353ff9c83e707fea
              // We use the request start time to calculate the expiry time as we don't know when the server received our request
              expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined,
          } satisfies AccessTokens;
+diff --git a/src/rust-crypto/backup.ts b/src/rust-crypto/backup.ts
+index 684c083daad4500dacf17678217f2827a5d0e25c..7be0333ee5163cf605525751fd204a5b7bfe331d 100644
+--- a/src/rust-crypto/backup.ts
++++ b/src/rust-crypto/backup.ts
+@@ -725,7 +725,9 @@ export class RustBackupManager extends TypedEventEmitter<RustBackupCryptoEvents,
+             );
+             return;
+         }
+-        const sessions = await this.downloadRoomKeyBackup(backupVersion, roomId);
++        // Trinity patch: the endpoint returns `{ sessions }`; wrapping that whole body as the room's
++        // sessions made the importer read the key "sessions" as a session id with no session_data.
++        const { sessions } = await this.downloadRoomKeyBackup(backupVersion, roomId);
+         const backupDecryptor = this.createBackupDecryptor(decryptionKey);
+         this.importKeyBackup({ rooms: { [roomId]: { sessions } } }, backupVersion, backupDecryptor);
+     }
+@@ -755,11 +757,14 @@ export class RustBackupManager extends TypedEventEmitter<RustBackupCryptoEvents,
+      * @param roomId - The ID of the room.
+      * @returns The key backup response.
+      */
+-    private downloadRoomKeyBackup(backupVersion: string, roomId: string): Promise<KeyBackupRoomSessions> {
++    private downloadRoomKeyBackup(
++        backupVersion: string,
++        roomId: string,
++    ): Promise<{ sessions: KeyBackupRoomSessions }> {
+         const path = encodeUri("/room_keys/keys/$roomId", {
+             $roomId: roomId,
+         });
+-        return this.http.authedRequest<KeyBackupRoomSessions>(Method.Get, path, { version: backupVersion }, undefined, {
++        return this.http.authedRequest<{ sessions: KeyBackupRoomSessions }>(Method.Get, path, { version: backupVersion }, undefined, {
+             prefix: ClientPrefix.V3,
+         });
+     }
