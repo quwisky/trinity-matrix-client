@@ -13,6 +13,7 @@ import {
   RoomActionPermissionsService,
   RoomMembersService,
   RoomModerationService,
+  type KnockRequest,
   type MemberSummary,
   type RoomMembersSnapshot,
 } from '@trinity/data-access/room-administration';
@@ -47,6 +48,14 @@ const ADA: MemberSummary = {
   isCreator: false,
 };
 
+const DANA: KnockRequest = {
+  userId: '@dana:hs',
+  roomDisplayName: 'Dana',
+  roomInitial: 'D',
+  roomAvatarMxc: null,
+  reason: null,
+};
+
 function snapshot(
   over: Partial<RoomMembersSnapshot> = {},
 ): RoomMembersSnapshot {
@@ -64,8 +73,13 @@ function snapshot(
   };
 }
 
-async function build(options: { readonly canManage?: boolean } = {}) {
-  const snapshots = new BehaviorSubject(snapshot());
+async function build(
+  options: {
+    readonly canManage?: boolean;
+    readonly initial?: RoomMembersSnapshot;
+  } = {},
+) {
+  const snapshots = new BehaviorSubject(options.initial ?? snapshot());
   const inviteUser = vi.fn(() => of(undefined));
   const pick = vi.fn(() => of('@invitee:hs'));
   const pickUser = vi.fn(() =>
@@ -268,5 +282,59 @@ describe('MembersSettingsComponent', () => {
       "Ivy isn't accepting invites.",
       expect.objectContaining({ variant: 'danger' }),
     );
+  });
+
+  it('shows Requests and Invited counts only when non-zero', async () => {
+    const { fixture, container, snapshots } = await build();
+    const count = (testId: string) =>
+      container.querySelector(`[data-testid="${testId}"] span`)?.textContent;
+
+    expect(count('members-settings-requests')).toBeUndefined();
+    expect(count('members-settings-invited')).toBeUndefined();
+
+    snapshots.next(snapshot({ knocking: [DANA], invited: [ADA] }));
+    await fixture.whenStable();
+
+    expect(count('members-settings-requests')).toBe('1');
+    expect(count('members-settings-invited')).toBe('1');
+  });
+
+  it('opens on Requests when there are requests you may approve', async () => {
+    const { cmp, fixture, container } = await build({
+      initial: snapshot({ knocking: [DANA] }),
+    });
+    await fixture.whenStable();
+
+    expect(cmp.destination()).toBe('requests');
+    expect(
+      container.querySelector('[data-testid="pending-member-@dana:hs"]'),
+    ).not.toBeNull();
+  });
+
+  it('opens on Current members when you may not approve requests', async () => {
+    const { cmp } = await build({
+      canManage: false,
+      initial: snapshot({ knocking: [DANA] }),
+    });
+
+    expect(cmp.destination()).toBe('current');
+  });
+
+  it('keeps the last requests and invites when the Account becomes unavailable', async () => {
+    const { cmp, snapshots } = await build({
+      initial: snapshot({ knocking: [DANA], invited: [ADA] }),
+    });
+
+    snapshots.next(
+      snapshot({
+        availability: 'account-unavailable',
+        unavailableReason: 'Signed out.',
+        knocking: [],
+        invited: [],
+      }),
+    );
+
+    expect(cmp.snapshot()?.knocking).toEqual([DANA]);
+    expect(cmp.snapshot()?.invited).toEqual([ADA]);
   });
 });

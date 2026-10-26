@@ -31,11 +31,12 @@ import { catchError, filter, map, switchMap, throwError } from 'rxjs';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
 import { MemberListComponent } from '../member-list/member-list.component';
+import { PendingMembersComponent } from './pending-members/pending-members.component';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import type { PickedUser } from '../user-picker/user-picker.component';
 
-type MembersDestination = 'current' | 'banned';
+type MembersDestination = 'current' | 'requests' | 'invited' | 'banned';
 
 /** Exact-target Room or Space member administration inside the shared settings hub. */
 @Component({
@@ -45,6 +46,7 @@ type MembersDestination = 'current' | 'banned';
     BannedMembersComponent,
     MemberInfoComponent,
     MemberListComponent,
+    PendingMembersComponent,
     TrnButton,
   ],
   templateUrl: './members-settings.component.html',
@@ -89,6 +91,7 @@ export class MembersSettingsComponent implements OnInit {
 
   ngOnInit(): void {
     const target = this.target();
+    let openedOn = false;
     this.members
       .observe(target)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -100,9 +103,20 @@ export class MembersSettingsComponent implements OnInit {
                 ...snapshot,
                 members: previous.members,
                 banned: previous.banned,
+                invited: previous.invited,
+                knocking: previous.knocking,
               },
         );
         this.authorityRevision.update((revision) => revision + 1);
+        if (!openedOn && snapshot.availability === 'available') {
+          openedOn = true;
+          if (
+            snapshot.knocking.length > 0 &&
+            this.invitePermission().available
+          ) {
+            this.destination.set('requests');
+          }
+        }
       });
   }
 
