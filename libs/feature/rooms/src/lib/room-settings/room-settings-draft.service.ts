@@ -11,9 +11,11 @@ import { TrnToastService } from '@trinity/components/overlay';
 import {
   HistoryVisibility,
   JoinRule,
+  KNOCK_RESTRICTED,
   RoomSettingsService,
   type RoomSettingsSnapshot,
   type RoomSettingsTarget,
+  takesAllowList,
 } from '@trinity/data-access/room-administration';
 import {
   sectionSaver,
@@ -182,10 +184,22 @@ export class RoomSettingsDraftService {
     const options: { value: JoinRule; label: string }[] = [
       ...JOIN_RULE_OPTIONS,
     ];
+    if (this.snapshot()?.supportsKnock) {
+      options.splice(1, 0, {
+        value: JoinRule.Knock,
+        label: 'Anyone can ask to join',
+      });
+    }
     if (spaces.length > 0 && this.snapshot()?.supportsRestricted) {
       options.push({
         value: JoinRule.Restricted,
         label: 'Space members can join',
+      });
+    }
+    if (spaces.length > 0 && this.snapshot()?.supportsKnockRestricted) {
+      options.push({
+        value: KNOCK_RESTRICTED,
+        label: 'Space members can join, others can ask',
       });
     }
     return withCurrentRule(options, this.model().joinRule).map((option) => ({
@@ -198,18 +212,17 @@ export class RoomSettingsDraftService {
   );
   readonly showSpaceChoices = computed(
     () =>
-      this.model().joinRule === JoinRule.Restricted &&
-      this.parentSpaces().length > 0,
+      takesAllowList(this.model().joinRule) && this.parentSpaces().length > 0,
   );
   readonly noSpaceChosen = computed(
     () =>
       this.mayEditJoinRule() &&
       this.joinRuleChanged() &&
-      this.model().joinRule === JoinRule.Restricted &&
+      takesAllowList(this.model().joinRule) &&
       this.allowToWrite().length === 0,
   );
   readonly unlistedAllowedSpaceCount = computed(() => {
-    if (this.model().joinRule !== JoinRule.Restricted) return 0;
+    if (!takesAllowList(this.model().joinRule)) return 0;
     const parentIds = new Set(this.parentSpaces().map(({ id }) => id));
     return this.accessBaseline().allowedSpaceIds.filter(
       (id) => !parentIds.has(id),
@@ -219,8 +232,7 @@ export class RoomSettingsDraftService {
   private joinRuleChanged(): boolean {
     const model = this.model();
     const baseline = this.accessBaseline();
-    const allow =
-      model.joinRule === JoinRule.Restricted ? this.allowToWrite() : [];
+    const allow = takesAllowList(model.joinRule) ? this.allowToWrite() : [];
     return (
       model.joinRule !== baseline.joinRule ||
       !sameMembers(allow, baseline.allowedSpaceIds)
@@ -314,8 +326,7 @@ export class RoomSettingsDraftService {
     if (!target || !this.accessDirty() || this.noSpaceChosen()) return;
     const model = this.model();
     const baseline = this.accessBaseline();
-    const allow =
-      model.joinRule === JoinRule.Restricted ? this.allowToWrite() : [];
+    const allow = takesAllowList(model.joinRule) ? this.allowToWrite() : [];
     const blocked: string[] = [];
     const writes: FieldWrite[] = [];
     if (
@@ -398,7 +409,7 @@ export class RoomSettingsDraftService {
     const joinRuleWasDirty =
       current.joinRule !== previousAccess.joinRule ||
       !sameMembers(
-        current.joinRule === JoinRule.Restricted ? this.allowToWrite() : [],
+        takesAllowList(current.joinRule) ? this.allowToWrite() : [],
         previousAccess.allowedSpaceIds,
       );
     const historyWasDirty =
@@ -444,7 +455,7 @@ export class RoomSettingsDraftService {
   private seedCheckedSpaces(access: AccessBaseline): void {
     const parentIds = this.parentSpaces().map((space) => space.id);
     this.checkedSpaces.set(
-      access.joinRule === JoinRule.Restricted
+      takesAllowList(access.joinRule)
         ? new Set(access.allowedSpaceIds.filter((id) => parentIds.includes(id)))
         : new Set(parentIds),
     );

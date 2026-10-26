@@ -595,6 +595,18 @@ describe('SpaceSettingsComponent', () => {
     expect(confirm).toHaveBeenCalledOnce();
   });
 
+  it('offers Anyone can ask to join from version 7', async () => {
+    const { cmp } = await build({
+      initial: spaceSnapshot({ supportsKnock: true }),
+    });
+
+    expect(cmp.draft.joinRuleOptions().map(({ testId }) => testId)).toEqual([
+      'join-rule-invite',
+      'join-rule-knock',
+      'join-rule-public',
+    ]);
+  });
+
   it('keeps unfamiliar access state readable and never offers new restricted choices', async () => {
     const { cmp } = await build({
       initial: spaceSnapshot({ access: { joinRule: JoinRule.Knock } }),

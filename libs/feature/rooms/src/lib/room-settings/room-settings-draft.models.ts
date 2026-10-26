@@ -1,6 +1,7 @@
 import {
   HistoryVisibility,
   JoinRule,
+  KNOCK_RESTRICTED,
   type RoomSettingsPermissions,
 } from '@trinity/data-access/room-administration';
 
@@ -79,6 +80,7 @@ export function sameMembers(
 const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
   [JoinRule.Restricted]: 'Space members',
   [JoinRule.Knock]: 'Anyone can ask to join',
+  [KNOCK_RESTRICTED]: 'Space members can join, others can ask',
 };
 
 export function withCurrentRule(

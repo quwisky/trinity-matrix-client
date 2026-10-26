@@ -188,6 +188,12 @@ export class SpaceSettingsDraftService {
   readonly joinRuleOptions = computed(() => {
     const current = this.model().joinRule;
     const options = [...SPACE_JOIN_RULE_OPTIONS];
+    if (this.snapshot()?.supportsKnock) {
+      options.splice(1, 0, {
+        value: JoinRule.Knock,
+        label: 'Anyone can ask to join',
+      });
+    }
     if (!options.some(({ value }) => value === current)) {
       options.push({
         value: current,

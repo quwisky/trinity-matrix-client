@@ -25,6 +25,7 @@ import {
   RoomModerationService,
   RoomSettingsService,
   RoomUpgradeService,
+  KNOCK_RESTRICTED,
   type ActionAvailability,
   type RoomAdvancedInfo,
   type RoomSettingsPermissions,
@@ -333,6 +334,10 @@ async function build(options: BuildOptions = {}) {
     viewOf,
     connectWidgets,
   };
+}
+
+function testIds(cmp: { draft: { joinRuleOptions(): { testId: string }[] } }) {
+  return cmp.draft.joinRuleOptions().map(({ testId }) => testId);
 }
 
 describe('RoomSettingsComponent', () => {
@@ -790,6 +795,72 @@ describe('RoomSettingsComponent', () => {
     });
     cmp.draft.saveAccess();
     expect(setJoinRule).not.toHaveBeenCalled();
+  });
+
+  it('offers Anyone can ask to join from version 7', async () => {
+    const { cmp } = await build({
+      initial: roomSnapshot({ supportsKnock: true }),
+    });
+    expect(testIds(cmp)).toContain('join-rule-knock');
+  });
+
+  it('leaves Anyone can ask to join out below version 7', async () => {
+    const { cmp } = await build();
+    expect(testIds(cmp)).not.toContain('join-rule-knock');
+  });
+
+  it('offers Space members can join, others can ask with a parent space on version 10', async () => {
+    const { cmp } = await build({
+      initial: roomSnapshot({ supportsKnockRestricted: true }),
+    });
+    expect(testIds(cmp)).toContain('join-rule-knock_restricted');
+  });
+
+  it('leaves Space members can join, others can ask out below version 10', async () => {
+    const { cmp } = await build();
+    expect(testIds(cmp)).not.toContain('join-rule-knock_restricted');
+  });
+
+  it('leaves Space members can join, others can ask out without a parent space', async () => {
+    const { cmp } = await build({
+      initial: roomSnapshot({ supportsKnockRestricted: true }),
+      parentSpaces: [],
+    });
+    expect(testIds(cmp)).not.toContain('join-rule-knock_restricted');
+  });
+
+  it('shows the space picker and its no-space guard for knock_restricted', async () => {
+    const { cmp } = await build({
+      initial: roomSnapshot({ supportsKnockRestricted: true }),
+    });
+    cmp.draft.form.joinRule().value.set(KNOCK_RESTRICTED);
+    cmp.draft.toggleSpace('!space:hs', false);
+
+    expect(cmp.draft.showSpaceChoices()).toBe(true);
+    expect(cmp.draft.noSpaceChosen()).toBe(true);
+  });
+
+  it('saves knock_restricted with the chosen spaces', async () => {
+    const { cmp, setJoinRule } = await build({
+      initial: roomSnapshot({ supportsKnockRestricted: true }),
+    });
+    cmp.draft.form.joinRule().value.set(KNOCK_RESTRICTED);
+
+    cmp.draft.saveAccess();
+
+    expect(setJoinRule).toHaveBeenCalledWith(TARGET, KNOCK_RESTRICTED, [
+      '!space:hs',
+    ]);
+  });
+
+  it('keeps an unsupported current knock rule as the current choice', async () => {
+    const { cmp } = await build({
+      initial: roomSnapshot({
+        access: { joinRule: JoinRule.Knock },
+        supportsKnock: false,
+      }),
+    });
+    expect(testIds(cmp)).toContain('join-rule-knock');
   });
 
   it('blocks a restricted rule until an allowed Space is selected', async () => {
