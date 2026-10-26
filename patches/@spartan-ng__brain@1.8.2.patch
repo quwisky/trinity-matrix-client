@@ -1,11 +1,11 @@
 diff --git a/fesm2022/spartan-ng-brain-overlay.mjs b/fesm2022/spartan-ng-brain-overlay.mjs
-index 517477aceecfd5847f0ca61d3331e2cf01cf3178..8d1e39e9716fd30742c9a9f41fdee2709f9882ca 100644
+index 9beaf0ac87d44f1e9b2c38375e69929c8be99295..9ac6f84db971807a1f37bcacc0fd95a47b572b75 100644
 --- a/fesm2022/spartan-ng-brain-overlay.mjs
 +++ b/fesm2022/spartan-ng-brain-overlay.mjs
-@@ -7,8 +7,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
- import { cssClassesToArray, waitForAnimations, getActiveElementAnimations, provideExposesStateProviderExisting } from '@spartan-ng/brain/core';
+@@ -8,8 +8,8 @@ import { cssClassesToArray, waitForAnimations, getActiveElementAnimations, provi
  import { InteractivityChecker } from '@angular/cdk/a11y';
  import { TemplatePortal, ComponentPortal } from '@angular/cdk/portal';
+ import { ScrollDispatcher } from '@angular/cdk/scrolling';
 -import { Subject, ReplaySubject, merge } from 'rxjs';
 -import { takeUntil, map, filter } from 'rxjs/operators';
 +import { Subject, ReplaySubject, merge, EMPTY } from 'rxjs';
@@ -13,7 +13,7 @@ index 517477aceecfd5847f0ca61d3331e2cf01cf3178..8d1e39e9716fd30742c9a9f41fdee270
  
  const createDefaultOptions = () => ({
      attachPositions: [],
-@@ -307,7 +307,11 @@ class BrnOverlayService {
+@@ -388,7 +388,11 @@ class BrnOverlayService {
          }
      }
      _connectDismissalEvents(ref, overlayRef, destroyed) {
@@ -27,7 +27,7 @@ index 517477aceecfd5847f0ca61d3331e2cf01cf3178..8d1e39e9716fd30742c9a9f41fdee270
              .subscribe(({ event, reason }) => this._requestDismissal(ref, overlayRef, reason, event));
      }
 diff --git a/fesm2022/spartan-ng-brain-tooltip.mjs b/fesm2022/spartan-ng-brain-tooltip.mjs
-index a07146268c6cf7957d23fafb45c894bead457f21..e1329d11c7e83100e5043ecb0c02a4fd8e865485 100644
+index 8a12680444aed66639fc5842fde09b4099e6a66f..012649c52a4c7b0d274c5c1e41f75b65d0675453 100644
 --- a/fesm2022/spartan-ng-brain-tooltip.mjs
 +++ b/fesm2022/spartan-ng-brain-tooltip.mjs
 @@ -1,3 +1,4 @@
@@ -35,7 +35,7 @@ index a07146268c6cf7957d23fafb45c894bead457f21..e1329d11c7e83100e5043ecb0c02a4fd
  import { Overlay, OverlayPositionBuilder } from '@angular/cdk/overlay';
  import { ComponentPortal } from '@angular/cdk/portal';
  import { DOCUMENT } from '@angular/common';
-@@ -277,6 +278,9 @@ class BrnTooltip {
+@@ -288,6 +289,9 @@ class BrnTooltip {
      _dir = inject(Directionality);
      _group = inject(BrnTooltipGroup, { optional: true });
      _tooltipHovered = false;
@@ -45,7 +45,7 @@ index a07146268c6cf7957d23fafb45c894bead457f21..e1329d11c7e83100e5043ecb0c02a4fd
      _listenersRefs = [];
      _delaySubject = undefined;
      _componentRef = undefined;
-@@ -377,7 +381,9 @@ class BrnTooltip {
+@@ -388,7 +392,9 @@ class BrnTooltip {
                  if (!this._isHoverPointer(event))
                      return;
                  this._tooltipHovered = false;
@@ -56,7 +56,7 @@ index a07146268c6cf7957d23fafb45c894bead457f21..e1329d11c7e83100e5043ecb0c02a4fd
              }),
          ];
          return overlayRef;
-@@ -458,6 +464,22 @@ class BrnTooltip {
+@@ -469,6 +475,22 @@ class BrnTooltip {
       * `_isHoverPointer`; use a popover when touch users need to see the content.
       */
      _initHoverListeners() {
@@ -79,7 +79,7 @@ index a07146268c6cf7957d23fafb45c894bead457f21..e1329d11c7e83100e5043ecb0c02a4fd
          this._listenersRefs = [
              ...this._listenersRefs,
              this._renderer.listen(this._elementRef.nativeElement, 'pointerenter', (event) => {
-@@ -465,11 +487,16 @@ class BrnTooltip {
+@@ -476,11 +498,16 @@ class BrnTooltip {
                      this._requestShow();
              }),
              this._renderer.listen(this._elementRef.nativeElement, 'pointerleave', (event) => {
