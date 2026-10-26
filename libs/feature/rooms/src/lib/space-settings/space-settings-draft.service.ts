@@ -10,6 +10,7 @@ import { form } from '@angular/forms/signals';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   JoinRule,
+  KNOCK_RESTRICTED,
   RoomSettingsService,
   type RoomSettingsPermissions,
   type RoomSettingsSnapshot,
@@ -58,6 +59,7 @@ const SPACE_JOIN_RULE_OPTIONS: readonly {
 const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
   [JoinRule.Restricted]: 'Members of another space',
   [JoinRule.Knock]: 'Anyone can ask to join',
+  [KNOCK_RESTRICTED]: 'Space members can join, others can ask',
 };
 
 /** Owns exact-Account Space drafts without importing Room-only settings policy. */
