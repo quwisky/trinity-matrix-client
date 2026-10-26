@@ -492,6 +492,16 @@ export class MessageComposerComponent {
     });
     this.destroyRef.onDestroy(() => this.closePickerSheet());
 
+    // The voice bar is gone while the notice shows, so nothing could stop an open mic.
+    effect(() => {
+      if (
+        this.postUnavailableReason() &&
+        untracked(() => this.attachments.recordingVoice())
+      ) {
+        untracked(() => this.cancelVoiceRecording());
+      }
+    });
+
     // Highlight the first suggestion whenever either result set changes.
     effect(() => {
       this.menus.emojiMatches();

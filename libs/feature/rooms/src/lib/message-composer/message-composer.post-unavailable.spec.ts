@@ -2,7 +2,9 @@ import {
   renderComposer,
   stubObjectUrls,
 } from './message-composer.spec-harness';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { MockProvider } from 'ng-mocks';
+import { VoiceRecorderService } from '@trinity/platform-native';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('MessageComposerComponent — postUnavailableReason', () => {
   beforeEach(() => stubObjectUrls());
@@ -49,5 +51,25 @@ describe('MessageComposerComponent — postUnavailableReason', () => {
 
     expect(query(el, 'composer-input')).not.toBeNull();
     expect(query(el, 'composer-post-unavailable')).toBeNull();
+  });
+
+  it('stops an open voice recording when posting becomes unavailable', async () => {
+    const cancel = vi.fn();
+    const { fixture } = await renderComposer({}, [
+      MockProvider(VoiceRecorderService, {
+        supported: true,
+        start: () => Promise.resolve(),
+        cancel,
+      }),
+    ]);
+    const cmp = fixture.componentInstance;
+    await cmp.startVoiceRecording();
+    expect(cmp['attachments'].recordingVoice()).toBe(true);
+
+    fixture.componentRef.setInput('postUnavailableReason', 'No posting here.');
+    fixture.detectChanges();
+
+    expect(cancel).toHaveBeenCalled();
+    expect(cmp['attachments'].recordingVoice()).toBe(false);
   });
 });
