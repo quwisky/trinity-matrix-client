@@ -1,0 +1,10 @@
+# The one policy the e2e identity server asks a client to accept before it registers
+# (GET /_matrix/identity/v2/terms). The URL is never fetched.
+master_version: 'trinity-e2e-1'
+docs:
+  privacy_policy:
+    version: '1.0'
+    langs:
+      en:
+        name: 'Trinity e2e privacy policy'
+        url: 'https://localhost:8452/trinity-e2e-privacy.html'

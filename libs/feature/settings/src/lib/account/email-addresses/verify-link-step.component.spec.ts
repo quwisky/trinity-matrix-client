@@ -30,6 +30,35 @@ describe('VerifyLinkStepComponent', () => {
     expect(emitted).toEqual(['continue', 'resend', 'cancel']);
   });
 
+  it('builds its test ids from testIdPrefix', async () => {
+    const { emitted } = await setup({ testIdPrefix: 'publish-email' });
+
+    fireEvent.click(screen.getByTestId('publish-email-continue'));
+    fireEvent.click(screen.getByTestId('publish-email-resend'));
+    fireEvent.click(screen.getByTestId('publish-email-cancel'));
+
+    expect(emitted).toEqual(['continue', 'resend', 'cancel']);
+    expect(screen.getByTestId('publish-email-sent')).toBeTruthy();
+    expect(screen.queryByTestId('add-email-continue')).toBeNull();
+  });
+
+  it('builds the body id from the prefix, so each dialog describes itself', async () => {
+    const { container } = await setup();
+    expect(container.querySelector('#add-email-body')).toBeTruthy();
+  });
+
+  it('uses a prefixed body id and a caller-given body', async () => {
+    const { container } = await setup({
+      testIdPrefix: 'publish-email',
+      body: 'vector.im sent a link.',
+    });
+
+    expect(
+      container.querySelector('#publish-email-body')?.textContent?.trim(),
+    ).toBe('vector.im sent a link.');
+    expect(container.querySelector('#add-email-body')).toBeNull();
+  });
+
   it('disables Continue and Resend while busy', async () => {
     await setup({ busy: true });
 

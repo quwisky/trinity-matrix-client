@@ -63,4 +63,9 @@ export type EmailAddResult =
   | EmailAddressRefused;
 
 export type EmailRemoveResult =
-  { readonly kind: 'removed' } | EmailAddressRefused;
+  | {
+      readonly kind: 'removed';
+      /** `no-support` means the identity server could not unbind, so the address may stay findable. */
+      readonly unbind: 'success' | 'no-support';
+    }
+  | EmailAddressRefused;

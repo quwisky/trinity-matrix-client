@@ -1,0 +1,9 @@
+# Synapse's additions to ../docker-compose.netns.yml, applied after it under the same
+# condition (see paths.mjs). Every service already shares one loopback there.
+services:
+  sydent:
+    network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
+
+  # Caddy itself owns localhost:8452 on the shared loopback.
+  identity-forward:
+    profiles: ['unused-under-netns']

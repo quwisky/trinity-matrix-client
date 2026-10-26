@@ -20,6 +20,9 @@ export const DEX_ISSUER = 'http://localhost:5556/dex';
 // Mailpit's HTTP API, where the specs read the mail the homeserver sends. Synapse reaches
 // its SMTP listener on port 1025 (see synapse/adapter.mjs).
 export const MAILPIT_HTTP = 'http://127.0.0.1:8025';
+// Sydent, the identity server of the Synapse stack, behind Caddy's TLS. The browser and
+// Synapse both use this URL; Sydent itself listens on 127.0.0.1:8090 (see sydent/).
+export const IDENTITY_SERVER_URL = 'https://localhost:8452';
 export const SSO_EMAIL = 'sso-e2e@trinity.test';
 export const SSO_PASS = 'sso-e2e-pass-123';
 /**

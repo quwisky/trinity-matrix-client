@@ -118,7 +118,10 @@ export async function resolveNetworkContainer() {
   );
 }
 
-/** `-f` arguments for docker compose, in override order: shared, adapter, MAS, netns. */
+/**
+ * `-f` arguments for docker compose, in override order: shared, adapter, MAS, netns, then
+ * the adapter's own netns additions when it has any.
+ */
 export function composeFiles(kind, networkContainer, { mas = false } = {}) {
   const files = [
     '-f',
@@ -129,6 +132,8 @@ export function composeFiles(kind, networkContainer, { mas = false } = {}) {
   if (mas) files.push('-f', join(HERE, 'mas', 'docker-compose.yml'));
   if (networkContainer) {
     files.push('-f', join(HERE, 'docker-compose.netns.yml'));
+    const adapterNetns = join(HERE, kind, 'docker-compose.netns.yml');
+    if (existsSync(adapterNetns)) files.push('-f', adapterNetns);
   }
   return files;
 }

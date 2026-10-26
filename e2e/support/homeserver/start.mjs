@@ -5,11 +5,12 @@
 // owns its compose services and config; this driver owns everything they share:
 //   1. Let the adapter write its config (Synapse generates and patches homeserver.yaml;
 //      Tuwunel's TOML is committed) and prepare its state directories.
-//   2. docker compose up -d (homeserver, remote homeserver, Dex, Mailpit, Caddy),
-//      restarting any service whose bind-mounted config changed under a running container.
+//   2. docker compose up -d (homeserver, remote homeserver, Dex, Mailpit, Caddy, and
+//      Synapse's Sydent), restarting any service whose bind-mounted config changed under
+//      a running container.
 //   3. Poll /_matrix/client/versions on both servers, Dex's discovery document, the
-//      primary's own `m.login.sso` flow, and Caddy's TLS well-known. A timeout prints the
-//      failing service's log tail.
+//      primary's own `m.login.sso` flow, Caddy's TLS well-known and Sydent behind it. A
+//      timeout prints the failing service's log tail.
 //   4. Register the test user through the shared-secret admin API both servers serve.
 //   5. Read the server's software and version, and check it is the one selected.
 //
@@ -33,6 +34,7 @@ import {
   DEX_ISSUER,
   HOMESERVER_HTTP,
   HS_TLS,
+  IDENTITY_SERVER_URL,
   MAILPIT_HTTP,
   MAS_HS_TLS,
   MAS_ISSUER,
@@ -53,12 +55,15 @@ import {
   TEST_USER,
 } from './constants.mjs';
 import {
+  optionalReady,
   resolveHomeserverKind,
   resolveHomeserverRuntime,
   resolveMasEnabled,
   resolveSsoMock,
+  unavailableFeatures,
 } from './kind.mts';
 import {
+  ensureSydentVenv,
   ensureSynapseVenv,
   generateSynapseConfig,
   nativeCaddyfile,
@@ -68,12 +73,17 @@ import {
   nativeMailpitVersion,
   nativePaths,
   nodeProcessApi,
+  runningNativeServices,
   startNativeServices,
 } from './native.mts';
 import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
 import { formatFailure } from '../http-failure.mts';
 import { masMountedConfig, prepareMas } from './mas/adapter.mjs';
-import { synapse } from './synapse/adapter.mjs';
+import {
+  SYDENT_CONFIG,
+  ensureSydentConfig,
+  synapse,
+} from './synapse/adapter.mjs';
 import { tuwunel } from './tuwunel/adapter.mjs';
 import { tuwunelOauth } from './tuwunel-oauth/adapter.mjs';
 
@@ -221,10 +231,12 @@ async function waitFor(
   label,
   service,
   fn,
-  { tries = 60, delayMs = 1000 } = {},
+  { tries = 60, delayMs = 1000, exited = () => false } = {},
 ) {
   for (let i = 0; i < tries; i++) {
     operationSignal?.throwIfAborted();
+    // A process that already exited will not become ready: stop waiting for it.
+    if (exited()) break;
     try {
       if (await fn()) {
         log(`${label} ready`);
@@ -238,6 +250,14 @@ async function waitFor(
   }
   console.error(`[homeserver] ${service} logs:\n${await logTail(service)}`);
   throw new Error(`timed out waiting for ${label}`);
+}
+
+/** Sydent's readiness, or false (identity unavailable) when it never answers. */
+function identityReadiness(options) {
+  return optionalReady(
+    () => waitFor('sydent (https)', 'sydent', identityReady, options),
+    { name: 'Sydent', log, signal: operationSignal },
+  );
 }
 
 /** Shared-secret registration (`/_synapse/admin/v1/register`), served by both kinds. */
@@ -365,6 +385,17 @@ async function mailpitReady() {
   return res.ok;
 }
 
+/**
+ * Sydent answers its version endpoint through Caddy's TLS site, the URL both the browser
+ * and Synapse use.
+ */
+async function identityReady() {
+  const res = await fetch(`${IDENTITY_SERVER_URL}/_matrix/identity/v2`, {
+    signal: operationSignal,
+  });
+  return res.ok;
+}
+
 /** The SSO identities in dex.yaml, which the homeserver creates on first sign-in. */
 const ssoAccounts = () => ({
   // The SSO accounts are not registered here: the homeserver creates each the first
@@ -400,8 +431,9 @@ const mockSsoAccount = () => ({
 /**
  * Native runtime: Synapse from a venv and Caddy as host processes, primary server only.
  * Dex runs too when a `dex` binary is on PATH (`brew install dexidp`), and then SSO is
- * available; likewise Mailpit (`brew install mailpit`) and mail. The secondary server
- * always is not, nor SSO without Dex or mail without Mailpit, and the session says so
+ * available; likewise Mailpit (`brew install mailpit`) and mail. With mail, Sydent from its
+ * own pinned venv makes `identity` available. The secondary server always is not, nor SSO
+ * without Dex, mail without Mailpit or identity without a ready Sydent, and the session says so
  * (`unavailable`) instead of inventing values. With TRINITY_E2E_SSO_PROVIDER=mock Dex
  * signs in through its mock connector, so the session offers only that identity.
  */
@@ -422,10 +454,26 @@ async function startNative() {
     signal: operationSignal,
     log,
   });
+  // The identity server is optional here: an install or start that fails costs only it.
+  let identity =
+    mail &&
+    (await ensureSydentVenv(paths, nodeProcessApi, {
+      signal: operationSignal,
+      log,
+    }).then(
+      () => true,
+      (error) => {
+        if (operationSignal?.aborted) throw error;
+        log(`Sydent did not install, so no identity server: ${error.message}`);
+        return false;
+      },
+    ));
+  if (identity) await ensureSydentConfig({ native: true, log });
   await synapse.preparePrimary({
     signal: operationSignal,
     log,
     native: true,
+    identity,
     sso,
     ssoMock,
     generate: () =>
@@ -456,6 +504,7 @@ async function startNative() {
   startNativeServices(paths, nodeProcessApi, process.env, {
     dex: sso,
     mailpit: mail,
+    sydent: identity ? SYDENT_CONFIG : undefined,
   });
   await waitFor(
     'homeserver client versions',
@@ -469,6 +518,14 @@ async function startNative() {
   if (mail) await waitFor('mailpit', 'mailpit', mailpitReady);
   await registerUser();
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
+  if (identity) {
+    identity = await identityReadiness({
+      exited: () =>
+        !runningNativeServices(paths.pidFile, nodeProcessApi).includes(
+          'sydent',
+        ),
+    });
+  }
   const version = await serverVersion();
   if (!existsSync(paths.caddyRoot)) {
     throw new Error(
@@ -486,7 +543,7 @@ async function startNative() {
     kind,
     version,
     runtime,
-    unavailable: ['remote', ...(sso ? [] : ['sso']), ...(mail ? [] : ['mail'])],
+    unavailable: unavailableFeatures({ remote: false, sso, mail, identity }),
     caddyRoot: paths.caddyRoot,
     ...(sso ? (ssoMock ? mockSsoAccount() : ssoAccounts()) : {}),
   };
@@ -557,7 +614,13 @@ export async function start({ signal } = {}) {
   );
   for (const service of [...stale]) {
     for (const dependent of adapter.restartWith[service] ?? []) {
-      if (!stale.includes(dependent)) stale.push(dependent);
+      // A dependent with no container (disabled by a profile under netns) has nothing to restart.
+      if (
+        !stale.includes(dependent) &&
+        (await runningServices([dependent])).length
+      ) {
+        stale.push(dependent);
+      }
     }
   }
   if (stale.length) {
@@ -599,6 +662,8 @@ export async function start({ signal } = {}) {
 
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
 
+  const identity = adapter.identity === true && (await identityReadiness());
+
   if (masEnabled) {
     await waitFor('mas discovery (https)', 'mas', async () => {
       const res = await fetch(`${MAS_ISSUER}.well-known/openid-configuration`, {
@@ -635,7 +700,7 @@ export async function start({ signal } = {}) {
     kind,
     version,
     runtime,
-    unavailable: [...(sso ? [] : ['sso']), ...(mail ? [] : ['mail'])],
+    unavailable: unavailableFeatures({ remote: true, sso, mail, identity }),
     secondary: {
       hs: SECONDARY_HTTP,
       serverName: secondaryServerName(),

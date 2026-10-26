@@ -36,8 +36,46 @@ export const HOMESERVER_RUNTIMES = ['docker', 'native'] as const;
 export type HomeserverRuntime = (typeof HOMESERVER_RUNTIMES)[number];
 
 /** Harness features a runtime may not provide; a session lists the missing ones. */
-export const HOMESERVER_FEATURES = ['remote', 'sso', 'mail'] as const;
+export const HOMESERVER_FEATURES = [
+  'remote',
+  'sso',
+  'mail',
+  'identity',
+] as const;
 export type HomeserverFeature = (typeof HOMESERVER_FEATURES)[number];
+
+/** The features a session lacks, in HOMESERVER_FEATURES order. */
+export function unavailableFeatures(
+  available: Readonly<Record<HomeserverFeature, boolean>>,
+): HomeserverFeature[] {
+  return HOMESERVER_FEATURES.filter((feature) => !available[feature]);
+}
+
+/**
+ * Wait for an optional service: a failed wait makes it unavailable instead of failing the
+ * stack. An aborted operation still throws.
+ */
+export async function optionalReady(
+  wait: () => Promise<void>,
+  {
+    name,
+    log,
+    signal,
+  }: {
+    readonly name: string;
+    readonly log: (message: string) => void;
+    readonly signal?: AbortSignal;
+  },
+): Promise<boolean> {
+  try {
+    await wait();
+    return true;
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    log(`${name} did not become ready, so it is unavailable`);
+    return false;
+  }
+}
 
 /**
  * The runtime selected by `TRINITY_E2E_HOMESERVER_RUNTIME`, defaulting to Docker.

@@ -11,6 +11,8 @@
 {
 	# Quieter logs; internal CA so no ACME/public DNS needed.
 	auto_https disable_redirects
+	# Synapse's test-only insecure HTTP client, which calls the identity server, sends no SNI.
+	default_sni localhost
 }
 
 https://localhost:8448 {
@@ -47,6 +49,14 @@ https://localhost {
 https://caddy:9448, https://localhost:9448 {
 	tls internal
 	reverse_proxy {$TRINITY_E2E_REMOTE_HOMESERVER_UPSTREAM:localhost:8009}
+}
+
+# Sydent, the Synapse stack's identity server (synapse/docker-compose.yml). It shares
+# this server's loopback in every topology, as the native runtime's host process or a
+# container in Caddy's namespace, and Synapse reaches this site as https://localhost:8452.
+https://localhost:8452 {
+	tls internal
+	reverse_proxy 127.0.0.1:8090
 }
 
 # Plain-HTTP Open-Graph page for the link-preview e2e. The homeserver (on this docker

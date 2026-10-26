@@ -281,6 +281,24 @@ describe('Synapse adapter config generation', () => {
     expect(block?.[1]).toContain('::1/128');
     expect(yaml).not.toContain('trinity-e2e-oidc');
     expect(yaml).not.toContain('oidc_providers');
+    // No identity server configured: Synapse keeps verifying TLS.
+    expect(yaml).not.toContain('use_insecure_ssl_client');
+  });
+
+  it('relaxes TLS for outbound calls only when Sydent is configured', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    await ensureConfig({
+      log: () => undefined,
+      native: true,
+      sso: false,
+      identity: true,
+      generate: generateInto(stateDir),
+    });
+    const yaml = parse(
+      readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8'),
+    );
+    expect(yaml.use_insecure_ssl_client_just_for_testing_do_not_use).toBe(true);
   });
 
   it('adds Dex on loopback for a native runtime with Dex, keeping the native blocklist', async () => {
