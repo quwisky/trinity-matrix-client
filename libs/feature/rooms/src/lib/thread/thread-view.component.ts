@@ -13,6 +13,7 @@ import {
   output,
   viewChild,
 } from '@angular/core';
+import { POST_UNAVAILABLE_COPY } from '../message-composer/post-unavailable-copy';
 import { ThreadCommands } from './thread-commands';
 import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -130,6 +131,9 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = this.conversations.timeline;
+  protected readonly postUnavailableReason = computed(() =>
+    this.timeline.canSendMessages() ? null : POST_UNAVAILABLE_COPY,
+  );
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
 

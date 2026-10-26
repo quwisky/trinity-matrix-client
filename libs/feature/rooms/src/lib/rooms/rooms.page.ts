@@ -1,3 +1,4 @@
+import { POST_UNAVAILABLE_COPY } from '../message-composer/post-unavailable-copy';
 import { ContentReportingService } from '@trinity/data-access/room-administration';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { AppLockService } from '@trinity/data-access/app-lock';
@@ -149,6 +150,7 @@ const PANEL_DRAWER_PX = 480;
   },
 })
 export class RoomsPage {
+  protected readonly postUnavailableCopy = POST_UNAVAILABLE_COPY;
   /**
    * The viewport predicate the shell branches on, live for the page's lifetime.
    *

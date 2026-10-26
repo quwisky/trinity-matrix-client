@@ -111,6 +111,7 @@ async function build(
     canPaginate?: boolean;
     loadingOlder?: boolean;
     canRedactOthers?: boolean;
+    canSendMessages?: boolean;
     typingNames?: string[];
   } = {},
   extraProviders: Provider[] = [],
@@ -168,6 +169,7 @@ async function build(
     providers: [
       MockProvider(ConversationTimelineStub, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
+        canSendMessages: signal(state.canSendMessages ?? true),
         // Seeded because it is an INSTANCE field, which ng-mocks does not reflect: left
         // out, `typingNames` is undefined and the typing row throws on every render here.
         typingNames: signal<string[]>(state.typingNames ?? []).asReadonly(),
@@ -560,6 +562,18 @@ describe('ThreadViewComponent', () => {
       MessageSourceComponent,
       expect.objectContaining({ inputs: { source: expect.any(String) } }),
     );
+  });
+
+  it('replaces the thread composer with the notice when posting is unavailable', async () => {
+    const { container } = await build([], { canSendMessages: false });
+
+    expect(
+      container.querySelector('[data-testid="composer-post-unavailable"]')
+        ?.textContent,
+    ).toContain("You don't have permission to send messages in this room.");
+    expect(
+      container.querySelector('[data-testid="composer-input"]'),
+    ).toBeNull();
   });
 
   it('lets a moderator delete another member’s thread message', async () => {

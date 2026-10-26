@@ -177,6 +177,9 @@
             [threadSummaries]="threads.summaries()"
             [canPin]="pinned.canMutate()"
             [canRedactOthers]="timeline.canRedactOthers()"
+            [postUnavailableReason]="
+              timeline.canSendMessages() ? null : postUnavailableCopy
+            "
             [pinnedIds]="pinned.eventIds()"
             [loadingOlder]="timeline.loadingOlder()"
             [loadState]="timeline.loadState()"

@@ -150,6 +150,8 @@ export class MessageComposerComponent {
   readonly textSending = input(false);
   /** The Conversation is not ready to send (loading or failed); typing and drafts stay live. */
   readonly sendBlocked = input(false);
+  /** Why the user may not post here; while set, a notice replaces every composing control. */
+  readonly postUnavailableReason = input<string | null>(null);
   /**
    * Id of the message being edited (null when not editing). The prefill keys on this, not on
    * {@link draft}, so re-targeting refreshes the field while a mid-edit body change of the
@@ -300,10 +302,13 @@ export class MessageComposerComponent {
           ? 'slash-suggestion-' + this.menus.slashActiveIndex()
           : null,
   );
+  private readonly cannotSend = computed(
+    () => this.sendBlocked() || !!this.postUnavailableReason(),
+  );
   /** Whether the send button would be accepted: something to send and nothing in the way. */
   protected readonly canSubmit = computed(
     () =>
-      !this.sendBlocked() &&
+      !this.cannotSend() &&
       !this.textSending() &&
       (!!this.text().trim() || this.attachments.hasStaged()) &&
       (this.editing() || !this.attachments.hasStaged() || this.canSendMedia()),
@@ -375,7 +380,7 @@ export class MessageComposerComponent {
     });
     this.batches = new ComposerBatchSender({
       uploadProgress: this.uploadProgress,
-      blocked: this.sendBlocked,
+      blocked: this.cannotSend,
       roomId: this.roomId,
       text: this.text,
       send: (event) => this.submitMedia.emit(event),
@@ -581,7 +586,7 @@ export class MessageComposerComponent {
    * precedence, else the plain text message.
    */
   submit(): void {
-    if (this.sendBlocked()) return;
+    if (this.cannotSend()) return;
     // Never mixes with an edit (attach is disabled while editing), so edit mode ignores staging.
     const batch = this.editing() ? [] : this.attachments.staged();
     if (batch.length) {
@@ -656,13 +661,13 @@ export class MessageComposerComponent {
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
   openPollDialog(): void {
-    if (this.sendBlocked()) return;
+    if (this.cannotSend()) return;
     this.attachments.openPollDialog();
   }
 
   /** Share the device's current location to the active room. */
   shareLocation(): void {
-    if (this.sendBlocked()) return;
+    if (this.cannotSend()) return;
     this.attachments.shareLocation();
   }
 
@@ -738,7 +743,7 @@ export class MessageComposerComponent {
   }
 
   onStickerSelect(sticker: ImagePackImage): void {
-    if (this.sendBlocked() || this.editing()) return;
+    if (this.cannotSend() || this.editing()) return;
     this.pickerOpen.set(false);
     this.stickerSelect.emit(sticker);
     queueMicrotask(() => this.field.focus());
@@ -782,7 +787,7 @@ export class MessageComposerComponent {
 
   /** Stop recording and send the clip as a voice message. */
   stopVoiceRecording(): void {
-    if (this.sendBlocked()) return;
+    if (this.cannotSend()) return;
     const wasRecording = this.attachments.recordingVoice();
     this.attachments.stopVoiceRecording();
     if (wasRecording) {
@@ -806,7 +811,7 @@ export class MessageComposerComponent {
    */
   onGifSelect(gif: GifResult): void {
     if (
-      this.sendBlocked() ||
+      this.cannotSend() ||
       this.editing() ||
       this.contextUploadProgress() !== null
     ) {

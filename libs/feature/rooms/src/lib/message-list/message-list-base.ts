@@ -116,6 +116,8 @@ export abstract class MessageListBase {
   readonly canPin = input(false);
   /** Whether the current user may redact OTHER people's messages here (a moderator). */
   readonly canRedactOthers = input(false);
+  /** Set while the user may not post here; the composer shows it in place of its controls. */
+  readonly postUnavailableReason = input<string | null>(null);
   /** Currently-pinned event ids, for the per-row pinned state. */
   readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
