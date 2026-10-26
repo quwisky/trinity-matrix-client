@@ -3,9 +3,22 @@
 @layer components {
   @include panel.layout('permissions');
 
+  .permissions__readonly {
+    margin-block: var(--trinity-space-4);
+  }
+
   .permissions__custom {
-    width: 100%;
-    margin-block: var(--trinity-space-2);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    margin-block-end: var(--trinity-space-2);
+
+    .permissions__error {
+      text-align: end;
+
+      // Clear the sticky Save bar when scrolled into view.
+      scroll-margin-block-end: 5rem;
+    }
   }
 
   .permissions__error {

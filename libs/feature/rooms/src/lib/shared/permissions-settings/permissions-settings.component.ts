@@ -2,11 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  afterRenderEffect,
   computed,
   effect,
   inject,
   input,
   signal,
+  viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { of, switchMap } from 'rxjs';
@@ -16,6 +19,8 @@ import {
   TrnSelectComponent,
   type TrnSelectOption,
 } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
+import { BannerComponent } from '@trinity/components/generic-content';
 import {
   TrnAlertService,
   TrnSettingsGroupComponent,
@@ -43,7 +48,9 @@ const STANDARD: readonly TrnSelectOption<Choice>[] = [
   selector: 'trn-permissions-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BannerComponent,
     TrnButton,
+    TrnIconComponent,
     TrnInput,
     TrnSelectComponent,
     TrnSettingsGroupComponent,
@@ -111,7 +118,16 @@ export class PermissionsSettingsComponent {
       !this.saving(),
   );
 
+  private readonly customErrors =
+    viewChildren<ElementRef<HTMLElement>>('customErrorText');
+
   constructor() {
+    // A new Custom error can land under the sticky Save bar; bring it into view.
+    afterRenderEffect(() => {
+      for (const error of this.customErrors()) {
+        error.nativeElement.scrollIntoView({ block: 'nearest' });
+      }
+    });
     effect(() => {
       const levels = new Map(
         this.view().rows.map((item) => [item.row.id, item.level]),

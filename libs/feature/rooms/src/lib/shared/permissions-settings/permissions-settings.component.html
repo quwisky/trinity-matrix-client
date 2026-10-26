@@ -1,8 +1,12 @@
 <section data-testid="permissions-settings">
   @if (!view().editable) {
-    <p class="permissions__note" data-testid="permissions-readonly">
+    <trn-banner
+      class="permissions__readonly"
+      data-testid="permissions-readonly"
+    >
+      <trn-icon trnBannerIcon name="lock" />
       {{ view().reason }}
-    </p>
+    </trn-banner>
   }
 
   @for (group of groups(); track group.title) {
@@ -26,31 +30,34 @@
             />
           </trn-settings-row>
           @if (customText().get(item.row.id) !== undefined) {
-            <input
-              trnInput
-              type="text"
-              inputmode="numeric"
-              class="permissions__custom"
-              [attr.aria-label]="item.row.label + ' custom level'"
-              [explicitInvalid]="invalidIds().has(item.row.id)"
-              [aria-describedby]="
-                invalidIds().has(item.row.id)
-                  ? 'permissions-custom-error-' + item.row.id
-                  : null
-              "
-              [value]="customText().get(item.row.id)"
-              [disabled]="!item.editable || saving()"
-              (input)="typeCustom(item, $any($event.target).value)"
-              [attr.data-testid]="'permissions-custom-' + item.row.id"
-            />
-            @if (invalidIds().has(item.row.id)) {
-              <p
-                class="permissions__error"
-                [id]="'permissions-custom-error-' + item.row.id"
-              >
-                {{ customError() }}
-              </p>
-            }
+            <div class="permissions__custom">
+              <input
+                trnInput
+                type="text"
+                inputmode="numeric"
+                class="w-48 max-sm:w-full"
+                [attr.aria-label]="item.row.label + ' custom level'"
+                [explicitInvalid]="invalidIds().has(item.row.id)"
+                [aria-describedby]="
+                  invalidIds().has(item.row.id)
+                    ? 'permissions-custom-error-' + item.row.id
+                    : null
+                "
+                [value]="customText().get(item.row.id)"
+                [disabled]="!item.editable || saving()"
+                (input)="typeCustom(item, $any($event.target).value)"
+                [attr.data-testid]="'permissions-custom-' + item.row.id"
+              />
+              @if (invalidIds().has(item.row.id)) {
+                <p
+                  #customErrorText
+                  class="permissions__error"
+                  [id]="'permissions-custom-error-' + item.row.id"
+                >
+                  {{ customError() }}
+                </p>
+              }
+            </div>
           }
         </div>
       }

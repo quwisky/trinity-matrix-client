@@ -195,6 +195,21 @@ describe('PermissionsSettingsComponent', () => {
     }
   });
 
+  it('scrolls a new Custom error into view, clear of the Save bar', async () => {
+    await setup();
+    await choose('Send messages', 'Custom');
+    const scroll = vi.mocked(Element.prototype.scrollIntoView);
+    scroll.mockClear();
+
+    fireEvent.input(screen.getByTestId('permissions-custom-send-messages'), {
+      target: { value: '150' },
+    });
+    await tick();
+
+    const error = screen.getByText('Enter a whole number up to 100.');
+    expect(scroll.mock.contexts).toContain(error);
+  });
+
   it('has no cap for an unlimited editor', async () => {
     await setup(view({ myPower: Infinity }));
     await choose('Send messages', 'Custom');
