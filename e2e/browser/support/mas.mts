@@ -68,7 +68,8 @@ async function provisioned(): Promise<void> {
       '-d',
       'mas',
       '-tAc',
-      // MAS 1.26's job queue (crates/storage-pg/migrations/*queue_job*.sql).
+      // MAS 1.26's job queue (crates/storage-pg/migrations/*queue_job*.sql). Re-check the
+      // queue names and statuses on a MAS upgrade: a renamed one would make this count 0.
       "SELECT count(*) FROM queue_jobs WHERE queue_name IN ('provision-user', 'sync-devices') AND status IN ('available', 'scheduled', 'running')",
     ]);
     if (stdout.trim() === '0') return;
