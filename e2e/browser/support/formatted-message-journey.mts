@@ -1,6 +1,8 @@
 import {
+  expect,
   testResourceId,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '../../fixtures.mts';
 import { login, type HomeserverSession } from '../../support/app.mts';
@@ -129,6 +131,39 @@ export async function signInAndOpen(
 ): Promise<void> {
   await login(page, room.session);
   await openRoom(page, room.roomName);
+}
+
+/** Longer than the 150 ms a backfill runs before "Loading older messages…" shows. */
+const SETTLE_WINDOW_MS = 750;
+
+/**
+ * Wait until opening the room has stopped moving `target`. A backfill slower than 150 ms shows
+ * the "Loading older messages…" strip above the rows, and when the page lands every row moves
+ * up by its height: under a hover that pulls the element out from under a still pointer, so
+ * its tooltip never opens. The same race the mobile suite's `waitForSettledTimeline` covers.
+ */
+export async function waitForSettledTimeline(target: Locator): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        target.evaluate(async (element, windowMs) => {
+          const loading = (): boolean =>
+            document.querySelector('.load-older') !== null;
+          const before = element.getBoundingClientRect();
+          const loadingBefore = loading();
+          await new Promise((resolve) => setTimeout(resolve, windowMs));
+          const after = element.getBoundingClientRect();
+          return (
+            element.isConnected &&
+            !loadingBefore &&
+            !loading() &&
+            before.x === after.x &&
+            before.y === after.y
+          );
+        }, SETTLE_WINDOW_MS),
+      { timeout: 30_000, message: 'the timeline kept moving' },
+    )
+    .toBe(true);
 }
 
 export { openRoom };
