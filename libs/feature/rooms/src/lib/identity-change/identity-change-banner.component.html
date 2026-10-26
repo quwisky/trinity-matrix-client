@@ -1,0 +1,24 @@
+<!-- Always-mounted live region: a role="status" node inserted with the banner (via @if)
+     isn't reliably announced, so mirror the message here. -->
+<span class="sr-only" role="status" aria-live="polite">{{ message() }}</span>
+@if (message(); as message) {
+  <trn-banner variant="accent" data-testid="identity-change-banner">
+    <trn-icon trnBannerIcon name="shield-alert" />
+    {{ message }}
+    <span trnBannerActions>
+      @if (changes().length === 1) {
+        <trn-identity-change-actions [change]="changes()[0]!" />
+      } @else {
+        <button
+          trnBtn
+          size="sm"
+          type="button"
+          (click)="review()"
+          data-testid="identity-change-review"
+        >
+          Review
+        </button>
+      }
+    </span>
+  </trn-banner>
+}

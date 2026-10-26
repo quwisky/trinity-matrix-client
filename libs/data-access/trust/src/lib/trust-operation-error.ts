@@ -43,7 +43,9 @@ export type TrustOperation =
   | 'show-qr'
   | 'scan-qr'
   | 'confirm-verification'
-  | 'cancel-verification';
+  | 'cancel-verification'
+  | 'acknowledge-identity'
+  | 'withdraw-verification';
 
 /**
  * Expected operational failure from Trust.

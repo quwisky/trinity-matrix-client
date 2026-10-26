@@ -37,12 +37,15 @@ function room(
   members: ReturnType<typeof member>[],
   creator: string | null = null,
   banned: ReturnType<typeof bannedMember>[] = [],
+  invited: ReturnType<typeof member>[] = [],
 ) {
   return {
     roomId,
     getMyMembership: () => 'join',
     getJoinedMembers: vi.fn(() => members),
-    getMembersWithMembership: vi.fn(() => banned),
+    getMembersWithMembership: vi.fn((membership: string) =>
+      membership === 'invite' ? invited : membership === 'ban' ? banned : [],
+    ),
     getCreator: () => creator,
     loadMembersIfNeeded: vi.fn(() => Promise.resolve(true)),
   };
@@ -275,6 +278,33 @@ describe('RoomMembersService', () => {
     await Promise.resolve();
 
     expect(bans()).toEqual([]);
+  });
+
+  it('projects invited members apart from joined ones and follows member events', async () => {
+    const invited = [member('@zoe:hs', 'Zoe'), member('@ann:hs', 'Ann')];
+    const source = room(
+      '!room:hs',
+      [member('@me:hs', 'Me')],
+      null,
+      [],
+      invited,
+    );
+    const matrixClient = client([source]);
+    const { service } = setup(matrixClient);
+    const pending = service.invitedFor('!room:hs');
+
+    expect(pending().map((m) => m.userId)).toEqual(['@ann:hs', '@zoe:hs']);
+    expect(
+      service
+        .membersFor('!room:hs')()
+        .map((m) => m.userId),
+    ).toEqual(['@me:hs']);
+
+    invited.splice(0, 1);
+    fireMemberChange(matrixClient, '!room:hs');
+    await Promise.resolve();
+
+    expect(pending().map((m) => m.userId)).toEqual(['@ann:hs']);
   });
 
   it('clears outgoing Account values and detaches listeners on teardown', async () => {

@@ -4,6 +4,7 @@ import { type UserTrust } from '@trinity/data-access/trust';
 import { TrnToastService } from '@trinity/components/overlay';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
+import { IdentityChangeActionsService } from '../../identity-change/identity-change-actions.service';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemberProfileTabComponent } from './member-profile-tab.component';
 
@@ -49,7 +50,10 @@ async function build(
       showIdentityActions: inputs.showIdentityActions ?? true,
     },
     on: { messageUser: message, verify, copyFailed },
-    providers: [MockProvider(TrnToastService, { show: toastShow })],
+    providers: [
+      MockProvider(TrnToastService, { show: toastShow }),
+      MockProvider(IdentityChangeActionsService, { pending: () => null }),
+    ],
   });
   return {
     cmp: fixture.componentInstance,
@@ -91,11 +95,26 @@ describe('MemberProfileTabComponent', () => {
     expect(verify).toHaveBeenCalledOnce();
   });
 
-  it.each(['unverified', 'changed'] as const)(
-    'offers Verify when trust is %s',
-    async (trust) => {
+  it('offers Verify when trust is unverified', async () => {
+    const { container } = await build({ trust: 'unverified' });
+    expect(byTestId(container, 'member-info-verify')).not.toBeNull();
+    expect(byTestId(container, 'member-info-identity-change')).toBeNull();
+  });
+
+  it.each([
+    ['identity-changed', ['Acknowledge']],
+    ['verified-identity-changed', ['Verify again', 'Withdraw verification']],
+  ] as const)(
+    'answers a %s identity in place of Verify',
+    async (trust, labels) => {
       const { container } = await build({ trust });
-      expect(byTestId(container, 'member-info-verify')).not.toBeNull();
+      expect(byTestId(container, 'member-info-verify')).toBeNull();
+      const actions = byTestId(container, 'member-info-identity-change');
+      expect(
+        [...(actions?.querySelectorAll('button') ?? [])].map((b) =>
+          b.textContent?.trim(),
+        ),
+      ).toEqual(labels);
     },
   );
 

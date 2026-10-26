@@ -29,9 +29,11 @@ export type TrustCryptoApi = Pick<
   | 'isCrossSigningReady'
   | 'isSecretStorageReady'
   | 'loadSessionBackupPrivateKeyFromSecretStorage'
+  | 'pinCurrentUserIdentity'
   | 'requestOwnUserVerification'
   | 'requestVerificationDM'
   | 'userHasCrossSigningKeys'
+  | 'withdrawVerificationRequirement'
 >;
 
 /** Matrix protocol surface needed by Trust; account and sync lifecycle methods are absent. */

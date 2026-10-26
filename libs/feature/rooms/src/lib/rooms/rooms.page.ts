@@ -61,6 +61,7 @@ import { EncryptionBannerComponent } from '../encryption-banner/encryption-banne
 import { SignInAgainBannerComponent } from '../sign-in-again-banner/sign-in-again-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
+import { IdentityChangeBannerComponent } from '../identity-change/identity-change-banner.component';
 import { type SwipeDirection } from '../message-row/message-row.component';
 import { showRoomIntro } from './room-intro';
 import { RoomShellStore } from './room-shell-store';
@@ -139,6 +140,7 @@ const PANEL_DRAWER_PX = 480;
     SignInAgainBannerComponent,
     ConnectivityBannerComponent,
     TombstoneBannerComponent,
+    IdentityChangeBannerComponent,
   ],
   host: {
     // One delegating listener for every global shortcut, all resolved through

@@ -50,6 +50,7 @@ import { MessageListComponent } from '../message-list/message-list.component';
 import { NO_RAIL_UNREAD_CHATS } from '../server-rail/rail-unread-chats';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
+import { IdentityChangeBannerComponent } from '../identity-change/identity-change-banner.component';
 import { ThreadViewComponent } from '../thread/thread-view.component';
 import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
@@ -266,6 +267,7 @@ function renderHeader(
         EncryptionBannerComponent,
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
+        IdentityChangeBannerComponent,
         ThreadViewComponent,
       ],
     },
@@ -346,6 +348,7 @@ function renderHeader(
         MockComponent(EncryptionBannerComponent),
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),
+        MockComponent(IdentityChangeBannerComponent),
         MockComponent(ThreadViewComponent),
       ],
     },

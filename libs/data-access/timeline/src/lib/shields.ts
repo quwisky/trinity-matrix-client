@@ -100,7 +100,7 @@ export function shieldExplanationText(
     case EventShieldReason.AUTHENTICITY_NOT_GUARANTEED:
       return 'The key that decrypted it didn’t come straight from the sender — a key backup, for example.';
     case EventShieldReason.VERIFICATION_VIOLATION:
-      return 'You verified this person before and their identity has changed since. Check with them another way, then verify them again.';
+      return 'You verified this person before and their identity has changed since. Check with them another way, then verify them again or withdraw your verification from the room banner or their profile.';
     case EventShieldReason.MISMATCHED_SENDER:
       return 'It claims to come from someone other than the account that set up its encryption, so don’t take the name on it at face value.';
     default:
