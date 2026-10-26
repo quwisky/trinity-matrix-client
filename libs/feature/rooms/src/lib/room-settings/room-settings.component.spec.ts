@@ -130,6 +130,8 @@ function roomSnapshot(
     permissions: { ...ALL_ALLOWED, ...permissions },
     encrypted: true,
     supportsRestricted: true,
+    supportsKnock: false,
+    supportsKnockRestricted: false,
     advanced: ADVANCED,
     ...snapshot,
   };
