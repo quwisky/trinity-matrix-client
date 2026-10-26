@@ -91,6 +91,25 @@ describe('PendingMembersComponent', () => {
     expect(row?.textContent).toContain('“From the meetup”');
   });
 
+  it('names each button with the person', async () => {
+    const requests = await build('requests', [DANA]);
+    const label = (testId: string) =>
+      requests.container
+        .querySelector(`[data-testid="${testId}"]`)
+        ?.getAttribute('aria-label');
+    expect(label('pending-approve')).toBe("Approve Dana's request");
+    expect(label('pending-deny')).toBe("Deny Dana's request");
+  });
+
+  it('names Revoke with the person', async () => {
+    const { container } = await build('invited', [IVY]);
+    expect(
+      container
+        .querySelector('[data-testid="pending-revoke"]')
+        ?.getAttribute('aria-label'),
+    ).toBe("Revoke Ivy's invite");
+  });
+
   it('Approve invites and shows Approving…', async () => {
     const { container, inviteUser, click } = await build('requests', [DANA], {
       invite: () => NEVER,
@@ -102,6 +121,7 @@ describe('PendingMembersComponent', () => {
     );
     expect(button?.textContent?.trim()).toBe('Approving…');
     expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute('aria-label')).toBe("Approving Dana's request");
   });
 
   it('Deny asks first and kicks with the reason', async () => {

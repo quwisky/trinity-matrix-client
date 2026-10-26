@@ -38,6 +38,11 @@
                 size="sm"
                 [disabled]="busy !== null"
                 (click)="approve(person)"
+                [attr.aria-label]="
+                  (busy === 'approve' ? 'Approving ' : 'Approve ') +
+                  person.roomDisplayName +
+                  '\'s request'
+                "
                 data-testid="pending-approve"
               >
                 {{ busy === 'approve' ? 'Approving…' : 'Approve' }}
@@ -52,6 +57,9 @@
                 size="sm"
                 [disabled]="busy !== null"
                 (click)="deny(person)"
+                [attr.aria-label]="
+                  'Deny ' + person.roomDisplayName + '\'s request'
+                "
                 data-testid="pending-deny"
               >
                 Deny
@@ -66,6 +74,9 @@
               size="sm"
               [disabled]="busy !== null"
               (click)="revoke(person)"
+              [attr.aria-label]="
+                'Revoke ' + person.roomDisplayName + '\'s invite'
+              "
               data-testid="pending-revoke"
             >
               Revoke
