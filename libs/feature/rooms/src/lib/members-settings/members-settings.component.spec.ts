@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MemberInfoComponent } from '../member-info/member-info.component';
-import { render } from '@trinity/testing';
+import { fireEvent, render, screen } from '@trinity/testing';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import {
@@ -352,5 +352,42 @@ describe('MembersSettingsComponent', () => {
     expect(document.activeElement).toBe(
       container.querySelector('[data-testid="members-settings-requests"]'),
     );
+  });
+
+  it('switches member lists with tabs', async () => {
+    const { cmp, fixture } = await build({
+      initial: snapshot({ knocking: [DANA] }),
+    });
+    await fixture.whenStable();
+
+    expect(
+      screen.getAllByRole('tab').map((tab) => tab.textContent?.trim()),
+    ).toEqual(['Members 1', 'Requests 1', 'Invited', 'Banned 1']);
+    expect(
+      screen
+        .getByRole('tab', { name: /Requests/ })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+
+    screen.getByRole('tab', { name: /Banned/ }).click();
+    await fixture.whenStable();
+
+    expect(cmp.destination()).toBe('banned');
+    expect(screen.getByRole('tabpanel').textContent).toContain('Banned Bob');
+  });
+
+  it('moves between member lists with the arrow keys', async () => {
+    const { cmp, fixture } = await build();
+    await fixture.whenStable();
+    const members = screen.getByRole('tab', { name: /Members/ });
+
+    members.focus();
+    fireEvent.keyDown(members, { key: 'ArrowRight' });
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('tab', { name: /Requests/ }),
+    );
+    expect(cmp.destination()).toBe('requests');
   });
 });

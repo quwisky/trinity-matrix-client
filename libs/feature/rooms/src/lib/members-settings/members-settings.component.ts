@@ -13,7 +13,14 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
-import { TrnButton } from '@trinity/components/controls';
+import {
+  TrnButton,
+  TrnTab,
+  TrnTabList,
+  TrnTabPanel,
+  TrnTabs,
+} from '@trinity/components/controls';
+import { TrnBadge } from '@trinity/components/generic-content';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomActionPermissionsService,
@@ -36,7 +43,8 @@ import { UserPickerService } from '../user-picker/user-picker.service';
 import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import type { PickedUser } from '../user-picker/user-picker.component';
 
-type MembersDestination = 'current' | 'requests' | 'invited' | 'banned';
+const DESTINATIONS = ['current', 'requests', 'invited', 'banned'] as const;
+type MembersDestination = (typeof DESTINATIONS)[number];
 
 /** Exact-target Room or Space member administration inside the shared settings hub. */
 @Component({
@@ -47,7 +55,12 @@ type MembersDestination = 'current' | 'requests' | 'invited' | 'banned';
     MemberInfoComponent,
     MemberListComponent,
     PendingMembersComponent,
+    TrnBadge,
     TrnButton,
+    TrnTab,
+    TrnTabList,
+    TrnTabPanel,
+    TrnTabs,
   ],
   templateUrl: './members-settings.component.html',
   styleUrl: './members-settings.component.scss',
@@ -120,8 +133,10 @@ export class MembersSettingsComponent implements OnInit {
       });
   }
 
-  selectDestination(destination: MembersDestination): void {
-    this.destination.set(destination);
+  selectDestination(destination: string | undefined): void {
+    const known = DESTINATIONS.find((value) => value === destination);
+    if (!known) return;
+    this.destination.set(known);
     this.selectedMember.set(null);
   }
 
