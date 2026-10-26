@@ -338,6 +338,8 @@ export class MessageComposerComponent {
   private readonly videoCaptureInput =
     viewChild<ElementRef<HTMLInputElement>>('videoCaptureInput');
   private readonly voiceBar = viewChild(ComposerVoiceBarComponent);
+  private readonly unavailableNotice =
+    viewChild<ElementRef<HTMLElement>>('unavailableNotice');
   private readonly pickerTrigger =
     viewChild<ElementRef<HTMLButtonElement>>('pickerTrigger');
   private readonly surfaces = inject(TrnSurfaceService);
@@ -499,6 +501,17 @@ export class MessageComposerComponent {
         untracked(() => this.attachments.recordingVoice())
       ) {
         untracked(() => this.cancelVoiceRecording());
+      }
+    });
+
+    // Removing the focused text field would drop focus to <body>.
+    effect(() => {
+      if (!this.postUnavailableReason()) return;
+      const field = untracked(this.textarea)?.nativeElement;
+      if (field && field === document.activeElement) {
+        afterNextRender(() => this.unavailableNotice()?.nativeElement.focus(), {
+          injector: this.injector,
+        });
       }
     });
 

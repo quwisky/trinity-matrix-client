@@ -1,5 +1,19 @@
+<!-- Persistent, so the reason is announced when it appears; see the capture notice below. -->
+<span
+  class="sr-only"
+  role="status"
+  data-testid="composer-post-unavailable-status"
+  >{{ postUnavailableReason() ?? '' }}</span
+>
 @if (postUnavailableReason(); as reason) {
-  <p role="status" data-testid="composer-post-unavailable">{{ reason }}</p>
+  <p
+    #unavailableNotice
+    class="composer__unavailable"
+    tabindex="-1"
+    data-testid="composer-post-unavailable"
+  >
+    {{ reason }}
+  </p>
 } @else {
   <trn-composer-banner
     [editing]="editing()"

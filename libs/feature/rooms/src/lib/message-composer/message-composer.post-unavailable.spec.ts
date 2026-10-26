@@ -20,9 +20,50 @@ describe('MessageComposerComponent — postUnavailableReason', () => {
 
     const notice = query(el, 'composer-post-unavailable');
     expect(notice?.textContent).toContain('No posting here.');
-    expect(notice?.getAttribute('role')).toBe('status');
     expect(query(el, 'composer-input')).toBeNull();
     expect(query(el, 'composer-send')).toBeNull();
+  });
+
+  it('announces the reason through a live region that is already present', async () => {
+    const { fixture } = await renderComposer();
+    const el = fixture.nativeElement as HTMLElement;
+    const region = query(el, 'composer-post-unavailable-status');
+    expect(region?.getAttribute('role')).toBe('status');
+    expect(region?.textContent?.trim()).toBe('');
+
+    fixture.componentRef.setInput('postUnavailableReason', 'No posting here.');
+    fixture.detectChanges();
+
+    expect(query(el, 'composer-post-unavailable-status')).toBe(region);
+    expect(region?.textContent?.trim()).toBe('No posting here.');
+  });
+
+  it('moves focus from the text field to the notice when posting is revoked', async () => {
+    const { fixture } = await renderComposer();
+    const el = fixture.nativeElement as HTMLElement;
+    (query(el, 'composer-input') as HTMLTextAreaElement).focus();
+
+    fixture.componentRef.setInput('postUnavailableReason', 'No posting here.');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(query(el, 'composer-post-unavailable'));
+  });
+
+  it('leaves focus alone when the text field did not have it', async () => {
+    const { fixture } = await renderComposer();
+    const el = fixture.nativeElement as HTMLElement;
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+
+    fixture.componentRef.setInput('postUnavailableReason', 'No posting here.');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(outside);
+    expect(query(el, 'composer-post-unavailable')).not.toBeNull();
+    outside.remove();
   });
 
   it('keeps the typed draft and restores it when posting comes back', async () => {
