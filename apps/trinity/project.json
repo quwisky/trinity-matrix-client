@@ -144,7 +144,8 @@
           "buildTarget": "trinity:build:development"
         }
       },
-      "defaultConfiguration": "development"
+      "defaultConfiguration": "development",
+      "readyWhen": { "signal": true }
     },
     "test": {},
     "typecheck": {}

@@ -116,5 +116,8 @@
     "@nx/angular:component": {
       "style": "css"
     }
+  },
+  "affected": {
+    "legacy": true
   }
 }
