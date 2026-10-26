@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
 import {
   type Observable,
   catchError,
@@ -25,6 +26,14 @@ export interface StorageEstimate {
  */
 @Injectable({ providedIn: 'root' })
 export class StoragePersistenceService {
+  /**
+   * Whether this host can ever grant persistent storage. The iOS app's WebKit grants it only
+   * to Home Screen web apps, so `persist()` is always refused there and asking is pointless.
+   */
+  offered(): boolean {
+    return Capacitor.getPlatform() !== 'ios';
+  }
+
   /**
    * Ask the browser to make our storage persistent. Idempotent; emits the granted state,
    * or `false` where unavailable or denied.

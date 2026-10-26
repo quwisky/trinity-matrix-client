@@ -31,6 +31,7 @@ import {
 } from '@trinity/components/overlay';
 import {
   SecureStorageService,
+  StoragePersistenceService,
   TrackFileChooserDirective,
 } from '@trinity/platform-native';
 import { AppLockGroupComponent } from './app-lock-group/app-lock-group.component';
@@ -63,6 +64,7 @@ export class SecuritySectionComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly files = inject(HostFileExportService);
   private readonly secure = inject(SecureStorageService);
+  private readonly storagePersistence = inject(StoragePersistenceService);
   private destroyed = false;
 
   /** True when this section is mounted inside the web/Electron settings modal. */
@@ -82,6 +84,8 @@ export class SecuritySectionComponent {
   readonly sessionVerified = this.crypto.thisDeviceVerified;
   /** False when this device's keys sit in a store created before stores were encrypted. */
   readonly cryptoStoreEncrypted = this.matrix.cryptoStoreEncrypted;
+  /** The system may clear local data under storage pressure and can't be asked not to (iOS). */
+  readonly localDataEvictable = !this.storagePersistence.offered();
   /** Secrets sit unprotected on disk because this host's keychain could not be used. */
   readonly withoutKeychain = toSignal(
     from(this.secure.storesUnprotectedSecrets()).pipe(

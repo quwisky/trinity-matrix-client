@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Capacitor } from '@capacitor/core';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StoragePersistenceService } from './storage-persistence.service';
@@ -15,9 +16,24 @@ function make(): StoragePersistenceService {
 
 describe('StoragePersistenceService', () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
     Reflect.deleteProperty(navigator, 'storage');
     TestBed.resetTestingModule();
+  });
+
+  describe('offered', () => {
+    it('is not offered in the iOS app, whose WebKit never grants it', () => {
+      vi.spyOn(Capacitor, 'getPlatform').mockReturnValue('ios');
+
+      expect(make().offered()).toBe(false);
+    });
+
+    it.each(['web', 'android'])('is offered on %s', (platform) => {
+      vi.spyOn(Capacitor, 'getPlatform').mockReturnValue(platform);
+
+      expect(make().offered()).toBe(true);
+    });
   });
 
   describe('requestPersistence', () => {

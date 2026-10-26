@@ -196,6 +196,23 @@
     </trn-settings-group>
   }
 
+  @if (localDataEvictable) {
+    <trn-settings-group
+      title="Local data on this device"
+      data-testid="security-local-data"
+    >
+      <p class="m-0 py-3 text-sm text-muted-foreground">
+        iOS can clear Trinity’s local data if your phone runs very low on space.
+        @if (keyBackupActive()) {
+          Your recovery key restores your encrypted messages.
+        } @else if (keyBackupActive() === false) {
+          Your encrypted messages would then be unreadable on this device. Set
+          up recovery so you can restore them.
+        }
+      </p>
+    </trn-settings-group>
+  }
+
   <!-- A store created before stores were encrypted stays as it is; a new sign-in
      creates an encrypted one. -->
   @if (cryptoStoreEncrypted() === false) {

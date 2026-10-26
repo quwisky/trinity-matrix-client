@@ -289,13 +289,17 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
             ),
           ),
         persistence: defer(() =>
-          this.storagePersistence.requestPersistence(),
+          this.storagePersistence.offered()
+            ? this.storagePersistence.requestPersistence()
+            : of(null),
         ).pipe(
           timeout({ first: persistence.budgetMs }),
           map((persisted) =>
-            persisted
-              ? this.storageReady()
-              : this.storageDegraded('storage-persistence-denied'),
+            persisted === null
+              ? this.storageNotOffered()
+              : persisted
+                ? this.storageReady()
+                : this.storageDegraded('storage-persistence-denied'),
           ),
           defaultIfEmpty(
             this.storageDegraded('storage-persistence-unavailable'),
@@ -490,13 +494,19 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
     return optionalProducerReady('browser-storage-persistence');
   }
 
+  /** The host can never grant persistence (the iOS app): nothing to warn about or retry. */
+  private storageNotOffered() {
+    this.reportStorage('not-applicable', 'storage-persistence-not-offered');
+    return optionalProducerReady('browser-storage-persistence');
+  }
+
   private storageDegraded(code: string) {
     this.reportStorage('degraded', code);
     return optionalProducerDegraded('browser-storage-persistence', code);
   }
 
   private reportStorage(
-    condition: 'available' | 'degraded',
+    condition: 'available' | 'degraded' | 'not-applicable',
     code: string,
   ): void {
     this.reportHealth('storage', 'persistence', condition, code, () =>
@@ -528,7 +538,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private reportHealth(
     capability: string,
     operation: string,
-    condition: 'available' | 'degraded',
+    condition: 'available' | 'degraded' | 'not-applicable',
     code: string,
     recovery: () => Observable<CapabilityRecoveryOutcome>,
   ): void {
@@ -541,8 +551,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         operation,
         context: this.context(key),
         generation,
-        demanded: true,
-        preparation: condition === 'available' ? 'acknowledged' : 'failed',
+        demanded: condition !== 'not-applicable',
+        preparation: condition === 'degraded' ? 'failed' : 'acknowledged',
         ownership: 'released',
         condition,
         code,
