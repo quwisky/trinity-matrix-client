@@ -27,6 +27,7 @@ import type {
 
 const unavailablePolicy: ConversationMessagePolicy = {
   canRedactOthers: () => false,
+  canSendMessages: () => true,
   authorizeRedaction: () => ({
     kind: 'rejected',
     failure: 'conversation-unavailable',

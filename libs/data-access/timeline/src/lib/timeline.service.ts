@@ -227,6 +227,8 @@ export class TimelineService {
   // open and the server rejects a redaction we shouldn't have sent.
   private readonly _canRedactOthers = signal(false);
   readonly canRedactOthers = this._canRedactOthers.asReadonly();
+  private readonly _canSendMessages = signal(true);
+  readonly canSendMessages = this._canSendMessages.asReadonly();
 
   // The open room's tombstone, or null; drives the banner linking to the successor room.
   private readonly _tombstone = signal<RoomTombstone | null>(null);
@@ -423,6 +425,7 @@ export class TimelineService {
       event.getType() === EventType.RoomPowerLevels
     ) {
       this.rows.notePollPermissions();
+      if (this.room) this.updateMessagePermissions(this.room);
       this.scheduleRefresh();
     }
   };
@@ -517,7 +520,7 @@ export class TimelineService {
     // Capture the persisted read marker BEFORE the first refresh (which marks read and
     // advances it), so the "New messages" divider anchors where the user left off.
     this._readMarker.set(this.readMarkerOf(room));
-    this.updateRedactOthersPermission(room);
+    this.updateMessagePermissions(room);
     // While unfocused markRead holds the receipt so unread accrues; mark read again on refocus.
     this.stopFocusListener = onWindowFocus(this.onFocus);
     // Projects the timeline and sends the initial read receipt; subsequent live
@@ -635,6 +638,7 @@ export class TimelineService {
     this._messages.set([]);
     this._typingNames.set([]);
     this._canRedactOthers.set(false);
+    this._canSendMessages.set(true);
     this._canLoadOlder.set(false);
     // An in-flight backfill (loadOlder, or a date jump's loop) belongs to the room being torn
     // down; leaving this true strands the NEXT room's viewport-fill loop, which bails while
@@ -644,21 +648,20 @@ export class TimelineService {
   }
 
   /**
-   * Recompute whether the user's power level meets the room's `redact` requirement. Own
-   * messages are always deletable elsewhere; this only widens the affordance to moderators.
+   * Recompute what the user's power level allows in the room. Redacting others widens the
+   * affordance of own-message deletion to moderators; sending defaults to allowed when
+   * unknown so a missing account never blocks the composer.
    */
-  private updateRedactOthersPermission(room: Room): void {
+  private updateMessagePermissions(room: Room): void {
     const userId = this.connectedClient?.getUserId() ?? null;
     if (!userId) {
       this._canRedactOthers.set(false);
+      this._canSendMessages.set(true);
       return;
     }
-    this._canRedactOthers.set(
-      this.messagePolicy.canRedactOthers({
-        accountId: userId,
-        roomId: room.roomId,
-      }),
-    );
+    const key = { accountId: userId, roomId: room.roomId };
+    this._canRedactOthers.set(this.messagePolicy.canRedactOthers(key));
+    this._canSendMessages.set(this.messagePolicy.canSendMessages(key));
   }
 
   /** Page in older history (backward pagination of the live timeline). */

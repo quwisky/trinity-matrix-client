@@ -279,10 +279,11 @@ export function fakeRoom(
   members: ReturnType<typeof fakeMember>[] = [],
   fullyReadEventId: string | null = null,
   receiptsByEvent: Record<string, string[]> = {},
-  power: { mine?: number; redact?: number } = {},
+  power: { mine?: number; redact?: number; send?: number } = {},
 ) {
   const myPower = power.mine ?? 0;
   const redactLevel = power.redact ?? 50;
+  const handlers = new Map<string, (...args: unknown[]) => void>();
   return {
     roomId: '!r:hs',
     // Room state hangs off the live timeline (what liveRoomState() reads, and what
@@ -320,7 +321,10 @@ export function fakeRoom(
           : undefined,
     },
     hasEncryptionStateEvent: () => encrypted,
-    on: () => {},
+    on: (event: string, handler: (...args: unknown[]) => void) => {
+      handlers.set(event, handler);
+    },
+    handlers,
     off: () => {},
   };
 }
@@ -380,7 +384,7 @@ export function setup(
   sent: unknown[][] = [],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
-  power: { mine?: number; redact?: number } = {},
+  power: { mine?: number; redact?: number; send?: number } = {},
 ) {
   const room = fakeRoom(events, reactions, encrypted, [], null, {}, power);
   const client = fakeClient(room, sent);
@@ -394,6 +398,7 @@ export function setup(
         provide: CONVERSATION_MESSAGE_POLICY,
         useValue: {
           canRedactOthers: () => (power.mine ?? 0) >= (power.redact ?? 50),
+          canSendMessages: () => (power.mine ?? 0) >= (power.send ?? 0),
           authorizeRedaction: () => ({ kind: 'allowed' }),
         },
       },

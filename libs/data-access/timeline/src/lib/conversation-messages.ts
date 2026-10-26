@@ -80,6 +80,7 @@ export type ConversationRedactionDecision =
 /** Room Administration port consumed by Conversations; it contains no SDK types. */
 export interface ConversationMessagePolicy {
   canRedactOthers(key: ConversationKey): boolean;
+  canSendMessages(key: ConversationKey): boolean;
   authorizeRedaction(
     request: ConversationMessageActionRequest,
   ): ConversationRedactionDecision;

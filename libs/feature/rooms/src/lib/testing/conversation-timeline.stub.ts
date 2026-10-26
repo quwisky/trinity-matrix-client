@@ -102,6 +102,7 @@ export class ConversationTimelineStub implements ConversationTimeline {
   ).asReadonly();
   readonly canRedactOthers: ConversationTimeline['canRedactOthers'] =
     signal(false).asReadonly();
+  readonly canSendMessages = signal(true);
   readonly tombstone: ConversationTimeline['tombstone'] =
     signal(null).asReadonly();
   readonly firstUnreadId: ConversationTimeline['firstUnreadId'] =
