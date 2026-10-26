@@ -6,12 +6,33 @@
         data-autofocus
         [placeholder]="placeholder()"
         [attr.aria-label]="placeholder()"
+        [aria-describedby]="note() ? 'user-picker-note' : null"
         autocapitalize="off"
         autocorrect="off"
         inputmode="text"
         [value]="term()"
         (input)="onInput($event)"
       />
+      @if (note(); as note) {
+        <p
+          id="user-picker-note"
+          class="picker__note"
+          data-testid="user-picker-note"
+        >
+          <span>{{ note.text }}</span>
+          @if (note.action; as action) {
+            <button
+              trnBtn
+              type="button"
+              presentation="link"
+              size="sm"
+              (click)="runNoteAction(action)"
+            >
+              {{ action.label }}
+            </button>
+          }
+        </p>
+      }
     </div>
 
     <div>

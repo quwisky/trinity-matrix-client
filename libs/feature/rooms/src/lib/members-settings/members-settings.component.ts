@@ -32,6 +32,7 @@ import { BannedMembersComponent } from '../banned-members/banned-members.compone
 import { MemberInfoComponent } from '../member-info/member-info.component';
 import { MemberListComponent } from '../member-list/member-list.component';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import type { PickedUser } from '../user-picker/user-picker.component';
 
 type MembersDestination = 'current' | 'banned';
@@ -61,6 +62,7 @@ export class MembersSettingsComponent implements OnInit {
   private readonly permissions = inject(RoomActionPermissionsService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly picker = inject(UserPickerService);
+  private readonly historyNotes = inject(InviteHistoryNoteService);
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly toast = inject(TrnToastService);
@@ -139,6 +141,7 @@ export class MembersSettingsComponent implements OnInit {
       .pickUser$({
         title: `Invite to ${targetName}`,
         confirmLabel: 'Invite',
+        note: this.historyNotes.noteFor(target),
       })
       .pipe(
         filter((picked): picked is PickedUser => picked !== null),

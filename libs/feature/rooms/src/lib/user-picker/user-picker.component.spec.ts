@@ -44,8 +44,9 @@ describe('UserPickerComponent', () => {
   });
 
   /** Render the picker with the dialog ref and rooms service stubbed. */
-  function renderPicker() {
+  function renderPicker(inputs: Record<string, unknown> = {}) {
     return render(UserPickerComponent, {
+      inputs,
       providers: [
         { provide: TrnDialogRef, useValue: { close: dismiss } },
         MockProvider(UserDirectoryDiscoveryService, {
@@ -100,6 +101,33 @@ describe('UserPickerComponent', () => {
       userId: '@carol:hs',
       displayName: 'Carol',
     });
+  });
+
+  it('shows a note, and its button closes the picker before acting', async () => {
+    const run = vi.fn(() => expect(dismiss).toHaveBeenCalledWith(null));
+    await renderPicker({
+      note: {
+        text: "They won't be able to read earlier messages until this device is verified.",
+        action: { label: 'Verify this device', run },
+      },
+    });
+
+    expect(screen.getByTestId('user-picker-note').textContent).toContain(
+      "They won't be able to read earlier messages",
+    );
+    expect(
+      screen
+        .getByRole('textbox', { name: '@user:server or a name' })
+        .getAttribute('aria-describedby'),
+    ).toBe('user-picker-note');
+    screen.getByRole('button', { name: 'Verify this device' }).click();
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it('shows no note by default', async () => {
+    await renderPicker();
+
+    expect(screen.queryByTestId('user-picker-note')).toBeNull();
   });
 
   it('cancels by dismissing with null', async () => {

@@ -31,6 +31,7 @@ import { BehaviorSubject, NEVER, of, throwError } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import { MembersSettingsComponent } from './members-settings.component';
 
 const TARGET = { accountId: '@opening:hs', roomId: '!target:hs' } as const;
@@ -109,6 +110,12 @@ async function build(options: { readonly canManage?: boolean } = {}) {
       MockProvider(UserPickerService, {
         pick$: pick,
         pickUser$: pickUser,
+      }),
+      MockProvider(InviteHistoryNoteService, {
+        noteFor: (key: { accountId: string; roomId: string }) =>
+          key.accountId === TARGET.accountId && key.roomId === TARGET.roomId
+            ? { text: 'From when they join.' }
+            : null,
       }),
       MockProvider(WorkspaceNavigationService, { navigate }),
       MockProvider(TrnDialogRef, { close }),
@@ -242,6 +249,7 @@ describe('MembersSettingsComponent', () => {
     expect(pick).toHaveBeenCalledWith({
       title: 'Invite to Design Space',
       confirmLabel: 'Invite',
+      note: { text: 'From when they join.' },
     });
     expect(inviteUser).toHaveBeenCalledWith(TARGET, '@invitee:hs');
   });

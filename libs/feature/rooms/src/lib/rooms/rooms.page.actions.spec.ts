@@ -61,6 +61,7 @@ import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { AppLockService } from '@trinity/data-access/app-lock';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import { UserCardComponent } from '../user-card/user-card.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -78,6 +79,8 @@ beforeEach(() => setRouteRoom(null));
 
 // Create-space / create-channel / leave-space: the page prompts via TrnAlertService
 // and delegates to SpacesService, handling the success navigation + error state.
+const HISTORY_NOTE = { text: "They'll be able to read earlier messages." };
+
 describe('RoomsPage space actions', () => {
   let alertPrompt: Mock;
   let alertConfirm: Mock;
@@ -567,6 +570,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   let alertPrompt: Mock;
   let toastShow: Mock;
   let pick: Mock;
+  let historyNote: Mock;
   let createRoom: Mock;
   let directIds: ReturnType<typeof signal<ReadonlySet<string>>>;
   let createDirectMessage: Mock;
@@ -583,6 +587,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     alertPrompt = vi.fn(() => of(null));
     toastShow = vi.fn();
     pick = vi.fn(() => of(null));
+    historyNote = vi.fn(() => HISTORY_NOTE);
     createRoom = vi.fn(() => of('!room:hs'));
     directIds = signal<ReadonlySet<string>>(new Set());
     createDirectMessage = vi.fn(() => of('!dm:hs'));
@@ -642,6 +647,7 @@ describe('RoomsPage room / DM / invite actions', () => {
               ),
             ),
         }),
+        MockProvider(InviteHistoryNoteService, { noteFor: historyNote }),
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
@@ -1333,6 +1339,10 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    expect(historyNote).toHaveBeenCalledWith('!r:hs');
+    expect(pick).toHaveBeenCalledWith(
+      expect.objectContaining({ note: HISTORY_NOTE }),
+    );
     expect(inviteUser).toHaveBeenCalledWith('!r:hs', '@bob:hs');
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
