@@ -20,13 +20,13 @@ Use semantic tokens from the theme foundation for surfaces, text, borders, focus
 
 Stylelint rejects literal values for `font-size`, padding, margin, gap, border radius and `z-index`, and hex colours, everywhere except `libs/theme-foundation`. A literal is a number with a common length unit (px, rem, em, vh and similar) or a percentage, or any integer `z-index`. `0`, keywords, `var()`, `env()` and `calc()` with unitless factors are allowed; a `var(--x, 4px)` fallback is a literal too.
 
-Existing literals are recorded per file in `stylelint-suppressions.json`. That list may only shrink: `pnpm stylelint` fails a file that gains one, and `scripts/stylelint-suppressions.spec.mjs` fails when the list no longer matches the stylesheets exactly or grows against `main`. Counts are per declaration, not per literal: a declaration with several literals is one entry, so replacing only some of its literals does not shrink the list. After replacing every literal in a declaration with a token, regenerate the list and commit the smaller file:
+Existing literals are recorded per file in `stylelint-suppressions.json`. That list may only shrink: `pnpm stylelint` fails a file that gains one, and `scripts/stylelint-suppressions.spec.mjs` fails when the list no longer matches the stylesheets exactly or grows against `main`. Counts are per declaration, not per literal: a declaration with several literals is one entry, so replacing only some of its literals does not shrink the list. After replacing every literal in a declaration with a token, or deleting the declaration, lower the list and commit the smaller file:
 
 ```bash
-pnpm stylelint --suppress=declaration-property-value-disallowed-list --suppress=color-no-hex
+pnpm stylelint:ratchet
 ```
 
-Never regenerate to make a new literal pass; use the matching `--trinity-*` token from `libs/theme-foundation` instead.
+It only lowers counts and drops entries that reach zero; it never raises one or adds a file. A new literal therefore still fails: use the matching `--trinity-*` token from `libs/theme-foundation` instead.
 
 ## Design narrow and wide states {#responsive-states}
 
