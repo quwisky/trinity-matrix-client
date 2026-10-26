@@ -745,6 +745,22 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
   });
 
+  it('reports nothing about space when the estimate never answers', async () => {
+    vi.useFakeTimers();
+    spaceLow.mockReturnValueOnce(new Promise<boolean>(() => undefined));
+    const outcome = firstValueFrom(adapter.establishSessionCapabilities());
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES['browser-storage-persistence']
+        .budgetMs,
+    );
+
+    await expect(outcome).resolves.toMatchObject({ kind: 'ready' });
+    expect(
+      health.health().find(({ operation }) => operation === 'space'),
+    ).toBeUndefined();
+  });
+
   it('bounds unresponsive optional startup siblings with exact identities', async () => {
     vi.useFakeTimers();
     hydrateOrder.mockReturnValueOnce(NEVER);

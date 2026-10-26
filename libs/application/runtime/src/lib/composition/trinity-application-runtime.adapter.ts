@@ -316,8 +316,9 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         ),
         space: defer(() => this.storagePersistence.spaceLow()).pipe(
           timeout({ first: persistence.budgetMs }),
-          catchError(() => of(false)),
+          // An estimate that never answers says nothing about space, so report nothing.
           map((low) => this.reportSpace(low)),
+          catchError(() => of(undefined)),
         ),
       }).pipe(
         map(({ ordering, persistence }) =>
