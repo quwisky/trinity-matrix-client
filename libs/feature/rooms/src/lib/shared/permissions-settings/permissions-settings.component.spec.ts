@@ -313,6 +313,49 @@ describe('PermissionsSettingsComponent', () => {
     expect(select().textContent).toContain('Member');
   });
 
+  describe('when the sync lands before the save resolves', () => {
+    const withSend = (level: number) =>
+      view({
+        rows: [
+          rowView(SEND, level),
+          rowView(INVITE, 25),
+          rowView(BAN, 'mixed'),
+          rowView(DEFAULT, 0),
+        ],
+      });
+
+    async function saveModerator(syncedLevel: number) {
+      const pending = new Subject<void>();
+      const { current } = await setup(view(), pending.asObservable());
+      await choose('Send messages', 'Moderator');
+      fireEvent.click(screen.getByTestId('permissions-save'));
+      await tick();
+      current.set(withSend(syncedLevel));
+      await tick();
+      pending.next();
+      pending.complete();
+      await tick();
+      return current;
+    }
+
+    const select = () =>
+      screen.getByRole('combobox', { name: 'Send messages' });
+
+    it('still shows later remote changes', async () => {
+      const current = await saveModerator(50);
+      expect(select().textContent).toContain('Moderator');
+
+      current.set(withSend(100));
+      await tick();
+      expect(select().textContent).toContain('Admin');
+    });
+
+    it('shows a remote change from the same sync', async () => {
+      await saveModerator(100);
+      expect(select().textContent).toContain('Admin');
+    });
+  });
+
   it('locks every row while saving', async () => {
     const pending = new Subject<void>();
     await setup(view(), pending.asObservable());

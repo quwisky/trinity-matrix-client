@@ -7,7 +7,6 @@ import {
   inject,
   input,
   signal,
-  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { of, switchMap } from 'rxjs';
@@ -66,8 +65,11 @@ export class PermissionsSettingsComponent {
   protected readonly customText = signal<ReadonlyMap<string, string>>(
     new Map(),
   );
-  // Saved levels shown until the SDK applies them on the next sync.
-  private readonly saved = signal<ReadonlyMap<string, number>>(new Map());
+  // Saved levels shown until the row's level moves off what it was when Save was pressed:
+  // our event or a later one has synced, so the view is current again.
+  private readonly saved = signal<
+    ReadonlyMap<string, { level: number; before: PermissionRowView['level'] }>
+  >(new Map());
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
 
@@ -114,9 +116,10 @@ export class PermissionsSettingsComponent {
       const levels = new Map(
         this.view().rows.map((item) => [item.row.id, item.level]),
       );
-      const saved = untracked(this.saved);
+      const saved = this.saved();
       const pending = [...saved].filter(
-        ([id, level]) => levels.get(id) !== level,
+        ([id, { level, before }]) =>
+          levels.get(id) === before && before !== level,
       );
       if (pending.length < saved.size) this.saved.set(new Map(pending));
     });
@@ -194,6 +197,7 @@ export class PermissionsSettingsComponent {
     if (!this.canSave()) return;
     const view = this.view();
     const changes = this.changes();
+    const before = new Map(view.rows.map((item) => [item.row.id, item.level]));
     const next = changes.get('users-default');
     const locksOut =
       view.powerFromDefault &&
@@ -226,7 +230,13 @@ export class PermissionsSettingsComponent {
         next: (done) => {
           this.saving.set(false);
           if (done === null) return;
-          this.saved.update((m) => new Map([...m, ...changes]));
+          this.saved.update((m) => {
+            const next = new Map(m);
+            for (const [id, level] of changes) {
+              next.set(id, { level, before: before.get(id) ?? level });
+            }
+            return next;
+          });
           this.discard();
         },
         error: (err: unknown) => {
@@ -247,7 +257,7 @@ export class PermissionsSettingsComponent {
   }
 
   private baseline(item: PermissionRowView): PermissionRowView['level'] {
-    return this.saved().get(item.row.id) ?? item.level;
+    return this.saved().get(item.row.id)?.level ?? item.level;
   }
 
   private parse(text: string): number | null {
