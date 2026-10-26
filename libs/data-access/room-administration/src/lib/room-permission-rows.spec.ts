@@ -80,6 +80,16 @@ describe('applyChanges', () => {
     expect(latest).toEqual(snapshot);
   });
 
+  it('keeps other events entries when an event row changes', () => {
+    const latest = { events: { 'm.room.server_acl': 100 } };
+    const out = applyChanges(latest, room, new Map([['join-rule', 50]]));
+    expect(out['events']).toEqual({
+      'm.room.server_acl': 100,
+      'm.room.join_rules': 50,
+    });
+    expect(latest.events).toEqual({ 'm.room.server_acl': 100 });
+  });
+
   it('writes all types of a multi-type row', () => {
     const out = applyChanges({}, room, new Map([['profile', 0]]));
     expect(out['events']).toEqual({

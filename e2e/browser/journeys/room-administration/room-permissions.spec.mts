@@ -138,6 +138,8 @@ test.describe('Roles and permissions', () => {
     const memberPage = await secondaryApp.launch();
     await signIn(memberPage, hs, member);
     await openRoom(memberPage, roomName);
+    // The member's page stays open from here on: no reload separates the two states.
+    await expect(memberPage.getByTestId('composer-input')).toBeVisible();
 
     await signIn(page, hs, admin);
     await openRoom(page, roomName);
