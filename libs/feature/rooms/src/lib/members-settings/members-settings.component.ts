@@ -140,6 +140,14 @@ export class MembersSettingsComponent implements OnInit {
     );
   }
 
+  focusDestination(): void {
+    this.host.nativeElement
+      .querySelector<HTMLElement>(
+        `[data-testid="members-settings-${this.destination()}"]`,
+      )
+      ?.focus();
+  }
+
   /** Allow the settings dialog's Back owner to retreat to the roster first. */
   dismissNestedSurface(): boolean {
     if (!this.selectedMember()) return false;

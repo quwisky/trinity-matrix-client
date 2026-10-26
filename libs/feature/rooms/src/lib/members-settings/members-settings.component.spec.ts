@@ -34,6 +34,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import { MembersSettingsComponent } from './members-settings.component';
+import { PendingMembersComponent } from './pending-members/pending-members.component';
 
 const TARGET = { accountId: '@opening:hs', roomId: '!target:hs' } as const;
 const ALLOWED = { available: true, reason: null } as const;
@@ -336,5 +337,20 @@ describe('MembersSettingsComponent', () => {
 
     expect(cmp.snapshot()?.knocking).toEqual([DANA]);
     expect(cmp.snapshot()?.invited).toEqual([ADA]);
+  });
+
+  it('returns focus to the list button when its last row leaves', async () => {
+    const { fixture, container } = await build({
+      initial: snapshot({ knocking: [DANA] }),
+    });
+    await fixture.whenStable();
+
+    fixture.debugElement
+      .query(By.directive(PendingMembersComponent))
+      .componentInstance.listEmptied.emit();
+
+    expect(document.activeElement).toBe(
+      container.querySelector('[data-testid="members-settings-requests"]'),
+    );
   });
 });

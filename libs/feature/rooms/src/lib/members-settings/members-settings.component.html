@@ -133,6 +133,7 @@
             destination() === 'requests' ? current.knocking : current.invited
           "
           [authorityRevision]="authorityRevision()"
+          (listEmptied)="focusDestination()"
         />
       </div>
     } @else {
