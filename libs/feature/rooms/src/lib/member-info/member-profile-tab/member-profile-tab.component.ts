@@ -15,6 +15,7 @@ import { type PresenceDetails } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type UserTrust } from '@trinity/data-access/trust';
 import { relativeTimeLabel } from '../../shared/relative-time';
+import { IdentityChangeActionsComponent } from '../../identity-change/identity-change-actions.component';
 
 const PRESENCE_LABEL = {
   online: 'Online',
@@ -32,7 +33,7 @@ const clock = timer(60_000, 60_000).pipe(
 @Component({
   selector: 'trn-member-profile-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnIconComponent],
+  imports: [IdentityChangeActionsComponent, TrnButton, TrnIconComponent],
   templateUrl: './member-profile-tab.component.html',
 })
 export class MemberProfileTabComponent {
@@ -56,8 +57,21 @@ export class MemberProfileTabComponent {
     () =>
       !this.isSelf() &&
       this.showIdentityActions() &&
-      (this.trust() === 'unverified' || this.trust() === 'changed'),
+      this.trust() === 'unverified',
   );
+
+  /** A changed identity to answer in place of plain Verify, or null. */
+  readonly identityChange = computed(() => {
+    const trust = this.trust();
+    if (this.isSelf() || !this.showIdentityActions()) return null;
+    return trust === 'identity-changed' || trust === 'verified-identity-changed'
+      ? {
+          userId: this.member().userId,
+          name: this.member().roomDisplayName,
+          trust,
+        }
+      : null;
+  });
 
   readonly status = computed(() => {
     const presence = this.presence();

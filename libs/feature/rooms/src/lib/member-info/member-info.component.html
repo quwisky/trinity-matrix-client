@@ -61,13 +61,14 @@
               ><span aria-hidden="true">✓</span> Verified</span
             >
           }
-          @case ('changed') {
+          @case ('identity-changed') {
             <span trnBadge variant="warning" data-testid="member-info-trust"
-              ><span aria-hidden="true">⚠</span> Identity changed<span
-                class="sr-only"
-              >
-                — verify again</span
-              ></span
+              ><span aria-hidden="true">⚠</span> Identity changed</span
+            >
+          }
+          @case ('verified-identity-changed') {
+            <span trnBadge variant="warning" data-testid="member-info-trust"
+              ><span aria-hidden="true">⚠</span> Verified identity changed</span
             >
           }
         }

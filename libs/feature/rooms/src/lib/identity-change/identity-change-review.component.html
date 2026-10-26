@@ -1,0 +1,37 @@
+<trn-dialog-shell title="Changed identities" (closed)="close()">
+  <p class="m-0 mb-3 text-xs text-[var(--trinity-text-muted)]">
+    Their encryption identity is new. If you didn't expect this, check with them
+    another way before you trust it.
+  </p>
+  <ul
+    class="m-0 flex list-none flex-col p-0"
+    data-testid="identity-review-list"
+  >
+    @for (change of changes(); track change.userId) {
+      <li
+        class="flex flex-wrap items-center gap-3 border-b border-[var(--trinity-border-subtle)] py-3"
+        [attr.data-testid]="'identity-review-' + change.userId"
+      >
+        <trn-avatar
+          [mxc]="change.avatarMxc"
+          [initial]="change.initial"
+          [name]="change.name"
+          [exactSize]="36"
+        />
+        <span class="flex min-w-0 flex-[1_1_8rem] flex-col">
+          <span
+            class="truncate font-semibold text-[var(--trinity-text-bright)]"
+            >{{ change.name }}</span
+          >
+          <span class="text-xs text-[var(--trinity-text-muted)]">{{
+            status(change.trust)
+          }}</span>
+        </span>
+        <trn-identity-change-actions
+          [change]="change"
+          (verificationStarted)="close()"
+        />
+      </li>
+    }
+  </ul>
+</trn-dialog-shell>

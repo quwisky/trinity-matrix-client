@@ -76,6 +76,10 @@ export class RoomMembersService {
     string,
     WritableSignal<readonly MemberSummary[]>
   >();
+  private readonly invitedSignals = new Map<
+    string,
+    WritableSignal<readonly MemberSummary[]>
+  >();
   private readonly bannedSignals = new Map<
     string,
     WritableSignal<readonly BannedMember[]>
@@ -146,6 +150,9 @@ export class RoomMembersService {
       this.allDirty = false;
       this.retryRequested = false;
       for (const members of this.memberSignals.values()) {
+        members.set(EMPTY_MEMBERS);
+      }
+      for (const members of this.invitedSignals.values()) {
         members.set(EMPTY_MEMBERS);
       }
       for (const bans of this.bannedSignals.values()) {
@@ -271,16 +278,45 @@ export class RoomMembersService {
     });
   }
 
+  /** A memoized signal for one Room's invited (not yet joined) members. */
+  invitedFor(roomId: string | null): Signal<readonly MemberSummary[]> {
+    const key = roomId ?? '';
+    let members = this.invitedSignals.get(key);
+    if (!members) {
+      members = signal(this.invitedMembersOf(roomId));
+      this.invitedSignals.set(key, members);
+    }
+    return members.asReadonly();
+  }
+
+  /** One authoritative snapshot of a Room's invited members. */
+  invitedMembersOf(roomId: string | null): readonly MemberSummary[] {
+    if (!roomId || !this.matrix.isInitialized) {
+      return EMPTY_MEMBERS;
+    }
+    return this.membersFrom(
+      this.matrix.instance,
+      roomId,
+      `invited\x1f${roomId}`,
+      KnownMembership.Invite,
+    );
+  }
+
   private membersFrom(
     client: MatrixClient,
     roomId: string,
     cacheKey: string,
+    membership:
+      KnownMembership.Join | KnownMembership.Invite = KnownMembership.Join,
   ): readonly MemberSummary[] {
     const room = client.getRoom(roomId);
     if (!room) {
       return EMPTY_MEMBERS;
     }
-    const joined = room.getJoinedMembers();
+    const joined =
+      membership === KnownMembership.Join
+        ? room.getJoinedMembers()
+        : room.getMembersWithMembership(membership);
     const fingerprint = joined
       .map(
         (member) =>
@@ -367,6 +403,7 @@ export class RoomMembersService {
       this.allDirty = true;
     } else if (
       this.memberSignals.has(roomId) ||
+      this.invitedSignals.has(roomId) ||
       this.bannedSignals.has(roomId)
     ) {
       this.dirtyRooms.add(roomId);
@@ -379,11 +416,15 @@ export class RoomMembersService {
   private reread(roomId: string | null): void {
     if (roomId !== null) {
       this.memberSignals.get(roomId)?.set(this.membersOf(roomId));
+      this.invitedSignals.get(roomId)?.set(this.invitedMembersOf(roomId));
       this.bannedSignals.get(roomId)?.set(this.bannedMembersOf(roomId));
       return;
     }
     for (const [key, members] of this.memberSignals) {
       members.set(this.membersOf(key || null));
+    }
+    for (const [key, members] of this.invitedSignals) {
+      members.set(this.invitedMembersOf(key || null));
     }
     for (const [key, bans] of this.bannedSignals) {
       bans.set(this.bannedMembersOf(key || null));

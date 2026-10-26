@@ -9,26 +9,38 @@ import {
   CryptoEvent,
   type UserVerificationStatus,
 } from 'matrix-js-sdk/lib/crypto-api';
-import type { Observable } from 'rxjs';
+import { defer, from, type Observable } from 'rxjs';
 import {
   TrustCryptoPort,
   type TrustMatrixClient,
 } from '@trinity/data-access/matrix-client';
+import {
+  TrustOperationError,
+  recoverTrustOperation,
+  type TrustOperation,
+} from './trust-operation-error';
 
-/** Another person's cross-signing identity as this Account sees it. */
-export type UserTrust = 'verified' | 'unverified' | 'changed';
+/**
+ * Another person's cross-signing identity as this Account sees it. A changed identity is
+ * `verified-identity-changed` when this Account had verified the old one, else
+ * `identity-changed` until acknowledged.
+ */
+export type UserTrust =
+  'verified' | 'unverified' | 'identity-changed' | 'verified-identity-changed';
 
 const toUserTrust = (
   status: Pick<
     UserVerificationStatus,
-    'isCrossSigningVerified' | 'wasCrossSigningVerified'
+    'isCrossSigningVerified' | 'wasCrossSigningVerified' | 'needsUserApproval'
   >,
 ): UserTrust =>
   status.isCrossSigningVerified()
     ? 'verified'
     : status.wasCrossSigningVerified()
-      ? 'changed'
-      : 'unverified';
+      ? 'verified-identity-changed'
+      : status.needsUserApproval
+        ? 'identity-changed'
+        : 'unverified';
 
 /** Projects the active Account's verification view of other users; unknown while detached. */
 @Injectable({ providedIn: 'root' })
@@ -61,7 +73,7 @@ export class TrustUsersService {
     unbind: (client) =>
       client.off(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged),
     rebuild: (client) => {
-      for (const userId of this.states.keys()) this.read(userId, client);
+      for (const userId of this.states.keys()) void this.read(userId, client);
     },
     reset: () => {
       for (const [userId, state] of this.states) {
@@ -86,20 +98,64 @@ export class TrustUsersService {
       state = signal<UserTrust | null>(null);
       this.states.set(userId, state);
       const client = this.projection.client();
-      if (client) this.read(userId, client);
+      if (client) void this.read(userId, client);
     }
     return state.asReadonly();
   }
 
-  private read(userId: string, client: TrustMatrixClient): void {
+  /** Accept a changed identity as this person's own (pin it). Cold; runs as the active Account. */
+  acknowledgeIdentity(userId: string): Observable<void> {
+    return this.identityAction('acknowledge-identity', userId, (crypto) =>
+      crypto.pinCurrentUserIdentity(userId),
+    );
+  }
+
+  /**
+   * Stop requiring a previously verified person to be verified, accepting their new identity as
+   * unverified. Cold; runs as the active Account.
+   */
+  withdrawVerification(userId: string): Observable<void> {
+    return this.identityAction('withdraw-verification', userId, (crypto) =>
+      crypto.withdrawVerificationRequirement(userId),
+    );
+  }
+
+  /** Run one identity change, then re-read the user so their state updates without the event. */
+  private identityAction(
+    operation: TrustOperation,
+    userId: string,
+    run: (
+      crypto: NonNullable<ReturnType<TrustMatrixClient['getCrypto']>>,
+    ) => Promise<void>,
+  ): Observable<void> {
+    return defer(() => {
+      const { client, crypto } = this.cryptoPort.active();
+      if (!crypto) {
+        throw new TrustOperationError(
+          operation,
+          'not-ready',
+          'retry',
+          'Encryption is still starting. Try again in a moment.',
+        );
+      }
+      // Settle the re-read before completing, so the caller's busy state outlasts it.
+      return from(
+        run(crypto).then(() =>
+          this.states.has(userId) ? this.read(userId, client) : undefined,
+        ),
+      );
+    }).pipe(recoverTrustOperation(operation));
+  }
+
+  private read(userId: string, client: TrustMatrixClient): Promise<void> {
     const generation = this.nextGeneration(userId);
     const state = this.states.get(userId);
     const crypto = client.getCrypto();
     if (!crypto) {
       state?.set(null);
-      return;
+      return Promise.resolve();
     }
-    void crypto.getUserVerificationStatus(userId).then(
+    return crypto.getUserVerificationStatus(userId).then(
       (status) => this.settle(userId, generation, toUserTrust(status)),
       // The card reads trust decoratively; a failed read degrades to unverified.
       () => this.settle(userId, generation, 'unverified'),

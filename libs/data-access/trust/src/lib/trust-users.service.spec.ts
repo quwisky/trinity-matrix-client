@@ -3,7 +3,9 @@ import { TestBed } from '@angular/core/testing';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { MockProvider, ngMocks } from 'ng-mocks';
+import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TrustOperationError } from './trust-operation-error';
 import { TrustUsersService } from './trust-users.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
@@ -13,11 +15,13 @@ const BOB = '@bob:hs';
 interface Status {
   isCrossSigningVerified(): boolean;
   wasCrossSigningVerified(): boolean;
+  readonly needsUserApproval: boolean;
 }
 
-const status = (is: boolean, was: boolean): Status => ({
+const status = (is: boolean, was: boolean, approve = false): Status => ({
   isCrossSigningVerified: () => is,
   wasCrossSigningVerified: () => was,
+  needsUserApproval: approve,
 });
 
 function fakeClient(
@@ -25,12 +29,24 @@ function fakeClient(
   crypto = true,
 ) {
   const getUserVerificationStatus = vi.fn(read);
+  const pinCurrentUserIdentity = vi.fn(async (_userId: string) => undefined);
+  const withdrawVerificationRequirement = vi.fn(
+    async (_userId: string) => undefined,
+  );
   return {
     getUserId: vi.fn(() => '@me:hs'),
     getCrypto: vi.fn(() =>
-      crypto ? { getUserVerificationStatus } : undefined,
+      crypto
+        ? {
+            getUserVerificationStatus,
+            pinCurrentUserIdentity,
+            withdrawVerificationRequirement,
+          }
+        : undefined,
     ),
     getUserVerificationStatus,
+    pinCurrentUserIdentity,
+    withdrawVerificationRequirement,
     on: vi.fn(),
     off: vi.fn(),
   };
@@ -78,12 +94,21 @@ describe('TrustUsersService', () => {
     lifetime.unsubscribe();
   });
 
-  it('returns changed when a previously verified identity is no longer verified', async () => {
-    const { svc } = setup(fakeClient(async () => status(false, true)));
+  it('returns verified-identity-changed when a previously verified identity is no longer verified', async () => {
+    const { svc } = setup(fakeClient(async () => status(false, true, true)));
     const lifetime = svc.runProjection().subscribe();
     const trust = svc.userTrust(ALICE);
     await settle();
-    expect(trust()).toBe('changed');
+    expect(trust()).toBe('verified-identity-changed');
+    lifetime.unsubscribe();
+  });
+
+  it('returns identity-changed when an unverified identity needs approval', async () => {
+    const { svc } = setup(fakeClient(async () => status(false, false, true)));
+    const lifetime = svc.runProjection().subscribe();
+    const trust = svc.userTrust(ALICE);
+    await settle();
+    expect(trust()).toBe('identity-changed');
     lifetime.unsubscribe();
   });
 
@@ -172,5 +197,58 @@ describe('TrustUsersService', () => {
     const trust = svc.userTrust(ALICE);
     await settle();
     expect(trust()).toBeNull();
+  });
+
+  describe('identity actions', () => {
+    it.each([
+      ['acknowledgeIdentity', 'pinCurrentUserIdentity'],
+      ['withdrawVerification', 'withdrawVerificationRequirement'],
+    ] as const)(
+      '%s calls %s and re-reads the user',
+      async (action, sdkMethod) => {
+        let next = status(false, true, true);
+        const client = fakeClient(async () => next);
+        const { svc } = setup(client);
+        const lifetime = svc.runProjection().subscribe();
+        const trust = svc.userTrust(ALICE);
+        await settle();
+        expect(trust()).toBe('verified-identity-changed');
+
+        next = status(false, false);
+        await firstValueFrom(svc[action](ALICE), { defaultValue: undefined });
+        await settle();
+
+        expect(client[sdkMethod]).toHaveBeenCalledWith(ALICE);
+        expect(trust()).toBe('unverified');
+        lifetime.unsubscribe();
+      },
+    );
+
+    it('is cold: nothing runs until subscribed', () => {
+      const client = fakeClient();
+      const { svc } = setup(client);
+
+      svc.acknowledgeIdentity(ALICE);
+
+      expect(client.pinCurrentUserIdentity).not.toHaveBeenCalled();
+    });
+
+    it('reports a failure as a TrustOperationError', async () => {
+      const client = fakeClient();
+      client.withdrawVerificationRequirement.mockRejectedValue(
+        new Error('no identity for @alice:hs'),
+      );
+      const { svc } = setup(client);
+
+      const error = await firstValueFrom(svc.withdrawVerification(ALICE)).catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(TrustOperationError);
+      expect((error as TrustOperationError).operation).toBe(
+        'withdraw-verification',
+      );
+      expect((error as Error).message).not.toContain('@alice:hs');
+    });
   });
 });

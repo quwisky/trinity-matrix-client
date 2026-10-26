@@ -398,7 +398,8 @@ describe('MemberInfoComponent', () => {
 
   it.each([
     { trust: 'verified', badge: 'Verified' },
-    { trust: 'changed', badge: 'Identity changed — verify again' },
+    { trust: 'identity-changed', badge: 'Identity changed' },
+    { trust: 'verified-identity-changed', badge: 'Verified identity changed' },
     { trust: 'unverified', badge: null },
     { trust: null, badge: null },
   ] as const)(
