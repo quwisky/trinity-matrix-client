@@ -12,6 +12,10 @@
   }
 
   .picker__note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--trinity-space-1);
     margin: var(--trinity-space-2) 0 0;
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-caption-size);
