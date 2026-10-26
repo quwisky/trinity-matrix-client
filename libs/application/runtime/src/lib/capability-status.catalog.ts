@@ -255,6 +255,7 @@ const CAPABILITY_DIAGNOSTIC_REASONS = {
   }),
   'storage:persistence': reasons({
     available: ['storage-persistence-ready'],
+    expected: ['storage-persistence-not-offered'],
     problem: [
       'storage-persistence-denied',
       'storage-persistence-timeout',

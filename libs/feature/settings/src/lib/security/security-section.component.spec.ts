@@ -19,7 +19,10 @@ import {
   HostSystemUiService,
 } from '@trinity/runtime/host';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { SecureStorageService } from '@trinity/platform-native';
+import {
+  SecureStorageService,
+  StoragePersistenceService,
+} from '@trinity/platform-native';
 import { SecuritySectionComponent } from './security-section.component';
 
 async function build(
@@ -31,6 +34,7 @@ async function build(
     cryptoStoreEncrypted?: boolean | null;
     identityElsewhere?: boolean;
     unprotected?: boolean;
+    persistenceOffered?: boolean;
   } = {},
   over: {
     exportRoomKeys?: Mock;
@@ -89,6 +93,9 @@ async function build(
         storesUnprotectedSecrets: vi.fn(() =>
           Promise.resolve(opts.unprotected ?? false),
         ),
+      }),
+      MockProvider(StoragePersistenceService, {
+        offered: () => opts.persistenceOffered ?? true,
       }),
       MockProvider(MatrixClientService, {
         cryptoStoreEncrypted: signal(
@@ -453,6 +460,41 @@ describe('SecuritySectionComponent', () => {
       }
     },
   );
+
+  it.each([
+    [false, true, 'Your recovery key restores your encrypted messages.'],
+    [false, false, 'Set up recovery so you can restore them.'],
+  ])(
+    'explains where iOS may clear local data (offered %s, backup %s)',
+    async (persistenceOffered, backup, advice) => {
+      const { container } = await build({ persistenceOffered, backup });
+
+      const note = container.querySelector('[data-testid=security-local-data]');
+      expect(note?.textContent).toContain(
+        'iOS can clear Trinity’s local data if your phone runs very low on space.',
+      );
+      expect(note?.textContent).toContain(advice);
+    },
+  );
+
+  it('gives no recovery advice while backup status is unknown', async () => {
+    const { container } = await build({
+      persistenceOffered: false,
+      availability: 'unavailable',
+    });
+
+    const note = container.querySelector('[data-testid=security-local-data]');
+    expect(note?.textContent).toContain('iOS can clear Trinity’s local data');
+    expect(note?.textContent).not.toContain('recovery');
+  });
+
+  it('says nothing about local data where storage can be kept', async () => {
+    const { container } = await build({ persistenceOffered: true });
+
+    expect(
+      container.querySelector('[data-testid=security-local-data]'),
+    ).toBeNull();
+  });
 
   it('exports room keys with the entered passphrase and toasts', async () => {
     const { cmp, exportRoomKeys, prompt, toastShow, fileSave } = await build();

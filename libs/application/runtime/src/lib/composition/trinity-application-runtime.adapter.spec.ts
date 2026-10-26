@@ -147,6 +147,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let updateCheck: Mock<HostUpdatesService['check']>;
   let hydrateOrder: Mock<() => Observable<RoomOrderHydrationOutcome>>;
   let requestPersistence: Mock<StoragePersistenceService['requestPersistence']>;
+  let persistenceOffered: Mock<StoragePersistenceService['offered']>;
   let acquireLock: Mock<SessionLockService['acquire']>;
   let applySavedAppearance: Mock<AppearanceEffects['applySaved']>;
   let lockGranted: Subject<void>;
@@ -217,6 +218,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     requestPersistence = vi.fn<StoragePersistenceService['requestPersistence']>(
       () => of(true),
+    );
+    persistenceOffered = vi.fn<StoragePersistenceService['offered']>(
+      () => true,
     );
     acquireLock = vi.fn<SessionLockService['acquire']>(() =>
       of('held' as const),
@@ -359,6 +363,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
         MockProvider(StoragePersistenceService, {
           requestPersistence,
+          offered: persistenceOffered,
         }),
         MockProvider(SessionLockService, {
           acquire: acquireLock,
@@ -657,6 +662,34 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       operation: 'persistence',
       code: 'storage-persistence-denied',
     });
+  });
+
+  it('neither asks for nor warns about persistent storage where the host never offers it', async () => {
+    persistenceOffered.mockReturnValue(false);
+
+    await expect(
+      firstValueFrom(adapter.establishSessionCapabilities()),
+    ).resolves.toMatchObject({
+      kind: 'ready',
+      settlements: [
+        expect.objectContaining({ producer: 'room-order', status: 'ready' }),
+        expect.objectContaining({
+          producer: 'browser-storage-persistence',
+          status: 'ready',
+        }),
+      ],
+    });
+    expect(requestPersistence).not.toHaveBeenCalled();
+    expect(
+      health.health().find((entry) => entry.capability === 'storage'),
+    ).toMatchObject({
+      condition: 'not-applicable',
+      demanded: false,
+      code: 'storage-persistence-not-offered',
+    });
+    expect(
+      health.problems().find((problem) => problem.capability === 'storage'),
+    ).toBeUndefined();
   });
 
   it('bounds unresponsive optional startup siblings with exact identities', async () => {
