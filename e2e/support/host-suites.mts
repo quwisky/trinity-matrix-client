@@ -134,7 +134,7 @@ export const HOST_E2E_SUITES = defineSuites([
     ciTier: 'nightly',
     cachePolicy: 'never',
     serializationKeys: ['homeserver', 'ios-simulator'],
-    timeoutClass: 'host',
+    timeoutClass: 'nightly-host',
     canonicalScript: 'e2e:mobile:ios',
     currentArtifactRoot: 'dist/.playwright/trinity-e2e-mobile/<run-id>',
     targetArtifactRoot: 'dist/.playwright/trinity-e2e-mobile/<run-id>',

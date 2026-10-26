@@ -52,7 +52,7 @@ async function simctl(...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('xcrun', ['simctl', ...args], {
     maxBuffer: 20 * 1024 * 1024,
     // Right after a cold WebDriverAgent build, a container lookup once took over 30 s (run
-    // 39550580280). A reset makes two, so 60 s each stays inside the 180 s hook timeout.
+    // 39550580280). A reset makes two, so 60 s each stays inside the hook timeout (180 s, 300 s on iOS).
     timeout: args[0] === 'get_app_container' ? 60_000 : 30_000,
   });
   return stdout.trim();

@@ -755,9 +755,11 @@ describe('iOS nightly E2E workflow', () => {
       TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
     });
     expect(ios.jobs.ios['runs-on']).toBe('macos-26');
-    expect(ios.jobs.ios['timeout-minutes']).toBe(90);
+    expect(ios.jobs.ios['timeout-minutes']).toBe(100);
     const mobile = steps.find((step) => step.id === 'mobile');
     expect(mobile.run).toContain('pnpm e2e:mobile:ios');
+    // Above the suite's own 80-minute limit, so that fires first and names the suite.
+    expect(mobile.run).toContain('--timeout-ms 5100000 --');
     expect(mobile.env.TRINITY_E2E_PREBUILT_WWW).toBe('1');
   });
 

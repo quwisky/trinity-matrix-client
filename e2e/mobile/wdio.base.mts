@@ -30,6 +30,8 @@ export function mobileWdioConfig(options: {
   readonly connectionRetryTimeout?: number;
   readonly connectionRetryCount?: number;
   readonly before?: WebdriverIO.Config['before'];
+  /** One test's budget, hooks included. */
+  readonly testTimeout?: number;
 }): WebdriverIO.Config {
   const { suite } = options;
   const startedAt = Date.now();
@@ -60,7 +62,11 @@ export function mobileWdioConfig(options: {
       ],
     ],
     framework: 'mocha',
-    mochaOpts: { ui: 'bdd', timeout: 180_000, retries: 0 },
+    mochaOpts: {
+      ui: 'bdd',
+      timeout: options.testTimeout ?? 180_000,
+      retries: 0,
+    },
     specFileRetries: 0,
     reporters: [
       'spec',

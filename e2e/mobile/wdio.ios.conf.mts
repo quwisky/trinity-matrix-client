@@ -41,6 +41,9 @@ export const config = mobileWdioConfig({
   connectionRetryTimeout: 900_000,
   // One hung request must fail once, not 3 x 15 min.
   connectionRetryCount: 0,
+  // A slow hosted macOS night ran tests 2.7x longer than a fast one (#1719); 180 s was not
+  // enough for push-render-ios and sso there.
+  testTimeout: 300_000,
   // XCUITest's default script timeout is 0. execute() with an async function runs as an
   // async script, which needs one. Set per session here.
   async before() {

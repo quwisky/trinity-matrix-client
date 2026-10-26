@@ -25,7 +25,7 @@ const SAFARI = 'com.apple.mobilesafari';
 const SAFARI_START_MS = 120_000;
 
 /**
- * The suite default is 180 s. Measured on cold CI runners: 165 s of reinstall, launch retries
+ * The default test budget is 180 s (300 s on iOS). Measured on cold CI runners: 165 s of reinstall, launch retries
  * and first sign-in before the tap (one tap alone was held for 69 s), and 26 s to bring the
  * app back; plus the waits' limits: 30 s for the timeline to settle, and 30 s to see the app
  * leave, which a held query (38 s seen) can overrun.

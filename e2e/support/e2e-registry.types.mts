@@ -32,7 +32,8 @@ export type E2ECapability =
   | 'workspace';
 
 export type E2ECiTier = 'local-only' | 'nightly' | 'pull-request' | 'scheduled';
-export type E2ETimeoutClass = 'short' | 'medium' | 'long' | 'host';
+export type E2ETimeoutClass =
+  'short' | 'medium' | 'long' | 'host' | 'nightly-host';
 
 export type E2EPrerequisite =
   | 'android-avd'

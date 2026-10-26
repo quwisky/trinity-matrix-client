@@ -36,4 +36,7 @@ export const E2E_TIMEOUTS_MS = {
   medium: 300_000,
   long: 1_800_000,
   host: 3_600_000,
+  // The iOS nightly runs every spec on a hosted macOS runner whose speed varies about 2.7x
+  // between nights (#1719): 60 min left a slow night no room.
+  'nightly-host': 4_800_000,
 } as const;
