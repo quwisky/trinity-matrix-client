@@ -86,6 +86,9 @@ export class SecuritySectionComponent {
   readonly cryptoStoreEncrypted = this.matrix.cryptoStoreEncrypted;
   /** The system may clear local data under storage pressure and can't be asked not to (iOS). */
   readonly localDataEvictable = !this.storagePersistence.offered();
+  readonly spaceLow = toSignal(from(this.storagePersistence.spaceLow()), {
+    initialValue: false,
+  });
   /** Secrets sit unprotected on disk because this host's keychain could not be used. */
   readonly withoutKeychain = toSignal(
     from(this.secure.storesUnprotectedSecrets()).pipe(

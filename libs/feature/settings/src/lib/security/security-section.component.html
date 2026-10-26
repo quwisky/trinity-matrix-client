@@ -213,6 +213,19 @@
     </trn-settings-group>
   }
 
+  @if (spaceLow()) {
+    <trn-settings-group
+      title="Space on this device"
+      data-testid="security-low-space"
+    >
+      <p class="m-0 py-3 text-sm text-muted-foreground">
+        This device is running low on space, so Trinity may soon fail to save
+        new encryption keys. Free up space on this device to keep your messages
+        readable.
+      </p>
+    </trn-settings-group>
+  }
+
   <!-- A store created before stores were encrypted stays as it is; a new sign-in
      creates an encrypted one. -->
   @if (cryptoStoreEncrypted() === false) {

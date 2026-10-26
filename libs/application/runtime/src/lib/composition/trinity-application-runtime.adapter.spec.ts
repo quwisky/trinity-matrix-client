@@ -148,6 +148,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let hydrateOrder: Mock<() => Observable<RoomOrderHydrationOutcome>>;
   let requestPersistence: Mock<StoragePersistenceService['requestPersistence']>;
   let persistenceOffered: Mock<StoragePersistenceService['offered']>;
+  let spaceLow: Mock<StoragePersistenceService['spaceLow']>;
   let acquireLock: Mock<SessionLockService['acquire']>;
   let applySavedAppearance: Mock<AppearanceEffects['applySaved']>;
   let lockGranted: Subject<void>;
@@ -221,6 +222,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     persistenceOffered = vi.fn<StoragePersistenceService['offered']>(
       () => true,
+    );
+    spaceLow = vi.fn<StoragePersistenceService['spaceLow']>(() =>
+      Promise.resolve(false),
     );
     acquireLock = vi.fn<SessionLockService['acquire']>(() =>
       of('held' as const),
@@ -364,6 +368,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(StoragePersistenceService, {
           requestPersistence,
           offered: persistenceOffered,
+          spaceLow,
         }),
         MockProvider(SessionLockService, {
           acquire: acquireLock,
@@ -689,6 +694,70 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
     expect(
       health.problems().find((problem) => problem.capability === 'storage'),
+    ).toBeUndefined();
+  });
+
+  it('warns when the device is low on space without degrading startup', async () => {
+    spaceLow.mockResolvedValueOnce(true);
+
+    await expect(
+      firstValueFrom(adapter.establishSessionCapabilities()),
+    ).resolves.toEqual({
+      kind: 'ready',
+      settlements: [
+        expect.objectContaining({ producer: 'room-order', status: 'ready' }),
+        expect.objectContaining({
+          producer: 'browser-storage-persistence',
+          status: 'ready',
+        }),
+      ],
+    });
+    const problem = health
+      .problems()
+      .find(
+        ({ capability, operation }) =>
+          capability === 'storage' && operation === 'space',
+      );
+    expect(problem).toMatchObject({
+      condition: 'degraded',
+      code: 'storage-space-low',
+    });
+
+    spaceLow.mockResolvedValueOnce(false);
+    await expect(
+      firstValueFrom(health.recover(problem!).pipe(toArray())),
+    ).resolves.toEqual([{ kind: 'pending' }, { kind: 'success' }]);
+    expect(
+      health.health().find(({ operation }) => operation === 'space'),
+    ).toMatchObject({ condition: 'available', code: 'storage-space-ready' });
+  });
+
+  it('reports enough space as available', async () => {
+    await firstValueFrom(adapter.establishSessionCapabilities());
+
+    expect(spaceLow).toHaveBeenCalledOnce();
+    expect(
+      health.health().find(({ operation }) => operation === 'space'),
+    ).toMatchObject({
+      capability: 'storage',
+      condition: 'available',
+      code: 'storage-space-ready',
+    });
+  });
+
+  it('reports nothing about space when the estimate never answers', async () => {
+    vi.useFakeTimers();
+    spaceLow.mockReturnValueOnce(new Promise<boolean>(() => undefined));
+    const outcome = firstValueFrom(adapter.establishSessionCapabilities());
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES['browser-storage-persistence']
+        .budgetMs,
+    );
+
+    await expect(outcome).resolves.toMatchObject({ kind: 'ready' });
+    expect(
+      health.health().find(({ operation }) => operation === 'space'),
     ).toBeUndefined();
   });
 

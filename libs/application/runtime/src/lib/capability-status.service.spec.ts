@@ -121,6 +121,7 @@ describe('CapabilityStatusService', () => {
         'room-administration:permissions',
         'room-library:hydrate-order',
         'storage:persistence',
+        'storage:space',
         'trust:projection',
         'updates:check',
       ].sort(),

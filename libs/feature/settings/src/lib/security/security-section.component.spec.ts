@@ -35,6 +35,7 @@ async function build(
     identityElsewhere?: boolean;
     unprotected?: boolean;
     persistenceOffered?: boolean;
+    spaceLow?: boolean;
   } = {},
   over: {
     exportRoomKeys?: Mock;
@@ -96,6 +97,7 @@ async function build(
       }),
       MockProvider(StoragePersistenceService, {
         offered: () => opts.persistenceOffered ?? true,
+        spaceLow: () => Promise.resolve(opts.spaceLow ?? false),
       }),
       MockProvider(MatrixClientService, {
         cryptoStoreEncrypted: signal(
@@ -495,6 +497,22 @@ describe('SecuritySectionComponent', () => {
       container.querySelector('[data-testid=security-local-data]'),
     ).toBeNull();
   });
+
+  it.each([true, false])(
+    'warns on any platform while the device is low on space (%s)',
+    async (spaceLow) => {
+      const { fixture, container } = await build({ spaceLow });
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const note = container.querySelector('[data-testid=security-low-space]');
+      if (spaceLow) {
+        expect(note?.textContent).toContain('Free up space on this device');
+      } else {
+        expect(note).toBeNull();
+      }
+    },
+  );
 
   it('exports room keys with the entered passphrase and toasts', async () => {
     const { cmp, exportRoomKeys, prompt, toastShow, fileSave } = await build();

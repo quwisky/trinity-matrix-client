@@ -314,6 +314,12 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
             ),
           ),
         ),
+        space: defer(() => this.storagePersistence.spaceLow()).pipe(
+          timeout({ first: persistence.budgetMs }),
+          // An estimate that never answers says nothing about space, so report nothing.
+          map((low) => this.reportSpace(low)),
+          catchError(() => of(undefined)),
+        ),
       }).pipe(
         map(({ ordering, persistence }) =>
           ready([ordering.settlement, persistence.settlement]),
@@ -522,6 +528,22 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         }),
         catchError(() => of({ kind: 'failure' } as const)),
       ),
+    );
+  }
+
+  private reportSpace(low: boolean): void {
+    this.reportHealth(
+      'storage',
+      'space',
+      low ? 'degraded' : 'available',
+      low ? 'storage-space-low' : 'storage-space-ready',
+      () =>
+        defer(() => this.storagePersistence.spaceLow()).pipe(
+          map((stillLow): CapabilityRecoveryOutcome => {
+            this.reportSpace(stillLow);
+            return { kind: stillLow ? 'failure' : 'success' };
+          }),
+        ),
     );
   }
 
