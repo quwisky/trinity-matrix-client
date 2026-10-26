@@ -1,280 +1,301 @@
-<trn-composer-banner
-  [editing]="editing()"
-  [replyingTo]="replyingTo()"
-  (cancelEdit)="cancelEdit.emit()"
-  (cancelReply)="cancelReply.emit()"
-/>
-
-<trn-composer-attachment-strip
-  [uploadProgress]="contextUploadProgress()"
-  [staged]="attachments.staged()"
-  [uploadLabel]="uploadLabel()"
-  [canRetry]="canSendMedia()"
-  (removeStaged)="removeStaged($event)"
-  (retryStaged)="retryStaged($event)"
-/>
-
-<!-- Persistent, like the notice region below, so the GIF wait is announced when it starts. -->
-<span class="sr-only" aria-live="polite" data-testid="composer-gif-status">{{
-  attachments.gifDownloading() ? 'Sending GIF…' : ''
-}}</span>
-<!-- Persistent, so the notice is announced when it appears: `trn-banner` leaves announcing
-     to its consumer, and a live region inserted with its text is not reliably read. -->
-<span class="sr-only" aria-live="assertive">{{
-  attachments.captureNoticeMessage()
-}}</span>
-@if (attachments.captureNotice(); as notice) {
-  <trn-banner
-    class="composer__notice"
-    variant="neutral"
-    data-testid="composer-capture-notice"
+<!-- Persistent, so the reason is announced when it appears; see the capture notice below. -->
+<span
+  class="sr-only"
+  role="status"
+  data-testid="composer-post-unavailable-status"
+  >{{ postUnavailableReason() ?? '' }}</span
+>
+@if (postUnavailableReason(); as reason) {
+  <p
+    #unavailableNotice
+    class="composer__unavailable"
+    tabindex="-1"
+    data-testid="composer-post-unavailable"
   >
-    <trn-icon trnBannerIcon [name]="notice === 'camera' ? 'camera' : 'image'" />
-    {{ attachments.captureNoticeMessage() }}
-    <span trnBannerActions>
-      @if (attachments.canOpenSettings) {
+    {{ reason }}
+  </p>
+} @else {
+  <trn-composer-banner
+    [editing]="editing()"
+    [replyingTo]="replyingTo()"
+    (cancelEdit)="cancelEdit.emit()"
+    (cancelReply)="cancelReply.emit()"
+  />
+
+  <trn-composer-attachment-strip
+    [uploadProgress]="contextUploadProgress()"
+    [staged]="attachments.staged()"
+    [uploadLabel]="uploadLabel()"
+    [canRetry]="canSendMedia()"
+    (removeStaged)="removeStaged($event)"
+    (retryStaged)="retryStaged($event)"
+  />
+
+  <!-- Persistent, like the notice region below, so the GIF wait is announced when it starts. -->
+  <span class="sr-only" aria-live="polite" data-testid="composer-gif-status">{{
+    attachments.gifDownloading() ? 'Sending GIF…' : ''
+  }}</span>
+  <!-- Persistent, so the notice is announced when it appears: `trn-banner` leaves announcing
+     to its consumer, and a live region inserted with its text is not reliably read. -->
+  <span class="sr-only" aria-live="assertive">{{
+    attachments.captureNoticeMessage()
+  }}</span>
+  @if (attachments.captureNotice(); as notice) {
+    <trn-banner
+      class="composer__notice"
+      variant="neutral"
+      data-testid="composer-capture-notice"
+    >
+      <trn-icon
+        trnBannerIcon
+        [name]="notice === 'camera' ? 'camera' : 'image'"
+      />
+      {{ attachments.captureNoticeMessage() }}
+      <span trnBannerActions>
+        @if (attachments.canOpenSettings) {
+          <button
+            trnBtn
+            presentation="outline"
+            size="sm"
+            type="button"
+            data-testid="composer-capture-open-settings"
+            (click)="attachments.openCaptureSettings()"
+          >
+            Open settings
+          </button>
+        }
         <button
           trnBtn
-          presentation="outline"
+          presentation="ghost"
           size="sm"
           type="button"
-          data-testid="composer-capture-open-settings"
-          (click)="attachments.openCaptureSettings()"
+          data-testid="composer-capture-notice-dismiss"
+          (click)="attachments.dismissCaptureNotice()"
         >
-          Open settings
+          Dismiss
         </button>
-      }
-      <button
-        trnBtn
-        presentation="ghost"
-        size="sm"
-        type="button"
-        data-testid="composer-capture-notice-dismiss"
-        (click)="attachments.dismissCaptureNotice()"
-      >
-        Dismiss
-      </button>
-    </span>
-  </trn-banner>
-}
+      </span>
+    </trn-banner>
+  }
 
-<div
-  class="composer"
-  [class.composer--recording]="attachments.recordingVoice()"
->
-  <!-- On a wide screen the expression panel (GIFs, stickers and emoji) renders in the CDK
+  <div
+    class="composer"
+    [class.composer--recording]="attachments.recordingVoice()"
+  >
+    <!-- On a wide screen the expression panel (GIFs, stickers and emoji) renders in the CDK
        overlay container, anchored to the input row, so no `overflow: hidden` ancestor can cut
        it in half; where the app prefers sheets it opens as a bottom sheet instead (see
        `togglePicker`). An outside press closes the anchored panel and writes back `false`.
        Its view is kept for a minute after closing because the emoji grid is thousands of
        elements; a different account releases it, so no search carries across accounts. -->
-  <ng-template
-    [trnAnchoredOverlay]="composerField"
-    [open]="pickerOpen() && !pickerSheet()"
-    (openChange)="pickerOpen.set($event)"
-    [retainFor]="60000"
-    [retainKey]="accountId()"
-    side="top"
-    align="end"
-  >
-    <trn-expression-picker
-      [panelId]="pickerId"
-      [gifEnabled]="panelGifEnabled()"
-      [gifBusy]="attachments.gifDownloading()"
-      [stickerEnabled]="panelStickerEnabled()"
-      [stickerPacks]="stickerPacks()"
-      (emojiPick)="onPickerSelect($event)"
-      (gifSelect)="onGifSelect($event)"
-      (stickerSelect)="onStickerSelect($event)"
-      (dismiss)="closePicker()"
-      (manage)="manageImagePacks()"
-    />
-  </ng-template>
-  @if (attachments.recordingVoice()) {
-    <trn-composer-voice-bar
-      [timeLabel]="attachments.voiceTimeLabel()"
-      [sendBlocked]="sendBlocked()"
-      (cancelRecording)="cancelVoiceRecording()"
-      (sendRecording)="stopVoiceRecording()"
-    />
-  }
-  <!-- The option ids this stamps are what the textarea's `aria-activedescendant` below points
+    <ng-template
+      [trnAnchoredOverlay]="composerField"
+      [open]="pickerOpen() && !pickerSheet()"
+      (openChange)="pickerOpen.set($event)"
+      [retainFor]="60000"
+      [retainKey]="accountId()"
+      side="top"
+      align="end"
+    >
+      <trn-expression-picker
+        [panelId]="pickerId"
+        [gifEnabled]="panelGifEnabled()"
+        [gifBusy]="attachments.gifDownloading()"
+        [stickerEnabled]="panelStickerEnabled()"
+        [stickerPacks]="stickerPacks()"
+        (emojiPick)="onPickerSelect($event)"
+        (gifSelect)="onGifSelect($event)"
+        (stickerSelect)="onStickerSelect($event)"
+        (dismiss)="closePicker()"
+        (manage)="manageImagePacks()"
+      />
+    </ng-template>
+    @if (attachments.recordingVoice()) {
+      <trn-composer-voice-bar
+        [timeLabel]="attachments.voiceTimeLabel()"
+        [sendBlocked]="sendBlocked()"
+        (cancelRecording)="cancelVoiceRecording()"
+        (sendRecording)="stopVoiceRecording()"
+      />
+    }
+    <!-- The option ids this stamps are what the textarea's `aria-activedescendant` below points
        at, and what `scrollSuggestionIntoView` looks up. -->
-  <trn-composer-suggestions
-    [anchor]="composerField"
-    [emojiOpen]="menus.emojiOpen()"
-    [emojiMatches]="menus.emojiMatches()"
-    [emojiActiveIndex]="menus.emojiActiveIndex()"
-    [mentionOpen]="menus.mentionOpen()"
-    [mentionMatches]="menus.mentionMatches()"
-    [mentionActiveIndex]="menus.mentionActiveIndex()"
-    (emojiHighlight)="menus.emojiActiveIndex.set($event)"
-    (emojiAccept)="menus.acceptEmoji($event)"
-    (mentionHighlight)="menus.mentionActiveIndex.set($event)"
-    (mentionAccept)="menus.acceptMention($event)"
-    [slashOpen]="menus.slashOpen()"
-    [slashMatches]="menus.slashMatches()"
-    [slashActiveIndex]="menus.slashActiveIndex()"
-    (slashHighlight)="menus.slashActiveIndex.set($event)"
-    (slashAccept)="menus.acceptSlash($event)"
-  />
-  <input
-    #fileInput
-    type="file"
-    trnTrackFileChooser
-    class="composer__file-input"
-    data-testid="composer-file-input"
-    multiple
-    hidden
-    (change)="onFilePicked($event)"
-  />
-  <!-- Mobile web only: `capture` opens the phone's camera instead of the file picker. -->
-  <input
-    #photoCaptureInput
-    type="file"
-    trnTrackFileChooser
-    class="composer__file-input"
-    data-testid="composer-photo-capture-input"
-    accept="image/*"
-    capture
-    hidden
-    (change)="onCaptureInput($event, 'photo')"
-  />
-  <input
-    #videoCaptureInput
-    type="file"
-    trnTrackFileChooser
-    class="composer__file-input"
-    data-testid="composer-video-capture-input"
-    accept="video/*"
-    capture
-    hidden
-    (change)="onCaptureInput($event, 'video')"
-  />
-  <!-- The FIELD: one box holding the insert button, the input and the trailing buttons, and
+    <trn-composer-suggestions
+      [anchor]="composerField"
+      [emojiOpen]="menus.emojiOpen()"
+      [emojiMatches]="menus.emojiMatches()"
+      [emojiActiveIndex]="menus.emojiActiveIndex()"
+      [mentionOpen]="menus.mentionOpen()"
+      [mentionMatches]="menus.mentionMatches()"
+      [mentionActiveIndex]="menus.mentionActiveIndex()"
+      (emojiHighlight)="menus.emojiActiveIndex.set($event)"
+      (emojiAccept)="menus.acceptEmoji($event)"
+      (mentionHighlight)="menus.mentionActiveIndex.set($event)"
+      (mentionAccept)="menus.acceptMention($event)"
+      [slashOpen]="menus.slashOpen()"
+      [slashMatches]="menus.slashMatches()"
+      [slashActiveIndex]="menus.slashActiveIndex()"
+      (slashHighlight)="menus.slashActiveIndex.set($event)"
+      (slashAccept)="menus.acceptSlash($event)"
+    />
+    <input
+      #fileInput
+      type="file"
+      trnTrackFileChooser
+      class="composer__file-input"
+      data-testid="composer-file-input"
+      multiple
+      hidden
+      (change)="onFilePicked($event)"
+    />
+    <!-- Mobile web only: `capture` opens the phone's camera instead of the file picker. -->
+    <input
+      #photoCaptureInput
+      type="file"
+      trnTrackFileChooser
+      class="composer__file-input"
+      data-testid="composer-photo-capture-input"
+      accept="image/*"
+      capture
+      hidden
+      (change)="onCaptureInput($event, 'photo')"
+    />
+    <input
+      #videoCaptureInput
+      type="file"
+      trnTrackFileChooser
+      class="composer__file-input"
+      data-testid="composer-video-capture-input"
+      accept="video/*"
+      capture
+      hidden
+      (change)="onCaptureInput($event, 'video')"
+    />
+    <!-- The FIELD: one box holding the insert button, the input and the trailing buttons, and
        what all four floating layers anchor to. A grid rather than a flex row, so the preview
        can occupy the textarea's own cell instead of standing beside it. -->
-  <div
-    class="composer__field"
-    #composerField
-    data-testid="composer-field"
-    (pointerdown)="onFieldPress($event)"
-  >
-    <trn-composer-insert-menu
-      [contextKey]="roomId()"
-      [hasMenu]="hasInsertMenu()"
-      [editing]="editing()"
-      [uploading]="contextUploadProgress() !== null"
-      [richActions]="richActions()"
-      [voiceSupported]="attachments.voiceSupported"
-      [recording]="attachments.recordingVoice()"
-      [locationSharing]="attachments.locationSharing()"
-      [sendBlocked]="sendBlocked()"
-      [captureMode]="attachments.captureMode"
-      (attachFile)="onAttach()"
-      (createPoll)="openPollDialog()"
-      (shareLocation)="shareLocation()"
-      (recordVoice)="startVoiceRecording()"
-      (takePhoto)="onTakePhoto()"
-      (recordVideo)="onRecordVideo()"
-    />
-    <!-- The preview replaces the input rather than sitting beside it, so the composer keeps its
+    <div
+      class="composer__field"
+      #composerField
+      data-testid="composer-field"
+      (pointerdown)="onFieldPress($event)"
+    >
+      <trn-composer-insert-menu
+        [contextKey]="roomId()"
+        [hasMenu]="hasInsertMenu()"
+        [editing]="editing()"
+        [uploading]="contextUploadProgress() !== null"
+        [richActions]="richActions()"
+        [voiceSupported]="attachments.voiceSupported"
+        [recording]="attachments.recordingVoice()"
+        [locationSharing]="attachments.locationSharing()"
+        [sendBlocked]="sendBlocked()"
+        [captureMode]="attachments.captureMode"
+        (attachFile)="onAttach()"
+        (createPoll)="openPollDialog()"
+        (shareLocation)="shareLocation()"
+        (recordVoice)="startVoiceRecording()"
+        (takePhoto)="onTakePhoto()"
+        (recordVideo)="onRecordVideo()"
+      />
+      <!-- The preview replaces the input rather than sitting beside it, so the composer keeps its
        height. The textarea stays in the DOM (hidden) so its value, caret and draft survive. -->
-    @if (previewing()) {
-      <!-- `msg__text--html` only for rendered markdown, mirroring the timeline and edit history:
+      @if (previewing()) {
+        <!-- `msg__text--html` only for rendered markdown, mirroring the timeline and edit history:
          without it the container stays `pre-wrap`, which is what keeps a plain message's line
          breaks. Following a mention pill would navigate away from a half-written message, so
          `(matrixLink)` is deliberately unhandled — external links still open via the directive. -->
-      <div
-        #previewPanel
-        class="composer__preview"
-        role="region"
-        aria-label="Message preview"
-        tabindex="-1"
-        [class.msg__text--html]="preview().rich"
-        data-testid="composer-preview"
-        [trnMatrixHtml]="preview().html"
-      ></div>
-    }
-    <textarea
-      #ta
-      class="composer__input"
-      [class.composer__input--hidden]="previewing()"
-      data-testid="composer-input"
-      rows="1"
-      [value]="text()"
-      [placeholder]="
-        attachments.hasStaged()
-          ? 'Add a caption…'
-          : editing()
-            ? 'Edit message…'
-            : placeholder() || 'Message #' + roomName()
-      "
-      aria-autocomplete="list"
-      [attr.aria-controls]="activeListId()"
-      [attr.aria-activedescendant]="activeOptionId()"
-      (input)="onInput($event)"
-      (compositionstart)="composing.set(true)"
-      (compositionend)="composing.set(false)"
-      (keydown)="onKeydown($event)"
-      (keydown.enter)="onEnter($event)"
-      (keydown.arrowUp)="onArrowUp($event)"
-      (keydown.arrowDown)="onArrowDown($event)"
-      (keydown.tab)="onTab($event)"
-      (blur)="onBlur()"
-      (paste)="onPaste($event)"
-    ></textarea>
-    <trn-composer-format-menu
-      [contextKey]="formatContext()"
-      [previewing]="previewing()"
-      [disabled]="
-        composing() ||
-        textSending() ||
-        contextUploadProgress() !== null ||
-        attachments.recordingVoice()
-      "
-      (beforeOpen)="formatting.captureSelection()"
-      (format)="formatting.onMenuFormat($event)"
-      (preview)="onTogglePreview()"
-      (dismissed)="formatting.restoreSelection()"
-    />
-    <button
-      #pickerTrigger
-      type="button"
-      trnIconButton
-      class="composer__emoji"
-      trnTooltip="Emoji, GIFs and stickers"
-      aria-label="Emoji, GIFs and stickers"
-      data-testid="composer-expressions"
-      [attr.aria-busy]="attachments.gifDownloading() ? true : null"
-      [attr.aria-expanded]="pickerOpen()"
-      [attr.aria-controls]="pickerOpen() ? pickerId : null"
-      (click)="togglePicker()"
-    >
-      <!-- A chosen GIF is fetched before its upload starts, and the panel closes once it
-           arrives; the trigger shows the wait meanwhile. -->
-      @if (attachments.gifDownloading()) {
-        <trn-spinner size="md" />
-      } @else {
-        <trn-icon name="smile" motion="pop" />
+        <div
+          #previewPanel
+          class="composer__preview"
+          role="region"
+          aria-label="Message preview"
+          tabindex="-1"
+          [class.msg__text--html]="preview().rich"
+          data-testid="composer-preview"
+          [trnMatrixHtml]="preview().html"
+        ></div>
       }
-    </button>
-    <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on a
-       pointer device Enter can be ambiguous (a draft holding newlines, IME composition).
-       Withheld only while recording, where the recording bar owns the send plane. -->
-    @if (!attachments.recordingVoice()) {
+      <textarea
+        #ta
+        class="composer__input"
+        [class.composer__input--hidden]="previewing()"
+        data-testid="composer-input"
+        rows="1"
+        [value]="text()"
+        [placeholder]="
+          attachments.hasStaged()
+            ? 'Add a caption…'
+            : editing()
+              ? 'Edit message…'
+              : placeholder() || 'Message #' + roomName()
+        "
+        aria-autocomplete="list"
+        [attr.aria-controls]="activeListId()"
+        [attr.aria-activedescendant]="activeOptionId()"
+        (input)="onInput($event)"
+        (compositionstart)="composing.set(true)"
+        (compositionend)="composing.set(false)"
+        (keydown)="onKeydown($event)"
+        (keydown.enter)="onEnter($event)"
+        (keydown.arrowUp)="onArrowUp($event)"
+        (keydown.arrowDown)="onArrowDown($event)"
+        (keydown.tab)="onTab($event)"
+        (blur)="onBlur()"
+        (paste)="onPaste($event)"
+      ></textarea>
+      <trn-composer-format-menu
+        [contextKey]="formatContext()"
+        [previewing]="previewing()"
+        [disabled]="
+          composing() ||
+          textSending() ||
+          contextUploadProgress() !== null ||
+          attachments.recordingVoice()
+        "
+        (beforeOpen)="formatting.captureSelection()"
+        (format)="formatting.onMenuFormat($event)"
+        (preview)="onTogglePreview()"
+        (dismissed)="formatting.restoreSelection()"
+      />
       <button
+        #pickerTrigger
         type="button"
         trnIconButton
-        class="composer__send"
-        trnTooltip="Send"
-        aria-label="Send message"
-        data-testid="composer-send"
-        [disabled]="!canSubmit()"
-        (click)="submit()"
+        class="composer__emoji"
+        trnTooltip="Emoji, GIFs and stickers"
+        aria-label="Emoji, GIFs and stickers"
+        data-testid="composer-expressions"
+        [attr.aria-busy]="attachments.gifDownloading() ? true : null"
+        [attr.aria-expanded]="pickerOpen()"
+        [attr.aria-controls]="pickerOpen() ? pickerId : null"
+        (click)="togglePicker()"
       >
-        <trn-icon name="send" motion="nudge-up-right" />
+        <!-- A chosen GIF is fetched before its upload starts, and the panel closes once it
+           arrives; the trigger shows the wait meanwhile. -->
+        @if (attachments.gifDownloading()) {
+          <trn-spinner size="md" />
+        } @else {
+          <trn-icon name="smile" motion="pop" />
+        }
       </button>
-    }
+      <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on a
+       pointer device Enter can be ambiguous (a draft holding newlines, IME composition).
+       Withheld only while recording, where the recording bar owns the send plane. -->
+      @if (!attachments.recordingVoice()) {
+        <button
+          type="button"
+          trnIconButton
+          class="composer__send"
+          trnTooltip="Send"
+          aria-label="Send message"
+          data-testid="composer-send"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          <trn-icon name="send" motion="nudge-up-right" />
+        </button>
+      }
+    </div>
   </div>
-</div>
+}

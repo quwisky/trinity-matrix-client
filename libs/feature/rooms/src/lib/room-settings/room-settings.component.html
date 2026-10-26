@@ -48,6 +48,15 @@
         </trn-settings-group>
       </section>
     }
+    @case ('permissions') {
+      <section data-testid="room-settings-panel-permissions">
+        <trn-permissions-settings
+          [accountId]="accountId()"
+          [roomId]="roomId()"
+          kind="room"
+        />
+      </section>
+    }
     @case ('addresses') {
       <section data-testid="room-settings-panel-addresses">
         <trn-settings-group>

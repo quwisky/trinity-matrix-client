@@ -37,6 +37,17 @@ export class RoomMessageGovernanceService {
     );
   }
 
+  canSendMessages(key: RoomMessageGovernanceKey): boolean {
+    const context = this.context(key);
+    if (!context) return false;
+    return Boolean(
+      liveRoomState(context.room)?.maySendEvent?.(
+        EventType.RoomMessage,
+        context.userId,
+      ),
+    );
+  }
+
   authorizeRedaction(
     request: RoomMessageRedactionRequest,
   ): RoomMessageRedactionDecision {

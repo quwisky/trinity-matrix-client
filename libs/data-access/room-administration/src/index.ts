@@ -14,3 +14,5 @@ export * from './lib/room-upgrade.service';
 export * from './lib/content-reporting.service';
 export * from './lib/room-encryption.service';
 export * from './lib/room-directory.service';
+export * from './lib/room-permission-rows';
+export * from './lib/room-permissions.service';

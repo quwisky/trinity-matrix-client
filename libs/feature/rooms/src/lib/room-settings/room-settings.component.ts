@@ -20,6 +20,7 @@ import {
   SettingsHubComponent,
   type SettingsHubSection,
 } from '../shared/settings-hub/settings-hub.component';
+import { PermissionsSettingsComponent } from '../shared/permissions-settings/permissions-settings.component';
 import { PlaceGeneralSettingsComponent } from '../shared/place-general-settings/place-general-settings.component';
 import { SettingsHubController } from '../shared/settings-hub/settings-hub.controller';
 import { RoomSettingsAccessComponent } from './room-settings-access.component';
@@ -38,6 +39,7 @@ type RoomSettingsSection =
   | 'for-you'
   | 'access'
   | 'members'
+  | 'permissions'
   | 'addresses'
   | 'widgets'
   | 'emoji'
@@ -73,6 +75,13 @@ const SECTIONS: readonly (SettingsHubSection & {
     group: 'Manage',
     label: 'Members',
     description: 'People, roles, invitations, and bans',
+  },
+  {
+    value: 'permissions',
+    icon: 'shield',
+    group: 'Manage',
+    label: 'Roles and permissions',
+    description: 'Who can do what',
   },
   {
     value: 'addresses',
@@ -111,6 +120,7 @@ const SECTIONS: readonly (SettingsHubSection & {
   providers: [RoomSettingsDraftService, RoomSettingsForYouDraftService],
   imports: [
     MembersSettingsComponent,
+    PermissionsSettingsComponent,
     PlaceGeneralSettingsComponent,
     RoomAliasesComponent,
     RoomSettingsAccessComponent,
@@ -130,6 +140,7 @@ export class RoomSettingsComponent implements OnInit {
   private readonly identities = inject(AccountIdentitiesService);
   private readonly membersSection = viewChild(MembersSettingsComponent);
   private readonly widgetsSection = viewChild(RoomWidgetsComponent);
+  private readonly permissionsSection = viewChild(PermissionsSettingsComponent);
   private readonly dialogRef =
     inject<TrnDialogRef<RoomSettingsResult>>(TrnDialogRef);
 
@@ -151,12 +162,14 @@ export class RoomSettingsComponent implements OnInit {
     dirty: () =>
       this.draft.dirty() ||
       this.forYouDraft.dirty() ||
-      (this.widgetsSection()?.hasCreationDraft() ?? false),
+      (this.widgetsSection()?.hasCreationDraft() ?? false) ||
+      (this.permissionsSection()?.dirty() ?? false),
     discard: () => {
       this.draft.discardGeneral();
       this.draft.discardAccess();
       this.forYouDraft.discard();
       this.widgetsSection()?.discardCreationDraft();
+      this.permissionsSection()?.discard();
     },
   });
   /** Emoji only for members who may change the room's pack. */

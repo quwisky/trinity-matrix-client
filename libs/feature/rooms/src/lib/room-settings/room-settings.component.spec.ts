@@ -1,5 +1,12 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import {
+  RoomPermissionsService,
+  type PermissionRowView,
+  type RoomPermissionsView,
+} from '@trinity/data-access/room-administration';
+import { PermissionsSettingsComponent } from '../shared/permissions-settings/permissions-settings.component';
 import { render, screen } from '@trinity/testing';
 import {
   TrnAlertService,
@@ -68,6 +75,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   encryption: ALLOWED,
   directory: ALLOWED,
   imagePack: ALLOWED,
+  permissions: ALLOWED,
 };
 
 const ADVANCED: RoomAdvancedInfo = {
@@ -127,6 +135,22 @@ function roomSnapshot(
   };
 }
 
+const PERMISSION_VIEW: RoomPermissionsView = {
+  rows: [
+    {
+      row: { id: 'invite', label: 'Invite', group: 'Members', writes: [] },
+      level: 0,
+      editable: true,
+      reason: null,
+    } satisfies PermissionRowView,
+  ],
+  myPower: 100,
+  editable: true,
+  reason: null,
+  powerFromDefault: false,
+  permissionsLevel: 50,
+};
+
 interface BuildOptions {
   readonly capabilities?: HomeserverCapabilities;
   readonly upgradeResult?: RoomUpgradeResult;
@@ -173,6 +197,7 @@ async function build(options: BuildOptions = {}) {
   const confirmResult = new Subject<boolean>();
   const confirm = vi.fn(() => confirmResult.asObservable());
   const toast = vi.fn();
+  const viewOf = vi.fn(() => PERMISSION_VIEW);
   const widgets = signal([]);
   const canManageWidgets = signal(options.canManageWidgets ?? false);
   const connectWidgets = vi.fn();
@@ -281,6 +306,7 @@ async function build(options: BuildOptions = {}) {
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnAlertService, { confirm$: confirm }),
       MockProvider(TrnToastService, { show: toast }),
+      MockProvider(RoomPermissionsService, { view: viewOf }),
     ],
   });
 
@@ -302,11 +328,50 @@ async function build(options: BuildOptions = {}) {
     confirm,
     confirmResult,
     toast,
+    viewOf,
     connectWidgets,
   };
 }
 
 describe('RoomSettingsComponent', () => {
+  it('lists Roles and permissions after Members', async () => {
+    const { cmp } = await build();
+    const values = cmp.sections().map(({ value }) => value);
+    expect(values[values.indexOf('members') + 1]).toBe('permissions');
+  });
+
+  it('selecting it renders the permissions section for this account and room', async () => {
+    const { cmp, fixture, container, viewOf } = await build();
+    cmp.selectSection('permissions');
+    await fixture.whenStable();
+
+    expect(
+      container.querySelector(
+        '[data-testid="room-settings-panel-permissions"]',
+      ),
+    ).not.toBeNull();
+    expect(viewOf).toHaveBeenCalledWith(
+      { accountId: TARGET.accountId, roomId: TARGET.roomId },
+      'room',
+    );
+  });
+
+  it('an unsaved permissions edit makes the hub ask before closing', async () => {
+    const { cmp, fixture, close, confirm, confirmResult } = await build();
+    cmp.selectSection('permissions');
+    await fixture.whenStable();
+    const section = fixture.debugElement.query(
+      By.directive(PermissionsSettingsComponent),
+    ).componentInstance as PermissionsSettingsComponent;
+    section['choose'](PERMISSION_VIEW.rows[0], 100);
+
+    cmp.close();
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+    confirmResult.next(true);
+    expect(close).toHaveBeenCalledWith(false);
+  });
+
   it('titles the page with the open section and lists its groups as parts', async () => {
     const { cmp, fixture, container } = await build();
     cmp.selectSection('access');
@@ -349,6 +414,7 @@ describe('RoomSettingsComponent', () => {
       'for-you',
       'access',
       'members',
+      'permissions',
       'addresses',
       'widgets',
       'emoji',

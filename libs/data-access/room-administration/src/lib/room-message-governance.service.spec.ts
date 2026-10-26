@@ -1,11 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { EventType, MatrixEvent, RoomState } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomMessageGovernanceService } from './room-message-governance.service';
 
 const KEY = { accountId: '@alice:hs', roomId: '!shared:hs' } as const;
 
-function setup({ allow = true }: { allow?: boolean } = {}) {
+function setup({
+  allow = true,
+  state: realState,
+}: { allow?: boolean; state?: unknown } = {}) {
   const event = { getId: () => '$message' };
   const state = {
     maySendEvent: vi.fn(() => allow),
@@ -14,7 +18,7 @@ function setup({ allow = true }: { allow?: boolean } = {}) {
   };
   const room = {
     roomId: KEY.roomId,
-    getLiveTimeline: () => ({ getState: () => state }),
+    getLiveTimeline: () => ({ getState: () => realState ?? state }),
     getMember: () => ({ powerLevel: 50 }),
     findEventById: (eventId: string) =>
       eventId === '$message' ? event : undefined,
@@ -86,5 +90,46 @@ describe('RoomMessageGovernanceService', () => {
     expect(
       denied.governance.authorizeRedaction({ ...KEY, messageId: '$missing' }),
     ).toEqual({ kind: 'rejected', failure: 'message-unavailable' });
+  });
+
+  describe('canSendMessages', () => {
+    const powerLevels = (content: object) => {
+      const state = new RoomState(KEY.roomId);
+      state.setStateEvents([
+        new MatrixEvent({
+          type: EventType.RoomPowerLevels,
+          state_key: '',
+          sender: '@admin:hs',
+          room_id: KEY.roomId,
+          event_id: '$pl',
+          content,
+        }),
+      ]);
+      return state;
+    };
+
+    it('follows events_default', () => {
+      const { governance } = setup({
+        state: powerLevels({ events_default: 50 }),
+      });
+
+      expect(governance.canSendMessages(KEY)).toBe(false);
+    });
+
+    it('is true when events_default is 0', () => {
+      const { governance } = setup({
+        state: powerLevels({ events_default: 0 }),
+      });
+
+      expect(governance.canSendMessages(KEY)).toBe(true);
+    });
+
+    it('honours an m.room.message override', () => {
+      const { governance } = setup({
+        state: powerLevels({ events: { 'm.room.message': 50 } }),
+      });
+
+      expect(governance.canSendMessages(KEY)).toBe(false);
+    });
   });
 });

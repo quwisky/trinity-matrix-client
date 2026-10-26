@@ -44,6 +44,7 @@ const DENIED_SPACE_SETTINGS: RoomSettingsPermissions = {
   encryption: { available: false, reason: 'Space settings are unavailable.' },
   directory: { available: false, reason: 'Space settings are unavailable.' },
   imagePack: { available: false, reason: 'Space settings are unavailable.' },
+  permissions: { available: false, reason: 'Space settings are unavailable.' },
 };
 
 const SPACE_JOIN_RULE_OPTIONS: readonly {

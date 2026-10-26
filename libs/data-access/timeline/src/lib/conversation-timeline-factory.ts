@@ -28,6 +28,7 @@ export type ConversationTimeline = Pick<
   | 'oldestEventId'
   | 'typingNames'
   | 'canRedactOthers'
+  | 'canSendMessages'
   | 'tombstone'
   | 'firstUnreadId'
   | 'openRoomId'

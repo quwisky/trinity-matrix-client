@@ -48,6 +48,8 @@ export interface RoomSettingsPermissions {
   readonly directory: ActionAvailability;
   /** Editing the room's emoji, which sends `m.room.image_pack`. */
   readonly imagePack: ActionAvailability;
+  /** Changing the room's power levels, which sends `m.room.power_levels`. */
+  readonly permissions: ActionAvailability;
 }
 
 export interface MemberActionPermissions {
@@ -156,6 +158,7 @@ export class RoomActionPermissionsService {
         encryption: freshness,
         directory: freshness,
         imagePack: freshness,
+        permissions: freshness,
       };
     }
     return this.settingsPermissions(this.context(roomId));
@@ -185,6 +188,7 @@ export class RoomActionPermissionsService {
         encryption: unavailable,
         directory: unavailable,
         imagePack: unavailable,
+        permissions: unavailable,
       };
     }
     const may = (type: EventType | string): boolean =>
@@ -211,6 +215,7 @@ export class RoomActionPermissionsService {
           ),
       directory: maySend(EventType.RoomCanonicalAlias, 'directory listing'),
       imagePack: maySend(IMAGE_PACK_EVENT_TYPE, 'emoji'),
+      permissions: maySend(EventType.RoomPowerLevels, 'permissions'),
     };
   }
 

@@ -22,10 +22,17 @@ import { SpaceSettingsContentsComponent } from './space-settings-contents.compon
 import { SpaceSettingsDraftService } from './space-settings-draft.service';
 import { SpaceSettingsForYouDraftService } from './space-settings-for-you/space-settings-for-you-draft.service';
 import { SpaceSettingsForYouComponent } from './space-settings-for-you/space-settings-for-you.component';
+import { PermissionsSettingsComponent } from '../shared/permissions-settings/permissions-settings.component';
 import { PlaceGeneralSettingsComponent } from '../shared/place-general-settings/place-general-settings.component';
 
 type SpaceSettingsSection =
-  'general' | 'for-you' | 'access' | 'contents' | 'members' | 'addresses';
+  | 'general'
+  | 'for-you'
+  | 'access'
+  | 'contents'
+  | 'members'
+  | 'permissions'
+  | 'addresses';
 
 /** Account-bound Space settings destinations, including authoritative child curation. */
 const SECTIONS: readonly (SettingsHubSection & {
@@ -67,6 +74,13 @@ const SECTIONS: readonly (SettingsHubSection & {
     description: 'People, roles, invitations, and bans',
   },
   {
+    value: 'permissions',
+    icon: 'shield',
+    group: 'Manage',
+    label: 'Roles and permissions',
+    description: 'Who can do what',
+  },
+  {
     value: 'addresses',
     icon: 'link',
     group: 'Manage',
@@ -82,6 +96,7 @@ const SECTIONS: readonly (SettingsHubSection & {
   providers: [SpaceSettingsDraftService, SpaceSettingsForYouDraftService],
   imports: [
     MembersSettingsComponent,
+    PermissionsSettingsComponent,
     RoomAliasesComponent,
     SettingsHubComponent,
     TrnSettingsGroupComponent,
@@ -96,6 +111,7 @@ const SECTIONS: readonly (SettingsHubSection & {
 export class SpaceSettingsComponent implements OnInit {
   private readonly identities = inject(AccountIdentitiesService);
   private readonly membersSection = viewChild(MembersSettingsComponent);
+  private readonly permissionsSection = viewChild(PermissionsSettingsComponent);
 
   readonly accountId = input.required<string>();
   readonly spaceId = input.required<string>();
@@ -109,11 +125,15 @@ export class SpaceSettingsComponent implements OnInit {
     testIdPrefix: 'space-settings',
     accountId: () => this.accountId(),
     targetId: () => this.spaceId(),
-    dirty: () => this.draft.dirty() || this.forYou.dirty(),
+    dirty: () =>
+      this.draft.dirty() ||
+      this.forYou.dirty() ||
+      (this.permissionsSection()?.dirty() ?? false),
     discard: () => {
       this.draft.discardGeneral();
       this.draft.discardAccess();
       this.forYou.discard();
+      this.permissionsSection()?.discard();
     },
   });
   readonly sections = SECTIONS;

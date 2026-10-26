@@ -58,6 +58,7 @@ async function build(
   const permissions = signal({
     directory: options.directory ?? ALLOWED,
     imagePack: ALLOWED,
+    permissions: ALLOWED,
   } as RoomSettingsPermissions);
   const listed = vi.fn(options.listed ?? (() => of(false)));
   const setListed = vi.fn(options.setListed ?? (() => of(undefined)));

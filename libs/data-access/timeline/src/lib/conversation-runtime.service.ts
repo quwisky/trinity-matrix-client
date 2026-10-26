@@ -539,6 +539,9 @@ export class ConversationRuntime {
         () => focused()?.timeline.oldestEventId() ?? null,
       ),
       typingNames: computed(() => focused()?.timeline.typingNames() ?? []),
+      canSendMessages: computed(
+        () => focused()?.timeline.canSendMessages() ?? true,
+      ),
       canRedactOthers: computed(
         () => focused()?.timeline.canRedactOthers() ?? false,
       ),

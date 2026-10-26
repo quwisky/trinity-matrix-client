@@ -237,6 +237,16 @@ describe('message list — conversation load state', () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
+  it('passes the post-unavailable reason through to the composer', async () => {
+    const { fixture, container } = await create(loading());
+    fixture.componentRef.setInput('postUnavailableReason', 'No posting.');
+    TestBed.tick();
+    expect(
+      container.querySelector('[data-testid="composer-post-unavailable"]')
+        ?.textContent,
+    ).toContain('No posting.');
+  });
+
   it('blocks sending while loading or failed, not when settled', async () => {
     const { fixture } = await create(loading());
     const composer = () =>

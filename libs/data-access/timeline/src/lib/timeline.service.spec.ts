@@ -12,6 +12,7 @@ import {
 } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TimelineService } from './timeline.service';
 import { eventRevision } from './event-revision';
 import {
@@ -254,6 +255,51 @@ describe('TimelineService', () => {
 
     svc.close();
     expect(svc.canRedactOthers()).toBe(false);
+  });
+
+  it('canSendMessages updates when power levels change', async () => {
+    const power = { mine: 0, send: 0 };
+    const svc = setup([], [], {}, false, power);
+    expect(svc.canSendMessages()).toBe(true);
+
+    power.send = 50;
+    const room = TestBed.inject(MatrixClientService).instance as unknown as {
+      getRoom: () => { handlers: Map<string, (event: unknown) => void> };
+    };
+    room.getRoom().handlers.get(RoomStateEvent.Events)?.({
+      getRoomId: () => '!r:hs',
+      getType: () => 'm.room.power_levels',
+    });
+    await Promise.resolve();
+    expect(svc.canSendMessages()).toBe(false);
+  });
+
+  it('canSendMessages follows a change to only my own level once the SDK applies it', async () => {
+    const power = { mine: 0, send: 50, redact: 50 };
+    const svc = setup([], [], {}, false, power);
+    expect(svc.canSendMessages()).toBe(false);
+
+    const room = TestBed.inject(MatrixClientService).instance as unknown as {
+      getRoom: () => { handlers: Map<string, (event: unknown) => void> };
+    };
+    // matrix-js-sdk emits RoomState.events before it updates member.powerLevel.
+    room.getRoom().handlers.get(RoomStateEvent.Events)?.({
+      getRoomId: () => '!r:hs',
+      getType: () => 'm.room.power_levels',
+    });
+    power.mine = 50;
+    await Promise.resolve();
+
+    expect(svc.canSendMessages()).toBe(true);
+    expect(svc.canRedactOthers()).toBe(true);
+  });
+
+  it('canSendMessages resets to true when the room closes', () => {
+    const svc = setup([], [], {}, false, { mine: 0, send: 50 });
+    expect(svc.canSendMessages()).toBe(false);
+
+    svc.close();
+    expect(svc.canSendMessages()).toBe(true);
   });
 
   it('aggregates reactions onto messages and flags the user’s own', () => {

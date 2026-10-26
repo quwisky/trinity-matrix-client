@@ -11,6 +11,13 @@
       var(--trinity-space-3);
   }
 
+  .composer__unavailable {
+    margin: 0;
+    padding: var(--trinity-space-3)
+      var(--trinity-density-composer-padding-inline);
+    color: var(--trinity-text-muted);
+  }
+
   .composer {
     // The one type size the field and its preview share. Touch devices lift it to the 16px
     // text-entry floor so iOS does not zoom on focus; the preview follows so the cell does not

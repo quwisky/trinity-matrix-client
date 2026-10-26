@@ -78,6 +78,7 @@ function setup(
   };
   const policy: ConversationMessagePolicy = options.policy ?? {
     canRedactOthers: () => true,
+    canSendMessages: () => true,
     authorizeRedaction: () => ({ kind: 'allowed' }),
   };
   TestBed.configureTestingModule({
@@ -174,6 +175,7 @@ describe('MatrixConversationMessageAdapter', () => {
   it('delegates redaction governance before calling the SDK', async () => {
     const policy: ConversationMessagePolicy = {
       canRedactOthers: () => false,
+      canSendMessages: () => true,
       authorizeRedaction: vi.fn((): ConversationRedactionDecision => ({
         kind: 'rejected',
         failure: 'not-allowed',

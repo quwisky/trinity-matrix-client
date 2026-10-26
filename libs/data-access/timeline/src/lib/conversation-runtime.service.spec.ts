@@ -72,6 +72,7 @@ function timeline(
     oldestEventId: signal<string | null>(null).asReadonly(),
     typingNames: signal([]).asReadonly(),
     canRedactOthers: signal(false).asReadonly(),
+    canSendMessages: signal(true).asReadonly(),
     tombstone: signal(null).asReadonly(),
     firstUnreadId: signal<string | null>(null).asReadonly(),
     openRoomId: roomId,

@@ -163,6 +163,7 @@ export function applicationCapabilityProviders(
         const governance = inject(RoomMessageGovernanceService);
         return {
           canRedactOthers: (key) => governance.canRedactOthers(key),
+          canSendMessages: (key) => governance.canSendMessages(key),
           authorizeRedaction: ({ key, messageId }) =>
             governance.authorizeRedaction({ ...key, messageId }),
         };
