@@ -120,12 +120,15 @@ export class PermissionsSettingsComponent {
 
   private readonly customErrors =
     viewChildren<ElementRef<HTMLElement>>('customErrorText');
+  private readonly scrolledErrors = new WeakSet<HTMLElement>();
 
   constructor() {
     // A new Custom error can land under the sticky Save bar; bring it into view.
     afterRenderEffect(() => {
-      for (const error of this.customErrors()) {
-        error.nativeElement.scrollIntoView({ block: 'nearest' });
+      for (const { nativeElement } of this.customErrors()) {
+        if (this.scrolledErrors.has(nativeElement)) continue;
+        this.scrolledErrors.add(nativeElement);
+        nativeElement.scrollIntoView({ block: 'nearest' });
       }
     });
     effect(() => {

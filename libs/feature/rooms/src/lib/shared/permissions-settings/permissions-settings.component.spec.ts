@@ -210,6 +210,33 @@ describe('PermissionsSettingsComponent', () => {
     expect(scroll.mock.contexts).toContain(error);
   });
 
+  it('leaves an error that is already shown alone when another changes', async () => {
+    await setup();
+    await choose('Send messages', 'Custom');
+    await choose('Ban', 'Custom');
+    const scroll = vi.mocked(Element.prototype.scrollIntoView);
+    for (const id of ['send-messages', 'ban']) {
+      fireEvent.input(screen.getByTestId(`permissions-custom-${id}`), {
+        target: { value: '150' },
+      });
+      await tick();
+    }
+    scroll.mockClear();
+
+    fireEvent.input(screen.getByTestId('permissions-custom-send-messages'), {
+      target: { value: '151' },
+    });
+    await tick();
+    fireEvent.input(screen.getByTestId('permissions-custom-ban'), {
+      target: { value: '60' },
+    });
+    await tick();
+
+    expect(
+      scroll.mock.contexts.filter((el) => el instanceof HTMLParagraphElement),
+    ).toEqual([]);
+  });
+
   it('has no cap for an unlimited editor', async () => {
     await setup(view({ myPower: Infinity }));
     await choose('Send messages', 'Custom');
