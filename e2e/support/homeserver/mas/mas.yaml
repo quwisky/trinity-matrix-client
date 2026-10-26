@@ -32,3 +32,8 @@ rate_limiting:
     per_ip:
       burst: 100
       per_second: 10
+  device_code_link:
+    # MAS's default is a burst of 10 per IP, refilled at one per minute. The QR journeys link
+    # every device from this one address, so a run with retries could use them up.
+    burst: 100
+    per_second: 10
