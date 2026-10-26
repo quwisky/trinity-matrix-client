@@ -51,6 +51,7 @@ import { NO_RAIL_UNREAD_CHATS } from '../server-rail/rail-unread-chats';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { IdentityChangeBannerComponent } from '../identity-change/identity-change-banner.component';
+import { JoinRequestsBannerComponent } from '../join-requests-banner/join-requests-banner.component';
 import { ThreadViewComponent } from '../thread/thread-view.component';
 import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
@@ -268,6 +269,7 @@ function renderHeader(
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
         IdentityChangeBannerComponent,
+        JoinRequestsBannerComponent,
         ThreadViewComponent,
       ],
     },
@@ -349,6 +351,7 @@ function renderHeader(
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),
         MockComponent(IdentityChangeBannerComponent),
+        MockComponent(JoinRequestsBannerComponent),
         MockComponent(ThreadViewComponent),
       ],
     },

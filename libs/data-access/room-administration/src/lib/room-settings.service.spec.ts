@@ -11,7 +11,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
-import { RoomSettingsService } from './room-settings.service';
+import { KNOCK_RESTRICTED, RoomSettingsService } from './room-settings.service';
 
 function setup(
   opts: {
@@ -406,6 +406,81 @@ describe('RoomSettingsService', () => {
       { join_rule: 'public' },
       '',
     );
+  });
+
+  it.each([
+    ['6', false, false],
+    ['7', true, false],
+    ['9', true, false],
+    ['10', true, true],
+    ['x', false, false],
+  ])(
+    'version %s supports knock %s, knock_restricted %s',
+    (version, knock, knockRestricted) => {
+      const { svc } = setup({ version });
+      expect(svc.supportsKnock('!r:hs')).toBe(knock);
+      expect(svc.supportsKnockRestricted('!r:hs')).toBe(knockRestricted);
+    },
+  );
+
+  it('snapshot carries both knock support flags', async () => {
+    const { svc } = setup({ version: '10' });
+    const snapshot = await firstValueFrom(
+      svc.observe({ accountId: '@me:hs', roomId: '!r:hs' }),
+    );
+    expect(snapshot.supportsKnock).toBe(true);
+    expect(snapshot.supportsKnockRestricted).toBe(true);
+  });
+
+  it('knock_restricted save writes allow like restricted', async () => {
+    const { svc, sendStateEvent } = setup();
+
+    await firstValueFrom(
+      svc.setJoinRule('!r:hs', KNOCK_RESTRICTED, ['!space:hs']),
+    );
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.room.join_rules',
+      {
+        join_rule: 'knock_restricted',
+        allow: [{ type: 'm.room_membership', room_id: '!space:hs' }],
+      },
+      '',
+    );
+  });
+
+  it('knock_restricted with no spaces is refused', async () => {
+    const { svc, sendStateEvent } = setup();
+
+    await expect(
+      firstValueFrom(svc.setJoinRule('!r:hs', KNOCK_RESTRICTED)),
+    ).rejects.toThrow(/at least one space/i);
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('knock save writes no allow', async () => {
+    const { svc, sendStateEvent } = setup();
+
+    await firstValueFrom(
+      svc.setJoinRule('!r:hs', JoinRule.Knock, ['!space:hs']),
+    );
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.room.join_rules',
+      { join_rule: 'knock' },
+      '',
+    );
+  });
+
+  it('currentAccess reads the allowed spaces of a knock_restricted rule', () => {
+    const { svc } = setup({
+      joinRule: 'knock_restricted',
+      allow: [{ type: 'm.room_membership', room_id: '!space:hs' }],
+    });
+
+    expect(svc.currentAccess('!r:hs').allowedSpaceIds).toEqual(['!space:hs']);
   });
 
   it('currentAccess reads the allowed spaces of a restricted rule', () => {

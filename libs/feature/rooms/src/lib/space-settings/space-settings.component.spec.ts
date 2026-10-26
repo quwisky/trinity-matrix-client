@@ -16,6 +16,7 @@ import {
 import {
   HistoryVisibility,
   JoinRule,
+  KNOCK_RESTRICTED,
   RoomActionPermissionsService,
   RoomAliasesService,
   RoomMembersService,
@@ -93,6 +94,8 @@ function spaceSnapshot(
     permissions: { ...ALL_ALLOWED, ...permissions },
     encrypted: false,
     supportsRestricted: true,
+    supportsKnock: false,
+    supportsKnockRestricted: false,
     advanced: {
       roomId: TARGET.roomId,
       version: '10',
@@ -591,6 +594,30 @@ describe('SpaceSettingsComponent', () => {
       },
     });
     expect(confirm).toHaveBeenCalledOnce();
+  });
+
+  it('offers Anyone can ask to join from version 7', async () => {
+    const { cmp } = await build({
+      initial: spaceSnapshot({ supportsKnock: true }),
+    });
+
+    expect(cmp.draft.joinRuleOptions().map(({ testId }) => testId)).toEqual([
+      'join-rule-invite',
+      'join-rule-knock',
+      'join-rule-public',
+    ]);
+  });
+
+  it('names a current knock_restricted rule instead of showing the server value', async () => {
+    const { cmp } = await build({
+      initial: spaceSnapshot({ access: { joinRule: KNOCK_RESTRICTED } }),
+    });
+
+    expect(
+      cmp.draft
+        .joinRuleOptions()
+        .find(({ value }) => value === KNOCK_RESTRICTED)?.label,
+    ).toBe('Space members can join, others can ask');
   });
 
   it('keeps unfamiliar access state readable and never offers new restricted choices', async () => {

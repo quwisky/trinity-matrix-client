@@ -98,6 +98,8 @@ export interface RoomSettingsSnapshot {
   readonly permissions: RoomSettingsPermissions;
   readonly encrypted: boolean | null;
   readonly supportsRestricted: boolean;
+  readonly supportsKnock: boolean;
+  readonly supportsKnockRestricted: boolean;
   /** Technical details for Room settings › Advanced; never throws on partial state. */
   readonly advanced: RoomAdvancedInfo;
 }
@@ -116,6 +118,14 @@ type RoomSettingsTargetInput = RoomSettingsTarget | string;
 const DEFAULT_JOIN_RULE = JoinRule.Invite;
 /** A room with no history-visibility state defaults to `shared`, per the spec. */
 const DEFAULT_HISTORY_VISIBILITY = HistoryVisibility.Shared;
+
+/** MSC3787 join rule; matrix-js-sdk's `JoinRule` enum has no member for it. */
+export const KNOCK_RESTRICTED = 'knock_restricted' as JoinRule;
+
+/** Whether the rule carries an `allow` list of spaces. */
+export function takesAllowList(rule: JoinRule): boolean {
+  return rule === JoinRule.Restricted || rule === KNOCK_RESTRICTED;
+}
 
 /**
  * Writes a room's editable metadata — display name (`m.room.name`) and topic
@@ -231,7 +241,7 @@ export class RoomSettingsService {
       }
       this.permissions.assert(context.permissions.joinRule);
       const { client, roomId } = context;
-      const restricted = joinRule === JoinRule.Restricted;
+      const restricted = takesAllowList(joinRule);
       // A `restricted` rule with no `allow` entries can never be joined, even by members of
       // the gating space, and only an admin could undo it. Refused here, the one place every
       // join-rule write passes through.
@@ -280,10 +290,27 @@ export class RoomSettingsService {
    * so it silently stays as open as it was. False when the version is missing or unparseable.
    */
   supportsRestricted(target: RoomSettingsTargetInput): boolean {
+    return this.roomVersionAtLeast(target, 8);
+  }
+
+  /** Whether the room can carry a `knock` join rule (room version 7+). */
+  supportsKnock(target: RoomSettingsTargetInput): boolean {
+    return this.roomVersionAtLeast(target, 7);
+  }
+
+  /** Whether the room can carry a `knock_restricted` join rule (room version 10+). */
+  supportsKnockRestricted(target: RoomSettingsTargetInput): boolean {
+    return this.roomVersionAtLeast(target, 10);
+  }
+
+  private roomVersionAtLeast(
+    target: RoomSettingsTargetInput,
+    minimum: number,
+  ): boolean {
     const room = this.roomFor(target);
     if (!room) return false;
     const version = Number.parseInt(room.getVersion() ?? '', 10);
-    return Number.isFinite(version) && version >= 8;
+    return Number.isFinite(version) && version >= minimum;
   }
 
   /**
@@ -359,14 +386,13 @@ export class RoomSettingsService {
       ?.getStateEvents(EventType.RoomHistoryVisibility, '')
       ?.getContent()?.['history_visibility'];
     const rule = (joinRule as JoinRule) ?? DEFAULT_JOIN_RULE;
-    // Only a `restricted` rule has an allow list; a leftover `allow` under another rule is
+    // Only `restricted` and `knock_restricted` have an allow list; a leftover `allow` under another rule is
     // inert and would make a dialog see (and write) an access change that isn't there.
-    const allow =
-      rule === JoinRule.Restricted
-        ? state?.getStateEvents(EventType.RoomJoinRules, '')?.getContent()?.[
-            'allow'
-          ]
-        : undefined;
+    const allow = takesAllowList(rule)
+      ? state?.getStateEvents(EventType.RoomJoinRules, '')?.getContent()?.[
+          'allow'
+        ]
+      : undefined;
     return {
       joinRule: rule,
       historyVisibility:
@@ -419,6 +445,8 @@ export class RoomSettingsService {
       permissions: this.permissions.settingsFor(target),
       encrypted,
       supportsRestricted: this.supportsRestricted(target),
+      supportsKnock: this.supportsKnock(target),
+      supportsKnockRestricted: this.supportsKnockRestricted(target),
       advanced: {
         ...roomAdvancedInfo(
           target.roomId,

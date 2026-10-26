@@ -26,7 +26,10 @@ import {
   RoomDirectoryComponent,
   type DirectoryJoin,
 } from '../room-directory/room-directory.component';
-import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import {
+  RoomSettingsComponent,
+  type RoomSettingsSection,
+} from '../room-settings/room-settings.component';
 import type { RoomSettingsResult } from '../room-settings/room-settings.models';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
@@ -374,7 +377,7 @@ export class RoomActionsService {
   }
 
   /** Header "Room settings": open one immutable Account-and-Room settings lifetime. */
-  onOpenRoomSettings(): void {
+  onOpenRoomSettings(initialSection?: RoomSettingsSection): void {
     const room = this.vm.activeRoom();
     const accountId = this.store.activeAccountId();
     if (!room || !accountId) {
@@ -401,6 +404,7 @@ export class RoomActionsService {
             roomDisplayName: room.name,
             direct: room.directUserId !== undefined,
             parentSpaces,
+            ...(initialSection && { initialSection }),
           },
         },
       )

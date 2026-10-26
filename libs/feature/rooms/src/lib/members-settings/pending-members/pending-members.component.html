@@ -1,0 +1,98 @@
+@if (people().length === 0) {
+  <trn-empty-state
+    layout="line"
+    [body]="
+      kind() === 'requests'
+        ? 'No one has asked to join.'
+        : 'No pending invites.'
+    "
+    data-testid="pending-members-empty"
+  />
+} @else {
+  <ul class="flex flex-col gap-2">
+    @for (person of people(); track person.userId) {
+      @let busy = pending(person.userId);
+      <li
+        class="flex items-center justify-between gap-3"
+        [attr.data-testid]="'pending-member-' + person.userId"
+      >
+        <span class="flex min-w-0 items-center gap-3">
+          <trn-avatar
+            [mxc]="person.roomAvatarMxc"
+            [initial]="person.roomInitial"
+            [name]="person.roomDisplayName"
+            [accountId]="accountId()"
+            size="md"
+          />
+          <span class="flex min-w-0 flex-col">
+            <span class="truncate text-sm font-medium">{{
+              person.roomDisplayName
+            }}</span>
+            <span class="truncate text-xs text-muted-foreground">{{
+              person.userId
+            }}</span>
+            @if (reason(person); as reason) {
+              <span class="truncate text-xs text-muted-foreground"
+                >“{{ reason }}”</span
+              >
+            }
+          </span>
+        </span>
+        <span class="flex shrink-0 gap-2">
+          @if (kind() === 'requests') {
+            @if (canApprove().available) {
+              <button
+                trnBtn
+                type="button"
+                size="sm"
+                [disabled]="busy !== null"
+                (click)="approve(person)"
+                [attr.aria-label]="
+                  (busy === 'approve' ? 'Approving ' : 'Approve ') +
+                  person.roomDisplayName +
+                  '\'s request'
+                "
+                data-testid="pending-approve"
+              >
+                {{ busy === 'approve' ? 'Approving…' : 'Approve' }}
+              </button>
+            }
+            @if (canKick(person.userId).available) {
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="outline"
+                size="sm"
+                [disabled]="busy !== null"
+                (click)="deny(person)"
+                [attr.aria-label]="
+                  'Deny ' + person.roomDisplayName + '\'s request'
+                "
+                data-testid="pending-deny"
+              >
+                Deny
+              </button>
+            }
+          } @else if (canKick(person.userId).available) {
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="outline"
+              size="sm"
+              [disabled]="busy !== null"
+              (click)="revoke(person)"
+              [attr.aria-label]="
+                'Revoke ' + person.roomDisplayName + '\'s invite'
+              "
+              data-testid="pending-revoke"
+            >
+              Revoke
+            </button>
+          }
+        </span>
+      </li>
+    }
+  </ul>
+}

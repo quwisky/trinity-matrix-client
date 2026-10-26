@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MemberInfoComponent } from '../member-info/member-info.component';
-import { render } from '@trinity/testing';
+import { fireEvent, render, screen } from '@trinity/testing';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import {
@@ -13,6 +13,7 @@ import {
   RoomActionPermissionsService,
   RoomMembersService,
   RoomModerationService,
+  type KnockRequest,
   type MemberSummary,
   type RoomMembersSnapshot,
 } from '@trinity/data-access/room-administration';
@@ -33,6 +34,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import { MembersSettingsComponent } from './members-settings.component';
+import { PendingMembersComponent } from './pending-members/pending-members.component';
 
 const TARGET = { accountId: '@opening:hs', roomId: '!target:hs' } as const;
 const ALLOWED = { available: true, reason: null } as const;
@@ -47,6 +49,14 @@ const ADA: MemberSummary = {
   isCreator: false,
 };
 
+const DANA: KnockRequest = {
+  userId: '@dana:hs',
+  roomDisplayName: 'Dana',
+  roomInitial: 'D',
+  roomAvatarMxc: null,
+  reason: null,
+};
+
 function snapshot(
   over: Partial<RoomMembersSnapshot> = {},
 ): RoomMembersSnapshot {
@@ -58,12 +68,19 @@ function snapshot(
     banned: [
       { userId: '@banned:hs', roomDisplayName: 'Banned Bob', reason: 'spam' },
     ],
+    invited: [],
+    knocking: [],
     ...over,
   };
 }
 
-async function build(options: { readonly canManage?: boolean } = {}) {
-  const snapshots = new BehaviorSubject(snapshot());
+async function build(
+  options: {
+    readonly canManage?: boolean;
+    readonly initial?: RoomMembersSnapshot;
+  } = {},
+) {
+  const snapshots = new BehaviorSubject(options.initial ?? snapshot());
   const inviteUser = vi.fn(() => of(undefined));
   const pick = vi.fn(() => of('@invitee:hs'));
   const pickUser = vi.fn(() =>
@@ -266,5 +283,111 @@ describe('MembersSettingsComponent', () => {
       "Ivy isn't accepting invites.",
       expect.objectContaining({ variant: 'danger' }),
     );
+  });
+
+  it('shows Requests and Invited counts only when non-zero', async () => {
+    const { fixture, container, snapshots } = await build();
+    const count = (testId: string) =>
+      container.querySelector(`[data-testid="${testId}"] span`)?.textContent;
+
+    expect(count('members-settings-requests')).toBeUndefined();
+    expect(count('members-settings-invited')).toBeUndefined();
+
+    snapshots.next(snapshot({ knocking: [DANA], invited: [ADA] }));
+    await fixture.whenStable();
+
+    expect(count('members-settings-requests')).toBe('1');
+    expect(count('members-settings-invited')).toBe('1');
+  });
+
+  it('opens on Requests when there are requests you may approve', async () => {
+    const { cmp, fixture, container } = await build({
+      initial: snapshot({ knocking: [DANA] }),
+    });
+    await fixture.whenStable();
+
+    expect(cmp.destination()).toBe('requests');
+    expect(
+      container.querySelector('[data-testid="pending-member-@dana:hs"]'),
+    ).not.toBeNull();
+  });
+
+  it('opens on Current members when you may not approve requests', async () => {
+    const { cmp } = await build({
+      canManage: false,
+      initial: snapshot({ knocking: [DANA] }),
+    });
+
+    expect(cmp.destination()).toBe('current');
+  });
+
+  it('keeps the last requests and invites when the Account becomes unavailable', async () => {
+    const { cmp, snapshots } = await build({
+      initial: snapshot({ knocking: [DANA], invited: [ADA] }),
+    });
+
+    snapshots.next(
+      snapshot({
+        availability: 'account-unavailable',
+        unavailableReason: 'Signed out.',
+        knocking: [],
+        invited: [],
+      }),
+    );
+
+    expect(cmp.snapshot()?.knocking).toEqual([DANA]);
+    expect(cmp.snapshot()?.invited).toEqual([ADA]);
+  });
+
+  it('returns focus to the list button when its last row leaves', async () => {
+    const { fixture, container } = await build({
+      initial: snapshot({ knocking: [DANA] }),
+    });
+    await fixture.whenStable();
+
+    fixture.debugElement
+      .query(By.directive(PendingMembersComponent))
+      .componentInstance.listEmptied.emit();
+
+    expect(document.activeElement).toBe(
+      container.querySelector('[data-testid="members-settings-requests"]'),
+    );
+  });
+
+  it('switches member lists with tabs', async () => {
+    const { cmp, fixture } = await build({
+      initial: snapshot({ knocking: [DANA] }),
+    });
+    await fixture.whenStable();
+
+    expect(
+      screen.getAllByRole('tab').map((tab) => tab.textContent?.trim()),
+    ).toEqual(['Members 1', 'Requests 1', 'Invited', 'Banned 1']);
+    expect(
+      screen
+        .getByRole('tab', { name: /Requests/ })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+
+    screen.getByRole('tab', { name: /Banned/ }).click();
+    await fixture.whenStable();
+
+    expect(cmp.destination()).toBe('banned');
+    expect(screen.getByRole('tabpanel').textContent).toContain('Banned Bob');
+  });
+
+  it('moves between member lists with the arrow keys', async () => {
+    const { cmp, fixture } = await build();
+    await fixture.whenStable();
+    const members = screen.getByRole('tab', { name: /Members/ });
+
+    members.focus();
+    fireEvent.keyDown(members, { key: 'ArrowRight' });
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('tab', { name: /Requests/ }),
+    );
+    expect(cmp.destination()).toBe('requests');
   });
 });

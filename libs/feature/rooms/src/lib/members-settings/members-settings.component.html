@@ -1,42 +1,8 @@
 <section class="members-settings" data-testid="members-settings">
   <div class="members-settings__toolbar">
-    <div>
-      <p class="members-settings__summary">
-        Membership belongs to {{ targetName() }} on account {{ accountId() }}.
-      </p>
-      <div class="members-settings__destinations" aria-label="Member lists">
-        <button
-          type="button"
-          class="members-settings__destination"
-          [class.members-settings__destination--active]="
-            destination() === 'current'
-          "
-          [attr.aria-pressed]="destination() === 'current'"
-          (click)="selectDestination('current')"
-          data-testid="members-settings-current"
-        >
-          Current members
-          @if (snapshot(); as current) {
-            <span aria-hidden="true">{{ current.members.length }}</span>
-          }
-        </button>
-        <button
-          type="button"
-          class="members-settings__destination"
-          [class.members-settings__destination--active]="
-            destination() === 'banned'
-          "
-          [attr.aria-pressed]="destination() === 'banned'"
-          (click)="selectDestination('banned')"
-          data-testid="members-settings-banned"
-        >
-          Banned
-          @if (snapshot(); as current) {
-            <span aria-hidden="true">{{ current.banned.length }}</span>
-          }
-        </button>
-      </div>
-    </div>
+    <p class="members-settings__summary">
+      Membership belongs to {{ targetName() }} on account {{ accountId() }}.
+    </p>
 
     @if (
       invitePermission().available && snapshot()?.availability === 'available'
@@ -54,47 +20,125 @@
     }
   </div>
 
-  @if (snapshot(); as current) {
-    @if (showUnavailableReason() && current.unavailableReason; as reason) {
-      <p class="members-settings__warning" role="status">
-        {{ reason }}
-      </p>
-    }
+  @if (showUnavailableReason() && snapshot()?.unavailableReason; as reason) {
+    <p class="members-settings__warning" role="status">
+      {{ reason }}
+    </p>
+  }
 
-    @if (selectedMember(); as member) {
-      <div
-        class="members-settings__detail"
-        data-testid="members-settings-detail"
-      >
-        <trn-member-info
-          [member]="member"
-          [roomId]="roomId()"
+  <div
+    trnTabs
+    appearance="underline"
+    class="members-settings__tabs"
+    [value]="destination()"
+    (valueChange)="selectDestination($event)"
+  >
+    <!-- Scrolls sideways where the four tabs don't fit, instead of wrapping or widening the page. -->
+    <div class="overflow-x-auto">
+      <div trnTabList aria-label="Member lists" class="w-max min-w-full">
+        <button
+          trnTab="current"
+          class="flex-none gap-2 whitespace-nowrap"
+          data-testid="members-settings-current"
+        >
+          Members
+          @if (snapshot()?.members?.length; as count) {
+            <span trnBadge aria-hidden="true">{{ count }}</span>
+          }
+        </button>
+        <button
+          trnTab="requests"
+          class="flex-none gap-2 whitespace-nowrap"
+          data-testid="members-settings-requests"
+        >
+          Requests
+          @if (snapshot()?.knocking?.length; as count) {
+            <span trnBadge aria-hidden="true">{{ count }}</span>
+          }
+        </button>
+        <button
+          trnTab="invited"
+          class="flex-none gap-2 whitespace-nowrap"
+          data-testid="members-settings-invited"
+        >
+          Invited
+          @if (snapshot()?.invited?.length; as count) {
+            <span trnBadge aria-hidden="true">{{ count }}</span>
+          }
+        </button>
+        <button
+          trnTab="banned"
+          class="flex-none gap-2 whitespace-nowrap"
+          data-testid="members-settings-banned"
+        >
+          Banned
+          @if (snapshot()?.banned?.length; as count) {
+            <span trnBadge aria-hidden="true">{{ count }}</span>
+          }
+        </button>
+      </div>
+    </div>
+
+    @if (snapshot(); as current) {
+      <div trnTabPanel="current" [focusable]="false">
+        @if (selectedMember(); as member) {
+          <div
+            class="members-settings__detail"
+            data-testid="members-settings-detail"
+          >
+            <trn-member-info
+              [member]="member"
+              [roomId]="roomId()"
+              [accountId]="accountId()"
+              [exactTargetAvailable]="current.availability === 'available'"
+              [targetName]="targetName()"
+              [noun]="noun()"
+              [direct]="direct()"
+              [authorityRevision]="authorityRevision()"
+              [hideUnavailableModeration]="true"
+              [showIdentityActions]="false"
+              [embedded]="true"
+              (messageUser)="message($event)"
+              (dismissed)="dismissMember()"
+              (roomOpened)="closeAfterRoomOpened()"
+            />
+          </div>
+        } @else {
+          <trn-member-list
+            layout="settings"
+            [showHeader]="false"
+            [showPresence]="false"
+            [members]="current.members"
+            [availability]="availability()"
+            [direct]="direct()"
+            (selectMember)="selectMember($event)"
+          />
+        }
+      </div>
+
+      <div trnTabPanel="requests" class="members-settings__panel">
+        <trn-pending-members
+          kind="requests"
           [accountId]="accountId()"
-          [exactTargetAvailable]="current.availability === 'available'"
-          [targetName]="targetName()"
-          [noun]="noun()"
-          [direct]="direct()"
+          [roomId]="roomId()"
+          [people]="current.knocking"
           [authorityRevision]="authorityRevision()"
-          [hideUnavailableModeration]="true"
-          [showIdentityActions]="false"
-          [embedded]="true"
-          (messageUser)="message($event)"
-          (dismissed)="dismissMember()"
-          (roomOpened)="closeAfterRoomOpened()"
+          (listEmptied)="focusDestination()"
         />
       </div>
-    } @else if (destination() === 'current') {
-      <trn-member-list
-        layout="settings"
-        [showHeader]="false"
-        [showPresence]="false"
-        [members]="current.members"
-        [availability]="availability()"
-        [direct]="direct()"
-        (selectMember)="selectMember($event)"
-      />
-    } @else {
-      <div class="members-settings__banned">
+
+      <div trnTabPanel="invited" class="members-settings__panel">
+        <trn-pending-members
+          kind="invited"
+          [accountId]="accountId()"
+          [roomId]="roomId()"
+          [people]="current.invited"
+          [authorityRevision]="authorityRevision()"
+          (listEmptied)="focusDestination()"
+        />
+      </div>
+
+      <div trnTabPanel="banned" class="members-settings__panel">
         <trn-banned-members
           [accountId]="accountId()"
           [roomId]="roomId()"
@@ -106,10 +150,10 @@
           "
         />
       </div>
+    } @else {
+      <p class="members-settings__loading" role="status">
+        Loading members for this account…
+      </p>
     }
-  } @else {
-    <p class="members-settings__loading" role="status">
-      Loading members for this account…
-    </p>
-  }
+  </div>
 </section>

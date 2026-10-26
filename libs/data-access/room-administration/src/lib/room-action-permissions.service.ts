@@ -88,6 +88,13 @@ const denied = (reason: string): ActionAvailability => ({
   reason,
 });
 
+/** Matrix lets a higher-ranked moderator remove invited and knocking users, not only joined ones. */
+const MANAGEABLE_MEMBERSHIPS: ReadonlySet<string> = new Set([
+  KnownMembership.Join,
+  KnownMembership.Invite,
+  KnownMembership.Knock,
+]);
+
 /**
  * Live Matrix authorization for permission-sensitive room actions.
  *
@@ -249,9 +256,9 @@ export class RoomActionPermissionsService {
         targetPower,
       );
     }
-    if (targetMember?.membership !== KnownMembership.Join) {
+    if (!MANAGEABLE_MEMBERSHIPS.has(targetMember?.membership ?? '')) {
       return this.deniedMember(
-        'This member is no longer joined to the room.',
+        'This person is no longer in the room.',
         context.myPower,
         targetPower,
       );

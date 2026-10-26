@@ -32,19 +32,38 @@ function bannedMember(userId: string, name: string, reason?: string) {
   };
 }
 
+function knockingMember(
+  userId: string,
+  name: string,
+  reason?: string,
+  avatarMxc?: string,
+) {
+  return {
+    ...bannedMember(userId, name, reason),
+    getMxcAvatarUrl: () => avatarMxc,
+  };
+}
+
 function room(
   roomId: string,
   members: ReturnType<typeof member>[],
   creator: string | null = null,
   banned: ReturnType<typeof bannedMember>[] = [],
   invited: ReturnType<typeof member>[] = [],
+  knocking: ReturnType<typeof knockingMember>[] = [],
 ) {
   return {
     roomId,
     getMyMembership: () => 'join',
     getJoinedMembers: vi.fn(() => members),
     getMembersWithMembership: vi.fn((membership: string) =>
-      membership === 'invite' ? invited : membership === 'ban' ? banned : [],
+      membership === 'invite'
+        ? invited
+        : membership === 'ban'
+          ? banned
+          : membership === 'knock'
+            ? knocking
+            : [],
     ),
     getCreator: () => creator,
     loadMembersIfNeeded: vi.fn(() => Promise.resolve(true)),
@@ -305,6 +324,120 @@ describe('RoomMembersService', () => {
     await Promise.resolve();
 
     expect(pending().map((m) => m.userId)).toEqual(['@ann:hs']);
+  });
+
+  it('projects knocks with reasons, sorted', () => {
+    const source = room(
+      '!room:hs',
+      [],
+      null,
+      [],
+      [],
+      [
+        knockingMember('@zed:hs', 'Zed', 'From the meetup', 'mxc://hs/zed'),
+        knockingMember('@amy:hs', 'Amy', ''),
+      ],
+    );
+    const { service } = setup(client([source]));
+
+    expect(service.knockingFor('!room:hs')()).toEqual([
+      {
+        userId: '@amy:hs',
+        roomDisplayName: 'Amy',
+        roomInitial: 'A',
+        roomAvatarMxc: null,
+        reason: null,
+      },
+      {
+        userId: '@zed:hs',
+        roomDisplayName: 'Zed',
+        roomInitial: 'Z',
+        roomAvatarMxc: 'mxc://hs/zed',
+        reason: 'From the meetup',
+      },
+    ]);
+  });
+
+  it('drops a withdrawn knock on the next member event', async () => {
+    const knocking = [knockingMember('@amy:hs', 'Amy')];
+    const matrixClient = client([room('!room:hs', [], null, [], [], knocking)]);
+    const { service } = setup(matrixClient);
+    const requests = service.knockingFor('!room:hs');
+    expect(requests()).toHaveLength(1);
+
+    knocking.splice(0, 1);
+    fireMemberChange(matrixClient, '!room:hs');
+    await Promise.resolve();
+
+    expect(requests()).toEqual([]);
+  });
+
+  it('clears knocks on account reset', async () => {
+    const matrixClient = client([
+      room('!room:hs', [], null, [], [], [knockingMember('@amy:hs', 'Amy')]),
+    ]);
+    const { service, lifetime } = setup(matrixClient);
+    const requests = service.knockingFor('!room:hs');
+    expect(requests()).toHaveLength(1);
+
+    lifetime.unsubscribe();
+    TestBed.inject(ApplicationRef).tick();
+    await Promise.resolve();
+
+    expect(requests()).toEqual([]);
+  });
+
+  it('carries invited and knocking in the snapshot of an available exact target', () => {
+    const source = room(
+      '!room:hs',
+      [member('@me:hs', 'Me')],
+      null,
+      [],
+      [member('@ann:hs', 'Ann')],
+      [knockingMember('@amy:hs', 'Amy', 'Hi')],
+    );
+    const matrixClient = client([source]);
+    const matrix = {
+      clientFor: () => matrixClient as unknown as MatrixClient,
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        RoomMembersService,
+        MockProvider(MatrixClientService, matrix),
+      ],
+    });
+    const snapshot = TestBed.inject(RoomMembersService).snapshot({
+      accountId: '@me:hs',
+      roomId: '!room:hs',
+    });
+
+    expect(snapshot.members.map((m) => m.userId)).toEqual(['@me:hs']);
+    expect(snapshot.invited.map((m) => m.userId)).toEqual(['@ann:hs']);
+    expect(snapshot.knocking.map((k) => k.reason)).toEqual(['Hi']);
+  });
+
+  it('leaves invited and knocking empty when the room is unavailable', () => {
+    const source = {
+      ...room('!room:hs', [], null, [], [member('@ann:hs', 'Ann')]),
+      getMyMembership: () => 'leave',
+    };
+    const matrixClient = client([source]);
+    TestBed.configureTestingModule({
+      providers: [
+        RoomMembersService,
+        MockProvider(MatrixClientService, {
+          clientFor: () => matrixClient as unknown as MatrixClient,
+        }),
+      ],
+    });
+    const snapshot = TestBed.inject(RoomMembersService).snapshot({
+      accountId: '@me:hs',
+      roomId: '!room:hs',
+    });
+
+    expect(snapshot.availability).toBe('room-unavailable');
+    expect(snapshot.invited).toEqual([]);
+    expect(snapshot.knocking).toEqual([]);
   });
 
   it('clears outgoing Account values and detaches listeners on teardown', async () => {

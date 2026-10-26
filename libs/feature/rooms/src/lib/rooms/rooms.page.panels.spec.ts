@@ -200,6 +200,23 @@ describe('RoomsPage panels, pins and media', () => {
     });
   });
 
+  it('opens room settings at the given section', async () => {
+    const shell = build();
+    roomsSignal.set([
+      roomSummary({ id: '!r:hs', accountId: '@me:hs', name: 'General' }),
+    ]);
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    shell.rooms.onOpenRoomSettings('members');
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      RoomSettingsComponent,
+      expect.objectContaining({
+        inputs: expect.objectContaining({ initialSection: 'members' }),
+      }),
+    );
+  });
+
   it('opens Room settings without choosing a placement of its own', async () => {
     const shell = build();
     roomsSignal.set([

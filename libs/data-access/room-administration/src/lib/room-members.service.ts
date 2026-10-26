@@ -51,6 +51,15 @@ export interface BannedMember {
   readonly reason: string | null;
 }
 
+/** Someone who asked to join, projected from authoritative Matrix room state. */
+export interface KnockRequest {
+  readonly userId: string;
+  readonly roomDisplayName: string;
+  readonly roomInitial: string;
+  readonly roomAvatarMxc: string | null;
+  readonly reason: string | null;
+}
+
 export type RoomMembersAvailability =
   'available' | 'account-unavailable' | 'room-unavailable';
 
@@ -61,10 +70,13 @@ export interface RoomMembersSnapshot {
   readonly unavailableReason: string | null;
   readonly members: readonly MemberSummary[];
   readonly banned: readonly BannedMember[];
+  readonly invited: readonly MemberSummary[];
+  readonly knocking: readonly KnockRequest[];
 }
 
 const EMPTY_MEMBERS: readonly MemberSummary[] = Object.freeze([]);
 const EMPTY_BANS: readonly BannedMember[] = Object.freeze([]);
+const EMPTY_KNOCKS: readonly KnockRequest[] = Object.freeze([]);
 
 /** Live joined and banned membership summaries owned by Room Administration. */
 @Injectable({ providedIn: 'root' })
@@ -84,6 +96,10 @@ export class RoomMembersService {
     string,
     WritableSignal<readonly BannedMember[]>
   >();
+  private readonly knockingSignals = new Map<
+    string,
+    WritableSignal<readonly KnockRequest[]>
+  >();
   private readonly dirtyRooms = new Set<string>();
   private allDirty = false;
   private lastClient: MatrixClient | null = null;
@@ -96,6 +112,10 @@ export class RoomMembersService {
   private readonly bannedCache = new Map<
     string,
     { readonly fingerprint: string; readonly members: readonly BannedMember[] }
+  >();
+  private readonly knockCache = new Map<
+    string,
+    { readonly fingerprint: string; readonly members: readonly KnockRequest[] }
   >();
 
   private readonly flusher = coalesce(() => {
@@ -130,6 +150,7 @@ export class RoomMembersService {
         this.lastClient = client;
         this.memberCache.clear();
         this.bannedCache.clear();
+        this.knockCache.clear();
         this.reread(null);
       }
     },
@@ -145,6 +166,7 @@ export class RoomMembersService {
       this.lastClient = null;
       this.memberCache.clear();
       this.bannedCache.clear();
+      this.knockCache.clear();
       this.flusher.cancel();
       this.dirtyRooms.clear();
       this.allDirty = false;
@@ -157,6 +179,9 @@ export class RoomMembersService {
       }
       for (const bans of this.bannedSignals.values()) {
         bans.set(EMPTY_BANS);
+      }
+      for (const requests of this.knockingSignals.values()) {
+        requests.set(EMPTY_KNOCKS);
       }
     },
   });
@@ -234,6 +259,19 @@ export class RoomMembersService {
         client && availability === 'available'
           ? this.bannedFrom(client, target.roomId, cacheKey)
           : EMPTY_BANS,
+      invited:
+        client && availability === 'available'
+          ? this.membersFrom(
+              client,
+              target.roomId,
+              `invited\x1f${cacheKey}`,
+              KnownMembership.Invite,
+            )
+          : EMPTY_MEMBERS,
+      knocking:
+        client && availability === 'available'
+          ? this.knockingFrom(client, target.roomId, `knock\x1f${cacheKey}`)
+          : EMPTY_KNOCKS,
     };
   }
 
@@ -398,13 +436,76 @@ export class RoomMembersService {
     return summaries;
   }
 
+  /** A memoized signal for one Room's requests to join. */
+  knockingFor(roomId: string | null): Signal<readonly KnockRequest[]> {
+    const key = roomId ?? '';
+    let requests = this.knockingSignals.get(key);
+    if (!requests) {
+      requests = signal(this.knockingMembersOf(roomId));
+      this.knockingSignals.set(key, requests);
+    }
+    return requests.asReadonly();
+  }
+
+  /** One authoritative snapshot of a Room's requests to join. */
+  knockingMembersOf(roomId: string | null): readonly KnockRequest[] {
+    if (!roomId || !this.matrix.isInitialized) {
+      return EMPTY_KNOCKS;
+    }
+    return this.knockingFrom(
+      this.matrix.instance,
+      roomId,
+      `knock\x1f${roomId}`,
+    );
+  }
+
+  private knockingFrom(
+    client: MatrixClient,
+    roomId: string,
+    cacheKey: string,
+  ): readonly KnockRequest[] {
+    const room = client.getRoom(roomId);
+    if (!room) {
+      return EMPTY_KNOCKS;
+    }
+    const requests = room
+      .getMembersWithMembership(KnownMembership.Knock)
+      .map((member) => {
+        const reason = member.events?.member?.getContent()?.['reason'];
+        const roomDisplayName = member.name || member.userId;
+        return {
+          userId: member.userId,
+          roomDisplayName,
+          roomInitial: initialOf(roomDisplayName),
+          roomAvatarMxc: member.getMxcAvatarUrl() ?? null,
+          reason: typeof reason === 'string' && reason ? reason : null,
+        } satisfies KnockRequest;
+      });
+    const fingerprint = requests
+      .map(
+        (request) =>
+          `${request.userId}\x1f${request.roomDisplayName}\x1f${request.roomAvatarMxc ?? ''}\x1f${request.reason ?? ''}`,
+      )
+      .join('\x1e');
+    const cached = this.knockCache.get(cacheKey);
+    if (cached?.fingerprint === fingerprint) {
+      return cached.members;
+    }
+    requests.sort((a, b) =>
+      this.collator.compare(a.roomDisplayName, b.roomDisplayName),
+    );
+    this.knockCache.set(cacheKey, { fingerprint, members: requests });
+    return requests;
+  }
+
   private schedule(roomId: string | null): void {
     if (roomId === null) {
       this.allDirty = true;
     } else if (
       this.memberSignals.has(roomId) ||
       this.invitedSignals.has(roomId) ||
-      this.bannedSignals.has(roomId)
+      this.bannedSignals.has(roomId) ||
+      this.knockingSignals.has(roomId)
     ) {
       this.dirtyRooms.add(roomId);
     } else {
@@ -418,6 +519,7 @@ export class RoomMembersService {
       this.memberSignals.get(roomId)?.set(this.membersOf(roomId));
       this.invitedSignals.get(roomId)?.set(this.invitedMembersOf(roomId));
       this.bannedSignals.get(roomId)?.set(this.bannedMembersOf(roomId));
+      this.knockingSignals.get(roomId)?.set(this.knockingMembersOf(roomId));
       return;
     }
     for (const [key, members] of this.memberSignals) {
@@ -428,6 +530,9 @@ export class RoomMembersService {
     }
     for (const [key, bans] of this.bannedSignals) {
       bans.set(this.bannedMembersOf(key || null));
+    }
+    for (const [key, requests] of this.knockingSignals) {
+      requests.set(this.knockingMembersOf(key || null));
     }
   }
 
