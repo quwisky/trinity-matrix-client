@@ -129,6 +129,15 @@ export const CAPABILITY_STATUS_CATALOG = {
     fallback: 'Trinity continues with best-effort local storage.',
     recovery: 'Request storage again',
   },
+  'storage:space': {
+    capability: 'Local storage',
+    heading: 'This device is running low on space',
+    condition: 'Little space is left for local Trinity data.',
+    consequence:
+      'New encryption keys may fail to save, leaving messages unreadable.',
+    fallback: 'Free up space on this device to keep Trinity working.',
+    recovery: 'Check again',
+  },
 } as const satisfies Record<string, CapabilityStatusCopy>;
 
 type CatalogKey = keyof typeof CAPABILITY_STATUS_CATALOG;
@@ -261,6 +270,10 @@ const CAPABILITY_DIAGNOSTIC_REASONS = {
       'storage-persistence-timeout',
       'storage-persistence-unavailable',
     ],
+  }),
+  'storage:space': reasons({
+    available: ['storage-space-ready'],
+    problem: ['storage-space-low'],
   }),
 } as const satisfies Record<
   CatalogKey,

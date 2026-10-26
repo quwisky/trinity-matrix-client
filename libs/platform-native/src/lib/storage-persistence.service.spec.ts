@@ -108,4 +108,42 @@ describe('StoragePersistenceService', () => {
       });
     });
   });
+
+  describe('spaceLow', () => {
+    const MB = 1024 * 1024;
+    const GB = 1024 * MB;
+
+    it.each([
+      ['10% of a large quota', 10 * GB, GB - 1, true],
+      ['10% of a large quota', 10 * GB, GB, false],
+      ['the 200 MB floor of a small quota', GB, 200 * MB - 1, true],
+      ['the 200 MB floor of a small quota', GB, 200 * MB, false],
+    ])(
+      'warns below %s (quota %d, free %d: %s)',
+      async (_label, quota, free, low) => {
+        setStorage({
+          estimate: vi.fn().mockResolvedValue({ usage: quota - free, quota }),
+        });
+
+        expect(await make().spaceLow()).toBe(low);
+      },
+    );
+
+    it('does not warn when the estimate API is unavailable', async () => {
+      setStorage({});
+      expect(await make().spaceLow()).toBe(false);
+    });
+
+    it('does not warn when the estimate throws', async () => {
+      setStorage({ estimate: vi.fn().mockRejectedValue(new Error('nope')) });
+      expect(await make().spaceLow()).toBe(false);
+    });
+
+    it('does not warn when the browser reports no quota', async () => {
+      setStorage({
+        estimate: vi.fn().mockResolvedValue({ usage: 0, quota: 0 }),
+      });
+      expect(await make().spaceLow()).toBe(false);
+    });
+  });
 });

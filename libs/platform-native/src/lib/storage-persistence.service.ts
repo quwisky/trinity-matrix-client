@@ -11,6 +11,8 @@ import {
 } from 'rxjs';
 
 const PERSISTENCE_REQUEST_TIMEOUT_MS = 1_000;
+const LOW_SPACE_FLOOR_BYTES = 200 * 1024 * 1024;
+const LOW_SPACE_QUOTA_FRACTION = 0.1;
 
 /** Storage usage vs quota, in bytes plus a rounded percentage. */
 export interface StorageEstimate {
@@ -79,6 +81,23 @@ export class StoragePersistenceService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Whether the free part of the quota is below max(10% of it, 200 MB), early enough to
+   * warn before encryption-key writes start failing. False when the estimate is unknown.
+   */
+  async spaceLow(): Promise<boolean> {
+    const estimate = await this.estimate();
+    if (!estimate || estimate.quotaBytes <= 0) return false;
+    const free = estimate.quotaBytes - estimate.usageBytes;
+    return (
+      free <
+      Math.max(
+        estimate.quotaBytes * LOW_SPACE_QUOTA_FRACTION,
+        LOW_SPACE_FLOOR_BYTES,
+      )
+    );
   }
 
   private storageManager(): StorageManager | undefined {
