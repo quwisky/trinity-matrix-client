@@ -120,12 +120,15 @@ test.describe('Earlier messages for invited members', () => {
     test.setTimeout(240_000);
     const bobPage = await secondaryApp.launch();
     // At invite the SDK downloads the room's backed-up keys to share; #1722 failed on that body.
+    // It logs the failure at debug level, so also count the backup manager's other debug lines:
+    // with none, an empty failure list would prove nothing.
     const backupFailures: string[] = [];
+    let backupDebugLines = 0;
     page.on('console', (message) => {
-      if (
-        message.text().includes('Failed to decrypt megolm session from backup')
-      )
-        backupFailures.push(message.text());
+      const text = message.text();
+      if (text.includes('[RustBackupManager]')) backupDebugLines += 1;
+      if (text.includes('Failed to decrypt megolm session from backup'))
+        backupFailures.push(text);
     });
     const { runId, roomName, bob, alicePass, bobPass } = await setUp(
       page,
@@ -164,6 +167,7 @@ test.describe('Earlier messages for invited members', () => {
     for (const body of earlier) {
       await expect(rowOf(bobPage, body)).toBeVisible({ timeout: 60_000 });
     }
+    expect(backupDebugLines).toBeGreaterThan(0);
     expect(backupFailures).toEqual([]);
   });
 
