@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const env = { ...process.env };
 
-// Nx 23 forces colour support into every task child. When a parent shell exports
+// Nx forces colour support into every task child. When a parent shell exports
 // NO_COLOR, Node sees both variables in those children and emits one warning per
 // worker even though Nx has already made NO_COLOR ineffective. Remove only that
 // contradictory variable at the Nx process boundary; an explicit FORCE_COLOR is
