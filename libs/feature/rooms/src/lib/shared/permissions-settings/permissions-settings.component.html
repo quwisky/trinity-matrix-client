@@ -21,7 +21,7 @@
               [aria-labelledby]="'permissions-label-' + item.row.id"
               [options]="optionsFor(item)"
               [value]="choiceOf(item)"
-              [disabled]="!item.editable"
+              [disabled]="!item.editable || saving()"
               (valueChange)="choose(item, $event)"
             />
           </trn-settings-row>
@@ -33,13 +33,23 @@
               class="permissions__custom"
               [attr.aria-label]="item.row.label + ' custom level'"
               [explicitInvalid]="invalidIds().has(item.row.id)"
+              [aria-describedby]="
+                invalidIds().has(item.row.id)
+                  ? 'permissions-custom-error-' + item.row.id
+                  : null
+              "
               [value]="customText().get(item.row.id)"
-              [disabled]="!item.editable"
+              [disabled]="!item.editable || saving()"
               (input)="typeCustom(item, $any($event.target).value)"
               [attr.data-testid]="'permissions-custom-' + item.row.id"
             />
             @if (invalidIds().has(item.row.id)) {
-              <p class="permissions__error">{{ customError() }}</p>
+              <p
+                class="permissions__error"
+                [id]="'permissions-custom-error-' + item.row.id"
+              >
+                {{ customError() }}
+              </p>
             }
           }
         </div>

@@ -9,7 +9,7 @@ import {
 } from '@trinity/data-access/room-administration';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PermissionsSettingsComponent } from './permissions-settings.component';
 
@@ -278,6 +278,83 @@ describe('PermissionsSettingsComponent', () => {
       expect(confirm$).toHaveBeenCalled();
       expect(save).toHaveBeenCalledOnce();
     });
+  });
+
+  it('a saved level stays shown until the next sync reports it', async () => {
+    const { fixture, current } = await setup();
+    await choose('Send messages', 'Moderator');
+
+    fireEvent.click(screen.getByTestId('permissions-save'));
+    await tick();
+
+    const select = () =>
+      screen.getByRole('combobox', { name: 'Send messages' });
+    expect(select().textContent).toContain('Moderator');
+    expect(fixture.componentInstance.dirty()).toBe(false);
+    expect(screen.queryByTestId('permissions-save')).toBeNull();
+
+    current.set(
+      view({
+        rows: [
+          rowView(SEND, 50),
+          rowView(INVITE, 25),
+          rowView(BAN, 'mixed'),
+          rowView(DEFAULT, 0),
+        ],
+      }),
+    );
+    await tick();
+    expect(select().textContent).toContain('Moderator');
+    expect(fixture.componentInstance.dirty()).toBe(false);
+
+    // Once synced, the saved level no longer overrides later remote changes.
+    current.set(view());
+    await tick();
+    expect(select().textContent).toContain('Member');
+  });
+
+  it('locks every row while saving', async () => {
+    const pending = new Subject<void>();
+    await setup(view(), pending.asObservable());
+    await choose('Send messages', 'Custom');
+    fireEvent.input(screen.getByTestId('permissions-custom-send-messages'), {
+      target: { value: '60' },
+    });
+    await tick();
+
+    fireEvent.click(screen.getByTestId('permissions-save'));
+    await tick();
+
+    expect(
+      screen
+        .getByRole('combobox', { name: 'Send messages' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    expect(
+      screen.getByRole('combobox', { name: 'Invite' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(
+      (
+        screen.getByTestId(
+          'permissions-custom-send-messages',
+        ) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it('describes an invalid Custom field with its error', async () => {
+    await setup();
+    await choose('Send messages', 'Custom');
+    const input = screen.getByRole('textbox', {
+      name: 'Send messages custom level',
+    });
+
+    fireEvent.input(input, { target: { value: '150' } });
+    await tick();
+
+    expect(input).toHaveAccessibleDescription(
+      'Enter a whole number up to 100.',
+    );
   });
 
   it('a failed save keeps the draft and shows the error', async () => {

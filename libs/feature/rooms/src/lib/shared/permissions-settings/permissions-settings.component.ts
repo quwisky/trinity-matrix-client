@@ -3,9 +3,11 @@ import {
   Component,
   DestroyRef,
   computed,
+  effect,
   inject,
   input,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { of, switchMap } from 'rxjs';
@@ -64,6 +66,8 @@ export class PermissionsSettingsComponent {
   protected readonly customText = signal<ReadonlyMap<string, string>>(
     new Map(),
   );
+  // Saved levels shown until the SDK applies them on the next sync.
+  private readonly saved = signal<ReadonlyMap<string, number>>(new Map());
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
 
@@ -105,6 +109,19 @@ export class PermissionsSettingsComponent {
       !this.saving(),
   );
 
+  constructor() {
+    effect(() => {
+      const levels = new Map(
+        this.view().rows.map((item) => [item.row.id, item.level]),
+      );
+      const saved = untracked(this.saved);
+      const pending = [...saved].filter(
+        ([id, level]) => levels.get(id) !== level,
+      );
+      if (pending.length < saved.size) this.saved.set(new Map(pending));
+    });
+  }
+
   dirty(): boolean {
     return this.changes().size > 0 || this.customText().size > 0;
   }
@@ -122,8 +139,8 @@ export class PermissionsSettingsComponent {
         ? { ...option, disabled: true }
         : option,
     );
-    const level = this.changes().get(item.row.id) ?? item.level;
-    if (item.level === 'mixed' && !this.changes().has(item.row.id)) {
+    const level = this.changes().get(item.row.id) ?? this.baseline(item);
+    if (level === 'mixed') {
       return [{ value: 'mixed', label: 'Mixed', disabled: true }, ...options];
     }
     if (
@@ -141,7 +158,7 @@ export class PermissionsSettingsComponent {
   protected choiceOf(item: PermissionRowView): Choice {
     const id = item.row.id;
     if (this.customText().has(id)) return 'custom';
-    const level = this.changes().get(id) ?? item.level;
+    const level = this.changes().get(id) ?? this.baseline(item);
     if (level === 'mixed') return 'mixed';
     return level === 0 || level === 50 || level === 100 ? level : 'custom';
   }
@@ -151,7 +168,7 @@ export class PermissionsSettingsComponent {
     const id = item.row.id;
     this.error.set(null);
     if (choice === 'custom') {
-      const level = this.changes().get(id) ?? item.level;
+      const level = this.changes().get(id) ?? this.baseline(item);
       this.customText.update((m) =>
         new Map(m).set(id, typeof level === 'number' ? String(level) : ''),
       );
@@ -208,7 +225,9 @@ export class PermissionsSettingsComponent {
       .subscribe({
         next: (done) => {
           this.saving.set(false);
-          if (done !== null) this.discard();
+          if (done === null) return;
+          this.saved.update((m) => new Map([...m, ...changes]));
+          this.discard();
         },
         error: (err: unknown) => {
           this.saving.set(false);
@@ -221,10 +240,14 @@ export class PermissionsSettingsComponent {
 
   private setChange(item: PermissionRowView, level: number): void {
     this.changes.update((m) =>
-      level === item.level
+      level === this.baseline(item)
         ? without(m, item.row.id)
         : new Map(m).set(item.row.id, level),
     );
+  }
+
+  private baseline(item: PermissionRowView): PermissionRowView['level'] {
+    return this.saved().get(item.row.id) ?? item.level;
   }
 
   private parse(text: string): number | null {
