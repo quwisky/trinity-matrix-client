@@ -58,6 +58,8 @@ function snapshot(
     banned: [
       { userId: '@banned:hs', roomDisplayName: 'Banned Bob', reason: 'spam' },
     ],
+    invited: [],
+    knocking: [],
     ...over,
   };
 }
