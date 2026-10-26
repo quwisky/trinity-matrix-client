@@ -16,6 +16,11 @@
     gap: 16px;
   }
 
+  /* Lets the list switch wrap instead of pushing past a narrow dialog. */
+  .members-settings__toolbar > :first-child {
+    min-width: 0;
+  }
+
   .members-settings__summary,
   .members-settings__loading,
   .members-settings__warning {
@@ -31,6 +36,7 @@
 
   .members-settings__destinations {
     display: flex;
+    flex-wrap: wrap;
     gap: 4px;
     padding: 4px;
     margin-top: 10px;
@@ -51,6 +57,7 @@
     color: var(--trinity-text-muted);
     font: inherit;
     font-size: var(--trinity-type-caption-size);
+    white-space: nowrap;
     cursor: pointer;
   }
 
