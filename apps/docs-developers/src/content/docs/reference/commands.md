@@ -19,6 +19,7 @@ Run Nx through pnpm so the workspace wrapper and pinned CLI are used.
 | `pnpm test`               | Run all Nx test targets                         |
 | `pnpm lint`               | Run all Nx lint targets                         |
 | `pnpm stylelint`          | Check CSS and SCSS                              |
+| `pnpm stylelint:ratchet`  | Lower the stylelint allow-list after a fix      |
 | `pnpm format:check`       | Check formatting                                |
 | `pnpm architecture:check` | Check architecture, host, UI, and E2E contracts |
 | `pnpm storybook`          | Serve the public-component Storybook            |

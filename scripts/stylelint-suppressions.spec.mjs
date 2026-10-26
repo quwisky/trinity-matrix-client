@@ -1,22 +1,25 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
-import stylelint from 'stylelint';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+  GLOB,
+  RULES,
+  SUPPRESSIONS,
+  committedSuppressions as committed,
+  currentSuppressions,
+  ratchet,
+  workspaceRoot,
+} from './stylelint-suppressions.mjs';
 
 /**
  * The theme-token allow-list may only shrink (#932).
  *
  * Stylelint's native suppressions fail a file that gains a literal, but they pass silently
  * when one is fixed (the slack stays), and `--suppress` rewrites the file wholesale, so a
- * new literal could ride in on a regeneration. These checks close both gaps.
+ * new literal could ride in on a regeneration. These checks close both gaps, and
+ * `pnpm stylelint:ratchet` lowers the list after a fix without ever raising it.
  */
-
-const workspaceRoot = join(import.meta.dirname, '..');
-const SUPPRESSIONS = 'stylelint-suppressions.json';
-const RULES = ['color-no-hex', 'declaration-property-value-disallowed-list'];
-const GLOB = '{apps,libs,e2e}/**/*.{scss,css}';
 
 const git = (...args) =>
   execFileSync('git', args, {
@@ -24,9 +27,6 @@ const git = (...args) =>
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
   });
-
-const committed = () =>
-  JSON.parse(readFileSync(join(workspaceRoot, SUPPRESSIONS), 'utf8'));
 
 /** The allow-list at the merge base with origin/main; `null` before it existed. */
 function baseSuppressions(run = git) {
@@ -112,6 +112,42 @@ describe('growth', () => {
   });
 });
 
+describe('ratchet', () => {
+  const committedList = {
+    'a.scss': { r: entry(3), s: entry(1) },
+    'b.scss': { r: entry(2) },
+  };
+
+  it('lowers a count that went down and drops one that reached zero', () => {
+    const { next, lowered } = ratchet(committedList, {
+      'a.scss': { r: entry(1) },
+      'b.scss': { r: entry(2) },
+    });
+    expect(next).toEqual({
+      'a.scss': { r: entry(1) },
+      'b.scss': { r: entry(2) },
+    });
+    expect(lowered).toEqual(['a.scss r: 3 -> 1', 'a.scss s: 1 -> 0']);
+  });
+
+  it('drops a file whose violations are all gone', () => {
+    const { next } = ratchet(committedList, {
+      'a.scss': committedList['a.scss'],
+    });
+    expect(next).toEqual({ 'a.scss': committedList['a.scss'] });
+  });
+
+  it('never raises a count or adds a file', () => {
+    const { next, lowered } = ratchet(committedList, {
+      'a.scss': { r: entry(5), s: entry(1) },
+      'b.scss': { r: entry(2) },
+      'c.scss': { r: entry(1) },
+    });
+    expect(next).toEqual(committedList);
+    expect(lowered).toEqual([]);
+  });
+});
+
 describe('stylelint token allow-list', () => {
   it('sweeps the same files as `pnpm stylelint`', () => {
     const pkg = JSON.parse(
@@ -126,25 +162,10 @@ describe('stylelint token allow-list', () => {
   });
 
   it('records exactly the current violations, so a fix shrinks it in the same change', async () => {
-    const location = join(
-      mkdtempSync(join(tmpdir(), 'stylelint-suppressions-')),
-      SUPPRESSIONS,
-    );
-    await stylelint.lint({
-      files: GLOB,
-      cwd: workspaceRoot,
-      suppressRule: RULES,
-      suppressLocation: location,
-    });
-    // Stylelint keys files relative to the process cwd, which is the project dir under nx.
-    const written = JSON.parse(readFileSync(location, 'utf8'));
-    const recorded = Object.fromEntries(
-      Object.entries(written).map(([file, rules]) => [
-        relative(workspaceRoot, resolve(file)),
-        rules,
-      ]),
-    );
-    expect(recorded).toEqual(committed());
+    expect(
+      await currentSuppressions(),
+      'stylelint-suppressions.json is out of date: run `pnpm stylelint:ratchet` and commit it',
+    ).toEqual(committed());
   }, 120_000);
 
   it('never grows against main', () => {
