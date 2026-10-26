@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import {
   OAuth2,
+  OAuth2Error,
   OAuthGrantType,
   createClient,
   type BearerTokenResponse,
@@ -45,6 +46,28 @@ const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v4:';
  * apart from the PKCE client. Versioned like {@link CLIENT_ID_KEY_PREFIX}.
  */
 const DEVICE_GRANT_CLIENT_ID_KEY_PREFIX = 'oidc.deviceGrantClientId.v2:';
+
+/**
+ * Register with the provider, once more if that fails. MAS answers 500 to the loser of two
+ * registrations racing to store the same client metadata, and the second try reuses the
+ * winner's client; the SDK reports every failed registration the same way.
+ */
+async function registerClient(
+  metadata: ValidatedAuthMetadata,
+  request: OAuthRegistrationRequest,
+): Promise<string> {
+  try {
+    return await OAuth2.registerClient(metadata, request);
+  } catch (error: unknown) {
+    if (
+      !(error instanceof Error) ||
+      error.message !== OAuth2Error.DynamicRegistrationFailed
+    ) {
+      throw error;
+    }
+    return OAuth2.registerClient(metadata, request);
+  }
+}
 
 /** What platform this build registers as (drives redirect-uri + registration policy). */
 export type OidcApplicationType = 'web' | 'native';
@@ -378,7 +401,7 @@ export class OidcClientService {
     if (cached) {
       return cached;
     }
-    const clientId = await OAuth2.registerClient(metadata, {
+    const clientId = await registerClient(metadata, {
       client_name: this.handoff.deviceDisplayName(),
       client_uri: CLIENT_URI,
       application_type: 'web',
@@ -492,7 +515,7 @@ export class OidcClientService {
       application_type: applicationType,
       redirect_uris: redirectUris as OAuthRegistrationRequest['redirect_uris'],
     };
-    const clientId = await OAuth2.registerClient(metadata, request);
+    const clientId = await registerClient(metadata, request);
     await firstValueFrom(this.storage.set(key, clientId));
     return clientId;
   }

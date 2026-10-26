@@ -340,6 +340,20 @@ describe('OidcClientService', () => {
       expect(prefs.get(CLIENT_ID_KEY)).toBe(CLIENT_ID);
     });
 
+    it('registers again once when the provider fails a registration', async () => {
+      // MAS answers 500 to the loser of two registrations racing to store the same client.
+      const answers = [
+        jsonResponse({ error: 'server_error' }, 500),
+        jsonResponse({ client_id: CLIENT_ID }),
+      ];
+      const fetchMock = stubFetch({ registration: () => answers.shift()! });
+
+      await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(prefs.get(CLIENT_ID_KEY)).toBe(CLIENT_ID);
+    });
+
     it('keeps a separate client id for each homeserver naming the same issuer', async () => {
       // A homeserver chooses the issuer it names, so a cache keyed on the issuer alone
       // would let one homeserver's registration be reused by another's sign-in.
@@ -1472,6 +1486,42 @@ describe('OidcClientService', () => {
       fetchMock.mock.calls.filter(
         ([url]) => url === AUTH_METADATA.registration_endpoint,
       );
+
+    it('registers again once when the provider fails a registration', async () => {
+      const answers = [
+        jsonResponse({ error: 'server_error' }, 500),
+        jsonResponse({ client_id: 'qr-client' }),
+      ];
+      const fetchMock = stubFetch({ registration: () => answers.shift()! });
+
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantClientId(AUTH_METADATA, HOMESERVER),
+        ),
+      ).toBe('qr-client');
+      expect(registrations(fetchMock)).toHaveLength(2);
+    });
+
+    it('fails when the second registration fails too', async () => {
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ error: 'server_error' }, 500),
+      });
+
+      await expect(
+        firstValueFrom(svc.deviceGrantClientId(AUTH_METADATA, HOMESERVER)),
+      ).rejects.toThrow('Dynamic registration failed');
+      expect(registrations(fetchMock)).toHaveLength(2);
+      expect(prefs.get(DEVICE_KEY)).toBeUndefined();
+    });
+
+    it('does not register again when the provider answers without a client id', async () => {
+      const fetchMock = stubFetch({ registration: () => jsonResponse({}) });
+
+      await expect(
+        firstValueFrom(svc.deviceGrantClientId(AUTH_METADATA, HOMESERVER)),
+      ).rejects.toThrow('Dynamic registration invalid response');
+      expect(registrations(fetchMock)).toHaveLength(1);
+    });
 
     it('registers a client of its own with the device-code grant and an https redirect', async () => {
       prefs.set(CLIENT_ID_KEY, 'pkce-client');
