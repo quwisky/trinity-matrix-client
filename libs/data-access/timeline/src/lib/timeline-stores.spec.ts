@@ -36,10 +36,16 @@ describe('TimelineStores', () => {
     const fake = new FakeTimelineEngine();
     const alice = fake.alice;
     let open = 0;
+    let subscribes = 0;
     const timeline = fake.timeline.bind(fake);
     fake.timeline = (...args) =>
       timeline(...args).pipe(
-        tap({ subscribe: () => (open += 1) }),
+        tap({
+          subscribe: () => {
+            open += 1;
+            subscribes += 1;
+          },
+        }),
         finalize(() => (open -= 1)),
       );
     const snapshot = signal<SessionSnapshot>({
@@ -64,11 +70,15 @@ describe('TimelineStores', () => {
       { accountId: alice, roomId: ROOM },
       { kind: 'live' },
     );
-    expect(open).toBe(1);
+    expect([open, subscribes]).toEqual([1, 1]);
+
+    publish([liveAccount(alice, 1)]);
+    expect([open, subscribes]).toEqual([1, 1]);
 
     publish([liveAccount(alice, 2)]);
 
-    expect(open).toBe(1);
+    // The first subscription closed and a second one opened.
+    expect([open, subscribes]).toEqual([1, 2]);
     expect(store.available()).toBe(true);
     fake.seed(alice, ROOM, [fakeEventItem('$b', fake.bob)]);
     expect(store.item('$b')).not.toBeNull();
@@ -81,7 +91,7 @@ describe('TimelineStores', () => {
 
     publish([liveAccount(alice, 3)]);
 
-    expect(open).toBe(1);
+    expect([open, subscribes]).toEqual([1, 3]);
     expect(store.item('$b')).not.toBeNull();
 
     store.close();

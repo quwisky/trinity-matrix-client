@@ -127,7 +127,11 @@ export class TimelineStore {
     const { accountId, roomId } = this.key;
     this.subscription = this.engine
       .timeline(accountId, roomId, this.focus)
-      .subscribe((update) => this.fold(update));
+      .subscribe({
+        next: (update) => this.fold(update),
+        // Engine streams should not error; one that does leaves nothing stale on screen.
+        error: () => this.clear(),
+      });
   }
 
   private fold(update: TimelineUpdate): void {

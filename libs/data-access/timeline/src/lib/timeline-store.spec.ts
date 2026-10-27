@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { Subject } from 'rxjs';
+import { Subject, merge } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
@@ -205,9 +205,11 @@ describe('TimelineStore', () => {
   });
 
   it('presents only the last 100 items while hidden', () => {
-    const items = Array.from({ length: 150 }, (_, i) =>
+    const events = Array.from({ length: 150 }, (_, i) =>
       fakeEventItem(`$e${i}`, bob),
     );
+    // Virtual items take window slots too.
+    const items = [...events.slice(0, 120), MARKER, ...events.slice(120)];
     fake.seed(alice, ROOM, items);
     const store = open();
     const visibleViews = store.messages();
@@ -215,13 +217,29 @@ describe('TimelineStore', () => {
 
     store.setVisible(false);
 
-    expect(store.items()).toHaveLength(150);
-    expect(ids(store)).toEqual(items.slice(-100).map((i) => i.eventId));
-    expect(store.messages()[0]).toBe(visibleViews[50]);
+    expect(store.items()).toHaveLength(151);
+    expect(ids(store)).toEqual(events.slice(-99).map((i) => i.eventId));
+    expect(store.messages()[0]).toBe(visibleViews[51]);
 
     store.setVisible(true);
 
     expect(store.messages()).toHaveLength(150);
+  });
+
+  it('a feed error clears the store to unavailable', () => {
+    const errors$ = new Subject<never>();
+    const timeline = fake.timeline.bind(fake);
+    fake.timeline = (...args) => merge(timeline(...args), errors$);
+    fake.seed(alice, ROOM, [fakeEventItem('$a', bob)]);
+    const store = open();
+    expect(store.available()).toBe(true);
+
+    errors$.error(new Error('engine failed'));
+
+    expect(store.available()).toBe(false);
+    expect(store.items()).toEqual([]);
+    expect(store.messages()).toEqual([]);
+    expect(store.room()).toBeNull();
   });
 
   it('re-presents every row when the room gains its encryption state event', () => {

@@ -322,6 +322,49 @@ describe('JsSdkTimelineEngine', () => {
     timeline.subscription.unsubscribe();
   });
 
+  it('emits readMarker once a page brings in the m.fully_read event', async () => {
+    const { client } = world([msg('$b'), msg('$c')], {
+      fullyRead: '$a',
+      token: 't1',
+    });
+    client.createMessagesRequest.mockResolvedValue({
+      chunk: [msg('$a')],
+      end: 't2',
+    });
+    const engine = engineFor(client);
+    const timeline = watch(engine);
+    const kinds = () =>
+      timeline
+        .items()
+        .map((item) => (item.kind === 'event' ? item.eventId : item.kind));
+    expect(kinds()).toEqual(['$b', '$c']);
+
+    await firstValueFrom(engine.paginateBackwards(ME, ROOM, LIVE, 10));
+
+    expect(kinds()).toEqual(['$a', 'readMarker', '$b', '$c']);
+    timeline.subscription.unsubscribe();
+  });
+
+  it('keeps readMarker where m.fully_read was at subscribe when it moves later', async () => {
+    const { client, room } = world([msg('$a'), msg('$b'), msg('$c')], {
+      fullyRead: '$a',
+    });
+    const timeline = watch(engineFor(client));
+    room.getAccountData = (() => ({
+      getContent: () => ({ event_id: '$b' }),
+    })) as typeof room.getAccountData;
+
+    room.addEventsToTimeline([msg('$d')], false);
+    await Promise.resolve();
+
+    expect(
+      timeline
+        .items()
+        .map((item) => (item.kind === 'event' ? item.eventId : item.kind)),
+    ).toEqual(['timelineStart', '$a', 'readMarker', '$b', '$c', '$d']);
+    timeline.subscription.unsubscribe();
+  });
+
   it('emits timelineStart only once the start of the room is reached', () => {
     const { client } = world([msg('$a')], { token: 'older' });
     const timeline = watch(engineFor(client));
