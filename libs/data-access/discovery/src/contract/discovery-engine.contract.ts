@@ -44,6 +44,9 @@ export function defineDiscoveryEngineContract(
       const result = await once(context.engine.discover('nonexistent.invalid'));
 
       expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.failure.code).toBe('discovery-failed');
+      expect(result.failure).not.toHaveProperty('message');
     });
 
     it('finds a public room by name, and not among Spaces', async () => {
@@ -88,6 +91,8 @@ export function defineDiscoveryEngineContract(
 
       expect(result.ok).toBe(false);
       if (result.ok) return;
+      expect(result.failure.code).toBe('request-failed');
+      expect(result.failure).not.toHaveProperty('message');
       expect(result.failure.diagnostic.httpStatus).toBe(404);
     });
 
