@@ -1,12 +1,4 @@
-import {
-  DestroyRef,
-  Injectable,
-  type Signal,
-  inject,
-  linkedSignal,
-  untracked,
-} from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Injectable, inject } from '@angular/core';
 import {
   NEVER,
   Observable,
@@ -19,11 +11,7 @@ import {
   take,
   throwError,
 } from 'rxjs';
-import {
-  SESSION_ENGINE,
-  SessionStateService,
-} from '@trinity/data-access/matrix-client';
-import { plainEqual } from '@trinity/util/matrix';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import type { SpaceChildLink } from './room-list-engine';
 import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 import { orderBetween, spreadOrders } from './space-child-order';
@@ -31,7 +19,6 @@ import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
 } from './room-library-governance-policy';
-import { SpaceLinkFeeds } from './space-link-feeds';
 import { unwrapOwned } from './unwrap-owned';
 
 export type { SpaceChildLink } from './room-list-engine';
@@ -42,7 +29,7 @@ export interface SpaceChildWriteReceipt {
 }
 
 /**
- * Live `m.space.child` links and exact-Account curation writes. Writes preserve the whole
+ * Exact-Account curation writes. Writes preserve the whole
  * link because Matrix replaces state rather than merging it.
  */
 @Injectable({ providedIn: 'root' })
@@ -51,65 +38,9 @@ export class SpaceChildrenService {
   private readonly session = inject(SessionStateService);
   private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
 
-  private readonly feeds = new SpaceLinkFeeds(this.engine);
-  private readonly watched = new Map<
-    string,
-    Signal<readonly SpaceChildLink[]>
-  >();
-
-  constructor() {
-    // Closes the links of an Account that stopped being active or live, without a read.
-    inject(SESSION_ENGINE)
-      .session()
-      .pipe(takeUntilDestroyed())
-      .subscribe(() =>
-        untracked(() => {
-          const active = this.session.activeAccountId();
-          this.feeds.close(
-            (feed) =>
-              feed.accountId !== active ||
-              this.session.status(feed.accountId)?.generation !==
-                feed.generation,
-          );
-        }),
-      );
-    inject(DestroyRef).onDestroy(() => this.feeds.close(() => true));
-  }
-
   /**
-   * A space's child links for the active Account, live; the read every curation surface
-   * should use. Memoized per space id and seeded on first read, so a field initializer
-   * sees no blank first frame.
-   */
-  linksFor(spaceId: string): Signal<readonly SpaceChildLink[]> {
-    let links = this.watched.get(spaceId);
-    if (!links) {
-      links = linkedSignal<
-        readonly SpaceChildLink[] | null,
-        readonly SpaceChildLink[]
-      >({
-        source: () => {
-          const accountId = this.session.activeAccountId();
-          const generation = accountId
-            ? this.session.status(accountId)?.generation
-            : undefined;
-          return accountId && generation !== undefined
-            ? this.feeds.linksOf(accountId, generation, spaceId)
-            : null;
-        },
-        // With no live Account the last links stay: mounted surfaces would render an
-        // empty list as "this space has no rooms", a wrong answer.
-        computation: (current, previous) => current ?? previous?.value ?? [],
-        equal: plainEqual,
-      }).asReadonly();
-      this.watched.set(spaceId, links);
-    }
-    return links;
-  }
-
-  /**
-   * Retained by the Room Library session lifetime. Link feeds open on first read, so this
-   * only acknowledges at once.
+   * Retained by the Room Library session lifetime; nothing to start, so this only acknowledges
+   * at once.
    */
   runProjection(): Observable<void> {
     return concat(of(undefined), NEVER);

@@ -112,7 +112,10 @@ export class SpaceContentsService {
   private readonly children = inject(SpaceChildrenService);
   private readonly injector = inject(Injector);
 
-  /** Observe one immutable target and reattach when its Account starts a new generation. */
+  /**
+   * Observe one immutable target and reattach when its Account starts a new generation.
+   * Subscribe outside a reactive context: the `watch()` effect is created at subscribe time.
+   */
   observe(target: SpaceContentsTarget): Observable<SpaceContentsSnapshot> {
     const generation = computed(
       () => this.session.status(target.accountId)?.generation ?? null,
