@@ -13,13 +13,7 @@ import {
   unencryptedMarkFor,
   type RoomEncryptionFlags,
 } from '@trinity/util/matrix';
-import { compareOrder } from '../space-child-order';
-import { roomSummaryOf } from '../room-projection';
-import { type RoomSummary } from '../room-library.service';
 import type { RoomInfo, RoomMembership } from '../room-list-engine';
-
-/** State event type linking a space to a child room. */
-const SPACE_CHILD_EVENT = 'm.space.child';
 
 /**
  * The unstable prefix some clients still write for MSC2867's marked-unread flag. Read as
@@ -50,12 +44,6 @@ export function isMarkedUnread(room: Room): boolean {
     }
   }
   return false;
-}
-
-interface ChildEntry {
-  id: string;
-  order: string;
-  name: string;
 }
 
 /**
@@ -229,68 +217,12 @@ export function toRoomInfo(
 }
 
 /**
- * Project one joined {@link Room} into a {@link RoomSummary} tagged with its account, through
- * {@link roomSummaryOf} so the selected-Account projector builds the rows the engine-fed
- * {@link RoomLibraryService} does.
- */
-export function buildRoomSummary(
-  room: Room,
-  accountId: string,
-  directUserId?: string,
-  encryption?: RoomEncryptionFlags,
-  hasCryptoStore = true,
-): RoomSummary {
-  return roomSummaryOf(
-    accountId,
-    roomInfoOf(room, {
-      ownUserId: null,
-      directUserId: directUserId ?? null,
-      encryption,
-      hasCryptoStore,
-    }),
-  );
-}
-
-/**
  * A Space this Account holds: it has joined it. A Space it left, or was removed from, stays
  * in the SDK store with that membership, and an accepted invitation keeps `invite` until the
  * join syncs; neither counts.
  */
 export function isJoinedSpace(room: Room): boolean {
   return room.isSpaceRoom() && room.getMyMembership() === 'join';
-}
-
-/**
- * A space's *joined* child room ids, ordered by the `m.space.child` `order` field
- * (Unicode code point, unordered children last) then room name. Children we have not
- * joined — and removed/dangling child links — are dropped. Pure read of the space room,
- * shared by {@link SpacesService} (active account) and the selected-Account projector.
- */
-export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
-  const children = (
-    liveRoomState(space)?.getStateEvents(SPACE_CHILD_EVENT) ?? []
-  )
-    .map((event): ChildEntry | null => {
-      const childId = event.getStateKey();
-      const content = event.getContent();
-      const via = content['via'];
-      if (!childId || !Array.isArray(via) || via.length === 0) {
-        return null; // removed / invalid child link
-      }
-      const child = client.getRoom(childId);
-      if (!child || child.getMyMembership() !== 'join') {
-        return null; // only joined children
-      }
-      const order =
-        typeof content['order'] === 'string' ? content['order'] : '';
-      return { id: childId, order, name: child.name || childId };
-    })
-    .filter((entry): entry is ChildEntry => entry !== null);
-
-  children.sort(
-    (a, b) => compareOrder(a.order, b.order) || a.name.localeCompare(b.name),
-  );
-  return children.map((entry) => entry.id);
 }
 
 const INVITE_BLOCKED_ERRCODES = new Set([

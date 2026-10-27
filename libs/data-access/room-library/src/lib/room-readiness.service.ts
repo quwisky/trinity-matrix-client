@@ -1,11 +1,5 @@
-import { Injectable, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import {
-  ClientEvent,
-  KnownMembership,
-  RoomEvent,
-  SyncState,
-} from 'matrix-js-sdk';
+import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   Observable,
   TimeoutError,
@@ -15,6 +9,7 @@ import {
   throwError,
   timeout,
 } from 'rxjs';
+import { RoomListStore } from './room-list-store';
 
 export const ROOM_READINESS_TIMEOUT_MS = 15_000;
 
@@ -33,48 +28,48 @@ export class RoomReadinessError extends Error {
 /** Finite readiness barriers for post-write Room Library navigation. */
 @Injectable({ providedIn: 'root' })
 export class RoomReadinessService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly store = inject(RoomListStore);
+  private readonly session = inject(SessionStateService);
+  private readonly injector = inject(Injector);
 
   /**
-   * Wait until one exact Room is in its Account's synced SDK graph, joined. Cold and finite.
+   * Wait until one exact Room is in its Account's room list, joined. Cold and finite.
    *
-   * Create/join endpoints can resolve before `/sync` publishes the Room, and a Room the store
-   * already held (left earlier, or invited) keeps that membership until `/sync` brings the
-   * join; a Workspace command must not focus it until Timeline can attach to that same live
-   * object. Listeners are installed before the second read to close the event-between-checks
-   * race; cancellation detaches them.
+   * Create/join endpoints can resolve before `/sync` publishes the Room, and a Room already
+   * listed (invited) keeps that membership until `/sync` brings the join; a Workspace command
+   * must not focus it until Timeline can attach to that same live object. The wait is an
+   * effect that re-reads the list and session state on every run, so a change between the
+   * first check and the first run is not missed; cancellation destroys it.
    */
   waitForRoom(accountId: string, roomId: string): Observable<void> {
     return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) {
+      if (!this.session.status(accountId)) {
         return throwError(() => new RoomReadinessError('account-unavailable'));
       }
       const joined = (): boolean =>
-        client.getRoom(roomId)?.getMyMembership() === KnownMembership.Join;
+        this.store.room(accountId, roomId)?.membership === 'join';
       if (joined()) {
         return of(void 0);
       }
       return new Observable<void>((subscriber) => {
-        const onRoom = (): void => {
-          if (!joined()) return;
-          subscriber.next();
-          subscriber.complete();
-        };
-        const onSync = (state: SyncState): void => {
-          if (state === SyncState.Stopped) {
-            subscriber.error(new RoomReadinessError('sync-stopped'));
-          }
-        };
-        client.on(ClientEvent.Room, onRoom);
-        client.on(RoomEvent.MyMembership, onRoom);
-        client.on(ClientEvent.Sync, onSync);
-        onRoom();
-        return () => {
-          client.off(ClientEvent.Room, onRoom);
-          client.off(RoomEvent.MyMembership, onRoom);
-          client.off(ClientEvent.Sync, onSync);
-        };
+        const watch = effect(
+          () => {
+            const status = this.session.status(accountId);
+            // An account that left the session has stopped syncing as surely as a stopped one.
+            if (!status || status.syncState === 'stopped') {
+              untracked(() =>
+                subscriber.error(new RoomReadinessError('sync-stopped')),
+              );
+            } else if (joined()) {
+              untracked(() => {
+                subscriber.next();
+                subscriber.complete();
+              });
+            }
+          },
+          { injector: this.injector },
+        );
+        return () => watch.destroy();
       }).pipe(
         timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
         catchError((error: unknown) =>

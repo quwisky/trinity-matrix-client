@@ -50,13 +50,14 @@ Plain-data readers use `SessionStateService`, which turns the snapshot into sign
 
 `RoomListEngine` (`libs/data-access/room-library`) exposes an account's joined, invited and knocked rooms as plain `RoomInfo` rows. Its streams take an account id and emit a snapshot first: `rooms()` emits `VectorDiff` batches that start with a `reset`, while `typing()` and `directMap()` emit whole maps. `RoomListStore` holds one subscription per live account, and `ROOM_LIST_ENGINE` provides the `matrix-js-sdk` adapter.
 
-Creating a room or DM, leaving and tagging show their effect in `rooms()`, open subscriptions included, before the command replies. Marking a room unread or read writes account data, which shows once `/sync` returns it. Every command on an account that is not live returns `account-not-live`. One contract, `defineRoomListEngineContract`, runs against `FakeRoomListEngine` in unit tests and against Synapse in `trinity-e2e-engine:contract`.
+Creating a room, space or DM, joining, leaving and tagging show their effect in `rooms()`, open subscriptions included, before the command replies; writing a space child link, or creating a room inside a space, shows in `spaceChildLinks()` the same way. `spaceHierarchy()` reads a space and its direct children from `/hierarchy`, page by page, and fails rather than loop when the server repeats a page token. Marking a room unread or read writes account data, which shows once `/sync` returns it. Every command on an account that is not live returns `account-not-live`. One contract, `defineRoomListEngineContract`, runs against `FakeRoomListEngine` in unit tests and against Synapse in `trinity-e2e-engine:contract`.
 
-| Stream                 | Emits                                                         |
-| ---------------------- | ------------------------------------------------------------- |
-| `rooms(accountId)`     | `VectorDiff<RoomInfo>` batches, a `reset` first               |
-| `typing(accountId)`    | joined room id to the members typing in it, own user included |
-| `directMap(accountId)` | the account's `m.direct` map, left rooms included             |
+| Stream                                | Emits                                                         |
+| ------------------------------------- | ------------------------------------------------------------- |
+| `rooms(accountId)`                    | `VectorDiff<RoomInfo>` batches, a `reset` first               |
+| `typing(accountId)`                   | joined room id to the members typing in it, own user included |
+| `directMap(accountId)`                | the account's `m.direct` map, left rooms included             |
+| `spaceChildLinks(accountId, spaceId)` | the space's live `m.space.child` links in spec order          |
 
 ## Treat synchronization as authoritative {#sync-authority}
 
