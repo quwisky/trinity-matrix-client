@@ -2,12 +2,21 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { signal } from '@angular/core';
-import { of } from 'rxjs';
+import { type Observable, of } from 'rxjs';
 import { vi } from 'vitest';
 import {
   MatrixClientService,
   SESSION_ENGINE,
+  SessionStateService,
+  type SessionEngine,
+  type SessionSnapshot,
 } from '@trinity/data-access/matrix-client';
+import {
+  engineFail,
+  engineOk,
+  type AccountStartFailureReason,
+  type EngineResult,
+} from '@trinity/util/matrix';
 import {
   LocalDataWipeService,
   SecureStorageService,
@@ -34,6 +43,50 @@ export const activeIntent = {
   liveAccounts: 'replace',
   accountRecord: 'upsert',
 } satisfies AccountEstablishmentIntent;
+
+type EngineStub = Pick<
+  SessionEngine,
+  | 'session'
+  | 'restorePersisted'
+  | 'requireReauthentication'
+  | 'activateAccount'
+  | 'rollbackAccountStart'
+  | 'setActive'
+  | 'stop'
+  | 'signOutAll'
+>;
+
+/** A snapshot in which exactly these accounts are live. */
+export function liveSession(...accountIds: string[]): SessionSnapshot {
+  return {
+    activeAccountId: null,
+    accounts: accountIds.map((accountId) => ({
+      accountId,
+      generation: 1,
+      syncState: 'syncing',
+      serverSynced: true,
+      roomsPrepared: true,
+      waitingCount: 0,
+      cryptoStoreEncrypted: true,
+    })),
+    softLoggedOut: [],
+  };
+}
+
+export const started = (): Observable<EngineResult<null>> => of(engineOk(null));
+
+export function startFailed(
+  reason: AccountStartFailureReason,
+): Observable<EngineResult<null>> {
+  return of(
+    engineFail({
+      kind: 'unexpected',
+      code: 'account-start-failed',
+      diagnostic: { kind: 'unexpected' },
+      params: { reason },
+    }),
+  );
+}
 
 export function setup(activeAccountId: string | null = '@old:hs') {
   const active = signal(activeAccountId);
@@ -74,9 +127,21 @@ export function setup(activeAccountId: string | null = '@old:hs') {
     forgetAccountPreferences: vi.fn(() => of(void 0)),
   };
   const engine = {
-    stop: vi.fn(() => of(null)),
-    signOutAll: vi.fn(() => of(null)),
-  };
+    session: vi.fn<EngineStub['session']>(() =>
+      of(liveSession(session.userId, '@next:hs')),
+    ),
+    restorePersisted: vi.fn<EngineStub['restorePersisted']>(started),
+    requireReauthentication: vi.fn<EngineStub['requireReauthentication']>(() =>
+      of(null),
+    ),
+    activateAccount: vi.fn<EngineStub['activateAccount']>(started),
+    rollbackAccountStart: vi.fn<EngineStub['rollbackAccountStart']>(() =>
+      of(null),
+    ),
+    setActive: vi.fn<EngineStub['setActive']>(() => of(null)),
+    stop: vi.fn<EngineStub['stop']>(() => of(null)),
+    signOutAll: vi.fn<EngineStub['signOutAll']>(() => of(null)),
+  } satisfies EngineStub;
   TestBed.configureTestingModule({
     providers: [
       MatrixAccountRuntimeAdapter,
@@ -84,7 +149,9 @@ export function setup(activeAccountId: string | null = '@old:hs') {
       MockProvider(MatrixClientService, {
         activeUserId: active.asReadonly(),
         clientFor: vi.fn(() => ({}) as never),
-        rollbackAccountStart: vi.fn(() => of(void 0)),
+      }),
+      MockProvider(SessionStateService, {
+        activeAccountId: active.asReadonly(),
       }),
       MockProvider(SessionStorageService),
       MockProvider(SecureStorageService, {

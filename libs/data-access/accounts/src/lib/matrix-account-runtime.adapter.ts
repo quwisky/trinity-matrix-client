@@ -1,6 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import {
   MatrixClientService,
+  SESSION_ENGINE,
+  SessionStateService,
+  accountStartFailureReason,
+  type PersistedAccountActivation,
   type PersistedAccountStartOutcome,
 } from '@trinity/data-access/matrix-client';
 import {
@@ -17,6 +21,7 @@ import {
   map,
   of,
   switchMap,
+  take,
   tap,
   throwError,
   timeout,
@@ -53,6 +58,7 @@ type DeviceNovelty = 'new' | 'existing' | 'unknown';
 @Injectable({ providedIn: 'root' })
 export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(SESSION_ENGINE);
   private readonly storage = inject(SessionStorageService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly lifecycleAdapter = inject(AccountLifecycleAdapter);
@@ -66,7 +72,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   >();
   private readonly newDeviceFacts = new Subject<NewDeviceEstablishment>();
 
-  readonly activeAccountId = this.matrix.activeUserId;
+  readonly activeAccountId = inject(SessionStateService).activeAccountId;
   readonly newDevices: Observable<NewDeviceEstablishment> =
     this.newDeviceFacts.asObservable();
 
@@ -103,15 +109,14 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         }
         const { session } = loaded;
         if (!session) {
-          this.matrix.requireReauthentication(accountId);
-          return of({ kind: 'reauthentication-required' as const });
+          return this.engine
+            .requireReauthentication(accountId)
+            .pipe(map(() => ({ kind: 'reauthentication-required' as const })));
         }
-        return this.matrix
-          .restorePersisted(
-            session,
-            role === 'active' ? 'activate' : 'background',
-          )
-          .pipe(map((outcome) => this.toAdapterOutcome(outcome)));
+        return this.start(
+          session,
+          role === 'active' ? 'activate' : 'background',
+        ).pipe(map((outcome) => this.toAdapterOutcome(outcome)));
       }),
     );
   }
@@ -210,7 +215,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         switchMap((persisted) =>
           persisted.kind === 'failed'
             ? of(persisted)
-            : this.matrix.restorePersisted(persisted.stored, 'background').pipe(
+            : this.start(persisted.stored, 'background').pipe(
                 tap((started) => {
                   if (started.kind === 'ready' && replaced) {
                     this.signOutReplacedDevice(replaced);
@@ -227,31 +232,42 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             return of({ kind: 'ready' as const });
           }
           let activePointerCommitted = false;
-          return defer(() => {
-            if (!this.matrix.clientFor(session.userId)) {
-              throw new Error(
-                `Account Runtime cannot commit placement for a non-live Account: ${session.userId}`,
-              );
-            }
-            return this.storage.setActiveForEstablishment(session.userId).pipe(
-              tap(() => {
-                activePointerCommitted = true;
-                this.matrix.activateAccount(
-                  session.userId,
-                  intent.liveAccounts,
-                );
-              }),
-              map(() => ({ kind: 'ready' as const })),
-              catchError((error: unknown) =>
-                this.rollbackPlacement(
-                  session.userId,
-                  previousActiveAccountId,
-                  activePointerCommitted,
-                  error,
-                ),
-              ),
+          const nonLive = () =>
+            new Error(
+              `Account Runtime cannot commit placement for a non-live Account: ${session.userId}`,
             );
-          });
+          return this.isLive(session.userId).pipe(
+            switchMap((live) => {
+              if (!live) {
+                return throwError(nonLive);
+              }
+              return this.storage
+                .setActiveForEstablishment(session.userId)
+                .pipe(
+                  switchMap(() => {
+                    activePointerCommitted = true;
+                    return this.engine.activateAccount(
+                      session.userId,
+                      intent.liveAccounts,
+                    );
+                  }),
+                  map((result) => {
+                    if (!result.ok) {
+                      throw nonLive();
+                    }
+                    return { kind: 'ready' as const };
+                  }),
+                  catchError((error: unknown) =>
+                    this.rollbackPlacement(
+                      session.userId,
+                      previousActiveAccountId,
+                      activePointerCommitted,
+                      error,
+                    ),
+                  ),
+                );
+            }),
+          );
         }),
         tap((outcome) => {
           if (outcome.kind === 'ready') {
@@ -272,9 +288,9 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   prepareActiveAccount(
     accountId: string,
   ): Observable<AdapterAccountSwitchOutcome> {
-    return defer(() =>
-      of(
-        this.matrix.clientFor(accountId)
+    return this.isLive(accountId).pipe(
+      map((live) =>
+        live
           ? ({ kind: 'ready' } as const)
           : ({ kind: 'failed', failure: 'account-unavailable' } as const),
       ),
@@ -284,26 +300,28 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   commitActiveAccount(
     accountId: string,
   ): Observable<AdapterAccountSwitchOutcome> {
-    return defer(() => {
-      if (!this.matrix.clientFor(accountId)) {
-        return of({
-          kind: 'failed',
-          failure: 'account-unavailable',
-        } as const);
-      }
-      return this.storage.setActiveForEstablishment(accountId).pipe(
-        tap(() => this.matrix.setActive(accountId)),
-        map(() => ({ kind: 'ready' as const })),
-        catchError((error: unknown) =>
-          this.isExpectedStorageFailure(error)
-            ? of({
-                kind: 'failed' as const,
-                failure: 'local-state-unavailable' as const,
-              })
-            : throwError(() => error),
-        ),
-      );
-    });
+    return this.isLive(accountId).pipe(
+      switchMap((live) => {
+        if (!live) {
+          return of({
+            kind: 'failed',
+            failure: 'account-unavailable',
+          } as const);
+        }
+        return this.storage.setActiveForEstablishment(accountId).pipe(
+          switchMap(() => this.engine.setActive(accountId)),
+          map(() => ({ kind: 'ready' as const })),
+          catchError((error: unknown) =>
+            this.isExpectedStorageFailure(error)
+              ? of({
+                  kind: 'failed' as const,
+                  failure: 'local-state-unavailable' as const,
+                })
+              : throwError(() => error),
+          ),
+        );
+      }),
+    );
   }
 
   signOutAccount(accountId: string): Observable<AccountSignOutOutcome> {
@@ -375,7 +393,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   ): Observable<
     Extract<AdapterAccountEstablishmentOutcome, { readonly kind: 'failed' }>
   > {
-    return this.matrix.rollbackAccountStart(accountId).pipe(
+    return this.engine.rollbackAccountStart(accountId).pipe(
       switchMap(() =>
         restoreActivePointer
           ? this.storage.restoreActiveAfterFailedEstablishment(
@@ -454,6 +472,33 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         .detachedClient(stored, { persistRefreshedTokens: false })
         .logout(true),
     ).subscribe({ error: () => undefined });
+  }
+
+  /** Reads the engine's next snapshot, which already reflects any command that has replied. */
+  private isLive(accountId: string): Observable<boolean> {
+    return this.engine.session().pipe(
+      take(1),
+      map((s) => s.accounts.some((a) => a.accountId === accountId)),
+    );
+  }
+
+  /** Starts a saved session, keeping an expected start failure as a typed outcome. */
+  private start(
+    session: MatrixSession,
+    activation: PersistedAccountActivation,
+  ): Observable<PersistedAccountStartOutcome> {
+    return this.engine.restorePersisted(session, activation).pipe(
+      map((result): PersistedAccountStartOutcome => {
+        if (result.ok) return { kind: 'ready' };
+        const reason = accountStartFailureReason(result.failure);
+        if (!reason) {
+          throw new Error(
+            `Account Runtime cannot start an Account: ${result.failure.code}`,
+          );
+        }
+        return { kind: 'failed', failure: reason };
+      }),
+    );
   }
 
   private toAdapterOutcome(
