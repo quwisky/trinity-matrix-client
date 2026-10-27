@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { ErrorHandler, signal } from '@angular/core';
 import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DraftStoreService,
   PrivacySettingsService,
@@ -48,9 +48,17 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { TRIM_KEEP, noteSyncPosition } from './live-timeline-trim';
+import { liveSession } from './timeline.spec-harness';
 
 const ALICE = '@alice:example.org';
 const BOB = '@bob:example.org';
+
+// A real Conversation's timeline follows the session through its store.
+beforeEach(() => {
+  TestBed.configureTestingModule({
+    providers: liveSession([ALICE]).providers,
+  });
+});
 
 interface TestConversationTimelineController extends ConversationTimelineController {
   readonly visible: ReturnType<typeof signal<boolean>>;
@@ -81,8 +89,8 @@ function timeline(
     jumpToDate: () => of({ kind: 'no-event' }),
     loadEvent: () => of(true),
     setTyping: vi.fn(),
-    rawEvent: () => null,
-    reactionDetails: () => [],
+    eventSource: () => of(null),
+    reactionDetails: () => of([]),
     loadState: signal<TimelineLoadState>({ kind: 'ready' }).asReadonly(),
     retryLoad: vi.fn(),
     setLiveView: vi.fn(),
@@ -447,9 +455,7 @@ describe('ConversationRuntime', () => {
     });
 
     it('keeps the messages the rows on screen quote', async () => {
-      const { client, room, controller, loaded } = await realFactory(
-        () => null,
-      );
+      const { room, controller, loaded } = await realFactory(() => null);
       const event = (n: number) =>
         new MatrixEvent({
           event_id: `$${n}`,
@@ -476,7 +482,7 @@ describe('ConversationRuntime', () => {
       vi.mocked(TimelineService.prototype.open).mockRestore();
       vi.spyOn(document, 'hasFocus').mockReturnValue(false);
       const timeline = controller.timeline as unknown as TimelineService;
-      timeline.open(room.roomId, client);
+      timeline.open({ accountId: ALICE, roomId: room.roomId });
       timeline.setLiveView('$320');
 
       controller.trimWhileHidden({});

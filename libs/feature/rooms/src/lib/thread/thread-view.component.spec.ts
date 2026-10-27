@@ -174,7 +174,7 @@ async function build(
         // out, `typingNames` is undefined and the typing row throws on every render here.
         typingNames: signal<string[]>(state.typingNames ?? []).asReadonly(),
         setTyping: setTypingCalls,
-        rawEvent: vi.fn(() => ({ type: 'm.room.message' })),
+        eventSource: vi.fn(() => of({ type: 'm.room.message' })),
       }),
       {
         provide: ConversationRuntime,

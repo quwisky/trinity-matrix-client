@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { Subject } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import {
   ConversationRuntime,
   type ReactionDetail,
@@ -30,7 +30,7 @@ describe('ReactionsDialogComponent', () => {
   let reactionDetails: Mock;
 
   beforeEach(() => {
-    reactionDetails = vi.fn(() => SECTIONS);
+    reactionDetails = vi.fn(() => of(SECTIONS));
   });
 
   async function build(presentation: 'dialog' | 'sheet' = 'dialog') {
@@ -89,7 +89,7 @@ describe('ReactionsDialogComponent', () => {
   });
 
   it('says so when there is nothing to show', async () => {
-    reactionDetails.mockReturnValue([]);
+    reactionDetails.mockReturnValue(of([]));
     const { container } = await build();
 
     expect(

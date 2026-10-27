@@ -99,8 +99,8 @@ export type TimelineItemContent =
   | {
       readonly kind: 'sticker';
       readonly source: MediaPayload;
-      readonly body: string;
-      /** The raw `content.url` and `content.info`, so a sticker can be added to a pack. */
+      /** The raw `content.body`, `url` and `info`, so a sticker can be added to a pack. */
+      readonly body: string | null;
       readonly url: string | null;
       readonly info: Readonly<Record<string, unknown>> | null;
     }

@@ -13,6 +13,7 @@ import {
   type SyncStateData,
 } from 'matrix-js-sdk';
 import type { Subscription } from 'rxjs';
+import type { ConversationKey } from './conversation-messages';
 import type { TimelineService } from './timeline.service';
 
 export type TimelineLoadState =
@@ -87,7 +88,7 @@ const isStopped = (state: SyncState | null): boolean =>
 export class ConversationTimelineReadiness {
   private readonly phase = signal<Phase>(READY_LOAD_STATE);
   private readonly timelineRef = signal<ReadinessTimeline | null>(null);
-  private roomId = '';
+  private key: ConversationKey = { accountId: '', roomId: '' };
   private client: MatrixClient | null = null;
   private detach: (() => void) | null = null;
   private backfill: Subscription | null = null;
@@ -123,11 +124,11 @@ export class ConversationTimelineReadiness {
   });
 
   start(
-    roomId: string,
+    key: ConversationKey,
     client: MatrixClient,
     timeline: ReadinessTimeline,
   ): void {
-    this.roomId = roomId;
+    this.key = key;
     this.client = client;
     this.timelineRef.set(timeline);
     this.run();
@@ -162,11 +163,11 @@ export class ConversationTimelineReadiness {
     const client = this.client;
     const timeline = this.timelineRef();
     if (!client || !timeline || this.stopped) return;
-    if (!client.getRoom(this.roomId)) {
+    if (!client.getRoom(this.key.roomId)) {
       this.waitForRoom(client);
       return;
     }
-    timeline.open(this.roomId, client);
+    timeline.open(this.key);
     // open() forces visible; a hidden Conversation must not mark read or bypass compaction.
     if (!this.visible) timeline.setVisible(false);
     if (client.getSyncState() === null) {
@@ -189,7 +190,7 @@ export class ConversationTimelineReadiness {
     }
     this.phase.set({ kind: 'room-pending' });
     const onRoom = (): void => {
-      if (client.getRoom(this.roomId)) this.run();
+      if (client.getRoom(this.key.roomId)) this.run();
     };
     const onSync = (
       state: SyncState,
@@ -197,7 +198,7 @@ export class ConversationTimelineReadiness {
       data?: SyncStateData,
     ): void => {
       if (isStopped(state)) this.fail('sync-stopped');
-      else if (isLiveSynced(state, data) && !client.getRoom(this.roomId))
+      else if (isLiveSynced(state, data) && !client.getRoom(this.key.roomId))
         this.fail('room-unavailable');
       // Reconnecting / Catchup / a Prepared restored from the cache: keep waiting.
     };
@@ -304,7 +305,7 @@ export class ConversationTimelineReadiness {
       this.listen(
         client,
         () => {
-          if (client.getRoom(this.roomId)) this.run();
+          if (client.getRoom(this.key.roomId)) this.run();
         },
         () => undefined,
       );

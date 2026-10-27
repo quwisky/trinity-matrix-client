@@ -7,7 +7,7 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import type { Subscription } from 'rxjs';
+import { type Observable, Subject, type Subscription } from 'rxjs';
 import {
   type PresentedMediaReference,
   MediaPipeline,
@@ -65,6 +65,7 @@ export class TimelineStore {
   private readonly _room = signal<TimelineRoomState | null>(null);
   private readonly _available = signal(false);
   private readonly _firstUnreadId = signal<string | null>(null);
+  private readonly _updates = new Subject<void>();
   private subscription: Subscription | null = null;
   private generation: number | null = null;
   private visible = true;
@@ -83,6 +84,8 @@ export class TimelineStore {
   readonly available: Signal<boolean> = this._available.asReadonly();
   readonly firstUnreadId: Signal<string | null> =
     this._firstUnreadId.asReadonly();
+  /** Emits after each update has been folded in, synchronously. */
+  readonly updates: Observable<void> = this._updates.asObservable();
 
   constructor(
     readonly key: ConversationKey,
@@ -101,6 +104,15 @@ export class TimelineStore {
     return null;
   }
 
+  /** The event the "New messages" divider was drawn against, or null. */
+  unreadAnchorEventId(): string | null {
+    const uniqueId = this.unreadAnchor?.uniqueId;
+    const anchor = untracked(this._items).find(
+      (item) => item.uniqueId === uniqueId,
+    );
+    return anchor?.kind === 'event' ? anchor.eventId : null;
+  }
+
   setVisible(visible: boolean): void {
     if (this.visible === visible) return;
     this.visible = visible;
@@ -111,6 +123,7 @@ export class TimelineStore {
     if (this.closed) return;
     this.follow(null);
     this.closed = true;
+    this._updates.complete();
     this.onClose(this);
   }
 
@@ -146,6 +159,7 @@ export class TimelineStore {
     this._available.set(true);
     this._firstUnreadId.set(this.firstUnread(items));
     this.present();
+    this._updates.next();
   }
 
   private clear(): void {

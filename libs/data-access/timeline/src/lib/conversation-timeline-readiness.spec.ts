@@ -64,6 +64,7 @@ function fakeTimeline() {
 
 const message = { id: '$m' } as unknown as MessageView;
 const ROOM = '!a:hs';
+const KEY = { accountId: '@me:hs', roomId: ROOM };
 
 function start(
   client: ReturnType<typeof fakeClient>,
@@ -72,7 +73,7 @@ function start(
   const readiness = TestBed.runInInjectionContext(
     () => new ConversationTimelineReadiness(),
   );
-  readiness.start(ROOM, client as unknown as MatrixClient, timeline);
+  readiness.start(KEY, client as unknown as MatrixClient, timeline);
   return readiness;
 }
 
@@ -85,7 +86,7 @@ describe('ConversationTimelineReadiness', () => {
     const { timeline, messages } = fakeTimeline();
     timeline.open.mockImplementation(() => messages.set([message]));
     const readiness = start(client, timeline);
-    expect(timeline.open).toHaveBeenCalledWith(ROOM, client);
+    expect(timeline.open).toHaveBeenCalledWith(KEY);
     expect(readiness.state()).toEqual({ kind: 'ready' });
   });
 
@@ -161,7 +162,7 @@ describe('ConversationTimelineReadiness', () => {
     });
     // Joined since the cache was written: delivered by the live catch-up sync.
     client.addRoom(ROOM);
-    expect(timeline.open).toHaveBeenCalledWith(ROOM, client);
+    expect(timeline.open).toHaveBeenCalledWith(KEY);
   });
 
   it('fails a pending Room on a live Prepared (no cache) that still lacks it', () => {
@@ -180,7 +181,7 @@ describe('ConversationTimelineReadiness', () => {
     const readiness = start(client, timeline);
     expect(readiness.state()).toMatchObject({ reason: 'room-unavailable' });
     client.addRoom(ROOM);
-    expect(timeline.open).toHaveBeenCalledWith(ROOM, client);
+    expect(timeline.open).toHaveBeenCalledWith(KEY);
     expect(readiness.state()).toEqual({ kind: 'empty' });
   });
 
@@ -477,7 +478,7 @@ describe('ConversationTimelineReadiness', () => {
     };
     client.on(ClientEvent.Sync, stopper);
     readiness.start(
-      ROOM,
+      KEY,
       client as unknown as MatrixClient,
       fakeTimeline().timeline,
     );

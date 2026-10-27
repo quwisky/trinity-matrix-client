@@ -38,7 +38,7 @@ export interface SharedRowActionContext {
     TrnSurfaceService,
     'open' | 'openAndWait$' | 'openActions'
   >;
-  readonly timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>;
+  readonly timeline: Pick<ConversationRuntime['timeline'], 'eventSource'>;
   readonly forward: Pick<ForwardService, 'forward$'>;
   readonly mediaSave: Pick<MediaSaveService, 'save'>;
   readonly report: Pick<ReportService, 'report$'>;
@@ -93,21 +93,19 @@ export function buildRowCaps(
 }
 
 /**
- * A sticker event's image as "Add to my emoji" takes it: its own mxc, info and body. Null for
+ * A sticker row's image as "Add to my emoji" takes it: its own mxc, info and body. Null for
  * anything else, or an encrypted sticker, which has no plain mxc to put in a pack.
  */
-export function stickerImage(
-  raw: object | null,
+function stickerImage(
+  message: MessageView,
 ): Extract<AddInput, { kind: 'existing' }> | null {
-  const event = raw as { type?: unknown; content?: unknown } | null;
-  if (event?.type !== 'm.sticker' || !isRecord(event.content)) return null;
-  const { url, info, body } = event.content;
-  if (!isValidMxcUri(url)) return null;
+  const image = message.kind === 'sticker' ? message.stickerImage : null;
+  if (!image || !isValidMxcUri(image.url)) return null;
   return {
     kind: 'existing',
-    url,
-    ...(isRecord(info) ? { info } : {}),
-    ...(typeof body === 'string' ? { body } : {}),
+    url: image.url,
+    ...(image.info ? { info: { ...image.info } } : {}),
+    ...(image.body !== undefined ? { body: image.body } : {}),
   };
 }
 
@@ -147,14 +145,12 @@ function emoticonsIn(message: MessageView): readonly Emoticon[] {
  */
 export function addableImages(
   adder: Pick<AddToMyEmojiService, 'canAdd'>,
-  timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>,
-  roomId: string,
 ): (message: MessageView) => boolean {
   return (message) => {
     if (message.kind !== 'sticker') {
       return emoticonsIn(message).some(({ url }) => adder.canAdd(url));
     }
-    const image = stickerImage(timeline.rawEvent(roomId, message.id));
+    const image = stickerImage(message);
     return !!image && adder.canAdd(image.url);
   };
 }
@@ -185,10 +181,6 @@ function addEmoticon(row: MessageRow, ctx: SharedRowActionContext): void {
     },
     { ariaLabel: 'Add to my emoji' },
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Whether two caps carry the same capabilities — every field is a flat primitive. */
@@ -287,21 +279,24 @@ export function dispatchSharedRowAction(
       if (row.media) ctx.mediaSave.save(row.media);
       return true;
     case 'add-to-emoji': {
-      const image = stickerImage(ctx.timeline.rawEvent(ctx.roomId, row.id));
+      const image = stickerImage(row);
       // The dialog's shortcode starts from this name, so it is never empty.
       if (image) ctx.addToEmoji.add(image, image.body || 'sticker');
       else addEmoticon(row, ctx);
       return true;
     }
-    case 'view-source': {
-      const raw = ctx.timeline.rawEvent(ctx.roomId, row.id);
-      if (raw) {
-        ctx.dialog.open(MessageSourceComponent, {
-          inputs: { source: JSON.stringify(raw, null, 2) },
+    case 'view-source':
+      ctx.timeline
+        .eventSource(row.id)
+        .pipe(takeUntilDestroyed(ctx.destroyRef))
+        .subscribe((raw) => {
+          if (raw) {
+            ctx.dialog.open(MessageSourceComponent, {
+              inputs: { source: JSON.stringify(raw, null, 2) },
+            });
+          }
         });
-      }
       return true;
-    }
     case 'forward':
       ctx.forward
         .forward$(ctx.roomId, row.id)

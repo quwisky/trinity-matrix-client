@@ -29,7 +29,7 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
       openAndWait$: vi.fn(() => of('🎉')),
       openActions: vi.fn(),
     },
-    timeline: { rawEvent: vi.fn(() => ({ type: 'm.room.message' })) },
+    timeline: { eventSource: vi.fn(() => of({ type: 'm.room.message' })) },
     forward: { forward$: vi.fn(() => of(undefined)) },
     report: { report$: vi.fn(() => of(undefined)) },
     reactions: { open$: vi.fn(() => of(undefined)) },
@@ -69,20 +69,19 @@ describe('dispatchSharedRowAction', () => {
 
   it('"Add to my emoji" on a sticker opens the dialog with its mxc and info', () => {
     const info = { mimetype: 'image/webp', w: 256, h: 240, size: 1234 };
-    const ctx = setup({
-      timeline: {
-        rawEvent: vi.fn(() => ({
-          type: 'm.sticker',
-          content: { url: 'mxc://hs/fox', body: 'Fox', info },
-        })),
-      },
-    });
+    const ctx = setup();
+    const sticker = {
+      ...row,
+      kind: 'sticker',
+      stickerImage: { url: 'mxc://hs/fox', body: 'Fox', info },
+    } as MessageRow;
 
-    expect(dispatchSharedRowAction({ type: 'add-to-emoji' }, row, ctx)).toBe(
-      true,
-    );
+    expect(
+      dispatchSharedRowAction({ type: 'add-to-emoji' }, sticker, ctx),
+    ).toBe(true);
 
-    expect(ctx.timeline.rawEvent).toHaveBeenCalledWith('!r:hs', '$e');
+    // Read from the row: no event lookup.
+    expect(ctx.timeline.eventSource).not.toHaveBeenCalled();
     expect(ctx.addToEmoji.add).toHaveBeenCalledWith(
       {
         kind: 'existing',
@@ -95,16 +94,14 @@ describe('dispatchSharedRowAction', () => {
   });
 
   it('suggests a non-empty name for a sticker without a body', () => {
-    const ctx = setup({
-      timeline: {
-        rawEvent: vi.fn(() => ({
-          type: 'm.sticker',
-          content: { url: 'mxc://hs/fox' },
-        })),
-      },
-    });
+    const ctx = setup();
+    const sticker = {
+      ...row,
+      kind: 'sticker',
+      stickerImage: { url: 'mxc://hs/fox' },
+    } as MessageRow;
 
-    dispatchSharedRowAction({ type: 'add-to-emoji' }, row, ctx);
+    dispatchSharedRowAction({ type: 'add-to-emoji' }, sticker, ctx);
 
     expect(ctx.addToEmoji.add).toHaveBeenCalledWith(
       { kind: 'existing', url: 'mxc://hs/fox' },
@@ -258,7 +255,11 @@ describe('dispatchSharedRowAction', () => {
       }),
     );
 
-    const missing = setup({ timeline: { rawEvent: () => null } as never });
+    expect(ctx.timeline.eventSource).toHaveBeenCalledWith('$e');
+
+    const missing = setup({
+      timeline: { eventSource: () => of(null) } as never,
+    });
     dispatchSharedRowAction({ type: 'view-source' }, row, missing);
     expect(missing.dialog.open).not.toHaveBeenCalled();
   });
@@ -405,15 +406,9 @@ describe('row caps', () => {
 
   it('addable: a sticker or a text with an emoji not in the pack yet', () => {
     const adder = { canAdd: (mxc: string) => mxc !== 'mxc://hs/owned' };
-    const events = new Map<string, object>();
-    const rawEvent = vi.fn(
-      (_room: string, id: string) => events.get(id) ?? null,
-    );
-    const addable = addableImages(adder, { rawEvent }, '!r:hs');
-    const sticker = (url: string, type = 'm.sticker') => {
-      events.set('$e', { type, content: { url, body: 'Fox' } });
-      return addable(text('$e', { kind: 'sticker' }));
-    };
+    const addable = addableImages(adder);
+    const sticker = (url: string, kind: MessageRow['kind'] = 'sticker') =>
+      addable(text('$e', { kind, stickerImage: { url, body: 'Fox' } }));
     const emoji = (...urls: string[]) =>
       addable(
         text('$t', {
@@ -428,10 +423,9 @@ describe('row caps', () => {
 
     expect(sticker('mxc://hs/fox')).toBe(true);
     expect(sticker('mxc://hs/owned')).toBe(false);
-    expect(sticker('mxc://hs/fox', 'm.room.message')).toBe(false);
+    expect(sticker('mxc://hs/fox', 'image')).toBe(false);
     expect(sticker('https://example.org/fox.png')).toBe(false);
     expect(addable(text('$missing', { kind: 'sticker' }))).toBe(false);
-    expect(rawEvent).toHaveBeenCalledWith('!r:hs', '$e');
 
     expect(emoji('mxc://hs/owned', 'mxc://hs/wave')).toBe(true);
     expect(emoji('mxc://hs/owned')).toBe(false);

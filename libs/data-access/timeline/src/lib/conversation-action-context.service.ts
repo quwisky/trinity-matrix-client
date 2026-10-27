@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import type { TimelineContext } from './timeline.service';
+import type { TimelineContext } from './js-sdk/timeline-context';
 
 type ContextResolver = () => TimelineContext | null;
 

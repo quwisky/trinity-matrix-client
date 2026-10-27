@@ -51,8 +51,9 @@ describe('Message Presentation production boundary', () => {
   });
 
   it('routes both timeline surfaces through the single projection entrypoint', () => {
-    expect(source(`${timelineRoot}/timeline.service.ts`)).toMatch(
-      /projectMessage\(\s*client,\s*room,\s*e,\s*(?:null|shield),\s*this\.encryption\.isEncrypted\(room\),\s*this\.mediaPipeline,?\s*\)/,
+    // The main timeline presents engine items from its store.
+    expect(source(`${timelineRoot}/timeline-store.ts`)).toMatch(
+      /presentNormalizedTimelineEvent\(\s*normalizedFromItem\(item, room\),\s*this\.presentMedia,?\s*\)/,
     );
     expect(source(`${timelineRoot}/threads.service.ts`)).toMatch(
       /projectMessage\(\s*client,\s*room,\s*e,\s*shield,\s*roomEncrypted,\s*this\.mediaPipeline,\s*\)/,

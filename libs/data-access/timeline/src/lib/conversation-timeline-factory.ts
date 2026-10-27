@@ -37,7 +37,7 @@ export type ConversationTimeline = Pick<
   | 'jumpToDate'
   | 'loadEvent'
   | 'setTyping'
-  | 'rawEvent'
+  | 'eventSource'
   | 'reactionDetails'
   | 'loadState'
   | 'retryLoad'
@@ -114,7 +114,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       threads = injector.get(ThreadsService);
       pins = injector.get(ConversationPinsController);
       search = injector.get(ConversationSearchController);
-      readiness.start(key.roomId, client, timeline);
+      readiness.start(key, client, timeline);
       threads.attach(key, client);
       pins.attach(key, client);
       search.attach(key, client);
@@ -123,7 +123,11 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       throw error;
     }
     let released = false;
-    const resolveActionContext = () => timeline.openContext();
+    // The action surface acts on the room this handle's own client holds (T8, until PR 2).
+    const resolveActionContext = () => {
+      const room = client.getRoom(key.roomId);
+      return room ? { client, room } : null;
+    };
     return {
       timeline,
       threads,

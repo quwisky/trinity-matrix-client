@@ -274,11 +274,12 @@ describe('Trinity application provider composition', () => {
           pushConfig: null,
         }),
         MockProvider(RoomListStore, {
-          typing: (() =>
-            signal({
-              '!r:hs': [me, bob],
-              '!other:hs': [bob],
-            }).asReadonly()) as never,
+          typing: ((accountId: string) =>
+            signal(
+              accountId === '@me:hs'
+                ? { '!r:hs': [me, bob], '!other:hs': [bob] }
+                : { '!quiet:hs': [bob] },
+            ).asReadonly()) as never,
         }),
       ],
     });

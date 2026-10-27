@@ -203,7 +203,7 @@ async function openConversation(
     ],
   });
   const svc = TestBed.inject(TimelineService);
-  svc.open(ROOM, client);
+  svc.open({ accountId: ME, roomId: ROOM });
 
   const row = (eventId: string): MessageView | undefined =>
     svc.messages().find((m) => m.id === eventId);

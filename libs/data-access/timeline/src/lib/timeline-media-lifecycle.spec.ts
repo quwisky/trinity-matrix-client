@@ -11,6 +11,7 @@ import {
   fakeRoom,
   matrixProvider,
   privacyProvider,
+  ROOM_KEY,
 } from './timeline.spec-harness';
 
 afterEach(() => {
@@ -76,7 +77,7 @@ it.each(['plaintext', 'encrypted'])(
     const media = TestBed.inject(MediaPipeline);
 
     try {
-      a.open('!a:hs');
+      a.open({ ...ROOM_KEY, roomId: '!a:hs' });
       const original = a.messages()[0].media;
       if (!original) throw new Error('Image fixture was not projected');
       let url = await firstValueFrom(media.resolveMedia(original, 'thumbnail'));
@@ -86,7 +87,7 @@ it.each(['plaintext', 'encrypted'])(
         // Workspace releases view resources before Conversation Runtime changes focus.
         media.releaseAll();
         a.setVisible(false);
-        if (switchCount === 0) b.open('!b:hs');
+        if (switchCount === 0) b.open({ ...ROOM_KEY, roomId: '!b:hs' });
         else b.setVisible(true);
         expect(revoked).toContain(url);
         media.releaseAll();

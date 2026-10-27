@@ -8,6 +8,8 @@ import { toTimelineItem } from './js-sdk/timeline-item';
 import { shieldText, unencryptedShield } from './shield-presentation';
 import type { ShieldCode } from './timeline-engine';
 import { normalizedFromItem, profileName } from './timeline-item-presentation';
+import { presentNormalizedTimelineEvent } from './message-presentation';
+import type { PresentedMediaReference } from '@trinity/data-access/media';
 
 const ME = '@me:example.org';
 const ALICE = '@alice:example.org';
@@ -312,6 +314,12 @@ const fixtures: Record<string, Fixture> = {
       }),
     }),
   },
+  'sticker without a body': {
+    event: event({
+      getType: () => 'm.sticker',
+      getContent: () => ({ url: 'mxc://example.org/parrot' }),
+    }),
+  },
   'sticker naming an encrypted file': {
     event: event({
       getType: () => 'm.sticker',
@@ -401,6 +409,51 @@ describe('normalizedFromItem', () => {
       ).toEqual(expected);
     },
   );
+});
+
+describe('stickerImage', () => {
+  it("stickerImage carries the sticker's url, info and body", () => {
+    const item = toTimelineItem(
+      client,
+      room,
+      fixtures['sticker'].event,
+      null,
+      false,
+    );
+    if (!item) throw new Error('The sticker fixture was not projected');
+
+    const view = presentNormalizedTimelineEvent(
+      normalizedFromItem(item, {
+        roomId: room.roomId,
+        encrypted: false,
+        viewerId: ME,
+      }),
+      () => ({}) as PresentedMediaReference,
+    );
+
+    expect(view?.stickerImage).toEqual({
+      url: 'mxc://example.org/parrot',
+      info: { w: 64 },
+      body: 'parrot',
+    });
+  });
+
+  it('leaves out the body a sticker does not have', () => {
+    const event = fixtures['sticker without a body'].event;
+    const item = toTimelineItem(client, room, event, null, false);
+    if (!item) throw new Error('The sticker fixture was not projected');
+
+    const view = presentNormalizedTimelineEvent(
+      normalizedFromItem(item, {
+        roomId: room.roomId,
+        encrypted: false,
+        viewerId: ME,
+      }),
+      () => ({}) as PresentedMediaReference,
+    );
+
+    expect(view?.stickerImage).toEqual({ url: 'mxc://example.org/parrot' });
+  });
 });
 
 describe('profileName', () => {
