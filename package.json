@@ -157,7 +157,7 @@
     "@angular/compiler-cli": "22.2.3",
     "@astrojs/check": "0.9.12",
     "@astrojs/markdown-remark": "7.3.4",
-    "@astrojs/starlight": "0.42.6",
+    "@astrojs/starlight": "0.42.7",
     "@capacitor/cli": "8.5.3",
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
