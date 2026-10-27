@@ -1,4 +1,4 @@
-import { Injectable, Injector, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import {
   Observable,
@@ -27,7 +27,6 @@ import { unwrapOwned } from './unwrap-owned';
 export class InvitePermissionService {
   private readonly engine = inject(ROOM_LIST_ENGINE);
   private readonly session = inject(SessionStateService);
-  private readonly injector = inject(Injector);
   private writes: Promise<void> = Promise.resolve();
   private readonly state = signal<InviteBlocking | null>(null);
 
@@ -45,9 +44,9 @@ export class InvitePermissionService {
     { equal: plainEqual },
   );
 
-  private readonly projection = defer(() =>
-    toObservable(this.active, { injector: this.injector }),
-  ).pipe(
+  private readonly active$ = toObservable(this.active);
+
+  private readonly projection = this.active$.pipe(
     switchMap((active) =>
       active ? this.engine.inviteBlocking(active.accountId) : of(null),
     ),

@@ -132,6 +132,18 @@ describe('InvitePermissionService', () => {
     second.unsubscribe();
   });
 
+  it('subscribes the engine once per subscription and stops after the last unsubscribe', () => {
+    const { fake, alice, activate, run } = setup();
+    const inviteBlocking = vi.spyOn(fake, 'inviteBlocking');
+
+    run().unsubscribe();
+    run().unsubscribe();
+    expect(inviteBlocking).toHaveBeenCalledTimes(2);
+
+    activate(alice, 2);
+    expect(inviteBlocking).toHaveBeenCalledTimes(2);
+  });
+
   it('blocks through the engine and is cold', async () => {
     const { svc, fake, alice } = setup();
     const write = vi.spyOn(fake, 'setInviteBlocking');

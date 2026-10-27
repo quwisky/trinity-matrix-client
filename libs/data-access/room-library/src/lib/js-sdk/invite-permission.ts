@@ -14,6 +14,7 @@ import {
   of,
   startWith,
   switchMap,
+  take,
   throwError,
 } from 'rxjs';
 import { serverAdvertises } from '@trinity/data-access/matrix-client';
@@ -71,7 +72,7 @@ const honoured = (types: PerType | null): types is PerType =>
 
 /**
  * Unsupported on subscribe, then the server's answer; again on the two account-data types and
- * whenever `written` fires.
+ * whenever `written` fires. A failed `/versions` check is asked again on the next such change.
  */
 export function inviteBlockingOf(
   client: MatrixClient,
@@ -84,7 +85,18 @@ export function inviteBlockingOf(
     client.on(ClientEvent.AccountData, onAccountData);
     return () => client.off(ClientEvent.AccountData, onAccountData);
   });
-  return concat(of(null), support(client)).pipe(
+  const check = (): Observable<PerType | null> =>
+    support(client).pipe(
+      switchMap((types) =>
+        types
+          ? of(types)
+          : concat(
+              of(null),
+              merge(changed, written).pipe(take(1), switchMap(check)),
+            ),
+      ),
+    );
+  return concat(of(null), check()).pipe(
     switchMap((types) =>
       merge(changed, written).pipe(
         startWith(undefined),

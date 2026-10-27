@@ -831,6 +831,20 @@ describe('JsSdkRoomListEngine', () => {
       expect(batches).toEqual([{ supported: false, blocked: false }]);
     });
 
+    it('asks /versions again on the next account-data event after a failure', async () => {
+      const { client, engine } = blockingSetup(null);
+      const { batches } = record(engine.inviteBlocking(ME));
+      await tick();
+      expect(batches).toEqual([{ supported: false, blocked: false }]);
+
+      client.versions = STABLE_FLAG;
+      client.syncAccountData(STABLE, {});
+      await tick();
+
+      expect(client.getVersions).toHaveBeenCalledTimes(4);
+      expect(batches.at(-1)).toEqual({ supported: true, blocked: false });
+    });
+
     it('reads a block from the unstable type on an unstable-only server', async () => {
       const { engine } = blockingSetup(UNSTABLE_ONLY, { [UNSTABLE]: BLOCK });
 
