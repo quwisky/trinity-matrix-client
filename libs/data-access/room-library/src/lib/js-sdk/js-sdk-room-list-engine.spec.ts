@@ -133,12 +133,24 @@ type FakeRoom = ReturnType<typeof fakeRoom>;
 class FakeClient extends EventEmitter {
   rooms: FakeRoom[] = [];
   direct: Record<string, string[]> = {};
+  accountData: Record<string, object> = {};
+  /** The `/versions` answer; null fails the request. */
+  versions: {
+    versions: string[];
+    unstable_features: Record<string, boolean>;
+  } | null = { versions: ['v1.12'], unstable_features: {} };
+  readonly getVersions = vi.fn(async () => {
+    if (!this.versions) throw new TypeError('offline');
+    return this.versions;
+  });
   readonly setRoomTag = vi.fn(async () => ({}));
   readonly deleteRoomTag = vi.fn(async () => ({}));
   readonly invite = vi.fn(async (): Promise<unknown> => ({}));
   readonly createRoom = vi.fn(async () => ({ room_id: '!new:hs' }));
   readonly leave = vi.fn(async () => ({}));
-  readonly setAccountData = vi.fn(async () => ({}));
+  readonly setAccountData = vi.fn(
+    async (_type: string, _content: object): Promise<unknown> => ({}),
+  );
   readonly setRoomAccountData = vi.fn(async () => ({}));
   readonly setRoomReadMarkers = vi.fn(async () => ({}));
   readonly sendReadReceipt = vi.fn(async () => ({}));
@@ -157,8 +169,16 @@ class FakeClient extends EventEmitter {
   getRooms = (): FakeRoom[] => this.rooms;
   getRoom = (id: string): FakeRoom | null =>
     this.rooms.find((r) => r.roomId === id) ?? null;
-  getAccountData = (type: string) =>
-    type === 'm.direct' ? { getContent: () => this.direct } : undefined;
+  getAccountData = (type: string) => {
+    const content = type === 'm.direct' ? this.direct : this.accountData[type];
+    return content ? { getContent: () => content } : undefined;
+  };
+
+  /** Account data arriving over `/sync`. */
+  syncAccountData(type: string, content: object): void {
+    this.accountData[type] = content;
+    this.emit(ClientEvent.AccountData, { getType: () => type });
+  }
 
   totalListeners(): number {
     return this.eventNames().reduce<number>(
@@ -449,6 +469,7 @@ describe('JsSdkRoomListEngine', () => {
       engine.rooms(ME).subscribe(),
       engine.typing(ME).subscribe(),
       engine.directMap(ME).subscribe(),
+      engine.inviteBlocking(ME).subscribe(),
     ];
     expect(client.totalListeners()).toBeGreaterThan(0);
     expect(client.listenerCount(ClientEvent.Sync)).toBe(1);
@@ -481,6 +502,7 @@ describe('JsSdkRoomListEngine', () => {
       engine.spaceHierarchy(other, '!s:hs', { maxPages: null }),
       engine.setSpaceChild(other, '!s:hs', '!r:hs', null),
       engine.setSpaceParent(other, '!r:hs', '!s:hs', ['hs']),
+      engine.setInviteBlocking(other, true),
     ];
     for (const command of commands) {
       const result = await firstValueFrom(command);
@@ -490,6 +512,9 @@ describe('JsSdkRoomListEngine', () => {
     expect(batches).toEqual([[{ op: 'reset', values: [] }]]);
     expect(record(engine.spaceChildLinks(other, '!s:hs')).batches).toEqual([
       [],
+    ]);
+    expect(record(engine.inviteBlocking(other)).batches).toEqual([
+      { supported: false, blocked: false },
     ]);
   });
 
@@ -734,6 +759,191 @@ describe('JsSdkRoomListEngine', () => {
       );
     },
   );
+
+  describe('invite blocking', () => {
+    const STABLE = 'm.invite_permission_config';
+    const UNSTABLE = 'org.matrix.msc4380.invite_permission_config';
+    const BLOCK = { default_action: 'block' };
+    const STABLE_FLAG = {
+      versions: ['v1.12'],
+      unstable_features: { 'org.matrix.msc4380.stable': true },
+    };
+    const UNSTABLE_ONLY = {
+      versions: ['v1.12'],
+      unstable_features: { 'org.matrix.msc4380': true },
+    };
+    const BOTH = {
+      versions: ['v1.18'],
+      unstable_features: { 'org.matrix.msc4380': true },
+    };
+
+    function blockingSetup(
+      versions: FakeClient['versions'],
+      accountData: Record<string, object> = {},
+    ) {
+      const { client, engine } = setup();
+      client.versions = versions;
+      client.accountData = { ...accountData };
+      client.setAccountData.mockImplementation(
+        async (type: string, content: object) => {
+          client.syncAccountData(type, content);
+          return {};
+        },
+      );
+      return { client, engine };
+    }
+
+    it('is unsupported synchronously, then supported through the .stable flag', async () => {
+      const { engine } = blockingSetup(STABLE_FLAG, { [STABLE]: BLOCK });
+
+      const { batches } = record(engine.inviteBlocking(ME));
+      expect(batches).toEqual([{ supported: false, blocked: false }]);
+      await tick();
+
+      expect(batches).toEqual([
+        { supported: false, blocked: false },
+        { supported: true, blocked: true },
+      ]);
+      expect(() => assertPlainData(batches[1])).not.toThrow();
+    });
+
+    it.each([
+      ['spec v1.18 or later', { versions: ['v1.19'], unstable_features: {} }],
+      ['only the unstable flag', UNSTABLE_ONLY],
+    ])('is supported on a server advertising %s', async (_, versions) => {
+      const { engine } = blockingSetup(versions);
+
+      const { batches } = record(engine.inviteBlocking(ME));
+      await tick();
+
+      expect(batches.at(-1)).toEqual({ supported: true, blocked: false });
+    });
+
+    it.each([
+      ['neither', { versions: ['v1.12'], unstable_features: {} }],
+      ['a failed /versions', null],
+    ])('stays unsupported on %s', async (_, versions) => {
+      const { engine } = blockingSetup(versions, { [STABLE]: BLOCK });
+
+      const { batches } = record(engine.inviteBlocking(ME));
+      await tick();
+
+      expect(batches).toEqual([{ supported: false, blocked: false }]);
+    });
+
+    it('reads a block from the unstable type on an unstable-only server', async () => {
+      const { engine } = blockingSetup(UNSTABLE_ONLY, { [UNSTABLE]: BLOCK });
+
+      const { batches } = record(engine.inviteBlocking(ME));
+      await tick();
+
+      expect(batches.at(-1)).toEqual({ supported: true, blocked: true });
+    });
+
+    it('follows its account data synced from another device, and only its own', async () => {
+      const { client, engine } = blockingSetup(STABLE_FLAG);
+      const { batches } = record(engine.inviteBlocking(ME));
+      await tick();
+
+      client.syncAccountData('m.push_rules', {});
+      client.syncAccountData(STABLE, BLOCK);
+
+      expect(batches).toEqual([
+        { supported: false, blocked: false },
+        { supported: true, blocked: false },
+        { supported: true, blocked: true },
+      ]);
+    });
+
+    it('blocks through the stable type, is cold, and open subscribers see it first', async () => {
+      const { client, engine } = blockingSetup(STABLE_FLAG);
+      // No /sync echo: the write itself must re-emit.
+      client.setAccountData.mockImplementation(
+        async (type: string, content: object) => {
+          client.accountData[type] = content;
+          return {};
+        },
+      );
+      const { batches } = record(engine.inviteBlocking(ME));
+      await tick();
+
+      const command = engine.setInviteBlocking(ME, true);
+      expect(client.setAccountData).not.toHaveBeenCalled();
+      const result = await firstValueFrom(
+        command.pipe(tap(() => expect(batches.at(-1)?.blocked).toBe(true))),
+      );
+
+      expect(result).toEqual({ ok: true, value: null });
+      expect(client.setAccountData).toHaveBeenCalledExactlyOnceWith(
+        STABLE,
+        BLOCK,
+      );
+    });
+
+    it('falls back to the unstable type when only the unstable flag is advertised', async () => {
+      const { client, engine } = blockingSetup(UNSTABLE_ONLY);
+
+      await firstValueFrom(engine.setInviteBlocking(ME, true));
+
+      expect(client.setAccountData).toHaveBeenCalledExactlyOnceWith(
+        UNSTABLE,
+        BLOCK,
+      );
+    });
+
+    it('allowing clears both the stable type and a block left in the unstable slot', async () => {
+      const { client, engine } = blockingSetup(BOTH, {
+        [STABLE]: BLOCK,
+        [UNSTABLE]: BLOCK,
+      });
+      const { batches } = record(engine.inviteBlocking(ME));
+      await tick();
+      expect(batches.at(-1)?.blocked).toBe(true);
+
+      await firstValueFrom(engine.setInviteBlocking(ME, false));
+
+      expect(client.setAccountData).toHaveBeenCalledWith(STABLE, {});
+      expect(client.setAccountData).toHaveBeenCalledWith(UNSTABLE, {});
+      expect(batches.at(-1)).toEqual({ supported: true, blocked: false });
+    });
+
+    it('allowing leaves an unstable slot alone when it holds no block', async () => {
+      const { client, engine } = blockingSetup(STABLE_FLAG, {
+        [STABLE]: BLOCK,
+      });
+
+      await firstValueFrom(engine.setInviteBlocking(ME, false));
+
+      expect(client.setAccountData).toHaveBeenCalledExactlyOnceWith(STABLE, {});
+    });
+
+    it.each([
+      [
+        'has no invite blocking',
+        { versions: ['v1.12'], unstable_features: {} },
+      ],
+      ['fails /versions', null],
+    ])('refuses to write where the server %s', async (_, versions) => {
+      const { client, engine } = blockingSetup(versions);
+
+      const result = await firstValueFrom(engine.setInviteBlocking(ME, true));
+
+      expect(!result.ok && result.failure.code).toBe('request-failed');
+      expect(() => assertPlainData(result)).not.toThrow();
+      expect(client.setAccountData).not.toHaveBeenCalled();
+    });
+
+    it('maps a failed write to request-failed', async () => {
+      const { client, engine } = blockingSetup(STABLE_FLAG);
+      client.setAccountData.mockRejectedValue(
+        new MatrixError({ errcode: 'M_FORBIDDEN', error: 'no' }, 403),
+      );
+
+      const result = await firstValueFrom(engine.setInviteBlocking(ME, true));
+
+      expect(!result.ok && result.failure.code).toBe('request-failed');
+    });
+  });
 
   describe('spaces', () => {
     interface ChildEvent {

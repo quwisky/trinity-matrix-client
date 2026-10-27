@@ -1,340 +1,210 @@
-import { ApplicationRef, signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ClientEvent } from 'matrix-js-sdk';
-import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { Subject, firstValueFrom } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
 import {
-  INVITE_PERMISSION_EVENT,
-  InvitePermissionService,
-  UNSTABLE_INVITE_PERMISSION_EVENT,
-} from './invite-permission.service';
+  EMPTY_SESSION,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import { type EngineResult, engineOk } from '@trinity/util/matrix';
+import { FakeRoomListEngine } from '../contract/fake-room-list-engine';
+import { InvitePermissionService } from './invite-permission.service';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve));
-
-interface Server {
-  versions?: string[];
-  unstable?: Record<string, boolean>;
-  fails?: boolean;
+function account(accountId: string, generation = 1): SessionAccountStatus {
+  return {
+    accountId,
+    generation,
+    syncState: 'syncing',
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
+  };
 }
 
-function fakeClient(
-  userId: string,
-  server: Server,
-  data: Record<string, object> = {},
-) {
-  const listeners = new Map<string, Set<() => void>>();
-  const store = new Map(Object.entries(data));
-  const client = {
-    getUserId: () => userId,
-    getVersions: vi.fn(async () => {
-      if (server.fails) throw new TypeError('offline');
-      return {
-        versions: server.versions ?? ['v1.12'],
-        unstable_features: server.unstable ?? {},
-      };
-    }),
-    getAccountData: (type: string) => {
-      const content = store.get(type);
-      return content ? { getContent: () => content } : undefined;
-    },
-    setAccountData: vi.fn(async (type: string, content: object) => {
-      store.set(type, content);
-      client.emit(ClientEvent.AccountData);
-      return {};
-    }),
-    on(event: string, fn: () => void) {
-      (listeners.get(event) ?? listeners.set(event, new Set()).get(event))?.add(
-        fn,
-      );
-      return client;
-    },
-    off(event: string, fn: () => void) {
-      listeners.get(event)?.delete(fn);
-      return client;
-    },
-    emit(event: string) {
-      for (const fn of listeners.get(event) ?? []) fn();
-    },
-    syncFromElsewhere(type: string, content: object) {
-      store.set(type, content);
-      client.emit(ClientEvent.AccountData);
-    },
-  };
-  return client;
-}
-
-type FakeClient = ReturnType<typeof fakeClient>;
-
-function setup(first: FakeClient) {
-  const instance = signal(first);
-  const activeUserId = signal<string | null>(first.getUserId());
-  const matrix = {
-    get isInitialized() {
-      return activeUserId() !== null;
-    },
-    get instance() {
-      return instance();
-    },
-    activeUserId: activeUserId.asReadonly(),
-  };
+/** The service over the fake engine with alice and bob live and alice active. */
+function setup() {
+  const fake = new FakeRoomListEngine();
+  const { alice, bob } = fake;
+  fake.seed(alice, []);
+  fake.seed(bob, []);
+  const session = signal<SessionSnapshot>({
+    ...EMPTY_SESSION,
+    activeAccountId: alice,
+    accounts: [account(alice), account(bob)],
+  });
   TestBed.configureTestingModule({
     providers: [
-      InvitePermissionService,
-      { provide: MatrixClientService, useValue: matrix },
+      { provide: ROOM_LIST_ENGINE, useValue: fake },
+      { provide: SESSION_SNAPSHOT, useValue: session },
     ],
   });
   const svc = TestBed.inject(InvitePermissionService);
-  const switchTo = (next: FakeClient) => {
-    instance.set(next);
-    activeUserId.set(next.getUserId());
-    TestBed.inject(ApplicationRef).tick();
+  const activate = (accountId: string | null, generation = 1): void => {
+    session.set({
+      ...EMPTY_SESSION,
+      activeAccountId: accountId,
+      accounts: [account(alice, generation), account(bob)],
+    });
+    TestBed.tick();
   };
-  return { svc, switchTo };
+  const run = () => {
+    const lifetime = svc.runProjection().subscribe();
+    TestBed.tick();
+    return lifetime;
+  };
+  return { svc, fake, alice, bob, activate, run };
 }
 
-const STABLE_SERVER: Server = {
-  unstable: { 'org.matrix.msc4380.stable': true },
-};
-const UNSTABLE_ONLY: Server = { unstable: { 'org.matrix.msc4380': true } };
-const BOTH: Server = {
-  versions: ['v1.18'],
-  unstable: { 'org.matrix.msc4380': true },
-};
-
 describe('InvitePermissionService', () => {
-  beforeEach(() => TestBed.resetTestingModule());
-
-  it('is unknown until the server answers, then supported through the .stable flag', async () => {
-    const { svc } = setup(fakeClient('@me:hs', STABLE_SERVER));
-    const lifetime = svc.runProjection().subscribe();
-
+  it('is unknown until the projection runs, then reads the active account', () => {
+    const { svc, run } = setup();
     expect(svc.supported()).toBeNull();
-    await flush();
+
+    const lifetime = run();
 
     expect(svc.supported()).toBe(true);
     expect(svc.blocked()).toBe(false);
     lifetime.unsubscribe();
-  });
-
-  it('supports a server that advertises spec v1.18 or later', async () => {
-    const { svc } = setup(fakeClient('@me:hs', { versions: ['v1.19'] }));
-    const lifetime = svc.runProjection().subscribe();
-    await flush();
-
-    expect(svc.supported()).toBe(true);
-    lifetime.unsubscribe();
-  });
-
-  it('is unsupported when the server advertises neither', async () => {
-    const { svc } = setup(fakeClient('@me:hs', { versions: ['v1.12'] }));
-    const lifetime = svc.runProjection().subscribe();
-    await flush();
-
-    expect(svc.supported()).toBe(false);
-    lifetime.unsubscribe();
-  });
-
-  it('stays unknown when /versions fails, rather than claiming no support', async () => {
-    const { svc } = setup(fakeClient('@me:hs', { fails: true }));
-    const lifetime = svc.runProjection().subscribe();
-    await flush();
-
     expect(svc.supported()).toBeNull();
-    lifetime.unsubscribe();
   });
 
-  it('reads a block from the stable type', async () => {
-    const { svc } = setup(
-      fakeClient('@me:hs', STABLE_SERVER, {
-        [INVITE_PERMISSION_EVENT]: { default_action: 'block' },
-      }),
-    );
-    const lifetime = svc.runProjection().subscribe();
-    await flush();
+  it('is unsupported where the server has no invite blocking', () => {
+    const { svc, fake, run } = setup();
+    fake.serverBlocksInvites = false;
 
-    expect(svc.blocked()).toBe(true);
-    lifetime.unsubscribe();
-  });
-
-  it('reads a block from the unstable type on an unstable-only server', async () => {
-    const { svc } = setup(
-      fakeClient('@me:hs', UNSTABLE_ONLY, {
-        [UNSTABLE_INVITE_PERMISSION_EVENT]: { default_action: 'block' },
-      }),
-    );
-    const lifetime = svc.runProjection().subscribe();
-    await flush();
-
-    expect(svc.blocked()).toBe(true);
-    lifetime.unsubscribe();
-  });
-
-  it('follows a change synced from another device', async () => {
-    const client = fakeClient('@me:hs', STABLE_SERVER);
-    const { svc } = setup(client);
-    const lifetime = svc.runProjection().subscribe();
-    await flush();
-
-    client.syncFromElsewhere(INVITE_PERMISSION_EVENT, {
-      default_action: 'block',
-    });
-    await flush();
-
-    expect(svc.blocked()).toBe(true);
-    lifetime.unsubscribe();
-  });
-
-  it('re-projects the newly active account after a switch', async () => {
-    const { svc, switchTo } = setup(fakeClient('@me:hs', STABLE_SERVER));
-    const lifetime = svc.runProjection().subscribe();
-    await flush();
-
-    switchTo(
-      fakeClient(
-        '@other:hs',
-        { versions: ['v1.12'] },
-        {
-          [INVITE_PERMISSION_EVENT]: { default_action: 'block' },
-        },
-      ),
-    );
-    await flush();
+    const lifetime = run();
 
     expect(svc.supported()).toBe(false);
+    expect(svc.blocked()).toBe(false);
     lifetime.unsubscribe();
   });
 
-  it('blocks through the stable type and is cold', async () => {
-    const client = fakeClient('@me:hs', STABLE_SERVER);
-    const { svc } = setup(client);
+  it('follows a change made elsewhere', () => {
+    const { svc, fake, alice, run } = setup();
+    const lifetime = run();
+
+    fake.setInviteBlocking(alice, true).subscribe();
+
+    expect(svc.blocked()).toBe(true);
+    lifetime.unsubscribe();
+  });
+
+  it('re-reads the newly active account after a switch', () => {
+    const { svc, fake, alice, bob, activate, run } = setup();
+    fake.setInviteBlocking(bob, true).subscribe();
+    const lifetime = run();
+    expect(svc.blocked()).toBe(false);
+
+    activate(bob);
+    expect(svc.blocked()).toBe(true);
+
+    activate(null);
+    expect(svc.supported()).toBeNull();
+    activate(alice);
+    expect(svc.blocked()).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('re-subscribes for a new generation of the same account', () => {
+    const { fake, alice, activate, run } = setup();
+    const inviteBlocking = vi.spyOn(fake, 'inviteBlocking');
+    const lifetime = run();
+
+    activate(alice, 2);
+
+    expect(inviteBlocking).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
+  it('shares one engine subscription between its holders', () => {
+    const { fake, run } = setup();
+    const inviteBlocking = vi.spyOn(fake, 'inviteBlocking');
+
+    const first = run();
+    const second = run();
+
+    expect(inviteBlocking).toHaveBeenCalledTimes(1);
+    first.unsubscribe();
+    second.unsubscribe();
+  });
+
+  it('blocks through the engine and is cold', async () => {
+    const { svc, fake, alice } = setup();
+    const write = vi.spyOn(fake, 'setInviteBlocking');
 
     const action = svc.setBlocked(true);
-    expect(client.setAccountData).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
     await firstValueFrom(action);
 
-    expect(client.setAccountData).toHaveBeenCalledExactlyOnceWith(
-      INVITE_PERMISSION_EVENT,
-      { default_action: 'block' },
-    );
-  });
-
-  it('falls back to the unstable type when only the unstable flag is advertised', async () => {
-    const client = fakeClient('@me:hs', UNSTABLE_ONLY);
-    const { svc } = setup(client);
-
-    await firstValueFrom(svc.setBlocked(true));
-
-    expect(client.setAccountData).toHaveBeenCalledExactlyOnceWith(
-      UNSTABLE_INVITE_PERMISSION_EVENT,
-      { default_action: 'block' },
-    );
-  });
-
-  it('allowing clears both the stable type and a block left in the unstable slot', async () => {
-    const client = fakeClient('@me:hs', BOTH, {
-      [INVITE_PERMISSION_EVENT]: { default_action: 'block' },
-      [UNSTABLE_INVITE_PERMISSION_EVENT]: { default_action: 'block' },
-    });
-    const { svc } = setup(client);
-    const lifetime = svc.runProjection().subscribe();
-    await flush();
-    expect(svc.blocked()).toBe(true);
-
-    await firstValueFrom(svc.setBlocked(false));
-    await flush();
-
-    expect(client.setAccountData).toHaveBeenCalledWith(
-      INVITE_PERMISSION_EVENT,
-      {},
-    );
-    expect(client.setAccountData).toHaveBeenCalledWith(
-      UNSTABLE_INVITE_PERMISSION_EVENT,
-      {},
-    );
-    expect(svc.blocked()).toBe(false);
-    lifetime.unsubscribe();
-  });
-
-  it('allowing leaves an unstable slot alone when it holds no block', async () => {
-    const client = fakeClient('@me:hs', STABLE_SERVER, {
-      [INVITE_PERMISSION_EVENT]: { default_action: 'block' },
-    });
-    const { svc } = setup(client);
-
-    await firstValueFrom(svc.setBlocked(false));
-
-    expect(client.setAccountData).toHaveBeenCalledExactlyOnceWith(
-      INVITE_PERMISSION_EVENT,
-      {},
-    );
+    expect(write).toHaveBeenCalledExactlyOnceWith(alice, true);
   });
 
   it('refuses to write where the server has no invite blocking', async () => {
-    const client = fakeClient('@me:hs', { versions: ['v1.12'] });
-    const { svc } = setup(client);
+    const { svc, fake } = setup();
+    fake.serverBlocksInvites = false;
 
     await expect(firstValueFrom(svc.setBlocked(true))).rejects.toThrow();
-    expect(client.setAccountData).not.toHaveBeenCalled();
+  });
+
+  it('fails as not signed in with no active account, or once it stops being live', async () => {
+    const { svc, fake, activate } = setup();
+    activate(null);
+    await expect(firstValueFrom(svc.setBlocked(true))).rejects.toThrow(
+      'Not signed in.',
+    );
+
+    activate(fake.alice);
+    fake.failNext('account-not-live');
+    await expect(firstValueFrom(svc.setBlocked(true))).rejects.toThrow(
+      'Not signed in.',
+    );
   });
 
   it('queues writes, and a queued write still lands after its caller has gone', async () => {
-    const client = fakeClient('@me:hs', STABLE_SERVER);
-    const echoes: (() => void)[] = [];
-    client.setAccountData.mockImplementation(
-      (type: string, content: object) =>
-        new Promise((resolve) =>
-          echoes.push(() => {
-            client.syncFromElsewhere(type, content);
-            resolve({});
-          }),
-        ),
-    );
-    const { svc } = setup(client);
+    const { svc, fake, alice } = setup();
+    const replies: Subject<EngineResult<null>>[] = [];
+    const write = vi.spyOn(fake, 'setInviteBlocking').mockImplementation(() => {
+      const reply = new Subject<EngineResult<null>>();
+      replies.push(reply);
+      return reply;
+    });
+    const settle = (): void => {
+      const reply = replies.shift();
+      reply?.next(engineOk(null));
+      reply?.complete();
+    };
 
     const first = firstValueFrom(svc.setBlocked(true));
     const second = svc.setBlocked(false).subscribe();
-    await flush();
-    expect(client.setAccountData).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(write).toHaveBeenCalledTimes(1);
 
     second.unsubscribe();
-    echoes.shift()?.();
+    settle();
     await first;
-    await flush();
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+    settle();
 
-    expect(client.setAccountData).toHaveBeenCalledTimes(2);
-    expect(client.setAccountData).toHaveBeenLastCalledWith(
-      INVITE_PERMISSION_EVENT,
-      {},
-    );
+    expect(write).toHaveBeenLastCalledWith(alice, false);
   });
 
   it('writes each choice to the account it was made on, even after a switch', async () => {
-    const mine = fakeClient('@me:hs', STABLE_SERVER);
-    let release = (): void => undefined;
-    mine.setAccountData.mockImplementation(
-      () => new Promise((resolve) => (release = () => resolve({}))),
-    );
-    const other = fakeClient('@other:hs', STABLE_SERVER);
-    const { svc, switchTo } = setup(mine);
+    const { svc, fake, alice, bob, activate } = setup();
+    const write = vi.spyOn(fake, 'setInviteBlocking');
 
-    // The choice is made on @me:hs; the switch lands before anything subscribes to it.
+    // The choice is made on alice; the switch lands before anything subscribes to it.
     const choice = svc.setBlocked(true);
-    switchTo(other);
-    const first = firstValueFrom(choice);
-    const second = firstValueFrom(svc.setBlocked(false));
-    await flush();
-    release();
-    await first;
-    await second;
+    activate(bob);
+    await firstValueFrom(choice);
+    await firstValueFrom(svc.setBlocked(false));
 
-    expect(mine.setAccountData).toHaveBeenCalledExactlyOnceWith(
-      INVITE_PERMISSION_EVENT,
-      { default_action: 'block' },
-    );
-    expect(other.setAccountData).toHaveBeenCalledExactlyOnceWith(
-      INVITE_PERMISSION_EVENT,
-      {},
-    );
+    expect(write.mock.calls).toEqual([
+      [alice, true],
+      [bob, false],
+    ]);
   });
 });

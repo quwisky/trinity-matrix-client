@@ -1,4 +1,5 @@
 import {
+  BehaviorSubject,
   type Observable,
   filter,
   firstValueFrom,
@@ -17,6 +18,7 @@ import {
 } from '@trinity/util/matrix';
 import type {
   CreateRoomRequest,
+  InviteBlocking,
   RoomInfo,
   RoomListEngine,
   SpaceChildLink,
@@ -29,6 +31,8 @@ export interface RoomListContractSetup {
   /** A registered user on the same server, driven only through `asBob`. */
   readonly bob: string;
   readonly serverName: string;
+  /** Whether the server advertises MSC4380 invite blocking, as `/versions` reports it. */
+  readonly serverBlocksInvites: boolean;
   readonly asAlice: {
     /** Publishes `#localpart:serverName` for the room and returns the full alias. */
     publishAlias(roomId: string, localpart: string): Promise<string>;
@@ -176,12 +180,25 @@ export function defineRoomListEngineContract(
       testTimeoutMs,
     );
 
+    function blockingUntil(
+      predicate: (state: InviteBlocking) => boolean,
+    ): Promise<InviteBlocking> {
+      return firstValueFrom(
+        engine.inviteBlocking(alice).pipe(
+          tap((state) => expect(() => assertPlainData(state)).not.toThrow()),
+          filter(predicate),
+          timeout(settleTimeoutMs),
+        ),
+      );
+    }
+
     it(
-      'typing and directMap emit a snapshot first',
+      'typing, directMap and inviteBlocking emit a snapshot first',
       async () => {
         const sources: Observable<unknown>[] = [
           engine.typing(alice),
           engine.directMap(alice),
+          engine.inviteBlocking(alice),
         ];
         for (const source of sources) {
           const first = await firstValueFrom(
@@ -406,12 +423,18 @@ export function defineRoomListEngineContract(
           engine.spaceHierarchy(NOBODY, '!s:invalid', { maxPages: 1 }),
           engine.setSpaceChild(NOBODY, '!s:invalid', '!r:invalid', null),
           engine.setSpaceParent(NOBODY, '!r:invalid', '!s:invalid', []),
+          engine.setInviteBlocking(NOBODY, true),
         ];
 
         for (const command of commands) {
           const result = await once(command);
           expect(!result.ok && result.failure.code).toBe('account-not-live');
         }
+        await expect(
+          firstValueFrom(
+            engine.inviteBlocking(NOBODY).pipe(timeout(settleTimeoutMs)),
+          ),
+        ).resolves.toEqual({ supported: false, blocked: false });
       },
       testTimeoutMs,
     );
@@ -548,6 +571,36 @@ export function defineRoomListEngineContract(
         await expect(context.asAlice.spaceParents(childId)).resolves.toEqual([
           spaceId,
         ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'setInviteBlocking round-trips when supported (skipped where the server lacks MSC4380)',
+      async (test) => {
+        if (!context.serverBlocksInvites) {
+          test.skip('the homeserver does not advertise MSC4380');
+        }
+        const latest = new BehaviorSubject<InviteBlocking | null>(null);
+        const open = engine.inviteBlocking(alice).subscribe(latest);
+        try {
+          await firstValueFrom(
+            latest.pipe(
+              filter((state) => !!state?.supported),
+              timeout(settleTimeoutMs),
+            ),
+          );
+          expect(latest.value).toEqual({ supported: true, blocked: false });
+
+          await ok(engine.setInviteBlocking(alice, true));
+          expect(latest.value).toEqual({ supported: true, blocked: true });
+          await blockingUntil((state) => state.blocked);
+
+          await ok(engine.setInviteBlocking(alice, false));
+          expect(latest.value).toEqual({ supported: true, blocked: false });
+        } finally {
+          open.unsubscribe();
+        }
       },
       testTimeoutMs,
     );
