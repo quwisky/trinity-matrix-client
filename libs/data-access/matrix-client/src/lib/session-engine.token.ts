@@ -7,7 +7,7 @@ export const SESSION_ENGINE = new InjectionToken<SessionEngine>(
   { providedIn: 'root', factory: () => inject(JsSdkSessionEngine) },
 );
 
-/** The engine's synchronous snapshot, so plain-data readers never lag  MatrixClientService. */
+/** The engine's synchronous snapshot, so plain-data readers never lag behind MatrixClientService. */
 export const SESSION_SNAPSHOT = new InjectionToken<Signal<SessionSnapshot>>(
   'SESSION_SNAPSHOT',
   { providedIn: 'root', factory: () => inject(JsSdkSessionEngine).snapshot },

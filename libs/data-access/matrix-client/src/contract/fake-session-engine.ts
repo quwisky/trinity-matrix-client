@@ -25,6 +25,15 @@ import {
   type SessionSnapshot,
 } from '../lib/session-engine';
 
+/** The request-failure kind the js-sdk adapter reports for each start failure reason. */
+const START_FAILURE_KIND = {
+  'reauthentication-required': 'authentication',
+  'transient-network': 'network',
+  'crypto-failure': 'unexpected',
+  'crypto-store-key-lost': 'unexpected',
+  'secure-storage-unavailable': 'unexpected',
+} as const satisfies Record<AccountStartFailureReason, string>;
+
 /** In-memory accounts with scripted start failures, sync progress and token rotation. */
 export class FakeSessionEngine implements SessionEngine {
   private readonly snapshot$ = new BehaviorSubject<SessionSnapshot>(
@@ -102,16 +111,20 @@ export class FakeSessionEngine implements SessionEngine {
       const reason = this.startFailures.get(accountId);
       if (reason) {
         this.startFailures.delete(accountId);
-        if (reason === 'reauthentication-required') {
+        if (
+          reason === 'reauthentication-required' ||
+          reason === 'crypto-store-key-lost'
+        ) {
           this.update((s) => ({
             ...s,
             softLoggedOut: [...new Set([...s.softLoggedOut, accountId])],
           }));
         }
+        const kind = START_FAILURE_KIND[reason];
         return engineFail({
-          kind: 'unexpected',
+          kind,
           code: 'account-start-failed',
-          diagnostic: { kind: 'unexpected' },
+          diagnostic: { kind },
           params: { reason },
         });
       }
@@ -127,8 +140,8 @@ export class FakeSessionEngine implements SessionEngine {
       };
       this.setToken(accountId, {
         accessToken: session.accessToken,
-        expiresAt: session.accessTokenExpiresAt ?? null,
-        refreshable: session.refreshToken !== undefined,
+        expiresAt: session.oidc ? (session.accessTokenExpiresAt ?? null) : null,
+        refreshable: !!session.oidc && !!session.refreshToken,
       });
       this.update((s) => ({
         activeAccountId:

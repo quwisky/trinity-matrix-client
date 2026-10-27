@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import {
@@ -445,15 +445,39 @@ describe('JsSdkSessionEngine', () => {
   });
 });
 
-describe('session-engine.ts', () => {
-  it('imports neither matrix-js-sdk nor the js-sdk adapter', () => {
-    const source = readFileSync(
-      join(import.meta.dirname, '../session-engine.ts'),
-      'utf8',
-    );
-    const specifiers = [...source.matchAll(/from '([^']+)'/g)].map(
-      ([, specifier]) => specifier,
-    );
-    expect(specifiers).toEqual(['rxjs', '@trinity/util/matrix']);
+const FORBIDDEN_IMPORT =
+  /js-sdk\/|matrix-js-sdk|matrix-client\.service|session-engine\.token/;
+
+function importSpecifiers(file: string): string[] {
+  const source = readFileSync(join(import.meta.dirname, '..', file), 'utf8');
+  return [...source.matchAll(/from '([^']+)'/g)].map(([, s]) => s);
+}
+
+describe('SDK-free boundary files', () => {
+  it('session-engine.ts imports neither matrix-js-sdk nor the js-sdk adapter', () => {
+    expect(importSpecifiers('session-engine.ts')).toEqual([
+      'rxjs',
+      '@trinity/util/matrix',
+    ]);
+  });
+
+  it.each(
+    readdirSync(join(import.meta.dirname, '../../contract')).filter((f) =>
+      f.endsWith('.ts'),
+    ),
+  )('contract/%s imports no SDK, adapter or wiring', (file) => {
+    expect(
+      importSpecifiers(`../contract/${file}`).filter((s) =>
+        FORBIDDEN_IMPORT.test(s),
+      ),
+    ).toEqual([]);
+  });
+
+  it('session-state.service.ts reaches the engine only through the token', () => {
+    expect(
+      importSpecifiers('session-state.service.ts').filter((s) =>
+        FORBIDDEN_IMPORT.test(s),
+      ),
+    ).toEqual(['./session-engine.token']);
   });
 });

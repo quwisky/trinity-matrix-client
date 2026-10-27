@@ -54,6 +54,55 @@ describe('FakeSessionEngine', () => {
     expect(snap.accounts).toEqual([]);
   });
 
+  it('lands crypto-store-key-lost in softLoggedOut', async () => {
+    const engine = new FakeSessionEngine();
+    const s = session();
+    engine.failStart(s.userId, 'crypto-store-key-lost');
+
+    await firstValueFrom(engine.restorePersisted(s, 'activate'));
+
+    const snap = await firstValueFrom(engine.session());
+    expect(snap.softLoggedOut).toEqual([s.userId]);
+  });
+
+  it('reports the failure kind the adapter would', async () => {
+    const engine = new FakeSessionEngine();
+    const s = session();
+    engine.failStart(s.userId, 'reauthentication-required');
+
+    const result = await firstValueFrom(engine.restorePersisted(s, 'activate'));
+
+    expect(!result.ok && result.failure.kind).toBe('authentication');
+  });
+
+  it('derives token expiry and refreshability only for OIDC sessions', async () => {
+    const engine = new FakeSessionEngine();
+    const plain = {
+      ...session(),
+      accessTokenExpiresAt: 99,
+      refreshToken: 'r',
+    };
+    const oidc = {
+      ...session(),
+      accessTokenExpiresAt: 99,
+      refreshToken: 'r',
+      oidc: {} as NonNullable<MatrixSession['oidc']>,
+    };
+    await firstValueFrom(engine.restorePersisted(plain, 'activate'));
+    await firstValueFrom(engine.restorePersisted(oidc, 'background'));
+
+    expect(await firstValueFrom(engine.accessToken(plain.userId))).toEqual({
+      accessToken: plain.accessToken,
+      expiresAt: null,
+      refreshable: false,
+    });
+    expect(await firstValueFrom(engine.accessToken(oidc.userId))).toEqual({
+      accessToken: oidc.accessToken,
+      expiresAt: 99,
+      refreshable: true,
+    });
+  });
+
   it('re-emits on accessToken after a rotation', async () => {
     const engine = new FakeSessionEngine();
     const s = session();

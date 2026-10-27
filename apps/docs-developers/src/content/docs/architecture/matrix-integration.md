@@ -32,7 +32,7 @@ A command is a cold observable that emits one result and completes. Expected fai
 
 ### Session engine {#session-engine}
 
-`SessionEngine` (`libs/data-access/matrix-client`) exposes the live accounts as plain data. `session()` emits a `SessionSnapshot` (active account, per-account status, soft-logged-out ids) and every change after it. Access tokens never enter the snapshot: `accessToken(accountId)` is a separate stream. Lifecycle commands (`activateAccount`, `setActive`, `remove`, `stop`, `signOutAll`) are cold, and their effect is already in the next `session()` snapshot when they reply. `SESSION_ENGINE` provides the `matrix-js-sdk` adapter.
+`SessionEngine` (`libs/data-access/matrix-client`) exposes the live accounts as plain data. `session()` emits a `SessionSnapshot` (active account, per-account status, soft-logged-out ids) and every change after it. Access tokens never enter the snapshot: `accessToken(accountId)` is a separate stream. Lifecycle commands are cold, and every lifecycle command's effect is in the next `session()` snapshot before it replies. `signOutAll` revokes the tokens and leaves the accounts live until `stop()`. `SESSION_ENGINE` provides the `matrix-js-sdk` adapter.
 
 | `SessionSyncState` | js-sdk state                                       | Rust `SyncService` state    |
 | ------------------ | -------------------------------------------------- | --------------------------- |
