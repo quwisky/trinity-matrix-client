@@ -27,7 +27,7 @@ import {
   IgnoredUsersService,
   type IgnoredUser,
 } from '@trinity/data-access/identity';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { initialOf, isValidUserId } from '@trinity/util/matrix';
 import { shownError } from '@trinity/util/ui';
 import { catchError, finalize, firstValueFrom, map, of } from 'rxjs';
@@ -54,7 +54,7 @@ interface BlockFormModel {
 })
 export class BlockedUsersComponent {
   private readonly ignoredUsers = inject(IgnoredUsersService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly model = signal<BlockFormModel>({ userId: '' });
@@ -64,7 +64,7 @@ export class BlockedUsersComponent {
   protected readonly blocking = signal(false);
   protected readonly unblocking = signal<ReadonlySet<string>>(new Set());
   protected readonly description = computed(() => {
-    const account = this.matrix.activeUserId();
+    const account = this.matrix.activeAccountId();
     return this.matrix.accountIds().length > 1 && account
       ? `Blocks on ${account}: you won't see messages or invites from these people.`
       : "You won't see messages or invites from people you block.";
@@ -79,7 +79,7 @@ export class BlockedUsersComponent {
           message: 'Enter a full user ID, such as @name:example.org.',
         };
       }
-      if (userId === this.matrix.activeUserId()) {
+      if (userId === this.matrix.activeAccountId()) {
         return { kind: 'self', message: "You can't block yourself." };
       }
       if (this.users().some((user) => user.userId === userId)) {

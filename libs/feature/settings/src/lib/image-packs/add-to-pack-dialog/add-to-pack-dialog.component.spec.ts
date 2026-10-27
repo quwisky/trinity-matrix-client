@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { render, screen } from '@trinity/testing';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ImagePackEditError,
   ImagePackEditorService,
@@ -39,7 +39,7 @@ async function build(
     providers: [
       MockProvider(ImagePackEditorService, { add: addSpy }),
       MockProvider(TrnDialogRef, { close }),
-      MockProvider(MatrixClientService, { activeUserId }),
+      MockProvider(SessionStateService, { activeAccountId: activeUserId }),
       MockProvider(MediaService, {
         resolveMedia: () => NEVER,
         pin: vi.fn(),

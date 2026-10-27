@@ -5,7 +5,7 @@ import {
   IgnoredUsersService,
   type IgnoredUser,
 } from '@trinity/data-access/identity';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { render, screen } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { Subject, of, throwError, type Observable } from 'rxjs';
@@ -51,8 +51,8 @@ async function setup(
         ignore,
         unignore,
       }),
-      MockProvider(MatrixClientService, {
-        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: signal<string | null>('@me:hs').asReadonly(),
         accountIds: signal<readonly string[]>(
           opts.accounts ?? ['@me:hs'],
         ).asReadonly(),

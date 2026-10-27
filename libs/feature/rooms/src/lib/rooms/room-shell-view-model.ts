@@ -1,5 +1,5 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   RoomActionPermissionsService,
   RoomMembersService,
@@ -56,7 +56,7 @@ export class RoomShellViewModel {
   private readonly accountBadgesSvc = inject(AccountBadgesService);
   private readonly unreadAgg = inject(UnreadAggregatorService);
   private readonly railUnreadPreference = inject(RailUnreadChatsPreference);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly identities = inject(AccountIdentitiesService);
   private readonly accountTrust = inject(TrustAccountStatusService);
 
@@ -172,7 +172,7 @@ export class RoomShellViewModel {
     const owner = spaceId
       ? this.railSpaces().find((space) => space.id === spaceId)?.accountId
       : undefined;
-    return owner ?? this.matrix.activeUserId();
+    return owner ?? this.matrix.activeAccountId();
   });
 
   private readonly spaceOrderSnapshot = computed(() => {
@@ -210,7 +210,7 @@ export class RoomShellViewModel {
    */
   readonly spaceOrderOwnerName = computed(() => {
     const accountId = this.spaceOrderAccountId();
-    if (!accountId || accountId === this.matrix.activeUserId()) return null;
+    if (!accountId || accountId === this.matrix.activeAccountId()) return null;
     return this.accountBadges().get(accountId)?.name ?? accountId;
   });
 
@@ -417,7 +417,7 @@ export class RoomShellViewModel {
     return !!roomId && this.rooms.directRoomIds().has(roomId);
   });
 
-  readonly userId = computed(() => this.matrix.activeUserId() ?? '');
+  readonly userId = computed(() => this.matrix.activeAccountId() ?? '');
 
   // Both read the projection rather than the client: it is a declared dependency, so these
   // update when the profile hydrates instead of when something else happened to sync.
@@ -454,7 +454,7 @@ export class RoomShellViewModel {
     });
   });
 
-  readonly activeAccountId = this.matrix.activeUserId;
+  readonly activeAccountId = this.matrix.activeAccountId;
 
   /**
    * Space pills for the rail from the same selected generation as the Room lists.
@@ -515,7 +515,7 @@ export class RoomShellViewModel {
       return false;
     }
     const space = this.railSpaces().find((s) => s.id === spaceId);
-    return !!space && space.accountId === this.matrix.activeUserId();
+    return !!space && space.accountId === this.matrix.activeAccountId();
   });
 
   /**
@@ -537,11 +537,11 @@ export class RoomShellViewModel {
   readonly reauthAccounts = this.matrix.softLoggedOut;
 
   readonly syncLabel = computed(() => {
-    const state = String(this.matrix.syncState() ?? '');
-    if (state === 'PREPARED' || state === 'SYNCING') {
+    const state = this.matrix.syncState();
+    if (state === 'prepared' || state === 'syncing') {
       return 'Welcome to Trinity';
     }
-    if (state === 'ERROR' || state === 'RECONNECTING') {
+    if (state === 'error' || state === 'reconnecting') {
       return 'Reconnecting…';
     }
     return 'Connecting…';

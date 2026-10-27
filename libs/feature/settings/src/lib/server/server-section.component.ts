@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/controls';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { BUILD_INFO } from '@trinity/platform-native';
 import {
   BELOW_MD_QUERY,
@@ -46,7 +46,7 @@ import {
   ],
 })
 export class ServerSectionComponent {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly homeservers = inject(HomeserverInfoService);
   private readonly destroyRef = inject(DestroyRef);
 
