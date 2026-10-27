@@ -24,7 +24,6 @@
     "libs/data-access/discovery/src/lib/public-rooms.service.ts",
     "libs/data-access/discovery/src/lib/room-link.service.ts",
     "libs/data-access/discovery/src/lib/user-directory-discovery.service.ts",
-    "libs/data-access/homeserver/src/lib/homeserver-info.service.ts",
     "libs/data-access/matrix-client/src/index.ts",
     "libs/data-access/matrix-client/src/lib/identity-matrix.port.ts",
     "libs/data-access/matrix-client/src/lib/known-names.ts",

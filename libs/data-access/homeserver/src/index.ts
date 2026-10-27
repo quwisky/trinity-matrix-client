@@ -5,3 +5,5 @@
 export * from './lib/homeserver-info.model';
 export * from './lib/homeserver-info.service';
 export * from './lib/room-version-status';
+export * from './lib/homeserver-engine';
+export { JsSdkHomeserverEngine } from './lib/js-sdk/js-sdk-homeserver-engine';

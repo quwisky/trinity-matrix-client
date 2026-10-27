@@ -1,5 +1,4 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
-import type { MatrixClient } from 'matrix-js-sdk';
 import {
   Observable,
   defer,
@@ -10,17 +9,12 @@ import {
   shareReplay,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { trimTrailing } from '@trinity/util/matrix';
+import { HOMESERVER_ENGINE } from './homeserver-engine';
 import type { HomeserverInfo } from './homeserver-info.model';
-import {
-  fetchCapabilities,
-  fetchSpecVersions,
-  probeServerSoftware,
-} from './probe-homeserver';
 
-/** A cached answer, kept with the client that produced it. */
+/** A cached answer, kept with the session generation that produced it. */
 interface CachedInfo {
-  readonly client: MatrixClient;
+  readonly generation: number;
   readonly info: HomeserverInfo;
 }
 
@@ -45,6 +39,7 @@ interface CachedInfo {
 @Injectable({ providedIn: 'root' })
 export class HomeserverInfoService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(HOMESERVER_ENGINE);
 
   private readonly cache = new Map<string, CachedInfo>();
 
@@ -61,11 +56,10 @@ export class HomeserverInfoService {
   readonly infos = this._infos.asReadonly();
 
   constructor() {
-    // Accounts come and go, and a re-add hands the same user id a NEW client object. Both
-    // are read so the effect re-runs on either; `evictStale` then decides what survives.
+    // Accounts come and go, and a re-add bumps the generation of the same user id; the map
+    // changes on both, so `evictStale` decides what survives.
     effect(() => {
-      this.matrix.accountIds();
-      this.matrix.activeUserId();
+      this.matrix.sessionGenerations();
       this.evictStale();
     });
   }
@@ -101,39 +95,26 @@ export class HomeserverInfoService {
     if (running) {
       return running;
     }
-    // Wholly inside `defer`, so this really is cold as documented: the client, its base URL
-    // and its access token are read on SUBSCRIBE, not when the observable is built. A token
-    // read at build time would be the stale one after an OIDC rotation.
+    // Wholly inside `defer`, so this really is cold as documented: the generation is read
+    // on SUBSCRIBE, and the engine reads the client and token then too.
     const request = defer(() => {
-      const client = this.matrix.clientFor(userId);
-      if (!client) {
-        // A user id held past sign-out, or one passed in from elsewhere. Every id in
-        // `accountIds()` has a live client, so this is a stale caller rather than an
-        // account still warming up — and it is not an error either way.
+      const generation = this.matrix.sessionGenerations().get(userId);
+      if (generation === undefined) {
+        // A user id held past sign-out, or one passed in from elsewhere: not an error.
         return of(undefined);
       }
-      // Trailing slash stripped before it is shown: `AuthService` normalises what it
-      // stores, but a stray slash would still reach the URL row.
-      const baseUrl = trimTrailing(client.baseUrl, '/');
-      const serverName = client.getDomain() ?? serverNameOf(userId);
-      const token = client.getAccessToken();
-
-      return forkJoin({
-        software: probeServerSoftware(baseUrl, serverName),
-        versions: fetchSpecVersions(baseUrl, token),
-        capabilities: fetchCapabilities(baseUrl, token),
-      }).pipe(
-        map(({ software, versions, capabilities }) => {
-          this.store(userId, client, {
-            userId,
-            serverName,
-            baseUrl,
-            discovered: !sameOrigin(baseUrl, `https://${serverName}`),
-            software,
-            specVersions: versions?.versions ?? null,
-            unstableFeatures: versions?.unstableFeatures ?? null,
-            capabilities,
-          });
+      return this.engine.probe(userId).pipe(
+        map((probe) => {
+          if (probe) {
+            this.store(userId, generation, {
+              userId,
+              ...probe,
+              discovered: !sameOrigin(
+                probe.baseUrl,
+                `https://${probe.serverName}`,
+              ),
+            });
+          }
         }),
       );
     }).pipe(
@@ -170,31 +151,30 @@ export class HomeserverInfoService {
 
   private store(
     userId: string,
-    client: MatrixClient,
+    generation: number,
     info: HomeserverInfo,
   ): void {
     // A probe that finished after its account was removed — or after a re-add replaced the
-    // client — must not resurrect an entry, or reinstate one keyed to a client nobody holds.
-    if (this.matrix.clientFor(userId) !== client) {
+    // session — must not resurrect an entry for a session nobody holds.
+    if (this.matrix.sessionGenerations().get(userId) !== generation) {
       return;
     }
-    this.cache.set(userId, { client, info });
+    this.cache.set(userId, { generation, info });
     this.publish();
   }
 
   /**
    * Drop answers that no longer describe anything: accounts that signed out, and accounts
-   * whose user id now maps to a **different client object**.
+   * whose user id now has a **different session generation**.
    *
    * The second case is easy to miss: re-adding an already signed-in account stops and
    * re-creates its client, against a base URL the user may have just changed. The user id is
    * identical, so a cache keyed on it alone would keep showing the old server's version.
-   * Same identity re-check `AccountIdentitiesService` and `UnreadAggregatorService` make.
    */
   private evictStale(): void {
     let changed = false;
     for (const [userId, held] of this.cache) {
-      if (this.matrix.clientFor(userId) !== held.client) {
+      if (this.matrix.sessionGenerations().get(userId) !== held.generation) {
         this.cache.delete(userId);
         changed = true;
       }
@@ -227,9 +207,4 @@ function sameOrigin(a: string, b: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** `example.org` from `@a:example.org`, for the case the client has no domain to give. */
-function serverNameOf(userId: string): string {
-  return userId.replace(/^.*?:/, '');
 }
