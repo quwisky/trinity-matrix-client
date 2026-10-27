@@ -22,7 +22,7 @@ import {
   type RoomLibrarySelectionAvailability,
   type RoomSummary,
 } from './room-library.service';
-import { isJoinedSpace } from './room-projection';
+import { isJoinedSpace } from './js-sdk/room-info';
 import {
   ALL_SELECTED_PROJECTION_DOMAINS,
   SelectedAccountSourceRegistry,

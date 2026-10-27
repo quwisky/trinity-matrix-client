@@ -19,6 +19,7 @@ const LIBS = [
   'data-access-homeserver',
   'data-access-discovery',
   'data-access-matrix-client',
+  'data-access-room-library',
 ] as const;
 
 export async function runEngineContract(

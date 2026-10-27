@@ -8,14 +8,13 @@ import {
 import { type MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import { buildInvite, type PendingInvite } from './invites.service';
+import { compareRoomSummaries, initialOf } from './room-projection';
 import {
   buildRoomSummary,
-  compareRoomSummaries,
   directMapOf,
-  initialOf,
   isJoinedSpace,
   spaceChildIdsOf,
-} from './room-projection';
+} from './js-sdk/room-info';
 import { type RoomSummary } from './room-library.service';
 import { type SpaceSummary } from './spaces.service';
 
