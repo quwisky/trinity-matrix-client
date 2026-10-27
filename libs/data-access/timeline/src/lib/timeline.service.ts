@@ -83,11 +83,11 @@ import {
 import { onWindowFocus, windowHasFocus } from './window-focus';
 import { TimelineRowCache } from './js-sdk/timeline-row-cache';
 import { revisionOf } from './js-sdk/event-revision';
+import { RETAINED_EVENT_LIMIT } from './timeline-store';
 
 const SCROLLBACK = 30;
 const RETAINED_EVENT_BYTES = 64;
 const RETAINED_SENDER_BYTES = 16;
-const RETAINED_EVENT_LIMIT = 100;
 const RETAINED_SENDER_LIMIT = 200;
 
 /**

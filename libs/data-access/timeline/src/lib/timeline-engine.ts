@@ -162,6 +162,8 @@ export type TimelineItem = EventTimelineItem | VirtualTimelineItem;
 
 export interface TimelineRoomState {
   readonly encryption: 'encrypted' | 'unencrypted' | 'unknown';
+  /** Whether the room state holds `m.room.encryption`; unlike `encryption`, the crypto store does not count. */
+  readonly hasEncryptionStateEvent: boolean;
   readonly tombstone: {
     readonly replacementRoomId: string;
     readonly body: string;

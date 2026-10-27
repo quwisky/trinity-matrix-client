@@ -44,6 +44,7 @@ describe('FakeTimelineEngine', () => {
         backPagination: 'idle',
         room: {
           encryption: 'encrypted',
+          hasEncryptionStateEvent: false,
           tombstone: null,
           latestConfirmedEventId: '$a',
           oldestEventId: '$a',

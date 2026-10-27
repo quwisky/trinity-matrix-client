@@ -180,6 +180,7 @@ describe('JsSdkTimelineEngine', () => {
       backPagination: 'start-reached',
       room: {
         encryption: 'unknown',
+        hasEncryptionStateEvent: false,
         tombstone: null,
         latestConfirmedEventId: '$a',
         oldestEventId: '$a',

@@ -507,6 +507,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
           : encryption.answered(roomId)
             ? 'unencrypted'
             : 'unknown',
+        hasEncryptionStateEvent: room.hasEncryptionStateEvent(),
         tombstone: tombstoneOf(room),
         latestConfirmedEventId: latestConfirmedId(events),
         oldestEventId: events[0]?.getId() ?? null,

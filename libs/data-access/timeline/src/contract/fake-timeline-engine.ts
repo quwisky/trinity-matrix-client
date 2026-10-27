@@ -456,6 +456,7 @@ export class FakeTimelineEngine implements TimelineEngine {
     );
     return {
       encryption: 'unencrypted',
+      hasEncryptionStateEvent: false,
       tombstone: null,
       latestConfirmedEventId: all.at(-1)?.eventId ?? null,
       oldestEventId: loaded[0]?.eventId ?? null,
