@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { firstValueFrom } from 'rxjs';
 import { SpaceRoomOrderService } from './space-room-order.service';
 
@@ -41,14 +41,14 @@ function harness(accounts: string[] = [ME], active: string | null = ME) {
   const activeUserId = signal<string | null>(active);
   const matrix = {
     accountIds: accountIds.asReadonly(),
-    activeUserId: activeUserId.asReadonly(),
-  } as unknown as MatrixClientService;
+    activeAccountId: activeUserId.asReadonly(),
+  } as unknown as SessionStateService;
 
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
       SpaceRoomOrderService,
-      { provide: MatrixClientService, useValue: matrix },
+      { provide: SessionStateService, useValue: matrix },
     ],
   });
   return {

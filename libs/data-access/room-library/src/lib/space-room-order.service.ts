@@ -6,7 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { latestGuard } from '@trinity/util/ui';
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import {
@@ -95,7 +95,7 @@ export interface SpaceRoomOrderSnapshot {
  */
 @Injectable({ providedIn: 'root' })
 export class SpaceRoomOrderService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly injector = inject(Injector);
   private readonly storage = inject(DevicePreferenceStorageService);
 
@@ -210,7 +210,7 @@ export class SpaceRoomOrderService {
    * stays live to both a preference change and an account switch.
    */
   effectiveFor(spaceId: string | null): RoomSortMode {
-    const accountId = this.matrix.activeUserId();
+    const accountId = this.matrix.activeAccountId();
     return accountId
       ? this.snapshotFor(accountId, spaceId).effectiveMode
       : DEFAULT_ROOM_SORT;
@@ -218,7 +218,7 @@ export class SpaceRoomOrderService {
 
   /** A space's explicit override, or `null` when it follows the account default. */
   overrideFor(spaceId: string | null): RoomSortMode | null {
-    const accountId = this.matrix.activeUserId();
+    const accountId = this.matrix.activeAccountId();
     return accountId ? this.snapshotFor(accountId, spaceId).overrideMode : null;
   }
 
@@ -287,7 +287,7 @@ export class SpaceRoomOrderService {
 
   /** The active account's record, or all-defaults when it has none yet. */
   private activeOrder(): AccountOrder {
-    const userId = this.matrix.activeUserId();
+    const userId = this.matrix.activeAccountId();
     return userId ? this.orderForAccount(userId) : EMPTY;
   }
 
@@ -298,7 +298,7 @@ export class SpaceRoomOrderService {
   /** Apply `change` to the active account's record, then persist or queue it. */
   private writeActive(key: OrderKey, change: Change): Observable<void> {
     return defer(() => {
-      const userId = this.matrix.activeUserId();
+      const userId = this.matrix.activeAccountId();
       if (!userId) {
         return of(void 0); // signed out mid-interaction: nothing to key the preference to
       }
