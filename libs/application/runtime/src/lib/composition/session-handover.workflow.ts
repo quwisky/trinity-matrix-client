@@ -2,7 +2,7 @@ import { ErrorHandler, Injectable, inject } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
-  MatrixClientService,
+  SESSION_ENGINE,
   type PendingTextMessage,
 } from '@trinity/data-access/matrix-client';
 import {
@@ -14,6 +14,7 @@ import {
   EMPTY,
   Observable,
   catchError,
+  concatMap,
   defer,
   exhaustMap,
   filter,
@@ -23,6 +24,7 @@ import {
   of,
   switchMap,
   take,
+  tap,
   timeout,
   timer,
 } from 'rxjs';
@@ -49,7 +51,7 @@ const DRAIN_POLL_MS = 250;
 @Injectable({ providedIn: 'root' })
 export class SessionHandoverWorkflow {
   private readonly sessionLock = inject(SessionLockService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(SESSION_ENGINE);
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly appRestart = inject(AppRestartService);
   private readonly unsentDrafts = inject(UnsentDraftsWriter);
@@ -97,15 +99,17 @@ export class SessionHandoverWorkflow {
 
   private handOver(): Observable<void> {
     let unsent: readonly PendingTextMessage[] = [];
-    return defer(() => {
-      this.pauseSync();
-      return this.drain();
-    }).pipe(
-      switchMap(() => {
+    return this.pauseSync().pipe(
+      switchMap(() => this.drain()),
+      switchMap(() =>
         // Before stop(): the pending local echoes go with the clients.
-        unsent = this.readUnsent();
-        return this.matrix.stop();
-      }),
+        this.readUnsent().pipe(
+          tap((messages) => {
+            unsent = messages;
+          }),
+          switchMap(() => this.engine.stop()),
+        ),
+      ),
       // A failed stop must not keep this tab holding the session: the reload ends the rest.
       catchError(() => of(undefined)),
       switchMap(() => {
@@ -138,12 +142,10 @@ export class SessionHandoverWorkflow {
   }
 
   /** A sync loop that will not pause must not cost the unsent text: the stop still ends it. */
-  private pauseSync(): void {
-    try {
-      this.matrix.pauseSync();
-    } catch {
-      // stop() tears every client down a moment later.
-    }
+  private pauseSync(): Observable<null> {
+    return defer(() => this.engine.pauseSync()).pipe(
+      catchError(() => of(null)),
+    );
   }
 
   /** A dialog that fails to close must not stop the handover; the reload discards it. */
@@ -164,18 +166,17 @@ export class SessionHandoverWorkflow {
     }
   }
 
-  private readUnsent(): readonly PendingTextMessage[] {
-    try {
-      return this.matrix.pendingTextMessages();
-    } catch {
-      return [];
-    }
+  private readUnsent(): Observable<readonly PendingTextMessage[]> {
+    return defer(() => this.engine.pendingTextMessages()).pipe(
+      catchError(() => of([])),
+    );
   }
 
   /** Until nothing is on its way, or five seconds, whichever comes first. */
   private drain(): Observable<void> {
     return timer(0, DRAIN_POLL_MS).pipe(
-      filter(() => !this.matrix.hasOutgoingWork()),
+      concatMap(() => this.engine.hasOutgoingWork()),
+      filter((busy) => !busy),
       take(1),
       map((): void => undefined),
       timeout({

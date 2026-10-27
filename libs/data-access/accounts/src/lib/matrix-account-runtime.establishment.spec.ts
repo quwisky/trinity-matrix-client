@@ -6,25 +6,28 @@ import {
   AccountHomeserverMismatchError,
   type AccountRecord,
 } from '@trinity/platform-native';
-import type { MatrixSession } from '@trinity/util/matrix';
+import { engineFail, type MatrixSession } from '@trinity/util/matrix';
 import { AuthenticatedAccountGrant } from './authenticated-account-grant';
 import type { AccountEstablishmentIntent } from './account-runtime.models';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import {
   activeIntent,
+  liveSession,
   session,
+  started,
+  startFailed,
   settled,
   setup,
   type AdapterTest,
 } from './matrix-account-runtime.spec-harness';
 
 it('prepares only live Accounts for an Active Account switch', async () => {
-  const { adapter, matrix } = setup();
+  const { adapter, engine } = setup();
 
   await expect(
     firstValueFrom(adapter.prepareActiveAccount('@next:hs')),
   ).resolves.toEqual({ kind: 'ready' });
-  vi.mocked(matrix.clientFor).mockReturnValue(null);
+  vi.mocked(engine.session).mockReturnValue(of(liveSession()));
   await expect(
     firstValueFrom(adapter.prepareActiveAccount('@missing:hs')),
   ).resolves.toEqual({
@@ -34,7 +37,7 @@ it('prepares only live Accounts for an Active Account switch', async () => {
 });
 
 it('persists the Active pointer before publishing the switched client', async () => {
-  const { adapter, matrix, storage } = setup();
+  const { adapter, engine, storage } = setup();
   const order: string[] = [];
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(
     defer(() => {
@@ -42,9 +45,12 @@ it('persists the Active pointer before publishing the switched client', async ()
       return of(void 0);
     }),
   );
-  vi.mocked(matrix.setActive).mockImplementation(() => {
-    order.push('activate');
-  });
+  vi.mocked(engine.setActive).mockReturnValue(
+    defer(() => {
+      order.push('activate');
+      return of(null);
+    }),
+  );
 
   await expect(
     firstValueFrom(adapter.commitActiveAccount('@next:hs')),
@@ -54,7 +60,7 @@ it('persists the Active pointer before publishing the switched client', async ()
 });
 
 it('types Active pointer failures without publishing the target client', async () => {
-  const { adapter, matrix, storage } = setup();
+  const { adapter, engine, storage } = setup();
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(
     throwError(() => new DOMException('quota', 'QuotaExceededError')),
   );
@@ -65,22 +71,22 @@ it('types Active pointer failures without publishing the target client', async (
     kind: 'failed',
     failure: 'local-state-unavailable',
   });
-  expect(matrix.setActive).not.toHaveBeenCalled();
+  expect(engine.setActive).not.toHaveBeenCalled();
 });
 
 it('keeps a tokenless saved Account visible to reauthentication surfaces', async () => {
-  const { adapter, matrix, storage } = setup(null);
+  const { adapter, engine, storage } = setup(null);
   vi.mocked(storage.load).mockReturnValue(of(null));
 
   await expect(
     firstValueFrom(adapter.restoreAccount('@reauth:hs', 'inactive')),
   ).resolves.toEqual({ kind: 'reauthentication-required' });
-  expect(matrix.requireReauthentication).toHaveBeenCalledWith('@reauth:hs');
-  expect(matrix.restorePersisted).not.toHaveBeenCalled();
+  expect(engine.requireReauthentication).toHaveBeenCalledWith('@reauth:hs');
+  expect(engine.restorePersisted).not.toHaveBeenCalled();
 });
 
 it('persists, starts in the background, then commits Active placement', async () => {
-  const { adapter, matrix, storage } = setup();
+  const { adapter, engine, storage } = setup();
   const order: string[] = [];
   vi.mocked(storage.persistForEstablishment).mockReturnValue(
     defer(() => {
@@ -88,10 +94,10 @@ it('persists, starts in the background, then commits Active placement', async ()
       return of(session);
     }),
   );
-  vi.mocked(matrix.restorePersisted).mockReturnValue(
+  vi.mocked(engine.restorePersisted).mockReturnValue(
     defer(() => {
       order.push('start');
-      return of({ kind: 'ready' as const });
+      return started();
     }),
   );
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(
@@ -100,9 +106,12 @@ it('persists, starts in the background, then commits Active placement', async ()
       return of(void 0);
     }),
   );
-  vi.mocked(matrix.activateAccount).mockImplementation(() => {
-    order.push('activate');
-  });
+  vi.mocked(engine.activateAccount).mockReturnValue(
+    defer(() => {
+      order.push('activate');
+      return started();
+    }),
+  );
 
   await expect(
     firstValueFrom(
@@ -118,8 +127,8 @@ it('persists, starts in the background, then commits Active placement', async ()
     session,
     'upsert',
   );
-  expect(matrix.restorePersisted).toHaveBeenCalledWith(session, 'background');
-  expect(matrix.activateAccount).toHaveBeenCalledWith('@new:hs', 'replace');
+  expect(engine.restorePersisted).toHaveBeenCalledWith(session, 'background');
+  expect(engine.activateAccount).toHaveBeenCalledWith('@new:hs', 'replace');
 });
 
 describe('without a usable keychain', () => {
@@ -128,9 +137,7 @@ describe('without a usable keychain', () => {
     vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
       of(session),
     );
-    vi.mocked(test.matrix.restorePersisted).mockReturnValue(
-      of({ kind: 'ready' as const }),
-    );
+    vi.mocked(test.engine.restorePersisted).mockReturnValue(started());
     vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
       of(void 0),
     );
@@ -197,9 +204,7 @@ describe('without a usable keychain', () => {
 it('never asks for consent where the keychain works', async () => {
   const test = setup();
   vi.mocked(test.storage.persistForEstablishment).mockReturnValue(of(session));
-  vi.mocked(test.matrix.restorePersisted).mockReturnValue(
-    of({ kind: 'ready' as const }),
-  );
+  vi.mocked(test.engine.restorePersisted).mockReturnValue(started());
   vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(of(void 0));
 
   await firstValueFrom(
@@ -212,7 +217,7 @@ it('never asks for consent where the keychain works', async () => {
 });
 
 it('empties the push handoff before replacing the live Accounts', async () => {
-  const { adapter, matrix, storage, lifecycle } = setup();
+  const { adapter, engine, storage, lifecycle } = setup();
   const order: string[] = [];
   vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
     defer(() => {
@@ -232,9 +237,7 @@ it('empties the push handoff before replacing the live Accounts', async () => {
       return of(session);
     }),
   );
-  vi.mocked(matrix.restorePersisted).mockReturnValue(
-    of({ kind: 'ready' as const }),
-  );
+  vi.mocked(engine.restorePersisted).mockReturnValue(started());
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
 
   await firstValueFrom(
@@ -249,14 +252,12 @@ it('empties the push handoff before replacing the live Accounts', async () => {
 });
 
 it('still signs in and tears pushers down when the push handoff refuses to empty', async () => {
-  const { adapter, matrix, storage, lifecycle } = setup();
+  const { adapter, engine, storage, lifecycle } = setup();
   vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
     throwError(() => new Error('keychain locked')),
   );
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
-  vi.mocked(matrix.restorePersisted).mockReturnValue(
-    of({ kind: 'ready' as const }),
-  );
+  vi.mocked(engine.restorePersisted).mockReturnValue(started());
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
 
   await expect(
@@ -274,12 +275,10 @@ it('still signs in and tears pushers down when the push handoff refuses to empty
 it('still signs in and tears pushers down when emptying the push handoff never settles', async () => {
   vi.useFakeTimers();
   try {
-    const { adapter, matrix, storage, lifecycle } = setup();
+    const { adapter, engine, storage, lifecycle } = setup();
     vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(NEVER);
     vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
-    vi.mocked(matrix.restorePersisted).mockReturnValue(
-      of({ kind: 'ready' as const }),
-    );
+    vi.mocked(engine.restorePersisted).mockReturnValue(started());
     vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
     const outcomes: unknown[] = [];
 
@@ -312,10 +311,10 @@ describe('replacing a stored device', () => {
         return of(session);
       }),
     );
-    vi.mocked(test.matrix.restorePersisted).mockReturnValue(
+    vi.mocked(test.engine.restorePersisted).mockReturnValue(
       defer(() => {
         order.push('start');
-        return of({ kind: 'ready' as const });
+        return started();
       }),
     );
     vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
@@ -395,9 +394,7 @@ describe('replacing a stored device', () => {
     };
     saved(test, { ...oidc, deviceId: 'OLDDEVICE' });
     vi.mocked(test.storage.persistForEstablishment).mockReturnValue(of(oidc));
-    vi.mocked(test.matrix.restorePersisted).mockReturnValue(
-      of({ kind: 'ready' as const }),
-    );
+    vi.mocked(test.engine.restorePersisted).mockReturnValue(started());
     vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
       of(void 0),
     );
@@ -437,14 +434,9 @@ describe('replacing a stored device', () => {
     vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
       of(session),
     );
-    vi.mocked(test.matrix.restorePersisted)
-      .mockReturnValueOnce(
-        of({
-          kind: 'failed' as const,
-          failure: 'transient-network' as const,
-        }),
-      )
-      .mockReturnValueOnce(of({ kind: 'ready' as const }));
+    vi.mocked(test.engine.restorePersisted)
+      .mockReturnValueOnce(startFailed('transient-network'))
+      .mockReturnValueOnce(started());
     vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
       of(void 0),
     );
@@ -474,9 +466,9 @@ describe('replacing a stored device', () => {
     vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
       of(session),
     );
-    vi.mocked(test.matrix.restorePersisted)
+    vi.mocked(test.engine.restorePersisted)
       .mockReturnValueOnce(NEVER)
-      .mockReturnValueOnce(of({ kind: 'ready' as const }));
+      .mockReturnValueOnce(started());
     vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
       of(void 0),
     );
@@ -500,7 +492,7 @@ describe('replacing a stored device', () => {
     vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
       of(session),
     );
-    vi.mocked(test.matrix.restorePersisted).mockReturnValue(NEVER);
+    vi.mocked(test.engine.restorePersisted).mockReturnValue(NEVER);
     const facts = published(test);
 
     const attempt = test.adapter
@@ -523,14 +515,9 @@ describe('replacing a stored device', () => {
     vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
       of(session),
     );
-    vi.mocked(test.matrix.restorePersisted)
-      .mockReturnValueOnce(
-        of({
-          kind: 'failed' as const,
-          failure: 'transient-network' as const,
-        }),
-      )
-      .mockReturnValueOnce(of({ kind: 'ready' as const }));
+    vi.mocked(test.engine.restorePersisted)
+      .mockReturnValueOnce(startFailed('transient-network'))
+      .mockReturnValueOnce(started());
     vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
       of(void 0),
     );
@@ -598,8 +585,8 @@ describe('replacing a stored device', () => {
     vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
       of(session),
     );
-    vi.mocked(test.matrix.restorePersisted).mockReturnValue(
-      of({ kind: 'failed' as const, failure: 'transient-network' as const }),
+    vi.mocked(test.engine.restorePersisted).mockReturnValue(
+      startFailed('transient-network'),
     );
 
     await expect(
@@ -693,9 +680,9 @@ describe('replacing a stored device', () => {
 });
 
 it('keeps inactive placement in the background without changing Active Account', async () => {
-  const { adapter, matrix, storage } = setup();
+  const { adapter, engine, storage } = setup();
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
-  vi.mocked(matrix.restorePersisted).mockReturnValue(of({ kind: 'ready' }));
+  vi.mocked(engine.restorePersisted).mockReturnValue(started());
 
   await expect(
     firstValueFrom(
@@ -708,11 +695,11 @@ it('keeps inactive placement in the background without changing Active Account',
   ).resolves.toEqual({ kind: 'ready' });
 
   expect(storage.setActiveForEstablishment).not.toHaveBeenCalled();
-  expect(matrix.activateAccount).not.toHaveBeenCalled();
+  expect(engine.activateAccount).not.toHaveBeenCalled();
 });
 
 it('requires an existing Active Account before inactive placement', async () => {
-  const { adapter, matrix, storage } = setup(null);
+  const { adapter, engine, storage } = setup(null);
 
   await expect(
     firstValueFrom(
@@ -727,7 +714,7 @@ it('requires an existing Active Account before inactive placement', async () => 
     failure: 'active-account-required',
   });
   expect(storage.persistForEstablishment).not.toHaveBeenCalled();
-  expect(matrix.restorePersisted).not.toHaveBeenCalled();
+  expect(engine.restorePersisted).not.toHaveBeenCalled();
 });
 
 it('emits expected persistence and startup failures as typed outcomes', async () => {
@@ -753,8 +740,8 @@ it('emits expected persistence and startup failures as typed outcomes', async ()
   vi.mocked(second.storage.persistForEstablishment).mockReturnValue(
     of(session),
   );
-  vi.mocked(second.matrix.restorePersisted).mockReturnValue(
-    of({ kind: 'failed', failure: 'transient-network' }),
+  vi.mocked(second.engine.restorePersisted).mockReturnValue(
+    startFailed('transient-network'),
   );
 
   await expect(
@@ -769,11 +756,11 @@ it('emits expected persistence and startup failures as typed outcomes', async ()
     failure: 'transient-network',
   });
   expect(second.storage.setActiveForEstablishment).not.toHaveBeenCalled();
-  expect(second.matrix.activateAccount).not.toHaveBeenCalled();
+  expect(second.engine.activateAccount).not.toHaveBeenCalled();
 });
 
 it('reports a sign-in through another server as a typed failure and starts no live client', async () => {
-  const { adapter, matrix, storage } = setup();
+  const { adapter, engine, storage } = setup();
   vi.mocked(storage.persistForEstablishment).mockReturnValue(
     throwError(
       () =>
@@ -793,9 +780,9 @@ it('reports a sign-in through another server as a typed failure and starts no li
     failure: 'homeserver-mismatch',
     storedBaseUrl: 'https://stored.example',
   });
-  expect(matrix.restorePersisted).not.toHaveBeenCalled();
+  expect(engine.restorePersisted).not.toHaveBeenCalled();
   expect(storage.setActiveForEstablishment).not.toHaveBeenCalled();
-  expect(matrix.activateAccount).not.toHaveBeenCalled();
+  expect(engine.activateAccount).not.toHaveBeenCalled();
 });
 
 it('types recognized storage outages but preserves adapter defects', async () => {
@@ -836,9 +823,9 @@ it('types recognized storage outages but preserves adapter defects', async () =>
 });
 
 it('rolls back the live Account when Active-pointer persistence fails', async () => {
-  const { adapter, matrix, storage } = setup();
+  const { adapter, engine, storage } = setup();
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
-  vi.mocked(matrix.restorePersisted).mockReturnValue(of({ kind: 'ready' }));
+  vi.mocked(engine.restorePersisted).mockReturnValue(started());
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(
     throwError(() => new DOMException('quota', 'QuotaExceededError')),
   );
@@ -854,23 +841,21 @@ it('rolls back the live Account when Active-pointer persistence fails', async ()
     kind: 'failed',
     failure: 'local-state-unavailable',
   });
-  expect(matrix.activateAccount).not.toHaveBeenCalled();
-  expect(matrix.rollbackAccountStart).toHaveBeenCalledWith('@new:hs');
+  expect(engine.activateAccount).not.toHaveBeenCalled();
+  expect(engine.rollbackAccountStart).toHaveBeenCalledWith('@new:hs');
   expect(storage.restoreActiveAfterFailedEstablishment).not.toHaveBeenCalled();
 });
 
 it('restores the previous Active pointer when live activation throws after persistence', async () => {
-  const { adapter, matrix, storage } = setup('@old:hs');
+  const { adapter, engine, storage } = setup('@old:hs');
   const defect = new Error('activation invariant failed');
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
-  vi.mocked(matrix.restorePersisted).mockReturnValue(of({ kind: 'ready' }));
+  vi.mocked(engine.restorePersisted).mockReturnValue(started());
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
   vi.mocked(storage.restoreActiveAfterFailedEstablishment).mockReturnValue(
     of(void 0),
   );
-  vi.mocked(matrix.activateAccount).mockImplementation(() => {
-    throw defect;
-  });
+  vi.mocked(engine.activateAccount).mockReturnValue(throwError(() => defect));
 
   await expect(
     firstValueFrom(
@@ -880,17 +865,17 @@ it('restores the previous Active pointer when live activation throws after persi
       ),
     ),
   ).rejects.toBe(defect);
-  expect(matrix.rollbackAccountStart).toHaveBeenCalledWith('@new:hs');
+  expect(engine.rollbackAccountStart).toHaveBeenCalledWith('@new:hs');
   expect(storage.restoreActiveAfterFailedEstablishment).toHaveBeenCalledWith(
     '@old:hs',
   );
 });
 
 it('does not commit Active placement when the started Account is not live', async () => {
-  const { adapter, matrix, storage } = setup();
+  const { adapter, engine, storage } = setup();
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
-  vi.mocked(matrix.restorePersisted).mockReturnValue(of({ kind: 'ready' }));
-  vi.mocked(matrix.clientFor).mockReturnValue(null);
+  vi.mocked(engine.restorePersisted).mockReturnValue(started());
+  vi.mocked(engine.session).mockReturnValue(of(liveSession()));
 
   await expect(
     firstValueFrom(
@@ -899,9 +884,11 @@ it('does not commit Active placement when the started Account is not live', asyn
         activeIntent,
       ),
     ),
-  ).rejects.toThrow(/non-live Account/);
+  ).rejects.toThrow(
+    'Account Runtime cannot commit placement for a non-live Account: @new:hs',
+  );
   expect(storage.setActiveForEstablishment).not.toHaveBeenCalled();
-  expect(matrix.activateAccount).not.toHaveBeenCalled();
+  expect(engine.activateAccount).not.toHaveBeenCalled();
 });
 
 it('does not inspect or persist the grant before subscription', () => {
@@ -916,12 +903,12 @@ it('does not inspect or persist the grant before subscription', () => {
 });
 
 it('retries an identical persisted new-Account grant without saving it again', async () => {
-  const { adapter, matrix, storage } = setup();
+  const { adapter, engine, storage } = setup();
   const stored = { ...session, cryptoPrefix: 'prefix' };
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(stored));
-  vi.mocked(matrix.restorePersisted)
-    .mockReturnValueOnce(of({ kind: 'failed', failure: 'transient-network' }))
-    .mockReturnValueOnce(of({ kind: 'ready' }));
+  vi.mocked(engine.restorePersisted)
+    .mockReturnValueOnce(startFailed('transient-network'))
+    .mockReturnValueOnce(started());
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
   const intent = { ...activeIntent, accountRecord: 'new' } as const;
   await firstValueFrom(
@@ -935,5 +922,131 @@ it('retries an identical persisted new-Account grant without saving it again', a
   );
 
   expect(storage.persistForEstablishment).toHaveBeenCalledOnce();
-  expect(matrix.restorePersisted).toHaveBeenCalledTimes(2);
+  expect(engine.restorePersisted).toHaveBeenCalledTimes(2);
+});
+
+describe('restoring a saved Account', () => {
+  it.each([
+    ['transient-network', { kind: 'failed', failure: 'transient-network' }],
+    ['crypto-failure', { kind: 'failed', failure: 'crypto-failure' }],
+    [
+      'crypto-store-key-lost',
+      { kind: 'failed', failure: 'crypto-store-key-lost' },
+    ],
+    [
+      'secure-storage-unavailable',
+      { kind: 'failed', failure: 'secure-storage-unavailable' },
+    ],
+    ['reauthentication-required', { kind: 'reauthentication-required' }],
+  ] as const)('maps a %s start failure', async (reason, outcome) => {
+    const { adapter, engine, storage } = setup();
+    vi.mocked(storage.load).mockReturnValue(of(session));
+    vi.mocked(engine.restorePersisted).mockReturnValue(startFailed(reason));
+
+    await expect(
+      firstValueFrom(adapter.restoreAccount('@new:hs', 'inactive')),
+    ).resolves.toEqual(outcome);
+  });
+
+  it('starts the Active Account in place and reports it ready', async () => {
+    const { adapter, engine, storage } = setup();
+    vi.mocked(storage.load).mockReturnValue(of(session));
+
+    await expect(
+      firstValueFrom(adapter.restoreAccount('@new:hs', 'active')),
+    ).resolves.toEqual({ kind: 'ready' });
+    expect(engine.restorePersisted).toHaveBeenCalledWith(session, 'activate');
+  });
+
+  it('errors on an unexpected start fault', async () => {
+    const { adapter, engine, storage } = setup();
+    const defect = new Error('client constructor broke');
+    vi.mocked(storage.load).mockReturnValue(of(session));
+    vi.mocked(engine.restorePersisted).mockReturnValue(
+      throwError(() => defect),
+    );
+
+    await expect(
+      firstValueFrom(adapter.restoreAccount('@new:hs', 'inactive')),
+    ).rejects.toBe(defect);
+  });
+
+  it('errors on an engine failure that is not a start failure', async () => {
+    const { adapter, engine, storage } = setup();
+    vi.mocked(storage.load).mockReturnValue(of(session));
+    vi.mocked(engine.restorePersisted).mockReturnValue(
+      of(
+        engineFail({
+          kind: 'unexpected',
+          code: 'account-not-live',
+          diagnostic: { kind: 'unexpected' },
+        }),
+      ),
+    );
+
+    await expect(
+      firstValueFrom(adapter.restoreAccount('@new:hs', 'inactive')),
+    ).rejects.toThrow(
+      'Account Runtime cannot start an Account: account-not-live',
+    );
+  });
+});
+
+it('gives a non-live Account as unavailable without moving the Active pointer', async () => {
+  const { adapter, engine, storage } = setup();
+  vi.mocked(engine.session).mockReturnValue(of(liveSession()));
+
+  await expect(
+    firstValueFrom(adapter.commitActiveAccount('@next:hs')),
+  ).resolves.toEqual({ kind: 'failed', failure: 'account-unavailable' });
+  expect(storage.setActiveForEstablishment).not.toHaveBeenCalled();
+  expect(engine.setActive).not.toHaveBeenCalled();
+});
+
+it('rolls back placement when the engine refuses to activate the started Account', async () => {
+  const { adapter, engine, storage } = setup('@old:hs');
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+  vi.mocked(storage.restoreActiveAfterFailedEstablishment).mockReturnValue(
+    of(void 0),
+  );
+  vi.mocked(engine.activateAccount).mockReturnValue(
+    of(
+      engineFail({
+        kind: 'unexpected',
+        code: 'account-not-live',
+        diagnostic: { kind: 'unexpected' },
+      }),
+    ),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).rejects.toThrow(/non-live Account: @new:hs/);
+  expect(engine.rollbackAccountStart).toHaveBeenCalledWith('@new:hs');
+  expect(storage.restoreActiveAfterFailedEstablishment).toHaveBeenCalledWith(
+    '@old:hs',
+  );
+});
+
+it('keeps a refused token during establishment as a typed start failure', async () => {
+  const { adapter, engine, storage } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(engine.restorePersisted).mockReturnValue(
+    startFailed('reauthentication-required'),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).resolves.toEqual({ kind: 'failed', failure: 'reauthentication-required' });
 });
