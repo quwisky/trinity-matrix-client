@@ -1,9 +1,37 @@
 import { type RoomSummary } from './room-library.service';
+import type { RoomInfo } from './room-list-engine';
 
 /** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallback avatars. */
 export function initialOf(name: string): string {
   const stripped = name.replace(/^[#@!]+/, '').trim();
   return (stripped[0] ?? '?').toUpperCase();
+}
+
+/** One room's engine data as the sidebar row of `accountId`. */
+export function roomSummaryOf(accountId: string, info: RoomInfo): RoomSummary {
+  return {
+    id: info.roomId,
+    accountId,
+    accountIds: [accountId],
+    name: info.displayName,
+    initial: initialOf(info.displayName),
+    avatarMxc: info.avatarMxc,
+    topic: info.topic,
+    memberCount: info.joinedMemberCount,
+    encrypted: info.encryption === 'encrypted',
+    unreadCount: info.notificationCount,
+    highlightCount: info.highlightCount,
+    markedUnread: info.markedUnread,
+    // A flagged room reads as unread even with nothing new in it, so the badge and the
+    // sidebar's unread filter both follow.
+    hasUnread: info.notificationCount > 0 || info.markedUnread,
+    lastMessage: info.latestMessage?.text ?? '',
+    lastMessageMark: info.latestMessage?.mark ?? null,
+    activityTs: info.recencyStamp,
+    favourite: info.favourite,
+    lowPriority: info.lowPriority,
+    directUserId: info.directUserId ?? undefined,
+  };
 }
 
 /**

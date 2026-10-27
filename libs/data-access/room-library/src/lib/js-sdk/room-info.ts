@@ -14,7 +14,7 @@ import {
   type RoomEncryptionFlags,
 } from '@trinity/util/matrix';
 import { compareOrder } from '../space-child-order';
-import { initialOf } from '../room-projection';
+import { roomSummaryOf } from '../room-projection';
 import { type RoomSummary } from '../room-library.service';
 import type { RoomInfo, RoomMembership } from '../room-list-engine';
 
@@ -229,9 +229,9 @@ export function toRoomInfo(
 }
 
 /**
- * Project one joined {@link Room} into a {@link RoomSummary} tagged with its account. Pure read,
- * shared by {@link RoomLibraryService} (active account) and the selected-Account projector so
- * both build identical rows.
+ * Project one joined {@link Room} into a {@link RoomSummary} tagged with its account, through
+ * {@link roomSummaryOf} so the selected-Account projector builds the rows the engine-fed
+ * {@link RoomLibraryService} does.
  */
 export function buildRoomSummary(
   room: Room,
@@ -240,35 +240,15 @@ export function buildRoomSummary(
   encryption?: RoomEncryptionFlags,
   hasCryptoStore = true,
 ): RoomSummary {
-  const info = roomInfoOf(room, {
-    ownUserId: null,
-    directUserId: directUserId ?? null,
-    encryption,
-    hasCryptoStore,
-  });
-  return {
-    id: info.roomId,
+  return roomSummaryOf(
     accountId,
-    accountIds: [accountId],
-    name: info.displayName,
-    initial: initialOf(info.displayName),
-    avatarMxc: info.avatarMxc,
-    topic: info.topic,
-    memberCount: info.joinedMemberCount,
-    encrypted: info.encryption === 'encrypted',
-    unreadCount: info.notificationCount,
-    highlightCount: info.highlightCount,
-    markedUnread: info.markedUnread,
-    // A flagged room reads as unread even with nothing new in it, so the badge and the
-    // sidebar's unread filter both follow.
-    hasUnread: info.notificationCount > 0 || info.markedUnread,
-    lastMessage: info.latestMessage?.text ?? '',
-    lastMessageMark: info.latestMessage?.mark ?? null,
-    activityTs: info.recencyStamp,
-    favourite: info.favourite,
-    lowPriority: info.lowPriority,
-    directUserId,
-  };
+    roomInfoOf(room, {
+      ownUserId: null,
+      directUserId: directUserId ?? null,
+      encryption,
+      hasCryptoStore,
+    }),
+  );
 }
 
 /**
