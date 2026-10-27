@@ -14,6 +14,39 @@ defineDiscoveryEngineContract(async () => {
     memberCount: 3,
     isSpace: false,
   });
+  const preview = {
+    canonicalAddress: null,
+    topic: null,
+    avatarMxc: null,
+    memberCount: 1,
+    encrypted: null,
+    joinRule: 'public',
+    membership: 'leave',
+    isSpace: false,
+    via: [],
+    restrictedEligible: false,
+  } as const;
+  engine.previews.push(
+    {
+      ...preview,
+      roomId: '!plaza:example.org',
+      name: 'Plaza',
+      canonicalAddress: '#plaza:example.org',
+    },
+    {
+      ...preview,
+      roomId: '!mine:example.org',
+      name: 'Mine',
+      membership: 'join',
+      encrypted: false,
+    },
+    {
+      ...preview,
+      roomId: '!door:example.org',
+      name: 'Door',
+      joinRule: 'knock',
+    },
+  );
   engine.users.push({
     userId: '@bob:example.org',
     displayName: 'Bob',
@@ -28,6 +61,13 @@ defineDiscoveryEngineContract(async () => {
       name: 'Lobby',
       alias: '#lobby:example.org',
     },
+    unjoinedRoom: {
+      roomId: '!plaza:example.org',
+      name: 'Plaza',
+      alias: '#plaza:example.org',
+    },
+    joinedRoom: { roomId: '!mine:example.org', name: 'Mine' },
+    knockRoom: { roomId: '!door:example.org' },
     otherUser: { userId: '@bob:example.org', displayName: 'Bob' },
   };
 });
