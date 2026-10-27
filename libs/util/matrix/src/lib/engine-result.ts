@@ -15,9 +15,9 @@ export function engineFail(failure: MatrixRequestFailure): EngineResult<never> {
 }
 
 export const NOT_SIGNED_IN: MatrixRequestFailure = {
-  kind: 'authentication',
+  kind: 'unexpected',
   message: 'Not signed in.',
-  diagnostic: { kind: 'authentication' },
+  diagnostic: { kind: 'unexpected' },
 };
 
 /** Carries an engine failure through code that expects a thrown error. */

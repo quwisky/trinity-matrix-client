@@ -96,12 +96,34 @@ describe('describeMatrixRequestFailure for an engine failure', () => {
     );
   });
 
-  it('returns other kinds unchanged', () => {
+  it('applies an operation fallback to a plain HTTP failure', () => {
     expect(
       describeMatrixRequestFailure(
-        new EngineRequestError(NOT_SIGNED_IN),
+        new EngineRequestError({
+          kind: 'http',
+          message: 'Something went wrong. Try again.',
+          diagnostic: { kind: 'http', httpStatus: 404 },
+        }),
         'Try again.',
       ),
-    ).toBe(NOT_SIGNED_IN);
+    ).toEqual({
+      kind: 'http',
+      message: 'Try again.',
+      diagnostic: { kind: 'http', httpStatus: 404 },
+    });
+  });
+
+  it('returns other kinds unchanged', () => {
+    const permission = {
+      kind: 'permission' as const,
+      message: 'You do not have permission to do that.',
+      diagnostic: { kind: 'permission' as const, httpStatus: 403 },
+    };
+    expect(
+      describeMatrixRequestFailure(
+        new EngineRequestError(permission),
+        'Try again.',
+      ),
+    ).toBe(permission);
   });
 });

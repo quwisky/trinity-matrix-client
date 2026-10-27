@@ -126,10 +126,11 @@ export function describeMatrixRequestFailure(
   fallbackMessage = DEFAULT_MESSAGE,
 ): MatrixRequestFailure {
   if (error instanceof EngineRequestError) {
-    // An unrecognised engine failure behaves like a raw unrecognised Error: an
-    // operation-specific fallback replaces its message.
+    // Unrecognised and plain HTTP failures behave like the raw errors they stand for: an
+    // operation-specific fallback replaces their message.
     const { failure } = error;
-    return failure.kind === 'unexpected' && fallbackMessage !== DEFAULT_MESSAGE
+    return (failure.kind === 'unexpected' || failure.kind === 'http') &&
+      fallbackMessage !== DEFAULT_MESSAGE
       ? { ...failure, message: fallbackMessage }
       : failure;
   }

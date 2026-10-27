@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, defer, of, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   EngineRequestError,
@@ -19,12 +19,14 @@ export class UserDirectoryDiscoveryService {
     if (!trimmed) {
       return of({ users: [], limited: false });
     }
-    const accountId = this.matrix.activeUserId();
-    if (!accountId) {
-      return throwError(() => new EngineRequestError(NOT_SIGNED_IN));
-    }
-    return this.engine
-      .searchUserDirectory(accountId, trimmed, limit)
-      .pipe(unwrapEngineResult());
+    return defer(() => {
+      const accountId = this.matrix.activeUserId();
+      if (!accountId) {
+        return throwError(() => new EngineRequestError(NOT_SIGNED_IN));
+      }
+      return this.engine
+        .searchUserDirectory(accountId, trimmed, limit)
+        .pipe(unwrapEngineResult());
+    });
   }
 }

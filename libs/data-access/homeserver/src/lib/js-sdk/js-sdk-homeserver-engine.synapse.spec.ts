@@ -13,7 +13,10 @@ const secret = process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
 
 async function register(username: string) {
   const api = `${baseUrl}/_synapse/admin/v1/register`;
-  const { nonce } = (await (await fetch(api)).json()) as { nonce: string };
+  const nonceRes = await fetch(api);
+  if (!nonceRes.ok)
+    throw new Error(`Synapse nonce request failed: ${nonceRes.status}`);
+  const { nonce } = (await nonceRes.json()) as { nonce: string };
   const password = `pw-${Math.random().toString(36).slice(2)}`;
   const mac = createHmac('sha1', secret)
     .update(`${nonce}\0${username}\0${password}\0notadmin`)
@@ -22,6 +25,7 @@ async function register(username: string) {
     method: 'POST',
     body: JSON.stringify({ nonce, username, password, mac, admin: false }),
   });
+  if (!res.ok) throw new Error(`Synapse registration failed: ${res.status}`);
   return (await res.json()) as { user_id: string; access_token: string };
 }
 

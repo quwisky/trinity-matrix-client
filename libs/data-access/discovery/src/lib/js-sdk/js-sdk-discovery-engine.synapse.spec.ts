@@ -14,7 +14,10 @@ const domain = process.env['TRINITY_ENGINE_CONTRACT_DOMAIN'] ?? serverName;
 
 async function register(username: string) {
   const api = `${baseUrl}/_synapse/admin/v1/register`;
-  const { nonce } = (await (await fetch(api)).json()) as { nonce: string };
+  const nonceRes = await fetch(api);
+  if (!nonceRes.ok)
+    throw new Error(`Synapse nonce request failed: ${nonceRes.status}`);
+  const { nonce } = (await nonceRes.json()) as { nonce: string };
   const password = `pw-${Math.random().toString(36).slice(2)}`;
   const mac = createHmac('sha1', secret)
     .update(`${nonce}\0${username}\0${password}\0notadmin`)
@@ -23,6 +26,7 @@ async function register(username: string) {
     method: 'POST',
     body: JSON.stringify({ nonce, username, password, mac, admin: false }),
   });
+  if (!res.ok) throw new Error(`Synapse registration failed: ${res.status}`);
   const body = (await res.json()) as { user_id: string; access_token: string };
   return {
     userId: body.user_id,
@@ -51,6 +55,14 @@ describe.skipIf(!baseUrl)('JsSdkDiscoveryEngine against Synapse', () => {
       name,
       room_alias_name: `room-${unique}`,
     });
+    // Synapse indexes the user directory in the background.
+    for (let i = 0; i < 20; i++) {
+      const { results } = await me.client.searchUserDirectory({
+        term: displayName,
+      });
+      if (results.some((user) => user.user_id === other.userId)) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
     const engine = Injector.create({
       providers: [
         {

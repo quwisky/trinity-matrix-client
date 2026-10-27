@@ -106,4 +106,53 @@ describe('PublicRoomsService', () => {
       message: 'You do not have permission to do that.',
     });
   });
+
+  it('describes a missing room with the caller fallback and its 404', async () => {
+    const error = await firstValueFrom(svc.join('@me:hs', '#missing:hs')).catch(
+      (e: unknown) => e,
+    );
+
+    expect(
+      describeMatrixRequestFailure(error, 'Could not join X. Try again.'),
+    ).toEqual({
+      kind: 'http',
+      message: 'Could not join X. Try again.',
+      diagnostic: { kind: 'http', httpStatus: 404 },
+    });
+  });
+
+  it('describes a directory-search 4xx with the caller fallback', async () => {
+    vi.spyOn(engine, 'searchPublicRooms').mockReturnValue(
+      of(
+        engineFail({
+          kind: 'http',
+          message: 'Something went wrong. Try again.',
+          diagnostic: { kind: 'http', httpStatus: 400 },
+        }),
+      ),
+    );
+    const error = await firstValueFrom(svc.search('@me:hs')).catch(
+      (e: unknown) => e,
+    );
+
+    expect(describeMatrixRequestFailure(error, 'Search failed.')).toMatchObject(
+      {
+        kind: 'http',
+        message: 'Search failed.',
+        diagnostic: { httpStatus: 400 },
+      },
+    );
+  });
+
+  it('keeps the signed-out message and still takes the caller fallback', async () => {
+    const error = await firstValueFrom(svc.join('@x:hs', '#a:hs')).catch(
+      (e: unknown) => e,
+    );
+
+    expect((error as Error).message).toBe('Not signed in.');
+    expect(
+      describeMatrixRequestFailure(error, 'Could not join X. Try again.')
+        .message,
+    ).toBe('Could not join X. Try again.');
+  });
 });
