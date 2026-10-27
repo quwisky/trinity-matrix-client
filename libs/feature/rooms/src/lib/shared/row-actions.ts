@@ -11,7 +11,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { isValidMxcUri, type AddInput } from '@trinity/data-access/media';
 import { messagePermalink } from '@trinity/util/matrix';
-import { defer, filter, take } from 'rxjs';
+import { defer, filter, finalize, take } from 'rxjs';
 import { type EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { type ForwardService } from '../forward/forward.service';
 import { type MediaSaveService } from '../media-attachment/media-save.service';
@@ -114,6 +114,9 @@ interface Emoticon {
   readonly url: string;
   readonly code: string;
 }
+
+/** Rows whose source is being read, per timeline: a double click opens one dialog. */
+const sourcesInFlight = new WeakMap<object, Set<string>>();
 
 /** Parsed once per message: caps are rebuilt for every row on each timeline change. */
 const emoticonCache = new WeakMap<MessageView, readonly Emoticon[]>();
@@ -285,10 +288,17 @@ export function dispatchSharedRowAction(
       else addEmoticon(row, ctx);
       return true;
     }
-    case 'view-source':
+    case 'view-source': {
+      const pending = sourcesInFlight.get(ctx.timeline) ?? new Set<string>();
+      sourcesInFlight.set(ctx.timeline, pending);
+      if (pending.has(row.id)) return true;
+      pending.add(row.id);
       ctx.timeline
         .eventSource(row.id)
-        .pipe(takeUntilDestroyed(ctx.destroyRef))
+        .pipe(
+          finalize(() => pending.delete(row.id)),
+          takeUntilDestroyed(ctx.destroyRef),
+        )
         .subscribe((raw) => {
           if (raw) {
             ctx.dialog.open(MessageSourceComponent, {
@@ -297,6 +307,7 @@ export function dispatchSharedRowAction(
           }
         });
       return true;
+    }
     case 'forward':
       ctx.forward
         .forward$(ctx.roomId, row.id)

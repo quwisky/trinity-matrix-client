@@ -264,6 +264,24 @@ describe('dispatchSharedRowAction', () => {
     expect(missing.dialog.open).not.toHaveBeenCalled();
   });
 
+  it('opens the source once when it is asked for again while being read', () => {
+    const source = new Subject<Record<string, unknown> | null>();
+    const ctx = setup({
+      timeline: { eventSource: vi.fn(() => source) } as never,
+    });
+
+    dispatchSharedRowAction({ type: 'view-source' }, row, ctx);
+    dispatchSharedRowAction({ type: 'view-source' }, row, ctx);
+    source.next({ type: 'm.room.message' });
+    source.complete();
+
+    expect(ctx.timeline.eventSource).toHaveBeenCalledTimes(1);
+    expect(ctx.dialog.open).toHaveBeenCalledTimes(1);
+
+    dispatchSharedRowAction({ type: 'view-source' }, row, ctx);
+    expect(ctx.timeline.eventSource).toHaveBeenCalledTimes(2);
+  });
+
   it('opens forward, report, reactors and edit history for the room', () => {
     const ctx = setup();
 
