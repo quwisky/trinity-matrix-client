@@ -10,7 +10,7 @@ export * from './lib/project-from-client';
 export * from './lib/trust-crypto.port';
 export * from './lib/identity-matrix.port';
 export * from './lib/known-names';
-export type { PendingTextMessage } from './lib/js-sdk/outgoing-work';
+export * from './lib/session-engine';
 export * from './lib/server-support';
 export * from './lib/mutual-rooms';
 export * from './lib/js-sdk/js-sdk-clients';
