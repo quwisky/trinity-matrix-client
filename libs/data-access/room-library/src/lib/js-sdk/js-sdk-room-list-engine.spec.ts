@@ -11,7 +11,7 @@ import {
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
-import { firstValueFrom, type Observable } from 'rxjs';
+import { firstValueFrom, tap, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import {
@@ -557,6 +557,46 @@ describe('JsSdkRoomListEngine', () => {
       client.emit(RoomEvent.MyMembership, client.rooms[0], 'leave');
 
       expect(replies).toEqual([{ ok: true, value: null }]);
+    });
+
+    it('an open rooms() subscriber holds the created room when createRoom replies', async () => {
+      const { client, engine } = setup();
+      const { batches } = record(engine.rooms(ME));
+      const seen: string[][] = [];
+      await pending(
+        engine
+          .createRoom(ME, { name: 'x', topic: null, isPublic: false })
+          .pipe(
+            tap(() =>
+              seen.push(resetValues(batches.at(-1)).map((r) => r.roomId)),
+            ),
+          ),
+      );
+
+      client.rooms.push(fakeRoom('!new:hs'));
+      client.emit(RoomEvent.MyMembership, client.rooms[0], 'join');
+
+      expect(seen).toEqual([['!new:hs']]);
+    });
+
+    it('an open rooms() subscriber has dropped the room when leave replies', async () => {
+      const { client, engine } = setup([fakeRoom('!a:hs')]);
+      const { batches } = record(engine.rooms(ME));
+      const seen: string[][] = [];
+      await pending(
+        engine
+          .leave(ME, '!a:hs')
+          .pipe(
+            tap(() =>
+              seen.push(resetValues(batches.at(-1)).map((r) => r.roomId)),
+            ),
+          ),
+      );
+
+      client.rooms[0] = fakeRoom('!a:hs', { membership: 'leave' });
+      client.emit(RoomEvent.MyMembership, client.rooms[0], 'leave');
+
+      expect(seen).toEqual([[]]);
     });
 
     it('createDirectMessage reuses an invited DM without waiting', async () => {

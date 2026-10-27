@@ -53,7 +53,9 @@ export interface CreateRoomRequest {
 }
 
 /**
- * A command's effect is visible in the next `rooms()` emission before the command replies.
+ * `createRoom`, `createDirectMessage`, `leave` and `setTag` show their effect in `rooms()`,
+ * open subscriptions included, before they reply. `setMarkedUnread` and `markRead` write
+ * account data, which shows once `/sync` returns it.
  * The js-sdk adapter emits synchronously on subscribe; other engines may not.
  * Every command on an account that is not live returns `account-not-live`.
  */

@@ -28,6 +28,7 @@ import {
   of,
   startWith,
   switchMap,
+  tap,
 } from 'rxjs';
 import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
 import {
@@ -258,7 +259,7 @@ export class JsSdkRoomListEngine implements RoomListEngine {
   leave(accountId: string, roomId: string): Observable<EngineResult<null>> {
     return this.command(accountId, (client) =>
       from(client.leave(roomId)).pipe(
-        switchMap(() => settled(client, roomId, (room) => !listed(room))),
+        switchMap(() => this.settle(client, roomId, (room) => !listed(room))),
         map(() => null),
       ),
     );
@@ -327,13 +328,24 @@ export class JsSdkRoomListEngine implements RoomListEngine {
     });
   }
 
-  /** `roomId` once {@link settled}. */
+  /** {@link settled}, re-emitting open `rooms()` subscriptions before the reply. */
+  private settle(
+    client: MatrixClient,
+    roomId: string,
+    done: (room: Room | null) => boolean,
+  ): Observable<void> {
+    return settled(client, roomId, done).pipe(
+      tap(() => this.written$.next(client)),
+    );
+  }
+
+  /** `roomId` once {@link settle}d. */
   private once(
     client: MatrixClient,
     roomId: string,
     done: (room: Room | null) => boolean,
   ): Observable<{ readonly roomId: string }> {
-    return settled(client, roomId, done).pipe(map(() => ({ roomId })));
+    return this.settle(client, roomId, done).pipe(map(() => ({ roomId })));
   }
 
   /** A reset of every listed room on subscribe, and again once per microtask the list may have changed. */
