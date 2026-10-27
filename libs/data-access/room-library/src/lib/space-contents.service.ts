@@ -23,7 +23,8 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { retryTransient, roomAvatarMxc } from '@trinity/util/matrix';
-import { directMapOf, initialOf } from './room-projection';
+import { initialOf } from './room-projection';
+import { directMapOf } from './js-sdk/room-info';
 import { RoomLibraryService } from './room-library.service';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
