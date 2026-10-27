@@ -5,7 +5,7 @@ import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@angular/core';
 import { AuthService, type AccountServerApi } from '@trinity/data-access/auth';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   ACCOUNT_DELETION_LAUNCHER,
@@ -45,8 +45,8 @@ describe('AccountSectionComponent', () => {
         MockProvider(AuthService, {
           accountManagementFor: vi.fn(() => (api ? of(api) : NEVER)),
         }),
-        MockProvider(MatrixClientService, {
-          activeUserId: signal('@alice:example.org').asReadonly(),
+        MockProvider(SessionStateService, {
+          activeAccountId: signal('@alice:example.org').asReadonly(),
         }),
         MockProvider(TrnToastService),
         MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),

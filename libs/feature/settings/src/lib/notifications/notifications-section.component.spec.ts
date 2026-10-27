@@ -13,7 +13,7 @@ import {
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
 import { TrnToastService } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { NotificationsSectionComponent } from './notifications-section.component';
 
 const TOGGLES = [
@@ -66,11 +66,11 @@ async function build(over: { setOn?: Mock } = {}) {
         connect: reactionConnect,
         disconnect: reactionDisconnect,
       }),
-      MockProvider(MatrixClientService, {
-        activeUserId: activeAccount.asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: activeAccount.asReadonly(),
       }),
       // The section renders the keyword block, which would otherwise reach the real
-      // MatrixClientService — harmless today only because it reports uninitialised.
+      // SessionStateService — harmless today only because it reports uninitialised.
       MockProvider(KeywordRulesService, { keywords: () => [] }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],

@@ -28,7 +28,7 @@ import {
 } from '@trinity/components/controls';
 import { runWithBusy } from '@trinity/util/ui';
 import { AuthService } from '@trinity/data-access/auth';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { EmailAddressesGroupComponent } from './email-addresses/email-addresses-group.component';
 import { DeleteAccountGroupComponent } from './delete-account/delete-account-group.component';
@@ -120,7 +120,7 @@ export class AccountSectionComponent {
   protected readonly announcement = signal('');
 
   /** The account this section shows. */
-  readonly accountId = inject(MatrixClientService).activeUserId;
+  readonly accountId = inject(SessionStateService).activeAccountId;
 
   /** The server's account API; null until it has answered. */
   readonly serverApi = toSignal(

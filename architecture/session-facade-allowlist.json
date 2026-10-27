@@ -84,15 +84,6 @@
     "libs/feature/rooms/src/lib/rooms/rooms.page.ts",
     "libs/feature/rooms/src/lib/rooms/session-actions.service.ts",
     "libs/feature/rooms/src/lib/shared/add-to-my-emoji.service.ts",
-    "libs/feature/rooms/src/lib/sign-in-again-banner/sign-in-again-banner.component.ts",
-    "libs/feature/settings/src/lib/account/account-section.component.ts",
-    "libs/feature/settings/src/lib/devices/devices-section.component.ts",
-    "libs/feature/settings/src/lib/image-packs/add-to-pack-dialog/add-to-pack-dialog.component.ts",
-    "libs/feature/settings/src/lib/image-packs/personal-pack/personal-pack.component.ts",
-    "libs/feature/settings/src/lib/notifications/notifications-section.component.ts",
-    "libs/feature/settings/src/lib/privacy/blocked-users.component.ts",
-    "libs/feature/settings/src/lib/privacy/invite-permission-setting.component.ts",
-    "libs/feature/settings/src/lib/security/security-section.component.ts",
-    "libs/feature/settings/src/lib/server/server-section.component.ts"
+    "libs/feature/rooms/src/lib/sign-in-again-banner/sign-in-again-banner.component.ts"
   ]
 }

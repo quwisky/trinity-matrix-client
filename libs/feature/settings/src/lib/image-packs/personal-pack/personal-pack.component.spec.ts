@@ -5,7 +5,7 @@ import {
   TrnSurfaceService,
   type ActionSheetData,
 } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ImagePackEditError,
   ImagePackEditorService,
@@ -80,7 +80,7 @@ async function build(
         remove,
       }),
       MockProvider(TrnAlertService, { confirm$ }),
-      MockProvider(MatrixClientService, { activeUserId }),
+      MockProvider(SessionStateService, { activeAccountId: activeUserId }),
       MockProvider(TrnSurfaceService, {
         openAndWait$: openAndWait$ as TrnSurfaceService['openAndWait$'],
         openActions: openActions as unknown as TrnSurfaceService['openActions'],

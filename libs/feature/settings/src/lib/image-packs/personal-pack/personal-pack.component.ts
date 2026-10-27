@@ -31,7 +31,7 @@ import {
   TrnSettingsGroupComponent,
   TrnSurfaceService,
 } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ImagePackEditError,
   ImagePackEditorService,
@@ -131,7 +131,7 @@ export class PersonalPackComponent {
   private readonly editor = inject(ImagePackEditorService);
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly alert = inject(TrnAlertService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -221,14 +221,14 @@ export class PersonalPackComponent {
     const input = event.target as HTMLInputElement;
     const files = [...(input.files ?? [])];
     input.value = '';
-    const account = this.matrix.activeUserId();
+    const account = this.matrix.activeAccountId();
     from(files)
       .pipe(
         // For the personal pack, an account switch drops the files still queued; the open dialog
         // closes itself. A room ref pins its account.
         concatMap((file) =>
           this.ref().kind === 'personal' &&
-          this.matrix.activeUserId() !== account
+          this.matrix.activeAccountId() !== account
             ? EMPTY
             : this.surfaces.openAndWait$<PackEntry, AddToPackDialogComponent>(
                 AddToPackDialogComponent,
