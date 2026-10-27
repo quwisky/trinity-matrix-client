@@ -59,6 +59,22 @@ Creating a room, space or DM, joining, leaving and tagging show their effect in 
 | `directMap(accountId)`                | the account's `m.direct` map, left rooms included             |
 | `spaceChildLinks(accountId, spaceId)` | the space's live `m.space.child` links in spec order          |
 
+### Timeline engine {#timeline-engine}
+
+`TimelineEngine` (`libs/data-access/timeline`) exposes one room's timeline as plain `TimelineItem`s: event items plus the virtual `readMarker` and `timelineStart` items; date dividers stay on the feature side. `timeline(accountId, roomId, focus)` emits `room-unavailable` until the account holds the room, then `VectorDiff<TimelineItem>` batches that start with a `reset` and carry the back-pagination state and room state. A back-pagination emits `paginating` with no diffs, then the page's diffs and the next state in one update, so older rows and the loading flag change together; the reply follows that update. Every command replies only after its effect is in each open `timeline()` subscription, and on an account that is not live returns `account-not-live`. `TimelineStore` holds one subscription per open conversation and freezes the "New messages" anchor at the first `readMarker` it sees, so reading the room does not move the divider. `TIMELINE_ENGINE` provides the `matrix-js-sdk` adapter. One contract, `defineTimelineEngineContract`, runs against `FakeTimelineEngine` in unit tests and against Synapse in `trinity-e2e-engine:contract`.
+
+| Event item field            | Holds                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `uniqueId`                  | an id that stays stable from local echo to remote echo                             |
+| `eventId`, `transactionId`  | the server id once known, and the local echo's transaction id until then           |
+| `sender`, `isOwn`           | the sender's user id and whether it is the account                                 |
+| `timestamp`, `sendState`    | the origin time, and `sending`, `waiting` or `failed` for an own unsent echo       |
+| `content`                   | a tagged union: message, media, sticker, location, poll, state, redacted, etc.     |
+| `edited`, `inReplyTo`       | whether an edit replaced the body, and the quoted event and its details            |
+| `reactions`, `readBy`       | grouped reaction keys with capped senders, and the readers whose receipt sits here |
+| `shield`, `unencryptedMark` | a shield code (colour and reason) rather than text, and the unencrypted mark       |
+| `profiles`                  | display name and avatar for every user the item names                              |
+
 ## Treat synchronization as authoritative {#sync-authority}
 
 Commands call the SDK and then allow sync or the relevant SDK event to reconcile current state. Preserve a typed error or outcome for the initiating action, but do not claim that an accepted network request has already become authoritative local state unless the SDK contract guarantees it.
