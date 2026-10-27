@@ -1,11 +1,13 @@
 import { Injectable, inject } from '@angular/core';
-import { AutoDiscovery, RoomType } from 'matrix-js-sdk';
+import { AutoDiscovery, AutoDiscoveryError, RoomType } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { Observable, catchError, defer, from, map, of } from 'rxjs';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import {
   type EngineResult,
   NOT_SIGNED_IN,
+  type DiscoveryFailureReason,
+  type EngineFailure,
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
@@ -63,6 +65,30 @@ async function fetchWithRetry(
   }
 }
 
+const DISCOVERY_REASONS: Readonly<Record<string, DiscoveryFailureReason>> = {
+  [AutoDiscoveryError.Invalid]: 'invalid',
+  [AutoDiscoveryError.GenericFailure]: 'generic-failure',
+  [AutoDiscoveryError.InvalidHsBaseUrl]: 'invalid-hs-base-url',
+  [AutoDiscoveryError.InvalidHomeserver]: 'invalid-homeserver',
+  [AutoDiscoveryError.UnsupportedHomeserverSpecVersion]:
+    'unsupported-homeserver-spec-version',
+  [AutoDiscoveryError.MissingWellknown]: 'missing-wellknown',
+  [AutoDiscoveryError.InvalidJson]: 'invalid-json',
+};
+
+function discoveryReason(error: unknown): { reason?: DiscoveryFailureReason } {
+  const reason =
+    typeof error === 'string' && Object.hasOwn(DISCOVERY_REASONS, error)
+      ? DISCOVERY_REASONS[error]
+      : undefined;
+  return reason ? { reason } : {};
+}
+
+function requestFailed(err: unknown): EngineFailure {
+  const { kind, diagnostic } = describeMatrixRequestFailure(err);
+  return { kind, code: 'request-failed', diagnostic };
+}
+
 @Injectable({ providedIn: 'root' })
 export class JsSdkDiscoveryEngine implements DiscoveryEngine {
   private readonly clients = inject(JS_SDK_CLIENTS);
@@ -85,11 +111,12 @@ export class JsSdkDiscoveryEngine implements DiscoveryEngine {
         ) {
           return engineFail({
             kind: 'unexpected',
-            message:
-              typeof homeserver.error === 'string'
-                ? homeserver.error
-                : `Could not discover a homeserver for "${domain}".`,
+            code: 'discovery-failed',
             diagnostic: { kind: 'unexpected' },
+            params: {
+              domain,
+              ...discoveryReason(homeserver.error),
+            },
           });
         }
         const baseUrl = (homeserver.base_url ?? `https://${domain}`).replace(
@@ -98,20 +125,7 @@ export class JsSdkDiscoveryEngine implements DiscoveryEngine {
         );
         return engineOk({ domain, baseUrl });
       }),
-      catchError((err: unknown) => {
-        const failure = describeMatrixRequestFailure(err);
-        // Callers read the raw message of an unclassified discovery error.
-        return of(
-          engineFail(
-            failure.kind === 'unexpected'
-              ? {
-                  ...failure,
-                  message: err instanceof Error ? err.message : String(err),
-                }
-              : failure,
-          ),
-        );
-      }),
+      catchError((err: unknown) => of(engineFail(requestFailed(err)))),
     );
   }
 
@@ -187,9 +201,7 @@ export class JsSdkDiscoveryEngine implements DiscoveryEngine {
       }
       return from(run(client)).pipe(
         map((value) => engineOk(value)),
-        catchError((err: unknown) =>
-          of(engineFail(describeMatrixRequestFailure(err))),
-        ),
+        catchError((err: unknown) => of(engineFail(requestFailed(err)))),
       );
     });
   }
