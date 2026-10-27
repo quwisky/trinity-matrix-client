@@ -1,4 +1,4 @@
-import { EngineRequestError } from './engine-result';
+import { EngineRequestError, engineFailureMessage } from './engine-result';
 import {
   ConnectionError,
   HTTPError,
@@ -56,6 +56,38 @@ const MAX_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 const MATRIX_ERRCODE = /^[A-Z][A-Z0-9_.-]{0,127}$/;
 const ERROR_NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 
+/** The user-facing text for a failure group; operation fallbacks replace `http` and `unexpected`. */
+export function requestFailureMessage(
+  kind: MatrixRequestFailureKind,
+  {
+    retryAfterMs: delay,
+    errorName,
+  }: Pick<MatrixRequestFailureMetadata, 'retryAfterMs' | 'errorName'> = {},
+): string {
+  switch (kind) {
+    case 'timeout':
+      return 'The request timed out. Try again.';
+    case 'authentication':
+      return 'Your session has expired. Sign in again.';
+    case 'network':
+      return errorName === 'TokenRefreshError'
+        ? 'Your session could not be refreshed. Check your connection and try again.'
+        : 'Check your connection and try again.';
+    case 'permission':
+      return 'You do not have permission to do that.';
+    case 'rate-limit': {
+      if (delay === undefined) return 'Too many requests. Try again shortly.';
+      const seconds = Math.ceil(delay / 1000);
+      return `Too many requests. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`;
+    }
+    case 'server':
+      return 'The homeserver is unavailable. Try again.';
+    case 'http':
+    case 'unexpected':
+      return DEFAULT_MESSAGE;
+  }
+}
+
 function hasErrorName(error: unknown, name: string): boolean {
   return (
     typeof error === 'object' &&
@@ -109,7 +141,10 @@ function failure(
   extra: Partial<MatrixRequestFailureMetadata> = {},
 ): MatrixRequestFailure {
   const diagnostic: MatrixRequestFailureMetadata = { kind, ...extra };
-  if (kind === 'unexpected' && error instanceof Error) {
+  if (
+    (kind === 'unexpected' || hasErrorName(error, 'TokenRefreshError')) &&
+    error instanceof Error
+  ) {
     diagnostic.errorName = ERROR_NAME.test(error.name) ? error.name : 'Error';
   }
   return { kind, message, diagnostic };
@@ -129,19 +164,24 @@ export function describeMatrixRequestFailure(
     // Unrecognised and plain HTTP failures behave like the raw errors they stand for: an
     // operation-specific fallback replaces their message.
     const { failure } = error;
-    return (failure.kind === 'unexpected' || failure.kind === 'http') &&
-      fallbackMessage !== DEFAULT_MESSAGE
-      ? { ...failure, message: fallbackMessage }
-      : failure;
+    return {
+      kind: failure.kind,
+      message:
+        (failure.kind === 'unexpected' || failure.kind === 'http') &&
+        fallbackMessage !== DEFAULT_MESSAGE
+          ? fallbackMessage
+          : engineFailureMessage(failure),
+      diagnostic: failure.diagnostic,
+    };
   }
   if (isTimeout(error)) {
-    return failure('timeout', 'The request timed out. Try again.', error);
+    return failure('timeout', requestFailureMessage('timeout'), error);
   }
 
   if (hasErrorName(error, 'TokenRefreshLogoutError')) {
     return failure(
       'authentication',
-      'Your session has expired. Sign in again.',
+      requestFailureMessage('authentication'),
       error,
     );
   }
@@ -149,13 +189,13 @@ export function describeMatrixRequestFailure(
   if (hasErrorName(error, 'TokenRefreshError')) {
     return failure(
       'network',
-      'Your session could not be refreshed. Check your connection and try again.',
+      requestFailureMessage('network', { errorName: 'TokenRefreshError' }),
       error,
     );
   }
 
   if (error instanceof ConnectionError) {
-    return failure('network', 'Check your connection and try again.', error);
+    return failure('network', requestFailureMessage('network'), error);
   }
 
   if (error instanceof HTTPError) {
@@ -172,7 +212,7 @@ export function describeMatrixRequestFailure(
     if (errcode && TOKEN_ERRORS.has(errcode)) {
       return failure(
         'authentication',
-        'Your session has expired. Sign in again.',
+        requestFailureMessage('authentication'),
         error,
         metadata,
       );
@@ -180,19 +220,16 @@ export function describeMatrixRequestFailure(
     if (httpStatus === 403 || errcode === 'M_FORBIDDEN') {
       return failure(
         'permission',
-        'You do not have permission to do that.',
+        requestFailureMessage('permission'),
         error,
         metadata,
       );
     }
     if (error.isRateLimitError()) {
       const delay = retryAfterMs(error);
-      const seconds = delay === undefined ? undefined : Math.ceil(delay / 1000);
       return failure(
         'rate-limit',
-        seconds === undefined
-          ? 'Too many requests. Try again shortly.'
-          : `Too many requests. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+        requestFailureMessage('rate-limit', { retryAfterMs: delay }),
         error,
         {
           ...metadata,
@@ -203,7 +240,7 @@ export function describeMatrixRequestFailure(
     if ((httpStatus ?? 0) >= 500) {
       return failure(
         'server',
-        'The homeserver is unavailable. Try again.',
+        requestFailureMessage('server'),
         error,
         metadata,
       );

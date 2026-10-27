@@ -2,16 +2,16 @@ import { firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import {
   assertPlainData,
+  type DiscoveryFailureReason,
+  type EngineFailure,
+  engineFailureMessage,
   engineFail,
   engineOk,
   EngineRequestError,
   NOT_SIGNED_IN,
   unwrapEngineResult,
 } from './engine-result';
-import {
-  describeMatrixRequestFailure,
-  type MatrixRequestFailure,
-} from './request-failure';
+import { describeMatrixRequestFailure } from './request-failure';
 
 describe('assertPlainData', () => {
   it('accepts plain JSON-like data', () => {
@@ -60,26 +60,126 @@ describe('unwrapEngineResult', () => {
   });
 });
 
-describe('describeMatrixRequestFailure with EngineRequestError', () => {
-  it('returns the carried failure unchanged', () => {
-    const f: MatrixRequestFailure = {
-      kind: 'permission',
-      message: 'You do not have permission to do that.',
-      diagnostic: {
-        kind: 'permission',
-        httpStatus: 403,
-        errcode: 'M_FORBIDDEN',
+const requestFailed = (
+  kind: EngineFailure['kind'],
+  diagnostic: Omit<EngineFailure['diagnostic'], 'kind'> = {},
+): EngineFailure => ({
+  kind,
+  code: 'request-failed',
+  diagnostic: { kind, ...diagnostic },
+});
+
+describe('engineFailureMessage', () => {
+  it('words not-signed-in', () => {
+    expect(engineFailureMessage(NOT_SIGNED_IN)).toBe('Not signed in.');
+  });
+
+  it.each<[DiscoveryFailureReason, string]>([
+    ['invalid', 'Invalid homeserver discovery response'],
+    [
+      'generic-failure',
+      'Failed to get autodiscovery configuration from server',
+    ],
+    ['invalid-hs-base-url', 'Invalid base_url for m.homeserver'],
+    [
+      'invalid-homeserver',
+      'Homeserver URL does not appear to be a valid Matrix homeserver',
+    ],
+    [
+      'unsupported-homeserver-spec-version',
+      'The homeserver does not meet the version requirements',
+    ],
+    ['missing-wellknown', 'No .well-known JSON file found'],
+    ['invalid-json', 'Invalid JSON'],
+  ])('words the discovery reason %s like the SDK', (reason, text) => {
+    expect(
+      engineFailureMessage({
+        kind: 'unexpected',
+        code: 'discovery-failed',
+        diagnostic: { kind: 'unexpected' },
+        params: { domain: 'x.org', reason },
+      }),
+    ).toBe(text);
+  });
+
+  it.each([undefined, 'toString', 'something new'])(
+    'names the domain when the discovery reason is %s',
+    (reason) => {
+      expect(
+        engineFailureMessage({
+          kind: 'unexpected',
+          code: 'discovery-failed',
+          diagnostic: { kind: 'unexpected' },
+          params: { domain: 'x.org', ...(reason ? { reason } : {}) },
+        }),
+      ).toBe('Could not discover a homeserver for "x.org".');
+    },
+  );
+
+  it('words a 3 second rate limit like the raw error path', () => {
+    expect(
+      engineFailureMessage(requestFailed('rate-limit', { retryAfterMs: 3000 })),
+    ).toBe('Too many requests. Try again in 3 seconds.');
+  });
+
+  it.each([
+    ['authentication', 'Your session has expired. Sign in again.'],
+    ['permission', 'You do not have permission to do that.'],
+    ['rate-limit', 'Too many requests. Try again shortly.'],
+    ['network', 'Check your connection and try again.'],
+    ['timeout', 'The request timed out. Try again.'],
+    ['server', 'The homeserver is unavailable. Try again.'],
+    ['http', 'Something went wrong. Try again.'],
+    ['unexpected', 'Something went wrong. Try again.'],
+  ] as const)('words a %s request failure', (kind, text) => {
+    expect(engineFailureMessage(requestFailed(kind))).toBe(text);
+  });
+
+  it('is plain data without a message key, for every code', () => {
+    for (const failure of [
+      NOT_SIGNED_IN,
+      requestFailed('rate-limit', { retryAfterMs: 1000 }),
+      {
+        ...requestFailed('unexpected'),
+        code: 'discovery-failed' as const,
+        params: { domain: 'x.org', reason: 'invalid' },
       },
-    };
-    expect(describeMatrixRequestFailure(new EngineRequestError(f))).toBe(f);
+    ]) {
+      expect(() => assertPlainData(failure)).not.toThrow();
+      expect(failure).not.toHaveProperty('message');
+    }
+  });
+});
+
+describe('a token refresh failure through the engine', () => {
+  const refreshText =
+    'Your session could not be refreshed. Check your connection and try again.';
+  const raw = Object.assign(new Error('refresh'), {
+    name: 'TokenRefreshError',
+  });
+  const carried = describeMatrixRequestFailure(raw);
+  const failure: EngineFailure = {
+    kind: carried.kind,
+    code: 'request-failed',
+    diagnostic: carried.diagnostic,
+  };
+
+  it('keeps its text under a caller fallback and in the table', () => {
+    expect(carried.message).toBe(refreshText);
+    expect(engineFailureMessage(failure)).toBe(refreshText);
+    expect(
+      describeMatrixRequestFailure(new EngineRequestError(failure), 'Fallback.')
+        .message,
+    ).toBe(refreshText);
   });
 });
 
 describe('describeMatrixRequestFailure for an engine failure', () => {
   const unexpected = new EngineRequestError({
     kind: 'unexpected',
-    message: 'Could not discover a homeserver for "x".',
+    code: 'discovery-failed',
     diagnostic: { kind: 'unexpected' },
+    params: { domain: 'x' },
   });
 
   it('replaces the message of an unexpected failure with an operation fallback', () => {
@@ -90,7 +190,7 @@ describe('describeMatrixRequestFailure for an engine failure', () => {
     });
   });
 
-  it('keeps the message of an unexpected failure under the default fallback', () => {
+  it('words an unexpected failure from its code under the default fallback', () => {
     expect(describeMatrixRequestFailure(unexpected).message).toBe(
       'Could not discover a homeserver for "x".',
     );
@@ -99,11 +199,7 @@ describe('describeMatrixRequestFailure for an engine failure', () => {
   it('applies an operation fallback to a plain HTTP failure', () => {
     expect(
       describeMatrixRequestFailure(
-        new EngineRequestError({
-          kind: 'http',
-          message: 'Something went wrong. Try again.',
-          diagnostic: { kind: 'http', httpStatus: 404 },
-        }),
+        new EngineRequestError(requestFailed('http', { httpStatus: 404 })),
         'Try again.',
       ),
     ).toEqual({
@@ -113,17 +209,25 @@ describe('describeMatrixRequestFailure for an engine failure', () => {
     });
   });
 
-  it('returns other kinds unchanged', () => {
-    const permission = {
-      kind: 'permission' as const,
-      message: 'You do not have permission to do that.',
-      diagnostic: { kind: 'permission' as const, httpStatus: 403 },
-    };
+  it('words other kinds from the table, whatever the fallback', () => {
     expect(
       describeMatrixRequestFailure(
-        new EngineRequestError(permission),
+        new EngineRequestError(
+          requestFailed('permission', { httpStatus: 403 }),
+        ),
         'Try again.',
       ),
-    ).toBe(permission);
+    ).toEqual({
+      kind: 'permission',
+      message: 'You do not have permission to do that.',
+      diagnostic: { kind: 'permission', httpStatus: 403 },
+    });
+  });
+
+  it('words a signed-out failure', () => {
+    expect(
+      describeMatrixRequestFailure(new EngineRequestError(NOT_SIGNED_IN))
+        .message,
+    ).toBe('Not signed in.');
   });
 });
