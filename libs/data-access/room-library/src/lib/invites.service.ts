@@ -1,17 +1,19 @@
-import { Injectable, inject, signal } from '@angular/core';
 import {
-  ClientEvent,
-  KnownMembership,
-  RoomEvent,
-  type MatrixClient,
-  type Room,
-} from 'matrix-js-sdk';
-import { Observable, defer, from, map, of, throwError } from 'rxjs';
-import {
-  MatrixClientService,
-  projectFromClient,
-} from '@trinity/data-access/matrix-client';
-import { roomAvatarMxc } from '@trinity/util/matrix';
+  Injectable,
+  Injector,
+  type Signal,
+  computed,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
+import { NEVER, Observable, concat, defer, map, of, throwError } from 'rxjs';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import type { RoomInfo } from './room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
+import { RoomListStore } from './room-list-store';
+import { initialOf } from './room-projection';
+import { unwrapOwned } from './unwrap-owned';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {
@@ -35,61 +37,63 @@ export interface PendingInvite {
 }
 
 /**
- * Read model over the synced `MatrixClient` for incoming invites (rooms and spaces whose
+ * Read model over the active Account's room list for incoming invites (rooms and spaces whose
  * membership is `invite`); the joined-room and space services exclude them.
  *
  * Accept joins and Decline leaves; the result reaches the read model and the joined lists
- * through the sync listeners, with no manual signal patching.
+ * through {@link RoomListStore}, with no manual signal patching.
  */
 @Injectable({ providedIn: 'root' })
 export class InvitesService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(ROOM_LIST_ENGINE);
+  private readonly store = inject(RoomListStore);
+  private readonly session = inject(SessionStateService);
+  private readonly injector = inject(Injector);
 
-  private readonly _pendingInvites = signal<PendingInvite[]>([]);
   /** Rooms/spaces we have been invited to; live as the client syncs. */
-  readonly pendingInvites = this._pendingInvites.asReadonly();
-
-  private readonly projection = projectFromClient({
-    id: 'invites.active-account',
-    matrix: this.matrix,
-    events: [
-      ClientEvent.Sync,
-      // A fresh invite arrives as a new Room; accepting/declining flips MyMembership.
-      ClientEvent.Room,
-      RoomEvent.MyMembership,
-      // The invited room being (re)named changes its label.
-      RoomEvent.Name,
-    ],
-    // Coalesced: `ClientEvent.Room` fires once per room during initial sync and refresh() walks
-    // every joined room, so per-event rebuilds would be O(rooms²) on startup.
-    rebuild: () => this.refresh(),
-    reset: () => this._pendingInvites.set([]),
+  readonly pendingInvites: Signal<PendingInvite[]> = computed(() => {
+    const accountId = this.session.activeAccountId();
+    if (!accountId) return [];
+    return this.store
+      .rooms(accountId)()
+      .filter((info) => info.membership === 'invite')
+      .map((info) => pendingInviteOf(accountId, info))
+      .sort((a, b) => a.name.localeCompare(b.name));
   });
 
-  /** Cold active-Account projection retained by the Room Library session lifetime. */
+  /**
+   * Retained by the Room Library session lifetime. The store keeps each live Account's room
+   * list itself, so this only acknowledges at once.
+   */
   runProjection(): Observable<void> {
-    return this.projection.run();
+    return concat(of(undefined), NEVER);
   }
 
   /** Accept an invite by joining the room/space, on the account it was sent to. Cold. */
   acceptInvite(roomId: string, accountId?: string): Observable<void> {
     return defer(() => {
-      const client = this.clientOwning(accountId);
-      if (!client) {
+      const owner = this.owning(accountId);
+      if (!owner) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(client.joinRoom(roomId)).pipe(map(() => void 0));
+      return this.engine.join(owner, roomId, []).pipe(
+        unwrapOwned(),
+        map(() => void 0),
+      );
     });
   }
 
   /** Decline an invite by leaving the invited room/space, on its own account. Cold. */
   declineInvite(roomId: string, accountId?: string): Observable<void> {
     return defer(() => {
-      const client = this.clientOwning(accountId);
-      if (!client) {
+      const owner = this.owning(accountId);
+      if (!owner) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(client.leave(roomId)).pipe(map(() => void 0));
+      return this.engine.leave(owner, roomId).pipe(
+        unwrapOwned(),
+        map(() => void 0),
+      );
     });
   }
 
@@ -103,105 +107,64 @@ export class InvitesService {
     accountId: string,
   ): Observable<'declined' | 'joined'> {
     return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) {
+      if (!this.isLive(accountId)) {
         return throwError(() => new Error('Not signed in.'));
       }
-      const membership = client.getRoom(roomId)?.getMyMembership();
-      if (membership === KnownMembership.Join) return of('joined' as const);
-      if (membership !== KnownMembership.Invite) return of('declined' as const);
-      return from(client.leave(roomId)).pipe(map(() => 'declined' as const));
+      const membership = this.store.room(accountId, roomId)?.membership;
+      if (membership === 'join') return of('joined' as const);
+      if (membership !== 'invite') return of('declined' as const);
+      return this.engine.leave(accountId, roomId).pipe(
+        unwrapOwned(),
+        map(() => 'declined' as const),
+      );
     });
   }
 
   /** Emits once, then completes, when `accountId`'s invite to `roomId` stops pending. */
   inviteSettled(roomId: string, accountId: string): Observable<void> {
     return new Observable<void>((subscriber) => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) return;
-      const onMembership = (room: Room): void => {
-        if (
-          room.roomId === roomId &&
-          room.getMyMembership() !== KnownMembership.Invite
-        ) {
-          subscriber.next();
-          subscriber.complete();
-        }
-      };
-      client.on(RoomEvent.MyMembership, onMembership);
-      return () => client.off(RoomEvent.MyMembership, onMembership);
+      // An effect reads the current row on every run, so no change between runs is missed.
+      const watch = effect(
+        () => {
+          if (!this.isLive(accountId)) return;
+          if (this.store.room(accountId, roomId)?.membership === 'invite')
+            return;
+          untracked(() => {
+            subscriber.next();
+            subscriber.complete();
+          });
+        },
+        { injector: this.injector },
+      );
+      return () => watch.destroy();
     });
   }
 
-  /** The client owning an invite: the named account's, else the active one. */
-  private clientOwning(accountId?: string): MatrixClient | null {
-    if (accountId) {
-      return this.matrix.clientFor(accountId);
-    }
-    return this.matrix.isInitialized ? this.matrix.instance : null;
+  /** The named account, else the active one; null when that account is not live. */
+  private owning(accountId?: string): string | null {
+    const owner = accountId ?? this.session.activeAccountId();
+    return owner && this.isLive(owner) ? owner : null;
   }
 
-  private refresh(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    this._pendingInvites.set(
-      client
-        .getRooms()
-        .filter((r) => r.getMyMembership() === 'invite')
-        .map((r) => this.toInvite(client, r, this.matrix.activeUserId() ?? ''))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    );
-  }
-
-  private toInvite(
-    client: MatrixClient,
-    room: Room,
-    accountId: string,
-  ): PendingInvite {
-    return buildInvite(client, room, accountId);
+  private isLive(accountId: string): boolean {
+    return this.session.accountIds().includes(accountId);
   }
 }
 
-/**
- * Project one invited {@link Room} into a {@link PendingInvite}. Shared by
- * {@link InvitesService} (active account) and the selected-Account projector so both build
- * identical rows.
- */
-export function buildInvite(
-  client: MatrixClient,
-  room: Room,
+/** One invited row as the Invites group shows it. */
+export function pendingInviteOf(
   accountId: string,
+  info: RoomInfo,
 ): PendingInvite {
-  const name = room.name || room.roomId;
-  // Our own `m.room.member` invite event carries the inviter (its sender) and,
-  // for a DM, the `is_direct` flag the inviter set.
-  const myMemberEvent = client.getUserId()
-    ? room.getMember(client.getUserId() as string)?.events?.member
-    : undefined;
-  const inviterId = myMemberEvent?.getSender() ?? '';
-  const inviter = inviterId ? room.getMember(inviterId) : null;
-  const isDirect = myMemberEvent?.getContent()?.['is_direct'] === true;
   return {
-    roomId: room.roomId,
+    roomId: info.roomId,
     accountId,
-    name,
-    initial: initialOf(name),
-    // A DM invite's stripped state carries the inviter's `m.room.member`, so it resolves to
-    // their avatar like a joined DM. `is_direct` must decide: stripped state holds only the
-    // inviter's and our membership whatever the room size, so the SDK's member-count heuristic
-    // would return the inviter for every group-room and space invite.
-    avatarMxc: roomAvatarMxc(room, isDirect),
-    inviterName: inviter?.name || inviterId || 'Someone',
-    inviterId,
-    isSpace: room.isSpaceRoom(),
-    isDirect,
+    name: info.displayName,
+    initial: initialOf(info.displayName),
+    avatarMxc: info.avatarMxc,
+    inviterName: info.inviter?.displayName ?? 'Someone',
+    inviterId: info.inviter?.userId ?? '',
+    isSpace: info.isSpace,
+    isDirect: info.inviter?.isDirect ?? false,
   };
-}
-
-/** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallbacks. */
-function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
 }

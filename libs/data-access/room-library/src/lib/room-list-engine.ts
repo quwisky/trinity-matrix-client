@@ -50,11 +50,39 @@ export interface CreateRoomRequest {
   readonly name: string;
   readonly topic: string | null;
   readonly isPublic: boolean;
+  /** A room is encrypted from its first event; a space is not. */
+  readonly kind: 'room' | 'space';
+  /** Links the new room into this space both ways: `m.space.child` and `m.space.parent`. */
+  readonly parentSpaceId: string | null;
+}
+
+/** One `m.space.child` link. */
+export interface SpaceChildLink {
+  readonly childId: string;
+  readonly via: readonly string[];
+  readonly suggested: boolean;
+  /** Empty when unset. */
+  readonly order: string;
+}
+
+/** One room of a `/hierarchy` response, the space itself included. */
+export interface HierarchyEntry {
+  readonly roomId: string;
+  readonly name: string | null;
+  readonly canonicalAlias: string | null;
+  readonly topic: string | null;
+  readonly avatarMxc: string | null;
+  readonly joinedMemberCount: number;
+  readonly joinRule: string | null;
+  readonly isSpace: boolean;
+  /** The entry's own child links as the server reports them, tombstones included; `order` is the raw state value, not normalised like spaceChildLinks. */
+  readonly childrenState: readonly SpaceChildLink[];
 }
 
 /**
- * `createRoom`, `createDirectMessage`, `leave` and `setTag` show their effect in `rooms()`,
- * open subscriptions included, before they reply. `setMarkedUnread` and `markRead` write
+ * `createRoom`, `createDirectMessage`, `join`, `leave` and `setTag` show their effect in
+ * `rooms()`, and `setSpaceChild` and `createRoom` with a parent in `spaceChildLinks()`, open
+ * subscriptions included, before they reply. `setMarkedUnread` and `markRead` write
  * account data, which shows once `/sync` returns it.
  * The js-sdk adapter emits synchronously on subscribe; other engines may not.
  * Every command on an account that is not live returns `account-not-live`.
@@ -100,5 +128,42 @@ export interface RoomListEngine {
     accountId: string,
     roomId: string,
     userId: string,
+  ): Observable<EngineResult<null>>;
+  /** An empty `via` lets the homeserver route the join alone. */
+  join(
+    accountId: string,
+    roomIdOrAlias: string,
+    via: readonly string[],
+  ): Observable<EngineResult<{ readonly roomId: string }>>;
+  /**
+   * The live child links of a space the account knows, in spec order. A link with an empty
+   * `via` is a removed child and is left out; an order key the spec rejects reads as empty.
+   */
+  spaceChildLinks(
+    accountId: string,
+    spaceId: string,
+  ): Observable<readonly SpaceChildLink[]>;
+  /**
+   * The space and its direct children, every page up to `maxPages` (`null`: no limit). A page
+   * token the server repeats fails the request rather than looping.
+   */
+  spaceHierarchy(
+    accountId: string,
+    spaceId: string,
+    options: { readonly maxPages: number | null },
+  ): Observable<EngineResult<readonly HierarchyEntry[]>>;
+  /** Writes the link as given, or removes it when `link` is null. */
+  setSpaceChild(
+    accountId: string,
+    spaceId: string,
+    childId: string,
+    link: Omit<SpaceChildLink, 'childId'> | null,
+  ): Observable<EngineResult<null>>;
+  /** Writes a canonical `m.space.parent` on the child. */
+  setSpaceParent(
+    accountId: string,
+    childId: string,
+    spaceId: string,
+    via: readonly string[],
   ): Observable<EngineResult<null>>;
 }

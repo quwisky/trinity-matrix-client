@@ -142,6 +142,15 @@ class FakeClient extends EventEmitter {
   readonly setRoomAccountData = vi.fn(async () => ({}));
   readonly setRoomReadMarkers = vi.fn(async () => ({}));
   readonly sendReadReceipt = vi.fn(async () => ({}));
+  readonly sendStateEvent = vi.fn(async () => ({ event_id: '$written' }));
+  readonly joinRoom = vi.fn(async (id: string) => ({
+    roomId: id.startsWith('#') ? '!joined:hs' : id,
+  }));
+  readonly getRoomHierarchy = vi.fn(
+    async (): Promise<{ rooms: unknown[]; next_batch?: string }> => ({
+      rooms: [],
+    }),
+  );
 
   getUserId = (): string => ME;
   getCrypto = () => ({ isEncryptionEnabledInRoom: async () => false });
@@ -329,6 +338,16 @@ describe('JsSdkRoomListEngine', () => {
         { membership: 'invite', invitedBy: peer, peerAvatar: 'mxc://hs/p' },
         'mxc://hs/p',
       ],
+      // Stripped state offers the inviter for every invite; only `is_direct` may use it.
+      [
+        'avatarMxc',
+        {
+          membership: 'invite',
+          invitedBy: { ...peer, isDirect: false },
+          peerAvatar: 'mxc://hs/p',
+        },
+        null,
+      ],
     ];
 
     it.each(cases)('%s from %j', (field, opts, expected, directUserId) => {
@@ -448,10 +467,20 @@ describe('JsSdkRoomListEngine', () => {
       engine.setMarkedUnread(other, '!r:hs', true),
       engine.markRead(other, '!r:hs', 'private'),
       engine.leave(other, '!r:hs'),
-      engine.createRoom(other, { name: 'x', topic: null, isPublic: false }),
+      engine.createRoom(other, {
+        name: 'x',
+        topic: null,
+        isPublic: false,
+        kind: 'room',
+        parentSpaceId: null,
+      }),
       engine.createDirectMessage(other, '@b:hs'),
       engine.resolveAlias(other, '#x:hs'),
       engine.invite(other, '!r:hs', '@b:hs'),
+      engine.join(other, '!r:hs', []),
+      engine.spaceHierarchy(other, '!s:hs', { maxPages: null }),
+      engine.setSpaceChild(other, '!s:hs', '!r:hs', null),
+      engine.setSpaceParent(other, '!r:hs', '!s:hs', ['hs']),
     ];
     for (const command of commands) {
       const result = await firstValueFrom(command);
@@ -459,6 +488,9 @@ describe('JsSdkRoomListEngine', () => {
     }
     const { batches } = record(engine.rooms(other));
     expect(batches).toEqual([[{ op: 'reset', values: [] }]]);
+    expect(record(engine.spaceChildLinks(other, '!s:hs')).batches).toEqual([
+      [],
+    ]);
   });
 
   describe('settling a create or leave', () => {
@@ -476,7 +508,13 @@ describe('JsSdkRoomListEngine', () => {
     it('finishes early on MyMembership', async () => {
       const { client, engine } = setup();
       const { replies } = await pending(
-        engine.createRoom(ME, { name: 'x', topic: null, isPublic: false }),
+        engine.createRoom(ME, {
+          name: 'x',
+          topic: null,
+          isPublic: false,
+          kind: 'room',
+          parentSpaceId: null,
+        }),
       );
       expect(replies).toEqual([]);
 
@@ -490,7 +528,13 @@ describe('JsSdkRoomListEngine', () => {
     it('finishes when sync stops', async () => {
       const { client, engine } = setup();
       const { replies } = await pending(
-        engine.createRoom(ME, { name: 'x', topic: null, isPublic: false }),
+        engine.createRoom(ME, {
+          name: 'x',
+          topic: null,
+          isPublic: false,
+          kind: 'room',
+          parentSpaceId: null,
+        }),
       );
 
       client.emit(ClientEvent.Sync, SyncState.Syncing);
@@ -504,7 +548,13 @@ describe('JsSdkRoomListEngine', () => {
       vi.useFakeTimers();
       const { client, engine } = setup();
       const { replies } = await pending(
-        engine.createRoom(ME, { name: 'x', topic: null, isPublic: false }),
+        engine.createRoom(ME, {
+          name: 'x',
+          topic: null,
+          isPublic: false,
+          kind: 'room',
+          parentSpaceId: null,
+        }),
       );
       expect(vi.getTimerCount()).toBe(1);
 
@@ -519,7 +569,13 @@ describe('JsSdkRoomListEngine', () => {
       vi.useFakeTimers();
       const { client, engine } = setup();
       const { subscription } = await pending(
-        engine.createRoom(ME, { name: 'x', topic: null, isPublic: false }),
+        engine.createRoom(ME, {
+          name: 'x',
+          topic: null,
+          isPublic: false,
+          kind: 'room',
+          parentSpaceId: null,
+        }),
       );
       expect(client.totalListeners()).toBeGreaterThan(0);
 
@@ -532,7 +588,13 @@ describe('JsSdkRoomListEngine', () => {
     it('createRoom passes the request and waits for join', async () => {
       const { client, engine } = setup();
       const { replies } = await pending(
-        engine.createRoom(ME, { name: ' x ', topic: 'about', isPublic: false }),
+        engine.createRoom(ME, {
+          name: ' x ',
+          topic: 'about',
+          isPublic: false,
+          kind: 'room',
+          parentSpaceId: null,
+        }),
       );
       expect(client.createRoom).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'x', topic: 'about' }),
@@ -565,7 +627,13 @@ describe('JsSdkRoomListEngine', () => {
       const seen: string[][] = [];
       await pending(
         engine
-          .createRoom(ME, { name: 'x', topic: null, isPublic: false })
+          .createRoom(ME, {
+            name: 'x',
+            topic: null,
+            isPublic: false,
+            kind: 'room',
+            parentSpaceId: null,
+          })
           .pipe(
             tap(() =>
               seen.push(resetValues(batches.at(-1)).map((r) => r.roomId)),
@@ -666,4 +734,352 @@ describe('JsSdkRoomListEngine', () => {
       );
     },
   );
+
+  describe('spaces', () => {
+    interface ChildEvent {
+      readonly stateKey: string;
+      readonly content: Record<string, unknown>;
+      readonly id?: string;
+    }
+
+    /** A space whose live state holds `children` as `m.space.child` events. */
+    function space(roomId: string, children: ChildEvent[]) {
+      const room = fakeRoom(roomId, { space: true });
+      const toEvent = (child: ChildEvent) => ({
+        getStateKey: () => child.stateKey,
+        getContent: () => child.content,
+        getId: () => child.id ?? '$old',
+      });
+      room.timeline = {
+        ...room.timeline,
+        getState: () => ({
+          getStateEvents: (type: string, stateKey?: string) => {
+            const events = type === 'm.space.child' ? children : [];
+            if (stateKey === undefined) return events.map(toEvent);
+            const match = events.find((e) => e.stateKey === stateKey);
+            return match ? toEvent(match) : null;
+          },
+        }),
+      } as never;
+      return { room, children };
+    }
+
+    const childEvent = (roomId: string) => ({
+      getRoomId: () => roomId,
+      getType: () => 'm.space.child',
+    });
+
+    it('spaceChildLinks emits live links in spec order, synchronously', () => {
+      const { room } = space('!s:hs', [
+        { stateKey: '!b:hs', content: { via: ['hs'], order: 'b' } },
+        { stateKey: '!gone:hs', content: {} },
+        { stateKey: '!c:hs', content: { via: ['hs'], order: '\n' } },
+        { stateKey: '!a:hs', content: { via: ['hs', 7], suggested: true } },
+        { stateKey: '!z:hs', content: { via: ['hs'], order: 'a' } },
+      ]);
+      const { engine } = setup([room]);
+
+      const { batches } = record(engine.spaceChildLinks(ME, '!s:hs'));
+
+      expect(batches).toEqual([
+        [
+          { childId: '!z:hs', via: ['hs'], suggested: false, order: 'a' },
+          { childId: '!b:hs', via: ['hs'], suggested: false, order: 'b' },
+          { childId: '!a:hs', via: ['hs'], suggested: true, order: '' },
+          { childId: '!c:hs', via: ['hs'], suggested: false, order: '' },
+        ],
+      ]);
+      expect(() => assertPlainData(batches[0])).not.toThrow();
+    });
+
+    it('spaceChildLinks re-emits once per microtask for its own space only', async () => {
+      const { room, children } = space('!s:hs', []);
+      const { client, engine } = setup([room]);
+      const { batches, subscription } = record(
+        engine.spaceChildLinks(ME, '!s:hs'),
+      );
+
+      children.push({ stateKey: '!a:hs', content: { via: ['hs'] } });
+      client.emit(RoomStateEvent.Events, childEvent('!other:hs'));
+      await tick();
+      expect(batches).toHaveLength(1);
+      client.emit(RoomStateEvent.Events, childEvent('!s:hs'));
+      client.emit(RoomStateEvent.Events, childEvent('!s:hs'));
+      await tick();
+
+      expect(batches.map((links) => links.length)).toEqual([0, 1]);
+      subscription.unsubscribe();
+      expect(client.totalListeners()).toBe(0);
+    });
+
+    it('setSpaceChild writes the link and replies once sync holds it, open subscribers first', async () => {
+      const { room, children } = space('!s:hs', []);
+      const { client, engine } = setup([room]);
+      const { batches } = record(engine.spaceChildLinks(ME, '!s:hs'));
+      const replies: unknown[] = [];
+      engine
+        .setSpaceChild(ME, '!s:hs', '!a:hs', {
+          via: ['hs'],
+          suggested: true,
+          order: 'm',
+        })
+        .pipe(tap(() => replies.push(batches.at(-1))))
+        .subscribe();
+      await tick();
+      expect(client.sendStateEvent).toHaveBeenCalledWith(
+        '!s:hs',
+        'm.space.child',
+        { via: ['hs'], suggested: true, order: 'm' },
+        '!a:hs',
+      );
+
+      children.push({
+        stateKey: '!a:hs',
+        content: { via: ['hs'], suggested: true, order: 'm' },
+      });
+      client.emit(RoomStateEvent.Events, childEvent('!s:hs'));
+      expect(replies).toEqual([]);
+      children[0] = { ...children[0], id: '$written' };
+      client.emit(RoomStateEvent.Events, childEvent('!s:hs'));
+
+      expect(replies).toEqual([
+        [{ childId: '!a:hs', via: ['hs'], suggested: true, order: 'm' }],
+      ]);
+    });
+
+    it('setSpaceChild null sends the empty content that removes the link', async () => {
+      const { client, engine } = setup();
+      engine.setSpaceChild(ME, '!s:hs', '!a:hs', null).subscribe();
+      await tick();
+
+      expect(client.sendStateEvent).toHaveBeenCalledWith(
+        '!s:hs',
+        'm.space.child',
+        {},
+        '!a:hs',
+      );
+    });
+
+    it('createRoom of a space marks it a space and leaves it unencrypted', async () => {
+      const { client, engine } = setup();
+      engine
+        .createRoom(ME, {
+          name: ' s ',
+          topic: null,
+          isPublic: false,
+          kind: 'space',
+          parentSpaceId: null,
+        })
+        .subscribe();
+      await tick();
+
+      const [request] = client.createRoom.mock.calls[0] as unknown as [
+        Record<string, unknown>,
+      ];
+      expect(request).toMatchObject({
+        creation_content: { type: 'm.space' },
+        name: 's',
+      });
+      expect(request).not.toHaveProperty('initial_state');
+      expect(client.sendStateEvent).not.toHaveBeenCalled();
+    });
+
+    it('createRoom with parentSpaceId links child then parent through our server', async () => {
+      const { room, children } = space('!s:hs', []);
+      const { client, engine } = setup([room]);
+      const replies: unknown[] = [];
+      engine
+        .createRoom(ME, {
+          name: 'x',
+          topic: null,
+          isPublic: false,
+          kind: 'room',
+          parentSpaceId: '!s:hs',
+        })
+        .subscribe((reply) => replies.push(reply));
+      await tick();
+      await tick();
+      expect(client.sendStateEvent).toHaveBeenCalledTimes(1);
+      expect(client.sendStateEvent).toHaveBeenCalledWith(
+        '!s:hs',
+        'm.space.child',
+        { via: ['hs'], suggested: true },
+        '!new:hs',
+      );
+
+      children.push({
+        stateKey: '!new:hs',
+        content: { via: ['hs'], suggested: true },
+        id: '$written',
+      });
+      client.emit(RoomStateEvent.Events, childEvent('!s:hs'));
+      await tick();
+      await tick();
+      expect(client.sendStateEvent).toHaveBeenLastCalledWith(
+        '!new:hs',
+        'm.space.parent',
+        { via: ['hs'], canonical: true },
+        '!s:hs',
+      );
+      expect(replies).toEqual([]);
+
+      client.rooms.push(fakeRoom('!new:hs'));
+      client.emit(RoomEvent.MyMembership, client.rooms.at(-1), 'join');
+      expect(replies).toEqual([{ ok: true, value: { roomId: '!new:hs' } }]);
+    });
+
+    it('setSpaceParent writes a canonical parent', async () => {
+      const { client, engine } = setup();
+
+      const result = await firstValueFrom(
+        engine.setSpaceParent(ME, '!c:hs', '!s:hs', ['a', 'b']),
+      );
+
+      expect(result).toEqual({ ok: true, value: null });
+      expect(client.sendStateEvent).toHaveBeenCalledWith(
+        '!c:hs',
+        'm.space.parent',
+        { via: ['a', 'b'], canonical: true },
+        '!s:hs',
+      );
+    });
+
+    it.each([
+      [['a', 'b'], { viaServers: ['a', 'b'] }],
+      [[], undefined],
+    ])(
+      'join routes through %j and replies once joined',
+      async (via, options) => {
+        const { client, engine } = setup();
+        const replies: unknown[] = [];
+        engine.join(ME, '#x:hs', via).subscribe((reply) => replies.push(reply));
+        await tick();
+        await tick();
+        expect(client.joinRoom).toHaveBeenCalledWith('#x:hs', options);
+        expect(replies).toEqual([]);
+
+        client.rooms.push(fakeRoom('!joined:hs'));
+        client.emit(RoomEvent.MyMembership, client.rooms[0], 'join');
+
+        expect(replies).toEqual([
+          { ok: true, value: { roomId: '!joined:hs' } },
+        ]);
+      },
+    );
+
+    const hierarchyRoom = (roomId: string, extra = {}) => ({
+      room_id: roomId,
+      num_joined_members: 2,
+      world_readable: false,
+      guest_can_join: false,
+      children_state: [],
+      ...extra,
+    });
+
+    it('spaceHierarchy lists the space and its child with the link', async () => {
+      const { client, engine } = setup();
+      client.getRoomHierarchy.mockResolvedValueOnce({
+        rooms: [
+          hierarchyRoom('!s:hs', {
+            name: 'Space',
+            room_type: 'm.space',
+            join_rule: 'invite',
+            children_state: [
+              { state_key: '!a:hs', content: { via: ['hs'], order: 'x' } },
+              { state_key: '', content: { via: ['hs'] } },
+            ],
+          }),
+          hierarchyRoom('!a:hs', {
+            canonical_alias: '#a:hs',
+            topic: 'about',
+            avatar_url: 'mxc://hs/a',
+          }),
+        ],
+      });
+
+      const result = await firstValueFrom(
+        engine.spaceHierarchy(ME, '!s:hs', { maxPages: null }),
+      );
+
+      expect(() => assertPlainData(result)).not.toThrow();
+      expect(client.getRoomHierarchy).toHaveBeenCalledWith(
+        '!s:hs',
+        100,
+        1,
+        false,
+        undefined,
+      );
+      expect(result).toEqual({
+        ok: true,
+        value: [
+          {
+            roomId: '!s:hs',
+            name: 'Space',
+            canonicalAlias: null,
+            topic: null,
+            avatarMxc: null,
+            joinedMemberCount: 2,
+            joinRule: 'invite',
+            isSpace: true,
+            childrenState: [
+              { childId: '!a:hs', via: ['hs'], suggested: false, order: 'x' },
+            ],
+          },
+          {
+            roomId: '!a:hs',
+            name: null,
+            canonicalAlias: '#a:hs',
+            topic: 'about',
+            avatarMxc: 'mxc://hs/a',
+            joinedMemberCount: 2,
+            joinRule: null,
+            isSpace: false,
+            childrenState: [],
+          },
+        ],
+      });
+    });
+
+    it('spaceHierarchy follows next_batch up to maxPages', async () => {
+      const { client, engine } = setup();
+      client.getRoomHierarchy.mockImplementation(async () => ({
+        rooms: [
+          hierarchyRoom(`!${client.getRoomHierarchy.mock.calls.length}:hs`),
+        ],
+        next_batch: `t${client.getRoomHierarchy.mock.calls.length}`,
+      }));
+
+      const result = await firstValueFrom(
+        engine.spaceHierarchy(ME, '!s:hs', { maxPages: 3 }),
+      );
+
+      expect(result.ok && result.value.map((e) => e.roomId)).toEqual([
+        '!1:hs',
+        '!2:hs',
+        '!3:hs',
+      ]);
+      expect(client.getRoomHierarchy.mock.calls.map((c) => c.at(4))).toEqual([
+        undefined,
+        't1',
+        't2',
+      ]);
+    });
+
+    it('spaceHierarchy stops at a repeated token with request-failed', async () => {
+      const { client, engine } = setup();
+      client.getRoomHierarchy
+        .mockResolvedValueOnce({
+          rooms: [hierarchyRoom('!s:hs'), hierarchyRoom('!a:hs')],
+          next_batch: 'again',
+        })
+        .mockResolvedValue({ rooms: [], next_batch: 'again' });
+
+      const result = await firstValueFrom(
+        engine.spaceHierarchy(ME, '!s:hs', { maxPages: null }),
+      );
+
+      expect(client.getRoomHierarchy).toHaveBeenCalledTimes(2);
+      expect(!result.ok && result.failure.code).toBe('request-failed');
+    });
+  });
 });

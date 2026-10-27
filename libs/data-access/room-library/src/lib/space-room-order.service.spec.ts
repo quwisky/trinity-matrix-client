@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { firstValueFrom } from 'rxjs';
 import { SpaceRoomOrderService } from './space-room-order.service';
 
@@ -38,23 +38,23 @@ const overridesKey = (userId: string) =>
 
 function harness(accounts: string[] = [ME], active: string | null = ME) {
   const accountIds = signal<readonly string[]>(accounts);
-  const activeUserId = signal<string | null>(active);
+  const activeAccountId = signal<string | null>(active);
   const matrix = {
     accountIds: accountIds.asReadonly(),
-    activeUserId: activeUserId.asReadonly(),
-  } as unknown as MatrixClientService;
+    activeAccountId: activeAccountId.asReadonly(),
+  } as unknown as SessionStateService;
 
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
       SpaceRoomOrderService,
-      { provide: MatrixClientService, useValue: matrix },
+      { provide: SessionStateService, useValue: matrix },
     ],
   });
   return {
     svc: TestBed.inject(SpaceRoomOrderService),
     accountIds: accountIds as WritableSignal<readonly string[]>,
-    activeUserId: activeUserId as WritableSignal<string | null>,
+    activeAccountId: activeAccountId as WritableSignal<string | null>,
   };
 }
 
@@ -198,13 +198,13 @@ describe('SpaceRoomOrderService', () => {
       store.set(defaultKey(ME), 'space');
       store.set(overridesKey(ME), JSON.stringify({ [SPACE]: 'space' }));
       store.set(defaultKey(ALT), 'alphabetical');
-      const { svc, activeUserId } = harness([ME, ALT]);
+      const { svc, activeAccountId } = harness([ME, ALT]);
       await firstValueFrom(svc.hydrateKnownAccounts());
 
       expect(svc.defaultMode()).toBe('space');
       expect(svc.overrideFor(SPACE)).toBe('space');
 
-      activeUserId.set(ALT);
+      activeAccountId.set(ALT);
 
       expect(svc.defaultMode()).toBe('alphabetical');
       // @me's override is @me's alone — @alt sees the space follow its own default.
@@ -214,7 +214,7 @@ describe('SpaceRoomOrderService', () => {
 
     it('hydrates an account that signs in mid-session', async () => {
       store.set(defaultKey(ALT), 'alphabetical');
-      const { svc, accountIds, activeUserId } = harness([ME]);
+      const { svc, accountIds, activeAccountId } = harness([ME]);
       await firstValueFrom(svc.hydrateKnownAccounts());
       const lifetime = svc.run().subscribe();
 
@@ -224,7 +224,7 @@ describe('SpaceRoomOrderService', () => {
       // rather than awaiting a fixed number of them.
       TestBed.tick();
       await new Promise((resolve) => setTimeout(resolve, 0));
-      activeUserId.set(ALT);
+      activeAccountId.set(ALT);
 
       expect(svc.defaultMode()).toBe('alphabetical');
       lifetime.unsubscribe();
@@ -232,7 +232,7 @@ describe('SpaceRoomOrderService', () => {
 
     it('stops observing later accounts when the runtime session ends', async () => {
       store.set(defaultKey(ALT), 'alphabetical');
-      const { svc, accountIds, activeUserId } = harness([ME]);
+      const { svc, accountIds, activeAccountId } = harness([ME]);
       await firstValueFrom(svc.hydrateKnownAccounts());
       const lifetime = svc.run().subscribe();
       lifetime.unsubscribe();
@@ -240,7 +240,7 @@ describe('SpaceRoomOrderService', () => {
       accountIds.set([ME, ALT]);
       TestBed.tick();
       await new Promise((resolve) => setTimeout(resolve, 0));
-      activeUserId.set(ALT);
+      activeAccountId.set(ALT);
 
       expect(svc.defaultMode()).toBe('recent');
     });
@@ -248,9 +248,9 @@ describe('SpaceRoomOrderService', () => {
     it('reads and writes an exact opening Account after Active Account changes', async () => {
       store.set(defaultKey(ME), 'alphabetical');
       store.set(defaultKey(ALT), 'recent');
-      const { svc, activeUserId } = harness([ME, ALT]);
+      const { svc, activeAccountId } = harness([ME, ALT]);
       await firstValueFrom(svc.hydrateKnownAccounts());
-      activeUserId.set(ALT);
+      activeAccountId.set(ALT);
 
       expect(svc.snapshotFor(ME, SPACE)).toEqual({
         defaultMode: 'alphabetical',

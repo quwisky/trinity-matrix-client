@@ -36,6 +36,7 @@ import {
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
+  liveRoomState,
   plainEqual,
   type EngineFailure,
   type EngineResult,
@@ -43,11 +44,13 @@ import {
 } from '@trinity/util/matrix';
 import type {
   CreateRoomRequest,
+  HierarchyEntry,
   RoomInfo,
   RoomListEngine,
+  SpaceChildLink,
   TypingMember,
 } from '../room-list-engine';
-import { createEncryptedRoom, openDirectRoom } from './direct-rooms';
+import { createRoomOrSpace, openDirectRoom } from './direct-rooms';
 import {
   directMapOf,
   isInviteBlocked,
@@ -55,6 +58,12 @@ import {
   toRoomInfo,
 } from './room-info';
 import { roomTyping } from './room-typing';
+import {
+  childContent,
+  fetchHierarchy,
+  readChildLinks,
+  serverNameOf,
+} from './space-links';
 
 const LISTED = new Set(['join', 'invite', 'knock']);
 
@@ -124,12 +133,14 @@ function settled(
     const timer = setTimeout(finish, SETTLE_TIMEOUT_MS);
     client.on(ClientEvent.Room, check);
     client.on(RoomEvent.MyMembership, check);
+    client.on(RoomStateEvent.Events, check);
     client.on(ClientEvent.Sync, onSync);
     check();
     return () => {
       clearTimeout(timer);
       client.off(ClientEvent.Room, check);
       client.off(RoomEvent.MyMembership, check);
+      client.off(RoomStateEvent.Events, check);
       client.off(ClientEvent.Sync, onSync);
     };
   });
@@ -140,6 +151,13 @@ const joined = (room: Room | null): boolean =>
 
 const listed = (room: Room | null): boolean =>
   !!room && LISTED.has(room.getMyMembership());
+
+/** Whether the room's live state holds the state event `eventId`. */
+const holds =
+  (type: string, stateKey: string, eventId: string) =>
+  (room: Room | null): boolean =>
+    !!room &&
+    liveRoomState(room)?.getStateEvents(type, stateKey)?.getId() === eventId;
 
 /** The newest event the server has confirmed, skipping local echoes. */
 function latestConfirmed(room: Room | null): MatrixEvent | null {
@@ -270,7 +288,28 @@ export class JsSdkRoomListEngine implements RoomListEngine {
     request: CreateRoomRequest,
   ): Observable<EngineResult<{ readonly roomId: string }>> {
     return this.command(accountId, (client) =>
-      createEncryptedRoom(client, request).pipe(
+      createRoomOrSpace(client, request).pipe(
+        switchMap((roomId) => {
+          const { parentSpaceId } = request;
+          if (!parentSpaceId) return of(roomId);
+          // Our homeserver in `via` so a remote server can route to the new room.
+          const via = [serverNameOf(client.getUserId())];
+          return this.writeChild(client, parentSpaceId, roomId, {
+            via,
+            suggested: true,
+            order: '',
+          }).pipe(
+            switchMap(() =>
+              client.sendStateEvent(
+                roomId,
+                EventType.SpaceParent,
+                { via, canonical: true },
+                parentSpaceId,
+              ),
+            ),
+            map(() => roomId),
+          );
+        }),
         switchMap((roomId) => this.once(client, roomId, joined)),
       ),
     );
@@ -312,6 +351,94 @@ export class JsSdkRoomListEngine implements RoomListEngine {
     );
   }
 
+  join(
+    accountId: string,
+    roomIdOrAlias: string,
+    via: readonly string[],
+  ): Observable<EngineResult<{ readonly roomId: string }>> {
+    return this.command(accountId, (client) =>
+      from(
+        client.joinRoom(
+          roomIdOrAlias,
+          via.length > 0 ? { viaServers: [...via] } : undefined,
+        ),
+      ).pipe(switchMap((room) => this.once(client, room.roomId, joined))),
+    );
+  }
+
+  spaceChildLinks(
+    accountId: string,
+    spaceId: string,
+  ): Observable<readonly SpaceChildLink[]> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      return client ? this.linksOf(client, spaceId) : concat(of([]), NEVER);
+    });
+  }
+
+  spaceHierarchy(
+    accountId: string,
+    spaceId: string,
+    { maxPages }: { readonly maxPages: number | null },
+  ): Observable<EngineResult<readonly HierarchyEntry[]>> {
+    return this.command(accountId, (client) =>
+      fetchHierarchy(client, spaceId, maxPages),
+    );
+  }
+
+  setSpaceChild(
+    accountId: string,
+    spaceId: string,
+    childId: string,
+    link: Omit<SpaceChildLink, 'childId'> | null,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) =>
+      this.writeChild(client, spaceId, childId, link).pipe(map(() => null)),
+    );
+  }
+
+  setSpaceParent(
+    accountId: string,
+    childId: string,
+    spaceId: string,
+    via: readonly string[],
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, async (client) => {
+      await client.sendStateEvent(
+        childId,
+        EventType.SpaceParent,
+        { via: [...via], canonical: true },
+        spaceId,
+      );
+      return null;
+    });
+  }
+
+  /** Sends the `m.space.child` event and waits for `/sync` to apply it, as {@link settle} does. */
+  private writeChild(
+    client: MatrixClient,
+    spaceId: string,
+    childId: string,
+    link: Omit<SpaceChildLink, 'childId'> | null,
+  ): Observable<void> {
+    return from(
+      client.sendStateEvent(
+        spaceId,
+        EventType.SpaceChild,
+        childContent(link),
+        childId,
+      ),
+    ).pipe(
+      switchMap(({ event_id }) =>
+        this.settle(
+          client,
+          spaceId,
+          holds(EventType.SpaceChild, childId, event_id),
+        ),
+      ),
+    );
+  }
+
   /** A cold command: `account-not-live` without a client, else `run` with its failure mapped. */
   private command<T>(
     accountId: string,
@@ -346,6 +473,44 @@ export class JsSdkRoomListEngine implements RoomListEngine {
     done: (room: Room | null) => boolean,
   ): Observable<{ readonly roomId: string }> {
     return this.settle(client, roomId, done).pipe(map(() => ({ roomId })));
+  }
+
+  /** The space's links on subscribe, and again once per microtask they may have changed. */
+  private linksOf(
+    client: MatrixClient,
+    spaceId: string,
+  ): Observable<readonly SpaceChildLink[]> {
+    return new Observable<readonly SpaceChildLink[]>((subscriber) => {
+      const emit = (): void =>
+        subscriber.next(readChildLinks(client.getRoom(spaceId)));
+      const flusher = coalesce(emit);
+      const onState = (event: MatrixEvent): void => {
+        if (
+          event.getRoomId() === spaceId &&
+          event.getType() === EventType.SpaceChild
+        ) {
+          flusher.schedule();
+        }
+      };
+      // The space itself may arrive after the subscription, with its state already set.
+      const onRoom = (room: Room): void => {
+        if (room.roomId === spaceId) flusher.schedule();
+      };
+      client.on(RoomStateEvent.Events, onState);
+      client.on(ClientEvent.Room, onRoom);
+      const written = this.written$
+        .pipe(filter((target) => target === client))
+        .subscribe(emit);
+
+      emit();
+
+      return () => {
+        flusher.cancel();
+        written.unsubscribe();
+        client.off(RoomStateEvent.Events, onState);
+        client.off(ClientEvent.Room, onRoom);
+      };
+    }).pipe(distinctUntilChanged<readonly SpaceChildLink[]>(plainEqual));
   }
 
   /** A reset of every listed room on subscribe, and again once per microtask the list may have changed. */
