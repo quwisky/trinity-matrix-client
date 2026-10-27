@@ -142,7 +142,7 @@ export class SessionHandoverWorkflow {
   }
 
   /** A sync loop that will not pause must not cost the unsent text: the stop still ends it. */
-  private pauseSync(): Observable<unknown> {
+  private pauseSync(): Observable<null> {
     return defer(() => this.engine.pauseSync()).pipe(
       catchError(() => of(null)),
     );

@@ -482,7 +482,6 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
     );
   }
 
-  /** Starts a saved session, keeping an expected start failure as a typed outcome. */
   private start(
     session: MatrixSession,
     activation: PersistedAccountActivation,

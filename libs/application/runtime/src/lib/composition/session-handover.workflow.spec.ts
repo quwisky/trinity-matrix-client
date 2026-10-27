@@ -92,7 +92,15 @@ function setup(
     ),
     remove: vi.fn(),
     signOutAll: vi.fn(),
-  } satisfies Partial<Record<keyof SessionEngine, unknown>>;
+  } satisfies Pick<
+    SessionEngine,
+    | 'pauseSync'
+    | 'hasOutgoingWork'
+    | 'pendingTextMessages'
+    | 'stop'
+    | 'remove'
+    | 'signOutAll'
+  >;
   const closeAll = vi.fn(() => {
     steps.push('close-dialogs');
     if (options.closeFails) throw new Error('a dialog would not close');

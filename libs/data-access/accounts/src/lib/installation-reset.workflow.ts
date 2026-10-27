@@ -91,7 +91,7 @@ export class InstallationResetWorkflow {
               concatMap((records) =>
                 attempt
                   .capture(
-                    this.engine.stop().pipe(map(() => void 0)),
+                    this.engine.stop(),
                     'matrix-session',
                     'restart-application',
                     ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
@@ -247,7 +247,7 @@ export class InstallationResetWorkflow {
         ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
       ),
       attempt.capture(
-        this.engine.signOutAll().pipe(map(() => void 0)),
+        this.engine.signOutAll(),
         'matrix-session',
         'restart-application',
         ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,

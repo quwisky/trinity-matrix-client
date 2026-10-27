@@ -350,10 +350,10 @@ it.each([
     name: 'notification removal',
     budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
     scope: 'notifications' as const,
-    arrange: (test: AdapterTest, stalled: Subject<void>) =>
+    arrange: (test: AdapterTest, stalled: Subject<null>) =>
       vi
         .mocked(test.lifecycle.unregisterNotifications)
-        .mockReturnValue(stalled),
+        .mockReturnValue(stalled as never),
     laterRan: (test: AdapterTest) =>
       expect(test.engine.stop).toHaveBeenCalledOnce(),
   },
@@ -361,8 +361,8 @@ it.each([
     name: 'Matrix server logout',
     budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
     scope: 'matrix-session' as const,
-    arrange: (test: AdapterTest, stalled: Subject<void>) =>
-      vi.mocked(test.engine.signOutAll).mockReturnValue(stalled as never),
+    arrange: (test: AdapterTest, stalled: Subject<null>) =>
+      vi.mocked(test.engine.signOutAll).mockReturnValue(stalled),
     laterRan: (test: AdapterTest) =>
       expect(test.engine.stop).toHaveBeenCalledOnce(),
   },
@@ -370,8 +370,8 @@ it.each([
     name: 'Matrix stop',
     budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
     scope: 'matrix-session' as const,
-    arrange: (test: AdapterTest, stalled: Subject<void>) =>
-      vi.mocked(test.engine.stop).mockReturnValue(stalled as never),
+    arrange: (test: AdapterTest, stalled: Subject<null>) =>
+      vi.mocked(test.engine.stop).mockReturnValue(stalled),
     laterRan: (test: AdapterTest) =>
       expect(test.wipe.beginIndexedDbWipe).toHaveBeenCalledOnce(),
   },
@@ -379,7 +379,7 @@ it.each([
     name: 'Account registry write',
     budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
     scope: 'account-registry' as const,
-    arrange: (test: AdapterTest, stalled: Subject<void>) =>
+    arrange: (test: AdapterTest, stalled: Subject<null>) =>
       vi.mocked(test.storage.clearAll).mockReturnValue(stalled as never),
     laterRan: (test: AdapterTest) =>
       expect(test.wipe.wipeSecureStorage).toHaveBeenCalledOnce(),
@@ -391,7 +391,7 @@ it.each([
     try {
       const test = setup();
       prepareSuccessfulReset(test);
-      const stalled = new Subject<void>();
+      const stalled = new Subject<null>();
       arrange(test, stalled);
       const outcomes: InstallationResetOutcome[] = [];
 
@@ -416,7 +416,7 @@ it.each([
       laterRan(test);
       expect(stalled.observed).toBe(true);
 
-      stalled.next();
+      stalled.next(null);
       stalled.complete();
       await vi.runAllTimersAsync();
       expect(outcomes.at(-1)).toEqual({ kind: 'ready' });

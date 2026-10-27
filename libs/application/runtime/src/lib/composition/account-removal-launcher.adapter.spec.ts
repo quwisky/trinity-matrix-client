@@ -15,7 +15,10 @@ import {
   ROOM_KEYS_MAY_BE_LOST,
   type AccountSignOutOutcome,
 } from '@trinity/data-access/accounts';
-import { SESSION_ENGINE } from '@trinity/data-access/matrix-client';
+import {
+  SESSION_ENGINE,
+  type SessionEngine,
+} from '@trinity/data-access/matrix-client';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 
 const LAST_ACCOUNT: AccountSignOutOutcome = {
@@ -43,7 +46,7 @@ function setup(options: Options = {}) {
   const signOutAccount = vi.fn(
     () => options.signOut$ ?? of(options.signOut ?? LAST_ACCOUNT),
   );
-  const roomKeysBackedUp = vi.fn(() =>
+  const roomKeysBackedUp = vi.fn<SessionEngine['roomKeysBackedUp']>(() =>
     of(options.backedUp === undefined ? true : options.backedUp),
   );
   TestBed.configureTestingModule({
@@ -53,7 +56,13 @@ function setup(options: Options = {}) {
       MockProvider(TrnToastService, { show }),
       MockProvider(Router, { navigateByUrl }),
       MockProvider(AccountRuntimeService, { signOutAccount }),
-      { provide: SESSION_ENGINE, useValue: { roomKeysBackedUp } },
+      {
+        provide: SESSION_ENGINE,
+        useValue: { roomKeysBackedUp } satisfies Pick<
+          SessionEngine,
+          'roomKeysBackedUp'
+        >,
+      },
     ],
   });
   return {

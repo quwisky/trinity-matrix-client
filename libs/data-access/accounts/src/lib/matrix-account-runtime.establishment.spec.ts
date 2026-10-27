@@ -970,6 +970,26 @@ describe('restoring a saved Account', () => {
       firstValueFrom(adapter.restoreAccount('@new:hs', 'inactive')),
     ).rejects.toBe(defect);
   });
+
+  it('errors on an engine failure that is not a start failure', async () => {
+    const { adapter, engine, storage } = setup();
+    vi.mocked(storage.load).mockReturnValue(of(session));
+    vi.mocked(engine.restorePersisted).mockReturnValue(
+      of(
+        engineFail({
+          kind: 'unexpected',
+          code: 'account-not-live',
+          diagnostic: { kind: 'unexpected' },
+        }),
+      ),
+    );
+
+    await expect(
+      firstValueFrom(adapter.restoreAccount('@new:hs', 'inactive')),
+    ).rejects.toThrow(
+      'Account Runtime cannot start an Account: account-not-live',
+    );
+  });
 });
 
 it('gives a non-live Account as unavailable without moving the Active pointer', async () => {
