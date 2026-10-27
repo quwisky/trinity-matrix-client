@@ -103,10 +103,12 @@ function setup(
       },
     ],
   });
+  // Signal-backed like the application's policy, which tracks power levels.
+  const allowed = signal(options.allowed !== false);
   const authorize = vi.fn(() =>
-    options.allowed === false
-      ? ({ kind: 'rejected', reason: 'You need permission.' } as const)
-      : ({ kind: 'allowed' } as const),
+    allowed()
+      ? ({ kind: 'allowed' } as const)
+      : ({ kind: 'rejected', reason: 'You need permission.' } as const),
   );
   const createRoomFor = vi.fn(() => of('!created-room:hs'));
   const createSpace = vi.fn(() => of('!created-space:hs'));
@@ -141,6 +143,7 @@ function setup(
     session,
     spaceHierarchy,
     authorize,
+    allowed,
     createRoomFor,
     createSpace,
     addExistingRoom,
@@ -173,7 +176,8 @@ describe('SpaceContentsService', () => {
     expect(snapshot.candidates.map(({ id }) => id)).toEqual(['!candidate:hs']);
   });
 
-  it('reads every hierarchy page instead of publishing a truncated list', async () => {
+  // Page following and the repeated-token guard are covered by the js-sdk adapter spec.
+  it('asks the engine for every hierarchy page (maxPages: null)', async () => {
     const { service, spaceHierarchy } = setup({
       hierarchy: [engineOk([HIERARCHY[0], HIERARCHY[1]])],
     });
@@ -308,6 +312,87 @@ describe('SpaceContentsService', () => {
       await vi.advanceTimersByTimeAsync(1_000);
 
       expect(spaceHierarchy).toHaveBeenCalledTimes(1);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refreshes management when the Account loses power in the space', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, allowed } = setup();
+      const snapshots: SpaceContentsSnapshot[] = [];
+      const subscription = service
+        .observe(TARGET)
+        .subscribe((snapshot) => snapshots.push(snapshot));
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(snapshots.at(-1)?.canManage).toBe(true);
+
+      allowed.set(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(snapshots.at(-1)).toMatchObject({
+        canManage: false,
+        managementUnavailableReason: 'You need permission.',
+      });
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops watching rows and permissions once unsubscribed', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, fake, allowed, authorize, spaceHierarchy } = setup();
+      const subscription = service.observe(TARGET).subscribe();
+      await vi.advanceTimersByTimeAsync(1_000);
+      subscription.unsubscribe();
+      const reads = authorize.mock.calls.length;
+
+      allowed.set(false);
+      fake.seed(ALICE, [
+        fakeRoom(TARGET.spaceId, { displayName: 'Design', isSpace: true }),
+        fakeRoom('!renamed:hs', { displayName: 'Renamed' }),
+      ]);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(authorize).toHaveBeenCalledTimes(reads);
+      expect(spaceHierarchy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a timed-out hierarchy read', async () => {
+    vi.useFakeTimers();
+    try {
+      let reads = 0;
+      const { service, spaceHierarchy } = setup();
+      spaceHierarchy.mockImplementation(() =>
+        defer(() =>
+          of(
+            reads++ === 0
+              ? engineFail({
+                  kind: 'timeout',
+                  code: 'request-failed',
+                  diagnostic: { kind: 'timeout' },
+                })
+              : engineOk(HIERARCHY),
+          ),
+        ),
+      );
+      const snapshots: SpaceContentsSnapshot[] = [];
+      const subscription = service
+        .observe(TARGET)
+        .subscribe((snapshot) => snapshots.push(snapshot));
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(reads).toBe(2);
+      expect(snapshots.at(-1)).toMatchObject({ hierarchyError: null });
       subscription.unsubscribe();
     } finally {
       vi.useRealTimers();

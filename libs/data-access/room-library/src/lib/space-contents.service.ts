@@ -1,5 +1,12 @@
-import { Injectable, Injector, computed, inject } from '@angular/core';
-import { toObservable } from '@angular/core/rxjs-interop';
+import {
+  Injectable,
+  Injector,
+  type Signal,
+  computed,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
 import {
   Observable,
   asyncScheduler,
@@ -110,7 +117,7 @@ export class SpaceContentsService {
     const generation = computed(
       () => this.session.status(target.accountId)?.generation ?? null,
     );
-    return toObservable(generation, { injector: this.injector }).pipe(
+    return watch(generation, this.injector).pipe(
       switchMap((current) =>
         current === null
           ? of(this.unavailableSnapshot(target))
@@ -226,22 +233,25 @@ export class SpaceContentsService {
       let links: readonly SpaceChildLink[] = [];
       const rows = this.store.rooms(target.accountId);
       // Only what the snapshot shows; unread counts and previews would refetch for nothing.
+      // The governance policy is signal-backed, so a power-level change re-runs this too.
       const shown = computed(
-        () =>
-          rows().map((room) => [
+        () => ({
+          rows: rows().map((room) => [
             room.roomId,
             room.membership,
             room.isSpace,
             room.displayName,
             room.avatarMxc,
           ]),
+          decision: this.managementDecision(target),
+        }),
         { equal: plainEqual },
       );
       const invalidations = merge(
         this.engine
           .spaceChildLinks(target.accountId, target.spaceId)
           .pipe(tap((current) => (links = current))),
-        toObservable(shown, { injector: this.injector }).pipe(skip(1)),
+        watch(shown, this.injector).pipe(skip(1)),
       );
       // Synapse allows each user a burst of 10 hierarchy reads at 5/s, and one sync batch
       // can announce many Rooms. Leading + trailing keeps the first read immediate and the
@@ -412,10 +422,27 @@ export class SpaceContentsService {
   }
 }
 
+/**
+ * A signal's values as an observable whose effect lives only while subscribed;
+ * `toObservable` would keep one per call until this root service's injector is destroyed.
+ */
+function watch<T>(source: Signal<T>, injector: Injector): Observable<T> {
+  return new Observable<T>((subscriber) => {
+    const ref = effect(
+      () => {
+        const value = source();
+        untracked(() => subscriber.next(value));
+      },
+      { injector },
+    );
+    return () => ref.destroy();
+  });
+}
+
 function isTransientFailure(error: unknown): boolean {
   return (
     error instanceof EngineRequestError &&
-    ['network', 'rate-limit', 'server'].includes(error.failure.kind)
+    ['network', 'timeout', 'rate-limit', 'server'].includes(error.failure.kind)
   );
 }
 
