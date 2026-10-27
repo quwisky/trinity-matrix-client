@@ -27,7 +27,7 @@ The graph is intentionally asymmetric. A reusable kernel cannot reach into produ
 
 Cross-library imports use the `@trinity/*` aliases declared in `tsconfig.base.json`. A library's `src/index.ts` is its public API. Import internal files relatively only from within the same library.
 
-Features never import other feature libraries. Shared behavior moves to the owning data-access capability, an application-level orchestrator, or a genuinely domain-neutral component or utility. `matrix-js-sdk` stays behind data-access services; components and feature pages do not import it.
+Features never import other feature libraries. Shared behavior moves to the owning data-access capability, an application-level orchestrator, or a genuinely domain-neutral component or utility. `matrix-js-sdk` stays behind each capability's `js-sdk/` adapter (see [engine interfaces](../matrix-integration/#engine-interfaces)); components and feature pages do not import it.
 
 Product UI imports `@trinity/components/*`. The Spartan and vendor layers sit behind that public component tier. Generated Spartan source remains generator-owned and is not a shortcut around the component boundary.
 

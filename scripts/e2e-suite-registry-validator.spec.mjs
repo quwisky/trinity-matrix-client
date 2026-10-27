@@ -122,6 +122,15 @@ describe('E2E suite registry', () => {
     );
   });
 
+  it('rejects the engine suite pointed at the protocol lifecycle project', () => {
+    const snapshot = registrySnapshot();
+    const engine = snapshot.suites.find(({ id }) => id === 'engine.js-sdk');
+    engine.targetProject = 'trinity-e2e-protocol';
+    expect(validateRegistry(snapshot)).toContain(
+      'engine.js-sdk targets the wrong lifecycle project',
+    );
+  });
+
   // Resolves every owned Nx project on a cold hosted runner. The first public
   // run exceeded 30 seconds; this is a graph contract, not a performance budget.
   it('matches the current workspace entrypoints, targets, commands and CI', () => {

@@ -1,61 +1,73 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { MatrixClient } from 'matrix-js-sdk';
-import { MockProvider, ngMocks } from 'ng-mocks';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  type MockInstance,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import { FakeDiscoveryEngine } from '../contract/fake-discovery-engine';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { DISCOVERY_ENGINE } from './discovery-engine';
 import { UserDirectoryDiscoveryService } from './user-directory-discovery.service';
 
 describe('UserDirectoryDiscoveryService', () => {
-  const searchUserDirectory = vi.fn();
+  const activeUserId = signal<string | null>('@me:hs');
+  let engine: FakeDiscoveryEngine;
+  let search: MockInstance<FakeDiscoveryEngine['searchUserDirectory']>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    activeUserId.set('@me:hs');
+    engine = new FakeDiscoveryEngine();
+    engine.accounts.add('@me:hs');
+    engine.users.push(
+      { userId: '@bob:hs', displayName: 'Bob', avatarMxc: 'mxc://hs/b' },
+      { userId: '@eve:hs', displayName: '@eve:hs', avatarMxc: null },
+    );
+    search = vi.spyOn(engine, 'searchUserDirectory');
     TestBed.configureTestingModule({
       providers: [
         UserDirectoryDiscoveryService,
-        MockProvider(MatrixClientService, { isInitialized: true }),
+        { provide: DISCOVERY_ENGINE, useValue: engine },
+        MockProvider(MatrixClientService, { activeUserId }),
       ],
     });
-    const matrix = TestBed.inject(MatrixClientService);
-    ngMocks.stubMember(matrix, 'instance', {
-      searchUserDirectory,
-    } as unknown as MatrixClient);
   });
 
-  it('maps a bounded homeserver directory response with safe fallbacks', async () => {
-    searchUserDirectory.mockResolvedValue({
-      limited: true,
-      results: [
-        {
-          user_id: '@bob:hs',
-          display_name: 'Bob',
-          avatar_url: 'mxc://hs/b',
-        },
-        { user_id: '@eve:hs' },
-      ],
-    });
+  const run = (term: string, limit?: number) =>
+    firstValueFrom(
+      TestBed.inject(UserDirectoryDiscoveryService).search(term, limit),
+    );
 
-    await expect(
-      firstValueFrom(
-        TestBed.inject(UserDirectoryDiscoveryService).search('  b  ', 12),
-      ),
-    ).resolves.toEqual({
+  it('searches the active account with a trimmed term and the limit', async () => {
+    await expect(run('  hs  ', 1)).resolves.toEqual({
       limited: true,
       users: [
         { userId: '@bob:hs', displayName: 'Bob', avatarMxc: 'mxc://hs/b' },
-        { userId: '@eve:hs', displayName: '@eve:hs', avatarMxc: null },
       ],
     });
-    expect(searchUserDirectory).toHaveBeenCalledWith({ term: 'b', limit: 12 });
+    expect(search).toHaveBeenCalledWith('@me:hs', 'hs', 1);
+  });
+
+  it('defaults the limit to 30', async () => {
+    await run('b');
+
+    expect(search).toHaveBeenCalledWith('@me:hs', 'b', 30);
   });
 
   it('short-circuits an empty term', async () => {
-    await expect(
-      firstValueFrom(
-        TestBed.inject(UserDirectoryDiscoveryService).search('  '),
-      ),
-    ).resolves.toEqual({ users: [], limited: false });
-    expect(searchUserDirectory).not.toHaveBeenCalled();
+    await expect(run('  ')).resolves.toEqual({ users: [], limited: false });
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('errors with "Not signed in." when no account is active', async () => {
+    activeUserId.set(null);
+
+    await expect(run('b')).rejects.toThrow('Not signed in.');
+    expect(search).not.toHaveBeenCalled();
   });
 });

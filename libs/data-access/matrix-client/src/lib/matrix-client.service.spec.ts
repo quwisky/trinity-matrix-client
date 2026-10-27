@@ -1947,6 +1947,21 @@ describe('MatrixClientService', () => {
     expect(svc.isInitialized).toBe(true);
   });
 
+  it('sessionGenerations grows on re-add and drops the entry on removal', async () => {
+    const { svc } = setup(fakeClient(), fakeClient());
+    await firstValueFrom(svc.init(SESSION));
+    const first = svc.sessionGenerations().get('@me:hs');
+    expect(typeof first).toBe('number');
+
+    await firstValueFrom(svc.reset());
+    expect(svc.sessionGenerations().has('@me:hs')).toBe(false);
+
+    await firstValueFrom(svc.add(SESSION));
+    expect(svc.sessionGenerations().get('@me:hs')).toBeGreaterThan(
+      first as number,
+    );
+  });
+
   it('clientFor() returns the account client, or null', async () => {
     const a = fakeClient();
     const { svc } = setup(a);
