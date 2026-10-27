@@ -15,6 +15,7 @@ defineRoomListEngineContract(
       asAlice: {
         publishAlias: async (r, l) => engine.publishAlias(r, l),
         join: async (r) => engine.acceptInvite(r),
+        spaceParents: async (r) => engine.spaceParents(r),
       },
       asBob: engine.asBob,
       dispose: async () => undefined,
@@ -67,7 +68,13 @@ describe('FakeRoomListEngine', () => {
 
   it('gives created rooms deterministic ids', async () => {
     const engine = new FakeRoomListEngine();
-    const request = { name: 'x', topic: null, isPublic: false };
+    const request = {
+      name: 'x',
+      topic: null,
+      isPublic: false,
+      kind: 'room' as const,
+      parentSpaceId: null,
+    };
 
     await firstValueFrom(engine.createRoom(engine.alice, request));
     await firstValueFrom(engine.createRoom(engine.alice, request));

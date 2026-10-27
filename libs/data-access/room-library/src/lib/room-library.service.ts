@@ -667,5 +667,7 @@ function createRequestOf(options: CreateRoomOptions): CreateRoomRequest {
     name: options.name,
     topic: options.topic ?? null,
     isPublic: options.isPublic ?? false,
+    kind: 'room',
+    parentSpaceId: null,
   };
 }

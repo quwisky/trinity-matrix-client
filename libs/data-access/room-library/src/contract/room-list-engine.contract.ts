@@ -15,7 +15,12 @@ import {
   applyVectorDiffs,
   assertPlainData,
 } from '@trinity/util/matrix';
-import type { RoomInfo, RoomListEngine } from '../lib/room-list-engine';
+import type {
+  CreateRoomRequest,
+  RoomInfo,
+  RoomListEngine,
+  SpaceChildLink,
+} from '../lib/room-list-engine';
 
 export interface RoomListContractSetup {
   readonly engine: RoomListEngine;
@@ -27,11 +32,18 @@ export interface RoomListContractSetup {
   readonly asAlice: {
     /** Publishes `#localpart:serverName` for the room and returns the full alias. */
     publishAlias(roomId: string, localpart: string): Promise<string>;
-    /** Accepts an invite outside the engine, which has no join command. */
+    /** Accepts an invite outside the engine. */
     join(roomId: string): Promise<void>;
+    /** The spaces named by the room's `m.space.parent` state, read from the server. */
+    spaceParents(roomId: string): Promise<readonly string[]>;
   };
   readonly asBob: {
     createRoom(name: string): Promise<string>;
+    /** A public room with the alias `#localpart:serverName`. */
+    createPublicRoom(
+      name: string,
+      localpart: string,
+    ): Promise<{ readonly roomId: string; readonly alias: string }>;
     join(roomId: string): Promise<void>;
     invite(
       roomId: string,
@@ -120,15 +132,31 @@ export function defineRoomListEngineContract(
       return rooms.find((r) => r.roomId === roomId) as RoomInfo;
     }
 
-    async function createRoom(): Promise<string> {
+    async function createRoom(
+      patch: Partial<CreateRoomRequest> = {},
+    ): Promise<string> {
       const { roomId } = await ok(
         engine.createRoom(alice, {
           name: `contract ${unique()}`,
           topic: null,
           isPublic: false,
+          kind: 'room',
+          parentSpaceId: null,
+          ...patch,
         }),
       );
       return roomId;
+    }
+
+    /** The space's links as an open subscription sees them right now. */
+    function linksNow(spaceId: string): Promise<readonly SpaceChildLink[]> {
+      return firstValueFrom(
+        engine.spaceChildLinks(alice, spaceId).pipe(
+          tap((links) => expect(() => assertPlainData(links)).not.toThrow()),
+          take(1),
+          timeout(settleTimeoutMs),
+        ),
+      );
     }
 
     it(
@@ -368,16 +396,136 @@ export function defineRoomListEngineContract(
             name: 'x',
             topic: null,
             isPublic: false,
+            kind: 'room',
+            parentSpaceId: null,
           }),
           engine.createDirectMessage(NOBODY, bob),
           engine.resolveAlias(NOBODY, '#x:invalid'),
           engine.invite(NOBODY, '!r:invalid', bob),
+          engine.join(NOBODY, '!r:invalid', []),
+          engine.spaceHierarchy(NOBODY, '!s:invalid', { maxPages: 1 }),
+          engine.setSpaceChild(NOBODY, '!s:invalid', '!r:invalid', null),
+          engine.setSpaceParent(NOBODY, '!r:invalid', '!s:invalid', []),
         ];
 
         for (const command of commands) {
           const result = await once(command);
           expect(!result.ok && result.failure.code).toBe('account-not-live');
         }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'join by alias with via shows the room as joined before it replies',
+      async () => {
+        const { roomId, alias } = await context.asBob.createPublicRoom(
+          `bob ${unique()}`,
+          `contract-${unique()}`,
+        );
+
+        await expect(
+          ok(engine.join(alice, alias, [context.serverName])),
+        ).resolves.toEqual({ roomId });
+
+        const snapshot = await firstValueFrom(
+          folded().pipe(take(1), timeout(settleTimeoutMs)),
+        );
+        expect(snapshot.find((r) => r.roomId === roomId)?.membership).toBe(
+          'join',
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'create a space, link a child, read it from spaceChildLinks',
+      async () => {
+        const spaceId = await createRoom({ kind: 'space' });
+        const childId = await createRoom();
+        await roomUntil(spaceId, (r) => r.isSpace);
+        const link = { via: [context.serverName], suggested: true, order: 'm' };
+
+        await ok(engine.setSpaceChild(alice, spaceId, childId, link));
+
+        expect(await linksNow(spaceId)).toEqual([{ childId, ...link }]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'setSpaceChild null unlinks',
+      async () => {
+        const spaceId = await createRoom({ kind: 'space' });
+        const childId = await createRoom();
+        await ok(
+          engine.setSpaceChild(alice, spaceId, childId, {
+            via: [context.serverName],
+            suggested: false,
+            order: '',
+          }),
+        );
+
+        await ok(engine.setSpaceChild(alice, spaceId, childId, null));
+
+        expect(await linksNow(spaceId)).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'createRoom with parentSpaceId links both ways',
+      async () => {
+        const spaceId = await createRoom({ kind: 'space' });
+
+        const childId = await createRoom({ parentSpaceId: spaceId });
+
+        expect(await linksNow(spaceId)).toEqual([
+          {
+            childId,
+            via: [context.serverName],
+            suggested: true,
+            order: '',
+          },
+        ]);
+        await expect(context.asAlice.spaceParents(childId)).resolves.toEqual([
+          spaceId,
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'spaceHierarchy lists the space and its child',
+      async () => {
+        const spaceId = await createRoom({ kind: 'space' });
+        const childId = await createRoom({ parentSpaceId: spaceId });
+
+        const entries = await ok(
+          engine.spaceHierarchy(alice, spaceId, { maxPages: null }),
+        );
+
+        const space = entries.find((e) => e.roomId === spaceId);
+        expect(space?.isSpace).toBe(true);
+        expect(space?.childrenState.map((l) => l.childId)).toEqual([childId]);
+        expect(entries.find((e) => e.roomId === childId)?.isSpace).toBe(false);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'setSpaceParent writes a parent the server reports',
+      async () => {
+        const spaceId = await createRoom({ kind: 'space' });
+        const childId = await createRoom();
+
+        await ok(
+          engine.setSpaceParent(alice, childId, spaceId, [context.serverName]),
+        );
+
+        await expect(context.asAlice.spaceParents(childId)).resolves.toEqual([
+          spaceId,
+        ]);
       },
       testTimeoutMs,
     );

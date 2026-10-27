@@ -73,17 +73,17 @@ async function waitForBackgroundUpdates(): Promise<void> {
 /** A client-server API call as the token's user; returns the JSON body. */
 async function cs(
   accessToken: string,
-  method: 'POST' | 'PUT',
+  method: 'GET' | 'POST' | 'PUT',
   path: string,
-  body: unknown,
-): Promise<Record<string, unknown>> {
+  body?: unknown,
+): Promise<unknown> {
   const res = await fetch(`${baseUrl}/_matrix/client/v3${path}`, {
     method,
     headers: { authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (!res.ok) throw new Error(`Synapse ${method} failed: ${res.status}`);
-  return (await res.json()) as Record<string, unknown>;
+  return res.json();
 }
 
 const room = (roomId: string) => `/rooms/${encodeURIComponent(roomId)}`;
@@ -197,12 +197,40 @@ describe.skipIf(!baseUrl)('JsSdkRoomListEngine against Synapse', () => {
           join: async (roomId) => {
             await cs(login.access_token, 'POST', `${room(roomId)}/join`, {});
           },
+          spaceParents: async (roomId) => {
+            const state = (await cs(
+              login.access_token,
+              'GET',
+              `${room(roomId)}/state`,
+            )) as { type: string; state_key: string; content: object }[];
+            return state
+              .filter(
+                (e) =>
+                  e.type === 'm.space.parent' &&
+                  Object.keys(e.content).length > 0,
+              )
+              .map((e) => e.state_key);
+          },
         },
         asBob: {
           createRoom: async (name) =>
-            (await cs(bob.accessToken, 'POST', '/createRoom', { name }))[
-              'room_id'
-            ] as string,
+            (
+              (await cs(bob.accessToken, 'POST', '/createRoom', {
+                name,
+              })) as { room_id: string }
+            ).room_id,
+          createPublicRoom: async (name, aliasLocalpart) => {
+            const { room_id } = (await cs(
+              bob.accessToken,
+              'POST',
+              '/createRoom',
+              { name, preset: 'public_chat', room_alias_name: aliasLocalpart },
+            )) as { room_id: string };
+            return {
+              roomId: room_id,
+              alias: `#${aliasLocalpart}:${serverName}`,
+            };
+          },
           join: async (roomId) => {
             await cs(bob.accessToken, 'POST', `${room(roomId)}/join`, {});
           },

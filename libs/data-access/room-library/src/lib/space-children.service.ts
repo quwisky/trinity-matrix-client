@@ -18,6 +18,7 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import type { SpaceChildLink } from './room-list-engine';
 import {
   compareOrder,
   isValidOrder,
@@ -36,12 +37,7 @@ interface SpaceChildContent {
   order?: string;
 }
 
-export interface SpaceChildLink {
-  childId: string;
-  via: string[];
-  suggested: boolean;
-  order: string;
-}
+export type { SpaceChildLink } from './room-list-engine';
 
 /** The exact state-event values whose sync echoes complete a curation write. */
 export interface SpaceChildWriteReceipt {
@@ -336,7 +332,7 @@ export class SpaceChildrenService {
     link: SpaceChildLink,
   ): Observable<SpaceChildWriteReceipt> {
     const content: SpaceChildContent = {
-      via: link.via,
+      via: [...link.via],
       ...(link.suggested ? { suggested: true } : {}),
       ...(link.order ? { order: link.order } : {}),
     };
