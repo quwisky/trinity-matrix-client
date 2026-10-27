@@ -1,4 +1,5 @@
 import {
+  DestroyRef,
   Injectable,
   type Signal,
   computed,
@@ -237,6 +238,8 @@ export class TimelineService {
   );
 
   constructor() {
+    // A create that fails after open() destroys the injector without retiring this child.
+    inject(DestroyRef).onDestroy(() => this.close());
     // App lock released: the person is looking again, so ack what arrived behind the cover.
     // markRead still holds it until the window has focus and the conversation is visible.
     effect(() => {

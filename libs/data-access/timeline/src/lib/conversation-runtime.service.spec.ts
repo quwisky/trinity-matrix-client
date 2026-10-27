@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ErrorHandler, signal } from '@angular/core';
-import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
+import { NEVER, Subject, finalize, firstValueFrom, of, tap } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DraftStoreService,
@@ -49,6 +49,8 @@ import {
 } from 'matrix-js-sdk';
 import { TRIM_KEEP, noteSyncPosition } from './live-timeline-trim';
 import { liveSession } from './timeline.spec-harness';
+import { FakeTimelineEngine } from '../contract/fake-timeline-engine';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
 
 const ALICE = '@alice:example.org';
 const BOB = '@bob:example.org';
@@ -566,6 +568,39 @@ describe('ConversationRuntime', () => {
       'timeline:true',
       'readiness:true',
     ]);
+  });
+
+  it("closes the timeline's store when a later part of the handle fails to attach", () => {
+    const fake = new FakeTimelineEngine();
+    let open = 0;
+    const timeline = fake.timeline.bind(fake);
+    fake.timeline = (...args) =>
+      timeline(...args).pipe(
+        tap({ subscribe: () => (open += 1) }),
+        finalize(() => (open -= 1)),
+      );
+    vi.spyOn(
+      ConversationTimelineReadiness.prototype,
+      'start',
+    ).mockImplementation(() => undefined);
+    vi.spyOn(RealThreadsService.prototype, 'attach').mockImplementation(() => {
+      throw new Error('attach failed');
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        ...liveSession([fake.alice]).providers,
+        { provide: TIMELINE_ENGINE, useValue: fake },
+        { provide: MatrixClientService, useValue: { clientFor: () => ({}) } },
+        { provide: MediaPipeline, useValue: { present: () => ({}) } },
+        { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
+      ],
+    });
+    const factory = TestBed.inject(CONVERSATION_TIMELINE_FACTORY);
+
+    expect(() =>
+      factory.create({ accountId: fake.alice, roomId: '!a:example.org' }),
+    ).toThrow('attach failed');
+    expect(open).toBe(0);
   });
 
   it('blurs visibility while retaining a warm conversation', () => {
