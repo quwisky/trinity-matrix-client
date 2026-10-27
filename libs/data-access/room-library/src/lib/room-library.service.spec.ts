@@ -697,6 +697,8 @@ describe('RoomLibraryService writes', () => {
       name: 'general',
       topic: null,
       isPublic: false,
+      kind: 'room',
+      parentSpaceId: null,
     });
     expect(svc.rooms().map((r) => r.id)).toEqual([roomId]);
   });
@@ -712,6 +714,8 @@ describe('RoomLibraryService writes', () => {
       name: 'n',
       topic: 't',
       isPublic: true,
+      kind: 'room',
+      parentSpaceId: null,
     });
 
     await expect(

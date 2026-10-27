@@ -15,6 +15,7 @@ defineRoomListEngineContract(
       asAlice: {
         publishAlias: async (r, l) => engine.publishAlias(r, l),
         join: async (r) => engine.acceptInvite(r),
+        spaceParents: async (r) => engine.spaceParents(r),
       },
       asBob: engine.asBob,
       dispose: async () => undefined,
@@ -67,7 +68,13 @@ describe('FakeRoomListEngine', () => {
 
   it('gives created rooms deterministic ids', async () => {
     const engine = new FakeRoomListEngine();
-    const request = { name: 'x', topic: null, isPublic: false };
+    const request = {
+      name: 'x',
+      topic: null,
+      isPublic: false,
+      kind: 'room' as const,
+      parentSpaceId: null,
+    };
 
     await firstValueFrom(engine.createRoom(engine.alice, request));
     await firstValueFrom(engine.createRoom(engine.alice, request));
@@ -77,5 +84,24 @@ describe('FakeRoomListEngine', () => {
       '!fake-1:example.org',
       '!fake-2:example.org',
     ]);
+  });
+
+  it('re-emits space child links once the space is listed for the account', () => {
+    const engine = new FakeRoomListEngine();
+    const space = fakeRoom('!s:example.org', { isSpace: true });
+    engine.seed(engine.bob, [space]);
+    const link = { via: ['example.org'], suggested: false, order: '' };
+    engine
+      .setSpaceChild(engine.bob, space.roomId, '!c:example.org', link)
+      .subscribe();
+    const seen: unknown[] = [];
+    const sub = engine
+      .spaceChildLinks(engine.alice, space.roomId)
+      .subscribe((links) => seen.push(links));
+
+    engine.seed(engine.alice, [space]);
+    sub.unsubscribe();
+
+    expect(seen).toEqual([[], [{ childId: '!c:example.org', ...link }]]);
   });
 });
