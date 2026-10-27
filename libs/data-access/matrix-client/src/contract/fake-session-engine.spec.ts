@@ -16,15 +16,18 @@ function session(): MatrixSession {
   };
 }
 
-defineSessionEngineContract(async () => {
-  const engine = new FakeSessionEngine();
-  return {
-    engine,
-    newSession: async () => session(),
-    tokenAccepted: async (s) => !engine.revokedTokens.has(s.accessToken),
-    dispose: async () => undefined,
-  };
-});
+defineSessionEngineContract(
+  async () => {
+    const engine = new FakeSessionEngine();
+    return {
+      engine,
+      newSession: async () => session(),
+      tokenAccepted: async (s) => !engine.revokedTokens.has(s.accessToken),
+      dispose: async () => undefined,
+    };
+  },
+  { syncTimeoutMs: 500, testTimeoutMs: 5_000 },
+);
 
 describe('FakeSessionEngine', () => {
   it('maps a failed start to its reason', async () => {

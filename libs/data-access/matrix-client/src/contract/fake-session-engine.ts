@@ -145,7 +145,6 @@ export class FakeSessionEngine implements SessionEngine {
 
   requireReauthentication(accountId: string): Observable<null> {
     return this.run(`requireReauthentication:${accountId}`, () => {
-      this.drop(accountId);
       this.update((s) => ({
         ...s,
         softLoggedOut: [...new Set([...s.softLoggedOut, accountId])],
@@ -216,8 +215,6 @@ export class FakeSessionEngine implements SessionEngine {
       for (const token of this.tokens$.value.values()) {
         this.revokedTokens.add(token.accessToken);
       }
-      this.snapshot$.next(EMPTY_SESSION);
-      this.tokens$.next(new Map());
       return null;
     });
   }
