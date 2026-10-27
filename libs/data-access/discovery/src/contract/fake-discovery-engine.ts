@@ -35,8 +35,9 @@ export class FakeDiscoveryEngine implements DiscoveryEngine {
         baseUrl === undefined
           ? engineFail({
               kind: 'unexpected',
-              message: `Could not discover a homeserver for "${domain}".`,
+              code: 'discovery-failed',
               diagnostic: { kind: 'unexpected' },
+              params: { domain },
             })
           : engineOk({ domain, baseUrl }),
       );
@@ -75,7 +76,7 @@ export class FakeDiscoveryEngine implements DiscoveryEngine {
           ? engineOk({ roomId: room.roomId })
           : engineFail({
               kind: 'http',
-              message: 'Something went wrong. Try again.',
+              code: 'request-failed',
               diagnostic: { kind: 'http', httpStatus: 404 },
             }),
       );

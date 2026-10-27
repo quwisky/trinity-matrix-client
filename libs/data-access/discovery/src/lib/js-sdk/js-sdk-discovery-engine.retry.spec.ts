@@ -89,7 +89,7 @@ describe('JsSdkDiscoveryEngine retries (#978)', () => {
 
     await expect(result).resolves.toMatchObject({
       ok: false,
-      failure: { message: expect.stringMatching(/invalid/i) },
+      failure: { code: 'discovery-failed', params: { domain: 'example.org' } },
     });
     expect(wellKnownCalls()).toBe(3);
   });
@@ -195,16 +195,40 @@ describe('JsSdkDiscoveryEngine retries (#978)', () => {
     ).toHaveLength(1);
   });
 
-  it('reports the raw message of an unclassified thrown error', async () => {
-    vi.spyOn(AutoDiscovery, 'findClientConfig').mockRejectedValue(
-      new Error('boom'),
-    );
+  it.each([
+    ['Invalid JSON', { reason: 'invalid-json' }],
+    ['a value from a newer SDK', {}],
+  ])('maps the SDK discovery error %s to a reason', async (error, reason) => {
+    vi.spyOn(AutoDiscovery, 'findClientConfig').mockResolvedValue({
+      'm.homeserver': {
+        state: AutoDiscovery.FAIL_ERROR,
+        error,
+        base_url: null,
+      },
+    } as never);
 
     await expect(
       firstValueFrom(engine.discover('example.org')),
     ).resolves.toMatchObject({
       ok: false,
-      failure: { kind: 'unexpected', message: 'boom' },
+      failure: {
+        code: 'discovery-failed',
+        params: { domain: 'example.org', ...reason },
+      },
     });
+  });
+
+  it('reports an unclassified thrown error as a message-free request failure', async () => {
+    vi.spyOn(AutoDiscovery, 'findClientConfig').mockRejectedValue(
+      new Error('boom'),
+    );
+
+    const result = await firstValueFrom(engine.discover('example.org'));
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { kind: 'unexpected', code: 'request-failed' },
+    });
+    expect(result).not.toHaveProperty('failure.message');
   });
 });
