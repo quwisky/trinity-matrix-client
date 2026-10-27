@@ -91,7 +91,7 @@ describe('PublicRoomsService', () => {
       of(
         engineFail({
           kind: 'permission',
-          message: 'You do not have permission to do that.',
+          code: 'request-failed',
           diagnostic: { kind: 'permission', httpStatus: 403 },
         }),
       ),
@@ -126,7 +126,7 @@ describe('PublicRoomsService', () => {
       of(
         engineFail({
           kind: 'http',
-          message: 'Something went wrong. Try again.',
+          code: 'request-failed',
           diagnostic: { kind: 'http', httpStatus: 400 },
         }),
       ),
