@@ -24,7 +24,7 @@ For active-client projections, the shared `projectFromClient` adapter coordinate
 
 ## Engine interfaces {#engine-interfaces}
 
-Each data-access capability reaches Matrix through an engine interface, so another engine can implement it later ([#1153](https://github.com/quwisky/trinity-matrix-client/issues/1153)). The `matrix-js-sdk` adapter for a capability lives in its `js-sdk/` folder; only those folders import the SDK or call `clientFor`. `architecture/engine-boundary-allowlist.json` lists the files that still reach the SDK directly. It only shrinks: a new offender and a stale entry both fail `scripts/engine-boundary.spec.mjs`.
+Each data-access capability reaches Matrix through an engine interface, so another engine can implement it later ([#1153](https://github.com/quwisky/trinity-matrix-client/issues/1153)). The `matrix-js-sdk` adapter for a capability lives in its `js-sdk/` folder; only those folders reach the SDK. Reach means importing `matrix-js-sdk`; importing `ConnectionError`, `HTTPError` or `MatrixError` from `@trinity/util/matrix`, which re-exports those SDK classes; calling `clientFor` or `detachedClient`, reading `matrix.instance`, or indexing `MatrixClientService['clientFor' | 'instance' | 'all' | 'detachedClient']`; and calling `.all()` in a file that references `MatrixClientService`. Specs and `*.spec-harness.ts` files do not count. `architecture/engine-boundary-allowlist.json` lists the files that still reach the SDK. It only shrinks: a new offender and a stale entry both fail `scripts/engine-boundary.spec.mjs`.
 
 Values crossing an engine interface are plain data: strings, numbers, booleans, `null`, arrays, and plain objects. No `undefined`, `Date`, `Map`, `Set`, class instances, or functions.
 
