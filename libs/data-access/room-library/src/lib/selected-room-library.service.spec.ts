@@ -686,6 +686,27 @@ describe('SelectedRoomLibraryService', () => {
     expect(harness.openLinks('@a:hs')).toBe(1);
   });
 
+  it('closes a deselected Account’s space links without a read', () => {
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs', '@c:hs']),
+      live: ['@a:hs', '@b:hs', '@c:hs'],
+      rooms: {
+        '@a:hs': [row('!sa:hs', { kind: 'space' })],
+        '@b:hs': [row('!sb:hs', { kind: 'space' })],
+        '@c:hs': [row('!sc:hs', { kind: 'space' })],
+      },
+    });
+    harness.service.view();
+    expect(harness.openLinks('@c:hs')).toBe(1);
+
+    harness.selected.set(new Set(['@a:hs', '@b:hs']));
+    TestBed.tick();
+
+    expect(harness.openLinks('@c:hs')).toBe(0);
+    expect(harness.openLinks('@a:hs')).toBe(1);
+    expect(harness.openLinks('@b:hs')).toBe(1);
+  });
+
   it('closes selected links before returning to one active Account', () => {
     const harness = setup({
       ...AB,

@@ -180,9 +180,13 @@ export class SelectedRoomLibraryService {
   });
 
   constructor() {
-    // Leaving the mixed view closes its links even when nothing reads it any more.
+    // Leaving the mixed view, or deselecting an Account, closes its links without a read.
     effect(() => {
-      if (!this.mixed()) untracked(() => this.links.close(() => true));
+      const selected = this.scope.selected();
+      const mixed = this.mixed();
+      untracked(() =>
+        this.links.close((feed) => !mixed || !selected.has(feed.accountId)),
+      );
     });
     // Closes the links of an Account that signed out or restarted, without a read.
     inject(SESSION_ENGINE)
