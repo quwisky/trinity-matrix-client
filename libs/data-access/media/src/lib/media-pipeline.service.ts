@@ -445,7 +445,8 @@ export class MediaPipeline {
   /**
    * Release this caller's pin on a resolved rendition and free it unless another view still
    * pins it; see {@link MediaService.drop}. Unsubscribe from the rendition's resolve first.
-   * Works for a reference whose Account has since gone: freeing bytes needs no live client.
+   * For a reference whose Account has since gone it only releases the pin, leaving
+   * the bytes to ordinary eviction.
    */
   drop(
     reference: PresentedMediaReference,
