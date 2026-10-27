@@ -75,6 +75,7 @@ import {
   UNREAD_AGGREGATOR_PROVIDER,
   invitesProvider,
   matrixClientProvider,
+  sessionStateProvider,
   setRouteRoom,
   shellFrom,
 } from './rooms-page.spec-harness';
@@ -216,6 +217,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),
       }),
+      sessionStateProvider(),
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
         presenceFor: () => signal('offline'),
@@ -437,6 +439,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline, { releaseAll }),
         matrixClientProvider(),
+        sessionStateProvider(),
         UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),

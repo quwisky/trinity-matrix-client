@@ -22,7 +22,6 @@
     "libs/data-access/contact-addresses/src/lib/email-addresses.workflow.ts",
     "libs/data-access/contact-addresses/src/lib/identity-server.service.ts",
     "libs/data-access/discovery/src/lib/room-link.service.ts",
-    "libs/data-access/matrix-client/src/index.ts",
     "libs/data-access/matrix-client/src/lib/identity-matrix.port.ts",
     "libs/data-access/matrix-client/src/lib/known-names.ts",
     "libs/data-access/matrix-client/src/lib/matrix-sdk-logging.ts",

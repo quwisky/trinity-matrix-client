@@ -15,7 +15,7 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { InvitePermissionService } from '@trinity/data-access/room-library';
 import { catchError, last, map, of } from 'rxjs';
 
@@ -49,7 +49,7 @@ const OPTIONS: readonly TrnRadioOption<InviteChoice>[] = [
 })
 export class InvitePermissionSettingComponent {
   private readonly permission = inject(InvitePermissionService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly destroyRef = inject(DestroyRef);
   /**
    * The choice shown ahead of the server. The native radio checks itself on click, so a failed
@@ -64,7 +64,7 @@ export class InvitePermissionSettingComponent {
   protected readonly error = signal<string | null>(null);
   /** With several accounts signed in, says which one the setting belongs to. */
   protected readonly description = computed(() => {
-    const account = this.matrix.activeUserId();
+    const account = this.matrix.activeAccountId();
     return this.matrix.accountIds().length > 1 && account
       ? `Invites to ${account}.`
       : undefined;

@@ -18,7 +18,7 @@ import {
   HostFileExportService,
   HostSystemUiService,
 } from '@trinity/runtime/host';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   SecureStorageService,
   StoragePersistenceService,
@@ -99,7 +99,7 @@ async function build(
         offered: () => opts.persistenceOffered ?? true,
         spaceLow: () => Promise.resolve(opts.spaceLow ?? false),
       }),
-      MockProvider(MatrixClientService, {
+      MockProvider(SessionStateService, {
         cryptoStoreEncrypted: signal(
           opts.cryptoStoreEncrypted ?? true,
         ).asReadonly(),

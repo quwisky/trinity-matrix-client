@@ -1,7 +1,7 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { Observable, catchError, defer, map, of } from 'rxjs';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import type { AccountSwitchLauncher } from '@trinity/platform-native';
 
 /**
@@ -14,7 +14,7 @@ import type { AccountSwitchLauncher } from '@trinity/platform-native';
 @Injectable({ providedIn: 'root' })
 export class AccountSwitchLauncherAdapter implements AccountSwitchLauncher {
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   /** The first signed-in account besides the active one, in the switcher's order. */
   private readonly otherAccountId = computed(() => {
     const active = this.accounts.activeAccountId();
