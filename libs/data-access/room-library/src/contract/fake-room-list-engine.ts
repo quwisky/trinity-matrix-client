@@ -23,6 +23,7 @@ import {
 import type {
   CreateRoomRequest,
   HierarchyEntry,
+  InviteBlocking,
   RoomInfo,
   RoomListEngine,
   SpaceChildLink,
@@ -83,6 +84,9 @@ export class FakeRoomListEngine implements RoomListEngine {
   private readonly direct$ = new BehaviorSubject<PerAccount<readonly string[]>>(
     {},
   );
+  private readonly inviteBlocks$ = new BehaviorSubject<
+    Readonly<Record<string, boolean>>
+  >({});
   private readonly roomNames = new Map<string, string>();
   private readonly aliases = new Map<string, string>();
   private readonly userNames = new Map<string, string>();
@@ -97,6 +101,8 @@ export class FakeRoomListEngine implements RoomListEngine {
   readonly serverName = 'example.org';
   readonly alice = `@alice:${this.serverName}`;
   readonly bob = `@bob:${this.serverName}`;
+  /** Whether the fake server advertises MSC4380 invite blocking; read on subscribe and write. */
+  serverBlocksInvites = true;
 
   /** Acts on the fake's state as `bob` would on a server. */
   readonly asBob = {
@@ -458,6 +464,33 @@ export class FakeRoomListEngine implements RoomListEngine {
     return this.run(accountId, () => {
       if (!this.roomNames.has(childId)) return engineFail(REQUEST_FAILED);
       this.addParent(childId, spaceId);
+      return engineOk(null);
+    });
+  }
+
+  inviteBlocking(accountId: string): Observable<InviteBlocking> {
+    return defer(() => {
+      const supported = this.serverBlocksInvites && this.lists.has(accountId);
+      return this.inviteBlocks$.pipe(
+        map((all) => ({
+          supported,
+          blocked: supported && (all[accountId] ?? false),
+        })),
+        distinctUntilChanged<InviteBlocking>(plainEqual),
+      );
+    });
+  }
+
+  setInviteBlocking(
+    accountId: string,
+    blocked: boolean,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, () => {
+      if (!this.serverBlocksInvites) return engineFail(REQUEST_FAILED);
+      this.inviteBlocks$.next({
+        ...this.inviteBlocks$.value,
+        [accountId]: blocked,
+      });
       return engineOk(null);
     });
   }

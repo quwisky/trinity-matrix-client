@@ -8,6 +8,12 @@ export interface DiscoveryContractSetup {
   accountId: string;
   domain: string;
   publicRoom: { roomId: string; name: string; alias: string };
+  /** A public, unencrypted room with one member that the account never joins. */
+  unjoinedRoom: { roomId: string; name: string; alias: string };
+  /** An unencrypted room the account is in and has synced. */
+  joinedRoom: { roomId: string; name: string };
+  /** A room whose join rule is `knock` and that the account is not in. */
+  knockRoom: { roomId: string };
   otherUser: { userId: string; displayName: string };
 }
 
@@ -78,7 +84,7 @@ export function defineDiscoveryEngineContract(
       const { publicRoom } = context;
 
       await expect(
-        once(context.engine.joinRoom(context.accountId, publicRoom.alias)),
+        once(context.engine.joinRoom(context.accountId, publicRoom.alias, [])),
       ).resolves.toEqual({ ok: true, value: { roomId: publicRoom.roomId } });
     });
 
@@ -86,7 +92,7 @@ export function defineDiscoveryEngineContract(
       // The alias must stay on the account's own server, which `domain` may address differently.
       const server = context.publicRoom.alias.split(':').slice(1).join(':');
       const result = await once(
-        context.engine.joinRoom(context.accountId, `#missing:${server}`),
+        context.engine.joinRoom(context.accountId, `#missing:${server}`, []),
       );
 
       expect(result.ok).toBe(false);
@@ -94,6 +100,62 @@ export function defineDiscoveryEngineContract(
       expect(result.failure.code).toBe('request-failed');
       expect(result.failure).not.toHaveProperty('message');
       expect(result.failure.diagnostic.httpStatus).toBe(404);
+    });
+
+    it('previewRoom for a public room the account is not in', async () => {
+      const { unjoinedRoom } = context;
+      const server = unjoinedRoom.alias.split(':').slice(1).join(':');
+
+      const result = await once(
+        context.engine.previewRoom(context.accountId, unjoinedRoom.alias, []),
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value).toMatchObject({
+        roomId: unjoinedRoom.roomId,
+        canonicalAddress: unjoinedRoom.alias,
+        name: unjoinedRoom.name,
+        memberCount: 1,
+        encrypted: null,
+        joinRule: 'public',
+        isSpace: false,
+      });
+      expect(['leave', 'unknown']).toContain(result.value.membership);
+      expect(result.value.via).toContain(server);
+    });
+
+    it('previewRoom for a joined room uses local state', async () => {
+      const { joinedRoom } = context;
+
+      const result = await once(
+        context.engine.previewRoom(context.accountId, joinedRoom.roomId, []),
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value).toMatchObject({
+        roomId: joinedRoom.roomId,
+        name: joinedRoom.name,
+        membership: 'join',
+      });
+      // A summary of an unencrypted room leaves encryption unknown; only local state answers.
+      expect(typeof result.value.encrypted).toBe('boolean');
+    });
+
+    it('knockRoom on a knock room is accepted', async () => {
+      const { knockRoom } = context;
+
+      await expect(
+        once(
+          context.engine.knockRoom(
+            context.accountId,
+            knockRoom.roomId,
+            [],
+            'Please let me in',
+          ),
+        ),
+      ).resolves.toEqual({ ok: true, value: { roomId: knockRoom.roomId } });
     });
 
     it('finds another user in the user directory', async () => {
@@ -121,7 +183,13 @@ export function defineDiscoveryEngineContract(
         once(context.engine.searchPublicRooms(NOBODY, { limit: 30 })),
       ).resolves.toEqual(expected);
       await expect(
-        once(context.engine.joinRoom(NOBODY, '#a:invalid')),
+        once(context.engine.joinRoom(NOBODY, '#a:invalid', [])),
+      ).resolves.toEqual(expected);
+      await expect(
+        once(context.engine.previewRoom(NOBODY, '#a:invalid', [])),
+      ).resolves.toEqual(expected);
+      await expect(
+        once(context.engine.knockRoom(NOBODY, '#a:invalid', [], null)),
       ).resolves.toEqual(expected);
       await expect(
         once(context.engine.searchUserDirectory(NOBODY, 'a', 30)),

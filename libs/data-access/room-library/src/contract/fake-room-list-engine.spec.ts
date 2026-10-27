@@ -12,6 +12,7 @@ defineRoomListEngineContract(
       alice: engine.alice,
       bob: engine.bob,
       serverName: engine.serverName,
+      serverBlocksInvites: engine.serverBlocksInvites,
       asAlice: {
         publishAlias: async (r, l) => engine.publishAlias(r, l),
         join: async (r) => engine.acceptInvite(r),
@@ -53,6 +54,20 @@ describe('FakeRoomListEngine', () => {
 
     expect(!failed.ok && failed.failure.code).toBe('invite-blocked');
     expect(passed.ok).toBe(true);
+  });
+
+  it('inviteBlocking reports no support where the server lacks MSC4380', async () => {
+    const engine = new FakeRoomListEngine();
+    engine.serverBlocksInvites = false;
+
+    const written = await firstValueFrom(
+      engine.setInviteBlocking(engine.alice, true),
+    );
+
+    expect(!written.ok && written.failure.code).toBe('request-failed');
+    await expect(
+      firstValueFrom(engine.inviteBlocking(engine.alice)),
+    ).resolves.toEqual({ supported: false, blocked: false });
   });
 
   it('setTyping replaces the members typing in a room', async () => {

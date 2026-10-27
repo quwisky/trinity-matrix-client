@@ -16,8 +16,10 @@ import type {
   DiscoveryEngine,
   PublicRoomsPage,
   PublicRoomsQuery,
+  RoomLinkPreviewData,
   UserDirectoryPage,
 } from '../discovery-engine';
+import { previewRoomLink } from './room-link-preview';
 
 // The SDK's own 5 s abort is hard-coded and its fetch failures look like a definitive "no
 // homeserver". Only the first (cold) request is slow, so it gets 8 s and the retries 5 s each,
@@ -170,10 +172,43 @@ export class JsSdkDiscoveryEngine implements DiscoveryEngine {
   joinRoom(
     accountId: string,
     roomIdOrAlias: string,
+    via: readonly string[],
   ): Observable<EngineResult<{ readonly roomId: string }>> {
     return this.request(accountId, async (client) => {
-      const room = await client.joinRoom(roomIdOrAlias);
+      const room = await client.joinRoom(
+        roomIdOrAlias,
+        via.length > 0 ? { viaServers: [...via] } : undefined,
+      );
       return { roomId: room.roomId };
+    });
+  }
+
+  previewRoom(
+    accountId: string,
+    roomIdOrAlias: string,
+    via: readonly string[],
+  ): Observable<EngineResult<RoomLinkPreviewData>> {
+    return this.request(accountId, (client) =>
+      previewRoomLink(client, roomIdOrAlias, via),
+    );
+  }
+
+  knockRoom(
+    accountId: string,
+    roomIdOrAlias: string,
+    via: readonly string[],
+    reason: string | null,
+  ): Observable<EngineResult<{ readonly roomId: string }>> {
+    return this.request(accountId, async (client) => {
+      const opts = {
+        ...(via.length > 0 ? { viaServers: [...via] } : {}),
+        ...(reason !== null ? { reason } : {}),
+      };
+      const { room_id } = await client.knockRoom(
+        roomIdOrAlias,
+        Object.keys(opts).length > 0 ? opts : undefined,
+      );
+      return { roomId: room_id };
     });
   }
 
