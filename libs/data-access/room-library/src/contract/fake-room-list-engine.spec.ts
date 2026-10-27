@@ -12,7 +12,10 @@ defineRoomListEngineContract(
       alice: engine.alice,
       bob: engine.bob,
       serverName: engine.serverName,
-      asAlice: { publishAlias: async (r, l) => engine.publishAlias(r, l) },
+      asAlice: {
+        publishAlias: async (r, l) => engine.publishAlias(r, l),
+        join: async (r) => engine.acceptInvite(r),
+      },
       asBob: engine.asBob,
       dispose: async () => undefined,
     };

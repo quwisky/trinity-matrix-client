@@ -27,6 +27,8 @@ export interface RoomListContractSetup {
   readonly asAlice: {
     /** Publishes `#localpart:serverName` for the room and returns the full alias. */
     publishAlias(roomId: string, localpart: string): Promise<string>;
+    /** Accepts an invite outside the engine, which has no join command. */
+    join(roomId: string): Promise<void>;
   };
   readonly asBob: {
     createRoom(name: string): Promise<string>;
@@ -211,9 +213,12 @@ export function defineRoomListEngineContract(
     it(
       'markRead clears notificationCount and markedUnread',
       async () => {
-        const roomId = await createRoom();
-        await ok(engine.invite(alice, roomId, bob));
-        await context.asBob.join(roomId);
+        // Bob's room: an unencrypted message only counts toward notifications in an unencrypted
+        // room, and rooms created through the engine are encrypted.
+        const roomId = await context.asBob.createRoom(`bob ${unique()}`);
+        await context.asBob.invite(roomId, alice);
+        await roomUntil(roomId, (r) => r.membership === 'invite');
+        await context.asAlice.join(roomId);
         await context.asBob.sendMessage(roomId, 'hello');
         await roomUntil(roomId, (r) => r.notificationCount > 0);
         await ok(engine.setMarkedUnread(alice, roomId, true));
@@ -340,17 +345,11 @@ export function defineRoomListEngineContract(
     );
 
     it(
-      'invite to an unknown user is request-failed',
+      'invite into a room alice is not in is request-failed',
       async () => {
-        const roomId = await createRoom();
+        const roomId = await context.asBob.createRoom(`bob ${unique()}`);
 
-        const result = await once(
-          engine.invite(
-            alice,
-            roomId,
-            `@nobody-${unique()}:${context.serverName}`,
-          ),
-        );
+        const result = await once(engine.invite(alice, roomId, bob));
 
         expect(!result.ok && result.failure.code).toBe('request-failed');
       },

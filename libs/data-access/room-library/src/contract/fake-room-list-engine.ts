@@ -170,6 +170,20 @@ export class FakeRoomListEngine implements RoomListEngine {
     return alias;
   }
 
+  /** Alice accepts an invite: the row becomes joined. */
+  acceptInvite(roomId: string): void {
+    const index = this.indexOf(this.alice, roomId);
+    const room = this.lists.get(this.alice)?.[index];
+    if (room?.membership !== 'invite') return;
+    this.apply(this.alice, [
+      {
+        op: 'set',
+        index,
+        value: { ...room, membership: 'join', inviter: null },
+      },
+    ]);
+  }
+
   rooms(accountId: string): Observable<readonly VectorDiff<RoomInfo>[]> {
     return defer(() =>
       this.changes$.pipe(
