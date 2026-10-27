@@ -46,6 +46,16 @@ A command is a cold observable that emits one result and completes. Expected fai
 
 Plain-data readers use `SessionStateService`, which turns the snapshot into signals. Capability adapters still get SDK clients through `JS_SDK_CLIENTS` or `MatrixClientService` until their slice moves them to an engine. `architecture/session-facade-allowlist.json` lists the files that still import `MatrixClientService`; it only shrinks, and `scripts/session-facade.spec.mjs` fails on a new caller and on a stale entry. Removal is tracked in [#1153](https://github.com/quwisky/trinity-matrix-client/issues/1153). `holdServerLogout` stays on the facade until the authentication slice.
 
+### Room list engine {#room-list-engine}
+
+`RoomListEngine` (`libs/data-access/room-library`) exposes an account's joined, invited and knocked rooms as plain `RoomInfo` rows. Its streams take an account id and emit a snapshot first: `rooms()` emits `VectorDiff` batches that start with a `reset`, while `typing()` and `directMap()` emit whole maps. A command's effect is in the next `rooms()` emission before it replies, and every command on an account that is not live returns `account-not-live`. `RoomListStore` holds one subscription per live account, and `ROOM_LIST_ENGINE` provides the `matrix-js-sdk` adapter. One contract, `defineRoomListEngineContract`, runs against `FakeRoomListEngine` in unit tests and against Synapse in `trinity-e2e-engine:contract`.
+
+| Stream                 | Emits                                                         |
+| ---------------------- | ------------------------------------------------------------- |
+| `rooms(accountId)`     | `VectorDiff<RoomInfo>` batches, a `reset` first               |
+| `typing(accountId)`    | joined room id to the members typing in it, own user included |
+| `directMap(accountId)` | the account's `m.direct` map, left rooms included             |
+
 ## Treat synchronization as authoritative {#sync-authority}
 
 Commands call the SDK and then allow sync or the relevant SDK event to reconcile current state. Preserve a typed error or outcome for the initiating action, but do not claim that an accepted network request has already become authoritative local state unless the SDK contract guarantees it.
