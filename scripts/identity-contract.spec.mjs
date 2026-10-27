@@ -64,8 +64,8 @@ describe('Identity production boundary', () => {
     );
     const roomLibrary = [
       'libs/data-access/room-library/src/lib/room-library.service.ts',
-      'libs/data-access/room-library/src/lib/room-typing.ts',
-      'libs/data-access/room-library/src/lib/direct-rooms.ts',
+      'libs/data-access/room-library/src/lib/js-sdk/room-typing.ts',
+      'libs/data-access/room-library/src/lib/js-sdk/direct-rooms.ts',
     ]
       .map(source)
       .join('\n');
