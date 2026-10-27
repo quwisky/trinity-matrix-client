@@ -37,6 +37,7 @@ export interface RoomListContractSetup {
       options?: { readonly isDirect?: boolean },
     ): Promise<void>;
     sendTyping(roomId: string): Promise<void>;
+    sendMessage(roomId: string, body: string): Promise<void>;
   };
   dispose(): Promise<void>;
 }
@@ -138,8 +139,26 @@ export function defineRoomListEngineContract(
         );
 
         expect(() => assertPlainData(first)).not.toThrow();
-        expect(first.filter((d) => d.op === 'reset')).toHaveLength(1);
+        expect(first).toHaveLength(1);
+        expect(first[0].op).toBe('reset');
         await roomUntil(roomId, () => true);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'typing and directMap emit a snapshot first',
+      async () => {
+        const sources: Observable<unknown>[] = [
+          engine.typing(alice),
+          engine.directMap(alice),
+        ];
+        for (const source of sources) {
+          const first = await firstValueFrom(
+            source.pipe(timeout(settleTimeoutMs)),
+          );
+          expect(() => assertPlainData(first)).not.toThrow();
+        }
       },
       testTimeoutMs,
     );
@@ -193,6 +212,10 @@ export function defineRoomListEngineContract(
       'markRead clears notificationCount and markedUnread',
       async () => {
         const roomId = await createRoom();
+        await ok(engine.invite(alice, roomId, bob));
+        await context.asBob.join(roomId);
+        await context.asBob.sendMessage(roomId, 'hello');
+        await roomUntil(roomId, (r) => r.notificationCount > 0);
         await ok(engine.setMarkedUnread(alice, roomId, true));
         await roomUntil(roomId, (r) => r.markedUnread);
 
@@ -241,6 +264,12 @@ export function defineRoomListEngineContract(
       async () => {
         const first = await ok(engine.createDirectMessage(alice, bob));
         await roomUntil(first.roomId, (r) => r.membership === 'join');
+        await firstValueFrom(
+          engine.directMap(alice).pipe(
+            filter((map) => map[bob]?.includes(first.roomId) ?? false),
+            timeout(settleTimeoutMs),
+          ),
+        );
 
         const second = await ok(engine.createDirectMessage(alice, bob));
 
@@ -360,8 +389,11 @@ export function defineRoomListEngineContract(
         const roomId = await createRoom();
         let seen = 0;
         const subscription = engine.rooms(alice).subscribe(() => (seen += 1));
-        await roomUntil(roomId, () => true);
-        subscription.unsubscribe();
+        try {
+          await roomUntil(roomId, () => true);
+        } finally {
+          subscription.unsubscribe();
+        }
         const before = seen;
 
         await ok(engine.setTag(alice, roomId, 'favourite', true));

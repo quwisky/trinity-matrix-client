@@ -88,14 +88,11 @@ export class FakeRoomListEngine implements RoomListEngine {
   readonly serverName = 'example.org';
   readonly alice = `@alice:${this.serverName}`;
   readonly bob = `@bob:${this.serverName}`;
-  readonly calls: string[] = [];
 
   /** Acts on the fake's state as `bob` would on a server. */
   readonly asBob = {
     createRoom: async (name: string): Promise<string> => this.newRoom(name),
-    join: async (roomId: string): Promise<void> => {
-      void roomId;
-    },
+    join: async (): Promise<void> => undefined,
     invite: async (
       roomId: string,
       userId: string,
@@ -112,6 +109,25 @@ export class FakeRoomListEngine implements RoomListEngine {
         this.setTyping(accountId, roomId, [
           ...others,
           { userId: this.bob, displayName: this.displayName(this.bob) },
+        ]);
+      }
+    },
+    sendMessage: async (roomId: string, body: string): Promise<void> => {
+      for (const accountId of this.lists.keys()) {
+        const index = this.indexOf(accountId, roomId);
+        const room = this.lists.get(accountId)?.[index];
+        if (!room) continue;
+        this.apply(accountId, [
+          {
+            op: 'set',
+            index,
+            value: {
+              ...room,
+              notificationCount: room.notificationCount + 1,
+              recencyStamp: room.recencyStamp + 1,
+              latestMessage: { text: body, mark: null },
+            },
+          },
         ]);
       }
     },
@@ -194,7 +210,7 @@ export class FakeRoomListEngine implements RoomListEngine {
     tag: 'favourite' | 'lowPriority',
     on: boolean,
   ): Observable<EngineResult<null>> {
-    return this.patchCommand('setTag', accountId, roomId, { [tag]: on });
+    return this.patchCommand(accountId, roomId, { [tag]: on });
   }
 
   setMarkedUnread(
@@ -202,7 +218,7 @@ export class FakeRoomListEngine implements RoomListEngine {
     roomId: string,
     unread: boolean,
   ): Observable<EngineResult<null>> {
-    return this.patchCommand('setMarkedUnread', accountId, roomId, {
+    return this.patchCommand(accountId, roomId, {
       markedUnread: unread,
     });
   }
@@ -210,9 +226,9 @@ export class FakeRoomListEngine implements RoomListEngine {
   markRead(
     accountId: string,
     roomId: string,
-    receipts: 'public' | 'private',
+    _receipts: 'public' | 'private',
   ): Observable<EngineResult<null>> {
-    return this.patchCommand(`markRead:${receipts}`, accountId, roomId, {
+    return this.patchCommand(accountId, roomId, {
       notificationCount: 0,
       highlightCount: 0,
       markedUnread: false,
@@ -220,7 +236,7 @@ export class FakeRoomListEngine implements RoomListEngine {
   }
 
   leave(accountId: string, roomId: string): Observable<EngineResult<null>> {
-    return this.run(`leave:${roomId}`, accountId, () => {
+    return this.run(accountId, () => {
       const index = this.indexOf(accountId, roomId);
       if (index < 0) return engineFail(REQUEST_FAILED);
       this.apply(accountId, [{ op: 'remove', index }]);
@@ -232,7 +248,7 @@ export class FakeRoomListEngine implements RoomListEngine {
     accountId: string,
     request: CreateRoomRequest,
   ): Observable<EngineResult<{ readonly roomId: string }>> {
-    return this.run('createRoom', accountId, () => {
+    return this.run(accountId, () => {
       const roomId = this.newRoom(request.name);
       this.apply(accountId, [
         {
@@ -251,7 +267,7 @@ export class FakeRoomListEngine implements RoomListEngine {
     accountId: string,
     userId: string,
   ): Observable<EngineResult<{ readonly roomId: string }>> {
-    return this.run(`createDirectMessage:${userId}`, accountId, () => {
+    return this.run(accountId, () => {
       if (!this.userNames.has(userId)) return engineFail(REQUEST_FAILED);
       const joined = this.lists
         .get(accountId)
@@ -280,7 +296,7 @@ export class FakeRoomListEngine implements RoomListEngine {
     accountId: string,
     alias: string,
   ): Observable<EngineResult<{ readonly roomId: string }>> {
-    return this.run(`resolveAlias:${alias}`, accountId, () => {
+    return this.run(accountId, () => {
       const roomId = this.aliases.get(alias);
       return roomId ? engineOk({ roomId }) : engineFail(REQUEST_FAILED);
     });
@@ -291,7 +307,7 @@ export class FakeRoomListEngine implements RoomListEngine {
     roomId: string,
     userId: string,
   ): Observable<EngineResult<null>> {
-    return this.run(`invite:${userId}`, accountId, () => {
+    return this.run(accountId, () => {
       if (this.indexOf(accountId, roomId) < 0 || !this.userNames.has(userId)) {
         return engineFail(REQUEST_FAILED);
       }
@@ -302,12 +318,10 @@ export class FakeRoomListEngine implements RoomListEngine {
 
   /** A cold command: scripted failure first, then the live-account check, then `action`. */
   private run<T>(
-    call: string,
     accountId: string,
     action: () => EngineResult<T>,
   ): Observable<EngineResult<T>> {
     return defer(() => {
-      this.calls.push(call);
       const scripted = this.nextFailure;
       this.nextFailure = null;
       if (scripted) return of(engineFail(failure(scripted)));
@@ -319,12 +333,11 @@ export class FakeRoomListEngine implements RoomListEngine {
   }
 
   private patchCommand(
-    call: string,
     accountId: string,
     roomId: string,
     patch: Partial<RoomInfo>,
   ): Observable<EngineResult<null>> {
-    return this.run(call, accountId, () => {
+    return this.run(accountId, () => {
       const index = this.indexOf(accountId, roomId);
       const room = this.lists.get(accountId)?.[index];
       if (!room) return engineFail(REQUEST_FAILED);
