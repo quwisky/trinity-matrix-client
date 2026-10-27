@@ -254,12 +254,11 @@ export class TimelineStores {
 
   /** Fills the store before returning when the engine emits on subscribe. */
   open(key: ConversationKey, focus: TimelineFocus): TimelineStore {
-    // shortcut: media presents for the active account until Task 8 adds `present(media, accountId)`.
     const store = new TimelineStore(
       key,
       focus,
       this.engine,
-      (media) => this.media.present(media),
+      (media) => this.media.present(media, key.accountId),
       (closed) => this.stores.delete(closed),
     );
     this.stores.add(store);

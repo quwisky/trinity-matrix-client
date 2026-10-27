@@ -67,7 +67,7 @@ describe('Message Presentation production boundary', () => {
     expect(
       source(`${timelineRoot}/js-sdk/normalize-timeline-event.ts`),
     ).toContain('showsEdit(event)');
-    expect(projection).toContain('presentMedia.present(media, client)');
+    expect(projection).toContain('client.getUserId() ?? undefined');
   });
 
   it('does not restore the retired util text or system-event API', () => {

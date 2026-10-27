@@ -28,7 +28,7 @@ export function projectMessage(
   );
   return normalized
     ? presentNormalizedTimelineEvent(normalized, (media) =>
-        presentMedia.present(media, client),
+        presentMedia.present(media, client.getUserId() ?? undefined),
       )
     : null;
 }
