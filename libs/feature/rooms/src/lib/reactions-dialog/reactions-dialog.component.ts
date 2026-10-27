@@ -43,22 +43,26 @@ export class ReactionsDialogComponent implements OnInit {
 
   readonly eventId = input.required<string>();
 
-  /** The reactors, grouped by reaction key, as they stood when the dialog opened. */
-  readonly sections = signal<readonly ReactionDetail[]>([]);
+  /** The reactors by reaction key as they stood when the dialog opened; null until read. */
+  readonly sections = signal<readonly ReactionDetail[] | null>(null);
 
   /** The key whose reactors are listed, or null before the snapshot is read. */
   readonly selectedKey = signal<string | null>(null);
 
   readonly selected = computed<ReactionDetail | null>(
     () =>
-      this.sections().find((s) => s.key === this.selectedKey()) ??
-      this.sections()[0] ??
+      this.sections()?.find((s) => s.key === this.selectedKey()) ??
+      this.sections()?.[0] ??
       null,
   );
 
-  readonly total = computed(() =>
-    this.sections().reduce((sum, s) => sum + s.reactors.length, 0),
-  );
+  /** "N total" once the snapshot is read. */
+  readonly summary = computed(() => {
+    const sections = this.sections();
+    return sections
+      ? `${sections.reduce((sum, s) => sum + s.reactors.length, 0)} total`
+      : undefined;
+  });
 
   /** Keep the directory and detail panes together only when the text scale permits it. */
   readonly wide = textScaledViewportSignal(48, this.destroyRef);

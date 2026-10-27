@@ -98,6 +98,21 @@ describe('ReactionsDialogComponent', () => {
     expect(container.querySelector('[data-testid=reactors-list]')).toBeNull();
   });
 
+  it('shows neither the empty copy nor a total before the reactors are read', async () => {
+    const pending = new Subject<ReactionDetail[]>();
+    reactionDetails.mockReturnValue(pending);
+    const { fixture, container } = await build();
+
+    expect(container.querySelector('[data-testid=reactions-empty]')).toBeNull();
+    expect(container.textContent).not.toContain('total');
+
+    pending.next(SECTIONS);
+    fixture.detectChanges();
+
+    expect(names(container)).toEqual(['Alice', 'Bob']);
+    expect(container.textContent).toContain('3 total');
+  });
+
   it('keeps the selected reaction identifiable', async () => {
     const { fixture, container } = await build();
 
