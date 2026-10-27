@@ -89,7 +89,10 @@ describe('JsSdkDiscoveryEngine retries (#978)', () => {
 
     await expect(result).resolves.toMatchObject({
       ok: false,
-      failure: { code: 'discovery-failed', params: { domain: 'example.org' } },
+      failure: {
+        code: 'discovery-failed',
+        params: { domain: 'example.org', reason: 'invalid' },
+      },
     });
     expect(wellKnownCalls()).toBe(3);
   });

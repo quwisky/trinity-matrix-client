@@ -1,11 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HostNetworkPolicyService } from '@trinity/platform-native';
 import {
   EngineRequestError,
   describeMatrixRequestFailure,
+  engineFail,
 } from '@trinity/util/matrix';
 import { FakeDiscoveryEngine } from '../contract/fake-discovery-engine';
 import { DISCOVERY_ENGINE } from './discovery-engine';
@@ -59,6 +60,28 @@ describe('HomeserverDiscoveryService', () => {
     expect(error).toBeInstanceOf(EngineRequestError);
     expect((error as Error).message).toBe(
       'Could not discover a homeserver for "nope.invalid".',
+    );
+  });
+
+  it('words a failure with a specific reason like the SDK', async () => {
+    vi.spyOn(engine, 'discover').mockReturnValue(
+      of(
+        engineFail({
+          kind: 'unexpected',
+          code: 'discovery-failed',
+          diagnostic: { kind: 'unexpected' },
+          params: { domain: 'x.org', reason: 'invalid-homeserver' },
+        }),
+      ),
+    );
+
+    const error = await discover('x.org').catch((e: unknown) => e);
+
+    expect((error as Error).message).toBe(
+      'Homeserver URL does not appear to be a valid Matrix homeserver',
+    );
+    expect(describeMatrixRequestFailure(error, 'Fallback copy.').message).toBe(
+      'Fallback copy.',
     );
   });
 

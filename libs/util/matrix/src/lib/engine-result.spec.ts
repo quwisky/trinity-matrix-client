@@ -123,6 +123,9 @@ describe('engineFailureMessage', () => {
   });
 
   it.each([
+    ['authentication', 'Your session has expired. Sign in again.'],
+    ['permission', 'You do not have permission to do that.'],
+    ['rate-limit', 'Too many requests. Try again shortly.'],
     ['network', 'Check your connection and try again.'],
     ['timeout', 'The request timed out. Try again.'],
     ['server', 'The homeserver is unavailable. Try again.'],
@@ -145,6 +148,29 @@ describe('engineFailureMessage', () => {
       expect(() => assertPlainData(failure)).not.toThrow();
       expect(failure).not.toHaveProperty('message');
     }
+  });
+});
+
+describe('a token refresh failure through the engine', () => {
+  const refreshText =
+    'Your session could not be refreshed. Check your connection and try again.';
+  const raw = Object.assign(new Error('refresh'), {
+    name: 'TokenRefreshError',
+  });
+  const carried = describeMatrixRequestFailure(raw);
+  const failure: EngineFailure = {
+    kind: carried.kind,
+    code: 'request-failed',
+    diagnostic: carried.diagnostic,
+  };
+
+  it('keeps its text under a caller fallback and in the table', () => {
+    expect(carried.message).toBe(refreshText);
+    expect(engineFailureMessage(failure)).toBe(refreshText);
+    expect(
+      describeMatrixRequestFailure(new EngineRequestError(failure), 'Fallback.')
+        .message,
+    ).toBe(refreshText);
   });
 });
 
