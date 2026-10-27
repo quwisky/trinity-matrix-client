@@ -4,7 +4,7 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ADD_TO_IMAGE_PACK_DIALOG,
   ImagePackEditorService,
@@ -45,7 +45,10 @@ describe('AddToMyEmojiService', () => {
         { provide: TrnSurfaceService, useValue: surfaces },
         { provide: TrnToastService, useValue: toast },
         { provide: ImagePackEditorService, useValue: { personal } },
-        { provide: MatrixClientService, useValue: { activeUserId } },
+        {
+          provide: SessionStateService,
+          useValue: { activeAccountId: activeUserId },
+        },
         {
           provide: ADD_TO_IMAGE_PACK_DIALOG,
           useValue: () => load(),

@@ -1,7 +1,7 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { HostLifecycleService } from '@trinity/runtime/host';
 import {
   distinctUntilChanged,
@@ -21,7 +21,7 @@ import {
 @Injectable({ providedIn: 'root' })
 export class DiagnosticMarkersBinding {
   private readonly log = inject(DiagnosticLogService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly lifecycle = inject(HostLifecycleService);
   private readonly accountCount = toObservable(
     computed(() => this.matrix.accountIds().length),
@@ -35,9 +35,9 @@ export class DiagnosticMarkersBinding {
         map((count) => `accounts signed in: ${count}`),
       ),
       this.syncState.pipe(
-        filter((state) => state !== null),
+        filter((state) => state !== null && state !== 'starting'),
         distinctUntilChanged(),
-        map((state) => `sync state (active account): ${state}`),
+        map((state) => `sync state (active account): ${state.toUpperCase()}`),
       ),
       this.lifecycle.events.pipe(
         map((event) =>

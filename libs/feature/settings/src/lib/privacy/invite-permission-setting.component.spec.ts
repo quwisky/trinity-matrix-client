@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { InvitePermissionService } from '@trinity/data-access/room-library';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, type Observable } from 'rxjs';
@@ -34,8 +34,8 @@ async function setup(
         runProjection: () => projection,
         setBlocked,
       }),
-      MockProvider(MatrixClientService, {
-        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: signal<string | null>('@me:hs').asReadonly(),
         accountIds: signal<readonly string[]>(
           opts.accounts ?? ['@me:hs'],
         ).asReadonly(),
