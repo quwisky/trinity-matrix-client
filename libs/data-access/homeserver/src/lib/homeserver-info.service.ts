@@ -24,16 +24,15 @@ interface CachedInfo {
  *
  * **Per account, not per active account.** Every signed-in account has its own live client
  * and they all sync concurrently, and the point of the surface is checking *a* server, which
- * may not be the one in view. So this keys on `accountIds()` and reads each answer through
- * that account's own client, like `AccountIdentitiesService` and `UnreadAggregatorService`
- * — not through `projectFromClient`, which follows the active one.
+ * may not be the one in view. So this keys on `accountIds()` and probes each account by id
+ * through the {@link HomeserverEngine}, not through the active one.
  *
  * **Cached for the session, in memory only.** Nothing is written to Capacitor Preferences:
  * a server version is a fact about right now, and persisting it would show a value from a
  * previous run as if current. {@link refresh} is the deliberate re-check.
  *
- * **Nothing here fails.** The probes resolve a null-object instead of throwing (see
- * `probe-homeserver.ts`), so an unreachable server produces a record whose remote fields are
+ * **Nothing here fails.** `HomeserverEngine.probe` never errors; it resolves a record
+ * of nulls instead, so an unreachable server produces a record whose remote fields are
  * null and the UI reads "Unknown". No error reaches a toast; the feature requires that.
  */
 @Injectable({ providedIn: 'root' })
@@ -75,7 +74,7 @@ export class HomeserverInfoService {
   /**
    * Probes that have been started and not yet finished, keyed by user id.
    *
-   * A probe is only written to {@link cache} once its whole `forkJoin` settles, so without
+   * A probe is only written to {@link cache} once the engine's probe resolves, so without
    * this every caller arriving meanwhile starts its own: each block loads on init, and the
    * account menu re-triggers a lookup on every toggle. Sharing the in-flight observable also
    * stops an older, slower response landing on top of a newer one. Same shape as
@@ -87,8 +86,7 @@ export class HomeserverInfoService {
    * Re-probe this account, ignoring anything cached. Cold. Backs "Check again".
    *
    * Always re-issues the requests, which is the whole point: every value here is reachable
-   * from an SDK call that would have replayed a cached answer instead (see
-   * `probe-homeserver.ts`), and a refresh that cannot observe a change is not a refresh.
+   * from an engine call that must not replay a cached answer, and a refresh that cannot observe a change is not a refresh.
    */
   refresh(userId: string): Observable<void> {
     const running = this.inFlight.get(userId);
@@ -108,7 +106,12 @@ export class HomeserverInfoService {
           if (probe) {
             this.store(userId, generation, {
               userId,
-              ...probe,
+              serverName: probe.serverName,
+              baseUrl: probe.baseUrl,
+              software: probe.software,
+              specVersions: probe.specVersions,
+              unstableFeatures: probe.unstableFeatures,
+              capabilities: probe.capabilities,
               discovered: !sameOrigin(
                 probe.baseUrl,
                 `https://${probe.serverName}`,

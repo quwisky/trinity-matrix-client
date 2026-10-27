@@ -28,7 +28,7 @@ Each data-access capability reaches Matrix through an engine interface, so anoth
 
 Values crossing an engine interface are plain data: strings, numbers, booleans, `null`, arrays, and plain objects. No `undefined`, `Date`, `Map`, `Set`, class instances, or functions.
 
-A command is a cold observable that emits one result and completes. Expected failures arrive as `{ ok: false, failure }` with a typed `MatrixRequestFailure`; only unexpected faults error the stream. A subscription emits a snapshot first and changes after it. Media crosses the interface as a URL, never as a blob or SDK handle. Synchronization stays authoritative: a command's result does not replace the state that sync reconciles.
+A command is a cold observable that emits one result and completes. Expected failures arrive as `{ ok: false, failure }` with a typed `MatrixRequestFailure`; only unexpected faults error the stream. A subscription emits a snapshot first and changes after it. Media never crosses as bytes: commands return a URL the webview can load, and uploads take a Blob or File handle. Synchronization stays authoritative: a command's result does not replace the state that sync reconciles.
 
 ## Treat synchronization as authoritative {#sync-authority}
 
