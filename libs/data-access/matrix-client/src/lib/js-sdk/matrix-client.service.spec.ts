@@ -27,7 +27,7 @@ import {
   SessionStorageService,
 } from '@trinity/platform-native';
 import { type ProjectionReadiness } from '@trinity/runtime/projection';
-import { SecretStorageKeyHolder } from './secret-storage-key-holder';
+import { SecretStorageKeyHolder } from '../secret-storage-key-holder';
 import { desktopBridgeFixture } from '@trinity/testing';
 import type { MatrixSession } from '@trinity/util/matrix';
 import {

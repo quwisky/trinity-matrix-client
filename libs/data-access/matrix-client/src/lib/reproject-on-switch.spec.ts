@@ -2,7 +2,7 @@ import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { reprojectOnAccountSwitch } from './reproject-on-switch';
-import type { MatrixClientService } from './matrix-client.service';
+import type { MatrixClientService } from './js-sdk/matrix-client.service';
 
 function harness(isConnected: () => boolean) {
   const activeUserId = signal<string | null>('@a:hs');

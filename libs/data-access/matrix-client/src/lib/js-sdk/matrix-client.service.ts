@@ -58,7 +58,7 @@ import {
   syncStoreIndexedDbName,
   verifiedEndpoints,
 } from '@trinity/util/matrix';
-import { SecretStorageKeyHolder } from './secret-storage-key-holder';
+import { SecretStorageKeyHolder } from '../secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';
 import {
   clientHasOutgoingWork,
@@ -74,9 +74,9 @@ import {
   expectedClientStartFailure,
   isRecord,
   type PersistedAccountStartOutcome,
-} from './account-start-failure';
+} from '../account-start-failure';
 
-export type { PersistedAccountStartOutcome } from './account-start-failure';
+export type { PersistedAccountStartOutcome } from '../account-start-failure';
 
 /**
  * Default deadline for ordinary Matrix HTTP requests made by an account client. The

@@ -1,4 +1,4 @@
-export * from './lib/matrix-client.service';
+export * from './lib/js-sdk/matrix-client.service';
 export * from './lib/matrix-sdk-logging';
 // Consumers of `syncState` need its type, and feature libs are barred from importing
 // matrix-js-sdk — so surface it here rather than leave them deriving it from the signal.
@@ -10,7 +10,7 @@ export * from './lib/project-from-client';
 export * from './lib/trust-crypto.port';
 export * from './lib/identity-matrix.port';
 export * from './lib/known-names';
-export type { PendingTextMessage } from './lib/outgoing-work';
+export type { PendingTextMessage } from './lib/js-sdk/outgoing-work';
 export * from './lib/server-support';
 export * from './lib/mutual-rooms';
 export * from './lib/js-sdk/js-sdk-clients';

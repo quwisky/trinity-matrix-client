@@ -489,7 +489,7 @@ describe('MAS sign-in journeys', () => {
 
     it.each([
       'libs/data-access/auth/src/lib/auth.service.ts',
-      'libs/data-access/matrix-client/src/lib/matrix-client.service.ts',
+      'libs/data-access/matrix-client/src/lib/js-sdk/matrix-client.service.ts',
       'libs/data-access/accounts/src/lib/account-session.ts',
       'libs/feature/auth/src/lib/sso-callback/sso-callback.page.ts',
       'libs/platform-native/src/lib/session-storage.service.ts',
