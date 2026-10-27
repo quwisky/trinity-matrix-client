@@ -70,7 +70,7 @@ async function build(over: { setOn?: Mock } = {}) {
         activeAccountId: activeAccount.asReadonly(),
       }),
       // The section renders the keyword block, which would otherwise reach the real
-      // SessionStateService — harmless today only because it reports uninitialised.
+      // MatrixClientService — harmless today only because it reports uninitialised.
       MockProvider(KeywordRulesService, { keywords: () => [] }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
