@@ -1,36 +1,37 @@
-import { Injectable, Injector, inject } from '@angular/core';
+import { Injectable, Injector, computed, inject } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
-import {
-  ClientEvent,
-  RoomEvent,
-  RoomStateEvent,
-  RoomType,
-  type HierarchyRoom,
-  type MatrixClient,
-  type MatrixEvent,
-  type RoomState,
-} from 'matrix-js-sdk';
 import {
   Observable,
   asyncScheduler,
   catchError,
   defer,
   map,
+  merge,
   of,
+  skip,
   switchMap,
+  take,
+  tap,
   throttleTime,
   throwError,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { retryTransient, roomAvatarMxc } from '@trinity/util/matrix';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import {
+  EngineRequestError,
+  plainEqual,
+  retryTransient,
+  unwrapEngineResult,
+} from '@trinity/util/matrix';
 import { initialOf } from './room-projection';
-import { directMapOf } from './js-sdk/room-info';
 import { RoomLibraryService } from './room-library.service';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
   type RoomLibraryGovernanceDecision,
 } from './room-library-governance-policy';
+import type { HierarchyEntry } from './room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
+import { RoomListStore } from './room-list-store';
 import {
   SpaceChildrenService,
   type SpaceChildLink,
@@ -39,7 +40,6 @@ import {
 import { compareOrder } from './space-child-order';
 import { SpacesService } from './spaces.service';
 
-const HIERARCHY_LIMIT = 100;
 /** Minimum spacing between hierarchy refreshes triggered by sync invalidations. */
 const HIERARCHY_REFRESH_MS = 250;
 
@@ -96,28 +96,38 @@ export type CreateSpaceContentResult =
 /** Exact Account-and-Space hierarchy reads and parent-owned child-link commands. */
 @Injectable({ providedIn: 'root' })
 export class SpaceContentsService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(ROOM_LIST_ENGINE);
+  private readonly store = inject(RoomListStore);
+  private readonly session = inject(SessionStateService);
   private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
   private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly children = inject(SpaceChildrenService);
   private readonly injector = inject(Injector);
 
-  /** Observe one immutable target and reattach if its Account client is replaced. */
+  /** Observe one immutable target and reattach when its Account starts a new generation. */
   observe(target: SpaceContentsTarget): Observable<SpaceContentsSnapshot> {
-    const accountIds = toObservable(this.matrix.accountIds, {
-      injector: this.injector,
-    });
-    return accountIds.pipe(switchMap(() => this.observeCurrentClient(target)));
+    const generation = computed(
+      () => this.session.status(target.accountId)?.generation ?? null,
+    );
+    return toObservable(generation, { injector: this.injector }).pipe(
+      switchMap((current) =>
+        current === null
+          ? of(this.unavailableSnapshot(target))
+          : this.observeGeneration(target, current),
+      ),
+    );
   }
 
   /** Read the latest hierarchy once, for explicit retry and post-command refresh. */
   read(target: SpaceContentsTarget): Observable<SpaceContentsSnapshot> {
     return defer(() => {
-      const client = this.matrix.clientFor(target.accountId);
-      return client
-        ? this.load(target, client)
-        : of(this.unavailableSnapshot(target));
+      const generation = this.session.status(target.accountId)?.generation;
+      if (generation === undefined) return of(this.unavailableSnapshot(target));
+      return this.engine.spaceChildLinks(target.accountId, target.spaceId).pipe(
+        take(1),
+        switchMap((links) => this.load(target, generation, () => links)),
+      );
     });
   }
 
@@ -208,114 +218,114 @@ export class SpaceContentsService {
     });
   }
 
-  private observeCurrentClient(
+  private observeGeneration(
     target: SpaceContentsTarget,
+    generation: number,
   ): Observable<SpaceContentsSnapshot> {
-    const client = this.matrix.clientFor(target.accountId);
-    if (!client) return of(this.unavailableSnapshot(target));
-    const invalidations = new Observable<void>((subscriber) => {
-      const publish = (): void => subscriber.next();
-      const onState = (event: MatrixEvent, state?: RoomState): void => {
-        if (
-          event.getRoomId() === target.spaceId ||
-          state?.roomId === target.spaceId
-        ) {
-          publish();
-        }
-      };
-      client.on(RoomStateEvent.Events, onState);
-      client.on(ClientEvent.Room, publish);
-      client.on(RoomEvent.Name, publish);
-      client.on(RoomEvent.MyMembership, publish);
-      publish();
-      return () => {
-        client.off(RoomStateEvent.Events, onState);
-        client.off(ClientEvent.Room, publish);
-        client.off(RoomEvent.Name, publish);
-        client.off(RoomEvent.MyMembership, publish);
-      };
+    return defer(() => {
+      let links: readonly SpaceChildLink[] = [];
+      const rows = this.store.rooms(target.accountId);
+      // Only what the snapshot shows; unread counts and previews would refetch for nothing.
+      const shown = computed(
+        () =>
+          rows().map((room) => [
+            room.roomId,
+            room.membership,
+            room.isSpace,
+            room.displayName,
+            room.avatarMxc,
+          ]),
+        { equal: plainEqual },
+      );
+      const invalidations = merge(
+        this.engine
+          .spaceChildLinks(target.accountId, target.spaceId)
+          .pipe(tap((current) => (links = current))),
+        toObservable(shown, { injector: this.injector }).pipe(skip(1)),
+      );
+      // Synapse allows each user a burst of 10 hierarchy reads at 5/s, and one sync batch
+      // can announce many Rooms. Leading + trailing keeps the first read immediate and the
+      // last event reflected while holding the rate under that budget.
+      return invalidations.pipe(
+        throttleTime(HIERARCHY_REFRESH_MS, asyncScheduler, {
+          leading: true,
+          trailing: true,
+        }),
+        switchMap(() => this.load(target, generation, () => links)),
+      );
     });
-    // Synapse allows each user a burst of 10 hierarchy reads at 5/s, and one sync batch
-    // can announce many Rooms. Leading + trailing keeps the first read immediate and the
-    // last event reflected while holding the rate under that budget.
-    return invalidations.pipe(
-      throttleTime(HIERARCHY_REFRESH_MS, asyncScheduler, {
-        leading: true,
-        trailing: true,
-      }),
-      switchMap(() => this.load(target, client)),
-    );
   }
 
   private load(
     target: SpaceContentsTarget,
-    client: MatrixClient,
+    generation: number,
+    links: () => readonly SpaceChildLink[],
   ): Observable<SpaceContentsSnapshot> {
-    const local = this.localSnapshot(target, client);
+    const local = this.localSnapshot(target, links());
     if (local.availability !== 'available') return of(local);
-    return defer(() => fetchHierarchyRooms(client, target.spaceId)).pipe(
-      retryTransient(),
-      map((rooms) => {
-        if (this.matrix.clientFor(target.accountId) !== client) {
-          return this.unavailableSnapshot(target);
-        }
-        const current = this.localSnapshot(target, client);
-        return {
-          ...current,
-          items: projectHierarchy(
-            target.spaceId,
-            client,
-            rooms,
-            current.curationLinks,
-          ),
-        };
-      }),
-      catchError((error: unknown) =>
-        of({
-          ...this.localSnapshot(target, client),
-          hierarchyError: messageOf(error),
+    return this.engine
+      .spaceHierarchy(target.accountId, target.spaceId, { maxPages: null })
+      .pipe(
+        unwrapEngineResult(),
+        retryTransient(isTransientFailure),
+        map((entries) => {
+          if (
+            this.session.status(target.accountId)?.generation !== generation
+          ) {
+            return this.unavailableSnapshot(target);
+          }
+          const current = this.localSnapshot(target, links());
+          return {
+            ...current,
+            items: this.projectHierarchy(
+              target,
+              entries,
+              current.curationLinks,
+            ),
+          };
         }),
-      ),
-    );
+        catchError((error: unknown) =>
+          of({
+            ...this.localSnapshot(target, links()),
+            hierarchyError: messageOf(error),
+          }),
+        ),
+      );
   }
 
   private localSnapshot(
     target: SpaceContentsTarget,
-    client: MatrixClient,
+    curationLinks: readonly SpaceChildLink[],
   ): SpaceContentsSnapshot {
-    const space = client.getRoom(target.spaceId);
-    const available =
-      space?.getMyMembership() === 'join' && space.isSpaceRoom();
-    if (!available) return this.unavailableSnapshot(target, Boolean(client));
+    const space = this.store.room(target.accountId, target.spaceId);
+    const available = space?.membership === 'join' && space.isSpace;
+    if (!available) return this.unavailableSnapshot(target, true);
     const decision = this.managementDecision(target);
-    const curationLinks = this.children.childLinksFor(
-      target.accountId,
-      target.spaceId,
-    );
     const linked = new Set(curationLinks.map(({ childId }) => childId));
-    const { ids: directIds } = directMapOf(client);
-    const candidates = client
-      .getRooms()
+    const directIds = new Set(
+      Object.values(this.store.directMap(target.accountId)()).flat(),
+    );
+    const candidates = this.store
+      .rooms(target.accountId)()
       .filter(
         (room) =>
           room.roomId !== target.spaceId &&
-          room.getMyMembership() === 'join' &&
+          room.membership === 'join' &&
           !linked.has(room.roomId),
       )
       .map((room): SpaceContentsCandidate => {
-        const direct = directIds.has(room.roomId);
-        const name = room.name || room.roomId;
+        const name = room.displayName;
         return {
           id: room.roomId,
           name,
           initial: initialOf(name),
-          avatarMxc: roomAvatarMxc(room, direct),
-          kind: room.isSpaceRoom() ? 'space' : 'room',
+          avatarMxc: room.avatarMxc,
+          kind: room.isSpace ? 'space' : 'room',
           joined: true,
           via: [],
           suggested: false,
           order: '',
-          direct,
+          direct: directIds.has(room.roomId),
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -331,6 +341,41 @@ export class SpaceContentsService {
         decision.kind === 'rejected' ? decision.reason : null,
       hierarchyError: null,
     };
+  }
+
+  private projectHierarchy(
+    target: SpaceContentsTarget,
+    entries: readonly HierarchyEntry[],
+    childLinks: readonly SpaceChildLink[],
+  ): SpaceContentsItem[] {
+    // Names and membership come from hierarchy, but curation comes from the exact
+    // Account's synced room state. That state event is the authoritative echo the UI must
+    // wait for before allowing another read-modify-write; a fresh hierarchy request can
+    // still race the homeserver's federated hierarchy view.
+    const links = new Map(childLinks.map((link) => [link.childId, link]));
+    return entries
+      .filter(({ roomId }) => roomId !== target.spaceId && links.has(roomId))
+      .map((room) => {
+        const name = room.name || room.canonicalAlias || room.roomId;
+        const link = links.get(room.roomId) as SpaceChildLink;
+        return {
+          id: room.roomId,
+          name,
+          initial: initialOf(name),
+          avatarMxc: room.avatarMxc,
+          kind: room.isSpace ? 'space' : 'room',
+          joined:
+            this.store.room(target.accountId, room.roomId)?.membership ===
+            'join',
+          via: link.via,
+          suggested: link.suggested,
+          order: link.order,
+        } satisfies SpaceContentsItem;
+      })
+      .sort(
+        (a, b) =>
+          compareOrder(a.order, b.order) || a.name.localeCompare(b.name),
+      );
   }
 
   private unavailableSnapshot(
@@ -367,69 +412,11 @@ export class SpaceContentsService {
   }
 }
 
-async function fetchHierarchyRooms(
-  client: MatrixClient,
-  spaceId: string,
-): Promise<HierarchyRoom[]> {
-  const rooms: HierarchyRoom[] = [];
-  const seenTokens = new Set<string>();
-  let fromToken: string | undefined;
-  for (;;) {
-    const response = await client.getRoomHierarchy(
-      spaceId,
-      HIERARCHY_LIMIT,
-      1,
-      false,
-      fromToken,
-    );
-    rooms.push(...response.rooms);
-    if (!response.next_batch) break;
-    if (seenTokens.has(response.next_batch)) {
-      throw new Error('The Space hierarchy returned a repeated page token.');
-    }
-    seenTokens.add(response.next_batch);
-    fromToken = response.next_batch;
-  }
-  return rooms;
-}
-
-function projectHierarchy(
-  spaceId: string,
-  client: MatrixClient,
-  rooms: readonly HierarchyRoom[],
-  childLinks: readonly SpaceChildLink[],
-): SpaceContentsItem[] {
-  // Names and membership come from hierarchy, but curation comes from the exact
-  // Account's synced room state. That state event is the authoritative echo the UI must
-  // wait for before allowing another read-modify-write; a fresh hierarchy request can
-  // still race the homeserver's federated hierarchy view.
-  const links = new Map(childLinks.map((link) => [link.childId, link]));
-  return rooms
-    .filter(({ room_id }) => room_id !== spaceId && links.has(room_id))
-    .map((room) => {
-      const name = room.name || room.canonical_alias || room.room_id;
-      const link = links.get(room.room_id) as SpaceChildLink;
-      return {
-        item: {
-          id: room.room_id,
-          name,
-          initial: initialOf(name),
-          avatarMxc: room.avatar_url ?? null,
-          kind: room.room_type === RoomType.Space ? 'space' : 'room',
-          joined: client.getRoom(room.room_id)?.getMyMembership() === 'join',
-          via: link.via,
-          suggested: link.suggested,
-          order: link.order,
-        } satisfies SpaceContentsItem,
-        order: link.order,
-      };
-    })
-    .sort(
-      (a, b) =>
-        compareOrder(a.order, b.order) ||
-        a.item.name.localeCompare(b.item.name),
-    )
-    .map(({ item }) => item);
+function isTransientFailure(error: unknown): boolean {
+  return (
+    error instanceof EngineRequestError &&
+    ['network', 'rate-limit', 'server'].includes(error.failure.kind)
+  );
 }
 
 function messageOf(error: unknown): string {

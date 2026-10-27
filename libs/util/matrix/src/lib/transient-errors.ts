@@ -53,17 +53,18 @@ function backoffMs(attempt: number): number {
 }
 
 /**
- * RxJS operator that retries the source up to {@link MAX_RETRIES} times on a
- * {@link isTransientMatrixError transient} failure, backing off exponentially. Other errors
+ * RxJS operator that retries the source up to {@link MAX_RETRIES} times on a failure
+ * `isTransient` accepts (by default a {@link isTransientMatrixError transient} one), backing
+ * off exponentially. Other errors
  * are rethrown immediately; once retries are exhausted the last error is rethrown so a
  * downstream `catchError` can fall back.
  */
-export function retryTransient<T>(): MonoTypeOperatorFunction<T> {
+export function retryTransient<T>(
+  isTransient: (err: unknown) => boolean = isTransientMatrixError,
+): MonoTypeOperatorFunction<T> {
   return retry<T>({
     count: MAX_RETRIES,
     delay: (err, attempt) =>
-      isTransientMatrixError(err)
-        ? timer(backoffMs(attempt))
-        : throwError(() => err),
+      isTransient(err) ? timer(backoffMs(attempt)) : throwError(() => err),
   });
 }

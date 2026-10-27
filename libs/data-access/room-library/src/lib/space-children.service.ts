@@ -115,18 +115,6 @@ export class SpaceChildrenService {
     return concat(of(undefined), NEVER);
   }
 
-  /** Read child links from one exact Account without falling through to Active Account. */
-  childLinksFor(accountId: string, spaceId: string): readonly SpaceChildLink[] {
-    let links: readonly SpaceChildLink[] = [];
-    // shortcut: an engine that emits after subscribe reads empty here; becomes a stream
-    // when SpaceContentsService reads through the engine.
-    this.engine
-      .spaceChildLinks(accountId, spaceId)
-      .pipe(take(1))
-      .subscribe((current) => (links = current));
-    return links;
-  }
-
   /**
    * Link an already-joined room into `spaceId`.
    *

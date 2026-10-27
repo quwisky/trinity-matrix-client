@@ -127,15 +127,15 @@ function frames<T>(read: () => T): T[] {
 }
 
 describe('SpaceChildrenService', () => {
-  describe('childLinksFor', () => {
+  describe('linksFor reads', () => {
     it('reads via, suggested and order off each link', () => {
-      const { svc, me } = setup({
+      const { svc } = setup({
         children: [
           { childId: '!a:hs', via: ['a.example'], suggested: true, order: 'm' },
         ],
       });
 
-      expect(svc.childLinksFor(me, '!s:hs')).toEqual([
+      expect(svc.linksFor('!s:hs')()).toEqual([
         {
           childId: '!a:hs',
           via: ['a.example'],
@@ -148,30 +148,32 @@ describe('SpaceChildrenService', () => {
     it('drops a removed child, whose link has no via', () => {
       // An empty-content `m.space.child` is the spec's tombstone. Treating it as a live
       // link would list a room the space no longer contains — and offer to curate it.
-      const { svc, me } = setup({
+      const { svc } = setup({
         children: [
           { childId: '!gone:hs', via: [] },
           { childId: '!here:hs', via: ['hs.example'] },
         ],
       });
 
-      expect(svc.childLinksFor(me, '!s:hs').map((l) => l.childId)).toEqual([
-        '!here:hs',
-      ]);
+      expect(
+        svc
+          .linksFor('!s:hs')()
+          .map((l) => l.childId),
+      ).toEqual(['!here:hs']);
     });
 
     it('treats an order the spec rejects as no order at all', () => {
       // Sorting by a key every other client ignores would show this user an arrangement
       // nobody else sees.
-      const { svc, me } = setup({
+      const { svc } = setup({
         children: [{ childId: '!a:hs', order: 'a\nb' }],
       });
 
-      expect(svc.childLinksFor(me, '!s:hs')[0].order).toBe('');
+      expect(svc.linksFor('!s:hs')()[0].order).toBe('');
     });
 
     it('sorts by code point and puts unordered children last', () => {
-      const { svc, me } = setup({
+      const { svc } = setup({
         children: [
           { childId: '!none:hs' },
           { childId: '!lower:hs', order: 'a' },
@@ -180,17 +182,17 @@ describe('SpaceChildrenService', () => {
       });
 
       // 'B' (66) before 'a' (97) — locale collation would put 'a' first.
-      expect(svc.childLinksFor(me, '!s:hs').map((l) => l.childId)).toEqual([
-        '!upper:hs',
-        '!lower:hs',
-        '!none:hs',
-      ]);
+      expect(
+        svc
+          .linksFor('!s:hs')()
+          .map((l) => l.childId),
+      ).toEqual(['!upper:hs', '!lower:hs', '!none:hs']);
     });
 
     it('is empty for a space the client does not have', () => {
-      const { svc, me } = setup({ noRoom: true });
+      const { svc } = setup({ noRoom: true });
 
-      expect(svc.childLinksFor(me, '!s:hs')).toEqual([]);
+      expect(svc.linksFor('!s:hs')()).toEqual([]);
     });
   });
 
