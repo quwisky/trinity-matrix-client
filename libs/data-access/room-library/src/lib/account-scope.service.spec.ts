@@ -35,10 +35,10 @@ function harness(
   active: string | null = accounts[0] ?? null,
 ) {
   const accountIds = signal<readonly string[]>(accounts);
-  const activeUserId = signal<string | null>(active);
+  const activeAccountId = signal<string | null>(active);
   const matrix = {
     accountIds: accountIds.asReadonly(),
-    activeAccountId: activeUserId.asReadonly(),
+    activeAccountId: activeAccountId.asReadonly(),
   } as unknown as SessionStateService;
 
   TestBed.resetTestingModule();
@@ -52,7 +52,7 @@ function harness(
   return {
     svc: TestBed.inject(AccountScopeService),
     accountIds: accountIds as WritableSignal<readonly string[]>,
-    activeUserId: activeUserId as WritableSignal<string | null>,
+    activeAccountId: activeAccountId as WritableSignal<string | null>,
   };
 }
 
@@ -94,11 +94,11 @@ describe('AccountScopeService', () => {
   });
 
   it('keeps the newly active account shown after a switch', () => {
-    const { svc, activeUserId } = harness(['@me:hs', '@alt:hs']);
+    const { svc, activeAccountId } = harness(['@me:hs', '@alt:hs']);
     expect([...svc.selected()]).toEqual(['@me:hs']);
 
     // Opening a foreign account's room switches the active account; it must appear.
-    activeUserId.set('@alt:hs');
+    activeAccountId.set('@alt:hs');
     expect(svc.selected().has('@alt:hs')).toBe(true);
   });
 
@@ -120,12 +120,12 @@ describe('AccountScopeService', () => {
   // Turning the mix off must forget the active account too, or the next account switch
   // would pair it with the newly-active one and silently turn mixing back on.
   it('stays single-account after unticking, even across an account switch', async () => {
-    const { svc, activeUserId } = harness(['@me:hs', '@alt:hs']);
+    const { svc, activeAccountId } = harness(['@me:hs', '@alt:hs']);
     await firstValueFrom(svc.toggle('@alt:hs'));
     await firstValueFrom(svc.toggle('@alt:hs')); // back off again
     expect(svc.mixing()).toBe(false);
 
-    activeUserId.set('@alt:hs'); // user switches accounts from the switcher
+    activeAccountId.set('@alt:hs'); // user switches accounts from the switcher
     expect([...svc.selected()]).toEqual(['@alt:hs']);
     expect(svc.mixing()).toBe(false);
   });
@@ -163,11 +163,11 @@ describe('AccountScopeService', () => {
   // storage when a mix is created — otherwise opening a mixed-in account's room (which
   // switches the active account) drops the account you were mixing FROM straight back out.
   it('survives the account switch that opening a mixed-in room performs', async () => {
-    const { svc, activeUserId } = harness(['@me:hs', '@alt:hs']);
+    const { svc, activeAccountId } = harness(['@me:hs', '@alt:hs']);
     await firstValueFrom(svc.toggle('@alt:hs'));
     expect(svc.mixing()).toBe(true);
 
-    activeUserId.set('@alt:hs'); // opening one of @alt's rooms switches to it
+    activeAccountId.set('@alt:hs'); // opening one of @alt's rooms switches to it
     expect([...svc.selected()].sort()).toEqual(['@alt:hs', '@me:hs']);
     expect(svc.mixing()).toBe(true); // the mix does NOT collapse
   });

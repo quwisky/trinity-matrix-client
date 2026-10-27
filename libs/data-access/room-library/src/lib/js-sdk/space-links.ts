@@ -27,10 +27,6 @@ function linkOf(
 
 /**
  * The child links a space's state declares, ordered the way the spec sorts them.
- *
- * Kept apart from `spaceChildIdsOf` in `room-info.ts`: that file uses `localeCompare`, and
- * parking this code-point {@link compareOrder} next to it invites "unifying" them, which
- * would change visible sidebar ordering.
  */
 export function readChildLinks(space: Room | null): SpaceChildLink[] {
   const state = space ? liveRoomState(space) : null;

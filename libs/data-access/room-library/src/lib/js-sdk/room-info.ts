@@ -13,11 +13,7 @@ import {
   unencryptedMarkFor,
   type RoomEncryptionFlags,
 } from '@trinity/util/matrix';
-import { compareOrder } from '../space-child-order';
 import type { RoomInfo, RoomMembership } from '../room-list-engine';
-
-/** State event type linking a space to a child room. */
-const SPACE_CHILD_EVENT = 'm.space.child';
 
 /**
  * The unstable prefix some clients still write for MSC2867's marked-unread flag. Read as
@@ -48,12 +44,6 @@ export function isMarkedUnread(room: Room): boolean {
     }
   }
   return false;
-}
-
-interface ChildEntry {
-  id: string;
-  order: string;
-  name: string;
 }
 
 /**
@@ -233,39 +223,6 @@ export function toRoomInfo(
  */
 export function isJoinedSpace(room: Room): boolean {
   return room.isSpaceRoom() && room.getMyMembership() === 'join';
-}
-
-/**
- * A space's *joined* child room ids, ordered by the `m.space.child` `order` field
- * (Unicode code point, unordered children last) then room name. Children we have not
- * joined — and removed/dangling child links — are dropped. Pure read of the space room,
- * used by the selected-Account projector.
- */
-export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
-  const children = (
-    liveRoomState(space)?.getStateEvents(SPACE_CHILD_EVENT) ?? []
-  )
-    .map((event): ChildEntry | null => {
-      const childId = event.getStateKey();
-      const content = event.getContent();
-      const via = content['via'];
-      if (!childId || !Array.isArray(via) || via.length === 0) {
-        return null; // removed / invalid child link
-      }
-      const child = client.getRoom(childId);
-      if (!child || child.getMyMembership() !== 'join') {
-        return null; // only joined children
-      }
-      const order =
-        typeof content['order'] === 'string' ? content['order'] : '';
-      return { id: childId, order, name: child.name || childId };
-    })
-    .filter((entry): entry is ChildEntry => entry !== null);
-
-  children.sort(
-    (a, b) => compareOrder(a.order, b.order) || a.name.localeCompare(b.name),
-  );
-  return children.map((entry) => entry.id);
 }
 
 const INVITE_BLOCKED_ERRCODES = new Set([

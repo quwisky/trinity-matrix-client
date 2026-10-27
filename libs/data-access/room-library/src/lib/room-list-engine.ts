@@ -75,7 +75,7 @@ export interface HierarchyEntry {
   readonly joinedMemberCount: number;
   readonly joinRule: string | null;
   readonly isSpace: boolean;
-  /** The entry's own child links as the server reports them, tombstones included. */
+  /** The entry's own child links as the server reports them, tombstones included; `order` is the raw state value, not normalised like spaceChildLinks. */
   readonly childrenState: readonly SpaceChildLink[];
 }
 

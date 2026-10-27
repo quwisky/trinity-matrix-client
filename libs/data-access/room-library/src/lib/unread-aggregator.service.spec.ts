@@ -320,7 +320,7 @@ describe('unread chats', () => {
     expect(svc.unreadRooms()).toBe(before);
   });
 
-  it('a restarted account is not double counted', () => {
+  it('a restarted account is not double counted in unreadRooms', () => {
     const { svc, fake, live } = harness();
     fake.seed('@a:hs', [room(1, { roomId: '!x:hs' })]);
     live('@a:hs');

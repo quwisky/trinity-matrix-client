@@ -95,7 +95,7 @@ export interface SpaceRoomOrderSnapshot {
  */
 @Injectable({ providedIn: 'root' })
 export class SpaceRoomOrderService {
-  private readonly matrix = inject(SessionStateService);
+  private readonly session = inject(SessionStateService);
   private readonly injector = inject(Injector);
   private readonly storage = inject(DevicePreferenceStorageService);
 
@@ -144,13 +144,13 @@ export class SpaceRoomOrderService {
 
   /** Stable Account identities for composition; never include them in diagnostics. */
   knownAccountIds(): readonly string[] {
-    return this.matrix.accountIds();
+    return this.session.accountIds();
   }
 
   /** Retry one exact Account scope, joining an already-owned read when one is in flight. */
   retryHydration(accountId: string): Observable<RoomOrderHydrationSettlement> {
     return defer(() => {
-      if (!this.matrix.accountIds().includes(accountId)) {
+      if (!this.session.accountIds().includes(accountId)) {
         return of({ accountId, kind: 'not-applicable' } as const);
       }
       return from(this.hydrate(accountId)).pipe(
@@ -184,7 +184,7 @@ export class SpaceRoomOrderService {
       const hydration = effect(
         () => {
           // Keyed on accountIds rather than activeUserId so an account is warm before a switch.
-          const accountIds = [...this.matrix.accountIds()];
+          const accountIds = [...this.session.accountIds()];
           const current = latest.next();
           void Promise.all(
             accountIds.map((accountId) =>
@@ -210,7 +210,7 @@ export class SpaceRoomOrderService {
    * stays live to both a preference change and an account switch.
    */
   effectiveFor(spaceId: string | null): RoomSortMode {
-    const accountId = this.matrix.activeAccountId();
+    const accountId = this.session.activeAccountId();
     return accountId
       ? this.snapshotFor(accountId, spaceId).effectiveMode
       : DEFAULT_ROOM_SORT;
@@ -218,7 +218,7 @@ export class SpaceRoomOrderService {
 
   /** A space's explicit override, or `null` when it follows the account default. */
   overrideFor(spaceId: string | null): RoomSortMode | null {
-    const accountId = this.matrix.activeAccountId();
+    const accountId = this.session.activeAccountId();
     return accountId ? this.snapshotFor(accountId, spaceId).overrideMode : null;
   }
 
@@ -287,7 +287,7 @@ export class SpaceRoomOrderService {
 
   /** The active account's record, or all-defaults when it has none yet. */
   private activeOrder(): AccountOrder {
-    const userId = this.matrix.activeAccountId();
+    const userId = this.session.activeAccountId();
     return userId ? this.orderForAccount(userId) : EMPTY;
   }
 
@@ -298,7 +298,7 @@ export class SpaceRoomOrderService {
   /** Apply `change` to the active account's record, then persist or queue it. */
   private writeActive(key: OrderKey, change: Change): Observable<void> {
     return defer(() => {
-      const userId = this.matrix.activeAccountId();
+      const userId = this.session.activeAccountId();
       if (!userId) {
         return of(void 0); // signed out mid-interaction: nothing to key the preference to
       }
@@ -313,7 +313,7 @@ export class SpaceRoomOrderService {
     change: Change,
   ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.accountIds().includes(accountId)) {
+      if (!this.session.accountIds().includes(accountId)) {
         return throwError(
           () => new Error('This account is no longer available.'),
         );
