@@ -18,9 +18,10 @@ export function defineDiscoveryEngineContract(
 ): void {
   describe('DiscoveryEngine contract', () => {
     let context: DiscoveryContractSetup;
+    // A live Synapse needs time to settle its user directory.
     beforeAll(async () => {
       context = await setup();
-    });
+    }, 120_000);
 
     /** Asserts the command emits exactly once with plain data, and returns that value. */
     async function once<T>(source: Observable<T>): Promise<T> {
@@ -79,11 +80,10 @@ export function defineDiscoveryEngineContract(
     });
 
     it('fails to join a missing alias with a 404', async () => {
+      // The alias must stay on the account's own server, which `domain` may address differently.
+      const server = context.publicRoom.alias.split(':').slice(1).join(':');
       const result = await once(
-        context.engine.joinRoom(
-          context.accountId,
-          `#missing:${context.domain}`,
-        ),
+        context.engine.joinRoom(context.accountId, `#missing:${server}`),
       );
 
       expect(result.ok).toBe(false);

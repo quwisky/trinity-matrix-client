@@ -1,0 +1,20 @@
+{
+  "name": "trinity-e2e-engine",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "e2e/engine",
+  "tags": ["type:e2e", "scope:trinity", "environment:protocol"],
+  "implicitDependencies": ["trinity-e2e-support"],
+  "targets": {
+    "contract": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-engine"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/engine/run.mts",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}
