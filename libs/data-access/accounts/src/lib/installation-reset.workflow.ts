@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SESSION_ENGINE } from '@trinity/data-access/matrix-client';
 import {
   LocalDataWipeService,
   SessionStorageService,
@@ -40,7 +40,7 @@ interface BooleanCleanupOperation {
 /** Owns full-installation cleanup and safe, local-only residue retries. */
 @Injectable({ providedIn: 'root' })
 export class InstallationResetWorkflow {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(SESSION_ENGINE);
   private readonly storage = inject(SessionStorageService);
   private readonly wipe = inject(LocalDataWipeService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
@@ -91,7 +91,7 @@ export class InstallationResetWorkflow {
               concatMap((records) =>
                 attempt
                   .capture(
-                    this.matrix.stop(),
+                    this.engine.stop(),
                     'matrix-session',
                     'restart-application',
                     ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
@@ -247,7 +247,7 @@ export class InstallationResetWorkflow {
         ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
       ),
       attempt.capture(
-        this.matrix.signOutAll(),
+        this.engine.signOutAll(),
         'matrix-session',
         'restart-application',
         ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
