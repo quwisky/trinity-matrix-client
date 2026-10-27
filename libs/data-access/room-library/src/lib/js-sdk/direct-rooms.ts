@@ -1,4 +1,4 @@
-import { EventType, Preset, type MatrixClient } from 'matrix-js-sdk';
+import { EventType, Preset, RoomType, type MatrixClient } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import {
   isValidUserId,
@@ -7,17 +7,22 @@ import {
 } from '@trinity/util/matrix';
 import type { CreateRoomRequest } from '../room-list-engine';
 
-/** Shared active/exact Account implementation for encrypted Room creation. */
-export function createEncryptedRoom(
+/** Creates an encrypted room or an unencrypted space, without linking it to a parent. */
+export function createRoomOrSpace(
   client: MatrixClient,
   options: CreateRoomRequest,
 ): Observable<string> {
   return from(
     client.createRoom({
+      ...(options.kind === 'space'
+        ? { creation_content: { type: RoomType.Space } }
+        : {}),
       name: options.name.trim(),
       ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
       ...visibilityOptions(options.isPublic),
-      initial_state: [roomEncryptionInitialState()],
+      ...(options.kind === 'room'
+        ? { initial_state: [roomEncryptionInitialState()] }
+        : {}),
     }),
   ).pipe(map((response) => response.room_id));
 }

@@ -1,123 +1,103 @@
-import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { RoomEvent, type MatrixClient } from 'matrix-js-sdk';
-import { MockProvider, ngMocks } from 'ng-mocks';
+import { signal } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import { EngineRequestError } from '@trinity/util/matrix';
+import {
+  FakeRoomListEngine,
+  fakeRoom,
+} from '../contract/fake-room-list-engine';
 import { InvitesService } from './invites.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import type { RoomInfo } from './room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 
-interface RoomOpts {
-  roomId: string;
-  name: string;
-  membership?: string;
-  space?: boolean;
-  /** The user id that invited us (becomes the member event's sender). */
-  inviterId?: string;
-  /** Display name of the inviter, resolved via getMember(inviterId). */
-  inviterName?: string;
-  /** `is_direct` on our own member (invite) event. */
-  isDirect?: boolean;
-  /** The inviter's own avatar, which stands in for a DM invite's missing room avatar. */
-  inviterAvatarMxc?: string;
-}
+const OWNER = '@owner:example.org';
 
-// Minimal fakes shaped like the bits of matrix-js-sdk that InvitesService reads.
-function fakeRoom(opts: RoomOpts, myUserId: string) {
-  const members: Record<string, unknown> = {};
-  if (opts.inviterId) {
-    members[opts.inviterId] = { name: opts.inviterName ?? opts.inviterId };
-  }
-  // Our own member, carrying the invite event: its sender is the inviter and its
-  // content carries `is_direct`.
-  members[myUserId] = {
-    name: myUserId,
-    events: {
-      member: {
-        getSender: () => opts.inviterId ?? '',
-        getContent: () => ({ is_direct: opts.isDirect ?? false }),
-      },
-    },
-  };
+function account(accountId: string, generation = 1): SessionAccountStatus {
   return {
-    roomId: opts.roomId,
-    name: opts.name,
-    isSpaceRoom: () => opts.space ?? false,
-    getMyMembership: () => opts.membership ?? 'invite',
-    getMxcAvatarUrl: () => null,
-    // Modelled honestly: an invite's stripped state holds just the inviter's and our own
-    // membership however large the room really is, so the SDK offers the inviter as the
-    // stand-in for EVERY invite — group room and space included. Only `is_direct` can
-    // tell them apart, which is what this lets the specs below prove.
-    getAvatarFallbackMember: () =>
-      opts.inviterAvatarMxc
-        ? { getMxcAvatarUrl: () => opts.inviterAvatarMxc }
-        : undefined,
-    getMember: (id: string) => members[id] ?? null,
+    accountId,
+    generation,
+    syncState: 'syncing',
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
   };
 }
 
-/**
- * The fakes here implement only the slice of MatrixClient InvitesService touches, so the
- * widening cast lives at this one visible seam rather than implicitly at every stub site.
- */
-const asClient = (fake: object): MatrixClient =>
-  fake as unknown as MatrixClient;
+interface InviteOpts {
+  name: string;
+  space?: boolean;
+  inviterId?: string;
+  inviterName?: string;
+  isDirect?: boolean;
+  avatarMxc?: string;
+}
 
-const activeUserId = signal<string | null>(null);
+/** An invited row as the engine lists it; the adapter has already resolved name and avatar. */
+function invited(roomId: string, opts: InviteOpts): RoomInfo {
+  return fakeRoom(roomId, {
+    membership: 'invite',
+    displayName: opts.name,
+    isSpace: opts.space ?? false,
+    avatarMxc: opts.avatarMxc ?? null,
+    inviter: opts.inviterId
+      ? {
+          userId: opts.inviterId,
+          displayName: opts.inviterName ?? opts.inviterId,
+          isDirect: opts.isDirect ?? false,
+        }
+      : null,
+  });
+}
 
-function setup(rooms: ReturnType<typeof fakeRoom>[]) {
-  activeUserId.set(null);
-  const client = {
-    getUserId: () => '@me:hs',
-    getRooms: () => rooms,
-    joinRoom: vi.fn().mockResolvedValue({}),
-    leave: vi.fn().mockResolvedValue({}),
-    on: vi.fn(),
-    off: vi.fn(),
-  };
+/** InvitesService over the fake engine, the real RoomListStore and a fake session. */
+function setup(
+  rooms: readonly RoomInfo[] = [],
+  others: Readonly<Record<string, readonly RoomInfo[]>> = {},
+) {
+  const fake = new FakeRoomListEngine();
+  const alice = fake.alice;
+  fake.seed(alice, rooms);
+  for (const [accountId, own] of Object.entries(others)) {
+    fake.seed(accountId, own);
+  }
+  const session = signal<SessionSnapshot>({
+    ...EMPTY_SESSION,
+    activeAccountId: alice,
+    accounts: [alice, ...Object.keys(others)].map((id) => account(id)),
+  });
   TestBed.configureTestingModule({
     providers: [
-      InvitesService,
-      MockProvider(MatrixClientService, {
-        // Writable, so a test can drive an account switch — the projection re-wires off
-        // this signal, and a read-only one would make that untestable.
-        activeUserId: activeUserId.asReadonly(),
-      }),
+      { provide: ROOM_LIST_ENGINE, useValue: fake },
+      { provide: SESSION_SNAPSHOT, useValue: session },
+      {
+        provide: SESSION_ENGINE,
+        useFactory: () => ({ session: () => toObservable(session) }),
+      },
     ],
   });
-  const matrix = TestBed.inject(MatrixClientService);
-  // `isInitialized` and `instance` are getters on the real service; stub the
-  // mocked members so the service reads our fake client.
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(matrix, 'instance', asClient(client));
-  const svc = TestBed.inject(InvitesService);
-  const lifetime = svc.runProjection().subscribe();
-  return { svc, client, matrix, lifetime };
-}
-
-function handlerFor(client: { on: Mock }, event: string) {
-  const call = client.on.mock.calls.find(([e]) => e === event);
-  return call?.[1] as ((...args: unknown[]) => void) | undefined;
+  return { svc: TestBed.inject(InvitesService), fake, session, alice };
 }
 
 describe('InvitesService', () => {
   it('projects only invite-membership rooms, sorted by name', () => {
     const { svc } = setup([
-      fakeRoom(
-        {
-          roomId: '!b:hs',
-          name: 'Beta',
-          inviterId: '@al:hs',
-          inviterName: 'Al',
-        },
-        '@me:hs',
-      ),
-      fakeRoom({ roomId: '!a:hs', name: 'Alpha' }, '@me:hs'),
-      fakeRoom(
-        { roomId: '!j:hs', name: 'Joined', membership: 'join' },
-        '@me:hs',
-      ),
+      invited('!b:hs', {
+        name: 'Beta',
+        inviterId: '@al:hs',
+        inviterName: 'Al',
+      }),
+      invited('!a:hs', { name: 'Alpha' }),
+      fakeRoom('!j:hs', { displayName: 'Joined' }),
     ]);
 
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual([
@@ -134,17 +114,13 @@ describe('InvitesService', () => {
 
   it('marks space and direct invites and falls back when no inviter is known', () => {
     const { svc } = setup([
-      fakeRoom({ roomId: '!s:hs', name: 'A Space', space: true }, '@me:hs'),
-      fakeRoom(
-        {
-          roomId: '!d:hs',
-          name: 'DM',
-          isDirect: true,
-          inviterId: '@bob:hs',
-          inviterName: 'Bob',
-        },
-        '@me:hs',
-      ),
+      invited('!s:hs', { name: 'A Space', space: true }),
+      invited('!d:hs', {
+        name: 'DM',
+        isDirect: true,
+        inviterId: '@bob:hs',
+        inviterName: 'Bob',
+      }),
     ]);
 
     const byId = Object.fromEntries(
@@ -153,49 +129,23 @@ describe('InvitesService', () => {
     expect(byId['!s:hs']).toMatchObject({
       isSpace: true,
       inviterName: 'Someone',
+      inviterId: '',
+      isDirect: false,
     });
     expect(byId['!d:hs']).toMatchObject({ isDirect: true, inviterName: 'Bob' });
   });
 
-  it("shows the inviter's avatar on a DM invite, and only on a DM invite", () => {
-    // The DM row already names the inviter, which proves their member event — and so
-    // their avatar_url — is in the stripped state we read; it was simply ignored.
-    //
-    // All three invites below offer the same stand-in member, because that is what the
-    // SDK does with stripped state. Letting it decide would put the inviter's face on
-    // the group room and the space as their icon, which is worse than the initial it
-    // replaced: it claims a room looks like a person.
+  // Which invite shows the inviter's face is the adapter's call (its toRoomInfo table); the
+  // invite row carries the avatar the room list resolved.
+  it("shows the room list's avatar, the inviter's on a DM invite", () => {
     const { svc } = setup([
-      fakeRoom(
-        {
-          roomId: '!d:hs',
-          name: 'DM',
-          isDirect: true,
-          inviterId: '@bob:hs',
-          inviterName: 'Bob',
-          inviterAvatarMxc: 'mxc://hs/bob',
-        },
-        '@me:hs',
-      ),
-      fakeRoom(
-        {
-          roomId: '!g:hs',
-          name: 'Group',
-          inviterId: '@bob:hs',
-          inviterAvatarMxc: 'mxc://hs/bob',
-        },
-        '@me:hs',
-      ),
-      fakeRoom(
-        {
-          roomId: '!s:hs',
-          name: 'Space',
-          space: true,
-          inviterId: '@bob:hs',
-          inviterAvatarMxc: 'mxc://hs/bob',
-        },
-        '@me:hs',
-      ),
+      invited('!d:hs', {
+        name: 'DM',
+        isDirect: true,
+        inviterId: '@bob:hs',
+        avatarMxc: 'mxc://hs/bob',
+      }),
+      invited('!g:hs', { name: 'Group', inviterId: '@bob:hs' }),
     ]);
 
     const byId = Object.fromEntries(
@@ -203,103 +153,96 @@ describe('InvitesService', () => {
     );
     expect(byId['!d:hs'].avatarMxc).toBe('mxc://hs/bob');
     expect(byId['!g:hs'].avatarMxc).toBeNull();
-    expect(byId['!s:hs'].avatarMxc).toBeNull();
   });
 
   it('acceptInvite joins the room', async () => {
-    const { svc, client } = setup([]);
+    const { svc, fake, alice } = setup([invited('!r:hs', { name: 'R' })]);
+    const join = vi.spyOn(fake, 'join');
 
     await firstValueFrom(svc.acceptInvite('!r:hs'));
 
-    expect(client.joinRoom).toHaveBeenCalledWith('!r:hs');
+    expect(join).toHaveBeenCalledWith(alice, '!r:hs', []);
+    expect(svc.pendingInvites()).toEqual([]);
   });
 
   it('declineInvite leaves the room', async () => {
-    const { svc, client } = setup([]);
+    const { svc, fake, alice } = setup([invited('!r:hs', { name: 'R' })]);
+    const leave = vi.spyOn(fake, 'leave');
 
     await firstValueFrom(svc.declineInvite('!r:hs'));
 
-    expect(client.leave).toHaveBeenCalledWith('!r:hs');
+    expect(leave).toHaveBeenCalledWith(alice, '!r:hs');
+    expect(svc.pendingInvites()).toEqual([]);
   });
 
-  it('refreshes live when membership changes (RoomEvent.MyMembership)', async () => {
-    const rooms = [fakeRoom({ roomId: '!a:hs', name: 'Alpha' }, '@me:hs')];
-    const { svc, client } = setup(rooms);
+  it('surfaces a homeserver failure to the subscriber', async () => {
+    const { svc, fake } = setup([invited('!r:hs', { name: 'R' })]);
+
+    fake.failNext('request-failed');
+    await expect(
+      firstValueFrom(svc.acceptInvite('!r:hs')),
+    ).rejects.toBeInstanceOf(EngineRequestError);
+    fake.failNext('account-not-live');
+    await expect(firstValueFrom(svc.declineInvite('!r:hs'))).rejects.toThrow(
+      'Not signed in.',
+    );
+  });
+
+  it('refreshes live when membership changes', () => {
+    const { svc, fake } = setup([invited('!a:hs', { name: 'Alpha' })]);
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!a:hs']);
 
     // The invite is accepted elsewhere → membership flips → it drops out.
-    rooms[0] = fakeRoom(
-      { roomId: '!a:hs', name: 'Alpha', membership: 'join' },
-      '@me:hs',
-    );
-    handlerFor(client, RoomEvent.MyMembership)?.();
-    await Promise.resolve(); // the refresh is coalesced into a microtask
+    fake.acceptInvite('!a:hs');
 
     expect(svc.pendingInvites()).toEqual([]);
   });
 
-  it('detaches listeners and clears the model on teardown', () => {
-    const { svc, client, lifetime } = setup([
-      fakeRoom({ roomId: '!a:hs', name: 'Alpha' }, '@me:hs'),
-    ]);
+  it('acknowledges its lifetime at once and holds it', () => {
+    const { svc } = setup();
+    const events: unknown[] = [];
+
+    const lifetime = svc.runProjection().subscribe({
+      next: (event) => events.push(event),
+    });
+
+    expect(events).toEqual([undefined]);
+    expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('clears when the account leaves', () => {
+    const { svc, session } = setup([invited('!a:hs', { name: 'Alpha' })]);
     expect(svc.pendingInvites().length).toBe(1);
 
-    lifetime.unsubscribe();
+    session.update((s) => ({ ...s, activeAccountId: null, accounts: [] }));
 
-    expect(client.off).toHaveBeenCalled();
     expect(svc.pendingInvites()).toEqual([]);
   });
 
-  it('rewires onto a new client after re-login instead of freezing', () => {
-    const {
-      svc,
-      client: clientA,
-      matrix,
-    } = setup([fakeRoom({ roomId: '!a:hs', name: 'Alpha' }, '@me:hs')]);
+  it('follows a re-login instead of freezing', () => {
+    const { svc, fake, session, alice } = setup([
+      invited('!a:hs', { name: 'Alpha' }),
+    ]);
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!a:hs']);
 
-    const clientB = {
-      getUserId: () => '@me:hs',
-      getRooms: () => [fakeRoom({ roomId: '!b:hs', name: 'Bravo' }, '@me:hs')],
-      joinRoom: vi.fn(),
-      leave: vi.fn(),
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    ngMocks.stubMember(matrix, 'instance', asClient(clientB));
-    svc.runProjection().subscribe();
+    session.update((s) => ({ ...s, accounts: [] }));
+    fake.seed(alice, [invited('!b:hs', { name: 'Bravo' })]);
+    session.update((s) => ({ ...s, accounts: [account(alice, 2)] }));
 
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!b:hs']);
-    expect(clientA.off).toHaveBeenCalled();
-    expect(clientB.on).toHaveBeenCalled();
   });
 
   it('re-projects onto the newly-active account when the active account switches', () => {
-    const { svc, client, matrix } = setup([
-      fakeRoom({ roomId: '!a:hs', name: 'A invite' }, '@me:hs'),
-    ]);
-    activeUserId.set('@a:hs');
-    TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
+    const { svc, session } = setup([invited('!a:hs', { name: 'A invite' })], {
+      [OWNER]: [invited('!b:hs', { name: 'B invite' })],
+    });
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!a:hs']);
-    client.off.mockClear();
 
-    const clientB = {
-      getUserId: () => '@b:hs',
-      getRooms: () => [
-        fakeRoom({ roomId: '!b:hs', name: 'B invite' }, '@b:hs'),
-      ],
-      joinRoom: vi.fn().mockResolvedValue({}),
-      leave: vi.fn().mockResolvedValue({}),
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    ngMocks.stubMember(matrix, 'instance', asClient(clientB));
-    activeUserId.set('@b:hs');
-    TestBed.inject(ApplicationRef).tick();
+    session.update((s) => ({ ...s, activeAccountId: OWNER }));
 
-    expect(client.off).toHaveBeenCalled(); // detached from A
-    expect(clientB.on).toHaveBeenCalled(); // attached to B
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!b:hs']);
+    expect(svc.pendingInvites()[0].accountId).toBe(OWNER);
   });
 });
 
@@ -308,147 +251,129 @@ describe('InvitesService', () => {
 // would either fail or join the wrong user to the room.
 describe('InvitesService per-account answers', () => {
   function setupOwned() {
-    const activeClient = {
-      getUserId: () => '@me:hs',
-      getRooms: () => [],
-      joinRoom: vi.fn().mockResolvedValue({}),
-      leave: vi.fn().mockResolvedValue({}),
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    const ownerClient = {
-      getUserId: () => '@owner:hs',
-      getRooms: () => [],
-      joinRoom: vi.fn().mockResolvedValue({}),
-      leave: vi.fn().mockResolvedValue({}),
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        InvitesService,
-        MockProvider(MatrixClientService, {
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          clientFor: vi.fn((id: string) =>
-            id === '@owner:hs' ? (ownerClient as never) : null,
-          ),
-        }),
-      ],
+    const owned = setup([invited('!i:hs', { name: 'Mine' })], {
+      [OWNER]: [invited('!i:hs', { name: 'Theirs' })],
     });
-    const matrix = TestBed.inject(MatrixClientService);
-    ngMocks.stubMember(matrix, 'isInitialized', true);
-    ngMocks.stubMember(matrix, 'instance', asClient(activeClient));
-    return { svc: TestBed.inject(InvitesService), activeClient, ownerClient };
+    return {
+      ...owned,
+      join: vi.spyOn(owned.fake, 'join'),
+      leave: vi.spyOn(owned.fake, 'leave'),
+    };
   }
 
   it('accepts on the invited account, not the active one', async () => {
-    const { svc, activeClient, ownerClient } = setupOwned();
+    const { svc, join, alice } = setupOwned();
 
-    await firstValueFrom(svc.acceptInvite('!i:hs', '@owner:hs'));
+    await firstValueFrom(svc.acceptInvite('!i:hs', OWNER));
 
-    expect(ownerClient.joinRoom).toHaveBeenCalledWith('!i:hs');
-    expect(activeClient.joinRoom).not.toHaveBeenCalled();
+    expect(join).toHaveBeenCalledWith(OWNER, '!i:hs', []);
+    expect(join).not.toHaveBeenCalledWith(alice, '!i:hs', []);
   });
 
   it('declines on the invited account', async () => {
-    const { svc, activeClient, ownerClient } = setupOwned();
+    const { svc, leave, alice } = setupOwned();
 
-    await firstValueFrom(svc.declineInvite('!i:hs', '@owner:hs'));
+    await firstValueFrom(svc.declineInvite('!i:hs', OWNER));
 
-    expect(ownerClient.leave).toHaveBeenCalledWith('!i:hs');
-    expect(activeClient.leave).not.toHaveBeenCalled();
+    expect(leave).toHaveBeenCalledWith(OWNER, '!i:hs');
+    expect(leave).not.toHaveBeenCalledWith(alice, '!i:hs');
   });
 
   it('still uses the active account when none is named', async () => {
-    const { svc, activeClient } = setupOwned();
+    const { svc, join, alice } = setupOwned();
 
     await firstValueFrom(svc.acceptInvite('!i:hs'));
 
-    expect(activeClient.joinRoom).toHaveBeenCalledWith('!i:hs');
+    expect(join).toHaveBeenCalledWith(alice, '!i:hs', []);
   });
 
   it('errors rather than falling back when the invited account has no client', async () => {
-    const { svc, activeClient } = setupOwned();
+    const { svc, join } = setupOwned();
 
     await expect(
       firstValueFrom(svc.acceptInvite('!i:hs', '@gone:hs')),
     ).rejects.toThrow('Not signed in.');
-    expect(activeClient.joinRoom).not.toHaveBeenCalled();
+    await expect(
+      firstValueFrom(svc.declineInvite('!i:hs', '@gone:hs')),
+    ).rejects.toThrow('Not signed in.');
+    expect(join).not.toHaveBeenCalled();
   });
 });
 
 describe('InvitesService answering an invite that may have moved on', () => {
-  function owning(membership: string) {
-    let current = membership;
-    const listeners = new Set<(room: { roomId: string }) => void>();
-    const client = {
-      getRoom: (roomId: string) =>
-        roomId === '!r:hs' ? { roomId, getMyMembership: () => current } : null,
-      leave: vi.fn().mockResolvedValue({}),
-      on: vi.fn((_e: string, fn: (room: { roomId: string }) => void) =>
-        listeners.add(fn),
-      ),
-      off: vi.fn((_e: string, fn: (room: { roomId: string }) => void) =>
-        listeners.delete(fn),
-      ),
-      setMembership(next: string) {
-        current = next;
-        const room = client.getRoom('!r:hs');
-        for (const fn of [...listeners]) if (room) fn(room);
-      },
-      listeners,
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        InvitesService,
-        MockProvider(MatrixClientService, {
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          clientFor: (id: string) =>
-            id === '@me:hs' ? asClient(client) : null,
-        }),
-      ],
-    });
-    return { svc: TestBed.inject(InvitesService), client };
+  function owning(row: RoomInfo | null) {
+    const owned = setup(row ? [row] : []);
+    return { ...owned, leave: vi.spyOn(owned.fake, 'leave') };
   }
 
   it('declines an invite that is still pending', async () => {
-    const { svc, client } = owning('invite');
+    const { svc, leave, alice } = owning(invited('!r:hs', { name: 'R' }));
 
     await expect(
-      firstValueFrom(svc.declineIfInvited('!r:hs', '@me:hs')),
+      firstValueFrom(svc.declineIfInvited('!r:hs', alice)),
     ).resolves.toBe('declined');
-    expect(client.leave).toHaveBeenCalledExactlyOnceWith('!r:hs');
+    expect(leave).toHaveBeenCalledExactlyOnceWith(alice, '!r:hs');
   });
 
   it('treats an invite already declined elsewhere as declined, without leaving again', async () => {
-    const { svc, client } = owning('leave');
+    const { svc, leave, alice } = owning(null);
 
     await expect(
-      firstValueFrom(svc.declineIfInvited('!r:hs', '@me:hs')),
+      firstValueFrom(svc.declineIfInvited('!r:hs', alice)),
     ).resolves.toBe('declined');
-    expect(client.leave).not.toHaveBeenCalled();
+    expect(leave).not.toHaveBeenCalled();
   });
 
   it('never leaves a room this account joined in the meantime', async () => {
-    const { svc, client } = owning('join');
+    const { svc, leave, alice } = owning(fakeRoom('!r:hs'));
 
     await expect(
-      firstValueFrom(svc.declineIfInvited('!r:hs', '@me:hs')),
+      firstValueFrom(svc.declineIfInvited('!r:hs', alice)),
     ).resolves.toBe('joined');
-    expect(client.leave).not.toHaveBeenCalled();
+    expect(leave).not.toHaveBeenCalled();
   });
 
-  it('says when the invite stops pending, and lets go of its listener', async () => {
-    const { svc, client } = owning('invite');
-    const settled = vi.fn();
-    const watch = svc.inviteSettled('!r:hs', '@me:hs').subscribe(settled);
+  it('re-reads the membership when subscribed, not when called', async () => {
+    const { svc, fake, leave, alice } = owning(invited('!r:hs', { name: 'R' }));
+    const decline = svc.declineIfInvited('!r:hs', alice);
 
-    client.setMembership('invite');
+    fake.acceptInvite('!r:hs');
+
+    await expect(firstValueFrom(decline)).resolves.toBe('joined');
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it('refuses an account that is not live', async () => {
+    const { svc } = owning(invited('!r:hs', { name: 'R' }));
+
+    await expect(
+      firstValueFrom(svc.declineIfInvited('!r:hs', '@gone:hs')),
+    ).rejects.toThrow('Not signed in.');
+  });
+
+  it('says when the invite stops pending, and lets go of its watch', () => {
+    const { svc, fake, alice } = owning(invited('!r:hs', { name: 'R' }));
+    const settled = vi.fn();
+    const watch = svc.inviteSettled('!r:hs', alice).subscribe(settled);
+
+    TestBed.tick();
     expect(settled).not.toHaveBeenCalled();
-    client.setMembership('join');
+    fake.acceptInvite('!r:hs');
+    TestBed.tick();
 
     expect(settled).toHaveBeenCalledOnce();
     expect(watch.closed).toBe(true);
-    expect(client.listeners.size).toBe(0);
+  });
+
+  it('stays quiet for an account that is not live', () => {
+    const { svc, session, alice } = owning(invited('!r:hs', { name: 'R' }));
+    const settled = vi.fn();
+    const watch = svc.inviteSettled('!r:hs', alice).subscribe(settled);
+
+    session.update((s) => ({ ...s, accounts: [] }));
+    TestBed.tick();
+
+    expect(settled).not.toHaveBeenCalled();
+    watch.unsubscribe();
   });
 });

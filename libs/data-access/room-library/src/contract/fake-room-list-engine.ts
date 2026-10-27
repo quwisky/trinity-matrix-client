@@ -6,6 +6,7 @@ import {
   distinctUntilChanged,
   filter,
   map,
+  merge,
   of,
   startWith,
 } from 'rxjs';
@@ -21,10 +22,13 @@ import {
 } from '@trinity/util/matrix';
 import type {
   CreateRoomRequest,
+  HierarchyEntry,
   RoomInfo,
   RoomListEngine,
+  SpaceChildLink,
   TypingMember,
 } from '../lib/room-list-engine';
+import { compareOrder, isValidOrder } from '../lib/space-child-order';
 
 type FailNextCode = Exclude<
   EngineFailureCode,
@@ -82,6 +86,11 @@ export class FakeRoomListEngine implements RoomListEngine {
   private readonly roomNames = new Map<string, string>();
   private readonly aliases = new Map<string, string>();
   private readonly userNames = new Map<string, string>();
+  private readonly spaces = new Set<string>();
+  /** Child links by space, then by child: shared server state, as are the parents. */
+  private readonly links = new Map<string, Map<string, SpaceChildLink>>();
+  private readonly parents = new Map<string, readonly string[]>();
+  private readonly linksChanged$ = new Subject<string>();
   private nextRoom = 0;
   private nextFailure: FailNextCode | null = null;
 
@@ -92,6 +101,13 @@ export class FakeRoomListEngine implements RoomListEngine {
   /** Acts on the fake's state as `bob` would on a server. */
   readonly asBob = {
     createRoom: async (name: string): Promise<string> => this.newRoom(name),
+    createPublicRoom: async (
+      name: string,
+      localpart: string,
+    ): Promise<{ readonly roomId: string; readonly alias: string }> => {
+      const roomId = this.newRoom(name);
+      return { roomId, alias: this.publishAlias(roomId, localpart) };
+    },
     join: async (): Promise<void> => undefined,
     invite: async (
       roomId: string,
@@ -143,7 +159,10 @@ export class FakeRoomListEngine implements RoomListEngine {
   seed(accountId: string, rooms: readonly RoomInfo[]): void {
     if (!this.userNames.has(accountId))
       this.userNames.set(accountId, accountId);
-    for (const room of rooms) this.roomNames.set(room.roomId, room.displayName);
+    for (const room of rooms) {
+      this.roomNames.set(room.roomId, room.displayName);
+      if (room.isSpace) this.spaces.add(room.roomId);
+    }
     this.lists.set(accountId, rooms);
     this.changes$.next({ accountId, diffs: [{ op: 'reset', values: rooms }] });
   }
@@ -168,6 +187,11 @@ export class FakeRoomListEngine implements RoomListEngine {
     const alias = `#${localpart}:${this.serverName}`;
     this.aliases.set(alias, roomId);
     return alias;
+  }
+
+  /** The spaces `setSpaceParent` or a create with a parent recorded for the room. */
+  spaceParents(roomId: string): readonly string[] {
+    return this.parents.get(roomId) ?? [];
   }
 
   /** Alice accepts an invite: the row becomes joined. */
@@ -264,15 +288,26 @@ export class FakeRoomListEngine implements RoomListEngine {
   ): Observable<EngineResult<{ readonly roomId: string }>> {
     return this.run(accountId, () => {
       const roomId = this.newRoom(request.name);
+      if (request.kind === 'space') this.spaces.add(roomId);
       this.apply(accountId, [
         {
           op: 'pushBack',
           value: fakeRoom(roomId, {
             displayName: request.name,
             topic: request.topic ?? '',
+            isSpace: request.kind === 'space',
           }),
         },
       ]);
+      if (request.parentSpaceId) {
+        const via = [this.serverName];
+        this.writeLink(request.parentSpaceId, roomId, {
+          via,
+          suggested: true,
+          order: '',
+        });
+        this.addParent(roomId, request.parentSpaceId);
+      }
       return engineOk({ roomId });
     });
   }
@@ -330,6 +365,103 @@ export class FakeRoomListEngine implements RoomListEngine {
     });
   }
 
+  join(
+    accountId: string,
+    roomIdOrAlias: string,
+    _via: readonly string[],
+  ): Observable<EngineResult<{ readonly roomId: string }>> {
+    return this.run(accountId, () => {
+      const roomId = this.aliases.get(roomIdOrAlias) ?? roomIdOrAlias;
+      if (!this.roomNames.has(roomId)) return engineFail(REQUEST_FAILED);
+      const index = this.indexOf(accountId, roomId);
+      const room = this.lists.get(accountId)?.[index];
+      if (!room) {
+        this.apply(accountId, [
+          {
+            op: 'pushBack',
+            value: fakeRoom(roomId, {
+              displayName: this.roomNames.get(roomId),
+              isSpace: this.spaces.has(roomId),
+            }),
+          },
+        ]);
+      } else if (room.membership !== 'join') {
+        this.apply(accountId, [
+          {
+            op: 'set',
+            index,
+            value: { ...room, membership: 'join', inviter: null },
+          },
+        ]);
+      }
+      return engineOk({ roomId });
+    });
+  }
+
+  spaceChildLinks(
+    accountId: string,
+    spaceId: string,
+  ): Observable<readonly SpaceChildLink[]> {
+    return defer(() =>
+      merge(
+        this.linksChanged$.pipe(filter((changed) => changed === spaceId)),
+        // The space can be listed for the account after the subscription opened.
+        this.changes$.pipe(filter((change) => change.accountId === accountId)),
+      ).pipe(
+        startWith(null),
+        map(() =>
+          this.lists.get(accountId)?.some((r) => r.roomId === spaceId)
+            ? this.liveLinks(spaceId)
+            : [],
+        ),
+        distinctUntilChanged<readonly SpaceChildLink[]>(plainEqual),
+      ),
+    );
+  }
+
+  spaceHierarchy(
+    accountId: string,
+    spaceId: string,
+    _options: { readonly maxPages: number | null },
+  ): Observable<EngineResult<readonly HierarchyEntry[]>> {
+    return this.run(accountId, () => {
+      if (!this.spaces.has(spaceId)) return engineFail(REQUEST_FAILED);
+      const children = [...(this.links.get(spaceId)?.values() ?? [])];
+      return engineOk([
+        this.hierarchyEntry(spaceId, children),
+        ...this.liveLinks(spaceId).map((link) =>
+          this.hierarchyEntry(link.childId, []),
+        ),
+      ]);
+    });
+  }
+
+  setSpaceChild(
+    accountId: string,
+    spaceId: string,
+    childId: string,
+    link: Omit<SpaceChildLink, 'childId'> | null,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, () => {
+      if (!this.spaces.has(spaceId)) return engineFail(REQUEST_FAILED);
+      this.writeLink(spaceId, childId, link);
+      return engineOk(null);
+    });
+  }
+
+  setSpaceParent(
+    accountId: string,
+    childId: string,
+    spaceId: string,
+    _via: readonly string[],
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, () => {
+      if (!this.roomNames.has(childId)) return engineFail(REQUEST_FAILED);
+      this.addParent(childId, spaceId);
+      return engineOk(null);
+    });
+  }
+
   /** A cold command: scripted failure first, then the live-account check, then `action`. */
   private run<T>(
     accountId: string,
@@ -360,6 +492,57 @@ export class FakeRoomListEngine implements RoomListEngine {
       ]);
       return engineOk(null);
     });
+  }
+
+  /** The links `spaceChildLinks` lists: none with an empty `via`, in spec order. */
+  private liveLinks(spaceId: string): readonly SpaceChildLink[] {
+    return [...(this.links.get(spaceId)?.values() ?? [])]
+      .filter((link) => link.via.length > 0)
+      .map((link) => (isValidOrder(link.order) ? link : { ...link, order: '' }))
+      .sort(
+        (a, b) =>
+          compareOrder(a.order, b.order) || (a.childId < b.childId ? -1 : 1),
+      );
+  }
+
+  private writeLink(
+    spaceId: string,
+    childId: string,
+    link: Omit<SpaceChildLink, 'childId'> | null,
+  ): void {
+    const links = this.links.get(spaceId) ?? new Map();
+    // The empty content Matrix uses for a removed child.
+    links.set(childId, {
+      childId,
+      via: [],
+      suggested: false,
+      order: '',
+      ...link,
+    });
+    this.links.set(spaceId, links);
+    this.linksChanged$.next(spaceId);
+  }
+
+  private addParent(childId: string, spaceId: string): void {
+    const parents = this.spaceParents(childId).filter((id) => id !== spaceId);
+    this.parents.set(childId, [...parents, spaceId]);
+  }
+
+  private hierarchyEntry(
+    roomId: string,
+    childrenState: readonly SpaceChildLink[],
+  ): HierarchyEntry {
+    return {
+      roomId,
+      name: this.roomNames.get(roomId) ?? null,
+      canonicalAlias: null,
+      topic: null,
+      avatarMxc: null,
+      joinedMemberCount: 1,
+      joinRule: 'invite',
+      isSpace: this.spaces.has(roomId),
+      childrenState,
+    };
   }
 
   private indexOf(accountId: string, roomId: string): number {

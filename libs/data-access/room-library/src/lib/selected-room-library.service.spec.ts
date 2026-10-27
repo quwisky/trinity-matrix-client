@@ -1,152 +1,87 @@
 import { computed, signal, type WritableSignal } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { TestBed } from '@angular/core/testing';
-import {
-  NotificationCountType,
-  RoomEvent,
-  type MatrixClient,
-} from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { defer, finalize, firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import {
+  FakeRoomListEngine,
+  fakeRoom,
+} from '../contract/fake-room-list-engine';
 import { AccountScopeService } from './account-scope.service';
 import { InvitesService, type PendingInvite } from './invites.service';
 import { RoomLibraryService, type RoomSummary } from './room-library.service';
+import type { RoomInfo } from './room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 import { SelectedRoomLibraryService } from './selected-room-library.service';
 import { SpacesService, type SpaceSummary } from './spaces.service';
 
-type Listener = (...args: unknown[]) => void;
-
-interface FakeRoomOptions {
+interface RoomOptions {
   readonly kind?: 'room' | 'space' | 'invite';
   /** Overrides the membership `kind` implies, e.g. a space the Account has left. */
-  readonly membership?: 'join' | 'invite' | 'leave';
+  readonly membership?: RoomInfo['membership'];
   readonly name?: string;
-  readonly children?: readonly string[];
   readonly unread?: number;
   readonly highlight?: number;
   readonly markedUnread?: boolean;
   readonly favourite?: boolean;
   readonly lowPriority?: boolean;
+  readonly encrypted?: boolean;
   /** The body of a last message that arrived in clear. */
   readonly message?: string;
+  readonly directUserId?: string;
 }
 
-function fakeRoom(id: string, options: FakeRoomOptions = {}) {
+/** One row as the engine lists it for an Account. */
+function row(id: string, options: RoomOptions = {}): RoomInfo {
   const kind = options.kind ?? 'room';
-  return {
-    roomId: id,
-    name: options.name ?? id,
-    isSpaceRoom: () => kind === 'space',
-    getMyMembership: () =>
-      options.membership ?? (kind === 'invite' ? 'invite' : 'join'),
-    getMxcAvatarUrl: () => null,
-    getAvatarFallbackMember: () => undefined,
-    getJoinedMemberCount: () => 1,
-    hasEncryptionStateEvent: () => false,
-    getAccountData: (type: string) =>
-      options.markedUnread && type === 'm.marked_unread'
-        ? { getContent: () => ({ unread: true }) }
-        : undefined,
-    getUnreadNotificationCount: (type?: unknown) =>
-      type === NotificationCountType.Highlight
-        ? (options.highlight ?? 0)
-        : (options.unread ?? 0),
-    getLastActiveTimestamp: () => 0,
-    getLiveTimeline: () => ({
-      getEvents: () =>
-        options.message === undefined
-          ? []
-          : [
-              {
-                getType: () => 'm.room.message',
-                getTs: () => 1,
-                getContent: () => ({ body: options.message }),
-                getOriginalContent: () => ({ body: options.message }),
-                isRedacted: () => false,
-                isDecryptionFailure: () => false,
-                isEncrypted: () => false,
-                isState: () => false,
-                replacingEvent: () => null,
-                status: null,
-              },
-            ],
-      getState: () => ({
-        getStateEvents: (type: string, stateKey?: string) =>
-          type === 'm.space.child'
-            ? (options.children ?? []).map((childId) => ({
-                getStateKey: () => childId,
-                getContent: () => ({ via: ['hs'] }),
-              }))
-            : stateKey === undefined
-              ? []
-              : undefined,
-      }),
-    }),
-    tags: {
-      ...(options.favourite ? { 'm.favourite': {} } : {}),
-      ...(options.lowPriority ? { 'm.lowpriority': {} } : {}),
-    },
-    getMember: (userId: string) =>
-      userId.startsWith('@inviter')
-        ? { name: 'Inviter' }
+  return fakeRoom(id, {
+    displayName: options.name ?? id,
+    isSpace: kind === 'space',
+    membership: options.membership ?? (kind === 'invite' ? 'invite' : 'join'),
+    notificationCount: options.unread ?? 0,
+    highlightCount: options.highlight ?? 0,
+    markedUnread: options.markedUnread ?? false,
+    favourite: options.favourite ?? false,
+    lowPriority: options.lowPriority ?? false,
+    encryption: options.encrypted ? 'encrypted' : 'unencrypted',
+    latestMessage:
+      options.message === undefined
+        ? null
         : {
-            name: userId,
-            events: {
-              member: {
-                getSender: () => '@inviter:hs',
-                getContent: () => ({ is_direct: false }),
-              },
-            },
+            text: options.message,
+            mark: options.encrypted ? 'unencrypted' : null,
           },
-  };
+    directUserId: options.directUserId ?? null,
+    inviter:
+      kind === 'invite'
+        ? { userId: '@inviter:hs', displayName: 'Inviter', isDirect: false }
+        : null,
+  });
 }
 
-function fakeClient(
-  userId: string,
-  rooms: ReturnType<typeof fakeRoom>[],
-  directRoomIds: readonly string[] = [],
-) {
-  const handlers = new Map<string, Set<Listener>>();
-  const getRooms = vi.fn(() => rooms);
-  let attachmentCount = 0;
-  let detachmentCount = 0;
+function account(
+  accountId: string,
+  generation = 1,
+  { synced = true, prepared = true } = {},
+): SessionAccountStatus {
   return {
-    getUserId: () => userId,
-    getRooms,
-    getRoom: (roomId: string) =>
-      rooms.find((room) => room.roomId === roomId) ?? {
-        roomId,
-        name: roomId,
-        isSpaceRoom: () => false,
-        getMyMembership: () => 'join',
-      },
-    getAccountData: (type: string) =>
-      type === 'm.direct'
-        ? { getContent: () => ({ '@peer:hs': directRoomIds }) }
-        : undefined,
-    on(event: string, handler: Listener) {
-      attachmentCount++;
-      (handlers.get(event) ?? handlers.set(event, new Set()).get(event)!).add(
-        handler,
-      );
-    },
-    off(event: string, handler: Listener) {
-      if (handlers.get(event)?.delete(handler)) detachmentCount++;
-    },
-    emit(event: string) {
-      handlers.get(event)?.forEach((handler) => handler());
-    },
-    listenerCount(event?: string) {
-      if (event) return handlers.get(event)?.size ?? 0;
-      return [...handlers.values()].reduce((sum, set) => sum + set.size, 0);
-    },
-    attachmentCount: () => attachmentCount,
-    detachmentCount: () => detachmentCount,
+    accountId,
+    generation,
+    syncState: 'syncing',
+    serverSynced: synced,
+    roomsPrepared: prepared,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
   };
 }
-
-type FakeClient = ReturnType<typeof fakeClient>;
 
 const ACTIVE_ROOM = roomSummary('!active:hs', '@active:hs');
 const ACTIVE_SPACE = spaceSummary('!active-space:hs', '@active:hs');
@@ -157,48 +92,66 @@ function setup(
     selected?: ReadonlySet<string>;
     live?: readonly string[];
     active?: string | null;
-    clients?: ReadonlyMap<string, FakeClient>;
-    /** Accounts whose client has synced with its homeserver; every live one unless named. */
+    rooms?: Readonly<Record<string, readonly RoomInfo[]>>;
+    /** Accounts that have synced with their homeserver; every live one unless named. */
     synced?: ReadonlySet<string>;
-    /** Accounts whose client has prepared its rooms, from cache or server; every live one. */
+    /** Accounts that have prepared their rooms, from cache or server; every live one. */
     prepared?: ReadonlySet<string>;
     connect?: boolean;
   } = {},
 ) {
+  const fake = new FakeRoomListEngine();
+  for (const [accountId, rows] of Object.entries(options.rooms ?? {})) {
+    fake.seed(accountId, rows);
+  }
   const selected = signal<ReadonlySet<string>>(
     options.selected ?? new Set(['@active:hs']),
   );
-  const accountIds = signal<readonly string[]>(options.live ?? ['@active:hs']);
-  const synced = signal<ReadonlySet<string>>(
-    options.synced ?? new Set(accountIds()),
-  );
-  const prepared = signal<ReadonlySet<string>>(
-    options.prepared ?? new Set(accountIds()),
-  );
+  const live = options.live ?? ['@active:hs'];
+  const synced = options.synced ?? new Set(live);
+  const prepared = options.prepared ?? new Set(live);
+  const session = signal<SessionSnapshot>({
+    ...EMPTY_SESSION,
+    activeAccountId:
+      options.active === undefined ? '@active:hs' : options.active,
+    accounts: live.map((id) =>
+      account(id, 1, { synced: synced.has(id), prepared: prepared.has(id) }),
+    ),
+  });
   const activeSpaces = signal<SpaceSummary[]>([ACTIVE_SPACE]);
-  const activeUserId = signal<string | null>(
-    options.active === undefined ? '@active:hs' : options.active,
-  );
-  const clients = new Map(options.clients ?? []);
   const setSelected = vi.fn<AccountScopeService['setSelected']>(() =>
     of({ kind: 'completed' as const }),
   );
   const toggle = vi.fn<AccountScopeService['toggle']>(() =>
     of({ kind: 'completed' as const }),
   );
-  const matrix = {
-    accountIds: accountIds.asReadonly(),
-    activeUserId: activeUserId.asReadonly(),
-    clientFor: (accountId: string) =>
-      (clients.get(accountId) as unknown as MatrixClient | undefined) ?? null,
-    serverSynced: (accountId: string) => synced().has(accountId),
-    roomsPrepared: (accountId: string) => prepared().has(accountId),
-  } as unknown as MatrixClientService;
+
+  // Counts the child-link subscriptions the service holds, per Account.
+  const openLinks = new Map<string, number>();
+  let opened = 0;
+  let closed = 0;
+  const links = fake.spaceChildLinks.bind(fake);
+  vi.spyOn(fake, 'spaceChildLinks').mockImplementation((accountId, spaceId) =>
+    defer(() => {
+      opened++;
+      openLinks.set(accountId, (openLinks.get(accountId) ?? 0) + 1);
+      return links(accountId, spaceId);
+    }).pipe(
+      finalize(() => {
+        closed++;
+        openLinks.set(accountId, (openLinks.get(accountId) ?? 0) - 1);
+      }),
+    ),
+  );
 
   TestBed.configureTestingModule({
     providers: [
-      SelectedRoomLibraryService,
-      { provide: MatrixClientService, useValue: matrix },
+      { provide: ROOM_LIST_ENGINE, useValue: fake },
+      { provide: SESSION_SNAPSHOT, useValue: session },
+      {
+        provide: SESSION_ENGINE,
+        useFactory: () => ({ session: () => toObservable(session) }),
+      },
       MockProvider(AccountScopeService, { selected, setSelected, toggle }),
       MockProvider(RoomLibraryService, { rooms: signal([ACTIVE_ROOM]) }),
       MockProvider(SpacesService, { spaces: activeSpaces }),
@@ -211,39 +164,52 @@ function setup(
   const service = TestBed.inject(SelectedRoomLibraryService);
   const lifetime =
     options.connect !== false ? service.runProjection().subscribe() : null;
+  /** Links `childId` into `spaceId` as `accountId` would. */
+  const link = (accountId: string, spaceId: string, childId: string): void => {
+    fake
+      .setSpaceChild(accountId, spaceId, childId, {
+        via: ['hs'],
+        suggested: false,
+        order: '',
+      })
+      .subscribe();
+  };
   return {
     service,
+    fake,
+    session,
     selected: selected as WritableSignal<ReadonlySet<string>>,
-    accountIds,
-    synced,
-    prepared,
     activeSpaces,
-    activeUserId,
-    clients,
     setSelected,
     toggle,
     lifetime,
+    link,
+    openLinks: (accountId?: string) =>
+      accountId === undefined
+        ? opened - closed
+        : (openLinks.get(accountId) ?? 0),
+    linkCounts: () => ({ opened, closed }),
+    /** Sets the session's active Account. */
+    activate: (accountId: string | null) =>
+      session.update((s) => ({ ...s, activeAccountId: accountId })),
   };
 }
 
-async function flushProjection(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const AB = {
+  selected: new Set(['@a:hs', '@b:hs']),
+  live: ['@a:hs', '@b:hs'],
+};
 
 describe('SelectedRoomLibraryService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
-  it('attaches only for its owned lifetime and reconnects from empty state', () => {
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
-    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+  it('holds space links only for its owned lifetime and reconnects from empty state', () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!a:hs'), row('!sa:hs', { kind: 'space' })],
+        '@b:hs': [row('!b:hs'), row('!sb:hs', { kind: 'space' })],
+      },
       connect: false,
     });
 
@@ -253,16 +219,15 @@ describe('SelectedRoomLibraryService', () => {
       spaces: [ACTIVE_SPACE],
       invitations: [ACTIVE_INVITE],
     });
-    expect(a.listenerCount()).toBe(0);
-    expect(b.listenerCount()).toBe(0);
+    expect(harness.openLinks()).toBe(0);
 
     const lifetime = harness.service.runProjection().subscribe();
-    expect(a.listenerCount()).toBe(9);
-    expect(b.listenerCount()).toBe(9);
+    expect(harness.service.view().spaces).toHaveLength(2);
+    expect(harness.openLinks('@a:hs')).toBe(1);
+    expect(harness.openLinks('@b:hs')).toBe(1);
 
     lifetime.unsubscribe();
-    expect(a.listenerCount()).toBe(0);
-    expect(b.listenerCount()).toBe(0);
+    expect(harness.openLinks()).toBe(0);
     expect(harness.service.view()).toMatchObject({
       mode: 'mixed',
       rooms: [],
@@ -271,15 +236,25 @@ describe('SelectedRoomLibraryService', () => {
     });
 
     harness.service.runProjection().subscribe();
-    expect(a.listenerCount()).toBe(9);
-    expect(b.listenerCount()).toBe(9);
-    expect(a.attachmentCount()).toBe(18);
+    expect(harness.service.view().spaces).toHaveLength(2);
+    expect(harness.openLinks()).toBe(2);
+    expect(harness.linkCounts().opened).toBe(4);
   });
 
-  it('delegates one Account to active projections without duplicate listeners', () => {
-    const client = fakeClient('@active:hs', [fakeRoom('!sdk:hs')]);
+  it('acknowledges its projection lifetime at once', () => {
+    const harness = setup({ connect: false });
+    const seen: unknown[] = [];
+
+    harness.service.runProjection().subscribe((value) => seen.push(value));
+
+    expect(seen).toEqual([undefined]);
+  });
+
+  it('delegates one Account to active projections without holding links', () => {
     const harness = setup({
-      clients: new Map([['@active:hs', client]]),
+      rooms: {
+        '@active:hs': [row('!sdk:hs'), row('!s:hs', { kind: 'space' })],
+      },
     });
 
     expect(harness.service.view()).toEqual({
@@ -290,46 +265,46 @@ describe('SelectedRoomLibraryService', () => {
       spaceChildRoomIdsByAccount: new Map([['@active:hs', new Set<string>()]]),
       invitations: [ACTIVE_INVITE],
     });
-    expect(client.listenerCount()).toBe(0);
+    expect(harness.openLinks()).toBe(0);
   });
 
   it('publishes one mixed generation with exact Room, Space, and invite policy', () => {
-    const a = fakeClient('@a:hs', [
-      fakeRoom('!shared:hs'),
-      fakeRoom('!space:hs', { kind: 'space', children: ['!x:hs'] }),
-      fakeRoom('!invite-a:hs', { kind: 'invite', name: 'Alpha' }),
-    ]);
-    const b = fakeClient('@b:hs', [
-      fakeRoom('!shared:hs', {
-        unread: 3,
-        highlight: 2,
-        markedUnread: true,
-        lowPriority: true,
-      }),
-      fakeRoom('!other:hs'),
-      fakeRoom('!space:hs', {
-        kind: 'space',
-        children: ['!x:hs', '!y:hs'],
-      }),
-      fakeRoom('!invite-b:hs', { kind: 'invite', name: 'Bravo' }),
-    ]);
-    const accounts = new Set(['@a:hs', '@b:hs']);
     const harness = setup({
-      selected: accounts,
-      live: [...accounts],
+      ...AB,
       active: '@a:hs',
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      rooms: {
+        '@a:hs': [
+          row('!shared:hs'),
+          row('!x:hs'),
+          row('!space:hs', { kind: 'space' }),
+          row('!invite-a:hs', { kind: 'invite', name: 'Alpha' }),
+        ],
+        '@b:hs': [
+          row('!shared:hs', {
+            unread: 3,
+            highlight: 2,
+            markedUnread: true,
+            lowPriority: true,
+          }),
+          row('!other:hs'),
+          row('!x:hs'),
+          row('!y:hs'),
+          row('!space:hs', { kind: 'space' }),
+          row('!invite-b:hs', { kind: 'invite', name: 'Bravo' }),
+        ],
+      },
     });
+    harness.link('@b:hs', '!space:hs', '!x:hs');
+    harness.link('@b:hs', '!space:hs', '!y:hs');
 
     const view = harness.service.view();
-    expect(view.accountIds).toBe(accounts);
+    expect(view.accountIds).toBe(AB.selected);
     expect(view.mode).toBe('mixed');
     expect(view.rooms.map((item) => item.id).sort()).toEqual([
       '!other:hs',
       '!shared:hs',
+      '!x:hs',
+      '!y:hs',
     ]);
     expect(view.rooms.find((item) => item.id === '!shared:hs')).toMatchObject({
       accountId: '@a:hs',
@@ -347,6 +322,7 @@ describe('SelectedRoomLibraryService', () => {
         childRoomIds: ['!x:hs', '!y:hs'],
       }),
     ]);
+    // A has joined only !x of the space's children.
     expect(view.spaceChildRoomIdsByAccount).toEqual(
       new Map([
         ['@a:hs', new Set(['!x:hs'])],
@@ -359,81 +335,50 @@ describe('SelectedRoomLibraryService', () => {
       ['!invite-a:hs', '@a:hs'],
       ['!invite-b:hs', '@b:hs'],
     ]);
-    // Shared SDK events have one listener, rather than one per domain projector.
-    expect(a.listenerCount('Room')).toBe(1);
-    expect(a.listenerCount()).toBe(9);
+    expect(view.invitations[0]).toMatchObject({
+      inviterName: 'Inviter',
+      inviterId: '@inviter:hs',
+    });
+    // One link subscription per Account and space.
+    expect(harness.openLinks('@a:hs')).toBe(1);
+    expect(harness.openLinks()).toBe(2);
   });
 
-  it('locks a mixed-list room the crypto store of its Account has as encrypted when its state lacks the event', async () => {
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
-    const b = Object.assign(fakeClient('@b:hs', [fakeRoom('!b:hs')]), {
-      getCrypto: () => ({
-        isEncryptionEnabledInRoom: (roomId: string) =>
-          Promise.resolve(roomId === '!b:hs'),
-      }),
-    });
+  it("locks a mixed-list room by its own Account's encryption", () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!a:hs')],
+        '@b:hs': [row('!b:hs', { encrypted: true })],
+      },
     });
     const lock = (id: string) =>
       harness.service.view().rooms.find((room) => room.id === id)?.encrypted;
 
-    await vi.waitFor(() => expect(lock('!b:hs')).toBe(true));
+    expect(lock('!b:hs')).toBe(true);
     expect(lock('!a:hs')).toBe(false);
   });
 
-  it("previews each Account's rooms by its own crypto store's answer", async () => {
-    const store = (encrypted: readonly string[]) => ({
-      getCrypto: () => ({
-        isEncryptionEnabledInRoom: async (roomId: string) =>
-          encrypted.includes(roomId),
-      }),
-    });
-    const a = Object.assign(
-      fakeClient('@a:hs', [fakeRoom('!stored:hs', { message: 'hello' })]),
-      store(['!stored:hs']),
-    );
-    const b = Object.assign(
-      fakeClient('@b:hs', [fakeRoom('!plain:hs', { message: 'hello' })]),
-      store([]),
-    );
+  it("previews each Account's rooms by its own encryption", () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!stored:hs', { message: 'hello', encrypted: true })],
+        '@b:hs': [row('!plain:hs', { message: 'hello' })],
+      },
     });
     const room = (id: string) =>
       harness.service.view().rooms.find((r) => r.id === id);
 
-    await vi.waitFor(() => {
-      expect(room('!plain:hs')?.lastMessage).toBe('hello');
-      expect(room('!stored:hs')?.lastMessage).toBe('hello');
-      expect(room('!stored:hs')?.lastMessageMark).toBe('unencrypted');
-    });
+    expect(room('!plain:hs')?.lastMessage).toBe('hello');
+    expect(room('!stored:hs')?.lastMessage).toBe('hello');
+    expect(room('!stored:hs')?.lastMessageMark).toBe('unencrypted');
     expect(room('!plain:hs')?.encrypted).toBe(false);
     expect(room('!stored:hs')?.encrypted).toBe(true);
   });
 
   describe('a room several Accounts share', () => {
-    const copy = (id: string, encrypted: boolean) =>
-      Object.assign(
-        fakeClient(id, [fakeRoom('!shared:hs', { message: `from ${id}` })]),
-        {
-          getCrypto: () => ({
-            isEncryptionEnabledInRoom: async () => encrypted,
-          }),
-        },
-      );
-
-    async function sharedRow(
+    function sharedRow(
       active: string | null,
       copies: readonly (readonly [string, boolean])[],
     ) {
@@ -442,16 +387,18 @@ describe('SelectedRoomLibraryService', () => {
         selected: new Set(ids),
         live: ids,
         active,
-        clients: new Map(copies.map(([id, e]) => [id, copy(id, e)])),
+        rooms: Object.fromEntries(
+          copies.map(([id, encrypted]) => [
+            id,
+            [row('!shared:hs', { message: `from ${id}`, encrypted })],
+          ]),
+        ),
       });
-      // Let every Account's crypto-store answer land before reading the row.
-      await new Promise((resolve) => setTimeout(resolve));
-      await flushProjection();
       return harness.service.view().rooms.find((r) => r.id === '!shared:hs');
     }
 
-    it('shows the room unencrypted when the active Account sees it so', async () => {
-      const row = await sharedRow('@a:hs', [
+    it('shows the room unencrypted when the active Account sees it so', () => {
+      const row = sharedRow('@a:hs', [
         ['@a:hs', false],
         ['@b:hs', true],
       ]);
@@ -462,8 +409,8 @@ describe('SelectedRoomLibraryService', () => {
       expect(row?.lastMessageMark).toBeNull();
     });
 
-    it('shows the room encrypted when the active Account sees it so', async () => {
-      const row = await sharedRow('@b:hs', [
+    it('shows the room encrypted when the active Account sees it so', () => {
+      const row = sharedRow('@b:hs', [
         ['@a:hs', false],
         ['@b:hs', true],
       ]);
@@ -474,8 +421,8 @@ describe('SelectedRoomLibraryService', () => {
       expect(row?.lastMessageMark).toBe('unencrypted');
     });
 
-    it('follows the first source when none of the copies is active', async () => {
-      const row = await sharedRow('@none:hs', [
+    it('follows the first source when none of the copies is active', () => {
+      const row = sharedRow('@none:hs', [
         ['@a:hs', false],
         ['@b:hs', true],
       ]);
@@ -487,8 +434,8 @@ describe('SelectedRoomLibraryService', () => {
 
     it.each(['@a:hs', '@b:hs', '@c:hs'])(
       'follows the active Account among three copies (%s)',
-      async (active) => {
-        const row = await sharedRow(active, [
+      (active) => {
+        const row = sharedRow(active, [
           ['@a:hs', true],
           ['@b:hs', false],
           ['@c:hs', true],
@@ -502,71 +449,47 @@ describe('SelectedRoomLibraryService', () => {
   });
 
   it('takes favourite from the winning Account copy', () => {
-    const a = fakeClient('@a:hs', [fakeRoom('!shared:hs')]);
-    const b = fakeClient('@b:hs', [
-      fakeRoom('!shared:hs', { favourite: true }),
-    ]);
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
+      ...AB,
       active: '@a:hs',
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      rooms: {
+        '@a:hs': [row('!shared:hs')],
+        '@b:hs': [row('!shared:hs', { favourite: true })],
+      },
     });
 
     expect(harness.service.view().rooms[0]?.favourite).toBe(false);
 
-    harness.activeUserId.set('@b:hs');
-    TestBed.tick();
+    harness.activate('@b:hs');
 
     expect(harness.service.view().rooms[0]?.favourite).toBe(true);
   });
 
-  it('refreshes marked-unread state after room account data changes', async () => {
-    const room = fakeRoom('!room:hs');
-    const a = fakeClient('@a:hs', [room]);
-    const b = fakeClient('@b:hs', [fakeRoom('!other:hs')]);
+  it('refreshes marked-unread state after its room list changes', () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
+      ...AB,
       active: '@a:hs',
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      rooms: { '@a:hs': [row('!room:hs')], '@b:hs': [row('!other:hs')] },
     });
-    expect(
+    const marked = () =>
       harness.service.view().rooms.find((item) => item.id === '!room:hs')
-        ?.markedUnread,
-    ).toBe(false);
+        ?.markedUnread;
+    expect(marked()).toBe(false);
 
-    room.getAccountData = (type: string) =>
-      type === 'm.marked_unread'
-        ? { getContent: () => ({ unread: true }) }
-        : undefined;
-    a.emit(RoomEvent.AccountData);
-    await flushProjection();
+    harness.fake.seed('@a:hs', [row('!room:hs', { markedUnread: true })]);
 
-    expect(
-      harness.service.view().rooms.find((item) => item.id === '!room:hs')
-        ?.markedUnread,
-    ).toBe(true);
+    expect(marked()).toBe(true);
   });
 
-  it('ignores unselected live Accounts and gives them no listeners', () => {
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
-    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
-    const c = fakeClient('@c:hs', [fakeRoom('!c:hs')]);
+  it('ignores unselected live Accounts and holds no links for them', () => {
     const harness = setup({
       selected: new Set(['@a:hs', '@b:hs']),
       live: ['@a:hs', '@b:hs', '@c:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-        ['@c:hs', c],
-      ]),
+      rooms: {
+        '@a:hs': [row('!a:hs')],
+        '@b:hs': [row('!b:hs')],
+        '@c:hs': [row('!c:hs'), row('!sc:hs', { kind: 'space' })],
+      },
     });
 
     expect(
@@ -575,23 +498,17 @@ describe('SelectedRoomLibraryService', () => {
         .rooms.map((item) => item.id)
         .sort(),
     ).toEqual(['!a:hs', '!b:hs']);
-    expect(c.listenerCount()).toBe(0);
+    expect(harness.service.view().spaces).toEqual([]);
+    expect(harness.openLinks('@c:hs')).toBe(0);
   });
 
   it('keeps invitations Account-scoped even when their Room ids match', () => {
-    const a = fakeClient('@a:hs', [
-      fakeRoom('!invite:hs', { kind: 'invite', name: 'Shared' }),
-    ]);
-    const b = fakeClient('@b:hs', [
-      fakeRoom('!invite:hs', { kind: 'invite', name: 'Shared' }),
-    ]);
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!invite:hs', { kind: 'invite', name: 'Shared' })],
+        '@b:hs': [row('!invite:hs', { kind: 'invite', name: 'Shared' })],
+      },
     });
 
     expect(
@@ -599,21 +516,18 @@ describe('SelectedRoomLibraryService', () => {
     ).toEqual(['@a:hs', '@b:hs']);
   });
 
-  it('uses stable fallback ownership and each Account’s direct map', () => {
-    const a = fakeClient(
-      '@a:hs',
-      [fakeRoom('!shared:hs'), fakeRoom('!dm:hs', { favourite: true })],
-      ['!dm:hs'],
-    );
-    const b = fakeClient('@b:hs', [fakeRoom('!shared:hs')]);
+  it('uses stable fallback ownership and each Account’s direct user', () => {
     const harness = setup({
       selected: new Set(['@b:hs', '@a:hs']),
       live: ['@a:hs', '@b:hs'],
       active: null,
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      rooms: {
+        '@a:hs': [
+          row('!shared:hs'),
+          row('!dm:hs', { favourite: true, directUserId: '@peer:hs' }),
+        ],
+        '@b:hs': [row('!shared:hs')],
+      },
     });
 
     expect(harness.service.view().rooms.map((item) => item.id)).toEqual([
@@ -624,28 +538,24 @@ describe('SelectedRoomLibraryService', () => {
     expect(harness.service.view().rooms[1].accountId).toBe('@a:hs');
   });
 
-  it('coalesces domain events and structurally shares unaffected projections', async () => {
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
-    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+  it('structurally shares projections a room change leaves alone', () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!a:hs'), row('!s:hs', { kind: 'space' })],
+        '@b:hs': [row('!b:hs'), row('!i:hs', { kind: 'invite' })],
+      },
     });
     const before = harness.service.view();
-    a.getRooms.mockClear();
 
-    a.emit(RoomEvent.Receipt);
-    a.emit(RoomEvent.Receipt);
-    a.emit(RoomEvent.Receipt);
-    await flushProjection();
+    harness.fake.seed('@a:hs', [
+      row('!a:hs', { unread: 1 }),
+      row('!s:hs', { kind: 'space' }),
+    ]);
 
     const after = harness.service.view();
-    expect(a.getRooms).toHaveBeenCalledOnce();
     expect(after.rooms).not.toBe(before.rooms);
+    expect(after.rooms.find((r) => r.id === '!a:hs')?.unreadCount).toBe(1);
     expect(after.spaces).toBe(before.spaces);
     expect(after.spaceChildRoomIdsByAccount).toBe(
       before.spaceChildRoomIdsByAccount,
@@ -653,101 +563,160 @@ describe('SelectedRoomLibraryService', () => {
     expect(after.invitations).toBe(before.invitations);
   });
 
-  it('reconciles live Accounts and same-id client replacement', async () => {
-    const first = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
-    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+  it('follows live Accounts and a restarted Account’s new generation', () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', first],
-        ['@b:hs', b],
-      ]),
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!a:hs'), row('!sa:hs', { kind: 'space' })],
+        '@b:hs': [row('!b:hs')],
+      },
     });
-    const replacement = fakeClient('@a:hs', [fakeRoom('!a2:hs')]);
-    harness.clients.set('@a:hs', replacement);
+    expect(harness.service.view().spaces).toHaveLength(1);
+    expect(harness.openLinks('@a:hs')).toBe(1);
 
-    b.emit('Room');
-    await flushProjection();
+    harness.fake.seed('@a:hs', [
+      row('!a2:hs'),
+      row('!sa:hs', { kind: 'space' }),
+    ]);
+    harness.session.update((s) => ({
+      ...s,
+      accounts: [account('@a:hs', 2), account('@b:hs')],
+    }));
+    TestBed.tick();
 
-    expect(first.listenerCount()).toBe(0);
-    expect(replacement.listenerCount()).toBe(9);
+    // The old generation's link closed at once; the new one opens on read.
+    expect(harness.linkCounts().closed).toBe(1);
     expect(
       harness.service
         .view()
         .rooms.map((item) => item.id)
         .sort(),
     ).toEqual(['!a2:hs', '!b:hs']);
+    expect(harness.openLinks('@a:hs')).toBe(1);
 
-    harness.clients.delete('@a:hs');
-    harness.accountIds.set(['@b:hs']);
+    harness.session.update((s) => ({ ...s, accounts: [account('@b:hs')] }));
     TestBed.tick();
-    expect(replacement.listenerCount()).toBe(0);
+    expect(harness.openLinks('@a:hs')).toBe(0);
     expect(harness.service.view().rooms.map((item) => item.id)).toEqual([
       '!b:hs',
     ]);
   });
 
-  it('re-attributes shared rows when the Active Account changes', () => {
-    const a = fakeClient('@a:hs', [
-      fakeRoom('!shared:hs'),
-      fakeRoom('!space:hs', { kind: 'space' }),
-    ]);
-    const b = fakeClient('@b:hs', [
-      fakeRoom('!shared:hs'),
-      fakeRoom('!space:hs', { kind: 'space' }),
-    ]);
+  it('a restarted account is not double counted', () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
+      ...AB,
+      rooms: {
+        '@a:hs': [
+          row('!shared:hs', { unread: 2 }),
+          row('!x:hs'),
+          row('!s:hs', { kind: 'space' }),
+        ],
+        '@b:hs': [row('!shared:hs', { unread: 1 })],
+      },
+    });
+    harness.link('@a:hs', '!s:hs', '!x:hs');
+    expect(harness.service.view().spaces[0]?.childRoomIds).toEqual(['!x:hs']);
+
+    harness.session.update((s) => ({
+      ...s,
+      accounts: [account('@a:hs', 2), account('@b:hs')],
+    }));
+
+    const view = harness.service.view();
+    expect(view.rooms.find((r) => r.id === '!shared:hs')).toMatchObject({
+      accountIds: ['@a:hs', '@b:hs'],
+      unreadCount: 2,
+    });
+    expect(view.rooms.filter((r) => r.id === '!x:hs')).toHaveLength(1);
+    expect(view.spaces).toHaveLength(1);
+    expect(view.spaces[0].childRoomIds).toEqual(['!x:hs']);
+    expect(harness.openLinks('@a:hs')).toBe(1);
+  });
+
+  it('closes a signed-out Account’s space links without a read', () => {
+    const harness = setup({
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!sa:hs', { kind: 'space' })],
+        '@b:hs': [row('!sb:hs', { kind: 'space' })],
+      },
+    });
+    expect(harness.service.view().spaces).toHaveLength(2);
+
+    harness.session.update((s) => ({ ...s, accounts: [account('@a:hs')] }));
+    TestBed.tick();
+
+    expect(harness.openLinks('@b:hs')).toBe(0);
+    expect(harness.openLinks('@a:hs')).toBe(1);
+  });
+
+  it('re-attributes shared rows when the Active Account changes', () => {
+    const harness = setup({
+      ...AB,
       active: '@a:hs',
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      rooms: {
+        '@a:hs': [row('!shared:hs'), row('!space:hs', { kind: 'space' })],
+        '@b:hs': [row('!shared:hs'), row('!space:hs', { kind: 'space' })],
+      },
     });
     expect(harness.service.view().rooms[0].accountId).toBe('@a:hs');
     expect(harness.service.view().spaces[0].accountId).toBe('@a:hs');
 
-    harness.activeUserId.set('@b:hs');
-    TestBed.tick();
+    harness.activate('@b:hs');
 
     expect(harness.service.view().rooms[0].accountId).toBe('@b:hs');
     expect(harness.service.view().spaces[0].accountId).toBe('@b:hs');
   });
 
-  it('does not churn listeners for an equal selected Account set', () => {
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
-    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+  it('does not churn links for an equal selected Account set', () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!sa:hs', { kind: 'space' })],
+        '@b:hs': [row('!b:hs')],
+      },
     });
+    harness.service.view();
 
     harness.selected.set(new Set(['@b:hs', '@a:hs']));
     TestBed.tick();
+    harness.service.view();
 
-    expect(a.attachmentCount()).toBe(9);
-    expect(a.detachmentCount()).toBe(0);
-    expect(a.listenerCount()).toBe(9);
+    expect(harness.linkCounts()).toEqual({ opened: 1, closed: 0 });
+    expect(harness.openLinks('@a:hs')).toBe(1);
   });
 
-  it('detaches selected sources before returning to one active Account', () => {
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
-    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+  it('closes a deselected Account’s space links without a read', () => {
     const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+      selected: new Set(['@a:hs', '@b:hs', '@c:hs']),
+      live: ['@a:hs', '@b:hs', '@c:hs'],
+      rooms: {
+        '@a:hs': [row('!sa:hs', { kind: 'space' })],
+        '@b:hs': [row('!sb:hs', { kind: 'space' })],
+        '@c:hs': [row('!sc:hs', { kind: 'space' })],
+      },
     });
-    expect(a.listenerCount()).toBe(9);
+    harness.service.view();
+    expect(harness.openLinks('@c:hs')).toBe(1);
+
+    harness.selected.set(new Set(['@a:hs', '@b:hs']));
+    TestBed.tick();
+
+    expect(harness.openLinks('@c:hs')).toBe(0);
+    expect(harness.openLinks('@a:hs')).toBe(1);
+    expect(harness.openLinks('@b:hs')).toBe(1);
+  });
+
+  it('closes selected links before returning to one active Account', () => {
+    const harness = setup({
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!sa:hs', { kind: 'space' })],
+        '@b:hs': [row('!sb:hs', { kind: 'space' })],
+      },
+    });
+    harness.service.view();
+    expect(harness.openLinks('@a:hs')).toBe(1);
 
     harness.selected.set(new Set(['@a:hs']));
     TestBed.tick();
@@ -758,30 +727,24 @@ describe('SelectedRoomLibraryService', () => {
       spaces: [ACTIVE_SPACE],
       invitations: [ACTIVE_INVITE],
     });
-    expect(a.listenerCount()).toBe(0);
-    expect(b.listenerCount()).toBe(0);
+    expect(harness.openLinks()).toBe(0);
   });
 
-  it('cancels a queued projection before detaching on destruction', async () => {
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
-    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
-    setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
+  it('closes its links on destruction', () => {
+    const harness = setup({
+      ...AB,
+      rooms: {
+        '@a:hs': [row('!sa:hs', { kind: 'space' })],
+        '@b:hs': [row('!sb:hs', { kind: 'space' })],
+      },
     });
-    a.emit(RoomEvent.Receipt);
+    harness.service.view();
+    expect(harness.openLinks()).toBe(2);
 
     TestBed.resetTestingModule();
-    await flushProjection();
 
-    expect(a.listenerCount()).toBe(0);
-    expect(b.listenerCount()).toBe(0);
-    expect(a.attachmentCount()).toBe(9);
-    expect(a.detachmentCount()).toBe(9);
+    expect(harness.openLinks()).toBe(0);
+    expect(harness.linkCounts()).toEqual({ opened: 2, closed: 2 });
   });
 
   it('keeps selection commands cold and returns typed unavailable recovery', async () => {
@@ -820,14 +783,11 @@ describe('SelectedRoomLibraryService', () => {
         synced: new Set(synced),
         prepared: new Set(prepared),
         active: '@b:hs',
-        clients: new Map([
-          [
-            '@a:hs',
-            fakeClient('@a:hs', [fakeRoom('!s:hs', { kind: 'space' })]),
-          ],
-          ['@b:hs', fakeClient('@b:hs', [fakeRoom('!r:hs')])],
-          ['@c:hs', fakeClient('@c:hs', [fakeRoom('!c:hs')])],
-        ]),
+        rooms: {
+          '@a:hs': [row('!s:hs', { kind: 'space' })],
+          '@b:hs': [row('!r:hs')],
+          '@c:hs': [row('!c:hs')],
+        },
       }).service;
 
     it('makes a space the Account itself has joined available', () => {
@@ -890,7 +850,7 @@ describe('SelectedRoomLibraryService', () => {
     });
 
     // A selected Account that failed to start lists none of its rooms either.
-    it('does not count a space held by a selected Account whose client is not live', () => {
+    it('does not count a space held by a selected Account that is not live', () => {
       expect(
         mixed(
           ['@a:hs', '@b:hs'],
@@ -919,7 +879,7 @@ describe('SelectedRoomLibraryService', () => {
       );
     });
 
-    it('makes it unavailable for an Account whose client is not live, or a malformed id', () => {
+    it('makes it unavailable for an Account that is not live, or a malformed id', () => {
       const service = mixed(['@a:hs', '@b:hs'], []);
 
       expect(service.spaceAvailability('@gone:hs', '!s:hs')).toBe(
@@ -930,26 +890,15 @@ describe('SelectedRoomLibraryService', () => {
       );
     });
 
-    // The SDK keeps a left or kicked room in its store, with a `leave` membership.
-    it('makes a space the Account has left unavailable, though its client still stores it', () => {
+    // The room list drops a left space; one only knocked on is listed but not held.
+    it('makes a space the Accounts have only knocked on unavailable', () => {
       const service = setup({
-        selected: new Set(['@a:hs', '@b:hs']),
-        live: ['@a:hs', '@b:hs'],
+        ...AB,
         active: '@a:hs',
-        clients: new Map([
-          [
-            '@a:hs',
-            fakeClient('@a:hs', [
-              fakeRoom('!s:hs', { kind: 'space', membership: 'leave' }),
-            ]),
-          ],
-          [
-            '@b:hs',
-            fakeClient('@b:hs', [
-              fakeRoom('!s:hs', { kind: 'space', membership: 'leave' }),
-            ]),
-          ],
-        ]),
+        rooms: {
+          '@a:hs': [row('!s:hs', { kind: 'space', membership: 'knock' })],
+          '@b:hs': [row('!s:hs', { kind: 'space', membership: 'knock' })],
+        },
       }).service;
 
       expect(service.spaceAvailability('@a:hs', '!s:hs')).toBe('unavailable');
@@ -960,12 +909,9 @@ describe('SelectedRoomLibraryService', () => {
     // space they just joined wait for the join (RoomReadinessService) instead.
     it('does not count a space the Account is only invited to', () => {
       const service = setup({
-        clients: new Map([
-          [
-            '@active:hs',
-            fakeClient('@active:hs', [fakeRoom('!s:hs', { kind: 'invite' })]),
-          ],
-        ]),
+        rooms: {
+          '@active:hs': [row('!s:hs', { kind: 'space', membership: 'invite' })],
+        },
       }).service;
 
       expect(service.spaceAvailability('@active:hs', '!s:hs')).toBe(
@@ -975,18 +921,12 @@ describe('SelectedRoomLibraryService', () => {
 
     it("does not count another selected Account's invitation", () => {
       const service = setup({
-        selected: new Set(['@a:hs', '@b:hs']),
-        live: ['@a:hs', '@b:hs'],
+        ...AB,
         active: '@b:hs',
-        clients: new Map([
-          [
-            '@a:hs',
-            fakeClient('@a:hs', [
-              fakeRoom('!s:hs', { kind: 'space', membership: 'invite' }),
-            ]),
-          ],
-          ['@b:hs', fakeClient('@b:hs', [fakeRoom('!r:hs')])],
-        ]),
+        rooms: {
+          '@a:hs': [row('!s:hs', { kind: 'space', membership: 'invite' })],
+          '@b:hs': [row('!r:hs')],
+        },
       }).service;
 
       expect(service.spaceAvailability('@b:hs', '!s:hs')).toBe('unavailable');
@@ -999,34 +939,28 @@ describe('SelectedRoomLibraryService', () => {
     });
 
     describe('as a reactive read', () => {
-      it('follows a membership change of a selected Account in the mixed view', async () => {
-        const space = fakeRoom('!s:hs', { kind: 'space' });
-        const a = fakeClient('@a:hs', [space]);
+      it('follows a membership change of a selected Account in the mixed view', () => {
         const harness = setup({
-          selected: new Set(['@a:hs', '@b:hs']),
-          live: ['@a:hs', '@b:hs'],
+          ...AB,
           active: '@b:hs',
-          clients: new Map([
-            ['@a:hs', a],
-            ['@b:hs', fakeClient('@b:hs', [fakeRoom('!r:hs')])],
-          ]),
+          rooms: {
+            '@a:hs': [row('!s:hs', { kind: 'space' })],
+            '@b:hs': [row('!r:hs')],
+          },
         });
         const availability = TestBed.runInInjectionContext(() =>
           computed(() => harness.service.spaceAvailability('@b:hs', '!s:hs')),
         );
         expect(availability()).toBe('available');
 
-        space.getMyMembership = () => 'leave';
-        a.emit(RoomEvent.MyMembership);
-        await flushProjection();
+        harness.fake.leave('@a:hs', '!s:hs').subscribe();
 
         expect(availability()).toBe('unavailable');
       });
 
       it("follows the active Account's spaces in the single-Account view", () => {
-        const space = fakeRoom('!s:hs', { kind: 'space' });
         const harness = setup({
-          clients: new Map([['@active:hs', fakeClient('@active:hs', [space])]]),
+          rooms: { '@active:hs': [row('!s:hs', { kind: 'space' })] },
         });
         const availability = TestBed.runInInjectionContext(() =>
           computed(() =>
@@ -1035,40 +969,42 @@ describe('SelectedRoomLibraryService', () => {
         );
         expect(availability()).toBe('available');
 
-        space.getMyMembership = () => 'leave';
-        harness.activeSpaces.set([]);
-        TestBed.tick();
+        harness.fake.leave('@active:hs', '!s:hs').subscribe();
 
         expect(availability()).toBe('unavailable');
       });
 
-      it('follows the first server sync, the cache replay and the selection', async () => {
+      it('follows the first server sync, the cache replay and the selection', () => {
         const harness = setup({
-          selected: new Set(['@a:hs', '@b:hs']),
-          live: ['@a:hs', '@b:hs'],
+          ...AB,
           synced: new Set(),
           prepared: new Set(['@b:hs']),
           active: '@b:hs',
-          clients: new Map([
-            [
-              '@a:hs',
-              fakeClient('@a:hs', [fakeRoom('!s:hs', { kind: 'space' })]),
-            ],
-            ['@b:hs', fakeClient('@b:hs', [fakeRoom('!r:hs')])],
-          ]),
+          rooms: {
+            '@a:hs': [row('!s:hs', { kind: 'space' })],
+            '@b:hs': [row('!r:hs')],
+          },
         });
+        const status = (synced: boolean, prepared: boolean) =>
+          harness.session.update((s) => ({
+            ...s,
+            accounts: [
+              account('@a:hs', 1, { synced: false, prepared }),
+              account('@b:hs', 1, { synced, prepared: true }),
+            ],
+          }));
         const availability = TestBed.runInInjectionContext(() =>
           computed(() => harness.service.spaceAvailability('@b:hs', '!t:hs')),
         );
         expect(availability()).toBe('unconfirmed');
 
-        harness.synced.set(new Set(['@b:hs']));
+        status(true, false);
         expect(availability()).toBe('unconfirmed'); // A has not loaded its cache
 
-        harness.prepared.set(new Set(['@a:hs', '@b:hs']));
+        status(true, true);
         expect(availability()).toBe('unavailable');
 
-        harness.prepared.set(new Set(['@b:hs']));
+        status(true, false);
         harness.selected.set(new Set(['@b:hs']));
         expect(availability()).toBe('unavailable');
       });
