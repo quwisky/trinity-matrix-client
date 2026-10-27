@@ -191,10 +191,21 @@ export function applicationCapabilityProviders(
         return {
           typing: (accountId, roomId) => {
             const typing = rooms.typing(accountId);
-            return computed(() =>
-              (typing()[roomId] ?? []).filter(
-                (typist) => typist.userId !== accountId,
-              ),
+            return computed(
+              () =>
+                (typing()[roomId] ?? []).filter(
+                  (typist) => typist.userId !== accountId,
+                ),
+              // Typing in another room re-emits the map; this room's list must not re-render.
+              {
+                equal: (a, b) =>
+                  a.length === b.length &&
+                  a.every(
+                    (typist, i) =>
+                      typist.userId === b[i].userId &&
+                      typist.displayName === b[i].displayName,
+                  ),
+              },
             );
           },
         };

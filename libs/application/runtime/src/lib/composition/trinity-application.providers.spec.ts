@@ -289,6 +289,35 @@ describe('Trinity application provider composition', () => {
     expect(port.typing('@me:hs', '!quiet:hs')()).toEqual([]);
   });
 
+  it('CONVERSATION_TYPING keeps the same list while only other rooms change', () => {
+    const bob = { userId: '@bob:hs', displayName: 'Bob' };
+    const typing = signal<
+      Record<string, { userId: string; displayName: string }[]>
+    >({
+      '!r:hs': [bob],
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        ...applicationCapabilityProviders({
+          buildInfo: {} as BuildInfo,
+          releaseNotes: [],
+          pushConfig: null,
+        }),
+        MockProvider(RoomListStore, {
+          typing: (() => typing.asReadonly()) as never,
+        }),
+      ],
+    });
+    const names = TestBed.inject(CONVERSATION_TYPING).typing('@me:hs', '!r:hs');
+    const first = names();
+
+    typing.set({ '!r:hs': [{ ...bob }], '!other:hs': [bob] });
+    expect(names()).toBe(first);
+
+    typing.set({ '!r:hs': [{ ...bob, displayName: 'Robert' }] });
+    expect(names()).toEqual([{ ...bob, displayName: 'Robert' }]);
+  });
+
   it('tells notifications nobody is looking while App lock covers the app', () => {
     const status = signal<AppLockStatus>('unknown');
     const key = { accountId: '@me:hs', roomId: '!r:hs' };
