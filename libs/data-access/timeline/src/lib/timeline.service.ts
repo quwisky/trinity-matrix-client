@@ -57,12 +57,12 @@ import {
 import {
   resolveShieldsInto,
   resolvedShields,
-  shieldKey,
   shieldsToCheck,
   shownShield,
   shownSubject,
   unencryptedShieldFor,
 } from './shields';
+import { shieldKey } from './shield-presentation';
 import { projectMessage } from './project-message';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
 import { scrollbackLive } from './live-scrollback';

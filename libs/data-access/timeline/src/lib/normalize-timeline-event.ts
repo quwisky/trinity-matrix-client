@@ -29,12 +29,8 @@ import type {
   ReplyPreview,
   UndecryptableReason,
 } from './message-presentation';
-import {
-  shownContent,
-  shownSubject,
-  showsEdit,
-  unencryptedShield,
-} from './shields';
+import { shownContent, shownSubject, showsEdit } from './shields';
+import { unencryptedShield } from './shield-presentation';
 import { undecryptableReasonOf } from './undecryptable-reason';
 
 const SYSTEM_EVENT_TYPES = new Set<string>([

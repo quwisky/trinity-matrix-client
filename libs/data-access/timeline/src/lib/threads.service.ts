@@ -46,13 +46,13 @@ import {
 import {
   resolveShieldsInto,
   resolvedShields,
-  shieldKey,
   shieldsToCheck,
   shownContent,
   shownShield,
   shownSubject,
   unencryptedShieldFor,
 } from './shields';
+import { shieldKey } from './shield-presentation';
 import { eventRevision } from './event-revision';
 import { onWindowFocus, windowHasFocus } from './window-focus';
 import { projectMessage } from './project-message';
