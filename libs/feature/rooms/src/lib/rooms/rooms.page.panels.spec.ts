@@ -69,7 +69,6 @@ describe('RoomsPage panels, pins and media', () => {
   let parentSpaceIds: Mock;
   let railSpacesSignal: ReturnType<typeof signal<SpaceSummary[]>>;
   let supportsRestricted: Mock;
-  let canCurate: Mock;
   let createSpace: Mock;
   let addExistingRoom: Mock;
   let currentIdentity: Mock;
@@ -101,7 +100,6 @@ describe('RoomsPage panels, pins and media', () => {
     parentSpaceIds = vi.fn(() => [] as string[]);
     railSpacesSignal = signal<SpaceSummary[]>([]);
     supportsRestricted = vi.fn(() => false);
-    canCurate = vi.fn(() => true);
     createSpace = vi.fn(() => of('!new-space:hs'));
     addExistingRoom = vi.fn(() => of(undefined));
     currentIdentity = vi.fn(() => ({
@@ -150,7 +148,7 @@ describe('RoomsPage panels, pins and media', () => {
           mixing: signal(false),
           selected: signal(new Set(['@me:hs'])),
         }),
-        MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
+        MockProvider(SpaceChildrenService, { addExistingRoom }),
         MockProvider(TrnAlertService, { confirm$: alertConfirm }),
         MockProvider(MediaPipeline),
         matrixClientProvider(),
