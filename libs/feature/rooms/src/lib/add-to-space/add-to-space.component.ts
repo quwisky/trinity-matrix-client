@@ -94,8 +94,7 @@ export class AddToSpaceComponent implements OnInit {
   /**
    * Joined rooms and spaces, minus the target and anything already linked into it. Reads
    * the space's links (synced state), not the hierarchy fetch, so an added room leaves the
-   * list as soon as the write echoes back; the data-access `linksFor`
-   * read makes that a declared dependency.
+   * list as soon as the write echoes back.
    */
   readonly candidates = computed<AddCandidate[]>(() =>
     this.candidateState().map((candidate) => ({

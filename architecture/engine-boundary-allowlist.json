@@ -66,8 +66,6 @@
     "libs/data-access/room-administration/src/lib/room-upgrade.service.ts",
     "libs/data-access/room-library/src/lib/invite-permission.service.ts",
     "libs/data-access/room-library/src/lib/rooms-in-common.service.ts",
-    "libs/data-access/room-library/src/lib/space-children.service.ts",
-    "libs/data-access/room-library/src/lib/space-contents.service.ts",
     "libs/data-access/timeline/src/lib/conversation-message-adapter.service.ts",
     "libs/data-access/timeline/src/lib/conversation-pins.controller.ts",
     "libs/data-access/timeline/src/lib/conversation-search.service.ts",
