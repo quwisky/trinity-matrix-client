@@ -173,6 +173,9 @@ export class TimelineService {
     );
   });
 
+  /** Whether the open room is in the engine's view of its Account. */
+  readonly available = computed(() => !!this.store()?.available());
+
   readonly loadingOlder = computed(
     () => this.store()?.backPagination() === 'paginating',
   );

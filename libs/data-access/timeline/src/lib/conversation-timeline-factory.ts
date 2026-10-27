@@ -114,7 +114,8 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       threads = injector.get(ThreadsService);
       pins = injector.get(ConversationPinsController);
       search = injector.get(ConversationSearchController);
-      readiness.start(key, client, timeline);
+      timeline.open(key);
+      readiness.start(key, timeline);
       threads.attach(key, client);
       pins.attach(key, client);
       search.attach(key, client);

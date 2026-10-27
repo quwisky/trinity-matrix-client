@@ -2,16 +2,15 @@ import {
   Injectable,
   computed,
   effect,
+  inject,
   signal,
   untracked,
   type Signal,
 } from '@angular/core';
 import {
-  ClientEvent,
-  SyncState,
-  type MatrixClient,
-  type SyncStateData,
-} from 'matrix-js-sdk';
+  SessionStateService,
+  type SessionAccountStatus,
+} from '@trinity/data-access/matrix-client';
 import type { Subscription } from 'rxjs';
 import type { ConversationKey } from './conversation-messages';
 import type { TimelineService } from './timeline.service';
@@ -35,12 +34,7 @@ export const READY_LOAD_STATE = Object.freeze({ kind: 'ready' } as const);
 
 export type ReadinessTimeline = Pick<
   TimelineService,
-  | 'open'
-  | 'setVisible'
-  | 'messages'
-  | 'canLoadOlder'
-  | 'loadOlder'
-  | 'loadingOlder'
+  'available' | 'messages' | 'canLoadOlder' | 'loadOlder' | 'loadingOlder'
 >;
 
 /** Pages of history fetched for an empty Room before it settles `empty`. */
@@ -52,45 +46,43 @@ type Phase =
   | { readonly kind: 'backfill' }
   | Exclude<TimelineLoadState, { readonly kind: 'loading' }>;
 
-const isSynced = (state: SyncState | null): boolean =>
-  state === SyncState.Prepared || state === SyncState.Syncing;
+type Status = SessionAccountStatus | null;
+
+const isSynced = (status: Status): boolean =>
+  status?.syncState === 'prepared' || status?.syncState === 'syncing';
 /**
- * A sync from the server has completed. The SDK also reports Prepared for the sync it
- * restores from its IndexedDB cache (`fromCache`), which can predate rooms joined since.
+ * A sync from the server has completed. A `prepared` the client restored from its cache
+ * (`roomsPrepared` without `serverSynced`) can predate rooms joined since.
  */
-const isLiveSynced = (
-  state: SyncState | null,
-  data: SyncStateData | null | undefined,
-): boolean =>
-  state === SyncState.Syncing ||
-  (state === SyncState.Prepared && !data?.fromCache);
-const isStopped = (state: SyncState | null): boolean =>
-  state === SyncState.Stopped || state === SyncState.Error;
+const isLiveSynced = (status: Status): boolean =>
+  status?.syncState === 'syncing' ||
+  (status?.syncState === 'prepared' && status.serverSynced);
+const isStopped = (status: Status): boolean =>
+  status?.syncState === 'stopped' || status?.syncState === 'error';
 
 /**
  * The lifecycle-backed loading interval of one Conversation's main timeline.
  *
- * `TimelineService.open()` projects whatever the SDK holds, synchronously, so an empty
- * list cannot say "loading". This owns the three real waits (the Room not yet in the
- * Account's client, the Account's first sync, and the first backfill of a Room with
- * nothing displayable) and names every outcome. One instance lives in each Conversation's
- * injector and is stopped on release, so a previous Room can never publish into the
- * focused one.
+ * The timeline store projects whatever the engine holds, so an empty list cannot say
+ * "loading". This owns the three real waits (the Room not yet available to the Account,
+ * the Account's first sync, and the first backfill of a Room with nothing displayable) and
+ * names every outcome from the Account's session status. One instance lives in each
+ * Conversation's injector and is stopped on release, so a previous Room can never publish
+ * into the focused one.
  *
- * Only a never-synced Account (`getSyncState() === null`) waits for sync; transient
- * states (Reconnecting, Catchup, Error) never block an Account that already synced.
- * After `sync-stopped` a listener stays attached and re-runs on Prepared/Syncing.
+ * Only an Account whose rooms were never prepared waits for sync; transient states
+ * (Reconnecting, Catchup, Error) never block an Account that already synced. After
+ * `sync-stopped` it keeps watching and re-runs once the Account is prepared or syncing.
  *
  * A capped `empty` does not return to `ready` if the list's own paging later loads
  * displayable messages: the rows still render, the state only stops claiming loading.
  */
 @Injectable()
 export class ConversationTimelineReadiness {
+  private readonly session = inject(SessionStateService);
   private readonly phase = signal<Phase>(READY_LOAD_STATE);
   private readonly timelineRef = signal<ReadinessTimeline | null>(null);
   private key: ConversationKey = { accountId: '', roomId: '' };
-  private client: MatrixClient | null = null;
-  private detach: (() => void) | null = null;
   private backfill: Subscription | null = null;
   private page = 0;
   private visible = true;
@@ -99,10 +91,14 @@ export class ConversationTimelineReadiness {
   constructor() {
     effect(() => {
       const timeline = this.timelineRef();
-      timeline?.loadingOlder();
-      timeline?.messages();
-      timeline?.canLoadOlder();
-      untracked(() => this.nextPage());
+      if (!timeline) return;
+      // Whichever client generation is live: its status is keyed by the account alone.
+      const status = this.session.status(this.key.accountId);
+      const available = timeline.available();
+      timeline.loadingOlder();
+      timeline.messages();
+      timeline.canLoadOlder();
+      untracked(() => this.react(status, available));
     });
   }
 
@@ -123,13 +119,9 @@ export class ConversationTimelineReadiness {
     }
   });
 
-  start(
-    key: ConversationKey,
-    client: MatrixClient,
-    timeline: ReadinessTimeline,
-  ): void {
+  /** Follows a timeline the caller has already opened for `key`. */
+  start(key: ConversationKey, timeline: ReadinessTimeline): void {
     this.key = key;
-    this.client = client;
     this.timelineRef.set(timeline);
     this.run();
   }
@@ -160,78 +152,55 @@ export class ConversationTimelineReadiness {
 
   private run(): void {
     this.cancel();
-    const client = this.client;
     const timeline = this.timelineRef();
-    if (!client || !timeline || this.stopped) return;
-    if (!client.getRoom(this.key.roomId)) {
-      this.waitForRoom(client);
+    if (!timeline || this.stopped) return;
+    const status = this.session.status(this.key.accountId);
+    if (!timeline.available()) {
+      if (isStopped(status)) this.fail('sync-stopped');
+      // Live-synced and still absent: the Room is not on this Account (yet). Say so now
+      // rather than after the next long-poll; the error keeps watching for it to arrive.
+      else if (isLiveSynced(status)) this.fail('room-unavailable');
+      else this.phase.set({ kind: 'room-pending' });
       return;
     }
-    timeline.open(this.key);
-    // open() forces visible; a hidden Conversation must not mark read or bypass compaction.
-    if (!this.visible) timeline.setVisible(false);
-    if (client.getSyncState() === null) {
-      this.waitForSync(client);
+    if (!status?.roomsPrepared) {
+      this.phase.set({ kind: 'initial-sync' });
       return;
     }
     this.settle();
   }
 
-  private waitForRoom(client: MatrixClient): void {
-    if (isStopped(client.getSyncState())) {
-      this.fail('sync-stopped');
-      return;
+  /** Moves a waiting phase on from the Account's status and the Room's availability. */
+  private react(status: Status, available: boolean): void {
+    if (this.stopped) return;
+    const phase = this.phase();
+    switch (phase.kind) {
+      case 'room-pending':
+        if (available) this.run();
+        else if (isStopped(status)) this.fail('sync-stopped');
+        else if (isLiveSynced(status)) this.fail('room-unavailable');
+        // Reconnecting / Catchup / a prepared restored from the cache: keep waiting.
+        return;
+      case 'initial-sync':
+        if (isStopped(status)) this.fail('sync-stopped');
+        else if (status?.roomsPrepared) this.settle();
+        return;
+      case 'backfill':
+        this.nextPage();
+        return;
+      case 'error':
+        // The SDK keeps retrying after Error; recover when sync is running again. A Room
+        // accepted elsewhere, or a late sync: open it as soon as it lands, no Retry needed.
+        if (
+          (phase.reason === 'sync-stopped' && isSynced(status)) ||
+          (phase.reason === 'room-unavailable' && available)
+        ) {
+          this.run();
+        }
+        return;
+      default:
+        return;
     }
-    // Live-synced and still absent: the Room is not on this Account (yet). Say so now
-    // rather than after the next long-poll; `fail` keeps watching for it to arrive.
-    if (isLiveSynced(client.getSyncState(), client.getSyncStateData())) {
-      this.fail('room-unavailable');
-      return;
-    }
-    this.phase.set({ kind: 'room-pending' });
-    const onRoom = (): void => {
-      if (client.getRoom(this.key.roomId)) this.run();
-    };
-    const onSync = (
-      state: SyncState,
-      _prev: SyncState | null,
-      data?: SyncStateData,
-    ): void => {
-      if (isStopped(state)) this.fail('sync-stopped');
-      else if (isLiveSynced(state, data) && !client.getRoom(this.key.roomId))
-        this.fail('room-unavailable');
-      // Reconnecting / Catchup / a Prepared restored from the cache: keep waiting.
-    };
-    this.listen(client, onRoom, onSync);
-  }
-
-  private waitForSync(client: MatrixClient): void {
-    this.phase.set({ kind: 'initial-sync' });
-    const onSync = (state: SyncState): void => {
-      if (isStopped(state)) this.fail('sync-stopped');
-      else if (isSynced(state)) {
-        this.cancel();
-        this.settle();
-      }
-    };
-    this.listen(client, null, onSync);
-  }
-
-  private listen(
-    client: MatrixClient,
-    onRoom: (() => void) | null,
-    onSync: (
-      state: SyncState,
-      prev: SyncState | null,
-      data?: SyncStateData,
-    ) => void,
-  ): void {
-    if (onRoom) client.on(ClientEvent.Room, onRoom);
-    client.on(ClientEvent.Sync, onSync);
-    this.detach = () => {
-      if (onRoom) client.off(ClientEvent.Room, onRoom);
-      client.off(ClientEvent.Sync, onSync);
-    };
   }
 
   private settle(): void {
@@ -293,28 +262,9 @@ export class ConversationTimelineReadiness {
     if (this.stopped) return;
     this.cancel();
     this.phase.set({ kind: 'error', reason });
-    const client = this.client;
-    if (reason === 'sync-stopped' && client) {
-      // The SDK keeps retrying after Error; recover when sync is running again.
-      this.listen(client, null, (state) => {
-        if (isSynced(state)) this.run();
-      });
-    }
-    if (reason === 'room-unavailable' && client) {
-      // Accepted elsewhere, or a late sync: open it as soon as it lands, no Retry needed.
-      this.listen(
-        client,
-        () => {
-          if (client.getRoom(this.key.roomId)) this.run();
-        },
-        () => undefined,
-      );
-    }
   }
 
   private cancel(): void {
-    this.detach?.();
-    this.detach = null;
     this.backfill?.unsubscribe();
     this.backfill = null;
   }

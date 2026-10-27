@@ -69,7 +69,6 @@
     "libs/data-access/timeline/src/lib/conversation-search.service.ts",
     "libs/data-access/timeline/src/lib/conversation-text-sender.service.ts",
     "libs/data-access/timeline/src/lib/conversation-timeline-factory.ts",
-    "libs/data-access/timeline/src/lib/conversation-timeline-readiness.ts",
     "libs/data-access/timeline/src/lib/edit-history.service.ts",
     "libs/data-access/timeline/src/lib/live-timeline-trim.ts",
     "libs/data-access/timeline/src/lib/live-timeline-trimmer.service.ts",
