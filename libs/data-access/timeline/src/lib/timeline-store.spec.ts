@@ -208,7 +208,6 @@ describe('TimelineStore', () => {
     const events = Array.from({ length: 150 }, (_, i) =>
       fakeEventItem(`$e${i}`, bob),
     );
-    // Virtual items take window slots too.
     const items = [...events.slice(0, 120), MARKER, ...events.slice(120)];
     fake.seed(alice, ROOM, items);
     const store = open();
@@ -218,12 +217,13 @@ describe('TimelineStore', () => {
     store.setVisible(false);
 
     expect(store.items()).toHaveLength(151);
-    expect(ids(store)).toEqual(events.slice(-99).map((i) => i.eventId));
-    expect(store.messages()[0]).toBe(visibleViews[51]);
+    expect(ids(store)).toEqual(events.slice(-100).map((i) => i.eventId));
+    expect(store.messages()[0]).toBe(visibleViews[50]);
 
     store.setVisible(true);
 
-    expect(store.messages()).toHaveLength(150);
+    expect(store.messages()).toEqual(visibleViews);
+    store.messages().forEach((view, i) => expect(view).toBe(visibleViews[i]));
   });
 
   it('a feed error clears the store to unavailable', () => {

@@ -164,7 +164,14 @@ export class TimelineStore {
       untracked(this._room)?.hasEncryptionStateEvent ?? this.rowsEncrypted;
     const previous = encrypted === this.rowsEncrypted ? this.rows : null;
     this.rowsEncrypted = encrypted;
-    const shown = this.visible ? items : items.slice(-RETAINED_EVENT_LIMIT);
+    // Hidden, only the newest events are presented; virtual items take no slot.
+    let skipped = this.visible
+      ? 0
+      : Math.max(
+          0,
+          items.filter((item) => item.kind === 'event').length -
+            RETAINED_EVENT_LIMIT,
+        );
     const room = {
       roomId: this.key.roomId,
       encrypted,
@@ -172,9 +179,15 @@ export class TimelineStore {
     };
     const rows = new Map<string, PresentedRow>();
     const views: MessageView[] = [];
-    for (const item of shown) {
+    for (const item of items) {
       if (item.kind !== 'event') continue;
       const kept = previous?.get(item.uniqueId);
+      if (skipped > 0) {
+        skipped--;
+        // Keep the row so showing the window again reuses its view.
+        if (kept) rows.set(item.uniqueId, kept);
+        continue;
+      }
       const row: PresentedRow =
         kept && (kept.item === item || plainEqual(kept.item, item))
           ? { item, view: kept.view }

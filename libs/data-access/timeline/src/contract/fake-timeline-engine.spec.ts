@@ -135,6 +135,26 @@ describe('FakeTimelineEngine', () => {
     ]);
   });
 
+  it('reactionDetails answers only for loaded events', async () => {
+    const engine = new FakeTimelineEngine();
+    engine.pageSize = 1;
+    const roomId = await engine.asBob.createRoom('r');
+    const older = await engine.asBob.send(roomId, 'old');
+    const newer = await engine.asBob.send(roomId, 'new');
+    await engine.asBob.invite(roomId, engine.alice);
+    await engine.asAlice.join(roomId);
+
+    const unloaded = await firstValueFrom(
+      engine.reactionDetails(engine.alice, roomId, older),
+    );
+    const loaded = await firstValueFrom(
+      engine.reactionDetails(engine.alice, roomId, newer),
+    );
+
+    expect(unloaded.ok).toBe(false);
+    expect(loaded.ok).toBe(true);
+  });
+
   it('emitDiffs emits granular diffs and keeps them in later snapshots', async () => {
     const engine = new FakeTimelineEngine();
     const item = fakeEventItem('$a', engine.bob);

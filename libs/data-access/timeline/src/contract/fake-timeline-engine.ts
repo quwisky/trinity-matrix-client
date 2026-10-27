@@ -353,7 +353,10 @@ export class FakeTimelineEngine implements TimelineEngine {
     eventId: string,
   ): Observable<EngineResult<readonly ReactionDetailGroup[]>> {
     return this.run(accountId, roomId, (room) => {
-      const item = this.event(room, eventId);
+      const item = this.visible(accountId, room).find(
+        (i): i is EventTimelineItem =>
+          i.kind === 'event' && i.eventId === eventId,
+      );
       if (!item) return engineFail(MESSAGE_UNAVAILABLE);
       return engineOk(
         item.reactions.map((group) => ({

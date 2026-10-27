@@ -16,12 +16,6 @@ export type TimelineFocus =
   | { readonly kind: 'live' }
   | { readonly kind: 'thread'; readonly rootEventId: string };
 
-/** A local echo has a transaction id only until its remote echo. */
-export interface TimelineItemKey {
-  readonly eventId: string | null;
-  readonly transactionId: string | null;
-}
-
 export interface Profile {
   readonly displayName: string | null;
   /** Another member shares the name, so it is shown with the user id. */
