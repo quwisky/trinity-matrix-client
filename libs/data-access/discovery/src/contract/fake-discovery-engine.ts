@@ -11,8 +11,15 @@ import type {
   PublicRoomSummary,
   PublicRoomsPage,
   PublicRoomsQuery,
+  RoomLinkPreviewData,
   UserDirectoryPage,
 } from '../lib/discovery-engine';
+
+const NOT_FOUND = {
+  kind: 'http',
+  code: 'request-failed',
+  diagnostic: { kind: 'http', httpStatus: 404 },
+} as const;
 
 /** In-memory directory: signed-in accounts, public rooms, users and a domain table. */
 export class FakeDiscoveryEngine implements DiscoveryEngine {
@@ -20,6 +27,8 @@ export class FakeDiscoveryEngine implements DiscoveryEngine {
   readonly accounts = new Set<string>();
   readonly rooms: PublicRoomSummary[] = [];
   readonly users: DiscoveredUser[] = [];
+  /** Rooms a link resolves to, found by room ID or canonical address. */
+  readonly previews: RoomLinkPreviewData[] = [];
   /** Server name to client base URL. */
   readonly servers = new Map<string, string>();
 
@@ -64,20 +73,62 @@ export class FakeDiscoveryEngine implements DiscoveryEngine {
   joinRoom(
     accountId: string,
     roomIdOrAlias: string,
+    via: readonly string[],
   ): Observable<EngineResult<{ readonly roomId: string }>> {
     return defer(() => {
-      this.calls.push(`joinRoom:${accountId}:${roomIdOrAlias}`);
+      this.calls.push(
+        `joinRoom:${accountId}:${roomIdOrAlias}:${via.join(',')}`,
+      );
       if (!this.accounts.has(accountId)) return of(engineFail(NOT_SIGNED_IN));
       const room = this.rooms.find(
         (r) => r.roomId === roomIdOrAlias || r.alias === roomIdOrAlias,
       );
       return of(
-        room
-          ? engineOk({ roomId: room.roomId })
+        room ? engineOk({ roomId: room.roomId }) : engineFail(NOT_FOUND),
+      );
+    });
+  }
+
+  previewRoom(
+    accountId: string,
+    roomIdOrAlias: string,
+    via: readonly string[],
+  ): Observable<EngineResult<RoomLinkPreviewData>> {
+    return defer(() => {
+      this.calls.push(`previewRoom:${accountId}:${roomIdOrAlias}`);
+      if (!this.accounts.has(accountId)) return of(engineFail(NOT_SIGNED_IN));
+      const preview = this.preview(roomIdOrAlias);
+      if (!preview) return of(engineFail(NOT_FOUND));
+      // An alias resolves through its own server, which joins the via list.
+      const server = roomIdOrAlias.startsWith('#')
+        ? [roomIdOrAlias.split(':').slice(1).join(':')]
+        : [];
+      return of(
+        engineOk({ ...preview, via: [...new Set([...via, ...server])] }),
+      );
+    });
+  }
+
+  knockRoom(
+    accountId: string,
+    roomIdOrAlias: string,
+    via: readonly string[],
+    reason: string | null,
+  ): Observable<EngineResult<{ readonly roomId: string }>> {
+    return defer(() => {
+      this.calls.push(
+        `knockRoom:${accountId}:${roomIdOrAlias}:${via.join(',')}:${reason ?? ''}`,
+      );
+      if (!this.accounts.has(accountId)) return of(engineFail(NOT_SIGNED_IN));
+      const preview = this.preview(roomIdOrAlias);
+      if (!preview) return of(engineFail(NOT_FOUND));
+      return of(
+        preview.joinRule === 'knock' || preview.joinRule === 'knock_restricted'
+          ? engineOk({ roomId: preview.roomId })
           : engineFail({
-              kind: 'http',
+              kind: 'permission',
               code: 'request-failed',
-              diagnostic: { kind: 'http', httpStatus: 404 },
+              diagnostic: { kind: 'permission', httpStatus: 403 },
             }),
       );
     });
@@ -100,6 +151,12 @@ export class FakeDiscoveryEngine implements DiscoveryEngine {
         limited: matches.length > limit,
       };
     });
+  }
+
+  private preview(roomIdOrAlias: string): RoomLinkPreviewData | undefined {
+    return this.previews.find(
+      (p) => p.roomId === roomIdOrAlias || p.canonicalAddress === roomIdOrAlias,
+    );
   }
 
   private signedIn<T>(

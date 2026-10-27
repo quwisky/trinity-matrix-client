@@ -45,12 +45,18 @@ import {
 import type {
   CreateRoomRequest,
   HierarchyEntry,
+  InviteBlocking,
   RoomInfo,
   RoomListEngine,
   SpaceChildLink,
   TypingMember,
 } from '../room-list-engine';
 import { createRoomOrSpace, openDirectRoom } from './direct-rooms';
+import {
+  NO_INVITE_BLOCKING,
+  inviteBlockingOf,
+  writeInviteBlocking,
+} from './invite-permission';
 import {
   directMapOf,
   isInviteBlocked,
@@ -175,6 +181,8 @@ export class JsSdkRoomListEngine implements RoomListEngine {
 
   /** A client whose list must be re-read now: a write the SDK does not echo locally. */
   private readonly written$ = new Subject<MatrixClient>();
+  /** A client whose invite blocking must be re-read now, ahead of the `/sync` echo. */
+  private readonly blockingWritten$ = new Subject<MatrixClient>();
 
   rooms(accountId: string): Observable<readonly VectorDiff<RoomInfo>[]> {
     return defer(() => {
@@ -412,6 +420,30 @@ export class JsSdkRoomListEngine implements RoomListEngine {
       );
       return null;
     });
+  }
+
+  inviteBlocking(accountId: string): Observable<InviteBlocking> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      return client
+        ? inviteBlockingOf(
+            client,
+            this.blockingWritten$.pipe(filter((target) => target === client)),
+          )
+        : concat(of(NO_INVITE_BLOCKING), NEVER);
+    });
+  }
+
+  setInviteBlocking(
+    accountId: string,
+    blocked: boolean,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) =>
+      writeInviteBlocking(client, blocked).pipe(
+        tap(() => this.blockingWritten$.next(client)),
+        map(() => null),
+      ),
+    );
   }
 
   /** Sends the `m.space.child` event and waits for `/sync` to apply it, as {@link settle} does. */
