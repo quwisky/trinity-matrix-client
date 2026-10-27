@@ -338,6 +338,16 @@ describe('JsSdkRoomListEngine', () => {
         { membership: 'invite', invitedBy: peer, peerAvatar: 'mxc://hs/p' },
         'mxc://hs/p',
       ],
+      // Stripped state offers the inviter for every invite; only `is_direct` may use it.
+      [
+        'avatarMxc',
+        {
+          membership: 'invite',
+          invitedBy: { ...peer, isDirect: false },
+          peerAvatar: 'mxc://hs/p',
+        },
+        null,
+      ],
     ];
 
     it.each(cases)('%s from %j', (field, opts, expected, directUserId) => {

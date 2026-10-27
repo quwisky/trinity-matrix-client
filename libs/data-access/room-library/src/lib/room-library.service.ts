@@ -17,17 +17,16 @@ import {
   map,
   of,
   throwError,
-  type OperatorFunction,
 } from 'rxjs';
 import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   isValidUserId,
   plainEqual,
-  unwrapEngineResult,
   type EngineResult,
   type UnencryptedMark,
 } from '@trinity/util/matrix';
+import { unwrapOwned } from './unwrap-owned';
 import { compareRoomSummaries, roomSummaryOf } from './room-projection';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
@@ -644,22 +643,6 @@ function withPendingUnread(
     markedUnread: pending,
     hasUnread: summary.unreadCount > 0 || pending,
   };
-}
-
-/** {@link unwrapEngineResult}, with an Account that stopped being live failing as the guards do. */
-function unwrapOwned<T>(
-  notLive = 'Not signed in.',
-): OperatorFunction<EngineResult<T>, T> {
-  return (source) =>
-    source.pipe(
-      map((result) => {
-        if (!result.ok && result.failure.code === 'account-not-live') {
-          throw new Error(notLive);
-        }
-        return result;
-      }),
-      unwrapEngineResult<T>(),
-    );
 }
 
 function createRequestOf(options: CreateRoomOptions): CreateRoomRequest {

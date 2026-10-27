@@ -7,9 +7,10 @@ import {
 } from 'matrix-js-sdk';
 import { type MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
-import { buildInvite, type PendingInvite } from './invites.service';
+import type { PendingInvite } from './invites.service';
 import { compareRoomSummaries, initialOf } from './room-projection';
 import {
+  buildInvite,
   buildRoomSummary,
   directMapOf,
   isJoinedSpace,
