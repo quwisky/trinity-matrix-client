@@ -86,6 +86,21 @@ async function cs(
   return res.json();
 }
 
+/** MSC4380 through its unstable flags or spec v1.18 and later, as `/versions` reports it. */
+async function advertisesInviteBlocking(): Promise<boolean> {
+  const res = await fetch(`${baseUrl}/_matrix/client/versions`);
+  if (!res.ok) throw new Error(`Synapse /versions failed: ${res.status}`);
+  const { versions = [], unstable_features = {} } = (await res.json()) as {
+    versions?: string[];
+    unstable_features?: Record<string, boolean>;
+  };
+  return (
+    unstable_features['org.matrix.msc4380'] === true ||
+    unstable_features['org.matrix.msc4380.stable'] === true ||
+    versions.some((v) => Number(/^v1\.(\d+)$/.exec(v)?.[1]) >= 18)
+  );
+}
+
 const room = (roomId: string) => `/rooms/${encodeURIComponent(roomId)}`;
 
 let sequence = 0;
@@ -183,6 +198,7 @@ describe.skipIf(!baseUrl)('JsSdkRoomListEngine against Synapse', () => {
         alice,
         bob: bob.userId,
         serverName,
+        serverBlocksInvites: await advertisesInviteBlocking(),
         asAlice: {
           publishAlias: async (roomId, name) => {
             const alias = `#${name}:${serverName}`;

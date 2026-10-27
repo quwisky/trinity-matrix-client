@@ -79,11 +79,19 @@ export interface HierarchyEntry {
   readonly childrenState: readonly SpaceChildLink[];
 }
 
+/** MSC4380 invite blocking, enforced by the homeserver. */
+export interface InviteBlocking {
+  /** False until the server has answered `/versions`, and when that fails. */
+  readonly supported: boolean;
+  /** Whether the server turns down every invite to the account; false while unsupported. */
+  readonly blocked: boolean;
+}
+
 /**
  * `createRoom`, `createDirectMessage`, `join`, `leave` and `setTag` show their effect in
- * `rooms()`, and `setSpaceChild` and `createRoom` with a parent in `spaceChildLinks()`, open
- * subscriptions included, before they reply. `setMarkedUnread` and `markRead` write
- * account data, which shows once `/sync` returns it.
+ * `rooms()`, `setSpaceChild` and `createRoom` with a parent in `spaceChildLinks()`, and
+ * `setInviteBlocking` in `inviteBlocking()`, open subscriptions included, before they reply.
+ * `setMarkedUnread` and `markRead` write account data, which shows once `/sync` returns it.
  * The js-sdk adapter emits synchronously on subscribe; other engines may not.
  * Every command on an account that is not live returns `account-not-live`.
  */
@@ -165,5 +173,11 @@ export interface RoomListEngine {
     childId: string,
     spaceId: string,
     via: readonly string[],
+  ): Observable<EngineResult<null>>;
+  inviteBlocking(accountId: string): Observable<InviteBlocking>;
+  /** Fails with `request-failed` where the server does not support invite blocking. */
+  setInviteBlocking(
+    accountId: string,
+    blocked: boolean,
   ): Observable<EngineResult<null>>;
 }

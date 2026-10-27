@@ -41,7 +41,7 @@ export class PublicRoomsService {
 
   /** Join a room by ID or alias; resolves to the joined room's ID. Cold. */
   join(accountId: string, roomIdOrAlias: string): Observable<string> {
-    return this.engine.joinRoom(accountId, roomIdOrAlias).pipe(
+    return this.engine.joinRoom(accountId, roomIdOrAlias, []).pipe(
       unwrapEngineResult(),
       map(({ roomId }) => roomId),
     );
