@@ -182,8 +182,9 @@ export class ConversationTimelineReadiness {
         // Reconnecting / Catchup / a prepared restored from the cache: keep waiting.
         return;
       case 'initial-sync':
-        if (isStopped(status)) this.fail('sync-stopped');
-        else if (status?.roomsPrepared) this.settle();
+        // As in run(): an Account whose rooms are prepared has synced, whatever its state now.
+        if (status?.roomsPrepared) this.settle();
+        else if (isStopped(status)) this.fail('sync-stopped');
         return;
       case 'backfill':
         this.nextPage();

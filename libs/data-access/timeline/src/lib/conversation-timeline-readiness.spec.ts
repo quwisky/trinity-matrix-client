@@ -67,7 +67,7 @@ function fakeSession(history: readonly SessionSyncState[] = ['syncing']) {
   TestBed.configureTestingModule({
     providers: [{ provide: SESSION_SNAPSHOT, useValue: snapshot }],
   });
-  return { sync };
+  return { sync, snapshot };
 }
 
 function fakeTimeline() {
@@ -274,6 +274,24 @@ describe('ConversationTimelineReadiness', () => {
     });
     session.sync('prepared');
     expect(readiness.state()).toEqual({ kind: 'ready' });
+  });
+
+  it('settles an initial sync whose prepared and error arrive in one change', () => {
+    const { snapshot } = fakeSession([]);
+    const { timeline, available } = fakeTimeline();
+    available.set(true);
+    const readiness = start(timeline);
+    expect(readiness.state()).toMatchObject({ reason: 'initial-sync' });
+    snapshot.update((s) => ({
+      ...s,
+      accounts: s.accounts.map((a) => ({
+        ...a,
+        syncState: 'error' as const,
+        roomsPrepared: true,
+      })),
+    }));
+    TestBed.tick();
+    expect(readiness.state()).toEqual({ kind: 'empty' });
   });
 
   it('backfills an empty Room until a page brings messages', () => {
@@ -507,14 +525,11 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('does not fail a wait when stop runs in the same turn as the sync error', () => {
-    fakeSession([]);
+    const { snapshot } = fakeSession([]);
     const { timeline } = fakeTimeline();
     const readiness = start(timeline);
     TestBed.tick();
     const pending = readiness.state();
-    const snapshot = TestBed.inject(SESSION_SNAPSHOT) as ReturnType<
-      typeof signal<SessionSnapshot>
-    >;
     snapshot.update((s) => ({
       ...s,
       accounts: s.accounts.map((a) => ({ ...a, syncState: 'error' as const })),
@@ -555,19 +570,15 @@ describe('ConversationTimelineReadiness', () => {
     expect(readiness.state()).toEqual({ kind: 'empty' });
   });
 
-  it('readiness never shows backfill when the snapshot is synchronous', () => {
-    const fake = new FakeTimelineEngine();
-    const key = { accountId: fake.alice, roomId: ROOM };
-    fake.seed(fake.alice, ROOM, [fakeEventItem('$1', fake.bob)]);
+  /** Real TimelineService and readiness over a fake engine, with `fake.alice` synced. */
+  function overFake(fake: FakeTimelineEngine) {
+    const acknowledge = vi.fn(() => of({ kind: 'applied' }));
     TestBed.configureTestingModule({
       providers: [
         TimelineService,
         ConversationTimelineReadiness,
         { provide: TIMELINE_ENGINE, useValue: fake },
-        {
-          provide: CONVERSATION_MESSAGE_ADAPTER,
-          useValue: { acknowledge: () => of({ kind: 'applied' }) },
-        },
+        { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: { acknowledge } },
         {
           provide: SESSION_SNAPSHOT,
           useValue: signal<SessionSnapshot>({
@@ -592,8 +603,18 @@ describe('ConversationTimelineReadiness', () => {
         { provide: MediaPipeline, useValue: { present: () => ({}) } },
       ],
     });
-    const timeline = TestBed.inject(TimelineService);
-    const readiness = TestBed.inject(ConversationTimelineReadiness);
+    return {
+      acknowledge,
+      timeline: TestBed.inject(TimelineService),
+      readiness: TestBed.inject(ConversationTimelineReadiness),
+    };
+  }
+
+  it('readiness never shows backfill when the snapshot is synchronous', () => {
+    const fake = new FakeTimelineEngine();
+    const key = { accountId: fake.alice, roomId: ROOM };
+    fake.seed(fake.alice, ROOM, [fakeEventItem('$1', fake.bob)]);
+    const { timeline, readiness } = overFake(fake);
     const seen: string[] = [];
     timeline.open(key);
     readiness.start(key, timeline);
@@ -602,5 +623,34 @@ describe('ConversationTimelineReadiness', () => {
     seen.push(readiness.state().kind);
     expect(timeline.messages().map((m) => m.id)).toEqual(['$1']);
     expect(seen).toEqual(['ready', 'ready']);
+  });
+
+  it('keeps a Conversation hidden when its Room arrives while hidden', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const fake = new FakeTimelineEngine();
+    const key = { accountId: fake.alice, roomId: ROOM };
+    const { timeline, readiness, acknowledge } = overFake(fake);
+    timeline.open(key);
+    readiness.start(key, timeline);
+    timeline.setVisible(false);
+    readiness.setVisible(false);
+    expect(readiness.state()).toMatchObject({ reason: 'room-unavailable' });
+
+    const events = Array.from({ length: 101 }, (_, i) =>
+      fakeEventItem(`$${i}`, fake.bob),
+    );
+    fake.seed(fake.alice, ROOM, events);
+    TestBed.tick();
+
+    expect(timeline.available()).toBe(true);
+    expect(readiness.state()).toEqual({ kind: 'ready' });
+    // Still compacted to the hidden window, and nothing marked read.
+    expect(timeline.messages()).toHaveLength(100);
+    expect(timeline.messages()[0].id).toBe('$1');
+    expect(acknowledge).not.toHaveBeenCalled();
+
+    timeline.setVisible(true);
+    expect(timeline.messages()).toHaveLength(101);
+    expect(acknowledge).toHaveBeenCalledOnce();
   });
 });
