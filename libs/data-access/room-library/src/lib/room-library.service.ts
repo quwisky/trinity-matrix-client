@@ -1,4 +1,12 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  type Signal,
+  computed,
+  effect,
+  inject,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import {
   NEVER,
   Observable,
@@ -9,6 +17,7 @@ import {
   map,
   of,
   throwError,
+  type OperatorFunction,
 } from 'rxjs';
 import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
@@ -25,7 +34,11 @@ import {
   assertRoomLibraryGovernance,
   type RoomLibraryGovernanceKey,
 } from './room-library-governance-policy';
-import type { CreateRoomRequest, RoomInfo } from './room-list-engine';
+import type {
+  CreateRoomRequest,
+  RoomInfo,
+  TypingMember,
+} from './room-list-engine';
 import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 import { RoomListStore } from './room-list-store';
 
@@ -134,6 +147,17 @@ function sameRooms(
   return a.length === b.length && a.every((room, i) => room === b[i]);
 }
 
+interface RoomListSource {
+  readonly accountId: string;
+  readonly rows: readonly RoomInfo[];
+  readonly pending: ReadonlyMap<string, boolean>;
+}
+
+interface TypingSource {
+  readonly typing: Readonly<Record<string, readonly TypingMember[]>>;
+  readonly selves: readonly string[];
+}
+
 /** The invitee blocks invites (MSC4380), so the invite was refused. Carries no user copy. */
 export class InviteBlockedError extends Error {
   constructor(readonly userId: string) {
@@ -166,9 +190,9 @@ export class RoomLibraryService {
    * is dropped once the listed room agrees, so this holds only in-flight state rather than
    * shadowing the server.
    */
-  private readonly pendingUnread = new Map<string, boolean>();
-  private readonly pendingChanged = signal(0);
-  private previousRooms: readonly RoomSummary[] = [];
+  private readonly pendingUnread = signal<ReadonlyMap<string, boolean>>(
+    new Map(),
+  );
 
   /** The active Account's listed rooms, or none while no Account is active. */
   private readonly activeRows = computed((): readonly RoomInfo[] => {
@@ -176,28 +200,32 @@ export class RoomLibraryService {
     return accountId ? this.store.rooms(accountId)() : [];
   });
 
-  readonly rooms = computed(
-    (): RoomSummary[] => {
-      const accountId = this.session.activeAccountId() ?? '';
-      this.pendingChanged();
-      const previous = new Map(
-        this.previousRooms.map((room) => [room.id, room] as const),
+  readonly rooms: Signal<RoomSummary[]> = linkedSignal<
+    RoomListSource,
+    RoomSummary[]
+  >({
+    source: () => ({
+      accountId: this.session.activeAccountId() ?? '',
+      rows: this.activeRows(),
+      pending: this.pendingUnread(),
+    }),
+    computation: ({ accountId, rows, pending }, previous): RoomSummary[] => {
+      const kept = new Map(
+        (previous?.value ?? []).map((room) => [room.id, room] as const),
       );
       // Spaces are rendered in the server rail, not as channels in the room list.
-      const rooms = this.activeRows()
+      return rows
         .filter((info) => info.membership === 'join' && !info.isSpace)
         .map((info) =>
           reuseUnchanged(
-            previous.get(info.roomId),
-            this.applyPendingUnread(roomSummaryOf(accountId, info)),
+            kept.get(info.roomId),
+            withPendingUnread(roomSummaryOf(accountId, info), pending),
           ),
         )
         .sort(compareRoomSummaries);
-      this.previousRooms = rooms;
-      return rooms;
     },
-    { equal: sameRooms },
-  );
+    equal: sameRooms,
+  }).asReadonly();
 
   /**
    * App-wide unread total: the sum of every joined room's unread notification count (the
@@ -212,24 +240,34 @@ export class RoomLibraryService {
    * left out, not just the active one: a room both accounts are joined to renders as ONE row
    * (see `RoomSummary.accountIds`), so the other account must not announce itself there.
    */
-  readonly typingByRoom = computed(
-    (): Record<string, readonly string[]> => {
-      const accountId = this.session.activeAccountId();
-      if (!accountId) return {};
-      const selves = new Set(this.session.accountIds());
-      const byRoom: Record<string, readonly string[]> = {};
-      for (const [roomId, members] of Object.entries(
-        this.store.typing(accountId)(),
-      )) {
-        const names = members
-          .filter((member) => !selves.has(member.userId))
-          .map((member) => member.displayName);
-        if (names.length) byRoom[roomId] = names;
-      }
-      return byRoom;
-    },
-    { equal: plainEqual },
-  );
+  readonly typingByRoom: Signal<Record<string, readonly string[]>> =
+    linkedSignal<TypingSource, Record<string, readonly string[]>>({
+      source: () => {
+        const accountId = this.session.activeAccountId();
+        return {
+          typing: accountId ? this.store.typing(accountId)() : {},
+          selves: this.session.accountIds(),
+        };
+      },
+      computation: (
+        { typing, selves },
+        previous,
+      ): Record<string, readonly string[]> => {
+        const own = new Set(selves);
+        const byRoom: Record<string, readonly string[]> = {};
+        for (const [roomId, members] of Object.entries(typing)) {
+          const names = members
+            .filter((member) => !own.has(member.userId))
+            .map((member) => member.displayName);
+          if (!names.length) continue;
+          // Each sidebar row binds its own room's list, so an unchanged one keeps its reference.
+          const before = previous?.value[roomId];
+          byRoom[roomId] = before && plainEqual(before, names) ? before : names;
+        }
+        return byRoom;
+      },
+      equal: plainEqual,
+    }).asReadonly();
 
   /**
    * Room ids the `m.direct` account-data map records as direct messages, so read-only consumers
@@ -242,6 +280,21 @@ export class RoomLibraryService {
       accountId ? Object.values(this.store.directMap(accountId)()).flat() : [],
     );
   });
+
+  constructor() {
+    // Hands each confirmed flag back to the server as the list changes, not when it is read.
+    effect(() => {
+      const pending = this.pendingUnread();
+      if (!pending.size) return;
+      const rows = new Map(this.activeRows().map((row) => [row.roomId, row]));
+      const open = new Map(
+        [...pending].filter(
+          ([roomId, unread]) => rows.get(roomId)?.markedUnread !== unread,
+        ),
+      );
+      if (open.size !== pending.size) this.pendingUnread.set(open);
+    });
+  }
 
   /**
    * Retained by the Room Library session lifetime. The store keeps each live Account's room
@@ -345,7 +398,7 @@ export class RoomLibraryService {
       // without telling other members. Keep in step with TimelineService.markRead.
       const receipts = this.privacy.sendReadReceipts() ? 'public' : 'private';
       return this.engine.markRead(owner, roomId, receipts).pipe(
-        unwrapEngineResult(),
+        unwrapOwned(),
         map(() => void 0),
         catchError((error: unknown) => {
           if (flagged) this.forgetPendingUnread(roomId);
@@ -378,7 +431,7 @@ export class RoomLibraryService {
       // The write has no local echo: the room list changes only once /sync returns it.
       this.showPendingUnread(roomId, unread);
       return this.engine.setMarkedUnread(owner, roomId, unread).pipe(
-        unwrapEngineResult(),
+        unwrapOwned(),
         map(() => void 0),
         catchError((error: unknown) => {
           this.forgetPendingUnread(roomId); // put the row back
@@ -437,7 +490,7 @@ export class RoomLibraryService {
     return defer(() =>
       this.isLive(accountId)
         ? this.engine.createRoom(accountId, createRequestOf(options)).pipe(
-            unwrapEngineResult(),
+            unwrapOwned('Account unavailable.'),
             map(({ roomId }) => roomId),
           )
         : throwError(() => new Error('Account unavailable.')),
@@ -500,7 +553,7 @@ export class RoomLibraryService {
           }
           return result;
         }),
-        unwrapEngineResult(),
+        unwrapOwned(),
         map(() => void 0),
       );
     });
@@ -557,40 +610,56 @@ export class RoomLibraryService {
     return defer(() => {
       const owner = this.owning(accountId);
       return owner
-        ? run(owner).pipe(unwrapEngineResult<T>())
+        ? run(owner).pipe(unwrapOwned<T>())
         : throwError(() => new Error('Not signed in.'));
     });
   }
 
   private showPendingUnread(roomId: string, unread: boolean): void {
-    this.pendingUnread.set(roomId, unread);
-    this.pendingChanged.update((n) => n + 1);
+    this.pendingUnread.update((pending) =>
+      new Map(pending).set(roomId, unread),
+    );
   }
 
   private forgetPendingUnread(roomId: string): void {
-    this.pendingUnread.delete(roomId);
-    this.pendingChanged.update((n) => n + 1);
+    this.pendingUnread.update((pending) => {
+      const next = new Map(pending);
+      next.delete(roomId);
+      return next;
+    });
   }
+}
 
-  /**
-   * Overlay an in-flight marked-unread write, and forget it once the room list agrees. The
-   * forgetting writes no signal, so it is safe inside {@link rooms}.
-   */
-  private applyPendingUnread(summary: RoomSummary): RoomSummary {
-    const pending = this.pendingUnread.get(summary.id);
-    if (pending === undefined) {
-      return summary;
-    }
-    if (pending === summary.markedUnread) {
-      this.pendingUnread.delete(summary.id); // the echo landed; the server owns it again
-      return summary;
-    }
-    return {
-      ...summary,
-      markedUnread: pending,
-      hasUnread: summary.unreadCount > 0 || pending,
-    };
+/** `summary` with an in-flight marked-unread write overlaid, while one differs from it. */
+function withPendingUnread(
+  summary: RoomSummary,
+  pendingUnread: ReadonlyMap<string, boolean>,
+): RoomSummary {
+  const pending = pendingUnread.get(summary.id);
+  if (pending === undefined || pending === summary.markedUnread) {
+    return summary;
   }
+  return {
+    ...summary,
+    markedUnread: pending,
+    hasUnread: summary.unreadCount > 0 || pending,
+  };
+}
+
+/** {@link unwrapEngineResult}, with an Account that stopped being live failing as the guards do. */
+function unwrapOwned<T>(
+  notLive = 'Not signed in.',
+): OperatorFunction<EngineResult<T>, T> {
+  return (source) =>
+    source.pipe(
+      map((result) => {
+        if (!result.ok && result.failure.code === 'account-not-live') {
+          throw new Error(notLive);
+        }
+        return result;
+      }),
+      unwrapEngineResult<T>(),
+    );
 }
 
 function createRequestOf(options: CreateRoomOptions): CreateRoomRequest {

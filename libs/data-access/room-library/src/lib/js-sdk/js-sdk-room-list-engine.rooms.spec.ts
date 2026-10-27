@@ -601,6 +601,7 @@ describe('RoomLibraryService over the js-sdk adapter', () => {
           ? { getContent: () => ({ unread: true }) }
           : undefined;
       await echo();
+      TestBed.tick(); // the overlay is handed back as the list changes
       expect(svc.rooms()[0].markedUnread).toBe(true);
 
       // Another device clears it. With the overlay dropped, the server wins.

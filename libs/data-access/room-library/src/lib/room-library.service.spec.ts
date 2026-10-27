@@ -339,10 +339,23 @@ describe('RoomLibraryService marked unread', () => {
 
     // The stream confirms the flag: the server owns it again.
     fake.seed(alice, [fakeRoom('!r:hs', { markedUnread: true })]);
+    TestBed.tick();
     expect(svc.rooms()[0].markedUnread).toBe(true);
 
     // Another device clears it. With the overlay dropped, the server wins.
     fake.seed(alice, [fakeRoom('!r:hs')]);
+    expect(svc.rooms()[0].markedUnread).toBe(false);
+  });
+
+  it('drops a confirmed overlay even when nothing reads the list in between', async () => {
+    const { svc, fake, alice } = setup({ rooms: [fakeRoom('!r:hs')] });
+    expect(svc.rooms()[0].markedUnread).toBe(false);
+    await firstValueFrom(svc.setMarkedUnread('!r:hs', true)); // confirms at once
+
+    TestBed.tick();
+    // Another device clears the flag; rooms() was not read since the confirmation.
+    fake.seed(alice, [fakeRoom('!r:hs')]);
+
     expect(svc.rooms()[0].markedUnread).toBe(false);
   });
 
@@ -612,6 +625,27 @@ describe('RoomLibraryService per-account actions', () => {
 
     expect(setTag).toHaveBeenCalledWith(OTHER, '!r:hs', 'favourite', true);
     expect(markRead).toHaveBeenCalledWith(OTHER, '!r:hs', 'public');
+  });
+
+  it('reports an account that stopped being live as not signed in', async () => {
+    const { svc, fake } = both();
+
+    fake.failNext('account-not-live');
+    const error: unknown = await firstValueFrom(svc.leave('!r:hs')).catch(
+      (e: unknown) => e,
+    );
+    expect(error).not.toBeInstanceOf(EngineRequestError);
+    expect(error).toEqual(new Error('Not signed in.'));
+
+    fake.failNext('account-not-live');
+    await expect(
+      firstValueFrom(svc.setMarkedUnread('!r:hs', true)),
+    ).rejects.toThrow('Not signed in.');
+
+    fake.failNext('account-not-live');
+    await expect(
+      firstValueFrom(svc.createRoomFor(OTHER, { name: 'n' })),
+    ).rejects.toThrow('Account unavailable.');
   });
 
   it('surfaces a homeserver failure to the subscriber', async () => {
@@ -909,6 +943,20 @@ describe('RoomLibraryService typing, per room', () => {
     // …and it still CAN change, or the assertion above is satisfied by a dead writer.
     fake.setTyping(alice, '!b:hs', [carol]);
     expect(svc.typingByRoom()).not.toBe(first);
+  });
+
+  it("keeps a room's names array while only another room changes", () => {
+    const { svc, fake, alice } = setup({
+      rooms: [fakeRoom('!a:hs'), fakeRoom('!b:hs')],
+    });
+    fake.setTyping(alice, '!a:hs', [bob]);
+    const names = svc.typingByRoom()['!a:hs'];
+
+    fake.setTyping(alice, '!b:hs', [carol]);
+
+    // Each sidebar row binds its own room's list, so it skips the update.
+    expect(svc.typingByRoom()['!b:hs']).toEqual(['Carol']);
+    expect(svc.typingByRoom()['!a:hs']).toBe(names);
   });
 
   it('clears when the account leaves', () => {
