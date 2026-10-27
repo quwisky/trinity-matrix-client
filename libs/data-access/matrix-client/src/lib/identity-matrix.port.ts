@@ -6,7 +6,7 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import type { Observable } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from './js-sdk/matrix-client.service';
 import { projectFromClient } from './project-from-client';
 
 /** SDK event spellings kept at the Matrix adapter boundary. */
