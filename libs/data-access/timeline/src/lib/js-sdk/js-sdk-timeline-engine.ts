@@ -232,9 +232,16 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       }
       const room = client.getRoom(roomId);
       if (!room) return of(engineFail(localFailure('message-unavailable')));
+      let stopped = false;
       return from(
-        this.paged(client, room, () => scrollbackLive(client, room, count)),
-      ).pipe(map(() => engineOk({ startReached: atStart(room) })));
+        // Skipped when unsubscribed while it waited behind another page.
+        this.paged(client, room, async () => {
+          if (!stopped) await scrollbackLive(client, room, count);
+        }),
+      ).pipe(
+        map(() => engineOk({ startReached: atStart(room) })),
+        finalize(() => (stopped = true)),
+      );
     });
   }
 
@@ -254,6 +261,8 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         this.paged(client, room, async () => {
           for (let page = 0; page < maxPages && !stopped; page++) {
             if (atStart(room)) break;
+            // Show the previous page before the next request, so live changes keep flowing.
+            if (page > 0) this.flushFeeds(client, roomId);
             await scrollbackLive(client, room, SCROLLBACK);
             if (loaded()) return true;
           }
@@ -453,6 +462,12 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       if (feed.client !== client || feed.roomId !== roomId) continue;
       if (on) feed.announce();
       else feed.flush();
+    }
+  }
+
+  private flushFeeds(client: MatrixClient, roomId: string): void {
+    for (const feed of this.feeds) {
+      if (feed.client === client && feed.roomId === roomId) feed.flush();
     }
   }
 

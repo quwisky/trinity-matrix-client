@@ -487,6 +487,79 @@ describe('JsSdkTimelineEngine', () => {
     timeline.subscription.unsubscribe();
   });
 
+  it("emits a live message during paginateUntil's second page request", async () => {
+    const events = [msg('$c')];
+    const { client, room } = world(events, { token: 't1' });
+    const responders: ((value: unknown) => void)[] = [];
+    client.createMessagesRequest.mockImplementation(
+      () => new Promise((resolve) => responders.push(resolve)),
+    );
+    const engine = engineFor(client);
+    const timeline = watch(engine);
+    const replied: number[] = [];
+
+    const reply = firstValueFrom(engine.paginateUntil(ME, ROOM, '$a', 5)).then(
+      (result) => {
+        replied.push(timeline.updates.length);
+        return result;
+      },
+    );
+    await tick();
+    responders[0]({ chunk: [msg('$b')], end: 't2' });
+    await tick();
+    expect(responders).toHaveLength(2);
+    const live = msg('$d');
+    events.push(live);
+    room.emit(RoomEvent.Timeline, live, room, false, false);
+    await Promise.resolve();
+
+    expect(timeline.last()).toMatchObject({ backPagination: 'paginating' });
+    expect(timeline.events().map((item) => item.eventId)).toEqual([
+      '$b',
+      '$c',
+      '$d',
+    ]);
+    const beforePage = timeline.updates.length;
+
+    responders[1]({ chunk: [msg('$a')], end: 't3' });
+
+    await expect(reply).resolves.toEqual({ ok: true, value: { found: true } });
+    const after = timeline.updates.slice(beforePage);
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ backPagination: 'idle' });
+    expect(replied).toEqual([timeline.updates.length]);
+    expect(timeline.events().map((item) => item.eventId)).toEqual([
+      '$a',
+      '$b',
+      '$c',
+      '$d',
+    ]);
+    timeline.subscription.unsubscribe();
+  });
+
+  it('skips a queued paginateBackwards unsubscribed before its turn', async () => {
+    const { client } = world([msg('$c')], { token: 't1' });
+    const responders: ((value: unknown) => void)[] = [];
+    client.createMessagesRequest.mockImplementation(
+      () => new Promise((resolve) => responders.push(resolve)),
+    );
+    const engine = engineFor(client);
+    const timeline = watch(engine);
+
+    const first = firstValueFrom(engine.paginateBackwards(ME, ROOM, LIVE, 10));
+    const queued = engine
+      .paginateBackwards(ME, ROOM, LIVE, 10)
+      .subscribe(() => undefined);
+    queued.unsubscribe();
+    responders[0]({ chunk: [msg('$b')], end: 't2' });
+    await first;
+    await tick();
+
+    expect(client.createMessagesRequest).toHaveBeenCalledTimes(1);
+    expect(timeline.last()).toMatchObject({ backPagination: 'idle' });
+    timeline.subscription.unsubscribe();
+  });
+
   it('drops a page when the live timeline was replaced', async () => {
     const { client, room, replaceTimeline } = world([msg('$b')], {
       token: 't1',
