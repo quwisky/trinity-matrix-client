@@ -41,12 +41,12 @@ import {
   roomEncryptionInitialState,
   type UnencryptedMark,
 } from '@trinity/util/matrix';
+import { compareRoomSummaries } from './room-projection';
 import {
   buildRoomSummary,
-  compareRoomSummaries,
   directMapOf,
   isMarkedUnread,
-} from './room-projection';
+} from './js-sdk/room-info';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
@@ -56,7 +56,7 @@ import {
   addToDirectMap,
   createEncryptedRoom,
   existingDirectRoom,
-} from './direct-rooms';
+} from './js-sdk/direct-rooms';
 import { RoomTyping } from './room-typing';
 
 /** Fields a {@link RoomLibraryService.createRoom} call accepts. */
