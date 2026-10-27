@@ -12,7 +12,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrustService } from '@trinity/data-access/trust';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { HostFileExportService } from '@trinity/runtime/host';
 import {
   catchError,
@@ -55,7 +55,7 @@ import { AppLockGroupComponent } from './app-lock-group/app-lock-group.component
 })
 export class SecuritySectionComponent {
   private readonly crypto = inject(TrustService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
   );

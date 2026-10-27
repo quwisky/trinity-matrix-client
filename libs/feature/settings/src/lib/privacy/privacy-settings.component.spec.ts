@@ -14,7 +14,7 @@ import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { render, screen } from '@trinity/testing';
 import { TrnToastService } from '@trinity/components/overlay';
 import { IgnoredUsersService } from '@trinity/data-access/identity';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { InvitePermissionService } from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, firstValueFrom, of } from 'rxjs';
@@ -56,8 +56,8 @@ describe('PrivacySettingsComponent', () => {
           ignoredUsers: signal([]).asReadonly(),
           runProjection: () => NEVER,
         }),
-        MockProvider(MatrixClientService, {
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+        MockProvider(SessionStateService, {
+          activeAccountId: signal<string | null>('@me:hs').asReadonly(),
           accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
         }),
         MockProvider(TrnToastService),

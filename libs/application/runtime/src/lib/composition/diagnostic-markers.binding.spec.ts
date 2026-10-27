@@ -1,7 +1,10 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  SessionStateService,
+  type SessionSyncState,
+} from '@trinity/data-access/matrix-client';
 import { HostLifecycleService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
@@ -11,12 +14,12 @@ import { DiagnosticMarkersBinding } from './diagnostic-markers.binding';
 describe('DiagnosticMarkersBinding', () => {
   function setup() {
     const accountIds = signal<readonly string[]>([]);
-    const syncState = signal<string | null>(null);
+    const syncState = signal<SessionSyncState | null>(null);
     const events = new Subject<{ kind: 'active' } | { kind: 'background' }>();
     const record = vi.fn();
     TestBed.configureTestingModule({
       providers: [
-        MockProvider(MatrixClientService, { accountIds, syncState } as never),
+        MockProvider(SessionStateService, { accountIds, syncState } as never),
         MockProvider(HostLifecycleService, { events } as never),
         MockProvider(DiagnosticLogService, { record }),
       ],
@@ -36,9 +39,9 @@ describe('DiagnosticMarkersBinding', () => {
 
     accountIds.set(['@alice:example.org']);
     TestBed.tick();
-    syncState.set('PREPARED');
+    syncState.set('prepared');
     TestBed.tick();
-    syncState.set('SYNCING');
+    syncState.set('syncing');
     TestBed.tick();
     events.next({ kind: 'background' });
     events.next({ kind: 'active' });
@@ -56,6 +59,28 @@ describe('DiagnosticMarkersBinding', () => {
       source: 'app',
       logger: 'lifecycle',
     });
+    subscription.unsubscribe();
+  });
+
+  it('marks sync states in upper case and stays silent for null and starting', () => {
+    const { syncState, record, subscription } = setup();
+
+    syncState.set('starting');
+    TestBed.tick();
+    syncState.set('syncing');
+    TestBed.tick();
+    syncState.set('catchup');
+    TestBed.tick();
+    syncState.set(null);
+    TestBed.tick();
+    syncState.set('starting');
+    TestBed.tick();
+
+    expect(messages(record)).toEqual([
+      'accounts signed in: 0',
+      'sync state (active account): SYNCING',
+      'sync state (active account): CATCHUP',
+    ]);
     subscription.unsubscribe();
   });
 });

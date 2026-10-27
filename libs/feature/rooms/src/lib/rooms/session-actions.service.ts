@@ -5,7 +5,7 @@ import {
   WorkspaceApplicationSurfaceService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { ACCOUNT_REMOVAL_LAUNCHER } from '@trinity/platform-native';
 import { ShellStatusService } from './shell-status.service';
 
@@ -19,7 +19,7 @@ import { ShellStatusService } from './shell-status.service';
 @Injectable()
 export class SessionActionsService {
   private readonly workspace = inject(WorkspaceNavigationService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly router = inject(Router);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
@@ -38,7 +38,7 @@ export class SessionActionsService {
 
   /** Switch the active account (no-op when it is already active). */
   switchAccount(userId: string): void {
-    if (userId === this.matrix.activeUserId()) {
+    if (userId === this.matrix.activeAccountId()) {
       return;
     }
     this.workspace

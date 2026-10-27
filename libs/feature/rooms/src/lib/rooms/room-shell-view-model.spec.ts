@@ -2,7 +2,10 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  SessionStateService,
+  type SessionSyncState,
+} from '@trinity/data-access/matrix-client';
 import {
   type MemberSummary,
   RoomActionPermissionsService,
@@ -73,6 +76,7 @@ function build(
   const profiles = signal<ReadonlyMap<string, AccountIdentity>>(new Map());
   const activeUserId = signal<string | null>('@me:hs');
   const accountIds = signal<readonly string[]>(['@me:hs']);
+  const syncState = signal<SessionSyncState | null>(null);
   const trustSummaries = signal<ReadonlyMap<string, AccountTrustSummary>>(
     new Map(),
   );
@@ -156,9 +160,11 @@ function build(
           new Map(),
         ).asReadonly(),
       }),
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: activeUserId.asReadonly(),
         accountIds: accountIds.asReadonly(),
+        syncState: syncState.asReadonly(),
+        softLoggedOut: signal<readonly string[]>([]).asReadonly(),
       }),
       {
         provide: WorkspaceNavigationService,
@@ -193,6 +199,7 @@ function build(
     profiles,
     activeUserId,
     accountIds,
+    syncState,
     trustSummaries,
     rosters,
     membersFor,
@@ -382,6 +389,22 @@ describe('RoomShellViewModel account profile', () => {
       displayName: 'Ada',
       avatarMxc: 'mxc://hs/ada',
     });
+  });
+
+  it.each([
+    ['prepared', 'Welcome to Trinity'],
+    ['syncing', 'Welcome to Trinity'],
+    ['error', 'Reconnecting…'],
+    ['reconnecting', 'Reconnecting…'],
+    ['starting', 'Connecting…'],
+    ['catchup', 'Connecting…'],
+    ['stopped', 'Connecting…'],
+    [null, 'Connecting…'],
+  ] as const)('labels the %s sync state "%s"', (state, label) => {
+    const { vm, syncState } = build();
+    syncState.set(state);
+
+    expect(vm.syncLabel()).toBe(label);
   });
 
   it('follows the account that is switched to', () => {
