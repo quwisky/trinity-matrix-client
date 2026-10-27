@@ -1,6 +1,7 @@
-import { EventType, type MatrixClient } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of } from 'rxjs';
+import { EventType, Preset, type MatrixClient } from 'matrix-js-sdk';
+import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import {
+  isValidUserId,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util/matrix';
@@ -19,6 +20,44 @@ export function createEncryptedRoom(
       initial_state: [roomEncryptionInitialState()],
     }),
   ).pipe(map((response) => response.room_id));
+}
+
+/**
+ * Open (or reuse) a 1:1 direct message with `userId` and resolve its room id.
+ *
+ * A DM that `m.direct` records with this user and that we have not left is reused, so
+ * repeated "message" actions don't spawn duplicates. Otherwise a new invite-only, encrypted
+ * room is created (`is_direct`, `trusted_private_chat` preset, the user invited, Megolm
+ * enabled) and registered in `m.direct` so both ends and future reuse treat it as a DM.
+ * Rejects when `userId` isn't a valid MXID. Cold.
+ */
+export function openDirectRoom(
+  client: MatrixClient,
+  userId: string,
+): Observable<string> {
+  return defer(() => {
+    if (!isValidUserId(userId)) {
+      return throwError(() => new Error(`Invalid user id: ${userId}`));
+    }
+    const existing = existingDirectRoom(client, userId);
+    if (existing) {
+      return of(existing);
+    }
+    return from(
+      client.createRoom({
+        is_direct: true,
+        invite: [userId],
+        preset: Preset.TrustedPrivateChat,
+        initial_state: [roomEncryptionInitialState()],
+      }),
+    ).pipe(
+      switchMap((res) =>
+        addToDirectMap(client, userId, res.room_id).pipe(
+          map(() => res.room_id),
+        ),
+      ),
+    );
+  });
 }
 
 /**

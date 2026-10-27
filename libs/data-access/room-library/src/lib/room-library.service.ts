@@ -4,12 +4,10 @@ import {
   EventType,
   HistoryVisibility,
   MatrixEventEvent,
-  Preset,
   ReceiptType,
   RoomEvent,
   RoomMemberEvent,
   RoomStateEvent,
-  MatrixError,
   type EventTimeline,
   type MatrixClient,
   type MatrixEvent,
@@ -26,7 +24,6 @@ import {
   from,
   map,
   of,
-  switchMap,
   tap,
   throwError,
 } from 'rxjs';
@@ -38,7 +35,6 @@ import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   RoomEncryptionFlags,
   isValidUserId,
-  roomEncryptionInitialState,
   type UnencryptedMark,
 } from '@trinity/util/matrix';
 import { compareRoomSummaries } from './room-projection';
@@ -52,11 +48,8 @@ import {
   assertRoomLibraryGovernance,
   type RoomLibraryGovernanceKey,
 } from './room-library-governance-policy';
-import {
-  addToDirectMap,
-  createEncryptedRoom,
-  existingDirectRoom,
-} from './js-sdk/direct-rooms';
+import { createEncryptedRoom, openDirectRoom } from './js-sdk/direct-rooms';
+import { isInviteBlocked } from './js-sdk/js-sdk-room-list-engine';
 import { RoomTyping } from './room-typing';
 
 /** Fields a {@link RoomLibraryService.createRoom} call accepts. */
@@ -170,18 +163,6 @@ export class InviteBlockedError extends Error {
     super('M_INVITE_BLOCKED');
     this.name = 'InviteBlockedError';
   }
-}
-
-const INVITE_BLOCKED_ERRCODES = new Set([
-  'M_INVITE_BLOCKED',
-  'ORG.MATRIX.MSC4155.INVITE_BLOCKED',
-]);
-
-function isInviteBlocked(error: unknown): boolean {
-  return (
-    error instanceof MatrixError &&
-    INVITE_BLOCKED_ERRCODES.has(error.errcode ?? '')
-  );
 }
 
 /**
@@ -621,40 +602,9 @@ export class RoomLibraryService {
     });
   }
 
-  /**
-   * Open (or reuse) a 1:1 direct message with `userId` and resolve its room id.
-   *
-   * A DM that `m.direct` records with this user and that we have not left is reused, so
-   * repeated "message" actions don't spawn duplicates. Otherwise a new invite-only, encrypted
-   * room is created (`is_direct`, `trusted_private_chat` preset, the user invited, Megolm
-   * enabled) and registered in `m.direct` so both ends and future reuse treat it as a DM.
-   * Rejects when `userId` isn't a valid MXID. Cold.
-   */
+  /** See {@link openDirectRoom}. Cold. */
   createDirectMessage(userId: string): Observable<string> {
-    return defer(() => {
-      if (!isValidUserId(userId)) {
-        return throwError(() => new Error(`Invalid user id: ${userId}`));
-      }
-      const client = this.matrix.instance;
-      const existing = existingDirectRoom(client, userId);
-      if (existing) {
-        return of(existing);
-      }
-      return from(
-        client.createRoom({
-          is_direct: true,
-          invite: [userId],
-          preset: Preset.TrustedPrivateChat,
-          initial_state: [roomEncryptionInitialState()],
-        }),
-      ).pipe(
-        switchMap((res) =>
-          addToDirectMap(client, userId, res.room_id).pipe(
-            map(() => res.room_id),
-          ),
-        ),
-      );
-    });
+    return defer(() => openDirectRoom(this.matrix.instance, userId));
   }
 
   /**

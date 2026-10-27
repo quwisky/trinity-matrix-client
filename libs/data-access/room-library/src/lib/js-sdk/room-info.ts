@@ -11,11 +11,11 @@ import {
   roomAvatarMxc,
   unencryptedMarkFor,
   type RoomEncryptionFlags,
-  type UnencryptedMark,
 } from '@trinity/util/matrix';
 import { compareOrder } from '../space-child-order';
 import { initialOf } from '../room-projection';
 import { type RoomSummary } from '../room-library.service';
+import type { RoomInfo, RoomMembership } from '../room-list-engine';
 
 /** State event type linking a space to a child room. */
 const SPACE_CHILD_EVENT = 'm.space.child';
@@ -58,15 +58,15 @@ interface ChildEntry {
 }
 
 /**
- * Single-line preview of the room's most recent `m.room.message`, or `''`, and its
- * not-encrypted mark. Walked back-to-front to skip state events. `getLiveTimeline` is
- * optional: not every Room stub exposes it. `encrypted` is `undefined` while the crypto store
- * has yet to answer for the room.
+ * Single-line preview of the room's most recent `m.room.message` and its not-encrypted mark,
+ * or null when the timeline holds none. Walked back-to-front to skip state events.
+ * `getLiveTimeline` is optional: not every Room stub exposes it. `encrypted` is `undefined`
+ * while the crypto store has yet to answer for the room.
  */
 function lastMessageOf(
   room: Room,
   encrypted: boolean | undefined,
-): { text: string; mark: UnencryptedMark | null } {
+): RoomInfo['latestMessage'] {
   const events = room.getLiveTimeline?.()?.getEvents() ?? [];
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i].getType() === EventType.RoomMessage) {
@@ -80,7 +80,7 @@ function lastMessageOf(
       };
     }
   }
-  return { text: '', mark: null };
+  return null;
 }
 
 /**
@@ -134,11 +134,103 @@ export function directMapOf(client: MatrixClient): {
   return { ids, userByRoom };
 }
 
+interface RoomInfoContext {
+  readonly ownUserId: string | null;
+  readonly directUserId: string | null;
+  readonly encryption: RoomEncryptionFlags | undefined;
+  /** Without a crypto store nothing will answer for the room, so its preview counts it as encrypted. */
+  readonly hasCryptoStore: boolean;
+}
+
+function roomInfoOf(room: Room, context: RoomInfoContext): RoomInfo {
+  const { directUserId, encryption, hasCryptoStore } = context;
+  const membership = room.getMyMembership() as RoomMembership;
+  const topic = liveRoomState(room)
+    ?.getStateEvents('m.room.topic', '')
+    ?.getContent()?.['topic'];
+  const stateEncrypted = room.hasEncryptionStateEvent();
+  const encrypted = encryption?.isEncrypted(room) ?? stateEncrypted;
+  const answered = stateEncrypted || !!encryption?.answered(room.roomId);
+  const previewEncrypted = !hasCryptoStore
+    ? true
+    : answered
+      ? encrypted
+      : undefined;
+  const inviter = membership === 'invite' ? inviterOf(room, context) : null;
+  return {
+    roomId: room.roomId,
+    membership,
+    isSpace: room.isSpaceRoom(),
+    displayName: room.name || room.roomId,
+    // `m.direct` is the authoritative answer to "is this a DM", and it is already in hand: the
+    // SDK's own member-count heuristic would also claim a two-person named group room and dress
+    // it in that member's face until a third person joined. An invite's stripped state holds
+    // only two members whatever the room size, so there `is_direct` decides.
+    avatarMxc: roomAvatarMxc(
+      room,
+      inviter ? inviter.isDirect : directUserId !== null,
+    ),
+    topic: typeof topic === 'string' ? topic : '',
+    joinedMemberCount: room.getJoinedMemberCount(),
+    directUserId,
+    // The old boolean is `encryption === 'encrypted'`. `unknown`: no state event and no
+    // crypto-store answer yet, or no store to ask; the preview above already allows for it.
+    encryption: encrypted
+      ? 'encrypted'
+      : answered && hasCryptoStore
+        ? 'unencrypted'
+        : 'unknown',
+    historyVisibility: (room.getHistoryVisibility?.() ??
+      'shared') as RoomInfo['historyVisibility'],
+    notificationCount: room.getUnreadNotificationCount(
+      NotificationCountType.Total,
+    ),
+    highlightCount: room.getUnreadNotificationCount(
+      NotificationCountType.Highlight,
+    ),
+    markedUnread: isMarkedUnread(room),
+    recencyStamp: roomActivityTs(room),
+    latestMessage: lastMessageOf(room, previewEncrypted),
+    favourite: room.tags?.['m.favourite'] !== undefined,
+    lowPriority: room.tags?.['m.lowpriority'] !== undefined,
+    inviter,
+  };
+}
+
+/** Our own invite event names the inviter (its sender) and carries the inviter's `is_direct`. */
+function inviterOf(
+  room: Room,
+  { ownUserId }: RoomInfoContext,
+): RoomInfo['inviter'] {
+  const invite = ownUserId ? room.getMember(ownUserId)?.events?.member : null;
+  const userId = invite?.getSender();
+  if (!invite || !userId) return null;
+  return {
+    userId,
+    displayName: room.getMember(userId)?.name || userId,
+    isDirect: invite.getContent()?.['is_direct'] === true,
+  };
+}
+
+/** One {@link Room} as engine data. `directUserId` defaults to the reverse `m.direct` lookup. */
+export function toRoomInfo(
+  client: MatrixClient,
+  room: Room,
+  encryption: RoomEncryptionFlags,
+  directUserId = directMapOf(client).userByRoom.get(room.roomId) ?? null,
+): RoomInfo {
+  return roomInfoOf(room, {
+    ownUserId: client.getUserId?.() ?? null,
+    directUserId,
+    encryption,
+    hasCryptoStore: !!client.getCrypto?.(),
+  });
+}
+
 /**
- * Project one {@link Room} into a {@link RoomSummary} tagged with its account. Pure read, shared
- * by {@link RoomLibraryService} (active account) and the selected-Account projector so both
- * build identical rows. Without a crypto store (`hasCryptoStore` false) nothing will answer
- * for the room, so its preview counts it as encrypted.
+ * Project one joined {@link Room} into a {@link RoomSummary} tagged with its account. Pure read,
+ * shared by {@link RoomLibraryService} (active account) and the selected-Account projector so
+ * both build identical rows.
  */
 export function buildRoomSummary(
   room: Room,
@@ -147,47 +239,33 @@ export function buildRoomSummary(
   encryption?: RoomEncryptionFlags,
   hasCryptoStore = true,
 ): RoomSummary {
-  const name = room.name || room.roomId;
-  const topicEvent = liveRoomState(room)?.getStateEvents('m.room.topic', '');
-  const unreadCount = room.getUnreadNotificationCount(
-    NotificationCountType.Total,
-  );
-  const highlightCount = room.getUnreadNotificationCount(
-    NotificationCountType.Highlight,
-  );
-  const markedUnread = isMarkedUnread(room);
-  const encrypted =
-    encryption?.isEncrypted(room) ?? room.hasEncryptionStateEvent();
-  const previewEncrypted = !hasCryptoStore
-    ? true
-    : room.hasEncryptionStateEvent() || encryption?.answered(room.roomId)
-      ? encrypted
-      : undefined;
-  const lastMessage = lastMessageOf(room, previewEncrypted);
+  const info = roomInfoOf(room, {
+    ownUserId: null,
+    directUserId: directUserId ?? null,
+    encryption,
+    hasCryptoStore,
+  });
   return {
-    id: room.roomId,
+    id: info.roomId,
     accountId,
     accountIds: [accountId],
-    name,
-    initial: initialOf(name),
-    // `m.direct` is the authoritative answer to "is this a DM", and it is already in hand: the
-    // SDK's own member-count heuristic would also claim a two-person named group room and dress
-    // it in that member's face until a third person joined.
-    avatarMxc: roomAvatarMxc(room, directUserId !== undefined),
-    topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
-    memberCount: room.getJoinedMemberCount(),
-    encrypted,
-    unreadCount,
-    highlightCount,
-    markedUnread,
+    name: info.displayName,
+    initial: initialOf(info.displayName),
+    avatarMxc: info.avatarMxc,
+    topic: info.topic,
+    memberCount: info.joinedMemberCount,
+    encrypted: info.encryption === 'encrypted',
+    unreadCount: info.notificationCount,
+    highlightCount: info.highlightCount,
+    markedUnread: info.markedUnread,
     // A flagged room reads as unread even with nothing new in it, so the badge and the
     // sidebar's unread filter both follow.
-    hasUnread: unreadCount > 0 || markedUnread,
-    lastMessage: lastMessage.text,
-    lastMessageMark: lastMessage.mark,
-    activityTs: roomActivityTs(room),
-    favourite: room.tags?.['m.favourite'] !== undefined,
-    lowPriority: room.tags?.['m.lowpriority'] !== undefined,
+    hasUnread: info.notificationCount > 0 || info.markedUnread,
+    lastMessage: info.latestMessage?.text ?? '',
+    lastMessageMark: info.latestMessage?.mark ?? null,
+    activityTs: info.recencyStamp,
+    favourite: info.favourite,
+    lowPriority: info.lowPriority,
     directUserId,
   };
 }

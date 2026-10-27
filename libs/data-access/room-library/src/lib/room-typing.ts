@@ -8,6 +8,7 @@ import {
   coalesce,
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
+import { typingMembers, typingUserIds } from './js-sdk/room-typing';
 
 const EMPTY_TYPING: readonly string[] = Object.freeze([]);
 
@@ -49,13 +50,10 @@ export class RoomTyping {
     let changed = false;
 
     for (const [roomId, typingIds] of rooms) {
-      const room = client.getRoom(roomId);
-      // The ids come off the EDU the handler already received, so this is O(typists).
-      // `getMembers()` — what TimelineService does — is O(members), which is fine for the
-      // one open room and not for every joined room on every typing change.
-      const names = typingIds
-        .filter((userId) => !selves.has(userId))
-        .map((userId) => room?.getMember(userId)?.name ?? userId);
+      const names = typingMembers(
+        client.getRoom(roomId),
+        typingIds.filter((userId) => !selves.has(userId)),
+      ).map((member) => member.displayName);
       const current = next[roomId] ?? EMPTY_TYPING;
       // Idempotent: an unchanged set writes nothing. Without this every EDU replaces the
       // record and re-runs the sidebar template, which reads this during change detection.
@@ -110,14 +108,9 @@ export class RoomTyping {
    * room's whole typing set is re-read on flush.
    */
   readonly onTypingChanged = (event: MatrixEvent, member: RoomMember): void => {
-    // `m.typing` carries the room's WHOLE typing set, so the last event per room wins and
-    // there is no delta to merge. Taking it here rather than re-reading members on flush
+    // The last event per room wins. Taking it here rather than re-reading members on flush
     // keeps the cost O(typists) instead of O(members-in-every-joined-room).
-    const userIds = event.getContent()?.['user_ids'];
-    this.dirtyTypingRooms.set(
-      member.roomId,
-      Array.isArray(userIds) ? (userIds as string[]) : [],
-    );
+    this.dirtyTypingRooms.set(member.roomId, typingUserIds(event));
     this.typingFlusher.schedule();
   };
 
