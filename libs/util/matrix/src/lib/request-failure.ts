@@ -1,3 +1,4 @@
+import { EngineRequestError } from './engine-result';
 import {
   ConnectionError,
   HTTPError,
@@ -124,6 +125,7 @@ export function describeMatrixRequestFailure(
   error: unknown,
   fallbackMessage = DEFAULT_MESSAGE,
 ): MatrixRequestFailure {
+  if (error instanceof EngineRequestError) return error.failure;
   if (isTimeout(error)) {
     return failure('timeout', 'The request timed out. Try again.', error);
   }
