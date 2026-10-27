@@ -22,6 +22,14 @@ Data-access services translate SDK objects and events into stable Trinity read m
 
 For active-client projections, the shared `projectFromClient` adapter coordinates client replacement, event attachment, burst coalescing, reconciliation, and reset. Other scopes use their matching owned projection lifetime.
 
+## Engine interfaces {#engine-interfaces}
+
+Each data-access capability reaches Matrix through an engine interface, so another engine can implement it later ([#1153](https://github.com/quwisky/trinity-matrix-client/issues/1153)). The `matrix-js-sdk` adapter for a capability lives in its `js-sdk/` folder; only those folders import the SDK or call `clientFor`. `architecture/engine-boundary-allowlist.json` lists the files that still reach the SDK directly. It only shrinks: a new offender and a stale entry both fail `scripts/engine-boundary.spec.mjs`.
+
+Values crossing an engine interface are plain data: strings, numbers, booleans, `null`, arrays, and plain objects. No `undefined`, `Date`, `Map`, `Set`, class instances, or functions.
+
+A command is a cold observable that emits one result and completes. Expected failures arrive as `{ ok: false, failure }` with a typed `MatrixRequestFailure`; only unexpected faults error the stream. A subscription emits a snapshot first and changes after it. Media crosses the interface as a URL, never as a blob or SDK handle. Synchronization stays authoritative: a command's result does not replace the state that sync reconciles.
+
 ## Treat synchronization as authoritative {#sync-authority}
 
 Commands call the SDK and then allow sync or the relevant SDK event to reconcile current state. Preserve a typed error or outcome for the initiating action, but do not claim that an accepted network request has already become authoritative local state unless the SDK contract guarantees it.
