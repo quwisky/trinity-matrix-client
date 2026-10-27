@@ -8,38 +8,6 @@ import {
   sanitizeMatrixHtml,
 } from './message-html';
 
-/** An aggregated reaction (`m.annotation`) on a message. */
-export interface ReactionView {
-  /** The reaction key (usually an emoji). */
-  key: string;
-  /** How many users reacted with this key. */
-  count: number;
-  /** Whether the current user is among them (their reaction can be toggled off). */
-  reacted: boolean;
-  /**
-   * The first few reactors by display name for the pill's hint, `'You'` first when
-   * {@link reacted}. Capped at {@link MAX_NAMED_REACTORS} because the list is fingerprinted per
-   * event on every projection; the full list is read on demand by {@link reactionDetailsFor}.
-   */
-  reactors: string[];
-}
-
-/** One person who reacted, for the "who reacted" list. Mirrors {@link ReceiptView}. */
-export interface ReactionReactor {
-  userId: string;
-  name: string;
-  initial: string;
-  avatarMxc: string | null;
-}
-
-/** Every reactor for one reaction key, for the "who reacted" dialog. */
-export interface ReactionDetail {
-  key: string;
-  /** Whether the current user is among them. */
-  reacted: boolean;
-  reactors: ReactionReactor[];
-}
-
 /** How many reactors a reaction pill names before "and N others". */
 export const MAX_NAMED_REACTORS = 3;
 
@@ -52,14 +20,6 @@ export interface ReplyPreview {
   body: string;
   /** How the quoted text is marked, when it arrived unencrypted in an encrypted room. */
   mark: UnencryptedMark | null;
-}
-
-/** A member who has read up to a message, for the "seen by" receipt avatars. */
-export interface ReceiptView {
-  userId: string;
-  name: string;
-  initial: string;
-  avatarMxc: string | null;
 }
 
 /**
