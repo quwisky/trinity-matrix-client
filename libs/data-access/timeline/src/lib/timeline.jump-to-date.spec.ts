@@ -58,13 +58,15 @@ describe('TimelineService.jumpToDate', () => {
     );
     // The live timeline holds the NEWEST `loaded` events; scrollback prepends older ones.
     let shown = all.slice(opts.total - opts.loaded);
+    // One live timeline object, as the SDK keeps until a reset.
+    const live = {
+      getEvents: () => shown,
+      getPaginationToken: () => 'tok',
+      getState: () => ({ hasSufficientPowerLevelFor: () => false }),
+    };
     const room = {
       ...fakeRoom([]),
-      getLiveTimeline: () => ({
-        getEvents: () => shown,
-        getPaginationToken: () => 'tok',
-        getState: () => ({ hasSufficientPowerLevelFor: () => false }),
-      }),
+      getLiveTimeline: () => live,
       findEventById: (id: string) => shown.find((e) => e.getId() === id),
     };
     let scrollbacks = 0;

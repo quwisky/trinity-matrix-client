@@ -664,6 +664,24 @@ describe('JsSdkTimelineEngine', () => {
     timeline.subscription.unsubscribe();
   });
 
+  it('paginateUntil keeps paging after a reset drops a page', async () => {
+    const { client, replaceTimeline } = world([msg('$c')], { token: 't1' });
+    client.createMessagesRequest
+      .mockImplementationOnce(async () => {
+        replaceTimeline([msg('$c')]);
+        return { chunk: [msg('$b')], end: 't2' };
+      })
+      .mockResolvedValueOnce({ chunk: [msg('$a')], end: 't3' });
+    const engine = engineFor(client);
+    const timeline = watch(engine);
+
+    await expect(
+      firstValueFrom(engine.paginateUntil(ME, ROOM, '$a', 5)),
+    ).resolves.toEqual({ ok: true, value: { found: true } });
+    expect(client.createMessagesRequest).toHaveBeenCalledTimes(2);
+    timeline.subscription.unsubscribe();
+  });
+
   it('unsubscribing a paginate stops after the page in flight', async () => {
     const { client } = world([msg('$b')], { token: 't1' });
     let respond: (value: unknown) => void = () => undefined;

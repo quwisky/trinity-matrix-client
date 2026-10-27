@@ -269,11 +269,18 @@ export class JsSdkTimelineEngine implements TimelineEngine {
               if (atStart(room)) break;
               // Show the previous page before the next request, so live changes keep flowing.
               if (page > 0) this.flushFeeds(client, roomId);
-              const before = room.getLiveTimeline().getEvents().length;
+              const live = room.getLiveTimeline();
+              const before = live.getEvents().length;
               await scrollbackLive(client, room, SCROLLBACK);
               if (loaded()) return true;
-              // A page that brought nothing: the start of the room.
-              if (room.getLiveTimeline().getEvents().length === before) break;
+              // A page that brought nothing to the same timeline: the start of the room. A
+              // reset dropped the page instead, so paging goes on from the new timeline.
+              if (
+                room.getLiveTimeline() === live &&
+                live.getEvents().length === before
+              ) {
+                break;
+              }
             }
             return false;
           },
