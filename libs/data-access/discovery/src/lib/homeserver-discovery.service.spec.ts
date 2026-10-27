@@ -1,103 +1,86 @@
 import { TestBed } from '@angular/core/testing';
-import { AutoDiscovery } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HostNetworkPolicyService } from '@trinity/platform-native';
+import { EngineRequestError } from '@trinity/util/matrix';
+import { FakeDiscoveryEngine } from '../contract/fake-discovery-engine';
+import { DISCOVERY_ENGINE } from './discovery-engine';
 import { HomeserverDiscoveryService } from './homeserver-discovery.service';
-
-vi.mock('matrix-js-sdk', async (importActual) => {
-  const actual = await importActual<typeof import('matrix-js-sdk')>();
-  return {
-    ...actual,
-    AutoDiscovery: {
-      ...actual.AutoDiscovery,
-      findClientConfig: vi.fn(),
-      setFetchFn: vi.fn(),
-    },
-  };
-});
-
-const findClientConfig = vi.mocked(AutoDiscovery.findClientConfig);
-
-function homeserver(state: string, base_url?: string) {
-  return { 'm.homeserver': { state, base_url } } as never;
-}
 
 describe('HomeserverDiscoveryService', () => {
   const allowOrigin = vi.fn();
+  let engine: FakeDiscoveryEngine;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    engine = new FakeDiscoveryEngine();
     TestBed.configureTestingModule({
       providers: [
         HomeserverDiscoveryService,
+        { provide: DISCOVERY_ENGINE, useValue: engine },
         MockProvider(HostNetworkPolicyService, { allowOrigin }),
       ],
     });
   });
 
-  it('discovers and normalizes a homeserver base URL', async () => {
-    findClientConfig.mockResolvedValue(
-      homeserver(AutoDiscovery.SUCCESS, 'https://hs.example/'),
+  const discover = (
+    input: string,
+    options?: { readonly allowOrigins?: boolean },
+  ) =>
+    firstValueFrom(
+      TestBed.inject(HomeserverDiscoveryService).discover(input, options),
     );
 
-    await expect(
-      firstValueFrom(
-        TestBed.inject(HomeserverDiscoveryService).discover('example.org'),
-      ),
-    ).resolves.toEqual({
+  it('discovers a homeserver base URL', async () => {
+    engine.servers.set('example.org', 'https://hs.example');
+
+    await expect(discover('example.org')).resolves.toEqual({
       domain: 'example.org',
       baseUrl: 'https://hs.example',
     });
   });
 
-  it('falls back to the entered domain and extracts a domain from an MXID', async () => {
-    findClientConfig.mockResolvedValue(
-      homeserver(AutoDiscovery.SUCCESS, undefined),
-    );
+  it('extracts the domain from an MXID before asking the engine', async () => {
+    engine.servers.set('example.org', 'https://example.org');
 
-    const result = await firstValueFrom(
-      TestBed.inject(HomeserverDiscoveryService).discover('@me:example.org'),
-    );
+    const result = await discover('@me:example.org');
 
-    expect(findClientConfig).toHaveBeenCalledWith('example.org');
+    expect(engine.calls).toEqual(['discover:example.org']);
     expect(result.baseUrl).toBe('https://example.org');
   });
 
-  it('fails when the SDK cannot discover a homeserver', async () => {
-    findClientConfig.mockResolvedValue(homeserver(AutoDiscovery.FAIL_PROMPT));
+  it('fails with the engine failure when no homeserver is found', async () => {
+    const error = await discover('nope.invalid').catch((e: unknown) => e);
 
-    await expect(
-      firstValueFrom(
-        TestBed.inject(HomeserverDiscoveryService).discover('nope.invalid'),
-      ),
-    ).rejects.toThrow(/Could not discover/);
+    expect(error).toBeInstanceOf(EngineRequestError);
+    expect((error as Error).message).toBe(
+      'Could not discover a homeserver for "nope.invalid".',
+    );
   });
 
-  it('allows both the probe and resolved origins for the host network policy', async () => {
-    findClientConfig.mockResolvedValue(
-      homeserver(AutoDiscovery.SUCCESS, 'https://matrix.example/'),
-    );
+  it('allows the probe origin, then the resolved origin, for the host network policy', async () => {
+    engine.servers.set('example.org', 'https://matrix.example');
 
-    await firstValueFrom(
-      TestBed.inject(HomeserverDiscoveryService).discover('example.org'),
-    );
+    await discover('example.org');
 
-    expect(allowOrigin).toHaveBeenCalledWith('https://example.org');
-    expect(allowOrigin).toHaveBeenCalledWith('https://matrix.example');
+    expect(allowOrigin.mock.calls).toEqual([
+      ['https://example.org'],
+      ['https://matrix.example'],
+    ]);
   });
+
+  it('allows only the probe origin when discovery fails', async () => {
+    await discover('nope.invalid').catch(() => undefined);
+
+    expect(allowOrigin.mock.calls).toEqual([['https://nope.invalid']]);
+  });
+
   it('declares no origins for a lookup that only checks a server', async () => {
-    findClientConfig.mockResolvedValue(
-      homeserver(AutoDiscovery.SUCCESS, 'https://matrix.example/'),
-    );
+    engine.servers.set('example.org', 'https://matrix.example');
 
     await expect(
-      firstValueFrom(
-        TestBed.inject(HomeserverDiscoveryService).discover('example.org', {
-          allowOrigins: false,
-        }),
-      ),
+      discover('example.org', { allowOrigins: false }),
     ).resolves.toEqual({
       domain: 'example.org',
       baseUrl: 'https://matrix.example',

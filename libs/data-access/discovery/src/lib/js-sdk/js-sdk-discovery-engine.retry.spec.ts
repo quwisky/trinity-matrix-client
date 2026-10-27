@@ -1,9 +1,8 @@
-import { TestBed } from '@angular/core/testing';
-import { MockProvider } from 'ng-mocks';
+import { Injector } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HostNetworkPolicyService } from '@trinity/platform-native';
-import { HomeserverDiscoveryService } from './homeserver-discovery.service';
+import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import { JsSdkDiscoveryEngine } from './js-sdk-discovery-engine';
 
 // Runs the real SDK `AutoDiscovery` against a stubbed `fetch`, because the SDK swallows every
 // fetch failure into the same FAIL_PROMPT a definitive negative produces (#978).
@@ -18,15 +17,14 @@ const hang = (_url: unknown, init?: RequestInit) =>
     init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
   });
 
-describe('HomeserverDiscoveryService retries (#978)', () => {
+describe('JsSdkDiscoveryEngine retries (#978)', () => {
   const fetchMock = vi.fn();
+  let engine: JsSdkDiscoveryEngine;
   const wellKnownCalls = () =>
     fetchMock.mock.calls.filter(([url]) => String(url) === WELL_KNOWN).length;
 
   function discover() {
-    const result = firstValueFrom(
-      TestBed.inject(HomeserverDiscoveryService).discover('example.org'),
-    );
+    const result = firstValueFrom(engine.discover('example.org'));
     // Attach a handler now so a rejection during timer advancement is never unhandled.
     result.catch(() => undefined);
     return result;
@@ -36,12 +34,12 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     vi.useFakeTimers();
     fetchMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
-    TestBed.configureTestingModule({
+    engine = Injector.create({
       providers: [
-        HomeserverDiscoveryService,
-        MockProvider(HostNetworkPolicyService, { allowOrigin: vi.fn() }),
+        { provide: JS_SDK_CLIENTS, useValue: { clientFor: () => null } },
+        JsSdkDiscoveryEngine,
       ],
-    });
+    }).get(JsSdkDiscoveryEngine);
   });
 
   afterEach(() => {
@@ -59,8 +57,8 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     await vi.advanceTimersByTimeAsync(30_000);
 
     await expect(result).resolves.toEqual({
-      domain: 'example.org',
-      baseUrl: 'https://hs.example',
+      ok: true,
+      value: { domain: 'example.org', baseUrl: 'https://hs.example' },
     });
     expect(wellKnownCalls()).toBe(2);
   });
@@ -75,7 +73,8 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     await vi.advanceTimersByTimeAsync(30_000);
 
     await expect(result).resolves.toMatchObject({
-      baseUrl: 'https://hs.example',
+      ok: true,
+      value: { baseUrl: 'https://hs.example' },
     });
     expect(wellKnownCalls()).toBe(2);
   });
@@ -86,7 +85,10 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     const result = discover();
     await vi.advanceTimersByTimeAsync(30_000);
 
-    await expect(result).rejects.toThrow(/invalid/i);
+    await expect(result).resolves.toMatchObject({
+      ok: false,
+      failure: { message: expect.stringMatching(/invalid/i) },
+    });
     expect(wellKnownCalls()).toBe(3);
   });
 
@@ -100,7 +102,7 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     const result = discover();
     await vi.advanceTimersByTimeAsync(30_000);
 
-    await result.catch(() => undefined);
+    await result;
     expect(wellKnownCalls()).toBe(1);
   });
 
@@ -112,7 +114,7 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     const result = discover();
     await vi.advanceTimersByTimeAsync(30_000);
 
-    await expect(result).rejects.toThrow();
+    await expect(result).resolves.toMatchObject({ ok: false });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -136,7 +138,8 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     await vi.advanceTimersByTimeAsync(30_000);
 
     await expect(result).resolves.toMatchObject({
-      baseUrl: 'https://hs.example',
+      ok: true,
+      value: { baseUrl: 'https://hs.example' },
     });
     expect(wellKnownCalls()).toBe(2);
   });
@@ -155,7 +158,8 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     await vi.advanceTimersByTimeAsync(7_000);
 
     await expect(result).resolves.toMatchObject({
-      baseUrl: 'https://hs.example',
+      ok: true,
+      value: { baseUrl: 'https://hs.example' },
     });
     expect(wellKnownCalls()).toBe(1);
   });
@@ -179,7 +183,8 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     await vi.advanceTimersByTimeAsync(100);
 
     await expect(result).resolves.toMatchObject({
-      baseUrl: 'https://hs.example',
+      ok: true,
+      value: { baseUrl: 'https://hs.example' },
     });
     expect(
       fetchMock.mock.calls.filter(([url]) =>

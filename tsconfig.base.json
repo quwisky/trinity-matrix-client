@@ -61,6 +61,9 @@
       "@trinity/data-access/discovery": [
         "./libs/data-access/discovery/src/index.ts"
       ],
+      "@trinity/data-access/discovery/contract": [
+        "./libs/data-access/discovery/src/contract.ts"
+      ],
       "@trinity/data-access/media": ["./libs/data-access/media/src/index.ts"],
       "@trinity/data-access/gif": ["./libs/data-access/gif/src/index.ts"],
       "@trinity/data-access/whats-new": [
