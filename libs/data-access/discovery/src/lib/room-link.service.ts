@@ -1,28 +1,18 @@
 import { Injectable, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   describeMatrixRequestFailure,
   initialOf,
-  isRoomEncrypted,
-  liveRoomState,
-  normalizeViaServers,
+  unwrapEngineResult,
   type MatrixLinkTarget,
 } from '@trinity/util/matrix';
-import { EventType, type MatrixClient, type Room } from 'matrix-js-sdk';
-import { ClientPrefix, Method } from 'matrix-js-sdk/lib/http-api';
-import { Observable, defer, from, map, of, throwError } from 'rxjs';
-
-export type RoomLinkMembership =
-  'join' | 'invite' | 'knock' | 'ban' | 'leave' | 'unknown';
-
-export type RoomLinkJoinRule =
-  | 'public'
-  | 'knock'
-  | 'knock_restricted'
-  | 'restricted'
-  | 'invite'
-  | 'private'
-  | 'unknown';
+import { Observable, defer, map, throwError } from 'rxjs';
+import {
+  DISCOVERY_ENGINE,
+  type RoomLinkJoinRule,
+  type RoomLinkMembership,
+  type RoomLinkPreviewData,
+} from './discovery-engine';
 
 export type RoomLinkAction = 'open' | 'accept' | 'join' | 'knock' | 'none';
 
@@ -51,33 +41,6 @@ export interface RoomLinkPreviewFailure {
   readonly title: string;
   readonly message: string;
   readonly retryable: boolean;
-}
-
-function membershipOf(value: unknown): RoomLinkMembership {
-  return value === 'join' ||
-    value === 'invite' ||
-    value === 'knock' ||
-    value === 'ban' ||
-    value === 'leave'
-    ? value
-    : 'unknown';
-}
-
-function joinRuleOf(value: unknown): RoomLinkJoinRule {
-  return value === 'public' ||
-    value === 'knock' ||
-    value === 'knock_restricted' ||
-    value === 'restricted' ||
-    value === 'invite' ||
-    value === 'private'
-    ? value
-    : 'unknown';
-}
-
-function accountIdOf(client: MatrixClient): string {
-  const accountId = client.getUserId();
-  if (!accountId) throw new Error('Account unavailable.');
-  return accountId;
 }
 
 /** Exhaustive action mapping: never offer a membership write that cannot be justified. */
@@ -143,294 +106,60 @@ export function describeRoomLinkPreviewFailure(
   };
 }
 
-/**
- * Resolves room links into preview data and performs the explicit membership actions.
- * Every network action is cold. Synced joined/invited/knocked/banned rooms are projected
- * locally first so a homeserver without the unstable summary endpoint cannot regress links
- * to rooms the client already knows.
- */
+function toPreview(
+  accountId: string,
+  requested: string,
+  { restrictedEligible, ...data }: RoomLinkPreviewData,
+): RoomLinkPreview {
+  return {
+    ...data,
+    accountId,
+    requestedAddress: requested.startsWith('#') ? requested : null,
+    initial: initialOf(data.name),
+    action: roomLinkAction(data.membership, data.joinRule, restrictedEligible),
+  };
+}
+
+/** Resolves room links into preview data and performs the explicit membership actions. Cold. */
 @Injectable({ providedIn: 'root' })
 export class RoomLinkService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(DISCOVERY_ENGINE);
+  private readonly session = inject(SessionStateService);
 
   preview(
     target: Extract<MatrixLinkTarget, { kind: 'room' }>,
     accountId?: string,
   ): Observable<RoomLinkPreview> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
-      }
       // An invite row names its own account; a pasted link previews as the active one.
-      const client = accountId
-        ? this.matrix.clientFor(accountId)
-        : this.matrix.instance;
-      if (!client) return throwError(() => new Error('Account unavailable.'));
-      const local = this.localRoom(client, target.roomIdOrAlias);
-      const localMembership = membershipOf(local?.getMyMembership());
-      if (
-        local &&
-        (localMembership === 'join' ||
-          localMembership === 'invite' ||
-          localMembership === 'knock' ||
-          localMembership === 'ban')
-      ) {
-        const encrypted =
-          localMembership === 'join'
-            ? from(isRoomEncrypted(local, client.getCrypto?.()))
-            : of(local.hasEncryptionStateEvent());
-        return encrypted.pipe(
-          map((isEncrypted) =>
-            this.fromLocal(client, local, target, localMembership, isEncrypted),
-          ),
+      const id = accountId ?? this.session.activeAccountId();
+      if (!id) return throwError(() => new Error('Not signed in.'));
+      return this.engine
+        .previewRoom(id, target.roomIdOrAlias, target.via ?? [])
+        .pipe(
+          unwrapEngineResult(),
+          map((data) => toPreview(id, target.roomIdOrAlias, data)),
         );
-      }
-
-      return from(this.resolveRemote(client, target)).pipe(
-        map(({ summary, resolvedTarget }) =>
-          this.fromRemote(
-            summary,
-            resolvedTarget,
-            local,
-            localMembership,
-            client,
-          ),
-        ),
-      );
     });
   }
 
-  /** Join only after the preview's explicit Join action is pressed. Cold. */
+  /** Join only after the preview's explicit Join action is pressed. */
   join(preview: RoomLinkPreview): Observable<string> {
-    return defer(() => {
-      const client = this.matrix.clientFor(preview.accountId);
-      if (!client) return throwError(() => new Error('Account unavailable.'));
-      return from(
-        client.joinRoom(
-          preview.roomId,
-          preview.via.length > 0 ? { viaServers: [...preview.via] } : undefined,
-        ),
-      ).pipe(map((room) => room.roomId));
-    });
-  }
-
-  /** Request access only after the preview's explicit knock action is pressed. Cold. */
-  knock(preview: RoomLinkPreview): Observable<void> {
-    return defer(() => {
-      const client = this.matrix.clientFor(preview.accountId);
-      if (!client) return throwError(() => new Error('Account unavailable.'));
-      return from(
-        client.knockRoom(
-          preview.roomId,
-          preview.via.length > 0 ? { viaServers: [...preview.via] } : undefined,
-        ),
-      ).pipe(map(() => void 0));
-    });
-  }
-
-  private localRoom(client: MatrixClient, roomIdOrAlias: string): Room | null {
-    if (roomIdOrAlias.startsWith('!')) {
-      return client.getRoom(roomIdOrAlias);
-    }
-    return (
-      client
-        .getRooms()
-        .find(
-          (room) =>
-            room.getCanonicalAlias() === roomIdOrAlias ||
-            room.getAltAliases().includes(roomIdOrAlias),
-        ) ?? null
-    );
-  }
-
-  private async resolveRemote(
-    client: MatrixClient,
-    target: Extract<MatrixLinkTarget, { kind: 'room' }>,
-  ): Promise<{
-    summary: Record<string, unknown>;
-    resolvedTarget: Extract<MatrixLinkTarget, { kind: 'room' }>;
-  }> {
-    let roomId = target.roomIdOrAlias;
-    let via = normalizeViaServers(target.via ?? []);
-    if (target.roomIdOrAlias.startsWith('#')) {
-      const directory = await client.getRoomIdForAlias(target.roomIdOrAlias);
-      roomId = directory.room_id;
-      via = normalizeViaServers([...via, ...directory.servers]);
-    }
-
-    const resolvedTarget = {
-      ...target,
-      ...(via.length > 0 ? { via } : { via: undefined }),
-    };
-    return {
-      summary: await this.roomSummary(client, roomId, via),
-      resolvedTarget,
-    };
-  }
-
-  private async roomSummary(
-    client: MatrixClient,
-    roomId: string,
-    via: readonly string[],
-  ): Promise<Record<string, unknown>> {
-    try {
-      return await client.http.authedRequest<Record<string, unknown>>(
-        Method.Get,
-        `/room_summary/${encodeURIComponent(roomId)}`,
-        via.length > 0 ? { via: [...via] } : undefined,
-        undefined,
-        { prefix: ClientPrefix.V1 },
+    return this.engine
+      .joinRoom(preview.accountId, preview.roomId, preview.via)
+      .pipe(
+        unwrapEngineResult(),
+        map(({ roomId }) => roomId),
       );
-    } catch (error: unknown) {
-      // matrix-js-sdk currently exposes only the pre-standard MSC3266 helper.
-      // Retain it for homeservers which have not implemented the stable endpoint.
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'errcode' in error &&
-        error.errcode === 'M_UNRECOGNIZED'
-      ) {
-        return (await client.getRoomSummary(roomId, [
-          ...via,
-        ])) as unknown as Record<string, unknown>;
-      }
-      throw error;
-    }
   }
 
-  private fromLocal(
-    client: MatrixClient,
-    room: Room,
-    target: Extract<MatrixLinkTarget, { kind: 'room' }>,
-    membership: RoomLinkMembership,
-    encrypted: boolean,
-  ): RoomLinkPreview {
-    const state = liveRoomState(room);
-    const topic = state
-      ?.getStateEvents(EventType.RoomTopic, '')
-      ?.getContent()?.['topic'];
-    const joinRule = joinRuleOf(
-      state?.getStateEvents(EventType.RoomJoinRules, '')?.getContent()?.[
-        'join_rule'
-      ],
-    );
-    return this.build({
-      accountId: accountIdOf(client),
-      roomId: room.roomId,
-      target,
-      canonicalAddress: room.getCanonicalAlias(),
-      name: room.name || room.getCanonicalAlias() || room.roomId,
-      topic: typeof topic === 'string' && topic ? topic : null,
-      avatarMxc: room.getMxcAvatarUrl(),
-      memberCount: room.getJoinedMemberCount(),
-      encrypted,
-      joinRule,
-      membership,
-      isSpace: room.isSpaceRoom(),
-    });
-  }
-
-  private fromRemote(
-    summary: Record<string, unknown>,
-    target: Extract<MatrixLinkTarget, { kind: 'room' }>,
-    local: Room | null,
-    localMembership: RoomLinkMembership,
-    client: MatrixClient,
-  ): RoomLinkPreview {
-    const raw = summary;
-    const canonical =
-      typeof raw['canonical_alias'] === 'string'
-        ? raw['canonical_alias']
-        : (local?.getCanonicalAlias() ?? null);
-    const membership =
-      localMembership !== 'unknown'
-        ? localMembership
-        : membershipOf(raw['membership']);
-    // Per the stable endpoint, an omitted join_rule means public.
-    const joinRule =
-      raw['join_rule'] === undefined ? 'public' : joinRuleOf(raw['join_rule']);
-    const allowedRoomIds = Array.isArray(raw['allowed_room_ids'])
-      ? raw['allowed_room_ids'].filter(
-          (value): value is string =>
-            typeof value === 'string' && value.startsWith('!'),
-        )
-      : [];
-    const restrictedEligible = allowedRoomIds.some(
-      (roomId) =>
-        membershipOf(client.getRoom(roomId)?.getMyMembership()) === 'join',
-    );
-    const encryption = raw['encryption'] ?? raw['im.nheko.summary.encryption'];
-    const roomId =
-      typeof raw['room_id'] === 'string'
-        ? raw['room_id']
-        : target.roomIdOrAlias;
-    const name = typeof raw['name'] === 'string' ? raw['name'] : null;
-    const topic = typeof raw['topic'] === 'string' ? raw['topic'] : null;
-    const avatarMxc =
-      typeof raw['avatar_url'] === 'string' ? raw['avatar_url'] : null;
-    const memberCount = raw['num_joined_members'];
-    return this.build({
-      accountId: accountIdOf(client),
-      roomId,
-      target,
-      canonicalAddress: canonical,
-      name: name || canonical || roomId,
-      topic,
-      avatarMxc,
-      memberCount:
-        typeof memberCount === 'number' && Number.isFinite(memberCount)
-          ? memberCount
-          : null,
-      encrypted:
-        typeof encryption === 'string'
-          ? true
-          : local
-            ? local.hasEncryptionStateEvent()
-            : null,
-      joinRule,
-      membership,
-      isSpace: raw['room_type'] === 'm.space',
-      restrictedEligible,
-    });
-  }
-
-  private build(values: {
-    accountId: string;
-    roomId: string;
-    target: Extract<MatrixLinkTarget, { kind: 'room' }>;
-    canonicalAddress: string | null;
-    name: string;
-    topic: string | null;
-    avatarMxc: string | null;
-    memberCount: number | null;
-    encrypted: boolean | null;
-    joinRule: RoomLinkJoinRule;
-    membership: RoomLinkMembership;
-    isSpace: boolean;
-    restrictedEligible?: boolean;
-  }): RoomLinkPreview {
-    return {
-      accountId: values.accountId,
-      roomId: values.roomId,
-      requestedAddress: values.target.roomIdOrAlias.startsWith('#')
-        ? values.target.roomIdOrAlias
-        : null,
-      canonicalAddress: values.canonicalAddress,
-      name: values.name,
-      initial: initialOf(values.name),
-      topic: values.topic,
-      avatarMxc: values.avatarMxc,
-      memberCount: values.memberCount,
-      encrypted: values.encrypted,
-      joinRule: values.joinRule,
-      membership: values.membership,
-      action: roomLinkAction(
-        values.membership,
-        values.joinRule,
-        values.restrictedEligible,
-      ),
-      isSpace: values.isSpace,
-      via: values.target.via ?? [],
-    };
+  /** Request access only after the preview's explicit knock action is pressed. */
+  knock(preview: RoomLinkPreview): Observable<void> {
+    return this.engine
+      .knockRoom(preview.accountId, preview.roomId, preview.via, null)
+      .pipe(
+        unwrapEngineResult(),
+        map(() => undefined),
+      );
   }
 }

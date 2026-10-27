@@ -47,6 +47,37 @@ export interface PublicRoomsQuery {
   readonly limit: number;
 }
 
+export type RoomLinkMembership =
+  'join' | 'invite' | 'knock' | 'ban' | 'leave' | 'unknown';
+
+export type RoomLinkJoinRule =
+  | 'public'
+  | 'knock'
+  | 'knock_restricted'
+  | 'restricted'
+  | 'invite'
+  | 'private'
+  | 'unknown';
+
+/** What a room link resolves to, as the account sees the room. */
+export interface RoomLinkPreviewData {
+  readonly roomId: string;
+  readonly canonicalAddress: string | null;
+  readonly name: string;
+  readonly topic: string | null;
+  readonly avatarMxc: string | null;
+  readonly memberCount: number | null;
+  /** `null` when neither the summary nor local state says. */
+  readonly encrypted: boolean | null;
+  readonly joinRule: RoomLinkJoinRule;
+  readonly membership: RoomLinkMembership;
+  readonly isSpace: boolean;
+  /** The servers to join or knock through, including those an alias resolved to. */
+  readonly via: readonly string[];
+  /** Whether the account is joined to a room a restricted join rule allows. */
+  readonly restrictedEligible: boolean;
+}
+
 /** Every command is cold, emits once and completes; expected failures are values. */
 export interface DiscoveryEngine {
   /** Resolve a bare server name (no `@user:`) to its client base URL, without a trailing slash. */
@@ -62,6 +93,19 @@ export interface DiscoveryEngine {
   joinRoom(
     accountId: string,
     roomIdOrAlias: string,
+    via: readonly string[],
+  ): Observable<EngineResult<{ readonly roomId: string }>>;
+  /** Uses the account's own copy of a room it is in, invited to, knocking on or banned from. */
+  previewRoom(
+    accountId: string,
+    roomIdOrAlias: string,
+    via: readonly string[],
+  ): Observable<EngineResult<RoomLinkPreviewData>>;
+  knockRoom(
+    accountId: string,
+    roomIdOrAlias: string,
+    via: readonly string[],
+    reason: string | null,
   ): Observable<EngineResult<{ readonly roomId: string }>>;
   searchUserDirectory(
     accountId: string,
