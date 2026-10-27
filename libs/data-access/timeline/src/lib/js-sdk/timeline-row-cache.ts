@@ -1,5 +1,5 @@
 import { EventType, type MatrixEvent } from 'matrix-js-sdk';
-import type { MessageShield, MessageView } from './message-presentation';
+import type { MessageShield, MessageView } from '../message-presentation';
 
 /** One loaded event's projection and what it was projected from. */
 export interface ProjectedRow {

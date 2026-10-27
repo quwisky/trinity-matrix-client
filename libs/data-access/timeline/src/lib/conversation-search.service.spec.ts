@@ -8,10 +8,10 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationSearchController } from './conversation-search.service';
-import { scrollbackLive } from './live-scrollback';
+import { scrollbackLive } from './js-sdk/live-scrollback';
 
 // Paging itself is covered against the real SDK in live-scrollback.spec.
-vi.mock('./live-scrollback', () => ({ scrollbackLive: vi.fn() }));
+vi.mock('./js-sdk/live-scrollback', () => ({ scrollbackLive: vi.fn() }));
 
 function message(over: {
   id: string;

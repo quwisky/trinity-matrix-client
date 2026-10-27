@@ -42,14 +42,16 @@ import {
 import { MediaPipeline } from '@trinity/data-access/media';
 import { SystemLineSettingsService } from '@trinity/platform-native';
 import {
-  collectMessageSenders,
-  isDisplayableMessage,
-  reactionDetailsFor,
   RoomEncryptionFlags,
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
   liveRoomState,
 } from '@trinity/util/matrix';
+import {
+  collectMessageSenders,
+  isDisplayableMessage,
+  reactionDetailsFor,
+} from './js-sdk/event-reads';
 import {
   ConversationTimelineReadiness,
   READY_LOAD_STATE,
@@ -61,11 +63,11 @@ import {
   shownShield,
   shownSubject,
   unencryptedShieldFor,
-} from './shields';
+} from './js-sdk/shields';
 import { shieldKey } from './shield-presentation';
-import { projectMessage } from './project-message';
-import { isPresentableSystemEvent } from './normalize-timeline-event';
-import { scrollbackLive } from './live-scrollback';
+import { projectMessage } from './js-sdk/project-message';
+import { isPresentableSystemEvent } from './js-sdk/normalize-timeline-event';
+import { scrollbackLive } from './js-sdk/live-scrollback';
 import type { TrimGuard } from './live-timeline-trim';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import type {
@@ -79,8 +81,8 @@ import {
   CONVERSATION_MESSAGE_POLICY,
 } from './conversation-message-adapter.service';
 import { onWindowFocus, windowHasFocus } from './window-focus';
-import { TimelineRowCache } from './timeline-row-cache';
-import { revisionOf } from './event-revision';
+import { TimelineRowCache } from './js-sdk/timeline-row-cache';
+import { revisionOf } from './js-sdk/event-revision';
 
 const SCROLLBACK = 30;
 const RETAINED_EVENT_BYTES = 64;

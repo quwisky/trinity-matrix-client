@@ -9,16 +9,13 @@ import {
   shieldSubject,
   unencryptedMarkFor,
 } from '@trinity/util/matrix';
-import { type MessageShield } from './message-presentation';
+import { type MessageShield } from '../message-presentation';
 import {
   shieldKey,
   shieldText,
   unencryptedShield,
-} from './shield-presentation';
-import { type ShieldCode } from './timeline-engine';
-
-// shortcut: kept for the unchanged shields.spec.ts; drop when Task 4 moves the spec.
-export { shieldKey };
+} from '../shield-presentation';
+import { type ShieldCode } from '../timeline-engine';
 
 /**
  * Per-message authenticity shields, shared by {@link TimelineService} and
@@ -60,19 +57,6 @@ export function toShield(
     colour: info.shieldColour === EventShieldColour.RED ? 'red' : 'grey',
     reason: shieldReason(info.shieldReason),
   });
-}
-
-/** A human-readable explanation for a shield reason code. */
-export function shieldReasonText(reason: EventShieldReason | null): string {
-  return shieldText({ colour: 'grey', reason: shieldReason(reason) }).reason;
-}
-
-/** What a shield means for the reader, paired with {@link shieldReasonText}. */
-export function shieldExplanationText(
-  reason: EventShieldReason | null,
-): string {
-  return shieldText({ colour: 'grey', reason: shieldReason(reason) })
-    .explanation;
 }
 
 export { shieldSubject };

@@ -19,7 +19,7 @@ import {
   privacyProvider,
   setupActions,
 } from './timeline.spec-harness';
-import { resolvedShields } from './shields';
+import { resolvedShields } from './js-sdk/shields';
 
 describe('TimelineActionsService', () => {
   beforeEach(() => {

@@ -58,15 +58,15 @@ describe('Message Presentation production boundary', () => {
       /projectMessage\(\s*client,\s*room,\s*e,\s*shield,\s*roomEncrypted,\s*this\.mediaPipeline,\s*\)/,
     );
 
-    const projection = source(`${timelineRoot}/project-message.ts`);
+    const projection = source(`${timelineRoot}/js-sdk/project-message.ts`);
     expect(projection).toMatch(
       /normalizeTimelineEvent\(\s*client,\s*room,\s*event,\s*shield,\s*roomEncrypted,?\s*\)/,
     );
     expect(projection).toContain('presentNormalizedTimelineEvent(normalized');
     // Whether a row shows its edit is decided in one place, never passed in or fixed.
-    expect(source(`${timelineRoot}/normalize-timeline-event.ts`)).toContain(
-      'showsEdit(event)',
-    );
+    expect(
+      source(`${timelineRoot}/js-sdk/normalize-timeline-event.ts`),
+    ).toContain('showsEdit(event)');
     expect(projection).toContain('presentMedia.present(media, client)');
   });
 
@@ -82,7 +82,10 @@ describe('Message Presentation production boundary', () => {
     ).toBe(true);
     expect(
       existsSync(
-        join(workspaceRoot, `${timelineRoot}/normalize-timeline-event.ts`),
+        join(
+          workspaceRoot,
+          `${timelineRoot}/js-sdk/normalize-timeline-event.ts`,
+        ),
       ),
     ).toBe(true);
     expect(

@@ -38,11 +38,11 @@ import {
   MediaPipeline,
 } from '@trinity/data-access/media';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
+import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import {
   collectMessageSenders,
   isDisplayableMessage,
-  RoomEncryptionFlags,
-} from '@trinity/util/matrix';
+} from './js-sdk/event-reads';
 import {
   resolveShieldsInto,
   resolvedShields,
@@ -51,11 +51,11 @@ import {
   shownShield,
   shownSubject,
   unencryptedShieldFor,
-} from './shields';
+} from './js-sdk/shields';
 import { shieldKey } from './shield-presentation';
-import { eventRevision } from './event-revision';
+import { eventRevision } from './js-sdk/event-revision';
 import { onWindowFocus, windowHasFocus } from './window-focus';
-import { projectMessage } from './project-message';
+import { projectMessage } from './js-sdk/project-message';
 import type { MessageShield, MessageView } from './message-presentation';
 import type { ConversationKey } from './conversation-messages';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';

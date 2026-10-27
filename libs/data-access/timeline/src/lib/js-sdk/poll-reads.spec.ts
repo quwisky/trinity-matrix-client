@@ -6,13 +6,11 @@ import {
 } from 'matrix-js-sdk';
 import { describe, expect, it } from 'vitest';
 import {
-  buildPollView,
-  isPollStart,
   pollEndContent,
   pollResponseContent,
-  pollSignature,
   pollStartContent,
-} from './poll';
+} from '@trinity/util/matrix';
+import { buildPollView, isPollStart, pollSignature } from './poll-reads';
 
 const POLL_ID = '$poll';
 

@@ -15,7 +15,7 @@ import {
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 import type { MessageShield } from './message-presentation';
-import { unencryptedShieldFor } from './shields';
+import { unencryptedShieldFor } from './js-sdk/shields';
 
 /** One version of a message, with the unencrypted mark for its own text. */
 export interface EditRevisionView extends MessageRevisionView {
