@@ -262,6 +262,12 @@ export class MatrixClientService {
   private readonly _accountIds = signal<readonly string[]>([]);
   /** Every signed-in account's user id (for the account switcher). */
   readonly accountIds = this._accountIds.asReadonly();
+  private generationCounter = 0;
+  private readonly _sessionGenerations = signal<ReadonlyMap<string, number>>(
+    new Map(),
+  );
+  /** Per account, a number that grows each time a new client is registered for it. */
+  readonly sessionGenerations = this._sessionGenerations.asReadonly();
 
   private readonly _softLoggedOut = signal<readonly string[]>([]);
   /**
@@ -1083,6 +1089,9 @@ export class MatrixClientService {
           };
           account = started;
           this.clients.set(session.userId, started);
+          this._sessionGenerations.update((m) =>
+            new Map(m).set(session.userId, ++this.generationCounter),
+          );
           // A logout recorded for a replaced client must not end this one; a token that is
           // still dead reports itself again.
           const held = this.logoutHolds.get(session.userId);
@@ -1357,6 +1366,7 @@ export class MatrixClientService {
       this.forgetOAuthTokens(account.userId, account.client);
     }
     this.clients.clear();
+    this._sessionGenerations.set(new Map());
     this._accountIds.set([]);
     this.publishCorsOrigins();
     this._activeUserId.set(null);
@@ -1391,6 +1401,11 @@ export class MatrixClientService {
     account.client.stopClient(); // clearStores must run with the client stopped
     account.holder.clear();
     this.clients.delete(userId);
+    this._sessionGenerations.update((m) => {
+      const next = new Map(m);
+      next.delete(userId);
+      return next;
+    });
     this._accountIds.set([...this.clients.keys()]);
     this.publishCorsOrigins();
     if (this._activeUserId() === userId) {

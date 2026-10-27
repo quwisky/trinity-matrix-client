@@ -1,3 +1,4 @@
+import { EngineRequestError } from './engine-result';
 import {
   ConnectionError,
   HTTPError,
@@ -124,6 +125,15 @@ export function describeMatrixRequestFailure(
   error: unknown,
   fallbackMessage = DEFAULT_MESSAGE,
 ): MatrixRequestFailure {
+  if (error instanceof EngineRequestError) {
+    // Unrecognised and plain HTTP failures behave like the raw errors they stand for: an
+    // operation-specific fallback replaces their message.
+    const { failure } = error;
+    return (failure.kind === 'unexpected' || failure.kind === 'http') &&
+      fallbackMessage !== DEFAULT_MESSAGE
+      ? { ...failure, message: fallbackMessage }
+      : failure;
+  }
   if (isTimeout(error)) {
     return failure('timeout', 'The request timed out. Try again.', error);
   }
