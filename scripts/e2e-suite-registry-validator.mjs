@@ -30,7 +30,11 @@ export const CI_WORKFLOW_BY_TIER = {
   nightly: '.github/workflows/e2e-ios-nightly.yml',
 };
 
+/** Suites that run in the protocol environment from their own Nx project. */
+const TARGET_PROJECT_BY_SUITE = { 'engine.js-sdk': 'trinity-e2e-engine' };
+
 const PROJECT_FILES = {
+  'trinity-e2e-engine': 'e2e/engine/project.json',
   'trinity-web-container': 'container/project.json',
   'trinity-android': 'android/project.json',
   'trinity-desktop': 'electron/project.json',
@@ -48,6 +52,7 @@ const HISTORICAL_E2E_NAME =
   /(?:phase[ _-]?[67]|shipped[ _-]?ui|shipped-interface)/iu;
 const RETAINED_COMPATIBILITY_ALIAS = 'e2e:ui:shipped';
 const ACTIVE_LIFECYCLE_PROJECTS = new Set([
+  'trinity-e2e-engine',
   'trinity-e2e-browser',
   'trinity-e2e-components',
   'trinity-e2e-electron',
@@ -149,7 +154,9 @@ export function validateRegistry(snapshot, now = new Date()) {
       errors.push(`${suite.id} permits caching for an E2E runtime result`);
     }
     if (
-      suite.targetProject !== TARGET_PROJECT_BY_ENVIRONMENT[suite.environment]
+      suite.targetProject !==
+      (TARGET_PROJECT_BY_SUITE[suite.id] ??
+        TARGET_PROJECT_BY_ENVIRONMENT[suite.environment])
     ) {
       errors.push(`${suite.id} targets the wrong lifecycle project`);
     }

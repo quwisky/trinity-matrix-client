@@ -120,6 +120,7 @@ export const E2E_PACKAGE_SCRIPTS = [
       'protocol.emoji',
       'protocol.verify-sas-selfcheck',
       'protocol.login-smoke',
+      'engine.js-sdk',
     ],
   },
   {

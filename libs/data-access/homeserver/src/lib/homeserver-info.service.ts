@@ -1,5 +1,4 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
-import type { MatrixClient } from 'matrix-js-sdk';
 import {
   Observable,
   defer,
@@ -10,17 +9,12 @@ import {
   shareReplay,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { trimTrailing } from '@trinity/util/matrix';
+import { HOMESERVER_ENGINE } from './homeserver-engine';
 import type { HomeserverInfo } from './homeserver-info.model';
-import {
-  fetchCapabilities,
-  fetchSpecVersions,
-  probeServerSoftware,
-} from './probe-homeserver';
 
-/** A cached answer, kept with the client that produced it. */
+/** A cached answer, kept with the session generation that produced it. */
 interface CachedInfo {
-  readonly client: MatrixClient;
+  readonly generation: number;
   readonly info: HomeserverInfo;
 }
 
@@ -30,21 +24,21 @@ interface CachedInfo {
  *
  * **Per account, not per active account.** Every signed-in account has its own live client
  * and they all sync concurrently, and the point of the surface is checking *a* server, which
- * may not be the one in view. So this keys on `accountIds()` and reads each answer through
- * that account's own client, like `AccountIdentitiesService` and `UnreadAggregatorService`
- * — not through `projectFromClient`, which follows the active one.
+ * may not be the one in view. So this keys on `accountIds()` and probes each account by id
+ * through the {@link HomeserverEngine}, not through the active one.
  *
  * **Cached for the session, in memory only.** Nothing is written to Capacitor Preferences:
  * a server version is a fact about right now, and persisting it would show a value from a
  * previous run as if current. {@link refresh} is the deliberate re-check.
  *
- * **Nothing here fails.** The probes resolve a null-object instead of throwing (see
- * `probe-homeserver.ts`), so an unreachable server produces a record whose remote fields are
+ * **Nothing here fails.** `HomeserverEngine.probe` never errors; it resolves a record
+ * of nulls instead, so an unreachable server produces a record whose remote fields are
  * null and the UI reads "Unknown". No error reaches a toast; the feature requires that.
  */
 @Injectable({ providedIn: 'root' })
 export class HomeserverInfoService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(HOMESERVER_ENGINE);
 
   private readonly cache = new Map<string, CachedInfo>();
 
@@ -61,11 +55,10 @@ export class HomeserverInfoService {
   readonly infos = this._infos.asReadonly();
 
   constructor() {
-    // Accounts come and go, and a re-add hands the same user id a NEW client object. Both
-    // are read so the effect re-runs on either; `evictStale` then decides what survives.
+    // Accounts come and go, and a re-add bumps the generation of the same user id; the map
+    // changes on both, so `evictStale` decides what survives.
     effect(() => {
-      this.matrix.accountIds();
-      this.matrix.activeUserId();
+      this.matrix.sessionGenerations();
       this.evictStale();
     });
   }
@@ -81,7 +74,7 @@ export class HomeserverInfoService {
   /**
    * Probes that have been started and not yet finished, keyed by user id.
    *
-   * A probe is only written to {@link cache} once its whole `forkJoin` settles, so without
+   * A probe is only written to {@link cache} once the engine's probe resolves, so without
    * this every caller arriving meanwhile starts its own: each block loads on init, and the
    * account menu re-triggers a lookup on every toggle. Sharing the in-flight observable also
    * stops an older, slower response landing on top of a newer one. Same shape as
@@ -93,47 +86,38 @@ export class HomeserverInfoService {
    * Re-probe this account, ignoring anything cached. Cold. Backs "Check again".
    *
    * Always re-issues the requests, which is the whole point: every value here is reachable
-   * from an SDK call that would have replayed a cached answer instead (see
-   * `probe-homeserver.ts`), and a refresh that cannot observe a change is not a refresh.
+   * from an engine call that must not replay a cached answer, and a refresh that cannot observe a change is not a refresh.
    */
   refresh(userId: string): Observable<void> {
     const running = this.inFlight.get(userId);
     if (running) {
       return running;
     }
-    // Wholly inside `defer`, so this really is cold as documented: the client, its base URL
-    // and its access token are read on SUBSCRIBE, not when the observable is built. A token
-    // read at build time would be the stale one after an OIDC rotation.
+    // Wholly inside `defer`, so this really is cold as documented: the generation is read
+    // on SUBSCRIBE, and the engine reads the client and token then too.
     const request = defer(() => {
-      const client = this.matrix.clientFor(userId);
-      if (!client) {
-        // A user id held past sign-out, or one passed in from elsewhere. Every id in
-        // `accountIds()` has a live client, so this is a stale caller rather than an
-        // account still warming up — and it is not an error either way.
+      const generation = this.matrix.sessionGenerations().get(userId);
+      if (generation === undefined) {
+        // A user id held past sign-out, or one passed in from elsewhere: not an error.
         return of(undefined);
       }
-      // Trailing slash stripped before it is shown: `AuthService` normalises what it
-      // stores, but a stray slash would still reach the URL row.
-      const baseUrl = trimTrailing(client.baseUrl, '/');
-      const serverName = client.getDomain() ?? serverNameOf(userId);
-      const token = client.getAccessToken();
-
-      return forkJoin({
-        software: probeServerSoftware(baseUrl, serverName),
-        versions: fetchSpecVersions(baseUrl, token),
-        capabilities: fetchCapabilities(baseUrl, token),
-      }).pipe(
-        map(({ software, versions, capabilities }) => {
-          this.store(userId, client, {
-            userId,
-            serverName,
-            baseUrl,
-            discovered: !sameOrigin(baseUrl, `https://${serverName}`),
-            software,
-            specVersions: versions?.versions ?? null,
-            unstableFeatures: versions?.unstableFeatures ?? null,
-            capabilities,
-          });
+      return this.engine.probe(userId).pipe(
+        map((probe) => {
+          if (probe) {
+            this.store(userId, generation, {
+              userId,
+              serverName: probe.serverName,
+              baseUrl: probe.baseUrl,
+              software: probe.software,
+              specVersions: probe.specVersions,
+              unstableFeatures: probe.unstableFeatures,
+              capabilities: probe.capabilities,
+              discovered: !sameOrigin(
+                probe.baseUrl,
+                `https://${probe.serverName}`,
+              ),
+            });
+          }
         }),
       );
     }).pipe(
@@ -170,31 +154,30 @@ export class HomeserverInfoService {
 
   private store(
     userId: string,
-    client: MatrixClient,
+    generation: number,
     info: HomeserverInfo,
   ): void {
     // A probe that finished after its account was removed — or after a re-add replaced the
-    // client — must not resurrect an entry, or reinstate one keyed to a client nobody holds.
-    if (this.matrix.clientFor(userId) !== client) {
+    // session — must not resurrect an entry for a session nobody holds.
+    if (this.matrix.sessionGenerations().get(userId) !== generation) {
       return;
     }
-    this.cache.set(userId, { client, info });
+    this.cache.set(userId, { generation, info });
     this.publish();
   }
 
   /**
    * Drop answers that no longer describe anything: accounts that signed out, and accounts
-   * whose user id now maps to a **different client object**.
+   * whose user id now has a **different session generation**.
    *
    * The second case is easy to miss: re-adding an already signed-in account stops and
    * re-creates its client, against a base URL the user may have just changed. The user id is
    * identical, so a cache keyed on it alone would keep showing the old server's version.
-   * Same identity re-check `AccountIdentitiesService` and `UnreadAggregatorService` make.
    */
   private evictStale(): void {
     let changed = false;
     for (const [userId, held] of this.cache) {
-      if (this.matrix.clientFor(userId) !== held.client) {
+      if (this.matrix.sessionGenerations().get(userId) !== held.generation) {
         this.cache.delete(userId);
         changed = true;
       }
@@ -227,9 +210,4 @@ function sameOrigin(a: string, b: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** `example.org` from `@a:example.org`, for the case the client has no domain to give. */
-function serverNameOf(userId: string): string {
-  return userId.replace(/^.*?:/, '');
 }

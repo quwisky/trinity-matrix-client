@@ -53,6 +53,11 @@ export const E2E_INVENTORY = {
       ignoredTargets: ['lint', 'typecheck'],
     },
     {
+      project: 'trinity-e2e-engine',
+      projectFile: 'e2e/engine/project.json',
+      ignoredTargets: ['lint', 'typecheck', 'test'],
+    },
+    {
       project: 'trinity-e2e-protocol',
       projectFile: 'e2e/protocol/project.json',
       ignoredTargets: ['e2e', 'lint', 'typecheck', 'test'],
