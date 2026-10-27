@@ -15,7 +15,7 @@ import {
 } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { filter } from 'rxjs';
 
 /**
@@ -33,7 +33,7 @@ import { filter } from 'rxjs';
 })
 export class SignInAgainBannerComponent {
   private readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly router = inject(Router);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
@@ -51,7 +51,7 @@ export class SignInAgainBannerComponent {
    * and the new device can read older messages only with it or another signed-in device.
    */
   signInAgain(): void {
-    const userId = this.matrix.activeUserId();
+    const userId = this.matrix.activeAccountId();
     if (!userId) return;
     this.alert
       .confirm$({

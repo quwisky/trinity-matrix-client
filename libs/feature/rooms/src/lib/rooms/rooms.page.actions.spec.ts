@@ -4,6 +4,7 @@ import {
   RoomsTimelineStub,
   UNREAD_AGGREGATOR_PROVIDER,
   matrixClientProvider,
+  sessionStateProvider,
   invitesProvider,
   selectedRoomLibraryProvider,
   setRouteRoom,
@@ -32,7 +33,6 @@ import {
   InviteBlockedError,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
-import { type SyncState } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
@@ -152,7 +152,11 @@ describe('RoomsPage space actions', () => {
         matrixClientProvider({
           activeUserId: activeAccountId.asReadonly(),
           accountIds,
-          syncState: 'SYNCING' as SyncState,
+        }),
+        sessionStateProvider({
+          activeAccountId: activeAccountId.asReadonly(),
+          accountIds,
+          syncState: 'syncing',
         }),
         UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
@@ -652,7 +656,8 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline),
-        matrixClientProvider({ syncState: 'SYNCING' as SyncState }),
+        matrixClientProvider(),
+        sessionStateProvider({ syncState: 'syncing' }),
         UNREAD_AGGREGATOR_PROVIDER,
         MockProvider(TrnSurfaceService, {
           open: surfaceOpen,
@@ -1690,7 +1695,8 @@ describe('RoomsPage space hierarchy actions', () => {
         }),
         MockProvider(SpaceContentsService, { unlink: removeRoomFromSpace }),
         MockProvider(TimelineActionsService),
-        matrixClientProvider({ syncState: 'SYNCING' as SyncState }),
+        matrixClientProvider(),
+        sessionStateProvider({ syncState: 'syncing' }),
         UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),

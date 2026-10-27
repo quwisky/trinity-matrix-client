@@ -34,7 +34,8 @@ import {
 } from '@trinity/data-access/accounts';
 import {
   MatrixClientService,
-  type SyncState,
+  SessionStateService,
+  type SessionSyncState,
 } from '@trinity/data-access/matrix-client';
 import {
   InvitesService,
@@ -357,8 +358,8 @@ export const SHARED_MOCKS: Provider[] = [
   {
     provide: AccountRuntimeService,
     useFactory: () => {
-      const matrix = inject(MatrixClientService);
-      const activeAccountId = signal(matrix.activeUserId());
+      const session = inject(SessionStateService);
+      const activeAccountId = signal(session.activeAccountId());
       return {
         activeAccountId: activeAccountId.asReadonly(),
         switchActiveAccount: vi.fn(
@@ -496,22 +497,16 @@ export function invitesProvider(over: Partial<InvitesService> = {}) {
 
 /**
  * Default MatrixClientService mock: one initialised Account, `@me:hs`, whose clients are
- * {@link clientStub}s. `syncState` is only provided when a block asks for it.
+ * {@link clientStub}s.
  */
 export function matrixClientProvider(
   options: {
     readonly activeUserId?: Signal<string | null>;
     readonly accountIds?: readonly string[];
-    readonly syncState?: SyncState;
   } = {},
 ): Provider {
   return MockProvider(MatrixClientService, {
     isInitialized: true,
-    ...(options.syncState
-      ? {
-          syncState: signal<SyncState | null>(options.syncState).asReadonly(),
-        }
-      : {}),
     instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
     activeUserId:
       options.activeUserId ?? signal<string | null>('@me:hs').asReadonly(),
@@ -519,6 +514,27 @@ export function matrixClientProvider(
       options.accountIds ?? ['@me:hs'],
     ).asReadonly(),
     clientFor: () => clientStub(),
+  });
+}
+
+/** Default SessionStateService mock: one signed-in Account, `@me:hs`, with no sync state. */
+export function sessionStateProvider(
+  options: {
+    readonly activeAccountId?: Signal<string | null>;
+    readonly accountIds?: readonly string[];
+    readonly syncState?: SessionSyncState;
+  } = {},
+): Provider {
+  return MockProvider(SessionStateService, {
+    activeAccountId:
+      options.activeAccountId ?? signal<string | null>('@me:hs').asReadonly(),
+    accountIds: signal<readonly string[]>(
+      options.accountIds ?? ['@me:hs'],
+    ).asReadonly(),
+    syncState: signal<SessionSyncState | null>(
+      options.syncState ?? null,
+    ).asReadonly(),
+    softLoggedOut: signal<readonly string[]>([]).asReadonly(),
   });
 }
 
@@ -544,13 +560,13 @@ export function selectedRoomLibraryProvider(
   return {
     provide: SelectedRoomLibraryService,
     useFactory: () => {
-      const matrix = inject(MatrixClientService);
+      const session = inject(SessionStateService);
       const rooms = inject(RoomLibraryService);
       const spaces = inject(SpacesService);
       const invites = inject(InvitesService);
       return {
         view: computed(() => {
-          const activeAccountId = matrix.activeUserId();
+          const activeAccountId = session.activeAccountId();
           return {
             accountIds: new Set(activeAccountId ? [activeAccountId] : []),
             mode: 'active' as const,
