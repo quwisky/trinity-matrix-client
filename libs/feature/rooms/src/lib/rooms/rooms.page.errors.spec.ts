@@ -160,7 +160,7 @@ describe('RoomsPage action error feedback', () => {
           ).asReadonly(),
           mixing: signal(false),
         }),
-        MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
+        MockProvider(SpaceChildrenService, { addExistingRoom }),
         MockProvider(RoomActionPermissionsService, {
           room: () => {
             const curate = canCurate();
