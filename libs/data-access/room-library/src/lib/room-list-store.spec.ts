@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
-import { computed, signal } from '@angular/core';
-import { finalize, firstValueFrom, tap } from 'rxjs';
+import { type Signal, computed, signal } from '@angular/core';
+import { Subject, finalize, firstValueFrom, tap } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   EMPTY_SESSION,
+  SESSION_ENGINE,
   SESSION_SNAPSHOT,
+  type SessionEngine,
   type SessionAccountStatus,
   type SessionSnapshot,
 } from '@trinity/data-access/matrix-client';
@@ -33,11 +35,14 @@ describe('RoomListStore', () => {
   let store: RoomListStore;
   let alice: string;
   let open: number;
+  let session$: Subject<SessionSnapshot>;
   const A = fakeRoom('!a:example.org');
   const B = fakeRoom('!b:example.org');
 
+  // Moves only the snapshot signal; the engine's session() stream may emit later.
   const goLive = (...accounts: SessionAccountStatus[]) =>
     snapshot.set({ ...EMPTY_SESSION, accounts });
+  const publish = () => session$.next(snapshot());
 
   beforeEach(() => {
     fake = new FakeRoomListEngine();
@@ -50,10 +55,15 @@ describe('RoomListStore', () => {
         finalize(() => (open -= 1)),
       );
     snapshot = signal(EMPTY_SESSION);
+    session$ = new Subject();
+    const sessionEngine: Pick<SessionEngine, 'session'> = {
+      session: () => session$,
+    };
     TestBed.configureTestingModule({
       providers: [
         { provide: ROOM_LIST_ENGINE, useValue: fake },
         { provide: SESSION_SNAPSHOT, useValue: snapshot },
+        { provide: SESSION_ENGINE, useValue: sessionEngine },
       ],
     });
     store = TestBed.inject(RoomListStore);
@@ -89,28 +99,66 @@ describe('RoomListStore', () => {
 
   it('resubscribes on a new generation', () => {
     fake.seed(alice, [A]);
+    const view = computed(() => store.rooms(alice)());
     goLive(account(alice, 1));
-    expect(store.rooms(alice)()).toEqual([A]);
+    expect(view()).toEqual([A]);
     expect(open).toBe(1);
 
     fake.seed(alice, [A, B]);
     goLive(account(alice, 2));
+    publish();
 
-    expect(store.rooms(alice)()).toEqual([A, B]);
+    expect(view()).toEqual([A, B]);
     expect(open).toBe(1);
   });
 
   it("drops the account's rows when it leaves", () => {
     fake.seed(alice, [A]);
+    const view = computed(() => store.rooms(alice)());
     goLive(account(alice));
+    expect(view()).toEqual([A]);
     expect(store.room(alice, A.roomId)).toEqual(A);
 
     goLive();
 
-    expect(store.rooms(alice)()).toEqual([]);
+    expect(view()).toEqual([]);
     expect(store.room(alice, A.roomId)).toBeNull();
     expect(store.liveAccountIds()).toEqual([]);
     expect(open).toBe(0);
+  });
+
+  it('closes the feed of an account that leaves with no read afterwards', () => {
+    fake.seed(alice, [A]);
+    goLive(account(alice));
+    store.rooms(alice)();
+    expect(open).toBe(1);
+
+    goLive();
+    publish();
+
+    expect(open).toBe(0);
+  });
+
+  it('opens a feed on a session emission without a read', () => {
+    fake.seed(alice, [A]);
+    goLive(account(alice));
+    publish();
+    expect(open).toBe(1);
+
+    expect(store.rooms(alice)()).toEqual([A]);
+    expect(open).toBe(1);
+  });
+
+  it('writes no signal while a read opens a feed', () => {
+    const version = (store as unknown as { version: Signal<number> }).version;
+    fake.seed(alice, [A]);
+    goLive(account(alice));
+
+    expect(computed(() => store.rooms(alice)())()).toEqual([A]);
+    expect(version()).toBe(0);
+
+    fake.seed(alice, [B]);
+    expect(version()).toBe(1);
   });
 
   it('folds non-reset diffs', async () => {

@@ -7,8 +7,10 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import {
+  SESSION_ENGINE,
   type SessionAccountStatus,
   SessionStateService,
 } from '@trinity/data-access/matrix-client';
@@ -75,6 +77,13 @@ export class RoomListStore {
   readonly liveAccountIds: Signal<readonly string[]> = this.session.accountIds;
 
   constructor() {
+    // Closes the feeds of accounts that left even when nothing reads the store any more.
+    inject(SESSION_ENGINE)
+      .session()
+      .pipe(takeUntilDestroyed())
+      .subscribe(() =>
+        untracked(() => this.reconcile(this.session.snapshot().accounts)),
+      );
     inject(DestroyRef).onDestroy(() => {
       for (const feed of this.feeds.values()) feed.subscription.unsubscribe();
       this.feeds.clear();
@@ -122,6 +131,7 @@ export class RoomListStore {
   private read(accountId: string): Feed | undefined {
     const accounts = this.session.snapshot().accounts;
     this.version();
+    // Subscribing inside the read lets a synchronous engine fill an account in the turn it goes live.
     untracked(() => this.reconcile(accounts));
     return this.feeds.get(accountId);
   }
