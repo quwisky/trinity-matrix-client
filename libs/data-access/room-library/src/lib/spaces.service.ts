@@ -33,7 +33,7 @@ import {
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util/matrix';
-import { isJoinedSpace, spaceChildIdsOf } from './room-projection';
+import { isJoinedSpace, spaceChildIdsOf } from './js-sdk/room-info';
 import { compareOrder } from './space-child-order';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,

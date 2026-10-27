@@ -6,9 +6,9 @@ import {
   comparatorFor,
   compareRoomSummaries,
   isRoomSortMode,
-  spaceChildIdsOf,
   spaceRankOf,
 } from './room-projection';
+import { spaceChildIdsOf } from './js-sdk/room-info';
 import { type RoomSummary } from './room-library.service';
 
 function room(over: Partial<RoomSummary> & { id: string }): RoomSummary {

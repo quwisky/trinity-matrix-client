@@ -11,12 +11,12 @@ import {
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
 import { roomAvatarMxc } from '@trinity/util/matrix';
+import { initialOf } from './room-projection';
 import {
   directMapOf,
-  initialOf,
   isMarkedUnread,
   roomActivityTs,
-} from './room-projection';
+} from './js-sdk/room-info';
 
 type UnreadListener = () => void;
 
