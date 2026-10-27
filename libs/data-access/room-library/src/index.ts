@@ -19,3 +19,4 @@ export * from './lib/room-library-lifetime';
 export * from './lib/selected-room-library.service';
 export * from './lib/room-list-style';
 export * from './lib/rooms-in-common.service';
+export * from './lib/room-list-engine';

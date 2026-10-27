@@ -393,7 +393,7 @@ export class SpaceChildrenService {
 /**
  * The child links a space's state declares, ordered the way the spec sorts them.
  *
- * Kept here, not beside `spaceChildIdsOf` in `room-projection.ts`: that file uses
+ * Kept here, not beside `spaceChildIdsOf` in `js-sdk/room-info.ts`: that file uses
  * `localeCompare`, and parking this code-point {@link compareOrder} next to it invites
  * "unifying" them, which would change visible sidebar ordering.
  */

@@ -48,6 +48,7 @@ export type EngineFailure = {
       readonly params: { readonly reason: AccountStartFailureReason };
     }
   | { readonly code: 'account-not-live' }
+  | { readonly code: 'invite-blocked' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -82,6 +83,7 @@ export function engineFailureMessage(failure: EngineFailure): string {
       });
     case 'account-start-failed':
     case 'account-not-live':
+    case 'invite-blocked':
       return requestFailureMessage(failure.kind, failure.diagnostic);
   }
 }

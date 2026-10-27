@@ -1,0 +1,415 @@
+import {
+  BehaviorSubject,
+  type Observable,
+  Subject,
+  defer,
+  distinctUntilChanged,
+  filter,
+  map,
+  of,
+  startWith,
+} from 'rxjs';
+import {
+  type EngineFailure,
+  type EngineFailureCode,
+  type EngineResult,
+  type VectorDiff,
+  applyVectorDiffs,
+  engineFail,
+  engineOk,
+  plainEqual,
+} from '@trinity/util/matrix';
+import type {
+  CreateRoomRequest,
+  RoomInfo,
+  RoomListEngine,
+  TypingMember,
+} from '../lib/room-list-engine';
+
+type FailNextCode = Exclude<
+  EngineFailureCode,
+  'discovery-failed' | 'account-start-failed'
+>;
+type PerAccount<T> = Readonly<Record<string, Readonly<Record<string, T>>>>;
+
+function failure(code: FailNextCode): EngineFailure {
+  return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
+}
+
+const REQUEST_FAILED = failure('request-failed');
+
+/** A joined, unnamed-looking room with every count at zero; `patch` overrides any field. */
+export function fakeRoom(
+  roomId: string,
+  patch: Partial<RoomInfo> = {},
+): RoomInfo {
+  return {
+    roomId,
+    membership: 'join',
+    isSpace: false,
+    displayName: roomId,
+    avatarMxc: null,
+    topic: '',
+    joinedMemberCount: 1,
+    directUserId: null,
+    encryption: 'unencrypted',
+    historyVisibility: 'shared',
+    notificationCount: 0,
+    highlightCount: 0,
+    markedUnread: false,
+    recencyStamp: 0,
+    latestMessage: null,
+    favourite: false,
+    lowPriority: false,
+    inviter: null,
+    ...patch,
+  };
+}
+
+/** In-memory room lists for `alice` (live) and `bob` (driven through `asBob`), emitting synchronously. */
+export class FakeRoomListEngine implements RoomListEngine {
+  private readonly lists = new Map<string, readonly RoomInfo[]>();
+  private readonly changes$ = new Subject<{
+    readonly accountId: string;
+    readonly diffs: readonly VectorDiff<RoomInfo>[];
+  }>();
+  private readonly typing$ = new BehaviorSubject<
+    PerAccount<readonly TypingMember[]>
+  >({});
+  private readonly direct$ = new BehaviorSubject<PerAccount<readonly string[]>>(
+    {},
+  );
+  private readonly roomNames = new Map<string, string>();
+  private readonly aliases = new Map<string, string>();
+  private readonly userNames = new Map<string, string>();
+  private nextRoom = 0;
+  private nextFailure: FailNextCode | null = null;
+
+  readonly serverName = 'example.org';
+  readonly alice = `@alice:${this.serverName}`;
+  readonly bob = `@bob:${this.serverName}`;
+
+  /** Acts on the fake's state as `bob` would on a server. */
+  readonly asBob = {
+    createRoom: async (name: string): Promise<string> => this.newRoom(name),
+    join: async (): Promise<void> => undefined,
+    invite: async (
+      roomId: string,
+      userId: string,
+      options: { readonly isDirect?: boolean } = {},
+    ): Promise<void> => {
+      this.deliverInvite(this.bob, roomId, userId, options.isDirect ?? false);
+    },
+    sendTyping: async (roomId: string): Promise<void> => {
+      for (const [accountId, rooms] of this.lists) {
+        if (!rooms.some((r) => r.roomId === roomId)) continue;
+        const others = (this.typing$.value[accountId]?.[roomId] ?? []).filter(
+          (m) => m.userId !== this.bob,
+        );
+        this.setTyping(accountId, roomId, [
+          ...others,
+          { userId: this.bob, displayName: this.displayName(this.bob) },
+        ]);
+      }
+    },
+    sendMessage: async (roomId: string, body: string): Promise<void> => {
+      for (const accountId of this.lists.keys()) {
+        const index = this.indexOf(accountId, roomId);
+        const room = this.lists.get(accountId)?.[index];
+        if (!room) continue;
+        this.apply(accountId, [
+          {
+            op: 'set',
+            index,
+            value: {
+              ...room,
+              notificationCount: room.notificationCount + 1,
+              recencyStamp: room.recencyStamp + 1,
+              latestMessage: { text: body, mark: null },
+            },
+          },
+        ]);
+      }
+    },
+  };
+
+  constructor() {
+    this.userNames.set(this.alice, 'Alice');
+    this.userNames.set(this.bob, 'Bob');
+    this.lists.set(this.alice, []);
+  }
+
+  /** Makes `accountId` live with exactly `rooms`. */
+  seed(accountId: string, rooms: readonly RoomInfo[]): void {
+    if (!this.userNames.has(accountId))
+      this.userNames.set(accountId, accountId);
+    for (const room of rooms) this.roomNames.set(room.roomId, room.displayName);
+    this.lists.set(accountId, rooms);
+    this.changes$.next({ accountId, diffs: [{ op: 'reset', values: rooms }] });
+  }
+
+  setTyping(
+    accountId: string,
+    roomId: string,
+    members: readonly TypingMember[],
+  ): void {
+    const current = this.typing$.value;
+    this.typing$.next({
+      ...current,
+      [accountId]: { ...current[accountId], [roomId]: members },
+    });
+  }
+
+  failNext(code: FailNextCode): void {
+    this.nextFailure = code;
+  }
+
+  publishAlias(roomId: string, localpart: string): string {
+    const alias = `#${localpart}:${this.serverName}`;
+    this.aliases.set(alias, roomId);
+    return alias;
+  }
+
+  /** Alice accepts an invite: the row becomes joined. */
+  acceptInvite(roomId: string): void {
+    const index = this.indexOf(this.alice, roomId);
+    const room = this.lists.get(this.alice)?.[index];
+    if (room?.membership !== 'invite') return;
+    this.apply(this.alice, [
+      {
+        op: 'set',
+        index,
+        value: { ...room, membership: 'join', inviter: null },
+      },
+    ]);
+  }
+
+  rooms(accountId: string): Observable<readonly VectorDiff<RoomInfo>[]> {
+    return defer(() =>
+      this.changes$.pipe(
+        filter((change) => change.accountId === accountId),
+        map((change) => change.diffs),
+        startWith([
+          { op: 'reset', values: this.lists.get(accountId) ?? [] },
+        ] satisfies VectorDiff<RoomInfo>[]),
+      ),
+    );
+  }
+
+  typing(
+    accountId: string,
+  ): Observable<Readonly<Record<string, readonly TypingMember[]>>> {
+    return this.typing$.pipe(
+      map((all) => all[accountId] ?? {}),
+      distinctUntilChanged<Readonly<Record<string, readonly TypingMember[]>>>(
+        plainEqual,
+      ),
+    );
+  }
+
+  directMap(
+    accountId: string,
+  ): Observable<Readonly<Record<string, readonly string[]>>> {
+    return this.direct$.pipe(
+      map((all) => all[accountId] ?? {}),
+      distinctUntilChanged<Readonly<Record<string, readonly string[]>>>(
+        plainEqual,
+      ),
+    );
+  }
+
+  setTag(
+    accountId: string,
+    roomId: string,
+    tag: 'favourite' | 'lowPriority',
+    on: boolean,
+  ): Observable<EngineResult<null>> {
+    return this.patchCommand(accountId, roomId, { [tag]: on });
+  }
+
+  setMarkedUnread(
+    accountId: string,
+    roomId: string,
+    unread: boolean,
+  ): Observable<EngineResult<null>> {
+    return this.patchCommand(accountId, roomId, {
+      markedUnread: unread,
+    });
+  }
+
+  markRead(
+    accountId: string,
+    roomId: string,
+    _receipts: 'public' | 'private',
+  ): Observable<EngineResult<null>> {
+    return this.patchCommand(accountId, roomId, {
+      notificationCount: 0,
+      highlightCount: 0,
+      markedUnread: false,
+    });
+  }
+
+  leave(accountId: string, roomId: string): Observable<EngineResult<null>> {
+    return this.run(accountId, () => {
+      const index = this.indexOf(accountId, roomId);
+      if (index < 0) return engineFail(REQUEST_FAILED);
+      this.apply(accountId, [{ op: 'remove', index }]);
+      return engineOk(null);
+    });
+  }
+
+  createRoom(
+    accountId: string,
+    request: CreateRoomRequest,
+  ): Observable<EngineResult<{ readonly roomId: string }>> {
+    return this.run(accountId, () => {
+      const roomId = this.newRoom(request.name);
+      this.apply(accountId, [
+        {
+          op: 'pushBack',
+          value: fakeRoom(roomId, {
+            displayName: request.name,
+            topic: request.topic ?? '',
+          }),
+        },
+      ]);
+      return engineOk({ roomId });
+    });
+  }
+
+  createDirectMessage(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<{ readonly roomId: string }>> {
+    return this.run(accountId, () => {
+      if (!this.userNames.has(userId)) return engineFail(REQUEST_FAILED);
+      const joined = this.lists
+        .get(accountId)
+        ?.find((r) => r.directUserId === userId && r.membership === 'join');
+      if (joined) return engineOk({ roomId: joined.roomId });
+      const name = this.displayName(userId);
+      const roomId = this.newRoom(name);
+      this.apply(accountId, [
+        {
+          op: 'pushBack',
+          value: fakeRoom(roomId, { displayName: name, directUserId: userId }),
+        },
+      ]);
+      const current = this.direct$.value;
+      const own = current[accountId] ?? {};
+      this.direct$.next({
+        ...current,
+        [accountId]: { ...own, [userId]: [...(own[userId] ?? []), roomId] },
+      });
+      this.deliverInvite(accountId, roomId, userId, true);
+      return engineOk({ roomId });
+    });
+  }
+
+  resolveAlias(
+    accountId: string,
+    alias: string,
+  ): Observable<EngineResult<{ readonly roomId: string }>> {
+    return this.run(accountId, () => {
+      const roomId = this.aliases.get(alias);
+      return roomId ? engineOk({ roomId }) : engineFail(REQUEST_FAILED);
+    });
+  }
+
+  invite(
+    accountId: string,
+    roomId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, () => {
+      if (this.indexOf(accountId, roomId) < 0 || !this.userNames.has(userId)) {
+        return engineFail(REQUEST_FAILED);
+      }
+      this.deliverInvite(accountId, roomId, userId, false);
+      return engineOk(null);
+    });
+  }
+
+  /** A cold command: scripted failure first, then the live-account check, then `action`. */
+  private run<T>(
+    accountId: string,
+    action: () => EngineResult<T>,
+  ): Observable<EngineResult<T>> {
+    return defer(() => {
+      const scripted = this.nextFailure;
+      this.nextFailure = null;
+      if (scripted) return of(engineFail(failure(scripted)));
+      if (!this.lists.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      return of(action());
+    });
+  }
+
+  private patchCommand(
+    accountId: string,
+    roomId: string,
+    patch: Partial<RoomInfo>,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, () => {
+      const index = this.indexOf(accountId, roomId);
+      const room = this.lists.get(accountId)?.[index];
+      if (!room) return engineFail(REQUEST_FAILED);
+      this.apply(accountId, [
+        { op: 'set', index, value: { ...room, ...patch } },
+      ]);
+      return engineOk(null);
+    });
+  }
+
+  private indexOf(accountId: string, roomId: string): number {
+    return (
+      this.lists.get(accountId)?.findIndex((r) => r.roomId === roomId) ?? -1
+    );
+  }
+
+  private apply(
+    accountId: string,
+    diffs: readonly VectorDiff<RoomInfo>[],
+  ): void {
+    this.lists.set(
+      accountId,
+      applyVectorDiffs(this.lists.get(accountId) ?? [], diffs),
+    );
+    this.changes$.next({ accountId, diffs });
+  }
+
+  private newRoom(name: string): string {
+    this.nextRoom += 1;
+    const roomId = `!fake-${this.nextRoom}:${this.serverName}`;
+    this.roomNames.set(roomId, name);
+    return roomId;
+  }
+
+  private deliverInvite(
+    from: string,
+    roomId: string,
+    to: string,
+    isDirect: boolean,
+  ): void {
+    if (!this.lists.has(to) || this.indexOf(to, roomId) >= 0) return;
+    this.apply(to, [
+      {
+        op: 'pushBack',
+        value: fakeRoom(roomId, {
+          membership: 'invite',
+          displayName: this.roomNames.get(roomId) ?? roomId,
+          inviter: {
+            userId: from,
+            displayName: this.displayName(from),
+            isDirect,
+          },
+        }),
+      },
+    ]);
+  }
+
+  private displayName(userId: string): string {
+    return this.userNames.get(userId) ?? userId;
+  }
+}

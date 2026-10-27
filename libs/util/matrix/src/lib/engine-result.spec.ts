@@ -82,14 +82,22 @@ const SESSION_FAILURES = [
     code: 'account-not-live',
     diagnostic: { kind: 'unexpected' },
   },
+  {
+    kind: 'permission',
+    code: 'invite-blocked',
+    diagnostic: { kind: 'permission' },
+  },
 ] satisfies EngineFailure[];
 
 describe('engineFailureMessage', () => {
-  it.each(SESSION_FAILURES)('words $code like a request failure', (failure) => {
-    expect(engineFailureMessage(failure)).toBe(
-      engineFailureMessage(requestFailed(failure.kind)),
-    );
-  });
+  it.each(SESSION_FAILURES)(
+    '$code maps to the request-failed text for its kind',
+    (failure) => {
+      expect(engineFailureMessage(failure)).toBe(
+        engineFailureMessage(requestFailed(failure.kind)),
+      );
+    },
+  );
 
   it('words not-signed-in', () => {
     expect(engineFailureMessage(NOT_SIGNED_IN)).toBe('Not signed in.');
