@@ -305,7 +305,9 @@ test.describe('Space curation', () => {
     await suggested.focus();
     await page.keyboard.press('Space');
     const failure = panel.getByTestId('space-content-curation-failure');
-    await expect(failure).toContainText('curation rejected');
+    await expect(failure).toContainText(
+      'You do not have permission to do that.',
+    );
     await expect(suggested).not.toBeChecked();
     await page.unroute(childRoute);
 

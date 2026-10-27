@@ -1,11 +1,22 @@
 import { signal } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
-import { MatrixError } from '@trinity/util/matrix';
-import { ClientEvent } from 'matrix-js-sdk';
-import { BehaviorSubject, firstValueFrom, of, throwError } from 'rxjs';
+import {
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import { type EngineResult, engineFail, engineOk } from '@trinity/util/matrix';
+import { defer, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  FakeRoomListEngine,
+  fakeRoom,
+} from '../contract/fake-room-list-engine';
+import type { HierarchyEntry } from './room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 import { RoomLibraryService } from './room-library.service';
 import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 import { SpaceChildrenService } from './space-children.service';
@@ -15,76 +26,89 @@ import {
 } from './space-contents.service';
 import { SpacesService } from './spaces.service';
 
-const TARGET = { accountId: '@opening:hs', spaceId: '!parent:hs' } as const;
+const ALICE = '@alice:example.org';
+const TARGET = { accountId: ALICE, spaceId: '!parent:hs' } as const;
 
-function room(id: string, name: string, isSpace = false) {
+function entry(
+  roomId: string,
+  patch: Partial<HierarchyEntry> = {},
+): HierarchyEntry {
   return {
-    roomId: id,
-    name,
-    isSpaceRoom: () => isSpace,
-    getMyMembership: () => 'join',
-    getMxcAvatarUrl: () => null,
+    roomId,
+    name: null,
+    canonicalAlias: null,
+    topic: null,
+    avatarMxc: null,
+    joinedMemberCount: 0,
+    joinRule: null,
+    isSpace: false,
+    childrenState: [],
+    ...patch,
   };
 }
 
-function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
-  const accountIds = signal<readonly string[]>([TARGET.accountId]);
-  const parent = room(TARGET.spaceId, 'Design', true);
-  const candidate = room('!candidate:hs', 'Candidate');
-  const nested = room('!nested:hs', 'Nested', true);
-  const handlers = new Map<string, (...args: never[]) => void>();
-  const getRoomHierarchy = options.hierarchyError
-    ? vi.fn().mockRejectedValue(options.hierarchyError)
-    : vi.fn().mockResolvedValue({
-        rooms: [
-          {
-            room_id: TARGET.spaceId,
-            children_state: [
-              {
-                state_key: '!child:remote',
-                content: { via: ['remote'], order: 'a', suggested: true },
-              },
-              {
-                state_key: '!nested:hs',
-                content: { via: ['hs'], order: 'b' },
-              },
-            ],
-          },
-          {
-            room_id: '!child:remote',
-            name: 'Public child',
-            room_type: undefined,
-            num_joined_members: 4,
-          },
-          {
-            room_id: '!nested:hs',
-            name: 'Nested',
-            room_type: 'm.space',
-            num_joined_members: 2,
-          },
-        ],
-      });
-  const client = {
-    getRoom: (id: string) =>
-      id === TARGET.spaceId
-        ? parent
-        : id === nested.roomId
-          ? nested
-          : id === candidate.roomId
-            ? candidate
-            : null,
-    getRooms: () => [parent, candidate, nested],
-    getAccountData: () => null,
-    getRoomHierarchy,
-    on: vi.fn((event: string, handler: (...args: never[]) => void) =>
-      handlers.set(event, handler),
-    ),
-    off: vi.fn(),
-  };
+const HIERARCHY: readonly HierarchyEntry[] = [
+  entry(TARGET.spaceId, { name: 'Design', isSpace: true }),
+  entry('!child:remote', { name: 'Public child', joinedMemberCount: 4 }),
+  entry('!nested:hs', { name: 'Nested', isSpace: true, joinedMemberCount: 2 }),
+];
+
+type HierarchyResult = EngineResult<readonly HierarchyEntry[]>;
+
+function setup(
+  options: { allowed?: boolean; hierarchy?: HierarchyResult[] } = {},
+) {
+  const fake = new FakeRoomListEngine();
+  fake.seed(ALICE, [
+    fakeRoom(TARGET.spaceId, { displayName: 'Design', isSpace: true }),
+    fakeRoom('!candidate:hs', { displayName: 'Candidate' }),
+    fakeRoom('!nested:hs', { displayName: 'Nested', isSpace: true }),
+  ]);
+  const link = (
+    childId: string,
+    via: string[],
+    order: string,
+    suggested = false,
+  ): void =>
+    void fake
+      .setSpaceChild(ALICE, TARGET.spaceId, childId, { via, order, suggested })
+      .subscribe();
+  link('!child:remote', ['remote'], 'a', true);
+  link('!nested:hs', ['hs'], 'b');
+  // Each answer is used once; the last one repeats.
+  const answers = [...(options.hierarchy ?? [engineOk(HIERARCHY)])];
+  const spaceHierarchy = vi
+    .spyOn(fake, 'spaceHierarchy')
+    .mockImplementation(() =>
+      defer(() =>
+        of(
+          answers.length > 1
+            ? (answers.shift() as HierarchyResult)
+            : answers[0],
+        ),
+      ),
+    );
+  const session = signal<SessionSnapshot>({
+    ...EMPTY_SESSION,
+    activeAccountId: ALICE,
+    accounts: [
+      {
+        accountId: ALICE,
+        generation: 1,
+        syncState: 'syncing',
+        serverSynced: true,
+        roomsPrepared: true,
+        waitingCount: 0,
+        cryptoStoreEncrypted: true,
+      },
+    ],
+  });
+  // Signal-backed like the application's policy, which tracks power levels.
+  const allowed = signal(options.allowed !== false);
   const authorize = vi.fn(() =>
-    options.allowed === false
-      ? ({ kind: 'rejected', reason: 'You need permission.' } as const)
-      : ({ kind: 'allowed' } as const),
+    allowed()
+      ? ({ kind: 'allowed' } as const)
+      : ({ kind: 'rejected', reason: 'You need permission.' } as const),
   );
   const createRoomFor = vi.fn(() => of('!created-room:hs'));
   const createSpace = vi.fn(() => of('!created-space:hs'));
@@ -92,32 +116,18 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
   const removeExistingRoom = vi.fn(() => of(undefined));
   const setSuggested = vi.fn(() => of({ expectedLinks: [] }));
   const moveChildBefore = vi.fn(() => of({ expectedLinks: [] }));
-  const links = new BehaviorSubject([
-    {
-      childId: '!child:remote',
-      via: ['remote'],
-      suggested: true,
-      order: 'a',
-    },
-    {
-      childId: '!nested:hs',
-      via: ['hs'],
-      suggested: false,
-      order: 'b',
-    },
-  ]);
   TestBed.configureTestingModule({
     providers: [
       SpaceContentsService,
-      MockProvider(MatrixClientService, {
-        accountIds: accountIds.asReadonly(),
-        clientFor: (accountId: string) =>
-          accountId === TARGET.accountId ? (client as never) : null,
-      }),
+      { provide: ROOM_LIST_ENGINE, useValue: fake },
+      { provide: SESSION_SNAPSHOT, useValue: session },
+      {
+        provide: SESSION_ENGINE,
+        useFactory: () => ({ session: () => toObservable(session) }),
+      },
       MockProvider(RoomLibraryService, { createRoomFor }),
       MockProvider(SpacesService, { createSpace }),
       MockProvider(SpaceChildrenService, {
-        childLinksFor: () => links.value as never,
         addExistingRoom,
         removeExistingRoom,
         setSuggested,
@@ -128,10 +138,12 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
   });
   return {
     service: TestBed.inject(SpaceContentsService),
-    accountIds,
-    client,
-    handlers,
+    fake,
+    link,
+    session,
+    spaceHierarchy,
     authorize,
+    allowed,
     createRoomFor,
     createSpace,
     addExistingRoom,
@@ -143,17 +155,13 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
 
 describe('SpaceContentsService', () => {
   it('projects Room and Space children from the opening Account hierarchy', async () => {
-    const { service, client } = setup();
+    const { service, spaceHierarchy } = setup();
 
     const snapshot = await firstValueFrom(service.observe(TARGET));
 
-    expect(client.getRoomHierarchy).toHaveBeenCalledWith(
-      TARGET.spaceId,
-      100,
-      1,
-      false,
-      undefined,
-    );
+    expect(spaceHierarchy).toHaveBeenCalledWith(ALICE, TARGET.spaceId, {
+      maxPages: null,
+    });
     expect(snapshot.items).toMatchObject([
       {
         id: '!child:remote',
@@ -168,43 +176,17 @@ describe('SpaceContentsService', () => {
     expect(snapshot.candidates.map(({ id }) => id)).toEqual(['!candidate:hs']);
   });
 
-  it('reads every hierarchy page instead of publishing a truncated list', async () => {
-    const { service, client } = setup();
-    client.getRoomHierarchy
-      .mockResolvedValueOnce({
-        rooms: [
-          {
-            room_id: TARGET.spaceId,
-            children_state: [
-              {
-                state_key: '!child:remote',
-                content: { via: ['remote'], order: 'a' },
-              },
-            ],
-          },
-        ],
-        next_batch: 'page-2',
-      })
-      .mockResolvedValueOnce({
-        rooms: [
-          {
-            room_id: '!child:remote',
-            name: 'Public child',
-            num_joined_members: 4,
-          },
-        ],
-      });
+  // Page following and the repeated-token guard are covered by the js-sdk adapter spec.
+  it('asks the engine for every hierarchy page (maxPages: null)', async () => {
+    const { service, spaceHierarchy } = setup({
+      hierarchy: [engineOk([HIERARCHY[0], HIERARCHY[1]])],
+    });
 
     const snapshot = await firstValueFrom(service.observe(TARGET));
 
-    expect(client.getRoomHierarchy).toHaveBeenNthCalledWith(
-      2,
-      TARGET.spaceId,
-      100,
-      1,
-      false,
-      'page-2',
-    );
+    expect(spaceHierarchy).toHaveBeenCalledWith(ALICE, TARGET.spaceId, {
+      maxPages: null,
+    });
     expect(snapshot.items.map(({ id }) => id)).toEqual(['!child:remote']);
   });
 
@@ -219,31 +201,198 @@ describe('SpaceContentsService', () => {
   });
 
   it('reports hierarchy failure without inventing an empty authoritative list', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service } = setup({
+        hierarchy: [
+          engineFail({
+            kind: 'server',
+            code: 'request-failed',
+            diagnostic: { kind: 'server', httpStatus: 503 },
+          }),
+        ],
+      });
+      const snapshots: SpaceContentsSnapshot[] = [];
+      const subscription = service
+        .observe(TARGET)
+        .subscribe((snapshot) => snapshots.push(snapshot));
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      const snapshot = snapshots.at(-1);
+      expect(snapshot?.availability).toBe('available');
+      expect(snapshot?.hierarchyError).toBe(
+        'The homeserver is unavailable. Try again.',
+      );
+      expect(snapshot?.items).toEqual([]);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows the generic copy for a failure the engine cannot classify', async () => {
+    // A repeated page token reaches here as an unclassified request failure.
     const { service } = setup({
-      hierarchyError: new Error('server unavailable'),
+      hierarchy: [
+        engineFail({
+          kind: 'unexpected',
+          code: 'request-failed',
+          diagnostic: { kind: 'unexpected' },
+        }),
+      ],
     });
 
     const snapshot = await firstValueFrom(service.observe(TARGET));
 
-    expect(snapshot.availability).toBe('available');
-    expect(snapshot.hierarchyError).toBe('server unavailable');
-    expect(snapshot.items).toEqual([]);
+    expect(snapshot.hierarchyError).toBe('Something went wrong. Try again.');
   });
 
   it('coalesces a burst of invalidations into a bounded number of hierarchy reads', async () => {
     vi.useFakeTimers();
     try {
-      const { service, client, handlers } = setup();
+      const { service, spaceHierarchy, link } = setup();
       const subscription = service.observe(TARGET).subscribe();
       await vi.advanceTimersByTimeAsync(0);
 
       // One sync batch can announce many Rooms at once. Synapse allows each user a burst
       // of 10 hierarchy reads at 5/s, so one read per event trips 429 within a batch.
-      const onRoom = handlers.get(ClientEvent.Room) as () => void;
-      for (let index = 0; index < 20; index += 1) onRoom();
+      for (let index = 0; index < 20; index += 1) {
+        link('!candidate:hs', ['hs'], `c${index}`);
+      }
       await vi.advanceTimersByTimeAsync(1_000);
 
-      expect(client.getRoomHierarchy.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(spaceHierarchy.mock.calls.length).toBeLessThanOrEqual(3);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('throttles refreshes to 250 ms', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, spaceHierarchy, fake } = setup();
+      const subscription = service.observe(TARGET).subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(spaceHierarchy).toHaveBeenCalledTimes(1);
+
+      // A room the account joins changes the store's rows.
+      fake.seed(ALICE, [
+        fakeRoom(TARGET.spaceId, { displayName: 'Design', isSpace: true }),
+        fakeRoom('!candidate:hs', { displayName: 'Candidate' }),
+        fakeRoom('!nested:hs', { displayName: 'Nested', isSpace: true }),
+        fakeRoom('!joined:hs', { displayName: 'Joined' }),
+      ]);
+      await vi.advanceTimersByTimeAsync(249);
+      expect(spaceHierarchy).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(spaceHierarchy).toHaveBeenCalledTimes(2);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not refresh for a row change the snapshot does not show', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, spaceHierarchy, fake } = setup();
+      const subscription = service.observe(TARGET).subscribe();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      fake.seed(ALICE, [
+        fakeRoom(TARGET.spaceId, { displayName: 'Design', isSpace: true }),
+        fakeRoom('!candidate:hs', {
+          displayName: 'Candidate',
+          notificationCount: 3,
+        }),
+        fakeRoom('!nested:hs', { displayName: 'Nested', isSpace: true }),
+      ]);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(spaceHierarchy).toHaveBeenCalledTimes(1);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refreshes management when the Account loses power in the space', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, allowed } = setup();
+      const snapshots: SpaceContentsSnapshot[] = [];
+      const subscription = service
+        .observe(TARGET)
+        .subscribe((snapshot) => snapshots.push(snapshot));
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(snapshots.at(-1)?.canManage).toBe(true);
+
+      allowed.set(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(snapshots.at(-1)).toMatchObject({
+        canManage: false,
+        managementUnavailableReason: 'You need permission.',
+      });
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops watching rows and permissions once unsubscribed', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, fake, allowed, authorize, spaceHierarchy } = setup();
+      const subscription = service.observe(TARGET).subscribe();
+      await vi.advanceTimersByTimeAsync(1_000);
+      subscription.unsubscribe();
+      const reads = authorize.mock.calls.length;
+
+      allowed.set(false);
+      fake.seed(ALICE, [
+        fakeRoom(TARGET.spaceId, { displayName: 'Design', isSpace: true }),
+        fakeRoom('!renamed:hs', { displayName: 'Renamed' }),
+      ]);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(authorize).toHaveBeenCalledTimes(reads);
+      expect(spaceHierarchy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a timed-out hierarchy read', async () => {
+    vi.useFakeTimers();
+    try {
+      let reads = 0;
+      const { service, spaceHierarchy } = setup();
+      spaceHierarchy.mockImplementation(() =>
+        defer(() =>
+          of(
+            reads++ === 0
+              ? engineFail({
+                  kind: 'timeout',
+                  code: 'request-failed',
+                  diagnostic: { kind: 'timeout' },
+                })
+              : engineOk(HIERARCHY),
+          ),
+        ),
+      );
+      const snapshots: SpaceContentsSnapshot[] = [];
+      const subscription = service
+        .observe(TARGET)
+        .subscribe((snapshot) => snapshots.push(snapshot));
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(reads).toBe(2);
+      expect(snapshots.at(-1)).toMatchObject({ hierarchyError: null });
       subscription.unsubscribe();
     } finally {
       vi.useRealTimers();
@@ -253,17 +402,21 @@ describe('SpaceContentsService', () => {
   it('retries a rate-limited hierarchy read instead of stranding the error', async () => {
     vi.useFakeTimers();
     try {
-      const { service, client } = setup();
-      const success = await client.getRoomHierarchy();
-      client.getRoomHierarchy.mockReset();
-      client.getRoomHierarchy
-        .mockRejectedValueOnce(
-          new MatrixError(
-            { errcode: 'M_LIMIT_EXCEEDED', error: 'Too Many Requests' },
-            429,
+      let reads = 0;
+      const { service, spaceHierarchy } = setup();
+      spaceHierarchy.mockImplementation(() =>
+        defer(() =>
+          of(
+            reads++ === 0
+              ? engineFail({
+                  kind: 'rate-limit',
+                  code: 'request-failed',
+                  diagnostic: { kind: 'rate-limit', httpStatus: 429 },
+                })
+              : engineOk(HIERARCHY),
           ),
-        )
-        .mockResolvedValue(success);
+        ),
+      );
       const snapshots: SpaceContentsSnapshot[] = [];
       const subscription = service
         .observe(TARGET)
@@ -271,13 +424,39 @@ describe('SpaceContentsService', () => {
 
       await vi.advanceTimersByTimeAsync(2_000);
 
-      expect(client.getRoomHierarchy).toHaveBeenCalledTimes(2);
+      expect(reads).toBe(2);
       expect(snapshots.at(-1)).toMatchObject({ hierarchyError: null });
       expect(snapshots.at(-1)?.items).toHaveLength(2);
       subscription.unsubscribe();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('reports the Account unavailable once its session generation changes', async () => {
+    const { service, session } = setup();
+    const snapshots: SpaceContentsSnapshot[] = [];
+    const subscription = service
+      .observe(TARGET)
+      .subscribe((snapshot) => snapshots.push(snapshot));
+    await vi.waitFor(() => expect(snapshots).toHaveLength(1));
+
+    session.set(EMPTY_SESSION);
+    TestBed.tick();
+
+    expect(snapshots.at(-1)?.availability).toBe('account-unavailable');
+    subscription.unsubscribe();
+  });
+
+  it('reads a space the Account has not joined as unavailable without a request', async () => {
+    const { service, spaceHierarchy } = setup();
+
+    const snapshot = await firstValueFrom(
+      service.read({ accountId: ALICE, spaceId: '!candidate:hs' }),
+    );
+
+    expect(snapshot.availability).toBe('space-unavailable');
+    expect(spaceHierarchy).not.toHaveBeenCalled();
   });
 
   it('creates and links on the exact Account with parent-only policy', async () => {
