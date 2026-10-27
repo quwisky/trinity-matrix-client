@@ -44,6 +44,8 @@ export interface TimelineContractSetup {
     react(roomId: string, eventId: string, key: string): Promise<void>;
     redact(roomId: string, eventId: string): Promise<void>;
     edit(roomId: string, eventId: string, body: string): Promise<void>;
+    /** The event `userId`'s public `m.read` receipt names, as bob's sync reports it. */
+    readReceipt(roomId: string, userId: string): Promise<string | null>;
   };
   dispose(): Promise<void>;
 }
@@ -270,22 +272,49 @@ export function defineTimelineEngineContract(
           );
 
           expect(reply.startReached).toBe(false);
+          // Unrelated sync updates may land in between; only the pagination states are pinned.
           const page = timeline.updates.slice(mark);
-          expect(page[0]).toMatchObject({
-            kind: 'items',
-            diffs: [],
-            backPagination: 'paginating',
-          });
-          const loaded = page.findIndex(
-            (u) => u.kind === 'items' && u.diffs.length > 0,
+          const started = page.findIndex(
+            (u) => u.kind === 'items' && u.backPagination === 'paginating',
           );
-          expect(loaded).toBeGreaterThan(0);
-          expect(page[loaded]).toMatchObject({ backPagination: 'idle' });
-          for (const update of page.slice(0, loaded))
-            expect(update).toMatchObject({ backPagination: 'paginating' });
+          expect(started).toBeGreaterThanOrEqual(0);
+          expect(page[started]).toMatchObject({ diffs: [] });
+          const settled = page.findIndex(
+            (u, i) =>
+              i > started &&
+              u.kind === 'items' &&
+              u.backPagination !== 'paginating',
+          );
+          expect(settled).toBeGreaterThan(started);
+          const pageUpdate = page[settled];
+          expect(pageUpdate).toMatchObject({ backPagination: 'idle' });
+          expect(
+            pageUpdate.kind === 'items' && pageUpdate.diffs.length,
+          ).toBeGreaterThan(0);
+          const atSettled = page
+            .slice(0, settled + 1)
+            .reduce(
+              (items: readonly TimelineItem[], u) =>
+                u.kind === 'items' ? applyVectorDiffs(items, u.diffs) : [],
+              before.items,
+            );
+
           const after = events(timeline.view()).map((item) => item.eventId);
-          expect(after.length).toBeGreaterThan(loadedBefore.length);
+          expect(new Set(after).size).toBe(after.length);
           expect(after.slice(-loadedBefore.length)).toEqual(loadedBefore);
+          const prepended = after.slice(0, after.length - loadedBefore.length);
+          expect(prepended.length).toBeGreaterThan(0);
+          const firstLoaded = eventIds.findIndex((id) =>
+            loadedBefore.includes(id),
+          );
+          expect(prepended).toEqual(
+            eventIds.slice(firstLoaded - prepended.length, firstLoaded),
+          );
+          expect(
+            events({ items: atSettled, backPagination: 'idle' }).map(
+              (item) => item.eventId,
+            ),
+          ).toEqual(after);
         } finally {
           timeline.close();
         }
@@ -508,7 +537,7 @@ export function defineTimelineEngineContract(
     );
 
     it(
-      "sendReceipt with fullyRead moves alice's m.fully_read",
+      "sendReceipt with fullyRead moves alice's m.fully_read and m.read",
       async () => {
         const {
           roomId,
@@ -527,6 +556,9 @@ export function defineTimelineEngineContract(
           );
 
           await expect(context.asAlice.fullyRead(roomId)).resolves.toBe(
+            eventId,
+          );
+          await expect(context.asBob.readReceipt(roomId, alice)).resolves.toBe(
             eventId,
           );
         } finally {
@@ -574,6 +606,20 @@ export function defineTimelineEngineContract(
           const result = await once(command);
           expect(!result.ok && result.failure.code).toBe('account-not-live');
         }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'timeline for an unknown account is room-unavailable',
+      async () => {
+        const { roomId } = await roomWith();
+
+        const first = await firstValueFrom(
+          engine.timeline(NOBODY, roomId, LIVE).pipe(timeout(settleTimeoutMs)),
+        );
+
+        expect(first).toEqual({ kind: 'room-unavailable' });
       },
       testTimeoutMs,
     );

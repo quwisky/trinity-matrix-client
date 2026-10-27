@@ -12,6 +12,8 @@ import {
   type EngineFailureCode,
   type EngineResult,
   engineFail,
+  type VectorDiff,
+  applyVectorDiffs,
   engineOk,
 } from '@trinity/util/matrix';
 import type {
@@ -40,6 +42,9 @@ interface FakeRoom {
   readonly loaded: Map<string, number>;
   readonly startReached: Set<string>;
   readonly fullyRead: Map<string, string>;
+  /** Public `m.read` receipts by user. */
+  readonly readReceipts: Map<string, string>;
+  readonly invited: Set<string>;
 }
 
 function failure(code: FailNextCode): EngineFailure {
@@ -122,6 +127,8 @@ export class FakeTimelineEngine implements TimelineEngine {
   readonly asAlice = {
     join: async (roomId: string): Promise<void> => {
       const room = this.room(roomId);
+      if (!room.invited.has(this.alice) && !room.members.has(this.alice))
+        throw new Error(`${this.alice} is not invited to ${roomId}`);
       room.members.add(this.alice);
       room.loaded.set(this.alice, Math.min(this.pageSize, room.history.length));
       this.publish(roomId);
@@ -138,8 +145,9 @@ export class FakeTimelineEngine implements TimelineEngine {
       this.room(roomId).members.add(this.bob);
       return roomId;
     },
-    invite: async (_roomId: string, _userId: string): Promise<void> =>
-      undefined,
+    invite: async (roomId: string, userId: string): Promise<void> => {
+      this.room(roomId).invited.add(userId);
+    },
     send: async (roomId: string, body: string): Promise<string> => {
       this.nextEvent += 1;
       this.clock += 1;
@@ -160,10 +168,22 @@ export class FakeTimelineEngine implements TimelineEngine {
     },
     react: async (roomId: string, eventId: string, key: string) =>
       this.patchEvent(roomId, eventId, (item) => ({
-        reactions: [
-          ...item.reactions,
-          { key, count: 1, reactedByMe: false, senders: [this.bob] },
-        ],
+        reactions: item.reactions.some((g) => g.key === key)
+          ? item.reactions.map((g) =>
+              g.key === key
+                ? {
+                    ...g,
+                    count: g.count + 1,
+                    senders: g.senders.includes(this.bob)
+                      ? g.senders
+                      : [...g.senders, this.bob],
+                  }
+                : g,
+            )
+          : [
+              ...item.reactions,
+              { key, count: 1, reactedByMe: false, senders: [this.bob] },
+            ],
         profiles: { ...item.profiles, [this.bob]: this.profile(this.bob) },
       })),
     redact: async (roomId: string, eventId: string) =>
@@ -176,6 +196,11 @@ export class FakeTimelineEngine implements TimelineEngine {
         content: textContent(body),
         edited: true,
       })),
+    readReceipt: async (
+      roomId: string,
+      userId: string,
+    ): Promise<string | null> =>
+      this.rooms.get(roomId)?.readReceipts.get(userId) ?? null,
   };
 
   constructor() {
@@ -204,6 +229,40 @@ export class FakeTimelineEngine implements TimelineEngine {
   /** Pushes `update` to open subscriptions as-is; the fake's own state is unchanged. */
   emit(accountId: string, roomId: string, update: TimelineUpdate): void {
     this.changes$.next({ accountId, roomId, update });
+  }
+
+  /**
+   * Applies `diffs` to the account's loaded items and emits them as one update, for granular
+   * changes and virtual items such as `{ kind: 'readMarker' }` that the fake never makes itself.
+   */
+  emitDiffs(
+    accountId: string,
+    roomId: string,
+    diffs: readonly VectorDiff<TimelineItem>[],
+  ): void {
+    const room = this.room(roomId);
+    const current = this.snapshot(accountId, roomId);
+    const shown =
+      current.kind === 'items' && current.diffs[0]?.op === 'reset'
+        ? current.diffs[0].values
+        : [];
+    const next = applyVectorDiffs(shown, diffs).filter(
+      (item) => item.uniqueId !== START_ITEM.uniqueId,
+    );
+    const hidden = room.history.slice(
+      0,
+      room.history.length - (room.loaded.get(accountId) ?? 0),
+    );
+    room.history = [...hidden, ...next];
+    room.loaded.set(accountId, next.length);
+    this.emit(accountId, roomId, {
+      kind: 'items',
+      diffs,
+      backPagination: room.startReached.has(accountId)
+        ? 'start-reached'
+        : 'idle',
+      room: this.roomState(accountId, room),
+    });
   }
 
   failNext(code: FailNextCode): void {
@@ -315,10 +374,15 @@ export class FakeTimelineEngine implements TimelineEngine {
     accountId: string,
     roomId: string,
     eventId: string,
-    options: { readonly fullyRead: boolean },
+    options: {
+      readonly visibility: 'public' | 'private';
+      readonly fullyRead: boolean;
+    },
   ): Observable<EngineResult<null>> {
     return this.run(accountId, roomId, (room) => {
       if (options.fullyRead) room.fullyRead.set(accountId, eventId);
+      if (options.visibility === 'public')
+        room.readReceipts.set(accountId, eventId);
       return engineOk(null);
     });
   }
@@ -444,6 +508,8 @@ export class FakeTimelineEngine implements TimelineEngine {
         loaded: new Map(),
         startReached: new Set(),
         fullyRead: new Map(),
+        readReceipts: new Map(),
+        invited: new Set(),
       };
       this.rooms.set(roomId, room);
     }
