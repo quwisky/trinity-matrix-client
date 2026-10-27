@@ -15,7 +15,11 @@ import {
 import { evaluateVitestReport } from './report.mts';
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const LIBS = ['data-access-homeserver', 'data-access-discovery'] as const;
+const LIBS = [
+  'data-access-homeserver',
+  'data-access-discovery',
+  'data-access-matrix-client',
+] as const;
 
 export async function runEngineContract(
   environment: NodeJS.ProcessEnv = process.env,

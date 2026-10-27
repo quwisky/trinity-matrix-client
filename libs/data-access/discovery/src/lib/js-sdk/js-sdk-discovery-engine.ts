@@ -86,7 +86,14 @@ function discoveryReason(error: unknown): { reason?: DiscoveryFailureReason } {
 
 function requestFailed(err: unknown): EngineFailure {
   const { kind, diagnostic } = describeMatrixRequestFailure(err);
-  return { kind, code: 'request-failed', diagnostic };
+  return {
+    kind,
+    code: 'request-failed',
+    diagnostic,
+    ...(diagnostic.errorName === 'TokenRefreshError'
+      ? { params: { cause: 'session-refresh' as const } }
+      : {}),
+  };
 }
 
 @Injectable({ providedIn: 'root' })

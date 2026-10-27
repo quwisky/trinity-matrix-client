@@ -28,7 +28,23 @@ Each data-access capability reaches Matrix through an engine interface, so anoth
 
 Values crossing an engine interface are plain data: strings, numbers, booleans, `null`, arrays, and plain objects. No `undefined`, `Date`, `Map`, `Set`, class instances, or functions.
 
-A command is a cold observable that emits one result and completes. Expected failures arrive as `{ ok: false, failure }` with an `EngineFailure`: a `kind`, a `code` (`not-signed-in`, `discovery-failed`, `request-failed`), privacy-safe `diagnostic` metadata and plain-data `params`, never text. TypeScript owns the copy: `engineFailureMessage` in `@trinity/util/matrix` is the one table that turns a failure into user-facing words, so a Rust engine returns the same codes. Only unexpected faults error the stream. A subscription emits a snapshot first and changes after it. Media never crosses as bytes: commands return a URL the webview can load, and uploads take a Blob or File handle. Synchronization stays authoritative: a command's result does not replace the state that sync reconciles.
+A command is a cold observable that emits one result and completes. Expected failures arrive as `{ ok: false, failure }` with an `EngineFailure`: a `kind`, a `code` (`EngineFailureCode`), privacy-safe `diagnostic` metadata and plain-data `params` typed per code, never text. TypeScript owns the copy: `engineFailureMessage` in `@trinity/util/matrix` is the one table that turns a failure into user-facing words, so a Rust engine returns the same codes. Only unexpected faults error the stream. A subscription emits a snapshot first and changes after it. Media never crosses as bytes: commands return a URL the webview can load, and uploads take a Blob or File handle. Synchronization stays authoritative: a command's result does not replace the state that sync reconciles.
+
+### Session engine {#session-engine}
+
+`SessionEngine` (`libs/data-access/matrix-client`) exposes the live accounts as plain data. `session()` emits a `SessionSnapshot` (active account, per-account status, soft-logged-out ids) and every change after it. Access tokens never enter the snapshot: `accessToken(accountId)` is a separate stream. Lifecycle commands are cold, and every lifecycle command's effect is in the next `session()` snapshot before it replies. `signOutAll` revokes the tokens and leaves the accounts live until `stop()`. `SESSION_ENGINE` provides the `matrix-js-sdk` adapter.
+
+| `SessionSyncState` | js-sdk state                                       | Rust `SyncService` state    |
+| ------------------ | -------------------------------------------------- | --------------------------- |
+| `starting`         | none yet (live client before its first transition) | Idle (or `stopped`)         |
+| `prepared`         | Prepared                                           | room list loaded from cache |
+| `syncing`          | Syncing                                            | Running                     |
+| `catchup`          | Catchup                                            | unused                      |
+| `reconnecting`     | Reconnecting                                       | Offline                     |
+| `error`            | Error                                              | Error                       |
+| `stopped`          | Stopped                                            | Terminated (or Idle)        |
+
+Plain-data readers use `SessionStateService`, which turns the snapshot into signals. Capability adapters still get SDK clients through `JS_SDK_CLIENTS` or `MatrixClientService` until their slice moves them to an engine. `architecture/session-facade-allowlist.json` lists the files that still import `MatrixClientService`; it only shrinks, and `scripts/session-facade.spec.mjs` fails on a new caller and on a stale entry. Removal is tracked in [#1153](https://github.com/quwisky/trinity-matrix-client/issues/1153). `holdServerLogout` stays on the facade until the authentication slice.
 
 ## Treat synchronization as authoritative {#sync-authority}
 

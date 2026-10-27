@@ -14,6 +14,7 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
+import type { PendingTextMessage } from '../session-engine';
 
 /** Local-echo states of a message still on its way to the homeserver. */
 const ON_ITS_WAY: ReadonlySet<EventStatus> = new Set([
@@ -27,18 +28,6 @@ const NOT_ON_SERVER: ReadonlySet<EventStatus> = new Set([
   ...ON_ITS_WAY,
   EventStatus.NOT_SENT,
 ]);
-
-/** A text message a live client has not got onto the homeserver. */
-export interface PendingTextMessage {
-  readonly accountId: string;
-  readonly roomId: string;
-  /** The thread it replies in, or null for the room's main timeline. */
-  readonly threadRootId: string | null;
-  /** What to put back in the composer: the plain body, the composer's own markdown source. */
-  readonly text: string;
-  /** Names the echo's waiting-to-send record in the draft store, which this text supersedes. */
-  readonly txnId?: string;
-}
 
 /** matrix-js-sdk keeps its sync loop on the protected `MatrixClient.syncApi`. */
 interface SyncLoopOwner {
@@ -101,12 +90,13 @@ export function clientPendingTexts(
       const text = unsentText(event);
       if (!id || text === null || seen.has(id)) continue;
       seen.add(id);
+      const txnId = event.getTxnId();
       messages.push({
         accountId,
         roomId: room.roomId,
         threadRootId: threadOf(event, id),
         text,
-        txnId: event.getTxnId(),
+        ...(txnId ? { txnId } : {}),
       });
     }
   }

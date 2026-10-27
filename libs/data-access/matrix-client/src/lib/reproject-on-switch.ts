@@ -1,5 +1,5 @@
 import { effect } from '@angular/core';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from './js-sdk/matrix-client.service';
 
 /**
  * Re-run `connect` whenever the active account changes, but only while the service is
