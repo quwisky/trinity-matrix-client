@@ -61,8 +61,10 @@ export function requestFailureMessage(
   kind: MatrixRequestFailureKind,
   {
     retryAfterMs: delay,
-    errorName,
-  }: Pick<MatrixRequestFailureMetadata, 'retryAfterMs' | 'errorName'> = {},
+    cause,
+  }: Pick<MatrixRequestFailureMetadata, 'retryAfterMs'> & {
+    cause?: 'session-refresh';
+  } = {},
 ): string {
   switch (kind) {
     case 'timeout':
@@ -70,7 +72,7 @@ export function requestFailureMessage(
     case 'authentication':
       return 'Your session has expired. Sign in again.';
     case 'network':
-      return errorName === 'TokenRefreshError'
+      return cause === 'session-refresh'
         ? 'Your session could not be refreshed. Check your connection and try again.'
         : 'Check your connection and try again.';
     case 'permission':
@@ -189,7 +191,7 @@ export function describeMatrixRequestFailure(
   if (hasErrorName(error, 'TokenRefreshError')) {
     return failure(
       'network',
-      requestFailureMessage('network', { errorName: 'TokenRefreshError' }),
+      requestFailureMessage('network', { cause: 'session-refresh' }),
       error,
     );
   }

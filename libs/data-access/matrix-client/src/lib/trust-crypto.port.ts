@@ -3,7 +3,7 @@ import type { EmittedEvents, MatrixClient } from 'matrix-js-sdk';
 import type { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
 import type { Observable } from 'rxjs';
 import type { ProjectionReconcileContext } from '@trinity/runtime/projection';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from './js-sdk/matrix-client.service';
 import { projectFromClient } from './project-from-client';
 import type { SecretStorageKeyHolder } from './secret-storage-key-holder';
 
