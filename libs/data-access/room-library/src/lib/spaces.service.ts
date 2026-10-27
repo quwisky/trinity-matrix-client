@@ -23,7 +23,11 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  SESSION_ENGINE,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
 import { plainEqual } from '@trinity/util/matrix';
 import { compareOrder } from './space-child-order';
 import {
@@ -49,6 +53,8 @@ const HIERARCHY_MAX_PAGES = 5;
 
 /** One open `spaceChildLinks` subscription and the links it last emitted. */
 interface LinkFeed {
+  readonly accountId: string;
+  readonly generation: number;
   links: readonly SpaceChildLink[];
   subscription: Subscription;
 }
@@ -148,17 +154,23 @@ export class SpacesService {
   private readonly linksVersion = signal(0);
   private opening = false;
 
+  /** The active Account's room list, or null while no Account is active and live. */
+  private readonly activeList = computed(() => {
+    const accountId = this.session.activeAccountId();
+    const generation = accountId
+      ? this.session.status(accountId)?.generation
+      : undefined;
+    return accountId && generation !== undefined
+      ? { accountId, generation, rows: this.store.rooms(accountId)() }
+      : null;
+  });
+
   /** The user's joined spaces, sorted by name; live as the client syncs. */
   readonly spaces = computed<SpaceSummary[]>(
     () => {
-      const accountId = this.session.activeAccountId();
-      const generation = accountId
-        ? this.session.status(accountId)?.generation
-        : undefined;
-      const rows =
-        accountId && generation !== undefined
-          ? this.store.rooms(accountId)()
-          : [];
+      const list = this.activeList();
+      if (!list) return [];
+      const { accountId, generation, rows } = list;
       const joined = new Map(
         rows.filter((r) => r.membership === 'join').map((r) => [r.roomId, r]),
       );
@@ -170,18 +182,19 @@ export class SpacesService {
           open.add(key);
           return {
             id: space.roomId,
-            accountId: accountId as string,
+            accountId,
             name: space.displayName,
             initial: initialOf(space.displayName),
             avatarMxc: space.avatarMxc,
             childRoomIds: joinedChildIds(
-              this.linksOf(key, accountId as string, space.roomId),
+              this.linksOf(key, accountId, generation, space.roomId),
               joined,
             ),
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name));
-      untracked(() => this.closeLinksExcept(open));
+      // A space that left the list closes here; an Account that left closes on the session.
+      untracked(() => this.closeLinks((key) => !open.has(key)));
       return spaces;
     },
     { equal: plainEqual },
@@ -193,19 +206,21 @@ export class SpacesService {
    * without re-fetching the hierarchy.
    */
   private readonly joinedRoomIds = computed<ReadonlySet<string>>(
-    () => {
-      const accountId = this.session.activeAccountId();
-      const rows = accountId ? this.store.rooms(accountId)() : [];
-      return new Set(
-        rows.filter((r) => r.membership === 'join').map((r) => r.roomId),
-      );
-    },
+    () =>
+      new Set(
+        (this.activeList()?.rows ?? [])
+          .filter((r) => r.membership === 'join')
+          .map((r) => r.roomId),
+      ),
     { equal: sameIds },
   );
 
   /** Which space's hierarchy is currently loaded ({@link openSpace}); null on Home. */
   private readonly _openSpaceId = signal<string | null>(null);
-  /** The active Account a space was opened as; undefined while none is open. */
+  /**
+   * The active Account a space was opened as; undefined while none is open, null while it
+   * waits for a first Account to become active.
+   */
   private openedAs: string | null | undefined;
   /** Projected children of the open space, minus the live `joined` flag. */
   private readonly _childrenBase = signal<SpaceChildBase[]>([]);
@@ -256,15 +271,33 @@ export class SpacesService {
 
   constructor() {
     // An Account switch ends the open space: its hierarchy was read as the previous Account.
+    // The first Account to become active takes over a space opened before any was.
     effect(() => {
       const active = this.session.activeAccountId();
       untracked(() => {
-        if (this.openedAs !== undefined && this.openedAs !== active) {
+        if (this.openedAs === null) this.openedAs = active;
+        else if (this.openedAs !== undefined && this.openedAs !== active) {
           this.resetHierarchy();
         }
       });
     });
-    inject(DestroyRef).onDestroy(() => this.closeLinksExcept(new Set()));
+    // Closes the links of an Account that stopped being active or live even when nothing
+    // reads `spaces` any more.
+    inject(SESSION_ENGINE)
+      .session()
+      .pipe(takeUntilDestroyed())
+      .subscribe(() =>
+        untracked(() => {
+          const active = this.session.activeAccountId();
+          this.closeLinks(
+            (_, feed) =>
+              feed.accountId !== active ||
+              this.session.status(feed.accountId)?.generation !==
+                feed.generation,
+          );
+        }),
+      );
+    inject(DestroyRef).onDestroy(() => this.closeLinks(() => true));
   }
 
   /**
@@ -351,9 +384,10 @@ export class SpacesService {
       // a child from here would join as the wrong Account, so it lists the joined children
       // alone. A left space never fetches.
       return this.held(accountId, spaceId).pipe(
-        switchMap(() => {
+        switchMap((holder) => {
+          this.openedAs = holder;
           this._childrenLoading.set(true);
-          return this.fetchHierarchy(accountId as string, spaceId);
+          return this.fetchHierarchy(holder, spaceId);
         }),
         takeUntil(this.hierarchyCancelled),
         tap({
@@ -510,21 +544,26 @@ export class SpacesService {
     });
   }
 
-  /** Emits once, then completes, when `accountId` holds `spaceId` as a joined space. */
-  private held(accountId: string | null, spaceId: string): Observable<void> {
-    if (!accountId) return NEVER;
-    const holds = (): boolean => {
-      const space = this.store.room(accountId, spaceId);
-      return !!space?.isSpace && space.membership === 'join';
+  /**
+   * Emits the Account, then completes, once `accountId` holds `spaceId` as a joined space;
+   * with no Account, whichever Account is active then.
+   */
+  private held(accountId: string | null, spaceId: string): Observable<string> {
+    const holder = (): string | null => {
+      const id = accountId ?? this.session.activeAccountId();
+      const space = id ? this.store.room(id, spaceId) : null;
+      return space?.isSpace && space.membership === 'join' ? id : null;
     };
-    if (untracked(holds)) return of(void 0);
-    return new Observable<void>((subscriber) => {
+    const now = untracked(holder);
+    if (now) return of(now);
+    return new Observable<string>((subscriber) => {
       // An effect re-reads the room list on every run, so no change between runs is missed.
       const watch = effect(
         () => {
-          if (!holds()) return;
+          const id = holder();
+          if (!id) return;
           untracked(() => {
-            subscriber.next();
+            subscriber.next(id);
             subscriber.complete();
           });
         },
@@ -551,6 +590,7 @@ export class SpacesService {
   private linksOf(
     key: string,
     accountId: string,
+    generation: number,
     spaceId: string,
   ): readonly SpaceChildLink[] {
     this.linksVersion();
@@ -558,6 +598,8 @@ export class SpacesService {
       let feed = this.linkFeeds.get(key);
       if (!feed) {
         const opened: LinkFeed = {
+          accountId,
+          generation,
           links: [],
           subscription: Subscription.EMPTY,
         };
@@ -579,9 +621,9 @@ export class SpacesService {
     });
   }
 
-  private closeLinksExcept(keep: ReadonlySet<string>): void {
+  private closeLinks(close: (key: string, feed: LinkFeed) => boolean): void {
     for (const [key, feed] of this.linkFeeds) {
-      if (keep.has(key)) continue;
+      if (!close(key, feed)) continue;
       feed.subscription.unsubscribe();
       this.linkFeeds.delete(key);
     }

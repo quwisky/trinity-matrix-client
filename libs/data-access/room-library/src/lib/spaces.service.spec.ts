@@ -263,6 +263,36 @@ describe('SpacesService', () => {
     expect(closed).toHaveBeenCalledOnce();
   });
 
+  it('closes link subscriptions when the account signs out, without a read', () => {
+    const { svc, fake, session } = setup([space('!s:hs', 'Space')]);
+    const closed = vi.fn();
+    const links = fake.spaceChildLinks.bind(fake);
+    vi.spyOn(fake, 'spaceChildLinks').mockImplementation((accountId, id) =>
+      links(accountId, id).pipe(finalize(closed)),
+    );
+    expect(svc.spaces().length).toBe(1);
+
+    session.update((s) => ({ ...s, activeAccountId: null, accounts: [] }));
+    TestBed.tick();
+
+    expect(closed).toHaveBeenCalledOnce();
+  });
+
+  it('closes link subscriptions of an old generation, without a read', () => {
+    const { svc, fake, session, alice } = setup([space('!s:hs', 'Space')]);
+    const closed = vi.fn();
+    const links = fake.spaceChildLinks.bind(fake);
+    vi.spyOn(fake, 'spaceChildLinks').mockImplementation((accountId, id) =>
+      links(accountId, id).pipe(finalize(closed)),
+    );
+    expect(svc.spaces().length).toBe(1);
+
+    session.update((s) => ({ ...s, accounts: [account(alice, 2)] }));
+    TestBed.tick();
+
+    expect(closed).toHaveBeenCalledOnce();
+  });
+
   it('clears the model when no account is active', () => {
     const { svc, session } = setup([space('!s:hs', 'Space')]);
     expect(svc.spaces().length).toBe(1);
@@ -866,6 +896,30 @@ describe('SpacesService hierarchy', () => {
 
     expect(hierarchy).toHaveBeenCalledOnce();
     expect(hierarchy).toHaveBeenCalledWith(alice, '!s:hs', { maxPages: 5 });
+  });
+
+  it('loads a space opened before any account is active once one is', () => {
+    const { svc, hierarchy, session, alice } = setupHierarchy({
+      entries: [
+        entry('!s:hs', {
+          name: 'Space',
+          isSpace: true,
+          children: [{ childId: '!room:hs' }],
+        }),
+        entry('!room:hs', { name: 'open-room' }),
+      ],
+    });
+    session.update((s) => ({ ...s, activeAccountId: null }));
+
+    void svc.openSpace('!s:hs').subscribe();
+    TestBed.tick();
+    expect(hierarchy).not.toHaveBeenCalled();
+
+    session.update((s) => ({ ...s, activeAccountId: alice }));
+    TestBed.tick();
+
+    expect(hierarchy).toHaveBeenCalledWith(alice, '!s:hs', { maxPages: 5 });
+    expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual(['!room:hs']);
   });
 
   it('stops waiting for a space once another one is opened', () => {
