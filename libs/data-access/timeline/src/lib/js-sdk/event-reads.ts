@@ -31,7 +31,7 @@ const MAX_RECEIPTS = 5;
  * User ids whose read receipt sits on this event, capped. Excludes the local user and
  * the event's author, whose receipt on their own message carries no information.
  */
-function readReceiptUserIds(
+export function readReceiptUserIds(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
@@ -226,6 +226,17 @@ function reactionEventsFor(
   return groups.sort(
     (a, b) => b[1].length - a[1].length || firstSeen(a) - firstSeen(b),
   );
+}
+
+/** Each reaction key with its senders' user ids, ordered as {@link reactionsFor} orders them. */
+export function reactionSendersFor(
+  room: Room,
+  event: MatrixEvent,
+): [string, string[]][] {
+  return reactionEventsFor(room, event).map(([key, reactions]) => [
+    key,
+    reactions.map((reaction) => reaction.getSender() ?? ''),
+  ]);
 }
 
 /** A member's resolved display name, falling back to the raw mxid. */

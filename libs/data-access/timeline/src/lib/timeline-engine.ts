@@ -117,10 +117,11 @@ export type TimelineItemContent =
       readonly label: string;
     }
   | { readonly kind: 'poll'; readonly poll: PollView }
-  | { readonly kind: 'redacted' }
+  | { readonly kind: 'redacted'; readonly replyFallback: boolean }
   | {
       readonly kind: 'unableToDecrypt';
       readonly reason: UndecryptableReason | null;
+      readonly replyFallback: boolean;
     }
   | {
       readonly kind: 'unsupported';

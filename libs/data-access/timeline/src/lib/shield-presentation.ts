@@ -43,6 +43,15 @@ export function shieldText(code: ShieldCode): MessageShield {
   };
 }
 
+/** The code {@link shieldText} made `shield` from, or null for a not-encrypted shield. */
+export function shieldCodeOf(shield: MessageShield): ShieldCode | null {
+  if (shield.level !== 'red' && shield.level !== 'grey') return null;
+  const reason = (Object.keys(REASON_TEXT) as ShieldCode['reason'][]).find(
+    (key) => REASON_TEXT[key] === shield.reason,
+  );
+  return { colour: shield.level, reason: reason ?? 'unknown' };
+}
+
 /** Shown on a message that was sent without end-to-end encryption into an encrypted room. */
 export const UNENCRYPTED_SHIELD: MessageShield = Object.freeze({
   level: 'unencrypted',

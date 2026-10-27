@@ -188,7 +188,7 @@ export class FakeTimelineEngine implements TimelineEngine {
       })),
     redact: async (roomId: string, eventId: string) =>
       this.patchEvent(roomId, eventId, () => ({
-        content: { kind: 'redacted' },
+        content: { kind: 'redacted', replyFallback: false },
         reactions: [],
       })),
     edit: async (roomId: string, eventId: string, body: string) =>
