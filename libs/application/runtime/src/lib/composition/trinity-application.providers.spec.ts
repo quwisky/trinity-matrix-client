@@ -1,5 +1,6 @@
 import { APPEARANCE_PREFERENCE_DESCRIPTORS } from '@trinity/application/appearance';
 import {
+  CONVERSATION_TYPING,
   ConversationRuntime,
   PRIVACY_PREFERENCE_DESCRIPTORS,
 } from '@trinity/data-access/timeline';
@@ -8,7 +9,10 @@ import {
   type AppLockStatus,
 } from '@trinity/data-access/app-lock';
 import { NOTIFICATION_VISIBILITY } from '@trinity/data-access/notifications';
-import { RAIL_UNREAD_CHATS_PREFERENCE } from '@trinity/data-access/room-library';
+import {
+  RAIL_UNREAD_CHATS_PREFERENCE,
+  RoomListStore,
+} from '@trinity/data-access/room-library';
 import {
   AppConfigService,
   ACCOUNT_REMOVAL_LAUNCHER,
@@ -257,6 +261,31 @@ describe('Trinity application provider composition', () => {
       TestBed.resetTestingModule();
       configureMatrixSdkLogging('debug');
     }
+  });
+
+  it('CONVERSATION_TYPING names other typists in the room, never the account itself', () => {
+    const me = { userId: '@me:hs', displayName: 'Me' };
+    const bob = { userId: '@bob:hs', displayName: 'Bob' };
+    TestBed.configureTestingModule({
+      providers: [
+        ...applicationCapabilityProviders({
+          buildInfo: {} as BuildInfo,
+          releaseNotes: [],
+          pushConfig: null,
+        }),
+        MockProvider(RoomListStore, {
+          typing: (() =>
+            signal({
+              '!r:hs': [me, bob],
+              '!other:hs': [bob],
+            }).asReadonly()) as never,
+        }),
+      ],
+    });
+    const port = TestBed.inject(CONVERSATION_TYPING);
+
+    expect(port.typing('@me:hs', '!r:hs')()).toEqual([bob]);
+    expect(port.typing('@me:hs', '!quiet:hs')()).toEqual([]);
   });
 
   it('tells notifications nobody is looking while App lock covers the app', () => {

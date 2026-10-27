@@ -61,6 +61,7 @@ export * from './lib/conversation-search.service';
 export * from './lib/message-presentation';
 export { unencryptedShield } from './lib/shield-presentation';
 export * from './lib/timeline-engine';
+export * from './lib/conversation-typing.port';
 export * from './lib/privacy-preferences';
 export * from './lib/appearance-preferences';
 export * from './lib/composer-expression-tab.preference';
