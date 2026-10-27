@@ -576,10 +576,17 @@ export function defineRoomListEngineContract(
     );
 
     it(
-      'setInviteBlocking round-trips when supported (skipped where the server lacks MSC4380)',
-      async (test) => {
+      'setInviteBlocking round-trips, or is request-failed where the server lacks MSC4380',
+      async () => {
         if (!context.serverBlocksInvites) {
-          test.skip('the homeserver does not advertise MSC4380');
+          const result = await once(engine.setInviteBlocking(alice, true));
+          expect(!result.ok && result.failure.code).toBe('request-failed');
+          await expect(
+            firstValueFrom(
+              engine.inviteBlocking(alice).pipe(timeout(settleTimeoutMs)),
+            ),
+          ).resolves.toEqual({ supported: false, blocked: false });
+          return;
         }
         const latest = new BehaviorSubject<InviteBlocking | null>(null);
         const open = engine.inviteBlocking(alice).subscribe(latest);

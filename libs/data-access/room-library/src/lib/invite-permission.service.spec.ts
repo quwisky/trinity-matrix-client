@@ -147,7 +147,10 @@ describe('InvitePermissionService', () => {
     const { svc, fake } = setup();
     fake.serverBlocksInvites = false;
 
-    await expect(firstValueFrom(svc.setBlocked(true))).rejects.toThrow();
+    await expect(firstValueFrom(svc.setBlocked(true))).rejects.toMatchObject({
+      name: 'EngineRequestError',
+      failure: { code: 'request-failed' },
+    });
   });
 
   it('fails as not signed in with no active account, or once it stops being live', async () => {
