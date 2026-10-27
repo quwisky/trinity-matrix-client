@@ -20,21 +20,20 @@ import {
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
+  plainEqual,
 } from '@trinity/util/matrix';
 import { MatrixClientStartupError } from '../account-start-failure';
 import type {
+  AccountServerStatus,
   PendingTextMessage,
+  PersistedAccountActivation,
   SessionAccessToken,
   SessionAccountStatus,
   SessionEngine,
   SessionSnapshot,
   SessionSyncState,
 } from '../session-engine';
-import {
-  type AccountServerStatus,
-  MatrixClientService,
-  type PersistedAccountActivation,
-} from './matrix-client.service';
+import { MatrixClientService } from './matrix-client.service';
 
 const SYNC_STATES: Readonly<Record<SyncState, SessionSyncState>> = {
   [SyncState.Prepared]: 'prepared',
@@ -47,29 +46,6 @@ const SYNC_STATES: Readonly<Record<SyncState, SessionSyncState>> = {
 
 export function toSessionSyncState(state: SyncState | null): SessionSyncState {
   return state === null ? 'starting' : SYNC_STATES[state];
-}
-
-/** Deep equality for plain data (objects, arrays and primitives). */
-function samePlain<T>(a: T, b: T): boolean {
-  if (Object.is(a, b)) return true;
-  if (
-    typeof a !== 'object' ||
-    typeof b !== 'object' ||
-    a === null ||
-    b === null ||
-    Array.isArray(a) !== Array.isArray(b)
-  ) {
-    return false;
-  }
-  const left = a as Record<string, unknown>;
-  const right = b as Record<string, unknown>;
-  const keys = Object.keys(left);
-  return (
-    keys.length === Object.keys(right).length &&
-    keys.every(
-      (key) => Object.hasOwn(right, key) && samePlain(left[key], right[key]),
-    )
-  );
 }
 
 /** {@link SessionEngine} over the live matrix-js-sdk clients of {@link MatrixClientService}. */
@@ -99,7 +75,7 @@ export class JsSdkSessionEngine implements SessionEngine {
           : [];
       });
     },
-    { equal: samePlain },
+    { equal: plainEqual },
   );
 
   /** One effect for the engine's lifetime; replays may be stale, so readers re-read {@link snapshot}. */
@@ -112,7 +88,7 @@ export class JsSdkSessionEngine implements SessionEngine {
       accounts: this.accounts(),
       softLoggedOut: this.svc.softLoggedOut(),
     }),
-    { equal: samePlain },
+    { equal: plainEqual },
   );
 
   constructor() {
@@ -125,7 +101,7 @@ export class JsSdkSessionEngine implements SessionEngine {
         of(this.snapshot()),
         this.snapshots$.pipe(map(() => this.snapshot())),
       ),
-    ).pipe(distinctUntilChanged(samePlain));
+    ).pipe(distinctUntilChanged<SessionSnapshot>(plainEqual));
   }
 
   accessToken(accountId: string): Observable<SessionAccessToken | null> {
@@ -137,7 +113,7 @@ export class JsSdkSessionEngine implements SessionEngine {
     ).pipe(
       startWith(null),
       map(() => this.svc.accessTokenState(accountId)),
-      distinctUntilChanged(samePlain),
+      distinctUntilChanged<SessionAccessToken | null>(plainEqual),
     );
   }
 

@@ -1,16 +1,15 @@
-import { InjectionToken, inject } from '@angular/core';
 import type { Observable } from 'rxjs';
 import type {
+  AccountStartFailureReason,
   EngineFailure,
   EngineResult,
   MatrixSession,
 } from '@trinity/util/matrix';
-import type { PersistedAccountStartFailure } from './account-start-failure';
-import type {
-  AccountServerStatus,
-  PersistedAccountActivation,
-} from './js-sdk/matrix-client.service';
-import { JsSdkSessionEngine } from './js-sdk/js-sdk-session-engine';
+
+export type PersistedAccountActivation = 'activate' | 'background';
+
+/** What the homeserver says about one account's token: accepted, refused as gone, or no answer. */
+export type AccountServerStatus = 'active' | 'gone' | 'unreachable';
 
 /**
  * One account's sync state: js-sdk's six states, plus `starting` for a live account before its
@@ -84,7 +83,7 @@ export function connectivityOf(
 /** Why a persisted account could not start, when the failure is one. */
 export function accountStartFailureReason(
   failure: EngineFailure,
-): PersistedAccountStartFailure | null {
+): AccountStartFailureReason | null {
   return failure.code === 'account-start-failed' ? failure.params.reason : null;
 }
 
@@ -121,8 +120,3 @@ export interface SessionEngine {
   accountStatus(accountId: string): Observable<AccountServerStatus>;
   roomKeysBackedUp(accountId: string): Observable<boolean | null>;
 }
-
-export const SESSION_ENGINE = new InjectionToken<SessionEngine>(
-  'SESSION_ENGINE',
-  { providedIn: 'root', factory: () => inject(JsSdkSessionEngine) },
-);

@@ -67,7 +67,12 @@ import {
   resendWaitingEchoes,
   waitingEchoCount,
 } from './outgoing-work';
-import type { PendingTextMessage, SessionAccessToken } from '../session-engine';
+import type {
+  AccountServerStatus,
+  PendingTextMessage,
+  PersistedAccountActivation,
+  SessionAccessToken,
+} from '../session-engine';
 import {
   MatrixClientStartupError,
   classifyCryptoStartupFailure,
@@ -126,8 +131,6 @@ export const MATRIX_SYNC_PROJECTION_BASELINE = {
   maxRetainedBytesPerLiveAccount:
     (SyncState.Reconnecting.length + SyncState.Prepared.length) * 2,
 } as const;
-
-export type PersistedAccountActivation = 'activate' | 'background';
 
 /** One signed-in account's live client + the per-account state bound to it. */
 interface AccountClient {
@@ -192,9 +195,6 @@ export interface ServerLogoutHold {
    */
   release(outcome: { readonly deleted: boolean }): void;
 }
-
-/** What the homeserver says about one account's token: accepted, refused as gone, or no answer. */
-export type AccountServerStatus = 'active' | 'gone' | 'unreachable';
 
 interface LogoutHoldState {
   readonly holds: Set<object>;

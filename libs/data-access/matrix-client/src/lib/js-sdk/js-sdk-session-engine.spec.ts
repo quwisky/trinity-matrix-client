@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import {
   ClientEvent,
@@ -440,5 +442,18 @@ describe('JsSdkSessionEngine', () => {
       },
     ]);
     expect(() => assertPlainData(texts)).not.toThrow();
+  });
+});
+
+describe('session-engine.ts', () => {
+  it('imports neither matrix-js-sdk nor the js-sdk adapter', () => {
+    const source = readFileSync(
+      join(import.meta.dirname, '../session-engine.ts'),
+      'utf8',
+    );
+    const specifiers = [...source.matchAll(/from '([^']+)'/g)].map(
+      ([, specifier]) => specifier,
+    );
+    expect(specifiers).toEqual(['rxjs', '@trinity/util/matrix']);
   });
 });

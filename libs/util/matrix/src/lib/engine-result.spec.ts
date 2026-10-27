@@ -9,6 +9,7 @@ import {
   engineOk,
   EngineRequestError,
   NOT_SIGNED_IN,
+  plainEqual,
   unwrapEngineResult,
 } from './engine-result';
 import { describeMatrixRequestFailure } from './request-failure';
@@ -270,5 +271,29 @@ describe('describeMatrixRequestFailure for an engine failure', () => {
       describeMatrixRequestFailure(new EngineRequestError(NOT_SIGNED_IN))
         .message,
     ).toBe('Not signed in.');
+  });
+});
+
+describe('plainEqual', () => {
+  it('compares nested objects and arrays by value', () => {
+    expect(
+      plainEqual(
+        { a: [1, { b: 'x' }], c: null },
+        { c: null, a: [1, { b: 'x' }] },
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    [{ a: 1 }, { a: 2 }],
+    [{ a: 1 }, { a: 1, b: 2 }],
+    [
+      [1, 2],
+      [2, 1],
+    ],
+    [[], {}],
+    [null, {}],
+  ])('tells %j from %j', (a, b) => {
+    expect(plainEqual(a, b)).toBe(false);
   });
 });
