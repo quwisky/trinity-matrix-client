@@ -9,6 +9,7 @@ import {
   engineOk,
   EngineRequestError,
   NOT_SIGNED_IN,
+  plainEqual,
   unwrapEngineResult,
 } from './engine-result';
 import { describeMatrixRequestFailure } from './request-failure';
@@ -69,7 +70,27 @@ const requestFailed = (
   diagnostic: { kind, ...diagnostic },
 });
 
+const SESSION_FAILURES = [
+  {
+    kind: 'authentication',
+    code: 'account-start-failed',
+    diagnostic: { kind: 'authentication' },
+    params: { reason: 'reauthentication-required' },
+  },
+  {
+    kind: 'unexpected',
+    code: 'account-not-live',
+    diagnostic: { kind: 'unexpected' },
+  },
+] satisfies EngineFailure[];
+
 describe('engineFailureMessage', () => {
+  it.each(SESSION_FAILURES)('words $code like a request failure', (failure) => {
+    expect(engineFailureMessage(failure)).toBe(
+      engineFailureMessage(requestFailed(failure.kind)),
+    );
+  });
+
   it('words not-signed-in', () => {
     expect(engineFailureMessage(NOT_SIGNED_IN)).toBe('Not signed in.');
   });
@@ -110,7 +131,10 @@ describe('engineFailureMessage', () => {
           kind: 'unexpected',
           code: 'discovery-failed',
           diagnostic: { kind: 'unexpected' },
-          params: { domain: 'x.org', ...(reason ? { reason } : {}) },
+          params: {
+            domain: 'x.org',
+            ...(reason ? { reason: reason as DiscoveryFailureReason } : {}),
+          },
         }),
       ).toBe('Could not discover a homeserver for "x.org".');
     },
@@ -140,11 +164,13 @@ describe('engineFailureMessage', () => {
       NOT_SIGNED_IN,
       requestFailed('rate-limit', { retryAfterMs: 1000 }),
       {
-        ...requestFailed('unexpected'),
-        code: 'discovery-failed' as const,
+        kind: 'unexpected',
+        code: 'discovery-failed',
+        diagnostic: { kind: 'unexpected' },
         params: { domain: 'x.org', reason: 'invalid' },
       },
-    ]) {
+      ...SESSION_FAILURES,
+    ] satisfies EngineFailure[]) {
       expect(() => assertPlainData(failure)).not.toThrow();
       expect(failure).not.toHaveProperty('message');
     }
@@ -159,9 +185,10 @@ describe('a token refresh failure through the engine', () => {
   });
   const carried = describeMatrixRequestFailure(raw);
   const failure: EngineFailure = {
-    kind: carried.kind,
+    kind: 'network',
     code: 'request-failed',
-    diagnostic: carried.diagnostic,
+    diagnostic: { kind: 'network' },
+    params: { cause: 'session-refresh' },
   };
 
   it('keeps its text under a caller fallback and in the table', () => {
@@ -171,6 +198,21 @@ describe('a token refresh failure through the engine', () => {
       describeMatrixRequestFailure(new EngineRequestError(failure), 'Fallback.')
         .message,
     ).toBe(refreshText);
+  });
+});
+
+describe('a token refresh failure from the engine', () => {
+  it('is worded from params.cause, not the diagnostic', () => {
+    expect(
+      engineFailureMessage({
+        kind: 'network',
+        code: 'request-failed',
+        diagnostic: { kind: 'network' },
+        params: { cause: 'session-refresh' },
+      }),
+    ).toBe(
+      'Your session could not be refreshed. Check your connection and try again.',
+    );
   });
 });
 
@@ -229,5 +271,29 @@ describe('describeMatrixRequestFailure for an engine failure', () => {
       describeMatrixRequestFailure(new EngineRequestError(NOT_SIGNED_IN))
         .message,
     ).toBe('Not signed in.');
+  });
+});
+
+describe('plainEqual', () => {
+  it('compares nested objects and arrays by value', () => {
+    expect(
+      plainEqual(
+        { a: [1, { b: 'x' }], c: null },
+        { c: null, a: [1, { b: 'x' }] },
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    [{ a: 1 }, { a: 2 }],
+    [{ a: 1 }, { a: 1, b: 2 }],
+    [
+      [1, 2],
+      [2, 1],
+    ],
+    [[], {}],
+    [null, {}],
+  ])('tells %j from %j', (a, b) => {
+    expect(plainEqual(a, b)).toBe(false);
   });
 });

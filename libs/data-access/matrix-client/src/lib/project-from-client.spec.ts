@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { projectFromClient } from './project-from-client';
 import type { ProjectFromClientConfig } from './project-from-client';
-import type { MatrixClientService } from './matrix-client.service';
+import type { MatrixClientService } from './js-sdk/matrix-client.service';
 
 /** Drain the microtask queue, which is where a coalesced rebuild lands. */
 const flush = () => Promise.resolve();

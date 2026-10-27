@@ -7,7 +7,7 @@ import {
   type ProjectionLease,
   type ProjectionReconcileContext,
 } from '@trinity/runtime/projection';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from './js-sdk/matrix-client.service';
 import { reprojectOnAccountSwitch } from './reproject-on-switch';
 
 /** What a projecting service exposes; its own `connect`/`disconnect` delegate to this. */

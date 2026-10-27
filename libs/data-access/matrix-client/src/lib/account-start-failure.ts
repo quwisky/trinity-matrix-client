@@ -1,22 +1,14 @@
 import { Observable, throwError } from 'rxjs';
-import { describeMatrixRequestFailure } from '@trinity/util/matrix';
+import {
+  type AccountStartFailureReason,
+  describeMatrixRequestFailure,
+} from '@trinity/util/matrix';
+
+export type PersistedAccountStartFailure = AccountStartFailureReason;
 
 export type PersistedAccountStartOutcome =
   | { readonly kind: 'ready' }
-  | {
-      readonly kind: 'failed';
-      readonly failure:
-        | 'reauthentication-required'
-        | 'transient-network'
-        | 'crypto-failure'
-        | 'crypto-store-key-lost'
-        | 'secure-storage-unavailable';
-    };
-
-export type PersistedAccountStartFailure = Extract<
-  PersistedAccountStartOutcome,
-  { kind: 'failed' }
->['failure'];
+  | { readonly kind: 'failed'; readonly failure: PersistedAccountStartFailure };
 
 export class MatrixClientStartupError extends Error {
   constructor(

@@ -58,7 +58,7 @@ import {
   syncStoreIndexedDbName,
   verifiedEndpoints,
 } from '@trinity/util/matrix';
-import { SecretStorageKeyHolder } from './secret-storage-key-holder';
+import { SecretStorageKeyHolder } from '../secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';
 import {
   clientHasOutgoingWork,
@@ -66,17 +66,22 @@ import {
   pauseClientSync,
   resendWaitingEchoes,
   waitingEchoCount,
-  type PendingTextMessage,
 } from './outgoing-work';
+import type {
+  AccountServerStatus,
+  PendingTextMessage,
+  PersistedAccountActivation,
+  SessionAccessToken,
+} from '../session-engine';
 import {
   MatrixClientStartupError,
   classifyCryptoStartupFailure,
   expectedClientStartFailure,
   isRecord,
   type PersistedAccountStartOutcome,
-} from './account-start-failure';
+} from '../account-start-failure';
 
-export type { PersistedAccountStartOutcome } from './account-start-failure';
+export type { PersistedAccountStartOutcome } from '../account-start-failure';
 
 /**
  * Default deadline for ordinary Matrix HTTP requests made by an account client. The
@@ -126,8 +131,6 @@ export const MATRIX_SYNC_PROJECTION_BASELINE = {
   maxRetainedBytesPerLiveAccount:
     (SyncState.Reconnecting.length + SyncState.Prepared.length) * 2,
 } as const;
-
-export type PersistedAccountActivation = 'activate' | 'background';
 
 /** One signed-in account's live client + the per-account state bound to it. */
 interface AccountClient {
@@ -192,9 +195,6 @@ export interface ServerLogoutHold {
    */
   release(outcome: { readonly deleted: boolean }): void;
 }
-
-/** What the homeserver says about one account's token: accepted, refused as gone, or no answer. */
-export type AccountServerStatus = 'active' | 'gone' | 'unreachable';
 
 interface LogoutHoldState {
   readonly holds: Set<object>;
@@ -427,6 +427,28 @@ export class MatrixClientService {
   }
 
   /**
+   * The live client's access token, or null when no client is live or it has none. Expiry and
+   * refreshability come from the tracked OAuth pair only while it belongs to the live client.
+   */
+  accessTokenState(userId: string): SessionAccessToken | null {
+    const client = this.clients.get(userId)?.client;
+    if (!client) return null;
+    const tracked = this.oauthTokens.get(userId);
+    if (tracked?.client === client) {
+      // The SDK adopts a refreshed token only after the rotation is published.
+      return {
+        accessToken: tracked.accessToken,
+        expiresAt: tracked.expiresAt ?? null,
+        refreshable: tracked.refreshable,
+      };
+    }
+    const accessToken = client.getAccessToken();
+    return accessToken === null
+      ? null
+      : { accessToken, expiresAt: null, refreshable: false };
+  }
+
+  /**
    * Ask the SDK to refresh one live OAuth account's tokens now, joining a refresh already
    * in flight; the new pair is persisted and published through `onTokenRefresh`. Emits
    * whether new tokens were adopted. A refusal signs nothing out here: the account's next
@@ -536,28 +558,43 @@ export class MatrixClientService {
     session: MatrixSession,
     activation: PersistedAccountActivation,
   ): Observable<PersistedAccountStartOutcome> {
+    return this.startPersisted(session, activation).pipe(
+      map(() => ({ kind: 'ready' as const })),
+      catchError((error: unknown) =>
+        error instanceof MatrixClientStartupError
+          ? of({ kind: 'failed' as const, failure: error.failure })
+          : throwError(() => error),
+      ),
+    );
+  }
+
+  /**
+   * {@link restorePersisted} with an expected failure left on the error channel as the
+   * {@link MatrixClientStartupError} that carries its original.
+   */
+  startPersisted(
+    session: MatrixSession,
+    activation: PersistedAccountActivation,
+  ): Observable<void> {
     return this.start(session).pipe(
       tap((account) => {
         if (activation === 'activate') {
           this._activeUserId.set(account.userId);
         }
       }),
-      map(() => ({ kind: 'ready' as const })),
-      catchError((error: unknown) =>
-        error instanceof MatrixClientStartupError
-          ? defer(() => {
-              // A lost store key also needs a sign-in as a new device, which the re-auth
-              // flow chooses when the key no longer reads back.
-              if (
-                error.failure === 'reauthentication-required' ||
-                error.failure === 'crypto-store-key-lost'
-              ) {
-                this.requireReauthentication(session.userId);
-              }
-              return of({ kind: 'failed' as const, failure: error.failure });
-            })
-          : throwError(() => error),
-      ),
+      map(() => void 0),
+      catchError((error: unknown) => {
+        // A lost store key also needs a sign-in as a new device, which the re-auth
+        // flow chooses when the key no longer reads back.
+        if (
+          error instanceof MatrixClientStartupError &&
+          (error.failure === 'reauthentication-required' ||
+            error.failure === 'crypto-store-key-lost')
+        ) {
+          this.requireReauthentication(session.userId);
+        }
+        return throwError(() => error);
+      }),
     );
   }
 
