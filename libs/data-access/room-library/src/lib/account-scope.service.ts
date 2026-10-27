@@ -4,7 +4,7 @@ import {
   inject,
   type EnvironmentProviders,
 } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   INSTALLATION_PREFERENCE_CONTEXT,
   PreferenceStoreService,
@@ -88,7 +88,7 @@ export function sameAccountSet(
  */
 @Injectable({ providedIn: 'root' })
 export class AccountScopeService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
   private readonly preferences = inject(PreferenceStoreService);
   private readonly persisted = this.preferences.stateFor(
     ACCOUNT_SCOPE_PREFERENCE,
@@ -108,14 +108,14 @@ export class AccountScopeService {
    */
   readonly selected = computed<ReadonlySet<string>>(
     () => {
-      const live = new Set(this.matrix.accountIds());
+      const live = new Set(this.session.accountIds());
       const shown = new Set<string>();
       for (const id of this.stored()) {
         if (live.has(id)) {
           shown.add(id);
         }
       }
-      const active = this.matrix.activeUserId();
+      const active = this.session.activeAccountId();
       if (active) {
         shown.add(active);
       }
@@ -161,7 +161,7 @@ export class AccountScopeService {
     included: boolean,
   ): Observable<PreferenceCommandOutcome> {
     return defer(() => {
-      const active = this.matrix.activeUserId();
+      const active = this.session.activeAccountId();
       if (!included && userId === active) {
         return of({ kind: 'completed' } as const);
       }

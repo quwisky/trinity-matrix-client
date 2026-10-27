@@ -172,7 +172,13 @@ describe('RoomListStore', () => {
     expect(view()).toEqual([A.roomId]);
 
     const created = await firstValueFrom(
-      fake.createRoom(alice, { name: 'New', topic: null, isPublic: false }),
+      fake.createRoom(alice, {
+        name: 'New',
+        topic: null,
+        isPublic: false,
+        kind: 'room',
+        parentSpaceId: null,
+      }),
     );
     const roomId = created.ok ? created.value.roomId : '';
     expect(view()).toEqual([A.roomId, roomId]);

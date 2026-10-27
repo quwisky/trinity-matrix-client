@@ -34,6 +34,7 @@ import {
 } from '@trinity/data-access/accounts';
 import {
   MatrixClientService,
+  SESSION_ENGINE,
   SessionStateService,
   type SessionSyncState,
 } from '@trinity/data-access/matrix-client';
@@ -64,7 +65,7 @@ import {
 
 import { MockProvider } from 'ng-mocks';
 import { ACCOUNT_REMOVAL_LAUNCHER } from '@trinity/platform-native';
-import { BehaviorSubject, Subject, of, switchMap } from 'rxjs';
+import { BehaviorSubject, NEVER, Subject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
@@ -229,6 +230,8 @@ export const SHARED_MOCKS: Provider[] = [
   SessionActionsService,
   WorkspaceNavigationService,
   ConversationTimelineStub,
+  // The session is the mocked SessionStateService; the room list store only listens for changes.
+  { provide: SESSION_ENGINE, useValue: { session: () => NEVER } },
   // App lock is off; a spec that locks it overrides this.
   MockProvider(AppLockService, {
     enabled: signal(false).asReadonly(),
