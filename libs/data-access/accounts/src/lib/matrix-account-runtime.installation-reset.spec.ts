@@ -12,7 +12,7 @@ import {
 } from './matrix-account-runtime.spec-harness';
 
 it('resets only the approved installation storage scopes in order', async () => {
-  const { adapter, matrix, storage, wipe, lifecycle } = setup();
+  const { adapter, engine, storage, wipe, lifecycle } = setup();
   const order: string[] = [];
   vi.mocked(storage.list).mockReturnValue(of([]));
   vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
@@ -27,16 +27,16 @@ it('resets only the approved installation storage scopes in order', async () => 
       return of(void 0);
     }),
   );
-  vi.mocked(matrix.signOutAll).mockReturnValue(
+  vi.mocked(engine.signOutAll).mockReturnValue(
     defer(() => {
       order.push('sign-out');
-      return of(void 0);
+      return of(null);
     }),
   );
-  vi.mocked(matrix.stop).mockReturnValue(
+  vi.mocked(engine.stop).mockReturnValue(
     defer(() => {
       order.push('stop');
-      return of(void 0);
+      return of(null);
     }),
   );
   vi.mocked(lifecycle.stopDiagnosticLog).mockReturnValue(
@@ -170,7 +170,7 @@ it('empties the drafts held in memory once the clients have stopped, so no later
   expect(test.lifecycle.clearDrafts).toHaveBeenCalledOnce();
   expect(
     vi.mocked(test.lifecycle.clearDrafts).mock.invocationCallOrder[0],
-  ).toBeGreaterThan(vi.mocked(test.matrix.stop).mock.invocationCallOrder[0]);
+  ).toBeGreaterThan(vi.mocked(test.engine.stop).mock.invocationCallOrder[0]);
 });
 
 it('asks for a restart when the drafts held in memory cannot be emptied', async () => {
@@ -189,10 +189,10 @@ it('asks for a restart when the drafts held in memory cannot be emptied', async 
 });
 
 it('reports cleanup failures by safe scope without leaking database names', async () => {
-  const { adapter, matrix, storage, wipe } = setup();
+  const { adapter, engine, storage, wipe } = setup();
   vi.mocked(storage.list).mockReturnValue(of([]));
-  vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
-  vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+  vi.mocked(engine.signOutAll).mockReturnValue(of(null));
+  vi.mocked(engine.stop).mockReturnValue(of(null));
   vi.mocked(wipe.wipeIndexedDb).mockResolvedValue({
     blocked: ['secret-account-db'],
     failed: [],
@@ -210,10 +210,10 @@ it('reports cleanup failures by safe scope without leaking database names', asyn
 });
 
 it('reports key-value and service-worker residue by typed safe scope', async () => {
-  const { adapter, matrix, storage, wipe } = setup();
+  const { adapter, engine, storage, wipe } = setup();
   vi.mocked(storage.list).mockReturnValue(of([]));
-  vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
-  vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+  vi.mocked(engine.signOutAll).mockReturnValue(of(null));
+  vi.mocked(engine.stop).mockReturnValue(of(null));
   vi.mocked(storage.clearAll).mockReturnValue(of([]));
   vi.mocked(wipe.wipeSecureStorage).mockResolvedValue(false);
   vi.mocked(wipe.wipePreferences).mockResolvedValue(false);
@@ -238,7 +238,7 @@ it('reports key-value and service-worker residue by typed safe scope', async () 
 });
 
 it('keeps provider residue but clears a superseded secure-read failure', async () => {
-  const { adapter, matrix, storage, wipe, lifecycle } = setup();
+  const { adapter, engine, storage, wipe, lifecycle } = setup();
   vi.mocked(storage.list).mockReturnValue(
     of([
       {
@@ -252,8 +252,8 @@ it('keeps provider residue but clears a superseded secure-read failure', async (
   vi.mocked(storage.load).mockReturnValue(
     throwError(() => new Error('secure read failed')),
   );
-  vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
-  vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+  vi.mocked(engine.signOutAll).mockReturnValue(of(null));
+  vi.mocked(engine.stop).mockReturnValue(of(null));
   vi.mocked(storage.clearAll).mockReturnValue(of([]));
   vi.mocked(wipe.wipeSecureStorage).mockResolvedValue(true);
 
@@ -290,7 +290,7 @@ it('reports a stalled registry read while retaining the prerequisite before clea
         },
       ],
     });
-    expect(test.matrix.signOutAll).not.toHaveBeenCalled();
+    expect(test.engine.signOutAll).not.toHaveBeenCalled();
 
     registry.next([]);
     registry.complete();
@@ -332,7 +332,7 @@ it('advances installation cleanup after a session-read budget without cancelling
         },
       ],
     });
-    expect(test.matrix.stop).toHaveBeenCalledOnce();
+    expect(test.engine.stop).toHaveBeenCalledOnce();
     expect(test.wipe.wipeSecureStorage).toHaveBeenCalledOnce();
     expect(sessionRead.observed).toBe(true);
 
@@ -355,23 +355,23 @@ it.each([
         .mocked(test.lifecycle.unregisterNotifications)
         .mockReturnValue(stalled),
     laterRan: (test: AdapterTest) =>
-      expect(test.matrix.stop).toHaveBeenCalledOnce(),
+      expect(test.engine.stop).toHaveBeenCalledOnce(),
   },
   {
     name: 'Matrix server logout',
     budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
     scope: 'matrix-session' as const,
     arrange: (test: AdapterTest, stalled: Subject<void>) =>
-      vi.mocked(test.matrix.signOutAll).mockReturnValue(stalled),
+      vi.mocked(test.engine.signOutAll).mockReturnValue(stalled as never),
     laterRan: (test: AdapterTest) =>
-      expect(test.matrix.stop).toHaveBeenCalledOnce(),
+      expect(test.engine.stop).toHaveBeenCalledOnce(),
   },
   {
     name: 'Matrix stop',
     budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
     scope: 'matrix-session' as const,
     arrange: (test: AdapterTest, stalled: Subject<void>) =>
-      vi.mocked(test.matrix.stop).mockReturnValue(stalled),
+      vi.mocked(test.engine.stop).mockReturnValue(stalled as never),
     laterRan: (test: AdapterTest) =>
       expect(test.wipe.beginIndexedDbWipe).toHaveBeenCalledOnce(),
   },
@@ -429,10 +429,10 @@ it.each([
 it('continues later local scopes after the secure-store budget elapses', async () => {
   vi.useFakeTimers();
   try {
-    const { adapter, matrix, storage, wipe } = setup();
+    const { adapter, engine, storage, wipe } = setup();
     vi.mocked(storage.list).mockReturnValue(of([]));
-    vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
-    vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+    vi.mocked(engine.signOutAll).mockReturnValue(of(null));
+    vi.mocked(engine.stop).mockReturnValue(of(null));
     vi.mocked(storage.clearAll).mockReturnValue(of([]));
     vi.mocked(wipe.wipeSecureStorage).mockReturnValue(
       new Promise(() => undefined),
@@ -536,7 +536,7 @@ it.each([
 it('classifies a provider-revocation timeout as provider residue', async () => {
   vi.useFakeTimers();
   try {
-    const { adapter, matrix, storage, lifecycle } = setup();
+    const { adapter, engine, storage, lifecycle } = setup();
     vi.mocked(storage.list).mockReturnValue(
       of([{ userId: '@oidc:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
     );
@@ -547,9 +547,9 @@ it('classifies a provider-revocation timeout as provider residue', async () => {
         oidc: { issuer: 'https://issuer' },
       } as never),
     );
-    vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
+    vi.mocked(engine.signOutAll).mockReturnValue(of(null));
     vi.mocked(lifecycle.revokeProviderSession).mockReturnValue(NEVER);
-    vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+    vi.mocked(engine.stop).mockReturnValue(of(null));
     vi.mocked(storage.clearAll).mockReturnValue(of([]));
 
     const outcome = firstValueFrom(adapter.resetInstallation());
@@ -573,10 +573,10 @@ it('classifies a provider-revocation timeout as provider residue', async () => {
 it('reconciles an IndexedDB deletion that completes after its reported timeout', async () => {
   vi.useFakeTimers();
   try {
-    const { adapter, matrix, storage, wipe } = setup();
+    const { adapter, engine, storage, wipe } = setup();
     vi.mocked(storage.list).mockReturnValue(of([]));
-    vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
-    vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+    vi.mocked(engine.signOutAll).mockReturnValue(of(null));
+    vi.mocked(engine.stop).mockReturnValue(of(null));
     vi.mocked(storage.clearAll).mockReturnValue(of([]));
     const late = new Subject<{
       blocked: readonly string[];
@@ -614,7 +614,7 @@ it('reconciles an IndexedDB deletion that completes after its reported timeout',
 });
 
 it('retries only safe local installation residue', async () => {
-  const { adapter, matrix, lifecycle, wipe } = setup();
+  const { adapter, engine, lifecycle, wipe } = setup();
   vi.mocked(wipe.wipePreferences).mockResolvedValue(true);
   vi.mocked(wipe.wipeWebStorage).mockResolvedValue(true);
 
@@ -635,7 +635,7 @@ it('retries only safe local installation residue', async () => {
   expect(wipe.wipePreferences).toHaveBeenCalledOnce();
   expect(wipe.wipeWebStorage).toHaveBeenCalledOnce();
   expect(wipe.wipeSecureStorage).not.toHaveBeenCalled();
-  expect(matrix.signOutAll).not.toHaveBeenCalled();
+  expect(engine.signOutAll).not.toHaveBeenCalled();
   expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   // The retried preferences wipe may have returned the log's setting to its default.
   expect(lifecycle.resumeDiagnosticLog).toHaveBeenCalledOnce();

@@ -15,7 +15,7 @@ import {
   ROOM_KEYS_MAY_BE_LOST,
   type AccountSignOutOutcome,
 } from '@trinity/data-access/accounts';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SESSION_ENGINE } from '@trinity/data-access/matrix-client';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 
 const LAST_ACCOUNT: AccountSignOutOutcome = {
@@ -53,7 +53,7 @@ function setup(options: Options = {}) {
       MockProvider(TrnToastService, { show }),
       MockProvider(Router, { navigateByUrl }),
       MockProvider(AccountRuntimeService, { signOutAccount }),
-      MockProvider(MatrixClientService, { roomKeysBackedUp }),
+      { provide: SESSION_ENGINE, useValue: { roomKeysBackedUp } },
     ],
   });
   return {

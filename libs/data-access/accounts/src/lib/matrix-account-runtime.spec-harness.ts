@@ -4,7 +4,10 @@ import { MockProvider } from 'ng-mocks';
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SESSION_ENGINE,
+} from '@trinity/data-access/matrix-client';
 import {
   LocalDataWipeService,
   SecureStorageService,
@@ -70,9 +73,14 @@ export function setup(activeAccountId: string | null = '@old:hs') {
     clearDrafts: vi.fn(),
     forgetAccountPreferences: vi.fn(() => of(void 0)),
   };
+  const engine = {
+    stop: vi.fn(() => of(null)),
+    signOutAll: vi.fn(() => of(null)),
+  };
   TestBed.configureTestingModule({
     providers: [
       MatrixAccountRuntimeAdapter,
+      { provide: SESSION_ENGINE, useValue: engine },
       MockProvider(MatrixClientService, {
         activeUserId: active.asReadonly(),
         clientFor: vi.fn(() => ({}) as never),
@@ -95,6 +103,7 @@ export function setup(activeAccountId: string | null = '@old:hs') {
   return {
     adapter: TestBed.inject(MatrixAccountRuntimeAdapter),
     matrix: TestBed.inject(MatrixClientService),
+    engine,
     storage: TestBed.inject(SessionStorageService),
     wipe: TestBed.inject(LocalDataWipeService),
     secure: TestBed.inject(SecureStorageService),
@@ -113,8 +122,8 @@ export function prepareSuccessfulReset(
   vi.mocked(test.storage.list).mockReturnValue(of(records));
   vi.mocked(test.storage.load).mockReturnValue(of(null));
   vi.mocked(test.lifecycle.unregisterNotifications).mockReturnValue(of(void 0));
-  vi.mocked(test.matrix.signOutAll).mockReturnValue(of(void 0));
-  vi.mocked(test.matrix.stop).mockReturnValue(of(void 0));
+  vi.mocked(test.engine.signOutAll).mockReturnValue(of(null));
+  vi.mocked(test.engine.stop).mockReturnValue(of(null));
   vi.mocked(test.storage.clearAll).mockReturnValue(of([]));
 }
 

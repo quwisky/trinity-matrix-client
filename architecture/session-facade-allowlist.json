@@ -2,12 +2,10 @@
   "issue": "#1153",
   "files": [
     "libs/application/runtime/src/lib/composition/account-deletion-launcher.adapter.ts",
-    "libs/application/runtime/src/lib/composition/account-removal-launcher.adapter.ts",
     "libs/application/runtime/src/lib/composition/diagnostic-log.providers.ts",
     "libs/data-access/accounts/src/lib/account-deletion.workflow.ts",
     "libs/data-access/accounts/src/lib/account-lifecycle.adapter.ts",
     "libs/data-access/accounts/src/lib/account-sign-out-retry.workflow.ts",
-    "libs/data-access/accounts/src/lib/installation-reset.workflow.ts",
     "libs/data-access/accounts/src/lib/matrix-account-runtime.adapter.ts",
     "libs/data-access/auth/src/lib/auth.service.ts",
     "libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.service.ts",
