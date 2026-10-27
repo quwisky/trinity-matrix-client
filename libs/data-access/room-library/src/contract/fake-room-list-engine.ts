@@ -6,6 +6,7 @@ import {
   distinctUntilChanged,
   filter,
   map,
+  merge,
   of,
   startWith,
 } from 'rxjs';
@@ -27,7 +28,7 @@ import type {
   SpaceChildLink,
   TypingMember,
 } from '../lib/room-list-engine';
-import { compareOrder } from '../lib/space-child-order';
+import { compareOrder, isValidOrder } from '../lib/space-child-order';
 
 type FailNextCode = Exclude<
   EngineFailureCode,
@@ -158,7 +159,10 @@ export class FakeRoomListEngine implements RoomListEngine {
   seed(accountId: string, rooms: readonly RoomInfo[]): void {
     if (!this.userNames.has(accountId))
       this.userNames.set(accountId, accountId);
-    for (const room of rooms) this.roomNames.set(room.roomId, room.displayName);
+    for (const room of rooms) {
+      this.roomNames.set(room.roomId, room.displayName);
+      if (room.isSpace) this.spaces.add(room.roomId);
+    }
     this.lists.set(accountId, rooms);
     this.changes$.next({ accountId, diffs: [{ op: 'reset', values: rooms }] });
   }
@@ -399,9 +403,12 @@ export class FakeRoomListEngine implements RoomListEngine {
     spaceId: string,
   ): Observable<readonly SpaceChildLink[]> {
     return defer(() =>
-      this.linksChanged$.pipe(
-        filter((changed) => changed === spaceId),
-        startWith(spaceId),
+      merge(
+        this.linksChanged$.pipe(filter((changed) => changed === spaceId)),
+        // The space can be listed for the account after the subscription opened.
+        this.changes$.pipe(filter((change) => change.accountId === accountId)),
+      ).pipe(
+        startWith(null),
         map(() =>
           this.lists.get(accountId)?.some((r) => r.roomId === spaceId)
             ? this.liveLinks(spaceId)
@@ -491,6 +498,7 @@ export class FakeRoomListEngine implements RoomListEngine {
   private liveLinks(spaceId: string): readonly SpaceChildLink[] {
     return [...(this.links.get(spaceId)?.values() ?? [])]
       .filter((link) => link.via.length > 0)
+      .map((link) => (isValidOrder(link.order) ? link : { ...link, order: '' }))
       .sort(
         (a, b) =>
           compareOrder(a.order, b.order) || (a.childId < b.childId ? -1 : 1),

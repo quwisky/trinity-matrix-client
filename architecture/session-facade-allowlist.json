@@ -57,7 +57,6 @@
     "libs/data-access/room-library/src/lib/space-children.service.ts",
     "libs/data-access/room-library/src/lib/space-contents.service.ts",
     "libs/data-access/room-library/src/lib/space-room-order.service.ts",
-    "libs/data-access/room-library/src/lib/spaces.service.ts",
     "libs/data-access/room-library/src/lib/unread-aggregator.service.ts",
     "libs/data-access/timeline/src/lib/conversation-message-adapter.service.ts",
     "libs/data-access/timeline/src/lib/conversation-text-sender.service.ts",

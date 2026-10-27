@@ -454,6 +454,28 @@ export function defineRoomListEngineContract(
     );
 
     it(
+      'spaceChildLinks reads an order the spec rejects as empty',
+      async () => {
+        const spaceId = await createRoom({ kind: 'space' });
+        const childId = await createRoom();
+        await roomUntil(spaceId, (r) => r.isSpace);
+        const link = { via: [context.serverName], suggested: false };
+
+        await ok(
+          engine.setSpaceChild(alice, spaceId, childId, {
+            ...link,
+            order: 'x'.repeat(51),
+          }),
+        );
+
+        expect(await linksNow(spaceId)).toEqual([
+          { childId, ...link, order: '' },
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'setSpaceChild null unlinks',
       async () => {
         const spaceId = await createRoom({ kind: 'space' });

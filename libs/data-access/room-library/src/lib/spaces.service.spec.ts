@@ -1,218 +1,184 @@
-import { ApplicationRef, signal } from '@angular/core';
+import { signal } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { TestBed } from '@angular/core/testing';
-import { type MatrixClient } from 'matrix-js-sdk';
-import { MockProvider, ngMocks } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, type Mock, vi } from 'vitest';
-import { SpacesService } from './spaces.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { Subject, finalize, firstValueFrom, of } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import {
+  EngineRequestError,
+  type EngineResult,
+  engineOk,
+} from '@trinity/util/matrix';
+import {
+  FakeRoomListEngine,
+  fakeRoom,
+} from '../contract/fake-room-list-engine';
 import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
+import type { HierarchyEntry, RoomInfo } from './room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
+import { SpacesService } from './spaces.service';
 
-/**
- * Wire a fake matrix-js-sdk client into a mocked {@link MatrixClientService}.
- *
- * `activeUserId` is writable so a test can drive an account switch — the projection
- * re-wires off it, and a read-only signal here would make that untestable.
- */
-const activeUserId = signal<string | null>(null);
+function account(accountId: string, generation = 1): SessionAccountStatus {
+  return {
+    accountId,
+    generation,
+    syncState: 'syncing',
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
+  };
+}
 
-function provideMatrix(client: unknown): MatrixClientService {
-  activeUserId.set(null);
+function room(roomId: string, name: string, patch: Partial<RoomInfo> = {}) {
+  return fakeRoom(roomId, { displayName: name, ...patch });
+}
+
+function space(roomId: string, name: string, patch: Partial<RoomInfo> = {}) {
+  return room(roomId, name, { isSpace: true, ...patch });
+}
+
+/** SpacesService over the fake engine, the real RoomListStore and a fake session for alice. */
+function setup(
+  rooms: readonly RoomInfo[] = [],
+  bobRooms: readonly RoomInfo[] | null = null,
+) {
+  const fake = new FakeRoomListEngine();
+  const alice = fake.alice;
+  fake.seed(alice, rooms);
+  if (bobRooms) fake.seed(fake.bob, bobRooms);
+  const session = signal<SessionSnapshot>({
+    ...EMPTY_SESSION,
+    activeAccountId: alice,
+    accounts: [account(alice), ...(bobRooms ? [account(fake.bob)] : [])],
+  });
+  const authorize = vi.fn(() => ({ kind: 'allowed' as const }));
   TestBed.configureTestingModule({
     providers: [
-      SpacesService,
+      { provide: ROOM_LIST_ENGINE, useValue: fake },
+      { provide: SESSION_SNAPSHOT, useValue: session },
       {
-        provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
-        useValue: { authorize: vi.fn(() => ({ kind: 'allowed' as const })) },
+        provide: SESSION_ENGINE,
+        useFactory: () => ({ session: () => toObservable(session) }),
       },
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
-      }),
+      { provide: ROOM_LIBRARY_GOVERNANCE_POLICY, useValue: { authorize } },
     ],
   });
-  const matrix = TestBed.inject(MatrixClientService);
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(matrix, 'instance', client as MatrixClient);
-  ngMocks.stubMember(matrix, 'clientFor', () => client as MatrixClient);
-  return matrix;
-}
-
-// A single `m.space.child` link. `via` defaults to a non-empty array (a valid
-// link); pass `via: []` to model a removed/tombstoned child.
-interface ChildLink {
-  childId: string;
-  order?: string;
-  via?: string[];
-}
-
-interface RoomOpts {
-  roomId: string;
-  name: string;
-  space?: boolean;
-  membership?: string;
-  children?: ChildLink[];
-}
-
-// Minimal fakes shaped like the bits of matrix-js-sdk that SpacesService reads.
-function fakeRoom(opts: RoomOpts) {
-  // `children` is read live (a captured array ref) so a test can push a link and
-  // then fire a state-event to assert the live refresh.
-  const children = opts.children ?? [];
-  return {
-    roomId: opts.roomId,
-    name: opts.name,
-    isSpaceRoom: () => opts.space ?? false,
-    getMyMembership: () => opts.membership ?? 'join',
-    getMxcAvatarUrl: () => null,
-    // The service reads room state via the live timeline (liveRoomState()),
-    // which is what the SDK's deprecated `currentState` aliased.
-    getLiveTimeline: () => ({
-      getState: () => ({
-        getStateEvents: (type: string) =>
-          type === 'm.space.child'
-            ? children.map((c) => ({
-                getStateKey: () => c.childId,
-                getContent: () => ({
-                  via: c.via ?? ['hs.example'],
-                  ...(c.order !== undefined ? { order: c.order } : {}),
-                }),
-              }))
-            : [],
-      }),
-    }),
-    _children: children, // test-only handle for mutation
-  };
-}
-
-function setup(rooms: ReturnType<typeof fakeRoom>[]) {
-  const byId = new Map(rooms.map((r) => [r.roomId, r]));
-  const client = {
-    getUserId: () => '@me:hs',
-    getRooms: () => rooms,
-    getRoom: (id: string) => byId.get(id) ?? null,
-    on: vi.fn(),
-    off: vi.fn(),
-  };
-  const matrix = provideMatrix(client);
   const svc = TestBed.inject(SpacesService);
-  const lifetime = svc.runProjection().subscribe();
-  return { svc, client, matrix, lifetime };
-}
-
-/** Pull a captured client listener by event name (for simulating live updates). */
-function handlerFor(client: { on: Mock }, event: string) {
-  const call = client.on.mock.calls.find(([e]) => e === event);
-  return call?.[1] as ((...args: unknown[]) => void) | undefined;
+  /** Links `childId` into `spaceId` as the server would; `via: []` removes it. */
+  const link = (
+    spaceId: string,
+    childId: string,
+    {
+      order = '',
+      via = ['hs.example'],
+    }: { order?: string; via?: string[] } = {},
+  ): void => {
+    fake
+      .setSpaceChild(alice, spaceId, childId, { via, suggested: false, order })
+      .subscribe();
+  };
+  return { svc, fake, session, alice, authorize, link };
 }
 
 describe('SpacesService', () => {
   it('lists only joined spaces, sorted by name', () => {
-    const { svc } = setup([
-      fakeRoom({ roomId: '!b:hs', name: 'Beta', space: true }),
-      fakeRoom({ roomId: '!a:hs', name: 'Alpha', space: true }),
-      fakeRoom({
-        roomId: '!g:hs',
-        name: 'Gamma',
-        space: true,
-        membership: 'leave',
-      }),
-      fakeRoom({ roomId: '!r:hs', name: 'a normal room' }),
+    const { svc, alice } = setup([
+      space('!b:hs', 'Beta'),
+      space('!a:hs', 'Alpha'),
+      space('!g:hs', 'Gamma', { membership: 'invite' }),
+      room('!r:hs', 'a normal room'),
     ]);
 
     expect(svc.spaces().map((s) => s.name)).toEqual(['Alpha', 'Beta']);
-    expect(svc.spaces()[0]).toMatchObject({ id: '!a:hs', initial: 'A' });
+    expect(svc.spaces()[0]).toMatchObject({
+      id: '!a:hs',
+      initial: 'A',
+      accountId: alice,
+    });
   });
 
   it('resolves child links to joined rooms, ordered by order then name', () => {
-    const { svc } = setup([
-      fakeRoom({
-        roomId: '!s:hs',
-        name: 'Space',
-        space: true,
-        children: [
-          { childId: '!c:hs', order: '30' },
-          { childId: '!a:hs', order: '10' },
-          { childId: '!b:hs', order: '20' },
-        ],
-      }),
-      fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
-      fakeRoom({ roomId: '!b:hs', name: 'bravo' }),
-      fakeRoom({ roomId: '!c:hs', name: 'charlie' }),
+    const { svc, link } = setup([
+      space('!s:hs', 'Space'),
+      room('!a:hs', 'alpha'),
+      room('!b:hs', 'bravo'),
+      room('!c:hs', 'charlie'),
     ]);
+    link('!s:hs', '!c:hs', { order: '30' });
+    link('!s:hs', '!a:hs', { order: '10' });
+    link('!s:hs', '!b:hs', { order: '20' });
 
     expect(svc.childRoomIds('!s:hs')).toEqual(['!a:hs', '!b:hs', '!c:hs']);
   });
 
   it('breaks ties on name when children share an order', () => {
-    const { svc } = setup([
-      fakeRoom({
-        roomId: '!s:hs',
-        name: 'Space',
-        space: true,
-        children: [
-          { childId: '!z:hs', order: '10' },
-          { childId: '!m:hs', order: '10' },
-        ],
-      }),
-      fakeRoom({ roomId: '!z:hs', name: 'Zeta' }),
-      fakeRoom({ roomId: '!m:hs', name: 'Mango' }),
+    const { svc, link } = setup([
+      space('!s:hs', 'Space'),
+      room('!z:hs', 'Zeta'),
+      room('!m:hs', 'Mango'),
     ]);
+    link('!s:hs', '!z:hs', { order: '10' });
+    link('!s:hs', '!m:hs', { order: '10' });
 
     expect(svc.childRoomIds('!s:hs')).toEqual(['!m:hs', '!z:hs']);
   });
 
-  it('drops non-joined children and removed (empty-via) links', () => {
-    const { svc } = setup([
-      fakeRoom({
-        roomId: '!s:hs',
-        name: 'Space',
-        space: true,
-        children: [
-          { childId: '!a:hs' }, // joined → kept
-          { childId: '!b:hs' }, // not joined → dropped
-          { childId: '!x:hs', via: [] }, // removed link → dropped
-        ],
-      }),
-      fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
-      fakeRoom({ roomId: '!b:hs', name: 'bravo', membership: 'leave' }),
-      fakeRoom({ roomId: '!x:hs', name: 'x-removed' }),
+  it('childRoomIds keeps order-then-name and drops links without via', () => {
+    // The engine lists links by order then child id; the rail has always broken ties on name.
+    const { svc, link } = setup([
+      space('!s:hs', 'Space'),
+      room('!a:hs', 'Zulu'),
+      room('!b:hs', 'Alpha'),
+      room('!c:hs', 'Mid'),
+      room('!d:hs', 'Bravo'),
     ]);
+    link('!s:hs', '!a:hs', { order: '1' });
+    link('!s:hs', '!b:hs', { order: '1' });
+    link('!s:hs', '!c:hs', { order: '0', via: [] });
+    link('!s:hs', '!d:hs');
+
+    expect(svc.childRoomIds('!s:hs')).toEqual(['!b:hs', '!a:hs', '!d:hs']);
+  });
+
+  it('drops non-joined children and removed (empty-via) links', () => {
+    const { svc, link } = setup([
+      space('!s:hs', 'Space'),
+      room('!a:hs', 'alpha'),
+      room('!b:hs', 'bravo', { membership: 'invite' }),
+      room('!x:hs', 'x-removed'),
+    ]);
+    link('!s:hs', '!a:hs'); // joined → kept
+    link('!s:hs', '!b:hs'); // not joined → dropped
+    link('!s:hs', '!x:hs', { via: [] }); // removed link → dropped
 
     expect(svc.childRoomIds('!s:hs')).toEqual(['!a:hs']);
   });
 
   it('returns no child ids for Home (null) or an unknown space', () => {
-    const { svc } = setup([
-      fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
-    ]);
+    const { svc } = setup([space('!s:hs', 'Space')]);
 
     expect(svc.childRoomIds(null)).toEqual([]);
     expect(svc.childRoomIds('!nope:hs')).toEqual([]);
   });
 
   it('finds the spaces that directly contain a room', () => {
-    const { svc } = setup([
-      fakeRoom({
-        roomId: '!s1:hs',
-        name: 'One',
-        space: true,
-        children: [{ childId: '!a:hs' }],
-      }),
-      fakeRoom({
-        roomId: '!s2:hs',
-        name: 'Two',
-        space: true,
-        children: [{ childId: '!a:hs' }],
-      }),
-      fakeRoom({
-        roomId: '!s3:hs',
-        name: 'Three',
-        space: true,
-        children: [{ childId: '!b:hs' }],
-      }),
-      fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
-      fakeRoom({ roomId: '!b:hs', name: 'bravo' }),
+    const { svc, link } = setup([
+      space('!s1:hs', 'One'),
+      space('!s2:hs', 'Two'),
+      space('!s3:hs', 'Three'),
+      room('!a:hs', 'alpha'),
+      room('!b:hs', 'bravo'),
     ]);
+    link('!s1:hs', '!a:hs');
+    link('!s2:hs', '!a:hs');
+    link('!s3:hs', '!b:hs');
 
     expect(svc.parentSpaceIds('!a:hs')).toEqual(['!s1:hs', '!s2:hs']);
     expect(svc.parentSpaceIds('!b:hs')).toEqual(['!s3:hs']);
@@ -220,8 +186,8 @@ describe('SpacesService', () => {
 
   it('reports no parents for a spaceless room or an empty id', () => {
     const { svc } = setup([
-      fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
-      fakeRoom({ roomId: '!free:hs', name: 'Freestanding' }),
+      space('!s:hs', 'Space'),
+      room('!free:hs', 'Freestanding'),
     ]);
 
     expect(svc.parentSpaceIds('!free:hs')).toEqual([]);
@@ -231,21 +197,13 @@ describe('SpacesService', () => {
   it('does not treat a grandparent as a parent', () => {
     // MSC3083 membership does not transit the hierarchy: allowing the parent does not admit
     // the grandparent's members, so offering it would promise access it cannot grant.
-    const { svc } = setup([
-      fakeRoom({
-        roomId: '!top:hs',
-        name: 'Top',
-        space: true,
-        children: [{ childId: '!mid:hs' }],
-      }),
-      fakeRoom({
-        roomId: '!mid:hs',
-        name: 'Mid',
-        space: true,
-        children: [{ childId: '!room:hs' }],
-      }),
-      fakeRoom({ roomId: '!room:hs', name: 'Room' }),
+    const { svc, link } = setup([
+      space('!top:hs', 'Top'),
+      space('!mid:hs', 'Mid'),
+      room('!room:hs', 'Room'),
     ]);
+    link('!top:hs', '!mid:hs');
+    link('!mid:hs', '!room:hs');
 
     expect(svc.parentSpaceIds('!room:hs')).toEqual(['!mid:hs']);
   });
@@ -254,219 +212,165 @@ describe('SpacesService', () => {
     // removeRoomFromSpace tombstones the child link (empty via) but deliberately leaves
     // m.space.parent on the room, so reading the room's own state would still name a space
     // that no longer contains it — and grant its members join rights.
-    const { svc } = setup([
-      fakeRoom({
-        roomId: '!s:hs',
-        name: 'Space',
-        space: true,
-        children: [{ childId: '!a:hs', via: [] }],
-      }),
-      fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
+    const { svc, link } = setup([
+      space('!s:hs', 'Space'),
+      room('!a:hs', 'alpha'),
     ]);
+    link('!s:hs', '!a:hs', { via: [] });
 
     expect(svc.parentSpaceIds('!a:hs')).toEqual([]);
   });
 
-  it('refreshes live when a child link arrives (RoomState.events)', async () => {
-    const space = fakeRoom({
-      roomId: '!s:hs',
-      name: 'Space',
-      space: true,
-      children: [{ childId: '!a:hs', order: '10' }],
-    });
-    const { svc, client } = setup([
-      space,
-      fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
-      fakeRoom({ roomId: '!b:hs', name: 'bravo' }),
+  it('refreshes live when a child link arrives', () => {
+    const { svc, link } = setup([
+      space('!s:hs', 'Space'),
+      room('!a:hs', 'alpha'),
+      room('!b:hs', 'bravo'),
     ]);
-
+    link('!s:hs', '!a:hs', { order: '10' });
     expect(svc.childRoomIds('!s:hs')).toEqual(['!a:hs']);
 
-    // A new child is linked, then the homeserver delivers the state event.
-    space._children.push({ childId: '!b:hs', order: '20' });
-    const onState = handlerFor(client, 'RoomState.events');
-    onState?.({ getType: () => 'm.space.child' });
-    await Promise.resolve(); // the refresh is coalesced into a microtask
+    link('!s:hs', '!b:hs', { order: '20' });
 
     expect(svc.childRoomIds('!s:hs')).toEqual(['!a:hs', '!b:hs']);
   });
 
-  it('ignores unrelated state events', async () => {
-    const { svc, client } = setup([
-      fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
+  it('keeps the same spaces when an unrelated room changes', async () => {
+    const { svc, fake } = setup([
+      space('!s:hs', 'Space'),
+      room('!r:hs', 'Room'),
     ]);
-    const onState = handlerFor(client, 'RoomState.events');
+    const before = svc.spaces();
 
-    onState?.({ getType: () => 'm.room.topic' });
-    // Flush first: refreshes are coalesced, so asserting synchronously would pass even
-    // if this unrelated event HAD wrongly scheduled one.
-    await Promise.resolve();
+    await fake.asBob.sendMessage('!r:hs', 'hi');
 
-    // Still the single space, no churn from an unrelated state change.
     expect(svc.spaces().map((s) => s.id)).toEqual(['!s:hs']);
+    expect(svc.spaces()).toBe(before);
   });
 
-  it('detaches listeners and clears the model on teardown', () => {
-    const { svc, client, lifetime } = setup([
-      fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
-    ]);
+  it('closes a space link subscription once the space leaves the list', async () => {
+    const { svc, fake, alice } = setup([space('!s:hs', 'Space')]);
+    const closed = vi.fn();
+    const links = fake.spaceChildLinks.bind(fake);
+    vi.spyOn(fake, 'spaceChildLinks').mockImplementation((accountId, id) =>
+      links(accountId, id).pipe(finalize(closed)),
+    );
     expect(svc.spaces().length).toBe(1);
 
-    lifetime.unsubscribe();
+    await firstValueFrom(fake.leave(alice, '!s:hs'));
 
-    expect(client.off).toHaveBeenCalled();
+    expect(svc.spaces()).toEqual([]);
+    expect(closed).toHaveBeenCalledOnce();
+  });
+
+  it('clears the model when no account is active', () => {
+    const { svc, session } = setup([space('!s:hs', 'Space')]);
+    expect(svc.spaces().length).toBe(1);
+
+    session.update((s) => ({ ...s, activeAccountId: null }));
+
     expect(svc.spaces()).toEqual([]);
   });
 
-  it('rewires onto a new client after re-login instead of freezing', () => {
-    const {
-      svc,
-      client: clientA,
-      matrix,
-    } = setup([fakeRoom({ roomId: '!a:hs', name: 'A-space', space: true })]);
-    expect(svc.spaces().map((s) => s.id)).toEqual(['!a:hs']);
+  it('re-reads space links when the account is signed in again', () => {
+    const { svc, fake, session, alice } = setup([space('!s:hs', 'Space')]);
+    const links = vi.spyOn(fake, 'spaceChildLinks');
+    expect(svc.spaces().length).toBe(1);
 
-    const roomsB = [
-      fakeRoom({ roomId: '!b:hs', name: 'B-space', space: true }),
-    ];
-    const byIdB = new Map(roomsB.map((r) => [r.roomId, r]));
-    const clientB = {
-      getRooms: () => roomsB,
-      getRoom: (id: string) => byIdB.get(id) ?? null,
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
-    svc.runProjection().subscribe();
+    session.update((s) => ({ ...s, accounts: [account(alice, 2)] }));
 
-    expect(svc.spaces().map((s) => s.id)).toEqual(['!b:hs']); // not frozen on A
-    expect(clientA.off).toHaveBeenCalled(); // old listeners detached
-    expect(clientB.on).toHaveBeenCalled(); // new client wired
+    expect(svc.spaces().map((s) => s.id)).toEqual(['!s:hs']);
+    expect(links).toHaveBeenCalledWith(alice, '!s:hs');
   });
 
-  it('ignores a repeat connect() for the same client', () => {
-    const { svc, client } = setup([]);
-    const wired = client.on.mock.calls.length;
+  it('runProjection acknowledges at once and opens nothing of its own', () => {
+    const { svc, fake } = setup([space('!s:hs', 'Space')]);
+    const links = vi.spyOn(fake, 'spaceChildLinks');
+    const seen: unknown[] = [];
 
+    svc.runProjection().subscribe((v) => seen.push(v));
     svc.runProjection().subscribe();
 
-    expect(client.on.mock.calls.length).toBe(wired); // no double-wiring
+    expect(seen).toEqual([undefined]);
+    expect(links).not.toHaveBeenCalled();
   });
 });
 
-// Write paths: createSpace / createRoomInSpace / leaveSpace. The read model is
-// driven by sync listeners (covered above), so these assert the SDK calls only.
-function setupWrites() {
-  const createRoom = vi.fn().mockResolvedValue({ room_id: '!new:hs' });
-  const sendStateEvent = vi.fn().mockResolvedValue({ event_id: '$e' });
-  const leave = vi.fn().mockResolvedValue({});
-  const joinRoom = vi.fn().mockResolvedValue({ roomId: '!c:hs' });
-  const client = {
-    getRooms: () => [],
-    getRoom: () => null,
-    // `@me:hs.example` → the `via` homeserver is `hs.example`.
-    getUserId: () => '@me:hs.example',
-    createRoom,
-    sendStateEvent,
-    leave,
-    joinRoom,
-    on: vi.fn(),
-    off: vi.fn(),
-  };
-  provideMatrix(client);
-  const svc = TestBed.inject(SpacesService);
-  return { svc, createRoom, sendStateEvent, leave, joinRoom };
-}
-
 describe('SpacesService writes', () => {
   it('createSpace creates an m.space room and resolves its id', async () => {
-    const { svc, createRoom } = setupWrites();
+    const { svc, fake, alice } = setup();
+    const create = vi.spyOn(fake, 'createRoom');
 
     const id = await firstValueFrom(
-      svc.createSpace('@me:hs', { name: '  My Space  ', topic: '  hi  ' }),
+      svc.createSpace(alice, { name: '  My Space  ', topic: '  hi  ' }),
     );
 
-    expect(id).toBe('!new:hs');
-    expect(createRoom).toHaveBeenCalledWith(
-      expect.objectContaining({
-        creation_content: { type: 'm.space' },
-        name: 'My Space', // trimmed
-        topic: 'hi', // trimmed
-        visibility: 'private', // default (invite-only)
-        preset: 'private_chat',
-      }),
-    );
+    expect(create).toHaveBeenCalledWith(alice, {
+      name: 'My Space', // trimmed
+      topic: 'hi', // trimmed
+      isPublic: false, // default (invite-only)
+      kind: 'space',
+      parentSpaceId: null,
+    });
+    expect(svc.spaces().map((s) => s.id)).toEqual([id]);
   });
 
-  it('createSpace uses public visibility/preset when isPublic', async () => {
-    const { svc, createRoom } = setupWrites();
+  it('createSpace asks for a public space when isPublic', async () => {
+    const { svc, fake, alice } = setup();
+    const create = vi.spyOn(fake, 'createRoom');
 
     await firstValueFrom(
-      svc.createSpace('@me:hs', { name: 'Open', isPublic: true }),
+      svc.createSpace(alice, { name: 'Open', isPublic: true }),
     );
 
-    expect(createRoom).toHaveBeenCalledWith(
-      expect.objectContaining({ visibility: 'public', preset: 'public_chat' }),
+    expect(create).toHaveBeenCalledWith(
+      alice,
+      expect.objectContaining({ isPublic: true, topic: null }),
     );
-    // No topic provided → the field is omitted entirely.
-    expect(createRoom.mock.calls[0][0]).not.toHaveProperty('topic');
   });
 
-  it('createRoomInSpace creates an encrypted room and two-way links it', async () => {
-    const { svc, createRoom, sendStateEvent } = setupWrites();
+  it('createRoomInSpace creates a room and two-way links it', async () => {
+    const { svc, fake, alice, authorize } = setup([space('!s:hs', 'Space')]);
+    const create = vi.spyOn(fake, 'createRoom');
 
     const id = await firstValueFrom(
       svc.createRoomInSpace('!s:hs', { name: 'general' }),
     );
 
-    expect(id).toBe('!new:hs');
-    // Encrypted from the first event via initial_state.
-    expect(createRoom).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'general',
-        initial_state: [
-          {
-            type: 'm.room.encryption',
-            state_key: '',
-            content: { algorithm: 'm.megolm.v1.aes-sha2' },
-          },
-        ],
-      }),
+    expect(authorize).toHaveBeenCalledWith(
+      { accountId: alice, roomId: '!s:hs' },
+      'curate-space',
     );
-    // Child link on the space, parent link back on the child — both carry `via`.
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!s:hs',
-      'm.space.child',
-      { via: ['hs.example'], suggested: true },
-      '!new:hs',
-    );
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!new:hs',
-      'm.space.parent',
-      { via: ['hs.example'], canonical: true },
-      '!s:hs',
-    );
+    // The adapter encrypts a `room` from its first event and links it with our server as via.
+    expect(create).toHaveBeenCalledWith(alice, {
+      name: 'general',
+      topic: null,
+      isPublic: false,
+      kind: 'room',
+      parentSpaceId: '!s:hs',
+    });
+    expect(fake.spaceParents(id)).toEqual(['!s:hs']);
+    expect(svc.childRoomIds('!s:hs')).toEqual([id]);
   });
 
   it('leaveSpace leaves the space room (children untouched)', async () => {
-    const { svc, leave } = setupWrites();
-    const clientFor = vi.spyOn(
-      TestBed.inject(MatrixClientService),
-      'clientFor',
-    );
+    const { svc, fake, alice, link } = setup([
+      space('!s:hs', 'Space'),
+      room('!c:hs', 'child'),
+    ]);
+    link('!s:hs', '!c:hs');
+    const leave = vi.spyOn(fake, 'leave');
 
-    await firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs'));
+    await firstValueFrom(svc.leaveSpace(alice, '!s:hs'));
 
-    expect(clientFor).toHaveBeenCalledWith('@me:hs');
-    expect(leave).toHaveBeenCalledWith('!s:hs');
+    expect(leave).toHaveBeenCalledWith(alice, '!s:hs');
     expect(leave).toHaveBeenCalledTimes(1); // only the space, not its children
+    expect(svc.spaces()).toEqual([]);
   });
 
   it('leaveSpace fails closed when the exact Account is unavailable', async () => {
-    const { svc, leave } = setupWrites();
-    vi.spyOn(TestBed.inject(MatrixClientService), 'clientFor').mockReturnValue(
-      null,
-    );
+    const { svc, fake } = setup();
+    const leave = vi.spyOn(fake, 'leave');
 
     await expect(
       firstValueFrom(svc.leaveSpace('@gone:hs', '!s:hs')),
@@ -475,205 +379,165 @@ describe('SpacesService writes', () => {
   });
 
   it('marks a space leaving until its leave request settles', async () => {
-    const { svc, leave } = setupWrites();
-    let settle!: () => void;
-    leave.mockReturnValue(new Promise<void>((resolve) => (settle = resolve)));
-    const leaving = svc.leaveSpace('@me:hs', '!s:hs');
-    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false); // cold
+    const { svc, fake, alice } = setup([space('!s:hs', 'Space')]);
+    const reply = new Subject<EngineResult<null>>();
+    vi.spyOn(fake, 'leave').mockReturnValue(reply);
+    const leaving = svc.leaveSpace(alice, '!s:hs');
+    expect(svc.isLeaving(alice, '!s:hs')).toBe(false); // cold
 
     const done = firstValueFrom(leaving);
-    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(true);
+    expect(svc.isLeaving(alice, '!s:hs')).toBe(true);
     expect(svc.isLeaving('@other:hs', '!s:hs')).toBe(false);
-    expect(svc.isLeaving('@me:hs', '!t:hs')).toBe(false);
+    expect(svc.isLeaving(alice, '!t:hs')).toBe(false);
 
-    settle();
+    reply.next(engineOk(null));
+    reply.complete();
     await done;
-    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false);
+    expect(svc.isLeaving(alice, '!s:hs')).toBe(false);
   });
 
   it('keeps the leaving mark until the last of two overlapping leaves settles', async () => {
-    const { svc, leave } = setupWrites();
-    const settles: (() => void)[] = [];
-    leave.mockImplementation(
-      () => new Promise<void>((resolve) => settles.push(resolve)),
-    );
+    const { svc, fake, alice } = setup([space('!s:hs', 'Space')]);
+    const replies: Subject<EngineResult<null>>[] = [];
+    vi.spyOn(fake, 'leave').mockImplementation(() => {
+      const reply = new Subject<EngineResult<null>>();
+      replies.push(reply);
+      return reply;
+    });
+    const settle = (reply: Subject<EngineResult<null>>) => {
+      reply.next(engineOk(null));
+      reply.complete();
+    };
 
-    const first = firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs'));
-    const second = firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs'));
-    settles[0]();
+    const first = firstValueFrom(svc.leaveSpace(alice, '!s:hs'));
+    const second = firstValueFrom(svc.leaveSpace(alice, '!s:hs'));
+    settle(replies[0]);
     await first;
-    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(true);
+    expect(svc.isLeaving(alice, '!s:hs')).toBe(true);
 
-    settles[1]();
+    settle(replies[1]);
     await second;
-    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false);
+    expect(svc.isLeaving(alice, '!s:hs')).toBe(false);
   });
 
   it('clears the leaving mark when the leave fails', async () => {
-    const { svc, leave } = setupWrites();
-    leave.mockRejectedValue(new Error('forbidden'));
+    const { svc, fake, alice } = setup([space('!s:hs', 'Space')]);
+    fake.failNext('request-failed');
 
     await expect(
-      firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs')),
-    ).rejects.toThrow('forbidden');
-    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false);
+      firstValueFrom(svc.leaveSpace(alice, '!s:hs')),
+    ).rejects.toBeInstanceOf(EngineRequestError);
+    expect(svc.isLeaving(alice, '!s:hs')).toBe(false);
   });
 
   it('joinRoom routes through the via servers when provided', async () => {
-    const { svc, joinRoom } = setupWrites();
+    const { svc, fake, alice } = setup();
+    const join = vi
+      .spyOn(fake, 'join')
+      .mockReturnValue(of(engineOk({ roomId: '!c:hs' })));
 
     await firstValueFrom(
-      svc.joinRoom('@me:hs', '!c:hs', ['a.example', 'b.example']),
+      svc.joinRoom(alice, '!c:hs', ['a.example', 'b.example']),
     );
 
-    expect(joinRoom).toHaveBeenCalledWith('!c:hs', {
-      viaServers: ['a.example', 'b.example'],
-    });
+    expect(join).toHaveBeenCalledWith(alice, '!c:hs', [
+      'a.example',
+      'b.example',
+    ]);
   });
 
-  it('joinRoom passes no opts when there are no via servers', async () => {
-    const { svc, joinRoom } = setupWrites();
+  it('joinRoom passes no via servers when there are none', async () => {
+    const { svc, fake, alice } = setup();
+    const join = vi
+      .spyOn(fake, 'join')
+      .mockReturnValue(of(engineOk({ roomId: '!c:hs' })));
 
-    await firstValueFrom(svc.joinRoom('@me:hs', '!c:hs'));
-    await firstValueFrom(svc.joinRoom('@me:hs', '!c:hs', []));
+    await firstValueFrom(svc.joinRoom(alice, '!c:hs'));
+    await firstValueFrom(svc.joinRoom(alice, '!c:hs', []));
 
-    expect(joinRoom).toHaveBeenNthCalledWith(1, '!c:hs', undefined);
-    expect(joinRoom).toHaveBeenNthCalledWith(2, '!c:hs', undefined);
+    expect(join).toHaveBeenNthCalledWith(1, alice, '!c:hs', []);
+    expect(join).toHaveBeenNthCalledWith(2, alice, '!c:hs', []);
   });
 
-  it('removeRoomFromSpace sends an empty m.space.child (tombstone) for the child', async () => {
-    const { svc, sendStateEvent } = setupWrites();
+  it('removeRoomFromSpace removes the m.space.child link for the child', async () => {
+    const { svc, fake, alice, link } = setup([
+      space('!s:hs', 'Space'),
+      room('!c:hs', 'child'),
+    ]);
+    link('!s:hs', '!c:hs');
+    const write = vi.spyOn(fake, 'setSpaceChild');
 
     await firstValueFrom(svc.removeRoomFromSpace('!s:hs', '!c:hs'));
 
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!s:hs',
-      'm.space.child',
-      {}, // empty content / no via = the child link is removed
-      '!c:hs',
-    );
+    expect(write).toHaveBeenCalledWith(alice, '!s:hs', '!c:hs', null);
+    expect(svc.childRoomIds('!s:hs')).toEqual([]);
   });
 });
 
 // Space hierarchy: openSpace fetches a space's *full* child set (joined + not)
-// via getRoomHierarchy and projects each child to a view model.
+// via spaceHierarchy and projects each child to a view model.
 interface HierarchyChild {
   childId: string;
   order?: string;
   suggested?: boolean;
   via?: string[];
 }
-interface HierarchyRoomOpts {
-  roomId: string;
-  name?: string;
-  topic?: string;
-  avatarUrl?: string;
-  members?: number;
-  joinRule?: string;
-  isSpace?: boolean;
-  children?: HierarchyChild[];
-}
 
-function hroom(opts: HierarchyRoomOpts) {
+function entry(
+  roomId: string,
+  patch: Partial<HierarchyEntry> & { children?: HierarchyChild[] } = {},
+): HierarchyEntry {
+  const { children = [], ...rest } = patch;
   return {
-    room_id: opts.roomId,
-    name: opts.name,
-    topic: opts.topic,
-    avatar_url: opts.avatarUrl,
-    num_joined_members: opts.members ?? 0,
-    world_readable: false,
-    guest_can_join: false,
-    join_rule: opts.joinRule,
-    room_type: opts.isSpace ? 'm.space' : undefined,
-    children_state: (opts.children ?? []).map((c) => ({
-      type: 'm.space.child',
-      state_key: c.childId,
-      sender: '@x:hs',
-      origin_server_ts: 0,
-      content: {
-        ...(c.order !== undefined ? { order: c.order } : {}),
-        ...(c.suggested !== undefined ? { suggested: c.suggested } : {}),
-        via: c.via ?? ['hs.example'],
-      },
+    roomId,
+    name: null,
+    canonicalAlias: null,
+    topic: null,
+    avatarMxc: null,
+    joinedMemberCount: 0,
+    joinRule: null,
+    isSpace: false,
+    childrenState: children.map((c) => ({
+      childId: c.childId,
+      via: c.via ?? ['hs.example'],
+      suggested: c.suggested ?? false,
+      order: c.order ?? '',
     })),
+    ...rest,
   };
 }
 
+/** Alice holds `!s:hs` (unless `holdsSpace` is false); `spaceHierarchy` answers `entries`. */
 function setupHierarchy(opts: {
-  rooms: ReturnType<typeof hroom>[];
+  entries?: HierarchyEntry[];
   joined?: string[];
   /** Joined ids that are themselves spaces — a child of a space may be either. */
   joinedSpaces?: string[];
-  reject?: unknown;
-  /** Skip `connect()`, to assert what a caller sees before the shell has wired it up. */
-  skipConnect?: boolean;
-  /** Whether this account holds the opened `!s:hs` itself (it does unless a test says not). */
   holdsSpace?: boolean;
+  bobRooms?: RoomInfo[];
 }) {
-  const spaceIds = new Set([
-    ...(opts.holdsSpace === false ? [] : ['!s:hs']),
-    ...(opts.joinedSpaces ?? []),
-  ]);
-  const joined = new Set([...(opts.joined ?? []), ...spaceIds]);
-  const getRoomHierarchy = opts.reject
-    ? vi.fn().mockRejectedValue(opts.reject)
-    : vi.fn().mockResolvedValue({ rooms: opts.rooms });
-  // `getRooms()` has to agree with `getRoom()`: the SDK's `getRooms()` is every room the
-  // client knows, so a room the second resolves is always in the first. Returning [] here
-  // while `getRoom` answered was a state the real client cannot be in — and the `joined`
-  // flag is now derived from the joined-room set that `refresh()` builds off `getRooms()`.
-  /** A room as `getRooms()` hands it back. Spaces also flow through `toSpace`. */
-  const joinedRoom = (id: string) => ({
-    roomId: id,
-    name: id,
-    getMyMembership: () => 'join',
-    isSpaceRoom: () => spaceIds.has(id),
-    getMxcAvatarUrl: () => null,
-    getLiveTimeline: () => ({ getState: () => ({ getStateEvents: () => [] }) }),
-  });
-  const joinedRooms = [...joined].map(joinedRoom);
-  /**
-   * Join a room after the fact, so a test can drive a membership change. Updates BOTH
-   * views the fake client offers, for the same reason the harness seeds both: a room
-   * `getRooms()` lists and `getRoom()` denies is a state the real client cannot be in.
-   */
+  const rows = [
+    ...(opts.holdsSpace === false ? [] : [space('!s:hs', 'Space')]),
+    ...(opts.joined ?? []).map((id) => room(id, id)),
+    ...(opts.joinedSpaces ?? []).map((id) => space(id, id)),
+  ];
+  const context = setup(rows, opts.bobRooms ?? null);
+  const hierarchy = vi
+    .spyOn(context.fake, 'spaceHierarchy')
+    .mockReturnValue(of(engineOk(opts.entries ?? [])));
+  /** Lists `id` as joined for alice, as `/sync` would. */
   const join = (id: string, options: { readonly space?: boolean } = {}) => {
-    if (options.space) spaceIds.add(id);
-    joined.add(id);
-    joinedRooms.push(joinedRoom(id));
+    rows.push(options.space ? space(id, id) : room(id, id));
+    context.fake.seed(context.alice, [...rows]);
   };
-  const client = {
-    getUserId: () => '@me:hs',
-    getRooms: () => joinedRooms,
-    getRoom: (id: string) =>
-      joined.has(id)
-        ? { getMyMembership: () => 'join', isSpaceRoom: () => spaceIds.has(id) }
-        : null,
-    getRoomHierarchy,
-    on: vi.fn(),
-    off: vi.fn(),
-  };
-  provideMatrix(client);
-  const svc = TestBed.inject(SpacesService);
-  // Connect like the shell does before any space can be opened: the `joined` flag comes
-  // from the joined-room set the projection's rebuild fills in, not from a direct client
-  // read inside the computed.
-  if (!opts.skipConnect) {
-    svc.runProjection().subscribe();
-  }
-  return { svc, getRoomHierarchy, client, join };
+  return { ...context, hierarchy, join };
 }
 
-/** Let `from(Promise)` settle through its microtask before asserting on signals. */
-const flush = (): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('SpacesService hierarchy', () => {
-  it('projects the full child set, excludes the root, orders by order then name', async () => {
-    const { svc, getRoomHierarchy } = setupHierarchy({
-      rooms: [
-        hroom({
-          roomId: '!s:hs',
+  it('projects the full child set, excludes the root, orders by order then name', () => {
+    const { svc, hierarchy, alice } = setupHierarchy({
+      entries: [
+        entry('!s:hs', {
           name: 'Space',
           isSpace: true,
           children: [
@@ -682,33 +546,25 @@ describe('SpacesService hierarchy', () => {
             { childId: '!sub:hs', order: '10' }, // ties with !a on order → name breaks
           ],
         }),
-        hroom({
-          roomId: '!a:hs',
+        entry('!a:hs', {
           name: 'alpha',
           topic: 'first',
-          members: 5,
+          joinedMemberCount: 5,
           joinRule: 'public',
-          avatarUrl: 'mxc://hs/a',
+          avatarMxc: 'mxc://hs/a',
         }),
-        hroom({ roomId: '!b:hs', name: 'bravo', members: 2 }),
-        hroom({ roomId: '!sub:hs', name: 'Sub', isSpace: true }),
+        entry('!b:hs', { name: 'bravo', joinedMemberCount: 2 }),
+        entry('!sub:hs', { name: 'Sub', isSpace: true }),
       ],
       joined: ['!a:hs'],
     });
 
     const command = svc.openSpace('!s:hs');
-    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(hierarchy).not.toHaveBeenCalled();
 
     void command.subscribe();
-    await flush();
 
-    expect(getRoomHierarchy).toHaveBeenCalledWith(
-      '!s:hs',
-      100,
-      1,
-      false,
-      undefined, // first page — no pagination token yet
-    );
+    expect(hierarchy).toHaveBeenCalledWith(alice, '!s:hs', { maxPages: 5 });
     const children = svc.openSpaceChildren();
     // Root excluded; ordered by order ('10' < '20') then name ('Sub' > 'alpha').
     expect(children.map((c) => c.roomId)).toEqual([
@@ -717,7 +573,7 @@ describe('SpacesService hierarchy', () => {
       '!b:hs',
     ]);
     expect(children[0]).toMatchObject({
-      accountId: '@me:hs',
+      accountId: alice,
       roomId: '!a:hs',
       name: 'alpha',
       initial: 'A',
@@ -731,17 +587,40 @@ describe('SpacesService hierarchy', () => {
       joined: true, // we are joined to !a
     });
     expect(children[1]).toMatchObject({ roomId: '!sub:hs', isSpace: true });
+    expect(children[2]).not.toHaveProperty('topic');
   });
 
-  it('orders children by code point, not by locale collation', async () => {
+  it('falls back to the alias, then the id, for an unnamed child', () => {
+    const { svc } = setupHierarchy({
+      entries: [
+        entry('!s:hs', {
+          isSpace: true,
+          children: [
+            { childId: '!a:hs', order: '1' },
+            { childId: '!b:hs', order: '2' },
+          ],
+        }),
+        entry('!a:hs', { canonicalAlias: '#alias:hs' }),
+        entry('!b:hs'),
+      ],
+    });
+
+    void svc.openSpace('!s:hs').subscribe();
+
+    expect(svc.openSpaceChildren().map((c) => [c.name, c.joinRule])).toEqual([
+      ['#alias:hs', ''],
+      ['!b:hs', ''],
+    ]);
+  });
+
+  it('orders children by code point, not by locale collation', () => {
     // MSC1772 mandates Unicode code point order, where 'B' (66) precedes 'a' (97);
     // `localeCompare` case-folds and puts 'a' first, arranging the Organise dialog
     // differently from every other client. Names run the other way so only the order
     // field can produce this result.
     const { svc } = setupHierarchy({
-      rooms: [
-        hroom({
-          roomId: '!s:hs',
+      entries: [
+        entry('!s:hs', {
           name: 'Space',
           isSpace: true,
           children: [
@@ -749,13 +628,12 @@ describe('SpacesService hierarchy', () => {
             { childId: '!lower:hs', order: 'a' },
           ],
         }),
-        hroom({ roomId: '!upper:hs', name: 'zulu' }),
-        hroom({ roomId: '!lower:hs', name: 'alpha' }),
+        entry('!upper:hs', { name: 'zulu' }),
+        entry('!lower:hs', { name: 'alpha' }),
       ],
     });
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
 
     expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual([
       '!upper:hs',
@@ -763,13 +641,12 @@ describe('SpacesService hierarchy', () => {
     ]);
   });
 
-  it('sorts a child with no order key after the children that have one', async () => {
+  it('sorts a child with no order key after the children that have one', () => {
     // The spec sorts children with a valid order ahead of those without, but
     // `''.localeCompare('z')` is -1, which floats the unordered child to the top.
     const { svc } = setupHierarchy({
-      rooms: [
-        hroom({
-          roomId: '!s:hs',
+      entries: [
+        entry('!s:hs', {
           name: 'Space',
           isSpace: true,
           children: [
@@ -777,13 +654,12 @@ describe('SpacesService hierarchy', () => {
             { childId: '!ordered:hs', order: 'z' },
           ],
         }),
-        hroom({ roomId: '!unordered:hs', name: 'alpha' }),
-        hroom({ roomId: '!ordered:hs', name: 'zulu' }),
+        entry('!unordered:hs', { name: 'alpha' }),
+        entry('!ordered:hs', { name: 'zulu' }),
       ],
     });
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
 
     expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual([
       '!ordered:hs',
@@ -791,11 +667,10 @@ describe('SpacesService hierarchy', () => {
     ]);
   });
 
-  it('splits not-joined rooms from child spaces', async () => {
+  it('splits not-joined rooms from child spaces', () => {
     const { svc } = setupHierarchy({
-      rooms: [
-        hroom({
-          roomId: '!s:hs',
+      entries: [
+        entry('!s:hs', {
           name: 'Space',
           isSpace: true,
           children: [
@@ -804,15 +679,14 @@ describe('SpacesService hierarchy', () => {
             { childId: '!sub:hs', order: '30' },
           ],
         }),
-        hroom({ roomId: '!joined:hs', name: 'joined-room' }),
-        hroom({ roomId: '!room:hs', name: 'open-room' }),
-        hroom({ roomId: '!sub:hs', name: 'Sub Space', isSpace: true }),
+        entry('!joined:hs', { name: 'joined-room' }),
+        entry('!room:hs', { name: 'open-room' }),
+        entry('!sub:hs', { name: 'Sub Space', isSpace: true }),
       ],
       joined: ['!joined:hs'],
     });
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
 
     // notJoinedRooms: not joined AND not a space → only the open room.
     expect(svc.notJoinedRooms().map((c) => c.roomId)).toEqual(['!room:hs']);
@@ -820,350 +694,256 @@ describe('SpacesService hierarchy', () => {
     expect(svc.childSpaces().map((c) => c.roomId)).toEqual(['!sub:hs']);
   });
 
-  it('flips a child to joined when its membership syncs, without re-fetching', async () => {
-    // What the replaced bump counter existed for: the hierarchy fetch says who the
-    // children are, sync says which of them you are in, and the second must reach the
-    // screen on its own. `getRoomHierarchy` is asserted untouched because re-fetching
-    // would be a different (and much more expensive) way to be right.
-    const { svc, getRoomHierarchy, client, join } = setupHierarchy({
-      rooms: [
-        hroom({
-          roomId: '!s:hs',
+  it('flips a child to joined when its membership syncs, without re-fetching', () => {
+    // The hierarchy fetch says who the children are, the room list says which of them you
+    // are in, and the second must reach the screen on its own. The hierarchy is asserted
+    // untouched because re-fetching would be a different (and much more expensive) way to
+    // be right.
+    const { svc, hierarchy, join } = setupHierarchy({
+      entries: [
+        entry('!s:hs', {
           name: 'Space',
           isSpace: true,
           children: [{ childId: '!room:hs', order: '10' }],
         }),
-        hroom({ roomId: '!room:hs', name: 'open-room' }),
+        entry('!room:hs', { name: 'open-room' }),
       ],
-      joined: [],
     });
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
     expect(svc.notJoinedRooms().map((c) => c.roomId)).toEqual(['!room:hs']);
-    const fetches = getRoomHierarchy.mock.calls.length;
+    const fetches = hierarchy.mock.calls.length;
 
     join('!room:hs');
-    handlerFor(client, 'sync')?.();
-    await Promise.resolve();
 
     expect(svc.notJoinedRooms()).toEqual([]);
     expect(svc.openSpaceChildren()[0].joined).toBe(true);
-    expect(getRoomHierarchy.mock.calls.length).toBe(fetches);
+    expect(hierarchy.mock.calls.length).toBe(fetches);
   });
 
-  it('holds the same children when a sync changes no membership', async () => {
-    // The whole justification for the joined-set's structural equality. Without it every
-    // ClientEvent.Sync re-derives openSpaceChildren and, through it, notJoinedRooms,
-    // childSpaces, the channel sidebar and the organise dialog — for no change at all.
-    const { svc, client } = setupHierarchy({
-      rooms: [
-        hroom({
-          roomId: '!s:hs',
+  it('holds the same children when a room list change alters no membership', async () => {
+    // Without the joined-set's structural equality every room list change re-derives
+    // openSpaceChildren and, through it, notJoinedRooms, childSpaces, the channel sidebar
+    // and the organise dialog — for no change at all.
+    const { svc, fake } = setupHierarchy({
+      entries: [
+        entry('!s:hs', {
           name: 'Space',
           isSpace: true,
           children: [{ childId: '!room:hs', order: '10' }],
         }),
-        hroom({ roomId: '!room:hs', name: 'open-room' }),
+        entry('!room:hs', { name: 'open-room' }),
       ],
       joined: ['!room:hs'],
     });
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
     const before = svc.openSpaceChildren();
 
-    handlerFor(client, 'sync')?.();
-    await Promise.resolve();
+    await fake.asBob.sendMessage('!room:hs', 'hi');
 
     expect(svc.openSpaceChildren()).toBe(before);
   });
 
-  it('counts a joined SUB-SPACE as joined, not just a room', async () => {
-    // A child of a space may be either, and the joined set is built by filtering
-    // `getRooms()` on membership alone — nothing there excludes spaces. Every other
-    // fixture here is a plain room, so this is the only case that would notice an
-    // `isSpaceRoom` filter creeping into that pass.
+  it('counts a joined SUB-SPACE as joined, not just a room', () => {
+    // A child of a space may be either, and the joined set is built on membership alone —
+    // nothing there excludes spaces. Every other fixture here is a plain room, so this is
+    // the only case that would notice an `isSpace` filter creeping into that pass.
     const { svc } = setupHierarchy({
-      rooms: [
-        hroom({
-          roomId: '!s:hs',
+      entries: [
+        entry('!s:hs', {
           name: 'Space',
           isSpace: true,
           children: [{ childId: '!sub:hs', order: '10' }],
         }),
-        hroom({ roomId: '!sub:hs', name: 'Sub Space', isSpace: true }),
+        entry('!sub:hs', { name: 'Sub Space', isSpace: true }),
       ],
       joinedSpaces: ['!sub:hs'],
     });
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
 
     expect(svc.childSpaces().map((c) => c.roomId)).toEqual(['!sub:hs']);
     expect(svc.childSpaces()[0].joined).toBe(true);
   });
 
-  it('reports children as not joined until the projection is connected', async () => {
-    // A precondition the joined-set introduced: the flag comes from a set `refresh()`
-    // fills, so an unconnected service says "not joined" about everything rather than
-    // reading the client on the spot. The shell connects in ngOnInit, long before a space
-    // can be opened — but a future caller that opens a space earlier would see this, and
-    // it should be a documented answer rather than a surprise.
+  it('reports joined children without a projection lifetime', () => {
+    // The joined flag comes from the room list store, which keeps every live account's
+    // list itself, so nothing has to run before a space is opened.
     const { svc } = setupHierarchy({
-      rooms: [
-        hroom({
-          roomId: '!s:hs',
+      entries: [
+        entry('!s:hs', {
           name: 'Space',
           isSpace: true,
           children: [{ childId: '!room:hs', order: '10' }],
         }),
-        hroom({ roomId: '!room:hs', name: 'open-room' }),
+        entry('!room:hs', { name: 'open-room' }),
       ],
       joined: ['!room:hs'],
-      skipConnect: true,
     });
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
-    expect(svc.openSpaceChildren()[0].joined).toBe(false);
-
-    svc.runProjection().subscribe();
 
     expect(svc.openSpaceChildren()[0].joined).toBe(true);
   });
 
   it('clears the open-space children for Home (null) without fetching', () => {
-    const { svc, getRoomHierarchy } = setupHierarchy({ rooms: [] });
+    const { svc, hierarchy } = setupHierarchy({});
 
     void svc.openSpace(null).subscribe();
 
-    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(hierarchy).not.toHaveBeenCalled();
     expect(svc.openSpaceChildren()).toEqual([]);
     expect(svc.childrenLoading()).toBe(false);
   });
 
-  it('follows next_batch to fetch children beyond the first page', async () => {
-    const root = hroom({
-      roomId: '!s:hs',
-      name: 'Space',
-      isSpace: true,
-      children: [
-        { childId: '!a:hs', order: '10' },
-        { childId: '!b:hs', order: '20' },
-      ],
-    });
-    // Page 1 carries the root + first child and a next_batch token; page 2 the rest.
-    const getRoomHierarchy = vi
-      .fn()
-      .mockResolvedValueOnce({
-        rooms: [root, hroom({ roomId: '!a:hs', name: 'alpha' })],
-        next_batch: 'tok',
-      })
-      .mockResolvedValueOnce({
-        rooms: [hroom({ roomId: '!b:hs', name: 'bravo' })],
-      });
-    const client = {
-      getUserId: () => '@me:hs',
-      getRooms: () => [],
-      // The account holds the space it opens; only a held space's hierarchy is fetched.
-      getRoom: (id: string) =>
-        id === '!s:hs'
-          ? { getMyMembership: () => 'join', isSpaceRoom: () => true }
-          : null,
-      getRoomHierarchy,
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    provideMatrix(client);
-    const svc = TestBed.inject(SpacesService);
+  it('shows loading while the hierarchy request is in flight', () => {
+    const { svc, hierarchy } = setupHierarchy({});
+    const reply = new Subject<EngineResult<readonly HierarchyEntry[]>>();
+    hierarchy.mockReturnValue(reply);
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
+    expect(svc.childrenLoading()).toBe(true);
 
-    // Both pages fetched; the second passes the next_batch token through.
-    expect(getRoomHierarchy).toHaveBeenCalledTimes(2);
-    expect(getRoomHierarchy).toHaveBeenNthCalledWith(
-      2,
-      '!s:hs',
-      100,
-      1,
-      false,
-      'tok',
-    );
-    // Children from BOTH pages are projected — not truncated at the first 100.
-    expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual([
-      '!a:hs',
-      '!b:hs',
-    ]);
+    reply.next(engineOk([entry('!s:hs', { isSpace: true })]));
+    reply.complete();
+    expect(svc.childrenLoading()).toBe(false);
   });
 
-  it('skips the hierarchy of a space the active account does not hold', async () => {
+  it('skips the hierarchy of a space the active account does not hold', () => {
     // Mixed view: the active account can be showing a space only another account holds.
     // Its own /hierarchy read would fail for a private space, so there is nothing to fetch.
-    const { svc, getRoomHierarchy } = setupHierarchy({
-      rooms: [],
-      reject: new Error('forbidden'),
+    const { svc, hierarchy, fake } = setupHierarchy({
       holdsSpace: false,
+      bobRooms: [space('!s:hs', 'Space')],
     });
+    fake.failNext('request-failed');
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
 
-    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(hierarchy).not.toHaveBeenCalled();
     expect(svc.childrenError()).toBeNull();
     expect(svc.childrenLoading()).toBe(false);
     expect(svc.openSpaceChildren()).toEqual([]);
   });
 
-  it('skips the hierarchy of a space the active account has left', async () => {
-    // The SDK keeps a left room in its store; only a joined space is read.
-    const { svc, getRoomHierarchy, client } = setupHierarchy({
-      rooms: [],
-      holdsSpace: false,
-    });
-    client.getRoom = (id: string) =>
-      id === '!s:hs'
-        ? { getMyMembership: () => 'leave', isSpaceRoom: () => true }
-        : null;
+  it('skips the hierarchy of a space the active account has left', () => {
+    // A left space is not in the room list at all.
+    const { svc, hierarchy } = setupHierarchy({ holdsSpace: false });
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
 
-    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(hierarchy).not.toHaveBeenCalled();
     expect(svc.childrenError()).toBeNull();
   });
 
-  it('skips the hierarchy of a space the active account is only invited to', async () => {
+  it('skips the hierarchy of a space the active account is only invited to', () => {
     // Held means joined: a space opens once the join has synced (RoomReadinessService).
-    const { svc, getRoomHierarchy, client } = setupHierarchy({
-      rooms: [],
+    const { svc, hierarchy, fake, alice } = setupHierarchy({
       holdsSpace: false,
     });
-    client.getRoom = (id: string) =>
-      id === '!s:hs'
-        ? { getMyMembership: () => 'invite', isSpaceRoom: () => true }
-        : null;
+    fake.seed(alice, [space('!s:hs', 'Space', { membership: 'invite' })]);
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
+    TestBed.tick();
 
-    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(hierarchy).not.toHaveBeenCalled();
   });
 
   // A restored space can be named before the account's first sync brings it.
-  it('waits for the active account to join a space before fetching its hierarchy', async () => {
-    const { svc, getRoomHierarchy, client, join } = setupHierarchy({
-      rooms: [hroom({ roomId: '!s:hs', name: 'Space', isSpace: true })],
+  it('waits for the active account to join a space before fetching its hierarchy', () => {
+    const { svc, hierarchy, join, alice } = setupHierarchy({
+      entries: [entry('!s:hs', { name: 'Space', isSpace: true })],
       holdsSpace: false,
     });
 
     void svc.openSpace('!s:hs').subscribe();
-    await flush();
-    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    TestBed.tick();
+    expect(hierarchy).not.toHaveBeenCalled();
     expect(svc.childrenLoading()).toBe(false);
 
     join('!s:hs', { space: true });
-    handlerFor(client, 'sync')?.();
-    await flush();
+    TestBed.tick();
 
-    expect(getRoomHierarchy).toHaveBeenCalledOnce();
-    expect(getRoomHierarchy.mock.calls[0][0]).toBe('!s:hs');
+    expect(hierarchy).toHaveBeenCalledOnce();
+    expect(hierarchy).toHaveBeenCalledWith(alice, '!s:hs', { maxPages: 5 });
   });
 
-  it('stops waiting for a space once another one is opened', async () => {
-    const { svc, getRoomHierarchy, client, join } = setupHierarchy({
-      rooms: [],
-      holdsSpace: false,
-    });
+  it('stops waiting for a space once another one is opened', () => {
+    const { svc, hierarchy, join } = setupHierarchy({ holdsSpace: false });
 
     void svc.openSpace('!s:hs').subscribe();
     void svc.openSpace(null).subscribe();
     join('!s:hs', { space: true });
-    handlerFor(client, 'sync')?.();
-    await flush();
+    TestBed.tick();
 
-    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(hierarchy).not.toHaveBeenCalled();
   });
 
-  it('never fetches a space the active account has left, even after a sync', async () => {
-    const { svc, getRoomHierarchy, client } = setupHierarchy({
-      rooms: [],
-      holdsSpace: false,
-    });
-    client.getRoom = (id: string) =>
-      id === '!s:hs'
-        ? { getMyMembership: () => 'leave', isSpaceRoom: () => true }
-        : null;
+  it('never fetches a space the active account has left, even after a room list change', () => {
+    const { svc, hierarchy, join } = setupHierarchy({ holdsSpace: false });
 
     void svc.openSpace('!s:hs').subscribe();
-    handlerFor(client, 'sync')?.();
-    await flush();
+    join('!other:hs');
+    TestBed.tick();
 
-    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(hierarchy).not.toHaveBeenCalled();
   });
 
-  // The wait is a lifetime: the next openSpace call ends it (above), and so does a reset
-  // of the active-Account projection, as on an account switch.
+  // The wait is a lifetime: the next openSpace call ends it (above), and so does a switch of
+  // the active Account.
   it('ends the wait for a space to be joined when the active account switches', () => {
-    const { svc, matrix } = setup([]);
-    activeUserId.set('@a:hs');
-    TestBed.inject(ApplicationRef).tick();
+    const { svc, session, fake } = setupHierarchy({
+      holdsSpace: false,
+      bobRooms: [],
+    });
     let ended = false;
     svc.openSpace('!s:hs').subscribe({ complete: () => (ended = true) });
+    TestBed.tick();
     expect(ended).toBe(false);
 
-    ngMocks.stubMember(matrix, 'instance', {
-      getRooms: () => [],
-      getRoom: () => null,
-      on: vi.fn(),
-      off: vi.fn(),
-    } as unknown as MatrixClient);
-    activeUserId.set('@b:hs');
-    TestBed.inject(ApplicationRef).tick();
+    session.update((s) => ({ ...s, activeAccountId: fake.bob }));
+    TestBed.tick();
 
     expect(ended).toBe(true);
     expect(svc.childrenLoading()).toBe(false);
   });
 
-  it('surfaces a hierarchy fetch failure in childrenError', async () => {
-    const { svc } = setupHierarchy({
-      rooms: [],
-      reject: new Error('unsupported'),
-    });
+  it('surfaces a hierarchy fetch failure in childrenError', () => {
+    const { svc, hierarchy, fake } = setupHierarchy({});
+    hierarchy.mockRestore();
+    fake.failNext('request-failed');
 
     void svc.openSpace('!s:hs').subscribe({ error: () => undefined });
-    await flush();
 
-    expect(svc.childrenError()).toBe('unsupported');
+    expect(svc.childrenError()).toBe('Something went wrong. Try again.');
     expect(svc.childrenLoading()).toBe(false);
     expect(svc.openSpaceChildren()).toEqual([]);
+
+    fake.failNext('account-not-live');
+    void svc.openSpace('!s:hs').subscribe({ error: () => undefined });
+    expect(svc.childrenError()).toBe('Account unavailable.');
   });
 
   it('re-projects onto the newly-active account when the active account switches', () => {
-    // The account-switch half of the projection: rooms.service.spec covers it for the
-    // sibling read model, and this service re-wires off the same signal.
-    const { svc, client, matrix } = setup([
-      fakeRoom({ roomId: '!a:hs', name: 'A space', space: true }),
-    ]);
-    activeUserId.set('@a:hs');
-    TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
-    expect(svc.spaces().map((s) => s.id)).toEqual(['!a:hs']);
-    client.off.mockClear();
-
-    const clientB = {
-      getRooms: () => [
-        fakeRoom({ roomId: '!b:hs', name: 'B space', space: true }),
+    const { svc, session, fake } = setupHierarchy({
+      entries: [
+        entry('!s:hs', {
+          name: 'Space',
+          isSpace: true,
+          children: [{ childId: '!room:hs' }],
+        }),
+        entry('!room:hs', { name: 'open-room' }),
       ],
-      getRoom: () => null,
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
-    activeUserId.set('@b:hs');
-    TestBed.inject(ApplicationRef).tick();
+      bobRooms: [space('!b:hs', 'B space')],
+    });
+    void svc.openSpace('!s:hs').subscribe();
+    expect(svc.spaces().map((s) => s.id)).toEqual(['!s:hs']);
+    expect(svc.openSpaceChildren().length).toBe(1);
 
-    expect(client.off).toHaveBeenCalled(); // detached from A
-    expect(clientB.on).toHaveBeenCalled(); // attached to B
+    session.update((s) => ({ ...s, activeAccountId: fake.bob }));
+    TestBed.tick();
+
     expect(svc.spaces().map((s) => s.id)).toEqual(['!b:hs']);
+    expect(svc.openSpaceChildren()).toEqual([]);
   });
 });

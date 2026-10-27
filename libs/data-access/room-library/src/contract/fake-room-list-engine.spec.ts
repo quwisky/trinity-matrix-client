@@ -85,4 +85,23 @@ describe('FakeRoomListEngine', () => {
       '!fake-2:example.org',
     ]);
   });
+
+  it('re-emits space child links once the space is listed for the account', () => {
+    const engine = new FakeRoomListEngine();
+    const space = fakeRoom('!s:example.org', { isSpace: true });
+    engine.seed(engine.bob, [space]);
+    const link = { via: ['example.org'], suggested: false, order: '' };
+    engine
+      .setSpaceChild(engine.bob, space.roomId, '!c:example.org', link)
+      .subscribe();
+    const seen: unknown[] = [];
+    const sub = engine
+      .spaceChildLinks(engine.alice, space.roomId)
+      .subscribe((links) => seen.push(links));
+
+    engine.seed(engine.alice, [space]);
+    sub.unsubscribe();
+
+    expect(seen).toEqual([[], [{ childId: '!c:example.org', ...link }]]);
+  });
 });

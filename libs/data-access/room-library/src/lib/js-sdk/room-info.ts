@@ -300,7 +300,7 @@ export function isJoinedSpace(room: Room): boolean {
  * A space's *joined* child room ids, ordered by the `m.space.child` `order` field
  * (Unicode code point, unordered children last) then room name. Children we have not
  * joined — and removed/dangling child links — are dropped. Pure read of the space room,
- * shared by {@link SpacesService} (active account) and the selected-Account projector.
+ * used by the selected-Account projector.
  */
 export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
   const children = (
