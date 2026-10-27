@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from './js-sdk/matrix-client.service';
 import { TrustCryptoPort } from './trust-crypto.port';
 
 function setup(clients: Record<string, unknown>) {
