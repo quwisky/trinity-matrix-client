@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { of } from 'rxjs';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -19,8 +19,8 @@ const confirm$ = vi.fn(() => of(true));
 function renderBanner() {
   return render(SignInAgainBannerComponent, {
     providers: [
-      MockProvider(MatrixClientService, {
-        activeUserId: signal('@me:hs').asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: signal('@me:hs').asReadonly(),
       }),
       MockProvider(Router, { navigate }),
       MockProvider(TrnAlertService, { confirm$ }),

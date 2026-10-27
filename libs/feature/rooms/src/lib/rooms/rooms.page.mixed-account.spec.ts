@@ -3,6 +3,7 @@ import {
   UNREAD_AGGREGATOR_PROVIDER,
   clientStub,
   invitesProvider,
+  sessionStateProvider,
   setRouteRoom,
   settleWorkspace,
   shellFrom,
@@ -194,6 +195,10 @@ describe('RoomsPage mixed-account view', () => {
           toggleAccount,
         }),
         MockProvider(TimelineActionsService),
+        sessionStateProvider({
+          activeAccountId: activeUserId.asReadonly(),
+          accountIds,
+        }),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,

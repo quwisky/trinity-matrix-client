@@ -17,7 +17,7 @@ import {
   QrSignInService,
   type QrDeviceLinker,
 } from '@trinity/data-access/auth';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnBadge } from '@trinity/components/generic-content';
@@ -64,7 +64,8 @@ export class DevicesSectionComponent {
     WorkspaceApplicationSurfaceService,
   );
   private readonly qrSignIn = inject(QrSignInService);
-  private readonly activeAccountId = inject(MatrixClientService).activeUserId;
+  private readonly activeAccountId =
+    inject(SessionStateService).activeAccountId;
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);

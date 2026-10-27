@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnSwitchComponent } from '@trinity/components/controls';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   NotificationSoundService,
   PushRulesService,
@@ -46,7 +46,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly push = inject(PushRulesService);
   private readonly sound = inject(NotificationSoundService);
   private readonly reactions = inject(ReactionNotificationSettingsService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -70,7 +70,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      const accountId = this.matrix.activeUserId();
+      const accountId = this.matrix.activeAccountId();
       if (
         this.reactionAccountId !== undefined &&
         this.reactionAccountId !== accountId
@@ -160,7 +160,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     }
     this.setState(this.reactionsKey, on);
     this.setPending(this.reactionsKey, true);
-    const accountId = this.matrix.activeUserId();
+    const accountId = this.matrix.activeAccountId();
     this.reactions
       .setOn(on)
       .pipe(
@@ -187,7 +187,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
 
   /** The switch effect runs later than the signal changes, so also compare the account. */
   private isCurrentReactionWrite(accountId: string | null): boolean {
-    return this.matrix.activeUserId() === accountId;
+    return this.matrix.activeAccountId() === accountId;
   }
 
   checked(toggle: PushRuleToggle): boolean {

@@ -27,7 +27,7 @@ import {
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
@@ -242,7 +242,7 @@ export class RoomsPage {
   readonly pinned = this.conversations.pins;
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly sessionLock = inject(SessionLockService);
   private readonly accountPicker = inject(AccountPickerService);
   private readonly router = inject(Router);
@@ -397,7 +397,7 @@ export class RoomsPage {
     // a redirect racing the reload could leave the tab on the sign-in page.
     effect(() => {
       if (
-        !this.matrix.activeUserId() &&
+        !this.matrix.activeAccountId() &&
         this.sessionLock.state() !== 'releasing'
       ) {
         void this.router.navigateByUrl('/login', { replaceUrl: true });

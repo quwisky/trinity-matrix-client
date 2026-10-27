@@ -7,7 +7,7 @@ import {
   type SlotForecast,
   type TrustStatus,
 } from '@trinity/data-access/trust';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { BUILD_INFO } from '@trinity/platform-native';
 import type { CapabilityRecovery } from '@trinity/runtime/projection';
 import { firstValueFrom, of, toArray } from 'rxjs';
@@ -57,9 +57,9 @@ describe('CapabilityStatusService', () => {
           },
         },
         {
-          provide: MatrixClientService,
+          provide: SessionStateService,
           useValue: {
-            activeUserId,
+            activeAccountId: activeUserId,
             cryptoStoreEncrypted: storeEncrypted,
           },
         },

@@ -68,6 +68,7 @@ import { ConversationTimelineStub } from '../testing/conversation-timeline.stub'
 import {
   ROUTE_PROVIDER,
   SYSTEM_STATUS_PROVIDER,
+  sessionStateProvider,
   setRouteRoom,
   stubLiveLayout,
 } from './rooms-page.spec-harness';
@@ -226,6 +227,7 @@ function renderHeader(
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),
       }),
+      sessionStateProvider(),
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
         presenceFor: (userId: string) =>
