@@ -2,7 +2,6 @@ import { Injectable, inject } from '@angular/core';
 import {
   ClientEvent,
   EventType,
-  MatrixError,
   MatrixEventEvent,
   ReceiptType,
   RoomEvent,
@@ -48,26 +47,18 @@ import type {
   TypingMember,
 } from '../room-list-engine';
 import { createEncryptedRoom, openDirectRoom } from './direct-rooms';
-import { directMapOf, isMarkedUnread, toRoomInfo } from './room-info';
+import {
+  directMapOf,
+  isInviteBlocked,
+  isMarkedUnread,
+  toRoomInfo,
+} from './room-info';
 import { roomTyping } from './room-typing';
 
 const LISTED = new Set(['join', 'invite', 'knock']);
 
 /** How long a create or leave waits for `/sync` to show its effect before replying anyway. */
 const SETTLE_TIMEOUT_MS = 15_000;
-
-const INVITE_BLOCKED_ERRCODES = new Set([
-  'M_INVITE_BLOCKED',
-  'ORG.MATRIX.MSC4155.INVITE_BLOCKED',
-]);
-
-/** The invitee blocks invites (MSC4380), so the invite was refused. */
-export function isInviteBlocked(error: unknown): boolean {
-  return (
-    error instanceof MatrixError &&
-    INVITE_BLOCKED_ERRCODES.has(error.errcode ?? '')
-  );
-}
 
 const ACCOUNT_NOT_LIVE: EngineFailure = {
   kind: 'unexpected',
@@ -109,36 +100,45 @@ function directContent(
   return map;
 }
 
-/** Resolves once `done(room)` holds, sync stops, or {@link SETTLE_TIMEOUT_MS} passes. */
+/**
+ * Emits once and completes when `done(room)` holds, sync stops, or {@link SETTLE_TIMEOUT_MS}
+ * passes. Unsubscribing removes its listeners and timer.
+ */
 function settled(
   client: MatrixClient,
   roomId: string,
   done: (room: Room | null) => boolean,
-): Promise<void> {
-  return new Promise((resolve) => {
+): Observable<void> {
+  return new Observable<void>((subscriber) => {
+    const finish = (): void => {
+      subscriber.next();
+      subscriber.complete();
+    };
     const check = (): void => {
       if (done(client.getRoom(roomId))) finish();
     };
     const onSync = (state: SyncState): void => {
       if (state === SyncState.Stopped) finish();
     };
-    const timer = setTimeout(() => finish(), SETTLE_TIMEOUT_MS);
-    function finish(): void {
-      clearTimeout(timer);
-      client.off(ClientEvent.Room, check);
-      client.off(RoomEvent.MyMembership, check);
-      client.off(ClientEvent.Sync, onSync);
-      resolve();
-    }
+    const timer = setTimeout(finish, SETTLE_TIMEOUT_MS);
     client.on(ClientEvent.Room, check);
     client.on(RoomEvent.MyMembership, check);
     client.on(ClientEvent.Sync, onSync);
     check();
+    return () => {
+      clearTimeout(timer);
+      client.off(ClientEvent.Room, check);
+      client.off(RoomEvent.MyMembership, check);
+      client.off(ClientEvent.Sync, onSync);
+    };
   });
 }
 
 const joined = (room: Room | null): boolean =>
   room?.getMyMembership() === 'join';
+
+const listed = (room: Room | null): boolean =>
+  !!room && LISTED.has(room.getMyMembership());
 
 /** The newest event the server has confirmed, skipping local echoes. */
 function latestConfirmed(room: Room | null): MatrixEvent | null {
@@ -256,15 +256,12 @@ export class JsSdkRoomListEngine implements RoomListEngine {
   }
 
   leave(accountId: string, roomId: string): Observable<EngineResult<null>> {
-    return this.command(accountId, async (client) => {
-      await client.leave(roomId);
-      await settled(
-        client,
-        roomId,
-        (room) => !room || !LISTED.has(room.getMyMembership()),
-      );
-      return null;
-    });
+    return this.command(accountId, (client) =>
+      from(client.leave(roomId)).pipe(
+        switchMap(() => settled(client, roomId, (room) => !listed(room))),
+        map(() => null),
+      ),
+    );
   }
 
   createRoom(
@@ -276,7 +273,7 @@ export class JsSdkRoomListEngine implements RoomListEngine {
         name: request.name,
         isPublic: request.isPublic,
         ...(request.topic === null ? {} : { topic: request.topic }),
-      }).pipe(switchMap((roomId) => this.joinedRoom(client, roomId))),
+      }).pipe(switchMap((roomId) => this.once(client, roomId, joined))),
     );
   }
 
@@ -284,9 +281,10 @@ export class JsSdkRoomListEngine implements RoomListEngine {
     accountId: string,
     userId: string,
   ): Observable<EngineResult<{ readonly roomId: string }>> {
+    // Listed, not joined: a reused DM may still be an invite, and is already in the list.
     return this.command(accountId, (client) =>
       openDirectRoom(client, userId).pipe(
-        switchMap((roomId) => this.joinedRoom(client, roomId)),
+        switchMap((roomId) => this.once(client, roomId, listed)),
       ),
     );
   }
@@ -331,13 +329,13 @@ export class JsSdkRoomListEngine implements RoomListEngine {
     });
   }
 
-  /** A created room's id, once `/sync` shows it joined. */
-  private async joinedRoom(
+  /** `roomId` once {@link settled}. */
+  private once(
     client: MatrixClient,
     roomId: string,
-  ): Promise<{ readonly roomId: string }> {
-    await settled(client, roomId, joined);
-    return { roomId };
+    done: (room: Room | null) => boolean,
+  ): Observable<{ readonly roomId: string }> {
+    return settled(client, roomId, done).pipe(map(() => ({ roomId })));
   }
 
   /** A reset of every listed room on subscribe, and again once per microtask the list may have changed. */

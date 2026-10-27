@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import {
   ClientEvent,
   MatrixError,
+  SyncState,
   MatrixEventEvent,
   RoomEvent,
   RoomMemberEvent,
@@ -11,7 +12,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { firstValueFrom, type Observable } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import {
   RoomEncryptionFlags,
@@ -135,6 +136,12 @@ class FakeClient extends EventEmitter {
   readonly setRoomTag = vi.fn(async () => ({}));
   readonly deleteRoomTag = vi.fn(async () => ({}));
   readonly invite = vi.fn(async (): Promise<unknown> => ({}));
+  readonly createRoom = vi.fn(async () => ({ room_id: '!new:hs' }));
+  readonly leave = vi.fn(async () => ({}));
+  readonly setAccountData = vi.fn(async () => ({}));
+  readonly setRoomAccountData = vi.fn(async () => ({}));
+  readonly setRoomReadMarkers = vi.fn(async () => ({}));
+  readonly sendReadReceipt = vi.fn(async () => ({}));
 
   getUserId = (): string => ME;
   getCrypto = () => ({ isEncryptionEnabledInRoom: async () => false });
@@ -370,7 +377,7 @@ describe('JsSdkRoomListEngine', () => {
   });
 
   it.each(['M_INVITE_BLOCKED', 'ORG.MATRIX.MSC4155.INVITE_BLOCKED'])(
-    'invite maps an MSC4380 %s rejection to invite-blocked',
+    'invite maps the MSC4155 errcode %s to invite-blocked',
     async (errcode) => {
       const { client, engine } = setup();
       client.invite.mockRejectedValue(
@@ -453,4 +460,170 @@ describe('JsSdkRoomListEngine', () => {
     const { batches } = record(engine.rooms(other));
     expect(batches).toEqual([[{ op: 'reset', values: [] }]]);
   });
+
+  describe('settling a create or leave', () => {
+    afterEach(() => vi.useRealTimers());
+
+    /** Subscribes and lets the HTTP call resolve, leaving the command waiting on /sync. */
+    async function pending<T>(source: Observable<T>) {
+      const replies: T[] = [];
+      const subscription = source.subscribe((reply) => replies.push(reply));
+      await tick();
+      await tick();
+      return { replies, subscription };
+    }
+
+    it('finishes early on MyMembership', async () => {
+      const { client, engine } = setup();
+      const { replies } = await pending(
+        engine.createRoom(ME, { name: 'x', topic: null, isPublic: false }),
+      );
+      expect(replies).toEqual([]);
+
+      client.rooms.push(fakeRoom('!new:hs'));
+      client.emit(RoomEvent.MyMembership, client.rooms[0], 'join');
+
+      expect(replies).toEqual([{ ok: true, value: { roomId: '!new:hs' } }]);
+      expect(client.totalListeners()).toBe(0);
+    });
+
+    it('finishes when sync stops', async () => {
+      const { client, engine } = setup();
+      const { replies } = await pending(
+        engine.createRoom(ME, { name: 'x', topic: null, isPublic: false }),
+      );
+
+      client.emit(ClientEvent.Sync, SyncState.Syncing);
+      expect(replies).toEqual([]);
+      client.emit(ClientEvent.Sync, SyncState.Stopped);
+
+      expect(replies).toEqual([{ ok: true, value: { roomId: '!new:hs' } }]);
+    });
+
+    it('times out, replies ok and leaves no listener or timer', async () => {
+      vi.useFakeTimers();
+      const { client, engine } = setup();
+      const { replies } = await pending(
+        engine.createRoom(ME, { name: 'x', topic: null, isPublic: false }),
+      );
+      expect(vi.getTimerCount()).toBe(1);
+
+      vi.advanceTimersByTime(15_000);
+
+      expect(replies).toEqual([{ ok: true, value: { roomId: '!new:hs' } }]);
+      expect(client.totalListeners()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('unsubscribing removes its listeners and timer at once', async () => {
+      vi.useFakeTimers();
+      const { client, engine } = setup();
+      const { subscription } = await pending(
+        engine.createRoom(ME, { name: 'x', topic: null, isPublic: false }),
+      );
+      expect(client.totalListeners()).toBeGreaterThan(0);
+
+      subscription.unsubscribe();
+
+      expect(client.totalListeners()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('createRoom passes the request and waits for join', async () => {
+      const { client, engine } = setup();
+      const { replies } = await pending(
+        engine.createRoom(ME, { name: ' x ', topic: 'about', isPublic: false }),
+      );
+      expect(client.createRoom).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'x', topic: 'about' }),
+      );
+
+      client.rooms.push(fakeRoom('!new:hs', { membership: 'invite' }));
+      client.emit(ClientEvent.Room, client.rooms[0]);
+      expect(replies).toEqual([]);
+
+      client.rooms[0] = fakeRoom('!new:hs');
+      client.emit(RoomEvent.MyMembership, client.rooms[0], 'join');
+      expect(replies).toHaveLength(1);
+    });
+
+    it('leave replies once the room drops out of the list', async () => {
+      const { client, engine } = setup([fakeRoom('!a:hs')]);
+      const { replies } = await pending(engine.leave(ME, '!a:hs'));
+      expect(client.leave).toHaveBeenCalledWith('!a:hs');
+      expect(replies).toEqual([]);
+
+      client.rooms[0] = fakeRoom('!a:hs', { membership: 'leave' });
+      client.emit(RoomEvent.MyMembership, client.rooms[0], 'leave');
+
+      expect(replies).toEqual([{ ok: true, value: null }]);
+    });
+
+    it('createDirectMessage reuses an invited DM without waiting', async () => {
+      const { client, engine } = setup([
+        fakeRoom('!dm:hs', { membership: 'invite' }),
+      ]);
+      client.direct = { '@b:hs': ['!dm:hs'] };
+
+      const { replies } = await pending(
+        engine.createDirectMessage(ME, '@b:hs'),
+      );
+
+      expect(replies).toEqual([{ ok: true, value: { roomId: '!dm:hs' } }]);
+      expect(client.createRoom).not.toHaveBeenCalled();
+    });
+  });
+
+  it('directMap emits the raw m.direct with left DMs and re-emits on change', () => {
+    const { client, engine } = setup([
+      fakeRoom('!left:hs', { membership: 'leave' }),
+    ]);
+    client.direct = {
+      '@b:hs': ['!left:hs', 7 as unknown as string],
+      '@c:hs': 'bad' as unknown as string[],
+    };
+    const { batches } = record(engine.directMap(ME));
+
+    client.direct = { ...client.direct, '@d:hs': ['!d:hs'] };
+    client.emit(ClientEvent.AccountData, { getType: () => 'm.push_rules' });
+    client.emit(ClientEvent.AccountData, { getType: () => 'm.direct' });
+
+    expect(batches).toEqual([
+      { '@b:hs': ['!left:hs'] },
+      { '@b:hs': ['!left:hs'], '@d:hs': ['!d:hs'] },
+    ]);
+  });
+
+  it.each([
+    ['public', 'm.read'],
+    ['private', 'm.read.private'],
+  ] as const)(
+    'markRead clears the flag and acks the newest confirmed event (%s)',
+    async (receipts, receiptType) => {
+      const room = fakeRoom('!a:hs', { markedUnread: true });
+      const confirmed = { getId: () => '$old', status: null };
+      const echo = { getId: () => '~local', status: 'sending' };
+      room.timeline = {
+        ...room.timeline,
+        getEvents: () => [confirmed, echo] as never[],
+      };
+      const { client, engine } = setup([room]);
+
+      const result = await firstValueFrom(
+        engine.markRead(ME, '!a:hs', receipts),
+      );
+
+      expect(result).toEqual({ ok: true, value: null });
+      expect(client.setRoomAccountData).toHaveBeenCalledWith(
+        '!a:hs',
+        'm.marked_unread',
+        { unread: false },
+      );
+      expect(client.setRoomReadMarkers).toHaveBeenCalledWith('!a:hs', '$old');
+      expect(client.sendReadReceipt).toHaveBeenCalledWith(
+        confirmed,
+        receiptType,
+      );
+    },
+  );
 });

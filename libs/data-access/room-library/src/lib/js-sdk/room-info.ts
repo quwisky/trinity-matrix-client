@@ -1,5 +1,6 @@
 import {
   EventType,
+  MatrixError,
   NotificationCountType,
   type MatrixClient,
   type Room,
@@ -310,4 +311,17 @@ export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
     (a, b) => compareOrder(a.order, b.order) || a.name.localeCompare(b.name),
   );
   return children.map((entry) => entry.id);
+}
+
+const INVITE_BLOCKED_ERRCODES = new Set([
+  'M_INVITE_BLOCKED',
+  'ORG.MATRIX.MSC4155.INVITE_BLOCKED',
+]);
+
+/** The invitee blocks invites (MSC4155), so the invite was refused. */
+export function isInviteBlocked(error: unknown): boolean {
+  return (
+    error instanceof MatrixError &&
+    INVITE_BLOCKED_ERRCODES.has(error.errcode ?? '')
+  );
 }

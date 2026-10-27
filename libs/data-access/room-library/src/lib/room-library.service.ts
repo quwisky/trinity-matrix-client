@@ -41,6 +41,7 @@ import { compareRoomSummaries } from './room-projection';
 import {
   buildRoomSummary,
   directMapOf,
+  isInviteBlocked,
   isMarkedUnread,
 } from './js-sdk/room-info';
 import {
@@ -49,7 +50,6 @@ import {
   type RoomLibraryGovernanceKey,
 } from './room-library-governance-policy';
 import { createEncryptedRoom, openDirectRoom } from './js-sdk/direct-rooms';
-import { isInviteBlocked } from './js-sdk/js-sdk-room-list-engine';
 import { RoomTyping } from './room-typing';
 
 /** Fields a {@link RoomLibraryService.createRoom} call accepts. */
