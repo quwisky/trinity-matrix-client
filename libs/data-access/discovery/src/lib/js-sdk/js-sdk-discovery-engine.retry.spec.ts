@@ -1,5 +1,6 @@
 import { Injector } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { AutoDiscovery } from 'matrix-js-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { JsSdkDiscoveryEngine } from './js-sdk-discovery-engine';
@@ -45,6 +46,7 @@ describe('JsSdkDiscoveryEngine retries (#978)', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('retries a first attempt that times out and then succeeds', async () => {
@@ -191,5 +193,18 @@ describe('JsSdkDiscoveryEngine retries (#978)', () => {
         String(url).startsWith('https://id.example'),
       ),
     ).toHaveLength(1);
+  });
+
+  it('reports the raw message of an unclassified thrown error', async () => {
+    vi.spyOn(AutoDiscovery, 'findClientConfig').mockRejectedValue(
+      new Error('boom'),
+    );
+
+    await expect(
+      firstValueFrom(engine.discover('example.org')),
+    ).resolves.toMatchObject({
+      ok: false,
+      failure: { kind: 'unexpected', message: 'boom' },
+    });
   });
 });

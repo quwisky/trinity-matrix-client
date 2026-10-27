@@ -98,9 +98,20 @@ export class JsSdkDiscoveryEngine implements DiscoveryEngine {
         );
         return engineOk({ domain, baseUrl });
       }),
-      catchError((err: unknown) =>
-        of(engineFail(describeMatrixRequestFailure(err))),
-      ),
+      catchError((err: unknown) => {
+        const failure = describeMatrixRequestFailure(err);
+        // Callers read the raw message of an unclassified discovery error.
+        return of(
+          engineFail(
+            failure.kind === 'unexpected'
+              ? {
+                  ...failure,
+                  message: err instanceof Error ? err.message : String(err),
+                }
+              : failure,
+          ),
+        );
+      }),
     );
   }
 

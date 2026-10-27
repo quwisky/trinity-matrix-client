@@ -125,7 +125,14 @@ export function describeMatrixRequestFailure(
   error: unknown,
   fallbackMessage = DEFAULT_MESSAGE,
 ): MatrixRequestFailure {
-  if (error instanceof EngineRequestError) return error.failure;
+  if (error instanceof EngineRequestError) {
+    // An unrecognised engine failure behaves like a raw unrecognised Error: an
+    // operation-specific fallback replaces its message.
+    const { failure } = error;
+    return failure.kind === 'unexpected' && fallbackMessage !== DEFAULT_MESSAGE
+      ? { ...failure, message: fallbackMessage }
+      : failure;
+  }
   if (isTimeout(error)) {
     return failure('timeout', 'The request timed out. Try again.', error);
   }

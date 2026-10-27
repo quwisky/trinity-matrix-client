@@ -74,3 +74,34 @@ describe('describeMatrixRequestFailure with EngineRequestError', () => {
     expect(describeMatrixRequestFailure(new EngineRequestError(f))).toBe(f);
   });
 });
+
+describe('describeMatrixRequestFailure for an engine failure', () => {
+  const unexpected = new EngineRequestError({
+    kind: 'unexpected',
+    message: 'Could not discover a homeserver for "x".',
+    diagnostic: { kind: 'unexpected' },
+  });
+
+  it('replaces the message of an unexpected failure with an operation fallback', () => {
+    expect(describeMatrixRequestFailure(unexpected, 'Try again.')).toEqual({
+      kind: 'unexpected',
+      message: 'Try again.',
+      diagnostic: { kind: 'unexpected' },
+    });
+  });
+
+  it('keeps the message of an unexpected failure under the default fallback', () => {
+    expect(describeMatrixRequestFailure(unexpected).message).toBe(
+      'Could not discover a homeserver for "x".',
+    );
+  });
+
+  it('returns other kinds unchanged', () => {
+    expect(
+      describeMatrixRequestFailure(
+        new EngineRequestError(NOT_SIGNED_IN),
+        'Try again.',
+      ),
+    ).toBe(NOT_SIGNED_IN);
+  });
+});

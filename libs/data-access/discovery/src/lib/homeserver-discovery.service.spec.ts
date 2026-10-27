@@ -3,7 +3,10 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HostNetworkPolicyService } from '@trinity/platform-native';
-import { EngineRequestError } from '@trinity/util/matrix';
+import {
+  EngineRequestError,
+  describeMatrixRequestFailure,
+} from '@trinity/util/matrix';
 import { FakeDiscoveryEngine } from '../contract/fake-discovery-engine';
 import { DISCOVERY_ENGINE } from './discovery-engine';
 import { HomeserverDiscoveryService } from './homeserver-discovery.service';
@@ -56,6 +59,14 @@ describe('HomeserverDiscoveryService', () => {
     expect(error).toBeInstanceOf(EngineRequestError);
     expect((error as Error).message).toBe(
       'Could not discover a homeserver for "nope.invalid".',
+    );
+  });
+
+  it('keeps the login fallback copy for a failed discovery', async () => {
+    const error = await discover('nope.invalid').catch((e: unknown) => e);
+
+    expect(describeMatrixRequestFailure(error, 'Fallback copy.').message).toBe(
+      'Fallback copy.',
     );
   });
 
