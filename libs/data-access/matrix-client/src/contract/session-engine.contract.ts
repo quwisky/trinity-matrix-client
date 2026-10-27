@@ -268,6 +268,10 @@ export function defineSessionEngineContract(
         await expect(context.tokenAccepted(a)).resolves.toBe(false);
         await expect(context.tokenAccepted(b)).resolves.toBe(false);
         // The clients stay live until the caller stops them.
+        expect((await snapshot()).accounts.map((x) => x.accountId)).toEqual([
+          a.userId,
+          b.userId,
+        ]);
         await once(engine.stop());
         await expect(snapshot()).resolves.toEqual(EMPTY_SESSION);
       },

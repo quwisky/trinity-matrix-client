@@ -110,15 +110,19 @@ async function whoamiAccepts(token: string): Promise<boolean> {
 describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
   // Stopping a client aborts its in-flight /sync long-poll and the SDK leaves that rejection
   // unhandled; Vitest would fail the run for it, so only that abort is kept from Vitest.
-  const listeners = process.listeners('unhandledRejection');
+  let listeners: NodeJS.UnhandledRejectionListener[] = [];
   const ignoreSyncAbort = (reason: unknown, promise: Promise<unknown>) => {
     if ((reason as { name?: string } | null)?.name === 'AbortError') return;
     for (const listener of listeners) listener(reason, promise);
   };
-  beforeAll(() => {
+  beforeAll(async () => {
+    listeners = process.listeners(
+      'unhandledRejection',
+    ) as NodeJS.UnhandledRejectionListener[];
     process.removeAllListeners('unhandledRejection');
     process.on('unhandledRejection', ignoreSyncAbort);
-  });
+    await waitForBackgroundUpdates();
+  }, 120_000);
   afterAll(() => {
     process.removeListener('unhandledRejection', ignoreSyncAbort);
     for (const listener of listeners)
@@ -131,7 +135,6 @@ describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
 
   defineSessionEngineContract(
     async () => {
-      await waitForBackgroundUpdates();
       TestBed.configureTestingModule({
         providers: [
           MatrixClientService,
