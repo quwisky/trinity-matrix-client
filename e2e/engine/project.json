@@ -15,6 +15,32 @@
         "command": "node e2e/engine/run.mts",
         "cwd": "{workspaceRoot}"
       }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.{mjs,mts}\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config vitest.config.mts",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {
+        "watch": {
+          "command": "vitest --config vitest.config.mts"
+        }
+      }
     }
   }
 }

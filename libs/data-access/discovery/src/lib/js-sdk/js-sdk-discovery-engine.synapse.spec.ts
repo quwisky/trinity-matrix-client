@@ -50,6 +50,8 @@ async function waitForBackgroundUpdates(): Promise<void> {
       `${baseUrl}/_synapse/admin/v1/background_updates/status`,
       { headers: { authorization: `Bearer ${admin.accessToken}` } },
     );
+    if (!res.ok)
+      throw new Error(`Synapse background update status failed: ${res.status}`);
     const { current_updates } = (await res.json()) as {
       current_updates: Record<string, unknown>;
     };
