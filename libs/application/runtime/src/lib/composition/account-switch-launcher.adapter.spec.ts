@@ -7,7 +7,7 @@ import {
   AccountRuntimeService,
   type AccountSwitchOutcome,
 } from '@trinity/data-access/accounts';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
 
 function setup(
@@ -26,7 +26,7 @@ function setup(
         activeAccountId: active.asReadonly(),
         switchActiveAccount,
       }),
-      MockProvider(MatrixClientService, { accountIds: ids.asReadonly() }),
+      MockProvider(SessionStateService, { accountIds: ids.asReadonly() }),
     ],
   });
   return {

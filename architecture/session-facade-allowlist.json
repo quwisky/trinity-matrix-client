@@ -1,12 +1,9 @@
 {
   "issue": "#1153",
   "files": [
-    "libs/application/runtime/src/lib/capability-status.service.ts",
     "libs/application/runtime/src/lib/composition/account-deletion-launcher.adapter.ts",
     "libs/application/runtime/src/lib/composition/account-removal-launcher.adapter.ts",
-    "libs/application/runtime/src/lib/composition/account-switch-launcher.adapter.ts",
     "libs/application/runtime/src/lib/composition/diagnostic-log.providers.ts",
-    "libs/application/runtime/src/lib/composition/diagnostic-markers.binding.ts",
     "libs/application/runtime/src/lib/composition/session-handover.workflow.ts",
     "libs/data-access/accounts/src/lib/account-deletion.workflow.ts",
     "libs/data-access/accounts/src/lib/account-lifecycle.adapter.ts",

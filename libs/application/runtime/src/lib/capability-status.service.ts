@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import type { BannerPrompt } from '@trinity/application/workspace';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   TrustService,
   TrustSlotForecastService,
@@ -105,7 +105,7 @@ export class CapabilityStatusService {
   private readonly slotHeldStatus = signal(false);
   private readonly press = inject(PointerPressService);
   private readonly slotForecast = inject(TrustSlotForecastService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   /** Accounts whose sign-in prompt was dismissed; in memory, so it returns next session. */
   private readonly signInAgainDismissed = signal<ReadonlySet<string>>(
     new Set(),
@@ -116,7 +116,7 @@ export class CapabilityStatusService {
    * device starts without the old store's room keys.
    */
   private readonly signInAgain = computed(() => {
-    const userId = this.matrix.activeUserId();
+    const userId = this.matrix.activeAccountId();
     return (
       !!userId &&
       this.matrix.cryptoStoreEncrypted() === false &&
@@ -348,7 +348,7 @@ export class CapabilityStatusService {
 
   /** Hide the sign-in prompt for the active Account until the app starts again. */
   dismissSignInAgain(): void {
-    const userId = this.matrix.activeUserId();
+    const userId = this.matrix.activeAccountId();
     if (!userId) return;
     this.signInAgainDismissed.update((dismissed) =>
       new Set(dismissed).add(userId),
