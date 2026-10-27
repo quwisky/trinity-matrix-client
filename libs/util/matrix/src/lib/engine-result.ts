@@ -5,8 +5,7 @@ import {
   requestFailureMessage,
 } from './request-failure';
 
-export type EngineFailureCode =
-  'not-signed-in' | 'discovery-failed' | 'request-failed';
+export type EngineFailureCode = EngineFailure['code'];
 
 /** Why homeserver discovery failed; one member per SDK `AutoDiscoveryError` the path can produce. */
 export type DiscoveryFailureReason =
@@ -18,14 +17,38 @@ export type DiscoveryFailureReason =
   | 'missing-wellknown'
   | 'invalid-json';
 
+/** Why a persisted account could not start; mirrors the matrix-client startup outcomes. */
+export type AccountStartFailureReason =
+  | 'reauthentication-required'
+  | 'transient-network'
+  | 'crypto-failure'
+  | 'crypto-store-key-lost'
+  | 'secure-storage-unavailable';
+
 /** A failure as plain data: a code and parameters, never text. See {@link engineFailureMessage}. */
-export interface EngineFailure {
+export type EngineFailure = {
   readonly kind: MatrixRequestFailureKind;
-  readonly code: EngineFailureCode;
   readonly diagnostic: MatrixRequestFailureMetadata;
-  /** `discovery-failed` carries `domain` and optionally `reason: DiscoveryFailureReason`. */
-  readonly params?: Readonly<Record<string, string>>;
-}
+} & (
+  | { readonly code: 'not-signed-in' }
+  | {
+      readonly code: 'discovery-failed';
+      readonly params: {
+        readonly domain: string;
+        readonly reason?: DiscoveryFailureReason;
+      };
+    }
+  | {
+      readonly code: 'request-failed';
+      /** `session-refresh` marks a failed token refresh, worded apart from a plain network failure. */
+      readonly params?: { readonly cause?: 'session-refresh' };
+    }
+  | {
+      readonly code: 'account-start-failed';
+      readonly params: { readonly reason: AccountStartFailureReason };
+    }
+  | { readonly code: 'account-not-live' }
+);
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
   Record<DiscoveryFailureReason, string>
@@ -47,12 +70,18 @@ export function engineFailureMessage(failure: EngineFailure): string {
     case 'not-signed-in':
       return 'Not signed in.';
     case 'discovery-failed': {
-      const reason = failure.params?.['reason'];
+      const { domain, reason } = failure.params;
       return reason && Object.hasOwn(DISCOVERY_REASON_MESSAGES, reason)
-        ? DISCOVERY_REASON_MESSAGES[reason as DiscoveryFailureReason]
-        : `Could not discover a homeserver for "${failure.params?.['domain'] ?? ''}".`;
+        ? DISCOVERY_REASON_MESSAGES[reason]
+        : `Could not discover a homeserver for "${domain}".`;
     }
     case 'request-failed':
+      return requestFailureMessage(failure.kind, {
+        ...failure.diagnostic,
+        cause: failure.params?.cause,
+      });
+    case 'account-start-failed':
+    case 'account-not-live':
       return requestFailureMessage(failure.kind, failure.diagnostic);
   }
 }

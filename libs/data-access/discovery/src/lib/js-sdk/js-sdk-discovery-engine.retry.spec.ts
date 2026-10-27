@@ -234,4 +234,21 @@ describe('JsSdkDiscoveryEngine retries (#978)', () => {
     });
     expect(result).not.toHaveProperty('failure.message');
   });
+
+  it('marks a failed token refresh with the session-refresh cause', async () => {
+    vi.spyOn(AutoDiscovery, 'findClientConfig').mockRejectedValue(
+      Object.assign(new Error('refresh'), { name: 'TokenRefreshError' }),
+    );
+
+    const result = await firstValueFrom(engine.discover('example.org'));
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: {
+        kind: 'network',
+        code: 'request-failed',
+        params: { cause: 'session-refresh' },
+      },
+    });
+  });
 });
