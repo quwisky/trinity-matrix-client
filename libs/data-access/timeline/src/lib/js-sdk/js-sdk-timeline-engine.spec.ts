@@ -374,6 +374,119 @@ describe('JsSdkTimelineEngine', () => {
     timeline.subscription.unsubscribe();
   });
 
+  it('emits a live message while a page request is pending, and the page with idle after', async () => {
+    const events = [msg('$b')];
+    const { client, room } = world(events, { token: 't1' });
+    let respond: (value: unknown) => void = () => undefined;
+    client.createMessagesRequest.mockReturnValue(
+      new Promise((resolve) => (respond = resolve)),
+    );
+    const engine = engineFor(client);
+    const timeline = watch(engine);
+    const replied: number[] = [];
+
+    const reply = firstValueFrom(
+      engine.paginateBackwards(ME, ROOM, LIVE, 10),
+    ).then(() => replied.push(timeline.updates.length));
+    const live = msg('$c');
+    events.push(live);
+    room.emit(RoomEvent.Timeline, live, room, false, false);
+    await Promise.resolve();
+
+    expect(timeline.last()).toMatchObject({ backPagination: 'paginating' });
+    expect(timeline.events().map((item) => item.eventId)).toEqual(['$b', '$c']);
+    const beforePage = timeline.updates.length;
+
+    respond({ chunk: [msg('$a')], end: 't2' });
+    await reply;
+
+    const after = timeline.updates.slice(beforePage);
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ backPagination: 'idle' });
+    expect(replied).toEqual([timeline.updates.length]);
+    expect(timeline.events().map((item) => item.eventId)).toEqual([
+      '$a',
+      '$b',
+      '$c',
+    ]);
+    timeline.subscription.unsubscribe();
+  });
+
+  it('runs overlapping pages one at a time, each replying after its page is visible', async () => {
+    const { client } = world([msg('$c')], { token: 't1' });
+    const responders: ((value: unknown) => void)[] = [];
+    client.createMessagesRequest.mockImplementation(
+      () => new Promise((resolve) => responders.push(resolve)),
+    );
+    const engine = engineFor(client);
+    const timeline = watch(engine);
+    const seen: string[][] = [];
+    const ids = () => timeline.events().map((item) => item.eventId ?? '');
+
+    const first = firstValueFrom(
+      engine.paginateBackwards(ME, ROOM, LIVE, 10),
+    ).then(() => seen.push(ids()));
+    const second = firstValueFrom(
+      engine.paginateBackwards(ME, ROOM, LIVE, 10),
+    ).then(() => seen.push(ids()));
+    await tick();
+    expect(client.createMessagesRequest).toHaveBeenCalledTimes(1);
+
+    responders[0]({ chunk: [msg('$b')], end: 't2' });
+    await first;
+    expect(seen).toEqual([['$b', '$c']]);
+    await tick();
+    expect(client.createMessagesRequest).toHaveBeenLastCalledWith(
+      ROOM,
+      't2',
+      10,
+      Direction.Backward,
+    );
+    responders[1]({ chunk: [msg('$a')], end: 't3' });
+    await second;
+
+    expect(seen).toEqual([
+      ['$b', '$c'],
+      ['$a', '$b', '$c'],
+    ]);
+    expect(timeline.last()).toMatchObject({ backPagination: 'idle' });
+    const pageUpdates = timeline.updates.filter(
+      (update) => update.kind === 'items' && update.diffs.length > 0,
+    );
+    expect(
+      pageUpdates.every(
+        (update) =>
+          update.kind === 'items' && update.backPagination !== 'paginating',
+      ),
+    ).toBe(true);
+    timeline.subscription.unsubscribe();
+  });
+
+  it('a decryption changes only the decrypted item; the others stay the same object', async () => {
+    const content = { body: 'sealed', msgtype: 'm.text' };
+    const sealed = msg('$b', '@alice:hs', { getRoomId: () => ROOM });
+    sealed.getOriginalContent = () => content;
+    sealed.getContent = () => content;
+    const { client } = world([msg('$a'), sealed, msg('$c')]);
+    const timeline = watch(engineFor(client));
+    const [a, b, c] = timeline.events();
+
+    content.body = 'opened';
+    Object.assign(sealed, {
+      getOriginalContent: () => ({ ...content }),
+      getContent: () => ({ ...content }),
+    });
+    client.emit(MatrixEventEvent.Decrypted, sealed);
+    await Promise.resolve();
+
+    const [a2, b2, c2] = timeline.events();
+    expect(a2).toBe(a);
+    expect(c2).toBe(c);
+    expect(b2).not.toBe(b);
+    expect(b2.content).toMatchObject({ body: 'opened' });
+    timeline.subscription.unsubscribe();
+  });
+
   it('drops a page when the live timeline was replaced', async () => {
     const { client, room, replaceTimeline } = world([msg('$b')], {
       token: 't1',

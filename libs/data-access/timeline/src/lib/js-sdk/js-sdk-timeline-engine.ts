@@ -179,8 +179,13 @@ interface Feed {
 export class JsSdkTimelineEngine implements TimelineEngine {
   private readonly clients = inject(JS_SDK_CLIENTS);
   private readonly feeds = new Set<Feed>();
-  /** Pages in flight per room, per client. */
-  private readonly paging = new WeakMap<MatrixClient, Map<string, number>>();
+  /** The rooms with a page in flight, per client. */
+  private readonly paging = new WeakMap<MatrixClient, Set<string>>();
+  /** The last page queued per room, per client: a room pages one page at a time. */
+  private readonly queues = new WeakMap<
+    MatrixClient,
+    Map<string, Promise<unknown>>
+  >();
 
   timeline(
     accountId: string,
@@ -248,11 +253,9 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       return from(
         this.paged(client, room, async () => {
           for (let page = 0; page < maxPages && !stopped; page++) {
-            const before = room.getLiveTimeline().getEvents().length;
+            if (atStart(room)) break;
             await scrollbackLive(client, room, SCROLLBACK);
             if (loaded()) return true;
-            // The start of the room: there is no more history to page in.
-            if (room.getLiveTimeline().getEvents().length === before) break;
           }
           return false;
         }),
@@ -410,31 +413,45 @@ export class JsSdkTimelineEngine implements TimelineEngine {
   }
 
   /**
-   * Runs `page` with the room marked paginating. Open subscriptions see the start, and then the
-   * page together with the next pagination state in one emission, before `page` resolves.
+   * Runs `page` with the room marked paginating, after any page already queued for the room.
+   * Open subscriptions see the start, and then the page together with the next pagination
+   * state in one emission, before `page` resolves.
    */
-  private async paged<T>(
+  private paged<T>(
     client: MatrixClient,
     room: Room,
     page: () => Promise<T>,
   ): Promise<T> {
-    this.setPaging(client, room.roomId, 1);
-    try {
-      return await page();
-    } finally {
-      this.setPaging(client, room.roomId, -1);
-    }
+    const roomId = room.roomId;
+    const run = async (): Promise<T> => {
+      this.setPaging(client, roomId, true);
+      try {
+        return await page();
+      } finally {
+        this.setPaging(client, roomId, false);
+      }
+    };
+    const queues =
+      this.queues.get(client) ?? new Map<string, Promise<unknown>>();
+    this.queues.set(client, queues);
+    const previous = queues.get(roomId);
+    const result = previous ? previous.then(run, run) : run();
+    const tail = result.catch(() => undefined);
+    queues.set(roomId, tail);
+    void tail.then(() => {
+      if (queues.get(roomId) === tail) queues.delete(roomId);
+    });
+    return result;
   }
 
-  private setPaging(client: MatrixClient, roomId: string, delta: 1 | -1): void {
-    const rooms = this.paging.get(client) ?? new Map<string, number>();
+  private setPaging(client: MatrixClient, roomId: string, on: boolean): void {
+    const rooms = this.paging.get(client) ?? new Set<string>();
     this.paging.set(client, rooms);
-    const count = (rooms.get(roomId) ?? 0) + delta;
-    if (count > 0) rooms.set(roomId, count);
+    if (on) rooms.add(roomId);
     else rooms.delete(roomId);
     for (const feed of this.feeds) {
       if (feed.client !== client || feed.roomId !== roomId) continue;
-      if (delta > 0) feed.announce();
+      if (on) feed.announce();
       else feed.flush();
     }
   }
@@ -650,16 +667,18 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       });
       void resolveShields(checked);
     };
-    // A page shows only with the pagination state it ends in (T3), so pending
-    // changes wait for the flush that ends it.
+    // A page shows only with the pagination state it ends in (T3): once it has landed,
+    // changes wait the few microtasks until the flush that ends the page.
+    let pageLanded = false;
     const flusher = coalesce(() => {
-      if (!this.paging.get(client)?.has(roomId)) emit();
+      if (!pageLanded) emit();
     });
     const schedule = (): void => flusher.schedule();
     const feed: Feed = {
       client,
       roomId,
       flush: () => {
+        pageLanded = false;
         flusher.cancel();
         emit();
       },
@@ -676,9 +695,10 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     const onTimeline = (
       event?: MatrixEvent,
       _room?: Room,
-      _toStart?: boolean,
+      toStart?: boolean,
       removed?: boolean,
     ): void => {
+      if (toStart && this.paging.get(client)?.has(roomId)) pageLanded = true;
       if (removed) rows.markAll();
       else rows.noteEvent(event);
       schedule();
