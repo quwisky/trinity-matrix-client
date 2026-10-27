@@ -151,7 +151,11 @@ export class InvitesService {
   }
 }
 
-function pendingInviteOf(accountId: string, info: RoomInfo): PendingInvite {
+/** One invited row as the Invites group shows it. */
+export function pendingInviteOf(
+  accountId: string,
+  info: RoomInfo,
+): PendingInvite {
   return {
     roomId: info.roomId,
     accountId,

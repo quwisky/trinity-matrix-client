@@ -1,200 +1,36 @@
-import {
-  ClientEvent,
-  MatrixEventEvent,
-  RoomEvent,
-  RoomStateEvent,
-  type MatrixClient,
-} from 'matrix-js-sdk';
-import { type MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomEncryptionFlags } from '@trinity/util/matrix';
-import type { PendingInvite } from './invites.service';
-import { compareRoomSummaries, initialOf } from './room-projection';
-import {
-  buildInvite,
-  buildRoomSummary,
-  directMapOf,
-  isJoinedSpace,
-  spaceChildIdsOf,
-} from './js-sdk/room-info';
+import { pendingInviteOf, type PendingInvite } from './invites.service';
 import { type RoomSummary } from './room-library.service';
+import type { RoomInfo, SpaceChildLink } from './room-list-engine';
+import {
+  compareRoomSummaries,
+  initialOf,
+  roomSummaryOf,
+} from './room-projection';
+import { joinedChildIds } from './space-link-feeds';
 import { type SpaceSummary } from './spaces.service';
 
-export type SelectedProjectionDomain = 'rooms' | 'spaces' | 'invitations';
-
-export const ALL_SELECTED_PROJECTION_DOMAINS: ReadonlySet<SelectedProjectionDomain> =
-  new Set(['rooms', 'spaces', 'invitations']);
-
-interface AccountSource {
+/** One selected, live Account generation and its room list. */
+export interface AccountSource {
   readonly accountId: string;
-  readonly client: MatrixClient;
-  /** Room lock marks for this client: the room state, or else its crypto store. */
-  readonly encryption?: RoomEncryptionFlags;
-}
-
-type Listener = () => void;
-
-interface RegisteredListener {
-  readonly event: string;
-  readonly handler: Listener;
-}
-
-interface HeldAccountSource extends AccountSource {
-  readonly encryption: RoomEncryptionFlags;
-  readonly listeners: readonly RegisteredListener[];
-}
-
-interface EventSource {
-  on(event: string, handler: Listener): void;
-  off(event: string, handler: Listener): void;
-}
-
-const ALL_DOMAINS = ALL_SELECTED_PROJECTION_DOMAINS;
-const ROOM_DOMAINS: ReadonlySet<SelectedProjectionDomain> = new Set(['rooms']);
-
-const EVENTS: readonly (readonly [
-  string,
-  ReadonlySet<SelectedProjectionDomain>,
-])[] = [
-  [ClientEvent.Sync, ALL_DOMAINS],
-  [ClientEvent.Room, ALL_DOMAINS],
-  [RoomEvent.Name, ALL_DOMAINS],
-  [RoomEvent.MyMembership, ALL_DOMAINS],
-  [RoomEvent.Receipt, ROOM_DOMAINS],
-  [RoomEvent.Tags, ROOM_DOMAINS],
-  [RoomEvent.AccountData, ROOM_DOMAINS],
-  [MatrixEventEvent.Decrypted, ROOM_DOMAINS],
-  [RoomStateEvent.Members, ROOM_DOMAINS],
-];
-
-/**
- * The one internal owner of selected-Account client and listener lifecycle.
- *
- * Domain projectors receive stable Account/client pairs and never attach listeners. A shared
- * SDK event is registered once per Account and invalidates only the projections it affects.
- */
-export class SelectedAccountSourceRegistry {
-  private readonly sources = new Map<string, HeldAccountSource>();
-
-  constructor(
-    private readonly matrix: MatrixClientService,
-    private readonly invalidate: (
-      domains: ReadonlySet<SelectedProjectionDomain>,
-    ) => void,
-  ) {}
-
-  /** Reconcile selected, live Accounts and same-id client replacement. */
-  reconcile(selectedAccountIds: ReadonlySet<string>): boolean {
-    const selected =
-      selectedAccountIds.size > 1 ? selectedAccountIds : new Set<string>();
-    const live = new Set(this.matrix.accountIds());
-    const wanted = new Set(
-      [...selected].filter((accountId) => live.has(accountId)),
-    );
-    let changed = false;
-
-    for (const [accountId, source] of this.sources) {
-      const current = this.matrix.clientFor(accountId);
-      if (!wanted.has(accountId) || current !== source.client) {
-        this.detach(source);
-        this.sources.delete(accountId);
-        changed = true;
-      }
-    }
-
-    for (const accountId of [...wanted].sort()) {
-      if (this.sources.has(accountId)) continue;
-      const client = this.matrix.clientFor(accountId);
-      if (!client) continue;
-      this.sources.set(accountId, this.attach(accountId, client));
-      changed = true;
-    }
-
-    return changed;
-  }
-
-  /** Stable Account order makes duplicate fallback ownership deterministic. */
-  current(): readonly AccountSource[] {
-    return [...this.sources.values()]
-      .sort((a, b) => a.accountId.localeCompare(b.accountId))
-      .map(({ accountId, client, encryption }) => ({
-        accountId,
-        client,
-        encryption,
-      }));
-  }
-
-  /**
-   * Ask an Account's crypto store about one joined room whose state lacks the encryption
-   * event, once per room; its answer, whichever it is, invalidates the room rows.
-   */
-  learnEncryption(accountId: string, roomId: string): void {
-    const source = this.sources.get(accountId);
-    if (!source || source.encryption.answered(roomId)) return;
-    const { client, encryption } = source;
-    void encryption.refresh(client.getCrypto?.(), roomId).then(() => {
-      if (
-        encryption.answered(roomId) &&
-        this.sources.get(accountId)?.encryption === encryption
-      ) {
-        this.invalidate(ROOM_DOMAINS);
-      }
-    });
-  }
-
-  release(): void {
-    for (const source of this.sources.values()) this.detach(source);
-    this.sources.clear();
-  }
-
-  private attach(accountId: string, client: MatrixClient): HeldAccountSource {
-    const eventSource = client as unknown as EventSource;
-    const listeners = EVENTS.map(([event, domains]) => {
-      const handler = () => this.invalidate(domains);
-      eventSource.on(event, handler);
-      return { event, handler };
-    });
-    return {
-      accountId,
-      client,
-      encryption: new RoomEncryptionFlags(),
-      listeners,
-    };
-  }
-
-  private detach(source: HeldAccountSource): void {
-    const eventSource = source.client as unknown as EventSource;
-    for (const { event, handler } of source.listeners) {
-      eventSource.off(event, handler);
-    }
-  }
+  readonly generation: number;
+  readonly rows: readonly RoomInfo[];
 }
 
 /** Project and merge selected Accounts' joined, non-Space Rooms. */
 export function projectSelectedRooms(
   sources: readonly AccountSource[],
   activeAccountId: string | null,
-  learnEncryption?: (accountId: string, roomId: string) => void,
 ): readonly RoomSummary[] {
   const byRoomId = new Map<string, RoomSummary>();
 
-  for (const { accountId, client, encryption } of sources) {
-    const { userByRoom } = directMapOf(client);
-    for (const room of client.getRooms()) {
-      if (room.isSpaceRoom() || room.getMyMembership() !== 'join') continue;
-      if (!room.hasEncryptionStateEvent()) {
-        learnEncryption?.(accountId, room.roomId);
-      }
+  for (const { accountId, rows } of sources) {
+    for (const info of rows) {
+      if (info.isSpace || info.membership !== 'join') continue;
 
-      const summary = buildRoomSummary(
-        room,
-        accountId,
-        userByRoom.get(room.roomId),
-        encryption,
-        !!client.getCrypto?.(),
-      );
-      const existing = byRoomId.get(room.roomId);
+      const summary = roomSummaryOf(accountId, info);
+      const existing = byRoomId.get(info.roomId);
       if (!existing) {
-        byRoomId.set(room.roomId, summary);
+        byRoomId.set(info.roomId, summary);
         continue;
       }
 
@@ -203,7 +39,7 @@ export function projectSelectedRooms(
         accountId === activeAccountId && existing.accountId !== activeAccountId
           ? summary
           : existing;
-      byRoomId.set(room.roomId, {
+      byRoomId.set(info.roomId, {
         ...winner,
         accountIds: [...existing.accountIds, accountId],
         unreadCount: Math.max(existing.unreadCount, summary.unreadCount),
@@ -223,31 +59,46 @@ export function projectSelectedRooms(
 
 export interface SelectedSpacesProjection {
   readonly spaces: readonly SpaceSummary[];
-  readonly childRoomIdsByAccount: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Each source's joined space children, in source order. */
+  readonly childRoomIdsByAccount: readonly (readonly [
+    string,
+    readonly string[],
+  ])[];
 }
 
 /** Project selected Spaces, retaining both merged and per-Account child ownership. */
 export function projectSelectedSpaces(
   sources: readonly AccountSource[],
   activeAccountId: string | null,
+  linksOf: (
+    source: AccountSource,
+    spaceId: string,
+  ) => readonly SpaceChildLink[],
 ): SelectedSpacesProjection {
   const bySpaceId = new Map<string, SpaceSummary>();
   const childrenBySpace = new Map<string, string[]>();
-  const childRoomIdsByAccount = new Map<string, Set<string>>();
+  const childRoomIdsByAccount: (readonly [string, readonly string[]])[] = [];
 
-  for (const { accountId, client } of sources) {
+  for (const source of sources) {
+    const { accountId, rows } = source;
+    const joined = new Map(
+      rows.filter((r) => r.membership === 'join').map((r) => [r.roomId, r]),
+    );
     const accountChildIds = new Set<string>();
-    for (const room of client.getRooms()) {
-      if (!isJoinedSpace(room)) continue;
+    for (const space of joined.values()) {
+      if (!space.isSpace) continue;
 
-      const mergedChildren = childrenBySpace.get(room.roomId) ?? [];
-      for (const childId of spaceChildIdsOf(client, room)) {
+      const mergedChildren = childrenBySpace.get(space.roomId) ?? [];
+      for (const childId of joinedChildIds(
+        linksOf(source, space.roomId),
+        joined,
+      )) {
         accountChildIds.add(childId);
         if (!mergedChildren.includes(childId)) mergedChildren.push(childId);
       }
-      childrenBySpace.set(room.roomId, mergedChildren);
+      childrenBySpace.set(space.roomId, mergedChildren);
 
-      const existing = bySpaceId.get(room.roomId);
+      const existing = bySpaceId.get(space.roomId);
       if (
         existing &&
         !(
@@ -257,17 +108,16 @@ export function projectSelectedSpaces(
       ) {
         continue;
       }
-      const name = room.name || room.roomId;
-      bySpaceId.set(room.roomId, {
-        id: room.roomId,
+      bySpaceId.set(space.roomId, {
+        id: space.roomId,
         accountId,
-        name,
-        initial: initialOf(name),
-        avatarMxc: room.getMxcAvatarUrl(),
+        name: space.displayName,
+        initial: initialOf(space.displayName),
+        avatarMxc: space.avatarMxc,
         childRoomIds: [],
       });
     }
-    childRoomIdsByAccount.set(accountId, accountChildIds);
+    childRoomIdsByAccount.push([accountId, [...accountChildIds]]);
   }
 
   const spaces = [...bySpaceId.values()]
@@ -283,13 +133,11 @@ export function projectSelectedSpaces(
 export function projectSelectedInvitations(
   sources: readonly AccountSource[],
 ): readonly PendingInvite[] {
-  const invitations: PendingInvite[] = [];
-  for (const { accountId, client } of sources) {
-    for (const room of client.getRooms()) {
-      if (room.getMyMembership() === 'invite') {
-        invitations.push(buildInvite(client, room, accountId));
-      }
-    }
-  }
-  return invitations.sort((a, b) => a.name.localeCompare(b.name));
+  return sources
+    .flatMap(({ accountId, rows }) =>
+      rows
+        .filter((info) => info.membership === 'invite')
+        .map((info) => pendingInviteOf(accountId, info)),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -12,7 +12,6 @@ import {
   NEVER,
   Observable,
   Subject,
-  Subscription,
   concat,
   defer,
   finalize,
@@ -34,15 +33,11 @@ import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
 } from './room-library-governance-policy';
-import type {
-  CreateRoomRequest,
-  HierarchyEntry,
-  RoomInfo,
-  SpaceChildLink,
-} from './room-list-engine';
+import type { CreateRoomRequest, HierarchyEntry } from './room-list-engine';
 import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 import { RoomListStore } from './room-list-store';
 import { initialOf } from './room-projection';
+import { SpaceLinkFeeds, joinedChildIds, linkKey } from './space-link-feeds';
 import { unwrapOwned } from './unwrap-owned';
 
 /**
@@ -50,14 +45,6 @@ import { unwrapOwned } from './unwrap-owned';
  * requests. 5 pages ≈ 500 children, well beyond what the rail shows usefully.
  */
 const HIERARCHY_MAX_PAGES = 5;
-
-/** One open `spaceChildLinks` subscription and the links it last emitted. */
-interface LinkFeed {
-  readonly accountId: string;
-  readonly generation: number;
-  links: readonly SpaceChildLink[];
-  subscription: Subscription;
-}
 
 /** Fields a {@link SpacesService.createSpace} call accepts. */
 export interface CreateSpaceOptions {
@@ -148,11 +135,7 @@ export class SpacesService {
   private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
   private readonly injector = inject(Injector);
 
-  /** Child-link subscriptions keyed by Account, its generation and the space. */
-  private readonly linkFeeds = new Map<string, LinkFeed>();
-  /** Bumped by link emissions after the first, which arrive outside any reactive read. */
-  private readonly linksVersion = signal(0);
-  private opening = false;
+  private readonly links = new SpaceLinkFeeds(this.engine);
 
   /** The active Account's room list, or null while no Account is active and live. */
   private readonly activeList = computed(() => {
@@ -178,8 +161,7 @@ export class SpacesService {
       const spaces = [...joined.values()]
         .filter((r) => r.isSpace)
         .map((space): SpaceSummary => {
-          const key = JSON.stringify([accountId, generation, space.roomId]);
-          open.add(key);
+          open.add(linkKey(accountId, generation, space.roomId));
           return {
             id: space.roomId,
             accountId,
@@ -187,14 +169,14 @@ export class SpacesService {
             initial: initialOf(space.displayName),
             avatarMxc: space.avatarMxc,
             childRoomIds: joinedChildIds(
-              this.linksOf(key, accountId, generation, space.roomId),
+              this.links.linksOf(accountId, generation, space.roomId),
               joined,
             ),
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name));
       // A space that left the list closes here; an Account that left closes on the session.
-      untracked(() => this.closeLinks((key) => !open.has(key)));
+      untracked(() => this.links.close((feed) => !open.has(feed.key)));
       return spaces;
     },
     { equal: plainEqual },
@@ -289,15 +271,15 @@ export class SpacesService {
       .subscribe(() =>
         untracked(() => {
           const active = this.session.activeAccountId();
-          this.closeLinks(
-            (_, feed) =>
+          this.links.close(
+            (feed) =>
               feed.accountId !== active ||
               this.session.status(feed.accountId)?.generation !==
                 feed.generation,
           );
         }),
       );
-    inject(DestroyRef).onDestroy(() => this.closeLinks(() => true));
+    inject(DestroyRef).onDestroy(() => this.links.close(() => true));
   }
 
   /**
@@ -585,49 +567,6 @@ export class SpacesService {
         map((entries) => projectHierarchy(accountId, spaceId, entries)),
       );
   }
-
-  /** The links last emitted for one space, subscribing on first read. */
-  private linksOf(
-    key: string,
-    accountId: string,
-    generation: number,
-    spaceId: string,
-  ): readonly SpaceChildLink[] {
-    this.linksVersion();
-    return untracked(() => {
-      let feed = this.linkFeeds.get(key);
-      if (!feed) {
-        const opened: LinkFeed = {
-          accountId,
-          generation,
-          links: [],
-          subscription: Subscription.EMPTY,
-        };
-        this.linkFeeds.set(key, opened);
-        this.opening = true;
-        try {
-          opened.subscription = this.engine
-            .spaceChildLinks(accountId, spaceId)
-            .subscribe((links) => {
-              opened.links = links;
-              if (!this.opening) this.linksVersion.update((v) => v + 1);
-            });
-        } finally {
-          this.opening = false;
-        }
-        feed = opened;
-      }
-      return feed.links;
-    });
-  }
-
-  private closeLinks(close: (key: string, feed: LinkFeed) => boolean): void {
-    for (const [key, feed] of this.linkFeeds) {
-      if (!close(key, feed)) continue;
-      feed.subscription.unsubscribe();
-      this.linkFeeds.delete(key);
-    }
-  }
 }
 
 function createRequest(
@@ -642,27 +581,6 @@ function createRequest(
     kind,
     parentSpaceId,
   };
-}
-
-/**
- * A space's joined child ids, ordered by link `order` (code point, unordered last) then room
- * name — not the engine's child-id tie-break, which would reorder the rail.
- */
-function joinedChildIds(
-  links: readonly SpaceChildLink[],
-  joined: ReadonlyMap<string, RoomInfo>,
-): string[] {
-  return links
-    .flatMap((link) => {
-      const child = joined.get(link.childId);
-      return child ? [{ link, name: child.displayName }] : [];
-    })
-    .sort(
-      (a, b) =>
-        compareOrder(a.link.order, b.link.order) ||
-        a.name.localeCompare(b.name),
-    )
-    .map((entry) => entry.link.childId);
 }
 
 /**

@@ -42,15 +42,14 @@ describe('Selected Room Library boundary', () => {
     );
   });
 
-  it('keeps one Account-source registry inside the selected implementation', () => {
+  it('merges selected Accounts from the room store inside the selected implementation', () => {
     const selected = source(selectedImplementation);
     const projection = source(selectedProjection);
 
     expect(selected).toContain('const accountIds = this.scope.selected()');
-    expect(selected).toContain('new SelectedAccountSourceRegistry(');
-    expect(selected).toContain('this.sources.reconcile(accountIds)');
-    expect(projection).toContain('class SelectedAccountSourceRegistry');
-    expect(projection).toContain('current !== source.client');
+    expect(selected).toContain('this.store.rooms(accountId)()');
+    expect(selected).not.toContain('MatrixClientService');
+    expect(projection).not.toContain('matrix-js-sdk');
     expect(projection).toContain('projectSelectedRooms(');
     expect(projection).toContain('projectSelectedSpaces(');
     expect(projection).toContain('projectSelectedInvitations(');

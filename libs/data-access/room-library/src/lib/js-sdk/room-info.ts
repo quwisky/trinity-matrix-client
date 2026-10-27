@@ -14,9 +14,6 @@ import {
   type RoomEncryptionFlags,
 } from '@trinity/util/matrix';
 import { compareOrder } from '../space-child-order';
-import { initialOf, roomSummaryOf } from '../room-projection';
-import { type RoomSummary } from '../room-library.service';
-import type { PendingInvite } from '../invites.service';
 import type { RoomInfo, RoomMembership } from '../room-list-engine';
 
 /** State event type linking a space to a child room. */
@@ -227,64 +224,6 @@ export function toRoomInfo(
     encryption,
     hasCryptoStore: !!client.getCrypto?.(),
   });
-}
-
-/**
- * Project one joined {@link Room} into a {@link RoomSummary} tagged with its account, through
- * {@link roomSummaryOf} so the selected-Account projector builds the rows the engine-fed
- * {@link RoomLibraryService} does.
- */
-export function buildRoomSummary(
-  room: Room,
-  accountId: string,
-  directUserId?: string,
-  encryption?: RoomEncryptionFlags,
-  hasCryptoStore = true,
-): RoomSummary {
-  return roomSummaryOf(
-    accountId,
-    roomInfoOf(room, {
-      ownUserId: null,
-      directUserId: directUserId ?? null,
-      encryption,
-      hasCryptoStore,
-    }),
-  );
-}
-
-/**
- * Project one invited {@link Room} into a {@link PendingInvite} for the selected-Account
- * projector; `InvitesService` builds the same row from the room list.
- */
-export function buildInvite(
-  client: MatrixClient,
-  room: Room,
-  accountId: string,
-): PendingInvite {
-  const name = room.name || room.roomId;
-  // Our own `m.room.member` invite event carries the inviter (its sender) and,
-  // for a DM, the `is_direct` flag the inviter set.
-  const myMemberEvent = client.getUserId()
-    ? room.getMember(client.getUserId() as string)?.events?.member
-    : undefined;
-  const inviterId = myMemberEvent?.getSender() ?? '';
-  const inviter = inviterId ? room.getMember(inviterId) : null;
-  const isDirect = myMemberEvent?.getContent()?.['is_direct'] === true;
-  return {
-    roomId: room.roomId,
-    accountId,
-    name,
-    initial: initialOf(name),
-    // A DM invite's stripped state carries the inviter's `m.room.member`, so it resolves to
-    // their avatar like a joined DM. `is_direct` must decide: stripped state holds only the
-    // inviter's and our membership whatever the room size, so the SDK's member-count heuristic
-    // would return the inviter for every group-room and space invite.
-    avatarMxc: roomAvatarMxc(room, isDirect),
-    inviterName: inviter?.name || inviterId || 'Someone',
-    inviterId,
-    isSpace: room.isSpaceRoom(),
-    isDirect,
-  };
 }
 
 /**
