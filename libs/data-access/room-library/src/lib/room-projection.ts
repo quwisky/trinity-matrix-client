@@ -30,7 +30,7 @@ export function roomSummaryOf(accountId: string, info: RoomInfo): RoomSummary {
     activityTs: info.recencyStamp,
     favourite: info.favourite,
     lowPriority: info.lowPriority,
-    directUserId: info.directUserId ?? undefined,
+    ...(info.directUserId === null ? {} : { directUserId: info.directUserId }),
   };
 }
 

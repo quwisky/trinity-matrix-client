@@ -269,11 +269,9 @@ export class JsSdkRoomListEngine implements RoomListEngine {
     request: CreateRoomRequest,
   ): Observable<EngineResult<{ readonly roomId: string }>> {
     return this.command(accountId, (client) =>
-      createEncryptedRoom(client, {
-        name: request.name,
-        isPublic: request.isPublic,
-        ...(request.topic === null ? {} : { topic: request.topic }),
-      }).pipe(switchMap((roomId) => this.once(client, roomId, joined))),
+      createEncryptedRoom(client, request).pipe(
+        switchMap((roomId) => this.once(client, roomId, joined)),
+      ),
     );
   }
 

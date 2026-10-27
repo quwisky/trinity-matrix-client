@@ -20,5 +20,3 @@ export * from './lib/selected-room-library.service';
 export * from './lib/room-list-style';
 export * from './lib/rooms-in-common.service';
 export * from './lib/room-list-engine';
-export * from './lib/room-list-engine.token';
-export * from './lib/room-list-store';

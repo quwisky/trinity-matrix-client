@@ -5,12 +5,12 @@ import {
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util/matrix';
-import { type CreateRoomOptions } from '../room-library.service';
+import type { CreateRoomRequest } from '../room-list-engine';
 
 /** Shared active/exact Account implementation for encrypted Room creation. */
 export function createEncryptedRoom(
   client: MatrixClient,
-  options: CreateRoomOptions,
+  options: CreateRoomRequest,
 ): Observable<string> {
   return from(
     client.createRoom({
