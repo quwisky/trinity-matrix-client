@@ -7,13 +7,15 @@ import {
   RoomEvent,
   RoomStateEvent,
 } from 'matrix-js-sdk';
-import { firstValueFrom } from 'rxjs';
+import { NEVER, Subject, firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CONVERSATION_PIN_POLICY,
   ConversationPinsController,
 } from './conversation-pins.controller';
 import type { ConversationPinPolicy } from './conversation-pins';
+import type { PinnedEvents } from './conversation-content-engine';
+import { JsSdkConversationContentEngine } from './js-sdk/js-sdk-conversation-content-engine';
 import { fakeEmitter } from '@trinity/testing';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { liveSession } from './timeline.spec-harness';
@@ -504,6 +506,43 @@ describe('ConversationPinsController', () => {
     expect(fetchRoomEvent).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects an unpin before the pin list has loaded', async () => {
+    const { controller, sendStateEvent } = setup();
+    vi.spyOn(
+      TestBed.inject(JsSdkConversationContentEngine),
+      'pinnedEvents',
+    ).mockReturnValue(NEVER);
+    controller.attach(KEY);
+
+    await expect(firstValueFrom(controller.unpin('$two'))).resolves.toEqual({
+      kind: 'rejected',
+      operation: 'unpin',
+      failure: 'conversation-unavailable',
+      retryable: false,
+    });
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('closes a feed that errors and leaves an empty list', () => {
+    const { controller } = setup();
+    const feed = new Subject<PinnedEvents>();
+    vi.spyOn(
+      TestBed.inject(JsSdkConversationContentEngine),
+      'pinnedEvents',
+    ).mockReturnValue(feed);
+    controller.attach(KEY);
+    feed.next({ eventIds: ['$one'], allEventIds: ['$one'], entries: [] });
+    expect(controller.eventIds()).toEqual(['$one']);
+
+    feed.error(new Error('feed broke'));
+
+    expect(feed.observed).toBe(false);
+    expect(controller.eventIds()).toEqual([]);
+    expect(controller.messages()).toEqual([]);
+    expect(controller.isPinned('$one')).toBe(false);
+    expect(controller.resources().listenerCount).toBe(0);
+  });
+
   it('closes its feed when the account leaves and reopens it when it returns', () => {
     const { controller, room, client, session } = setup();
 
@@ -759,8 +798,9 @@ describe('ConversationPinsController', () => {
       ]);
       await flush();
 
-      // A fresh pinnedEvents subscription asks for every pin outside the timeline again.
-      expect(fetchRoomEvent).toHaveBeenCalledTimes(4);
+      // Only the failed pin is asked for again.
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(3);
+      expect(fetchRoomEvent).toHaveBeenLastCalledWith(KEY.roomId, '$old');
       expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
         ['$old', 'loaded'],
         ['$gone', 'unavailable'],

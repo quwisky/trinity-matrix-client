@@ -77,8 +77,8 @@ export class ConversationPinsController implements ConversationPins {
   private key: ConversationKey | null = null;
   private generation: number | null = null;
   private subscription: Subscription | null = null;
-  /** Rows shown before a retry, kept while the fresh subscription loads them again. */
-  private held = new Map<string, PinnedMessageView>();
+  /** Whether the feed has emitted since it opened, so `isPinned` can be trusted. */
+  private loaded = false;
 
   readonly eventIds = this.pinnedEventIds.asReadonly();
   readonly messages = this.pinnedMessages.asReadonly();
@@ -99,7 +99,7 @@ export class ConversationPinsController implements ConversationPins {
 
   resources(): { listenerCount: number; retainedBytes: number } {
     return {
-      // The js-sdk feed's room-state, timeline and decryption listeners.
+      // Approximate: the js-sdk feed's room-state, timeline and decryption listeners.
       listenerCount: this.subscription ? 3 : 0,
       retainedBytes:
         this.pinnedEventIds().length * 8 + this.pinnedMessages().length * 8,
@@ -112,13 +112,15 @@ export class ConversationPinsController implements ConversationPins {
     this.close();
   }
 
-  /** Re-fetch pins whose fetch failed; a fresh subscription starts with fresh fetches. */
+  /** Re-fetch pins whose fetch failed; `unavailable` pins stay final. */
   retryFailed(): void {
+    const key = this.key;
+    if (!key || !this.subscription) return;
     if (!this.pinnedMessages().some((view) => view.status === 'failed')) {
       return;
     }
-    this.held = new Map(this.pinnedMessages().map((view) => [view.id, view]));
-    this.subscribe();
+    // Replies at once and cannot fail in a way worth showing; the feed carries the result.
+    this.engine.retryFailedPins(key.accountId, key.roomId).subscribe();
   }
 
   isPinned(eventId: string): boolean {
@@ -138,6 +140,10 @@ export class ConversationPinsController implements ConversationPins {
   unpin(eventId: string): Observable<ConversationPinOutcome> {
     return defer(() => {
       if (!this.key) {
+        return of(this.rejected('unpin', 'conversation-unavailable', false));
+      }
+      // Before the list is known, "not pinned" would be a guess.
+      if (!this.loaded) {
         return of(this.rejected('unpin', 'conversation-unavailable', false));
       }
       if (!this.isPinned(eventId)) return of(this.applied('unpin'));
@@ -189,22 +195,21 @@ export class ConversationPinsController implements ConversationPins {
     const key = this.key;
     if (!key) return;
     this.subscription?.unsubscribe();
-    this.subscription = this.engine
+    this.loaded = false;
+    const subscription = this.engine
       .pinnedEvents(key.accountId, key.roomId)
       .subscribe({
         next: (pins) => this.show(key, pins),
         // Engine streams should not error; one that does leaves nothing stale on screen.
         error: () => this.close(),
       });
+    // A synchronous error has already closed the feed.
+    this.subscription = subscription.closed ? null : subscription;
   }
 
   private show(key: ConversationKey, pins: PinnedEvents): void {
-    const views = pins.entries.map((entry) => {
-      const held = this.held.get(entry.eventId);
-      if (entry.status === 'loading' && held) return held;
-      this.held.delete(entry.eventId);
-      return viewOf(entry);
-    });
+    const views = pins.entries.map(viewOf);
+    this.loaded = true;
     this.allEventIds = pins.allEventIds;
     this.pinnedEventIds.set(Object.freeze([...pins.eventIds]));
     this.pinnedMessages.set(Object.freeze(views));
@@ -214,7 +219,7 @@ export class ConversationPinsController implements ConversationPins {
   private close(): void {
     this.subscription?.unsubscribe();
     this.subscription = null;
-    this.held = new Map();
+    this.loaded = false;
     this.allEventIds = [];
     this.pinnedEventIds.set([]);
     this.pinnedMessages.set([]);

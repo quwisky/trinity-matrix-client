@@ -80,6 +80,15 @@ export interface ConversationContentEngine {
     eventId: string,
   ): Observable<EngineResult<null>>;
 
+  /**
+   * Re-fetches the pins whose fetch failed in every open `pinnedEvents` subscription for
+   * the room; replies at once, and the results arrive through those subscriptions.
+   */
+  retryFailedPins(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<null>>;
+
   /** `{ encrypted: true }`, without a request, when the room counts as encrypted. */
   searchMessages(
     accountId: string,

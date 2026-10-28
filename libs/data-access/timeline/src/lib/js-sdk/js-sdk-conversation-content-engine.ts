@@ -253,8 +253,8 @@ function repairAggregation(
 }
 
 /**
- * Emits once and completes when the room's live state holds the pinned-events state event
- * `eventId`, sync stops, or {@link SETTLE_TIMEOUT_MS} passes.
+ * Emits once and completes when sync applies the pinned-events state event `eventId` (or
+ * already has), sync stops, or {@link SETTLE_TIMEOUT_MS} passes.
  */
 function pinsApplied(
   client: MatrixClient,
@@ -266,25 +266,24 @@ function pinsApplied(
       subscriber.next();
       subscriber.complete();
     };
-    const check = (): void => {
-      const room = client.getRoom(roomId);
-      const id = room
-        ? liveRoomState(room)
-            ?.getStateEvents(EventType.RoomPinnedEvents, '')
-            ?.getId()
-        : undefined;
-      if (id === eventId) finish();
+    // Matches the applied event itself: a later pins change in the same sync can replace it.
+    const onState = (event: MatrixEvent): void => {
+      if (event.getId() === eventId) finish();
     };
     const onSync = (state: SyncState): void => {
       if (state === SyncState.Stopped) finish();
     };
     const timer = setTimeout(finish, SETTLE_TIMEOUT_MS);
-    client.on(RoomStateEvent.Events, check);
+    client.on(RoomStateEvent.Events, onState);
     client.on(ClientEvent.Sync, onSync);
-    check();
+    const room = client.getRoom(roomId);
+    const current = room
+      ? liveRoomState(room)?.getStateEvents(EventType.RoomPinnedEvents, '')
+      : undefined;
+    if (current) onState(current);
     return () => {
       clearTimeout(timer);
-      client.off(RoomStateEvent.Events, check);
+      client.off(RoomStateEvent.Events, onState);
       client.off(ClientEvent.Sync, onSync);
     };
   });
@@ -296,6 +295,8 @@ interface PinsFeed {
   readonly roomId: string;
   /** Re-reads the list and emits now, dropping a queued emission. */
   flush(): void;
+  /** Re-fetches every pin whose fetch failed. */
+  retryFailed(): void;
 }
 
 /** {@link ConversationContentEngine} over the live matrix-js-sdk clients of {@link JS_SDK_CLIENTS}. */
@@ -352,6 +353,16 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
     return this.writePins(accountId, roomId, (pinned) =>
       pinned.includes(eventId) ? pinned.filter((id) => id !== eventId) : null,
     );
+  }
+
+  retryFailedPins(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) => {
+      this.forPinFeeds(client, roomId, (feed) => feed.retryFailed());
+      return of(engineOk(null));
+    });
   }
 
   searchMessages(
@@ -542,14 +553,20 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
         ),
       ).pipe(
         switchMap(({ event_id }) => pinsApplied(client, roomId, event_id)),
-        tap(() => {
-          for (const feed of this.pinFeeds) {
-            if (feed.client === client && feed.roomId === roomId) feed.flush();
-          }
-        }),
+        tap(() => this.forPinFeeds(client, roomId, (feed) => feed.flush())),
         map(() => engineOk(null)),
       );
     });
+  }
+
+  private forPinFeeds(
+    client: MatrixClient,
+    roomId: string,
+    action: (feed: PinsFeed) => void,
+  ): void {
+    for (const feed of this.pinFeeds) {
+      if (feed.client === client && feed.roomId === roomId) action(feed);
+    }
   }
 
   /** Projects the room's pins into `subscriber` until the returned teardown runs. */
@@ -705,6 +722,7 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
         flusher.cancel();
         emit();
       },
+      retryFailed: () => retryFailed(0),
     };
 
     const onStateEvent = (event: MatrixEvent): void => {

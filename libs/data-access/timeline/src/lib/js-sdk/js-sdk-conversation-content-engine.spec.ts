@@ -94,7 +94,11 @@ function world(events: MatrixEvent[], options: Options = {}) {
         // The write reaches the room later, as /sync applies it.
         setTimeout(() => {
           pinned = { content, id: '$pins-1' };
-          const event = { getType: () => type, getRoomId: () => ROOM };
+          const event = {
+            getType: () => type,
+            getRoomId: () => ROOM,
+            getId: () => '$pins-1',
+          };
           room.emit(RoomStateEvent.Events, event);
           client.emit(RoomStateEvent.Events, event);
         });
@@ -209,6 +213,62 @@ describe('JsSdkConversationContentEngine', () => {
 
     expect(result).toEqual({ ok: true, value: null });
     expect(states.at(-1)?.eventIds).toEqual(['$a']);
+    sub.unsubscribe();
+  });
+
+  it('pin replies when a later pins change in the same sync replaces its own', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client } = world([message('$a', 'a')], { pinned: [] });
+      client.sendStateEvent.mockImplementationOnce(async () => {
+        setTimeout(() => {
+          for (const id of ['$mine', '$theirs']) {
+            client.emit(RoomStateEvent.Events, {
+              getType: () => EventType.RoomPinnedEvents,
+              getRoomId: () => ROOM,
+              getId: () => id,
+            });
+          }
+        });
+        return { event_id: '$mine' };
+      });
+      const engine = engineFor(client);
+      let result: unknown = null;
+      engine.pin(ME, ROOM, '$a').subscribe((r) => (result = r));
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(result).toEqual({ ok: true, value: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retryFailedPins re-fetches only the pins whose fetch failed', async () => {
+    const { client } = world([message('$a', 'a')], {
+      pinned: ['$a', '$failed', '$gone'],
+    });
+    client.fetchRoomEvent.mockImplementation(async (_room, id: string) => {
+      throw id === '$failed'
+        ? new Error('network down')
+        : Object.assign(new Error('Not found'), { httpStatus: 404 });
+    });
+    const engine = engineFor(client);
+    const states: PinnedEvents[] = [];
+    const sub = engine.pinnedEvents(ME, ROOM).subscribe((s) => states.push(s));
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.entries.map((e) => e.status)).toEqual([
+        'loaded',
+        'failed',
+        'unavailable',
+      ]),
+    );
+    client.fetchRoomEvent.mockClear();
+
+    const result = await firstValueFrom(engine.retryFailedPins(ME, ROOM));
+
+    expect(result).toEqual({ ok: true, value: null });
+    expect(client.fetchRoomEvent.mock.calls).toEqual([[ROOM, '$failed']]);
     sub.unsubscribe();
   });
 

@@ -187,6 +187,14 @@ export class FakeConversationContentEngine implements ConversationContentEngine 
     });
   }
 
+  /** Nothing is ever fetched, so no pin has failed. */
+  retryFailedPins(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, roomId, () => null);
+  }
+
   searchMessages(
     accountId: string,
     roomId: string,
