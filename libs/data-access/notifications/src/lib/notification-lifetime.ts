@@ -6,7 +6,7 @@ import {
   type Signal,
   untracked,
 } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type CapabilityContext,
@@ -37,7 +37,7 @@ const PREPARATION_BUDGET_MS = 10_000;
 export class NotificationLifetime {
   private readonly injector = inject(Injector);
   private readonly projections = inject(ProjectionRuntime);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly changes = new Subject<NotificationRuleHealth>();
   // Published as fact.generation; recover() filters obsolete generations. Not a latest-wins guard.
@@ -155,7 +155,7 @@ export class NotificationLifetime {
       };
       const apply = (): void => {
         if (applying) return;
-        const nextAccount = this.matrix.activeUserId();
+        const nextAccount = this.session.activeAccountId();
         const nextRequired = !!nextAccount && demanded();
         if (
           nextAccount === accountId &&
@@ -203,7 +203,7 @@ export class NotificationLifetime {
       };
 
       this.demandCurrent = () =>
-        accountId === this.matrix.activeUserId() && required && demanded();
+        accountId === this.session.activeAccountId() && required && demanded();
       this.retry = () => {
         if (!this.current || !this.demandCurrent?.()) return;
         const retained = this.current.ownership === 'retained';
@@ -216,7 +216,7 @@ export class NotificationLifetime {
       apply();
       const changes = effect(
         () => {
-          this.matrix.activeUserId();
+          this.session.activeAccountId();
           demanded();
           untracked(apply);
         },
