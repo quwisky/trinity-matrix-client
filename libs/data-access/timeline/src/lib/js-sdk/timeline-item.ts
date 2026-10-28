@@ -40,7 +40,7 @@ function plain<T>(value: T): T {
 }
 
 /** The transaction id of a local echo, or of its remote echo on the sending device. */
-function transactionIdOf(event: MatrixEvent): string | null {
+export function transactionIdOf(event: MatrixEvent): string | null {
   const txnId = read<unknown>(
     () => event.getTxnId?.() ?? event.getUnsigned?.()?.transaction_id,
     null,

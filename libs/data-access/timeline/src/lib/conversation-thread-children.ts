@@ -17,7 +17,10 @@ import type {
   ConversationThreadOutcome,
   ConversationThreads,
 } from './conversation-threads';
-import { isEditableMessage } from './message-presentation';
+import {
+  isCancellableMessage,
+  isEditableMessage,
+} from './message-presentation';
 import type { ThreadsService } from './threads.service';
 
 export interface ConversationThreadChildren {
@@ -70,6 +73,14 @@ export function createConversationThreadChildren(
   const applied = (
     operation: ConversationThreadOperation,
   ): ConversationThreadOutcome => ({ kind: 'applied', operation });
+  const rejectedMessage = (
+    failure: 'message-unavailable' | 'event-not-retryable',
+  ): ConversationMessageOutcome => ({
+    kind: 'rejected',
+    operation: 'cancel',
+    failure,
+    retryable: false,
+  });
 
   const threads: ConversationThreads = Object.freeze({
     summaries: options.projection.summaries,
@@ -218,13 +229,17 @@ export function createConversationThreadChildren(
             }),
           ),
         cancel: (messageId: string) =>
-          messageAction('cancel', () =>
-            options.messages.cancel({
-              key: options.key,
-              threadRootId: rootEventId,
-              messageId,
-            }),
-          ),
+          messageAction('cancel', () => {
+            const message = presented(messageId);
+            if (!message) return of(rejectedMessage('message-unavailable'));
+            return isCancellableMessage(message)
+              ? options.messages.cancel({
+                  key: options.key,
+                  threadRootId: rootEventId,
+                  messageId,
+                })
+              : of(rejectedMessage('event-not-retryable'));
+          }),
         release: () => {
           if (active?.handle === handle) release();
         },

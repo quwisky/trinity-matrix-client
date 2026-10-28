@@ -10,6 +10,7 @@ import {
   EngineRequestError,
   NOT_SIGNED_IN,
   plainEqual,
+  retryableFailure,
   unwrapEngineResult,
 } from './engine-result';
 import { describeMatrixRequestFailure } from './request-failure';
@@ -92,6 +93,11 @@ const SESSION_FAILURES = [
     code: 'unsupported',
     diagnostic: { kind: 'unexpected' },
   },
+  {
+    kind: 'network',
+    code: 'not-cancellable',
+    diagnostic: { kind: 'network' },
+  },
 ] satisfies EngineFailure[];
 
 describe('engineFailureMessage', () => {
@@ -116,6 +122,26 @@ describe('engineFailureMessage', () => {
         diagnostic: { kind: 'unexpected' },
       }),
     ).toBe('Message not found.');
+  });
+
+  it('not-forwardable reads "This message cannot be forwarded."', () => {
+    expect(
+      engineFailureMessage({
+        kind: 'unexpected',
+        code: 'not-forwardable',
+        diagnostic: { kind: 'unexpected' },
+      }),
+    ).toBe('This message cannot be forwarded.');
+  });
+
+  it('encryption-unavailable reads "Encryption is unavailable."', () => {
+    expect(
+      engineFailureMessage({
+        kind: 'unexpected',
+        code: 'encryption-unavailable',
+        diagnostic: { kind: 'unexpected' },
+      }),
+    ).toBe('Encryption is unavailable.');
   });
 
   it.each<[DiscoveryFailureReason, string]>([
@@ -318,5 +344,20 @@ describe('plainEqual', () => {
     [null, {}],
   ])('tells %j from %j', (a, b) => {
     expect(plainEqual(a, b)).toBe(false);
+  });
+});
+
+describe('retryableFailure', () => {
+  it.each([
+    ['network', true],
+    ['timeout', true],
+    ['rate-limit', true],
+    ['server', true],
+    ['authentication', false],
+    ['permission', false],
+    ['http', false],
+    ['unexpected', false],
+  ] as const)('retryableFailure follows kind: %s is %s', (kind, retryable) => {
+    expect(retryableFailure(requestFailed(kind))).toBe(retryable);
   });
 });

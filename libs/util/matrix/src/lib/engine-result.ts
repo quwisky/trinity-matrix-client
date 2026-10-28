@@ -51,6 +51,11 @@ export type EngineFailure = {
   | { readonly code: 'invite-blocked' }
   | { readonly code: 'unsupported' }
   | { readonly code: 'message-unavailable' }
+  /** The send may already have left the device. */
+  | { readonly code: 'not-cancellable' }
+  | { readonly code: 'not-forwardable' }
+  /** The room is encrypted and the account has no crypto to encrypt with. */
+  | { readonly code: 'encryption-unavailable' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -87,10 +92,27 @@ export function engineFailureMessage(failure: EngineFailure): string {
     case 'account-not-live':
     case 'invite-blocked':
     case 'unsupported':
+    case 'not-cancellable':
       return requestFailureMessage(failure.kind, failure.diagnostic);
     case 'message-unavailable':
       return 'Message not found.';
+    case 'not-forwardable':
+      return 'This message cannot be forwarded.';
+    case 'encryption-unavailable':
+      return 'Encryption is unavailable.';
   }
+}
+
+const RETRYABLE_KINDS: ReadonlySet<MatrixRequestFailureKind> = new Set([
+  'network',
+  'timeout',
+  'rate-limit',
+  'server',
+]);
+
+/** Whether trying the same request again later may succeed. */
+export function retryableFailure(failure: EngineFailure): boolean {
+  return RETRYABLE_KINDS.has(failure.kind);
 }
 
 /** Outcome of an engine command: expected failures are values, faults error the stream. */
