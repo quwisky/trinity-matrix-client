@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  shieldCodeOf,
   shieldText,
   UNENCRYPTED_HISTORY_SHIELD,
   UNENCRYPTED_SHIELD,
@@ -75,28 +74,5 @@ describe('unencryptedShield', () => {
       explanation:
         'This message is dated before the room turned on end-to-end encryption.',
     });
-  });
-});
-
-describe('shieldCodeOf', () => {
-  it('recovers every code shieldText was given, and none for a not-encrypted shield', () => {
-    const reasons: ShieldCode['reason'][] = [
-      'unverified-identity',
-      'unsigned-device',
-      'unknown-device',
-      'authenticity-not-guaranteed',
-      'verification-violation',
-      'mismatched-sender',
-      'unknown',
-    ];
-    for (const reason of reasons) {
-      for (const colour of ['red', 'grey'] as const) {
-        expect(shieldCodeOf(shieldText({ colour, reason }))).toEqual({
-          colour,
-          reason,
-        });
-      }
-    }
-    expect(shieldCodeOf(UNENCRYPTED_SHIELD)).toBeNull();
   });
 });

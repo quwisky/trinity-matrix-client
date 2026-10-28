@@ -71,7 +71,7 @@ import {
   participantsOf,
   threadSummaryRevision,
   threadUnread,
-} from './thread-summary';
+} from './js-sdk/thread-summary';
 import { replyMessageContent } from './js-sdk/outgoing-content';
 import {
   editMessageContent,
