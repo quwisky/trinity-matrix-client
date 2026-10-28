@@ -1,11 +1,24 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  EMPTY_SESSION,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import {
+  type EngineFailure,
+  engineFail,
+  engineFailureMessage,
+  engineOk,
+} from '@trinity/util/matrix';
+import { FakeNotificationEngine } from '../contract/fake-notification-engine';
+import type { HttpPusher } from './notification-engine';
+import { NOTIFICATION_ENGINE } from './notification-engine.token';
 import { DEFAULT_APP_ID, PUSH_CONFIG, type PushConfig } from './push-config';
 import { PushService } from './push.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 // Shared, mutable mock state — hoisted so the vi.mock factories can close over it.
 const h = vi.hoisted(() => {
@@ -52,38 +65,19 @@ const CONFIG: PushConfig = {
   appId: 'dev.trinityproject.trinity',
 };
 
-/**
- * A stateful fake of one account's client: an in-memory pusher store keyed by
- * (app_id, pushkey), so setPusher/removePusher/getPushers behave like a homeserver
- * rather than returning fixed values. This makes the readback verification exercise real
- * state — a pusher only reads back if it was actually set — while each method stays a spy
- * the tests can assert on or override with `mockRejectedValueOnce`.
- */
-function makeClient() {
-  const pushers: { app_id: string; pushkey: string; data: { url: string } }[] =
-    [];
+function status(accountId: string): SessionAccountStatus {
   return {
-    getDeviceId: vi.fn(() => 'DEV1'),
-    setPusher: vi.fn(async (p: (typeof pushers)[number]) => {
-      // The homeserver replaces this user's own pusher for the same (app_id, pushkey).
-      const i = pushers.findIndex(
-        (x) => x.app_id === p.app_id && x.pushkey === p.pushkey,
-      );
-      if (i >= 0) pushers[i] = p;
-      else pushers.push(p);
-      return {};
-    }),
-    removePusher: vi.fn(async (pushkey: string, appId: string) => {
-      const i = pushers.findIndex(
-        (x) => x.app_id === appId && x.pushkey === pushkey,
-      );
-      if (i >= 0) pushers.splice(i, 1);
-      return {};
-    }),
-    getPushers: vi.fn(async () => ({ pushers: [...pushers] })),
+    accountId,
+    generation: 1,
+    syncState: 'syncing',
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
   };
 }
 
+/** The engine's pusher store holds what was set, so the readback checks real state. */
 function setup(
   opts: {
     config?: PushConfig | null;
@@ -93,22 +87,25 @@ function setup(
 ) {
   const ids = opts.accounts ?? ['@me:hs'];
   const active = opts.active ?? ids[0];
-  const clients = new Map(ids.map((id) => [id, makeClient()]));
-  const accountIds = signal<readonly string[]>(ids);
-  const activeUserId = signal<string | null>(active);
+  const engine = new FakeNotificationEngine();
+  const snapshot = signal<SessionSnapshot>(EMPTY_SESSION);
+  const setAccounts = (accounts: readonly string[]): void => {
+    for (const id of accounts) engine.live.add(id);
+    snapshot.set({
+      ...EMPTY_SESSION,
+      activeAccountId: active,
+      accounts: accounts.map(status),
+    });
+  };
+  setAccounts(ids);
+  const setPusher = vi.spyOn(engine, 'setPusher');
+  const removePusher = vi.spyOn(engine, 'removePusher');
+  const pushers = vi.spyOn(engine, 'pushers');
   TestBed.configureTestingModule({
     providers: [
       PushService,
-      MockProvider(MatrixClientService, {
-        isInitialized: true,
-        accountIds: accountIds.asReadonly(),
-        activeUserId: activeUserId.asReadonly(),
-        all: () =>
-          [...clients.entries()].map(
-            ([userId, client]) => ({ userId, client }) as never,
-          ),
-        clientFor: (id: string) => (clients.get(id) as never) ?? null,
-      }),
+      { provide: NOTIFICATION_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: snapshot },
       {
         provide: PUSH_CONFIG,
         useValue: 'config' in opts ? opts.config : CONFIG,
@@ -120,14 +117,29 @@ function setup(
   const lifetime = svc
     .run()
     .subscribe((activation) => activations.push(activation));
+  /** The pushers set for `accountId`, in order. */
+  const sent = (accountId: string): HttpPusher[] =>
+    setPusher.mock.calls
+      .filter(([id]) => id === accountId)
+      .map(([, pusher]) => pusher);
   return {
     svc,
-    clients,
-    client: clients.get(active)!,
+    engine,
+    setPusher,
+    removePusher,
+    pushers,
+    sent,
+    setAccounts,
     activations,
     lifetime,
   };
 }
+
+const REFUSED: EngineFailure = {
+  kind: 'http',
+  code: 'request-failed',
+  diagnostic: { kind: 'http', httpStatus: 400, errcode: 'M_UNKNOWN' },
+};
 
 /** Let the fire-and-forget `setPusher` microtasks settle. */
 const flush = () => new Promise((r) => setTimeout(r));
@@ -144,7 +156,7 @@ describe('PushService', () => {
   });
 
   it('registers a Matrix pusher with the device token on iOS', async () => {
-    const { svc, client } = setup();
+    const { svc, sent } = setup();
 
     await firstValueFrom(svc.register());
     expect(h.push.requestPermissions).toHaveBeenCalled();
@@ -154,62 +166,57 @@ describe('PushService', () => {
     h.listeners['registration']({ value: 'TOKEN123' });
     await flush();
 
-    expect(client.setPusher).toHaveBeenCalledWith(
-      expect.objectContaining({
-        app_id: 'dev.trinityproject.trinity.ios',
+    // The engine registers it as kind http with append: true (its own spec and contract).
+    expect(sent('@me:hs')).toEqual([
+      {
+        appId: 'dev.trinityproject.trinity.ios',
         pushkey: 'TOKEN123',
-        kind: 'http',
-        // Must be true: all accounts share one device token, so `false` would make
-        // each account's registration delete the previous account's pusher when both
-        // live on the same homeserver (verified against Synapse).
-        append: true,
-        // Tagged with the owning account so the gateway can fan out per account.
+        appDisplayName: 'Trinity',
+        lang: 'en',
+        url: CONFIG.gatewayUrl,
+        format: 'event_id_only',
         data: {
-          url: CONFIG.gatewayUrl,
-          format: 'event_id_only',
+          // Tagged with the owning account so the gateway can fan out per account.
           trinity_user_id: '@me:hs',
           // Asks the gateway for a push the device renders itself (data-only on
           // Android, mutable-content on iOS).
           trinity_render: 'device',
         },
-      }),
-    );
+      },
+    ]);
   });
 
   it('registers a pusher on every account, each tagged by its user id', async () => {
-    const { clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
-    const svc = TestBed.inject(PushService);
+    const { svc, sent } = setup({ accounts: ['@me:hs', '@alt:hs'] });
 
     await firstValueFrom(svc.register());
     h.listeners['registration']({ value: 'TOKEN123' });
     await flush();
 
-    for (const [userId, client] of clients) {
-      expect(client.setPusher).toHaveBeenCalledWith(
+    for (const userId of ['@me:hs', '@alt:hs']) {
+      expect(sent(userId)).toEqual([
         expect.objectContaining({
           pushkey: 'TOKEN123',
           data: expect.objectContaining({ trinity_user_id: userId }),
         }),
-      );
+      ]);
     }
   });
 
   it('asks for device rendering on every account pusher', async () => {
-    const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+    const { svc, sent } = setup({ accounts: ['@me:hs', '@alt:hs'] });
 
     await firstValueFrom(svc.register());
     h.listeners['registration']({ value: 'TOKEN123' });
     await flush();
 
-    for (const client of clients.values()) {
-      expect(client.setPusher).toHaveBeenCalledWith(
+    for (const userId of ['@me:hs', '@alt:hs']) {
+      expect(sent(userId)).toEqual([
         expect.objectContaining({
-          data: expect.objectContaining({
-            format: 'event_id_only',
-            trinity_render: 'device',
-          }),
+          format: 'event_id_only',
+          data: expect.objectContaining({ trinity_render: 'device' }),
         }),
-      );
+      ]);
     }
   });
 
@@ -229,12 +236,12 @@ describe('PushService', () => {
     // Without Firebase the plugin's Android register() would crash the app.
     h.state.platform = 'android';
     h.state.canRegister = false;
-    const { svc, client } = setup();
+    const { svc, setPusher } = setup();
 
     await firstValueFrom(svc.register());
 
     expect(h.push.register).not.toHaveBeenCalled();
-    expect(client.setPusher).not.toHaveBeenCalled();
+    expect(setPusher).not.toHaveBeenCalled();
     expect(svc.runtimeStatus()).toEqual({
       status: 'unsupported',
       code: 'push-registration-unsupported',
@@ -244,13 +251,13 @@ describe('PushService', () => {
 
   it('no-ops on web (plugin unavailable)', async () => {
     h.state.platform = 'web';
-    const { svc, client } = setup();
+    const { svc, setPusher } = setup();
 
     await firstValueFrom(svc.register());
 
     expect(h.push.requestPermissions).not.toHaveBeenCalled();
     expect(h.push.register).not.toHaveBeenCalled();
-    expect(client.setPusher).not.toHaveBeenCalled();
+    expect(setPusher).not.toHaveBeenCalled();
   });
 
   it('no-ops on Electron even though isNativePlatform() is true', async () => {
@@ -312,8 +319,8 @@ describe('PushService', () => {
 
     it('keeps the background with the app on Android when the homeserver refuses the pusher', async () => {
       h.state.platform = 'android';
-      const { svc, client } = setup();
-      client.setPusher.mockRejectedValueOnce(new Error('server down'));
+      const { svc, setPusher } = setup();
+      setPusher.mockReturnValueOnce(of(engineFail(REFUSED)));
 
       await registerWithToken(svc);
 
@@ -369,14 +376,10 @@ describe('PushService', () => {
       expect(state.status === 'applied' && state.at).toBeGreaterThan(0);
     });
 
-    it('records the homeserver error instead of swallowing it, and still completes', async () => {
-      const { svc, client } = setup();
-      // A MatrixError carries the human text in `data.error` — the notify-path
-      // rejection a mistyped gateway produces.
-      client.setPusher.mockRejectedValueOnce({
-        message: 'MatrixError: [400]',
-        data: { error: "Config Error: 'url' must have a path of ..." },
-      });
+    it('records why the homeserver refused instead of swallowing it, and still completes', async () => {
+      const { svc, setPusher } = setup();
+      // The refusal a mistyped gateway URL produces.
+      setPusher.mockReturnValueOnce(of(engineFail(REFUSED)));
 
       // register() must resolve normally — the observable does not error out.
       await expect(firstValueFrom(svc.register())).resolves.toBeUndefined();
@@ -385,29 +388,32 @@ describe('PushService', () => {
 
       expect(svc.registration()).toEqual({
         status: 'error',
-        message: "Config Error: 'url' must have a path of ...",
+        message: engineFailureMessage(REFUSED),
       });
     });
 
-    it('falls back to a generic message when the rejection carries no text', async () => {
-      const { svc, client } = setup();
-      client.setPusher.mockRejectedValueOnce(undefined);
+    it('falls back to a generic message when the pusher call faults', async () => {
+      const { svc, setPusher } = setup();
+      setPusher.mockReturnValueOnce(throwError(() => new Error('fault')));
 
       await firstValueFrom(svc.register());
       h.listeners['registration']({ value: 'TOKEN123' });
       await flush();
 
-      expect(svc.registration()).toMatchObject({ status: 'error' });
+      expect(svc.registration()).toEqual({
+        status: 'error',
+        message: 'Could not reach the homeserver.',
+      });
     });
 
     it('reads the pushers back to confirm the homeserver kept them', async () => {
-      const { svc, client } = setup();
+      const { svc, pushers } = setup();
 
       await firstValueFrom(svc.register());
       h.listeners['registration']({ value: 'TOKEN123' });
       await flush();
 
-      expect(client.getPushers).toHaveBeenCalled();
+      expect(pushers).toHaveBeenCalledWith('@me:hs');
       expect(svc.registration().status).toBe('applied');
     });
 
@@ -415,21 +421,26 @@ describe('PushService', () => {
       // setPusher resolves (200) but the pusher is absent on readback — the accept-and-
       // drop a non-Synapse homeserver can exhibit. This is the case setPusher's own
       // return value cannot catch.
-      const { svc, client } = setup();
-      client.getPushers.mockResolvedValue({ pushers: [] });
+      const { svc, pushers } = setup();
+      pushers.mockReturnValue(of(engineOk([])));
 
       await firstValueFrom(svc.register());
       h.listeners['registration']({ value: 'TOKEN123' });
       await flush();
 
-      expect(svc.registration().status).toBe('error');
+      expect(svc.registration()).toEqual({
+        status: 'error',
+        message:
+          '@me:hs accepted the pusher but the homeserver did not keep it.',
+      });
+      expect(svc.runtimeStatus().code).toBe('push-pusher-verification-failed');
     });
 
     it('leaves the applied state standing when the readback itself fails', async () => {
       // A failed GET is inconclusive — the pusher was accepted, so a transient network
       // error on the readback must not report the registration as broken.
-      const { svc, client } = setup();
-      client.getPushers.mockRejectedValue(new Error('network'));
+      const { svc, pushers } = setup();
+      pushers.mockReturnValue(of(engineFail(REFUSED)));
 
       await firstValueFrom(svc.register());
       h.listeners['registration']({ value: 'TOKEN123' });
@@ -453,12 +464,12 @@ describe('PushService', () => {
 
   it('does not register a pusher when permission is denied', async () => {
     h.state.permission = 'denied';
-    const { svc, client } = setup();
+    const { svc, setPusher } = setup();
 
     await firstValueFrom(svc.register());
 
     expect(h.push.register).not.toHaveBeenCalled();
-    expect(client.setPusher).not.toHaveBeenCalled();
+    expect(setPusher).not.toHaveBeenCalled();
     // Push is the ONLY delivery path on mobile, so a denial has to be visible in
     // settings — "denied" and "never attempted" must not both read as idle.
     expect(svc.registration()).toMatchObject({ status: 'error' });
@@ -469,7 +480,7 @@ describe('PushService', () => {
       // FCM/APNs refuses the token AFTER the one-time OS flow has been marked as run.
       // Without releasing that guard the refusal is silent AND permanent: no pusher,
       // no notifications, and no way back for the lifetime of the process.
-      const { svc, client } = setup();
+      const { svc, setPusher } = setup();
       await firstValueFrom(svc.register());
 
       h.listeners['registrationError']({ error: 'SENDER_ID_MISMATCH' });
@@ -485,7 +496,7 @@ describe('PushService', () => {
 
       h.listeners['registration']({ value: 'TOKEN123' });
       await flush();
-      expect(client.setPusher).toHaveBeenCalled();
+      expect(setPusher).toHaveBeenCalled();
     });
 
     it('releases the one-time guard when register() itself rejects', async () => {
@@ -528,31 +539,30 @@ describe('PushService', () => {
   });
 
   it('re-applies pushers for all accounts on a repeat register (new account)', async () => {
-    const { svc, clients } = setup({ accounts: ['@me:hs'] });
+    const { svc, sent, setAccounts } = setup({ accounts: ['@me:hs'] });
 
     await firstValueFrom(svc.register());
     h.listeners['registration']({ value: 'TOKEN123' });
     await flush();
-    clients.get('@me:hs')!.setPusher.mockClear();
 
     // A second account joined; a repeat register() re-applies pushers for all.
-    clients.set('@alt:hs', makeClient());
+    setAccounts(['@me:hs', '@alt:hs']);
     await firstValueFrom(svc.register());
     await flush();
 
-    expect(clients.get('@me:hs')!.setPusher).toHaveBeenCalled();
-    expect(clients.get('@alt:hs')!.setPusher).toHaveBeenCalledWith(
+    expect(sent('@me:hs')).toHaveLength(2);
+    expect(sent('@alt:hs')).toEqual([
       expect.objectContaining({
         data: expect.objectContaining({ trinity_user_id: '@alt:hs' }),
       }),
-    );
+    ]);
   });
 
   it('falls back to the bundle id when the config omits appId', async () => {
     // `appId` is optional, so a config carrying only a gateway URL must still produce a
     // usable app id. Interpolating the missing field directly would send the literal
     // "undefined.ios" to the homeserver — a pusher no gateway could ever match.
-    const { svc, clients } = setup({
+    const { svc, sent } = setup({
       config: { gatewayUrl: 'https://push.example/_matrix/push/v1/notify' },
     });
 
@@ -560,30 +570,9 @@ describe('PushService', () => {
     h.listeners['registration']({ value: 'TOKEN123' });
     await flush();
 
-    expect(clients.get('@me:hs')!.setPusher).toHaveBeenCalledWith(
-      expect.objectContaining({ app_id: `${DEFAULT_APP_ID}.ios` }),
-    );
-    const [[sent]] = clients.get('@me:hs')!.setPusher.mock.calls;
-    expect(sent.app_id).not.toContain('undefined');
-  });
-
-  it('registers every account with append:true so co-hosted accounts survive', async () => {
-    // Regression guard. All accounts share one device token as the pushkey, and
-    // `append` is what tells the homeserver to leave *other users'* pushers for that
-    // key alone. With `append: false` two accounts on the same homeserver clobber
-    // each other and only the last one registered still receives push — confirmed
-    // against Synapse, where the earlier account's pusher count drops to 0.
-    const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
-
-    await firstValueFrom(svc.register());
-    h.listeners['registration']({ value: 'TOKEN123' });
-    await flush();
-
-    for (const userId of ['@me:hs', '@alt:hs']) {
-      expect(clients.get(userId)!.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({ append: true, pushkey: 'TOKEN123' }),
-      );
-    }
+    const [pusher] = sent('@me:hs');
+    expect(pusher.appId).toBe(`${DEFAULT_APP_ID}.ios`);
+    expect(pusher.appId).not.toContain('undefined');
   });
 
   it('opens the app when a notification is tapped', async () => {
@@ -640,7 +629,7 @@ describe('PushService', () => {
   });
 
   it('deletes every account pusher while session teardown owns the listeners', async () => {
-    const { svc, clients, lifetime } = setup({
+    const { svc, removePusher, engine, lifetime } = setup({
       accounts: ['@me:hs', '@alt:hs'],
     });
     await firstValueFrom(svc.register());
@@ -649,10 +638,13 @@ describe('PushService', () => {
 
     await firstValueFrom(svc.unregister());
 
-    for (const [, client] of clients) {
-      expect(client.removePusher).toHaveBeenCalledWith(
-        'TOKEN123',
-        'dev.trinityproject.trinity.ios',
+    expect(removePusher.mock.calls).toEqual([
+      ['@me:hs', 'dev.trinityproject.trinity.ios', 'TOKEN123'],
+      ['@alt:hs', 'dev.trinityproject.trinity.ios', 'TOKEN123'],
+    ]);
+    for (const userId of ['@me:hs', '@alt:hs']) {
+      expect(await firstValueFrom(engine.pushers(userId))).toEqual(
+        engineOk([]),
       );
     }
     expect(h.push.removeAllListeners).not.toHaveBeenCalled();
@@ -667,18 +659,16 @@ describe('PushService', () => {
   });
 
   it('deletes only one account pusher on a per-account unregister', async () => {
-    const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+    const { svc, removePusher } = setup({ accounts: ['@me:hs', '@alt:hs'] });
     await firstValueFrom(svc.register());
     h.listeners['registration']({ value: 'TOKEN123' });
     await flush();
 
     await firstValueFrom(svc.unregister('@alt:hs'));
 
-    expect(clients.get('@alt:hs')!.removePusher).toHaveBeenCalledWith(
-      'TOKEN123',
-      'dev.trinityproject.trinity.ios',
-    );
-    expect(clients.get('@me:hs')!.removePusher).not.toHaveBeenCalled();
+    expect(removePusher.mock.calls).toEqual([
+      ['@alt:hs', 'dev.trinityproject.trinity.ios', 'TOKEN123'],
+    ]);
     // A single-account teardown must NOT detach the shared listeners.
     expect(h.push.removeAllListeners).not.toHaveBeenCalled();
   });
