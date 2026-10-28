@@ -92,11 +92,13 @@ describe('FakeSessionEngine', () => {
     await firstValueFrom(engine.restorePersisted(oidc, 'background'));
 
     expect(await firstValueFrom(engine.accessToken(plain.userId))).toEqual({
+      homeserverUrl: 'https://matrix.example.org',
       accessToken: plain.accessToken,
       expiresAt: null,
       refreshable: false,
     });
     expect(await firstValueFrom(engine.accessToken(oidc.userId))).toEqual({
+      homeserverUrl: 'https://matrix.example.org',
       accessToken: oidc.accessToken,
       expiresAt: 99,
       refreshable: true,
@@ -113,6 +115,7 @@ describe('FakeSessionEngine', () => {
       .subscribe((t) => seen.push(t?.accessToken));
 
     engine.setToken(s.userId, {
+      homeserverUrl: s.baseUrl,
       accessToken: 'rotated',
       expiresAt: 1,
       refreshable: true,
