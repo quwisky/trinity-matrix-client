@@ -41,6 +41,7 @@ describe('FakeConversationContentEngine', () => {
 
     expect(states.at(-1)).toEqual({
       eventIds: ['$gone'],
+      allEventIds: ['$gone'],
       entries: [
         expect.objectContaining({ eventId: '$gone', status: 'unavailable' }),
       ],
@@ -58,6 +59,7 @@ describe('FakeConversationContentEngine', () => {
       engine.pinnedEvents(engine.alice, roomId),
     );
     expect(state.eventIds).toEqual([]);
+    expect(engine.pinnedList(roomId)).toEqual([42]);
   });
 
   it('failNext fails only the next command', async () => {

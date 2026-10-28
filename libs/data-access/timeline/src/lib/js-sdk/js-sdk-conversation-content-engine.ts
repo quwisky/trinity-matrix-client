@@ -72,7 +72,7 @@ const MAX_EDIT_PAGES = 10;
 /** How long a pin write waits for `/sync` to apply it before replying anyway. */
 const SETTLE_TIMEOUT_MS = 15_000;
 
-const NO_PINS: PinnedEvents = { eventIds: [], entries: [] };
+const NO_PINS: PinnedEvents = { eventIds: [], allEventIds: [], entries: [] };
 
 function localFailure(
   code: 'account-not-live' | 'message-unavailable',
@@ -313,7 +313,11 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
         const onRoom = (room: Room): void => {
           if (room.roomId !== roomId || detach) return;
           client.off(ClientEvent.Room, onRoom);
-          detach = this.attachPins(client, room, subscriber);
+          try {
+            detach = this.attachPins(client, room, subscriber);
+          } catch (error) {
+            subscriber.error(error);
+          }
         };
         const room = client.getRoom(roomId);
         if (room) {
@@ -556,6 +560,7 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
   ): () => void {
     const roomId = room.roomId;
     const encryption = new RoomEncryptionFlags();
+    let allEventIds: readonly string[] = [];
     let eventIds: readonly string[] = [];
     /** Pins fetched because the loaded timeline lacks them. */
     let fetched = new Map<string, PinFetch>();
@@ -570,9 +575,10 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
     /** Re-reads the list; true when it changed, which drops every fetch for the old one. */
     const readIds = (): boolean => {
       // Clients append, so the newest pins are the last ones.
-      const next = rawPinned(room)
-        .filter((id): id is string => typeof id === 'string')
-        .slice(-MAX_PINS);
+      allEventIds = rawPinned(room).filter(
+        (id): id is string => typeof id === 'string',
+      );
+      const next = allEventIds.slice(-MAX_PINS);
       const changed =
         next.length !== eventIds.length ||
         next.some((id, i) => id !== eventIds[i]);
@@ -682,7 +688,11 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
           profiles: profilesOf(room, [sender]),
         });
       }
-      return { eventIds: [...eventIds], entries };
+      return {
+        eventIds: [...eventIds],
+        allEventIds: [...allEventIds],
+        entries,
+      };
     };
 
     const emit = (): void => subscriber.next(project());
@@ -704,7 +714,9 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
         type === EventType.RoomPowerLevels
       ) {
         if (!readIds()) retryFailed(0);
-        flusher.schedule();
+        // At once, as room state is the authority the pin list follows.
+        flusher.cancel();
+        emit();
       }
     };
     const onTimeline = (): void => {
@@ -725,10 +737,7 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
       if (encrypted && !closed) flusher.schedule();
     });
 
-    readIds();
-    emit();
-
-    return () => {
+    const detach = (): void => {
       closed = true;
       generation++;
       flusher.cancel();
@@ -737,5 +746,13 @@ export class JsSdkConversationContentEngine implements ConversationContentEngine
       room.off(RoomEvent.Timeline, onTimeline);
       client.off(MatrixEventEvent.Decrypted, onDecrypted);
     };
+    try {
+      readIds();
+      emit();
+    } catch (error) {
+      detach();
+      throw error;
+    }
+    return detach;
   }
 }

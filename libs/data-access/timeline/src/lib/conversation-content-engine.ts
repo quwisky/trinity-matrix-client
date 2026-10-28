@@ -22,6 +22,8 @@ export interface PinnedEntry {
 export interface PinnedEvents {
   /** The newest pinned ids, oldest first; non-string entries of the room's list are left out. */
   readonly eventIds: readonly string[];
+  /** Every string id of the room's list, oldest first, older ones beyond `eventIds` included. */
+  readonly allEventIds: readonly string[];
   /** One per id, in order, except redacted events. */
   readonly entries: readonly PinnedEntry[];
 }

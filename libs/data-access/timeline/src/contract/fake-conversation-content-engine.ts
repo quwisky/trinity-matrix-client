@@ -49,7 +49,7 @@ interface FakeRoom {
 }
 
 const MAX_PINS = 100;
-const NO_PINS: PinnedEvents = { eventIds: [], entries: [] };
+const NO_PINS: PinnedEvents = { eventIds: [], allEventIds: [], entries: [] };
 
 function failure(code: FailNextCode): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
@@ -143,6 +143,11 @@ export class FakeConversationContentEngine implements ConversationContentEngine 
   setPinned(roomId: string, pinned: readonly unknown[]): void {
     this.room(roomId).pinned = pinned;
     this.changes$.next(roomId);
+  }
+
+  /** The room's raw pinned list, as a write left it. */
+  pinnedList(roomId: string): readonly unknown[] {
+    return this.room(roomId).pinned;
   }
 
   pinnedEvents(accountId: string, roomId: string): Observable<PinnedEvents> {
@@ -294,9 +299,10 @@ export class FakeConversationContentEngine implements ConversationContentEngine 
     if (accountId !== this.alice || !room?.members.has(accountId)) {
       return NO_PINS;
     }
-    const eventIds = room.pinned
-      .filter((id): id is string => typeof id === 'string')
-      .slice(-MAX_PINS);
+    const allEventIds = room.pinned.filter(
+      (id): id is string => typeof id === 'string',
+    );
+    const eventIds = allEventIds.slice(-MAX_PINS);
     const entries: PinnedEntry[] = [];
     for (const eventId of eventIds) {
       const event = room.events.find((e) => e.eventId === eventId);
@@ -325,7 +331,7 @@ export class FakeConversationContentEngine implements ConversationContentEngine 
             },
       );
     }
-    return { eventIds, entries };
+    return { eventIds, allEventIds, entries };
   }
 
   private send(

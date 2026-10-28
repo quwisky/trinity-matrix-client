@@ -1,22 +1,15 @@
-import { Injectable } from '@angular/core';
-import {
-  SearchOrderBy,
-  type ISearchRequestBody,
-  type ISearchResponse,
-  type MatrixClient,
-  type MatrixEvent,
-} from 'matrix-js-sdk';
-import { Observable, catchError, defer, from, map, of } from 'rxjs';
-import {
-  RoomEncryptionFlags,
-  displayContent,
-  isRoomEncrypted,
-} from '@trinity/util/matrix';
-import { isDisplayableMessage } from './js-sdk/event-reads';
+import { Injectable, inject } from '@angular/core';
+import { Observable, defer, map, of } from 'rxjs';
+import { unwrapEngineResult } from '@trinity/util/matrix';
+import type { SearchHit } from './conversation-content-engine';
+import { CONVERSATION_CONTENT_ENGINE } from './conversation-content-engine.token';
 import type { MessageShield } from './message-presentation';
-import { unencryptedShieldFor } from './js-sdk/shields';
 import type { ConversationKey } from './conversation-messages';
-import { scrollbackLive } from './js-sdk/live-scrollback';
+import { unencryptedShield } from './shield-presentation';
+import type { EventTimelineItem } from './timeline-engine';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
+import { profileName } from './timeline-item-presentation';
+import { TimelineService } from './timeline.service';
 
 /** A single message that matched an in-conversation search. */
 export interface MessageHit {
@@ -50,27 +43,24 @@ export interface ServerMessageSearch {
 }
 
 /**
- * Conversation-owned message search. Loaded E2EE-safe matching is synchronous over
- * decrypted events; network search and scrollback are cold, cancellable Observables.
+ * Conversation-owned message search. Loaded E2EE-safe matching is synchronous over the main
+ * timeline's items; network search and scrollback are cold, cancellable Observables.
  */
 @Injectable()
 export class ConversationSearchController {
+  private readonly timeline = inject(TimelineService);
+  private readonly timelineEngine = inject(TIMELINE_ENGINE);
+  private readonly content = inject(CONVERSATION_CONTENT_ENGINE);
   private key: ConversationKey | null = null;
-  private client: MatrixClient | null = null;
-  private encryption = new RoomEncryptionFlags();
 
   /** Bind this controller to one immutable Conversation child. */
-  attach(key: ConversationKey, client: MatrixClient): void {
+  attach(key: ConversationKey): void {
     this.key = Object.freeze({ ...key });
-    this.client = client;
-    this.encryption = new RoomEncryptionFlags();
-    void this.encryption.refresh(client.getCrypto?.(), key.roomId);
   }
 
   /** Retired handles fail closed rather than following the Active Account. */
   release(): void {
     this.key = null;
-    this.client = null;
   }
 
   searchLoaded(query: string): LoadedMessageSearch {
@@ -80,44 +70,35 @@ export class ConversationSearchController {
       encrypted: false,
       serverAvailable: true,
     };
-    const context = this.context();
-    if (!context) {
+    const key = this.key;
+    const store = this.timeline.mainStore();
+    const room = store?.room();
+    if (!key || !store || !room) {
       return empty;
     }
-    const { key, client } = context;
-    const room = client.getRoom(key.roomId);
-    if (!room) {
-      return empty;
-    }
-    const encrypted = room.hasEncryptionStateEvent();
+    const encrypted = room.hasEncryptionStateEvent;
     const qLower = query.trim().toLowerCase();
     const hits: MessageHit[] = [];
-    const unencryptedShield = unencryptedShieldFor(
-      room,
-      this.encryption.isEncrypted(room),
-    );
     let scanned = 0;
-    for (const event of room.getLiveTimeline().getEvents()) {
-      if (!isDisplayableMessage(event) || event.isDecryptionFailure()) {
-        continue;
-      }
+    for (const item of store.items()) {
+      const body = item.kind === 'event' ? searchableBody(item) : null;
+      // Local echoes are skipped: a hit must name an event to jump to.
+      if (body === null || item.kind !== 'event' || !item.eventId) continue;
       scanned++;
-      const body = readBody(event);
       if (!qLower || !body.toLowerCase().includes(qLower)) {
         continue;
       }
-      const sender = event.getSender() ?? '';
-      const member = room.getMember(sender);
+      const profile = item.profiles[item.sender];
       hits.push({
-        eventId: event.getId() ?? '',
+        eventId: item.eventId,
         roomId: key.roomId,
-        sender,
-        senderName: member?.name ?? sender,
-        senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
+        sender: item.sender,
+        senderName: profileName(item.sender, profile),
+        senderAvatarMxc: profile?.avatarMxc ?? null,
         body,
-        ts: event.getTs(),
+        ts: item.timestamp,
         snippet: buildSnippet(body, qLower),
-        shield: unencryptedShield(event),
+        shield: unencryptedShield(item.unencryptedMark),
       });
     }
     hits.sort((a, b) => b.ts - a.ts);
@@ -129,104 +110,88 @@ export class ConversationSearchController {
     nextBatch?: string,
   ): Observable<ServerMessageSearch> {
     const empty: ServerMessageSearch = { hits: [], count: 0, nextBatch: null };
-    const trimmed = term.trim();
-    return defer(async () => {
-      const context = this.context();
-      if (!context || !trimmed) {
-        return empty;
+    return defer(() => {
+      const key = this.key;
+      const trimmed = term.trim();
+      if (!key || !trimmed) {
+        return of(empty);
       }
-      const { key, client } = context;
-      const room = client.getRoom(key.roomId);
-      if (!room) {
-        return empty;
-      }
-      if (await isRoomEncrypted(room, client.getCrypto?.(), this.encryption)) {
-        return { ...empty, encrypted: true };
-      }
-      const body: ISearchRequestBody = {
-        search_categories: {
-          room_events: {
-            search_term: trimmed,
-            keys: ['content.body'],
-            filter: { rooms: [key.roomId] },
-            order_by: SearchOrderBy.Recent,
-            event_context: {
-              before_limit: 0,
-              after_limit: 0,
-              include_profile: true,
-            },
-          },
-        },
-      };
-      const response = await client.search(
-        nextBatch ? { body, next_batch: nextBatch } : { body },
-      );
-      return mapServerResponse(key.roomId, trimmed, response);
-    }).pipe(catchError(() => of(empty)));
+      return this.content
+        .searchMessages(key.accountId, key.roomId, trimmed, nextBatch ?? null)
+        .pipe(
+          map((result): ServerMessageSearch => {
+            // Any failure, an unknown room included, reads as no results.
+            if (!result.ok) return empty;
+            const page = result.value;
+            if ('encrypted' in page) return { ...empty, encrypted: true };
+            const qLower = trimmed.toLowerCase();
+            return {
+              hits: page.hits.map((hit) => serverHit(key.roomId, hit, qLower)),
+              count: page.count,
+              nextBatch: page.nextBatch,
+            };
+          }),
+        );
+    });
   }
 
   loadOlder(count = 50): Observable<number> {
     return defer(() => {
-      const context = this.context();
-      if (!context) {
+      const key = this.key;
+      const store = this.timeline.mainStore();
+      if (!key || !store?.available()) {
         return of(0);
       }
-      const { key, client } = context;
-      const room = client.getRoom(key.roomId);
-      if (!room) {
-        return of(0);
-      }
-      return from(scrollbackLive(client, room, count)).pipe(
-        map(() => room.getLiveTimeline().getEvents().length),
-      );
+      return this.timelineEngine
+        .paginateBackwards(key.accountId, key.roomId, { kind: 'live' }, count)
+        .pipe(
+          unwrapEngineResult(),
+          map(
+            () => store.items().filter((item) => item.kind === 'event').length,
+          ),
+        );
     });
   }
+}
 
-  private context(): {
-    readonly key: ConversationKey;
-    readonly client: MatrixClient;
-  } | null {
-    return this.key && this.client
-      ? { key: this.key, client: this.client }
-      : null;
+/**
+ * The `body` a displayable message's content carries, or null for an item the old event
+ * filter skipped: state, an undecryptable message.
+ */
+function searchableBody(item: EventTimelineItem): string | null {
+  const content = item.content;
+  switch (content.kind) {
+    case 'message':
+    case 'unsupported':
+      return content.body;
+    case 'media':
+      return content.caption ?? content.body;
+    case 'sticker':
+      return content.body ?? '';
+    case 'location':
+      return content.label;
+    case 'poll':
+    case 'redacted':
+      return '';
+    case 'unableToDecrypt':
+    case 'state':
+      return null;
   }
 }
 
-function readBody(event: MatrixEvent): string {
-  const body = displayContent(event)['body'];
-  return typeof body === 'string' ? body : '';
-}
-
-function mapServerResponse(
-  roomId: string,
-  term: string,
-  response: ISearchResponse,
-): ServerMessageSearch {
-  const category = response.search_categories.room_events;
-  const qLower = term.toLowerCase();
-  const hits = (category.results ?? []).map<MessageHit>((entry) => {
-    const event = entry.result;
-    const sender = event.sender;
-    const profile = entry.context?.profile_info?.[sender];
-    const raw = event.content['body'];
-    const body = typeof raw === 'string' ? raw : '';
-    return {
-      eventId: event.event_id,
-      roomId,
-      sender,
-      senderName: profile?.displayname ?? sender,
-      senderAvatarMxc: profile?.avatar_url ?? null,
-      body,
-      ts: event.origin_server_ts,
-      snippet: buildSnippet(body, qLower),
-      // Server search runs only for a room that is not encrypted.
-      shield: null,
-    };
-  });
+function serverHit(roomId: string, hit: SearchHit, qLower: string): MessageHit {
+  const profile = hit.profiles[hit.sender];
   return {
-    hits,
-    count: category.count ?? hits.length,
-    nextBatch: category.next_batch ?? null,
+    eventId: hit.eventId,
+    roomId,
+    sender: hit.sender,
+    senderName: profile?.displayName ?? hit.sender,
+    senderAvatarMxc: profile?.avatarMxc ?? null,
+    body: hit.body,
+    ts: hit.ts,
+    snippet: buildSnippet(hit.body, qLower),
+    // Server search runs only for a room that is not encrypted.
+    shield: null,
   };
 }
 

@@ -1,10 +1,12 @@
 import { EventEmitter } from 'events';
 import { TestBed } from '@angular/core/testing';
 import {
+  ClientEvent,
   EventType,
   MatrixError,
   MatrixEvent,
   RoomStateEvent,
+  SyncState,
 } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -147,6 +149,7 @@ describe('JsSdkConversationContentEngine', () => {
     expect(states).toEqual([
       {
         eventIds: ['$a'],
+        allEventIds: ['$a'],
         entries: [
           {
             eventId: '$a',
@@ -209,6 +212,56 @@ describe('JsSdkConversationContentEngine', () => {
     sub.unsubscribe();
   });
 
+  it('pin settles when sync stops before the state event arrives', async () => {
+    const { client } = world([message('$a', 'a')], { pinned: [] });
+    client.sendStateEvent.mockResolvedValueOnce({ event_id: '$never' });
+    const engine = engineFor(client);
+
+    const reply = firstValueFrom(engine.pin(ME, ROOM, '$a'));
+    await vi.waitFor(() =>
+      expect(client.listenerCount(ClientEvent.Sync)).toBe(1),
+    );
+    client.emit(ClientEvent.Sync, SyncState.Stopped);
+
+    await expect(reply).resolves.toEqual({ ok: true, value: null });
+    expect(client.eventNames()).toEqual([]);
+  });
+
+  it('pin settles after 15 seconds without the state event', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client } = world([message('$a', 'a')], { pinned: [] });
+      client.sendStateEvent.mockResolvedValueOnce({ event_id: '$never' });
+      const engine = engineFor(client);
+      let result: unknown = null;
+      engine.pin(ME, ROOM, '$a').subscribe((r) => (result = r));
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(result).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(result).toEqual({ ok: true, value: null });
+      expect(client.eventNames()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('pinnedEvents removes its listeners when reading the list fails', () => {
+    const { room, client } = world([], { pinned: ['$a'] });
+    room.getLiveTimeline = () => {
+      throw new Error('unreadable');
+    };
+    const engine = engineFor(client);
+    const error = vi.fn();
+
+    engine.pinnedEvents(ME, ROOM).subscribe({ error });
+
+    expect(error).toHaveBeenCalledWith(new Error('unreadable'));
+    expect(room.eventNames()).toEqual([]);
+    expect(client.eventNames()).toEqual([]);
+  });
+
   it('unpin writes non-string entries back', async () => {
     const { client } = world([], { pinned: [7, '$a', { odd: true }, '$b'] });
     const engine = engineFor(client);
@@ -243,6 +296,20 @@ describe('JsSdkConversationContentEngine', () => {
     );
 
     expect(result).toEqual({ ok: true, value: { encrypted: true } });
+    expect(client.search).not.toHaveBeenCalled();
+  });
+
+  it('searchMessages refuses a room the crypto store has as encrypted without the state event', async () => {
+    const crypto = { isEncryptionEnabledInRoom: vi.fn(async () => true) };
+    const { client } = world([], { crypto });
+    const engine = engineFor(client);
+
+    const result = await firstValueFrom(
+      engine.searchMessages(ME, ROOM, 'hello', null),
+    );
+
+    expect(result).toEqual({ ok: true, value: { encrypted: true } });
+    expect(crypto.isEncryptionEnabledInRoom).toHaveBeenCalledWith(ROOM);
     expect(client.search).not.toHaveBeenCalled();
   });
 
@@ -367,6 +434,50 @@ describe('JsSdkConversationContentEngine', () => {
     expect(Object.keys(revision.profiles).sort()).toEqual([BOB, '@carol:hs']);
   });
 
+  it('editHistory of a deleted message lists nothing', async () => {
+    const original = new MatrixEvent({
+      event_id: '$orig',
+      room_id: ROOM,
+      sender: BOB,
+      type: EventType.RoomMessage,
+      origin_server_ts: 1_000,
+      content: {},
+      unsigned: { redacted_because: { event_id: '$x' } as never },
+    });
+    const { client } = world([original]);
+    client.relations.mockResolvedValue({
+      originalEvent: original,
+      events: [edit('$e1', '$orig', 'two', 2_000)],
+      nextBatch: null,
+    });
+    const engine = engineFor(client);
+
+    const result = await firstValueFrom(
+      engine.editHistory(ME, ROOM, '$orig', { maxPages: 10 }),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: { revisions: [], truncated: false },
+    });
+  });
+
+  it('editHistory of a message nobody can load is message-unavailable', async () => {
+    const { client } = world([]);
+    client.relations.mockResolvedValue({
+      originalEvent: null,
+      events: [],
+      nextBatch: null,
+    });
+    const engine = engineFor(client);
+
+    const result = await firstValueFrom(
+      engine.editHistory(ME, ROOM, '$orig', { maxPages: 10 }),
+    );
+
+    expect(!result.ok && result.failure.code).toBe('message-unavailable');
+  });
+
   it('linkPreview maps M_UNRECOGNIZED to unsupported', async () => {
     const { client } = world([]);
     client.getUrlPreview.mockRejectedValue(
@@ -383,6 +494,19 @@ describe('JsSdkConversationContentEngine', () => {
 
   it('linkPreview onlyIfUnencrypted without a crypto store makes no request', async () => {
     const { client } = world([]);
+    const engine = engineFor(client);
+
+    const result = await firstValueFrom(
+      engine.linkPreview(ME, 'https://x.org', { onlyIfUnencrypted: ROOM }),
+    );
+
+    expect(result).toEqual({ ok: true, value: null });
+    expect(client.getUrlPreview).not.toHaveBeenCalled();
+  });
+
+  it('linkPreview onlyIfUnencrypted refuses a room the crypto store has as encrypted', async () => {
+    const crypto = { isEncryptionEnabledInRoom: async () => true };
+    const { client } = world([], { crypto });
     const engine = engineFor(client);
 
     const result = await firstValueFrom(

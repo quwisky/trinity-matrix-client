@@ -1,14 +1,24 @@
+import { TestBed } from '@angular/core/testing';
 import {
   EventType,
   MatrixEvent,
   RelationType,
   SearchOrderBy,
-  type MatrixClient,
 } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationSearchController } from './conversation-search.service';
 import { scrollbackLive } from './js-sdk/live-scrollback';
+import { TimelineService } from './timeline.service';
+import {
+  fakeClient,
+  fakeEdit,
+  fakeEvent,
+  fakeRoom,
+  matrixProvider,
+  privacyProvider,
+  ROOM_KEY,
+} from './timeline.spec-harness';
 
 // Paging itself is covered against the real SDK in live-scrollback.spec.
 vi.mock('./js-sdk/live-scrollback', () => ({ scrollbackLive: vi.fn() }));
@@ -21,83 +31,91 @@ function message(over: {
   decryptionFailure?: boolean;
   encrypted?: boolean;
   /** An edit attached to the message: its sender and the text it would show. */
-  editedBy?: { sender: string; body: string };
+  editedBy?: { sender: string };
 }) {
-  const edit = over.editedBy && {
-    getSender: () => over.editedBy?.sender,
-    getType: () => EventType.RoomMessage,
-    getRelation: () => ({ rel_type: RelationType.Replace, event_id: over.id }),
-    getOriginalContent: () => ({
-      'm.new_content': { body: over.editedBy?.body },
-    }),
-    isEncrypted: () => false,
-    getClearContent: () => null,
-  };
-  return {
-    getId: () => over.id,
-    getType: () => EventType.RoomMessage,
-    isState: () => false,
-    isEncrypted: () => over.encrypted ?? false,
-    status: null,
-    getSender: () => '@alice:hs',
-    getTs: () => over.ts ?? 0,
-    // As the SDK does: an attached edit's m.new_content, checked or not.
-    getContent: () =>
-      edit ? edit.getOriginalContent()['m.new_content'] : { body: over.body },
-    getOriginalContent: () => ({ body: over.body }),
-    isRedacted: () => false,
-    replacingEvent: () => edit ?? null,
-    isDecryptionFailure: () => over.decryptionFailure ?? false,
-    isRelation: (relation: string) =>
-      over.replace === true && relation === RelationType.Replace,
-  };
-}
-
-function room(options: {
-  encrypted?: boolean;
-  events?: ReturnType<typeof message>[];
-}) {
-  return {
-    roomId: '!r:hs',
-    hasEncryptionStateEvent: () => options.encrypted ?? false,
-    getLiveTimeline: () => ({
-      getEvents: () => options.events ?? [],
-      getState: () => undefined,
-    }),
-    getMember: () => ({ name: 'Alice', getMxcAvatarUrl: () => null }),
-  };
+  return fakeEvent({
+    id: over.id,
+    sender: '@alice:hs',
+    body: over.body,
+    ts: over.ts,
+    editRelation: over.replace,
+    decryptFail: over.decryptionFailure,
+    encrypted: over.encrypted,
+    replacement: over.editedBy && {
+      ...fakeEdit(over.id),
+      getSender: () => over.editedBy?.sender,
+    },
+  });
 }
 
 describe('ConversationSearchController', () => {
   let service: ConversationSearchController;
-  const getRoom = vi.fn();
   const search = vi.fn();
   const isEncryptionEnabledInRoom = vi.fn();
   const getCrypto = vi.fn();
+  let client: ReturnType<typeof fakeClient> & Record<string, unknown>;
+
+  /** Opens the room's main timeline over `events`, then attaches the controller to it. */
+  function open(
+    events: readonly unknown[] = [],
+    options: { encrypted?: boolean } = {},
+  ) {
+    const room = fakeRoom(events as never, {}, options.encrypted ?? false);
+    // No room state: the unencrypted mark then judges every unencrypted event.
+    const live = room.getLiveTimeline();
+    room.getLiveTimeline = () => ({
+      ...live,
+      getState: () => undefined as never,
+    });
+    client = { ...fakeClient(room, []), search, getCrypto };
+    TestBed.configureTestingModule({
+      providers: [
+        privacyProvider(true),
+        ...matrixProvider(client),
+        TimelineService,
+        ConversationSearchController,
+      ],
+    });
+    TestBed.inject(TimelineService).open(ROOM_KEY);
+    service = TestBed.inject(ConversationSearchController);
+    service.attach(ROOM_KEY);
+    return room;
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     isEncryptionEnabledInRoom.mockResolvedValue(false);
     getCrypto.mockReturnValue({ isEncryptionEnabledInRoom });
-    service = new ConversationSearchController();
-    service.attach({ accountId: '@me:hs', roomId: '!r:hs' }, {
-      getRoom,
-      search,
-      getCrypto,
-    } as unknown as MatrixClient);
+  });
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('searchLoaded finds a message without a request', () => {
+    open([message({ id: '$a', body: 'find me' })]);
+
+    expect(service.searchLoaded('find').hits).toMatchObject([
+      {
+        eventId: '$a',
+        roomId: ROOM_KEY.roomId,
+        sender: '@alice:hs',
+        senderName: 'Alice',
+        senderAvatarMxc: null,
+        body: 'find me',
+        snippet: 'find me',
+        shield: null,
+      },
+    ]);
+    expect(search).not.toHaveBeenCalled();
+    expect(scrollbackLive).not.toHaveBeenCalled();
   });
 
   it('searches only displayable decrypted events and orders by recency', () => {
-    getRoom.mockReturnValue(
-      room({
-        events: [
-          message({ id: '$old', body: 'hello old', ts: 1 }),
-          message({ id: '$new', body: 'HELLO new', ts: 2 }),
-          message({ id: '$edit', body: 'hello edit', replace: true }),
-          message({ id: '$failed', body: 'hello', decryptionFailure: true }),
-        ],
-      }),
-    );
+    open([
+      message({ id: '$old', body: 'hello old', ts: 1 }),
+      message({ id: '$new', body: 'HELLO new', ts: 2 }),
+      message({ id: '$edit', body: 'hello edit', replace: true }),
+      message({ id: '$failed', body: 'hello', decryptionFailure: true }),
+    ]);
 
     const result = service.searchLoaded('hello');
 
@@ -106,19 +124,17 @@ describe('ConversationSearchController', () => {
   });
 
   it('marks a hit that arrived unencrypted in an encrypted room', () => {
-    getRoom.mockReturnValue(
-      room({
-        encrypted: true,
-        events: [
-          message({ id: '$plain', body: 'hello plain', ts: 1 }),
-          message({
-            id: '$sealed',
-            body: 'hello sealed',
-            ts: 2,
-            encrypted: true,
-          }),
-        ],
-      }),
+    open(
+      [
+        message({ id: '$plain', body: 'hello plain', ts: 1 }),
+        message({
+          id: '$sealed',
+          body: 'hello sealed',
+          ts: 2,
+          encrypted: true,
+        }),
+      ],
+      { encrypted: true },
     );
 
     const { hits } = service.searchLoaded('hello');
@@ -130,25 +146,21 @@ describe('ConversationSearchController', () => {
   });
 
   it("matches what a message's sender wrote, not someone else's edit of it", () => {
-    getRoom.mockReturnValue(
-      room({
-        events: [
-          message({
-            id: '$forged',
-            body: 'plain words',
-            editedBy: { sender: '@m:hs', body: 'hello forged' },
-          }),
-          message({
-            id: '$edited',
-            body: 'plain words',
-            editedBy: { sender: '@alice:hs', body: 'hello now' },
-          }),
-        ],
+    open([
+      message({
+        id: '$forged',
+        body: 'plain words',
+        editedBy: { sender: '@m:hs' },
       }),
-    );
+      message({
+        id: '$edited',
+        body: 'plain words',
+        editedBy: { sender: '@alice:hs' },
+      }),
+    ]);
 
     expect(
-      service.searchLoaded('hello').hits.map((hit) => hit.eventId),
+      service.searchLoaded('as edited').hits.map((hit) => hit.eventId),
     ).toEqual(['$edited']);
   });
 
@@ -180,7 +192,7 @@ describe('ConversationSearchController', () => {
       }),
     );
     message.makeReplaced(edit);
-    getRoom.mockReturnValue(room({ events: [message as never] }));
+    open([message]);
 
     expect(service.searchLoaded('FORGED').hits).toEqual([]);
     expect(
@@ -189,7 +201,7 @@ describe('ConversationSearchController', () => {
   });
 
   it('never asks the server to search an encrypted conversation', async () => {
-    getRoom.mockReturnValue(room({ encrypted: true }));
+    open([], { encrypted: true });
 
     await expect(
       firstValueFrom(service.searchServer('hello')),
@@ -203,7 +215,7 @@ describe('ConversationSearchController', () => {
   });
 
   it('never asks the server to search a conversation the crypto store has as encrypted when its state lacks the event', async () => {
-    getRoom.mockReturnValue(room({}));
+    open();
     isEncryptionEnabledInRoom.mockResolvedValue(true);
 
     await expect(
@@ -219,7 +231,7 @@ describe('ConversationSearchController', () => {
   });
 
   it('never asks the server to search when the crypto store is unavailable', async () => {
-    getRoom.mockReturnValue(room({}));
+    open();
     getCrypto.mockReturnValue(undefined);
 
     await expect(
@@ -234,7 +246,7 @@ describe('ConversationSearchController', () => {
   });
 
   it('never asks the server to search when the crypto store fails to answer', async () => {
-    getRoom.mockReturnValue(room({}));
+    open();
     isEncryptionEnabledInRoom.mockRejectedValue(new Error('store unavailable'));
 
     await expect(
@@ -244,7 +256,7 @@ describe('ConversationSearchController', () => {
   });
 
   it('maps and paginates an unencrypted server search', async () => {
-    getRoom.mockReturnValue(room({}));
+    open();
     search.mockResolvedValue({
       search_categories: {
         room_events: {
@@ -276,31 +288,58 @@ describe('ConversationSearchController', () => {
       search.mock.calls[0][0].body.search_categories.room_events.order_by,
     ).toBe(SearchOrderBy.Recent);
     expect(result.nextBatch).toBe('next');
-    expect(result.hits[0]?.senderName).toBe('Bob');
+    expect(result.hits[0]).toEqual({
+      eventId: '$event',
+      roomId: ROOM_KEY.roomId,
+      sender: '@bob:hs',
+      senderName: 'Bob',
+      senderAvatarMxc: null,
+      body: 'hello',
+      ts: 10,
+      snippet: 'hello',
+      shield: null,
+    });
+  });
+
+  it.each([
+    ['the request fails', () => search.mockRejectedValue(new Error('down'))],
+    [
+      'the room is unknown',
+      () => Object.assign(client, { getRoom: () => null }),
+    ],
+  ])('gives an empty page when %s', async (_name, arrange) => {
+    open();
+    arrange();
+
+    await expect(
+      firstValueFrom(service.searchServer('hello')),
+    ).resolves.toEqual({ hits: [], count: 0, nextBatch: null });
   });
 
   it('loads older history through a cold scrollback action', async () => {
-    const target = room({ events: [message({ id: '$1', body: 'one' })] });
-    getRoom.mockReturnValue(target);
+    const target = open([message({ id: '$1', body: 'one' })]);
     vi.mocked(scrollbackLive).mockResolvedValue();
 
     const loaded = service.loadOlder(20);
     expect(scrollbackLive).not.toHaveBeenCalled();
     await expect(firstValueFrom(loaded)).resolves.toBe(1);
     expect(scrollbackLive).toHaveBeenCalledWith(
-      expect.objectContaining({ getRoom }),
+      expect.objectContaining({ search }),
       target,
       20,
     );
   });
 
   it('fails closed after its exact Conversation handle retires', async () => {
+    open([message({ id: '$a', body: 'hello' })]);
     service.release();
 
     expect(service.searchLoaded('hello').hits).toEqual([]);
     await expect(
       firstValueFrom(service.searchServer('hello')),
     ).resolves.toEqual({ hits: [], count: 0, nextBatch: null });
-    expect(getRoom).not.toHaveBeenCalled();
+    await expect(firstValueFrom(service.loadOlder())).resolves.toBe(0);
+    expect(search).not.toHaveBeenCalled();
+    expect(scrollbackLive).not.toHaveBeenCalled();
   });
 });
