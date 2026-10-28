@@ -14,7 +14,7 @@ import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TimelineService } from './timeline.service';
-import { eventRevision } from './event-revision';
+import { eventRevision } from './js-sdk/event-revision';
 import {
   clientFor,
   fakeClient,
@@ -31,11 +31,11 @@ import {
   setup,
   switchableMatrixProvider,
 } from './timeline.spec-harness';
-import { resolvedShields } from './shields';
+import { resolvedShields } from './js-sdk/shields';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
 // (and its race with gappy syncs) is covered against the SDK in live-scrollback.spec.
-vi.mock('./live-scrollback', () => ({
+vi.mock('./js-sdk/live-scrollback', () => ({
   scrollbackLive: async (
     client: { scrollback: (room: unknown, limit: number) => Promise<unknown> },
     room: unknown,

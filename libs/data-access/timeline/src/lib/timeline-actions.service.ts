@@ -24,7 +24,7 @@ import {
   voiceMessageContent,
 } from '@trinity/util/matrix';
 import { ConversationActionContextService } from './conversation-action-context.service';
-import { shownContent } from './shields';
+import { shownContent } from './js-sdk/shields';
 
 const TEXT_KEYS = ['msgtype', 'body', 'format', 'formatted_body'];
 const MEDIA_KEYS = [...TEXT_KEYS, 'filename'];

@@ -28,7 +28,7 @@ import {
   vi,
 } from 'vitest';
 import { ThreadsService } from './threads.service';
-import { resolvedShields } from './shields';
+import { resolvedShields } from './js-sdk/shields';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {

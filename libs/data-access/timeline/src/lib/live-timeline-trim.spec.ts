@@ -12,7 +12,7 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { scrollbackLive } from './live-scrollback';
+import { scrollbackLive } from './js-sdk/live-scrollback';
 import {
   TRIM_CEILING,
   TRIM_KEEP,
