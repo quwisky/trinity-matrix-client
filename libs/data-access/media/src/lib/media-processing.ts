@@ -496,3 +496,19 @@ function drawPoster(
     blob ? { blob, w, h } : null,
   );
 }
+
+/** The Matrix `msgtype` for a file of this type. */
+export function msgTypeFor(
+  mime: string,
+): 'm.image' | 'm.video' | 'm.audio' | 'm.file' {
+  if (mime.startsWith('image/')) {
+    return 'm.image';
+  }
+  if (mime.startsWith('video/')) {
+    return 'm.video';
+  }
+  if (mime.startsWith('audio/')) {
+    return 'm.audio';
+  }
+  return 'm.file';
+}

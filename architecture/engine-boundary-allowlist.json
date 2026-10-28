@@ -35,7 +35,6 @@
     "libs/data-access/media/src/lib/image-pack-selection.store.ts",
     "libs/data-access/media/src/lib/image-pack-target.ts",
     "libs/data-access/media/src/lib/image-pack.service.ts",
-    "libs/data-access/media/src/lib/media-pipeline.service.ts",
     "libs/data-access/media/src/lib/recent-emoji.service.ts",
     "libs/data-access/notifications/src/lib/keyword-rules.service.ts",
     "libs/data-access/notifications/src/lib/matrix-notification-event.adapter.ts",
