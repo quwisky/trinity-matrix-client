@@ -176,7 +176,7 @@ function contentOf(
           content: {
             kind: 'sticker',
             source,
-            body: normalized.body,
+            body: typeof raw['body'] === 'string' ? raw['body'] : null,
             url: typeof raw['url'] === 'string' ? raw['url'] : null,
             info:
               typeof info === 'object' && info !== null && !Array.isArray(info)

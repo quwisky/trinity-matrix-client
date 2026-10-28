@@ -163,6 +163,8 @@ function normalizeSticker(
   );
   if (!source || !validMxc(source.mxc)) return null;
   const body = string(content['body']) ?? source.filename;
+  const url = string(content['url']);
+  const { info, body: rawBody } = content;
   return Object.freeze({
     ...common,
     type: 'media',
@@ -174,6 +176,17 @@ function normalizeSticker(
     replyFallback: false,
     addressesViewer: false,
     mentionNames: Object.freeze({}),
+    ...(url
+      ? {
+          stickerImage: Object.freeze({
+            url,
+            ...(info && typeof info === 'object' && !Array.isArray(info)
+              ? { info: info as Readonly<Record<string, unknown>> }
+              : {}),
+            ...(typeof rawBody === 'string' ? { body: rawBody } : {}),
+          }),
+        }
+      : {}),
   });
 }
 

@@ -118,12 +118,21 @@ export function normalizedFromItem(
         type: 'media',
         messageKind: 'sticker',
         media: content.source,
-        body: content.body,
+        body: content.body || content.source.filename,
         caption: null,
         formattedCaption: null,
         replyFallback: false,
         addressesViewer: false,
         mentionNames: {},
+        ...(content.url
+          ? {
+              stickerImage: {
+                url: content.url,
+                ...(content.info ? { info: content.info } : {}),
+                ...(content.body !== null ? { body: content.body } : {}),
+              },
+            }
+          : {}),
       };
     case 'location':
       return {
