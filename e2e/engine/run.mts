@@ -20,6 +20,7 @@ const LIBS = [
   'data-access-discovery',
   'data-access-matrix-client',
   'data-access-room-library',
+  'data-access-timeline',
 ] as const;
 
 export async function runEngineContract(

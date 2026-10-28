@@ -3,7 +3,7 @@ import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   isPresentableSystemEvent,
   normalizeTimelineEvent,
-} from './normalize-timeline-event';
+} from './js-sdk/normalize-timeline-event';
 import {
   presentNormalizedTimelineEvent,
   type SystemLineCategory,

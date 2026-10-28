@@ -6,19 +6,20 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import {
-  buildPollView,
   displayContent,
   initialOf,
-  isPollStart,
-  mapStatus,
   mentionNamesIn,
   normalizeMediaPayload,
   parseGeoUri,
+  validReplacement,
+} from '@trinity/util/matrix';
+import {
+  mapStatus,
   reactionsFor,
   readReceiptsFor,
   replyPreview,
-  validReplacement,
-} from '@trinity/util/matrix';
+} from './event-reads';
+import { buildPollView, isPollStart } from './poll-reads';
 import type {
   MessageShield,
   NormalizedMediaEvent,
@@ -28,13 +29,9 @@ import type {
   ReceiptView,
   ReplyPreview,
   UndecryptableReason,
-} from './message-presentation';
-import {
-  shownContent,
-  shownSubject,
-  showsEdit,
-  unencryptedShield,
-} from './shields';
+} from '../message-presentation';
+import { shownContent, shownSubject, showsEdit } from './shields';
+import { unencryptedShield } from '../shield-presentation';
 import { undecryptableReasonOf } from './undecryptable-reason';
 
 const SYSTEM_EVENT_TYPES = new Set<string>([
