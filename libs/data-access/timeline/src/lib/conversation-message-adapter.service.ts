@@ -1,4 +1,4 @@
-import { Injectable, InjectionToken, inject } from '@angular/core';
+import { Injectable, InjectionToken, inject, untracked } from '@angular/core';
 import { defer, map, of, tap, type Observable } from 'rxjs';
 import {
   DraftStoreService,
@@ -6,6 +6,7 @@ import {
 } from '@trinity/platform-native';
 import { type EngineResult, retryableFailure } from '@trinity/util/matrix';
 import type {
+  ConversationKey,
   ConversationMessageActionRequest,
   ConversationMessageAdapter,
   ConversationMessageOperation,
@@ -16,6 +17,9 @@ import type {
 import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
 import type { TimelineItemKey } from './timeline-engine';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
+import { TimelineStores } from './timeline-store';
+
+const LIVE = { kind: 'live' } as const;
 
 type Failure = Extract<
   ConversationMessageOutcome,
@@ -93,6 +97,7 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
   private readonly engine = inject(TIMELINE_ENGINE);
   private readonly privacy = inject(PrivacySettingsService);
   private readonly drafts = inject(DraftStoreService);
+  private readonly stores = inject(TimelineStores);
   private readonly policy = inject(CONVERSATION_MESSAGE_POLICY);
 
   toggleReaction(
@@ -145,7 +150,10 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
     });
   }
 
-  /** The caller refuses a row that is not waiting or failed, as the engine cancels any unsent one. */
+  /**
+   * Only a waiting or failed echo, as the engine cancels any unsent one. A thread's caller
+   * checks its own rows; the room's are read from its store, past the window it presents.
+   */
   cancel(
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
@@ -153,6 +161,10 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
       const transactionId = echoTransactionId(request);
       if (transactionId === null) {
         return of(rejected('cancel', 'event-not-retryable'));
+      }
+      if (!request.threadRootId) {
+        const failure = this.uncancellable(request.key, transactionId);
+        if (failure) return of(rejected('cancel', failure));
       }
       const { accountId, roomId } = request.key;
       return this.engine.cancelSend(accountId, roomId, transactionId).pipe(
@@ -169,6 +181,23 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
         map((result) => outcome('cancel', result)),
       );
     });
+  }
+
+  private uncancellable(
+    key: ConversationKey,
+    transactionId: string,
+  ): Failure | null {
+    const { store, release } = this.stores.hold(key, LIVE);
+    const item = untracked(store.items).find(
+      (candidate) =>
+        candidate.kind === 'event' && candidate.transactionId === transactionId,
+    );
+    release();
+    if (item?.kind !== 'event') return 'message-unavailable';
+    const state = item.sendState?.kind;
+    return state === 'waiting' || state === 'failed'
+      ? null
+      : 'event-not-retryable';
   }
 
   acknowledge(

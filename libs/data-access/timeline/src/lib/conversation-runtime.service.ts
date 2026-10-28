@@ -33,10 +33,7 @@ import {
   type ConversationMessages,
 } from './conversation-messages';
 import type { ConversationThreads } from './conversation-threads';
-import {
-  isCancellableMessage,
-  isEditableMessage,
-} from './message-presentation';
+import { isEditableMessage } from './message-presentation';
 import type {
   ConversationPinOperation,
   ConversationPinOutcome,
@@ -398,17 +395,11 @@ export class ConversationRuntime {
             : of(rejected('retry', 'conversation-unavailable')),
         ),
       cancel: (messageId: string) =>
-        defer(() => {
-          if (state() !== 'focused') {
-            return of(rejected('cancel', 'conversation-unavailable'));
-          }
-          const message = availableMessage(messageId);
-          if (!message) return of(rejected('cancel', 'message-unavailable'));
-          if (!isCancellableMessage(message)) {
-            return of(rejected('cancel', 'event-not-retryable'));
-          }
-          return this.messageAdapter.cancel({ key: immutableKey, messageId });
-        }),
+        defer(() =>
+          state() === 'focused'
+            ? this.messageAdapter.cancel({ key: immutableKey, messageId })
+            : of(rejected('cancel', 'conversation-unavailable')),
+        ),
       acknowledge: (messageId: string) =>
         defer(() =>
           state() === 'focused'

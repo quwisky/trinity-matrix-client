@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom, of } from 'rxjs';
+import { Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DraftStoreService,
@@ -21,6 +21,19 @@ import type {
   ConversationRedactionDecision,
 } from './conversation-messages';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
+import type { SendState } from './timeline-engine';
+import { RETAINED_EVENT_LIMIT, TimelineStores } from './timeline-store';
+import {
+  FakeTimelineEngine,
+  fakeEventItem,
+} from '../contract/fake-timeline-engine';
+import { MediaPipeline } from '@trinity/data-access/media';
+import {
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
 import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
 
 const KEY = { accountId: '@alice:hs', roomId: '!shared:hs' } as const;
@@ -46,8 +59,28 @@ function setup(
     readonly privateReceipt?: boolean;
     readonly policy?: ConversationMessagePolicy;
     readonly result?: EngineResult<null>;
+    /** The state of the room's `txn-1` echo in its store; `absent` when it has none. */
+    readonly echo?: SendState | null | 'absent';
   } = {},
 ) {
+  const { echo = { kind: 'waiting' } } = options;
+  const items =
+    echo === 'absent'
+      ? []
+      : [
+          fakeEventItem('$echo', KEY.accountId, {
+            eventId: null,
+            transactionId: 'txn-1',
+            isOwn: true,
+            sendState: echo,
+          }),
+        ];
+  const stores = {
+    hold: vi.fn(() => ({
+      store: { items: signal(items).asReadonly() },
+      release: vi.fn(),
+    })),
+  };
   const reply = () => of(options.result ?? engineOk(null));
   const engine = {
     toggleReaction: vi.fn(reply),
@@ -73,6 +106,7 @@ function setup(
       },
       { provide: CONVERSATION_MESSAGE_POLICY, useValue: policy },
       { provide: DraftStoreService, useValue: drafts },
+      { provide: TimelineStores, useValue: stores },
     ],
   });
   return {
@@ -261,6 +295,94 @@ describe('ConversationMessageAdapter', () => {
       failure: 'event-not-retryable',
     });
     expect(sending.drafts.releaseWaiting).not.toHaveBeenCalled();
+  });
+
+  it("cancels only the room's waiting or failed echo, as its store holds it", async () => {
+    for (const state of [
+      { kind: 'failed', recoverable: false },
+      { kind: 'waiting' },
+    ] as const) {
+      TestBed.resetTestingModule();
+      const { adapter } = setup({ echo: state });
+      await expect(
+        firstValueFrom(adapter.cancel({ key: KEY, messageId: ECHO })),
+      ).resolves.toEqual({ kind: 'applied', operation: 'cancel' });
+    }
+    for (const [echo, failure] of [
+      [{ kind: 'sending' }, 'event-not-retryable'],
+      [null, 'event-not-retryable'],
+      ['absent', 'message-unavailable'],
+    ] as const) {
+      TestBed.resetTestingModule();
+      const { adapter, engine } = setup({ echo });
+      await expect(
+        firstValueFrom(adapter.cancel({ key: KEY, messageId: ECHO })),
+      ).resolves.toMatchObject({ kind: 'rejected', failure });
+      expect(engine.cancelSend).not.toHaveBeenCalled();
+    }
+  });
+
+  it('cancels a waiting echo trimmed from the window a hidden room presents', async () => {
+    const fake = new FakeTimelineEngine();
+    const key = { accountId: fake.alice, roomId: '!trim:example.org' };
+    const echo = fakeEventItem('$echo', fake.alice, {
+      uniqueId: 'txn:txn-1',
+      eventId: null,
+      transactionId: 'txn-1',
+      isOwn: true,
+      sendState: { kind: 'waiting' },
+    });
+    const later = Array.from({ length: RETAINED_EVENT_LIMIT }, (_, i) =>
+      fakeEventItem(`$e${i}`, fake.bob),
+    );
+    fake.seed(key.accountId, key.roomId, [echo, ...later]);
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: TIMELINE_ENGINE, useValue: fake },
+        {
+          provide: SESSION_SNAPSHOT,
+          useValue: signal<SessionSnapshot>({
+            ...EMPTY_SESSION,
+            accounts: [
+              {
+                accountId: key.accountId,
+                generation: 1,
+                syncState: 'syncing',
+                serverSynced: true,
+                roomsPrepared: true,
+                waitingCount: 0,
+                cryptoStoreEncrypted: true,
+              },
+            ],
+          }),
+        },
+        {
+          provide: SESSION_ENGINE,
+          useValue: { session: () => new Subject<SessionSnapshot>() },
+        },
+        { provide: MediaPipeline, useValue: { present: () => ({}) } },
+        {
+          provide: PrivacySettingsService,
+          useValue: { sendReadReceipts: signal(true).asReadonly() },
+        },
+        {
+          provide: DraftStoreService,
+          useValue: { holdWaiting: vi.fn(), releaseWaiting: vi.fn() },
+        },
+      ],
+    });
+    const store = TestBed.inject(TimelineStores).open(key, { kind: 'live' });
+    store.setVisible(false);
+    const messageId = `~${key.roomId}:txn-1`;
+    expect(store.messages().some((m) => m.id === messageId)).toBe(false);
+
+    await expect(
+      firstValueFrom(
+        TestBed.inject(CONVERSATION_MESSAGE_ADAPTER).cancel({ key, messageId }),
+      ),
+    ).resolves.toEqual({ kind: 'applied', operation: 'cancel' });
+    expect(store.item('$echo')).toBeNull();
+    expect(store.items().some((i) => i.uniqueId === 'txn:txn-1')).toBe(false);
   });
 
   it('row cancel releases the held draft', async () => {
