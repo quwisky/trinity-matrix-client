@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixError, MatrixEvent, RoomState } from 'matrix-js-sdk';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
-import { assertPlainData } from '@trinity/util/matrix';
-import { firstValueFrom } from 'rxjs';
+import { type EngineResult, assertPlainData } from '@trinity/util/matrix';
+import { type Observable, firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   AdministeredRoom,
@@ -93,6 +93,17 @@ function setup(options: { encrypted?: boolean; roomVersion?: string } = {}) {
     getUserId: () => ME,
     getCrypto: () => crypto,
     sendStateEvent,
+    kick: vi.fn(async () => ({})),
+    ban: vi.fn(async () => ({})),
+    unban: vi.fn(async () => ({})),
+    reportEvent: vi.fn(async () => ({})),
+    reportRoom: vi.fn(async () => ({})),
+    http: { authedRequest: vi.fn(async () => ({})) },
+    getLocalAliases: vi.fn(async () => ({ aliases: ['#a:example.org'] })),
+    createAlias: vi.fn(async () => ({})),
+    deleteAlias: vi.fn(async () => ({})),
+    getRoomDirectoryVisibility: vi.fn(async () => ({ visibility: 'public' })),
+    setRoomDirectoryVisibility: vi.fn(async () => ({})),
     on: (event: string, listener: (...args: unknown[]) => void) =>
       listeners.set(event, (listeners.get(event) ?? new Set()).add(listener)),
     off: (event: string, listener: (...args: unknown[]) => void) =>
@@ -125,6 +136,7 @@ function setup(options: { encrypted?: boolean; roomVersion?: string } = {}) {
     state,
     getRoom: client.getRoom,
     replaceClient: () => (current = { ...client }),
+    client,
   };
 }
 
@@ -458,6 +470,97 @@ describe('JsSdkRoomAdministrationEngine', () => {
       );
 
       expect(codes).toEqual(['account-not-live', 'room-unavailable']);
+    });
+  });
+
+  describe('server commands', () => {
+    it('call the client with the given arguments and answer its result', async () => {
+      const { engine, client } = setup();
+      const run = <T>(command: Observable<EngineResult<T>>) =>
+        firstValueFrom(command);
+
+      expect(await run(engine.kick(ME, ROOM_ID, CO, 'spam'))).toEqual({
+        ok: true,
+        value: null,
+      });
+      await run(engine.ban(ME, ROOM_ID, CO, null));
+      await run(engine.unban(ME, ROOM_ID, CO));
+      await run(engine.reportEvent(ME, ROOM_ID, '$e', 'why'));
+      await run(engine.reportRoom(ME, ROOM_ID, ''));
+      await run(engine.reportUser(ME, '@bad guy:example.org', 'spam'));
+      expect(await run(engine.localAliases(ME, ROOM_ID))).toEqual({
+        ok: true,
+        value: ['#a:example.org'],
+      });
+      await run(engine.publishAlias(ME, ROOM_ID, '#new:example.org'));
+      await run(engine.removeAlias(ME, '#old:example.org'));
+      expect(await run(engine.directoryVisibility(ME, ROOM_ID))).toEqual({
+        ok: true,
+        value: 'public',
+      });
+      await run(engine.setDirectoryVisibility(ME, ROOM_ID, 'private'));
+
+      expect(client.kick).toHaveBeenCalledWith(ROOM_ID, CO, 'spam');
+      expect(client.ban).toHaveBeenCalledWith(ROOM_ID, CO, undefined);
+      expect(client.unban).toHaveBeenCalledWith(ROOM_ID, CO);
+      expect(client.reportEvent).toHaveBeenCalledWith(
+        ROOM_ID,
+        '$e',
+        -100,
+        'why',
+      );
+      expect(client.reportRoom).toHaveBeenCalledWith(ROOM_ID, '');
+      expect(client.http.authedRequest).toHaveBeenCalledWith(
+        'POST',
+        '/users/%40bad%20guy%3Aexample.org/report',
+        undefined,
+        { reason: 'spam' },
+      );
+      expect(client.getLocalAliases).toHaveBeenCalledWith(ROOM_ID);
+      expect(client.createAlias).toHaveBeenCalledWith(
+        '#new:example.org',
+        ROOM_ID,
+      );
+      expect(client.deleteAlias).toHaveBeenCalledWith('#old:example.org');
+      expect(client.setRoomDirectoryVisibility).toHaveBeenCalledWith(
+        ROOM_ID,
+        'private',
+      );
+    });
+
+    it('do not run before subscribe, nor without a live account', async () => {
+      const { engine, client } = setup();
+
+      const kick = engine.kick(ME, ROOM_ID, CO, null);
+      expect(client.kick).not.toHaveBeenCalled();
+      await firstValueFrom(kick);
+      const result = await firstValueFrom(
+        engine.reportUser('@nobody:example.org', CO, ''),
+      );
+
+      expect(result).toMatchObject({
+        ok: false,
+        failure: { code: 'account-not-live' },
+      });
+      expect(client.http.authedRequest).not.toHaveBeenCalled();
+    });
+
+    it('answer a refusal as request-failed with its status and errcode', async () => {
+      const { engine, client } = setup();
+      client.reportRoom.mockRejectedValueOnce(
+        new MatrixError({ errcode: 'M_NOT_FOUND', error: 'no room' }, 404),
+      );
+
+      const result = await firstValueFrom(engine.reportRoom(ME, ROOM_ID, ''));
+
+      expect(result).toEqual({
+        ok: false,
+        failure: {
+          kind: 'http',
+          code: 'request-failed',
+          diagnostic: { kind: 'http', httpStatus: 404, errcode: 'M_NOT_FOUND' },
+        },
+      });
     });
   });
 });

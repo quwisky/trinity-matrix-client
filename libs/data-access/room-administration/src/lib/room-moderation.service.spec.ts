@@ -1,194 +1,238 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
-import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
-import {
-  MatrixClientService,
-  SessionStateService,
-} from '@trinity/data-access/matrix-client';
-import { AdministeredRoomStore } from './administered-room.store';
-import type { Membership } from './room-administration-engine';
-import { RoomModerationService } from './room-moderation.service';
-import { administeredRoom } from './room-administration.spec-harness';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { FakeRoomAdministrationEngine } from '../contract/fake-room-administration-engine';
+import { RoomAdministrationError } from './room-administration-error';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
+import { RoomModerationService } from './room-moderation.service';
 
-function setup(
-  opts: {
-    myLevel?: number;
-    targetLevel?: number;
-    may?: (action: string) => boolean;
-    maySetPower?: boolean;
-    me?: string;
-    kickError?: Error;
-    banError?: Error;
-    targetMembership?: string;
-  } = {},
-) {
-  const kick = opts.kickError
-    ? vi.fn().mockRejectedValue(opts.kickError)
-    : vi.fn().mockResolvedValue({});
-  const ban = opts.banError
-    ? vi.fn().mockRejectedValue(opts.banError)
-    : vi.fn().mockResolvedValue({});
-  const unban = vi.fn().mockResolvedValue({});
-  const setPowerLevel = vi.fn().mockResolvedValue({});
-  const reportEvent = vi.fn().mockResolvedValue({});
-  const me = opts.me ?? '@me:hs';
-  const myLevel = opts.myLevel ?? 100;
-  const targetLevel = opts.targetLevel ?? 0;
-  // Thresholds a level always or never meets stand in for per-action answers.
-  const threshold = (allowed: boolean) => (allowed ? 0 : 1_000);
-  const powerLevels = {
-    ...(opts.may
-      ? { kick: threshold(opts.may('kick')), ban: threshold(opts.may('ban')) }
-      : { kick: 50, ban: 50 }),
-    events: { 'm.room.power_levels': threshold(opts.maySetPower ?? true) },
-  };
-  const store: Pick<AdministeredRoomStore, 'room' | 'members'> = {
-    room: (accountId, roomId) =>
-      accountId === me
-        ? administeredRoom(roomId, me, { ownPower: myLevel, powerLevels })
-        : null,
-    members: (accountId, roomId) =>
-      accountId === me
-        ? {
-            roomId,
-            complete: true,
-            members: [
-              { userId: me, power: myLevel, membership: 'join' as Membership },
-              {
-                userId: '@bob:hs',
-                power: targetLevel,
-                membership: (opts.targetMembership ?? 'join') as Membership,
-              },
-            ].map((member) => ({
-              ...member,
-              displayName: member.userId,
-              avatarMxc: null,
-              reason: null,
-            })),
-          }
-        : null,
-  };
-  const instance = {
-    kick,
-    ban,
-    unban,
-    setPowerLevel,
-    reportEvent,
-    getUserId: () => me,
-  };
-  TestBed.configureTestingModule({
-    providers: [
-      RoomModerationService,
-      MockProvider(MatrixClientService, {
-        activeUserId: signal<string | null>(me).asReadonly(),
-        isInitialized: true,
-        instance: instance as never,
-        clientFor: (accountId: string) =>
-          accountId === me ? (instance as never) : null,
-      }),
-      { provide: AdministeredRoomStore, useValue: store },
-      MockProvider(SessionStateService, {
-        activeAccountId: signal<string | null>(me).asReadonly(),
-      }),
-    ],
-  });
-  const projectionState = TestBed.inject(RoomAdministrationProjectionState);
-  projectionState.select(me, '!r:hs');
-  projectionState.update('permissions', 'available', 'retained');
+const OTHER = '@other:example.org';
+
+/** Alice at `alicePower` and carol (joined unless `carol` says otherwise) in bob's room. */
+async function setup({
+  alicePower = 100,
+  carolPower = 0,
+  carol = 'join',
+}: {
+  alicePower?: number;
+  carolPower?: number;
+  carol?: 'join' | 'invite' | 'knock' | 'ban';
+} = {}) {
+  const session = administrationSession(['@alice:example.org', OTHER]);
+  const { engine } = session;
+  const roomId = await roomWithAlice(engine);
+  await engine.asBob.setPowerLevel(roomId, engine.alice, alicePower);
+  await engine.asBob.setPowerLevel(roomId, engine.carol, carolPower);
+  if (carol === 'knock') {
+    await engine.asCarol.knock(roomId);
+  } else {
+    await engine.asBob.invite(roomId, engine.carol);
+    if (carol !== 'invite') await engine.asCarol.join(roomId);
+    if (carol === 'ban') await engine.asBob.ban(roomId, engine.carol, 'x');
+  }
+  TestBed.configureTestingModule({ providers: session.providers });
+  const state = TestBed.inject(RoomAdministrationProjectionState);
+  state.select(engine.alice, roomId);
+  state.update('permissions', 'available', 'retained');
   return {
+    ...session,
+    roomId,
+    target: { accountId: engine.alice, roomId },
     svc: TestBed.inject(RoomModerationService),
-    matrix: TestBed.inject(MatrixClientService),
-    kick,
-    ban,
-    unban,
-    setPowerLevel,
-    reportEvent,
   };
 }
 
-describe('RoomModerationService', () => {
-  it('kick is cold and sends the reason on subscribe', async () => {
-    const { svc, kick } = setup();
+function membershipOf(
+  engine: FakeRoomAdministrationEngine,
+  roomId: string,
+  userId: string,
+) {
+  let member: { membership: string; reason: string | null } | undefined;
+  engine
+    .members(engine.alice, roomId)
+    .subscribe((members) => {
+      member = members?.members.find((m) => m.userId === userId);
+    })
+    .unsubscribe();
+  return member && { membership: member.membership, reason: member.reason };
+}
 
-    const action = svc.kick('!r:hs', '@bob:hs', 'spam');
-    expect(kick).not.toHaveBeenCalled(); // cold
+const failure = (action: Promise<unknown>) =>
+  action.then(
+    () => null,
+    (error: unknown) => error,
+  );
+
+afterEach(() => TestBed.resetTestingModule());
+
+describe('RoomModerationService', () => {
+  it('kick is cold and removes the member with the reason on subscribe', async () => {
+    const { svc, engine, roomId } = await setup();
+
+    const action = svc.kick(roomId, engine.carol, 'spam');
+    expect(membershipOf(engine, roomId, engine.carol)?.membership).toBe('join');
 
     await firstValueFrom(action);
-    expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'spam');
+    expect(membershipOf(engine, roomId, engine.carol)).toEqual({
+      membership: 'leave',
+      reason: 'spam',
+    });
   });
 
-  it.each(['invite', 'knock'])(
+  it.each(['invite', 'knock'] as const)(
     'kicks a target whose membership is %s',
-    async (targetMembership) => {
-      const { svc, kick } = setup({ targetMembership });
+    async (carol) => {
+      const { svc, engine, roomId } = await setup({ carol });
 
-      await firstValueFrom(svc.kick('!r:hs', '@bob:hs', 'no'));
-      expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'no');
+      await firstValueFrom(svc.kick(roomId, engine.carol, 'no'));
+      expect(membershipOf(engine, roomId, engine.carol)?.membership).toBe(
+        'leave',
+      );
     },
   );
 
-  it('keeps an exact command on the opening Account after the active client changes', async () => {
-    const { svc, matrix, kick } = setup();
-    const otherKick = vi.fn().mockResolvedValue({});
-    ngMocks.stubMember(matrix, 'instance', {
-      kick: otherKick,
-    } as never);
+  it('keeps an exact command on the opening Account while another is active', async () => {
+    const { svc, engine, signIn, target } = await setup();
+    signIn([engine.alice, OTHER], { active: OTHER });
+    const kick = vi.spyOn(engine, 'kick');
 
-    await firstValueFrom(
-      svc.kick(
-        { accountId: '@me:hs', roomId: '!same-id:hs' },
-        '@bob:hs',
-        'spam',
-      ),
+    await firstValueFrom(svc.kick(target, engine.carol, 'spam'));
+
+    expect(kick).toHaveBeenCalledExactlyOnceWith(
+      engine.alice,
+      target.roomId,
+      engine.carol,
+      'spam',
     );
-
-    expect(kick).toHaveBeenCalledWith('!same-id:hs', '@bob:hs', 'spam');
-    expect(otherKick).not.toHaveBeenCalled();
   });
 
-  it('ban is cold and bans the member on subscribe', async () => {
-    const { svc, ban } = setup();
+  it('a bare room ID acts as the active account', async () => {
+    const { svc, engine, signIn, roomId } = await setup();
+    signIn([engine.alice, OTHER], { active: OTHER });
 
-    await firstValueFrom(svc.ban('!r:hs', '@bob:hs'));
-    expect(ban).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
+    const error = await failure(
+      firstValueFrom(svc.reportMessage(roomId, '$evt', '')),
+    );
+
+    // The other account knows no such room, so its server refuses.
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'server-rejected',
+    );
+  });
+
+  it('ban is cold and bans the member on subscribe, without a reason', async () => {
+    const { svc, engine, roomId } = await setup();
+    const ban = vi.spyOn(engine, 'ban');
+
+    const action = svc.ban(roomId, engine.carol);
+    expect(ban).not.toHaveBeenCalled();
+
+    await firstValueFrom(action);
+    expect(ban).toHaveBeenCalledWith(engine.alice, roomId, engine.carol, null);
+    expect(membershipOf(engine, roomId, engine.carol)).toEqual({
+      membership: 'ban',
+      reason: null,
+    });
   });
 
   it('unban is cold and lifts the ban on subscribe', async () => {
-    const { svc, unban } = setup({ targetMembership: 'ban' });
+    const { svc, engine, roomId } = await setup({ carol: 'ban' });
 
-    const action = svc.unban('!r:hs', '@bob:hs');
-    expect(unban).not.toHaveBeenCalled(); // cold
-
-    await firstValueFrom(action);
-    expect(unban).toHaveBeenCalledWith('!r:hs', '@bob:hs');
-  });
-
-  it('setPowerLevel is cold and promotes/demotes on subscribe', async () => {
-    const { svc, setPowerLevel } = setup();
-
-    const action = svc.setPowerLevel('!r:hs', '@bob:hs', 50);
-    expect(setPowerLevel).not.toHaveBeenCalled(); // cold
+    const action = svc.unban(roomId, engine.carol);
+    expect(membershipOf(engine, roomId, engine.carol)?.membership).toBe('ban');
 
     await firstValueFrom(action);
-    expect(setPowerLevel).toHaveBeenCalledWith('!r:hs', '@bob:hs', 50);
+    expect(membershipOf(engine, roomId, engine.carol)?.membership).toBe(
+      'leave',
+    );
   });
 
-  it('reportMessage is cold and reports the event with a reason on subscribe', async () => {
-    const { svc, reportEvent } = setup();
+  it('setPowerLevel is cold and changes only that member, keeping other keys', async () => {
+    const { svc, engine, roomId } = await setup();
+    await engine.asBob.setPowerLevels(roomId, { 'org.example.custom': [1] });
+    const setState = vi.spyOn(engine, 'setState');
 
-    const action = svc.reportMessage('!r:hs', '$evt', 'spam');
-    expect(reportEvent).not.toHaveBeenCalled(); // cold
-
+    const action = svc.setPowerLevel(roomId, engine.carol, 50);
+    expect(setState).not.toHaveBeenCalled();
     await firstValueFrom(action);
-    expect(reportEvent).toHaveBeenCalledWith('!r:hs', '$evt', -100, 'spam');
+
+    const content = setState.mock.calls[0][4];
+    expect(content['org.example.custom']).toEqual([1]);
+    expect(content['users']).toEqual({
+      [engine.bob]: 100,
+      [engine.alice]: 100,
+      [engine.carol]: 50,
+    });
   });
 
-  it('canModerate lets an admin kick/ban/set-power over a lower-power member', () => {
-    const { svc } = setup({ myLevel: 100, targetLevel: 0 });
-    expect(svc.canModerate('!r:hs', '@bob:hs')).toEqual({
+  it('reportMessage is cold and reports the event as the named account', async () => {
+    const { svc, engine, target } = await setup();
+    const eventId = await engine.asBob.sendMessage(target.roomId, 'bad');
+    const reportEvent = vi.spyOn(engine, 'reportEvent');
+
+    const action = svc.reportMessage(target, eventId, 'spam');
+    expect(reportEvent).not.toHaveBeenCalled();
+    await firstValueFrom(action);
+
+    expect(reportEvent).toHaveBeenCalledExactlyOnceWith(
+      engine.alice,
+      target.roomId,
+      eventId,
+      'spam',
+    );
+  });
+
+  it('reportMessage refuses an account that is no longer signed in', async () => {
+    const { svc, engine, roomId } = await setup();
+    const reportEvent = vi.spyOn(engine, 'reportEvent');
+
+    const error = await failure(
+      firstValueFrom(
+        svc.reportMessage({ accountId: '@gone:hs', roomId }, '$evt', ''),
+      ),
+    );
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'not-signed-in',
+    );
+    expect(reportEvent).not.toHaveBeenCalled();
+  });
+
+  it('a server refusal is retryable and carries no server text', async () => {
+    const { svc, target } = await setup();
+
+    const error = await failure(
+      firstValueFrom(svc.reportMessage(target, '$unknown', '')),
+    );
+
+    expect(error).toBeInstanceOf(RoomAdministrationError);
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'server-rejected',
+      recovery: 'retry-operation',
+      operation: 'report-message',
+    });
+    expect((error as Error).message).toBe('Something went wrong. Try again.');
+  });
+
+  it('refuses a kick without the power before sending', async () => {
+    const { svc, engine, roomId } = await setup({ alicePower: 0 });
+    const kick = vi.spyOn(engine, 'kick');
+
+    const error = await failure(firstValueFrom(svc.kick(roomId, engine.carol)));
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'permission-denied',
+    );
+    expect(kick).not.toHaveBeenCalled();
+  });
+
+  it('canModerate lets an admin kick/ban/set-power over a lower-power member', async () => {
+    const { svc, engine, roomId } = await setup();
+    expect(svc.canModerate(roomId, engine.carol)).toEqual({
       kick: true,
       ban: true,
       setPower: true,
@@ -196,9 +240,9 @@ describe('RoomModerationService', () => {
     });
   });
 
-  it('canModerate denies a member who cannot out-rank the target', () => {
-    const { svc } = setup({ myLevel: 0, targetLevel: 0 });
-    expect(svc.canModerate('!r:hs', '@bob:hs')).toEqual({
+  it('canModerate denies a member who cannot out-rank the target', async () => {
+    const { svc, engine, roomId } = await setup({ alicePower: 0 });
+    expect(svc.canModerate(roomId, engine.carol)).toEqual({
       kick: false,
       ban: false,
       setPower: false,
@@ -206,9 +250,12 @@ describe('RoomModerationService', () => {
     });
   });
 
-  it('canModerate requires strictly out-ranking (equal power denied)', () => {
-    const { svc } = setup({ myLevel: 50, targetLevel: 50 });
-    expect(svc.canModerate('!r:hs', '@bob:hs')).toEqual({
+  it('canModerate requires strictly out-ranking (equal power denied)', async () => {
+    const { svc, engine, roomId } = await setup({
+      alicePower: 50,
+      carolPower: 50,
+    });
+    expect(svc.canModerate(roomId, engine.carol)).toEqual({
       kick: false,
       ban: false,
       setPower: false,
@@ -216,13 +263,10 @@ describe('RoomModerationService', () => {
     });
   });
 
-  it('canModerate reflects per-action power (kick yes, ban no) and reports myPower', () => {
-    const { svc } = setup({
-      myLevel: 60,
-      targetLevel: 0,
-      may: (action) => action === 'kick',
-    });
-    expect(svc.canModerate('!r:hs', '@bob:hs')).toEqual({
+  it('canModerate reflects per-action power (kick yes, ban no) and reports myPower', async () => {
+    const { svc, engine, roomId } = await setup({ alicePower: 60 });
+    await engine.asBob.setPowerLevels(roomId, { ban: 100 });
+    expect(svc.canModerate(roomId, engine.carol)).toEqual({
       kick: true,
       ban: false,
       setPower: true,
@@ -230,51 +274,25 @@ describe('RoomModerationService', () => {
     });
   });
 
-  it('canModerate denies setPower when the power-levels event is not sendable', () => {
-    const { svc } = setup({ myLevel: 100, targetLevel: 0, maySetPower: false });
-    expect(svc.canModerate('!r:hs', '@bob:hs')).toMatchObject({
+  it('canModerate denies setPower when the power-levels event is not sendable', async () => {
+    const { svc, engine, roomId } = await setup({ alicePower: 60 });
+    await engine.asBob.setPowerLevels(roomId, {
+      events: { 'm.room.power_levels': 100 },
+    });
+    expect(svc.canModerate(roomId, engine.carol)).toMatchObject({
       kick: true,
       ban: true,
       setPower: false,
     });
   });
 
-  it('canModerate never targets yourself', () => {
-    const { svc } = setup({ myLevel: 100 });
-    expect(svc.canModerate('!r:hs', '@me:hs')).toEqual({
+  it('canModerate never targets yourself', async () => {
+    const { svc, engine, roomId } = await setup();
+    expect(svc.canModerate(roomId, engine.alice)).toEqual({
       kick: false,
       ban: false,
       setPower: false,
       myPower: 100,
     });
-  });
-
-  it('reportMessage reports as the named account, not the active one', async () => {
-    const { svc, reportEvent } = setup();
-
-    await firstValueFrom(
-      svc.reportMessage(
-        { accountId: '@me:hs', roomId: '!r:hs' },
-        '$evt',
-        'spam',
-      ),
-    );
-
-    expect(reportEvent).toHaveBeenCalledWith('!r:hs', '$evt', -100, 'spam');
-  });
-
-  it('reportMessage refuses an account that is no longer signed in', async () => {
-    const { svc, reportEvent } = setup();
-
-    await expect(
-      firstValueFrom(
-        svc.reportMessage(
-          { accountId: '@gone:hs', roomId: '!r:hs' },
-          '$evt',
-          '',
-        ),
-      ),
-    ).rejects.toThrow();
-    expect(reportEvent).not.toHaveBeenCalled();
   });
 });

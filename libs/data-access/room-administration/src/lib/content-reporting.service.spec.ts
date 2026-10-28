@@ -1,78 +1,96 @@
 import { TestBed } from '@angular/core/testing';
-import { HTTPError, MatrixError, Method } from 'matrix-js-sdk';
-import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  type EngineFailure,
+  type MatrixRequestFailureKind,
+  engineFail,
+} from '@trinity/util/matrix';
+import { firstValueFrom, of } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ContentReportError,
   ContentReportingService,
 } from './content-reporting.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
 
-function fakeClient() {
+async function setup() {
+  const session = administrationSession();
+  const roomId = await roomWithAlice(session.engine);
+  TestBed.configureTestingModule({ providers: session.providers });
   return {
-    reportRoom: vi.fn(async () => ({})),
-    http: { authedRequest: vi.fn(async () => ({})) },
+    ...session,
+    roomId,
+    svc: TestBed.inject(ContentReportingService),
   };
 }
 
-function setup(clients: Record<string, ReturnType<typeof fakeClient>>) {
-  TestBed.configureTestingModule({
-    providers: [
-      ContentReportingService,
-      {
-        provide: MatrixClientService,
-        useValue: { clientFor: (id: string) => clients[id] ?? null },
-      },
-    ],
-  });
-  return TestBed.inject(ContentReportingService);
-}
+/** A server refusal as the js-sdk engine describes it. */
+const refusal = (
+  kind: MatrixRequestFailureKind,
+  diagnostic: { httpStatus?: number; errcode?: string; retryAfterMs?: number },
+): EngineFailure => ({
+  kind,
+  code: 'request-failed',
+  diagnostic: { kind, ...diagnostic },
+});
 
-const matrixError = (errcode: string, status: number, retry?: number) =>
-  new MatrixError(
-    { errcode, error: 'x', ...(retry ? { retry_after_ms: retry } : {}) },
-    status,
+const failureOf = (action: Promise<unknown>) =>
+  action.then(
+    () => null,
+    (error: unknown) => (error as ContentReportError).failure,
   );
 
+afterEach(() => TestBed.resetTestingModule());
+
 describe('ContentReportingService', () => {
-  beforeEach(() => TestBed.resetTestingModule());
-
   it('reports a room as the named account, always sending a reason', async () => {
-    const mine = fakeClient();
-    const other = fakeClient();
-    const svc = setup({ '@me:hs': mine, '@other:hs': other });
+    const { svc, engine, roomId } = await setup();
+    const reportRoom = vi.spyOn(engine, 'reportRoom');
 
-    const action = svc.reportRoom({ accountId: '@me:hs', roomId: '!r:hs' }, '');
-    expect(mine.reportRoom).not.toHaveBeenCalled();
-    await firstValueFrom(action);
+    const action = svc.reportRoom({ accountId: engine.alice, roomId }, '');
+    expect(reportRoom).not.toHaveBeenCalled();
+    await firstValueFrom(action, { defaultValue: undefined });
 
-    expect(mine.reportRoom).toHaveBeenCalledExactlyOnceWith('!r:hs', '');
-    expect(other.reportRoom).not.toHaveBeenCalled();
+    expect(reportRoom).toHaveBeenCalledExactlyOnceWith(
+      engine.alice,
+      roomId,
+      '',
+    );
   });
 
-  it('reports a user on the encoded path with the reason', async () => {
-    const mine = fakeClient();
-    const svc = setup({ '@me:hs': mine });
+  it('reports a user as the named account with the reason', async () => {
+    const { svc, engine } = await setup();
+    const reportUser = vi.spyOn(engine, 'reportUser');
 
-    await firstValueFrom(svc.reportUser('@me:hs', '@bad guy:hs', 'spam'));
+    await firstValueFrom(svc.reportUser(engine.alice, '@bad guy:hs', 'spam'), {
+      defaultValue: undefined,
+    });
 
-    expect(mine.http.authedRequest).toHaveBeenCalledExactlyOnceWith(
-      Method.Post,
-      '/users/%40bad%20guy%3Ahs/report',
-      undefined,
-      { reason: 'spam' },
+    expect(reportUser).toHaveBeenCalledExactlyOnceWith(
+      engine.alice,
+      '@bad guy:hs',
+      'spam',
     );
   });
 
   it('types a rate limit with its wait', async () => {
-    const mine = fakeClient();
-    mine.reportRoom.mockRejectedValue(
-      matrixError('M_LIMIT_EXCEEDED', 429, 5000),
+    const { svc, engine, roomId } = await setup();
+    vi.spyOn(engine, 'reportRoom').mockReturnValue(
+      of(
+        engineFail(
+          refusal('rate-limit', {
+            httpStatus: 429,
+            errcode: 'M_LIMIT_EXCEEDED',
+            retryAfterMs: 5000,
+          }),
+        ),
+      ),
     );
-    const svc = setup({ '@me:hs': mine });
 
     const error = await firstValueFrom(
-      svc.reportRoom({ accountId: '@me:hs', roomId: '!r:hs' }, ''),
+      svc.reportRoom({ accountId: engine.alice, roomId }, ''),
     ).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ContentReportError);
@@ -82,19 +100,18 @@ describe('ContentReportingService', () => {
     });
   });
 
-  it('keeps an unknown room apart from a missing endpoint', async () => {
-    const mine = fakeClient();
-    mine.reportRoom.mockRejectedValue(matrixError('M_NOT_FOUND', 404));
-    const svc = setup({ '@me:hs': mine });
+  it('keeps an unknown room (M_NOT_FOUND 404) apart from a missing endpoint', async () => {
+    const { svc, engine } = await setup();
 
-    const error = await firstValueFrom(
-      svc.reportRoom({ accountId: '@me:hs', roomId: '!r:hs' }, ''),
-    ).catch((e: unknown) => e);
+    // The fake answers an unknown room as Synapse does: 404 M_NOT_FOUND.
+    const failure = await failureOf(
+      firstValueFrom(
+        svc.reportRoom({ accountId: engine.alice, roomId: '!gone:hs' }, ''),
+      ),
+    );
 
-    expect((error as ContentReportError).failure).toEqual({
-      kind: 'not-found',
-    });
-    expect(svc.offers('@me:hs', 'room')).toBe(true);
+    expect(failure).toEqual({ kind: 'not-found' });
+    expect(svc.offers(engine.alice, 'room')).toBe(true);
   });
 
   it.each([
@@ -103,60 +120,81 @@ describe('ContentReportingService', () => {
     ['M_UNKNOWN', 405],
   ])(
     'hides that report kind for the account after %s %s',
-    async (errcode, status) => {
-      const mine = fakeClient();
-      mine.http.authedRequest.mockRejectedValue(matrixError(errcode, status));
-      const svc = setup({ '@me:hs': mine, '@other:hs': fakeClient() });
+    async (errcode, httpStatus) => {
+      const { svc, engine } = await setup();
+      vi.spyOn(engine, 'reportUser').mockImplementation((accountId) =>
+        of(
+          accountId === engine.alice
+            ? engineFail(refusal('http', { httpStatus, errcode }))
+            : { ok: true as const, value: null },
+        ),
+      );
 
-      const error = await firstValueFrom(
-        svc.reportUser('@me:hs', '@x:hs', ''),
-      ).catch((e: unknown) => e);
+      const failure = await failureOf(
+        firstValueFrom(svc.reportUser(engine.alice, '@x:hs', '')),
+      );
 
-      expect((error as ContentReportError).failure).toEqual({
-        kind: 'unsupported',
-      });
-      expect(svc.offers('@me:hs', 'user')).toBe(false);
-      expect(svc.offers('@me:hs', 'room')).toBe(true);
+      expect(failure).toEqual({ kind: 'unsupported' });
+      expect(svc.offers(engine.alice, 'user')).toBe(false);
+      expect(svc.offers(engine.alice, 'room')).toBe(true);
       expect(svc.offers('@other:hs', 'user')).toBe(true);
     },
   );
 
   it('treats a bare 404 without a Matrix body as a missing endpoint', async () => {
-    const mine = fakeClient();
-    mine.reportRoom.mockRejectedValue(new HTTPError('Not found', 404));
-    const svc = setup({ '@me:hs': mine });
+    const { svc, engine, roomId } = await setup();
+    vi.spyOn(engine, 'reportRoom').mockReturnValue(
+      of(engineFail(refusal('http', { httpStatus: 404 }))),
+    );
 
     await firstValueFrom(
-      svc.reportRoom({ accountId: '@me:hs', roomId: '!r:hs' }, ''),
+      svc.reportRoom({ accountId: engine.alice, roomId }, ''),
     ).catch(() => undefined);
 
-    expect(svc.offers('@me:hs', 'room')).toBe(false);
+    expect(svc.offers(engine.alice, 'room')).toBe(false);
   });
 
   it('types a reason the server finds too long', async () => {
-    const mine = fakeClient();
-    mine.reportRoom.mockRejectedValue(matrixError('M_INVALID_PARAM', 400));
-    const svc = setup({ '@me:hs': mine });
+    const { svc, engine, roomId } = await setup();
+    vi.spyOn(engine, 'reportRoom').mockReturnValue(
+      of(
+        engineFail(
+          refusal('http', { httpStatus: 400, errcode: 'M_INVALID_PARAM' }),
+        ),
+      ),
+    );
 
-    const error = await firstValueFrom(
-      svc.reportRoom({ accountId: '@me:hs', roomId: '!r:hs' }, 'x'.repeat(900)),
-    ).catch((e: unknown) => e);
+    const failure = await failureOf(
+      firstValueFrom(
+        svc.reportRoom({ accountId: engine.alice, roomId }, 'x'.repeat(900)),
+      ),
+    );
 
-    expect((error as ContentReportError).failure).toEqual({
-      kind: 'reason-too-long',
-    });
-    expect(svc.offers('@me:hs', 'room')).toBe(true);
+    expect(failure).toEqual({ kind: 'reason-too-long' });
+    expect(svc.offers(engine.alice, 'room')).toBe(true);
+  });
+
+  it('types any other failure as failed', async () => {
+    const { svc, engine } = await setup();
+    vi.spyOn(engine, 'reportUser').mockReturnValue(
+      of(engineFail(refusal('network', {}))),
+    );
+
+    const failure = await failureOf(
+      firstValueFrom(svc.reportUser(engine.alice, '@x:hs', '')),
+    );
+
+    expect(failure).toEqual({ kind: 'failed' });
+    expect(svc.offers(engine.alice, 'user')).toBe(true);
   });
 
   it('fails typed when the account is not signed in', async () => {
-    const svc = setup({});
+    const { svc } = await setup();
 
-    const error = await firstValueFrom(
-      svc.reportUser('@gone:hs', '@x:hs', ''),
-    ).catch((e: unknown) => e);
+    const failure = await failureOf(
+      firstValueFrom(svc.reportUser('@gone:hs', '@x:hs', '')),
+    );
 
-    expect((error as ContentReportError).failure).toEqual({
-      kind: 'not-signed-in',
-    });
+    expect(failure).toEqual({ kind: 'not-signed-in' });
   });
 });

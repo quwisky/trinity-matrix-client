@@ -42,6 +42,8 @@ export interface RoomAdministrationContractSetup {
     setPowerLevel(roomId: string, userId: string, level: number): Promise<void>;
     setDisplayName(roomId: string, name: string): Promise<void>;
     ban(roomId: string, userId: string, reason: string): Promise<void>;
+    /** Sends a text message and resolves its event ID. */
+    sendMessage(roomId: string, body: string): Promise<string>;
   };
   readonly asCarol: {
     join(roomId: string): Promise<void>;
@@ -95,12 +97,27 @@ export function defineRoomAdministrationEngineContract(
     }
 
     async function failureOf(
-      source: Observable<EngineResult<null>>,
+      source: Observable<EngineResult<unknown>>,
     ): Promise<{ readonly code: string; readonly kind: string } | null> {
       const result = await once(source);
       return result.ok
         ? null
         : { code: result.failure.code, kind: result.failure.kind };
+    }
+
+    /** The failure's code, kind, HTTP status and errcode; null on success. */
+    async function rejectionOf(
+      source: Observable<EngineResult<unknown>>,
+    ): Promise<Record<string, unknown> | null> {
+      const result = await once(source);
+      if (result.ok) return null;
+      const { code, kind, diagnostic } = result.failure;
+      return {
+        code,
+        kind,
+        httpStatus: diagnostic.httpStatus,
+        errcode: diagnostic.errcode,
+      };
     }
 
     function watch<T>(source: Observable<T | null>): Watch<T> {
@@ -478,6 +495,229 @@ export function defineRoomAdministrationEngineContract(
           }),
         );
         expect(codes).toEqual(['account-not-live', 'room-unavailable']);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'kick, ban and unban change membership; refused without the power',
+      async () => {
+        const roomId = await sharedRoom();
+        await context.asBob.invite(roomId, carol);
+        await context.asCarol.join(roomId);
+        const members = watch(engine.members(alice, roomId));
+        try {
+          await members.until((m) => memberOf(m, carol)?.membership === 'join');
+          expect(
+            await rejectionOf(engine.kick(alice, roomId, carol, 'spam')),
+          ).toMatchObject({
+            code: 'request-failed',
+            kind: 'permission',
+            httpStatus: 403,
+          });
+          expect(
+            await failureOf(engine.kick(NOBODY, roomId, carol, null)),
+          ).toMatchObject({ code: 'account-not-live' });
+
+          await context.asBob.setPowerLevel(roomId, alice, 100);
+          const room = watch(engine.room(alice, roomId));
+          try {
+            await room.until((r) => r.ownPower === 100);
+          } finally {
+            room.close();
+          }
+
+          const kick = engine.kick(alice, roomId, carol, 'spam');
+          // Cold: nothing is sent before subscribing.
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          expect(
+            memberOf(await members.until(() => true), carol)?.membership,
+          ).toBe('join');
+          expect(await failureOf(kick)).toBeNull();
+          expect(
+            memberOf(
+              await members.until(
+                (m) => memberOf(m, carol)?.membership === 'leave',
+              ),
+              carol,
+            ),
+          ).toMatchObject({ reason: 'spam' });
+
+          expect(
+            await failureOf(engine.ban(alice, roomId, carol, 'abuse')),
+          ).toBeNull();
+          expect(
+            memberOf(
+              await members.until(
+                (m) => memberOf(m, carol)?.membership === 'ban',
+              ),
+              carol,
+            ),
+          ).toMatchObject({ reason: 'abuse' });
+
+          expect(
+            await failureOf(engine.unban(alice, roomId, carol)),
+          ).toBeNull();
+          await members.until(
+            (m) => memberOf(m, carol)?.membership === 'leave',
+          );
+        } finally {
+          members.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reports an event, a room and a user; an unknown event or room is not found',
+      async () => {
+        const roomId = await sharedRoom();
+        const eventId = await context.asBob.sendMessage(roomId, 'report me');
+        const notFound = {
+          code: 'request-failed',
+          httpStatus: 404,
+          errcode: 'M_NOT_FOUND',
+        };
+
+        expect(
+          await failureOf(engine.reportEvent(alice, roomId, eventId, 'spam')),
+        ).toBeNull();
+        expect(
+          await rejectionOf(
+            engine.reportEvent(alice, roomId, '$unknown-event', ''),
+          ),
+        ).toMatchObject(notFound);
+        expect(
+          await failureOf(engine.reportRoom(alice, roomId, '')),
+        ).toBeNull();
+        expect(
+          await rejectionOf(engine.reportRoom(alice, '!unknown:invalid', '')),
+        ).toMatchObject(notFound);
+        expect(
+          await failureOf(engine.reportUser(alice, bob, 'spam')),
+        ).toBeNull();
+        expect(
+          await failureOf(engine.reportUser(NOBODY, bob, '')),
+        ).toMatchObject({ code: 'account-not-live' });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'publishes, lists and removes a local alias',
+      async () => {
+        const roomId = await sharedRoom();
+        const server = alice.slice(alice.indexOf(':') + 1);
+        const alias = `#ra-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}:${server}`;
+        const aliases = async () => {
+          const result = await once(engine.localAliases(alice, roomId));
+          return result.ok ? result.value : null;
+        };
+
+        expect(await aliases()).toEqual([]);
+        const publish = engine.publishAlias(alice, roomId, alias);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(await aliases()).toEqual([]);
+        expect(await failureOf(publish)).toBeNull();
+        expect(await aliases()).toEqual([alias]);
+
+        expect(await failureOf(engine.removeAlias(alice, alias))).toBeNull();
+        expect(await aliases()).toEqual([]);
+        expect(
+          await rejectionOf(engine.removeAlias(alice, alias)),
+        ).toMatchObject({
+          code: 'request-failed',
+          httpStatus: 404,
+          errcode: 'M_NOT_FOUND',
+        });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'aliases of a room the account has not joined are refused',
+      async () => {
+        const roomId = await context.asBob.createRoom();
+        const server = alice.slice(alice.indexOf(':') + 1);
+        const forbidden = {
+          code: 'request-failed',
+          kind: 'permission',
+          httpStatus: 403,
+        };
+
+        expect(
+          await rejectionOf(engine.localAliases(alice, roomId)),
+        ).toMatchObject(forbidden);
+        expect(
+          await rejectionOf(
+            engine.publishAlias(
+              alice,
+              roomId,
+              `#ra-never-${Date.now()}:${server}`,
+            ),
+          ),
+        ).toMatchObject(forbidden);
+        expect(
+          await failureOf(engine.localAliases(NOBODY, roomId)),
+        ).toMatchObject({ code: 'account-not-live' });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'lists and unlists a room in the directory with the power to',
+      async () => {
+        const roomId = await sharedRoom();
+        const visibility = async () => {
+          const result = await once(engine.directoryVisibility(alice, roomId));
+          return result.ok ? result.value : null;
+        };
+
+        expect(await visibility()).toBe('private');
+        expect(
+          await rejectionOf(
+            engine.setDirectoryVisibility(alice, roomId, 'public'),
+          ),
+        ).toMatchObject({
+          code: 'request-failed',
+          kind: 'permission',
+          httpStatus: 403,
+        });
+
+        await context.asBob.setPowerLevel(roomId, alice, 100);
+        const room = watch(engine.room(alice, roomId));
+        try {
+          await room.until((r) => r.ownPower === 100);
+        } finally {
+          room.close();
+        }
+        expect(
+          await failureOf(
+            engine.setDirectoryVisibility(alice, roomId, 'public'),
+          ),
+        ).toBeNull();
+        expect(await visibility()).toBe('public');
+        expect(
+          await failureOf(
+            engine.setDirectoryVisibility(alice, roomId, 'private'),
+          ),
+        ).toBeNull();
+        expect(await visibility()).toBe('private');
+
+        expect(
+          await rejectionOf(
+            engine.directoryVisibility(alice, '!unknown:invalid'),
+          ),
+        ).toMatchObject({
+          code: 'request-failed',
+          httpStatus: 404,
+          errcode: 'M_NOT_FOUND',
+        });
+        expect(
+          await failureOf(
+            engine.setDirectoryVisibility(NOBODY, roomId, 'private'),
+          ),
+        ).toMatchObject({ code: 'account-not-live' });
       },
       testTimeoutMs,
     );

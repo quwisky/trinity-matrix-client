@@ -15,6 +15,7 @@ import {
 } from '@trinity/util/matrix';
 import type {
   AdministeredRoom,
+  DirectoryVisibility,
   JsonObject,
   Membership,
   PowerLevel,
@@ -23,7 +24,12 @@ import type {
   RoomMemberInfo,
   RoomMembers,
 } from '../lib/room-administration-engine';
-import { isHydraRoomVersion, maySendState } from '../lib/room-power';
+import {
+  isHydraRoomVersion,
+  mayAct,
+  maySendState,
+  powerValue,
+} from '../lib/room-power';
 import type { ContractRoomOptions } from './room-administration-engine.contract';
 
 interface FakeStateEvent {
@@ -66,11 +72,23 @@ function failure(code: 'account-not-live' | 'room-unavailable'): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
 }
 
-const FORBIDDEN: EngineFailure = {
-  kind: 'permission',
-  code: 'request-failed',
-  diagnostic: { kind: 'permission', httpStatus: 403, errcode: 'M_FORBIDDEN' },
-};
+/** A server refusal as the js-sdk engine describes it. */
+function rejected(httpStatus: 403 | 404, errcode: string): EngineFailure {
+  const kind = httpStatus === 403 ? 'permission' : 'http';
+  return {
+    kind,
+    code: 'request-failed',
+    diagnostic: { kind, httpStatus, errcode },
+  };
+}
+
+const FORBIDDEN = rejected(403, 'M_FORBIDDEN');
+const NOT_FOUND = rejected(404, 'M_NOT_FOUND');
+const MANAGEABLE: ReadonlySet<Membership | null> = new Set<Membership | null>([
+  'join',
+  'invite',
+  'knock',
+]);
 
 function record(value: unknown): JsonObject | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -91,8 +109,16 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
   private readonly live = new Set<string>();
   /** The crypto store's answer per room; absent until answered. */
   private readonly encryptionAnswers = new Map<string, boolean | null>();
+  /** The server's alias directory: alias to room and creator. */
+  private readonly aliases = new Map<
+    string,
+    { readonly roomId: string; readonly creator: string }
+  >();
+  private readonly listed = new Set<string>();
+  private readonly messages = new Map<string, Set<string>>();
   private readonly changes$ = new BehaviorSubject<void>(undefined);
   private nextRoom = 0;
+  private nextEvent = 0;
   private clock = 1_700_000_000_000;
 
   readonly serverName = 'example.org';
@@ -173,6 +199,13 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
         membership: 'ban',
         reason,
       }),
+    sendMessage: async (roomId: string, _body: string): Promise<string> => {
+      const eventId = `$fake-${++this.nextEvent}`;
+      const sent = this.messages.get(roomId) ?? new Set<string>();
+      sent.add(eventId);
+      this.messages.set(roomId, sent);
+      return eventId;
+    },
   };
 
   readonly asCarol = {
@@ -281,6 +314,209 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
         ),
       );
     });
+  }
+
+  kick(
+    accountId: string,
+    roomId: string,
+    userId: string,
+    reason: string | null,
+  ): Observable<EngineResult<null>> {
+    return this.moderate(accountId, roomId, userId, ['kick'], MANAGEABLE, {
+      membership: 'leave',
+      ...(reason ? { reason } : {}),
+    });
+  }
+
+  ban(
+    accountId: string,
+    roomId: string,
+    userId: string,
+    reason: string | null,
+  ): Observable<EngineResult<null>> {
+    return this.moderate(accountId, roomId, userId, ['ban'], null, {
+      membership: 'ban',
+      ...(reason ? { reason } : {}),
+    });
+  }
+
+  unban(
+    accountId: string,
+    roomId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.moderate(
+      accountId,
+      roomId,
+      userId,
+      ['ban', 'kick'],
+      new Set(['ban']),
+      { membership: 'leave' },
+    );
+  }
+
+  reportEvent(
+    accountId: string,
+    roomId: string,
+    eventId: string,
+  ): Observable<EngineResult<null>> {
+    // Synapse reports only events the reporter can see.
+    return this.command(accountId, () =>
+      this.membershipOf(roomId, accountId) === 'join' &&
+      this.messages.get(roomId)?.has(eventId)
+        ? null
+        : NOT_FOUND,
+    );
+  }
+
+  reportRoom(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, () =>
+      this.rooms.has(roomId) ? null : NOT_FOUND,
+    );
+  }
+
+  /** Synapse answers success for any user, so reports do not reveal who exists. */
+  reportUser(accountId: string): Observable<EngineResult<null>> {
+    return this.command(accountId, () => null);
+  }
+
+  localAliases(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly string[]>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      if (this.membershipOf(roomId, accountId) !== 'join') {
+        return of(engineFail(FORBIDDEN));
+      }
+      return of(
+        engineOk(
+          [...this.aliases]
+            .filter(([, entry]) => entry.roomId === roomId)
+            .map(([alias]) => alias),
+        ),
+      );
+    });
+  }
+
+  publishAlias(
+    accountId: string,
+    roomId: string,
+    alias: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, () => {
+      if (this.membershipOf(roomId, accountId) !== 'join') return FORBIDDEN;
+      this.aliases.set(alias, { roomId, creator: accountId });
+      return null;
+    });
+  }
+
+  /** Synapse lets the alias's creator or a room moderator remove it. */
+  removeAlias(
+    accountId: string,
+    alias: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, () => {
+      const entry = this.aliases.get(alias);
+      if (!entry) return NOT_FOUND;
+      if (
+        entry.creator !== accountId &&
+        !this.mayChangeRoomList(accountId, entry.roomId)
+      ) {
+        return FORBIDDEN;
+      }
+      this.aliases.delete(alias);
+      return null;
+    });
+  }
+
+  directoryVisibility(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<DirectoryVisibility>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      if (!this.rooms.has(roomId)) return of(engineFail(NOT_FOUND));
+      return of(
+        engineOk<DirectoryVisibility>(
+          this.listed.has(roomId) ? 'public' : 'private',
+        ),
+      );
+    });
+  }
+
+  setDirectoryVisibility(
+    accountId: string,
+    roomId: string,
+    visibility: DirectoryVisibility,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, () => {
+      if (!this.mayChangeRoomList(accountId, roomId)) return FORBIDDEN;
+      if (visibility === 'public') this.listed.add(roomId);
+      else this.listed.delete(roomId);
+      return null;
+    });
+  }
+
+  /** A server command for a live account; `run` answers its refusal or null. */
+  private command(
+    accountId: string,
+    run: () => EngineFailure | null,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      const refusal = run();
+      return of(refusal ? engineFail(refusal) : engineOk(null));
+    });
+  }
+
+  /**
+   * Synapse event auth for changing another user's membership: joined, every `levels`
+   * action allowed, out-ranking the target, whose membership is in `from` (any when null).
+   */
+  private moderate(
+    accountId: string,
+    roomId: string,
+    userId: string,
+    levels: readonly ('kick' | 'ban')[],
+    from: ReadonlySet<Membership | null> | null,
+    content: JsonObject,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, () => {
+      const powerLevels = this.content(roomId, 'm.room.power_levels', '');
+      const power = this.powerOf(roomId, accountId);
+      if (
+        this.membershipOf(roomId, accountId) !== 'join' ||
+        (from && !from.has(this.membershipOf(roomId, userId))) ||
+        !levels.every((action) => mayAct(powerLevels, power, action)) ||
+        powerValue(power) <= powerValue(this.powerOf(roomId, userId))
+      ) {
+        return FORBIDDEN;
+      }
+      this.setMembership(roomId, userId, accountId, content);
+      return null;
+    });
+  }
+
+  /** Synapse `check_can_change_room_list`: joined, with the power to set the canonical alias. */
+  private mayChangeRoomList(accountId: string, roomId: string): boolean {
+    return (
+      this.membershipOf(roomId, accountId) === 'join' &&
+      maySendState(
+        this.content(roomId, 'm.room.power_levels', ''),
+        this.powerOf(roomId, accountId),
+        'm.room.canonical_alias',
+      )
+    );
   }
 
   private roomSnapshot(

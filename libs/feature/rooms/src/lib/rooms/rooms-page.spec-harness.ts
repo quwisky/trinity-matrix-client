@@ -33,6 +33,7 @@ import {
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
 import {
+  EMPTY_SESSION,
   MatrixClientService,
   SESSION_ENGINE,
   SessionStateService,
@@ -555,6 +556,8 @@ export function sessionStateProvider(
       options.syncState ?? null,
     ).asReadonly(),
     softLoggedOut: signal<readonly string[]>([]).asReadonly(),
+    // Read by the room administration store the moderation service injects.
+    snapshot: signal(EMPTY_SESSION).asReadonly(),
   });
 }
 
