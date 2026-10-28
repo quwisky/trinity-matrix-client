@@ -1,8 +1,12 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import {
   ClientEvent,
   Direction,
+  EventStatus,
   EventType,
+  M_POLL_END,
+  M_POLL_RESPONSE,
+  M_POLL_START,
   MatrixEventEvent,
   ReceiptType,
   RoomEvent,
@@ -25,17 +29,26 @@ import {
   from,
   map,
   of,
+  switchMap,
   type Subscriber,
 } from 'rxjs';
 import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
+import { MediaService } from '@trinity/data-access/media';
 import {
   RoomEncryptionFlags,
   TYPING_TIMEOUT_MS,
+  annotationContent,
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
+  isRoomEncrypted,
   liveRoomState,
+  locationMessageContent,
   plainEqual,
+  pollEndContent,
+  pollResponseContent,
+  pollStartContent,
+  voiceMessageContent,
   type EngineFailure,
   type EngineResult,
 } from '@trinity/util/matrix';
@@ -43,13 +56,17 @@ import type { MessageShield } from '../message-presentation';
 import { shieldCodeOf, shieldKey } from '../shield-presentation';
 import type {
   EventTimelineItem,
+  OutgoingMessage,
+  OutgoingText,
   Profile,
   ReactionDetailGroup,
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
+  TimelineItemKey,
   TimelineRoomState,
   TimelineUpdate,
+  VoiceClip,
 } from '../timeline-engine';
 import {
   collectMessageSenders,
@@ -60,14 +77,24 @@ import { revisionOf } from './event-revision';
 import { scrollbackLive } from './live-scrollback';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
 import {
+  editContent,
+  fetchRoomEvent,
+  forwardedContent,
+  myReactionIds,
+  replyMessageContent,
+  textContent,
+  voiceExtension,
+} from './outgoing-content';
+import {
   resolveShieldsInto,
   resolvedShields,
   shieldsToCheck,
+  shownContent,
   shownShield,
   shownSubject,
   unencryptedShieldFor,
 } from './shields';
-import { profileOf, toTimelineItem } from './timeline-item';
+import { profileOf, toTimelineItem, transactionIdOf } from './timeline-item';
 import { TimelineRowCache } from './timeline-row-cache';
 
 /** Events per page while paging back to a target event. */
@@ -84,7 +111,13 @@ const TIMELINE_START: TimelineItem = {
 };
 
 function localFailure(
-  code: 'account-not-live' | 'message-unavailable' | 'unsupported',
+  code:
+    | 'account-not-live'
+    | 'message-unavailable'
+    | 'unsupported'
+    | 'not-cancellable'
+    | 'not-forwardable'
+    | 'encryption-unavailable',
 ): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
 }
@@ -161,12 +194,112 @@ function fullyReadOf(room: Room): string | null {
   return typeof eventId === 'string' ? eventId : null;
 }
 
+/** Statuses of a local echo the SDK can still resend or cancel. */
+const UNSENT: ReadonlySet<EventStatus | null> = new Set([
+  EventStatus.NOT_SENT,
+  EventStatus.QUEUED,
+  EventStatus.ENCRYPTING,
+]);
+
+/** The local echo of `transactionId`, pending or, once sent, in the live timeline. */
+function echoOf(room: Room, transactionId: string): MatrixEvent | undefined {
+  return (
+    room.getEventForTxnId(transactionId) ??
+    room
+      .getLiveTimeline()
+      .getEvents()
+      .find((event) => transactionIdOf(event) === transactionId)
+  );
+}
+
+/** The id `item` is known by in the room: its event id, else its local echo's. */
+function idOf(room: Room, item: TimelineItemKey): string | null {
+  if (item.eventId !== null) return item.eventId;
+  return item.transactionId === null
+    ? null
+    : (room.getEventForTxnId(item.transactionId)?.getId() ?? null);
+}
+
+/** A loaded event, a thread's included. */
+function findEvent(
+  room: Room,
+  eventId: string,
+  threadRootId: string | null,
+): MatrixEvent | undefined {
+  return (
+    room.findEventById(eventId) ??
+    room
+      .getThread(threadRootId ?? '')
+      ?.events.find((e) => e.getId() === eventId) ??
+    room
+      .getLiveTimeline()
+      .getEvents()
+      .find((e) => e.getId() === eventId)
+  );
+}
+
+/** The event type and content Trinity sends for `message`. */
+function outgoing(
+  room: Room,
+  message: OutgoingMessage,
+  replyTo: string | null,
+  target: MatrixEvent | undefined,
+): { readonly type: string; readonly content: Record<string, unknown> } {
+  switch (message.kind) {
+    case 'text':
+      return {
+        type: EventType.RoomMessage,
+        content: replyTo
+          ? replyMessageContent(room, replyTo, message, target, shownContent)
+          : textContent(message),
+      };
+    case 'location':
+      return {
+        type: EventType.RoomMessage,
+        content: locationMessageContent(
+          message.lat,
+          message.lng,
+          message.label ?? undefined,
+        ),
+      };
+    case 'sticker':
+      return {
+        type: EventType.Sticker,
+        content: { body: message.body, url: message.url, info: message.info },
+      };
+    case 'poll-start':
+      return {
+        type: M_POLL_START.name,
+        content: pollStartContent(
+          message.question,
+          message.answers,
+          message.maxSelections,
+        ),
+      };
+    case 'poll-response':
+      return {
+        type: M_POLL_RESPONSE.name,
+        content: pollResponseContent(message.pollId, message.answerIds),
+      };
+    case 'poll-end':
+      return {
+        type: M_POLL_END.name,
+        content: pollEndContent(message.pollId),
+      };
+  }
+}
+
 /** An open `timeline()` subscription, which commands bring up to date before replying. */
 interface Feed {
   readonly client: MatrixClient;
   readonly roomId: string;
   /** Emits the current items now, dropping a queued emission. */
   flush(): void;
+  /**
+   * {@link flush}; while a landed page waits for its flush, resolves after that flush instead,
+   * so the page still arrives with the pagination state it ends in.
+   */
+  settle(): Promise<void>;
   /** Emits the pagination state with no diffs. */
   announce(): void;
 }
@@ -178,6 +311,8 @@ interface Feed {
 @Injectable({ providedIn: 'root' })
 export class JsSdkTimelineEngine implements TimelineEngine {
   private readonly clients = inject(JS_SDK_CLIENTS);
+  // Resolved on use: the media service needs the session's MatrixClientService.
+  private readonly injector = inject(Injector);
   private readonly feeds = new Set<Feed>();
   /** The rooms with a page in flight, per client. */
   private readonly paging = new WeakMap<MatrixClient, Set<string>>();
@@ -421,6 +556,275 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     });
   }
 
+  send(
+    accountId: string,
+    roomId: string,
+    message: OutgoingMessage,
+    options: {
+      readonly threadRootId: string | null;
+      readonly replyTo: string | null;
+    },
+  ): Observable<
+    EngineResult<{
+      readonly transactionId: string;
+      readonly eventId: string | null;
+    }>
+  > {
+    return this.command<{
+      readonly transactionId: string;
+      readonly eventId: string | null;
+    }>(accountId, (client) => {
+      const room = client.getRoom(roomId);
+      if (!room) return of(engineFail(localFailure('message-unavailable')));
+      const replyTo = message.kind === 'text' ? options.replyTo : null;
+      // A reply can outlive its target in memory (a trimmed room, a restored draft): such a
+      // target is fetched; when that fails the reply keeps its relation but no quote.
+      const target = defer(() => {
+        const loaded = replyTo ? room.findEventById(replyTo) : undefined;
+        return loaded || !replyTo
+          ? of(loaded)
+          : from(fetchRoomEvent(client, roomId, replyTo));
+      });
+      return target.pipe(
+        switchMap((event) => {
+          const { type, content } = outgoing(room, message, replyTo, event);
+          const transactionId = client.makeTxnId();
+          const request =
+            type === EventType.RoomMessage
+              ? client.sendMessage(
+                  roomId,
+                  options.threadRootId,
+                  content as never,
+                  transactionId,
+                )
+              : client.sendEvent(
+                  roomId,
+                  options.threadRootId,
+                  type as never,
+                  content as never,
+                  transactionId,
+                );
+          void this.settleFeeds(client, roomId);
+          return this.settled(
+            client,
+            roomId,
+            request.then(
+              ({ event_id }) =>
+                engineOk({ transactionId, eventId: event_id ?? null }),
+              (error: unknown) => {
+                // The echo stays, unsent, with its send state.
+                if (room.getEventForTxnId(transactionId)) {
+                  return engineOk({ transactionId, eventId: null });
+                }
+                throw error;
+              },
+            ),
+          );
+        }),
+      );
+    });
+  }
+
+  edit(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    message: OutgoingText,
+    options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>> {
+    return this.onRoom(accountId, roomId, (client, room) => {
+      const eventId = idOf(room, item);
+      if (eventId === null)
+        return engineFail(localFailure('message-unavailable'));
+      return client
+        .sendMessage(
+          roomId,
+          options.threadRootId,
+          editContent(eventId, message) as never,
+          client.makeTxnId(),
+        )
+        .then(() => engineOk(null));
+    });
+  }
+
+  redact(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>> {
+    return this.onRoom(accountId, roomId, (client, room) => {
+      const eventId = idOf(room, item);
+      if (eventId === null)
+        return engineFail(localFailure('message-unavailable'));
+      return (
+        options.threadRootId
+          ? client.redactEvent(roomId, options.threadRootId, eventId)
+          : client.redactEvent(roomId, eventId)
+      ).then(() => engineOk(null));
+    });
+  }
+
+  toggleReaction(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    key: string,
+    options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>> {
+    return this.onRoom(accountId, roomId, (client, room) => {
+      const { threadRootId } = options;
+      const eventId = idOf(room, item);
+      if (eventId === null || !findEvent(room, eventId, threadRootId)) {
+        return engineFail(localFailure('message-unavailable'));
+      }
+      const mine = myReactionIds(client, room, eventId, key);
+      const action = mine.length
+        ? Promise.all(
+            mine.map((id) =>
+              threadRootId
+                ? client.redactEvent(roomId, threadRootId, id)
+                : client.redactEvent(roomId, id),
+            ),
+          )
+        : client.sendEvent(
+            roomId,
+            threadRootId,
+            EventType.Reaction,
+            annotationContent(eventId, key) as never,
+            client.makeTxnId(),
+          );
+      return action.then(() => engineOk(null));
+    });
+  }
+
+  retrySend(
+    accountId: string,
+    roomId: string,
+    transactionId: string,
+  ): Observable<EngineResult<null>> {
+    return this.onRoom(accountId, roomId, (client, room) => {
+      const echo = room.getEventForTxnId(transactionId);
+      if (!echo || !UNSENT.has(echo.status)) {
+        return engineFail(localFailure('message-unavailable'));
+      }
+      return client.resendEvent(echo, room).then(() => engineOk(null));
+    });
+  }
+
+  cancelSend(
+    accountId: string,
+    roomId: string,
+    transactionId: string,
+  ): Observable<EngineResult<null>> {
+    return this.onRoom(accountId, roomId, (client, room) => {
+      const echo = echoOf(room, transactionId);
+      if (!echo) return engineFail(localFailure('message-unavailable'));
+      try {
+        // CANCELLED is what releases the waiting draft record and stops the reconnect resend.
+        client.cancelPendingEvent(echo);
+        return engineOk(null);
+      } catch {
+        // SENDING means the request may already have crossed the network boundary.
+        return engineFail(localFailure('not-cancellable'));
+      }
+    });
+  }
+
+  forward(
+    accountId: string,
+    sourceRoomId: string,
+    eventId: string,
+    targetRoomId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) => {
+      const event = client.getRoom(sourceRoomId)?.findEventById(eventId);
+      if (!event) return of(engineFail(localFailure('message-unavailable')));
+      // What the row shows (an encrypted edit only once its own shield is checked), cut to
+      // the message's own fields.
+      const forwarded = forwardedContent(
+        event.getType(),
+        shownContent(event),
+        Boolean(event.replyEventId),
+      );
+      if (!forwarded) return of(engineFail(localFailure('not-forwardable')));
+      const transactionId = client.makeTxnId();
+      const request =
+        event.getType() === EventType.Sticker
+          ? client.sendEvent(
+              targetRoomId,
+              null,
+              EventType.Sticker,
+              forwarded as never,
+              transactionId,
+            )
+          : client.sendMessage(
+              targetRoomId,
+              null,
+              forwarded as never,
+              transactionId,
+            );
+      return this.settled(
+        client,
+        targetRoomId,
+        request.then(() => engineOk(null)),
+      );
+    });
+  }
+
+  sendVoice(
+    accountId: string,
+    roomId: string,
+    clip: VoiceClip,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) => {
+      const room = client.getRoom(roomId);
+      if (!room) return of(engineFail(localFailure('message-unavailable')));
+      const crypto = client.getCrypto?.();
+      const file = new File(
+        [clip.blob],
+        `voice-message.${voiceExtension(clip.mimeType)}`,
+        { type: clip.mimeType },
+      );
+      return from(isRoomEncrypted(room, crypto)).pipe(
+        switchMap((encrypt) => {
+          // Without a crypto store the SDK would send the event, and the clip's key, in the clear.
+          if (encrypt && !crypto) {
+            return of(engineFail(localFailure('encryption-unavailable')));
+          }
+          return this.injector
+            .get(MediaService)
+            .uploadMedia(file, encrypt, undefined, undefined, client)
+            .pipe(
+              switchMap((media) =>
+                this.settled(
+                  client,
+                  roomId,
+                  client
+                    .sendMessage(
+                      roomId,
+                      null,
+                      voiceMessageContent(
+                        {
+                          mxc: media.mxc,
+                          file: media.file,
+                          mimeType: media.info.mimetype,
+                          size: media.info.size,
+                        },
+                        clip.durationMs,
+                        [...clip.waveform],
+                      ) as never,
+                      client.makeTxnId(),
+                    )
+                    .then(() => engineOk(null)),
+                ),
+              ),
+            );
+        }),
+      );
+    });
+  }
+
   /** A cold command: `account-not-live` without a client, a thrown error as `request-failed`. */
   private command<T>(
     accountId: string,
@@ -483,6 +887,48 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       if (on) feed.announce();
       else feed.flush();
     }
+  }
+
+  /**
+   * A command on a room the account holds, `message-unavailable` when it does not. It replies
+   * once its effect is in the room's open subscriptions.
+   */
+  private onRoom<T>(
+    accountId: string,
+    roomId: string,
+    run: (
+      client: MatrixClient,
+      room: Room,
+    ) => EngineResult<T> | Promise<EngineResult<T>>,
+  ): Observable<EngineResult<T>> {
+    return this.command(accountId, (client) => {
+      const room = client.getRoom(roomId);
+      if (!room) return of(engineFail(localFailure('message-unavailable')));
+      return this.settled(
+        client,
+        roomId,
+        new Promise<EngineResult<T>>((resolve) => resolve(run(client, room))),
+      );
+    });
+  }
+
+  /** `result`, once the room's open subscriptions show what it did, failed or not. */
+  private settled<T>(
+    client: MatrixClient,
+    roomId: string,
+    result: Promise<T>,
+  ): Observable<T> {
+    return from(result.finally(() => this.settleFeeds(client, roomId)));
+  }
+
+  private settleFeeds(client: MatrixClient, roomId: string): Promise<void> {
+    const settling: Promise<void>[] = [];
+    for (const feed of this.feeds) {
+      if (feed.client === client && feed.roomId === roomId) {
+        settling.push(feed.settle());
+      }
+    }
+    return Promise.all(settling).then(() => undefined);
   }
 
   private flushFeeds(client: MatrixClient, roomId: string): void {
@@ -709,6 +1155,13 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     // A page shows only with the pagination state it ends in (T3): once it has landed,
     // changes wait the few microtasks until the flush that ends the page.
     let pageLanded = false;
+    /** Settles waiting for the flush that ends a landed page. */
+    let landedWaiters: (() => void)[] = [];
+    const release = (): void => {
+      const waiting = landedWaiters;
+      landedWaiters = [];
+      for (const resolve of waiting) resolve();
+    };
     const flusher = coalesce(() => {
       if (!pageLanded) emit();
     });
@@ -720,6 +1173,15 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         pageLanded = false;
         flusher.cancel();
         emit();
+        release();
+      },
+      settle: () => {
+        if (pageLanded) {
+          return new Promise<void>((resolve) => landedWaiters.push(resolve));
+        }
+        flusher.cancel();
+        emit();
+        return Promise.resolve();
       },
       announce: () =>
         subscriber.next({
@@ -811,6 +1273,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
 
     return () => {
       closed = true;
+      release();
       flusher.cancel();
       this.feeds.delete(feed);
       room.off(RoomEvent.Timeline, onTimeline);

@@ -16,16 +16,21 @@ import {
   applyVectorDiffs,
   engineOk,
 } from '@trinity/util/matrix';
+import type { PollView } from '@trinity/util/matrix';
 import type {
   EventTimelineItem,
+  OutgoingMessage,
+  OutgoingText,
   Profile,
   ReactionDetailGroup,
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
   TimelineItemContent,
+  TimelineItemKey,
   TimelineRoomState,
   TimelineUpdate,
+  VoiceClip,
 } from '../lib/timeline-engine';
 
 type FailNextCode = Exclude<
@@ -45,6 +50,8 @@ interface FakeRoom {
   /** Public `m.read` receipts by user. */
   readonly readReceipts: Map<string, string>;
   readonly invited: Set<string>;
+  /** Each voter's answers, per poll event id. */
+  readonly votes: Map<string, Map<string, readonly string[]>>;
 }
 
 function failure(code: FailNextCode): EngineFailure {
@@ -52,6 +59,15 @@ function failure(code: FailNextCode): EngineFailure {
 }
 
 const MESSAGE_UNAVAILABLE = failure('message-unavailable');
+const NOT_CANCELLABLE = failure('not-cancellable');
+const NOT_FORWARDABLE = failure('not-forwardable');
+/** What the fake can copy: the kinds whose content stands on its own. */
+const FORWARDABLE: ReadonlySet<TimelineItemContent['kind']> = new Set([
+  'message',
+  'media',
+  'sticker',
+  'location',
+]);
 const START_ITEM: TimelineItem = {
   kind: 'timelineStart',
   uniqueId: 'timeline-start',
@@ -59,6 +75,18 @@ const START_ITEM: TimelineItem = {
 
 function profileOf(displayName: string): Profile {
   return { displayName, displayNameAmbiguous: false, avatarMxc: null };
+}
+
+function outgoingContent(message: OutgoingText): TimelineItemContent {
+  return {
+    kind: 'message',
+    msgtype: message.msgtype,
+    body: message.body,
+    formattedBody: message.formattedBody,
+    replyFallback: false,
+    mentionsMe: false,
+    mentions: [...message.mentions.userIds],
+  };
 }
 
 function textContent(body: string): TimelineItemContent {
@@ -398,6 +426,381 @@ export class FakeTimelineEngine implements TimelineEngine {
     return this.run(accountId, roomId, () => engineOk(null));
   }
 
+  send(
+    accountId: string,
+    roomId: string,
+    message: OutgoingMessage,
+    options: {
+      readonly threadRootId: string | null;
+      readonly replyTo: string | null;
+    },
+  ): Observable<
+    EngineResult<{
+      readonly transactionId: string;
+      readonly eventId: string | null;
+    }>
+  > {
+    return this.run(accountId, roomId, (room) => {
+      const eventId = this.nextEventId();
+      const transactionId = `fake-txn-${this.nextEvent}`;
+      if (message.kind === 'poll-response' || message.kind === 'poll-end') {
+        const poll = this.event(room, message.pollId);
+        if (poll?.content.kind !== 'poll')
+          return engineFail(MESSAGE_UNAVAILABLE);
+        if (message.kind === 'poll-end') {
+          this.patchEvent(roomId, message.pollId, () => ({
+            content: {
+              kind: 'poll',
+              poll: { ...this.pollOf(poll), ended: true },
+            },
+          }));
+        } else {
+          const votes =
+            room.votes.get(message.pollId) ??
+            new Map<string, readonly string[]>();
+          room.votes.set(
+            message.pollId,
+            votes.set(accountId, message.answerIds),
+          );
+          this.publish(roomId);
+        }
+        return engineOk({ transactionId, eventId });
+      }
+      const target = options.replyTo ? this.event(room, options.replyTo) : null;
+      this.append(roomId, {
+        ...this.own(accountId, eventId, this.contentOf(message, eventId)),
+        uniqueId: `txn:${transactionId}`,
+        transactionId,
+        inReplyTo:
+          options.replyTo && message.kind === 'text'
+            ? {
+                eventId: options.replyTo,
+                details: target
+                  ? {
+                      kind: 'ready',
+                      sender: target.sender,
+                      body:
+                        target.content.kind === 'message'
+                          ? target.content.body
+                          : '',
+                      redacted: target.content.kind === 'redacted',
+                      unencryptedMark: null,
+                    }
+                  : { kind: 'unavailable' },
+              }
+            : null,
+      });
+      return engineOk({ transactionId, eventId });
+    });
+  }
+
+  edit(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    message: OutgoingText,
+    _options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>> {
+    return this.onItem(accountId, roomId, item, (found) =>
+      this.patchItem(roomId, found, () => ({
+        content: outgoingContent(message),
+        edited: true,
+      })),
+    );
+  }
+
+  redact(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    _options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>> {
+    return this.onItem(accountId, roomId, item, (found) =>
+      this.patchItem(roomId, found, () => ({
+        content: { kind: 'redacted', replyFallback: false },
+        reactions: [],
+      })),
+    );
+  }
+
+  toggleReaction(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    key: string,
+    _options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>> {
+    return this.onItem(accountId, roomId, item, (found) =>
+      this.patchItem(roomId, found, (current) => {
+        const group = current.reactions.find((g) => g.key === key);
+        if (group?.senders.includes(accountId)) {
+          return {
+            reactions: current.reactions.flatMap((g) => {
+              if (g.key !== key) return [g];
+              const senders = g.senders.filter((s) => s !== accountId);
+              return senders.length
+                ? [{ ...g, count: g.count - 1, reactedByMe: false, senders }]
+                : [];
+            }),
+          };
+        }
+        return {
+          reactions: group
+            ? current.reactions.map((g) =>
+                g.key === key
+                  ? {
+                      ...g,
+                      count: g.count + 1,
+                      reactedByMe: true,
+                      senders: [...g.senders, accountId],
+                    }
+                  : g,
+              )
+            : [
+                ...current.reactions,
+                { key, count: 1, reactedByMe: true, senders: [accountId] },
+              ],
+          profiles: {
+            ...current.profiles,
+            [accountId]: this.profile(accountId),
+          },
+        };
+      }),
+    );
+  }
+
+  retrySend(
+    accountId: string,
+    roomId: string,
+    transactionId: string,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, roomId, (room) => {
+      const echo = this.unsent(room, transactionId);
+      if (!echo) return engineFail(MESSAGE_UNAVAILABLE);
+      this.patchItem(roomId, echo, () => ({ sendState: null }));
+      return engineOk(null);
+    });
+  }
+
+  cancelSend(
+    accountId: string,
+    roomId: string,
+    transactionId: string,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, roomId, (room) => {
+      const echo = this.events(room).find(
+        (i) => i.transactionId === transactionId,
+      );
+      if (!echo) return engineFail(MESSAGE_UNAVAILABLE);
+      if (!this.unsent(room, transactionId)) return engineFail(NOT_CANCELLABLE);
+      room.history = room.history.filter((i) => i !== echo);
+      for (const [member, count] of room.loaded)
+        room.loaded.set(member, count - 1);
+      this.publish(roomId);
+      return engineOk(null);
+    });
+  }
+
+  forward(
+    accountId: string,
+    sourceRoomId: string,
+    eventId: string,
+    targetRoomId: string,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, sourceRoomId, (room) => {
+      const source = this.event(room, eventId);
+      if (!source) return engineFail(MESSAGE_UNAVAILABLE);
+      if (!FORWARDABLE.has(source.content.kind))
+        return engineFail(NOT_FORWARDABLE);
+      if (!this.rooms.get(targetRoomId)?.members.has(accountId))
+        return engineFail(MESSAGE_UNAVAILABLE);
+      this.append(
+        targetRoomId,
+        this.own(accountId, this.nextEventId(), source.content),
+      );
+      return engineOk(null);
+    });
+  }
+
+  sendVoice(
+    accountId: string,
+    roomId: string,
+    clip: VoiceClip,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, roomId, () => {
+      const eventId = this.nextEventId();
+      this.append(
+        roomId,
+        this.own(accountId, eventId, {
+          kind: 'media',
+          msgtype: 'audio',
+          source: {
+            kind: 'audio',
+            mxc: `mxc://${this.serverName}/${eventId.slice(1)}`,
+            file: null,
+            filename: 'Voice message',
+            mimeType: clip.mimeType,
+            size: clip.blob.size,
+            durationMs: clip.durationMs,
+            thumbnailMxc: null,
+            thumbnailFile: null,
+            isVoice: true,
+            waveform: [...clip.waveform],
+          },
+          body: 'Voice message',
+          caption: null,
+          formattedCaption: null,
+          replyFallback: false,
+          mentionsMe: false,
+          mentions: [],
+        }),
+      );
+      return engineOk(null);
+    });
+  }
+
+  /** A cold command on the item `key` names, `message-unavailable` when there is none. */
+  private onItem(
+    accountId: string,
+    roomId: string,
+    key: TimelineItemKey,
+    action: (item: EventTimelineItem) => void,
+  ): Observable<EngineResult<null>> {
+    return this.run(accountId, roomId, (room) => {
+      const item = this.events(room).find(
+        (i) =>
+          (key.eventId !== null && i.eventId === key.eventId) ||
+          (key.transactionId !== null && i.transactionId === key.transactionId),
+      );
+      if (!item) return engineFail(MESSAGE_UNAVAILABLE);
+      action(item);
+      return engineOk(null);
+    });
+  }
+
+  private unsent(
+    room: FakeRoom,
+    transactionId: string,
+  ): EventTimelineItem | undefined {
+    return this.events(room).find(
+      (i) =>
+        i.transactionId === transactionId &&
+        (i.sendState?.kind === 'failed' || i.sendState?.kind === 'waiting'),
+    );
+  }
+
+  private nextEventId(): string {
+    this.nextEvent += 1;
+    return `$fake-${this.nextEvent}`;
+  }
+
+  private own(
+    accountId: string,
+    eventId: string,
+    content: TimelineItemContent,
+  ): EventTimelineItem {
+    this.clock += 1;
+    return fakeEventItem(eventId, accountId, {
+      isOwn: true,
+      timestamp: this.clock,
+      content,
+      profiles: { [accountId]: this.profile(accountId) },
+    });
+  }
+
+  private contentOf(
+    message: Exclude<OutgoingMessage, { kind: 'poll-response' | 'poll-end' }>,
+    eventId: string,
+  ): TimelineItemContent {
+    switch (message.kind) {
+      case 'text':
+        return outgoingContent(message);
+      case 'location':
+        return {
+          kind: 'location',
+          lat: message.lat,
+          lng: message.lng,
+          label: message.label ?? 'Shared location',
+        };
+      case 'sticker':
+        return {
+          kind: 'sticker',
+          source: {
+            kind: 'image',
+            mxc: message.url,
+            file: null,
+            filename: message.body,
+            mimeType: 'image/png',
+            thumbnailMxc: null,
+            thumbnailFile: null,
+          },
+          body: message.body,
+          url: message.url,
+          info: message.info,
+        };
+      case 'poll-start':
+        return {
+          kind: 'poll',
+          poll: {
+            id: eventId,
+            question: message.question,
+            options: message.answers.map((text, index) => ({
+              id: `a${index}`,
+              text,
+              votes: 0,
+              chosen: false,
+            })),
+            totalVotes: 0,
+            maxSelections: message.maxSelections,
+            ended: false,
+          },
+        };
+    }
+  }
+
+  private pollOf(item: EventTimelineItem): PollView {
+    if (item.content.kind !== 'poll') throw new Error('not a poll');
+    return item.content.poll;
+  }
+
+  private tally(
+    poll: PollView,
+    votes: ReadonlyMap<string, readonly string[]>,
+    viewer: string,
+  ): PollView {
+    const voters = [...votes].filter(([, answers]) => answers.length > 0);
+    return {
+      ...poll,
+      totalVotes: voters.length,
+      options: poll.options.map((option) => ({
+        ...option,
+        votes: voters.filter(([, answers]) => answers.includes(option.id))
+          .length,
+        chosen: votes.get(viewer)?.includes(option.id) ?? false,
+      })),
+    };
+  }
+
+  private append(roomId: string, item: EventTimelineItem): void {
+    const room = this.room(roomId);
+    room.history = [...room.history, item];
+    for (const [member, count] of room.loaded)
+      room.loaded.set(member, count + 1);
+    this.publish(roomId);
+  }
+
+  private patchItem(
+    roomId: string,
+    target: EventTimelineItem,
+    patch: (item: EventTimelineItem) => Partial<EventTimelineItem>,
+  ): void {
+    const room = this.room(roomId);
+    room.history = room.history.map((i) =>
+      i === target && i.kind === 'event' ? { ...i, ...patch(i) } : i,
+    );
+    this.publish(roomId);
+  }
+
   /** A cold command: scripted failure, then the live-account and membership checks, then `action`. */
   private run<T>(
     accountId: string,
@@ -469,7 +872,22 @@ export class FakeTimelineEngine implements TimelineEngine {
 
   private visible(accountId: string, room: FakeRoom): readonly TimelineItem[] {
     const loaded = room.loaded.get(accountId) ?? 0;
-    return room.history.slice(room.history.length - loaded);
+    return room.history.slice(room.history.length - loaded).map((item) => {
+      const votes =
+        item.kind === 'event' && item.content.kind === 'poll'
+          ? room.votes.get(item.content.poll.id)
+          : undefined;
+      // Tallied per viewer: `chosen` is the viewing account's own vote.
+      return votes && item.kind === 'event' && item.content.kind === 'poll'
+        ? {
+            ...item,
+            content: {
+              kind: 'poll' as const,
+              poll: this.tally(item.content.poll, votes, accountId),
+            },
+          }
+        : item;
+    });
   }
 
   private events(room: FakeRoom): readonly EventTimelineItem[] {
@@ -514,6 +932,7 @@ export class FakeTimelineEngine implements TimelineEngine {
         fullyRead: new Map(),
         readReceipts: new Map(),
         invited: new Set(),
+        votes: new Map(),
       };
       this.rooms.set(roomId, room);
     }

@@ -14,7 +14,6 @@ import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   annotationContent,
   isTransientMatrixError,
-  myReactionIds,
 } from '@trinity/util/matrix';
 import type {
   ConversationMessageActionRequest,
@@ -24,6 +23,7 @@ import type {
   ConversationMessagePolicy,
   ConversationReactionRequest,
 } from './conversation-messages';
+import { myReactionIds } from './js-sdk/outgoing-content';
 
 const unavailablePolicy: ConversationMessagePolicy = {
   canRedactOthers: () => false,

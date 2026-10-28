@@ -14,8 +14,8 @@ import {
 } from 'rxjs';
 import {
   editMessageContent,
+  outgoingReplyText,
   renderMarkdown,
-  replyMessageContent,
   slashCommandContent,
   textMessageContent,
 } from '@trinity/util/matrix';
@@ -27,6 +27,7 @@ import {
   type ConversationTextSendRequest,
   type ConversationTextSender,
 } from './conversation-compose';
+import { fetchRoomEvent, replyMessageContent } from './js-sdk/outgoing-content';
 import { shownContent } from './js-sdk/shields';
 import { conversationDraftKey } from './conversation-draft-key';
 import { keepWhileWaiting } from './waiting-draft';
@@ -164,9 +165,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
         return replyMessageContent(
           room,
           request.intent.eventId,
-          request.body,
-          render(request.body),
-          mentions,
+          outgoingReplyText(request.body, render(request.body), mentions),
           target,
           shownContent,
         );
@@ -178,26 +177,6 @@ class MatrixConversationTextSender implements ConversationTextSender {
           mentions,
         );
     }
-  }
-}
-
-/** `eventId` from the server, decrypted; undefined when it cannot be had. */
-async function fetchRoomEvent(
-  client: MatrixClient,
-  roomId: string,
-  eventId: string,
-): Promise<MatrixEvent | undefined> {
-  try {
-    const raw = await client.fetchRoomEvent(roomId, eventId);
-    if (raw.room_id && raw.room_id !== roomId) return undefined;
-    const event = client.getEventMapper({ decrypt: false })({
-      ...raw,
-      room_id: roomId,
-    });
-    if (event.isEncrypted()) await client.decryptEventIfNeeded(event);
-    return event;
-  } catch {
-    return undefined;
   }
 }
 

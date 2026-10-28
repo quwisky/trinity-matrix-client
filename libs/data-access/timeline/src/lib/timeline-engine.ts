@@ -16,6 +16,57 @@ export type TimelineFocus =
   | { readonly kind: 'live' }
   | { readonly kind: 'thread'; readonly rootEventId: string };
 
+/** An event by its id, or a local echo by its transaction id until the id is known. */
+export interface TimelineItemKey {
+  readonly eventId: string | null;
+  readonly transactionId: string | null;
+}
+
+/** Text whose markdown, slash command and mention pills the caller has already rendered. */
+export interface OutgoingText {
+  readonly msgtype: 'text' | 'emote' | 'notice';
+  readonly body: string;
+  readonly formattedBody: string | null;
+  readonly mentions: {
+    readonly userIds: readonly string[];
+    readonly room: boolean;
+  };
+}
+
+export type OutgoingMessage =
+  | ({ readonly kind: 'text' } & OutgoingText)
+  | {
+      readonly kind: 'location';
+      readonly lat: number;
+      readonly lng: number;
+      readonly label: string | null;
+    }
+  | {
+      readonly kind: 'sticker';
+      readonly body: string;
+      readonly url: string;
+      readonly info: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly kind: 'poll-start';
+      readonly question: string;
+      readonly answers: readonly string[];
+      readonly maxSelections: number;
+    }
+  | {
+      readonly kind: 'poll-response';
+      readonly pollId: string;
+      readonly answerIds: readonly string[];
+    }
+  | { readonly kind: 'poll-end'; readonly pollId: string };
+
+export interface VoiceClip {
+  readonly blob: Blob;
+  readonly mimeType: string;
+  readonly durationMs: number;
+  readonly waveform: readonly number[];
+}
+
 export interface Profile {
   readonly displayName: string | null;
   /** Another member shares the name, so it is shown with the user id. */
@@ -178,7 +229,9 @@ export type TimelineUpdate =
     };
 
 /**
- * Commands reply only after their effect is in every open `timeline()` subscription.
+ * Commands reply only after their effect is in every open `timeline()` subscription. A send's
+ * local echo is in `timeline()` before `send` replies, and its item keeps its `uniqueId` when
+ * the remote echo replaces it.
  */
 export interface TimelineEngine {
   /** Emits a full snapshot first. The js-sdk adapter emits synchronously on subscribe; other engines may not. */
@@ -242,5 +295,86 @@ export interface TimelineEngine {
     accountId: string,
     roomId: string,
     typing: boolean,
+  ): Observable<EngineResult<null>>;
+
+  /**
+   * Sends `message`, in the thread `threadRootId` when set. `replyTo` quotes that event, fetched
+   * from the server when it is not loaded; only text replies. `eventId` is null when the send
+   * failed and its echo stays, with its `sendState`, for `retrySend` or `cancelSend`.
+   */
+  send(
+    accountId: string,
+    roomId: string,
+    message: OutgoingMessage,
+    options: {
+      readonly threadRootId: string | null;
+      readonly replyTo: string | null;
+    },
+  ): Observable<
+    EngineResult<{
+      readonly transactionId: string;
+      readonly eventId: string | null;
+    }>
+  >;
+
+  /** Replaces the text of `item`, which must be the account's own. */
+  edit(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    message: OutgoingText,
+    options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>>;
+
+  /** Authorization is the caller's: the server is the judge. */
+  redact(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>>;
+
+  /** Removes every reaction of the account with `key` on `item`, or adds one when it has none. */
+  toggleReaction(
+    accountId: string,
+    roomId: string,
+    item: TimelineItemKey,
+    key: string,
+    options: { readonly threadRootId: string | null },
+  ): Observable<EngineResult<null>>;
+
+  /** `message-unavailable` when no unsent echo has `transactionId`. */
+  retrySend(
+    accountId: string,
+    roomId: string,
+    transactionId: string,
+  ): Observable<EngineResult<null>>;
+
+  /** `not-cancellable` once the request may have left the device. */
+  cancelSend(
+    accountId: string,
+    roomId: string,
+    transactionId: string,
+  ): Observable<EngineResult<null>>;
+
+  /**
+   * Sends a copy of the message as the account's own, with no relation and no mentions.
+   * `not-forwardable` for a type it cannot copy faithfully, a redacted message included.
+   */
+  forward(
+    accountId: string,
+    sourceRoomId: string,
+    eventId: string,
+    targetRoomId: string,
+  ): Observable<EngineResult<null>>;
+
+  /**
+   * Uploads the clip, encrypted in an encrypted room, and sends it as an `m.audio` voice
+   * message. `encryption-unavailable` when the room is encrypted and the account has no crypto.
+   */
+  sendVoice(
+    accountId: string,
+    roomId: string,
+    clip: VoiceClip,
   ): Observable<EngineResult<null>>;
 }

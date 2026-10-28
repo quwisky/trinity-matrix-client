@@ -69,11 +69,12 @@ import {
   threadSummaryRevision,
   threadUnread,
 } from './thread-summary';
+import { replyMessageContent } from './js-sdk/outgoing-content';
 import {
   editMessageContent,
   messagePreview,
+  outgoingReplyText,
   renderMarkdown,
-  replyMessageContent,
   slashCommandContent,
   textMessageContent,
   type Mention,
@@ -633,9 +634,11 @@ export class ThreadsService {
       const content = replyMessageContent(
         room,
         messageId,
-        text,
-        renderMarkdown(text, this.packs.emoticons()),
-        mentions,
+        outgoingReplyText(
+          text,
+          renderMarkdown(text, this.packs.emoticons()),
+          mentions,
+        ),
         undefined,
         shownContent,
       );

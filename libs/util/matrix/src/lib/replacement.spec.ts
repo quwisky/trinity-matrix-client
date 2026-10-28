@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MatrixEvent, type Room } from 'matrix-js-sdk';
-import { renderMarkdown } from './markdown-render';
-import { messagePreview, replyMessageContent } from './message-content';
+import { MatrixEvent } from 'matrix-js-sdk';
+import { messagePreview } from './message-content';
 import { displayContent, validReplacement } from './replacement';
 
 const ALICE = '@alice:hs';
@@ -264,21 +263,15 @@ describe('validReplacement and displayContent', () => {
 describe('previews of an edited message', () => {
   const forged = () =>
     editedWith(sdkEdit('$orig', 'forged', { sender: MALLORY }));
-  const roomWith = (target: MatrixEvent) =>
-    ({
-      roomId: '!r:hs',
-      findEventById: () => target,
-      getMember: () => null,
-    }) as unknown as Room;
+  // What a reply quotes of its target (`replyMessageContent`'s default).
   const replyQuote = (target: MatrixEvent) =>
-    replyMessageContent(roomWith(target), '$orig', 'ok', renderMarkdown('ok'))
-      .body;
+    String(displayContent(target)['body']);
 
   it('show a valid edit', () => {
     const event = editedWith(sdkEdit('$orig', 'v2'));
 
     expect(messagePreview(event)).toBe('v2');
-    expect(replyQuote(event)).toContain('> <@alice:hs> v2');
+    expect(replyQuote(event)).toBe('v2');
   });
 
   it('show the original over an edit from another sender in a room-list preview', () => {
@@ -289,10 +282,10 @@ describe('previews of an edited message', () => {
     const event = () => editedWith(sdkEdit('$orig', 'v2'), true);
 
     expect(messagePreview(event())).toBe('v1');
-    expect(replyQuote(event())).toContain('> <@alice:hs> v1');
+    expect(replyQuote(event())).toBe('v1');
   });
 
   it('quote the original over an edit from another sender in a reply', () => {
-    expect(replyQuote(forged())).toContain('> <@alice:hs> v1');
+    expect(replyQuote(forged())).toBe('v1');
   });
 });
