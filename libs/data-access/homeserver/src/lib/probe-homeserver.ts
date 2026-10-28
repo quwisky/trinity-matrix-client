@@ -18,7 +18,7 @@ import type {
  * **Every request is built inside `defer()`.** Calling `fetch()` eagerly to hand `from()` a
  * promise looks identical but breaks two things: merely *building* the observable issues a
  * request nobody subscribed to, and a re-subscribe replays the settled promise rather than
- * re-asking. Same trap documented at `@trinity/util/matrix`'s `fetchMediaBytes`.
+ * re-asking. Same trap documented at `@trinity/data-access/media`'s js-sdk `fetchMediaBytes`.
  */
 
 /**

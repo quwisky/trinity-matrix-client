@@ -1,7 +1,8 @@
-import { firstValueFrom, of, throwError } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import {
   assertPlainData,
+  assertProgressThenResult,
   type DiscoveryFailureReason,
   type EngineFailure,
   engineFailureMessage,
@@ -151,6 +152,8 @@ describe('engineFailureMessage', () => {
       'This changed before it could be saved. Review it and try again.',
     ],
     ['state-key-taken', 'That identifier is already in use.'],
+    ['media-unavailable', 'This media is unavailable.'],
+    ['too-large', 'This file is too large to upload.'],
   ] as const)('%s reads "%s"', (code, text) => {
     expect(
       engineFailureMessage({
@@ -376,5 +379,58 @@ describe('retryableFailure', () => {
     ['unexpected', false],
   ] as const)('retryableFailure follows kind: %s is %s', (kind, retryable) => {
     expect(retryableFailure(requestFailed(kind))).toBe(retryable);
+  });
+});
+
+describe('assertProgressThenResult', () => {
+  const progress = (fraction: number) =>
+    ({ kind: 'progress', fraction }) as const;
+  const done = (result: number) => ({ kind: 'done', result }) as const;
+
+  it('returns the progress updates and the one result', async () => {
+    await expect(
+      assertProgressThenResult(of(progress(0.5), progress(1), done(7))),
+    ).resolves.toEqual({ progress: [progress(0.5), progress(1)], result: 7 });
+  });
+
+  it('accepts a result with no progress', async () => {
+    await expect(assertProgressThenResult(of(done(7)))).resolves.toEqual({
+      progress: [],
+      result: 7,
+    });
+  });
+
+  it.each([
+    ['no done', of(progress(1))],
+    ['two done', of(done(1), done(2))],
+    ['progress after done', of(done(1), progress(1))],
+    ['nothing', of()],
+  ])('rejects %s', async (_name, source) => {
+    await expect(assertProgressThenResult(source)).rejects.toThrow(TypeError);
+  });
+
+  it('rejects an update that is not plain data', async () => {
+    await expect(
+      assertProgressThenResult(of({ kind: 'done', result: new Date() })),
+    ).rejects.toThrow('Not plain data at $[0].result');
+  });
+
+  it('waits for completion after done', async () => {
+    const source = new Subject<ReturnType<typeof done>>();
+    let settled = false;
+    void assertProgressThenResult(source).then(() => (settled = true));
+    source.next(done(1));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    source.complete();
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(settled).toBe(true);
+  });
+
+  it('never settles for a stream that never completes', async () => {
+    let settled = false;
+    void assertProgressThenResult(NEVER).then(() => (settled = true));
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(settled).toBe(false);
   });
 });

@@ -32,7 +32,6 @@ export * from './lib/request-failure';
 export * from './lib/password-uia';
 export * from './lib/attachment-crypto';
 export * from './lib/key-file-crypto';
-export * from './lib/authed-media';
 export * from './lib/room-avatar';
 export * from './lib/room-create';
 export * from './lib/room-state';
