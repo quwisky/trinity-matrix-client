@@ -124,11 +124,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       throw error;
     }
     let released = false;
-    // The action surface acts on the room this handle's own client holds (T8, until PR 2).
-    const resolveActionContext = () => {
-      const room = client.getRoom(key.roomId);
-      return room ? { client, room } : null;
-    };
+    const resolveActionContext = () => key;
     return {
       timeline,
       threads,

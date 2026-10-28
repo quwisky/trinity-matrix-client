@@ -311,6 +311,15 @@ describe.skipIf(!baseUrl)('JsSdkTimelineEngine against Synapse', () => {
             }
           },
         },
+        // A crypto store that knows the contract's rooms are unencrypted, as the real one would.
+        knownUnencrypted: () => {
+          const spy = vi
+            .spyOn(MatrixClient.prototype, 'getCrypto')
+            .mockReturnValue({
+              isEncryptionEnabledInRoom: async () => false,
+            } as never);
+          return () => spy.mockRestore();
+        },
         dispose: async () => {
           try {
             await firstValueFrom(session.stop());

@@ -16,6 +16,7 @@ import {
 } from '@trinity/util/matrix';
 import type {
   EventTimelineItem,
+  OutgoingMessage,
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
@@ -47,6 +48,11 @@ export interface TimelineContractSetup {
     /** The event `userId`'s public `m.read` receipt names, as bob's sync reports it. */
     readReceipt(roomId: string, userId: string): Promise<string | null>;
   };
+  /**
+   * Makes alice's crypto answer that rooms are unencrypted until the returned restore runs, for
+   * an engine whose crypto is stubbed out; a voice clip is refused while that is unknown.
+   */
+  readonly knownUnencrypted?: () => () => void;
   dispose(): Promise<void>;
 }
 
@@ -72,6 +78,29 @@ interface Watch {
 
 const NOBODY = '@nobody:invalid';
 const LIVE: TimelineFocus = { kind: 'live' };
+const MAIN = { threadRootId: null, replyTo: null } as const;
+const NO_THREAD = { threadRootId: null } as const;
+
+function text(body: string): OutgoingMessage {
+  return {
+    kind: 'text',
+    msgtype: 'text',
+    body,
+    formattedBody: null,
+    mentions: { userIds: [], room: false },
+  };
+}
+
+function byTxn(
+  view: TimelineView | null,
+  transactionId: string,
+): EventTimelineItem | undefined {
+  return events(view).find((item) => item.transactionId === transactionId);
+}
+
+function eventKey(eventId: string) {
+  return { eventId, transactionId: null } as const;
+}
 
 function unique(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -584,6 +613,443 @@ export function defineTimelineEngineContract(
     );
 
     it(
+      'send shows the local echo before it replies',
+      async () => {
+        const {
+          roomId,
+          eventIds: [greetingId],
+        } = await roomWith(['hello alice']);
+        const timeline = watch(roomId);
+        try {
+          // Bob's message shows once alice's join has synced, so no join resets the timeline.
+          await timeline.until((v) => !!byId(v, greetingId));
+
+          const sent = await ok(
+            engine.send(alice, roomId, text('hi bob'), MAIN),
+          );
+
+          const echo = byTxn(timeline.view(), sent.transactionId);
+          expect(echo).toMatchObject({
+            sender: alice,
+            isOwn: true,
+            content: { kind: 'message', msgtype: 'text', body: 'hi bob' },
+          });
+          expect(sent.eventId).toEqual(expect.any(String));
+          const view = await timeline.until(
+            (v) =>
+              byId(v, sent.eventId ?? '')?.sendState === null &&
+              !!byTxn(v, sent.transactionId),
+          );
+          expect(byId(view, sent.eventId ?? '')?.uniqueId).toBe(echo?.uniqueId);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'send with a caller transaction id gives its echo that id',
+      async () => {
+        const {
+          roomId,
+          eventIds: [greetingId],
+        } = await roomWith(['hello alice']);
+        const timeline = watch(roomId);
+        try {
+          // As above: once alice's join has synced, no join resets the timeline.
+          await timeline.until((v) => !!byId(v, greetingId));
+          const transactionId = `contract-${Date.now()}`;
+
+          const sent = await ok(
+            engine.send(alice, roomId, text('mine'), {
+              ...MAIN,
+              transactionId,
+            }),
+          );
+
+          expect(sent.transactionId).toBe(transactionId);
+          expect(byTxn(timeline.view(), transactionId)).toMatchObject({
+            isOwn: true,
+            content: { kind: 'message', body: 'mine' },
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'send with replyTo has inReplyTo ready',
+      async () => {
+        const {
+          roomId,
+          eventIds: [questionId],
+        } = await roomWith(['question']);
+        const timeline = watch(roomId);
+        try {
+          await timeline.until((v) => !!byId(v, questionId));
+
+          const sent = await ok(
+            engine.send(alice, roomId, text('answer'), {
+              threadRootId: null,
+              replyTo: questionId,
+            }),
+          );
+
+          const view = await timeline.until(
+            (v) =>
+              byTxn(v, sent.transactionId)?.inReplyTo?.details.kind === 'ready',
+          );
+          expect(byTxn(view, sent.transactionId)?.inReplyTo).toMatchObject({
+            eventId: questionId,
+            details: { kind: 'ready', sender: bob, body: 'question' },
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'edit replaces the body and sets edited',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const { eventId } = await ok(
+            engine.send(alice, roomId, text('tpyo'), MAIN),
+          );
+
+          await ok(
+            engine.edit(
+              alice,
+              roomId,
+              eventKey(eventId ?? ''),
+              {
+                msgtype: 'text',
+                body: 'typo',
+                formattedBody: null,
+                mentions: { userIds: [], room: false },
+              },
+              NO_THREAD,
+            ),
+          );
+
+          const view = await timeline.until(
+            (v) => bodyOf(byId(v, eventId ?? '')) === 'typo',
+          );
+          expect(byId(view, eventId ?? '')?.edited).toBe(true);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'redact own message turns it redacted',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const { eventId } = await ok(
+            engine.send(alice, roomId, text('oops'), MAIN),
+          );
+
+          await ok(
+            engine.redact(alice, roomId, eventKey(eventId ?? ''), NO_THREAD),
+          );
+
+          await timeline.until(
+            (v) => byId(v, eventId ?? '')?.content.kind === 'redacted',
+          );
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'toggleReaction on then off',
+      async () => {
+        const {
+          roomId,
+          eventIds: [eventId],
+        } = await roomWith(['like me']);
+        const timeline = watch(roomId);
+        try {
+          await timeline.until((v) => !!byId(v, eventId));
+
+          await ok(
+            engine.toggleReaction(
+              alice,
+              roomId,
+              eventKey(eventId),
+              '👍',
+              NO_THREAD,
+            ),
+          );
+          const on = await timeline.until(
+            (v) => byId(v, eventId)?.reactions[0]?.reactedByMe === true,
+          );
+          expect(byId(on, eventId)?.reactions).toEqual([
+            { key: '👍', count: 1, reactedByMe: true, senders: [alice] },
+          ]);
+
+          await ok(
+            engine.toggleReaction(
+              alice,
+              roomId,
+              eventKey(eventId),
+              '👍',
+              NO_THREAD,
+            ),
+          );
+          await timeline.until((v) => byId(v, eventId)?.reactions.length === 0);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'poll-start, poll-response and poll-end show in the poll item',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const poll = (v: TimelineView) => {
+            const content = byId(v, pollId)?.content;
+            return content?.kind === 'poll' ? content.poll : null;
+          };
+
+          const started = await ok(
+            engine.send(
+              alice,
+              roomId,
+              {
+                kind: 'poll-start',
+                question: 'Lunch?',
+                answers: ['Pizza', 'Soup'],
+                maxSelections: 1,
+              },
+              MAIN,
+            ),
+          );
+          const pollId = started.eventId ?? '';
+          const shown = await timeline.until((v) => poll(v) !== null);
+          expect(poll(shown)).toMatchObject({
+            question: 'Lunch?',
+            options: [{ text: 'Pizza' }, { text: 'Soup' }],
+            maxSelections: 1,
+            ended: false,
+          });
+
+          const answerId = poll(shown)?.options[1]?.id ?? '';
+          await ok(
+            engine.send(
+              alice,
+              roomId,
+              { kind: 'poll-response', pollId, answerIds: [answerId] },
+              MAIN,
+            ),
+          );
+          await timeline.until(
+            (v) =>
+              poll(v)?.options[1]?.chosen === true && poll(v)?.totalVotes === 1,
+          );
+
+          await ok(
+            engine.send(alice, roomId, { kind: 'poll-end', pollId }, MAIN),
+          );
+          await timeline.until((v) => poll(v)?.ended === true);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'send location shows a location item',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+
+          const sent = await ok(
+            engine.send(
+              alice,
+              roomId,
+              { kind: 'location', lat: 51.5, lng: -0.125, label: null },
+              MAIN,
+            ),
+          );
+
+          const view = await timeline.until(
+            (v) => byTxn(v, sent.transactionId)?.content.kind === 'location',
+          );
+          expect(byTxn(view, sent.transactionId)?.content).toEqual({
+            kind: 'location',
+            lat: 51.5,
+            lng: -0.125,
+            label: 'Shared location',
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'forward copies a message to another room',
+      async () => {
+        const {
+          roomId: sourceId,
+          eventIds: [eventId],
+        } = await roomWith(['pass it on']);
+        const { roomId: targetId } = await roomWith();
+        const source = watch(sourceId);
+        const target = watch(targetId);
+        try {
+          await source.until((v) => !!byId(v, eventId));
+          await target.until(() => true);
+
+          await ok(engine.forward(alice, sourceId, eventId, targetId));
+
+          const view = await target.until((v) =>
+            events(v).some(
+              (item) => item.isOwn && bodyOf(item) === 'pass it on',
+            ),
+          );
+          const copy = events(view).find((item) => item.isOwn);
+          expect(copy).toMatchObject({ sender: alice, inReplyTo: null });
+        } finally {
+          source.close();
+          target.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'forward a redacted message is not-forwardable',
+      async () => {
+        const {
+          roomId: sourceId,
+          eventIds: [eventId],
+        } = await roomWith(['gone soon']);
+        const { roomId: targetId } = await roomWith();
+        const source = watch(sourceId);
+        try {
+          await source.until((v) => !!byId(v, eventId));
+          await context.asBob.redact(sourceId, eventId);
+          await source.until(
+            (v) => byId(v, eventId)?.content.kind === 'redacted',
+          );
+
+          const result = await once(
+            engine.forward(alice, sourceId, eventId, targetId),
+          );
+
+          expect(!result.ok && result.failure.code).toBe('not-forwardable');
+        } finally {
+          source.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'cancelSend of a sent message is not-cancellable',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const { transactionId } = await ok(
+            engine.send(alice, roomId, text('too late'), MAIN),
+          );
+
+          const result = await once(
+            engine.cancelSend(alice, roomId, transactionId),
+          );
+
+          expect(!result.ok && result.failure.code).toBe('not-cancellable');
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'retrySend of an unknown transaction is message-unavailable',
+      async () => {
+        const { roomId } = await roomWith();
+
+        const result = await once(
+          engine.retrySend(alice, roomId, `unknown-${unique()}`),
+        );
+
+        expect(!result.ok && result.failure.code).toBe('message-unavailable');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'sendVoice sends an m.audio voice item',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        const restore = context.knownUnencrypted?.();
+        try {
+          await timeline.until(() => true);
+
+          await ok(
+            engine.sendVoice(alice, roomId, {
+              blob: new Blob([new Uint8Array([26, 69, 223, 163])], {
+                type: 'audio/webm',
+              }),
+              mimeType: 'audio/webm',
+              durationMs: 1200,
+              waveform: [0, 512, 1024],
+            }),
+          );
+
+          const view = await timeline.until((v) =>
+            events(v).some(
+              (item) => item.isOwn && item.content.kind === 'media',
+            ),
+          );
+          const voice = events(view).find(
+            (item) => item.isOwn && item.content.kind === 'media',
+          )?.content;
+          expect(voice).toMatchObject({
+            kind: 'media',
+            msgtype: 'audio',
+            body: 'Voice message',
+            source: { isVoice: true, waveform: [0, 512, 1024] },
+          });
+        } finally {
+          restore?.();
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'commands for an unknown account are account-not-live',
       async () => {
         const roomId = '!r:invalid';
@@ -600,6 +1066,36 @@ export function defineTimelineEngineContract(
             fullyRead: false,
           }),
           engine.setTyping(NOBODY, roomId, true),
+          engine.send(NOBODY, roomId, text('x'), MAIN),
+          engine.edit(
+            NOBODY,
+            roomId,
+            eventKey(eventId),
+            {
+              msgtype: 'text',
+              body: 'x',
+              formattedBody: null,
+              mentions: { userIds: [], room: false },
+            },
+            NO_THREAD,
+          ),
+          engine.redact(NOBODY, roomId, eventKey(eventId), NO_THREAD),
+          engine.toggleReaction(
+            NOBODY,
+            roomId,
+            eventKey(eventId),
+            'x',
+            NO_THREAD,
+          ),
+          engine.retrySend(NOBODY, roomId, 'txn'),
+          engine.cancelSend(NOBODY, roomId, 'txn'),
+          engine.forward(NOBODY, roomId, eventId, roomId),
+          engine.sendVoice(NOBODY, roomId, {
+            blob: new Blob([]),
+            mimeType: 'audio/webm',
+            durationMs: 0,
+            waveform: [],
+          }),
         ];
 
         for (const command of commands) {

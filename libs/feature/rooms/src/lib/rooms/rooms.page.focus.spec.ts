@@ -13,7 +13,10 @@ import {
   TrustService,
 } from '@trinity/data-access/trust';
 import { InvitesService } from '@trinity/data-access/room-library';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SESSION_ENGINE,
+} from '@trinity/data-access/matrix-client';
 import {
   IgnoredUsersService,
   IdentityPresenceService,
@@ -169,6 +172,8 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
     providers: [
       ROUTE_PROVIDER,
       SYSTEM_STATUS_PROVIDER,
+      // The timeline stores the text sender opens only listen for session changes.
+      { provide: SESSION_ENGINE, useValue: { session: () => NEVER } },
       MockProvider(Router),
       MockProvider(MessageGestureSettingsService, {
         messageSwipe: signal('off'),
