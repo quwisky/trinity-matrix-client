@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, vi } from 'vitest';
+import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import {
   type ServerRoomRule,
   defineNotificationEngineContract,
@@ -10,6 +11,7 @@ import {
   cs,
   localpart,
   register,
+  room,
   startSession,
   useSynapseSuite,
 } from './synapse.spec-harness';
@@ -38,6 +40,25 @@ describe.skipIf(!baseUrl)('JsSdkNotificationEngine against Synapse', () => {
   defineNotificationEngineContract(
     async () => {
       const session = await startSession(await register(localpart('alice')));
+      const bob = await register(localpart('bob'));
+      const tokens = new Map([
+        [session.userId, session.accessToken],
+        [bob.userId, bob.accessToken],
+      ]);
+      let txn = 0;
+      const put = async (
+        sender: string,
+        path: string,
+        body: object,
+      ): Promise<string> => {
+        const sent = (await cs(
+          tokens.get(sender) as string,
+          'PUT',
+          `${path}/${Date.now()}-${++txn}`,
+          body,
+        )) as { event_id: string };
+        return sent.event_id;
+      };
       return {
         engine: TestBed.inject(JsSdkNotificationEngine),
         alice: session.userId,
@@ -113,6 +134,62 @@ describe.skipIf(!baseUrl)('JsSdkNotificationEngine against Synapse', () => {
             'GET',
             `/user/${encodeURIComponent(session.userId)}/account_data/${type}`,
           )) ?? undefined,
+        bob: bob.userId,
+        sharedRoom: async (name, encrypted) => {
+          const { room_id: roomId } = (await cs(
+            bob.accessToken,
+            'POST',
+            '/createRoom',
+            {
+              name,
+              preset: 'private_chat',
+              invite: [session.userId],
+              initial_state: encrypted
+                ? [
+                    {
+                      type: 'm.room.encryption',
+                      state_key: '',
+                      content: { algorithm: 'm.megolm.v1.aes-sha2' },
+                    },
+                  ]
+                : [],
+            },
+          )) as { room_id: string };
+          await cs(session.accessToken, 'POST', `${room(roomId)}/join`, {});
+          // Joined in alice's client too, so what follows arrives as live events.
+          const client = TestBed.inject(JS_SDK_CLIENTS).clientFor(
+            session.userId,
+          );
+          await vi.waitFor(
+            () => {
+              if (client?.getRoom(roomId)?.getMyMembership() !== 'join') {
+                throw new Error('Not joined yet');
+              }
+            },
+            { timeout: 30_000, interval: 100 },
+          );
+          return roomId;
+        },
+        send: (sender, roomId, body) =>
+          put(sender, `${room(roomId)}/send/m.room.message`, {
+            msgtype: 'm.text',
+            body,
+          }),
+        react: (roomId, targetEventId, key) =>
+          put(bob.userId, `${room(roomId)}/send/m.reaction`, {
+            'm.relates_to': {
+              rel_type: 'm.annotation',
+              event_id: targetEventId,
+              key,
+            },
+          }),
+        redact: async (roomId, eventId) => {
+          await put(
+            bob.userId,
+            `${room(roomId)}/redact/${encodeURIComponent(eventId)}`,
+            {},
+          );
+        },
         dispose: () => session.dispose(),
       };
     },
