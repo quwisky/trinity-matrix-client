@@ -1,10 +1,7 @@
-import {
-  ClientEvent,
-  MatrixError,
-  RoomStateEvent,
-  type MatrixClient,
-} from 'matrix-js-sdk';
+import { EngineRequestError } from '@trinity/util/matrix';
+import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { FakeExpressionEngine } from '../contract/fake-expression-engine';
 import {
   AccountPackTarget,
   RoomPackTarget,
@@ -16,43 +13,44 @@ const content = {
   images: { wave: { url: 'mxc://hs/wave', body: 'Wave' } },
 };
 
-function fake(data: Record<string, unknown> = {}) {
-  const listeners = new Set<(e: unknown) => void>();
-  const client = {
-    getUserId: () => '@me:hs',
-    http: { authedRequest: vi.fn() },
-    getAccountData: (type: string) =>
-      type in data ? { getContent: () => data[type] } : undefined,
-    setAccountDataRaw: vi.fn().mockResolvedValue({}),
-    on: vi.fn((_: string, l: (e: unknown) => void) => listeners.add(l)),
-    off: vi.fn((_: string, l: (e: unknown) => void) => listeners.delete(l)),
-  };
+function accountSetup(data: Record<string, Record<string, unknown>> = {}) {
+  const engine = new FakeExpressionEngine();
+  const alice = engine.alice;
+  for (const [type, value] of Object.entries(data)) {
+    engine.setAccountData(alice, type, value).subscribe();
+  }
   return {
-    client: client as unknown as MatrixClient,
-    raw: client,
-    emit: (type: string) =>
-      listeners.forEach((l) => l({ getType: () => type })),
+    engine,
+    alice,
+    write: vi.spyOn(engine, 'setAccountData'),
+    fetch: vi.spyOn(engine, 'fetchAccountData'),
   };
 }
 
 describe('AccountPackTarget', () => {
   const target = new AccountPackTarget();
 
-  it('reads m.image_pack', () => {
-    const { client } = fake({ 'm.image_pack': content });
-    expect(target.read(client)).toEqual(content);
+  async function read(engine: FakeExpressionEngine) {
+    return target.read(
+      await firstValueFrom(target.snapshot(engine, engine.alice)),
+    );
+  }
+
+  it('reads m.image_pack', async () => {
+    const { engine } = accountSetup({ 'm.image_pack': content });
+    expect(await read(engine)).toEqual(content);
   });
 
-  it('falls back to im.ponies.user_emotes when m.image_pack is absent', () => {
-    const { client } = fake({ 'im.ponies.user_emotes': content });
-    expect(target.read(client)).toEqual(content);
+  it('falls back to im.ponies.user_emotes when m.image_pack is absent', async () => {
+    const { engine } = accountSetup({ 'im.ponies.user_emotes': content });
+    expect(await read(engine)).toEqual(content);
   });
 
   it('write puts m.image_pack only', async () => {
-    const { client, raw } = fake();
-    await target.write(client, content);
-    expect(raw.setAccountDataRaw).toHaveBeenCalledOnce();
-    expect(raw.setAccountDataRaw).toHaveBeenCalledWith('m.image_pack', content);
+    const { engine, alice, write } = accountSetup();
+    await target.write(engine, alice, content);
+    expect(write).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledWith(alice, 'm.image_pack', content);
   });
 
   it('packEntries skips invalid entries', () => {
@@ -80,52 +78,70 @@ describe('AccountPackTarget', () => {
       pack: { display_name: 'Mine', extra: 1 },
       images: { ok: { url: 'mxc://hs/ok' }, junk: { url: 42, future: true } },
     };
-    const { client, raw } = fake({ 'm.image_pack': stored });
-    const read = target.read(client);
-    await target.write(client, {
-      ...read,
-      images: { ...read.images, added: { url: 'mxc://hs/added' } },
+    const { engine, alice, write } = accountSetup({ 'm.image_pack': stored });
+    const current = await read(engine);
+    await target.write(engine, alice, {
+      ...current,
+      images: { ...current.images, added: { url: 'mxc://hs/added' } },
     });
-    const written = raw.setAccountDataRaw.mock.calls[0][1] as typeof stored;
+    const written = write.mock.calls[0][2] as typeof stored;
     expect(written.images['junk']).toEqual({ url: 42, future: true });
     expect(written.pack).toEqual(stored.pack);
     expect(Object.keys(written.images)).toEqual(['ok', 'junk', 'added']);
   });
 
-  it('watch fires on either account-data type and stops on cleanup', () => {
-    const { client, raw, emit } = fake();
-    const onChange = vi.fn();
-    const stop = target.watch(client, onChange);
-    expect(raw.on).toHaveBeenCalledWith(
-      ClientEvent.AccountData,
-      expect.any(Function),
-    );
-    emit('m.image_pack');
-    emit('im.ponies.user_emotes');
-    emit('m.other');
-    expect(onChange).toHaveBeenCalledTimes(2);
-    stop();
-    emit('m.image_pack');
-    expect(onChange).toHaveBeenCalledTimes(2);
+  it('the snapshot follows either account-data type', () => {
+    const { engine, alice } = accountSetup();
+    const seen: string[][] = [];
+    const subscription = target
+      .snapshot(engine, alice)
+      .subscribe((snapshot) =>
+        seen.push(Object.keys(target.read(snapshot).images)),
+      );
+    engine
+      .setAccountData(alice, 'im.ponies.user_emotes', {
+        images: { old: {} },
+      })
+      .subscribe();
+    engine
+      .setAccountData(alice, 'm.image_pack', { images: { new: {} } })
+      .subscribe();
+    engine.setAccountData(alice, 'm.other', { images: {} }).subscribe();
+    subscription.unsubscribe();
+    expect(seen).toEqual([[], ['old'], ['new']]);
+  });
+
+  it('may always write its own account data', () => {
+    expect(target.canWrite()).toBe(true);
   });
 });
 
 describe('AccountPackTarget.readServer', () => {
   const target = new AccountPackTarget();
-  const notFound = () => new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
 
   it('reads m.image_pack, then im.ponies.user_emotes, then nothing', async () => {
-    const { client, raw } = fake();
-    raw.http.authedRequest
-      .mockRejectedValueOnce(notFound())
-      .mockResolvedValueOnce(content);
-    expect(await target.readServer(client)).toEqual(content);
-    expect(raw.http.authedRequest.mock.calls.map((call) => call[1])).toEqual([
-      '/user/%40me%3Ahs/account_data/m.image_pack',
-      '/user/%40me%3Ahs/account_data/im.ponies.user_emotes',
+    const { engine, alice, fetch } = accountSetup({
+      'im.ponies.user_emotes': content,
+    });
+    expect(await target.readServer(engine, alice)).toEqual(content);
+    expect(fetch.mock.calls).toEqual([
+      [alice, 'm.image_pack'],
+      [alice, 'im.ponies.user_emotes'],
     ]);
-    raw.http.authedRequest.mockRejectedValue(notFound());
-    expect(await target.readServer(client)).toEqual({ pack: {}, images: {} });
+    expect(await target.readServer(accountSetup().engine, alice)).toEqual({
+      pack: {},
+      images: {},
+    });
+  });
+
+  it('rejects with the engine failure for an account without a client', async () => {
+    const { engine } = accountSetup();
+    await expect(target.readServer(engine, '@gone:hs')).rejects.toBeInstanceOf(
+      EngineRequestError,
+    );
+    await expect(
+      target.write(engine, '@gone:hs', content),
+    ).rejects.toMatchObject({ failure: { code: 'account-not-live' } });
   });
 
   it('names the pack Your emoji', () => {
@@ -134,8 +150,6 @@ describe('AccountPackTarget.readServer', () => {
 });
 
 describe('RoomPackTarget', () => {
-  const roomId = '!room:hs';
-  const target = new RoomPackTarget(roomId);
   const legacy = {
     pack: { display_name: 'Old' },
     images: { old: { url: 'mxc://hs/old' } },
@@ -143,138 +157,137 @@ describe('RoomPackTarget', () => {
 
   function room(
     state: Record<string, unknown> = {},
-    { mayEdit = true, name = 'Party room' } = {},
+    {
+      writable = true,
+      joined = true,
+      name = 'Party room' as string | undefined,
+    } = {},
   ) {
-    const listeners = new Set<(e: unknown) => void>();
-    const roomState = {
-      getStateEvents: (type: string, key: string) =>
-        key === '' && type in state ? { getContent: () => state[type] } : null,
-      maySendStateEvent: vi.fn(() => mayEdit),
-    };
-    const raw = {
-      getUserId: () => '@me:hs',
-      getRoom: (id: string) =>
-        id === roomId
-          ? {
-              roomId,
-              name,
-              getLiveTimeline: () => ({ getState: () => roomState }),
-            }
-          : null,
-      sendStateEvent: vi.fn().mockResolvedValue({ event_id: '$e' }),
-      getStateEvent: vi.fn(),
-      on: vi.fn((_: string, l: (e: unknown) => void) => listeners.add(l)),
-      off: vi.fn((_: string, l: (e: unknown) => void) => listeners.delete(l)),
-    };
+    const engine = new FakeExpressionEngine();
+    const roomId = engine.addRoom({
+      name,
+      writable,
+      joined,
+      state: Object.entries(state).map(([type, value]) => ({
+        type,
+        state_key: '',
+        content: value,
+      })),
+    });
+    const target = new RoomPackTarget(roomId);
+    const snapshot = () =>
+      firstValueFrom(target.snapshot(engine, engine.alice));
     return {
-      client: raw as unknown as MatrixClient,
-      raw,
-      roomState,
-      emit: (type: string, inRoom = roomId, stateKey = '') =>
-        listeners.forEach((l) =>
-          l({
-            getType: () => type,
-            getRoomId: () => inRoom,
-            getStateKey: () => stateKey,
-          }),
-        ),
+      engine,
+      alice: engine.alice,
+      roomId,
+      target,
+      snapshot,
+      read: async () => target.read(await snapshot()),
+      write: vi.spyOn(engine, 'setRoomState'),
+      fetch: vi.spyOn(engine, 'fetchRoomState'),
     };
   }
 
-  it('prefers m.room.image_pack over the legacy pack', () => {
-    const { client } = room({
+  it('prefers m.room.image_pack over the legacy pack', async () => {
+    const { read } = room({
       'm.room.image_pack': content,
       'im.ponies.room_emotes': legacy,
     });
-    expect(target.read(client)).toEqual(content);
+    expect(await read()).toEqual(content);
   });
 
-  it('falls back to im.ponies.room_emotes', () => {
-    const { client } = room({ 'im.ponies.room_emotes': legacy });
-    expect(target.read(client)).toEqual(legacy);
+  it('falls back to im.ponies.room_emotes', async () => {
+    const { read } = room({ 'im.ponies.room_emotes': legacy });
+    expect(await read()).toEqual(legacy);
   });
 
-  it('reads an unknown room as empty', () => {
-    const { client } = room();
-    expect(new RoomPackTarget('!other:hs').read(client)).toEqual({
+  it('reads an unknown room as empty', async () => {
+    const { engine } = room({ 'm.room.image_pack': content });
+    const other = new RoomPackTarget('!other:hs');
+    expect(
+      other.read(await firstValueFrom(other.snapshot(engine, engine.alice))),
+    ).toEqual({ pack: {}, images: {} });
+  });
+
+  it('writes only m.room.image_pack under the empty state key', async () => {
+    const { target, engine, alice, roomId, write } = room({
+      'im.ponies.room_emotes': legacy,
+    });
+    await target.write(engine, alice, content);
+    expect(write).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledWith(
+      alice,
+      roomId,
+      'm.room.image_pack',
+      '',
+      content,
+    );
+  });
+
+  it('readServer reads the stable pack, then the legacy one, then nothing', async () => {
+    const { target, engine, alice, roomId, fetch } = room({
+      'im.ponies.room_emotes': legacy,
+    });
+    expect(await target.readServer(engine, alice)).toEqual(legacy);
+    expect(fetch.mock.calls).toEqual([
+      [alice, roomId, 'm.room.image_pack', ''],
+      [alice, roomId, 'im.ponies.room_emotes', ''],
+    ]);
+    const empty = room();
+    expect(await empty.target.readServer(empty.engine, alice)).toEqual({
       pack: {},
       images: {},
     });
   });
 
-  it('writes only m.room.image_pack under the empty state key', async () => {
-    const { client, raw } = room({ 'im.ponies.room_emotes': legacy });
-    await target.write(client, content);
-    expect(raw.sendStateEvent).toHaveBeenCalledOnce();
-    expect(raw.sendStateEvent).toHaveBeenCalledWith(
-      roomId,
-      'm.room.image_pack',
-      content,
-      '',
-    );
-  });
-
-  it('readServer reads the stable pack, then the legacy one, then nothing', async () => {
-    const { client, raw } = room();
-    const notFound = new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
-    raw.getStateEvent
-      .mockRejectedValueOnce(notFound)
-      .mockResolvedValueOnce(legacy);
-    expect(await target.readServer(client)).toEqual(legacy);
-    expect(raw.getStateEvent.mock.calls).toEqual([
-      [roomId, 'm.room.image_pack', ''],
-      [roomId, 'im.ponies.room_emotes', ''],
-    ]);
-    raw.getStateEvent.mockRejectedValue(notFound);
-    expect(await target.readServer(client)).toEqual({ pack: {}, images: {} });
-  });
-
-  it('readServer rethrows other errors', async () => {
-    const { client, raw } = room();
-    raw.getStateEvent.mockRejectedValue(
-      new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
-    );
-    await expect(target.readServer(client)).rejects.toMatchObject({
-      errcode: 'M_FORBIDDEN',
+  it('readServer rejects with other failures', async () => {
+    const { target, engine, alice } = room({}, { joined: false });
+    await expect(target.readServer(engine, alice)).rejects.toMatchObject({
+      failure: { kind: 'permission' },
     });
   });
 
-  it('watch fires only for this room’s own pack and stops on cleanup', () => {
-    const { client, raw, emit } = room();
-    const onChange = vi.fn();
-    const stop = target.watch(client, onChange);
-    expect(raw.on).toHaveBeenCalledWith(
-      RoomStateEvent.Events,
-      expect.any(Function),
-    );
-    emit('m.room.image_pack');
-    emit('im.ponies.room_emotes');
-    emit('m.room.image_pack', '!other:hs');
-    emit('m.room.image_pack', roomId, 'other-pack');
-    emit('m.room.name');
-    expect(onChange).toHaveBeenCalledTimes(2);
-    stop();
-    emit('m.room.image_pack');
-    expect(onChange).toHaveBeenCalledTimes(2);
+  it('the snapshot follows only this room’s own pack', async () => {
+    const { target, engine, alice, roomId } = room({
+      'm.room.image_pack': content,
+    });
+    const seen: string[][] = [];
+    const subscription = target
+      .snapshot(engine, alice)
+      .subscribe((snapshot) =>
+        seen.push(Object.keys(target.read(snapshot).images)),
+      );
+    const set = (key: string, images: Record<string, unknown>) =>
+      engine
+        .setRoomState(alice, roomId, 'm.room.image_pack', key, { images })
+        .subscribe();
+    set('other-pack', { other: {} });
+    set('', { mine: {} });
+    subscription.unsubscribe();
+    set('', {});
+    expect(seen.at(0)).toEqual(['wave']);
+    expect(seen.at(-1)).toEqual(['mine']);
+    expect(seen.flat()).not.toContain('other');
   });
 
-  it('canWrite follows the power to send m.room.image_pack', () => {
+  it('canWrite follows the power to send m.room.image_pack', async () => {
     const allowed = room();
-    expect(target.canWrite(allowed.client)).toBe(true);
-    expect(allowed.roomState.maySendStateEvent).toHaveBeenCalledWith(
-      'm.room.image_pack',
-      '@me:hs',
-    );
-    expect(target.canWrite(room({}, { mayEdit: false }).client)).toBe(false);
-    expect(new RoomPackTarget('!other:hs').canWrite(allowed.client)).toBe(
-      false,
-    );
+    expect(allowed.target.canWrite(await allowed.snapshot())).toBe(true);
+    const denied = room({}, { writable: false });
+    expect(denied.target.canWrite(await denied.snapshot())).toBe(false);
+    const other = new RoomPackTarget('!other:hs');
+    expect(
+      other.canWrite(
+        await firstValueFrom(other.snapshot(allowed.engine, allowed.alice)),
+      ),
+    ).toBe(false);
   });
 
-  it('is named after the room, or Room emoji without a name', () => {
-    expect(target.defaultName(room().client)).toBe('Party room');
-    expect(target.defaultName(room({}, { name: ' ' }).client)).toBe(
-      'Room emoji',
-    );
+  it('is named after the room, or Room emoji without a name', async () => {
+    const named = room();
+    expect(named.target.defaultName(await named.snapshot())).toBe('Party room');
+    const blank = room({}, { name: ' ' });
+    expect(blank.target.defaultName(await blank.snapshot())).toBe('Room emoji');
   });
 });
