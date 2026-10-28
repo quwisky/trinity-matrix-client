@@ -116,7 +116,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       search = injector.get(ConversationSearchController);
       timeline.open(key);
       readiness.start(key, timeline);
-      threads.attach(key, client);
+      threads.attach(key);
       pins.attach(key, client);
       search.attach(key, client);
     } catch (error: unknown) {
@@ -139,7 +139,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
           // Retained Conversations keep only the bounded main timeline warm. Thread
           // summaries and pins re-read SDK-authoritative state when focus returns;
           // their potentially room-sized projections never enter the retained budget.
-          threads.attach(key, client);
+          threads.attach(key);
           pins.attach(key, client);
           search.attach(key, client);
           this.actionContext.bind(resolveActionContext);

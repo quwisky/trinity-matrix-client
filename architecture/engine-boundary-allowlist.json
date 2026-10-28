@@ -71,7 +71,6 @@
     "libs/data-access/timeline/src/lib/live-timeline-trim.ts",
     "libs/data-access/timeline/src/lib/live-timeline-trimmer.service.ts",
     "libs/data-access/timeline/src/lib/rewind-unread-hold.ts",
-    "libs/data-access/timeline/src/lib/threads.service.ts",
     "libs/data-access/timeline/src/lib/url-preview.service.ts",
     "libs/data-access/trust/src/lib/cross-signing-repair.ts",
     "libs/data-access/trust/src/lib/recovery-reset.ts",

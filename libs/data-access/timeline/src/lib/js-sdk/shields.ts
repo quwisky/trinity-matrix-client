@@ -15,9 +15,9 @@ import { shieldText, unencryptedShield } from '../shield-presentation';
 import { type ShieldCode } from '../timeline-engine';
 
 /**
- * Per-message authenticity shields, shared by {@link TimelineService} and
- * {@link ThreadsService} so both the main timeline and the thread panel resolve and
- * render shields identically. Keeps the crypto-api mapping in one place.
+ * Per-message authenticity shields, shared by every timeline focus so the main timeline
+ * and the thread panel resolve and render shields identically. Keeps the crypto-api
+ * mapping in one place.
  */
 
 const SHIELD_REASONS: Partial<Record<EventShieldReason, ShieldCode['reason']>> =

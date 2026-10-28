@@ -18,7 +18,7 @@ import { profileOf } from './timeline-item';
 const MAX_PARTICIPANTS = 8;
 
 /**
- * A compact fingerprint of every input {@link ThreadsService.summaryFor} reads that can
+ * A compact fingerprint of every input {@link threadSummaryInfo} reads that can
  * change for a thread: its reply count (also tracks new participants), its root and
  * latest-reply events (id/timestamp/redaction/decryption/body/sender + resolved name, so
  * edits and redactions are caught) and its unread counts. The summary is rebuilt only
