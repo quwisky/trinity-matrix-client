@@ -28,7 +28,7 @@ interface NotificationFaultWindow extends Window {
           session: {
             notificationLifetime: {
               roomNotifications: {
-                rebindClients(): void;
+                acknowledgeRules(): void;
                 retryProjection(): void;
               };
             };
@@ -112,11 +112,11 @@ test.describe('Notification settings', () => {
       const rules =
         target.ng.getComponent(root).runtime.adapter.session
           .notificationLifetime.roomNotifications;
-      const rebind = rules.rebindClients;
+      const acknowledge = rules.acknowledgeRules;
       target.restoreNotificationRules = () => {
-        rules.rebindClients = rebind;
+        rules.acknowledgeRules = acknowledge;
       };
-      rules.rebindClients = () => {
+      rules.acknowledgeRules = () => {
         throw new Error('synthetic private notification response');
       };
       rules.retryProjection();

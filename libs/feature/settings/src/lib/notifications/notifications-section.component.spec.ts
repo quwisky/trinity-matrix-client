@@ -25,25 +25,17 @@ const TOGGLES = [
 // the sound switch is seeded in ngOnInit, so configuring it afterwards would be too late.
 const soundEnabled = signal(true);
 const soundSetOn = vi.fn(() => of(undefined));
-const soundConnect = vi.fn();
-const soundDisconnect = vi.fn();
 const reactionEnabled = signal(false);
 const reactionSetOn = vi.fn(() => of(undefined));
-const reactionConnect = vi.fn();
-const reactionDisconnect = vi.fn();
 const activeAccount = signal<string | null>('@me:hs');
 
 beforeEach(() => {
   soundEnabled.set(true);
   soundSetOn.mockReset();
   soundSetOn.mockReturnValue(of(undefined));
-  soundConnect.mockReset();
-  soundDisconnect.mockReset();
   reactionEnabled.set(false);
   reactionSetOn.mockReset();
   reactionSetOn.mockReturnValue(of(undefined));
-  reactionConnect.mockReset();
-  reactionDisconnect.mockReset();
   activeAccount.set('@me:hs');
 });
 
@@ -57,14 +49,10 @@ async function build(over: { setOn?: Mock } = {}) {
       MockProvider(NotificationSoundService, {
         enabled: soundEnabled.asReadonly(),
         setOn: soundSetOn,
-        connect: soundConnect,
-        disconnect: soundDisconnect,
       }),
       MockProvider(ReactionNotificationSettingsService, {
         enabled: reactionEnabled.asReadonly(),
         setOn: reactionSetOn,
-        connect: reactionConnect,
-        disconnect: reactionDisconnect,
       }),
       MockProvider(SessionStateService, {
         activeAccountId: activeAccount.asReadonly(),

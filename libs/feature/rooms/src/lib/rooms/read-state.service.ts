@@ -1,7 +1,6 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  RoomNotificationUpdateError,
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
@@ -56,13 +55,10 @@ export class ReadStateService {
       .setModeForAccounts(roomId, mode, targets)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        error: (error: unknown) => {
-          const message =
-            error instanceof RoomNotificationUpdateError && error.restored
-              ? 'Couldn’t update notifications. Your previous setting was restored. Try again.'
-              : 'Couldn’t update notifications. Reopen the menu to confirm the server setting, then try again.';
-          void this.status.showError(message);
-        },
+        error: () =>
+          void this.status.showError(
+            'Couldn’t update notifications. Reopen the menu to confirm the server setting, then try again.',
+          ),
       });
   }
 

@@ -193,8 +193,8 @@ test.describe('Per-room notifications', () => {
     await openNotifyMenu(page, roomName);
     await expectChecked(page, 'mentions');
 
-    // Fail the second endpoint in mentions → mute after the room rule was removed. Trinity
-    // compensates back to mentions and explains the rollback instead of leaving stale UI.
+    // Fail the override write in mentions → mute. It goes first, so the room rule is never
+    // deleted: the server stays at mentions and the menu shows it after the error.
     let failedOverride = false;
     await page.route('**/pushrules/global/override/**', async (route) => {
       if (!failedOverride && route.request().method() === 'PUT') {
@@ -212,7 +212,9 @@ test.describe('Per-room notifications', () => {
       await route.continue();
     });
     await page.getByTestId('room-notify-mute').click();
-    await expect(page.getByText(/previous setting was restored/i)).toBeVisible({
+    await expect(
+      page.getByText(/Reopen the menu to confirm the server setting/i),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await page.unroute('**/pushrules/global/override/**');
@@ -227,24 +229,29 @@ test.describe('Per-room notifications', () => {
     await openNotifyMenu(page, roomName);
     await expectChecked(page, 'mute');
 
-    // Clear both server rules and prove the final transition back to the default.
+    // All messages writes a notifying room rule and deletes the mute, as Rust
+    // set_room_notification_mode(AllMessages) does.
     await pickLevel(page, 'all');
     const serverRules = (await request
       .get(`${session.hs}/_matrix/client/v3/pushrules/`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
       .then((response) => response.json())) as {
-      global?: {
-        room?: Array<{
-          rule_id?: string;
-          enabled?: boolean;
-          actions?: unknown[];
-        }>;
-      };
+      global?: Record<
+        string,
+        | Array<{ rule_id?: string; enabled?: boolean; actions?: unknown[] }>
+        | undefined
+      >;
     };
     expect(
       serverRules.global?.room?.find((rule) => rule.rule_id === roomId),
-    ).toMatchObject({ enabled: false, actions: [] });
+    ).toMatchObject({
+      enabled: true,
+      actions: ['notify', { set_tweak: 'sound', value: 'default' }],
+    });
+    expect(
+      serverRules.global?.override?.find((rule) => rule.rule_id === roomId),
+    ).toBeUndefined();
 
     await page.reload();
     await openRoom(page, roomName);

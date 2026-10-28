@@ -21,6 +21,8 @@ export interface ActiveAccountProjection {
   isConnected(): boolean;
   /** The account the subscription follows, or null. */
   accountId(): string | null;
+  /** Reconcile again without releasing the lease: rebuild from the latest value. */
+  schedule(): void;
 }
 
 export interface ProjectActiveAccountConfig<T> {
@@ -160,6 +162,8 @@ export function projectActiveAccount<T>(
     isConnected: () => attached !== null,
 
     accountId: () => attached?.accountId ?? null,
+
+    schedule: () => lease?.invalidate(),
   };
 
   effect(() => {
