@@ -668,12 +668,12 @@ describe('JsSdkTimelineEngine sending', () => {
       w.confirm(0, '$voice');
 
       expect(ok(await reply)).toBeNull();
-      const [file, encrypt, , , client] = mediaService.uploadMedia.mock
+      const [file, encrypt, , , accountId] = mediaService.uploadMedia.mock
         .calls[0] as unknown as [File, boolean, unknown, unknown, unknown];
       expect(file.name).toBe('voice-message.ogg');
       expect(file.type).toBe('audio/ogg');
       expect(encrypt).toBe(false);
-      expect(client).toBe(w.client);
+      expect(accountId).toBe(ME);
       expect(w.client.sendMessage).toHaveBeenCalledWith(
         ROOM,
         null,

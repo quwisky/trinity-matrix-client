@@ -1,4 +1,10 @@
-import { type OperatorFunction, map } from 'rxjs';
+import {
+  type Observable,
+  type OperatorFunction,
+  firstValueFrom,
+  map,
+  toArray,
+} from 'rxjs';
 import {
   type MatrixRequestFailureKind,
   type MatrixRequestFailureMetadata,
@@ -60,6 +66,10 @@ export type EngineFailure = {
   /** The target changed since the revision the caller confirmed. */
   | { readonly code: 'conflict' }
   | { readonly code: 'state-key-taken' }
+  /** No source to fetch, or the bytes failed their hash check. */
+  | { readonly code: 'media-unavailable' }
+  /** The homeserver refused the upload as over its size limit. */
+  | { readonly code: 'too-large' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -110,6 +120,10 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This changed before it could be saved. Review it and try again.';
     case 'state-key-taken':
       return 'That identifier is already in use.';
+    case 'media-unavailable':
+      return 'This media is unavailable.';
+    case 'too-large':
+      return 'This file is too large to upload.';
   }
 }
 
@@ -185,6 +199,30 @@ export function assertPlainData(value: unknown, path = '$'): void {
     }
   }
   throw new TypeError(`Not plain data at ${path}`);
+}
+
+/**
+ * Collects a progress command: zero or more `progress` updates, then exactly one `done`,
+ * then completion, each update plain data. Rejects with a TypeError naming the first breach.
+ */
+export async function assertProgressThenResult<
+  P extends { readonly kind: 'progress' },
+  R,
+>(
+  source: Observable<P | { readonly kind: 'done'; readonly result: R }>,
+): Promise<{ readonly progress: readonly P[]; readonly result: R }> {
+  const updates = await firstValueFrom(source.pipe(toArray()));
+  updates.forEach((update, i) => assertPlainData(update, `$[${i}]`));
+  const last = updates.at(-1);
+  if (last?.kind !== 'done') {
+    throw new TypeError('Completed without a done update');
+  }
+  const progress = updates.slice(0, -1);
+  const early = progress.findIndex((update) => update.kind !== 'progress');
+  if (early !== -1) {
+    throw new TypeError(`Update ${early} is not progress before the one done`);
+  }
+  return { progress: progress as P[], result: last.result };
 }
 
 /** Structural equality for plain data (see {@link assertPlainData}): objects, arrays and primitives. */
