@@ -6,14 +6,27 @@ import {
   computed,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
-import { Observable, defer, firstValueFrom, from } from 'rxjs';
-import { MatrixError, type MatrixClient } from 'matrix-js-sdk';
 import {
-  MatrixClientService,
-  projectFromClient,
+  Observable,
+  defer,
+  distinctUntilChanged,
+  firstValueFrom,
+  from,
+  map,
+} from 'rxjs';
+import {
+  projectActiveAccount,
+  SessionStateService,
 } from '@trinity/data-access/matrix-client';
-import { SHORTCODE_CHARACTERS } from '@trinity/util/matrix';
+import {
+  EngineRequestError,
+  SHORTCODE_CHARACTERS,
+  plainEqual,
+} from '@trinity/util/matrix';
+import type { AccountDataSnapshot } from './expression-engine';
+import { EXPRESSION_ENGINE } from './expression-engine.token';
 import {
   MAX_PERSONAL_IMAGES,
   isValidMxcUri,
@@ -105,25 +118,25 @@ export type PackRef =
 const PERSONAL: PackRef = { kind: 'personal' };
 
 interface Pack {
-  readonly client: MatrixClient;
-  readonly target: PackTarget;
+  readonly accountId: string;
+  readonly target: PackTarget<unknown>;
 }
 
 interface Upload {
-  readonly client: MatrixClient;
+  readonly accountId: string;
   readonly sticker: boolean;
   readonly url: string;
   readonly info: Record<string, unknown>;
 }
 
-/** Edits the Active Account's personal MSC2545 pack, or a room's own pack. Writes are queued per client. */
+/** Edits the Active Account's personal MSC2545 pack, or a room's own pack. Writes are queued per account. */
 @Injectable({ providedIn: 'root' })
 export class ImagePackEditorService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(EXPRESSION_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly media = inject(MediaService);
   private readonly target = new AccountPackTarget();
-  private readonly queues = new WeakMap<MatrixClient, Promise<unknown>>();
-  private readonly watches = new WeakMap<MatrixClient, () => void>();
+  private readonly queues = new Map<string, Promise<unknown>>();
   // Kept until the write succeeds, so a retry does not upload again.
   private readonly uploads = new WeakMap<File, Upload>();
   private readonly personalState = signal<readonly PackEntry[] | null>(null);
@@ -142,20 +155,11 @@ export class ImagePackEditorService {
       ),
   );
 
-  private readonly projection = projectFromClient({
+  private readonly projection = projectActiveAccount<AccountDataSnapshot>({
     id: 'media.image-pack-editor',
-    matrix: this.matrix,
-    bind: (client) =>
-      this.watches.set(
-        client,
-        this.target.watch(client, () => this.projection.schedule()),
-      ),
-    unbind: (client) => {
-      this.watches.get(client)?.();
-      this.watches.delete(client);
-    },
-    rebuild: (client) =>
-      this.personalState.set(packEntries(this.target.read(client))),
+    subscribe: (accountId) => this.target.snapshot(this.engine, accountId),
+    rebuild: (snapshot) =>
+      this.personalState.set(packEntries(this.target.read(snapshot))),
     reset: () => this.personalState.set(null),
   });
 
@@ -180,12 +184,12 @@ export class ImagePackEditorService {
   entries$(
     ref: Extract<PackRef, { kind: 'room' }>,
   ): Observable<readonly PackEntry[]> {
-    return new Observable((subscriber) => {
-      const { client, target } = this.resolve(ref);
-      const emit = (): void =>
-        subscriber.next(packEntries(target.read(client)));
-      emit();
-      return target.watch(client, emit);
+    return defer(() => {
+      const { accountId, target } = this.resolve(ref);
+      return target.snapshot(this.engine, accountId).pipe(
+        map((snapshot) => packEntries(target.read(snapshot))),
+        distinctUntilChanged<readonly PackEntry[]>(plainEqual),
+      );
     });
   }
 
@@ -238,18 +242,17 @@ export class ImagePackEditorService {
 
   private resolve(ref: PackRef): Pack {
     if (ref.kind === 'personal') {
-      return { client: this.client(), target: this.target };
+      const accountId = untracked(this.session.activeAccountId);
+      if (!accountId) throw new ImagePackEditError('not-signed-in');
+      return { accountId, target: this.target };
     }
-    const client = this.matrix.clientFor(ref.accountId);
-    if (!client) throw new ImagePackEditError('not-signed-in');
-    return { client, target: new RoomPackTarget(ref.roomId) };
-  }
-
-  private client(): MatrixClient {
-    if (!this.matrix.isInitialized) {
+    if (!untracked(() => this.session.status(ref.accountId))) {
       throw new ImagePackEditError('not-signed-in');
     }
-    return this.matrix.instance;
+    return {
+      accountId: ref.accountId,
+      target: new RoomPackTarget(ref.roomId),
+    };
   }
 
   private async addEntry(
@@ -261,13 +264,20 @@ export class ImagePackEditorService {
     assertShortcode(shortcode);
     assertUsage(usage);
     // Fails early before an upload; the queued step checks again against the server copy.
-    assertRoomFor(pack.target.read(pack.client).images, shortcode);
+    const local = await firstValueFrom(
+      pack.target.snapshot(this.engine, pack.accountId),
+    );
+    assertRoomFor(pack.target.read(local).images, shortcode);
     if (input.kind === 'existing' && !isValidMxcUri(input.url)) {
       throw new ImagePackImageError('unsupported-type');
     }
     const media =
       input.kind === 'file'
-        ? await this.upload(pack.client, input.file, usage)
+        ? await this.upload(pack.accountId, input.file, usage).catch(
+            (error: unknown) => {
+              throw notSignedIn(error);
+            },
+          )
         : input;
     const entry: PackEntry = {
       shortcode,
@@ -286,17 +296,17 @@ export class ImagePackEditorService {
   }
 
   private async upload(
-    client: MatrixClient,
+    accountId: string,
     file: File,
     usage: readonly ImagePackUsage[],
   ): Promise<Upload> {
     const sticker = usage.includes('sticker');
     const cached = this.uploads.get(file);
-    if (cached?.client === client && cached.sticker === sticker) return cached;
+    if (cached?.accountId === accountId && cached.sticker === sticker) {
+      return cached;
+    }
     const prepared = await prepareImagePackImage(file, usage);
-    const limit = await firstValueFrom(
-      this.media.uploadLimit(client.getUserId() ?? undefined),
-    );
+    const limit = await firstValueFrom(this.media.uploadLimit(accountId));
     if (limit !== null && prepared.size > limit) {
       throw new ImagePackEditError(
         'too-large-for-server',
@@ -304,17 +314,11 @@ export class ImagePackEditorService {
       );
     }
     const uploaded = await firstValueFrom(
-      this.media.uploadMedia(
-        prepared,
-        false,
-        undefined,
-        undefined,
-        client.getUserId() ?? undefined,
-      ),
+      this.media.uploadMedia(prepared, false, undefined, undefined, accountId),
     );
     if (!uploaded.mxc) throw new Error('Unencrypted upload returned no mxc.');
     const result = {
-      client,
+      accountId,
       sticker,
       url: uploaded.mxc,
       info: { ...uploaded.info },
@@ -328,50 +332,75 @@ export class ImagePackEditorService {
     pack: Pack,
     change: (images: Images) => Images | null,
   ): Promise<void> {
-    const { client } = pack;
-    const previous = this.queues.get(client) ?? Promise.resolve();
+    const { accountId } = pack;
+    const previous = this.queues.get(accountId) ?? Promise.resolve();
     const operation = previous
       .catch(() => undefined)
       .then(() => this.applyChange(pack, change));
-    this.queues.set(client, operation);
+    this.queues.set(accountId, operation);
     const cleanup = (): void => {
-      if (this.queues.get(client) === operation) this.queues.delete(client);
+      if (this.queues.get(accountId) === operation) {
+        this.queues.delete(accountId);
+      }
     };
     void operation.then(cleanup, cleanup);
     return operation;
   }
 
   private async applyChange(
-    { client, target }: Pack,
+    { accountId, target }: Pack,
     change: (images: Images) => Images | null,
   ): Promise<void> {
     // Neither account data nor room state has compare-and-set: a write from elsewhere that
     // lands between this read and the write below is overwritten. Reading just before narrows
     // the window.
-    const content = await target.readServer(client);
+    const content = await target
+      .readServer(this.engine, accountId)
+      .catch((error: unknown) => {
+        throw notSignedIn(error);
+      });
     const images = change(content.images);
     if (!images) return;
     const pack =
       typeof content.pack['display_name'] === 'string'
         ? content.pack
-        : { ...content.pack, display_name: target.defaultName(client) };
+        : {
+            ...content.pack,
+            display_name: target.defaultName(
+              await firstValueFrom(target.snapshot(this.engine, accountId)),
+            ),
+          };
     const next = { pack, images };
     try {
-      await target.write(client, next);
+      await target.write(this.engine, accountId, next);
     } catch (error) {
+      if (!(error instanceof EngineRequestError)) throw error;
       // A room pack is one state event, which servers cap at 64 KiB.
-      if (error instanceof MatrixError && error.errcode === 'M_TOO_LARGE') {
+      if (error.failure.code === 'too-large') {
         throw new ImagePackEditError('pack-full');
       }
-      if (error instanceof MatrixError && error.errcode === 'M_FORBIDDEN') {
+      if (error.failure.kind === 'permission') {
         throw new ImagePackEditError('not-allowed');
       }
-      throw error;
+      throw notSignedIn(error);
     }
-    if (target === this.target && this.projection.client() === client) {
+    // Shown at once, ahead of the sync echo, unless another account has become active.
+    if (
+      target === this.target &&
+      this.projection.accountId() === accountId &&
+      untracked(this.session.activeAccountId) === accountId
+    ) {
       this.personalState.set(packEntries(next));
     }
   }
+}
+
+/** `not-signed-in` for an account without a running client, else `error` itself. */
+function notSignedIn(error: unknown): unknown {
+  return error instanceof EngineRequestError &&
+    error.failure.code === 'account-not-live'
+    ? new ImagePackEditError('not-signed-in')
+    : error;
 }
 
 function assertUsage(usage: readonly ImagePackUsage[]): void {

@@ -1,12 +1,10 @@
-import {
-  ClientEvent,
-  MatrixError,
-  Method,
-  RoomStateEvent,
-  type MatrixClient,
-  type MatrixEvent,
-} from 'matrix-js-sdk';
-import { liveRoomState } from '@trinity/util/matrix';
+import { type Observable, firstValueFrom, map } from 'rxjs';
+import { EngineRequestError, type EngineResult } from '@trinity/util/matrix';
+import type {
+  AccountDataSnapshot,
+  ExpressionEngine,
+  PackRoomSnapshot,
+} from './expression-engine';
 import {
   IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
@@ -32,16 +30,22 @@ export interface PackContent {
   readonly images: Readonly<Record<string, unknown>>;
 }
 
-export interface PackTarget {
+/** One pack on one account; engine failures reject as {@link EngineRequestError}. */
+export interface PackTarget<S> {
   readonly id: string;
-  read(client: MatrixClient): PackContent;
-  /** The server's copy, read past the SDK store, which a write does not update until sync echoes it. */
-  readServer(client: MatrixClient): Promise<PackContent>;
-  write(client: MatrixClient, next: PackContent): Promise<void>;
-  watch(client: MatrixClient, onChange: () => void): () => void;
-  canWrite(client: MatrixClient): boolean;
+  /** Subscription: the local (synced) copy that `read`, `canWrite` and `defaultName` take. */
+  snapshot(engine: ExpressionEngine, accountId: string): Observable<S>;
+  read(snapshot: S): PackContent;
+  /** The server's copy, past the local store, which a write does not update until sync echoes it. */
+  readServer(engine: ExpressionEngine, accountId: string): Promise<PackContent>;
+  write(
+    engine: ExpressionEngine,
+    accountId: string,
+    next: PackContent,
+  ): Promise<void>;
+  canWrite(snapshot: S): boolean;
   /** The `display_name` written when the pack has none. */
-  defaultName(client: MatrixClient): string;
+  defaultName(snapshot: S): string;
 }
 
 /** Valid entries only; invalid ones stay in `content.images` for the caller to write back. */
@@ -62,76 +66,55 @@ export function packEntries(content: PackContent): readonly PackEntry[] {
   return entries;
 }
 
-// The SDK's account-data typing is closed over spec events, so the custom
-// MSC2545 keys go through a narrow string-keyed view.
-type AccountDataView = {
-  getAccountData(type: string): MatrixEvent | undefined;
-  setAccountDataRaw(
-    type: string,
-    content: Record<string, unknown>,
-  ): Promise<unknown>;
-};
+const PERSONAL_TYPES = [
+  PERSONAL_IMAGE_PACK_EVENT_TYPE,
+  LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
+];
 
-type StateView = {
-  sendStateEvent(
-    roomId: string,
-    type: string,
-    content: Record<string, unknown>,
-    stateKey: string,
-  ): Promise<unknown>;
-};
+const ROOM_TYPES = [IMAGE_PACK_EVENT_TYPE, LEGACY_IMAGE_PACK_EVENT_TYPE];
 
 /** The user's own pack, in account data. */
-export class AccountPackTarget implements PackTarget {
+export class AccountPackTarget implements PackTarget<AccountDataSnapshot> {
   readonly id = 'account';
 
-  read(client: MatrixClient): PackContent {
-    const view = client as unknown as AccountDataView;
-    const content: unknown = (
-      view.getAccountData(PERSONAL_IMAGE_PACK_EVENT_TYPE) ??
-      view.getAccountData(LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE)
-    )?.getContent();
-    return toContent(content);
+  snapshot(
+    engine: ExpressionEngine,
+    accountId: string,
+  ): Observable<AccountDataSnapshot> {
+    return engine.accountData(accountId, PERSONAL_TYPES);
   }
 
-  async readServer(client: MatrixClient): Promise<PackContent> {
-    const userId = client.getUserId();
-    if (!userId) throw new Error('No signed-in user to read the pack for.');
-    return firstFound(
-      [PERSONAL_IMAGE_PACK_EVENT_TYPE, LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE],
-      (type) =>
-        client.http.authedRequest<unknown>(
-          Method.Get,
-          `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(type)}`,
-        ),
+  read(snapshot: AccountDataSnapshot): PackContent {
+    return toContent(
+      snapshot[PERSONAL_IMAGE_PACK_EVENT_TYPE] ??
+        snapshot[LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE],
     );
   }
 
-  async write(client: MatrixClient, next: PackContent): Promise<void> {
-    // Raw write, as the management service does: the SDK's setAccountData
-    // deep-compares and throws on null-prototype maps.
-    await (client as unknown as AccountDataView).setAccountDataRaw(
-      PERSONAL_IMAGE_PACK_EVENT_TYPE,
-      { pack: next.pack, images: next.images },
+  readServer(
+    engine: ExpressionEngine,
+    accountId: string,
+  ): Promise<PackContent> {
+    return firstFound(PERSONAL_TYPES, (type) =>
+      engine.fetchAccountData(accountId, type),
     );
   }
 
-  watch(client: MatrixClient, onChange: () => void): () => void {
-    const listener = (event: MatrixEvent): void => {
-      const type = event.getType();
-      if (
-        type === PERSONAL_IMAGE_PACK_EVENT_TYPE ||
-        type === LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE
-      ) {
-        onChange();
-      }
-    };
-    client.on(ClientEvent.AccountData, listener);
-    return () => client.off(ClientEvent.AccountData, listener);
+  async write(
+    engine: ExpressionEngine,
+    accountId: string,
+    next: PackContent,
+  ): Promise<void> {
+    await settled(
+      engine.setAccountData(accountId, PERSONAL_IMAGE_PACK_EVENT_TYPE, {
+        pack: next.pack,
+        images: next.images,
+      }),
+    );
   }
 
-  canWrite(client: MatrixClient): boolean {
-    return !!client.getUserId();
+  canWrite(): boolean {
+    return true;
   }
 
   defaultName(): string {
@@ -140,86 +123,81 @@ export class AccountPackTarget implements PackTarget {
 }
 
 /** A room's own pack: state key `""`. The legacy type is read until the first write replaces it. */
-export class RoomPackTarget implements PackTarget {
+export class RoomPackTarget implements PackTarget<PackRoomSnapshot> {
   readonly id: string;
 
   constructor(readonly roomId: string) {
     this.id = `room:${roomId}`;
   }
 
-  read(client: MatrixClient): PackContent {
-    const room = client.getRoom(this.roomId);
-    const state = room ? liveRoomState(room) : undefined;
+  snapshot(
+    engine: ExpressionEngine,
+    accountId: string,
+  ): Observable<PackRoomSnapshot> {
+    return engine
+      .packRooms(accountId, [this.roomId])
+      .pipe(map(([room]) => room));
+  }
+
+  read(room: PackRoomSnapshot): PackContent {
+    const own = (type: string) =>
+      room.packEvents.find(
+        (event) => event.type === type && event.state_key === '',
+      );
     return toContent(
-      (
-        state?.getStateEvents(IMAGE_PACK_EVENT_TYPE, '') ??
-        state?.getStateEvents(LEGACY_IMAGE_PACK_EVENT_TYPE, '')
-      )?.getContent(),
+      (own(IMAGE_PACK_EVENT_TYPE) ?? own(LEGACY_IMAGE_PACK_EVENT_TYPE))
+        ?.content,
     );
   }
 
-  readServer(client: MatrixClient): Promise<PackContent> {
-    return firstFound(
-      [IMAGE_PACK_EVENT_TYPE, LEGACY_IMAGE_PACK_EVENT_TYPE],
-      (type) => client.getStateEvent(this.roomId, type, ''),
+  readServer(
+    engine: ExpressionEngine,
+    accountId: string,
+  ): Promise<PackContent> {
+    return firstFound(ROOM_TYPES, (type) =>
+      engine.fetchRoomState(accountId, this.roomId, type, ''),
     );
   }
 
-  async write(client: MatrixClient, next: PackContent): Promise<void> {
+  async write(
+    engine: ExpressionEngine,
+    accountId: string,
+    next: PackContent,
+  ): Promise<void> {
     // No compare-and-set: another admin's write between readServer and here is overwritten.
-    await (client as unknown as StateView).sendStateEvent(
-      this.roomId,
-      IMAGE_PACK_EVENT_TYPE,
-      { pack: next.pack, images: next.images },
-      '',
+    await settled(
+      engine.setRoomState(accountId, this.roomId, IMAGE_PACK_EVENT_TYPE, '', {
+        pack: next.pack,
+        images: next.images,
+      }),
     );
   }
 
-  watch(client: MatrixClient, onChange: () => void): () => void {
-    const listener = (event: MatrixEvent): void => {
-      const type = event.getType();
-      if (
-        event.getRoomId() === this.roomId &&
-        event.getStateKey() === '' &&
-        (type === IMAGE_PACK_EVENT_TYPE ||
-          type === LEGACY_IMAGE_PACK_EVENT_TYPE)
-      ) {
-        onChange();
-      }
-    };
-    client.on(RoomStateEvent.Events, listener);
-    return () => client.off(RoomStateEvent.Events, listener);
+  canWrite(room: PackRoomSnapshot): boolean {
+    return room.canWritePack;
   }
 
-  canWrite(client: MatrixClient): boolean {
-    const userId = client.getUserId();
-    const room = client.getRoom(this.roomId);
-    const state = room ? liveRoomState(room) : undefined;
-    return (
-      !!userId && !!state?.maySendStateEvent(IMAGE_PACK_EVENT_TYPE, userId)
-    );
-  }
-
-  defaultName(client: MatrixClient): string {
-    return client.getRoom(this.roomId)?.name?.trim() || 'Room emoji';
+  defaultName(room: PackRoomSnapshot): string {
+    return room.name?.trim() || 'Room emoji';
   }
 }
 
 /** The first of `types` the server has, or an empty pack. */
 async function firstFound(
   types: readonly string[],
-  fetch: (type: string) => Promise<unknown>,
+  fetch: (type: string) => Observable<EngineResult<unknown | null>>,
 ): Promise<PackContent> {
   for (const type of types) {
-    try {
-      return toContent(await fetch(type));
-    } catch (error) {
-      if (!(error instanceof MatrixError && error.errcode === 'M_NOT_FOUND')) {
-        throw error;
-      }
-    }
+    const content = await settled(fetch(type));
+    if (content !== null) return toContent(content);
   }
   return { pack: {}, images: {} };
+}
+
+async function settled<T>(command: Observable<EngineResult<T>>): Promise<T> {
+  const result = await firstValueFrom(command);
+  if (!result.ok) throw new EngineRequestError(result.failure);
+  return result.value;
 }
 
 function toContent(content: unknown): PackContent {
