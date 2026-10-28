@@ -1,18 +1,24 @@
 import { TestBed } from '@angular/core/testing';
 import {
+  ConnectionError,
   EventType,
+  MatrixError,
   MatrixEventEvent,
   RoomEvent,
   RoomStateEvent,
 } from 'matrix-js-sdk';
-import { firstValueFrom } from 'rxjs';
+import { NEVER, Subject, firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CONVERSATION_PIN_POLICY,
   ConversationPinsController,
 } from './conversation-pins.controller';
 import type { ConversationPinPolicy } from './conversation-pins';
+import type { PinnedEvents } from './conversation-content-engine';
+import { JsSdkConversationContentEngine } from './js-sdk/js-sdk-conversation-content-engine';
 import { fakeEmitter } from '@trinity/testing';
+import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import { liveSession } from './timeline.spec-harness';
 
 const KEY = {
   accountId: '@alice:example.org',
@@ -23,6 +29,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve));
 
 function setup({ roomEncrypted = false } = {}) {
   let pinned: unknown = ['$one'];
+  let unreadable = false;
   const events = new Map([
     [
       '$one',
@@ -55,14 +62,17 @@ function setup({ roomEncrypted = false } = {}) {
   const state = {
     getStateEvents: (type: string) =>
       type === EventType.RoomPinnedEvents
-        ? { getContent: () => ({ pinned }) }
+        ? { getContent: () => ({ pinned }), getId: () => '$state' }
         : null,
   };
   const roomEmitter = fakeEmitter();
   const room = {
     roomId: KEY.roomId,
     hasEncryptionStateEvent: () => roomEncrypted,
-    getLiveTimeline: () => ({ getState: () => state }),
+    getLiveTimeline: () => {
+      if (unreadable) throw new Error('unreadable');
+      return { getState: () => state };
+    },
     findEventById: (eventId: string) => events.get(eventId),
     getMember: (userId: string) => ({
       name: userId === '@bob:example.org' ? 'Bob' : 'Carol',
@@ -122,14 +132,23 @@ function setup({ roomEncrypted = false } = {}) {
     canMutate: vi.fn(() => true),
     authorize: vi.fn(() => ({ kind: 'allowed' as const })),
   };
+  const session = liveSession([KEY.accountId]);
   TestBed.configureTestingModule({
     providers: [
       ConversationPinsController,
       { provide: CONVERSATION_PIN_POLICY, useValue: policy },
+      {
+        provide: JS_SDK_CLIENTS,
+        useValue: {
+          clientFor: (accountId: string) =>
+            accountId === KEY.accountId ? client : null,
+        },
+      },
+      ...session.providers,
     ],
   });
   const controller = TestBed.inject(ConversationPinsController);
-  controller.attach(KEY, client as never);
+  controller.attach(KEY);
   const setPinned = (next: unknown) => {
     pinned = next;
   };
@@ -142,6 +161,10 @@ function setup({ roomEncrypted = false } = {}) {
     remote,
     fetchRoomEvent,
     setPinned,
+    session,
+    makeUnreadable: () => {
+      unreadable = true;
+    },
     // Sets the pinned ids, announces the change as the SDK would, then lets fetches settle.
     pin: async (ids: string[]) => {
       setPinned(ids);
@@ -239,10 +262,10 @@ describe('ConversationPinsController', () => {
   it.each([{}, 7, 'abc', null, { length: 0 }])(
     'opens with no pins when the pinned list is %j',
     (malformed) => {
-      const { controller, setPinned, room, client } = setup();
+      const { controller, setPinned, room } = setup();
       setPinned(malformed);
 
-      expect(() => controller.attach(KEY, client as never)).not.toThrow();
+      expect(() => controller.attach(KEY)).not.toThrow();
 
       expect(controller.eventIds()).toEqual([]);
       expect(controller.messages()).toEqual([]);
@@ -251,23 +274,21 @@ describe('ConversationPinsController', () => {
   );
 
   it('keeps only string ids from a mixed pinned list', () => {
-    const { controller, setPinned, client } = setup();
+    const { controller, setPinned } = setup();
     setPinned(['$one', 4, null, { a: 1 }, '$two']);
-    controller.attach(KEY, client as never);
+    controller.attach(KEY);
 
     expect(controller.eventIds()).toEqual(['$one', '$two']);
   });
 
   it('releases its listeners when reading the room state fails', () => {
-    const { controller, room, client } = setup();
-    vi.spyOn(
-      controller as unknown as { readRoomState: () => void },
-      'readRoomState',
-    ).mockImplementation(() => {
-      throw new Error('unreadable');
-    });
+    const { controller, room, client, makeUnreadable } = setup();
+    makeUnreadable();
 
-    expect(() => controller.attach(KEY, client as never)).toThrow('unreadable');
+    controller.attach(KEY);
+
+    expect(controller.eventIds()).toEqual([]);
+    expect(controller.messages()).toEqual([]);
 
     expect(room.listenerCount(RoomStateEvent.Events)).toBe(0);
     expect(room.listenerCount(RoomEvent.Timeline)).toBe(0);
@@ -275,7 +296,7 @@ describe('ConversationPinsController', () => {
   });
 
   it('caps the pin list and fetches a few pins at a time', async () => {
-    const { controller, setPinned, client, fetchRoomEvent } = setup();
+    const { controller, setPinned, fetchRoomEvent } = setup();
     let inFlight = 0;
     let peak = 0;
     fetchRoomEvent.mockImplementation(async () => {
@@ -285,7 +306,7 @@ describe('ConversationPinsController', () => {
       throw Object.assign(new Error('Not found'), { httpStatus: 404 });
     });
     setPinned(Array.from({ length: 250 }, (_, i) => `$p${i}`));
-    controller.attach(KEY, client as never);
+    controller.attach(KEY);
 
     expect(controller.eventIds()).toHaveLength(100);
     await vi.waitFor(() => expect(fetchRoomEvent).toHaveBeenCalledTimes(100));
@@ -298,9 +319,9 @@ describe('ConversationPinsController', () => {
       sendStateEvent.mock.calls[0]?.[2];
 
     it('unpins from a 130-pin room without dropping the other 129', async () => {
-      const { controller, setPinned, client, sendStateEvent } = setup();
+      const { controller, setPinned, sendStateEvent } = setup();
       setPinned(ids(130));
-      controller.attach(KEY, client as never);
+      controller.attach(KEY);
 
       await firstValueFrom(controller.unpin('$p120'));
 
@@ -310,9 +331,9 @@ describe('ConversationPinsController', () => {
     });
 
     it('keeps non-string entries when unpinning', async () => {
-      const { controller, setPinned, client, sendStateEvent } = setup();
+      const { controller, setPinned, sendStateEvent } = setup();
       setPinned(['$a', 5, '$b', null]);
-      controller.attach(KEY, client as never);
+      controller.attach(KEY);
 
       await firstValueFrom(controller.unpin('$a'));
 
@@ -320,9 +341,9 @@ describe('ConversationPinsController', () => {
     });
 
     it('appends a pin to a 100-pin room and then shows it', async () => {
-      const { controller, setPinned, client, room, sendStateEvent } = setup();
+      const { controller, setPinned, room, sendStateEvent } = setup();
       setPinned(ids(100));
-      controller.attach(KEY, client as never);
+      controller.attach(KEY);
 
       await firstValueFrom(controller.pin('$new'));
 
@@ -336,9 +357,9 @@ describe('ConversationPinsController', () => {
     });
 
     it('shows the newest 100 pins and still knows the older ones', () => {
-      const { controller, setPinned, client } = setup();
+      const { controller, setPinned } = setup();
       setPinned(ids(130));
-      controller.attach(KEY, client as never);
+      controller.attach(KEY);
 
       expect(controller.eventIds()).toEqual(ids(130).slice(30));
       expect(controller.isPinned('$p0')).toBe(true);
@@ -472,6 +493,103 @@ describe('ConversationPinsController', () => {
     ).resolves.toMatchObject({
       kind: 'rejected',
       failure: 'conversation-unavailable',
+    });
+  });
+
+  it('retryFailed asks again only when a pin failed', async () => {
+    const { controller, fetchRoomEvent, pin } = setup();
+    await pin(['$gone']);
+
+    controller.retryFailed();
+    await flush();
+
+    expect(fetchRoomEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an unpin before the pin list has loaded', async () => {
+    const { controller, sendStateEvent } = setup();
+    vi.spyOn(
+      TestBed.inject(JsSdkConversationContentEngine),
+      'pinnedEvents',
+    ).mockReturnValue(NEVER);
+    controller.attach(KEY);
+
+    await expect(firstValueFrom(controller.unpin('$two'))).resolves.toEqual({
+      kind: 'rejected',
+      operation: 'unpin',
+      failure: 'conversation-unavailable',
+      retryable: false,
+    });
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('closes a feed that errors and leaves an empty list', () => {
+    const { controller } = setup();
+    const feed = new Subject<PinnedEvents>();
+    vi.spyOn(
+      TestBed.inject(JsSdkConversationContentEngine),
+      'pinnedEvents',
+    ).mockReturnValue(feed);
+    controller.attach(KEY);
+    feed.next({ eventIds: ['$one'], allEventIds: ['$one'], entries: [] });
+    expect(controller.eventIds()).toEqual(['$one']);
+
+    feed.error(new Error('feed broke'));
+
+    expect(feed.observed).toBe(false);
+    expect(controller.eventIds()).toEqual([]);
+    expect(controller.messages()).toEqual([]);
+    expect(controller.isPinned('$one')).toBe(false);
+    expect(controller.resources().listenerCount).toBe(0);
+  });
+
+  it('closes its feed when the account leaves and reopens it when it returns', () => {
+    const { controller, room, client, session } = setup();
+
+    session.publish([]);
+
+    expect(room.listenerCount(RoomStateEvent.Events)).toBe(0);
+    expect(client.listenerCount(MatrixEventEvent.Decrypted)).toBe(0);
+    expect(controller.messages()).toEqual([]);
+    expect(controller.canMutate()).toBe(false);
+
+    session.publish([KEY.accountId]);
+
+    expect(room.listenerCount(RoomStateEvent.Events)).toBe(1);
+    expect(controller.eventIds()).toEqual(['$one']);
+  });
+
+  it.each([
+    ['a network failure', Object.assign(new Error('down'), {}), false],
+    ['a forbidden write', { httpStatus: 403, errcode: 'M_FORBIDDEN' }, false],
+  ])('rejects a pin after %s', async (_name, error, retryable) => {
+    const { controller, sendStateEvent } = setup();
+    sendStateEvent.mockRejectedValueOnce(error as never);
+
+    await expect(firstValueFrom(controller.pin('$two'))).resolves.toEqual({
+      kind: 'rejected',
+      operation: 'pin',
+      failure: 'request-rejected',
+      retryable,
+    });
+  });
+
+  it.each([
+    ['a lost connection', () => new ConnectionError('down')],
+    ['a server error', () => new MatrixError({ errcode: 'M_UNKNOWN' }, 502)],
+    [
+      'rate limiting',
+      () => new MatrixError({ errcode: 'M_LIMIT_EXCEEDED' }, 429),
+    ],
+  ])('marks a pin rejected by %s retryable', async (_name, error) => {
+    const { controller, sendStateEvent } = setup();
+    sendStateEvent.mockRejectedValueOnce(error() as never);
+
+    await expect(firstValueFrom(controller.pin('$two'))).resolves.toEqual({
+      kind: 'rejected',
+      operation: 'pin',
+      failure: 'request-rejected',
+      retryable: true,
     });
   });
 
@@ -666,7 +784,7 @@ describe('ConversationPinsController', () => {
       expect(controller.messages()[0]?.status).toBe('loaded');
     });
 
-    it('retries failed pins on retryFailed but never an unavailable one', async () => {
+    it('retries failed pins on retryFailed and keeps an unavailable one unavailable', async () => {
       const { controller, remote, fetchRoomEvent, pin } = setup();
       remote.set('$old', raw('$old'));
       fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
@@ -674,9 +792,15 @@ describe('ConversationPinsController', () => {
       expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
 
       controller.retryFailed();
+      expect(controller.messages().map((m) => m.status)).toEqual([
+        'failed',
+        'unavailable',
+      ]);
       await flush();
 
+      // Only the failed pin is asked for again.
       expect(fetchRoomEvent).toHaveBeenCalledTimes(3);
+      expect(fetchRoomEvent).toHaveBeenLastCalledWith(KEY.roomId, '$old');
       expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
         ['$old', 'loaded'],
         ['$gone', 'unavailable'],

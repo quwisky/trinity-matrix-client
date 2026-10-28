@@ -65,8 +65,9 @@ private async fetch(id: string): Promise<void> {
 }
 ```
 
-The reference implementation is
-[`conversation-pins.controller.ts`](https://github.com/quwisky/trinity-matrix-client/blob/main/libs/data-access/timeline/src/lib/conversation-pins.controller.ts).
+The reference implementation is the `pinnedEvents` feed in
+[`js-sdk-conversation-content-engine.ts`](https://github.com/quwisky/trinity-matrix-client/blob/main/libs/data-access/timeline/src/lib/js-sdk/js-sdk-conversation-content-engine.ts),
+which counts generations instead of using `latestGuard()`.
 
 **`latestGuard()` or `switchMap`?** When the work is already an Observable, use `switchMap`
 (or `takeUntil` for release): the newer trigger cancels the older inner subscription and no

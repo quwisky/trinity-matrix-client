@@ -111,11 +111,9 @@ describe('Conversation Runtime production boundary', () => {
       .map(source)
       .join('\n');
 
-    expect(factory).toContain('search.attach(key, client);');
+    expect(factory).toContain('search.attach(key);');
     expect(runtime).toContain('readonly search: ConversationSearch;');
-    expect(search).toContain(
-      'attach(key: ConversationKey, client: MatrixClient)',
-    );
+    expect(search).toContain('attach(key: ConversationKey)');
     expect(search).not.toContain('MatrixClientService');
     expect(search).not.toContain('.instance');
     expect(roomFeature).not.toContain('ConversationSearchController');
