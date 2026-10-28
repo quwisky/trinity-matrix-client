@@ -218,6 +218,30 @@ export interface TimelineRoomState {
   readonly oldestEventId: string | null;
 }
 
+/** A thread's summary, keyed by `rootEventId`; names come from `profiles`. */
+export interface ThreadSummaryInfo {
+  readonly rootEventId: string;
+  readonly replyCount: number;
+  readonly latestActivityTs: number;
+  /** `null` while the root is not loaded. */
+  readonly root: {
+    readonly sender: string;
+    readonly preview: string;
+    readonly unencryptedMark: UnencryptedMark | null;
+  } | null;
+  readonly latestReply: {
+    readonly sender: string;
+    readonly preview: string;
+    readonly ts: number;
+    readonly unencryptedMark: UnencryptedMark | null;
+  } | null;
+  /** Distinct senders of the root and the loaded replies, at most 8. */
+  readonly participants: readonly string[];
+  readonly profiles: Readonly<Record<string, Profile>>;
+  readonly unreadCount: number;
+  readonly highlight: boolean;
+}
+
 export type TimelineUpdate =
   /** The account does not hold the room yet; the stream emits again when it does. */
   | { readonly kind: 'room-unavailable' }
@@ -297,8 +321,15 @@ export interface TimelineEngine {
     typing: boolean,
   ): Observable<EngineResult<null>>;
 
+  /** The room's threads. Emits a full snapshot first, then only when a summary changed. */
+  threadSummaries(
+    accountId: string,
+    roomId: string,
+  ): Observable<readonly VectorDiff<ThreadSummaryInfo>[]>;
+
   /**
-   * Sends `message`, in the thread `threadRootId` when set. `replyTo` quotes that event, fetched
+   * Sends `message`, in the thread `threadRootId` when set, starting that thread when it has
+   * no replies yet. `replyTo` quotes that event, fetched
    * from the server when it is not loaded; only text replies. `eventId` is null when the send
    * failed and its echo stays, with its `sendState`, for `retrySend` or `cancelSend`.
    * `transactionId`, when given, is the echo's, so the caller can cancel this send before

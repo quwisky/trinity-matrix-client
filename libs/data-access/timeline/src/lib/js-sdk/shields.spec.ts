@@ -6,6 +6,7 @@ import {
 import { type MessageShield } from '../message-presentation';
 import { describe, expect, it, vi } from 'vitest';
 import { shieldKey } from '../shield-presentation';
+import type { ShieldCode } from '../timeline-engine';
 import {
   resolveShieldsInto,
   shieldSubject,
@@ -167,7 +168,7 @@ describe('toShield', () => {
 
 describe('resolveShieldsInto', () => {
   it('stores the resolved shield and reports a change', async () => {
-    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const shields = new Map<MatrixEvent, ShieldCode | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi.fn().mockResolvedValue({
         shieldColour: EventShieldColour.RED,
@@ -184,7 +185,7 @@ describe('resolveShieldsInto', () => {
     );
 
     expect(changed).toBe(true);
-    expect(shields.get(a)).toMatchObject({ level: 'red' });
+    expect(shields.get(a)).toMatchObject({ colour: 'red' });
   });
 
   // The one that matters: `events` is already filtered to ENCRYPTED events, and a null
@@ -192,7 +193,7 @@ describe('resolveShieldsInto', () => {
   // A transient crypto/store error must not silently make an unverified message look
   // trustworthy.
   it('fails closed when the crypto probe throws, rather than showing no shield', async () => {
-    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const shields = new Map<MatrixEvent, ShieldCode | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi
         .fn()
@@ -209,11 +210,11 @@ describe('resolveShieldsInto', () => {
 
     expect(changed).toBe(true);
     expect(shields.get(a)).not.toBeNull(); // NOT "looks authenticated"
-    expect(shields.get(a)).toMatchObject({ level: 'grey' });
+    expect(shields.get(a)).toMatchObject({ colour: 'grey' });
   });
 
   it('does not let a probe failure break the rest of the batch', async () => {
-    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const shields = new Map<MatrixEvent, ShieldCode | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi
         .fn()
@@ -228,13 +229,13 @@ describe('resolveShieldsInto', () => {
     const good = event('$good');
     await resolveShieldsInto(crypto as never, [bad, good], shields, NOT_STALE);
 
-    expect(shields.get(bad)).toMatchObject({ level: 'grey' });
+    expect(shields.get(bad)).toMatchObject({ colour: 'grey' });
     // Not decrypted yet: a "no shield" answer is not kept, so it is asked again.
     expect(shields.has(good)).toBe(false);
   });
 
   it('keeps a "no shield" answer for a decrypted event, and reports it once', async () => {
-    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const shields = new Map<MatrixEvent, ShieldCode | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi.fn().mockResolvedValue({
         shieldColour: EventShieldColour.NONE,
@@ -252,7 +253,7 @@ describe('resolveShieldsInto', () => {
   });
 
   it('checks an event on its own even when another with the same id was checked', async () => {
-    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const shields = new Map<MatrixEvent, ShieldCode | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi.fn((e: MatrixEvent) =>
         Promise.resolve(
@@ -277,11 +278,11 @@ describe('resolveShieldsInto', () => {
 
     expect(crypto.getEncryptionInfoForEvent).toHaveBeenCalledTimes(2);
     expect(shields.get(trusted)).toBeNull();
-    expect(shields.get(forged)).toMatchObject({ level: 'red' });
+    expect(shields.get(forged)).toMatchObject({ colour: 'red' });
   });
 
   it('bails without touching state when the caller navigated away mid-resolve', async () => {
-    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const shields = new Map<MatrixEvent, ShieldCode | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi.fn().mockResolvedValue({
         shieldColour: EventShieldColour.RED,

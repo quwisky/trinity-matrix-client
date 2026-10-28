@@ -3,6 +3,7 @@ import {
   type Observable,
   filter,
   firstValueFrom,
+  map,
   scan,
   tap,
   timeout,
@@ -17,6 +18,7 @@ import {
 import type {
   EventTimelineItem,
   OutgoingMessage,
+  ThreadSummaryInfo,
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
@@ -42,6 +44,8 @@ export interface TimelineContractSetup {
     invite(roomId: string, userId: string): Promise<void>;
     /** Sends a text message and returns its event id. */
     send(roomId: string, body: string): Promise<string>;
+    /** Sends a text reply in the thread of `rootId` and returns its event id. */
+    sendInThread(roomId: string, rootId: string, body: string): Promise<string>;
     react(roomId: string, eventId: string, key: string): Promise<void>;
     redact(roomId: string, eventId: string): Promise<void>;
     edit(roomId: string, eventId: string, body: string): Promise<void>;
@@ -156,12 +160,12 @@ export function defineTimelineEngineContract(
       return result.value;
     }
 
-    /** Alice's live timeline of the room, folded and checked for plain data on every update. */
-    function watch(roomId: string): Watch {
+    /** Alice's timeline of the room, folded and checked for plain data on every update. */
+    function watch(roomId: string, focus: TimelineFocus = LIVE): Watch {
       const updates: TimelineUpdate[] = [];
       const view$ = new BehaviorSubject<TimelineView | null>(null);
       const subscription = engine
-        .timeline(alice, roomId, LIVE)
+        .timeline(alice, roomId, focus)
         .pipe(
           tap((update) => {
             expect(() => assertPlainData(update)).not.toThrow();
@@ -187,6 +191,33 @@ export function defineTimelineEngineContract(
             view$.pipe(
               filter((view): view is TimelineView => view !== null),
               filter(predicate),
+              timeout(settleTimeoutMs),
+            ),
+          ),
+        close: () => subscription.unsubscribe(),
+      };
+    }
+
+    /** Alice's thread summaries of the room, folded and checked for plain data. */
+    function watchSummaries(roomId: string) {
+      const summaries$ = new BehaviorSubject<readonly ThreadSummaryInfo[]>([]);
+      const subscription = engine
+        .threadSummaries(alice, roomId)
+        .pipe(
+          tap((diffs) => expect(() => assertPlainData(diffs)).not.toThrow()),
+          scan(
+            (summaries: readonly ThreadSummaryInfo[], diffs) =>
+              applyVectorDiffs(summaries, diffs),
+            [],
+          ),
+        )
+        .subscribe(summaries$);
+      return {
+        until: (rootId: string, predicate: (s: ThreadSummaryInfo) => boolean) =>
+          firstValueFrom(
+            summaries$.pipe(
+              map((all) => all.find((s) => s.rootEventId === rootId)),
+              filter((s): s is ThreadSummaryInfo => !!s && predicate(s)),
               timeout(settleTimeoutMs),
             ),
           ),
@@ -1044,6 +1075,192 @@ export function defineTimelineEngineContract(
         } finally {
           restore?.();
           timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "thread focus shows only the root's replies",
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId, otherRootId],
+        } = await roomWith(['root', 'other root']);
+        const first = await context.asBob.sendInThread(roomId, rootId, 'one');
+        await context.asBob.sendInThread(roomId, otherRootId, 'elsewhere');
+        const second = await context.asBob.sendInThread(roomId, rootId, 'two');
+        await context.asBob.send(roomId, 'main');
+        const thread = watch(roomId, { kind: 'thread', rootEventId: rootId });
+        try {
+          const view = await thread.until((v) => !!byId(v, second));
+
+          expect(events(view).map((item) => item.eventId)).toEqual([
+            rootId,
+            first,
+            second,
+          ]);
+          expect(bodyOf(byId(view, first))).toBe('one');
+          const last = thread.updates.at(-1);
+          expect(last?.kind === 'items' && last.room).toMatchObject({
+            latestConfirmedEventId: second,
+            oldestEventId: rootId,
+          });
+        } finally {
+          thread.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'live focus hides thread replies',
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId],
+        } = await roomWith(['root']);
+        const timeline = watch(roomId);
+        try {
+          await timeline.until((v) => !!byId(v, rootId));
+          const replyId = await context.asBob.sendInThread(
+            roomId,
+            rootId,
+            'in the thread',
+          );
+          const mainId = await context.asBob.send(roomId, 'in the room');
+
+          const view = await timeline.until((v) => !!byId(v, mainId));
+
+          expect(byId(view, rootId)).toBeDefined();
+          expect(byId(view, replyId)).toBeUndefined();
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'the first threaded send creates the thread',
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId],
+        } = await roomWith(['start a thread here']);
+        const thread = watch(roomId, { kind: 'thread', rootEventId: rootId });
+        const summaries = watchSummaries(roomId);
+        try {
+          await thread.until((v) => !!byId(v, rootId));
+
+          const sent = await ok(
+            engine.send(alice, roomId, text('first reply'), {
+              threadRootId: rootId,
+              replyTo: null,
+            }),
+          );
+
+          expect(byTxn(thread.view(), sent.transactionId)).toMatchObject({
+            isOwn: true,
+            content: { kind: 'message', body: 'first reply' },
+          });
+          await summaries.until(rootId, (s) => s.replyCount === 1);
+          // The relation clients without thread support read too.
+          const source = await ok(
+            engine.eventSource(alice, roomId, sent.eventId ?? ''),
+          );
+          expect(source?.['content']).toMatchObject({
+            body: 'first reply',
+            'm.relates_to': {
+              rel_type: 'm.thread',
+              event_id: rootId,
+              is_falling_back: true,
+              'm.in_reply_to': { event_id: rootId },
+            },
+          });
+        } finally {
+          summaries.close();
+          thread.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'threadSummaries counts replies and participants',
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId],
+        } = await roomWith(['root']);
+        await context.asBob.sendInThread(roomId, rootId, 'bob replies');
+        const summaries = watchSummaries(roomId);
+        try {
+          await summaries.until(rootId, (s) => s.replyCount === 1);
+
+          await ok(
+            engine.send(alice, roomId, text('alice replies'), {
+              threadRootId: rootId,
+              replyTo: null,
+            }),
+          );
+
+          const summary = await summaries.until(
+            rootId,
+            (s) => s.replyCount === 2 && s.participants.length === 2,
+          );
+          expect(summary.participants).toEqual([bob, alice]);
+          expect(summary.root).toMatchObject({ sender: bob, preview: 'root' });
+          expect(summary.latestReply).toMatchObject({
+            sender: alice,
+            preview: 'alice replies',
+          });
+          expect(summary.profiles[bob]?.displayName).toEqual(
+            expect.any(String),
+          );
+        } finally {
+          summaries.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'sendReceipt in a thread replies ok',
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId],
+        } = await roomWith(['root']);
+        const replyId = await context.asBob.sendInThread(
+          roomId,
+          rootId,
+          'read me in the thread',
+        );
+        const thread = watch(roomId, { kind: 'thread', rootEventId: rootId });
+        try {
+          await thread.until((v) => !!byId(v, replyId));
+          const fullyReadBefore = await context.asAlice.fullyRead(roomId);
+
+          await expect(
+            ok(
+              engine.sendReceipt(alice, roomId, replyId, {
+                threadRootId: rootId,
+                visibility: 'public',
+                fullyRead: false,
+              }),
+            ),
+          ).resolves.toBe(null);
+
+          await expect(context.asBob.readReceipt(roomId, alice)).resolves.toBe(
+            replyId,
+          );
+          // A thread has no read marker of its own.
+          await expect(context.asAlice.fullyRead(roomId)).resolves.toBe(
+            fullyReadBefore,
+          );
+        } finally {
+          thread.close();
         }
       },
       testTimeoutMs,

@@ -167,6 +167,7 @@ describe('JsSdkTimelineEngine sending', () => {
 
   it('send text builds its content, in the thread when given one', async () => {
     const w = sendingWorld();
+    w.room.getThread.mockReturnValue({ id: '$root', events: [] });
     const engine = engineFor(w.client);
     const message: OutgoingText = {
       msgtype: 'emote',

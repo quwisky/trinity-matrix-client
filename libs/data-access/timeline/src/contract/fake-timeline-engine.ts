@@ -2,6 +2,7 @@ import {
   type Observable,
   Subject,
   defer,
+  distinctUntilChanged,
   filter,
   map,
   of,
@@ -15,6 +16,7 @@ import {
   type VectorDiff,
   applyVectorDiffs,
   engineOk,
+  plainEqual,
 } from '@trinity/util/matrix';
 import type { PollView } from '@trinity/util/matrix';
 import type {
@@ -23,6 +25,7 @@ import type {
   OutgoingText,
   Profile,
   ReactionDetailGroup,
+  ThreadSummaryInfo,
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
@@ -52,6 +55,8 @@ interface FakeRoom {
   readonly invited: Set<string>;
   /** Each voter's answers, per poll event id. */
   readonly votes: Map<string, Map<string, readonly string[]>>;
+  /** The thread root of each thread reply, by the reply's `uniqueId`. */
+  readonly threads: Map<string, string>;
 }
 
 function failure(code: FailNextCode): EngineFailure {
@@ -68,6 +73,8 @@ const FORWARDABLE: ReadonlySet<TimelineItemContent['kind']> = new Set([
   'sticker',
   'location',
 ]);
+/** Most participants a thread summary names. */
+const MAX_PARTICIPANTS = 8;
 const START_ITEM: TimelineItem = {
   kind: 'timelineStart',
   uniqueId: 'timeline-start',
@@ -130,7 +137,7 @@ export function fakeEventItem(
 
 /**
  * In-memory timelines for `alice` (live) and `bob` (driven through `asBob`). Emits synchronously
- * and resets the whole list on every change; the focus is ignored.
+ * and resets the whole list on every change. A thread focus shows every reply at once.
  */
 export class FakeTimelineEngine implements TimelineEngine {
   private readonly rooms = new Map<string, FakeRoom>();
@@ -176,24 +183,13 @@ export class FakeTimelineEngine implements TimelineEngine {
     invite: async (roomId: string, userId: string): Promise<void> => {
       this.room(roomId).invited.add(userId);
     },
-    send: async (roomId: string, body: string): Promise<string> => {
-      this.nextEvent += 1;
-      this.clock += 1;
-      const eventId = `$fake-${this.nextEvent}`;
-      const room = this.room(roomId);
-      room.history = [
-        ...room.history,
-        fakeEventItem(eventId, this.bob, {
-          timestamp: this.clock,
-          content: textContent(body),
-          profiles: { [this.bob]: this.profile(this.bob) },
-        }),
-      ];
-      for (const [accountId, count] of room.loaded)
-        room.loaded.set(accountId, count + 1);
-      this.publish(roomId);
-      return eventId;
-    },
+    send: async (roomId: string, body: string): Promise<string> =>
+      this.bobSends(roomId, body, null),
+    sendInThread: async (
+      roomId: string,
+      rootId: string,
+      body: string,
+    ): Promise<string> => this.bobSends(roomId, body, rootId),
     react: async (roomId: string, eventId: string, key: string) =>
       this.patchEvent(roomId, eventId, (item) => ({
         reactions: item.reactions.some((g) => g.key === key)
@@ -230,6 +226,30 @@ export class FakeTimelineEngine implements TimelineEngine {
     ): Promise<string | null> =>
       this.rooms.get(roomId)?.readReceipts.get(userId) ?? null,
   };
+
+  private bobSends(
+    roomId: string,
+    body: string,
+    threadRootId: string | null,
+  ): string {
+    this.nextEvent += 1;
+    this.clock += 1;
+    const eventId = `$fake-${this.nextEvent}`;
+    const room = this.room(roomId);
+    if (threadRootId) room.threads.set(`ev:${eventId}`, threadRootId);
+    room.history = [
+      ...room.history,
+      fakeEventItem(eventId, this.bob, {
+        timestamp: this.clock,
+        content: textContent(body),
+        profiles: { [this.bob]: this.profile(this.bob) },
+      }),
+    ];
+    for (const [accountId, count] of room.loaded)
+      room.loaded.set(accountId, count + 1);
+    this.publish(roomId);
+    return eventId;
+  }
 
   constructor() {
     this.userNames.set(this.alice, 'Alice');
@@ -300,13 +320,21 @@ export class FakeTimelineEngine implements TimelineEngine {
   timeline(
     accountId: string,
     roomId: string,
-    _focus: TimelineFocus,
+    focus: TimelineFocus,
   ): Observable<TimelineUpdate> {
     return defer(() =>
       this.changes$.pipe(
         filter((c) => c.accountId === accountId && c.roomId === roomId),
-        map((c) => c.update),
-        startWith(this.snapshot(accountId, roomId)),
+        map((c) =>
+          focus.kind === 'live'
+            ? c.update
+            : this.threadSnapshot(accountId, roomId, focus.rootEventId),
+        ),
+        startWith(
+          focus.kind === 'live'
+            ? this.snapshot(accountId, roomId)
+            : this.threadSnapshot(accountId, roomId, focus.rootEventId),
+        ),
       ),
     );
   }
@@ -314,11 +342,32 @@ export class FakeTimelineEngine implements TimelineEngine {
   paginateBackwards(
     accountId: string,
     roomId: string,
-    _focus: TimelineFocus,
+    focus: TimelineFocus,
     count: number,
   ): Observable<EngineResult<{ readonly startReached: boolean }>> {
     return this.run(accountId, roomId, (room) =>
-      engineOk({ startReached: this.paginate(accountId, roomId, room, count) }),
+      engineOk({
+        startReached:
+          focus.kind === 'thread' ||
+          this.paginate(accountId, roomId, room, count),
+      }),
+    );
+  }
+
+  threadSummaries(
+    accountId: string,
+    roomId: string,
+  ): Observable<readonly VectorDiff<ThreadSummaryInfo>[]> {
+    return defer(() =>
+      this.changes$.pipe(
+        filter((c) => c.accountId === accountId && c.roomId === roomId),
+        startWith(null),
+        map(() => this.summaries(accountId, roomId)),
+        distinctUntilChanged((a, b) => plainEqual(a, b)),
+        map((values): readonly VectorDiff<ThreadSummaryInfo>[] => [
+          { op: 'reset', values },
+        ]),
+      ),
     );
   }
 
@@ -361,16 +410,29 @@ export class FakeTimelineEngine implements TimelineEngine {
       const item = this.event(room, eventId);
       if (!item) return engineFail(MESSAGE_UNAVAILABLE);
       const { content } = item;
+      const rootId = room.threads.get(item.uniqueId);
       return engineOk({
         event_id: eventId,
         room_id: roomId,
         sender: item.sender,
         origin_server_ts: item.timestamp,
         type: 'm.room.message',
-        content:
-          content.kind === 'message'
+        content: {
+          ...(content.kind === 'message'
             ? { msgtype: `m.${content.msgtype}`, body: content.body }
-            : {},
+            : {}),
+          // As the SDK sends a thread reply, with its fallback for thread-unaware clients.
+          ...(rootId
+            ? {
+                'm.relates_to': {
+                  rel_type: 'm.thread',
+                  event_id: rootId,
+                  is_falling_back: true,
+                  'm.in_reply_to': { event_id: rootId },
+                },
+              }
+            : {}),
+        },
       });
     });
   }
@@ -469,6 +531,8 @@ export class FakeTimelineEngine implements TimelineEngine {
         return engineOk({ transactionId, eventId });
       }
       const target = options.replyTo ? this.event(room, options.replyTo) : null;
+      if (options.threadRootId)
+        room.threads.set(`txn:${transactionId}`, options.threadRootId);
       this.append(roomId, {
         ...this.own(accountId, eventId, this.contentOf(message, eventId)),
         uniqueId: `txn:${transactionId}`,
@@ -857,6 +921,79 @@ export class FakeTimelineEngine implements TimelineEngine {
     };
   }
 
+  private threadSnapshot(
+    accountId: string,
+    roomId: string,
+    rootId: string,
+  ): TimelineUpdate {
+    const room = this.rooms.get(roomId);
+    if (!room?.members.has(accountId)) return { kind: 'room-unavailable' };
+    const root = this.event(room, rootId);
+    const items = [...(root ? [root] : []), ...this.replies(room, rootId)];
+    const confirmed = items.filter((i) => i.eventId !== null);
+    return {
+      kind: 'items',
+      diffs: [{ op: 'reset', values: items }],
+      backPagination: 'start-reached',
+      // What a thread receipt acknowledges: the thread's own newest event.
+      room: {
+        ...this.roomState(accountId, room),
+        latestConfirmedEventId: confirmed.at(-1)?.eventId ?? null,
+        oldestEventId: confirmed[0]?.eventId ?? null,
+      },
+    };
+  }
+
+  private replies(room: FakeRoom, rootId: string): EventTimelineItem[] {
+    return this.events(room).filter(
+      (i) => room.threads.get(i.uniqueId) === rootId,
+    );
+  }
+
+  private summaries(accountId: string, roomId: string): ThreadSummaryInfo[] {
+    const room = this.rooms.get(roomId);
+    if (!room?.members.has(accountId)) return [];
+    const preview = (item: EventTimelineItem) =>
+      item.content.kind === 'message' ? item.content.body : '…';
+    return [...new Set(room.threads.values())].map((rootId) => {
+      const root = this.event(room, rootId);
+      const replies = this.replies(room, rootId);
+      const latest = replies.at(-1);
+      const participants = [
+        ...new Set([
+          ...(root ? [root.sender] : []),
+          ...replies.map((r) => r.sender),
+        ]),
+      ].slice(0, MAX_PARTICIPANTS);
+      return {
+        rootEventId: rootId,
+        replyCount: replies.length,
+        latestActivityTs: latest?.timestamp ?? root?.timestamp ?? 0,
+        root: root
+          ? {
+              sender: root.sender,
+              preview: preview(root),
+              unencryptedMark: null,
+            }
+          : null,
+        latestReply: latest
+          ? {
+              sender: latest.sender,
+              preview: preview(latest),
+              ts: latest.timestamp,
+              unencryptedMark: null,
+            }
+          : null,
+        participants,
+        profiles: Object.fromEntries(
+          participants.map((userId) => [userId, this.profile(userId)]),
+        ),
+        unreadCount: 0,
+        highlight: false,
+      };
+    });
+  }
+
   private roomState(accountId: string, room: FakeRoom): TimelineRoomState {
     const all = this.events(room).filter((i) => i.eventId !== null);
     const loaded = this.visible(accountId, room).filter(
@@ -874,7 +1011,10 @@ export class FakeTimelineEngine implements TimelineEngine {
 
   private visible(accountId: string, room: FakeRoom): readonly TimelineItem[] {
     const loaded = room.loaded.get(accountId) ?? 0;
-    return room.history.slice(room.history.length - loaded).map((item) => {
+    const shown = room.history
+      .slice(room.history.length - loaded)
+      .filter((item) => !room.threads.has(item.uniqueId));
+    return shown.map((item) => {
       const votes =
         item.kind === 'event' && item.content.kind === 'poll'
           ? room.votes.get(item.content.poll.id)
@@ -935,6 +1075,7 @@ export class FakeTimelineEngine implements TimelineEngine {
         readReceipts: new Map(),
         invited: new Set(),
         votes: new Map(),
+        threads: new Map(),
       };
       this.rooms.set(roomId, room);
     }

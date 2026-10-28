@@ -104,11 +104,11 @@ export const ROOM_KEY: ConversationKey = {
  * the live accounts, as a sign-out or a restart does.
  */
 export function liveSession(accountIds: readonly string[]) {
-  const live = (ids: readonly string[]): SessionSnapshot => ({
+  const live = (ids: readonly string[], generation = 1): SessionSnapshot => ({
     ...EMPTY_SESSION,
     accounts: ids.map((accountId) => ({
       accountId,
-      generation: 1,
+      generation,
       syncState: 'syncing' as const,
       serverSynced: true,
       roomsPrepared: true,
@@ -123,8 +123,8 @@ export function liveSession(accountIds: readonly string[]) {
       { provide: SESSION_SNAPSHOT, useValue: snapshot.asReadonly() },
       { provide: SESSION_ENGINE, useValue: { session: () => session$ } },
     ] satisfies Provider[],
-    publish(ids: readonly string[]): void {
-      snapshot.set(live(ids));
+    publish(ids: readonly string[], generation = 1): void {
+      snapshot.set(live(ids, generation));
       session$.next(snapshot());
     },
   };
