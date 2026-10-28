@@ -84,7 +84,6 @@
     "libs/data-access/widgets/src/lib/widgets.service.ts",
     "libs/feature/auth/src/lib/login/login.page.ts",
     "libs/util/matrix/src/lib/authed-media.ts",
-    "libs/util/matrix/src/lib/edit-history.ts",
     "libs/util/matrix/src/lib/message-content.ts",
     "libs/util/matrix/src/lib/oidc-issuer-discovery.ts",
     "libs/util/matrix/src/lib/password-uia.ts",

@@ -10,11 +10,11 @@ import { Observable, defer, from, map } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   RoomEncryptionFlags,
-  buildEditRevisions,
   validReplacement,
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 import type { MessageShield } from './message-presentation';
+import { buildEditRevisions } from './js-sdk/edit-revisions';
 import { unencryptedShieldFor } from './js-sdk/shields';
 
 /** One version of a message, with the unencrypted mark for its own text. */

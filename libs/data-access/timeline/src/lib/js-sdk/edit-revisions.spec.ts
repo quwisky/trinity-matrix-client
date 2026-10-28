@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EventStatus, MatrixEvent } from 'matrix-js-sdk';
-import { buildEditRevisions } from './edit-history';
-import { UNDECRYPTABLE_BODY } from './message-view';
+import { UNDECRYPTABLE_BODY } from '@trinity/util/matrix';
+import { buildEditRevisions } from './edit-revisions';
 
 const SENDER = '@alice:hs';
 
