@@ -15,7 +15,11 @@ import type {
   ConversationReactionRequest,
 } from './conversation-messages';
 import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
-import type { TimelineFocus, TimelineItemKey } from './timeline-engine';
+import type {
+  EventTimelineItem,
+  TimelineFocus,
+  TimelineItemKey,
+} from './timeline-engine';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
 import { TimelineStores } from './timeline-store';
 
@@ -123,14 +127,16 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {
-      const senderId = this.senderOf(request);
-      if (senderId === null) {
-        return of(rejected('redaction', 'message-unavailable'));
+      const item = this.eventOf(request);
+      if (!item) return of(rejected('redaction', 'message-unavailable'));
+      // As js-sdk's maySendRedactionForEvent: only a sent, unredacted event.
+      if (item.sendState !== null || item.content.kind === 'redacted') {
+        return of(rejected('redaction', 'not-allowed'));
       }
       const decision = this.policy.authorizeRedaction({
         key: request.key,
         messageId: request.messageId,
-        senderId,
+        senderId: item.sender,
       });
       if (decision.kind === 'rejected') {
         return of(rejected('redaction', decision.failure));
@@ -191,8 +197,10 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
     });
   }
 
-  /** The sender of the row the request names, from the items its conversation holds. */
-  private senderOf(request: ConversationMessageActionRequest): string | null {
+  /** The row the request names, from the items its conversation holds. */
+  private eventOf(
+    request: ConversationMessageActionRequest,
+  ): EventTimelineItem | null {
     const { eventId, transactionId } = itemKey(request);
     const focus: TimelineFocus = request.threadRootId
       ? { kind: 'thread', rootEventId: request.threadRootId }
@@ -206,7 +214,7 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
           : candidate.eventId === eventId),
     );
     release();
-    return item?.kind === 'event' ? item.sender : null;
+    return item?.kind === 'event' ? item : null;
   }
 
   private uncancellable(

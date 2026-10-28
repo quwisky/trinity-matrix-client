@@ -255,6 +255,18 @@ describe('JsSdkRoomAdministrationEngine', () => {
     expect(listenerCount()).toBe(0);
   });
 
+  it('members skips a sync that changed no member', async () => {
+    const { engine, emit } = setup();
+    const { seen } = watch<RoomMembers | null>(engine.members(ME, ROOM_ID));
+    await settle();
+    const before = seen.length;
+
+    emit('sync');
+    await settle();
+
+    expect(seen).toHaveLength(before);
+  });
+
   it('members loads lazy members and crosses power, names and reasons', async () => {
     const { engine, loadMembersIfNeeded } = setup();
     const { seen } = watch<RoomMembers | null>(engine.members(ME, ROOM_ID));

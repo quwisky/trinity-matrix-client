@@ -16,28 +16,26 @@ import {
 } from '../../support/room-settings-journey.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
-/** The dev build's Angular debug API, reaching the active account's Matrix client. */
+/**
+ * The dev build's Angular debug API, reaching the active account's Matrix client through the
+ * long-lived Identity lifetime, as the presence journey does.
+ */
 interface MatrixClientWindow extends Window {
   ng: {
     getComponent(element: Element): {
       runtime: {
         adapter: {
           session: {
-            roomAdministration: {
-              permissions: {
-                store: {
-                  engine: {
-                    /** `JS_SDK_CLIENTS`, the js-sdk engine's long-lived client owner. */
-                    clients: {
-                      instance: {
-                        getCrypto(): {
-                          isEncryptionEnabledInRoom(
-                            roomId: string,
-                          ): Promise<boolean>;
-                          /** RustCrypto's private per-room encryptors. */
-                          roomEncryptors?: Record<string, unknown>;
-                        };
-                      };
+            identity: {
+              matrix: {
+                active(): {
+                  client: {
+                    getCrypto(): {
+                      isEncryptionEnabledInRoom(
+                        roomId: string,
+                      ): Promise<boolean>;
+                      /** RustCrypto's private per-room encryptors. */
+                      roomEncryptors?: Record<string, unknown>;
                     };
                   };
                 };
@@ -57,7 +55,8 @@ function encryptsOnThisDevice(page: Page, roomId: string): Promise<boolean> {
     if (!root) return false;
     const crypto = (window as unknown as MatrixClientWindow).ng
       .getComponent(root)
-      .runtime.adapter.session.roomAdministration.permissions.store.engine.clients.instance.getCrypto();
+      .runtime.adapter.session.identity.matrix.active()
+      .client.getCrypto();
     return (
       (await crypto.isEncryptionEnabledInRoom(id)) &&
       !!crypto.roomEncryptors?.[id]

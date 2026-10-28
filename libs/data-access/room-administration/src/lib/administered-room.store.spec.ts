@@ -1,6 +1,6 @@
 import { computed } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { type Observable, defer, finalize } from 'rxjs';
+import { type Observable, defer, finalize, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdministeredRoomStore } from './administered-room.store';
 import {
@@ -104,5 +104,14 @@ describe('AdministeredRoomStore', () => {
 
     expect(open()).toBe(0);
     expect(membership()).toBeNull();
+  });
+
+  it('subscribes again on the next read after the engine stream fails', async () => {
+    const { store, engine, roomId, spies } = await setup();
+    spies.room.mockImplementationOnce(() => throwError(() => new Error('x')));
+
+    expect(store.room(engine.alice, roomId)).toBeNull();
+    expect(store.room(engine.alice, roomId)?.roomId).toBe(roomId);
+    expect(spies.room).toHaveBeenCalledTimes(2);
   });
 });

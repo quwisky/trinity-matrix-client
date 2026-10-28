@@ -161,7 +161,7 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
           client.off(ClientEvent.Sync, schedule);
         },
       };
-    });
+    }).pipe(distinctUntilChanged<RoomMembers | null>(plainEqual));
   }
 
   setState(

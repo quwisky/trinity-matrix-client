@@ -75,12 +75,19 @@ export class AdministeredRoomStore {
       entry = untracked(() => {
         this.release(entries, key);
         const value = signal<T | null>(null);
+        let created: Entry<T> | null = null;
+        let failed = false;
+        // A failed stream is dropped, so the next read subscribes again.
         const subscription = source().subscribe({
           next: (next) => value.set(next),
-          error: () => value.set(null),
+          error: () => {
+            failed = true;
+            if (created && entries.get(key) === created) entries.delete(key);
+            value.set(null);
+          },
         });
-        const created = { accountId, generation, value, subscription };
-        entries.set(key, created);
+        created = { accountId, generation, value, subscription };
+        if (!failed) entries.set(key, created);
         return created;
       });
     }
