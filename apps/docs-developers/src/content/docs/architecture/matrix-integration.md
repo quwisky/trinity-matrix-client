@@ -20,7 +20,7 @@ Never use the active account implicitly for work that already has an account ide
 
 Data-access services translate SDK objects and events into stable Trinity read models and commands. Feature and component code consumes those public models; it does not expose SDK objects through UI APIs or attach competing SDK listeners.
 
-For active-client projections, the shared `projectFromClient` adapter coordinates client replacement, event attachment, burst coalescing, reconciliation, and reset. Other scopes use their matching owned projection lifetime.
+For active-client projections, the shared `projectFromClient` adapter coordinates client replacement, event attachment, burst coalescing, reconciliation, and reset. `projectActiveAccount` (`libs/data-access/matrix-client`) is the SDK-free counterpart of `projectFromClient`: it holds an engine subscription for the Active Account under a `ProjectionRuntime` lease, coalesces bursts, and resets and subscribes again on an account switch or a new session generation. Other scopes use their matching owned projection lifetime.
 
 ## Engine interfaces {#engine-interfaces}
 
@@ -85,7 +85,7 @@ Creating a room, space or DM, joining, leaving and tagging show their effect in 
 
 ### Expression engine {#expression-engine}
 
-`ExpressionEngine` (`libs/data-access/media`) reads and writes the account data and room state behind custom emoji, stickers and recent emoji. `accountData` and `packRooms` are subscriptions: each emits its snapshot on subscribe and then a whole snapshot per change, never one for an unrelated type or room. `fetchAccountData` and `fetchRoomState` read the server's copy past the local store, null when absent, so a write can be verified against it. Writes are raw, so a `__proto__` key in a null-prototype map survives; an oversized write fails with `too-large` and a refused one with `kind: 'permission'`. `joinPackRoom` resolves an alias, joins unless already joined and returns the room's pack state. `EXPRESSION_ENGINE` provides the `matrix-js-sdk` adapter; `defineExpressionEngineContract` runs against `FakeExpressionEngine` and Synapse. `projectActiveAccount` (`libs/data-access/matrix-client`) is the SDK-free counterpart of `projectFromClient`: it holds an engine subscription for the Active Account under a `ProjectionRuntime` lease, coalesces bursts, and resets and subscribes again on an account switch or a new session generation.
+`ExpressionEngine` (`libs/data-access/media`) reads and writes the account data and room state behind custom emoji, stickers and recent emoji. `accountData` and `packRooms` are subscriptions: each emits its snapshot on subscribe and then a whole snapshot per change, never one for an unrelated type or room. `fetchAccountData` and `fetchRoomState` read the server's copy past the local store, null when absent, so a write can be verified against it. Writes are raw, so a `__proto__` key in a null-prototype map survives; an oversized write fails with `too-large` and a refused one with `kind: 'permission'`. `joinPackRoom` resolves an alias, joins unless already joined and returns the room's pack state. `EXPRESSION_ENGINE` provides the `matrix-js-sdk` adapter; `defineExpressionEngineContract` runs against `FakeExpressionEngine` and Synapse.
 
 ## Treat synchronization as authoritative {#sync-authority}
 

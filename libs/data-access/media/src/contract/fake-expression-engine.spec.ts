@@ -11,6 +11,7 @@ defineExpressionEngineContract(
       engine,
       alice: engine.alice,
       ownRoom: async () => engine.addRoom(),
+      leave: async (roomId) => engine.leaveRoom(roomId),
       foreignPackRoom: async (name, pack) => {
         const alias = `#pack${++rooms}:fake`;
         const roomId = engine.addRoom({

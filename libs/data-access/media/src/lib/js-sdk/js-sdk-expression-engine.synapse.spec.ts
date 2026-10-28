@@ -55,6 +55,14 @@ describe.skipIf(!baseUrl)('JsSdkExpressionEngine against Synapse', () => {
           );
           return room_id;
         },
+        leave: async (roomId) => {
+          await cs(
+            session.accessToken,
+            'POST',
+            `/rooms/${encodeURIComponent(roomId)}/leave`,
+            {},
+          );
+        },
         foreignPackRoom: async (name, pack) => {
           const aliasLocal = localpart('pack');
           const { room_id } = (await cs(

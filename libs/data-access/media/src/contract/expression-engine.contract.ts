@@ -21,6 +21,8 @@ export interface ExpressionContractSetup {
   readonly alice: string;
   /** A room alice created (so she may write its pack), as the engine sees it. */
   ownRoom(): Promise<string>;
+  /** Alice leaves `roomId`. */
+  leave(roomId: string): Promise<void>;
   /**
    * A public room another user created with `name`, an alias and `pack` as its
    * `m.room.image_pack` under state key `""`. Alice is not in it and may not write state there.
@@ -253,6 +255,21 @@ export function defineExpressionEngineContract(
         expect(room(after, roomId).packEvents).toEqual([
           { type: IMAGE_PACK_EVENT_TYPE, state_key: '', content: pack },
         ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reports no pack write for a room alice has left',
+      async () => {
+        const roomId = await context.ownRoom();
+        const rooms = watch(engine.packRooms(alice, [roomId]));
+        await rooms.until((all) => room(all, roomId).canWritePack);
+
+        await context.leave(roomId);
+        const left = await rooms.until((all) => !room(all, roomId).joined);
+
+        expect(room(left, roomId).canWritePack).toBe(false);
       },
       testTimeoutMs,
     );

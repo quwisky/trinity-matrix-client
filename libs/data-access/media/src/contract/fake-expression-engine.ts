@@ -99,6 +99,14 @@ export class FakeExpressionEngine implements ExpressionEngine {
     return roomId;
   }
 
+  /** Alice leaves `roomId`; the fake keeps its state, as a client keeps a left room's. */
+  leaveRoom(roomId: string): void {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    room.joined = false;
+    this.changes.next();
+  }
+
   accountData(
     accountId: string,
     types: readonly string[],

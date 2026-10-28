@@ -137,19 +137,24 @@ describe('projectActiveAccount', () => {
   });
 
   it('follows an account switch, resetting first and never showing the previous value', () => {
-    const { projection, snapshot, sources, model, reset, tick } = harness();
+    const { projection, snapshot, sources, model, rebuild, reset, tick } =
+      harness();
     const seen: (string | null)[] = [];
     projection.connect();
     reset.mockImplementation(() => {
       seen.push('reset');
       model.set(null);
     });
+    rebuild.mockImplementation((value: string) => {
+      seen.push(value);
+      model.set(value);
+    });
 
     snapshot.set(live('@b:hs'));
     tick();
     sources.get('@a:hs')?.next('@a:hs:late');
 
-    expect(seen).toEqual(['reset']);
+    expect(seen).toEqual(['reset', '@b:hs:0']);
     expect(model()).toBe('@b:hs:0');
     expect(projection.accountId()).toBe('@b:hs');
     expect(sources.get('@a:hs')?.observed).toBe(false);

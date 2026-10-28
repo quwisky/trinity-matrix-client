@@ -24,7 +24,6 @@ import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
-  describeMatrixRequestFailure,
   engineFail,
   engineOk,
   liveRoomState,
@@ -41,6 +40,7 @@ import {
   IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
 } from '../image-pack.model';
+import { tooLargeOrFailed } from './request-failure';
 
 const PACK_TYPES: ReadonlySet<string> = new Set([
   IMAGE_PACK_EVENT_TYPE,
@@ -52,22 +52,6 @@ const NOT_LIVE: EngineFailure = {
   code: 'account-not-live',
   diagnostic: { kind: 'unexpected' },
 };
-
-/** `too-large` for M_TOO_LARGE / 413, else `request-failed` (M_FORBIDDEN arrives as `kind: 'permission'`). */
-function failureOf(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  if (diagnostic.errcode === 'M_TOO_LARGE' || diagnostic.httpStatus === 413) {
-    return { kind, code: 'too-large', diagnostic };
-  }
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
-}
 
 async function nullWhenNotFound<T>(request: Promise<T>): Promise<T | null> {
   try {
@@ -288,7 +272,7 @@ export class JsSdkExpressionEngine implements ExpressionEngine {
       if (!client) return of(engineFail(NOT_LIVE));
       return from(run(client)).pipe(
         map((value) => engineOk(value)),
-        catchError((error: unknown) => of(engineFail(failureOf(error)))),
+        catchError((error: unknown) => of(engineFail(tooLargeOrFailed(error)))),
       );
     });
   }
@@ -301,12 +285,16 @@ function packRoomOf(
   const room = client?.getRoom(roomId) ?? null;
   const state = room ? liveRoomState(room) : undefined;
   const userId = client?.getUserId();
+  const joined = room?.getMyMembership() === 'join';
   return {
     roomId,
-    joined: room?.getMyMembership() === 'join',
+    joined,
     name: room?.name ?? null,
+    // A left or invited room keeps its old power levels; only a member may write.
     canWritePack:
-      !!userId && !!state?.maySendStateEvent(IMAGE_PACK_EVENT_TYPE, userId),
+      joined &&
+      !!userId &&
+      !!state?.maySendStateEvent(IMAGE_PACK_EVENT_TYPE, userId),
     packEvents: state
       ? [IMAGE_PACK_EVENT_TYPE, LEGACY_IMAGE_PACK_EVENT_TYPE].flatMap((type) =>
           state.getStateEvents(type).map((event): RawImagePackStateEvent => ({

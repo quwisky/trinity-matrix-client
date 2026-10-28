@@ -12,7 +12,7 @@ export interface PackRoomSnapshot {
   readonly joined: boolean;
   /** The room's display name (`room.name`), or null when unknown. */
   readonly name: string | null;
-  /** Whether the account may send `m.room.image_pack` here (power levels). */
+  /** Whether the account is joined and may send `m.room.image_pack` here (power levels). */
   readonly canWritePack: boolean;
   /** Every `m.room.image_pack` and `im.ponies.room_emotes` state event, any state key. */
   readonly packEvents: readonly RawImagePackStateEvent[];
