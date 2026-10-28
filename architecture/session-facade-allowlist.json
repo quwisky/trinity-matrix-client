@@ -20,7 +20,6 @@
     "libs/data-access/media/src/lib/image-pack-editor.service.ts",
     "libs/data-access/media/src/lib/image-pack-management.service.ts",
     "libs/data-access/media/src/lib/image-pack.service.ts",
-    "libs/data-access/media/src/lib/recent-emoji.service.ts",
     "libs/data-access/notifications/src/lib/keyword-rules.service.ts",
     "libs/data-access/notifications/src/lib/native-push-lifetime.ts",
     "libs/data-access/notifications/src/lib/notification-lifetime.ts",

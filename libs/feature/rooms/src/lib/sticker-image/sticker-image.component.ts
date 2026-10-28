@@ -10,6 +10,7 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
 import type { MediaPayload } from '@trinity/util/matrix';
 import { Subscription } from 'rxjs';
@@ -32,6 +33,7 @@ export class StickerImageComponent {
       this.alt() ?? (this.image().body.slice(0, 256) || this.image().shortcode),
   );
   private readonly media = inject(MediaService);
+  private readonly session = inject(SessionStateService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly visible = signal(
@@ -54,13 +56,15 @@ export class StickerImageComponent {
     effect(() => {
       const image = this.image();
       const visible = this.visible();
+      // The picker shows the active account's packs, so a switch resolves on the new account.
+      const accountId = this.session.activeAccountId() ?? undefined;
       this.subscription?.unsubscribe();
       this.repin(null);
       this.src.set(null);
       this.failed.set(false);
       if (!visible) return;
       this.subscription = this.media
-        .resolveMedia(payload(image), 'thumbnail')
+        .resolveMedia(payload(image), 'thumbnail', accountId)
         .subscribe({
           next: (url) => {
             this.repin(url);

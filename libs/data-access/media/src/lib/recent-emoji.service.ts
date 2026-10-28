@@ -4,20 +4,17 @@ import {
   inject,
   Injectable,
   signal,
+  untracked,
   type Signal,
 } from '@angular/core';
-import type { Observable } from 'rxjs';
+import { firstValueFrom, type Observable } from 'rxjs';
 import {
-  ClientEvent,
-  MatrixError,
-  Method,
-  type MatrixClient,
-  type MatrixEvent,
-} from 'matrix-js-sdk';
-import {
-  MatrixClientService,
-  projectFromClient,
+  projectActiveAccount,
+  SessionStateService,
 } from '@trinity/data-access/matrix-client';
+import { type EngineResult, unwrapEngineResult } from '@trinity/util/matrix';
+import type { AccountDataSnapshot } from './expression-engine';
+import { EXPRESSION_ENGINE } from './expression-engine.token';
 import {
   applyPicks,
   ELEMENT_RECENT_EMOJI_EVENT_TYPE,
@@ -35,11 +32,11 @@ export * from './recent-emoji.model';
 /** A burst of picks is written once, this long after the last. */
 const WRITE_DELAY_MS = 2_000;
 
-const RECENT_EMOJI_TYPES = new Set([
+const RECENT_EMOJI_TYPES = [
   RECENT_EMOJI_EVENT_TYPE,
   UNSTABLE_RECENT_EMOJI_EVENT_TYPE,
   ELEMENT_RECENT_EMOJI_EVENT_TYPE,
-]);
+];
 
 interface PendingWrites {
   /** Picks not yet saved, oldest first. */
@@ -55,25 +52,19 @@ interface PendingWrites {
  */
 @Injectable({ providedIn: 'root' })
 export class RecentEmojiService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(EXPRESSION_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly base = signal<readonly RecentEmojiEntry[]>([]);
   private readonly unsaved = signal<readonly string[]>([]);
-  private readonly writes = new Map<MatrixClient, PendingWrites>();
+  private readonly writes = new Map<string, PendingWrites>();
 
-  private readonly onAccountData = (event: MatrixEvent): void => {
-    if (RECENT_EMOJI_TYPES.has(event.getType())) {
-      this.projection.schedule();
-    }
-  };
-
-  private readonly projection = projectFromClient({
+  private readonly projection = projectActiveAccount<AccountDataSnapshot>({
     id: 'media.recent-emoji',
-    matrix: this.matrix,
-    bind: (client) => client.on(ClientEvent.AccountData, this.onAccountData),
-    unbind: (client) => client.off(ClientEvent.AccountData, this.onAccountData),
-    rebuild: (client) => {
-      this.base.set(storedEntries(client));
-      this.unsaved.set(this.writes.get(client)?.picks ?? []);
+    subscribe: (accountId) =>
+      this.engine.accountData(accountId, RECENT_EMOJI_TYPES),
+    rebuild: (snapshot, accountId) => {
+      this.base.set(storedEntries(snapshot));
+      this.unsaved.set(this.writes.get(accountId)?.picks ?? []);
     },
     reset: () => {
       this.base.set([]);
@@ -104,28 +95,29 @@ export class RecentEmojiService {
    * open, as a toolbar's quick reaction does: the save reads the server copy first anyway.
    */
   record(emoji: string): void {
-    const client =
-      this.projection.client() ??
-      (this.matrix.isInitialized ? this.matrix.instance : null);
-    if (!client || !emoji) return;
-    const pending = this.pendingFor(client);
+    const accountId =
+      this.projection.accountId() ?? untracked(this.session.activeAccountId);
+    if (!accountId || !emoji) return;
+    const pending = this.pendingFor(accountId);
     pending.picks = [...pending.picks, emoji];
-    if (this.projection.client() === client) this.unsaved.set(pending.picks);
+    if (this.projection.accountId() === accountId) {
+      this.unsaved.set(pending.picks);
+    }
     if (pending.timer !== null) clearTimeout(pending.timer);
-    pending.timer = setTimeout(() => this.save(client), WRITE_DELAY_MS);
+    pending.timer = setTimeout(() => this.save(accountId), WRITE_DELAY_MS);
   }
 
-  private pendingFor(client: MatrixClient): PendingWrites {
-    let pending = this.writes.get(client);
+  private pendingFor(accountId: string): PendingWrites {
+    let pending = this.writes.get(accountId);
     if (!pending) {
       pending = { picks: [], timer: null, queue: Promise.resolve() };
-      this.writes.set(client, pending);
+      this.writes.set(accountId, pending);
     }
     return pending;
   }
 
-  private save(client: MatrixClient): void {
-    const pending = this.pendingFor(client);
+  private save(accountId: string): void {
+    const pending = this.pendingFor(accountId);
     pending.timer = null;
     const queue = pending.queue.then(async () => {
       const picks = pending.picks;
@@ -133,13 +125,16 @@ export class RecentEmojiService {
       try {
         // Account data has no compare-and-set: a write from another device that lands between
         // this read and the write below is overwritten. Reading just before narrows the window.
-        const saved = applyPicks(await serverEntries(client), picks);
-        await accountData(client).setAccountDataRaw(
-          RECENT_EMOJI_EVENT_TYPE,
-          recentEmojiContent(saved),
+        const saved = applyPicks(await this.serverEntries(accountId), picks);
+        await settled(
+          this.engine.setAccountData(
+            accountId,
+            RECENT_EMOJI_EVENT_TYPE,
+            recentEmojiContent(saved),
+          ),
         );
         pending.picks = pending.picks.slice(picks.length);
-        if (this.projection.client() === client) {
+        if (this.projection.accountId() === accountId) {
           this.base.set(saved);
           this.unsaved.set(pending.picks);
         }
@@ -149,59 +144,45 @@ export class RecentEmojiService {
     });
     pending.queue = queue;
     void queue.then(() => {
-      // Forget a client with nothing left to save, so a signed-out one is not kept alive.
+      // Forget an account with nothing left to save.
       if (
         pending.queue === queue &&
         pending.timer === null &&
         pending.picks.length === 0 &&
-        this.writes.get(client) === pending
+        this.writes.get(accountId) === pending
       ) {
-        this.writes.delete(client);
+        this.writes.delete(accountId);
       }
     });
   }
+
+  /**
+   * The server's copy, read just before each write so another device's picks since the last
+   * sync are kept. Falls back to the local seeds while the stable type does not exist.
+   */
+  private async serverEntries(accountId: string): Promise<RecentEmojiEntry[]> {
+    const content = await settled(
+      this.engine.fetchAccountData(accountId, RECENT_EMOJI_EVENT_TYPE),
+    );
+    if (content !== null) return parseRecentEmoji(content);
+    return storedEntries(
+      await firstValueFrom(
+        this.engine.accountData(accountId, RECENT_EMOJI_TYPES),
+      ),
+    );
+  }
 }
 
-/** The SDK types account data by known event types, and the two seed types are not among them. */
-interface AccountDataClient {
-  getAccountData(type: string): MatrixEvent | undefined;
-  setAccountDataRaw(type: string, content: object): Promise<unknown>;
-}
-
-function accountData(client: MatrixClient): AccountDataClient {
-  return client as unknown as AccountDataClient;
+/** A command's value; its failure rejects. */
+function settled<T>(command: Observable<EngineResult<T>>): Promise<T> {
+  return firstValueFrom(command.pipe(unwrapEngineResult()));
 }
 
 /** The local copy: the stable type, else one of the seeds. Only the stable type is written. */
-function storedEntries(client: MatrixClient): RecentEmojiEntry[] {
-  const stored = (type: string): unknown =>
-    accountData(client).getAccountData(type)?.getContent();
-  const stable = stored(RECENT_EMOJI_EVENT_TYPE);
-  if (stable !== undefined) return parseRecentEmoji(stable);
-  const unstable = stored(UNSTABLE_RECENT_EMOJI_EVENT_TYPE);
-  if (unstable !== undefined) return parseRecentEmoji(unstable);
-  return parseElementRecentEmoji(stored(ELEMENT_RECENT_EMOJI_EVENT_TYPE));
-}
-
-/**
- * The server's copy, read just before each write so another device's picks since the last
- * sync are kept. Falls back to the local seeds while the stable type does not exist.
- */
-async function serverEntries(
-  client: MatrixClient,
-): Promise<RecentEmojiEntry[]> {
-  const userId = client.getUserId();
-  if (!userId) throw new Error('recent emoji: not signed in');
-  try {
-    const content = await client.http.authedRequest<unknown>(
-      Method.Get,
-      `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(RECENT_EMOJI_EVENT_TYPE)}`,
-    );
-    return parseRecentEmoji(content);
-  } catch (error) {
-    if (error instanceof MatrixError && error.errcode === 'M_NOT_FOUND') {
-      return storedEntries(client);
-    }
-    throw error;
-  }
+function storedEntries(snapshot: AccountDataSnapshot): RecentEmojiEntry[] {
+  const stable = snapshot[RECENT_EMOJI_EVENT_TYPE];
+  if (stable != null) return parseRecentEmoji(stable);
+  const unstable = snapshot[UNSTABLE_RECENT_EMOJI_EVENT_TYPE];
+  if (unstable != null) return parseRecentEmoji(unstable);
+  return parseElementRecentEmoji(snapshot[ELEMENT_RECENT_EMOJI_EVENT_TYPE]);
 }

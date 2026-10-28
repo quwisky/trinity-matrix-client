@@ -30,7 +30,6 @@ import {
   type EngineFailure,
   type EngineResult,
   decryptAttachment,
-  describeMatrixRequestFailure,
   encryptAttachment,
   engineFail,
   engineOk,
@@ -49,6 +48,7 @@ import type {
 } from '../media-engine';
 import { downscaleImage } from '../media-processing';
 import { type MediaResize, fetchMediaBytes } from './authed-media';
+import { requestFailed, tooLargeOrFailed } from './request-failure';
 
 /** Authenticated media arrived in spec v1.11; servers advertised MSC3916's stable flag before that. */
 const AUTHENTICATED_MEDIA = {
@@ -69,25 +69,6 @@ function localFailure(
 
 function done(failure: EngineFailure): TransferUpdate<never> {
   return { kind: 'done', result: engineFail(failure) };
-}
-
-function requestFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
-}
-
-function uploadFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  return diagnostic.errcode === 'M_TOO_LARGE' || diagnostic.httpStatus === 413
-    ? { kind, code: 'too-large', diagnostic }
-    : requestFailed(error);
 }
 
 /** The refusal of a file still carrying the metadata its strip could not remove. */
@@ -528,7 +509,7 @@ export class JsSdkMediaEngine implements MediaEngine {
             })
             .then(
               (res) => engineOk(prepared.content(res.content_uri)),
-              (error: unknown) => engineFail(uploadFailed(error)),
+              (error: unknown) => engineFail(tooLargeOrFailed(error)),
             ),
         )
         .then(

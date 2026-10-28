@@ -102,7 +102,7 @@ export class ImagePackService {
     if (event.getType() === IMAGE_PACK_ROOMS_EVENT_TYPE) {
       const client = this.projection.client();
       if (client) {
-        this.selections.clear(client);
+        this.selections.clear(accountOf(client));
       }
       this.projection.schedule();
     } else if (
@@ -130,7 +130,11 @@ export class ImagePackService {
     rebuild: (client) => {
       for (const [roomId, watched] of this.watched) {
         watched.packs.set(
-          readImagePacks(client, roomId, this.selections.get(client)),
+          readImagePacks(
+            client,
+            roomId,
+            this.selections.get(accountOf(client)),
+          ),
         );
       }
     },
@@ -144,7 +148,7 @@ export class ImagePackService {
   constructor() {
     effect(() => {
       const client = this.projection.client();
-      if (client) this.selections.get(client);
+      if (client) this.selections.get(accountOf(client));
       if (this.projection.isConnected()) this.projection.schedule();
     });
   }
@@ -204,7 +208,7 @@ export class ImagePackService {
     return readImagePacks(
       client,
       roomId,
-      client ? this.selections.get(client) : null,
+      client ? this.selections.get(accountOf(client)) : null,
     );
   }
 }
@@ -516,4 +520,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function samePacks(a: readonly ImagePack[], b: readonly ImagePack[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** The selection store's key for a client: its account (user) ID. */
+function accountOf(client: MatrixClient): string {
+  return client.getUserId() ?? '';
 }
