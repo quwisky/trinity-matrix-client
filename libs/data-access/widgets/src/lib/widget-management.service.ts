@@ -122,12 +122,15 @@ export class WidgetManagementService {
       if (isCallWidgetType(widget.type)) {
         throw new WidgetManagementError('unsupported-type');
       }
+      if (!widget.sourceEventId) {
+        throw new WidgetManagementError('conflict');
+      }
       return this.engine
         .removeRoomWidget(
           target.accountId,
           target.roomId,
           widget.id,
-          widget.sourceEventId ?? '',
+          widget.sourceEventId,
         )
         .pipe(
           map((result) => {

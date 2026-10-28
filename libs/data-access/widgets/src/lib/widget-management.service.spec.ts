@@ -228,6 +228,17 @@ describe('WidgetManagementService', () => {
     ).rejects.toMatchObject({ code: 'conflict' });
   });
 
+  it('rejects a widget without a confirmed revision as a conflict', async () => {
+    const { service, target, widget, remove } = await setup();
+
+    await expect(
+      firstValueFrom(
+        service.remove(target, { ...widget, sourceEventId: null }),
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it('refuses to remove call widgets', async () => {
     const { service, target, widget, remove } = await setup();
 

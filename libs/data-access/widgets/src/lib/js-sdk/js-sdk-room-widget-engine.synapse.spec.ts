@@ -43,6 +43,9 @@ describe.skipIf(!baseUrl)('JsSdkRoomWidgetEngine against Synapse', () => {
           join: async (roomId) => {
             await cs(session.accessToken, 'POST', `${room(roomId)}/join`, {});
           },
+          leave: async (roomId) => {
+            await cs(session.accessToken, 'POST', `${room(roomId)}/leave`, {});
+          },
         },
         asBob: {
           createRoom: async (name) =>

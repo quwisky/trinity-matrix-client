@@ -24,6 +24,8 @@ export interface RoomWidgetContractSetup {
   readonly asAlice: {
     /** Joins outside the engine. */
     join(roomId: string): Promise<void>;
+    /** Leaves outside the engine. */
+    leave(roomId: string): Promise<void>;
   };
   readonly asBob: {
     /** A private room where bob has power level 100 and widget state needs 50. */
@@ -315,6 +317,29 @@ export function defineRoomWidgetEngineContract(
           expect(
             await failureOf(
               engine.putRoomWidget(alice, roomId, content('denied')),
+            ),
+          ).toBe('forbidden');
+        } finally {
+          widgets.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'putRoomWidget in a room the account has left is forbidden',
+      async () => {
+        const roomId = await sharedRoom(true);
+        const widgets = watch(roomId);
+        try {
+          await widgets.until((s) => s.canManage);
+
+          await context.asAlice.leave(roomId);
+          await widgets.until((s) => !s.canManage);
+
+          expect(
+            await failureOf(
+              engine.putRoomWidget(alice, roomId, content('gone')),
             ),
           ).toBe('forbidden');
         } finally {

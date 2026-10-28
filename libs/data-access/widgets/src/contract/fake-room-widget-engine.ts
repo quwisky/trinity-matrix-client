@@ -53,6 +53,10 @@ function failure(code: FailNextCode): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
 }
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
@@ -76,6 +80,10 @@ export class FakeRoomWidgetEngine implements RoomWidgetEngine {
       if (!room.invited.has(this.alice))
         throw new Error(`${this.alice} is not invited to ${roomId}`);
       room.members.add(this.alice);
+      this.changed();
+    },
+    leave: async (roomId: string): Promise<void> => {
+      this.room(roomId).members.delete(this.alice);
       this.changed();
     },
   };
@@ -182,7 +190,7 @@ export class FakeRoomWidgetEngine implements RoomWidgetEngine {
   ): Observable<EngineResult<null>> {
     return defer(() => {
       const room = this.rooms.get(roomId);
-      if (!this.live.has(accountId) || !room?.members.has(accountId)) {
+      if (!this.live.has(accountId) || !room) {
         return of(engineFail(failure('not-signed-in')));
       }
       if (!this.canManage(room, accountId)) {
@@ -221,7 +229,7 @@ export class FakeRoomWidgetEngine implements RoomWidgetEngine {
     const type = text(content['type']);
     const rawUrl = text(content['url']) ? (content['url'] as string) : '';
     if (!type || !rawUrl) return null;
-    const data = (content['data'] ?? {}) as Readonly<Record<string, unknown>>;
+    const data = isRecord(content['data']) ? content['data'] : {};
     return {
       id: stateKey,
       name: text(content['name']) ?? text(data['title']) ?? 'Unnamed widget',
