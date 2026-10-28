@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, lastValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -48,7 +48,7 @@ describe('NativePushLifetime', () => {
     TestBed.configureTestingModule({
       providers: [
         NativePushLifetime,
-        MockProvider(MatrixClientService, {
+        MockProvider(SessionStateService, {
           accountIds: accountIds.asReadonly(),
         }),
         MockProvider(PushService, {

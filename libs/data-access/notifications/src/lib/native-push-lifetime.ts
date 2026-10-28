@@ -1,5 +1,5 @@
 import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import type {
   CapabilityContext,
   CapabilityRecoveryOutcome,
@@ -28,7 +28,7 @@ const PREPARATION_BUDGET_MS = 10_000;
 @Injectable({ providedIn: 'root' })
 export class NativePushLifetime {
   private readonly injector = inject(Injector);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
   private readonly push = inject(PushService);
   private readonly context: CapabilityContext = Symbol();
   private readonly changes = new Subject<NativePushHealth>();
@@ -207,7 +207,7 @@ export class NativePushLifetime {
       );
       const demandChanges = effect(
         () => {
-          this.matrix.accountIds();
+          this.session.accountIds();
           untracked(apply);
         },
         { injector: this.injector },
