@@ -24,7 +24,7 @@ export interface ExpressionContractSetup {
   /** Alice leaves `roomId`. */
   leave(roomId: string): Promise<void>;
   /**
-   * A public room another user created with `name`, an alias and `pack` as its
+   * A public, world-readable room another user created with `name`, an alias and `pack` as its
    * `m.room.image_pack` under state key `""`. Alice is not in it and may not write state there.
    */
   foreignPackRoom(
@@ -283,7 +283,10 @@ export function defineExpressionEngineContract(
         const rooms = watch(engine.packRooms(alice, [NO_ROOM, roomId]));
         const before = await rooms.until(() => true);
         expect(before.map((entry) => entry.roomId)).toEqual([NO_ROOM, roomId]);
-        expect(room(before, roomId).joined).toBe(false);
+        expect(room(before, roomId)).toMatchObject({
+          joined: false,
+          name: null,
+        });
 
         const joined = await ok(engine.joinPackRoom(alice, alias));
 
@@ -315,6 +318,38 @@ export function defineExpressionEngineContract(
           canWritePack: false,
           packEvents: [],
         });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'keeps the name of a pack room alice has left',
+      async () => {
+        const name = `Pack ${unique()}`;
+        const { alias } = await context.foreignPackRoom(name, { images: {} });
+        const { roomId } = await ok(engine.joinPackRoom(alice, alias));
+        const rooms = watch(engine.packRooms(alice, [roomId]));
+        await rooms.until((all) => room(all, roomId).joined);
+
+        await context.leave(roomId);
+        const left = await rooms.until((all) => !room(all, roomId).joined);
+
+        expect(room(left, roomId).name).toBe(name);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "reads a world-readable room's state without joining it",
+      async () => {
+        const pack = { pack: { display_name: 'Open' }, images: {} };
+        const { roomId } = await context.foreignPackRoom('Open', pack);
+
+        expect(
+          await ok(
+            engine.fetchRoomState(alice, roomId, IMAGE_PACK_EVENT_TYPE, ''),
+          ),
+        ).toEqual(pack);
       },
       testTimeoutMs,
     );

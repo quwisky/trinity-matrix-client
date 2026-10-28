@@ -1,26 +1,35 @@
-import { Injectable, type Signal, effect, inject, signal } from '@angular/core';
-import { defer, from, type Observable } from 'rxjs';
 import {
-  ClientEvent,
-  MatrixError,
-  Method,
-  RoomEvent,
-  type MatrixClient,
-  type MatrixEvent,
-  RoomStateEvent,
-} from 'matrix-js-sdk';
+  Injectable,
+  type Signal,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import {
-  MatrixClientService,
-  projectFromClient,
+  BehaviorSubject,
+  type Observable,
+  defer,
+  firstValueFrom,
+  from,
+} from 'rxjs';
+import {
+  projectActiveAccount,
+  SessionStateService,
 } from '@trinity/data-access/matrix-client';
+import { EngineRequestError, type EngineResult } from '@trinity/util/matrix';
+import { EXPRESSION_ENGINE } from './expression-engine.token';
 import {
-  IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
   type ImagePackUsage,
-  LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
 } from './image-pack.service';
-import { ImagePackSelectionStore } from './image-pack-selection.store';
+import {
+  ImagePackSelectionStore,
+  type PackSources,
+  packSources,
+  selectedRoomIds,
+} from './image-pack-selection.store';
 import {
   ImagePackManagementError,
   type ImagePackDiscovery,
@@ -32,7 +41,6 @@ import {
   mutateSelectionContent,
   mutateSelectionEnabledUsage,
   readManagedImagePacks,
-  roomNameFromState,
   validateImagePackSource,
 } from './image-pack-management.model';
 
@@ -49,55 +57,43 @@ type ImagePackMutation =
       readonly enabled: readonly ImagePackUsage[];
     };
 
+const SELECTION_TYPES = [
+  IMAGE_PACK_ROOMS_EVENT_TYPE,
+  LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
+];
+
 /** Installs and removes MSC2545 account pack references without authoring room state. */
 @Injectable({ providedIn: 'root' })
 export class ImagePackManagementService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(EXPRESSION_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly selections = inject(ImagePackSelectionStore);
   private readonly installedState = signal<readonly ManagedImagePack[]>([]);
-  private readonly queues = new WeakMap<MatrixClient, Promise<void>>();
+  private readonly queues = new Map<string, Promise<void>>();
+  /** Re-reads the sources for a confirmed selection. */
+  private readonly refresh = new BehaviorSubject<void>(undefined);
   private consumers = 0;
 
   readonly installed: Signal<readonly ManagedImagePack[]> =
     this.installedState.asReadonly();
 
-  private readonly onStateEvent = (event: MatrixEvent): void => {
-    if (
-      event.getType() === IMAGE_PACK_EVENT_TYPE ||
-      event.getType() === LEGACY_IMAGE_PACK_EVENT_TYPE
-    ) {
-      this.projection.schedule();
-    }
-  };
-
-  private readonly onAccountData = (event: MatrixEvent): void => {
-    if (event.getType() === IMAGE_PACK_ROOMS_EVENT_TYPE) {
-      const client = this.projection.client();
-      if (client) {
-        this.selections.clear(accountOf(client));
-      }
-      this.projection.schedule();
-    } else if (event.getType() === LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE) {
-      this.projection.schedule();
-    }
-  };
-
-  private readonly projection = projectFromClient({
+  private readonly projection = projectActiveAccount<PackSources>({
     id: 'media.image-pack-management',
-    matrix: this.matrix,
-    bind: (client) => {
-      client.on?.(RoomStateEvent.Events, this.onStateEvent);
-      client.on?.(RoomEvent.MyMembership, this.projection.schedule);
-      client.on?.(ClientEvent.AccountData, this.onAccountData);
-    },
-    unbind: (client) => {
-      client.off?.(RoomStateEvent.Events, this.onStateEvent);
-      client.off?.(RoomEvent.MyMembership, this.projection.schedule);
-      client.off?.(ClientEvent.AccountData, this.onAccountData);
-    },
-    rebuild: (client) => {
+    subscribe: (accountId) =>
+      packSources(
+        this.engine,
+        this.selections,
+        accountId,
+        SELECTION_TYPES,
+        this.refresh,
+      ),
+    rebuild: ({ data, rooms }, accountId) => {
       this.installedState.set(
-        readManagedImagePacks(client, this.selections.get(accountOf(client))),
+        readManagedImagePacks(
+          data,
+          rooms,
+          untracked(() => this.selections.get(accountId)),
+        ),
       );
     },
     reset: () => this.installedState.set([]),
@@ -105,9 +101,9 @@ export class ImagePackManagementService {
 
   constructor() {
     effect(() => {
-      const client = this.projection.client();
-      if (client) this.selections.get(accountOf(client));
-      if (this.projection.isConnected()) this.projection.schedule();
+      const accountId = this.session.activeAccountId();
+      if (accountId) this.selections.get(accountId);
+      untracked(() => this.refresh.next());
     });
   }
 
@@ -123,20 +119,20 @@ export class ImagePackManagementService {
 
   /** Resolve and join a pack room, then fetch its authoritative state. Cold. */
   discover(source: string): Observable<ImagePackDiscovery> {
-    return defer(() => from(this.discoverWithClient(this.client(), source)));
+    return defer(() => from(this.discoverFor(this.accountId(), source)));
   }
 
   /** Add one exact room/state-key reference to stable account data. Cold. */
   install(source: ImagePackSource): Observable<void> {
     return defer(() =>
-      from(this.mutate(this.client(), source, { kind: 'install' })),
+      from(this.mutate(this.accountId(), source, { kind: 'install' })),
     );
   }
 
   /** Remove only the account reference; room membership, state, and media remain. Cold. */
   uninstall(source: ImagePackSource): Observable<void> {
     return defer(() =>
-      from(this.mutate(this.client(), source, { kind: 'uninstall' })),
+      from(this.mutate(this.accountId(), source, { kind: 'uninstall' })),
     );
   }
 
@@ -147,7 +143,7 @@ export class ImagePackManagementService {
   ): Observable<void> {
     return defer(() =>
       from(
-        this.mutate(this.client(), source, {
+        this.mutate(this.accountId(), source, {
           kind: 'usage',
           source,
           enabled,
@@ -156,76 +152,65 @@ export class ImagePackManagementService {
     );
   }
 
-  private client(): MatrixClient {
-    if (!this.matrix.isInitialized) {
-      throw new ImagePackManagementError('not-signed-in');
-    }
-    return this.matrix.instance;
+  private accountId(): string {
+    const accountId = untracked(this.session.activeAccountId);
+    if (!accountId) throw new ImagePackManagementError('not-signed-in');
+    return accountId;
   }
 
-  private async discoverWithClient(
-    client: MatrixClient,
+  private async discoverFor(
+    accountId: string,
     source: string,
   ): Promise<ImagePackDiscovery> {
     const normalized = validateImagePackSource(source);
-    let roomId = normalized;
-    let viaServers: string[] | undefined;
-    if (normalized.startsWith('#')) {
-      const resolved = await client.getRoomIdForAlias(normalized);
-      roomId = resolved.room_id;
-      viaServers = resolved.servers;
-    }
-
-    const knownRoom = client.getRoom?.(roomId);
-    if (knownRoom?.getMyMembership?.() !== 'join') {
-      await client.joinRoom(roomId, { viaServers });
-    }
-    const state = await client.roomState(roomId);
-    const roomName =
-      roomNameFromState(state) ??
-      boundedRoomName(client.getRoom?.(roomId)?.name);
-    const packs = inspectStatePacks(roomId, roomName, state).filter(
-      (pack) => pack.status === 'available' || pack.status === 'empty',
+    const joined = await settled(
+      this.engine.joinPackRoom(accountId, normalized),
     );
+    const roomName = boundedRoomName(joined.roomName);
+    const packs = inspectStatePacks(
+      joined.roomId,
+      roomName,
+      joined.events,
+    ).filter((pack) => pack.status === 'available' || pack.status === 'empty');
     if (packs.length === 0) {
       throw new ImagePackManagementError('no-packs');
     }
-    return { roomId, roomName, packs };
+    return { roomId: joined.roomId, roomName, packs };
   }
 
   private mutate(
-    client: MatrixClient,
+    accountId: string,
     source: ImagePackSource,
     mutation: ImagePackMutation,
   ): Promise<void> {
-    const previous = this.queues.get(client) ?? Promise.resolve();
+    const previous = this.queues.get(accountId) ?? Promise.resolve();
     const operation = previous
       .catch(() => undefined)
-      .then(() => this.mutateSerialized(client, source, mutation));
-    this.queues.set(client, operation);
+      .then(() => this.mutateSerialized(accountId, source, mutation));
+    this.queues.set(accountId, operation);
     const cleanup = (): void => {
-      if (this.queues.get(client) === operation) this.queues.delete(client);
+      if (this.queues.get(accountId) === operation) {
+        this.queues.delete(accountId);
+      }
     };
     void operation.then(cleanup, cleanup);
     return operation;
   }
 
   private async mutateSerialized(
-    client: MatrixClient,
+    accountId: string,
     source: ImagePackSource,
     mutation: ImagePackMutation,
   ): Promise<void> {
+    // Account data has no compare-and-set, so each attempt merges into the server's copy (past
+    // the local store, which may miss another device's recent write) and reads it back.
+    const fetch = (type: string) =>
+      settled(this.engine.fetchAccountData(accountId, type));
     for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt += 1) {
-      const stable = await getAccountDataFromServer(
-        client,
-        IMAGE_PACK_ROOMS_EVENT_TYPE,
-      );
+      const stable = await fetch(IMAGE_PACK_ROOMS_EVENT_TYPE);
       const base =
         stable === null
-          ? await getAccountDataFromServer(
-              client,
-              LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
-            )
+          ? await fetch(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE)
           : stable;
       if (
         mutation.kind === 'usage' &&
@@ -247,24 +232,40 @@ export class ImagePackManagementService {
               mutation.kind === 'install',
               stable === null,
             );
-      await setAccountData(client, IMAGE_PACK_ROOMS_EVENT_TYPE, next);
-      const verified = await getAccountDataFromServer(
-        client,
-        IMAGE_PACK_ROOMS_EVENT_TYPE,
+      // Null-prototype maps keep keys such as `__proto__`; the engine writes them raw.
+      await settled(
+        this.engine.setAccountData(
+          accountId,
+          IMAGE_PACK_ROOMS_EVENT_TYPE,
+          next,
+        ),
       );
+      const verified = await fetch(IMAGE_PACK_ROOMS_EVENT_TYPE);
       if (verified !== null && sameJsonDocument(verified, next)) {
-        this.selections.set(accountOf(client), {
-          present: true,
-          content: verified,
-        });
-        this.installedState.set(
-          readManagedImagePacks(client, { present: true, content: verified }),
+        const selection = { present: true, content: verified };
+        this.selections.set(accountId, selection);
+        const rooms = await firstValueFrom(
+          this.engine.packRooms(accountId, selectedRoomIds(verified)),
         );
+        // Shown at once, ahead of the sync echo, unless another account has become active.
+        if (untracked(this.session.activeAccountId) === accountId) {
+          this.installedState.set(readManagedImagePacks({}, rooms, selection));
+        }
         return;
       }
     }
     throw new ImagePackManagementError('write-conflict');
   }
+}
+
+/** A command's value; its failure rejects, as `not-signed-in` while the account has no running client. */
+async function settled<T>(command: Observable<EngineResult<T>>): Promise<T> {
+  const result = await firstValueFrom(command);
+  if (result.ok) return result.value;
+  if (result.failure.code === 'account-not-live') {
+    throw new ImagePackManagementError('not-signed-in');
+  }
+  throw new EngineRequestError(result.failure);
 }
 
 function sameJsonDocument(left: unknown, right: unknown): boolean {
@@ -293,58 +294,8 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-type AccountDataClient = {
-  setAccountDataRaw(
-    type: string,
-    content: Record<string, unknown>,
-  ): Promise<unknown>;
-};
-
-function accountDataClient(client: MatrixClient): AccountDataClient {
-  return client as unknown as AccountDataClient;
-}
-
-async function getAccountDataFromServer(
-  client: MatrixClient,
-  type: string,
-): Promise<unknown | null> {
-  const userId = client.getUserId();
-  if (!userId) throw new ImagePackManagementError('not-signed-in');
-  try {
-    // The SDK helper serves the local account-data store after initial sync. This
-    // explicit request is required before every merge and verification so a
-    // recently-arrived write from another device is not silently overwritten.
-    return await client.http.authedRequest<unknown>(
-      Method.Get,
-      `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(type)}`,
-    );
-  } catch (error) {
-    if (error instanceof MatrixError && error.errcode === 'M_NOT_FOUND') {
-      return null;
-    }
-    throw error;
-  }
-}
-
-async function setAccountData(
-  client: MatrixClient,
-  type: string,
-  content: Record<string, unknown>,
-): Promise<void> {
-  // We verify with a direct server read immediately afterward, so waiting for
-  // the sync echo is unnecessary. The SDK's higher-level setAccountData()
-  // deep-comparison assumes ordinary dictionaries and throws on null-prototype
-  // maps used to preserve magic-but-valid state keys such as `__proto__`.
-  await accountDataClient(client).setAccountDataRaw(type, content);
-}
-
 function boundedRoomName(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, 256) : null;
-}
-
-/** The selection store's key for a client: its account (user) ID. */
-function accountOf(client: MatrixClient): string {
-  return client.getUserId() ?? '';
 }

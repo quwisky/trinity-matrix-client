@@ -75,6 +75,11 @@ describe.skipIf(!baseUrl)('JsSdkExpressionEngine against Synapse', () => {
               room_alias_name: aliasLocal,
               initial_state: [
                 { type: IMAGE_PACK_EVENT_TYPE, state_key: '', content: pack },
+                {
+                  type: 'm.room.history_visibility',
+                  state_key: '',
+                  content: { history_visibility: 'world_readable' },
+                },
               ],
             },
           )) as { room_id: string };

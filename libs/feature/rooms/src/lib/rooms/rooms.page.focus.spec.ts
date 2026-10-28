@@ -79,6 +79,7 @@ import {
   invitesProvider,
   matrixClientProvider,
   sessionStateProvider,
+  IMAGE_PACKS_PROVIDER,
   setRouteRoom,
   shellFrom,
 } from './rooms-page.spec-harness';
@@ -223,6 +224,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
         activeUserId: signal<string | null>('@me:hs'),
       }),
       sessionStateProvider(),
+      IMAGE_PACKS_PROVIDER,
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
         presenceFor: () => signal('offline'),
