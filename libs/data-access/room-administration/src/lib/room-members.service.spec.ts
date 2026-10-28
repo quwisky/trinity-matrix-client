@@ -2,7 +2,7 @@ import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { firstValueFrom, filter } from 'rxjs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomMembersService } from './room-members.service';
 import type { RoomMembersSnapshot } from './room-members.service';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
@@ -299,6 +299,28 @@ describe('RoomMembersService', () => {
       members: [],
     });
     observation.unsubscribe();
+  });
+
+  it('stops recomputing an observed snapshot once unsubscribed', async () => {
+    const { service, roomId, engine, target } = await setup();
+    const snapshot = vi.spyOn(service, 'snapshot');
+    const tick = () => TestBed.inject(ApplicationRef).tick();
+    const seen: RoomMembersSnapshot[] = [];
+    const observation = service
+      .observe(target)
+      .subscribe((value) => seen.push(value));
+    tick();
+    await engine.asBob.invite(roomId, engine.carol);
+    tick();
+    expect(seen).toHaveLength(2);
+
+    observation.unsubscribe();
+    const calls = snapshot.mock.calls.length;
+    await engine.asCarol.join(roomId);
+    tick();
+
+    expect(snapshot.mock.calls.length).toBe(calls);
+    expect(seen).toHaveLength(2);
   });
 
   it('keeps the members lease for the active account', async () => {

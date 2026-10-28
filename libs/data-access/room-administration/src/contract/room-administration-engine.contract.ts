@@ -332,17 +332,17 @@ export function defineRoomAdministrationEngineContract(
           await context.asBob.setDisplayName(roomId, 'Twin');
 
           // Equal once zero-width and spacing characters are removed.
-          await context.asCarol.setDisplayName(roomId, 'Tw​in ');
-          await shows(`Twin (${bob})`, `Tw​in  (${carol})`);
+          await context.asCarol.setDisplayName(roomId, 'Tw\u200Bin ');
+          await shows(`Twin (${bob})`, `Tw\u200Bin  (${carol})`);
 
           await context.asCarol.setDisplayName(roomId, '@admin:example.org');
           await shows('Twin', `@admin:example.org (${carol})`);
 
           // A right-to-left override is dropped from the name, which still names its user.
-          await context.asCarol.setDisplayName(roomId, '‮nimda');
+          await context.asCarol.setDisplayName(roomId, '\u202Enimda');
           await shows('Twin', `nimda (${carol})`);
 
-          await context.asCarol.setDisplayName(roomId, '​');
+          await context.asCarol.setDisplayName(roomId, '\u200B');
           await shows('Twin', carol);
         } finally {
           members.close();

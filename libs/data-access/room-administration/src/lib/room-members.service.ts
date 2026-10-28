@@ -3,24 +3,16 @@ import {
   Injector,
   type Signal,
   computed,
+  effect,
   inject,
   untracked,
 } from '@angular/core';
-import { toObservable } from '@angular/core/rxjs-interop';
 import {
   SessionStateService,
   projectActiveAccount,
 } from '@trinity/data-access/matrix-client';
 import { initialOf } from '@trinity/util/matrix';
-import {
-  NEVER,
-  type Observable,
-  concat,
-  defer,
-  distinctUntilChanged,
-  of,
-  startWith,
-} from 'rxjs';
+import { NEVER, Observable, concat, distinctUntilChanged, of } from 'rxjs';
 import { AdministeredRoomStore } from './administered-room.store';
 import type { Membership, RoomMemberInfo } from './room-administration-engine';
 import type { RoomAdministrationView } from './room-administration-health.models';
@@ -178,13 +170,16 @@ export class RoomMembersService {
    * that Account's room, members or session.
    */
   observe(target: RoomSettingsTarget): Observable<RoomMembersSnapshot> {
-    return defer(() => {
+    return new Observable<RoomMembersSnapshot>((subscriber) => {
       const current = computed(() => this.snapshot(target));
-      return toObservable(current, { injector: this.injector }).pipe(
-        startWith(untracked(current)),
-        distinctUntilChanged(),
-      );
-    });
+      subscriber.next(untracked(current));
+      // Owned by this subscription: a root-injector effect would outlive it.
+      const watcher = effect(() => subscriber.next(current()), {
+        injector: this.injector,
+        manualCleanup: true,
+      });
+      return () => watcher.destroy();
+    }).pipe(distinctUntilChanged());
   }
 
   /** A memoized signal for one Room's invited (not yet joined) members. */
@@ -289,15 +284,15 @@ export class RoomMembersService {
     const items = (this.store.members(accountId, roomId)?.members ?? [])
       .filter((member) => member.membership === membership)
       .map(project);
-    // `Infinity` prints as null; power is never null otherwise.
+    items.sort((a, b) =>
+      this.collator.compare(a.roomDisplayName, b.roomDisplayName),
+    );
+    // Sorted first, so a reordered but equal list keeps its reference. `Infinity` prints as null.
     const fingerprint = JSON.stringify(items);
     const key = `${membership}\u001f${accountId}\u001f${roomId}`;
     const cached = this.lists.get(key);
     if (cached?.fingerprint === fingerprint)
       return cached.items as readonly T[];
-    items.sort((a, b) =>
-      this.collator.compare(a.roomDisplayName, b.roomDisplayName),
-    );
     this.lists.set(key, { fingerprint, items });
     return items;
   }
