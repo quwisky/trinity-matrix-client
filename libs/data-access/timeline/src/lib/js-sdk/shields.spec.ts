@@ -3,13 +3,11 @@ import {
   EventShieldColour,
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { type MessageShield } from './message-presentation';
+import { type MessageShield } from '../message-presentation';
 import { describe, expect, it, vi } from 'vitest';
+import { shieldKey } from '../shield-presentation';
 import {
   resolveShieldsInto,
-  shieldExplanationText,
-  shieldKey,
-  shieldReasonText,
   shieldSubject,
   toShield,
   unencryptedShieldFor,
@@ -26,6 +24,21 @@ function event(
     isDecryptionFailure: () => decryptionFailure,
     getClearContent: () => (decrypted ? {} : null),
   } as unknown as MatrixEvent;
+}
+
+/** The wording a reason maps to, read through the SDK-to-code mapping. */
+function shieldReasonText(reason: EventShieldReason | null): string {
+  return toShield({
+    shieldColour: EventShieldColour.GREY,
+    shieldReason: reason,
+  } as never)!.reason;
+}
+
+function shieldExplanationText(reason: EventShieldReason | null): string {
+  return toShield({
+    shieldColour: EventShieldColour.GREY,
+    shieldReason: reason,
+  } as never)!.explanation;
 }
 
 const NOT_STALE = { force: false, isStale: () => false };

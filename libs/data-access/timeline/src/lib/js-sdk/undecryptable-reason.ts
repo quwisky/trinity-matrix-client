@@ -1,5 +1,5 @@
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
-import type { UndecryptableReason } from './message-presentation';
+import type { UndecryptableReason } from '../message-presentation';
 
 /**
  * The SDK's decryption failure code as a reason a person can act on. Codes that may still

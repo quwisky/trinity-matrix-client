@@ -10,13 +10,13 @@ import { Observable, catchError, defer, from, map, of } from 'rxjs';
 import {
   RoomEncryptionFlags,
   displayContent,
-  isDisplayableMessage,
   isRoomEncrypted,
 } from '@trinity/util/matrix';
+import { isDisplayableMessage } from './js-sdk/event-reads';
 import type { MessageShield } from './message-presentation';
-import { unencryptedShieldFor } from './shields';
+import { unencryptedShieldFor } from './js-sdk/shields';
 import type { ConversationKey } from './conversation-messages';
-import { scrollbackLive } from './live-scrollback';
+import { scrollbackLive } from './js-sdk/live-scrollback';
 
 /** A single message that matched an in-conversation search. */
 export interface MessageHit {

@@ -5,7 +5,7 @@ import {
   presentNormalizedTimelineEvent,
   type MessageShield,
   type MessageView,
-} from './message-presentation';
+} from '../message-presentation';
 
 /**
  * Production entrypoint for one timeline event. Federated input crosses the normalizer

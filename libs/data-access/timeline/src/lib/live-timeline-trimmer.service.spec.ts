@@ -19,7 +19,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConversationRuntime } from './conversation-runtime.service';
 import { TRIM_HIGH_WATER, TRIM_KEEP } from './live-timeline-trim';
 import { LiveTimelineTrimmer } from './live-timeline-trimmer.service';
-import { scrollbackLive } from './live-scrollback';
+import { scrollbackLive } from './js-sdk/live-scrollback';
 
 const ALICE = '@alice:hs';
 const MALLORY = '@mallory:hs';
