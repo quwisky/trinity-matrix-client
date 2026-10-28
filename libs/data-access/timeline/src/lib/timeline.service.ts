@@ -174,6 +174,9 @@ export class TimelineService {
     );
   });
 
+  /** The open room's main timeline store, for this Conversation's other readers. */
+  readonly mainStore = this.store.asReadonly();
+
   /** Whether the open room is in the engine's view of its Account. */
   readonly available = computed(() => !!this.store()?.available());
 

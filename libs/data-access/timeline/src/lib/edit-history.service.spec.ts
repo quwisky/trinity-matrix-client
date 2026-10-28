@@ -1,10 +1,16 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { Direction, EventType, MatrixEvent, RelationType } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  EMPTY_SESSION,
+  MatrixClientService,
+  SESSION_SNAPSHOT,
+} from '@trinity/data-access/matrix-client';
+import { EngineRequestError, UNDECRYPTABLE_BODY } from '@trinity/util/matrix';
 import { EditHistoryService } from './edit-history.service';
 
 const SENDER = '@alice:hs';
@@ -41,11 +47,15 @@ function edit(
   body: string,
   sender = SENDER,
   encrypted = false,
+  formattedBody?: string,
 ): MatrixEvent {
+  const html = formattedBody
+    ? { format: 'org.matrix.custom.html', formatted_body: formattedBody }
+    : {};
   const content = {
     msgtype: 'm.text',
     body: `* ${body}`,
-    'm.new_content': { msgtype: 'm.text', body },
+    'm.new_content': { msgtype: 'm.text', body, ...html },
     'm.relates_to': { rel_type: 'm.replace', event_id: '$orig' },
   };
   return {
@@ -79,7 +89,11 @@ function setup(
   }[],
   opts: {
     roomEvent?: MatrixEvent | null;
-    isInitialized?: boolean;
+    /** The active account; null when nobody is signed in. */
+    activeAccountId?: string | null;
+    /** Whether the active account has a live client. */
+    live?: boolean;
+    members?: Record<string, string>;
     /** The room's own copy of the message — what repairAggregation re-points. */
     timelineCopy?: MatrixEvent | null;
     roomEncrypted?: boolean;
@@ -107,18 +121,35 @@ function setup(
       findEventById: () => opts.timelineCopy ?? opts.roomEvent ?? null,
       hasEncryptionStateEvent: () => opts.roomEncrypted ?? false,
       getLiveTimeline: () => ({ getState: () => undefined }),
+      getMember: (userId: string) => {
+        const name = opts.members?.[userId];
+        return name ? { name, getMxcAvatarUrl: () => null } : null;
+      },
     }),
     getCrypto: () => null,
   };
+  const session = signal({
+    ...EMPTY_SESSION,
+    activeAccountId:
+      opts.activeAccountId === undefined ? SENDER : opts.activeAccountId,
+  });
   TestBed.configureTestingModule({
     providers: [
       MockProvider(MatrixClientService, {
-        isInitialized: opts.isInitialized ?? true,
-        instance: client as unknown as MatrixClient,
+        clientFor: (accountId: string) =>
+          accountId === SENDER && (opts.live ?? true)
+            ? (client as unknown as MatrixClient)
+            : null,
       } as Partial<MatrixClientService>),
+      { provide: SESSION_SNAPSHOT, useValue: session },
     ],
   });
-  return { svc: TestBed.inject(EditHistoryService), relations, redactEvent };
+  return {
+    svc: TestBed.inject(EditHistoryService),
+    relations,
+    redactEvent,
+    session,
+  };
 }
 
 describe('EditHistoryService', () => {
@@ -273,7 +304,7 @@ describe('EditHistoryService', () => {
 
     await expect(
       firstValueFrom(svc.revisions('!r:hs', '$orig')),
-    ).rejects.toThrow(/deleted/i);
+    ).rejects.toThrow('This message was deleted.');
   });
 
   it('errors when the message cannot be found at all', async () => {
@@ -283,19 +314,161 @@ describe('EditHistoryService', () => {
 
     await expect(
       firstValueFrom(svc.revisions('!r:hs', '$gone')),
-    ).rejects.toThrow(/could not be loaded/i);
+    ).rejects.toThrow('That message could not be loaded.');
   });
 
-  it('errors rather than touching the client before it is ready', async () => {
-    const { svc, relations } = setup(
+  for (const [state, opts] of [
+    ['nobody is signed in', { activeAccountId: null }],
+    ['the account is not live', { live: false }],
+  ] as const) {
+    it(`says it is not connected when ${state}`, async () => {
+      const { svc, relations } = setup(
+        [{ originalEvent: original(), events: [], nextBatch: null }],
+        opts,
+      );
+
+      await expect(
+        firstValueFrom(svc.revisions('!r:hs', '$orig')),
+      ).rejects.toThrow('Not connected — try again in a moment.');
+      expect(relations).not.toHaveBeenCalled();
+    });
+  }
+
+  it('edit history follows the active account', async () => {
+    const { svc, relations, session } = setup(
       [{ originalEvent: original(), events: [], nextBatch: null }],
-      { isInitialized: false },
+      { activeAccountId: '@bob:hs' },
     );
 
+    // Bob has no live client here, so his request never reaches Alice's.
     await expect(
       firstValueFrom(svc.revisions('!r:hs', '$orig')),
     ).rejects.toThrow(/not connected/i);
     expect(relations).not.toHaveBeenCalled();
+
+    session.set({ ...EMPTY_SESSION, activeAccountId: SENDER });
+    await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+    expect(relations).toHaveBeenCalledOnce();
+  });
+
+  describe('rendering', () => {
+    it('renders a formatted version through the sanitizer', async () => {
+      const { svc } = setup([
+        {
+          originalEvent: original(),
+          events: [
+            edit(
+              '$a',
+              'bold',
+              SENDER,
+              false,
+              '<strong>bold</strong><script>alert(1)</script>',
+            ),
+          ],
+          nextBatch: null,
+        },
+      ]);
+
+      const { revisions } = await firstValueFrom(
+        svc.revisions('!r:hs', '$orig'),
+      );
+
+      expect(revisions[1].html).toContain('<strong>bold</strong>');
+      expect(revisions[1].html).not.toContain('script');
+    });
+
+    it('linkifies a plain-text version, as the timeline does', async () => {
+      const { svc } = setup([
+        {
+          originalEvent: original(),
+          events: [edit('$a', 'see https://example.com')],
+          nextBatch: null,
+        },
+      ]);
+
+      const { revisions } = await firstValueFrom(
+        svc.revisions('!r:hs', '$orig'),
+      );
+
+      expect(revisions[1].html).toContain('href="https://example.com"');
+    });
+
+    it('names mention pills from the room, as the timeline does', async () => {
+      const { svc } = setup(
+        [
+          {
+            originalEvent: original(),
+            events: [
+              edit(
+                '$a',
+                'v2',
+                SENDER,
+                false,
+                '<a href="https://matrix.to/#/@b:hs">@Boss</a>',
+              ),
+            ],
+            nextBatch: null,
+          },
+        ],
+        { members: { '@b:hs': 'Bob' } },
+      );
+
+      const { revisions } = await firstValueFrom(
+        svc.revisions('!r:hs', '$orig'),
+      );
+
+      expect(revisions[1].html).toContain('>@Bob</a>');
+    });
+
+    it('marks the versions as yours when you sent the message', async () => {
+      const { svc } = setup([
+        { originalEvent: original(), events: [edit('$a', 'v2')] },
+      ]);
+
+      const { revisions } = await firstValueFrom(
+        svc.revisions('!r:hs', '$orig'),
+      );
+
+      expect(revisions.map((r) => r.isOwn)).toEqual([true, true]);
+    });
+
+    it('marks them as not yours when someone else sent it', async () => {
+      const { svc } = setup([
+        {
+          originalEvent: {
+            ...original(),
+            getSender: () => '@bob:hs',
+          } as unknown as MatrixEvent,
+          events: [edit('$a', 'v2', '@bob:hs')],
+        },
+      ]);
+
+      const { revisions } = await firstValueFrom(
+        svc.revisions('!r:hs', '$orig'),
+      );
+
+      expect(revisions.map((r) => r.isOwn)).toEqual([false, false]);
+    });
+
+    it('says so plainly when a version cannot be decrypted', async () => {
+      const { svc } = setup([
+        {
+          originalEvent: {
+            ...original(),
+            isDecryptionFailure: () => true,
+          } as unknown as MatrixEvent,
+          events: [],
+        },
+      ]);
+
+      const { revisions } = await firstValueFrom(
+        svc.revisions('!r:hs', '$orig'),
+      );
+
+      expect(revisions).toMatchObject([
+        { kind: 'undecryptable', body: UNDECRYPTABLE_BODY, html: null },
+      ]);
+    });
   });
 
   // Redacting an edit leaves the SDK resolving the message to the WRONG version — it
@@ -505,10 +678,10 @@ describe('EditHistoryService', () => {
       expect(redactEvent).toHaveBeenCalledOnce();
     });
 
-    it('errors rather than touching the client before it is ready', async () => {
+    it('errors rather than touching the client when nobody is signed in', async () => {
       const { svc, redactEvent } = setup(
         [{ originalEvent: original(), events: [], nextBatch: null }],
-        { isInitialized: false },
+        { activeAccountId: null },
       );
 
       await expect(
@@ -523,9 +696,11 @@ describe('EditHistoryService', () => {
       ]);
       redactEvent.mockRejectedValueOnce(new Error('M_FORBIDDEN'));
 
-      await expect(
-        firstValueFrom(svc.removeRevision('!r:hs', '$edit')),
-      ).rejects.toThrow(/forbidden/i);
+      const error = await firstValueFrom(
+        svc.removeRevision('!r:hs', '$edit'),
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(EngineRequestError);
+      expect((error as EngineRequestError).failure.code).toBe('request-failed');
     });
   });
 
