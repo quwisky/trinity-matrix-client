@@ -7,7 +7,7 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { type Observable, Subject, type Subscription } from 'rxjs';
+import { Observable, Subject, type Subscription } from 'rxjs';
 import {
   type PresentedMediaReference,
   MediaPipeline,
@@ -28,6 +28,7 @@ import {
 } from './message-presentation';
 import type {
   EventTimelineItem,
+  SendState,
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
@@ -48,7 +49,14 @@ interface PresentedRow {
 }
 
 const NO_ITEMS: readonly TimelineItem[] = [];
+const SENDING: SendState = { kind: 'sending' };
 const NO_VIEWS: readonly MessageView[] = [];
+
+function sameFocus(a: TimelineFocus, b: TimelineFocus): boolean {
+  return a.kind === 'live'
+    ? b.kind === 'live'
+    : b.kind === 'thread' && a.rootEventId === b.rootEventId;
+}
 
 function sameElements<T>(a: readonly T[], b: readonly T[]): boolean {
   return a.length === b.length && a.every((value, i) => value === b[i]);
@@ -70,6 +78,9 @@ export class TimelineStore {
   private generation: number | null = null;
   private visible = true;
   private closed = false;
+  /** The owner closed it; the feed stays open while {@link hold} keeps it. */
+  private ownerClosed = false;
+  private holders = 0;
   private rows = new Map<string, PresentedRow>();
   private rowsEncrypted = false;
   /** Frozen at the first read marker seen, so later marker moves leave the divider put. */
@@ -95,6 +106,8 @@ export class TimelineStore {
       media: MediaPayload,
     ) => PresentedMediaReference,
     private readonly onClose: (store: TimelineStore) => void,
+    /** Without rows nothing reads, the store only folds its items. */
+    private presents = true,
   ) {}
 
   item(eventId: string): EventTimelineItem | null {
@@ -102,6 +115,27 @@ export class TimelineStore {
       if (item.kind === 'event' && item.eventId === eventId) return item;
     }
     return null;
+  }
+
+  /**
+   * The send state of the item with `transactionId`, now and on each update: `null` once it
+   * is sent, while an echo with no state and no event id yet is still sending. Completes when
+   * the item leaves, as a cancelled echo does, or the store clears.
+   */
+  sendStates(transactionId: string): Observable<SendState | null> {
+    return new Observable((subscriber) => {
+      const emit = (): void => {
+        const item = untracked(this._items).find(
+          (candidate) =>
+            candidate.kind === 'event' &&
+            candidate.transactionId === transactionId,
+        );
+        if (item?.kind !== 'event') subscriber.complete();
+        else subscriber.next(item.sendState ?? (item.eventId ? null : SENDING));
+      };
+      emit();
+      return this._updates.subscribe(emit);
+    });
   }
 
   /** The event the "New messages" divider was drawn against, or null. */
@@ -119,7 +153,31 @@ export class TimelineStore {
     this.present();
   }
 
+  /** The owner is done with it; the feed ends once nothing {@link hold}s it either. */
   close(): void {
+    if (this.closed || this.ownerClosed) return;
+    this.ownerClosed = true;
+    if (this.holders > 0) {
+      this.presents = false;
+      return;
+    }
+    this.dispose();
+  }
+
+  /** Keeps the feed open past {@link close} until the returned release runs. */
+  hold(): () => void {
+    this.holders++;
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      this.holders--;
+      if (this.holders === 0 && this.ownerClosed) this.dispose();
+    };
+  }
+
+  /** Ends the feed now, held or not. */
+  dispose(): void {
     if (this.closed) return;
     this.follow(null);
     this.closed = true;
@@ -169,10 +227,13 @@ export class TimelineStore {
     this._available.set(false);
     this._firstUnreadId.set(null);
     this.present();
+    // Ends each sendStates watch, so a store held only for it is let go.
+    this._updates.next();
   }
 
   /** Presents the items, keeping each row whose item is `===` or `plainEqual` to the last one. */
   private present(): void {
+    if (!this.presents) return;
     const items = untracked(this._items);
     const encrypted =
       untracked(this._room)?.hasEncryptionStateEvent ?? this.rowsEncrypted;
@@ -262,18 +323,48 @@ export class TimelineStores {
       .pipe(takeUntilDestroyed())
       .subscribe(() => untracked(() => this.reconcile()));
     inject(DestroyRef).onDestroy(() => {
-      for (const store of [...this.stores]) store.close();
+      for (const store of [...this.stores]) store.dispose();
     });
   }
 
   /** Fills the store before returning when the engine emits on subscribe. */
   open(key: ConversationKey, focus: TimelineFocus): TimelineStore {
+    return this.create(key, focus, true);
+  }
+
+  /**
+   * Holds the items of `key` at `focus` until `release` runs: an open store's when there is
+   * one, else a store that presents no rows, shared by every later holder.
+   */
+  hold(
+    key: ConversationKey,
+    focus: TimelineFocus,
+  ): { readonly store: TimelineStore; release(): void } {
+    const open = [...this.stores].find(
+      (store) =>
+        store.key.accountId === key.accountId &&
+        store.key.roomId === key.roomId &&
+        sameFocus(store.focus, focus),
+    );
+    const store = open ?? this.create(key, focus, false);
+    const release = store.hold();
+    // Nobody owns a store opened for holders alone.
+    if (!open) store.close();
+    return { store, release };
+  }
+
+  private create(
+    key: ConversationKey,
+    focus: TimelineFocus,
+    presents: boolean,
+  ): TimelineStore {
     const store = new TimelineStore(
       key,
       focus,
       this.engine,
       (media) => this.media.present(media, key.accountId),
       (closed) => this.stores.delete(closed),
+      presents,
     );
     this.stores.add(store);
     untracked(() => store.follow(this.generationOf(key.accountId)));

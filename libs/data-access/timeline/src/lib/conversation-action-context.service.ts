@@ -1,14 +1,14 @@
 import { Injectable } from '@angular/core';
-import type { TimelineContext } from './js-sdk/timeline-context';
+import type { ConversationKey } from './conversation-messages';
 
-type ContextResolver = () => TimelineContext | null;
+type ContextResolver = () => ConversationKey | null;
 
 /**
  * Internal bridge from the focused Conversation child to its data-access action adapter.
  *
  * This service is intentionally absent from the package barrel: feature code receives
  * app-owned timeline state and commands, while TimelineActionsService alone resolves the
- * SDK objects needed to implement those commands.
+ * account and room those commands act on.
  */
 @Injectable({ providedIn: 'root' })
 export class ConversationActionContextService {
@@ -24,7 +24,7 @@ export class ConversationActionContextService {
     }
   }
 
-  resolve(): TimelineContext | null {
+  resolve(): ConversationKey | null {
     return this.resolver?.() ?? null;
   }
 }

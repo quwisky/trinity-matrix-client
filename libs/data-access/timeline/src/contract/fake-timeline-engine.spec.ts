@@ -181,4 +181,67 @@ describe('FakeTimelineEngine', () => {
       diffs: [{ op: 'reset', values: [marker, item] }],
     });
   });
+
+  it('tallies a poll per viewer: chosen is the viewing account own vote', async () => {
+    const engine = new FakeTimelineEngine();
+    const roomId = '!r:example.org';
+    const poll = fakeEventItem('$poll', engine.bob, {
+      content: {
+        kind: 'poll',
+        poll: {
+          id: '$poll',
+          question: 'Lunch?',
+          options: [
+            { id: 'a0', text: 'Pizza', votes: 0, chosen: false },
+            { id: 'a1', text: 'Soup', votes: 0, chosen: false },
+          ],
+          totalVotes: 0,
+          maxSelections: 1,
+          ended: false,
+        },
+      },
+    });
+    engine.seed(engine.alice, roomId, [poll]);
+    engine.seed(engine.bob, roomId, [poll]);
+    const main = { threadRootId: null, replyTo: null } as const;
+
+    await firstValueFrom(
+      engine.send(
+        engine.alice,
+        roomId,
+        { kind: 'poll-response', pollId: '$poll', answerIds: ['a0'] },
+        main,
+      ),
+    );
+    await firstValueFrom(
+      engine.send(
+        engine.bob,
+        roomId,
+        { kind: 'poll-response', pollId: '$poll', answerIds: ['a1'] },
+        main,
+      ),
+    );
+
+    const pollFor = async (accountId: string) => {
+      const update = await firstValueFrom(
+        engine.timeline(accountId, roomId, LIVE),
+      );
+      const item =
+        update.kind === 'items' && update.diffs[0]?.op === 'reset'
+          ? update.diffs[0].values[0]
+          : null;
+      return item?.kind === 'event' && item.content.kind === 'poll'
+        ? item.content.poll
+        : null;
+    };
+    expect((await pollFor(engine.alice))?.options).toEqual([
+      { id: 'a0', text: 'Pizza', votes: 1, chosen: true },
+      { id: 'a1', text: 'Soup', votes: 1, chosen: false },
+    ]);
+    expect((await pollFor(engine.bob))?.options).toEqual([
+      { id: 'a0', text: 'Pizza', votes: 1, chosen: false },
+      { id: 'a1', text: 'Soup', votes: 1, chosen: true },
+    ]);
+    expect((await pollFor(engine.bob))?.totalVotes).toBe(2);
+  });
 });

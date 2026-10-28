@@ -1,4 +1,3 @@
-import { MsgType } from 'matrix-js-sdk';
 import type { EncryptedFileInfo } from './media.model';
 
 /**
@@ -76,7 +75,7 @@ export function voiceMessageContent(
   waveform: number[],
 ) {
   return {
-    msgtype: MsgType.Audio,
+    msgtype: 'm.audio' as const,
     body: 'Voice message',
     ...(upload.file ? { file: upload.file } : { url: upload.mxc }),
     info: {
