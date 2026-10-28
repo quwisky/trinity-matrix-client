@@ -10,7 +10,7 @@ export interface PackRoomSnapshot {
   readonly roomId: string;
   /** False when the account does not hold the room or is not joined. */
   readonly joined: boolean;
-  /** The room's display name (`room.name`), or null when unknown. */
+  /** The room's display name while the account holds the room, also after leaving it; else null. */
   readonly name: string | null;
   /** Whether the account is joined and may send `m.room.image_pack` here (power levels). */
   readonly canWritePack: boolean;
@@ -60,7 +60,7 @@ export interface ExpressionEngine {
     roomIds: readonly string[],
   ): Observable<readonly PackRoomSnapshot[]>;
 
-  /** Command: server state `type`/`stateKey` content, null on M_NOT_FOUND. */
+  /** Command: server state `type`/`stateKey` content, null on M_NOT_FOUND; a world-readable room needs no join. */
   fetchRoomState(
     accountId: string,
     roomId: string,
