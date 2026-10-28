@@ -70,6 +70,8 @@ export type EngineFailure = {
   | { readonly code: 'media-unavailable' }
   /** The homeserver refused the upload as over its size limit. */
   | { readonly code: 'too-large' }
+  /** The account has no such room. */
+  | { readonly code: 'conversation-unavailable' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -124,6 +126,8 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This media is unavailable.';
     case 'too-large':
       return 'This file is too large to upload.';
+    case 'conversation-unavailable':
+      return 'This conversation is unavailable.';
   }
 }
 
