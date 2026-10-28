@@ -20,6 +20,7 @@ import {
 } from './video-metadata.fixture';
 import {
   bytesWithoutMediaMetadata,
+  strippedMedia,
   withoutImageMetadata,
   withoutMediaMetadata,
 } from './strip-file-metadata';
@@ -286,6 +287,34 @@ describe('withoutMediaMetadata', () => {
 
     expect(await withoutMediaMetadata(broken)).toBe(broken);
     expect(await withoutMediaMetadata(unreadable)).toBe(unreadable);
+    expect(await strippedMedia(broken)).toBe(broken);
+  });
+
+  it('rejects in strippedMedia where withoutMediaMetadata returns the file as picked', async () => {
+    const unreadable = new File([identifyingJpeg()], 'gone.jpg', {
+      type: 'image/jpeg',
+    });
+    // The sniff succeeds; reading the whole image fails, as when it is moved away.
+    Object.defineProperty(unreadable, 'arrayBuffer', {
+      value: () => Promise.reject(new DOMException('gone', 'NotReadableError')),
+    });
+
+    expect(await withoutMediaMetadata(unreadable)).toBe(unreadable);
+    await expect(strippedMedia(unreadable)).rejects.toThrow('gone');
+  });
+
+  it('strips a movie in strippedMedia exactly as withoutMediaMetadata does', async () => {
+    const original = new File([identifyingMovie()], 'clip.mp4', {
+      type: 'video/mp4',
+    });
+
+    const strict = await strippedMedia(original);
+    const lenient = await withoutMediaMetadata(original);
+
+    expect(strict).not.toBe(original);
+    expect(new Uint8Array(await strict.arrayBuffer())).toEqual(
+      new Uint8Array(await lenient.arrayBuffer()),
+    );
   });
 });
 

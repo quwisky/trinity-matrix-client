@@ -42,21 +42,29 @@ export async function withoutImageMetadata(file: File): Promise<File> {
  */
 export async function withoutMediaMetadata(file: File): Promise<File> {
   try {
-    const head = await sniff(file);
-    if (strippableFormat(head)) return await strippedImage(file);
-    if (!isIsoMovie(head, file.type)) return file;
-    const read = async (start: number, end: number): Promise<Bytes> =>
-      new Uint8Array(await file.slice(start, end).arrayBuffer());
-    const result = await stripVideoMetadata(read, file.size);
-    if (result.kind !== 'stripped') return file;
-    return new File(
-      [file.slice(0, result.start), result.movie, file.slice(result.end)],
-      file.name,
-      { type: file.type, lastModified: file.lastModified },
-    );
+    return await strippedMedia(file);
   } catch {
     return file;
   }
+}
+
+/**
+ * {@link withoutMediaMetadata}, rejecting where it would return `file` because stripping
+ * failed, so a caller can refuse to send the file as picked.
+ */
+export async function strippedMedia(file: File): Promise<File> {
+  const head = await sniff(file);
+  if (strippableFormat(head)) return await strippedImage(file);
+  if (!isIsoMovie(head, file.type)) return file;
+  const read = async (start: number, end: number): Promise<Bytes> =>
+    new Uint8Array(await file.slice(start, end).arrayBuffer());
+  const result = await stripVideoMetadata(read, file.size);
+  if (result.kind !== 'stripped') return file;
+  return new File(
+    [file.slice(0, result.start), result.movie, file.slice(result.end)],
+    file.name,
+    { type: file.type, lastModified: file.lastModified },
+  );
 }
 
 /**

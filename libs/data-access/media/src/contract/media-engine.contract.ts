@@ -2,6 +2,7 @@ import {
   type Observable,
   type Subscription,
   firstValueFrom,
+  takeWhile,
   toArray,
 } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -11,6 +12,7 @@ import {
   assertProgressThenResult,
 } from '@trinity/util/matrix';
 import type {
+  AttachmentRequest,
   MediaEngine,
   MediaRequest,
   MediaSource,
@@ -28,7 +30,23 @@ export interface MediaContractSetup {
   stored(
     mxc: string,
   ): Promise<{ readonly filename: string | null; readonly mimeType: string }>;
+  /** A new room alice is in, with `m.room.encryption` when `encrypted`; the engine sees it. */
+  room(encrypted: boolean): Promise<string>;
+  /** The media messages in a room, oldest first. */
+  messages(roomId: string): Promise<readonly ContractMessage[]>;
+  /** The next message send reaches the server, but its answer is lost on the way back. */
+  dropNextSendResponse(): void;
+  /** Uploads (files and thumbnails) that reached the media repository so far in this test. */
+  uploads(): number;
+  /** Takes alice's crypto away, as for an account whose crypto store could not start. */
+  withoutCrypto(): void;
   dispose(): Promise<void>;
+}
+
+export interface ContractMessage {
+  readonly msgtype: string;
+  readonly body: string;
+  readonly hasThumbnail: boolean;
 }
 
 export interface MediaContractTiming {
@@ -37,6 +55,7 @@ export interface MediaContractTiming {
 }
 
 const NOBODY = '@nobody:invalid';
+const NO_ROOM = '!missing:invalid';
 
 /** A 1×1 PNG, so a server can thumbnail it. */
 const PNG = Uint8Array.from(
@@ -343,6 +362,312 @@ export function defineMediaEngineContract(
         expect(
           [content, limit, result].map((r) => !r.ok && r.failure.code),
         ).toEqual(['account-not-live', 'account-not-live', 'account-not-live']);
+      },
+      testTimeoutMs,
+    );
+  });
+
+  describe('MediaEngine attachments', () => {
+    let context: MediaContractSetup;
+    let engine: MediaEngine;
+    let alice: string;
+    let keys = 0;
+
+    beforeEach(async () => {
+      context = await setup();
+      ({ engine, alice } = context);
+    }, testTimeoutMs);
+
+    afterEach(async () => {
+      await context.dispose();
+    }, testTimeoutMs);
+
+    function attachment(
+      overrides: Partial<AttachmentRequest> = {},
+    ): AttachmentRequest {
+      return {
+        attachmentKey: `key-${++keys}`,
+        threadRootId: null,
+        file: new Blob([PNG], { type: 'image/png' }),
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        msgtype: 'm.image',
+        info: { w: 1, h: 1, durationMs: null },
+        thumbnail: null,
+        caption: '',
+        metadata: 'stripped',
+        ...overrides,
+      };
+    }
+
+    async function send(roomId: string, request: AttachmentRequest) {
+      return assertProgressThenResult(
+        engine.sendAttachment(alice, roomId, request),
+      );
+    }
+
+    /** Sends until the engine reports the upload done, then unsubscribes before the send. */
+    async function uploadOnly(
+      roomId: string,
+      request: AttachmentRequest,
+    ): Promise<void> {
+      const seen = await firstValueFrom(
+        engine.sendAttachment(alice, roomId, request).pipe(
+          takeWhile(
+            (update) =>
+              !(update.kind === 'progress' && update.phase === 'sending'),
+            true,
+          ),
+          toArray(),
+        ),
+      );
+      expect(seen.at(-1)).toMatchObject({ kind: 'progress', phase: 'sending' });
+    }
+
+    it(
+      'uploads and sends one media message, reporting progress then one result',
+      async () => {
+        const roomId = await context.room(false);
+
+        const { progress, result } = await send(
+          roomId,
+          attachment({
+            caption: 'look',
+            thumbnail: {
+              blob: new Blob([PNG], { type: 'image/png' }),
+              mimeType: 'image/png',
+              w: 1,
+              h: 1,
+            },
+          }),
+        );
+
+        expect(result.ok && result.value.kind).toBe('sent');
+        expect(progress.map((update) => update.phase)).toContain('sending');
+        expect(context.uploads()).toBe(2);
+        expect(await context.messages(roomId)).toEqual([
+          { msgtype: 'm.image', body: 'look', hasThumbnail: true },
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reuses the upload when the same key is sent again',
+      async () => {
+        const roomId = await context.room(false);
+        const request = attachment();
+
+        await uploadOnly(roomId, request);
+        const { result } = await send(roomId, request);
+
+        expect(result.ok && result.value.kind).toBe('sent');
+        expect(context.uploads()).toBe(1);
+        expect(await context.messages(roomId)).toHaveLength(1);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reuses the upload for a changed caption',
+      async () => {
+        const roomId = await context.room(false);
+        const request = attachment({ caption: 'first' });
+
+        await uploadOnly(roomId, request);
+        await send(roomId, { ...request, caption: 'second' });
+
+        expect(context.uploads()).toBe(1);
+        expect(await context.messages(roomId)).toEqual([
+          { msgtype: 'm.image', body: 'second', hasThumbnail: false },
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'uploads again for a changed key, and for one that supersedes the last',
+      async () => {
+        const roomId = await context.room(false);
+        const first = attachment({ metadata: 'kept' });
+
+        await uploadOnly(roomId, first);
+        await uploadOnly(roomId, attachment());
+        const { result } = await send(
+          roomId,
+          attachment({ supersedes: first.attachmentKey }),
+        );
+
+        expect(result.ok && result.value.kind).toBe('sent');
+        expect(context.uploads()).toBe(3);
+        expect(await context.messages(roomId)).toHaveLength(1);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'uploads again once the key is forgotten',
+      async () => {
+        const roomId = await context.room(false);
+        const request = attachment();
+
+        await uploadOnly(roomId, request);
+        const forgotten = await firstValueFrom(
+          engine.forgetAttachment(request.attachmentKey).pipe(toArray()),
+        );
+        await send(roomId, request);
+
+        expect(forgotten).toEqual([null]);
+        expect(context.uploads()).toBe(2);
+      },
+      testTimeoutMs,
+    );
+
+    // Withdrawing an echo on unsubscribe needs a send caught between its start and the
+    // server's answer, which Synapse does not let a test hold; fake-media-engine.spec.ts and
+    // js-sdk-media-engine.attachments.spec.ts cover it.
+    it(
+      'emits nothing more, uploads nothing more and sends nothing once unsubscribed after its first progress',
+      async () => {
+        const roomId = await context.room(false);
+        const seen: unknown[] = [];
+        let firstProgress!: () => void;
+        const progressed = new Promise<void>((resolve) => {
+          firstProgress = resolve;
+        });
+        const subscription: Subscription = engine
+          .sendAttachment(alice, roomId, attachment())
+          .subscribe({
+            next: (update) => {
+              seen.push(update.kind);
+              if (update.kind === 'progress') firstProgress();
+            },
+            error: (error: unknown) => seen.push(error),
+          });
+        await progressed;
+        subscription.unsubscribe();
+        const uploaded = context.uploads();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        expect(seen).toEqual(['progress']);
+        expect(context.uploads()).toBe(uploaded);
+        expect(await context.messages(roomId)).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'fails an upload with no sending update',
+      async () => {
+        const roomId = await context.room(false);
+        const limit = await firstValueFrom(engine.uploadLimit(alice));
+        if (!limit.ok || limit.value === null) {
+          throw new Error('The server states no upload limit');
+        }
+
+        const { progress, result } = await send(
+          roomId,
+          attachment({ file: new Blob([new Uint8Array(limit.value + 1)]) }),
+        );
+
+        expect(result).toMatchObject({
+          ok: false,
+          failure: { code: 'too-large' },
+        });
+        expect(progress.map((update) => update.phase)).not.toContain('sending');
+        expect(await context.messages(roomId)).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'fails a send after its sending update, and a retry with the key dedupes it without uploading again',
+      async () => {
+        const roomId = await context.room(false);
+        const request = attachment({ caption: 'once' });
+        context.dropNextSendResponse();
+
+        const failed = await send(roomId, request);
+        const uploaded = context.uploads();
+        const retried = await send(roomId, request);
+
+        expect(failed.progress.at(-1)).toMatchObject({ phase: 'sending' });
+        expect(failed.result).toMatchObject({
+          ok: false,
+          failure: { code: 'request-failed' },
+        });
+        // The retry reuses the transaction, so the server answers with the event it holds;
+        // an engine that already saw that event come back may only say it may have left.
+        expect(retried.result.ok && retried.result.value.kind).toMatch(
+          /^(sent|indeterminate)$/,
+        );
+        expect(context.uploads()).toBe(uploaded);
+        expect(await context.messages(roomId)).toEqual([
+          { msgtype: 'm.image', body: 'once', hasThumbnail: false },
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'fails closed with encryption-unavailable in an encrypted room without crypto',
+      async () => {
+        const roomId = await context.room(true);
+        context.withoutCrypto();
+
+        const { progress, result } = await send(roomId, attachment());
+
+        expect(progress).toEqual([]);
+        expect(result).toMatchObject({
+          ok: false,
+          failure: { code: 'encryption-unavailable' },
+        });
+        expect(context.uploads()).toBe(0);
+        expect(await context.messages(roomId)).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'refuses a file whose strip failed in an encrypted room and sends it in a plain one',
+      async () => {
+        const encrypted = await context.room(true);
+        const plain = await context.room(false);
+
+        const refused = await send(
+          encrypted,
+          attachment({ metadata: 'strip-failed' }),
+        );
+        const sent = await send(
+          plain,
+          attachment({ metadata: 'strip-failed' }),
+        );
+
+        expect(refused.progress).toEqual([]);
+        expect(refused.result).toMatchObject({
+          ok: false,
+          failure: { code: 'request-failed' },
+        });
+        expect(sent.result.ok && sent.result.value.kind).toBe('sent');
+        expect(context.uploads()).toBe(1);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'answers conversation-unavailable for an unknown room and account-not-live for an unknown account',
+      async () => {
+        const roomId = await context.room(false);
+
+        const noRoom = await send(NO_ROOM, attachment());
+        const nobody = await assertProgressThenResult(
+          engine.sendAttachment(NOBODY, roomId, attachment()),
+        );
+
+        expect(
+          [noRoom.result, nobody.result].map((r) => !r.ok && r.failure.code),
+        ).toEqual(['conversation-unavailable', 'account-not-live']);
+        expect(context.uploads()).toBe(0);
       },
       testTimeoutMs,
     );
