@@ -49,6 +49,8 @@ export type EngineFailure = {
     }
   | { readonly code: 'account-not-live' }
   | { readonly code: 'invite-blocked' }
+  | { readonly code: 'unsupported' }
+  | { readonly code: 'message-unavailable' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -84,7 +86,10 @@ export function engineFailureMessage(failure: EngineFailure): string {
     case 'account-start-failed':
     case 'account-not-live':
     case 'invite-blocked':
+    case 'unsupported':
       return requestFailureMessage(failure.kind, failure.diagnostic);
+    case 'message-unavailable':
+      return 'Message not found.';
   }
 }
 

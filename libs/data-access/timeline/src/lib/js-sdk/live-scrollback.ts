@@ -1,5 +1,5 @@
 import { Direction, type MatrixClient, type Room } from 'matrix-js-sdk';
-import { noteScrollbackPosition } from './live-timeline-trim';
+import { noteScrollbackPosition } from '../live-timeline-trim';
 
 /**
  * Page older history into the room's live timeline: `client.scrollback` without its race.

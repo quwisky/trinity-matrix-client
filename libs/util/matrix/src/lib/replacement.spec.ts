@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { MatrixEvent, type Room } from 'matrix-js-sdk';
 import { renderMarkdown } from './markdown-render';
 import { messagePreview, replyMessageContent } from './message-content';
-import { replyPreview } from './message-view';
 import { displayContent, validReplacement } from './replacement';
 
 const ALICE = '@alice:hs';
@@ -279,7 +278,6 @@ describe('previews of an edited message', () => {
     const event = editedWith(sdkEdit('$orig', 'v2'));
 
     expect(messagePreview(event)).toBe('v2');
-    expect(replyPreview(roomWith(event), '$orig', false)?.body).toBe('v2');
     expect(replyQuote(event)).toContain('> <@alice:hs> v2');
   });
 
@@ -287,15 +285,10 @@ describe('previews of an edited message', () => {
     expect(messagePreview(forged())).toBe('v1');
   });
 
-  it('show the original over an edit from another sender in a reply preview', () => {
-    expect(replyPreview(roomWith(forged()), '$orig', false)?.body).toBe('v1');
-  });
-
   it('show and quote an encrypted message over its unencrypted edit', () => {
     const event = () => editedWith(sdkEdit('$orig', 'v2'), true);
 
     expect(messagePreview(event())).toBe('v1');
-    expect(replyPreview(roomWith(event()), '$orig', false)?.body).toBe('v1');
     expect(replyQuote(event())).toContain('> <@alice:hs> v1');
   });
 

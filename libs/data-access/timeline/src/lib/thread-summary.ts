@@ -5,7 +5,7 @@ import {
   type Thread,
 } from 'matrix-js-sdk';
 import { initialOf } from '@trinity/util/matrix';
-import { shownContent } from './shields';
+import { shownContent } from './js-sdk/shields';
 import type { ThreadParticipant } from './conversation-threads';
 
 /** Most participant avatars shown in a summary cluster before "+N". */

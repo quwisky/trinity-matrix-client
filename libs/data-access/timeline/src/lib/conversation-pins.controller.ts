@@ -17,7 +17,7 @@ import {
   messagePreview,
   RoomEncryptionFlags,
 } from '@trinity/util/matrix';
-import { unencryptedShieldFor } from './shields';
+import { unencryptedShieldFor } from './js-sdk/shields';
 import type { ConversationKey } from './conversation-messages';
 import type {
   ConversationPinOperation,
