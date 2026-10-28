@@ -319,6 +319,11 @@ export function defineConversationContentEngineContract(
       'linkPreview onlyIfUnencrypted refuses an encrypted room without a request',
       async () => {
         const { roomId } = await roomWith([], { encrypted: true });
+        // Until alice's client knows the room, an unknown room would refuse just the same.
+        await eventually(
+          () => engine.searchMessages(alice, roomId, 'x', null),
+          (value) => 'encrypted' in value,
+        );
 
         const result = await once(
           engine.linkPreview(alice, UNREACHABLE_URL, {
@@ -332,12 +337,33 @@ export function defineConversationContentEngineContract(
     );
 
     it(
+      'linkPreview onlyIfUnencrypted previews in an unencrypted room',
+      async () => {
+        const { roomId } = await roomWith([]);
+        await eventually(
+          () => engine.searchMessages(alice, roomId, 'x', null),
+          (value) => 'hits' in value,
+        );
+
+        const preview = await ok(
+          engine.linkPreview(alice, context.previewableUrl, {
+            onlyIfUnencrypted: roomId,
+          }),
+        );
+
+        expect(preview?.title).toEqual(expect.any(String));
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'commands for an unknown account are account-not-live',
       async () => {
         const roomId = '!unknown:invalid';
         const commands: Observable<EngineResult<unknown>>[] = [
           engine.pin(NOBODY, roomId, '$e'),
           engine.unpin(NOBODY, roomId, '$e'),
+          engine.retryFailedPins(NOBODY, roomId),
           engine.searchMessages(NOBODY, roomId, 'x', null),
           engine.editHistory(NOBODY, roomId, '$e', { maxPages: 1 }),
           engine.removeRevision(NOBODY, roomId, '$e'),

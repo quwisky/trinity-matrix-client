@@ -25,11 +25,14 @@ vi.mock('@trinity/util/matrix', async (importOriginal) => {
 // Runs the conversation content contract against a live Synapse; skipped unless
 // TRINITY_ENGINE_CONTRACT_HS is set.
 const SETTLE_TIMEOUT_MS = 30_000;
-// The harness's Open Graph page, as Synapse reaches it: on loopback when it runs natively.
+// The harness's Open Graph page, as Synapse reaches it (see the link-preview journey):
+// 127.0.0.1 natively, one shared loopback in a network container, else compose DNS.
 const OG_PAGE =
   process.env['TRINITY_E2E_HOMESERVER_RUNTIME'] === 'native'
     ? 'http://127.0.0.1:8080/og'
-    : 'http://caddy:8080/og';
+    : process.env['TRINITY_E2E_NETWORK_CONTAINER']
+      ? 'http://localhost:8080/og'
+      : 'http://caddy:8080/og';
 
 async function send(
   accessToken: string,

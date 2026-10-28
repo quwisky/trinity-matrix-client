@@ -16,8 +16,9 @@ export interface UrlPreview {
 const CACHE_LIMIT = 256;
 
 /**
- * Fetches homeserver-proxied link previews for URLs in messages, through the active account,
- * one result cached (and shared) per URL. Callers gate on the user's link-preview preference,
+ * Fetches homeserver-proxied link previews for URLs in messages, through the active account.
+ * A result is cached (and shared) per URL, and per room as well for a room-gated preview.
+ * Callers gate on the user's link-preview preference,
  * and without the encrypted-rooms opt-in ask through {@link previewIfUnencrypted}, so a
  * preview is only ever fetched for a link the homeserver could already see. A failed /
  * preview-disabled request resolves to null so the card simply doesn't render.
@@ -30,10 +31,11 @@ export class UrlPreviewService {
 
   private readonly _supported = signal<boolean | null>(null);
   /**
-   * Whether the homeserver provides link previews: `true` once its preview endpoint has
-   * answered, `false` once it has reported the endpoint as missing/disabled, `null` until
-   * the first attempt. Lets the UI hint that a homeserver simply doesn't do previews
-   * (Synapse ships them off by default) rather than leaving the card silently absent.
+   * Whether the homeserver provides link previews, as the latest telling answer from any
+   * account says: `true` once an ungated request answers or a gated one returns a preview,
+   * `false` once the endpoint is reported missing/disabled, `null` until either happens.
+   * Lets the UI hint that a homeserver simply doesn't do previews (Synapse ships them off
+   * by default) rather than leaving the card silently absent.
    */
   readonly supported = this._supported.asReadonly();
 

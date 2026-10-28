@@ -10,7 +10,7 @@ import {
   MatrixClientService,
   SESSION_SNAPSHOT,
 } from '@trinity/data-access/matrix-client';
-import { UNDECRYPTABLE_BODY } from '@trinity/util/matrix';
+import { EngineRequestError, UNDECRYPTABLE_BODY } from '@trinity/util/matrix';
 import { EditHistoryService } from './edit-history.service';
 
 const SENDER = '@alice:hs';
@@ -696,9 +696,11 @@ describe('EditHistoryService', () => {
       ]);
       redactEvent.mockRejectedValueOnce(new Error('M_FORBIDDEN'));
 
-      await expect(
-        firstValueFrom(svc.removeRevision('!r:hs', '$edit')),
-      ).rejects.toThrow();
+      const error = await firstValueFrom(
+        svc.removeRevision('!r:hs', '$edit'),
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(EngineRequestError);
+      expect((error as EngineRequestError).failure.code).toBe('request-failed');
     });
   });
 

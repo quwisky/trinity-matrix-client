@@ -11,6 +11,7 @@ import {
 import { UrlPreviewService } from './url-preview.service';
 
 const ALICE = '@alice:hs';
+const BOB = '@bob:hs';
 
 function setup(
   getUrlPreview = vi.fn(),
@@ -36,6 +37,8 @@ function setup(
         : null,
     getCrypto: () => crypto ?? undefined,
   };
+  const bobGetUrlPreview = vi.fn().mockResolvedValue({ 'og:title': 'Bob' });
+  const bob = { ...instance, getUrlPreview: bobGetUrlPreview };
   const session = signal({
     ...EMPTY_SESSION,
     activeAccountId:
@@ -46,12 +49,21 @@ function setup(
       UrlPreviewService,
       MockProvider(MatrixClientService, {
         clientFor: (accountId: string) =>
-          accountId === ALICE ? (instance as never) : null,
+          accountId === ALICE
+            ? (instance as never)
+            : accountId === BOB
+              ? (bob as never)
+              : null,
       }),
       { provide: SESSION_SNAPSHOT, useValue: session },
     ],
   });
-  return { svc: TestBed.inject(UrlPreviewService), getUrlPreview, session };
+  return {
+    svc: TestBed.inject(UrlPreviewService),
+    getUrlPreview,
+    bobGetUrlPreview,
+    session,
+  };
 }
 
 describe('UrlPreviewService', () => {
@@ -144,19 +156,24 @@ describe('UrlPreviewService', () => {
   });
 
   it('follows the active account', async () => {
-    const { svc, getUrlPreview, session } = setup(
+    const { svc, getUrlPreview, bobGetUrlPreview, session } = setup(
       vi.fn().mockResolvedValue({ 'og:title': 'Example' }),
-      { activeAccountId: '@bob:hs' },
+      { activeAccountId: BOB },
     );
 
-    // Bob has no live client here, so nothing reaches Alice's homeserver.
-    expect(await firstValueFrom(svc.preview('https://example.com'))).toBeNull();
+    // Bob's homeserver answers for Bob; nothing reaches Alice's.
+    expect(
+      await firstValueFrom(svc.preview('https://example.com/bob')),
+    ).toMatchObject({ title: 'Bob' });
+    expect(bobGetUrlPreview).toHaveBeenCalledOnce();
     expect(getUrlPreview).not.toHaveBeenCalled();
 
     session.set({ ...EMPTY_SESSION, activeAccountId: ALICE });
     expect(
-      await firstValueFrom(svc.preview('https://example.com')),
+      await firstValueFrom(svc.preview('https://example.com/alice')),
     ).toMatchObject({ title: 'Example' });
+    expect(getUrlPreview).toHaveBeenCalledOnce();
+    expect(bobGetUrlPreview).toHaveBeenCalledOnce();
   });
 
   // `preview` is the encrypted-rooms opt-in path: the caller has already allowed it.
