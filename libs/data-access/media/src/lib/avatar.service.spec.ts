@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { effect, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, from, of, switchMap, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -92,6 +92,31 @@ describe('AvatarService', () => {
   afterEach(() => {
     vi.useRealTimers();
     TestBed.resetTestingModule();
+  });
+
+  it('does not make an effect that resolves an avatar track the account status', () => {
+    const { svc, engine } = setup();
+    let runs = 0;
+    TestBed.runInInjectionContext(() =>
+      effect(() => {
+        runs++;
+        svc.resolve('mxc://hs/effect', 40, engine.alice).subscribe();
+      }),
+    );
+    TestBed.tick();
+
+    const snapshot = sessionWith(engine.alice, [engine.alice]);
+    (
+      TestBed.inject(SESSION_SNAPSHOT) as ReturnType<
+        typeof signal<typeof snapshot>
+      >
+    ).set({
+      ...snapshot,
+      accounts: snapshot.accounts.map((a) => ({ ...a, waitingCount: 3 })),
+    });
+    TestBed.tick();
+
+    expect(runs).toBe(1);
   });
 
   it('returns null for a missing avatar without fetching', async () => {

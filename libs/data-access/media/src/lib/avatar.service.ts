@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, untracked } from '@angular/core';
 import {
   Observable,
   catchError,
@@ -176,10 +176,16 @@ export class AvatarService {
       holders: 0,
       resolved: defer(() =>
         this.engine.content(
-          // A named account that is no longer live reads through the active one.
-          (accountId && this.session.status(accountId) ? accountId : null) ??
-            this.session.activeAccountId() ??
-            '',
+          // A named account that is no longer live reads through the active one; read
+          // untracked, as a subscriber may sit inside an effect.
+          untracked(
+            () =>
+              (accountId && this.session.status(accountId)
+                ? accountId
+                : null) ??
+              this.session.activeAccountId() ??
+              '',
+          ),
           {
             source: { kind: 'plain', mxc },
             format: {

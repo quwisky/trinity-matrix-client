@@ -1,3 +1,4 @@
+import { effect } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, type Observable } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -142,6 +143,35 @@ describe('MediaService', () => {
 
     expect(after).not.toBe(before);
     expect(content).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not make an effect that resolves media track the account status', () => {
+    const { svc, engine, session } = setup();
+    let runs = 0;
+    TestBed.runInInjectionContext(() =>
+      effect(() => {
+        runs++;
+        svc.resolveMedia(plainMedia('mxc://hs/effect'), 'full').subscribe();
+        svc.drop(null, {
+          media: plainMedia('mxc://hs/other'),
+          variant: 'full',
+        });
+      }),
+    );
+    TestBed.tick();
+
+    const snapshot = sessionWith(engine.alice, [engine.alice]);
+    session.set({
+      ...snapshot,
+      accounts: snapshot.accounts.map((a) => ({
+        ...a,
+        syncState: 'reconnecting',
+        waitingCount: 3,
+      })),
+    });
+    TestBed.tick();
+
+    expect(runs).toBe(1);
   });
 
   it('asks the engine to forget its authenticated-media probes on releaseAll', () => {

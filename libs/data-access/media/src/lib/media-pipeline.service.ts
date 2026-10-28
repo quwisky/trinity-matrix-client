@@ -105,8 +105,9 @@ export class MediaPipeline {
   /** The upload limit of the account's homeserver, or null when unknown. */
   uploadLimit(accountId: string | null): Observable<number | null> {
     return defer(() => {
-      const live = accountId ? this.matrix.clientFor(accountId) : null;
-      return live && accountId ? this.bytes.uploadLimit(accountId) : of(null);
+      return accountId && this.matrix.clientFor(accountId)
+        ? this.bytes.uploadLimit(accountId)
+        : of(null);
     });
   }
 

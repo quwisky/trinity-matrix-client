@@ -1,9 +1,5 @@
 import type { Bytes } from './byte-parts';
-import {
-  joinParts,
-  strippableFormat,
-  stripImageMetadata,
-} from './image-metadata';
+import { strippableFormat, stripImageMetadata } from './image-metadata';
 import { SVG_SNIFF_BYTES } from './svg-metadata';
 import { isIsoMovie, stripVideoMetadata } from './video-metadata';
 
@@ -57,49 +53,6 @@ export async function withoutMediaMetadata(file: File): Promise<File> {
   } catch {
     return file;
   }
-}
-
-/**
- * The plaintext to encrypt for `file`: its bytes with identifying image or video metadata
- * removed, or exactly its bytes when there is nothing that can safely be removed. Reads
- * the file once, as the encrypted upload already did. A stripped image is copied once
- * more; a movie is blanked in that same buffer, since its length never changes.
- */
-export async function bytesWithoutMediaMetadata(
-  file: Blob,
-): Promise<ArrayBuffer> {
-  const buffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  const head = bytes.subarray(0, SNIFF_BYTES);
-  if (strippableFormat(head)) {
-    const name = file instanceof File ? file.name : undefined;
-    const result = stripImageMetadata(bytes, {
-      ...(name === undefined ? {} : { name }),
-      type: file.type,
-    });
-    if (result.kind !== 'stripped') return buffer;
-    // A single part that fills its own buffer (a TIFF's modified copy, an SVG's new text)
-    // is handed over as it is, so a large TIFF is not copied a second time.
-    const [only] = result.parts;
-    if (
-      result.parts.length === 1 &&
-      only &&
-      only.byteOffset === 0 &&
-      only.byteLength === only.buffer.byteLength &&
-      only.buffer !== buffer
-    ) {
-      return only.buffer;
-    }
-    return joinParts(result.parts).buffer;
-  }
-  if (isIsoMovie(head, file.type)) {
-    // Edits land in `bytes` only once the whole moov has been checked.
-    await stripVideoMetadata(
-      (start, end) => Promise.resolve(bytes.subarray(start, end)),
-      bytes.length,
-    );
-  }
-  return buffer;
 }
 
 async function sniff(file: Blob): Promise<Uint8Array> {

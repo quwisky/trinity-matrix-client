@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, untracked } from '@angular/core';
 import {
   Observable,
   Subject,
@@ -32,7 +32,6 @@ import type {
 import { MEDIA_ENGINE } from './media-engine.token';
 import type { ImageMetadataPolicy, MediaHints } from './media-pipeline.models';
 import {
-  bytesWithoutMediaMetadata,
   withoutImageMetadata,
   withoutMediaMetadata,
 } from './image-metadata/strip-file-metadata';
@@ -288,12 +287,7 @@ export class MediaService {
     // handle with certainty uploads as picked. Keeping metadata (the opt-in) uploads the file
     // untouched, never a partial strip.
     const keep = imageMetadata === 'keep';
-    let upload: Blob = file;
-    if (!keep) {
-      upload = encrypt
-        ? new Blob([await bytesWithoutMediaMetadata(file)])
-        : await withoutMediaMetadata(file);
-    }
+    const upload = keep ? file : await withoutMediaMetadata(file);
     signal?.throwIfAborted();
     const uploaded = await this.send(
       accountId,
@@ -491,8 +485,11 @@ export class MediaService {
 
   /** The named account, or the active one, with the session generation it is live in now. */
   private account(accountId: string | undefined): AccountSession {
-    const id = accountId ?? this.session.activeAccountId() ?? '';
-    return { id, generation: this.session.status(id)?.generation ?? 0 };
+    // Callers resolve inside effects: reading the session must not make them track it.
+    return untracked(() => {
+      const id = accountId ?? this.session.activeAccountId() ?? '';
+      return { id, generation: this.session.status(id)?.generation ?? 0 };
+    });
   }
 
   /**
