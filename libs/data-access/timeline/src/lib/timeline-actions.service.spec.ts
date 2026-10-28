@@ -646,6 +646,34 @@ describe('TimelineActionsService', () => {
     ).rejects.toThrow();
   });
 
+  it('says a location could not be shared when its send stays unsent', async () => {
+    const room = { ...fakeRoom([]), getEventForTxnId: () => ({}) };
+    const client = {
+      ...fakeClient(room, []),
+      sendMessage: () => Promise.reject(new Error('offline')),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineActionsService, matrixProvider(client)],
+    });
+    TestBed.inject(ConversationActionContextService).bind(() => ROOM_KEY);
+
+    await expect(
+      firstValueFrom(TestBed.inject(TimelineActionsService).sendLocation(1, 2)),
+    ).rejects.toThrow('Could not share your location.');
+  });
+
+  it('shares nothing, silently, to a room the account no longer has', async () => {
+    const client = { ...fakeClient(fakeRoom([]), []), getRoom: () => null };
+    TestBed.configureTestingModule({
+      providers: [TimelineActionsService, matrixProvider(client)],
+    });
+    TestBed.inject(ConversationActionContextService).bind(() => ROOM_KEY);
+
+    await expect(
+      firstValueFrom(TestBed.inject(TimelineActionsService).sendLocation(1, 2)),
+    ).resolves.toBeUndefined();
+  });
+
   it('creates a poll via an MSC3381 poll start event', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);

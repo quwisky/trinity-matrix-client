@@ -13,6 +13,10 @@ import type { OutgoingMessage } from './timeline-engine';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
 
 const NO_RELATION = { threadRootId: null, replyTo: null } as const;
+const GONE: ReadonlySet<string> = new Set([
+  'message-unavailable',
+  'account-not-live',
+]);
 
 /**
  * Transitional non-message writes to a room's timeline: polls, attachments, voice clips,
@@ -36,7 +40,16 @@ export class TimelineActionsService {
 
   /** Send a shared location (`m.location`) to the active room. Cold — runs on subscribe. */
   sendLocation(lat: number, lng: number): Observable<void> {
-    return this.send({ kind: 'location', lat, lng, label: null });
+    return this.sent({ kind: 'location', lat, lng, label: null }).pipe(
+      map((result) => {
+        // As before the engine: a room or account no longer open sends nothing, silently.
+        if (result === null || (!result.ok && GONE.has(result.failure.code)))
+          return;
+        // The SDK's own error text does not cross the engine; this is the share's own copy.
+        if (!result.ok || result.value.eventId === null)
+          throw new Error('Could not share your location.');
+      }),
+    );
   }
 
   /** Send an MSC2545 image-pack entry as a standalone `m.sticker` event. */
@@ -138,14 +151,20 @@ export class TimelineActionsService {
 
   /** Sends `message` to the focused room, or nothing when no Conversation is focused. */
   private send(message: OutgoingMessage): Observable<void> {
+    return this.sent(message).pipe(
+      map((result) => (result === null ? undefined : delivered(result))),
+    );
+  }
+
+  /** The engine's result, or null when no Conversation is focused. */
+  private sent(
+    message: OutgoingMessage,
+  ): Observable<EngineResult<{ readonly eventId: string | null }> | null> {
     return defer(() => {
       const key = this.actionContext.resolve();
-      if (!key) {
-        return of(void 0);
-      }
-      return this.engine
-        .send(key.accountId, key.roomId, message, NO_RELATION)
-        .pipe(map(delivered));
+      return key
+        ? this.engine.send(key.accountId, key.roomId, message, NO_RELATION)
+        : of(null);
     });
   }
 }
