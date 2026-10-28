@@ -139,6 +139,18 @@ describe.skipIf(!baseUrl)('JsSdkMediaEngine against Synapse', () => {
               };
             });
         },
+        dropNextSendResponse: () => {
+          const realFetch = globalThis.fetch;
+          const drop = vi
+            .spyOn(globalThis, 'fetch')
+            .mockImplementation(async (input, init) => {
+              const response = await realFetch(input, init);
+              const url = input instanceof Request ? input.url : String(input);
+              if (!url.includes('/send/m.room.message/')) return response;
+              drop.mockRestore();
+              throw new TypeError('Failed to fetch');
+            });
+        },
         uploads: () => uploads.mock.calls.length,
         withoutCrypto: () => {
           crypto.mockReturnValue(undefined);

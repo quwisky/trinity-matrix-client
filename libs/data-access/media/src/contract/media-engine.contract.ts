@@ -34,6 +34,8 @@ export interface MediaContractSetup {
   room(encrypted: boolean): Promise<string>;
   /** The media messages in a room, oldest first. */
   messages(roomId: string): Promise<readonly ContractMessage[]>;
+  /** The next message send reaches the server, but its answer is lost on the way back. */
+  dropNextSendResponse(): void;
   /** Uploads (files and thumbnails) that reached the media repository so far in this test. */
   uploads(): number;
   /** Takes alice's crypto away, as for an account whose crypto store could not start. */
@@ -521,8 +523,11 @@ export function defineMediaEngineContract(
       testTimeoutMs,
     );
 
+    // Withdrawing an echo on unsubscribe needs a send caught between its start and the
+    // server's answer, which Synapse does not let a test hold; fake-media-engine.spec.ts and
+    // js-sdk-media-engine.attachments.spec.ts cover it.
     it(
-      'emits nothing more and sends nothing once unsubscribed after its first progress',
+      'emits nothing more, uploads nothing more and sends nothing once unsubscribed after its first progress',
       async () => {
         const roomId = await context.room(false);
         const seen: unknown[] = [];
@@ -541,10 +546,65 @@ export function defineMediaEngineContract(
           });
         await progressed;
         subscription.unsubscribe();
+        const uploaded = context.uploads();
         await new Promise((resolve) => setTimeout(resolve, 200));
 
         expect(seen).toEqual(['progress']);
+        expect(context.uploads()).toBe(uploaded);
         expect(await context.messages(roomId)).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'fails an upload with no sending update',
+      async () => {
+        const roomId = await context.room(false);
+        const limit = await firstValueFrom(engine.uploadLimit(alice));
+        if (!limit.ok || limit.value === null) {
+          throw new Error('The server states no upload limit');
+        }
+
+        const { progress, result } = await send(
+          roomId,
+          attachment({ file: new Blob([new Uint8Array(limit.value + 1)]) }),
+        );
+
+        expect(result).toMatchObject({
+          ok: false,
+          failure: { code: 'too-large' },
+        });
+        expect(progress.map((update) => update.phase)).not.toContain('sending');
+        expect(await context.messages(roomId)).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'fails a send after its sending update, and a retry with the key dedupes it without uploading again',
+      async () => {
+        const roomId = await context.room(false);
+        const request = attachment({ caption: 'once' });
+        context.dropNextSendResponse();
+
+        const failed = await send(roomId, request);
+        const uploaded = context.uploads();
+        const retried = await send(roomId, request);
+
+        expect(failed.progress.at(-1)).toMatchObject({ phase: 'sending' });
+        expect(failed.result).toMatchObject({
+          ok: false,
+          failure: { code: 'request-failed' },
+        });
+        // The retry reuses the transaction, so the server answers with the event it holds;
+        // an engine that already saw that event come back may only say it may have left.
+        expect(retried.result.ok && retried.result.value.kind).toMatch(
+          /^(sent|indeterminate)$/,
+        );
+        expect(context.uploads()).toBe(uploaded);
+        expect(await context.messages(roomId)).toEqual([
+          { msgtype: 'm.image', body: 'once', hasThumbnail: false },
+        ]);
       },
       testTimeoutMs,
     );

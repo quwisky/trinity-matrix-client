@@ -147,8 +147,9 @@ export interface MediaEngine {
    * again nor sends twice; a changed caption withdraws a retained echo and sends a new event.
    * Fails `account-not-live`, `conversation-unavailable`, `encryption-unavailable` (an encrypted
    * room without crypto, before any upload), `too-large` or `request-failed`. A failure after a
-   * `sending` progress update failed the send; any other failed the upload. Unsubscribe aborts
-   * the upload and withdraws an echo not yet sending.
+   * `sending` progress update failed the send; any other failed the upload, except
+   * `encryption-unavailable`, which refuses the send itself although no `sending` precedes it.
+   * Unsubscribe aborts the upload and withdraws an echo not yet sending.
    */
   sendAttachment(
     accountId: string,

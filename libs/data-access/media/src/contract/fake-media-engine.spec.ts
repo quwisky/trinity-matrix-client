@@ -18,6 +18,9 @@ defineMediaEngineContract(
           body,
           hasThumbnail,
         })),
+      dropNextSendResponse: () => {
+        engine.dropNextSendResponse = true;
+      },
       uploads: () => engine.uploads,
       withoutCrypto: () => {
         engine.crypto = false;

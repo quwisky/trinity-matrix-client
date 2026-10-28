@@ -135,6 +135,8 @@ export class JsSdkMediaEngine implements MediaEngine {
     Observable<number | null>
   >();
   /** Uploads kept for retries by attachment key, until the caller forgets them. */
+  // shortcut: uncapped; a transfer that reaches its upload after the pipeline released the
+  // staged file is never forgotten. Cap it (oldest first) if retained uploads ever accumulate.
   private readonly attachments = new Map<string, RetainedAttachment>();
 
   content(

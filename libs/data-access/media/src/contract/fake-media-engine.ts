@@ -41,7 +41,12 @@ export interface FakeMessage {
 /** An upload kept for retries, and its echo while one waits in the room. */
 interface RetainedAttachment {
   readonly hasThumbnail: boolean;
-  echo: { status: 'not-sent' | 'sending'; caption: string } | null;
+  echo: {
+    status: 'not-sent' | 'sending';
+    caption: string;
+    /** The event the server holds under this echo's transaction, when its answer was lost. */
+    landed?: string;
+  } | null;
 }
 
 function failure(
@@ -59,6 +64,12 @@ const REFUSED: EngineFailure = {
   kind: 'unexpected',
   code: 'request-failed',
   diagnostic: { kind: 'unexpected' },
+};
+
+const CONNECTION_LOST: EngineFailure = {
+  kind: 'network',
+  code: 'request-failed',
+  diagnostic: { kind: 'network' },
 };
 
 const NOT_FOUND: EngineFailure = {
@@ -90,6 +101,8 @@ export class FakeMediaEngine implements MediaEngine {
   crypto = true;
   /** The next this many sends fail with `request-failed`, leaving their echo not sent. */
   sendFailures = 0;
+  /** The next send lands, but its answer is lost: the caller sees a network failure. */
+  dropNextSendResponse = false;
   /** Retained echoes withdrawn (a caption change, a superseding key, an unsubscribe). */
   withdrawn = 0;
 
@@ -248,7 +261,13 @@ export class FakeMediaEngine implements MediaEngine {
             this.sendFailures--;
             return finish(engineFail(REFUSED));
           }
-          retained.echo = null;
+          // The same transaction again: the server answers with the event it already holds.
+          const landed = retained.echo?.landed;
+          if (landed) {
+            retained.echo = null;
+            return finish(engineOk({ kind: 'sent', eventId: landed }));
+          }
+          const eventId = `$event${++this.nextEvent}`;
           room.messages.push({
             msgtype: request.msgtype,
             body: String(
@@ -260,9 +279,13 @@ export class FakeMediaEngine implements MediaEngine {
             hasThumbnail: retained.hasThumbnail,
             threadRootId: request.threadRootId,
           });
-          finish(
-            engineOk({ kind: 'sent', eventId: `$event${++this.nextEvent}` }),
-          );
+          if (this.dropNextSendResponse && retained.echo) {
+            this.dropNextSendResponse = false;
+            retained.echo.landed = eventId;
+            return finish(engineFail(CONNECTION_LOST));
+          }
+          retained.echo = null;
+          finish(engineOk({ kind: 'sent', eventId }));
         });
       };
 
@@ -331,17 +354,27 @@ export class FakeMediaEngine implements MediaEngine {
     });
     if (subscriber.closed) return;
     const thumbnail = request.thumbnail
-      ? await this.store(this.alice, request.thumbnail.blob, {
-          filename: null,
-          mimeType: request.thumbnail.mimeType,
-          encrypt,
-        })
+      ? await this.store(
+          this.alice,
+          request.thumbnail.blob,
+          {
+            filename: null,
+            mimeType: request.thumbnail.mimeType,
+            encrypt,
+          },
+          () => subscriber.closed,
+        )
       : null;
-    const uploaded = await this.store(this.alice, request.file, {
-      filename: encrypt ? null : request.filename,
-      mimeType: request.mimeType,
-      encrypt,
-    });
+    const uploaded = await this.store(
+      this.alice,
+      request.file,
+      {
+        filename: encrypt ? null : request.filename,
+        mimeType: request.mimeType,
+        encrypt,
+      },
+      () => subscriber.closed,
+    );
     if (subscriber.closed) return;
     if (!uploaded.ok) {
       subscriber.next({ kind: 'done', result: uploaded });
@@ -385,6 +418,7 @@ export class FakeMediaEngine implements MediaEngine {
     accountId: string,
     file: Blob,
     request: UploadRequest,
+    aborted: () => boolean = () => false,
   ): Promise<EngineResult<UploadedContent>> {
     if (accountId !== this.alice)
       return engineFail(failure('account-not-live'));
@@ -392,6 +426,8 @@ export class FakeMediaEngine implements MediaEngine {
       return engineFail(failure('too-large'));
     }
     const plaintext = await file.arrayBuffer();
+    // An aborted upload never reaches the repository.
+    if (aborted()) return engineFail(REFUSED);
     this.uploads++;
     const mxc = `mxc://example.org/media${++this.nextMedia}`;
     if (!request.encrypt) {
