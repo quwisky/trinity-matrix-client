@@ -82,7 +82,7 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
   >();
 
   room(accountId: string, roomId: string): Observable<AdministeredRoom | null> {
-    return this.watch(accountId, (client, schedule) => {
+    return this.watch(accountId, roomId, (client, schedule) => {
       let asked = false;
       const onState = (event: MatrixEvent, state?: RoomState): void => {
         if (event.getRoomId() === roomId || state?.roomId === roomId) {
@@ -95,7 +95,6 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
       client.on(RoomStateEvent.Events, onState);
       client.on(RoomStateEvent.Members, onState);
       client.on(RoomEvent.MyMembership, onMembership);
-      client.on(ClientEvent.Sync, schedule);
       return {
         read: () => {
           const room = client.getRoom(roomId);
@@ -122,14 +121,13 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
           client.off(RoomStateEvent.Events, onState);
           client.off(RoomStateEvent.Members, onState);
           client.off(RoomEvent.MyMembership, onMembership);
-          client.off(ClientEvent.Sync, schedule);
         },
       };
     }).pipe(distinctUntilChanged<AdministeredRoom | null>(plainEqual));
   }
 
   members(accountId: string, roomId: string): Observable<RoomMembers | null> {
-    return this.watch(accountId, (client, schedule) => {
+    return this.watch(accountId, roomId, (client, schedule) => {
       const onMember = (_event: MatrixEvent, state: RoomState): void => {
         if (state.roomId === roomId) schedule();
       };
@@ -138,7 +136,6 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
       };
       client.on(RoomStateEvent.Members, onMember);
       client.on(RoomEvent.MyMembership, onMembership);
-      client.on(ClientEvent.Sync, schedule);
       let requested = false;
       return {
         read: () => {
@@ -158,7 +155,6 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
         detach: () => {
           client.off(RoomStateEvent.Members, onMember);
           client.off(RoomEvent.MyMembership, onMembership);
-          client.off(ClientEvent.Sync, schedule);
         },
       };
     }).pipe(distinctUntilChanged<RoomMembers | null>(plainEqual));
@@ -194,10 +190,13 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
   /**
    * A snapshot subscription for one account: `null` at once while the account is not
    * live, else a synchronous first value and microtask-coalesced re-reads, stopping when
-   * the account's client is replaced (the caller subscribes again).
+   * the account's client is replaced (the caller subscribes again). Syncs are followed
+   * only while the client does not know the room; once it does, `attach`'s room events
+   * carry every change, so a sync costs no re-read.
    */
   private watch<T>(
     accountId: string,
+    roomId: string,
     attach: (
       client: MatrixClient,
       schedule: () => void,
@@ -207,20 +206,36 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
       const client = this.clients.clientFor(accountId);
       if (!client) return concat(of(null), NEVER);
       return new Observable<T | null>((subscriber) => {
+        let followingSync = false;
+        const onSync = (): void => queue.schedule();
+        const onDelete = (deleted: string): void => {
+          if (deleted === roomId) queue.schedule();
+        };
+        const followSync = (follow: boolean): void => {
+          if (follow === followingSync) return;
+          followingSync = follow;
+          if (follow) client.on(ClientEvent.Sync, onSync);
+          else client.off(ClientEvent.Sync, onSync);
+        };
         const publish = (): void => {
           // A late async answer may still schedule after the unsubscribe.
           if (
             !subscriber.closed &&
             this.clients.clientFor(accountId) === client
           ) {
-            subscriber.next(source.read());
+            const value = source.read();
+            followSync(value === null);
+            subscriber.next(value);
           }
         };
         const queue = coalesce(publish);
         const source = attach(client, () => queue.schedule());
+        client.on(ClientEvent.DeleteRoom, onDelete);
         publish();
         return () => {
           queue.cancel();
+          followSync(false);
+          client.off(ClientEvent.DeleteRoom, onDelete);
           source.detach();
         };
       });

@@ -63,6 +63,7 @@ function setup(options: { encrypted?: boolean; roomVersion?: string } = {}) {
   ]);
   let membership = 'join';
   let loaded = false;
+  let known = true;
   const loadMembersIfNeeded = vi.fn(() =>
     Promise.resolve().then(() => (loaded = true)),
   );
@@ -86,7 +87,9 @@ function setup(options: { encrypted?: boolean; roomVersion?: string } = {}) {
   const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
   const sendStateEvent = vi.fn(async () => ({ event_id: '$sent' }));
   const client = {
-    getRoom: (roomId: string) => (roomId === ROOM_ID ? room : null),
+    getRoom: vi.fn((roomId: string) =>
+      roomId === ROOM_ID && known ? room : null,
+    ),
     getUserId: () => ME,
     getCrypto: () => crypto,
     sendStateEvent,
@@ -118,6 +121,9 @@ function setup(options: { encrypted?: boolean; roomVersion?: string } = {}) {
     emit: (event: string, ...args: unknown[]) =>
       listeners.get(event)?.forEach((listener) => listener(...args)),
     setMembership: (value: string) => (membership = value),
+    setKnown: (value: boolean) => (known = value),
+    state,
+    getRoom: client.getRoom,
     replaceClient: () => (current = { ...client }),
   };
 }
@@ -253,6 +259,41 @@ describe('JsSdkRoomAdministrationEngine', () => {
 
     expect(seen).toHaveLength(1);
     expect(listenerCount()).toBe(0);
+  });
+
+  it('stops re-reading on sync once the room is known, yet follows member and power changes', async () => {
+    const { engine, emit, getRoom, setKnown, state } = setup({
+      encrypted: true,
+    });
+    setKnown(false);
+    const room = watch<AdministeredRoom | null>(engine.room(ME, ROOM_ID));
+    const members = watch<RoomMembers | null>(engine.members(ME, ROOM_ID));
+    setKnown(true);
+    emit('sync');
+    await settle();
+    expect(room.seen.at(-1)?.roomId).toBe(ROOM_ID);
+    expect(members.seen.at(-1)?.roomId).toBe(ROOM_ID);
+    const reads = getRoom.mock.calls.length;
+
+    emit('sync');
+    await settle();
+    expect(getRoom.mock.calls.length).toBe(reads);
+
+    const power = stateEvent('m.room.power_levels', '', ME, {
+      users: { '@carol:example.org': 75 },
+    });
+    state.setStateEvents([power]);
+    emit('RoomState.events', power, state);
+    emit('RoomState.members', power, state);
+    await settle();
+    expect(room.seen.at(-1)?.powerLevels).toEqual({
+      users: { '@carol:example.org': 75 },
+    });
+    expect(
+      members.seen
+        .at(-1)
+        ?.members.find(({ userId }) => userId === '@carol:example.org')?.power,
+    ).toBe(75);
   });
 
   it('members skips a sync that changed no member', async () => {
