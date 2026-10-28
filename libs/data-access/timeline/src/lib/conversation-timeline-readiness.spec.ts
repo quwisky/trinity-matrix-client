@@ -1,78 +1,116 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ClientEvent, SyncState, type MatrixClient } from 'matrix-js-sdk';
 import { Subject, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+  type SessionSyncState,
+} from '@trinity/data-access/matrix-client';
+import { MediaPipeline } from '@trinity/data-access/media';
 import type { MessageView } from './message-presentation';
 import {
   ConversationTimelineReadiness,
   type ReadinessTimeline,
 } from './conversation-timeline-readiness';
+import {
+  FakeTimelineEngine,
+  fakeEventItem,
+} from '../contract/fake-timeline-engine';
+import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
+import { TimelineService } from './timeline.service';
 
-type Handler = (...args: unknown[]) => void;
+const ROOM = '!a:hs';
+const KEY = { accountId: '@me:hs', roomId: ROOM };
 
-function fakeClient(sync: SyncState | null = SyncState.Syncing) {
-  const handlers = new Map<string, Set<Handler>>();
-  const rooms = new Set<string>();
-  let state = sync;
-  let stateData: { fromCache?: boolean } | null = null;
-  const client = {
-    rooms,
-    setSync: (next: SyncState, data: { fromCache?: boolean } = {}) => {
-      const prev = state;
-      state = next;
-      stateData = data;
-      for (const h of [...(handlers.get(ClientEvent.Sync) ?? [])])
-        h(next, prev, data);
-    },
-    addRoom: (roomId: string) => {
-      rooms.add(roomId);
-      for (const h of [...(handlers.get(ClientEvent.Room) ?? [])])
-        h({ roomId });
-    },
-    getRoom: (roomId: string) => (rooms.has(roomId) ? { roomId } : null),
-    getSyncState: () => state,
-    getSyncStateData: () => stateData,
-    on: (event: string, h: Handler) => {
-      handlers.set(event, (handlers.get(event) ?? new Set()).add(h));
-    },
-    off: (event: string, h: Handler) => handlers.get(event)?.delete(h),
-    listeners: () => [...handlers.values()].reduce((n, s) => n + s.size, 0),
+/**
+ * The Account's session status as the js-sdk session engine reports it: `roomsPrepared`
+ * and `serverSynced` latch like the client's, and a `prepared` from the cache is not a
+ * server sync. An empty `history` leaves the Account `starting`.
+ */
+function fakeSession(history: readonly SessionSyncState[] = ['syncing']) {
+  let status: SessionAccountStatus = {
+    accountId: KEY.accountId,
+    generation: 1,
+    syncState: 'starting',
+    serverSynced: false,
+    roomsPrepared: false,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
   };
-  return client;
+  const apply = (syncState: SessionSyncState, fromCache: boolean): void => {
+    const prepared = syncState === 'prepared' || syncState === 'syncing';
+    status = {
+      ...status,
+      syncState,
+      roomsPrepared: status.roomsPrepared || prepared,
+      serverSynced: status.serverSynced || (prepared && !fromCache),
+    };
+  };
+  for (const state of history) apply(state, false);
+  const snapshot = signal<SessionSnapshot>({
+    ...EMPTY_SESSION,
+    accounts: [status],
+  });
+  const sync = (
+    syncState: SessionSyncState,
+    { fromCache = false }: { fromCache?: boolean } = {},
+  ): void => {
+    apply(syncState, fromCache);
+    snapshot.set({ ...EMPTY_SESSION, accounts: [status] });
+    TestBed.tick();
+  };
+  TestBed.configureTestingModule({
+    providers: [{ provide: SESSION_SNAPSHOT, useValue: snapshot }],
+  });
+  return { sync, snapshot };
 }
 
 function fakeTimeline() {
+  const available = signal(false);
   const messages = signal<MessageView[]>([]);
   const canLoadOlder = signal(false);
   const loadingOlder = signal(false);
   const pages: Subject<void>[] = [];
   const timeline = {
+    available,
     messages,
     canLoadOlder,
     loadingOlder,
-    open: vi.fn(),
-    setVisible: vi.fn(),
     loadOlder: vi.fn(() => {
       const page = new Subject<void>();
       pages.push(page);
       return page.asObservable();
     }),
   };
-  return { timeline, messages, canLoadOlder, loadingOlder, pages };
+  /** The engine delivers the Room: the store becomes available with `rows`. */
+  const addRoom = (rows: MessageView[] = []): void => {
+    messages.set(rows);
+    available.set(true);
+    TestBed.tick();
+  };
+  return {
+    timeline,
+    available,
+    messages,
+    canLoadOlder,
+    loadingOlder,
+    pages,
+    addRoom,
+  };
 }
 
 const message = { id: '$m' } as unknown as MessageView;
-const ROOM = '!a:hs';
 
-function start(
-  client: ReturnType<typeof fakeClient>,
-  timeline: ReadinessTimeline,
-) {
+function start(timeline: ReadinessTimeline) {
   const readiness = TestBed.runInInjectionContext(
     () => new ConversationTimelineReadiness(),
   );
-  readiness.start(ROOM, client as unknown as MatrixClient, timeline);
+  readiness.start(KEY, timeline);
   return readiness;
 }
 
@@ -80,55 +118,55 @@ describe('ConversationTimelineReadiness', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('is ready in the same call when the Room has messages and sync is done', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, messages } = fakeTimeline();
-    timeline.open.mockImplementation(() => messages.set([message]));
-    const readiness = start(client, timeline);
-    expect(timeline.open).toHaveBeenCalledWith(ROOM, client);
+    fakeSession();
+    const { timeline, messages, available } = fakeTimeline();
+    available.set(true);
+    messages.set([message]);
+    const readiness = start(timeline);
     expect(readiness.state()).toEqual({ kind: 'ready' });
   });
 
   it('is empty in the same call when nothing is displayable and there is no older history', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const readiness = start(client, fakeTimeline().timeline);
+    fakeSession();
+    const { timeline, available } = fakeTimeline();
+    available.set(true);
+    const readiness = start(timeline);
     expect(readiness.state()).toEqual({ kind: 'empty' });
   });
 
-  it('waits for a pending Room, then opens it', () => {
-    const client = fakeClient(null);
-    const { timeline, messages } = fakeTimeline();
-    const readiness = start(client, timeline);
+  it('waits for a pending Room, then follows it', () => {
+    const session = fakeSession([]);
+    const { timeline, addRoom } = fakeTimeline();
+    const readiness = start(timeline);
+    TestBed.tick();
     expect(readiness.state()).toEqual({
       kind: 'loading',
       reason: 'room-pending',
       partial: false,
     });
-    expect(timeline.open).not.toHaveBeenCalled();
-    timeline.open.mockImplementation(() => messages.set([message]));
-    client.addRoom(ROOM);
-    expect(timeline.open).toHaveBeenCalledOnce();
-    client.setSync(SyncState.Syncing);
+    addRoom([message]);
+    expect(readiness.state()).toMatchObject({ reason: 'initial-sync' });
+    session.sync('syncing');
     expect(readiness.state()).toEqual({ kind: 'ready' });
-    expect(client.listeners()).toBe(0);
   });
 
   it('fails a pending Room after the next completed sync still lacks it', () => {
-    const client = fakeClient(null);
-    const readiness = start(client, fakeTimeline().timeline);
-    client.setSync(SyncState.Syncing);
+    const session = fakeSession([]);
+    const { timeline, addRoom } = fakeTimeline();
+    const readiness = start(timeline);
+    session.sync('syncing');
     expect(readiness.state()).toEqual({
       kind: 'error',
       reason: 'room-unavailable',
     });
     // Still watching for the Room to arrive.
-    expect(client.listeners()).toBe(2);
+    addRoom();
+    expect(readiness.state()).toEqual({ kind: 'empty' });
   });
 
   it('reports an absent Room at once when the Account has already synced', () => {
-    const client = fakeClient();
-    const readiness = start(client, fakeTimeline().timeline);
+    fakeSession();
+    const readiness = start(fakeTimeline().timeline);
     expect(readiness.state()).toEqual({
       kind: 'error',
       reason: 'room-unavailable',
@@ -136,14 +174,14 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('keeps a pending Room loading through a sync restored from the cache', () => {
-    const client = fakeClient(null);
-    const readiness = start(client, fakeTimeline().timeline);
-    client.setSync(SyncState.Prepared, { fromCache: true });
+    const session = fakeSession([]);
+    const readiness = start(fakeTimeline().timeline);
+    session.sync('prepared', { fromCache: true });
     expect(readiness.state()).toMatchObject({
       kind: 'loading',
       reason: 'room-pending',
     });
-    client.setSync(SyncState.Syncing);
+    session.sync('syncing');
     expect(readiness.state()).toEqual({
       kind: 'error',
       reason: 'room-unavailable',
@@ -151,54 +189,56 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('keeps an absent Room loading when only the cached sync has been restored', () => {
-    const client = fakeClient(null);
-    client.setSync(SyncState.Prepared, { fromCache: true });
-    const { timeline } = fakeTimeline();
-    const readiness = start(client, timeline);
+    const session = fakeSession([]);
+    session.sync('prepared', { fromCache: true });
+    const { timeline, addRoom } = fakeTimeline();
+    const readiness = start(timeline);
     expect(readiness.state()).toMatchObject({
       kind: 'loading',
       reason: 'room-pending',
     });
     // Joined since the cache was written: delivered by the live catch-up sync.
-    client.addRoom(ROOM);
-    expect(timeline.open).toHaveBeenCalledWith(ROOM, client);
+    addRoom([message]);
+    expect(readiness.state()).toEqual({ kind: 'ready' });
   });
 
-  it('fails a pending Room on a live Prepared (no cache) that still lacks it', () => {
-    const client = fakeClient(null);
-    const readiness = start(client, fakeTimeline().timeline);
-    client.setSync(SyncState.Prepared);
+  it('fails a pending Room on a live prepared (no cache) that still lacks it', () => {
+    const session = fakeSession([]);
+    const readiness = start(fakeTimeline().timeline);
+    session.sync('prepared');
     expect(readiness.state()).toEqual({
       kind: 'error',
       reason: 'room-unavailable',
     });
   });
 
-  it('opens the Room when it arrives after room-unavailable', () => {
-    const client = fakeClient();
-    const { timeline } = fakeTimeline();
-    const readiness = start(client, timeline);
+  it('follows the Room when it arrives after room-unavailable', () => {
+    fakeSession();
+    const { timeline, addRoom } = fakeTimeline();
+    const readiness = start(timeline);
     expect(readiness.state()).toMatchObject({ reason: 'room-unavailable' });
-    client.addRoom(ROOM);
-    expect(timeline.open).toHaveBeenCalledWith(ROOM, client);
+    addRoom();
     expect(readiness.state()).toEqual({ kind: 'empty' });
   });
 
-  it('stops listening for the Room when stopped in the error state', () => {
-    const client = fakeClient();
-    const { timeline } = fakeTimeline();
-    const readiness = start(client, timeline);
+  it('stops watching for the Room when stopped in the error state', () => {
+    fakeSession();
+    const { timeline, addRoom } = fakeTimeline();
+    const readiness = start(timeline);
     readiness.stop();
-    expect(client.listeners()).toBe(0);
-    client.addRoom(ROOM);
-    expect(timeline.open).not.toHaveBeenCalled();
+    addRoom();
+    expect(readiness.state()).toEqual({
+      kind: 'error',
+      reason: 'room-unavailable',
+    });
   });
 
   it('fails with sync-stopped when sync stops or errors while waiting', () => {
-    for (const state of [SyncState.Stopped, SyncState.Error]) {
-      const client = fakeClient(null);
-      const readiness = start(client, fakeTimeline().timeline);
-      client.setSync(state);
+    for (const state of ['stopped', 'error'] as const) {
+      TestBed.resetTestingModule();
+      const session = fakeSession([]);
+      const readiness = start(fakeTimeline().timeline);
+      session.sync(state);
       expect(readiness.state()).toEqual({
         kind: 'error',
         reason: 'sync-stopped',
@@ -207,21 +247,20 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('retries a failed wait from the start', () => {
-    const client = fakeClient();
-    const { timeline } = fakeTimeline();
-    const readiness = start(client, timeline);
-    client.setSync(SyncState.Syncing);
-    client.rooms.add(ROOM);
+    fakeSession();
+    const { timeline, available } = fakeTimeline();
+    const readiness = start(timeline);
+    expect(readiness.state()).toMatchObject({ reason: 'room-unavailable' });
+    available.set(true);
     readiness.retry();
-    expect(timeline.open).toHaveBeenCalledOnce();
     expect(readiness.state()).toEqual({ kind: 'empty' });
   });
 
   it('reports initial sync with partial messages and settles when sync is prepared', () => {
-    const client = fakeClient(null);
-    client.rooms.add(ROOM);
-    const { timeline, messages } = fakeTimeline();
-    const readiness = start(client, timeline);
+    const session = fakeSession([]);
+    const { timeline, available, messages } = fakeTimeline();
+    available.set(true);
+    const readiness = start(timeline);
     expect(readiness.state()).toEqual({
       kind: 'loading',
       reason: 'initial-sync',
@@ -233,16 +272,35 @@ describe('ConversationTimelineReadiness', () => {
       reason: 'initial-sync',
       partial: true,
     });
-    client.setSync(SyncState.Prepared);
+    session.sync('prepared');
     expect(readiness.state()).toEqual({ kind: 'ready' });
   });
 
+  it('settles an initial sync whose prepared and error arrive in one change', () => {
+    const { snapshot } = fakeSession([]);
+    const { timeline, available } = fakeTimeline();
+    available.set(true);
+    const readiness = start(timeline);
+    expect(readiness.state()).toMatchObject({ reason: 'initial-sync' });
+    snapshot.update((s) => ({
+      ...s,
+      accounts: s.accounts.map((a) => ({
+        ...a,
+        syncState: 'error' as const,
+        roomsPrepared: true,
+      })),
+    }));
+    TestBed.tick();
+    expect(readiness.state()).toEqual({ kind: 'empty' });
+  });
+
   it('backfills an empty Room until a page brings messages', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, messages, canLoadOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, messages, canLoadOlder, pages } =
+      fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
     expect(readiness.state()).toEqual({
       kind: 'loading',
       reason: 'backfill',
@@ -256,11 +314,11 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('settles empty after 3 pages without messages', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, canLoadOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, canLoadOlder, pages } = fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
     pages[0].complete();
     pages[1].complete();
     pages[2].complete();
@@ -269,11 +327,12 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('reports a failed backfill and retries it', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, messages, canLoadOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, messages, canLoadOlder, pages } =
+      fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
     pages[0].error(new Error('500'));
     expect(readiness.state()).toEqual({
       kind: 'error',
@@ -286,11 +345,12 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('pauses backfill while hidden and resumes when visible', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, messages, canLoadOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, messages, canLoadOlder, pages } =
+      fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
     readiness.setVisible(false);
     expect(pages[0].observed).toBe(false);
     expect(readiness.state()).toEqual({
@@ -304,15 +364,14 @@ describe('ConversationTimelineReadiness', () => {
     expect(readiness.state()).toEqual({ kind: 'ready' });
   });
 
-  it('ignores events after stop and detaches every listener', () => {
-    const client = fakeClient(null);
-    const { timeline } = fakeTimeline();
-    const readiness = start(client, timeline);
+  it('ignores changes after stop', () => {
+    const session = fakeSession([]);
+    const { timeline, addRoom } = fakeTimeline();
+    const readiness = start(timeline);
     readiness.stop();
-    expect(client.listeners()).toBe(0);
-    client.addRoom(ROOM);
+    addRoom([message]);
+    session.sync('syncing');
     readiness.retry();
-    expect(timeline.open).not.toHaveBeenCalled();
     expect(readiness.state()).toEqual({
       kind: 'loading',
       reason: 'room-pending',
@@ -321,22 +380,23 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('unsubscribes an in-flight backfill on stop', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, canLoadOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, canLoadOlder, pages } = fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
     readiness.stop();
     expect(pages[0].observed).toBe(false);
   });
 
   it('does not settle empty on a synchronous no-op page, then backfills once it can', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, messages, canLoadOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, messages, canLoadOlder, pages } =
+      fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
     timeline.loadOlder.mockImplementation(() => of(void 0));
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
     expect(timeline.loadOlder).toHaveBeenCalledTimes(1);
     expect(readiness.state()).toEqual({
       kind: 'loading',
@@ -358,9 +418,9 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('ignores a live page after a synchronous one when stopped', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, canLoadOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, canLoadOlder, pages } = fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
     let calls = 0;
     timeline.loadOlder.mockImplementation(() => {
@@ -369,7 +429,7 @@ describe('ConversationTimelineReadiness', () => {
       pages.push(page);
       return page.asObservable();
     });
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
     TestBed.tick();
     canLoadOlder.set(false);
     canLoadOlder.set(true);
@@ -386,12 +446,13 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('waits for loadingOlder to drop before paging', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, canLoadOlder, loadingOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, canLoadOlder, loadingOlder, pages } =
+      fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
     loadingOlder.set(true);
-    start(client, timeline);
+    start(timeline);
     expect(timeline.loadOlder).not.toHaveBeenCalled();
     loadingOlder.set(false);
     TestBed.tick();
@@ -399,8 +460,8 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('fails sync-stopped immediately when a pending Room meets an already stopped sync', () => {
-    const client = fakeClient(SyncState.Stopped);
-    const readiness = start(client, fakeTimeline().timeline);
+    fakeSession(['stopped']);
+    const readiness = start(fakeTimeline().timeline);
     expect(readiness.state()).toEqual({
       kind: 'error',
       reason: 'sync-stopped',
@@ -408,25 +469,23 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('settles from the store when an already synced Account is Reconnecting, Catchup or Error', () => {
-    for (const state of [
-      SyncState.Reconnecting,
-      SyncState.Catchup,
-      SyncState.Error,
-    ]) {
-      const client = fakeClient(state);
-      client.rooms.add(ROOM);
-      const { timeline, messages } = fakeTimeline();
-      timeline.open.mockImplementation(() => messages.set([message]));
-      expect(start(client, timeline).state()).toEqual({ kind: 'ready' });
+    for (const state of ['reconnecting', 'catchup', 'error'] as const) {
+      TestBed.resetTestingModule();
+      fakeSession(['syncing', state]);
+      const { timeline, available, messages } = fakeTimeline();
+      available.set(true);
+      messages.set([message]);
+      expect(start(timeline).state()).toEqual({ kind: 'ready' });
     }
   });
 
   it('backfills in an Errored client instead of failing', () => {
-    const client = fakeClient(SyncState.Error);
-    client.rooms.add(ROOM);
-    const { timeline, canLoadOlder, pages } = fakeTimeline();
+    fakeSession(['syncing', 'error']);
+    const { timeline, available, canLoadOlder, pages } = fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
+    TestBed.tick();
     expect(pages).toHaveLength(1);
     expect(readiness.state()).toEqual({
       kind: 'loading',
@@ -436,75 +495,69 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('keeps waiting for a Room through Reconnecting and Catchup', () => {
-    const client = fakeClient(null);
-    const readiness = start(client, fakeTimeline().timeline);
-    client.setSync(SyncState.Reconnecting);
-    client.setSync(SyncState.Catchup);
+    const session = fakeSession([]);
+    const readiness = start(fakeTimeline().timeline);
+    session.sync('reconnecting');
+    session.sync('catchup');
     expect(readiness.state()).toMatchObject({ reason: 'room-pending' });
   });
 
-  it('re-runs when sync resumes after sync-stopped, and stop detaches the recovery listener', () => {
-    const client = fakeClient(null);
-    client.rooms.add(ROOM);
-    const { timeline } = fakeTimeline();
-    const readiness = start(client, timeline);
-    client.setSync(SyncState.Error);
+  it('re-runs when sync resumes after sync-stopped, and stop ends the recovery', () => {
+    const session = fakeSession([]);
+    const { timeline, available } = fakeTimeline();
+    available.set(true);
+    const readiness = start(timeline);
+    session.sync('error');
     expect(readiness.state()).toEqual({
       kind: 'error',
       reason: 'sync-stopped',
     });
-    expect(client.listeners()).toBe(1);
-    client.setSync(SyncState.Syncing);
+    session.sync('syncing');
     expect(readiness.state()).toEqual({ kind: 'empty' });
-    expect(client.listeners()).toBe(0);
 
-    const stopped = fakeClient(SyncState.Stopped);
-    const again = start(stopped, fakeTimeline().timeline);
-    expect(stopped.listeners()).toBe(1);
+    TestBed.resetTestingModule();
+    const stopped = fakeSession(['stopped']);
+    const again = start(fakeTimeline().timeline);
+    expect(again.state()).toMatchObject({ reason: 'sync-stopped' });
     again.stop();
-    expect(stopped.listeners()).toBe(0);
+    stopped.sync('syncing');
+    expect(again.state()).toMatchObject({ reason: 'sync-stopped' });
   });
 
-  it('attaches no recovery listener when stop runs earlier in the same Sync emit that fails the wait', () => {
-    const client = fakeClient();
-    const readiness = TestBed.runInInjectionContext(
-      () => new ConversationTimelineReadiness(),
-    );
-    // Registered before start(), so it runs first in the emit's listener snapshot.
-    const stopper = (): void => {
-      client.off(ClientEvent.Sync, stopper);
-      readiness.stop();
-    };
-    client.on(ClientEvent.Sync, stopper);
-    readiness.start(
-      ROOM,
-      client as unknown as MatrixClient,
-      fakeTimeline().timeline,
-    );
+  it('does not fail a wait when stop runs in the same turn as the sync error', () => {
+    const { snapshot } = fakeSession([]);
+    const { timeline } = fakeTimeline();
+    const readiness = start(timeline);
+    TestBed.tick();
     const pending = readiness.state();
-    client.setSync(SyncState.Error);
-    expect(client.listeners()).toBe(0);
+    snapshot.update((s) => ({
+      ...s,
+      accounts: s.accounts.map((a) => ({ ...a, syncState: 'error' as const })),
+    }));
+    readiness.stop();
+    TestBed.tick();
     expect(readiness.state()).toBe(pending);
   });
 
-  it('re-hides the timeline when its Room arrives while hidden', () => {
-    const client = fakeClient();
-    const { timeline } = fakeTimeline();
-    const readiness = start(client, timeline);
+  it('pages nothing for a Room that arrives while hidden until it is shown', () => {
+    fakeSession();
+    const { timeline, canLoadOlder, addRoom, pages } = fakeTimeline();
+    canLoadOlder.set(true);
+    const readiness = start(timeline);
     readiness.setVisible(false);
-    client.addRoom(ROOM);
-    expect(timeline.setVisible).toHaveBeenCalledWith(false);
-    expect(timeline.setVisible.mock.invocationCallOrder[0]).toBeGreaterThan(
-      timeline.open.mock.invocationCallOrder[0],
-    );
+    addRoom();
+    expect(readiness.state()).toMatchObject({ reason: 'backfill' });
+    expect(pages).toHaveLength(0);
+    readiness.setVisible(true);
+    expect(pages).toHaveLength(1);
   });
 
   it('does not count a page cancelled by hide toward the cap', () => {
-    const client = fakeClient();
-    client.rooms.add(ROOM);
-    const { timeline, canLoadOlder, pages } = fakeTimeline();
+    fakeSession();
+    const { timeline, available, canLoadOlder, pages } = fakeTimeline();
+    available.set(true);
     canLoadOlder.set(true);
-    const readiness = start(client, timeline);
+    const readiness = start(timeline);
     for (let i = 0; i < 3; i++) {
       readiness.setVisible(false);
       readiness.setVisible(true);
@@ -515,5 +568,89 @@ describe('ConversationTimelineReadiness', () => {
     expect(readiness.state()).toMatchObject({ reason: 'backfill' });
     pages[5].complete();
     expect(readiness.state()).toEqual({ kind: 'empty' });
+  });
+
+  /** Real TimelineService and readiness over a fake engine, with `fake.alice` synced. */
+  function overFake(fake: FakeTimelineEngine) {
+    const acknowledge = vi.fn(() => of({ kind: 'applied' }));
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        ConversationTimelineReadiness,
+        { provide: TIMELINE_ENGINE, useValue: fake },
+        { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: { acknowledge } },
+        {
+          provide: SESSION_SNAPSHOT,
+          useValue: signal<SessionSnapshot>({
+            ...EMPTY_SESSION,
+            accounts: [
+              {
+                accountId: fake.alice,
+                generation: 1,
+                syncState: 'syncing',
+                serverSynced: true,
+                roomsPrepared: true,
+                waitingCount: 0,
+                cryptoStoreEncrypted: true,
+              },
+            ],
+          }),
+        },
+        {
+          provide: SESSION_ENGINE,
+          useValue: { session: () => new Subject<SessionSnapshot>() },
+        },
+        { provide: MediaPipeline, useValue: { present: () => ({}) } },
+      ],
+    });
+    return {
+      acknowledge,
+      timeline: TestBed.inject(TimelineService),
+      readiness: TestBed.inject(ConversationTimelineReadiness),
+    };
+  }
+
+  it('readiness never shows backfill when the snapshot is synchronous', () => {
+    const fake = new FakeTimelineEngine();
+    const key = { accountId: fake.alice, roomId: ROOM };
+    fake.seed(fake.alice, ROOM, [fakeEventItem('$1', fake.bob)]);
+    const { timeline, readiness } = overFake(fake);
+    const seen: string[] = [];
+    timeline.open(key);
+    readiness.start(key, timeline);
+    seen.push(readiness.state().kind);
+    TestBed.tick();
+    seen.push(readiness.state().kind);
+    expect(timeline.messages().map((m) => m.id)).toEqual(['$1']);
+    expect(seen).toEqual(['ready', 'ready']);
+  });
+
+  it('keeps a Conversation hidden when its Room arrives while hidden', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const fake = new FakeTimelineEngine();
+    const key = { accountId: fake.alice, roomId: ROOM };
+    const { timeline, readiness, acknowledge } = overFake(fake);
+    timeline.open(key);
+    readiness.start(key, timeline);
+    timeline.setVisible(false);
+    readiness.setVisible(false);
+    expect(readiness.state()).toMatchObject({ reason: 'room-unavailable' });
+
+    const events = Array.from({ length: 101 }, (_, i) =>
+      fakeEventItem(`$${i}`, fake.bob),
+    );
+    fake.seed(fake.alice, ROOM, events);
+    TestBed.tick();
+
+    expect(timeline.available()).toBe(true);
+    expect(readiness.state()).toEqual({ kind: 'ready' });
+    // Still compacted to the hidden window, and nothing marked read.
+    expect(timeline.messages()).toHaveLength(100);
+    expect(timeline.messages()[0].id).toBe('$1');
+    expect(acknowledge).not.toHaveBeenCalled();
+
+    timeline.setVisible(true);
+    expect(timeline.messages()).toHaveLength(101);
+    expect(acknowledge).toHaveBeenCalledOnce();
   });
 });

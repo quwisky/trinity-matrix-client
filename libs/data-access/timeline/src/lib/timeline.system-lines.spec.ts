@@ -9,6 +9,7 @@ import {
   mediaProvider,
   privacyProvider,
   systemLinesProvider,
+  ROOM_KEY,
 } from './timeline.spec-harness';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
@@ -70,7 +71,7 @@ describe('TimelineService system-line filtering', () => {
       ],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     return { svc, lines };
   }
 
@@ -182,7 +183,7 @@ describe('TimelineService system-line filtering', () => {
       ],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
 
     expect(svc.messages()).toEqual([]); // nothing survives the filter…
     expect(svc.oldestEventId()).toBe('$join'); // …but history is still paginable
@@ -203,7 +204,7 @@ describe('TimelineService system-line filtering', () => {
       ],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
 
     expect(svc.messages().map((m) => m.id)).not.toContain('$join');
     // '$rename' is a system line and '$2' is the next real message from someone else.
@@ -232,7 +233,7 @@ describe('TimelineService system-line filtering', () => {
       ],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
 
     // The reaction is never rendered, but it still positions the divider.
     expect(svc.messages().map((m) => m.id)).toEqual(['$1', '$2']);

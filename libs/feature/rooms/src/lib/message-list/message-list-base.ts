@@ -109,7 +109,7 @@ const LOAD_ERROR_COPY: Readonly<
  */
 @Directive()
 export abstract class MessageListBase {
-  readonly messages = input<MessageView[]>([]);
+  readonly messages = input<readonly MessageView[]>([]);
   /** Thread summaries keyed by root event id, for the per-row thread indicator. */
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
   /** Whether the current user may pin/unpin in this room (drives the per-row Pin item). */
@@ -636,11 +636,7 @@ export abstract class MessageListBase {
         canPin: this.canPin(),
         canThread: true,
         pinnedIds: this.pinnedIds(),
-        canAddToEmoji: addableImages(
-          this.addToEmoji,
-          this.timeline,
-          this.roomId() ?? '',
-        ),
+        canAddToEmoji: addableImages(this.addToEmoji),
       },
       this.prevRowCaps,
     );

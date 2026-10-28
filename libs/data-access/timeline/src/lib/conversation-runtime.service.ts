@@ -569,10 +569,10 @@ export class ConversationRuntime {
         focused()?.timeline.setLiveView(oldestShownId),
       setTyping: (typing, owner) =>
         focused()?.timeline.setTyping(typing, owner),
-      rawEvent: (roomId, eventId) =>
-        focused()?.timeline.rawEvent(roomId, eventId) ?? null,
+      eventSource: (eventId) =>
+        defer(() => focused()?.timeline.eventSource(eventId) ?? of(null)),
       reactionDetails: (eventId) =>
-        focused()?.timeline.reactionDetails(eventId) ?? [],
+        defer(() => focused()?.timeline.reactionDetails(eventId) ?? of([])),
     };
   }
 
