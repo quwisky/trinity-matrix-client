@@ -73,10 +73,11 @@ interface Loop {
  * the app runs. After each sync this records where the sync left every room, which is
  * the only place a live event can later be cut from, and trims a room that has passed
  * {@link TRIM_HIGH_WATER} events back to its latest ones. A held room (one with a hint, or
- * one an open `timeline()` shows, until its hint arrives) is trimmed only while its hint
- * says the window is hidden and its view follows the newest message, keeping what the hint
- * names. If that trim fails it is reported once and not tried again while held; once
- * released, the room is trimmed like any other.
+ * one an open `timeline()` shows: before its hint arrives, or while a waiting send keeps
+ * its feed open) is trimmed only while its hint says the window is hidden and its view
+ * follows the newest message, keeping what the hint names. If that trim fails it is
+ * reported once and not tried again while held; once released, the room is trimmed at
+ * once, back to its latest events, unless a feed still shows it.
  *
  * It also rewinds rooms after the person unblocks someone; see {@link rewind}.
  */
@@ -112,9 +113,9 @@ export class JsSdkTimelineRetention {
   }
 
   /**
-   * Records the room's hint and trims it now if the hint allows: a released room past the
-   * high-water mark, or a held one the window hides at its newest message. Returns the
-   * client when it trimmed.
+   * Records the room's hint and trims it now if the hint allows: a released room nobody
+   * shows, back to its latest events, or a held one the window hides at its newest message
+   * once past the high-water mark. Returns the client when it trimmed.
    */
   setHint(
     accountId: string,
@@ -133,10 +134,7 @@ export class JsSdkTimelineRetention {
     try {
       if (hint) {
         this.trimHeld(loop, accountId, room, hint);
-      } else if (
-        !this.ports.subscribed(loop.client, roomId) &&
-        before.getEvents().length > TRIM_HIGH_WATER
-      ) {
+      } else if (!this.ports.subscribed(loop.client, roomId)) {
         trimLiveTimeline(room, accountId);
       }
     } catch (error: unknown) {
@@ -208,8 +206,7 @@ export class JsSdkTimelineRetention {
         rewindLiveTimeline(room, syncToken);
         const release = holdUnreadCounts(client, room, counted);
         // A shown room pages back to about its depth, at least one page; any other one page.
-        const target =
-          this.hintOf(accountId, room.roomId)?.shown === false ? 1 : depth;
+        const target = this.hintOf(accountId, room.roomId)?.shown ? depth : 1;
         const refill = held
           ? this.ports.refill(accountId, room.roomId, target, () =>
               this.held(client, accountId, room.roomId),

@@ -177,30 +177,37 @@ describe('JsSdkTimelineEngine retention', () => {
     expect(loaded('!open:hs')).toBeLessThanOrEqual(TRIM_HIGH_WATER + 10);
   });
 
-  it('trims a released room at once once it is past the high-water mark', async () => {
-    const { sync, loaded, retain } = setup();
-    await retain('!open:hs', SCROLLED_BACK);
-    for (let i = 0; i < 25; i++) await sync();
-
-    await retain('!open:hs', null);
-
-    expect(loaded('!open:hs')).toBeLessThanOrEqual(2 * TRIM_KEEP);
-  });
-
-  it('trims a released room on the next sync', async () => {
+  it('trims a released room nobody shows at once, back to its latest events', async () => {
     const { sync, loaded, retain } = setup();
     await retain('!open:hs', SCROLLED_BACK);
     for (let i = 0; i < 15; i++) await sync();
 
     await retain('!open:hs', null);
-    expect(loaded('!open:hs')).toBe(150);
-    for (let i = 0; i < 6; i++) await sync();
+
+    // Under the high-water mark too, as a released history always was.
+    expect(loaded('!open:hs')).toBeLessThanOrEqual(2 * TRIM_KEEP);
+    expect(loaded('!open:hs')).toBeGreaterThanOrEqual(TRIM_KEEP);
+  });
+
+  it('trims a released room on the next sync while a timeline still showed it at release', async () => {
+    const { engine, sync, loaded, retain } = setup();
+    await retain('!open:hs', SCROLLED_BACK);
+    // A waiting send keeps the room's feed open past its handle.
+    const feed = engine
+      .timeline(ALICE, '!open:hs', { kind: 'live' })
+      .subscribe();
+    for (let i = 0; i < 25; i++) await sync();
+
+    await retain('!open:hs', null);
+    expect(loaded('!open:hs')).toBe(250);
+    feed.unsubscribe();
+    await sync();
 
     expect(loaded('!open:hs')).toBeLessThanOrEqual(TRIM_HIGH_WATER);
     expect(loaded('!open:hs')).toBeGreaterThanOrEqual(TRIM_KEEP);
   });
 
-  it('leaves a room an open timeline shows to its hint', async () => {
+  it('holds a room an open timeline shows without a hint until the timeline closes', async () => {
     const { engine, sync, loaded } = setup();
     const shown = engine.timeline(ALICE, '!busy:hs', { kind: 'live' });
     const subscription = shown.subscribe();
@@ -428,6 +435,36 @@ describe('JsSdkTimelineEngine retention', () => {
       expect(
         page.mock.calls.filter(([roomId]) => roomId === '!open:hs'),
       ).toHaveLength(7);
+    });
+
+    it('refills a room an open timeline shows without a hint by one page', async () => {
+      const { client, engine, page, sync } = await started();
+      const feed = engine
+        .timeline(ALICE, '!busy:hs', { kind: 'live' })
+        .subscribe();
+      await sync();
+      await sync();
+      page.mockImplementation((roomId: string) =>
+        Promise.resolve({
+          start: 's',
+          end: 'older',
+          chunk: Array.from(
+            { length: 5 },
+            (_, i) =>
+              message(roomId, 100 + page.mock.calls.length * 5 + i).event,
+          ),
+        } as Awaited<ReturnType<MatrixClient['createMessagesRequest']>>),
+      );
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+
+      await sync();
+
+      const busyPages = () =>
+        page.mock.calls.filter(([roomId]) => roomId === '!busy:hs');
+      await vi.waitFor(() => expect(busyPages()).toHaveLength(1));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(busyPages()).toHaveLength(1);
+      feed.unsubscribe();
     });
 
     it('rewinds nothing for a block, the list as first loaded, or an unblock the server never echoed', async () => {

@@ -977,11 +977,6 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     });
   }
 
-  /**
-   * Creates the thread of `rootId` when it has none. matrix-js-sdk forms no thread from the
-   * sender's own first reply: its echo would leave the room's timeline and land nowhere. Done
-   * only on send, so a thread opened and abandoned leaves no empty thread behind.
-   */
   setRetention(
     accountId: string,
     roomId: string,
@@ -1033,6 +1028,11 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     return defer(() => (held() ? page(1) : of(null)));
   }
 
+  /**
+   * Creates the thread of `rootId` when it has none. matrix-js-sdk forms no thread from the
+   * sender's own first reply: its echo would leave the room's timeline and land nowhere. Done
+   * only on send, so a thread opened and abandoned leaves no empty thread behind.
+   */
   private ensureThread(
     client: MatrixClient,
     room: Room,
