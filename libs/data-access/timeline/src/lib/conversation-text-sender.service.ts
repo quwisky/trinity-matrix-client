@@ -27,7 +27,7 @@ import {
   type ConversationTextSendRequest,
   type ConversationTextSender,
 } from './conversation-compose';
-import { shownContent } from './shields';
+import { shownContent } from './js-sdk/shields';
 import { conversationDraftKey } from './conversation-draft-key';
 import { keepWhileWaiting } from './waiting-draft';
 

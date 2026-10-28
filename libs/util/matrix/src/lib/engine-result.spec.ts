@@ -87,6 +87,11 @@ const SESSION_FAILURES = [
     code: 'invite-blocked',
     diagnostic: { kind: 'permission' },
   },
+  {
+    kind: 'unexpected',
+    code: 'unsupported',
+    diagnostic: { kind: 'unexpected' },
+  },
 ] satisfies EngineFailure[];
 
 describe('engineFailureMessage', () => {
@@ -101,6 +106,16 @@ describe('engineFailureMessage', () => {
 
   it('words not-signed-in', () => {
     expect(engineFailureMessage(NOT_SIGNED_IN)).toBe('Not signed in.');
+  });
+
+  it('message-unavailable reads "Message not found."', () => {
+    expect(
+      engineFailureMessage({
+        kind: 'unexpected',
+        code: 'message-unavailable',
+        diagnostic: { kind: 'unexpected' },
+      }),
+    ).toBe('Message not found.');
   });
 
   it.each<[DiscoveryFailureReason, string]>([

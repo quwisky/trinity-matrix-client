@@ -24,8 +24,8 @@ import {
   pollStartContent,
 } from '@trinity/util/matrix';
 import { TimelineService } from './timeline.service';
-import { revisionOf } from './event-revision';
-import { shieldSubject } from './shields';
+import { revisionOf } from './js-sdk/event-revision';
+import { shieldSubject } from './js-sdk/shields';
 import { trimLiveTimeline } from './live-timeline-trim';
 import type { MessageView } from './message-presentation';
 import {

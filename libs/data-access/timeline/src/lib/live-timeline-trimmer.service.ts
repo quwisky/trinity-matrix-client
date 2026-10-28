@@ -31,7 +31,7 @@ import {
   rewindLiveTimeline,
   trimLiveTimeline,
 } from './live-timeline-trim';
-import { scrollbackLive } from './live-scrollback';
+import { scrollbackLive } from './js-sdk/live-scrollback';
 import {
   decrypted,
   heldEventIds,

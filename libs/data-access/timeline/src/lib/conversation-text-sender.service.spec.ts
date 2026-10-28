@@ -14,7 +14,7 @@ import { DraftStoreService } from '@trinity/platform-native';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 import { conversationDraftKey } from './conversation-draft-key';
-import { resolvedShields } from './shields';
+import { resolvedShields } from './js-sdk/shields';
 import { fakeEdit, fakeEvent, fakeRoom } from './timeline.spec-harness';
 
 const KEY = {

@@ -1,8 +1,8 @@
 import { EventType, type MatrixEvent } from 'matrix-js-sdk';
-import type { MessageShield, MessageView } from './message-presentation';
+import type { MessageShield, MessageView } from '../message-presentation';
 
 /** One loaded event's projection and what it was projected from. */
-export interface ProjectedRow {
+export interface ProjectedRow<V = MessageView> {
   /**
    * A message's effective content as JSON, the string `revisionOf` memoises per content
    * object; empty for a system line.
@@ -11,7 +11,7 @@ export interface ProjectedRow {
   /** Everything else the row was projected from; a system line's text. */
   readonly rest: string;
   /** Null for a system change with nothing to say, which renders no row. */
-  readonly view: MessageView | null;
+  readonly view: V | null;
   /** The shield the row was projected with. Shields are interned, so identity is enough. */
   readonly shield: MessageShield | null;
   /** The event whose text and shield the row shows: its latest checked edit, else itself. */
@@ -20,7 +20,18 @@ export interface ProjectedRow {
   readonly members: readonly string[];
 }
 
-interface CachedRow extends ProjectedRow {
+/** What a re-check reads off a row's view. */
+export interface RowReads<V> {
+  poll(view: V): boolean;
+  receipts(view: V): boolean;
+}
+
+const MESSAGE_VIEW_READS: RowReads<MessageView> = {
+  poll: (view) => !!view.poll,
+  receipts: (view) => view.readReceipts.length > 0,
+};
+
+interface CachedRow<V> extends ProjectedRow<V> {
   /** The refresh that last visited the row; an older one means its event has left. */
   pass: number;
 }
@@ -36,8 +47,8 @@ interface CachedRow extends ProjectedRow {
  * that can change a row notes what it changed, and anything that cannot be attributed to
  * particular rows re-checks them all.
  */
-export class TimelineRowCache {
-  private readonly rows = new Map<string, CachedRow>();
+export class TimelineRowCache<V = MessageView> {
+  private readonly rows = new Map<string, CachedRow<V>>();
   private pass = 0;
   private visited = 0;
   private stored = 0;
@@ -65,6 +76,11 @@ export class TimelineRowCache {
 
   /** Rows whose projection changed during the current pass: a reply quoting one re-checks. */
   private readonly changed = new Set<string>();
+
+  /** `reads` says whether a view shows a poll or "seen by" receipts; the default reads a {@link MessageView}. */
+  constructor(
+    private readonly reads: RowReads<V> = MESSAGE_VIEW_READS as RowReads<unknown> as RowReads<V>,
+  ) {}
 
   get size(): number {
     return this.rows.size;
@@ -152,7 +168,7 @@ export class TimelineRowCache {
     replyTo: string | undefined,
     shield: MessageShield | null,
     subjectId: string = eventId,
-  ): ProjectedRow | undefined {
+  ): ProjectedRow<V> | undefined {
     const row = this.rows.get(eventId);
     if (
       !row ||
@@ -166,7 +182,7 @@ export class TimelineRowCache {
   }
 
   /** The row as last projected, to compare a re-check against. */
-  previous(eventId: string): ProjectedRow | undefined {
+  previous(eventId: string): ProjectedRow<V> | undefined {
     return this.rows.get(eventId);
   }
 
@@ -174,8 +190,8 @@ export class TimelineRowCache {
    * Record a re-checked row. `changed` says its view is new, so replies quoting its event
    * re-check too.
    */
-  store(eventId: string, row: ProjectedRow, changed: boolean): void {
-    const cached: CachedRow = { ...row, pass: this.pass };
+  store(eventId: string, row: ProjectedRow<V>, changed: boolean): void {
+    const cached: CachedRow<V> = { ...row, pass: this.pass };
     this.rows.set(eventId, cached);
     this.visited++;
     this.stored++;
@@ -220,7 +236,7 @@ export class TimelineRowCache {
     if (eventId) this.events.add(eventId);
   }
 
-  private visit(row: CachedRow): void {
+  private visit(row: CachedRow<V>): void {
     row.pass = this.pass;
     this.visited++;
   }
@@ -229,7 +245,7 @@ export class TimelineRowCache {
     eventId: string,
     replyTo: string | undefined,
     shield: MessageShield | null,
-    row: CachedRow,
+    row: CachedRow<V>,
   ): boolean {
     const stale = this.stale;
     if (
@@ -243,8 +259,8 @@ export class TimelineRowCache {
     if (replyTo && (stale.events.has(replyTo) || this.changed.has(replyTo))) {
       return true;
     }
-    if (stale.pollsMoved && row.view?.poll) return true;
-    if (stale.receiptsMoved && (row.view?.readReceipts.length ?? 0) > 0) {
+    if (stale.pollsMoved && row.view && this.reads.poll(row.view)) return true;
+    if (stale.receiptsMoved && row.view && this.reads.receipts(row.view)) {
       return true;
     }
     if (stale.members.size > 0) {
