@@ -26,6 +26,7 @@ import {
   readManagedImagePacks,
   validateImagePackSource,
 } from './image-pack-management.service';
+import { ImagePackSelectionStore } from './image-pack-selection.store';
 import { sessionWith } from './media.spec-harness';
 
 function event(
@@ -342,6 +343,51 @@ describe('ImagePackManagementService', () => {
     await expect(
       firstValueFrom(service.install({ roomId: '!pack:hs', stateKey: 'x' })),
     ).rejects.toMatchObject({ code: 'not-signed-in' });
+  });
+
+  it('refuses as not signed in while the active account has no running client', async () => {
+    const { service, engine } = setup();
+    const notLive = engine.fetchAccountData('@nobody:fake', 'x');
+    vi.spyOn(engine, 'joinPackRoom').mockReturnValue(
+      engine.joinPackRoom('@nobody:fake', ALIAS),
+    );
+    vi.spyOn(engine, 'fetchAccountData').mockReturnValue(notLive);
+
+    await expect(firstValueFrom(service.discover(ALIAS))).rejects.toMatchObject(
+      {
+        code: 'not-signed-in',
+      },
+    );
+    await expect(
+      firstValueFrom(service.install({ roomId: '!pack:hs', stateKey: 'x' })),
+    ).rejects.toMatchObject({ code: 'not-signed-in' });
+  });
+
+  it('leaves the next account installed list alone when it becomes active during an install', async () => {
+    const { service, engine, alice, session, packRoom } = setup({
+      roomEvents: [event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Fun'))],
+    });
+    service.connect();
+    await settle();
+    await firstValueFrom(service.discover(ALIAS));
+    const rooms = engine.packRooms.bind(engine);
+    const store = TestBed.inject(ImagePackSelectionStore);
+    let switched = false;
+    vi.spyOn(engine, 'packRooms').mockImplementation((accountId, ids) => {
+      // The install's read follows its confirmed selection. The switch, its reset and bob's
+      // list all land while that read is in flight.
+      if (switched || store.get(alice) === null) return rooms(accountId, ids);
+      switched = true;
+      session.set(sessionWith('@bob:fake', [alice, '@bob:fake']));
+      return from(settle()).pipe(switchMap(() => rooms(accountId, ids)));
+    });
+
+    await firstValueFrom(
+      service.install({ roomId: packRoom, stateKey: 'fun' }),
+    );
+
+    expect(switched).toBe(true);
+    expect(service.installed()).toEqual([]);
   });
 
   it('projects installed packs for the active account and shows an install at once', async () => {

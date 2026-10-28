@@ -17,7 +17,7 @@ import {
   projectActiveAccount,
   SessionStateService,
 } from '@trinity/data-access/matrix-client';
-import { type EngineResult, unwrapEngineResult } from '@trinity/util/matrix';
+import { EngineRequestError, type EngineResult } from '@trinity/util/matrix';
 import { EXPRESSION_ENGINE } from './expression-engine.token';
 import {
   IMAGE_PACK_ROOMS_EVENT_TYPE,
@@ -244,11 +244,11 @@ export class ImagePackManagementService {
       if (verified !== null && sameJsonDocument(verified, next)) {
         const selection = { present: true, content: verified };
         this.selections.set(accountId, selection);
+        const rooms = await firstValueFrom(
+          this.engine.packRooms(accountId, selectedRoomIds(verified)),
+        );
         // Shown at once, ahead of the sync echo, unless another account has become active.
         if (untracked(this.session.activeAccountId) === accountId) {
-          const rooms = await firstValueFrom(
-            this.engine.packRooms(accountId, selectedRoomIds(verified)),
-          );
           this.installedState.set(readManagedImagePacks({}, rooms, selection));
         }
         return;
@@ -258,9 +258,14 @@ export class ImagePackManagementService {
   }
 }
 
-/** A command's value; its failure rejects. */
-function settled<T>(command: Observable<EngineResult<T>>): Promise<T> {
-  return firstValueFrom(command.pipe(unwrapEngineResult()));
+/** A command's value; its failure rejects, as `not-signed-in` while the account has no running client. */
+async function settled<T>(command: Observable<EngineResult<T>>): Promise<T> {
+  const result = await firstValueFrom(command);
+  if (result.ok) return result.value;
+  if (result.failure.code === 'account-not-live') {
+    throw new ImagePackManagementError('not-signed-in');
+  }
+  throw new EngineRequestError(result.failure);
 }
 
 function sameJsonDocument(left: unknown, right: unknown): boolean {
