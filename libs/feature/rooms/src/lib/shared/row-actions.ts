@@ -11,7 +11,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { isValidMxcUri, type AddInput } from '@trinity/data-access/media';
 import { messagePermalink } from '@trinity/util/matrix';
-import { defer, filter, take } from 'rxjs';
+import { defer, filter, finalize, take } from 'rxjs';
 import { type EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { type ForwardService } from '../forward/forward.service';
 import { type MediaSaveService } from '../media-attachment/media-save.service';
@@ -38,7 +38,7 @@ export interface SharedRowActionContext {
     TrnSurfaceService,
     'open' | 'openAndWait$' | 'openActions'
   >;
-  readonly timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>;
+  readonly timeline: Pick<ConversationRuntime['timeline'], 'eventSource'>;
   readonly forward: Pick<ForwardService, 'forward$'>;
   readonly mediaSave: Pick<MediaSaveService, 'save'>;
   readonly report: Pick<ReportService, 'report$'>;
@@ -93,21 +93,19 @@ export function buildRowCaps(
 }
 
 /**
- * A sticker event's image as "Add to my emoji" takes it: its own mxc, info and body. Null for
+ * A sticker row's image as "Add to my emoji" takes it: its own mxc, info and body. Null for
  * anything else, or an encrypted sticker, which has no plain mxc to put in a pack.
  */
-export function stickerImage(
-  raw: object | null,
+function stickerImage(
+  message: MessageView,
 ): Extract<AddInput, { kind: 'existing' }> | null {
-  const event = raw as { type?: unknown; content?: unknown } | null;
-  if (event?.type !== 'm.sticker' || !isRecord(event.content)) return null;
-  const { url, info, body } = event.content;
-  if (!isValidMxcUri(url)) return null;
+  const image = message.kind === 'sticker' ? message.stickerImage : null;
+  if (!image || !isValidMxcUri(image.url)) return null;
   return {
     kind: 'existing',
-    url,
-    ...(isRecord(info) ? { info } : {}),
-    ...(typeof body === 'string' ? { body } : {}),
+    url: image.url,
+    ...(image.info ? { info: { ...image.info } } : {}),
+    ...(image.body !== undefined ? { body: image.body } : {}),
   };
 }
 
@@ -116,6 +114,9 @@ interface Emoticon {
   readonly url: string;
   readonly code: string;
 }
+
+/** Rows whose source is being read, per timeline: a double click opens one dialog. */
+const sourcesInFlight = new WeakMap<object, Set<string>>();
 
 /** Parsed once per message: caps are rebuilt for every row on each timeline change. */
 const emoticonCache = new WeakMap<MessageView, readonly Emoticon[]>();
@@ -147,14 +148,12 @@ function emoticonsIn(message: MessageView): readonly Emoticon[] {
  */
 export function addableImages(
   adder: Pick<AddToMyEmojiService, 'canAdd'>,
-  timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>,
-  roomId: string,
 ): (message: MessageView) => boolean {
   return (message) => {
     if (message.kind !== 'sticker') {
       return emoticonsIn(message).some(({ url }) => adder.canAdd(url));
     }
-    const image = stickerImage(timeline.rawEvent(roomId, message.id));
+    const image = stickerImage(message);
     return !!image && adder.canAdd(image.url);
   };
 }
@@ -185,10 +184,6 @@ function addEmoticon(row: MessageRow, ctx: SharedRowActionContext): void {
     },
     { ariaLabel: 'Add to my emoji' },
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Whether two caps carry the same capabilities — every field is a flat primitive. */
@@ -287,19 +282,30 @@ export function dispatchSharedRowAction(
       if (row.media) ctx.mediaSave.save(row.media);
       return true;
     case 'add-to-emoji': {
-      const image = stickerImage(ctx.timeline.rawEvent(ctx.roomId, row.id));
+      const image = stickerImage(row);
       // The dialog's shortcode starts from this name, so it is never empty.
       if (image) ctx.addToEmoji.add(image, image.body || 'sticker');
       else addEmoticon(row, ctx);
       return true;
     }
     case 'view-source': {
-      const raw = ctx.timeline.rawEvent(ctx.roomId, row.id);
-      if (raw) {
-        ctx.dialog.open(MessageSourceComponent, {
-          inputs: { source: JSON.stringify(raw, null, 2) },
+      const pending = sourcesInFlight.get(ctx.timeline) ?? new Set<string>();
+      sourcesInFlight.set(ctx.timeline, pending);
+      if (pending.has(row.id)) return true;
+      pending.add(row.id);
+      ctx.timeline
+        .eventSource(row.id)
+        .pipe(
+          finalize(() => pending.delete(row.id)),
+          takeUntilDestroyed(ctx.destroyRef),
+        )
+        .subscribe((raw) => {
+          if (raw) {
+            ctx.dialog.open(MessageSourceComponent, {
+              inputs: { source: JSON.stringify(raw, null, 2) },
+            });
+          }
         });
-      }
       return true;
     }
     case 'forward':

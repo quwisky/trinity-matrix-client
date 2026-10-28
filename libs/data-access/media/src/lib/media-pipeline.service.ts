@@ -48,6 +48,11 @@ interface StagedEntry {
 
 interface PresentedEntry {
   readonly media: MediaPayload;
+  readonly accountId: string;
+}
+
+interface LiveSource {
+  readonly media: MediaPayload;
   readonly client: MatrixClient;
 }
 
@@ -365,10 +370,8 @@ export class MediaPipeline {
     });
   }
 
-  present(
-    media: MediaPayload,
-    client: MatrixClient = this.matrix.instance,
-  ): PresentedMediaReference {
+  /** Presents `media` for an Account; the active one when omitted. */
+  present(media: MediaPayload, accountId?: string): PresentedMediaReference {
     const reference = Object.freeze({
       id: `presented-media-${++nextPresentedId}`,
       kind: media.kind,
@@ -388,7 +391,10 @@ export class MediaPipeline {
         ? { waveform: Object.freeze([...media.waveform]) }
         : {}),
     }) as PresentedMediaReference;
-    this.presented.set(reference, { media, client });
+    this.presented.set(reference, {
+      media,
+      accountId: accountId ?? this.matrix.instance.getUserId() ?? '',
+    });
     return reference;
   }
 
@@ -401,7 +407,7 @@ export class MediaPipeline {
     if (a === b) return true;
     const x = this.presented.get(a);
     const y = this.presented.get(b);
-    if (!x || !y || x.client !== y.client) return false;
+    if (!x || !y || x.accountId !== y.accountId) return false;
     return mediaIdentity(x.media) === mediaIdentity(y.media);
   }
 
@@ -439,20 +445,18 @@ export class MediaPipeline {
   /**
    * Release this caller's pin on a resolved rendition and free it unless another view still
    * pins it; see {@link MediaService.drop}. Unsubscribe from the rendition's resolve first.
-   * Works for a reference whose Account has since gone: freeing bytes needs no live client.
+   * For a reference whose Account has since gone it only releases the pin, leaving
+   * the bytes to ordinary eviction.
    */
   drop(
     reference: PresentedMediaReference,
     variant: 'thumbnail' | 'full',
     url: string | null,
   ): void {
-    const source = this.presented.get(reference);
-    if (source) {
-      this.bytes.drop(url, {
-        media: source.media,
-        variant,
-        client: source.client,
-      });
+    const entry = this.presented.get(reference);
+    const client = entry && this.matrix.clientFor(entry.accountId);
+    if (entry && client) {
+      this.bytes.drop(url, { media: entry.media, variant, client });
     } else {
       this.bytes.unpin(url);
     }
@@ -466,14 +470,10 @@ export class MediaPipeline {
 
   private liveSource(
     reference: PresentedMediaReference,
-  ): PresentedEntry | undefined {
-    const source = this.presented.get(reference);
-    const accountId = source?.client.getUserId();
-    return source &&
-      accountId &&
-      this.matrix.clientFor(accountId) === source.client
-      ? source
-      : undefined;
+  ): LiveSource | undefined {
+    const entry = this.presented.get(reference);
+    const client = entry && this.matrix.clientFor(entry.accountId);
+    return entry && client ? { media: entry.media, client } : undefined;
   }
 
   private eventContent(media: UploadedMedia, caption: string): object {

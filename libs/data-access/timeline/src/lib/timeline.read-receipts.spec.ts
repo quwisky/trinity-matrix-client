@@ -15,6 +15,7 @@ import {
   openTimeline,
   privacyProvider,
   setup,
+  ROOM_KEY,
 } from './timeline.spec-harness';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
@@ -52,23 +53,24 @@ it('keeps a blurred timeline warm while suppressing foreground-only effects', as
     providers: [TimelineService, matrixProvider(client), mediaProvider()],
   });
   const svc = TestBed.inject(TimelineService);
-  svc.open('!r:hs');
+  svc.open(ROOM_KEY);
   sendReadReceipt.mockClear();
   const loadOlder$ = svc.loadOlder();
 
   svc.setVisible(false);
   await firstValueFrom(loadOlder$);
   events.push(fakeEvent({ id: '$b', sender: '@a:hs', body: 'still warm' }));
+  room.handlers.get(RoomEvent.Timeline)?.();
+  await Promise.resolve();
   window.dispatchEvent(new Event('focus'));
 
   expect(svc.openRoomId).toBe('!r:hs');
-  expect(svc.openContext()).toBeNull();
+  expect(svc.messages().map((message) => message.id)).toEqual(['$a', '$b']);
   expect(scrollback).not.toHaveBeenCalled();
   expect(sendReadReceipt).not.toHaveBeenCalled();
 
   svc.setVisible(true);
 
-  expect(svc.openContext()?.room).toBe(room);
   expect(sendReadReceipt).toHaveBeenCalledTimes(1);
   expect(sendReadReceipt.mock.calls[0][0].getId()).toBe('$b');
 });
@@ -109,7 +111,7 @@ it('bounds the application projection retained by a blurred conversation', () =>
   expect(svc.messages()).toHaveLength(150);
 });
 
-it('re-acks with the latest live event on refocus, not a stale snapshot', () => {
+it('re-acks with the latest live event on refocus, not a stale snapshot', async () => {
   vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
   const received: { getId: () => string }[] = [];
   const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
@@ -123,9 +125,10 @@ it('re-acks with the latest live event on refocus, not a stale snapshot', () => 
   openTimeline(client);
   expect(received).toHaveLength(0); // unfocused: not acked yet
 
-  // The live timeline gains a newer event while still unfocused (no refresh
-  // is triggered for it in this scenario — e.g. it arrived just before focus).
+  // The live timeline gains a newer event while still unfocused.
   events.push(fakeEvent({ id: '$b', sender: '@a:hs', body: 'yo' }));
+  room.handlers.get(RoomEvent.Timeline)?.();
+  await Promise.resolve();
 
   vi.spyOn(document, 'hasFocus').mockReturnValue(true); // user returns
   window.dispatchEvent(new Event('focus')); // → onFocus → markRead(live timeline)
@@ -224,7 +227,7 @@ describe('while App lock covers the app', () => {
       { '!r:hs': '$a1' },
       { attentive: true },
     );
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     TestBed.tick();
     expect(received).toEqual(['$a1']); // looking: read as it opens
 
@@ -245,7 +248,7 @@ describe('while App lock covers the app', () => {
       { '!r:hs': '$a1' },
       { attentive: false },
     );
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     TestBed.tick();
 
     // Focus alone is not enough: the cover still hides the room.
@@ -268,7 +271,7 @@ describe('while App lock covers the app', () => {
       { '!r:hs': '$a1' },
       { attentive: false },
     );
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     svc.setVisible(false);
     TestBed.tick();
 
@@ -285,7 +288,7 @@ describe('while App lock covers the app', () => {
       { '!r:hs': '$a1' },
       { attentive: true, hold: true },
     );
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     TestBed.tick();
     expect(received).toEqual(['$a1']); // in flight
 
@@ -307,13 +310,13 @@ describe('while App lock covers the app', () => {
       { '!a:hs': '$a1', '!b:hs': '$b1' },
       { attentive: true },
     );
-    svc.open('!a:hs');
+    svc.open({ ...ROOM_KEY, roomId: '!a:hs' });
     TestBed.tick();
     expect(received).toEqual(['$a1']);
 
     attentive.set(false);
     TestBed.tick();
-    svc.open('!b:hs');
+    svc.open({ ...ROOM_KEY, roomId: '!b:hs' });
     TestBed.tick();
     expect(received).toEqual(['$a1']);
 

@@ -178,6 +178,15 @@ export interface MessageView {
   readonly systemCategory?: SystemLineCategory | null;
   /** Why it could not be decrypted, and whether this device can fix it; null otherwise. */
   readonly undecryptable?: UndecryptableView | null;
+  /** A sticker's image as an emoji pack takes it; absent on every other row. */
+  readonly stickerImage?: StickerImage | null;
+}
+
+/** A sticker's `url`, `info` and `body`, so it can be added to an emoji pack. */
+export interface StickerImage {
+  readonly url: string;
+  readonly info?: Readonly<Record<string, unknown>>;
+  readonly body?: string;
 }
 
 /** Whether the presented message can be edited as text. */
@@ -339,6 +348,8 @@ export interface NormalizedMediaEvent extends NormalizedCommon {
   readonly addressesViewer: boolean;
   /** Display names of the users the formatted body links to, for its mention pills. */
   readonly mentionNames: Readonly<Record<string, string>>;
+  /** For a sticker, its image as an emoji pack takes it. */
+  readonly stickerImage?: StickerImage;
 }
 
 export interface NormalizedLocationEvent extends NormalizedCommon {
@@ -660,6 +671,7 @@ export function presentNormalizedTimelineEvent(
       previewEncrypted: true,
       summary: null,
       systemCategory: null,
+      ...(event.stickerImage ? { stickerImage: event.stickerImage } : {}),
     });
   }
 
