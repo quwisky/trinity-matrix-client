@@ -24,7 +24,13 @@ export interface ActiveAccountProjection {
 export interface ProjectActiveAccountConfig<T> {
   /** Stable acknowledgement identity inside the Active Account projection scope. */
   id: string;
-  /** The account's source; its first value completes a reconcile, later ones are coalesced. Errors fail the projection. */
+  /**
+   * The account's source; its first value completes a reconcile, later ones are coalesced.
+   * It must emit a snapshot first: a feed with no initial value never becomes ready. Report
+   * expected failures as values and error only on a fatal fault: an error ends the
+   * subscription and leaves the projection failed until an account switch, a session
+   * generation change or a runtime transition.
+   */
   subscribe: (accountId: string) => Observable<T>;
   /** Publish a value into the read model; called synchronously on connect when the source emits on subscribe. */
   rebuild: (value: T, accountId: string) => void;
