@@ -85,32 +85,16 @@ test.describe('Keyword notifications', () => {
     await expect(page.getByTestId('keyword-row')).toHaveCount(1);
     await expect(page.getByTestId('keyword-row')).toContainText(KEYWORD);
 
-    // The Sound checkbox round-trips too: unticking it rewrites the rule's actions on
-    // the server, and the highlight tweak survives (a keyword that notifies without
-    // marking where it matched is a notification you cannot act on).
-    const hasTweak = (
-      rule: { actions: unknown[] } | undefined,
-      tweak: string,
-    ) =>
-      (rule?.actions ?? []).some(
-        (action) =>
-          !!action &&
-          typeof action === 'object' &&
-          (action as { set_tweak?: string }).set_tweak === tweak,
-      );
-    expect(hasTweak(rule, 'sound')).toBe(true);
-    await page
-      .getByRole('switch', {
-        name: `Play a sound for ${KEYWORD}`,
-        exact: true,
-      })
-      .click();
-    await expect
-      .poll(async () => hasTweak(await contentRule(), 'sound'), {
-        timeout: 20_000,
-      })
-      .toBe(false);
-    expect(hasTweak(await contentRule(), 'highlight')).toBe(true);
+    // A keyword carries no sound of its own (matrix-rust-sdk semantics): the rule plays the
+    // default sound and highlights, and the row offers no per-keyword Sound control.
+    expect(rule?.actions).toEqual([
+      'notify',
+      { set_tweak: 'sound', value: 'default' },
+      { set_tweak: 'highlight' },
+    ]);
+    await expect(
+      page.getByTestId('keyword-row').getByRole('switch'),
+    ).toHaveCount(0);
 
     // Leave settings so the room list is on screen; do NOT open the room, or reading it
     // would clear the very badge being asserted.
@@ -136,8 +120,7 @@ test.describe('Keyword notifications', () => {
     await expect(highlight).toBeVisible({ timeout: 30_000 });
     await expect(channel.first().locator('.sr-only')).toHaveText(/mentions/);
 
-    // Removing it deletes the rule server-side rather than only dropping the row — the
-    // rule is addressed by id, and a delete aimed at the wrong string simply 404s.
+    // Removing it deletes the rule server-side rather than only dropping the row.
     await page.goto('/settings/notifications');
     await expect(page.getByTestId('keyword-row')).toHaveCount(1);
     await page.getByTestId('keyword-remove').first().click();

@@ -16,7 +16,7 @@
       data-testid="keyword-empty"
     />
   } @else {
-    @for (keyword of keywords(); track keyword.ruleId) {
+    @for (keyword of keywords(); track keyword.pattern) {
       <trn-settings-row [label]="keyword.pattern" data-testid="keyword-row">
         <span class="flex shrink-0 items-center gap-3">
           @if (!keyword.enabled) {
@@ -26,24 +26,12 @@
               >Off</span
             >
           }
-          <label
-            class="flex cursor-pointer items-center gap-2 text-13 text-muted-foreground"
-          >
-            <trn-switch
-              [checked]="soundOf(keyword)"
-              [disabled]="isBusy(keyword.ruleId)"
-              (checkedChange)="toggleSound(keyword, $event)"
-              [aria-label]="'Play a sound for ' + keyword.pattern"
-              data-testid="keyword-sound"
-            />
-            Sound
-          </label>
           <button
             trnBtn
             type="button"
             presentation="outline"
             size="sm"
-            [disabled]="isBusy(keyword.ruleId)"
+            [disabled]="isBusy(keyword.pattern)"
             (click)="remove(keyword)"
             [attr.aria-label]="'Remove keyword ' + keyword.pattern"
             data-testid="keyword-remove"

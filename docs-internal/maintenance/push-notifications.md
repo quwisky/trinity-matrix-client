@@ -32,10 +32,11 @@ room row applies the operation to its contributing accounts and reports a mixed
 result when their modes differ.
 
 Account toggles map to predefined rule aliases, because homeservers can expose
-both legacy and current intentional-mention rules. Keyword rules address their
-rule ID, preserve server-defined rules, and reject `*` and `?`: those characters
-would create a cross-client wildcard notification rule rather than a literal
-keyword.
+both legacy and current intentional-mention rules. Keywords are keyed by the
+word, as in matrix-rust-sdk: each plays the default sound and highlights, and
+removing one deletes every rule for the word. They preserve server-defined rules
+and reject `*` and `?`: those characters would create a cross-client wildcard
+notification rule rather than a literal keyword.
 
 ## Deliver and activate local notifications
 
