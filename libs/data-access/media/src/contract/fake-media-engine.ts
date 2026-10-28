@@ -63,6 +63,15 @@ export class FakeMediaEngine implements MediaEngine {
     return { filename: stored.filename, mimeType: stored.mimeType };
   }
 
+  /** Seeds the media repository, as if `bytes` had been uploaded in the clear to `mxc`. */
+  put(
+    mxc: string,
+    bytes: Uint8Array,
+    mimeType = 'application/octet-stream',
+  ): void {
+    this.media.set(mxc, { bytes, filename: null, mimeType });
+  }
+
   /** URLs currently minted and not released. */
   liveUrls(): readonly string[] {
     return [...this.urls.keys()];
@@ -106,16 +115,19 @@ export class FakeMediaEngine implements MediaEngine {
   ): Observable<TransferUpdate<UploadedContent>> {
     return new Observable((subscriber) => {
       let finished = false;
-      void this.store(accountId, file, request).then((result) => {
+      void this.store(accountId, file, request).then(async (result) => {
         if (subscriber.closed) return;
-        finished = true;
         if (result.ok) {
           subscriber.next({
             kind: 'progress',
             phase: 'uploading',
             fraction: 1,
           });
+          // The result lands a task later, as a real upload's does, so a caller can still abort.
+          await new Promise((resolve) => setTimeout(resolve));
+          if (subscriber.closed) return;
         }
+        finished = true;
         subscriber.next({ kind: 'done', result });
         subscriber.complete();
       });

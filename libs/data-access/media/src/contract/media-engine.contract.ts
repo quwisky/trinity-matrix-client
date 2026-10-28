@@ -1,4 +1,9 @@
-import { type Observable, firstValueFrom, toArray } from 'rxjs';
+import {
+  type Observable,
+  type Subscription,
+  firstValueFrom,
+  toArray,
+} from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   type EncryptedFileInfo,
@@ -291,23 +296,31 @@ export function defineMediaEngineContract(
     );
 
     it(
-      'stops an upload when unsubscribed',
+      'emits nothing more once unsubscribed after its first progress',
       async () => {
         const seen: unknown[] = [];
-        const subscription = engine
+        let firstProgress!: () => void;
+        const progressed = new Promise<void>((resolve) => {
+          firstProgress = resolve;
+        });
+        const subscription: Subscription = engine
           .upload(alice, new Blob([randomBytes(1_048_576)]), {
             filename: 'gone.bin',
             mimeType: 'application/octet-stream',
             encrypt: false,
           })
           .subscribe({
-            next: (update) => seen.push(update),
+            next: (update) => {
+              seen.push(update.kind);
+              if (update.kind === 'progress') firstProgress();
+            },
             error: (error: unknown) => seen.push(error),
           });
+        await progressed;
         subscription.unsubscribe();
         await new Promise((resolve) => setTimeout(resolve, 200));
 
-        expect(seen).toEqual([]);
+        expect(seen).toEqual(['progress']);
       },
       testTimeoutMs,
     );

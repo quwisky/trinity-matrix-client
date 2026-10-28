@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import type { MatrixClient } from 'matrix-js-sdk';
+import type { MatrixClient, UploadOpts } from 'matrix-js-sdk';
 import {
   Observable,
   catchError,
@@ -93,11 +93,11 @@ export class JsSdkMediaEngine implements MediaEngine {
     return defer(() => {
       const client = this.clients.clientFor(accountId);
       if (!client) return of(engineFail(localFailure('account-not-live')));
+      const { source, downscaleTo } = request;
       return this.fetchBlob(client, request).pipe(
-        // Minted in the last step, so an unsubscribed request leaves no URL behind.
-        map((blob) =>
-          engineOk({ url: URL.createObjectURL(blob), size: blob.size }),
-        ),
+        map((blob): EngineResult<Blob> => engineOk(blob)),
+        // Only the download and its hash check fail as results; a local fault after them
+        // (the downscale) errors the stream.
         catchError((error: unknown) =>
           of(
             engineFail(
@@ -106,6 +106,22 @@ export class JsSdkMediaEngine implements MediaEngine {
                 : requestFailed(error),
             ),
           ),
+        ),
+        switchMap((result) =>
+          result.ok && source.kind === 'encrypted' && downscaleTo
+            ? from(downscaleImage(result.value, downscaleTo)).pipe(
+                map(engineOk),
+              )
+            : of(result),
+        ),
+        // Minted in the last step, so an unsubscribed request leaves no URL behind.
+        map((result) =>
+          result.ok
+            ? engineOk({
+                url: URL.createObjectURL(result.value),
+                size: result.value.size,
+              })
+            : result,
         ),
       );
     });
@@ -165,13 +181,30 @@ export class JsSdkMediaEngine implements MediaEngine {
           phase: 'uploading',
           fraction: p.total ? p.loaded / p.total : 0,
         });
-      void uploadBytes(client, file, request, abortController, progressHandler)
-        .then(engineOk, (error: unknown) => engineFail(uploadFailed(error)))
-        .then((result) => {
-          if (abortController.signal.aborted) return;
-          subscriber.next({ kind: 'done', result });
-          subscriber.complete();
-        });
+      void prepareUpload(file, request, abortController.signal)
+        .then((prepared) =>
+          client
+            .uploadContent(prepared.body, {
+              ...prepared.options,
+              progressHandler,
+              abortController,
+            })
+            .then(
+              (res) => engineOk(prepared.content(res.content_uri)),
+              (error: unknown) => engineFail(uploadFailed(error)),
+            ),
+        )
+        .then(
+          (result) => {
+            if (abortController.signal.aborted) return;
+            subscriber.next({ kind: 'done', result });
+            subscriber.complete();
+          },
+          // A local fault (reading or encrypting the file) is not an expected failure.
+          (error: unknown) => {
+            if (!abortController.signal.aborted) subscriber.error(error);
+          },
+        );
       return () => abortController.abort();
     });
   }
@@ -203,7 +236,7 @@ export class JsSdkMediaEngine implements MediaEngine {
     client: MatrixClient,
     request: MediaRequest,
   ): Observable<Blob> {
-    const { source, format, mimeType, downscaleTo } = request;
+    const { source, format, mimeType } = request;
     if (source.kind === 'encrypted') {
       // Encrypted: download the full ciphertext (an encrypted original has no server-side
       // thumbnail) and decrypt it with the event's per-file AES-CTR key. decryptAttachment
@@ -216,9 +249,6 @@ export class JsSdkMediaEngine implements MediaEngine {
           ),
         ),
         map((plaintext) => new Blob([plaintext], { type: mimeType })),
-        switchMap((blob) =>
-          downscaleTo ? from(downscaleImage(blob, downscaleTo)) : of(blob),
-        ),
       );
     }
     if (!source.mxc) {
@@ -274,38 +304,39 @@ export class JsSdkMediaEngine implements MediaEngine {
   }
 }
 
-/** Upload one file; an encrypted one goes up as ciphertext with no name or type to leak. */
-async function uploadBytes(
-  client: MatrixClient,
+/** One file ready to send; an encrypted one goes up as ciphertext with no name or type to leak. */
+async function prepareUpload(
   file: Blob,
   request: UploadRequest,
-  abortController: AbortController,
-  progressHandler: (p: { loaded: number; total: number }) => void,
-): Promise<UploadedContent> {
+  signal: AbortSignal,
+): Promise<{
+  readonly body: Blob;
+  readonly options: UploadOpts;
+  content(mxc: string): UploadedContent;
+}> {
   if (request.encrypt) {
     const plaintext = await file.arrayBuffer();
-    abortController.signal.throwIfAborted();
+    signal.throwIfAborted();
     const { data, info } = await encryptAttachment(plaintext);
-    abortController.signal.throwIfAborted();
-    const res = await client.uploadContent(new Blob([data]), {
-      includeFilename: false,
-      type: 'application/octet-stream',
-      progressHandler,
-      abortController,
-    });
+    signal.throwIfAborted();
     return {
-      kind: 'encrypted',
-      file: { ...info, url: res.content_uri },
-      size: data.byteLength,
+      body: new Blob([data]),
+      options: { includeFilename: false, type: 'application/octet-stream' },
+      content: (url) => ({
+        kind: 'encrypted',
+        file: { ...info, url },
+        size: data.byteLength,
+      }),
     };
   }
-  const res = await client.uploadContent(file, {
-    ...(request.filename === null
-      ? { includeFilename: false }
-      : { name: request.filename }),
-    type: request.mimeType,
-    progressHandler,
-    abortController,
-  });
-  return { kind: 'plain', mxc: res.content_uri, size: file.size };
+  return {
+    body: file,
+    options: {
+      ...(request.filename === null
+        ? { includeFilename: false }
+        : { name: request.filename }),
+      type: request.mimeType,
+    },
+    content: (mxc) => ({ kind: 'plain', mxc, size: file.size }),
+  };
 }

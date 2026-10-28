@@ -3,9 +3,24 @@ import { MatrixError } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
-import { assertProgressThenResult } from '@trinity/util/matrix';
+import {
+  assertProgressThenResult,
+  encryptAttachment,
+  type EncryptedFileInfo,
+} from '@trinity/util/matrix';
 import type { MediaRequest, UploadRequest } from '../media-engine';
+import { downscaleImage } from '../media-processing';
 import { JsSdkMediaEngine } from './js-sdk-media-engine';
+
+vi.mock('@trinity/util/matrix', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@trinity/util/matrix')>();
+  return { ...real, encryptAttachment: vi.fn(real.encryptAttachment) };
+});
+
+vi.mock('../media-processing', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../media-processing')>();
+  return { ...real, downscaleImage: vi.fn(real.downscaleImage) };
+});
 
 const ALICE = '@alice:hs';
 
@@ -68,6 +83,136 @@ describe('JsSdkMediaEngine', () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  /** Serve `ciphertext` for every fetch; the file info decrypts it. */
+  async function serveEncrypted(
+    plaintext: Uint8Array,
+  ): Promise<EncryptedFileInfo> {
+    const { data, info } = await encryptAttachment(plaintext.slice().buffer);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: () => Promise.resolve(data),
+    });
+    return { ...info, url: 'mxc://hs/cipher' };
+  }
+
+  function encryptedRequest(
+    file: EncryptedFileInfo,
+    downscaleTo: number | null,
+  ): MediaRequest {
+    return {
+      source: { kind: 'encrypted', file },
+      format: { kind: 'file' },
+      mimeType: 'image/jpeg',
+      downscaleTo,
+    };
+  }
+
+  const authHeaderOf = (call: number): unknown =>
+    fetchMock.mock.calls[call]?.[1]?.headers?.Authorization;
+
+  it('uses the legacy media endpoint without a token when v1.11 is unsupported', async () => {
+    setup({ getVersions: vi.fn().mockResolvedValue({ versions: ['v1.10'] }) });
+
+    await firstValueFrom(engine.content(ALICE, plainRequest({ kind: 'file' })));
+
+    expect(fetchMock.mock.calls[0][1].headers).toBeUndefined();
+  });
+
+  it.each([
+    ['a later spec version only', { versions: ['v1.12'] }],
+    [
+      'the unstable authenticated-media flag',
+      {
+        versions: ['v1.10'],
+        unstable_features: { 'org.matrix.msc3916.stable': true },
+      },
+    ],
+  ])(
+    'uses authenticated media when the server advertises %s',
+    async (_label, versions) => {
+      setup({ getVersions: vi.fn().mockResolvedValue(versions) });
+
+      await firstValueFrom(
+        engine.content(ALICE, plainRequest({ kind: 'file' })),
+      );
+
+      expect(authHeaderOf(0)).toBe('Bearer tok');
+    },
+  );
+
+  it('tries authenticated media while /versions is unreadable and asks again on the next request', async () => {
+    const getVersions = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue({ versions: ['v1.10'] });
+    setup({ getVersions });
+    const content = engine.content(ALICE, plainRequest({ kind: 'file' }));
+
+    await firstValueFrom(content);
+    await firstValueFrom(content);
+
+    expect(authHeaderOf(0)).toBe('Bearer tok');
+    expect(getVersions).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1].headers).toBeUndefined();
+  });
+
+  it('decrypts an encrypted file and mints its plaintext', async () => {
+    setup();
+    const plaintext = new Uint8Array([1, 2, 3]);
+    const file = await serveEncrypted(plaintext);
+
+    const result = await firstValueFrom(
+      engine.content(ALICE, encryptedRequest(file, null)),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: { url: expect.stringMatching(/^blob:/), size: 3 },
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('hs/cipher');
+    expect(downscaleImage).not.toHaveBeenCalled();
+  });
+
+  it('shrinks a decrypted image to the requested edge before minting it', async () => {
+    setup();
+    const file = await serveEncrypted(new Uint8Array([1, 2, 3]));
+    vi.mocked(downscaleImage).mockResolvedValueOnce(
+      new Blob([new Uint8Array(2)], { type: 'image/jpeg' }),
+    );
+
+    const result = await firstValueFrom(
+      engine.content(ALICE, encryptedRequest(file, 640)),
+    );
+
+    expect(vi.mocked(downscaleImage).mock.calls[0]?.[1]).toBe(640);
+    expect(result.ok && result.value.size).toBe(2);
+  });
+
+  it('errors the stream when the downscale itself fails', async () => {
+    setup();
+    const file = await serveEncrypted(new Uint8Array([1, 2, 3]));
+    vi.mocked(downscaleImage).mockRejectedValueOnce(new Error('canvas gone'));
+
+    await expect(
+      firstValueFrom(engine.content(ALICE, encryptedRequest(file, 640))),
+    ).rejects.toThrow('canvas gone');
+  });
+
+  it('answers media-unavailable for bytes that fail their hash check', async () => {
+    setup();
+    const file = await serveEncrypted(new Uint8Array([1, 2, 3]));
+
+    const result = await firstValueFrom(
+      engine.content(
+        ALICE,
+        encryptedRequest({ ...file, hashes: { sha256: 'tampered' } }, null),
+      ),
+    );
+
+    expect(!result.ok && result.failure.code).toBe('media-unavailable');
+  });
 
   it('asks the server for a thumbnail at the requested size and method', async () => {
     setup();
@@ -219,5 +364,34 @@ describe('JsSdkMediaEngine', () => {
     );
 
     expect(!result.ok && result.failure.code).toBe('too-large');
+  });
+
+  it('errors the stream when the file cannot be read', async () => {
+    setup();
+    const unreadable = new Blob(['abcd']);
+    vi.spyOn(unreadable, 'arrayBuffer').mockRejectedValue(
+      new Error('file gone'),
+    );
+
+    await expect(
+      firstValueFrom(
+        engine.upload(ALICE, unreadable, { ...PLAIN, encrypt: true }),
+      ),
+    ).rejects.toThrow('file gone');
+    expect(client.uploadContent).not.toHaveBeenCalled();
+  });
+
+  it('errors the stream when encryption fails', async () => {
+    setup();
+    vi.mocked(encryptAttachment).mockRejectedValueOnce(
+      new Error('no subtle crypto'),
+    );
+
+    await expect(
+      firstValueFrom(
+        engine.upload(ALICE, new Blob(['abcd']), { ...PLAIN, encrypt: true }),
+      ),
+    ).rejects.toThrow('no subtle crypto');
+    expect(client.uploadContent).not.toHaveBeenCalled();
   });
 });

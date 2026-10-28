@@ -19,7 +19,7 @@ test.describe('Settings', () => {
   }) => {
     // The one claim jsdom cannot make: that a real cross-origin request for
     // /_matrix/federation/v1/version survives the app's real CSP
-    // (`connect-src 'self' https: wss:`) in a real browser. The probe logic, its two-attempt
+    // (`connect-src 'self' https: wss: blob:`) in a real browser. The probe logic, its two-attempt
     // fallback and the whole failure taxonomy are unit-tested; this is the wire.
     await openSection(page, 'server');
 

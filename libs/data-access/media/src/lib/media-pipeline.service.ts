@@ -9,11 +9,7 @@ import {
   switchMap,
   throwError,
 } from 'rxjs';
-import {
-  EventStatus,
-  type MatrixClient,
-  type MatrixEvent,
-} from 'matrix-js-sdk';
+import { EventStatus, type MatrixEvent } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   isRoomEncrypted,
@@ -49,11 +45,6 @@ interface StagedEntry {
 interface PresentedEntry {
   readonly media: MediaPayload;
   readonly accountId: string;
-}
-
-interface LiveSource {
-  readonly media: MediaPayload;
-  readonly client: MatrixClient;
 }
 
 let nextStagedId = 0;
@@ -114,8 +105,8 @@ export class MediaPipeline {
   /** The upload limit of the account's homeserver, or null when unknown. */
   uploadLimit(accountId: string | null): Observable<number | null> {
     return defer(() => {
-      const client = accountId ? this.matrix.clientFor(accountId) : null;
-      return client ? this.bytes.uploadLimit(client) : of(null);
+      const live = accountId ? this.matrix.clientFor(accountId) : null;
+      return live && accountId ? this.bytes.uploadLimit(accountId) : of(null);
     });
   }
 
@@ -331,7 +322,7 @@ export class MediaPipeline {
                   encrypted,
                   (fraction) => progress('uploading', fraction),
                   abortController,
-                  client,
+                  request.key.accountId,
                   request.media.hints,
                   imageMetadata,
                 );
@@ -418,7 +409,7 @@ export class MediaPipeline {
     return defer(() => {
       const source = this.liveSource(reference);
       return source
-        ? this.bytes.resolveMedia(source.media, variant, source.client)
+        ? this.bytes.resolveMedia(source.media, variant, source.accountId)
         : throwError(() => new Error('Media reference is no longer available'));
     });
   }
@@ -429,7 +420,7 @@ export class MediaPipeline {
     return defer(() => {
       const source = this.liveSource(reference);
       return source
-        ? this.bytes.downloadMedia(source.media, source.client)
+        ? this.bytes.downloadMedia(source.media, source.accountId)
         : throwError(() => new Error('Media reference is no longer available'));
     });
   }
@@ -456,7 +447,11 @@ export class MediaPipeline {
     const entry = this.presented.get(reference);
     const client = entry && this.matrix.clientFor(entry.accountId);
     if (entry && client) {
-      this.bytes.drop(url, { media: entry.media, variant, client });
+      this.bytes.drop(url, {
+        media: entry.media,
+        variant,
+        accountId: entry.accountId,
+      });
     } else {
       this.bytes.unpin(url);
     }
@@ -470,10 +465,9 @@ export class MediaPipeline {
 
   private liveSource(
     reference: PresentedMediaReference,
-  ): LiveSource | undefined {
+  ): PresentedEntry | undefined {
     const entry = this.presented.get(reference);
-    const client = entry && this.matrix.clientFor(entry.accountId);
-    return entry && client ? { media: entry.media, client } : undefined;
+    return entry && this.matrix.clientFor(entry.accountId) ? entry : undefined;
   }
 
   private eventContent(media: UploadedMedia, caption: string): object {

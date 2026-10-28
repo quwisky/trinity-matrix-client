@@ -1,54 +1,26 @@
-import { firstValueFrom } from 'rxjs';
-import type { MatrixClient } from 'matrix-js-sdk';
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { MediaService } from './media.service';
-import type { MediaPayload } from '@trinity/util/matrix';
+import { TestBed } from '@angular/core/testing';
+import { firstValueFrom, of, type Observable } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  createObjectURL,
-  decryptMock,
-  fakeClient,
-  fetchMock,
+  EngineRequestError,
+  engineFail,
+  type EncryptedFileInfo,
+  type MediaPayload,
+} from '@trinity/util/matrix';
+import type { MediaService } from './media.service';
+import {
+  PLAIN_BYTES,
   mediaServiceSetup,
-  okResponse,
-  revokeObjectURL,
-  useMediaGlobals,
+  seedEncrypted,
+  sessionWith,
 } from './media.spec-harness';
-
-// Stub attachment-crypto (now in @trinity/util/matrix): exercise MediaService's
-// fetch→decrypt→blob and encrypt→upload wiring without a real WebCrypto `subtle`
-// backend (absent under jsdom). Partial-mock so the module's other exports stay
-// real; the crypto itself is round-tripped for real in attachment-crypto.spec.ts.
-vi.mock('@trinity/util/matrix', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-  decryptAttachment: vi.fn(() =>
-    Promise.resolve(new Uint8Array([7, 7, 7]).buffer),
-  ),
-  encryptAttachment: vi.fn(() =>
-    Promise.resolve({
-      data: new Uint8Array([9, 9, 9, 9]).buffer,
-      info: { url: '', v: 'v2', key: {}, iv: 'iv', hashes: { sha256: 'h' } },
-    }),
-  ),
-}));
-
-// Wrap the metadata stripper so the upload tests can see that, and when, it ran, while it
-// keeps doing the real work on real bytes.
-vi.mock('./image-metadata/strip-file-metadata', async (importOriginal) => {
-  const real =
-    await importOriginal<
-      typeof import('./image-metadata/strip-file-metadata')
-    >();
-  return {
-    ...real,
-    withoutMediaMetadata: vi.fn(real.withoutMediaMetadata),
-    bytesWithoutMediaMetadata: vi.fn(real.bytesWithoutMediaMetadata),
-  };
-});
 
 /** Mirrors the (non-exported) CACHE_LIMIT in media.service.ts. */
 const CACHE_LIMIT = 64;
 /** Mirrors the (non-exported) CACHE_BYTE_LIMIT in media.service.ts. */
 const CACHE_BYTE_LIMIT = 96 * 1024 * 1024;
+
+const BOB = '@bob:example.org';
 
 function plainMedia(mxc: string, mimeType = 'image/png'): MediaPayload {
   return {
@@ -62,17 +34,11 @@ function plainMedia(mxc: string, mimeType = 'image/png'): MediaPayload {
   };
 }
 
-function encryptedMedia(): MediaPayload {
+function encryptedMedia(file: EncryptedFileInfo): MediaPayload {
   return {
     kind: 'file',
     mxc: null,
-    file: {
-      url: 'mxc://hs/ciphertext',
-      key: {} as JsonWebKey,
-      iv: 'iv',
-      hashes: { sha256: 'abc' },
-      v: 'v2',
-    },
+    file,
     filename: 'secret.bin',
     mimeType: 'application/octet-stream',
     thumbnailMxc: null,
@@ -80,307 +46,216 @@ function encryptedMedia(): MediaPayload {
   };
 }
 
-/** Make every Blob report `mb` megabytes, so budget tests need not allocate them. */
-function stubBlobSize(mb: number): void {
-  const Orig = globalThis.Blob;
-  vi.stubGlobal(
-    'Blob',
-    class extends Orig {
-      override get size(): number {
-        return mb * 1024 * 1024;
-      }
-    },
-  );
+/** The same file with other key material: it names the same bytes but cannot decrypt them. */
+function otherKey(file: EncryptedFileInfo, k = 'other'): EncryptedFileInfo {
+  return { ...file, key: { ...file.key, k } };
 }
 
-function failResponse(status = 404): Response {
-  return {
-    ok: false,
-    status,
-    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-  } as unknown as Response;
+/** The URL a resolve emits, or the failure code it errors with. */
+async function settle(source: Observable<string>): Promise<string> {
+  try {
+    return await firstValueFrom(source);
+  } catch (error: unknown) {
+    return error instanceof EngineRequestError
+      ? `failed:${error.failure.code}`
+      : 'failed';
+  }
 }
+
+const tick = () => new Promise((resolve) => setTimeout(resolve));
 
 /** The screen's devicePixelRatio as the service reads it; tests set it before resolving. */
 let devicePixelRatio = 1;
 const setup = mediaServiceSetup(() => devicePixelRatio);
 
 describe('MediaService', () => {
-  useMediaGlobals();
-
   beforeEach(() => {
     devicePixelRatio = 1;
   });
 
-  it('resolves a full plaintext image with an authenticated fetch and caches the result', async () => {
-    const { svc } = setup(); // the server advertises v1.11
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('resolves a full plaintext image through the active account and caches the result', async () => {
+    const { svc, engine, content } = setup();
     const media = plainMedia('mxc://hs/abc');
 
     const url = await firstValueFrom(svc.resolveMedia(media, 'full'));
 
-    expect(url).toBe('blob:obj-1');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, opts] = fetchMock.mock.calls[0];
-    expect(opts.headers.Authorization).toBe('Bearer tok');
-
-    // Re-resolving the same source+variant is served from cache (no 2nd fetch).
-    const again = await firstValueFrom(svc.resolveMedia(media, 'full'));
-    expect(again).toBe(url);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('uses an explicitly bound client for both media fetches and uploads', async () => {
-    const { svc, client: activeClient } = setup();
-    const exactClient = fakeClient({
-      getAccessToken: vi.fn(() => 'exact-token'),
-      uploadContent: vi
-        .fn()
-        .mockResolvedValue({ content_uri: 'mxc://exact/upload' }),
+    expect(await engine.read(url)).toEqual(PLAIN_BYTES);
+    expect(content).toHaveBeenCalledExactlyOnceWith(engine.alice, {
+      source: { kind: 'plain', mxc: 'mxc://hs/abc' },
+      format: { kind: 'file' },
+      mimeType: 'image/png',
+      downscaleTo: null,
     });
 
+    // Re-resolving the same source+variant is served from cache (no 2nd request).
+    const again = await firstValueFrom(svc.resolveMedia(media, 'full'));
+    expect(again).toBe(url);
+    expect(content).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses an explicitly named account for both media reads and uploads', async () => {
+    const { svc, engine, session, content, upload } = setup();
+    session.set(sessionWith(BOB, [BOB, engine.alice]));
+
     await firstValueFrom(
-      svc.resolveMedia(
-        plainMedia('mxc://hs/exact'),
-        'full',
-        exactClient as unknown as MatrixClient,
-      ),
+      svc.resolveMedia(plainMedia('mxc://hs/exact'), 'full', engine.alice),
     );
     await firstValueFrom(
       svc.uploadMedia(
-        new File([new Uint8Array([1])], 'exact.txt', {
-          type: 'text/plain',
-        }),
+        new File([new Uint8Array([1])], 'exact.txt', { type: 'text/plain' }),
         false,
         undefined,
         undefined,
-        exactClient as unknown as MatrixClient,
+        engine.alice,
       ),
     );
 
-    expect(fetchMock.mock.calls[0]?.[1].headers.Authorization).toBe(
-      'Bearer exact-token',
-    );
-    expect(exactClient.getVersions).toHaveBeenCalledOnce();
-    expect(exactClient.uploadContent).toHaveBeenCalledOnce();
-    expect(activeClient.getVersions).not.toHaveBeenCalled();
-    expect(activeClient.uploadContent).not.toHaveBeenCalled();
+    expect(content.mock.calls[0]?.[0]).toBe(engine.alice);
+    expect(upload.mock.calls[0]?.[0]).toBe(engine.alice);
   });
 
-  it('re-probes authed-media support after releaseAll (account/homeserver switch)', async () => {
-    const { svc, client } = setup();
-    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'));
-    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'));
-    // The v1.11 capability probe is cached across resolves — one call so far.
-    expect(client.getVersions).toHaveBeenCalledTimes(1);
+  it('keeps media resolved under one account apart from the same mxc under another', async () => {
+    const { svc, engine, session, content } = setup();
+    session.set(sessionWith(engine.alice, [engine.alice, BOB]));
+    const media = plainMedia('mxc://hs/shared');
 
-    // A logout→login can switch homeservers; releaseAll must drop the cached
-    // probe so the next resolve re-checks (a stale result would break all media).
+    const alice = await settle(svc.resolveMedia(media, 'full'));
+    const bob = await settle(svc.resolveMedia(media, 'full', BOB));
+
+    expect(bob).not.toBe(alice);
+    expect(content.mock.calls.map(([account]) => account)).toEqual([
+      engine.alice,
+      BOB,
+    ]);
+  });
+
+  it('never serves a URL resolved under an earlier session of the same account', async () => {
+    const { svc, engine, session, content } = setup();
+    const media = plainMedia('mxc://hs/relogin');
+    const before = await firstValueFrom(svc.resolveMedia(media, 'full'));
+
+    // A re-login keeps the account id but registers a new client.
+    session.set(sessionWith(engine.alice, [engine.alice], 2));
+    const after = await firstValueFrom(svc.resolveMedia(media, 'full'));
+
+    expect(after).not.toBe(before);
+    expect(content).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks the engine to forget its authenticated-media probes on releaseAll', () => {
+    const { svc, engine } = setup();
+
     svc.releaseAll();
-    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
-    expect(client.getVersions).toHaveBeenCalledTimes(2);
+
+    expect(engine.probesForgotten).toBe(1);
   });
 
-  it('uses the legacy media endpoint without an Authorization header when v1.11 is unsupported', async () => {
-    const { svc } = setup({
-      getVersions: vi.fn().mockResolvedValue({ versions: ['v1.10'] }),
-    });
-
-    await firstValueFrom(
-      svc.resolveMedia(plainMedia('mxc://hs/legacy'), 'full'),
-    );
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, opts] = fetchMock.mock.calls[0];
-    expect(opts.headers).toBeUndefined();
-  });
-
-  it.each([
-    ['a later spec version only', { versions: ['v1.12'] }],
-    [
-      'the unstable authenticated-media flag',
-      {
-        versions: ['v1.10'],
-        unstable_features: { 'org.matrix.msc3916.stable': true },
-      },
-    ],
-  ])(
-    'uses authenticated media when the server advertises %s',
-    async (_label, versions) => {
-      const { svc } = setup({
-        getVersions: vi.fn().mockResolvedValue(versions),
-      });
-
-      await firstValueFrom(
-        svc.resolveMedia(plainMedia('mxc://hs/newer'), 'full'),
-      );
-
-      expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(
-        'Bearer tok',
-      );
-    },
-  );
-
-  it('tries authenticated media while /versions is unreadable and asks again on the next request', async () => {
-    const getVersions = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValue({ versions: ['v1.10'] });
-    const { svc } = setup({ getVersions });
-
-    await firstValueFrom(
-      svc.resolveMedia(plainMedia('mxc://hs/first'), 'full'),
-    );
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
-
-    await firstValueFrom(
-      svc.resolveMedia(plainMedia('mxc://hs/second'), 'full'),
-    );
-    expect(getVersions).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1][1].headers).toBeUndefined();
-  });
-
-  it('falls back to a legacy fetch when the authenticated request fails', async () => {
-    const { svc } = setup(); // authed media supported
-    fetchMock
-      .mockResolvedValueOnce(failResponse(404)) // authed attempt fails
-      .mockResolvedValueOnce(okResponse()); // legacy retry succeeds
-
-    const url = await firstValueFrom(
-      svc.resolveMedia(plainMedia('mxc://hs/flaky'), 'full'),
-    );
-
-    expect(url).toBe('blob:obj-1');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
-    // The fallback request is unauthenticated.
-    expect(fetchMock.mock.calls[1][1].headers).toBeUndefined();
-  });
-
-  it('decrypts an encrypted attachment: downloads the ciphertext, decrypts, and caches the blob', async () => {
-    const { svc } = setup();
-    const media = encryptedMedia();
+  it('decrypts an encrypted attachment and caches the plaintext URL', async () => {
+    const { svc, engine, content, requests } = setup();
+    const file = await seedEncrypted(engine, 'mxc://hs/ciphertext');
+    const media = encryptedMedia(file);
 
     const url = await firstValueFrom(svc.resolveMedia(media, 'full'));
 
-    expect(url).toBe('blob:obj-1');
-    // The ciphertext is fetched (authenticated) from content.file.url ...
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toContain('ciphertext');
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
-    // ... then handed to decryptAttachment with the per-file key material.
-    expect(decryptMock).toHaveBeenCalledTimes(1);
-    const [cipherArg, infoArg] = decryptMock.mock.calls[0];
-    expect(cipherArg).toBeInstanceOf(ArrayBuffer);
-    expect(infoArg).toMatchObject({
-      url: 'mxc://hs/ciphertext',
-      iv: 'iv',
-      v: 'v2',
-    });
+    expect(await engine.read(url)).toEqual(new Uint8Array([7, 7, 7]));
+    expect(requests()[0]?.source).toEqual({ kind: 'encrypted', file });
 
-    // Re-resolving the same source is served from cache — no second fetch/decrypt.
+    // Re-resolving the same source is served from cache — no second request.
     const again = await firstValueFrom(svc.resolveMedia(media, 'full'));
     expect(again).toBe(url);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(decryptMock).toHaveBeenCalledTimes(1);
+    expect(content).toHaveBeenCalledTimes(1);
   });
 
   it('decrypts an encrypted thumbnail from info.thumbnail_file', async () => {
-    const { svc } = setup();
+    const { svc, engine, requests } = setup();
+    const thumbnailFile = await seedEncrypted(engine, 'mxc://hs/thumb-ct');
     const media: MediaPayload = {
-      ...encryptedMedia(),
+      ...encryptedMedia(await seedEncrypted(engine, 'mxc://hs/ciphertext')),
       kind: 'image',
-      thumbnailFile: {
-        url: 'mxc://hs/thumb-ciphertext',
-        key: {} as JsonWebKey,
-        iv: 'tiv',
-        hashes: { sha256: 'thash' },
-        v: 'v2',
-      },
+      thumbnailFile,
       thumbnailMimeType: 'image/jpeg',
     };
 
     await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
 
-    // The encrypted thumbnail ciphertext — not the full original — is resolved.
-    expect(fetchMock.mock.calls[0][0]).toContain('thumb-ciphertext');
-    expect(decryptMock.mock.calls[0][1]).toMatchObject({
-      url: 'mxc://hs/thumb-ciphertext',
-      iv: 'tiv',
+    // The encrypted thumbnail — not the full original — is resolved.
+    expect(requests()[0]).toMatchObject({
+      source: { kind: 'encrypted', file: thumbnailFile },
+      mimeType: 'image/jpeg',
     });
   });
 
-  it('propagates a decryption failure (hash mismatch) instead of rendering ciphertext', async () => {
-    const { svc } = setup();
-    decryptMock.mockRejectedValueOnce(new Error('Mismatched SHA-256 digest'));
+  it('propagates a failed hash check instead of rendering ciphertext', async () => {
+    const { svc, engine } = setup();
+    const file = await seedEncrypted(engine, 'mxc://hs/ciphertext');
 
-    await expect(
-      firstValueFrom(svc.resolveMedia(encryptedMedia(), 'full')),
-    ).rejects.toThrow(/digest/i);
+    const result = await settle(
+      svc.resolveMedia(
+        encryptedMedia({ ...file, hashes: { sha256: 'tampered' } }),
+        'full',
+      ),
+    );
+
+    expect(result).toBe('failed:media-unavailable');
   });
 
   it('decrypts an encrypted image once and shares it between the thumbnail and full views', async () => {
-    const { svc } = setup();
+    const { svc, engine, content } = setup();
     // Encrypted image with no bundled thumbnail_file: both variants resolve the
     // same ciphertext, so they must share a single fetch + decrypt.
-    const media: MediaPayload = { ...encryptedMedia(), kind: 'image' };
+    const media: MediaPayload = {
+      ...encryptedMedia(await seedEncrypted(engine, 'mxc://hs/ciphertext')),
+      kind: 'image',
+    };
 
     const thumb = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
     const full = await firstValueFrom(svc.resolveMedia(media, 'full'));
 
     expect(full).toBe(thumb);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(decryptMock).toHaveBeenCalledTimes(1);
+    expect(content).toHaveBeenCalledTimes(1);
   });
 
   describe('cache keys follow the integrity data that produced the bytes', () => {
-    function encryptedAt(url: string, k: string, sha256: string): MediaPayload {
-      return {
-        ...encryptedMedia(),
-        file: {
-          url,
-          key: { k } as JsonWebKey,
-          iv: `iv-${k}`,
-          hashes: { sha256 },
-          v: 'v2',
-        },
-      };
-    }
-
     it('decrypts a second event with the same file.url but other key material on its own', async () => {
-      const { svc } = setup();
-      const first = encryptedAt('mxc://hs/shared', 'k1', 'h1');
-      const second = encryptedAt('mxc://hs/shared', 'k2', 'h2');
+      const { svc, engine, content, requests } = setup();
+      const file = await seedEncrypted(engine, 'mxc://hs/shared');
+      const second = encryptedMedia(otherKey(file));
 
-      const a = await firstValueFrom(svc.resolveMedia(first, 'full'));
-      const b = await firstValueFrom(svc.resolveMedia(second, 'full'));
+      const a = await settle(svc.resolveMedia(encryptedMedia(file), 'full'));
+      const b = await settle(svc.resolveMedia(second, 'full'));
 
       expect(b).not.toBe(a);
-      expect(decryptMock).toHaveBeenCalledTimes(2);
-      expect(decryptMock.mock.calls[1][1]).toBe(second.file);
+      expect(content).toHaveBeenCalledTimes(2);
+      expect(requests()[1]?.source).toEqual({
+        kind: 'encrypted',
+        file: second.file,
+      });
     });
 
     it('does not share an in-flight decrypt with an event carrying other key material', async () => {
-      const { svc } = setup();
-      const first = encryptedAt('mxc://hs/shared', 'k1', 'h1');
-      const second = encryptedAt('mxc://hs/shared', 'k2', 'h2');
+      const { svc, engine, requests } = setup();
+      const file = await seedEncrypted(engine, 'mxc://hs/shared');
+      const first = encryptedMedia(file);
+      const second = encryptedMedia(otherKey(file));
 
       const [a, b] = await Promise.all([
-        firstValueFrom(svc.resolveMedia(first, 'full')),
-        firstValueFrom(svc.resolveMedia(second, 'full')),
+        settle(svc.resolveMedia(first, 'full')),
+        settle(svc.resolveMedia(second, 'full')),
       ]);
 
       expect(b).not.toBe(a);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(decryptMock.mock.calls.map(([, info]) => info)).toEqual([
-        first.file,
-        second.file,
-      ]);
+      expect(
+        requests().map((r) => r.source.kind === 'encrypted' && r.source.file),
+      ).toEqual([first.file, second.file]);
     });
 
     it('fetches an event with both url and file from file.url and never caches it under url', async () => {
-      const { svc } = setup();
+      const { svc, engine, content, requests } = setup();
+      const file = await seedEncrypted(engine, 'mxc://hs/y');
       const mixed: MediaPayload = {
-        ...encryptedAt('mxc://hs/y', 'k1', 'h1'),
+        ...encryptedMedia(file),
         mxc: 'mxc://hs/x',
       };
 
@@ -389,147 +264,161 @@ describe('MediaService', () => {
         svc.resolveMedia(plainMedia('mxc://hs/x'), 'full'),
       );
       const encryptedY = await firstValueFrom(
-        svc.resolveMedia(encryptedAt('mxc://hs/y', 'k1', 'h1'), 'full'),
+        svc.resolveMedia(encryptedMedia(file), 'full'),
       );
 
-      expect(fetchMock.mock.calls[0][0]).toContain('hs/y');
+      expect(requests()[0]?.source).toEqual({ kind: 'encrypted', file });
       expect(plainX).not.toBe(mixedUrl);
       expect(encryptedY).toBe(mixedUrl);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(content).toHaveBeenCalledTimes(2);
     });
 
     it('keeps a plaintext url apart from an encrypted file.url naming the same media', async () => {
-      const { svc } = setup();
+      const { svc, engine, content } = setup();
+      const file = await seedEncrypted(engine, 'mxc://hs/x');
 
       const encrypted = await firstValueFrom(
-        svc.resolveMedia(encryptedAt('mxc://hs/x', 'k1', 'h1'), 'full'),
+        svc.resolveMedia(encryptedMedia(file), 'full'),
       );
       const plain = await firstValueFrom(
         svc.resolveMedia(plainMedia('mxc://hs/x'), 'full'),
       );
 
       expect(plain).not.toBe(encrypted);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(decryptMock).toHaveBeenCalledTimes(1);
+      expect(content).toHaveBeenCalledTimes(2);
     });
 
     it('still serves the same event from the cache', async () => {
-      const { svc } = setup();
-      const media = encryptedAt('mxc://hs/same', 'k1', 'h1');
+      const { svc, engine, content } = setup();
+      const file = await seedEncrypted(engine, 'mxc://hs/same');
 
-      const a = await firstValueFrom(svc.resolveMedia(media, 'full'));
+      const a = await firstValueFrom(
+        svc.resolveMedia(encryptedMedia(file), 'full'),
+      );
       const b = await firstValueFrom(
-        svc.resolveMedia(encryptedAt('mxc://hs/same', 'k1', 'h1'), 'full'),
+        svc.resolveMedia(encryptedMedia({ ...file }), 'full'),
       );
 
       expect(b).toBe(a);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(decryptMock).toHaveBeenCalledTimes(1);
+      expect(content).toHaveBeenCalledTimes(1);
     });
 
     it('keys an encrypted thumbnail by its own key material', async () => {
-      const { svc } = setup();
-      const withThumb = (k: string, sha256: string): MediaPayload => ({
-        ...encryptedAt('mxc://hs/full', 'k1', 'h1'),
+      const { svc, engine, requests } = setup();
+      const full = await seedEncrypted(engine, 'mxc://hs/full');
+      const thumbnail = await seedEncrypted(engine, 'mxc://hs/thumb');
+      const withThumb = (thumbnailFile: EncryptedFileInfo): MediaPayload => ({
+        ...encryptedMedia(full),
         kind: 'image',
         thumbnailMxc: 'mxc://hs/thumb-plain',
-        thumbnailFile: {
-          url: 'mxc://hs/thumb',
-          key: { k } as JsonWebKey,
-          iv: `tiv-${k}`,
-          hashes: { sha256 },
-          v: 'v2',
-        },
+        thumbnailFile,
       });
-      const first = withThumb('t1', 'th1');
-      const second = withThumb('t2', 'th2');
+      const first = withThumb(thumbnail);
+      const second = withThumb(otherKey(thumbnail));
 
-      const a = await firstValueFrom(svc.resolveMedia(first, 'thumbnail'));
-      const again = await firstValueFrom(svc.resolveMedia(first, 'thumbnail'));
-      const b = await firstValueFrom(svc.resolveMedia(second, 'thumbnail'));
-      const plainThumb = await firstValueFrom(
+      const a = await settle(svc.resolveMedia(first, 'thumbnail'));
+      const again = await settle(svc.resolveMedia(first, 'thumbnail'));
+      const b = await settle(svc.resolveMedia(second, 'thumbnail'));
+      const plainThumb = await settle(
         svc.resolveMedia(plainMedia('mxc://hs/thumb'), 'full'),
       );
 
       expect(again).toBe(a);
       expect(b).not.toBe(a);
       expect(plainThumb).not.toBe(a);
-      expect(fetchMock.mock.calls[0][0]).toContain('hs/thumb');
-      expect(fetchMock.mock.calls[0][0]).not.toContain('thumb-plain');
-      expect(decryptMock.mock.calls.map(([, info]) => info)).toEqual([
-        first.thumbnailFile,
-        second.thumbnailFile,
-      ]);
+      expect(
+        requests()
+          .slice(0, 2)
+          .map((r) => r.source.kind === 'encrypted' && r.source.file),
+      ).toEqual([first.thumbnailFile, second.thumbnailFile]);
     });
 
     it('caches nothing for a failed decrypt', async () => {
-      const { svc } = setup();
-      const media = encryptedAt('mxc://hs/bad', 'k1', 'h1');
-      decryptMock.mockRejectedValueOnce(new Error('Mismatched SHA-256 digest'));
+      const { svc, engine, content } = setup();
+      const media = encryptedMedia(await seedEncrypted(engine, 'mxc://hs/bad'));
+      content.mockReturnValueOnce(
+        of(
+          engineFail({
+            kind: 'unexpected',
+            code: 'media-unavailable',
+            diagnostic: { kind: 'unexpected' },
+          }),
+        ),
+      );
 
-      await expect(
-        firstValueFrom(svc.resolveMedia(media, 'full')),
-      ).rejects.toThrow(/digest/i);
+      expect(await settle(svc.resolveMedia(media, 'full'))).toBe(
+        'failed:media-unavailable',
+      );
       await firstValueFrom(svc.resolveMedia(media, 'full'));
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(decryptMock).toHaveBeenCalledTimes(2);
-    });
-
-    const baseFile = {
-      url: 'mxc://hs/shared',
-      key: { k: 'k1' } as JsonWebKey,
-      iv: 'iv1',
-      hashes: { sha256: 'h1' },
-      v: 'v2',
-    };
-    const withFile = (
-      overrides: Partial<typeof baseFile>,
-      mimeType = 'application/octet-stream',
-    ): MediaPayload => ({
-      ...encryptedMedia(),
-      mimeType,
-      file: { ...baseFile, ...overrides },
+      expect(content).toHaveBeenCalledTimes(2);
     });
 
     it.each([
-      ['key', { key: { k: 'k2' } as JsonWebKey }],
-      ['iv', { iv: 'iv2' }],
-      ['hash', { hashes: { sha256: 'h2' } }],
-      ['version', { v: 'v1' }],
+      ['key', (file: EncryptedFileInfo) => otherKey(file)],
+      [
+        'iv',
+        (file: EncryptedFileInfo) => ({
+          ...file,
+          iv: 'AAAAAAAAAAAAAAAAAAAAAA',
+        }),
+      ],
+      [
+        'hash',
+        (file: EncryptedFileInfo) => ({ ...file, hashes: { sha256: 'h2' } }),
+      ],
+      ['version', (file: EncryptedFileInfo) => ({ ...file, v: 'v1' })],
     ])(
       'decrypts an event differing only in its %s on its own',
       async (_, change) => {
-        const { svc } = setup();
-        const second = withFile(change);
+        const { svc, engine, content, requests } = setup();
+        const file = await seedEncrypted(engine, 'mxc://hs/shared');
+        const second = change(file);
 
-        const a = await firstValueFrom(svc.resolveMedia(withFile({}), 'full'));
-        const b = await firstValueFrom(svc.resolveMedia(second, 'full'));
+        const a = await settle(svc.resolveMedia(encryptedMedia(file), 'full'));
+        const b = await settle(
+          svc.resolveMedia(encryptedMedia(second), 'full'),
+        );
 
         expect(b).not.toBe(a);
-        expect(decryptMock).toHaveBeenCalledTimes(2);
-        expect(decryptMock.mock.calls[1][1]).toBe(second.file);
+        expect(content).toHaveBeenCalledTimes(2);
+        expect(requests()[1]?.source).toEqual({
+          kind: 'encrypted',
+          file: second,
+        });
       },
     );
 
     it('fails an event with an unknown version instead of serving the cached bytes', async () => {
-      const { svc } = setup();
-      await firstValueFrom(svc.resolveMedia(withFile({}), 'full'));
-      decryptMock.mockRejectedValueOnce(
-        new Error('Unsupported attachment encryption version: v9'),
-      );
+      const { svc, engine, content } = setup();
+      const file = await seedEncrypted(engine, 'mxc://hs/shared');
+      await firstValueFrom(svc.resolveMedia(encryptedMedia(file), 'full'));
 
-      await expect(
-        firstValueFrom(svc.resolveMedia(withFile({ v: 'v9' }), 'full')),
-      ).rejects.toThrow(/version/);
-      expect(decryptMock).toHaveBeenCalledTimes(2);
+      expect(
+        await settle(
+          svc.resolveMedia(encryptedMedia({ ...file, v: 'v9' }), 'full'),
+        ),
+      ).toBe('failed:media-unavailable');
+      expect(content).toHaveBeenCalledTimes(2);
     });
 
     it.each([
-      ['encrypted', (mime: string) => withFile({}, mime)],
-      ['plaintext', (mime: string) => plainMedia('mxc://hs/typed', mime)],
-    ])('keeps %s media declared with another type apart', async (_, media) => {
-      const { svc } = setup();
+      [
+        'encrypted',
+        async (svc: Setup) => {
+          const file = await seedEncrypted(svc.engine, 'mxc://hs/typed');
+          return (mimeType: string) => ({ ...encryptedMedia(file), mimeType });
+        },
+      ],
+      [
+        'plaintext',
+        async () => (mimeType: string) =>
+          plainMedia('mxc://hs/typed', mimeType),
+      ],
+    ])('keeps %s media declared with another type apart', async (_, make) => {
+      const world = setup();
+      const media = await make(world);
+      const { svc, requests } = world;
 
       const png = await firstValueFrom(
         svc.resolveMedia(media('image/png'), 'full'),
@@ -539,58 +428,25 @@ describe('MediaService', () => {
       );
 
       expect(jpeg).not.toBe(png);
-      expect(
-        createObjectURL.mock.calls.map(([blob]) => (blob as Blob).type),
-      ).toEqual(['image/png', 'image/jpeg']);
+      expect(requests().map((r) => r.mimeType)).toEqual([
+        'image/png',
+        'image/jpeg',
+      ]);
     });
   });
 
   describe('encrypted image without a bundled thumbnail', () => {
-    /** Decrypted bytes are 3 long; the stubbed downscaled output is smaller. */
-    const DOWNSCALED_BYTES = 2;
-    let bitmapMock: Mock;
-    /** Every bitmap the stubbed `createImageBitmap` produced, in order (decoded, resized). */
-    let bitmaps: { close: Mock }[];
-    let convertToBlob: Mock;
-    let canvasSizes: { width: number; height: number }[];
-
-    function encryptedImage(mimeType: string): MediaPayload {
-      return { ...encryptedMedia(), kind: 'image', mimeType };
-    }
-
-    /** Stub the browser decode/resize/encode boundary for an image of `w`×`h`. */
-    function stubBrowserImage(w: number, h: number): void {
-      bitmaps = [];
-      bitmapMock = vi.fn(async (_src: unknown, opts?: ImageBitmapOptions) => {
-        const bitmap = {
-          width: opts?.resizeWidth ?? w,
-          height: opts?.resizeHeight ?? h,
-          close: vi.fn(),
-        };
-        bitmaps.push(bitmap);
-        return bitmap;
-      });
-      vi.stubGlobal('createImageBitmap', bitmapMock);
-      convertToBlob = vi.fn(
-        async (opts: { type: string }) =>
-          new Blob([new Uint8Array(DOWNSCALED_BYTES)], { type: opts.type }),
-      );
-      canvasSizes = [];
-      vi.stubGlobal(
-        'OffscreenCanvas',
-        class {
-          constructor(
-            readonly width: number,
-            readonly height: number,
-          ) {
-            canvasSizes.push({ width, height });
-          }
-          getContext() {
-            return { drawImage: vi.fn() };
-          }
-          convertToBlob = convertToBlob;
-        },
-      );
+    async function encryptedImage(
+      world: Setup,
+      mimeType: string,
+    ): Promise<MediaPayload> {
+      return {
+        ...encryptedMedia(
+          await seedEncrypted(world.engine, 'mxc://hs/ciphertext'),
+        ),
+        kind: 'image',
+        mimeType,
+      };
     }
 
     // A 2x screen: the display bucket is 640 px, which these expectations assume.
@@ -598,117 +454,60 @@ describe('MediaService', () => {
       devicePixelRatio = 2;
     });
 
-    afterEach(() => vi.restoreAllMocks());
-
-    /** The blob handed to the n-th `URL.createObjectURL` call. */
-    const storedBlob = (n = 0) => createObjectURL.mock.calls[n][0] as Blob;
-
-    it('stores a downscaled JPEG under its own key and does not cache the original', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
-      const media = encryptedImage('image/jpeg');
+    it('asks for a downscaled thumbnail under its own key and the original for full', async () => {
+      const world = setup();
+      const { svc, content, requests } = world;
+      const media = await encryptedImage(world, 'image/jpeg');
 
       const thumb = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
-
-      expect(bitmapMock).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          resizeWidth: 640,
-          resizeHeight: 427,
-          resizeQuality: 'high',
-        }),
-      );
-      expect(canvasSizes).toEqual([{ width: 640, height: 427 }]);
-      expect(convertToBlob).toHaveBeenCalledWith({
-        type: 'image/jpeg',
-        quality: 0.8,
-      });
-      // Only the downscaled blob became an object URL — the original is not kept.
-      expect(createObjectURL).toHaveBeenCalledTimes(1);
-      expect(storedBlob().size).toBe(DOWNSCALED_BYTES);
-      expect(storedBlob().type).toBe('image/jpeg');
-
-      // The lightbox resolves the original under its own key (a second fetch).
       const full = await firstValueFrom(svc.resolveMedia(media, 'full'));
+
+      expect(requests().map((r) => [r.mimeType, r.downscaleTo])).toEqual([
+        ['image/jpeg', 640],
+        ['image/jpeg', null],
+      ]);
       expect(full).not.toBe(thumb);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(storedBlob(1).size).toBe(3);
       // And the thumbnail stays cached under its own key.
       expect(await firstValueFrom(svc.resolveMedia(media, 'thumbnail'))).toBe(
         thumb,
       );
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(content).toHaveBeenCalledTimes(2);
     });
 
-    it.each([' IMAGE/JPEG; q=1 ', 'image/jpg', 'image/png; name="a;b"'])(
+    it.each([
+      [' IMAGE/JPEG; q=1 ', 'image/jpeg'],
+      ['image/jpg', 'image/jpeg'],
+      ['image/png; name="a;b"', 'image/png'],
+    ])(
       'downscales an encrypted image declared %j like its plain form',
-      async (declared) => {
-        stubBrowserImage(3000, 2000);
-        const { svc } = setup();
+      async (declared, safe) => {
+        const world = setup();
 
         await firstValueFrom(
-          svc.resolveMedia(encryptedImage(declared), 'thumbnail'),
+          world.svc.resolveMedia(
+            await encryptedImage(world, declared),
+            'thumbnail',
+          ),
         );
 
-        expect(bitmapMock).toHaveBeenCalled();
-        expect(storedBlob().size).toBe(DOWNSCALED_BYTES);
+        expect(world.requests()[0]).toMatchObject({
+          mimeType: safe,
+          downscaleTo: 640,
+        });
       },
     );
 
-    it('re-encodes a PNG as WebP to keep transparency', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/png'), 'thumbnail'),
-      );
-
-      expect(convertToBlob).toHaveBeenCalledWith({
-        type: 'image/webp',
-        quality: 0.8,
-      });
-      expect(storedBlob().type).toBe('image/webp');
-    });
-
-    it('shares one fetch, decrypt and downscale across concurrent thumbnail resolves', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
-      const media = encryptedImage('image/jpeg');
+    it('shares one request across concurrent thumbnail resolves', async () => {
+      const world = setup();
+      const media = await encryptedImage(world, 'image/jpeg');
 
       const [a, b] = await Promise.all([
-        firstValueFrom(svc.resolveMedia(media, 'thumbnail')),
-        firstValueFrom(svc.resolveMedia(media, 'thumbnail')),
+        firstValueFrom(world.svc.resolveMedia(media, 'thumbnail')),
+        firstValueFrom(world.svc.resolveMedia(media, 'thumbnail')),
       ]);
 
       expect(a).toBe(b);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(decryptMock).toHaveBeenCalledTimes(1);
-      expect(convertToBlob).toHaveBeenCalledTimes(1);
-    });
-
-    it('draws on a regular canvas when OffscreenCanvas is unavailable', async () => {
-      stubBrowserImage(3000, 2000);
-      vi.stubGlobal('OffscreenCanvas', undefined);
-      const toBlob = vi.fn((cb: BlobCallback, type: string) =>
-        cb(new Blob([new Uint8Array(DOWNSCALED_BYTES)], { type })),
-      );
-      const realCreate = document.createElement.bind(document);
-      vi.spyOn(document, 'createElement').mockImplementation(((tag: string) =>
-        tag === 'canvas'
-          ? { getContext: () => ({ drawImage: vi.fn() }), toBlob }
-          : realCreate(tag)) as typeof document.createElement);
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-      );
-
-      expect(toBlob).toHaveBeenCalledWith(
-        expect.any(Function),
-        'image/jpeg',
-        0.8,
-      );
-      expect(storedBlob().size).toBe(DOWNSCALED_BYTES);
+      expect(world.content).toHaveBeenCalledTimes(1);
     });
 
     it.each([
@@ -717,404 +516,198 @@ describe('MediaService', () => {
       'image/x-icon',
       'image/tiff',
       'image/heic',
+      'image/gif',
+      'image/webp',
+      'image/apng',
+      'image/svg+xml',
     ])(
-      'shows %s as sent: it may be animated or have an alpha channel JPEG would drop',
+      'skips downscaling %s and shares the original between thumbnail and full',
       async (mimeType) => {
-        stubBrowserImage(3000, 2000);
-        const { svc } = setup();
-        const media = encryptedImage(mimeType);
+        const world = setup();
+        const media = await encryptedImage(world, mimeType);
 
         const thumb = await firstValueFrom(
-          svc.resolveMedia(media, 'thumbnail'),
+          world.svc.resolveMedia(media, 'thumbnail'),
         );
-        const full = await firstValueFrom(svc.resolveMedia(media, 'full'));
+        const full = await firstValueFrom(
+          world.svc.resolveMedia(media, 'full'),
+        );
 
-        expect(bitmapMock).not.toHaveBeenCalled();
+        expect(world.requests()[0]?.downscaleTo).toBeNull();
         expect(full).toBe(thumb);
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(world.content).toHaveBeenCalledTimes(1);
       },
     );
 
-    it('treats image/jpg like JPEG', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpg'), 'thumbnail'),
-      );
-
-      expect(storedBlob().size).toBe(DOWNSCALED_BYTES);
-    });
-
-    describe('animated PNG labelled image/png', () => {
-      /** Signature, IHDR, then `chunk` (when set) and IDAT: just the headers the scan reads. */
-      function pngBytes(chunk?: string): ArrayBuffer {
-        const bytes: number[] = [137, 80, 78, 71, 13, 10, 26, 10];
-        const add = (type: string, length: number) => {
-          bytes.push(0, 0, 0, length, ...[...type].map((c) => c.charCodeAt(0)));
-          bytes.push(...new Array<number>(length + 4).fill(0)); // data + CRC
-        };
-        add('IHDR', 13);
-        if (chunk) add(chunk, 8);
-        add('IDAT', 4);
-        return new Uint8Array(bytes).buffer;
-      }
-
-      it('is shown as sent when an acTL chunk precedes the image data', async () => {
-        stubBrowserImage(3000, 2000);
-        decryptMock.mockResolvedValueOnce(pngBytes('acTL'));
-        const { svc } = setup();
-
-        await firstValueFrom(
-          svc.resolveMedia(encryptedImage('image/png'), 'thumbnail'),
-        );
-
-        expect(bitmapMock).not.toHaveBeenCalled();
-        expect(storedBlob().size).toBe(pngBytes('acTL').byteLength);
-      });
-
-      it('is still downscaled when it has no acTL chunk', async () => {
-        stubBrowserImage(3000, 2000);
-        decryptMock.mockResolvedValueOnce(pngBytes('gAMA'));
-        const { svc } = setup();
-
-        await firstValueFrom(
-          svc.resolveMedia(encryptedImage('image/png'), 'thumbnail'),
-        );
-
-        expect(storedBlob().size).toBe(DOWNSCALED_BYTES);
-      });
-    });
-
     it('shares one cache entry for thumbnail and full when the event says the image is small', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
+      const world = setup();
       const media = {
-        ...encryptedImage('image/jpeg'),
+        ...(await encryptedImage(world, 'image/jpeg')),
         width: 640,
         height: 400,
       };
 
-      const thumb = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
-      const full = await firstValueFrom(svc.resolveMedia(media, 'full'));
+      const thumb = await firstValueFrom(
+        world.svc.resolveMedia(media, 'thumbnail'),
+      );
+      const full = await firstValueFrom(world.svc.resolveMedia(media, 'full'));
 
       expect(full).toBe(thumb);
-      expect(bitmapMock).not.toHaveBeenCalled();
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(decryptMock).toHaveBeenCalledTimes(1);
+      expect(world.requests()[0]?.downscaleTo).toBeNull();
+      expect(world.content).toHaveBeenCalledTimes(1);
     });
 
     it('still downscales when the event only claims one dimension', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
+      const world = setup();
 
       await firstValueFrom(
-        svc.resolveMedia(
-          { ...encryptedImage('image/jpeg'), width: 300 },
+        world.svc.resolveMedia(
+          { ...(await encryptedImage(world, 'image/jpeg')), width: 300 },
           'thumbnail',
         ),
       );
 
-      expect(storedBlob().size).toBe(DOWNSCALED_BYTES);
+      expect(world.requests()[0]?.downscaleTo).toBe(640);
     });
 
-    it('closes the full-size bitmap as soon as the resized one exists, and the resized one after encoding', async () => {
-      stubBrowserImage(3000, 2000);
-      let decodedClosedWhenEncoding = false;
-      const encode = convertToBlob.getMockImplementation()!;
-      convertToBlob.mockImplementation(async (opts: { type: string }) => {
-        decodedClosedWhenEncoding = bitmaps[0].close.mock.calls.length > 0;
-        return encode(opts);
-      });
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-      );
-
-      expect(decodedClosedWhenEncoding).toBe(true);
-      expect(bitmaps).toHaveLength(2);
-      expect(bitmaps[0].close).toHaveBeenCalledTimes(1);
-      expect(bitmaps[1].close).toHaveBeenCalledTimes(1);
-    });
-
-    it('closes both bitmaps when encoding fails', async () => {
-      stubBrowserImage(3000, 2000);
-      convertToBlob.mockRejectedValue(new Error('encode failed'));
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-      );
-
-      expect(bitmaps).toHaveLength(2);
-      expect(bitmaps[0].close).toHaveBeenCalled();
-      expect(bitmaps[1].close).toHaveBeenCalled();
-    });
-
-    it('closes the full-size bitmap when the resize fails', async () => {
-      stubBrowserImage(3000, 2000);
-      bitmapMock.mockImplementationOnce(bitmapMock.getMockImplementation()!);
-      bitmapMock.mockImplementationOnce(async () => {
-        throw new Error('resize failed');
-      });
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-      );
-
-      expect(bitmaps).toHaveLength(1);
-      expect(bitmaps[0].close).toHaveBeenCalled();
-      expect(storedBlob().size).toBe(3);
-    });
-
-    it('keeps the original when the encoded thumbnail is bigger', async () => {
-      stubBrowserImage(3000, 2000);
-      convertToBlob.mockResolvedValue(
-        new Blob([new Uint8Array(4)], { type: 'image/jpeg' }), // bigger than the 3-byte original
-      );
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-      );
-
-      expect(createObjectURL).toHaveBeenCalledTimes(1);
-      expect(storedBlob().size).toBe(3);
-      expect(storedBlob().type).toBe('image/jpeg');
-    });
-
-    it('stores nothing and frees both bitmaps when releaseAll lands mid-downscale', async () => {
-      stubBrowserImage(3000, 2000);
-      const realBitmap = bitmapMock.getMockImplementation()!;
-      let finishResize!: () => void;
-      bitmapMock.mockImplementationOnce(realBitmap);
-      bitmapMock.mockImplementationOnce(
-        (...args: unknown[]) =>
-          new Promise((resolve) => {
-            finishResize = () => resolve(realBitmap(...args));
-          }),
-      );
-      const { svc } = setup();
+    it('stores nothing when releaseAll lands mid-request', async () => {
+      const world = setup();
+      const open = world.park();
       const emitted = vi.fn();
 
-      svc
-        .resolveMedia(encryptedImage('image/jpeg'), 'thumbnail')
+      world.svc
+        .resolveMedia(await encryptedImage(world, 'image/jpeg'), 'thumbnail')
         .subscribe(emitted);
-      await vi.waitFor(() => expect(finishResize).toBeDefined());
-      svc.releaseAll();
-      finishResize();
-      await vi.waitFor(() => {
-        expect(bitmaps).toHaveLength(2);
-        expect(bitmaps[0].close).toHaveBeenCalled();
-        expect(bitmaps[1].close).toHaveBeenCalled();
-      });
+      world.svc.releaseAll();
+      open();
+      await tick();
 
       expect(emitted).not.toHaveBeenCalled();
-      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(world.engine.liveUrls()).toEqual([]);
     });
 
-    it('leaves the full variant untouched', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'full'),
+    it('does not downscale an encrypted thumbnail bundled in the event', async () => {
+      const world = setup();
+      const thumbnailFile = await seedEncrypted(
+        world.engine,
+        'mxc://hs/thumb-ct',
       );
 
-      expect(bitmapMock).not.toHaveBeenCalled();
-      expect(storedBlob().size).toBe(3);
-      expect(storedBlob().type).toBe('image/jpeg');
-    });
-
-    it.each(['image/gif', 'image/webp', 'image/apng', 'image/svg+xml'])(
-      'skips downscaling %s and shares the original between thumbnail and full',
-      async (mimeType) => {
-        stubBrowserImage(3000, 2000);
-        const { svc } = setup();
-        const media = encryptedImage(mimeType);
-
-        const thumb = await firstValueFrom(
-          svc.resolveMedia(media, 'thumbnail'),
-        );
-        const full = await firstValueFrom(svc.resolveMedia(media, 'full'));
-
-        expect(bitmapMock).not.toHaveBeenCalled();
-        expect(full).toBe(thumb);
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(storedBlob().size).toBe(3);
-      },
-    );
-
-    it('keeps an image already within 640 px as is', async () => {
-      stubBrowserImage(600, 400);
-      const { svc } = setup();
-
       await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-      );
-
-      expect(canvasSizes).toEqual([]);
-      expect(storedBlob().size).toBe(3);
-    });
-
-    it('falls back to the original when decoding fails', async () => {
-      stubBrowserImage(3000, 2000);
-      bitmapMock.mockRejectedValue(new Error('undecodable'));
-      const { svc } = setup();
-
-      const url = await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-      );
-
-      expect(url).toBe('blob:obj-1');
-      expect(storedBlob().size).toBe(3);
-    });
-
-    it('falls back to the original when encoding fails', async () => {
-      stubBrowserImage(3000, 2000);
-      convertToBlob.mockRejectedValue(new Error('encode failed'));
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-      );
-
-      expect(storedBlob().size).toBe(3);
-    });
-
-    it('still propagates a decryption failure', async () => {
-      stubBrowserImage(3000, 2000);
-      decryptMock.mockRejectedValueOnce(new Error('Mismatched SHA-256 digest'));
-      const { svc } = setup();
-
-      await expect(
-        firstValueFrom(
-          svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
-        ),
-      ).rejects.toThrow(/digest/i);
-    });
-
-    it('does not decode an encrypted thumbnail bundled in the event', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(
+        world.svc.resolveMedia(
           {
-            ...encryptedImage('image/jpeg'),
-            thumbnailFile: {
-              url: 'mxc://hs/thumb-ciphertext',
-              key: {} as JsonWebKey,
-              iv: 'tiv',
-              hashes: { sha256: 'thash' },
-              v: 'v2',
-            },
+            ...(await encryptedImage(world, 'image/jpeg')),
+            thumbnailFile,
             thumbnailMimeType: 'image/jpeg',
           },
           'thumbnail',
         ),
       );
 
-      expect(bitmapMock).not.toHaveBeenCalled();
-      expect(storedBlob().size).toBe(3);
+      expect(world.requests()[0]).toMatchObject({
+        source: { kind: 'encrypted', file: thumbnailFile },
+        downscaleTo: null,
+      });
     });
 
     it('leaves the server-resized plaintext thumbnail path alone', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
+      const world = setup();
 
       await firstValueFrom(
-        svc.resolveMedia(
+        world.svc.resolveMedia(
           plainMedia('mxc://hs/plain', 'image/jpeg'),
           'thumbnail',
         ),
       );
 
-      expect(fetchMock.mock.calls[0][0]).toContain('w=640');
-      expect(bitmapMock).not.toHaveBeenCalled();
-      expect(storedBlob().size).toBe(8);
+      expect(world.requests()[0]).toMatchObject({
+        format: { kind: 'thumbnail', width: 640, height: 640 },
+        downscaleTo: null,
+      });
     });
 
     it.each([
-      [1, 320, 213],
-      [2, 640, 427],
-      [3, 960, 640],
+      [1, 320],
+      [2, 640],
+      [3, 960],
     ])(
       'downscales a decrypted original on a %sx screen to a %i px edge',
-      async (dpr, w, h) => {
+      async (dpr, edge) => {
         devicePixelRatio = dpr;
-        stubBrowserImage(3000, 2000);
-        const { svc } = setup();
+        const world = setup();
 
         await firstValueFrom(
-          svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
+          world.svc.resolveMedia(
+            await encryptedImage(world, 'image/jpeg'),
+            'thumbnail',
+          ),
         );
 
-        expect(canvasSizes).toEqual([{ width: w, height: h }]);
+        expect(world.requests()[0]?.downscaleTo).toBe(edge);
       },
     );
 
     it('keeps an image the event says fits a 3x screen as is', async () => {
       devicePixelRatio = 3;
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
+      const world = setup();
       const media = {
-        ...encryptedImage('image/jpeg'),
+        ...(await encryptedImage(world, 'image/jpeg')),
         width: 960,
         height: 640,
       };
 
-      const thumb = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
-      const full = await firstValueFrom(svc.resolveMedia(media, 'full'));
+      const thumb = await firstValueFrom(
+        world.svc.resolveMedia(media, 'thumbnail'),
+      );
+      const full = await firstValueFrom(world.svc.resolveMedia(media, 'full'));
 
       expect(full).toBe(thumb);
-      expect(bitmapMock).not.toHaveBeenCalled();
+      expect(world.requests()[0]?.downscaleTo).toBeNull();
     });
 
     it('keeps a downscaled thumbnail per bucket and reuses it within one', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
-      const media = encryptedImage('image/jpeg');
+      const world = setup();
+      const media = await encryptedImage(world, 'image/jpeg');
 
-      const at2x = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      const at2x = await firstValueFrom(
+        world.svc.resolveMedia(media, 'thumbnail'),
+      );
       devicePixelRatio = 1.5; // still the 640 px bucket
-      const again = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      const again = await firstValueFrom(
+        world.svc.resolveMedia(media, 'thumbnail'),
+      );
       devicePixelRatio = 1;
-      const at1x = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      const at1x = await firstValueFrom(
+        world.svc.resolveMedia(media, 'thumbnail'),
+      );
 
       expect(again).toBe(at2x);
       expect(at1x).not.toBe(at2x);
-      expect(canvasSizes).toEqual([
-        { width: 640, height: 427 },
-        { width: 320, height: 213 },
-      ]);
+      expect(world.requests().map((r) => r.downscaleTo)).toEqual([640, 320]);
     });
 
     it('decrypts and downscales a thumbnail with other key material on its own', async () => {
-      stubBrowserImage(3000, 2000);
-      const { svc } = setup();
-      const media = encryptedImage('image/jpeg');
+      const world = setup();
+      const media = await encryptedImage(world, 'image/jpeg');
       const other: MediaPayload = {
         ...media,
-        file: {
-          url: 'mxc://hs/ciphertext',
-          key: { k: 'other' } as JsonWebKey,
-          iv: 'iv',
-          hashes: { sha256: 'abc' },
-          v: 'v2',
-        },
+        file: otherKey(media.file as EncryptedFileInfo),
       };
 
-      const first = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
-      const second = await firstValueFrom(svc.resolveMedia(other, 'thumbnail'));
+      const first = await settle(world.svc.resolveMedia(media, 'thumbnail'));
+      const second = await settle(world.svc.resolveMedia(other, 'thumbnail'));
 
       expect(second).not.toBe(first);
-      expect(decryptMock.mock.calls[1][1]).toBe(other.file);
-      expect(canvasSizes).toEqual([
-        { width: 640, height: 427 },
-        { width: 640, height: 427 },
+      expect(
+        world
+          .requests()
+          .map((r) => [
+            r.source.kind === 'encrypted' && r.source.file,
+            r.downscaleTo,
+          ]),
+      ).toEqual([
+        [media.file, 640],
+        [other.file, 640],
       ]);
     });
   });
@@ -1131,26 +724,24 @@ describe('MediaService', () => {
       'asks the server for a %sx screen thumbnail at %i px',
       async (dpr, edge) => {
         devicePixelRatio = dpr;
-        const { svc, client } = setup();
+        const { svc, requests } = setup();
 
         await firstValueFrom(
           svc.resolveMedia(plainMedia('mxc://hs/plain'), 'thumbnail'),
         );
 
-        expect(client.mxcUrlToHttp).toHaveBeenCalledWith(
-          'mxc://hs/plain',
-          edge,
-          edge,
-          'scale',
-          false,
-          true,
-          true,
-        );
+        expect(requests()[0]?.format).toEqual({
+          kind: 'thumbnail',
+          width: edge,
+          height: edge,
+          method: 'scale',
+          animated: false,
+        });
       },
     );
 
     it('keeps a server thumbnail per bucket and reuses it within one', async () => {
-      const { svc } = setup();
+      const { svc, requests } = setup();
       const media = plainMedia('mxc://hs/plain');
 
       const at1x = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
@@ -1161,13 +752,13 @@ describe('MediaService', () => {
 
       expect(at2x).not.toBe(at1x);
       expect(again).toBe(at2x);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock.mock.calls[0][0]).toContain('w=320');
-      expect(fetchMock.mock.calls[1][0]).toContain('w=640');
+      expect(
+        requests().map((r) => r.format.kind === 'thumbnail' && r.format.width),
+      ).toEqual([320, 640]);
     });
 
     it('keys a bundled thumbnail and the full rendition without a bucket', async () => {
-      const { svc } = setup();
+      const { svc, content } = setup();
       const media = {
         ...plainMedia('mxc://hs/plain'),
         thumbnailMxc: 'mxc://hs/thumb',
@@ -1185,56 +776,46 @@ describe('MediaService', () => {
 
       expect(thumb3x).toBe(thumb1x);
       expect(full3x).toBe(full1x);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(content).toHaveBeenCalledTimes(2);
     });
   });
 
-  it('shares one in-flight fetch across concurrent resolves of the same source', async () => {
-    const { svc } = setup();
+  it('shares one in-flight request across concurrent resolves of the same source', async () => {
+    const { svc, content } = setup();
     const media = plainMedia('mxc://hs/concurrent');
 
-    // Both subscribe before the first resolves — they must share one fetch.
+    // Both subscribe before the first resolves — they must share one request.
     const [a, b] = await Promise.all([
       firstValueFrom(svc.resolveMedia(media, 'full')),
       firstValueFrom(svc.resolveMedia(media, 'full')),
     ]);
 
     expect(a).toBe(b);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(content).toHaveBeenCalledTimes(1);
   });
 
   it('releaseAll cancels in-flight work so a late completion cannot repopulate the cache', async () => {
-    const { svc } = setup();
-    let releaseFetch!: (res: Response) => void;
-    fetchMock.mockReturnValueOnce(
-      new Promise<Response>((resolve) => {
-        releaseFetch = resolve;
-      }),
-    );
+    const { svc, engine, park } = setup();
+    const open = park();
 
     const seen: string[] = [];
     svc
       .resolveMedia(plainMedia('mxc://hs/pending'), 'full')
       .subscribe({ next: (u) => seen.push(u), error: () => undefined });
 
-    // Let supportsAuthedMedia settle so the chain reaches (and parks on) the fetch.
-    await new Promise((r) => setTimeout(r));
-    expect(releaseFetch).toBeDefined();
-
-    // Tear down while the fetch is still pending, then let it resolve late.
+    // Tear down while the request is still pending, then let it complete late.
     svc.releaseAll();
-    createObjectURL.mockClear();
-    releaseFetch(okResponse());
-    await new Promise((r) => setTimeout(r));
+    open();
+    await tick();
 
-    // The orphaned completion must not store a fresh object URL into the cache.
+    // The orphaned completion mints no URL and stores nothing.
     expect(seen).toEqual([]);
-    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(engine.liveUrls()).toEqual([]);
   });
 
   it('evicts least recently used unpinned entries once the byte budget is exceeded', async () => {
-    const { svc } = setup();
-    stubBlobSize(40);
+    const { svc, released, reportSize } = setup();
+    reportSize(40);
     expect(3 * 40 * 1024 * 1024).toBeGreaterThan(CACHE_BYTE_LIMIT);
 
     const a = await firstValueFrom(
@@ -1243,17 +824,16 @@ describe('MediaService', () => {
     const b = await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'),
     );
-    expect(revokeObjectURL).not.toHaveBeenCalled(); // 80 MB fits
+    expect(released()).toEqual([]); // 80 MB fits
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
 
-    expect(revokeObjectURL).toHaveBeenCalledTimes(1); // 120 MB > 96 MB
-    expect(revokeObjectURL).toHaveBeenCalledWith(a);
-    expect(revokeObjectURL).not.toHaveBeenCalledWith(b);
+    expect(released()).toEqual([a]); // 120 MB > 96 MB
+    expect(released()).not.toContain(b);
   });
 
   it('keeps a pinned entry even when it alone exceeds the byte budget', async () => {
-    const { svc } = setup();
-    stubBlobSize(60);
+    const { svc, released, reportSize } = setup();
+    reportSize(60);
     const a = await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
     );
@@ -1261,14 +841,14 @@ describe('MediaService', () => {
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'));
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
 
-    expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+    expect(released()).not.toContain(a);
     // Eviction did run, and skipped only the pinned entry: b is the oldest unpinned.
-    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(released()).toHaveLength(1);
   });
 
   it('treats a cache hit as recent use when evicting for the byte budget', async () => {
-    const { svc } = setup();
-    stubBlobSize(40);
+    const { svc, released, reportSize } = setup();
+    reportSize(40);
     const a = await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
     );
@@ -1278,24 +858,23 @@ describe('MediaService', () => {
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/a'), 'full')); // touch a
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
 
-    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
-    expect(revokeObjectURL).toHaveBeenCalledWith(b);
-    expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+    expect(released()).toEqual([b]);
+    expect(released()).not.toContain(a);
   });
 
-  it('does not revoke a lone blob that is over the byte budget before it can be pinned', async () => {
-    const { svc } = setup();
-    stubBlobSize(CACHE_BYTE_LIMIT / 1024 / 1024 + 4);
+  it('does not release a lone blob that is over the byte budget before it can be pinned', async () => {
+    const { svc, released, reportSize } = setup();
+    reportSize(CACHE_BYTE_LIMIT / 1024 / 1024 + 4);
 
     const url = await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/huge'), 'full'),
     );
 
-    expect(revokeObjectURL).not.toHaveBeenCalledWith(url);
+    expect(released()).not.toContain(url);
   });
 
-  it('never evicts pinned URLs past the cache limit, and releaseAll revokes everything', async () => {
-    const { svc } = setup();
+  it('never evicts pinned URLs past the cache limit, and releaseAll releases everything', async () => {
+    const { svc, engine, content, released } = setup();
 
     // Resolve one source and pin its URL (an on-screen thumbnail).
     const pinned = await firstValueFrom(
@@ -1310,19 +889,19 @@ describe('MediaService', () => {
       );
     }
 
-    const evicted = revokeObjectURL.mock.calls.map((c) => c[0]);
+    const evicted = released();
     expect(evicted.length).toBeGreaterThan(0); // some unpinned URL was evicted
     expect(evicted).not.toContain(pinned); // ...but never the pinned one
 
-    // releaseAll revokes every remaining URL — including the pinned one — and clears.
-    revokeObjectURL.mockClear();
-    fetchMock.mockClear();
+    // releaseAll releases every remaining URL — including the pinned one — and clears.
     svc.releaseAll();
-    expect(revokeObjectURL).toHaveBeenCalledWith(pinned);
+    expect(released()).toContain(pinned);
+    expect(engine.liveUrls()).toEqual([]);
 
-    // The cache is empty afterward: the same source fetches again.
+    // The cache is empty afterward: the same source is requested again.
+    content.mockClear();
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/0'), 'full'));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(content).toHaveBeenCalledTimes(1);
   });
 
   describe('pin counting', () => {
@@ -1333,8 +912,8 @@ describe('MediaService', () => {
     }
 
     it('keeps a URL pinned while any of two pins remains', async () => {
-      const { svc } = setup();
-      stubBlobSize(40);
+      const { svc, released, reportSize } = setup();
+      reportSize(40);
       const a = await firstValueFrom(
         svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
       );
@@ -1345,11 +924,11 @@ describe('MediaService', () => {
       await pressure(svc);
       svc.releaseUnpinned();
 
-      expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+      expect(released()).not.toContain(a);
     });
 
     it('makes a URL evictable once its last pin is released', async () => {
-      const { svc } = setup();
+      const { svc, released } = setup();
       const a = await firstValueFrom(
         svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
       );
@@ -1360,11 +939,11 @@ describe('MediaService', () => {
 
       svc.releaseUnpinned();
 
-      expect(revokeObjectURL).toHaveBeenCalledWith(a);
+      expect(released()).toContain(a);
     });
 
     it('ignores an extra unpin instead of counting below zero', async () => {
-      const { svc } = setup();
+      const { svc, released } = setup();
       const a = await firstValueFrom(
         svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
       );
@@ -1374,18 +953,17 @@ describe('MediaService', () => {
       svc.releaseUnpinned();
 
       // A count that went to -1 would now be 0 and evictable.
-      expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+      expect(released()).not.toContain(a);
     });
 
     it('forgets every pin on releaseAll', async () => {
-      const { svc } = setup();
+      const { svc, released } = setup();
       const before = await firstValueFrom(
         svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
       );
       svc.pin(before);
       svc.pin(before);
       svc.releaseAll();
-      revokeObjectURL.mockClear();
 
       // URLs are fresh after a release, but the pins are gone too: the next one is evictable.
       const after = await firstValueFrom(
@@ -1393,7 +971,7 @@ describe('MediaService', () => {
       );
       svc.releaseUnpinned();
 
-      expect(revokeObjectURL).toHaveBeenCalledWith(after);
+      expect(released()).toContain(after);
     });
   });
 
@@ -1403,46 +981,62 @@ describe('MediaService', () => {
       variant: 'full' as const,
     });
 
-    it('revokes and removes the entry when the dropping caller held the last pin', async () => {
-      const { svc } = setup();
+    it('releases and removes the entry when the dropping caller held the last pin', async () => {
+      const { svc, content, released } = setup();
       const a = await firstValueFrom(svc.resolveMedia(full().media, 'full'));
       svc.pin(a);
-      fetchMock.mockClear();
+      content.mockClear();
 
       svc.drop(a, full());
 
-      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(a);
-      // Gone from the cache: the next resolve downloads it again, under a fresh URL.
+      expect(released()).toEqual([a]);
+      // Gone from the cache: the next resolve requests it again, under a fresh URL.
       const again = await firstValueFrom(
         svc.resolveMedia(full().media, 'full'),
       );
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(content).toHaveBeenCalledTimes(1);
       expect(again).not.toBe(a);
     });
 
+    it('drops the rendition of the account it names', async () => {
+      const { svc, engine, session, released } = setup();
+      session.set(sessionWith(BOB, [BOB, engine.alice]));
+      const a = await firstValueFrom(
+        svc.resolveMedia(full().media, 'full', engine.alice),
+      );
+      svc.pin(a);
+
+      svc.drop(a, full()); // the active account's rendition: not this one
+      expect(released()).toEqual([]);
+      svc.pin(a);
+      svc.drop(a, { ...full(), accountId: engine.alice });
+
+      expect(released()).toEqual([a]);
+    });
+
     it('only releases its own pin while another view still shows the URL', async () => {
-      const { svc } = setup();
+      const { svc, content, released } = setup();
       const a = await firstValueFrom(svc.resolveMedia(full().media, 'full'));
       svc.pin(a); // the row
       svc.pin(a); // the lightbox
-      fetchMock.mockClear();
+      content.mockClear();
 
       svc.drop(a, full());
 
-      expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+      expect(released()).toEqual([]);
       // Still cached for the row.
       await expect(
         firstValueFrom(svc.resolveMedia(full().media, 'full')),
       ).resolves.toBe(a);
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(content).not.toHaveBeenCalled();
       // The row's pin is the last one; dropping it frees the entry.
       svc.drop(a, full());
-      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(a);
+      expect(released()).toEqual([a]);
     });
 
     it('takes the dropped bytes off the budget', async () => {
-      const { svc } = setup();
-      stubBlobSize(40);
+      const { svc, released, reportSize } = setup();
+      reportSize(40);
       const a = await firstValueFrom(svc.resolveMedia(full().media, 'full'));
       svc.pin(a);
       const b = await firstValueFrom(
@@ -1450,104 +1044,87 @@ describe('MediaService', () => {
       );
 
       svc.drop(a, full());
-      revokeObjectURL.mockClear();
       // b + c = 80 MB fits once a's 40 MB are no longer counted.
       await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
 
-      expect(revokeObjectURL).not.toHaveBeenCalledWith(b);
+      expect(released()).not.toContain(b);
     });
 
-    it('does not revoke a URL the cache no longer holds for that rendition', async () => {
-      const { svc } = setup();
+    it('does not release a URL the cache no longer holds for that rendition', async () => {
+      const { svc, released } = setup();
       const a = await firstValueFrom(svc.resolveMedia(full().media, 'full'));
       svc.pin(a);
-      svc.releaseAll(); // a is revoked and forgotten; a later resolve gets a new URL
+      svc.releaseAll(); // a is released and forgotten; a later resolve gets a new URL
       const fresh = await firstValueFrom(
         svc.resolveMedia(full().media, 'full'),
       );
       svc.pin(fresh);
-      revokeObjectURL.mockClear();
+      const before = released().length;
 
       svc.drop(a, full()); // a stale caller drops what it held before the release
 
-      expect(revokeObjectURL).not.toHaveBeenCalled();
+      expect(released()).toHaveLength(before);
     });
 
-    /** Park the next fetch until the returned function lets it complete. */
-    function parkFetch(): (res: Response) => void {
-      let complete!: (res: Response) => void;
-      fetchMock.mockReturnValueOnce(
-        new Promise<Response>((resolve) => {
-          complete = resolve;
-        }),
-      );
-      return (res) => complete(res);
-    }
-
     it('cancels an in-flight resolve nobody waits for, so a late completion is not cached', async () => {
-      const { svc } = setup();
-      const complete = parkFetch();
+      const { svc, engine, content, park } = setup();
+      const open = park();
       const seen: string[] = [];
       const sub = svc
         .resolveMedia(full().media, 'full')
         .subscribe((u) => seen.push(u));
-      await new Promise((r) => setTimeout(r));
 
       sub.unsubscribe();
       svc.drop(null, full());
-      complete(okResponse());
-      await new Promise((r) => setTimeout(r));
+      open();
+      await tick();
 
       expect(seen).toEqual([]);
-      // No object URL survives the late completion.
-      expect(createObjectURL.mock.calls.length).toBe(
-        revokeObjectURL.mock.calls.length,
-      );
-      // And the next resolve is a fresh download, not the abandoned one.
-      fetchMock.mockClear();
+      // No URL survives the late completion.
+      expect(engine.liveUrls()).toEqual([]);
+      // And the next resolve is a fresh request, not the abandoned one.
+      content.mockClear();
       await firstValueFrom(svc.resolveMedia(full().media, 'full'));
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(content).toHaveBeenCalledTimes(1);
     });
 
     it('completes a resolve obtained before the drop but subscribed after it empty', async () => {
-      const { svc } = setup();
-      const complete = parkFetch();
+      const { svc, park } = setup();
+      const open = park();
       const early = svc.resolveMedia(full().media, 'full');
       const first = early.subscribe();
-      await new Promise((r) => setTimeout(r));
       first.unsubscribe();
 
       svc.drop(null, full());
-      complete(okResponse());
+      open();
       const seen: string[] = [];
       let completed = false;
       early.subscribe({
         next: (u) => seen.push(u),
         complete: () => (completed = true),
       });
-      await new Promise((r) => setTimeout(r));
+      await tick();
 
       expect(seen).toEqual([]);
       expect(completed).toBe(true);
     });
 
     it('leaves an in-flight resolve running while another view still waits for it', async () => {
-      const { svc } = setup();
-      const complete = parkFetch();
+      const { svc, park } = setup();
+      const open = park();
       const dropped = svc.resolveMedia(full().media, 'full').subscribe();
       const waiting = firstValueFrom(svc.resolveMedia(full().media, 'full'));
-      await new Promise((r) => setTimeout(r));
 
       dropped.unsubscribe();
       svc.drop(null, full());
-      complete(okResponse());
+      open();
 
       await expect(waiting).resolves.toMatch(/^blob:/);
     });
   });
 
   it('releaseUnpinned drops unpinned entries and keeps pinned ones resolvable from cache', async () => {
-    const { svc } = setup();
+    const { svc, content, released } = setup();
     const pinned = await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/on-screen'), 'full'),
     );
@@ -1555,23 +1132,23 @@ describe('MediaService', () => {
     const offScreen = await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/off-screen'), 'full'),
     );
-    fetchMock.mockClear();
+    content.mockClear();
 
     svc.releaseUnpinned();
 
-    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(offScreen);
+    expect(released()).toEqual([offScreen]);
     // The pinned entry is still cached: resolving it again neither refetches nor changes URL.
     await expect(
       firstValueFrom(
         svc.resolveMedia(plainMedia('mxc://hs/on-screen'), 'full'),
       ),
     ).resolves.toBe(pinned);
-    expect(fetchMock).not.toHaveBeenCalled();
-    // The released one is fetched again on its next use.
+    expect(content).not.toHaveBeenCalled();
+    // The released one is requested again on its next use.
     await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/off-screen'), 'full'),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(content).toHaveBeenCalledTimes(1);
   });
 
   it('releaseUnpinned lets in-flight resolutions finish', async () => {
@@ -1585,18 +1162,44 @@ describe('MediaService', () => {
     await expect(pending).resolves.toMatch(/^blob:/);
   });
 
-  it('downloadMedia returns the full bytes paired with the filename', async () => {
-    const { svc } = setup();
-    const media = plainMedia('mxc://hs/doc');
+  describe('downloadMedia', () => {
+    /** Read a fake URL as fetch would read a blob: URL. */
+    function stubFetch(world: Setup): void {
+      vi.stubGlobal('fetch', async (url: string) => ({
+        ok: true,
+        status: 200,
+        blob: async () => new Blob([(await world.engine.read(url)).slice()]),
+      }));
+    }
 
-    const { blob, filename } = await firstValueFrom(svc.downloadMedia(media));
+    afterEach(() => vi.unstubAllGlobals());
 
-    expect(blob).toBeInstanceOf(Blob);
-    expect(filename).toBe('pic.png');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    it('returns the full bytes paired with the filename and releases its URL', async () => {
+      const world = setup();
+      stubFetch(world);
+
+      const { blob, filename } = await firstValueFrom(
+        world.svc.downloadMedia(plainMedia('mxc://hs/doc')),
+      );
+
+      expect(new Uint8Array(await blob.arrayBuffer())).toEqual(PLAIN_BYTES);
+      expect(filename).toBe('pic.png');
+      expect(world.requests()[0]?.format).toEqual({ kind: 'file' });
+      expect(world.engine.liveUrls()).toEqual([]);
+    });
+
+    it('fails when the media cannot be read', async () => {
+      const world = setup();
+      stubFetch(world);
+      const file = await seedEncrypted(world.engine, 'mxc://hs/doc');
+
+      await expect(
+        firstValueFrom(world.svc.downloadMedia(encryptedMedia(otherKey(file)))),
+      ).rejects.toBeInstanceOf(EngineRequestError);
+    });
   });
 
-  describe('display types of resolved blobs', () => {
+  describe('display types of resolved media', () => {
     const NOT_DISPLAYABLE = [
       'image/svg+xml',
       'image/svg+xml; charset=utf-8',
@@ -1608,49 +1211,50 @@ describe('MediaService', () => {
       '',
     ];
     const OPAQUE = 'application/octet-stream';
-    const storedBlob = () => createObjectURL.mock.calls[0][0] as Blob;
-    const encryptedThumbnail = (thumbnailMimeType: string): MediaPayload => ({
-      ...plainMedia('mxc://hs/original'),
-      thumbnailFile: encryptedMedia().file,
-      thumbnailMimeType,
-    });
+    const ENCRYPTED: EncryptedFileInfo = {
+      url: 'mxc://hs/ciphertext',
+      key: {} as JsonWebKey,
+      iv: 'iv',
+      hashes: { sha256: 'abc' },
+      v: 'v2',
+    };
+
+    /** The display type the service asked the engine to give the bytes. */
+    async function requestedType(
+      media: MediaPayload,
+      variant: 'thumbnail' | 'full',
+    ): Promise<string | undefined> {
+      const { svc, requests } = setup();
+      await settle(svc.resolveMedia(media, variant));
+      return requests()[0]?.mimeType;
+    }
 
     it.each(NOT_DISPLAYABLE)(
-      'gives a plaintext image declared %j an opaque blob type',
+      'gives a plaintext image declared %j an opaque type',
       async (declared) => {
-        const { svc } = setup();
-
-        await firstValueFrom(
-          svc.resolveMedia(plainMedia('mxc://hs/a', declared), 'full'),
-        );
-
-        expect(storedBlob().type).toBe(OPAQUE);
+        expect(
+          await requestedType(plainMedia('mxc://hs/a', declared), 'full'),
+        ).toBe(OPAQUE);
       },
     );
 
     it.each(NOT_DISPLAYABLE)(
-      'gives an encrypted image declared %j an opaque blob type',
+      'gives an encrypted image declared %j an opaque type',
       async (declared) => {
-        const { svc } = setup();
-
-        await firstValueFrom(
-          svc.resolveMedia(
-            { ...encryptedMedia(), kind: 'image', mimeType: declared },
+        expect(
+          await requestedType(
+            { ...encryptedMedia(ENCRYPTED), kind: 'image', mimeType: declared },
             'full',
           ),
-        );
-
-        expect(storedBlob().type).toBe(OPAQUE);
+        ).toBe(OPAQUE);
       },
     );
 
     it.each(NOT_DISPLAYABLE)(
-      'gives a plaintext thumbnail declared %j an opaque blob type',
+      'gives a plaintext thumbnail declared %j an opaque type',
       async (declared) => {
-        const { svc } = setup();
-
-        await firstValueFrom(
-          svc.resolveMedia(
+        expect(
+          await requestedType(
             {
               ...plainMedia('mxc://hs/original'),
               thumbnailMxc: 'mxc://hs/thumb',
@@ -1658,47 +1262,50 @@ describe('MediaService', () => {
             },
             'thumbnail',
           ),
-        );
-
-        expect(storedBlob().type).toBe(OPAQUE);
+        ).toBe(OPAQUE);
       },
     );
 
     it.each(NOT_DISPLAYABLE)(
-      'gives an encrypted thumbnail declared %j an opaque blob type',
+      'gives an encrypted thumbnail declared %j an opaque type',
       async (declared) => {
-        const { svc } = setup();
-
-        await firstValueFrom(
-          svc.resolveMedia(encryptedThumbnail(declared), 'thumbnail'),
-        );
-
-        expect(storedBlob().type).toBe(OPAQUE);
+        expect(
+          await requestedType(
+            {
+              ...plainMedia('mxc://hs/original'),
+              thumbnailFile: ENCRYPTED,
+              thumbnailMimeType: declared,
+            },
+            'thumbnail',
+          ),
+        ).toBe(OPAQUE);
       },
     );
 
-    it('gives a sticker or pack image, resolved without a bundled thumbnail, an opaque blob type', async () => {
-      const { svc } = setup();
-
-      await firstValueFrom(
-        svc.resolveMedia(
+    it('gives a sticker or pack image, resolved without a bundled thumbnail, an opaque type', async () => {
+      expect(
+        await requestedType(
           plainMedia('mxc://hs/inherit', 'image/svg+xml; charset=utf-8'),
           'thumbnail',
         ),
-      );
-
-      expect(storedBlob().type).toBe(OPAQUE);
+      ).toBe(OPAQUE);
     });
 
-    it('gives a saved attachment an opaque blob type as well', async () => {
-      const { svc } = setup();
+    it('gives a saved attachment an opaque type as well', async () => {
+      const world = setup();
+      vi.stubGlobal('fetch', async () => ({
+        ok: true,
+        status: 200,
+        blob: async () => new Blob([]),
+      }));
 
-      const { blob, filename } = await firstValueFrom(
-        svc.downloadMedia(plainMedia('mxc://hs/save', 'image/svg+xml')),
+      const { filename } = await firstValueFrom(
+        world.svc.downloadMedia(plainMedia('mxc://hs/save', 'image/svg+xml')),
       );
 
-      expect(blob.type).toBe(OPAQUE);
+      expect(world.requests()[0]?.mimeType).toBe(OPAQUE);
       expect(filename).toBe('pic.png');
+      vi.unstubAllGlobals();
     });
 
     it.each([
@@ -1713,14 +1320,12 @@ describe('MediaService', () => {
     ])(
       'types a plaintext attachment declared %j as %s',
       async (declared, expected) => {
-        const { svc } = setup();
-
-        await firstValueFrom(
-          svc.resolveMedia(plainMedia('mxc://hs/ok', declared), 'full'),
-        );
-
-        expect(storedBlob().type).toBe(expected);
+        expect(
+          await requestedType(plainMedia('mxc://hs/ok', declared), 'full'),
+        ).toBe(expected);
       },
     );
   });
 });
+
+type Setup = ReturnType<typeof setup>;
