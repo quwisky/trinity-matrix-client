@@ -9,8 +9,12 @@ import {
   RoomEvent,
   type IEvent,
 } from 'matrix-js-sdk';
+import { NEVER } from 'rxjs';
 import { expect, vi } from 'vitest';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  SESSION_ENGINE,
+} from '@trinity/data-access/matrix-client';
 import {
   applyVectorDiffs,
   assertPlainData,
@@ -115,6 +119,7 @@ export function engineFor(
 ): JsSdkTimelineEngine {
   TestBed.configureTestingModule({
     providers: [
+      { provide: SESSION_ENGINE, useValue: { session: () => NEVER } },
       ...providers,
       {
         provide: JS_SDK_CLIENTS,

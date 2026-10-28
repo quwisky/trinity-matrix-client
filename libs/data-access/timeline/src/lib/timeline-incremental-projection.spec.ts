@@ -26,7 +26,7 @@ import {
 import { TimelineService } from './timeline.service';
 import { revisionOf } from './js-sdk/event-revision';
 import { shieldSubject } from './js-sdk/shields';
-import { trimLiveTimeline } from './live-timeline-trim';
+import { trimLiveTimeline } from './js-sdk/live-timeline-trim';
 import type { MessageView } from './message-presentation';
 import {
   matrixProvider,
