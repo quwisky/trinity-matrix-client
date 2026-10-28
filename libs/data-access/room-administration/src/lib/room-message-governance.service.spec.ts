@@ -1,135 +1,94 @@
+import { computed } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EventType, MatrixEvent, RoomState } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { afterEach, describe, expect, it } from 'vitest';
 import { RoomMessageGovernanceService } from './room-message-governance.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
 
-const KEY = { accountId: '@alice:hs', roomId: '!shared:hs' } as const;
-
-function setup({
-  allow = true,
-  state: realState,
-}: { allow?: boolean; state?: unknown } = {}) {
-  const event = { getId: () => '$message' };
-  const state = {
-    maySendEvent: vi.fn(() => allow),
-    hasSufficientPowerLevelFor: vi.fn(() => allow),
-    maySendRedactionForEvent: vi.fn(() => allow),
-  };
-  const room = {
-    roomId: KEY.roomId,
-    getLiveTimeline: () => ({ getState: () => realState ?? state }),
-    getMember: () => ({ powerLevel: 50 }),
-    findEventById: (eventId: string) =>
-      eventId === '$message' ? event : undefined,
-  };
-  const otherRoom = { ...room };
-  const client = {
-    getUserId: () => KEY.accountId,
-    getRoom: vi.fn(() => room),
-  };
-  const otherClient = {
-    getUserId: () => '@other:hs',
-    getRoom: vi.fn(() => otherRoom),
-  };
-  TestBed.configureTestingModule({
-    providers: [
-      {
-        provide: MatrixClientService,
-        useValue: {
-          clientFor: (accountId: string) =>
-            accountId === KEY.accountId ? client : otherClient,
-        },
-      },
-    ],
-  });
+async function setup(alicePower = 50) {
+  const session = administrationSession();
+  const { engine } = session;
+  const roomId = await roomWithAlice(engine);
+  await engine.asBob.setPowerLevel(roomId, engine.alice, alicePower);
+  TestBed.configureTestingModule({ providers: session.providers });
   return {
+    engine,
     governance: TestBed.inject(RoomMessageGovernanceService),
-    state,
-    client,
-    otherClient,
-    event,
+    key: { accountId: engine.alice, roomId },
   };
 }
 
 afterEach(() => TestBed.resetTestingModule());
 
 describe('RoomMessageGovernanceService', () => {
-  it('resolves moderator affordances through the exact Account client', () => {
-    const { governance, state, client, otherClient } = setup();
+  it('resolves moderator affordances for the exact Account', async () => {
+    const { governance, key, engine } = await setup();
 
-    expect(governance.canRedactOthers(KEY)).toBe(true);
-    expect(client.getRoom).toHaveBeenCalledWith(KEY.roomId);
-    expect(otherClient.getRoom).not.toHaveBeenCalled();
-    expect(state.maySendEvent).toHaveBeenCalledWith(
-      'm.room.redaction',
-      KEY.accountId,
+    expect(governance.canRedactOthers(key)).toBe(true);
+    expect(governance.canRedactOthers({ ...key, accountId: engine.bob })).toBe(
+      false,
     );
   });
 
-  it('delegates each event decision to the SDK RoomState policy', () => {
-    const { governance, state, event } = setup();
+  it('follows power-level changes', async () => {
+    const { governance, key, engine } = await setup();
+    const canRedact = computed(() => governance.canRedactOthers(key));
+    expect(canRedact()).toBe(true);
 
-    expect(
-      governance.authorizeRedaction({ ...KEY, messageId: '$message' }),
-    ).toEqual({ kind: 'allowed' });
-    expect(state.maySendRedactionForEvent).toHaveBeenCalledWith(
-      event,
-      KEY.accountId,
-    );
+    await engine.asBob.setPowerLevels(key.roomId, { redact: 75 });
+
+    expect(canRedact()).toBe(false);
   });
 
-  it('returns typed denials for absent messages and insufficient authority', () => {
-    const denied = setup({ allow: false });
+  it('lets a member redact their own messages and, with the redact level, others’', async () => {
+    const { governance, key, engine } = await setup(0);
+    const redact = (senderId: string) =>
+      governance.authorizeRedaction({ ...key, senderId });
+
+    expect(redact(engine.alice)).toEqual({ kind: 'allowed' });
+    expect(redact(engine.bob)).toEqual({
+      kind: 'rejected',
+      failure: 'not-allowed',
+    });
+    await engine.asBob.setPowerLevel(key.roomId, engine.alice, 50);
+    expect(redact(engine.bob)).toEqual({ kind: 'allowed' });
+  });
+
+  it('rejects a room the account does not know as unavailable', async () => {
+    const { governance, key, engine } = await setup();
+
     expect(
-      denied.governance.authorizeRedaction({
-        ...KEY,
-        messageId: '$message',
+      governance.authorizeRedaction({
+        ...key,
+        roomId: '!unknown:example.org',
+        senderId: engine.alice,
       }),
-    ).toEqual({ kind: 'rejected', failure: 'not-allowed' });
-    expect(
-      denied.governance.authorizeRedaction({ ...KEY, messageId: '$missing' }),
-    ).toEqual({ kind: 'rejected', failure: 'message-unavailable' });
+    ).toEqual({ kind: 'rejected', failure: 'conversation-unavailable' });
   });
 
   describe('canSendMessages', () => {
-    const powerLevels = (content: object) => {
-      const state = new RoomState(KEY.roomId);
-      state.setStateEvents([
-        new MatrixEvent({
-          type: EventType.RoomPowerLevels,
-          state_key: '',
-          sender: '@admin:hs',
-          room_id: KEY.roomId,
-          event_id: '$pl',
-          content,
-        }),
-      ]);
-      return state;
-    };
+    it('follows events_default', async () => {
+      const { governance, key, engine } = await setup(0);
+      await engine.asBob.setPowerLevels(key.roomId, { events_default: 50 });
 
-    it('follows events_default', () => {
-      const { governance } = setup({
-        state: powerLevels({ events_default: 50 }),
-      });
-
-      expect(governance.canSendMessages(KEY)).toBe(false);
+      expect(governance.canSendMessages(key)).toBe(false);
     });
 
-    it('is true when events_default is 0', () => {
-      const { governance } = setup({
-        state: powerLevels({ events_default: 0 }),
-      });
+    it('is true when events_default is 0', async () => {
+      const { governance, key } = await setup(0);
 
-      expect(governance.canSendMessages(KEY)).toBe(true);
+      expect(governance.canSendMessages(key)).toBe(true);
     });
 
-    it('honours an m.room.message override', () => {
-      const { governance } = setup({
-        state: powerLevels({ events: { 'm.room.message': 50 } }),
+    it('honours an m.room.message override', async () => {
+      const { governance, key, engine } = await setup(0);
+      await engine.asBob.setPowerLevels(key.roomId, {
+        events: { 'm.room.message': 50 },
       });
 
-      expect(governance.canSendMessages(KEY)).toBe(false);
+      expect(governance.canSendMessages(key)).toBe(false);
     });
   });
 });

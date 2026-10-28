@@ -15,7 +15,7 @@ import type {
   ConversationReactionRequest,
 } from './conversation-messages';
 import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
-import type { TimelineItemKey } from './timeline-engine';
+import type { TimelineFocus, TimelineItemKey } from './timeline-engine';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
 import { TimelineStores } from './timeline-store';
 
@@ -123,7 +123,15 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {
-      const decision = this.policy.authorizeRedaction(request);
+      const senderId = this.senderOf(request);
+      if (senderId === null) {
+        return of(rejected('redaction', 'message-unavailable'));
+      }
+      const decision = this.policy.authorizeRedaction({
+        key: request.key,
+        messageId: request.messageId,
+        senderId,
+      });
       if (decision.kind === 'rejected') {
         return of(rejected('redaction', decision.failure));
       }
@@ -181,6 +189,24 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
         map((result) => outcome('cancel', result)),
       );
     });
+  }
+
+  /** The sender of the row the request names, from the items its conversation holds. */
+  private senderOf(request: ConversationMessageActionRequest): string | null {
+    const { eventId, transactionId } = itemKey(request);
+    const focus: TimelineFocus = request.threadRootId
+      ? { kind: 'thread', rootEventId: request.threadRootId }
+      : LIVE;
+    const { store, release } = this.stores.hold(request.key, focus);
+    const item = untracked(store.items).find(
+      (candidate) =>
+        candidate.kind === 'event' &&
+        (eventId === null
+          ? candidate.transactionId === transactionId
+          : candidate.eventId === eventId),
+    );
+    release();
+    return item?.kind === 'event' ? item.sender : null;
   }
 
   private uncancellable(

@@ -25,14 +25,19 @@ interface MatrixClientWindow extends Window {
           session: {
             roomAdministration: {
               permissions: {
-                matrix: {
-                  instance: {
-                    getCrypto(): {
-                      isEncryptionEnabledInRoom(
-                        roomId: string,
-                      ): Promise<boolean>;
-                      /** RustCrypto's private per-room encryptors. */
-                      roomEncryptors?: Record<string, unknown>;
+                store: {
+                  engine: {
+                    /** `JS_SDK_CLIENTS`, the js-sdk engine's long-lived client owner. */
+                    clients: {
+                      instance: {
+                        getCrypto(): {
+                          isEncryptionEnabledInRoom(
+                            roomId: string,
+                          ): Promise<boolean>;
+                          /** RustCrypto's private per-room encryptors. */
+                          roomEncryptors?: Record<string, unknown>;
+                        };
+                      };
                     };
                   };
                 };
@@ -52,7 +57,7 @@ function encryptsOnThisDevice(page: Page, roomId: string): Promise<boolean> {
     if (!root) return false;
     const crypto = (window as unknown as MatrixClientWindow).ng
       .getComponent(root)
-      .runtime.adapter.session.roomAdministration.permissions.matrix.instance.getCrypto();
+      .runtime.adapter.session.roomAdministration.permissions.store.engine.clients.instance.getCrypto();
     return (
       (await crypto.isEncryptionEnabledInRoom(id)) &&
       !!crypto.roomEncryptors?.[id]

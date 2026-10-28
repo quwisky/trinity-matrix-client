@@ -24,6 +24,7 @@ import type {
 } from './conversation-pins';
 import { unencryptedShield } from './shield-presentation';
 import { profileName } from './timeline-item-presentation';
+import { TimelineStores } from './timeline-store';
 
 const unavailablePolicy: ConversationPinPolicy = {
   canMutate: () => false,
@@ -70,6 +71,7 @@ export class ConversationPinsController implements ConversationPins {
   private readonly engine = inject(CONVERSATION_CONTENT_ENGINE);
   private readonly policy = inject(CONVERSATION_PIN_POLICY);
   private readonly session = inject(SessionStateService);
+  private readonly stores = inject(TimelineStores);
   private readonly pinnedEventIds = signal<readonly string[]>([]);
   private allEventIds: readonly string[] = [];
   private readonly pinnedMessages = signal<readonly PinnedMessageView[]>([]);
@@ -159,7 +161,17 @@ export class ConversationPinsController implements ConversationPins {
     if (!key) {
       return of(this.rejected(operation, 'conversation-unavailable', false));
     }
-    const decision = this.policy.authorize(key, operation, eventId);
+    const senderId = this.senderOf(key, eventId);
+    // Pinning must name a message this exact Conversation can resolve. Unpinning is
+    // intentionally allowed for an unloaded/redacted event so stale state can still
+    // be repaired instead of trapping an unremovable id in m.room.pinned_events.
+    if (operation === 'pin' && senderId === null) {
+      return of(this.rejected(operation, 'message-unavailable', false));
+    }
+    const decision = this.policy.authorize(
+      { key, messageId: eventId, senderId },
+      operation,
+    );
     if (decision.kind === 'rejected') {
       return of(this.rejected(operation, decision.failure, false));
     }
@@ -174,6 +186,17 @@ export class ConversationPinsController implements ConversationPins {
           : this.rejected(operation, 'request-rejected', retryable(failure));
       }),
     );
+  }
+
+  /** The sender of `eventId` among the room's live items, or null. */
+  private senderOf(key: ConversationKey, eventId: string): string | null {
+    const { store, release } = this.stores.hold(key, { kind: 'live' });
+    const item = untracked(store.items).find(
+      (candidate) =>
+        candidate.kind === 'event' && candidate.eventId === eventId,
+    );
+    release();
+    return item?.kind === 'event' ? item.sender : null;
   }
 
   /** Subscribes for the account's live generation, or closes the feed when it has none. */

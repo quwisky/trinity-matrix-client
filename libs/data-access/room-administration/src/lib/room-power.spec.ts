@@ -7,6 +7,7 @@ import type {
 } from './room-administration-engine';
 import {
   type PowerAction,
+  isHydraRoomVersion,
   mayAct,
   mayRedactEvent,
   maySendEvent,
@@ -243,4 +244,25 @@ describe('room power', () => {
     expect(powerValue('infinite')).toBe(Infinity);
     expect(powerValue(50)).toBe(50);
   });
+
+  it.each<unknown>(['1', '11', '12', 'org.example.custom', 12, undefined])(
+    'treats creators of room version %s as js-sdk does',
+    (version) => {
+      const state = new RoomState(ROOM);
+      state.setStateEvents([
+        stateEvent(
+          'm.room.create',
+          '',
+          CREATOR,
+          version === undefined ? {} : { room_version: version },
+        ),
+        stateEvent('m.room.power_levels', '', CREATOR, {}),
+        member(CREATOR, 'join'),
+      ]);
+
+      expect(isHydraRoomVersion(version)).toBe(
+        state.getMember(CREATOR)?.powerLevel === Infinity,
+      );
+    },
+  );
 });

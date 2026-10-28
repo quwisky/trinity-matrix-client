@@ -10,6 +10,28 @@ export type PowerAction = 'invite' | 'kick' | 'ban' | 'redact';
 // These port matrix-js-sdk 43 `RoomState` checks so the UI offers exactly what js-sdk did;
 // the parity spec pins them. Who has what power stays the engine's (`PowerLevel`).
 
+const PRE_HYDRA_ROOM_VERSIONS: readonly unknown[] = [
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  '10',
+  '11',
+];
+
+/**
+ * js-sdk `shouldUseHydraForRoomVersion` over the create event's `room_version` (absent: '1'):
+ * any version it does not know as pre-v12 gives creators infinite power (MSC4289).
+ */
+export function isHydraRoomVersion(version: unknown): boolean {
+  return !PRE_HYDRA_ROOM_VERSIONS.includes(version ?? '1');
+}
+
 /** `'infinite'` as `Infinity`, for numeric comparisons. */
 export function powerValue(power: PowerLevel): number {
   return power === 'infinite' ? Infinity : power;

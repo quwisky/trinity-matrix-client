@@ -22,7 +22,7 @@ import type {
   RoomMemberInfo,
   RoomMembers,
 } from '../lib/room-administration-engine';
-import { maySendState } from '../lib/room-power';
+import { isHydraRoomVersion, maySendState } from '../lib/room-power';
 import type { ContractRoomOptions } from './room-administration-engine.contract';
 
 interface FakeStateEvent {
@@ -37,21 +37,10 @@ type FakeRoom = Map<string, Map<string, FakeStateEvent>>;
 export interface FakeRoomOptions extends ContractRoomOptions {
   /** Leaves out `m.room.power_levels`, so spec defaults apply. */
   readonly withoutPowerLevels?: boolean;
+  /** Without encryption state, reports `'unknown'` until {@link FakeRoomAdministrationEngine.answerEncryption}. */
+  readonly encryptionUnknown?: boolean;
 }
 
-const PRE_V12 = new Set([
-  '1',
-  '2',
-  '3',
-  '4',
-  '5',
-  '6',
-  '7',
-  '8',
-  '9',
-  '10',
-  '11',
-]);
 const MEMBERSHIPS: ReadonlySet<string> = new Set<Membership>([
   'join',
   'invite',
@@ -87,6 +76,8 @@ function text(value: unknown): string | null {
 export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
   private readonly rooms = new Map<string, FakeRoom>();
   private readonly live = new Set<string>();
+  /** The crypto store's answer per room; absent until answered. */
+  private readonly encryptionAnswers = new Map<string, boolean | null>();
   private readonly changes$ = new BehaviorSubject<void>(undefined);
   private nextRoom = 0;
   private clock = 1_700_000_000_000;
@@ -117,7 +108,7 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
       });
       if (!options.withoutPowerLevels) {
         this.put(roomId, 'm.room.power_levels', '', this.bob, {
-          users: PRE_V12.has(version) ? { [this.bob]: 100 } : {},
+          users: isHydraRoomVersion(version) ? {} : { [this.bob]: 100 },
           users_default: 0,
           events: {},
           events_default: 0,
@@ -128,6 +119,7 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
           invite: 0,
         });
       }
+      if (options.encryptionUnknown) this.encryptionAnswers.set(roomId, null);
       if (options.encrypted) {
         this.put(roomId, 'm.room.encryption', '', this.bob, {
           algorithm: 'm.megolm.v1.aes-sha2',
@@ -148,6 +140,12 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
         users: { ...record(levels['users']), [userId]: level },
       });
     },
+    /** Merges top-level `m.room.power_levels` keys such as `kick` or `events`. */
+    setPowerLevels: async (roomId: string, patch: JsonObject): Promise<void> =>
+      this.put(roomId, 'm.room.power_levels', '', this.bob, {
+        ...this.content(roomId, 'm.room.power_levels', ''),
+        ...patch,
+      }),
     setDisplayName: async (roomId: string, name: string): Promise<void> =>
       this.rename(this.bob, roomId, name),
     ban: async (roomId: string, userId: string, reason: string) =>
@@ -164,6 +162,10 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
       this.setMembership(roomId, this.carol, this.carol, {
         membership: 'leave',
       }),
+    knock: async (roomId: string): Promise<void> =>
+      this.setMembership(roomId, this.carol, this.carol, {
+        membership: 'knock',
+      }),
     setDisplayName: async (roomId: string, name: string): Promise<void> =>
       this.rename(this.carol, roomId, name),
   };
@@ -176,6 +178,12 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
   setLive(accountId: string, live: boolean): void {
     if (live) this.live.add(accountId);
     else this.live.delete(accountId);
+    this.changed();
+  }
+
+  /** Answers an `encryptionUnknown` room's encryption, as the crypto store would. */
+  answerEncryption(roomId: string, encrypted: boolean): void {
+    this.encryptionAnswers.set(roomId, encrypted);
     this.changed();
   }
 
@@ -258,7 +266,7 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
         userId,
         displayName: this.displayNameOf(roomId, userId),
       })),
-      encryption: single('m.room.encryption') ? 'encrypted' : 'unencrypted',
+      encryption: this.encryptionOf(roomId),
     };
   }
 
@@ -290,6 +298,13 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
     return { roomId, complete: true, members };
   }
 
+  private encryptionOf(roomId: string): AdministeredRoom['encryption'] {
+    if (this.content(roomId, 'm.room.encryption', '')) return 'encrypted';
+    const answer = this.encryptionAnswers.get(roomId);
+    if (answer === null) return 'unknown';
+    return answer ? 'encrypted' : 'unencrypted';
+  }
+
   /** js-sdk `powerLevelForUserId`, applied only when create and power levels exist. */
   private powerOf(roomId: string, userId: string): PowerLevel {
     const levels = this.content(roomId, 'm.room.power_levels', '');
@@ -304,8 +319,9 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
   }
 
   private hydra(roomId: string): boolean {
-    const version = this.content(roomId, 'm.room.create', '')?.['room_version'];
-    return !PRE_V12.has(typeof version === 'string' ? version : '1');
+    return isHydraRoomVersion(
+      this.content(roomId, 'm.room.create', '')?.['room_version'],
+    );
   }
 
   private creatorsOf(roomId: string): string[] {

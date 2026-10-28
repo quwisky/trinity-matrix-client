@@ -22,7 +22,7 @@ import {
   map,
   of,
 } from 'rxjs';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
@@ -43,6 +43,7 @@ import type {
   RoomMemberInfo,
   RoomMembers,
 } from '../room-administration-engine';
+import { isHydraRoomVersion } from '../room-power';
 
 const MEMBERSHIPS: ReadonlySet<string> = new Set<Membership>([
   'join',
@@ -206,25 +207,20 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
       const client = this.clients.clientFor(accountId);
       if (!client) return concat(of(null), NEVER);
       return new Observable<T | null>((subscriber) => {
-        let active = true;
-        let queued = false;
         const publish = (): void => {
-          if (active && this.clients.clientFor(accountId) === client) {
+          // A late async answer may still schedule after the unsubscribe.
+          if (
+            !subscriber.closed &&
+            this.clients.clientFor(accountId) === client
+          ) {
             subscriber.next(source.read());
           }
         };
-        const schedule = (): void => {
-          if (queued) return;
-          queued = true;
-          queueMicrotask(() => {
-            queued = false;
-            publish();
-          });
-        };
-        const source = attach(client, schedule);
+        const queue = coalesce(publish);
+        const source = attach(client, () => queue.schedule());
         publish();
         return () => {
-          active = false;
+          queue.cancel();
           source.detach();
         };
       });
@@ -326,13 +322,14 @@ function creatorsOf(
   state: RoomState | undefined,
 ): readonly RoomCreatorInfo[] {
   const content: Record<string, unknown> = create.getContent();
-  const rawVersion = content['room_version'];
-  const version = rawVersion === undefined ? '1' : text(rawVersion);
   const ids = [text(create.getSender()) ?? text(content['creator'])];
   const additional = content['additional_creators'];
-  // `additional_creators` only means something from room version 12 (MSC4289).
-  if (version !== null && /^\d+$/.test(version) && Number(version) >= 12) {
-    if (Array.isArray(additional)) ids.push(...additional.map(text));
+  // Listed exactly when js-sdk gives them creator power.
+  if (
+    isHydraRoomVersion(content['room_version']) &&
+    Array.isArray(additional)
+  ) {
+    ids.push(...additional.map(text));
   }
   return [...new Set(ids.filter((id): id is string => id !== null))].map(
     (userId) => ({

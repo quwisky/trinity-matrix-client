@@ -34,12 +34,12 @@ function stateEvent(
 }
 
 /** A v12 room I created with bob as additional creator, as the SDK holds it. */
-function setup(options: { encrypted?: boolean } = {}) {
+function setup(options: { encrypted?: boolean; roomVersion?: string } = {}) {
   const state = new RoomState(ROOM_ID);
   const powerLevels = { users: { '@carol:example.org': 50 }, kick: 50 };
   state.setStateEvents([
     stateEvent('m.room.create', '', ME, {
-      room_version: '12',
+      room_version: options.roomVersion ?? '12',
       additional_creators: [CO],
     }),
     stateEvent('m.room.power_levels', '', ME, powerLevels),
@@ -175,6 +175,31 @@ describe('JsSdkRoomAdministrationEngine', () => {
     });
     expect(seen[0]?.powerLevels).not.toBe(powerLevels);
   });
+
+  it.each([
+    {
+      roomVersion: 'org.example.custom',
+      creators: [ME, CO],
+      power: 'infinite',
+    },
+    { roomVersion: '11', creators: [ME], power: 0 },
+  ])(
+    'lists additional creators exactly when they have creator power (version $roomVersion)',
+    ({ roomVersion, creators, power }) => {
+      const { engine } = setup({ roomVersion });
+      const [room] = watch<AdministeredRoom | null>(
+        engine.room(ME, ROOM_ID),
+      ).seen;
+      const [members] = watch<RoomMembers | null>(
+        engine.members(ME, ROOM_ID),
+      ).seen;
+
+      expect(room?.creators.map(({ userId }) => userId)).toEqual(creators);
+      expect(members?.members.find(({ userId }) => userId === CO)?.power).toBe(
+        power,
+      );
+    },
+  );
 
   it('reports encryption unknown until the crypto store answers', async () => {
     const { engine, answer, crypto } = setup();
