@@ -1,6 +1,9 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
@@ -27,6 +30,10 @@ describe('NotificationLifetime with the real Room-rule projection', () => {
         NotificationLifetime,
         RoomNotificationsService,
         ProjectionRuntime,
+        MockProvider(SessionStateService, {
+          activeAccountId: accountId.asReadonly(),
+          accountIds: accountIds.asReadonly(),
+        }),
         MockProvider(MatrixClientService, {
           activeUserId: accountId.asReadonly(),
           accountIds: accountIds.asReadonly(),
