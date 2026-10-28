@@ -111,7 +111,7 @@ function setup(
     | { readonly kind: 'queued' }
   >();
   const sender: ConversationTextSender = senderOverride ?? {
-    send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
+    send: vi.fn(() => ({ outcome: sends, cancel: () => of(false) })),
   };
   const mediaEvents = new Subject<MediaTransferEvent>();
   const keepPhotoMetadata = signal(false);
@@ -1169,7 +1169,7 @@ describe('ConversationRuntime', () => {
   });
 
   it('cancels the finite command without losing the draft or leaving send state behind', () => {
-    const cancelled = vi.fn(() => true);
+    const cancelled = vi.fn(() => of(true));
     const sender: ConversationTextSender = {
       send: vi.fn(() => ({ outcome: NEVER, cancel: cancelled })),
     };
@@ -1190,7 +1190,7 @@ describe('ConversationRuntime', () => {
 
   it('does not falsely restore a draft when SDK cancellation is indeterminate', () => {
     const sender: ConversationTextSender = {
-      send: vi.fn(() => ({ outcome: NEVER, cancel: () => false })),
+      send: vi.fn(() => ({ outcome: NEVER, cancel: () => of(false) })),
     };
     const { runtime } = setup(0, sender);
     const original = runtime.focus({
@@ -1299,7 +1299,9 @@ describe('ConversationRuntime', () => {
   });
 
   it('routes a thread cancel to the adapter with the thread root', async () => {
-    const { runtime, messageAdapter } = setup();
+    const { runtime, messageAdapter } = setup(2, undefined, [
+      message('$reply', { status: 'failed' }),
+    ]);
     const conversation = runtime.focus({
       accountId: ALICE,
       roomId: '!room:example.org',
@@ -1313,6 +1315,38 @@ describe('ConversationRuntime', () => {
       key: conversation.key,
       threadRootId: '$root',
       messageId: '$reply',
+    });
+  });
+
+  it('cancels only a thread row that is waiting or failed, leaving the room to its store', async () => {
+    const { runtime, messageAdapter } = setup(2, undefined, [
+      message('$waiting', { status: 'waiting' }),
+      message('$sending', { status: 'sending' }),
+      message('$sent'),
+    ]);
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const thread = conversation.threads.forRoot('$root')!;
+
+    for (const id of ['$sending', '$sent']) {
+      await expect(firstValueFrom(thread.cancel(id))).resolves.toMatchObject({
+        failure: 'event-not-retryable',
+      });
+    }
+    await expect(
+      firstValueFrom(thread.cancel('$missing')),
+    ).resolves.toMatchObject({ failure: 'message-unavailable' });
+    expect(messageAdapter.cancel).not.toHaveBeenCalled();
+
+    // The room's rows may be trimmed from what it presents: its adapter reads the store.
+    await expect(
+      firstValueFrom(conversation.messages.cancel('$trimmed')),
+    ).resolves.toEqual({ kind: 'applied', operation: 'cancel' });
+    expect(messageAdapter.cancel).toHaveBeenCalledWith({
+      key: { accountId: ALICE, roomId: '!room:example.org' },
+      messageId: '$trimmed',
     });
   });
 
