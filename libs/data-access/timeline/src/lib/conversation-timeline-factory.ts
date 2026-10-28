@@ -2,11 +2,11 @@ import {
   EnvironmentInjector,
   Injectable,
   InjectionToken,
+  type Signal,
   createEnvironmentInjector,
   inject,
 } from '@angular/core';
-import type { Observable } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { ConversationActionContextService } from './conversation-action-context.service';
 import type { ConversationKey } from './conversation-messages';
 import { ConversationTimelineReadiness } from './conversation-timeline-readiness';
@@ -14,11 +14,7 @@ import { TimelineService } from './timeline.service';
 import { ThreadsService } from './threads.service';
 import { ConversationPinsController } from './conversation-pins.controller';
 import { ConversationSearchController } from './conversation-search.service';
-import {
-  TRIM_HIGH_WATER,
-  trimLiveTimeline,
-  type TrimGuard,
-} from './live-timeline-trim';
+import type { TrimGuard } from './js-sdk/live-timeline-trim';
 
 export type ConversationTimeline = Pick<
   TimelineService,
@@ -61,20 +57,8 @@ export interface ConversationTimelineController {
   readonly search: ConversationSearch;
   setVisible(visible: boolean): void;
   release(): void;
-  /**
-   * Trim the room's SDK live timeline back to its latest events once the handle is
-   * released, so the history it paged in or received is freed until it is paged in again.
-   */
-  releaseHistory(): void;
-  /**
-   * While the window is hidden and the room stays focused: trim its SDK live timeline like
-   * a room nobody has open once it passes {@link TRIM_HIGH_WATER} events, but only while
-   * its view follows the newest message, never past what that view shows, and keeping
-   * what `guard` names as well.
-   */
-  trimWhileHidden(guard: TrimGuard): void;
-  /** Page the room back in after its live timeline was rewound; see {@link TimelineService.refill}. */
-  refill(depth: number): Observable<void>;
+  /** What a trim of the room must keep while its view follows the newest message, else null. */
+  readonly liveTrimGuard: Signal<TrimGuard | null>;
   resources(): ConversationResources;
 }
 
@@ -85,12 +69,11 @@ export interface ConversationTimelineFactory {
 @Injectable({ providedIn: 'root' })
 class AngularConversationTimelineFactory implements ConversationTimelineFactory {
   private readonly parentInjector = inject(EnvironmentInjector);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
   private readonly actionContext = inject(ConversationActionContextService);
 
   create(key: ConversationKey): ConversationTimelineController {
-    const client = this.matrix.clientFor(key.accountId);
-    if (!client) {
+    if (!this.session.status(key.accountId)) {
       throw new Error('Conversation account is not live.');
     }
     const injector = createEnvironmentInjector(
@@ -130,7 +113,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       threads,
       pins,
       search,
-      refill: (depth) => timeline.refill(depth),
+      liveTrimGuard: timeline.liveTrimGuard,
       setVisible: (visible) => {
         timeline.setVisible(visible);
         // After the timeline: loadOlder() no-ops while hidden, so readiness must resume second.
@@ -180,39 +163,6 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
         } finally {
           injector.destroy();
         }
-      },
-      releaseHistory: () => {
-        // Only on the client this handle was opened with, and only while it is still the
-        // Account's live client: a signed-out or restarted Account keeps no history here.
-        const room = client.getRoom(key.roomId);
-        const userId = client.getUserId();
-        if (
-          released &&
-          room &&
-          userId &&
-          this.matrix.clientFor(key.accountId) === client
-        ) {
-          trimLiveTimeline(room, userId);
-        }
-      },
-      trimWhileHidden: (extra) => {
-        const room = client.getRoom(key.roomId);
-        const userId = client.getUserId();
-        if (
-          released ||
-          !room ||
-          !userId ||
-          this.matrix.clientFor(key.accountId) !== client ||
-          room.getLiveTimeline().getEvents().length <= TRIM_HIGH_WATER
-        ) {
-          return;
-        }
-        const guard = timeline.liveTrimGuard();
-        if (!guard) return;
-        trimLiveTimeline(room, userId, {
-          marked: [...(guard.marked ?? []), ...(extra.marked ?? [])],
-          kept: [...(guard.kept ?? []), ...(extra.kept ?? [])],
-        });
       },
     };
   }

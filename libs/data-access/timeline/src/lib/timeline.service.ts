@@ -31,7 +31,7 @@ import {
   ConversationTimelineReadiness,
   READY_LOAD_STATE,
 } from './conversation-timeline-readiness';
-import type { TrimGuard } from './live-timeline-trim';
+import type { TrimGuard } from './js-sdk/live-timeline-trim';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import type { ConversationKey } from './conversation-messages';
 import {
@@ -144,7 +144,7 @@ export class TimelineService {
    * The oldest event the room's view shows while it follows the newest message, or null
    * while scrolled back or unreported. See {@link setLiveView}.
    */
-  private liveViewFrom: string | null = null;
+  private readonly liveViewFrom = signal<string | null>(null);
 
   // Latest event already read-receipted, so live messages mark read without re-sending on
   // every update and pagination (latest unchanged) doesn't re-ack.
@@ -240,6 +240,30 @@ export class TimelineService {
     () => this.store()?.firstUnreadId() ?? null,
   );
 
+  /**
+   * What a trim of this room must keep so its view looks the same afterwards, or null when
+   * it must not be trimmed: the view is scrolled back, older history is being paged in, or
+   * the view shows events the timeline does not hold. Keeps what the view shows and,
+   * like the read receipt, the messages its rows quote and the event the "New messages"
+   * divider was drawn against.
+   */
+  readonly liveTrimGuard: Signal<TrimGuard | null> = computed(() => {
+    const from = this.liveViewFrom();
+    const store = this.store();
+    if (!this.visible() || !store || !from || this.loadingOlder()) return null;
+    const items = store.items();
+    const start = items.findIndex(
+      (item) => item.kind === 'event' && item.eventId === from,
+    );
+    if (start === -1) return null;
+    const quoted = items
+      .slice(start)
+      .flatMap((item) =>
+        item.kind === 'event' && item.inReplyTo ? [item.inReplyTo.eventId] : [],
+      );
+    return { marked: [store.unreadAnchorEventId(), ...quoted], kept: [from] };
+  });
+
   constructor() {
     // A create that fails after open() destroys the injector without retiring this child.
     inject(DestroyRef).onDestroy(() => this.close());
@@ -290,31 +314,7 @@ export class TimelineService {
    * shows. A hidden (blurred) Conversation has no view.
    */
   setLiveView(oldestShownId: string | null): void {
-    this.liveViewFrom = this.visible() ? oldestShownId : null;
-  }
-
-  /**
-   * What a trim of this room must keep so its view looks the same afterwards, or null when
-   * it must not be trimmed: the view is scrolled back, older history is being paged in, or
-   * the view shows events the timeline does not hold. Keeps what the view shows and,
-   * like the read receipt, the messages its rows quote and the event the "New messages"
-   * divider was drawn against.
-   */
-  liveTrimGuard(): TrimGuard | null {
-    const from = this.liveViewFrom;
-    const store = this.store();
-    if (!this.visible() || !store || !from || this.loadingOlder()) return null;
-    const items = store.items();
-    const start = items.findIndex(
-      (item) => item.kind === 'event' && item.eventId === from,
-    );
-    if (start === -1) return null;
-    const quoted = items
-      .slice(start)
-      .flatMap((item) =>
-        item.kind === 'event' && item.inReplyTo ? [item.inReplyTo.eventId] : [],
-      );
-    return { marked: [store.unreadAnchorEventId(), ...quoted], kept: [from] };
+    this.liveViewFrom.set(this.visible() ? oldestShownId : null);
   }
 
   /** Toggle foreground-only effects; the store stays subscribed. */
@@ -322,7 +322,7 @@ export class TimelineService {
     if (this.visible() === visible) return;
     this.visible.set(visible);
     // A view reports again once it shows this Conversation.
-    this.liveViewFrom = null;
+    this.liveViewFrom.set(null);
     if (!visible) this.stopTyping();
     // Hidden, the store presents only the newest rows; shown, the whole loaded window.
     this.store()?.setVisible(visible);
@@ -363,7 +363,7 @@ export class TimelineService {
     this.store.set(null);
     this.typists.set(null);
     this.lastReadEventId = null;
-    this.liveViewFrom = null;
+    this.liveViewFrom.set(null);
   }
 
   /** Page in older history. */
@@ -378,33 +378,6 @@ export class TimelineService {
           unwrapEngineResult(),
           map(() => void 0),
         );
-    });
-  }
-
-  /**
-   * Page the room back in after its live timeline was rewound to empty: to about `depth`
-   * events while the Conversation is shown, at least one page; one page while it is
-   * retained. Starts once any paging already running ends, as the engine queues a room's
-   * pages; unsubscribing stops it after the page in flight. Cold.
-   */
-  refill(depth: number): Observable<void> {
-    return defer(() => {
-      const store = this.store();
-      if (!store) return of(void 0);
-      const { accountId, roomId } = store.key;
-      const target = this.visible() ? depth : 1;
-      const loaded = (): number =>
-        store.items().filter((item) => item.kind === 'event').length;
-      const page = (count: number): Observable<void> =>
-        this.engine.paginateBackwards(accountId, roomId, LIVE, SCROLLBACK).pipe(
-          unwrapEngineResult(),
-          switchMap(({ startReached }) =>
-            startReached || loaded() >= target || count >= MAX_JUMP_PAGES
-              ? of(void 0)
-              : page(count + 1),
-          ),
-        );
-      return page(1).pipe(this.untilClosed<void>(undefined));
     });
   }
 

@@ -29,10 +29,7 @@ import {
   type NotificationRuleHealth,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
-import {
-  ConversationRuntime,
-  LiveTimelineTrimmer,
-} from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   AppLockService,
   type AppLockStatus,
@@ -110,7 +107,7 @@ function setup({
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >();
   const memoryRelease = new Subject<never>();
-  const timelineTrim = new Subject<never>();
+  const timelineRetention = new Subject<never>();
   const navigate = vi.fn().mockResolvedValue(true);
   const workspaceNavigate = vi.fn<WorkspaceNavigationService['navigate']>(() =>
     of({ kind: 'ready', change: 'committed' } as const),
@@ -173,6 +170,7 @@ function setup({
       }),
       MockProvider(ConversationRuntime, {
         focused: signal(null).asReadonly() as never,
+        runRetention: () => timelineRetention,
       }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, {
@@ -220,7 +218,6 @@ function setup({
       MockProvider(UnprotectedStorageNotice, {
         runPendingNotice: () => EMPTY,
       }),
-      MockProvider(LiveTimelineTrimmer, { run: () => timelineTrim }),
       MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
       MockProvider(TrnSurfaceService, {
         openState: dialogOpen,
@@ -269,7 +266,7 @@ function setup({
     pushActivations,
     lifecycleEvents,
     memoryRelease,
-    timelineTrim,
+    timelineRetention,
     navigate,
     workspaceNavigate,
     closeAuthentication,
@@ -359,7 +356,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.backIntents.observed).toBe(false);
     expect(test.lifecycleEvents.observed).toBe(false);
     expect(test.memoryRelease.observed).toBe(false);
-    expect(test.timelineTrim.observed).toBe(false);
+    expect(test.timelineRetention.observed).toBe(false);
     expect(test.hostUpdateCheck).not.toHaveBeenCalled();
 
     preparation.next({ kind: 'prepared' });
@@ -374,12 +371,12 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.backIntents.observed).toBe(true);
     expect(test.lifecycleEvents.observed).toBe(true);
     expect(test.memoryRelease.observed).toBe(true);
-    expect(test.timelineTrim.observed).toBe(true);
+    expect(test.timelineRetention.observed).toBe(true);
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
 
     lifetime.unsubscribe();
     expect(test.memoryRelease.observed).toBe(false);
-    expect(test.timelineTrim.observed).toBe(false);
+    expect(test.timelineRetention.observed).toBe(false);
     expect(preparation.observed).toBe(false);
     expect(test.deepLinks.observed).toBe(false);
     expect(test.notificationEvents.observed).toBe(false);

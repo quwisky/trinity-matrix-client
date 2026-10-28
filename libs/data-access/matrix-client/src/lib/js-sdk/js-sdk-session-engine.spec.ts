@@ -143,6 +143,27 @@ describe('JsSdkSessionEngine', () => {
     expect(() => assertPlainData(snapshot)).not.toThrow();
   });
 
+  it('lists an account only once its client is registered', async () => {
+    const harness = setup(fakeClient(), fakeClient('https://other.example'));
+    const engine = TestBed.inject(JsSdkSessionEngine);
+    const listedWithoutClient: string[] = [];
+    engine.session().subscribe((snapshot) => {
+      for (const { accountId } of snapshot.accounts) {
+        if (!harness.svc.clientFor(accountId)) {
+          listedWithoutClient.push(accountId);
+        }
+      }
+    });
+
+    await firstValueFrom(harness.svc.restorePersisted(SESSION, 'activate'));
+    TestBed.tick();
+    await firstValueFrom(harness.svc.restorePersisted(SESSION_B, 'background'));
+    TestBed.tick();
+
+    expect(engine.snapshot().accounts).toHaveLength(2);
+    expect(listedWithoutClient).toEqual([]);
+  });
+
   it('reflects a sync transition', async () => {
     const client = fakeClient();
     const { engine } = await live(client);
