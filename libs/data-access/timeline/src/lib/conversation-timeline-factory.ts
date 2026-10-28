@@ -18,7 +18,7 @@ import {
   TRIM_HIGH_WATER,
   trimLiveTimeline,
   type TrimGuard,
-} from './live-timeline-trim';
+} from './js-sdk/live-timeline-trim';
 
 export type ConversationTimeline = Pick<
   TimelineService,

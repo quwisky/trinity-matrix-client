@@ -1,4 +1,5 @@
-import { Injectable, Injector, inject } from '@angular/core';
+import { ErrorHandler, Injectable, Injector, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   ClientEvent,
   Direction,
@@ -32,9 +33,14 @@ import {
   map,
   of,
   switchMap,
+  takeWhile,
   type Subscriber,
 } from 'rxjs';
-import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  SESSION_ENGINE,
+  coalesce,
+} from '@trinity/data-access/matrix-client';
 import { MediaService } from '@trinity/data-access/media';
 import {
   RoomEncryptionFlags,
@@ -52,6 +58,7 @@ import {
   pollStartContent,
   voiceMessageContent,
   type EngineFailure,
+  unwrapEngineResult,
   type EngineResult,
   type VectorDiff,
 } from '@trinity/util/matrix';
@@ -63,6 +70,7 @@ import type {
   OutgoingText,
   Profile,
   ReactionDetailGroup,
+  RetentionHint,
   ShieldCode,
   ThreadSummaryInfo,
   TimelineEngine,
@@ -79,6 +87,7 @@ import {
   reactionSendersFor,
 } from './event-reads';
 import { revisionOf } from './event-revision';
+import { JsSdkTimelineRetention } from './js-sdk-timeline-retention';
 import { scrollbackLive } from './live-scrollback';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
 import {
@@ -105,6 +114,8 @@ import { TimelineRowCache } from './timeline-row-cache';
 
 /** Events per page while paging back to a target event. */
 const SCROLLBACK = 30;
+/** The most pages a rewound room is refilled with. */
+const MAX_REFILL_PAGES = 20;
 
 const UNAVAILABLE: TimelineUpdate = { kind: 'room-unavailable' };
 const READ_MARKER: TimelineItem = {
@@ -327,6 +338,14 @@ export class JsSdkTimelineEngine implements TimelineEngine {
   // Resolved on use: the media service needs the session's MatrixClientService.
   private readonly injector = inject(Injector);
   private readonly feeds = new Set<Feed>();
+  private readonly retention = new JsSdkTimelineRetention({
+    clientFor: (accountId) => this.clients.clientFor(accountId),
+    errors: inject(ErrorHandler),
+    subscribed: (client, roomId) =>
+      [...this.feeds].some((f) => f.client === client && f.roomId === roomId),
+    refill: (accountId, roomId, target, held) =>
+      this.refill(accountId, roomId, target, held),
+  });
   /** The {@link pageKey}s with a page in flight, per client. */
   private readonly paging = new WeakMap<MatrixClient, Set<string>>();
   /** The last page queued per {@link pageKey}, per client: each pages one page at a time. */
@@ -380,6 +399,16 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       ...replies,
       ...pending.filter((p) => p.rootId === rootId).map((p) => p.echo),
     ];
+  }
+
+  constructor() {
+    inject(SESSION_ENGINE)
+      .session()
+      .pipe(
+        takeUntilDestroyed(),
+        finalize(() => this.retention.follow([])),
+      )
+      .subscribe((session) => this.retention.follow(session.accounts));
   }
 
   timeline(
@@ -953,6 +982,57 @@ export class JsSdkTimelineEngine implements TimelineEngine {
    * sender's own first reply: its echo would leave the room's timeline and land nowhere. Done
    * only on send, so a thread opened and abandoned leaves no empty thread behind.
    */
+  setRetention(
+    accountId: string,
+    roomId: string,
+    hint: RetentionHint | null,
+  ): Observable<null> {
+    return defer(() => {
+      const trimmed = this.retention.setHint(accountId, roomId, hint);
+      return trimmed
+        ? this.settled(trimmed, roomId, Promise.resolve(null))
+        : of(null);
+    });
+  }
+
+  /** Pages the live timeline back until it shows about `target` items, while `held`. */
+  private refill(
+    accountId: string,
+    roomId: string,
+    target: number,
+    held: () => boolean,
+  ): Observable<unknown> {
+    const loaded = (): number =>
+      this.clients
+        .clientFor(accountId)
+        ?.getRoom(roomId)
+        ?.getLiveTimeline()
+        .getEvents()
+        .filter(
+          (e) =>
+            !isThreadReply(e) &&
+            (isDisplayableMessage(e) || isPresentableSystemEvent(e)),
+        ).length ?? 0;
+    const page = (count: number): Observable<unknown> =>
+      this.paginateBackwards(
+        accountId,
+        roomId,
+        { kind: 'live' },
+        SCROLLBACK,
+      ).pipe(
+        unwrapEngineResult(),
+        takeWhile(
+          ({ startReached }) =>
+            !startReached &&
+            loaded() < target &&
+            count < MAX_REFILL_PAGES &&
+            held(),
+        ),
+        switchMap(() => page(count + 1)),
+      );
+    return defer(() => (held() ? page(1) : of(null)));
+  }
+
   private ensureThread(
     client: MatrixClient,
     room: Room,

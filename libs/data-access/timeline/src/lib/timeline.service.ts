@@ -31,7 +31,7 @@ import {
   ConversationTimelineReadiness,
   READY_LOAD_STATE,
 } from './conversation-timeline-readiness';
-import type { TrimGuard } from './live-timeline-trim';
+import type { TrimGuard } from './js-sdk/live-timeline-trim';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import type { ConversationKey } from './conversation-messages';
 import {

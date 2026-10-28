@@ -411,4 +411,27 @@ export interface TimelineEngine {
     roomId: string,
     clip: VoiceClip,
   ): Observable<EngineResult<null>>;
+
+  /**
+   * How much of the room's history its holder still needs; `null` once nothing holds the room.
+   * A memory hint: js-sdk trims and rewinds by it, an engine with its own event cache ignores
+   * it. Replies `null` once applied.
+   */
+  setRetention(
+    accountId: string,
+    roomId: string,
+    hint: RetentionHint | null,
+  ): Observable<null>;
+}
+
+/** What the holder of a room shows, for an engine that frees the history nobody shows. */
+export interface RetentionHint {
+  readonly shown: boolean;
+  /** The view follows the newest message: older history is not on screen. */
+  readonly followingLive: boolean;
+  readonly windowHidden: boolean;
+  /** Never trimmed away: what the view shows, or the composer's target. */
+  readonly kept: readonly string[];
+  /** Kept like the read receipt: the divider anchor, quoted messages, the open thread's root. */
+  readonly marked: readonly string[];
 }

@@ -47,7 +47,7 @@ import {
   createClient,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { TRIM_KEEP, noteSyncPosition } from './live-timeline-trim';
+import { TRIM_KEEP, noteSyncPosition } from './js-sdk/live-timeline-trim';
 import { liveSession } from './timeline.spec-harness';
 import { FakeTimelineEngine } from '../contract/fake-timeline-engine';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
