@@ -92,11 +92,12 @@ describe('Conversation Runtime production boundary', () => {
     expect(navigation).not.toMatch(/\bworkspace\s*\.\s*open\s*\(/s);
   });
 
-  it('binds each child to the client for its immutable Account key', () => {
+  it('binds each child to its immutable Account key while that Account is live', () => {
     const factory = source(timelineFactoryImplementation);
     const readiness = source(readinessImplementation);
 
-    expect(factory).toContain('this.matrix.clientFor(key.accountId)');
+    expect(factory).toContain('this.session.status(key.accountId)');
+    expect(factory).not.toContain('MatrixClientService');
     expect(factory).toContain('timeline.open(key);');
     expect(factory).toContain('readiness.start(key, timeline);');
     expect(readiness).toContain('this.session.status(this.key.accountId)');

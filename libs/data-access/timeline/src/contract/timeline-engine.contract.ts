@@ -644,6 +644,38 @@ export function defineTimelineEngineContract(
     );
 
     it(
+      'setRetention replies for a held and a released room',
+      async () => {
+        const { roomId } = await roomWith(['kept']);
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+
+          await expect(
+            once(
+              engine.setRetention(alice, roomId, {
+                shown: true,
+                followingLive: true,
+                windowHidden: true,
+                kept: [],
+                marked: [],
+              }),
+            ),
+          ).resolves.toBeNull();
+          await expect(
+            once(engine.setRetention(alice, roomId, null)),
+          ).resolves.toBeNull();
+
+          const eventId = await context.asBob.send(roomId, 'after');
+          await timeline.until((v) => !!byId(v, eventId));
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'send shows the local echo before it replies',
       async () => {
         const {

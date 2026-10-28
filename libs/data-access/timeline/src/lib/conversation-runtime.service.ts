@@ -8,7 +8,18 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { EMPTY, Observable, defer, of } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
+import {
+  EMPTY,
+  Observable,
+  catchError,
+  defer,
+  ignoreElements,
+  merge,
+  mergeMap,
+  of,
+} from 'rxjs';
+import { plainEqual } from '@trinity/util/matrix';
 import {
   MediaPipeline,
   type MediaTransferEvent,
@@ -48,6 +59,8 @@ import {
   type ConversationTimelineController,
 } from './conversation-timeline-factory';
 import { conversationDraftKey } from './conversation-draft-key';
+import type { RetentionHint } from './timeline-engine';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -116,6 +129,8 @@ interface ConversationEntry {
 @Injectable({ providedIn: 'root' })
 export class ConversationRuntime {
   private readonly factory = inject(CONVERSATION_TIMELINE_FACTORY);
+  // Injected here so the engine binds its retention loop when the session starts.
+  private readonly engine = inject(TIMELINE_ENGINE);
   private readonly drafts = inject(DraftStoreService);
   private readonly textSender = inject(CONVERSATION_TEXT_SENDER);
   private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
@@ -138,6 +153,22 @@ export class ConversationRuntime {
   private focusOrder = 0;
   /** How many {@link trimFocusedWhileHidden} lifetimes are running. */
   private readonly hiddenWindows = signal(0);
+  /** Bumped when a handle is created or retired: {@link entries} is not a signal. */
+  private readonly entriesChanged = signal(0);
+  /** What each live handle's room may lose: see {@link runRetention}. */
+  private readonly retentionHints = computed(() => {
+    this.entriesChanged();
+    const windowHidden = this.windowHidden();
+    return [...this.entries.values()].flatMap((account) =>
+      [...account.values()].map((entry) => ({
+        key: entry.handle.key,
+        handle: entry.handle,
+        hint: this.hintOf(entry, windowHidden),
+      })),
+    );
+  });
+  // One observer for every run, not one per subscription.
+  private readonly retentionHints$ = toObservable(this.retentionHints);
 
   constructor() {
     this.destroyRef.onDestroy(() => this.retireAll());
@@ -225,19 +256,13 @@ export class ConversationRuntime {
     }
   }
 
-  /** Whether the Account has a focused or retained handle for the room. */
-  holds(accountId: string, roomId: string): boolean {
-    return this.entries.get(accountId)?.has(roomId) ?? false;
-  }
-
   /**
    * For as long as it is subscribed, the window is hidden ({@link windowHidden}): the
-   * `LiveTimelineTrimmer` trims the focused room through {@link trimHeld} right away and
-   * after each sync, like a room nobody has open, but only while its view follows the
-   * newest message. A trim never cuts past what that view shows or the event the
-   * composer replies to or edits; below the 1,000-event ceiling it also keeps the open
-   * thread's root. Showing the window again ends it. Owned by the Application Runtime's
-   * hidden-window release.
+   * engine trims the focused room right away and after each sync, like a room nobody has
+   * open, but only while its view follows the newest message. A trim never cuts past what
+   * that view shows or the event the composer replies to or edits; below the 1,000-event
+   * ceiling it also keeps the open thread's root. Showing the window again ends it. Owned
+   * by the Application Runtime's hidden-window release.
    */
   trimFocusedWhileHidden(): Observable<never> {
     return new Observable<never>(() => {
@@ -249,46 +274,34 @@ export class ConversationRuntime {
   }
 
   /**
-   * Trim a room a handle holds, if it may be trimmed now: only the focused room, only while
-   * the window is hidden. A retained room waits for its handle to retire. A failed trim
-   * throws and leaves the room as it was; the trimmer reports a room once.
+   * Sends the engine a retention hint for each room a handle holds whenever it changes, so
+   * the engine frees only history nobody shows. A retired handle's room is released with a
+   * `null` hint once its timeline closes, whether or not this runs. Owned by the
+   * Application Runtime session.
    */
-  trimHeld(accountId: string, roomId: string): void {
-    const handle = this.focusedHandle();
-    if (
-      this.hiddenWindows() === 0 ||
-      !handle ||
-      handle.key.accountId !== accountId ||
-      handle.key.roomId !== roomId
-    ) {
-      return;
-    }
-    const entry = this.entry(handle.key);
-    if (entry?.handle !== handle) return;
-    const intent = entry.composeController.compose.intent();
-    // The thread panel reads its root from the Thread, so the root needs no more than the
-    // receipt's protection.
-    const root = entry.controller.threads.openThreadRootId();
-    entry.controller.trimWhileHidden({
-      kept: intent.kind === 'message' ? [] : [intent.eventId],
-      marked: root ? [root] : [],
+  runRetention(): Observable<never> {
+    return defer(() => {
+      let sent = new Map<ConversationHandle, RetentionHint>();
+      return this.retentionHints$.pipe(
+        mergeMap((hints) => {
+          const changed = hints.filter(
+            ({ handle, hint }) => !plainEqual(sent.get(handle), hint),
+          );
+          sent = new Map(hints.map(({ handle, hint }) => [handle, hint]));
+          return merge(
+            ...changed.map(({ key, hint }) =>
+              this.engine.setRetention(key.accountId, key.roomId, hint).pipe(
+                catchError((error: unknown) => {
+                  this.errors.handleError(error);
+                  return EMPTY;
+                }),
+              ),
+            ),
+          );
+        }),
+        ignoreElements(),
+      );
     });
-  }
-
-  /**
-   * Page a held room back in after its live timeline was rewound: to about `depth` events
-   * while it is focused, one page while it is retained. Cold; completes at once for a room
-   * no handle holds.
-   */
-  refillHeld(
-    accountId: string,
-    roomId: string,
-    depth: number,
-  ): Observable<void> {
-    return defer(
-      () =>
-        this.entry({ accountId, roomId })?.controller.refill(depth) ?? EMPTY,
-    );
   }
 
   retireAll(): void {
@@ -307,6 +320,32 @@ export class ConversationRuntime {
     if (failures.length > 1) {
       throw new AggregateError(failures, 'Conversation retirement failed.');
     }
+  }
+
+  /**
+   * A retained room keeps all it holds. The focused one may lose what its view does not
+   * show while the window is hidden, but never the event the composer replies to or edits,
+   * nor, below the ceiling, the open thread's root: the thread panel reads its root from
+   * the Thread, so the root needs no more than the receipt's protection.
+   */
+  private hintOf(
+    entry: ConversationEntry,
+    windowHidden: boolean,
+  ): RetentionHint {
+    const shown = entry.state() === 'focused';
+    const guard = shown ? entry.controller.liveTrimGuard() : null;
+    const intent = entry.composeController.compose.intent();
+    const root = shown ? entry.controller.threads.openThreadRootId() : null;
+    return {
+      shown,
+      followingLive: guard !== null,
+      windowHidden,
+      kept: [
+        ...(guard?.kept ?? []),
+        ...(intent.kind === 'message' ? [] : [intent.eventId]),
+      ].filter(isEventId),
+      marked: [...(guard?.marked ?? []), root].filter(isEventId),
+    };
   }
 
   private create(key: ConversationKey): ConversationEntry {
@@ -480,6 +519,7 @@ export class ConversationRuntime {
     const account = this.entries.get(key.accountId) ?? new Map();
     account.set(key.roomId, entry);
     this.entries.set(key.accountId, account);
+    this.entriesChanged.update((count) => count + 1);
     return entry;
   }
 
@@ -733,7 +773,7 @@ export class ConversationRuntime {
 
   /**
    * Retire one handle. A handle retired while the Account stays signed in also releases
-   * its room's SDK history: nothing shows the room now, so only the latest events stay.
+   * its room's history: nothing shows the room now, so only the latest events stay.
    */
   private retire(
     entry: ConversationEntry,
@@ -749,18 +789,22 @@ export class ConversationRuntime {
       account.delete(roomId);
       if (account.size === 0) this.entries.delete(accountId);
     }
+    this.entriesChanged.update((count) => count + 1);
     entry.state.set('retired');
     entry.releaseThread();
     entry.composeController.stopTyping();
     this.retiredHandles.update((count) => count + 1);
+    // Closes the room's timeline first: the engine leaves a room an open timeline shows.
     entry.controller.release();
     if (history === 'release-history') {
-      try {
-        entry.controller.releaseHistory();
-      } catch (error: unknown) {
-        // Best effort: the handle is already retired, and the history stays as it was.
-        this.errors.handleError(error);
-      }
+      // Best effort: the handle is already retired, and the history stays as it was.
+      this.engine.setRetention(accountId, roomId, null).subscribe({
+        error: (error: unknown) => this.errors.handleError(error),
+      });
     }
   }
+}
+
+function isEventId(id: unknown): id is string {
+  return typeof id === 'string';
 }
