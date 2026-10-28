@@ -141,8 +141,8 @@ describe('Conversation Runtime production boundary', () => {
     expect(composeContract).not.toMatch(/\bbegin(?:Reply|Edit)\s*\(/);
     expect(entrypoint).not.toContain('CONVERSATION_MESSAGE_ADAPTER');
     expect(entrypoint).not.toContain('ConversationMessageAdapter');
-    expect(adapter).toContain('this.matrix.clientFor(request.key.accountId)');
-    expect(adapter).toContain('myReactionIds(');
+    expect(adapter).toMatch(/this\.engine\s*\.toggleReaction\(/);
+    expect(adapter).not.toMatch(/from ['"]matrix-js-sdk(?:\/|['"])/);
     expect(adapter).toContain('this.policy.authorizeRedaction(request)');
     expect(adapter).not.toMatch(/\b(?:signal|Subject|BehaviorSubject)\s*[<(]/);
     expect(timeline).not.toContain('.sendReadReceipt(');
