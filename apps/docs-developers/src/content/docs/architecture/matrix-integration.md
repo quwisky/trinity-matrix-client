@@ -79,6 +79,10 @@ Creating a room, space or DM, joining, leaving and tagging show their effect in 
 
 `RoomWidgetEngine` (`libs/data-access/widgets`) exposes a room's `im.vector.modular.widgets` declarations. `roomWidgets(accountId, roomId)` emits a whole `RoomWidgetSnapshot` on each change: the widgets, whether the account may manage them, and the identity a widget URL may request. An account that is not live gets an empty snapshot. `putRoomWidget` fails with `state-key-taken` when room state already holds the id, and `removeRoomWidget` fails with `conflict` once the widget's live revision is no longer the one the caller confirmed. `WidgetsService` subscribes again when the account gets a new client, and `ROOM_WIDGET_ENGINE` provides the `matrix-js-sdk` adapter. One contract, `defineRoomWidgetEngineContract`, runs against `FakeRoomWidgetEngine` in unit tests and against Synapse in `trinity-e2e-engine:contract`.
 
+### Media engine {#media-engine}
+
+`MediaEngine` (`libs/data-access/media`) moves media bytes. `content(accountId, request)` mints a fresh URL the webview can load on every subscription and keeps no cache; the subscriber owns it until `release` (a `blob:` URL in the `matrix-js-sdk` adapter). It fails with `media-unavailable` when there is no source or an encrypted file fails its hash check. `upload` is a command with progress: zero or more `progress` updates, then one `done` carrying the result, and unsubscribing aborts it. An encrypted upload sends neither its name nor its type, and an upload over the server's limit fails with `too-large`. `MEDIA_ENGINE` provides the `matrix-js-sdk` adapter. One contract, `defineMediaEngineContract`, runs against `FakeMediaEngine` in unit tests and against Synapse in `trinity-e2e-engine:contract`; `assertProgressThenResult` checks the shape of a progress command.
+
 ## Treat synchronization as authoritative {#sync-authority}
 
 Commands call the SDK and then allow sync or the relevant SDK event to reconcile current state. Preserve a typed error or outcome for the initiating action, but do not claim that an accepted network request has already become authoritative local state unless the SDK contract guarantees it.

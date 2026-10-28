@@ -10,7 +10,7 @@ import {
   switchMap,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { fetchMediaBytes } from '@trinity/util/matrix';
+import { fetchMediaBytes } from './js-sdk/authed-media';
 import { withoutImageMetadata } from './image-metadata/strip-file-metadata';
 
 /** Default avatar edge (px) requested from the server thumbnailer. */

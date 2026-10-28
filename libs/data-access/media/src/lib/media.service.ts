@@ -25,7 +25,7 @@ import {
   serverAdvertises,
   type ServerSupportQuery,
 } from '@trinity/data-access/matrix-client';
-import { fetchMediaBytes } from '@trinity/util/matrix';
+import { fetchMediaBytes } from './js-sdk/authed-media';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
 import type { ImageMetadataPolicy, MediaHints } from './media-pipeline.models';
 import {
