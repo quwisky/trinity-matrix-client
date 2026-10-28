@@ -14,6 +14,7 @@ import type {
   HomeserverRuntime,
 } from './kind.mts';
 
+export { PORT_OFFSET, PORTS } from './constants.mjs';
 export declare const HOMESERVER_HTTP: string;
 export declare const SECONDARY_HTTP: string;
 export declare const HS_TLS: string;

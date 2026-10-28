@@ -468,6 +468,17 @@ async function startNative() {
         return false;
       },
     ));
+  // A crashed run leaves ./data behind, and its configs keep that run's ports.
+  if (
+    existsSync(paths.config) &&
+    !(await readFile(paths.config, 'utf8')).includes(
+      `public_baseurl: "${HS_TLS}/"`,
+    )
+  ) {
+    throw new Error(
+      `${DATA} was set up for another TRINITY_E2E_PORT_OFFSET; remove it with \`pnpm e2e:verify:down\``,
+    );
+  }
   if (identity) await ensureSydentConfig({ native: true, log });
   await synapse.preparePrimary({
     signal: operationSignal,

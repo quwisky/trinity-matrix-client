@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { PORTS } from '../../../support/homeserver/start.mjs';
 import { createRoom } from '../../support/space-journey.mts';
 
 // Covers link previews (message-row `data-testid="link-preview"`): a URL in an
@@ -23,7 +24,7 @@ const session = homeserverSession();
 // blocks the whole name.
 const OG_URL =
   session.runtime === 'native'
-    ? 'http://127.0.0.1:8080/og'
+    ? `http://127.0.0.1:${PORTS.linkPreview}/og`
     : process.env['TRINITY_E2E_NETWORK_CONTAINER']
       ? 'http://localhost:8080/og'
       : 'http://caddy:8080/og';

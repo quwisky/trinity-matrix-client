@@ -70,6 +70,21 @@ Prefer a registered focused target when one exists. Test through public Matrix b
 
 Homeserver-backed targets share fixed ports and state. Run them sequentially. Use the aggregate targets when several suites are required because the aggregate owns safe ordering and cleanup.
 
+### Run several checkouts at once {#parallel-checkouts}
+
+On the native runtime, `TRINITY_E2E_PORT_OFFSET` adds a number to every port of the stack (Synapse, Caddy, Sydent, Dex, Mailpit and the link-preview page), so worktrees can run journeys at the same time. Give each worktree its own offset:
+
+```bash
+# worktree A, on the default ports
+TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm nx run trinity-e2e-browser:e2e -- settings/
+# worktree B, at the same time: Synapse on 8108, Caddy on https://localhost:8548, and so on
+TRINITY_E2E_PORT_OFFSET=100 TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm nx run trinity-e2e-browser:e2e -- settings/
+```
+
+Use multiples of 100 below 7000; other offsets can put one stack's port on another's. The offset is unset or a whole number; anything else fails before the stack starts. The Docker runtime, the MAS stack and the mobile suites keep the fixed ports and refuse a non-zero offset. The server name stays `localhost`, so user IDs are the same at every offset.
+
+A run takes a machine-wide lock for its offset in `~/.cache/trinity-e2e/homeserver-<offset>.lock`, beside the checkout's own `dist/.playwright/homeserver.lock`. A second run on the same offset, from any checkout, fails at once and names the PID that holds it. After a crash, `pnpm nx run trinity-e2e-support:recover-lock homeserver` (with the same offset) removes both locks once their owner is gone. A checkout whose run crashed keeps that run's `data/` directory, whose configuration carries that run's ports; `pnpm e2e:verify:down` removes it.
+
 Each test owns its generated users, rooms, devices, and events. Use unique identifiers supplied by the fixture layer and clean resources through suite teardown. Never log access tokens, recovery keys, private messages, or raw secret-bearing responses.
 
 A server, browser, or Docker preflight failure is not a passing skipped test. Record it as failed or unavailable and inspect retained diagnostics before retrying.

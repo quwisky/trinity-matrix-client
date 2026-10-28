@@ -1,30 +1,38 @@
 #!/usr/bin/env node
 import { join, resolve } from 'node:path';
 import { recoverStaleProcessLock } from './process-lock.mts';
-import { homeserverLockFile } from './homeserver/lease.mts';
+import {
+  homeserverLockFile,
+  homeserverPortLockFile,
+} from './homeserver/lease.mts';
 
 const workspaceRoot = resolve(import.meta.dirname, '../..');
-const resourceFiles: Readonly<Record<string, string>> = {
-  'android-avd': join(workspaceRoot, 'dist/.playwright/locks/android-avd.lock'),
-  electron: join(workspaceRoot, 'dist/.playwright/locks/electron.lock'),
-  homeserver: homeserverLockFile,
+const resourceFiles: Readonly<Record<string, readonly string[]>> = {
+  'android-avd': [
+    join(workspaceRoot, 'dist/.playwright/locks/android-avd.lock'),
+  ],
+  electron: [join(workspaceRoot, 'dist/.playwright/locks/electron.lock')],
+  homeserver: [homeserverLockFile, homeserverPortLockFile],
 };
 
-export function resourceLockFile(resource: string): string {
-  const file = resourceFiles[resource];
-  if (!file) {
+export function resourceLockFiles(resource: string): readonly string[] {
+  const files = resourceFiles[resource];
+  if (!files) {
     throw new Error(
       `Unknown E2E resource ${resource}; expected ${Object.keys(resourceFiles).join(', ')}`,
     );
   }
-  return file;
+  return files;
 }
 
 export function recoverResourceLock(
   resource: string,
   recover: (file: string) => boolean = recoverStaleProcessLock,
 ): boolean {
-  return recover(resourceLockFile(resource));
+  // Every file is tried: a crash leaves the homeserver's checkout and port locks behind.
+  return resourceLockFiles(resource)
+    .map((file) => recover(file))
+    .includes(true);
 }
 
 if (import.meta.main) {

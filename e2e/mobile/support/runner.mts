@@ -5,6 +5,7 @@ import {
   openE2EInvocation,
   type E2EInvocation,
 } from '../../support/invocation.mts';
+import { PORT_OFFSET } from '../../support/homeserver/constants.mjs';
 import { scrubDirectory } from './scrub.mts';
 
 const exec = promisify(execFile);
@@ -180,6 +181,13 @@ async function cleanup(
 }
 
 async function execute(runner: MobileRunner): Promise<void> {
+  // shortcut: device port forwarding and the app's homeserver address assume the base
+  // ports; offset them when two mobile runs need to share a machine.
+  if (PORT_OFFSET !== 0) {
+    throw new Error(
+      'TRINITY_E2E_PORT_OFFSET is for browser and engine runs; mobile runs use the fixed ports',
+    );
+  }
   registerSignals();
 
   let invocation: E2EInvocation | undefined;

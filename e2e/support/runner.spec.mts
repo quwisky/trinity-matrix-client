@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareWebBundle, runPlaywright } from './run-playwright.mts';
-import { recoverResourceLock, resourceLockFile } from './recover-lock.mts';
+import { recoverResourceLock, resourceLockFiles } from './recover-lock.mts';
 import { existsSync, readFileSync } from 'node:fs';
 import {
   acquireHomeserverLease,
   homeserverLockFile,
+  homeserverPortLockFile,
 } from './homeserver/lease.mts';
 
 describe('E2E runner boundaries', () => {
@@ -33,11 +34,15 @@ describe('E2E runner boundaries', () => {
   });
 
   it('maps explicit recovery to the same support-owned homeserver lease', () => {
-    expect(resourceLockFile('homeserver')).toBe(homeserverLockFile);
-    const recover = vi.fn(() => true);
+    expect(resourceLockFiles('homeserver')).toEqual([
+      homeserverLockFile,
+      homeserverPortLockFile,
+    ]);
+    const recover = vi.fn((file: string) => file === homeserverPortLockFile);
     expect(recoverResourceLock('homeserver', recover)).toBe(true);
     expect(recover).toHaveBeenCalledWith(homeserverLockFile);
-    expect(() => resourceLockFile('not-a-resource')).toThrow(
+    expect(recover).toHaveBeenCalledWith(homeserverPortLockFile);
+    expect(() => resourceLockFiles('not-a-resource')).toThrow(
       /Unknown E2E resource/,
     );
   });

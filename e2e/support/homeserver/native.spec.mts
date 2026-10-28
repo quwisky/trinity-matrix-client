@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import {
   SYDENT_VERSION,
@@ -287,6 +287,9 @@ describe('native homeserver runtime', () => {
       env: { PATH: '/bin', SYDENT_CONF: '/data/sydent/sydent.conf' },
       logFile: paths.logs.sydent,
     });
+    expect(fake.spawns[3]?.env).not.toHaveProperty(
+      'TRINITY_E2E_FEDERATION_PORT',
+    );
     expect(runningNativeServices(paths.pidFile, fake.api)).toEqual([
       'homeserver',
       'caddy',
@@ -518,5 +521,67 @@ describe('native Synapse config generation', () => {
       },
     } as NativeProcessApi);
     expect(cwd).toBe(paths.data);
+  });
+});
+
+describe('native runtime at TRINITY_E2E_PORT_OFFSET=100', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function offsetRuntime(): Promise<typeof import('./native.mts')> {
+    vi.stubEnv('TRINITY_E2E_PORT_OFFSET', '100');
+    vi.resetModules();
+    return import('./native.mts');
+  }
+
+  it('moves every Caddy and Dex listener and the URLs they serve', async () => {
+    const { nativeCaddyfile, nativeDexConfig } = await offsetRuntime();
+    const caddyfile = nativeCaddyfile(
+      readFileSync(join(import.meta.dirname, 'Caddyfile'), 'utf8'),
+      '/data/caddy-access.log',
+    );
+    expect(caddyfile).toContain('https://localhost:8548 {');
+    expect(caddyfile).toContain('"base_url":"https://localhost:8548"');
+    expect(caddyfile).toContain('"m.server":"localhost:8548"');
+    expect(caddyfile).toContain('https://localhost:8552 {');
+    expect(caddyfile).toContain('reverse_proxy 127.0.0.1:8190');
+    expect(caddyfile).toContain(':8180 {');
+    expect(caddyfile).not.toMatch(/:(8008|8448|8452|8090|8080)\b/);
+
+    const dex = parse(
+      nativeDexConfig(
+        readFileSync(join(import.meta.dirname, 'dex.yaml'), 'utf8'),
+      ),
+    );
+    expect(dex.issuer).toBe('http://localhost:5656/dex');
+    expect(dex.web.http).toBe('127.0.0.1:5656');
+    expect(dex.staticClients[0].redirectURIs).toEqual([
+      'https://localhost:8548/_synapse/client/oidc/callback',
+      'https://localhost:8548/_matrix/client/unstable/login/sso/callback/trinity-e2e',
+    ]);
+  });
+
+  it('starts Caddy, Mailpit and Sydent on the offset ports', async () => {
+    const { startNativeServices } = await offsetRuntime();
+    const paths = layout();
+    const fake = fakeProcesses();
+    startNativeServices(
+      paths,
+      fake.api,
+      {},
+      { mailpit: true, sydent: '/data/sydent/sydent.conf' },
+    );
+    expect(fake.spawns[1]?.env['TRINITY_E2E_HOMESERVER_UPSTREAM']).toBe(
+      'localhost:8108',
+    );
+    expect(fake.spawns[2]?.args).toEqual([
+      '--listen',
+      '127.0.0.1:8125',
+      '--smtp',
+      '127.0.0.1:1125',
+    ]);
+    expect(fake.spawns[3]?.env['TRINITY_E2E_FEDERATION_PORT']).toBe('8548');
   });
 });

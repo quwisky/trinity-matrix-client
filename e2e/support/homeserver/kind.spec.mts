@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { optionalReady, unavailableFeatures } from './kind.mts';
+import { offsetPorts, resolvePortOffset } from './constants.mjs';
+import {
+  optionalReady,
+  resolveHomeserverRuntime,
+  unavailableFeatures,
+} from './kind.mts';
 
 describe('homeserver features', () => {
   it('lists the features a session lacks, in declaration order', () => {
@@ -53,5 +58,40 @@ describe('homeserver features', () => {
         { name: 'Sydent', log: () => undefined, signal: controller.signal },
       ),
     ).rejects.toThrow('aborted');
+  });
+});
+
+describe('TRINITY_E2E_PORT_OFFSET', () => {
+  it('accepts a non-negative integer and defaults to 0', () => {
+    expect(resolvePortOffset({})).toBe(0);
+    expect(resolvePortOffset({ TRINITY_E2E_PORT_OFFSET: '' })).toBe(0);
+    expect(resolvePortOffset({ TRINITY_E2E_PORT_OFFSET: '100' })).toBe(100);
+    for (const value of ['-1', '1.5', 'abc', ' 100', '0x10', '57084']) {
+      expect(() =>
+        resolvePortOffset({ TRINITY_E2E_PORT_OFFSET: value }),
+      ).toThrow(/Invalid TRINITY_E2E_PORT_OFFSET/);
+    }
+  });
+
+  it('shifts only the stack ports, and nothing at 0', () => {
+    const text = 'issuer: http://localhost:5556/dex at 10:1234 and :8448';
+    expect(offsetPorts(text, 0)).toBe(text);
+    expect(offsetPorts(text, 100)).toBe(
+      'issuer: http://localhost:5656/dex at 10:1234 and :8548',
+    );
+  });
+
+  it('needs the native runtime', () => {
+    const offset = { TRINITY_E2E_PORT_OFFSET: '100' };
+    expect(() => resolveHomeserverRuntime(offset)).toThrow(
+      /TRINITY_E2E_PORT_OFFSET needs TRINITY_E2E_HOMESERVER_RUNTIME=native/,
+    );
+    expect(
+      resolveHomeserverRuntime({
+        ...offset,
+        TRINITY_E2E_HOMESERVER: 'synapse',
+        TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
+      }),
+    ).toBe('native');
   });
 });
