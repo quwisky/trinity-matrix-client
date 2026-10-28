@@ -7,6 +7,7 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { MediaService, type PackEntry } from '@trinity/data-access/media';
 import { packImagePayload } from '../pack-image-payload';
 
@@ -27,6 +28,7 @@ import { packImagePayload } from '../pack-image-payload';
 })
 export class PackImageComponent {
   private readonly media = inject(MediaService);
+  private readonly session = inject(SessionStateService);
   // A live pack re-emits every entry on each edit; only a new image needs resolving again.
   private readonly image = computed(() => this.entry(), {
     equal: (a, b) => a.url === b.url,
@@ -41,12 +43,15 @@ export class PackImageComponent {
     // like the picker's sticker image if packs near the 500 cap load slowly.
     effect((onCleanup) => {
       const entry = this.image();
+      // The personal pack is the active account's, so a switch resolves on the new account.
+      const accountId = this.session.activeAccountId() ?? undefined;
       let pinned: string | null = null;
       this.src.set(null);
       const subscription = this.media
         .resolveMedia(
           packImagePayload(entry.url, entry.info, entry.shortcode),
           'thumbnail',
+          accountId,
         )
         .subscribe({
           next: (url) => {

@@ -1,15 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { effect } from '@angular/core';
 import { describe, expect, it, vi } from 'vitest';
-import type { MatrixClient } from 'matrix-js-sdk';
 import { ImagePackSelectionStore } from './image-pack-selection.store';
 
 describe('ImagePackSelectionStore', () => {
-  const a = {} as MatrixClient;
-  const b = {} as MatrixClient;
+  const a = '@a:hs';
+  const b = '@b:hs';
   const flush = () => TestBed.tick();
 
-  it('re-runs a reader of client A when A changes, and not one of client B', () => {
+  it('re-runs a reader of account A when A changes, and not one of account B', () => {
     const store = TestBed.inject(ImagePackSelectionStore);
     const readsA = vi.fn();
     const readsB = vi.fn();

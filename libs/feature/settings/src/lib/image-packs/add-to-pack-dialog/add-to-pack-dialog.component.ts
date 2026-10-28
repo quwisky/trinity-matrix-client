@@ -234,11 +234,16 @@ export class AddToPackDialogComponent {
         onCleanup(() => URL.revokeObjectURL(url));
         return;
       }
+      const ref = this.ref();
+      // The pack's account, which a switch never changes: a personal dialog closes instead.
+      const accountId =
+        ref.kind === 'room' ? ref.accountId : (this.account ?? undefined);
       let pinned: string | null = null;
       const subscription = this.media
         .resolveMedia(
           packImagePayload(source.url, source.info, source.body),
           'thumbnail',
+          accountId,
         )
         .subscribe({
           next: (url) => {
