@@ -6,21 +6,18 @@ import {
 } from 'matrix-js-sdk/lib/crypto-api';
 import {
   displayContent,
+  plainEqual,
   shieldSubject,
   unencryptedMarkFor,
 } from '@trinity/util/matrix';
 import { type MessageShield } from '../message-presentation';
-import {
-  shieldKey,
-  shieldText,
-  unencryptedShield,
-} from '../shield-presentation';
+import { shieldText, unencryptedShield } from '../shield-presentation';
 import { type ShieldCode } from '../timeline-engine';
 
 /**
- * Per-message authenticity shields, shared by {@link TimelineService} and
- * {@link ThreadsService} so both the main timeline and the thread panel resolve and
- * render shields identically. Keeps the crypto-api mapping in one place.
+ * Per-message authenticity shields, shared by every timeline focus so the main timeline
+ * and the thread panel resolve and render shields identically. Keeps the crypto-api
+ * mapping in one place.
  */
 
 const SHIELD_REASONS: Partial<Record<EventShieldReason, ShieldCode['reason']>> =
@@ -46,24 +43,30 @@ function shieldReason(reason: EventShieldReason | null): ShieldCode['reason'] {
   return (reason !== null && SHIELD_REASONS[reason]) || 'unknown';
 }
 
+/** Map the SDK's encryption info to a {@link ShieldCode}, or null for no shield. */
+function toShieldCode(info: EventEncryptionInfo | null): ShieldCode | null {
+  if (!info || info.shieldColour === EventShieldColour.NONE) {
+    return null;
+  }
+  return {
+    colour: info.shieldColour === EventShieldColour.RED ? 'red' : 'grey',
+    reason: shieldReason(info.shieldReason),
+  };
+}
+
 /** Map the SDK's encryption info to a {@link MessageShield}, or null for no shield. */
 export function toShield(
   info: EventEncryptionInfo | null,
 ): MessageShield | null {
-  if (!info || info.shieldColour === EventShieldColour.NONE) {
-    return null;
-  }
-  return shieldText({
-    colour: info.shieldColour === EventShieldColour.RED ? 'red' : 'grey',
-    reason: shieldReason(info.shieldReason),
-  });
+  const code = toShieldCode(info);
+  return code && shieldText(code);
 }
 
 export { shieldSubject };
 
 /** Resolved shields, each kept against the exact event object it was computed for. */
 export type ShieldStore = Pick<
-  WeakMap<MatrixEvent, MessageShield | null>,
+  WeakMap<MatrixEvent, ShieldCode | null>,
   'get' | 'has' | 'set'
 >;
 
@@ -112,9 +115,15 @@ export function shownContent(event: MatrixEvent): Record<string, unknown> {
   return showsEdit(event) ? displayContent(event) : event.getOriginalContent();
 }
 
-/** The resolved shield of the event a row shows, or null while it is pending. */
-export function shownShield(shown: MatrixEvent): MessageShield | null {
+/** The resolved shield code of the event a row shows, or null while it is pending. */
+export function shownShieldCode(shown: MatrixEvent): ShieldCode | null {
   return resolvedShields.get(shown) ?? null;
+}
+
+/** {@link shownShieldCode} as text. */
+export function shownShield(shown: MatrixEvent): MessageShield | null {
+  const code = shownShieldCode(shown);
+  return code && shieldText(code);
 }
 
 /** {@link unencryptedMarkFor} as the timeline's shields; see {@link unencryptedShield}. */
@@ -152,15 +161,15 @@ export async function resolveShieldsInto(
     if (!opts.force && shields.has(event) && !event.isDecryptionFailure()) {
       continue;
     }
-    let shield: MessageShield | null = null;
+    let shield: ShieldCode | null = null;
     try {
-      shield = toShield(await crypto.getEncryptionInfoForEvent(event));
+      shield = toShieldCode(await crypto.getEncryptionInfoForEvent(event));
     } catch {
       // Fail CLOSED. `events` is already filtered to encrypted events, and null renders as NO
       // shield, visually identical to a fully authenticated message. A transient crypto/store
       // error must not silently upgrade an unverified message's appearance; show the cautious
       // indicator instead. (Still caught, so a probe failure can never break the timeline.)
-      shield = shieldText({ colour: 'grey', reason: 'unknown' });
+      shield = { colour: 'grey', reason: 'unknown' };
     }
     if (opts.isStale()) {
       return changed; // switched rooms/threads mid-resolve
@@ -169,7 +178,7 @@ export async function resolveShieldsInto(
     // told from a checked one (see shownSubject). Before decryption it stays absent and is
     // asked again.
     const record = shields.has(event)
-      ? shieldKey(shields.get(event) ?? null) !== shieldKey(shield)
+      ? !plainEqual(shields.get(event) ?? null, shield)
       : shield !== null || event.getClearContent() !== null;
     if (record) {
       shields.set(event, shield);

@@ -35,21 +35,21 @@ const EXPLANATION_TEXT: Readonly<Record<ShieldCode['reason'], string>> = {
   unknown: 'Trinity couldn’t work out which device sent it.',
 };
 
-export function shieldText(code: ShieldCode): MessageShield {
-  return {
-    level: code.colour,
-    reason: REASON_TEXT[code.reason],
-    explanation: EXPLANATION_TEXT[code.reason],
-  };
-}
+const SHIELDS = new Map<string, MessageShield>();
 
-/** The code {@link shieldText} made `shield` from, or null for a not-encrypted shield. */
-export function shieldCodeOf(shield: MessageShield): ShieldCode | null {
-  if (shield.level !== 'red' && shield.level !== 'grey') return null;
-  const reason = (Object.keys(REASON_TEXT) as ShieldCode['reason'][]).find(
-    (key) => REASON_TEXT[key] === shield.reason,
-  );
-  return { colour: shield.level, reason: reason ?? 'unknown' };
+/** One shared object per code, so a row can compare shields by identity. */
+export function shieldText(code: ShieldCode): MessageShield {
+  const key = `${code.colour}:${code.reason}`;
+  let shield = SHIELDS.get(key);
+  if (!shield) {
+    shield = Object.freeze({
+      level: code.colour,
+      reason: REASON_TEXT[code.reason],
+      explanation: EXPLANATION_TEXT[code.reason],
+    });
+    SHIELDS.set(key, shield);
+  }
+  return shield;
 }
 
 /** Shown on a message that was sent without end-to-end encryption into an encrypted room. */
