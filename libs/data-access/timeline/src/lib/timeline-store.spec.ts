@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { Subject, merge } from 'rxjs';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { Subject, finalize, merge } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   EMPTY_SESSION,
@@ -17,6 +17,7 @@ import {
 import type { EventTimelineItem, TimelineItem } from './timeline-engine';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
 import { TimelineStores } from './timeline-store';
+import { keepWhileWaiting } from './waiting-draft';
 
 const ROOM = '!room:example.org';
 const LIVE = { kind: 'live' } as const;
@@ -305,5 +306,31 @@ describe('TimelineStore', () => {
       complete: () => (unknownCompleted = true),
     });
     expect(unknownCompleted).toBe(true);
+  });
+
+  it('ends a send state watch when the store clears, keeping its held draft', () => {
+    fake.seed(alice, ROOM, [
+      fakeEventItem('$sent', alice, {
+        uniqueId: 'txn:t1',
+        eventId: null,
+        transactionId: 't1',
+        isOwn: true,
+        sendState: { kind: 'waiting' },
+      }),
+    ]);
+    const store = open();
+    const drafts = { holdWaiting: vi.fn(), releaseWaiting: vi.fn() };
+    let watching = true;
+    keepWhileWaiting(drafts, 'draft', 'hello', {
+      transactionId: 't1',
+      states: store.sendStates('t1').pipe(finalize(() => (watching = false))),
+    });
+    expect(drafts.holdWaiting).toHaveBeenCalledOnce();
+
+    fake.emit(alice, ROOM, { kind: 'room-unavailable' });
+
+    expect(watching).toBe(false);
+    // The echo left unsent: no proof the text is safe, so it stays held.
+    expect(drafts.releaseWaiting).not.toHaveBeenCalled();
   });
 });

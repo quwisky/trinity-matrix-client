@@ -120,7 +120,7 @@ export class TimelineStore {
   /**
    * The send state of the item with `transactionId`, now and on each update: `null` once it
    * is sent, while an echo with no state and no event id yet is still sending. Completes when
-   * the item leaves, as a cancelled echo does; closing the store does not complete it.
+   * the item leaves, as a cancelled echo does, or the store clears.
    */
   sendStates(transactionId: string): Observable<SendState | null> {
     return new Observable((subscriber) => {
@@ -227,6 +227,8 @@ export class TimelineStore {
     this._available.set(false);
     this._firstUnreadId.set(null);
     this.present();
+    // Ends each sendStates watch, so a store held only for it is let go.
+    this._updates.next();
   }
 
   /** Presents the items, keeping each row whose item is `===` or `plainEqual` to the last one. */
