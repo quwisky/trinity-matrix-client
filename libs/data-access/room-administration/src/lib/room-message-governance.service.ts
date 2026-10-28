@@ -1,74 +1,57 @@
 import { Injectable, inject } from '@angular/core';
-import { EventType } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { liveRoomState } from '@trinity/util/matrix';
+import { AdministeredRoomStore } from './administered-room.store';
+import { mayAct, mayRedactEvent, maySendEvent } from './room-power';
 
 export interface RoomMessageGovernanceKey {
   readonly accountId: string;
   readonly roomId: string;
 }
 
+/** A message the timeline holds, named by its sender. */
 export interface RoomMessageRedactionRequest extends RoomMessageGovernanceKey {
-  readonly messageId: string;
+  readonly senderId: string;
 }
 
 export type RoomMessageRedactionDecision =
   | { readonly kind: 'allowed' }
   | {
       readonly kind: 'rejected';
-      readonly failure:
-        'conversation-unavailable' | 'message-unavailable' | 'not-allowed';
+      readonly failure: 'conversation-unavailable' | 'not-allowed';
     };
 
-/** Matrix adapter for Room Administration's message-governance decisions. */
+/** Room Administration's message-governance decisions over the administered room. */
 @Injectable({ providedIn: 'root' })
 export class RoomMessageGovernanceService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly store = inject(AdministeredRoomStore);
 
   canRedactOthers(key: RoomMessageGovernanceKey): boolean {
-    const context = this.context(key);
-    if (!context) return false;
-    const { room, userId } = context;
-    const state = liveRoomState(room);
-    const member = room.getMember(userId);
-    return Boolean(
-      state?.maySendEvent?.(EventType.RoomRedaction, userId) &&
-      state?.hasSufficientPowerLevelFor?.('redact', member?.powerLevel ?? 0),
+    const room = this.store.room(key.accountId, key.roomId);
+    return (
+      !!room &&
+      maySendEvent(room.powerLevels, room.ownPower, 'm.room.redaction') &&
+      mayAct(room.powerLevels, room.ownPower, 'redact')
     );
   }
 
   canSendMessages(key: RoomMessageGovernanceKey): boolean {
-    const context = this.context(key);
-    if (!context) return false;
-    return Boolean(
-      liveRoomState(context.room)?.maySendEvent?.(
-        EventType.RoomMessage,
-        context.userId,
-      ),
+    const room = this.store.room(key.accountId, key.roomId);
+    return (
+      !!room && maySendEvent(room.powerLevels, room.ownPower, 'm.room.message')
     );
   }
 
   authorizeRedaction(
     request: RoomMessageRedactionRequest,
   ): RoomMessageRedactionDecision {
-    const context = this.context(request);
-    if (!context) {
-      return { kind: 'rejected', failure: 'conversation-unavailable' };
-    }
-    const event = context.room.findEventById(request.messageId);
-    if (!event) return { kind: 'rejected', failure: 'message-unavailable' };
-    return liveRoomState(context.room)?.maySendRedactionForEvent?.(
-      event,
-      context.userId,
+    const room = this.store.room(request.accountId, request.roomId);
+    if (!room) return { kind: 'rejected', failure: 'conversation-unavailable' };
+    return mayRedactEvent(
+      room.powerLevels,
+      room.ownPower,
+      room.ownMembership,
+      request.senderId === room.ownUserId,
     )
       ? { kind: 'allowed' }
       : { kind: 'rejected', failure: 'not-allowed' };
-  }
-
-  private context(key: RoomMessageGovernanceKey) {
-    const client = this.matrix.clientFor(key.accountId);
-    const room = client?.getRoom(key.roomId) ?? null;
-    const userId = client?.getUserId() ?? null;
-    return room && userId ? { room, userId } : null;
   }
 }

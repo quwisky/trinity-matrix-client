@@ -72,6 +72,8 @@ export type EngineFailure = {
   | { readonly code: 'too-large' }
   /** The account has no such room. */
   | { readonly code: 'conversation-unavailable' }
+  /** The account has not joined the room. */
+  | { readonly code: 'room-unavailable' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -128,6 +130,8 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This file is too large to upload.';
     case 'conversation-unavailable':
       return 'This conversation is unavailable.';
+    case 'room-unavailable':
+      return 'This room is unavailable.';
   }
 }
 
