@@ -31,7 +31,11 @@ interface FakeRoom {
   readonly alias: string | null;
   /** Whether alice may send state here. */
   readonly writable: boolean;
+  /** Whether a non-member may read its state. */
+  readonly worldReadable: boolean;
   joined: boolean;
+  /** Whether alice's client holds the room: true once she has joined, also after leaving. */
+  known: boolean;
   readonly state: Map<string, RawImagePackStateEvent>;
 }
 
@@ -79,6 +83,7 @@ export class FakeExpressionEngine implements ExpressionEngine {
       readonly alias?: string;
       readonly joined?: boolean;
       readonly writable?: boolean;
+      readonly worldReadable?: boolean;
       readonly state?: readonly RawImagePackStateEvent[];
     } = {},
   ): string {
@@ -87,7 +92,9 @@ export class FakeExpressionEngine implements ExpressionEngine {
       name: options.name ?? null,
       alias: options.alias ?? null,
       writable: options.writable ?? true,
+      worldReadable: options.worldReadable ?? false,
       joined: options.joined ?? true,
+      known: options.joined ?? true,
       state: new Map(
         (options.state ?? []).map((event) => [
           stateKey(event.type, event.state_key),
@@ -159,7 +166,7 @@ export class FakeExpressionEngine implements ExpressionEngine {
           return {
             roomId,
             joined: room?.joined ?? false,
-            name: room?.joined ? room.name : null,
+            name: room?.known ? room.name : null,
             canWritePack: !!room?.joined && room.writable,
             packEvents: room
               ? [...room.state.values()]
@@ -181,7 +188,7 @@ export class FakeExpressionEngine implements ExpressionEngine {
   ): Observable<EngineResult<unknown | null>> {
     return this.command(accountId, () => {
       const room = this.rooms.get(roomId);
-      if (!room?.joined) return engineFail(FORBIDDEN);
+      if (!room?.joined && !room?.worldReadable) return engineFail(FORBIDDEN);
       return engineOk(
         wire(room.state.get(stateKey(type, key))?.content ?? null),
       );
@@ -219,6 +226,7 @@ export class FakeExpressionEngine implements ExpressionEngine {
       if (!entry) return engineFail(UNKNOWN_ALIAS);
       const [roomId, room] = entry;
       room.joined = true;
+      room.known = true;
       this.changes.next();
       return engineOk({
         roomId,
