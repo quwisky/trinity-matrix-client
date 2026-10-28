@@ -23,6 +23,7 @@ const LIBS = [
   'data-access-timeline',
   'data-access-widgets',
   'data-access-media',
+  'data-access-notifications',
 ] as const;
 
 export async function runEngineContract(
