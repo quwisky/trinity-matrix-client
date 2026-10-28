@@ -58,6 +58,7 @@ function setup() {
     });
   };
   const client = {
+    getUserId: () => '@alice:hs',
     getAccountData: (type: string) => account.get(type),
     getRoom: (roomId: string) => rooms.get(roomId) ?? null,
     on: vi.fn(),
@@ -536,7 +537,7 @@ describe('ImagePackService', () => {
     expect(packs()).toEqual([]);
 
     // Installing a pack confirms new account data while the room still projects no pack.
-    TestBed.inject(ImagePackSelectionStore).set(client as never, {
+    TestBed.inject(ImagePackSelectionStore).set('@alice:hs', {
       present: true,
       content: { rooms: {} },
     });
