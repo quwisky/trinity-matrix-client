@@ -66,10 +66,22 @@ describe('TRINITY_E2E_PORT_OFFSET', () => {
     expect(resolvePortOffset({})).toBe(0);
     expect(resolvePortOffset({ TRINITY_E2E_PORT_OFFSET: '' })).toBe(0);
     expect(resolvePortOffset({ TRINITY_E2E_PORT_OFFSET: '100' })).toBe(100);
-    for (const value of ['-1', '1.5', 'abc', ' 100', '0x10', '57084']) {
+    expect(resolvePortOffset({ TRINITY_E2E_PORT_OFFSET: '6900' })).toBe(6900);
+    for (const value of [
+      '-1',
+      '1.5',
+      'abc',
+      ' 100',
+      '0x10',
+      '4',
+      '150',
+      '7000',
+    ]) {
       expect(() =>
         resolvePortOffset({ TRINITY_E2E_PORT_OFFSET: value }),
-      ).toThrow(/Invalid TRINITY_E2E_PORT_OFFSET/);
+      ).toThrow(
+        /Invalid TRINITY_E2E_PORT_OFFSET .*multiple of 100 from 0 to 6900/,
+      );
     }
   });
 

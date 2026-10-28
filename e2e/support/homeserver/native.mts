@@ -281,8 +281,8 @@ export async function generateSynapseConfig(
 
 /**
  * The shared Caddyfile's https://localhost:8448, identity server (8452) and link-preview
- * (:8080) sites, verbatim but for TRINITY_E2E_PORT_OFFSET, under native-only global
- * options; `default_bind` keeps them on loopback. The other sites serve the secondary server and federation, which do not run
+ * (:8080) sites, verbatim but for TRINITY_E2E_PORT_OFFSET, under native-only global options;
+ * `default_bind` keeps them on loopback. The other sites serve the secondary server and federation, which do not run
  * natively, and :443 cannot be bound unprivileged on Linux.
  */
 export function nativeCaddyfile(shared: string, accessLog: string): string {
@@ -330,6 +330,14 @@ export function nativeCaddyfile(shared: string, accessLog: string): string {
       '',
     ].join('\n'),
   );
+}
+
+/** The Caddy TLS port a homeserver.yaml was set up for, or null when it names none yet. */
+export function configuredTlsPort(config: string): number | null {
+  const port = /^public_baseurl: "https:\/\/localhost:(\d+)\/"$/mu.exec(
+    config,
+  )?.[1];
+  return port === undefined ? null : Number(port);
 }
 
 /** The installed Dex's version line, or null when there is no `dex` on PATH. */

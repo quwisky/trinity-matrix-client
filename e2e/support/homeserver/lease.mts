@@ -39,16 +39,24 @@ export interface HomeserverLease extends ProcessLock {
   readonly ports: ProcessLock;
 }
 
+const recovery = `run \`TRINITY_E2E_PORT_OFFSET=${PORT_OFFSET} pnpm nx run trinity-e2e-support:recover-lock homeserver\``;
+
+function acquireCheckoutLock(): ProcessLock {
+  return acquireProcessLock(
+    homeserverLockFile,
+    'Homeserver E2E harness',
+    recovery,
+  );
+}
+
 function acquireLocks(): HomeserverLease {
   const ports = acquireProcessLock(
     homeserverPortLockFile,
     `Homeserver E2E harness on TRINITY_E2E_PORT_OFFSET=${PORT_OFFSET}`,
+    recovery,
   );
   try {
-    return {
-      ...acquireProcessLock(homeserverLockFile, 'Homeserver E2E harness'),
-      ports,
-    };
+    return { ...acquireCheckoutLock(), ports };
   } catch (error) {
     releaseProcessLock(ports);
     throw error;
@@ -107,12 +115,25 @@ export async function acquireHomeserverLease(
   return lease;
 }
 
-/** Claim teardown without rejecting the running stack that teardown is meant to stop. */
-export function acquireHomeserverTeardownLease(): HomeserverLease {
-  return acquireLocks();
+/**
+ * Claim teardown without rejecting the running stack that teardown is meant to stop. A
+ * native stop touches only this checkout's processes, so it skips the port lock another
+ * checkout may hold; a Docker stop runs `compose down` on the machine-wide project.
+ */
+export function acquireHomeserverTeardownLease():
+  HomeserverLease | ProcessLock {
+  let runtime: string;
+  try {
+    runtime = resolveHomeserverRuntime();
+  } catch {
+    runtime = 'docker';
+  }
+  return runtime === 'native' ? acquireCheckoutLock() : acquireLocks();
 }
 
-export function releaseHomeserverLease(lease: ProcessLock | undefined): void {
+export function releaseHomeserverLease(
+  lease: HomeserverLease | ProcessLock | undefined,
+): void {
   releaseProcessLock(lease);
-  if (lease && 'ports' in lease) releaseProcessLock(lease.ports as ProcessLock);
+  if (lease && 'ports' in lease) releaseProcessLock(lease.ports);
 }

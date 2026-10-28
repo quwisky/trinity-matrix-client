@@ -16,6 +16,7 @@ import {
   ensureSydentVenv,
   ensureSynapseVenv,
   generateSynapseConfig,
+  configuredTlsPort,
   nativeCaddyfile,
   nativeDexConfig,
   nativeDexVersion,
@@ -521,6 +522,15 @@ describe('native Synapse config generation', () => {
       },
     } as NativeProcessApi);
     expect(cwd).toBe(paths.data);
+  });
+});
+
+describe('leftover native state', () => {
+  it('reads the TLS port a config was set up for, and none before it was patched', () => {
+    expect(
+      configuredTlsPort('a: 1\npublic_baseurl: "https://localhost:8548/"\n'),
+    ).toBe(8548);
+    expect(configuredTlsPort('server_name: "localhost"\n')).toBeNull();
   });
 });
 

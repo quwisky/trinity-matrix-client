@@ -15,21 +15,22 @@ const BASE_PORTS = {
   masHomeserver: 8450,
   masIssuer: 8451,
 };
-const MAX_PORT_OFFSET = 65535 - Math.max(...Object.values(BASE_PORTS));
-
 /**
  * TRINITY_E2E_PORT_OFFSET, added to every port of the native stack so stacks from several
- * checkouts can run at once. Unset or empty is 0.
+ * checkouts can run at once. Unset or empty is 0. Multiples of 100 below 7000 only: no two
+ * of them differ by a gap between base ports (7000 is 8025 − 1025), and the stack stays
+ * below the ephemeral range.
  */
 export function resolvePortOffset(env = process.env) {
   const value = env.TRINITY_E2E_PORT_OFFSET ?? '';
   if (value === '') return 0;
-  if (!/^\d+$/.test(value) || Number(value) > MAX_PORT_OFFSET) {
+  const offset = Number(value);
+  if (!/^\d+$/.test(value) || offset % 100 !== 0 || offset >= 7000) {
     throw new Error(
-      `Invalid TRINITY_E2E_PORT_OFFSET "${value}"; expected an integer from 0 to ${MAX_PORT_OFFSET}`,
+      `Invalid TRINITY_E2E_PORT_OFFSET "${value}"; expected a multiple of 100 from 0 to 6900`,
     );
   }
-  return Number(value);
+  return offset;
 }
 
 export const PORT_OFFSET = resolvePortOffset();

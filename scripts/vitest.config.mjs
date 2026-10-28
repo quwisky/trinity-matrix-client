@@ -9,6 +9,8 @@ export default defineConfig({
     globals: true,
     include: ['**/*.spec.mjs'],
     reporters: ['default'],
+    // The e2e harness specs import constants.mjs; the developer's shell may export an offset.
+    env: { TRINITY_E2E_PORT_OFFSET: '' },
     // These specs do real work rather than exercising a unit: `lint-invariants` constructs an
     // ESLint instance and resolves configs against the actual tree, which is ~1.6s on a warm
     // dev machine and 6.3s on a loaded CI runner — past vitest's 5s default, which failed the

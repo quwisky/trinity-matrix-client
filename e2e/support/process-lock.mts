@@ -58,6 +58,7 @@ function parseOwner(value: string): ProcessLockOwner | undefined {
 export function acquireProcessLock(
   file: string,
   description: string,
+  recovery = 'run explicit stale-lock recovery',
 ): ProcessLock {
   mkdirSync(dirname(file), { recursive: true });
   const owner = JSON.stringify({
@@ -91,7 +92,7 @@ export function acquireProcessLock(
       // Recovery stays explicit so acquisition can never erase another contender.
       throw new Error(
         `${description} left a stale lock at ${file}; ` +
-          'run explicit stale-lock recovery after confirming no runner is active',
+          `${recovery} after confirming no runner is active`,
         { cause: error },
       );
     }

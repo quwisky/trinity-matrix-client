@@ -38,10 +38,16 @@ describe('E2E runner boundaries', () => {
       homeserverLockFile,
       homeserverPortLockFile,
     ]);
-    const recover = vi.fn((file: string) => file === homeserverPortLockFile);
-    expect(recoverResourceLock('homeserver', recover)).toBe(true);
-    expect(recover).toHaveBeenCalledWith(homeserverLockFile);
-    expect(recover).toHaveBeenCalledWith(homeserverPortLockFile);
+    // A live port lock (another checkout) leaves the stale checkout lock recovered.
+    const live = new Error('Refusing to recover a live process lock');
+    const recover = vi.fn((file: string) => {
+      if (file === homeserverPortLockFile) throw live;
+      return true;
+    });
+    expect(recoverResourceLock('homeserver', recover)).toEqual([
+      { file: homeserverLockFile, outcome: true },
+      { file: homeserverPortLockFile, outcome: live },
+    ]);
     expect(() => resourceLockFiles('not-a-resource')).toThrow(
       /Unknown E2E resource/,
     );

@@ -73,6 +73,20 @@ describe('homeserver lease', () => {
       /on TRINITY_E2E_PORT_OFFSET=100 is already running as PID/,
     );
     expect(existsSync(lease.homeserverLockFile)).toBe(false);
+    // A native stop touches only this checkout's processes: it does not wait for the other.
+    const teardown = lease.acquireHomeserverTeardownLease();
+    expect(teardown).not.toHaveProperty('ports');
+    lease.releaseHomeserverLease(teardown);
+    expect(existsSync(lease.homeserverLockFile)).toBe(false);
+
+    // The same lock, left by a dead owner, names the recovery command for this offset.
+    writeFileSync(
+      lease.homeserverPortLockFile,
+      JSON.stringify({ pid: 2 ** 22 + 1, nonce: 'gone', createdAt: 'then' }),
+    );
+    await expect(lease.acquireHomeserverLease()).rejects.toThrow(
+      'run `TRINITY_E2E_PORT_OFFSET=100 pnpm nx run trinity-e2e-support:recover-lock homeserver`',
+    );
 
     vi.stubEnv('TRINITY_E2E_PORT_OFFSET', '200');
     vi.resetModules();
