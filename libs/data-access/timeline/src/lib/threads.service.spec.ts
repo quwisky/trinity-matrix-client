@@ -6,6 +6,7 @@ import {
   ClientEvent,
   ConnectionError,
   EventStatus,
+  MatrixClient,
   MatrixError,
   MatrixEvent,
   MatrixEventEvent,
@@ -883,7 +884,10 @@ describe('ThreadsService', () => {
     svc.attachThreadRoot('$gone');
 
     // The send surfaces the fetch error instead of emitting a homeless echo.
-    await expect(firstValueFrom(svc.sendToThread('hi'))).rejects.toThrow();
+    await expect(firstValueFrom(svc.sendToThread('hi'))).rejects.toMatchObject({
+      name: 'EngineRequestError',
+      failure: { code: 'request-failed' },
+    });
     expect(room.getThread('$gone')).toBeNull();
     expect(sent).toEqual([]);
   });
@@ -1641,6 +1645,29 @@ describe('ThreadsService', () => {
       expect(content['formatted_body']).toContain('</mx-reply>replying');
     });
 
+    it('sends an in-thread reply as m.thread with is_falling_back: false', async () => {
+      const { svc, sent, client } = openedThread();
+
+      await firstValueFrom(svc.replyInThread('$r1', 'replying'));
+
+      // The request body, completed by the real SDK step a thread send runs through.
+      const content = structuredClone(sent[0][2]) as Record<string, unknown>;
+      const sdk = MatrixClient.prototype as unknown as {
+        addThreadRelationIfNeeded(
+          c: unknown,
+          thread: string,
+          room: string,
+        ): void;
+      };
+      sdk.addThreadRelationIfNeeded.call(client, content, '$root', '!r:hs');
+      expect(content['m.relates_to']).toEqual({
+        rel_type: 'm.thread',
+        event_id: '$root',
+        is_falling_back: false,
+        'm.in_reply_to': { event_id: '$r1' },
+      });
+    });
+
     it('resolves the thread context on subscribe, not when called', async () => {
       // The in-thread actions are cold, so the thread (and the account behind it)
       // must be resolved at subscribe. Capturing the context eagerly means a send
@@ -2135,6 +2162,18 @@ describe('ThreadsService', () => {
         messageId: '$r1',
         threadRootId: '$root',
       });
+    });
+
+    it('sends no receipt for a thread whose only event is its root', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const { svc, acknowledge } = setup([
+        fakeThread({ id: '$root', rootEvent: root, events: [root] }),
+      ]);
+
+      svc.attachThreadRoot('$root');
+
+      expect(svc.threadMessages()).toHaveLength(1);
+      expect(acknowledge).not.toHaveBeenCalled();
     });
 
     it('holds the thread receipt while App lock covers the app and sends it after unlock', () => {
