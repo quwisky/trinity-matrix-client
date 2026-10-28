@@ -123,6 +123,29 @@ describe('ConversationSearchController', () => {
     expect(result.scanned).toBe(2);
   });
 
+  it('finds a poll by its question', () => {
+    open([
+      fakeEvent({
+        id: '$poll',
+        sender: '@alice:hs',
+        type: 'm.poll.start',
+        content: {
+          'm.poll.start': {
+            question: { 'm.text': 'Lunch where?' },
+            answers: [
+              { id: 'a', 'm.text': 'Pizza' },
+              { id: 'b', 'm.text': 'Sushi' },
+            ],
+          },
+        },
+      }),
+    ]);
+
+    expect(service.searchLoaded('lunch').hits).toMatchObject([
+      { eventId: '$poll', body: 'Lunch where?' },
+    ]);
+  });
+
   it('marks a hit that arrived unencrypted in an encrypted room', () => {
     open(
       [

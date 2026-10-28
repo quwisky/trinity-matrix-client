@@ -155,8 +155,8 @@ export class ConversationSearchController {
 }
 
 /**
- * The `body` a displayable message's content carries, or null for an item the old event
- * filter skipped: state, an undecryptable message.
+ * The text a displayable message's content carries (a poll's question), or null for an
+ * item the old event filter skipped: state, an undecryptable message.
  */
 function searchableBody(item: EventTimelineItem): string | null {
   const content = item.content;
@@ -171,6 +171,7 @@ function searchableBody(item: EventTimelineItem): string | null {
     case 'location':
       return content.label;
     case 'poll':
+      return content.poll.question;
     case 'redacted':
       return '';
     case 'unableToDecrypt':
