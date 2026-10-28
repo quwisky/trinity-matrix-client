@@ -50,9 +50,7 @@
     "libs/data-access/room-administration/src/lib/room-upgrade.service.ts",
     "libs/data-access/room-library/src/lib/rooms-in-common.service.ts",
     "libs/data-access/timeline/src/lib/conversation-timeline-factory.ts",
-    "libs/data-access/timeline/src/lib/edit-history.service.ts",
     "libs/data-access/timeline/src/lib/live-timeline-trimmer.service.ts",
-    "libs/data-access/timeline/src/lib/url-preview.service.ts",
     "libs/data-access/widgets/src/lib/widget-management.service.ts",
     "libs/data-access/widgets/src/lib/widgets.service.ts"
   ]

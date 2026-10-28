@@ -117,8 +117,8 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       timeline.open(key);
       readiness.start(key, timeline);
       threads.attach(key);
-      pins.attach(key, client);
-      search.attach(key, client);
+      pins.attach(key);
+      search.attach(key);
     } catch (error: unknown) {
       injector.destroy();
       throw error;
@@ -140,8 +140,8 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
           // summaries and pins re-read SDK-authoritative state when focus returns;
           // their potentially room-sized projections never enter the retained budget.
           threads.attach(key);
-          pins.attach(key, client);
-          search.attach(key, client);
+          pins.attach(key);
+          search.attach(key);
           this.actionContext.bind(resolveActionContext);
         } else {
           this.actionContext.clear(resolveActionContext);
