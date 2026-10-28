@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyVectorDiffs,
   assertPlainData,
+  renderMarkdown,
+  textMessageContent,
   type VectorDiff,
 } from '@trinity/util/matrix';
 import type {
@@ -58,12 +60,28 @@ function fakeThread(
   return thread;
 }
 
+const NAMES: Record<string, string> = {
+  [ME]: 'Me',
+  '@alice:hs': 'Alice',
+  '@bob:hs': 'Bob',
+};
+
+/** A member with a name of their own, so one user's profile cannot pass for another's. */
+function memberOf(userId: string) {
+  return {
+    userId,
+    name: NAMES[userId] ?? userId,
+    rawDisplayName: NAMES[userId] ?? userId,
+    getMxcAvatarUrl: () => null,
+  };
+}
+
 /** A room holding `root` and, when given, its thread. */
 function threadWorld(
   thread: ReturnType<typeof fakeThread> | null,
   main: FakeEvent[] = [thread?.rootEvent ?? msg(ROOT)],
 ) {
-  const w = world(main);
+  const w = world(main, { member: memberOf });
   const threads = thread ? [thread] : [];
   const room = Object.assign(w.room, {
     getThreads: () => threads,
@@ -91,6 +109,7 @@ function watchFocus(engine: JsSdkTimelineEngine, focus: TimelineFocus) {
       items
         .filter((item): item is EventTimelineItem => item.kind === 'event')
         .map((item) => item.eventId),
+    uniqueIds: () => items.map((item) => item.uniqueId),
     last: () => updates[updates.length - 1],
     subscription,
   };
@@ -231,7 +250,7 @@ describe('JsSdkTimelineEngine threads', () => {
         },
         participants: ['@bob:hs', '@alice:hs'],
         profiles: {
-          '@bob:hs': expect.objectContaining({ displayName: 'Alice' }),
+          '@bob:hs': expect.objectContaining({ displayName: 'Bob' }),
           '@alice:hs': expect.objectContaining({ displayName: 'Alice' }),
         },
         unreadCount: 0,
@@ -325,13 +344,79 @@ describe('JsSdkTimelineEngine threads', () => {
     w.confirm(0, '$e');
     await reply;
     expect(timeline.ids()).toEqual([ROOT, '$e']);
+    const echoed = timeline.uniqueIds();
+    expect(echoed[1]).toBe(`txn:${transactionId}`);
 
-    // The synced reply takes the echo's place.
-    thread.events.push(ownReply('$e'));
+    // The synced reply takes the echo's place, keeping its uniqueId.
+    thread.events.push(
+      Object.assign(ownReply('$e'), {
+        getUnsigned: () => ({ transaction_id: transactionId }),
+      }),
+    );
     thread.emit(ThreadEvent.NewReply, thread, thread.events[0]);
     await tick();
     expect(timeline.ids()).toEqual([ROOT, '$e']);
+    expect(timeline.uniqueIds()).toEqual(echoed);
     timeline.subscription.unsubscribe();
+  });
+
+  it('a threaded send passes the SDK the content ThreadsService sends today', async () => {
+    const w = sendingWorld([msg(ROOT)]);
+    w.room.getThread.mockReturnValue(fakeThread(msg(ROOT), []));
+    const engine = engineFor(w.client);
+    const mentions = [{ userId: '@bob:hs', display: '@Bob' }];
+    const text = 'hi **@Bob**';
+    const today = textMessageContent(text, renderMarkdown(text), mentions);
+
+    const reply = firstValueFrom(
+      engine.send(
+        ME,
+        ROOM,
+        {
+          kind: 'text',
+          msgtype: 'text',
+          body: today.body,
+          formattedBody:
+            'formatted_body' in today ? today.formatted_body : null,
+          mentions: { userIds: ['@bob:hs'], room: false },
+        },
+        { threadRootId: ROOT, replyTo: null },
+      ),
+    );
+    w.confirm(0, '$e');
+    await reply;
+
+    // The SDK adds the m.thread relation, with its reply fallback, to both alike.
+    expect(w.client.sendMessage).toHaveBeenCalledWith(
+      ROOM,
+      ROOT,
+      today,
+      'txn-1',
+    );
+  });
+
+  it('a thread whose pages ran dry offers paging again once reopened', async () => {
+    const thread = fakeThread(msg(ROOT), [reply('$r2')], {
+      length: 5,
+      token: 't1',
+    });
+    const { client } = threadWorld(thread);
+    client.paginateEventTimeline.mockResolvedValue(true);
+    const engine = engineFor(client);
+    const first = watchFocus(engine, THREAD);
+    const second = watchFocus(engine, THREAD);
+    await firstValueFrom(engine.paginateBackwards(ME, ROOM, THREAD, 30));
+    expect(first.last()).toMatchObject({ backPagination: 'start-reached' });
+
+    first.subscription.unsubscribe();
+    const third = watchFocus(engine, THREAD);
+    expect(third.last()).toMatchObject({ backPagination: 'start-reached' });
+    second.subscription.unsubscribe();
+    third.subscription.unsubscribe();
+
+    const reopened = watchFocus(engine, THREAD);
+    expect(reopened.last()).toMatchObject({ backPagination: 'idle' });
+    reopened.subscription.unsubscribe();
   });
 
   it('a threaded send fails without sending when the root cannot be fetched', async () => {

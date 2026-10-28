@@ -410,16 +410,29 @@ export class FakeTimelineEngine implements TimelineEngine {
       const item = this.event(room, eventId);
       if (!item) return engineFail(MESSAGE_UNAVAILABLE);
       const { content } = item;
+      const rootId = room.threads.get(item.uniqueId);
       return engineOk({
         event_id: eventId,
         room_id: roomId,
         sender: item.sender,
         origin_server_ts: item.timestamp,
         type: 'm.room.message',
-        content:
-          content.kind === 'message'
+        content: {
+          ...(content.kind === 'message'
             ? { msgtype: `m.${content.msgtype}`, body: content.body }
-            : {},
+            : {}),
+          // As the SDK sends a thread reply, with its fallback for thread-unaware clients.
+          ...(rootId
+            ? {
+                'm.relates_to': {
+                  rel_type: 'm.thread',
+                  event_id: rootId,
+                  is_falling_back: true,
+                  'm.in_reply_to': { event_id: rootId },
+                },
+              }
+            : {}),
+        },
       });
     });
   }
@@ -916,16 +929,18 @@ export class FakeTimelineEngine implements TimelineEngine {
     const room = this.rooms.get(roomId);
     if (!room?.members.has(accountId)) return { kind: 'room-unavailable' };
     const root = this.event(room, rootId);
+    const items = [...(root ? [root] : []), ...this.replies(room, rootId)];
+    const confirmed = items.filter((i) => i.eventId !== null);
     return {
       kind: 'items',
-      diffs: [
-        {
-          op: 'reset',
-          values: [...(root ? [root] : []), ...this.replies(room, rootId)],
-        },
-      ],
+      diffs: [{ op: 'reset', values: items }],
       backPagination: 'start-reached',
-      room: this.roomState(accountId, room),
+      // What a thread receipt acknowledges: the thread's own newest event.
+      room: {
+        ...this.roomState(accountId, room),
+        latestConfirmedEventId: confirmed.at(-1)?.eventId ?? null,
+        oldestEventId: confirmed[0]?.eventId ?? null,
+      },
     };
   }
 

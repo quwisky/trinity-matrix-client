@@ -1101,6 +1101,11 @@ export function defineTimelineEngineContract(
             second,
           ]);
           expect(bodyOf(byId(view, first))).toBe('one');
+          const last = thread.updates.at(-1);
+          expect(last?.kind === 'items' && last.room).toMatchObject({
+            latestConfirmedEventId: second,
+            oldestEventId: rootId,
+          });
         } finally {
           thread.close();
         }
@@ -1160,6 +1165,19 @@ export function defineTimelineEngineContract(
             content: { kind: 'message', body: 'first reply' },
           });
           await summaries.until(rootId, (s) => s.replyCount === 1);
+          // The relation clients without thread support read too.
+          const source = await ok(
+            engine.eventSource(alice, roomId, sent.eventId ?? ''),
+          );
+          expect(source?.['content']).toMatchObject({
+            body: 'first reply',
+            'm.relates_to': {
+              rel_type: 'm.thread',
+              event_id: rootId,
+              is_falling_back: true,
+              'm.in_reply_to': { event_id: rootId },
+            },
+          });
         } finally {
           summaries.close();
           thread.close();
@@ -1222,6 +1240,7 @@ export function defineTimelineEngineContract(
         const thread = watch(roomId, { kind: 'thread', rootEventId: rootId });
         try {
           await thread.until((v) => !!byId(v, replyId));
+          const fullyReadBefore = await context.asAlice.fullyRead(roomId);
 
           await expect(
             ok(
@@ -1232,6 +1251,14 @@ export function defineTimelineEngineContract(
               }),
             ),
           ).resolves.toBe(null);
+
+          await expect(context.asBob.readReceipt(roomId, alice)).resolves.toBe(
+            replyId,
+          );
+          // A thread has no read marker of its own.
+          await expect(context.asAlice.fullyRead(roomId)).resolves.toBe(
+            fullyReadBefore,
+          );
         } finally {
           thread.close();
         }

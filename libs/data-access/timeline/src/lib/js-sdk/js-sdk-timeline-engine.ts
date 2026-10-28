@@ -339,11 +339,31 @@ export class JsSdkTimelineEngine implements TimelineEngine {
   /**
    * Own thread sends not yet in their thread. The SDK keeps a threaded local echo out of every
    * timeline until its remote echo syncs into the thread.
+   *
+   * shortcut: pruned on each thread projection, send and cancel of the room, so a send that
+   * syncs while no thread is open stays until the next; freed with its Room. Upgrade to a
+   * per-echo status listener if that ever holds more than a handful.
    */
   private readonly threadEchoes = new WeakMap<
     Room,
     readonly { readonly rootId: string; readonly echo: MatrixEvent }[]
   >();
+
+  /** The room's tracked thread sends that are neither cancelled nor in their thread yet. */
+  private pruneThreadEchoes(
+    room: Room,
+  ): readonly { readonly rootId: string; readonly echo: MatrixEvent }[] {
+    const pending = (this.threadEchoes.get(room) ?? []).filter(
+      ({ rootId, echo }) => {
+        if (echo.status === EventStatus.CANCELLED) return false;
+        const events = room.getThread(rootId)?.events ?? [];
+        return !events.some((e) => e === echo || e.getId() === echo.getId());
+      },
+    );
+    if (pending.length) this.threadEchoes.set(room, pending);
+    else this.threadEchoes.delete(room);
+    return pending;
+  }
 
   /** The thread's root, its displayable replies, then its own sends still on their way. */
   private threadEvents(
@@ -354,13 +374,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     const replies = (thread?.events ?? []).filter(isDisplayableMessage);
     const ids = new Set(replies.map((e) => e.getId()));
     const root = thread?.rootEvent ?? room.findEventById(rootId);
-    const pending = (this.threadEchoes.get(room) ?? []).filter(
-      ({ echo }) =>
-        echo.status !== EventStatus.CANCELLED &&
-        !replies.includes(echo) &&
-        !ids.has(echo.getId()),
-    );
-    this.threadEchoes.set(room, pending);
+    const pending = this.pruneThreadEchoes(room);
     return [
       ...(root && !ids.has(root.getId()) ? [root] : []),
       ...replies,
@@ -707,24 +721,26 @@ export class JsSdkTimelineEngine implements TimelineEngine {
           const rootId = options.threadRootId;
           const echo = rootId && room.getEventForTxnId(transactionId);
           if (rootId && echo) {
-            const echoes = this.threadEchoes.get(room) ?? [];
+            const echoes = this.pruneThreadEchoes(room);
             this.threadEchoes.set(room, [...echoes, { rootId, echo }]);
           }
           void this.settleFeeds(client, roomId);
           return this.settled(
             client,
             roomId,
-            request.then(
-              ({ event_id }) =>
-                engineOk({ transactionId, eventId: event_id ?? null }),
-              (error: unknown) => {
-                // The echo stays, unsent, with its send state.
-                if (room.getEventForTxnId(transactionId)) {
-                  return engineOk({ transactionId, eventId: null });
-                }
-                throw error;
-              },
-            ),
+            request
+              .finally(() => this.pruneThreadEchoes(room))
+              .then(
+                ({ event_id }) =>
+                  engineOk({ transactionId, eventId: event_id ?? null }),
+                (error: unknown) => {
+                  // The echo stays, unsent, with its send state.
+                  if (room.getEventForTxnId(transactionId)) {
+                    return engineOk({ transactionId, eventId: null });
+                  }
+                  throw error;
+                },
+              ),
           );
         }),
       );
@@ -829,6 +845,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       try {
         // CANCELLED stops the reconnect resend; the caller lets go of any text it held.
         client.cancelPendingEvent(echo);
+        this.pruneThreadEchoes(room);
         return engineOk(null);
       } catch {
         // SENDING means the request may already have crossed the network boundary.
@@ -1571,6 +1588,14 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       client.off(CryptoEvent.DevicesUpdated, onTrust);
       client.off(CryptoEvent.KeysChanged, onTrust);
       room.off(ThreadEvent.New, onThreadChanged);
+      // As today's thread panel: closing the thread forgets that its pages ran dry.
+      const closing = rootId === null ? null : room.getThread(rootId);
+      if (
+        closing &&
+        ![...this.feeds].some((f) => f.client === client && f.pageKey === key)
+      ) {
+        this.exhausted.delete(closing);
+      }
       bindThread(null);
     };
   }
