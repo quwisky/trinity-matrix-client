@@ -946,7 +946,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
           }
           return this.injector
             .get(MediaService)
-            .uploadMedia(file, encrypt, undefined, undefined, client)
+            .uploadMedia(file, encrypt, undefined, undefined, accountId)
             .pipe(
               switchMap((media) =>
                 this.settled(

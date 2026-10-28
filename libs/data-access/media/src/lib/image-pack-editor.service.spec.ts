@@ -578,7 +578,9 @@ describe('ImagePackEditorService room packs', () => {
         wave: { url: 'mxc://hs/up1', info: UPLOAD_INFO, usage: ['emoticon'] },
       },
     });
-    expect((media.uploadMedia.mock.calls[0] as unknown[])[4]).toBe(bob);
+    expect((media.uploadMedia.mock.calls[0] as unknown[])[4]).toBe(
+      bob.getUserId(),
+    );
     expect(write).not.toHaveBeenCalled();
   });
 

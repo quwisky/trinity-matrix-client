@@ -22,6 +22,7 @@ const LIBS = [
   'data-access-room-library',
   'data-access-timeline',
   'data-access-widgets',
+  'data-access-media',
 ] as const;
 
 export async function runEngineContract(
