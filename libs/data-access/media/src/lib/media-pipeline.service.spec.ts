@@ -1,6 +1,5 @@
 import { TestBed } from '@angular/core/testing';
 import { NEVER, firstValueFrom, of, take, toArray } from 'rxjs';
-import type { MatrixClient } from 'matrix-js-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from './media.service';
@@ -281,7 +280,7 @@ describe('MediaPipeline', () => {
         thumbnailMxc: null,
         thumbnailFile: null,
       },
-      client as unknown as MatrixClient,
+      KEY.accountId,
     );
 
     expect(reference).toMatchObject({
@@ -338,40 +337,35 @@ describe('MediaPipeline', () => {
     },
   );
 
-  it.each(['removed', 'replaced'])(
-    'rejects reads created before the source Account client is %s',
-    async (transition) => {
-      const { pipeline, bytes, client, matrix } = setup();
-      const reference = pipeline.present({
-        kind: 'image',
-        mxc: 'mxc://example.org/photo',
-        file: null,
-        filename: 'photo.png',
-        mimeType: 'image/png',
-        thumbnailMxc: null,
-        thumbnailFile: null,
-      });
-      bytes.downloadMedia.mockReturnValue(
-        of({ blob: new Blob(['photo']), filename: 'photo.png' }),
-      );
-      const reads = [
-        pipeline.resolveMedia(reference, 'thumbnail'),
-        pipeline.resolveMedia(reference, 'full'),
-        pipeline.downloadMedia(reference),
-      ];
-      matrix.clientFor.mockReturnValue(
-        transition === 'removed' ? null : { ...client },
-      );
+  it('rejects reads once the source Account client is removed', async () => {
+    const { pipeline, bytes, matrix } = setup();
+    const reference = pipeline.present({
+      kind: 'image',
+      mxc: 'mxc://example.org/photo',
+      file: null,
+      filename: 'photo.png',
+      mimeType: 'image/png',
+      thumbnailMxc: null,
+      thumbnailFile: null,
+    });
+    bytes.downloadMedia.mockReturnValue(
+      of({ blob: new Blob(['photo']), filename: 'photo.png' }),
+    );
+    const reads = [
+      pipeline.resolveMedia(reference, 'thumbnail'),
+      pipeline.resolveMedia(reference, 'full'),
+      pipeline.downloadMedia(reference),
+    ];
+    matrix.clientFor.mockReturnValue(null);
 
-      for (const read of reads) {
-        await expect(firstValueFrom<unknown>(read)).rejects.toThrow(
-          'Media reference is no longer available',
-        );
-      }
-      expect(bytes.resolveMedia).not.toHaveBeenCalled();
-      expect(bytes.downloadMedia).not.toHaveBeenCalled();
-    },
-  );
+    for (const read of reads) {
+      await expect(firstValueFrom<unknown>(read)).rejects.toThrow(
+        'Media reference is no longer available',
+      );
+    }
+    expect(bytes.resolveMedia).not.toHaveBeenCalled();
+    expect(bytes.downloadMedia).not.toHaveBeenCalled();
+  });
 
   it('keeps media reads bound to their live opening Account after an Active Account switch', async () => {
     const { pipeline, bytes, client, matrix } = setup();
@@ -422,24 +416,24 @@ describe('MediaPipeline', () => {
     };
 
     it('tells one message presented twice (a receipt or reaction re-projected it) as the same media', () => {
-      const { pipeline, client } = setup();
-      const first = pipeline.present(photo, client as never);
-      const again = pipeline.present({ ...photo }, client as never);
+      const { pipeline } = setup();
+      const first = pipeline.present(photo, KEY.accountId);
+      const again = pipeline.present({ ...photo }, KEY.accountId);
 
       expect(first).not.toBe(again);
       expect(pipeline.sameMedia(first, again)).toBe(true);
     });
 
     it('tells an edit that swapped the file, its thumbnail, or its account apart', () => {
-      const { pipeline, client } = setup();
-      const first = pipeline.present(photo, client as never);
+      const { pipeline } = setup();
+      const first = pipeline.present(photo, KEY.accountId);
 
       expect(
         pipeline.sameMedia(
           first,
           pipeline.present(
             { ...photo, mxc: 'mxc://example.org/other' },
-            client as never,
+            KEY.accountId,
           ),
         ),
       ).toBe(false);
@@ -448,20 +442,20 @@ describe('MediaPipeline', () => {
           first,
           pipeline.present(
             { ...photo, thumbnailMxc: 'mxc://example.org/thumb' },
-            client as never,
+            KEY.accountId,
           ),
         ),
       ).toBe(false);
       expect(
-        pipeline.sameMedia(first, pipeline.present(photo, {} as never)),
+        pipeline.sameMedia(first, pipeline.present(photo, '@bob:example.org')),
       ).toBe(false);
     });
 
     it('compares encrypted media by the file it points at', () => {
-      const { pipeline, client } = setup();
+      const { pipeline } = setup();
       const file = { url: 'mxc://example.org/cipher' } as never;
       const encrypted = { ...photo, mxc: null, file };
-      const first = pipeline.present(encrypted, client as never);
+      const first = pipeline.present(encrypted, KEY.accountId);
 
       expect(
         pipeline.sameMedia(
@@ -471,7 +465,7 @@ describe('MediaPipeline', () => {
               ...encrypted,
               file: { url: 'mxc://example.org/cipher' } as never,
             },
-            client as never,
+            KEY.accountId,
           ),
         ),
       ).toBe(true);
@@ -480,14 +474,14 @@ describe('MediaPipeline', () => {
           first,
           pipeline.present(
             { ...encrypted, file: { url: 'mxc://example.org/other' } as never },
-            client as never,
+            KEY.accountId,
           ),
         ),
       ).toBe(false);
     });
 
     it('tells encrypted media at one file.url apart by its key material', () => {
-      const { pipeline, client } = setup();
+      const { pipeline } = setup();
       const file = (k: string) => ({
         url: 'mxc://example.org/cipher',
         key: { k } as JsonWebKey,
@@ -496,23 +490,23 @@ describe('MediaPipeline', () => {
         v: 'v2',
       });
       const encrypted = { ...photo, mxc: null, file: file('a') };
-      const first = pipeline.present(encrypted, client as never);
+      const first = pipeline.present(encrypted, KEY.accountId);
 
       expect(
         pipeline.sameMedia(
           first,
-          pipeline.present({ ...encrypted, file: file('b') }, client as never),
+          pipeline.present({ ...encrypted, file: file('b') }, KEY.accountId),
         ),
       ).toBe(false);
       expect(
         pipeline.sameMedia(
           pipeline.present(
             { ...encrypted, thumbnailFile: file('a') },
-            client as never,
+            KEY.accountId,
           ),
           pipeline.present(
             { ...encrypted, thumbnailFile: file('b') },
-            client as never,
+            KEY.accountId,
           ),
         ),
       ).toBe(false);
@@ -534,13 +528,13 @@ describe('MediaPipeline', () => {
     ])(
       'tells an encrypted file or thumbnail apart by its %s alone',
       (_, change) => {
-        const { pipeline, client } = setup();
+        const { pipeline } = setup();
         const changed = { ...cipher, ...change };
         const encrypted = { ...photo, mxc: null, file: cipher };
         const same = (a: MediaPayload, b: MediaPayload) =>
           pipeline.sameMedia(
-            pipeline.present(a, client as never),
-            pipeline.present(b, client as never),
+            pipeline.present(a, KEY.accountId),
+            pipeline.present(b, KEY.accountId),
           );
 
         expect(same(encrypted, { ...encrypted, file: changed })).toBe(false);
@@ -554,18 +548,18 @@ describe('MediaPipeline', () => {
     );
 
     it('tells a thumbnail declared with another type apart', () => {
-      const { pipeline, client } = setup();
+      const { pipeline } = setup();
       const thumbed = { ...photo, thumbnailMxc: 'mxc://example.org/thumb' };
 
       expect(
         pipeline.sameMedia(
           pipeline.present(
             { ...thumbed, thumbnailMimeType: 'image/png' },
-            client as never,
+            KEY.accountId,
           ),
           pipeline.present(
             { ...thumbed, thumbnailMimeType: 'image/jpeg' },
-            client as never,
+            KEY.accountId,
           ),
         ),
       ).toBe(false);
@@ -584,8 +578,6 @@ describe('MediaPipeline', () => {
       thumbnailFile: null,
     };
     const reference = pipeline.present(media);
-    // Freeing bytes never needs a live Account: a signed-out one's pins still go.
-    matrix.clientFor.mockReturnValue(null);
 
     pipeline.drop(reference, 'full', 'blob:photo');
 
@@ -593,6 +585,58 @@ describe('MediaPipeline', () => {
       media,
       variant: 'full',
       client,
+    });
+    // Freeing pins never needs a live Account: a signed-out one's pins still go.
+    matrix.clientFor.mockReturnValue(null);
+    pipeline.drop(reference, 'full', 'blob:other');
+    expect(bytes.unpin).toHaveBeenCalledWith('blob:other');
+  });
+
+  describe('present(media, accountId)', () => {
+    const image = {
+      kind: 'image' as const,
+      mxc: 'mxc://example.org/photo',
+      file: null,
+      filename: 'photo.png',
+      mimeType: 'image/png',
+      thumbnailMxc: null,
+      thumbnailFile: null,
+    };
+
+    it("resolves the presenting account's client at load time", async () => {
+      const { pipeline, bytes, client, matrix } = setup();
+      const bob = { ...client, getUserId: () => '@bob:example.org' };
+      matrix.clientFor.mockImplementation((id) =>
+        id === '@bob:example.org' ? bob : client,
+      );
+      const reference = pipeline.present(image, '@bob:example.org');
+      const lateBob = { ...bob };
+      matrix.clientFor.mockImplementation(() => lateBob);
+
+      await firstValueFrom(pipeline.resolveMedia(reference, 'full'));
+
+      expect(bytes.resolveMedia).toHaveBeenCalledWith(image, 'full', lateBob);
+    });
+
+    it('defaults to the active account', async () => {
+      const { pipeline, bytes, client, matrix } = setup();
+      const reference = pipeline.present(image);
+
+      await firstValueFrom(pipeline.resolveMedia(reference, 'full'));
+
+      expect(matrix.clientFor).toHaveBeenCalledWith(KEY.accountId);
+      expect(bytes.resolveMedia).toHaveBeenCalledWith(image, 'full', client);
+    });
+
+    it('sameMedia is false across accounts', () => {
+      const { pipeline } = setup();
+
+      expect(
+        pipeline.sameMedia(
+          pipeline.present(image, KEY.accountId),
+          pipeline.present({ ...image }, '@bob:example.org'),
+        ),
+      ).toBe(false);
     });
   });
 

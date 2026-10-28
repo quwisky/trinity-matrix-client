@@ -391,11 +391,7 @@ export class ThreadViewComponent implements OnDestroy {
         canPin: false,
         canThread: false,
         pinnedIds: [],
-        canAddToEmoji: addableImages(
-          this.addToEmoji,
-          this.timeline,
-          this.roomId(),
-        ),
+        canAddToEmoji: addableImages(this.addToEmoji),
       },
       this.prevRowCaps,
     );

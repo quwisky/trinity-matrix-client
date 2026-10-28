@@ -601,6 +601,45 @@ describe('JsSdkTimelineEngine', () => {
 
     expect(client.createMessagesRequest).toHaveBeenCalledTimes(1);
     expect(timeline.last()).toMatchObject({ backPagination: 'idle' });
+    // The skipped page never shows as paging: one start and one end, for the first page.
+    expect(
+      timeline.updates.map(
+        (update) => update.kind === 'items' && update.backPagination,
+      ),
+    ).toEqual(['idle', 'paginating', 'idle']);
+    timeline.subscription.unsubscribe();
+  });
+
+  it('asks the crypto store once, not on every update with nothing to check', async () => {
+    const isEncryptionEnabledInRoom = vi.fn(async () => false);
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn(async () => null),
+      isEncryptionEnabledInRoom,
+    };
+    const event = msg('$a');
+    const { client, room } = world([event], { crypto });
+    const timeline = watch(engineFor(client));
+    await tick();
+
+    for (let i = 0; i < 3; i++) {
+      room.emit(RoomEvent.Receipt, { getContent: () => ({ $a: {} }) }, room);
+      await tick();
+    }
+
+    expect(timeline.updates.length).toBeGreaterThan(3);
+    expect(isEncryptionEnabledInRoom).toHaveBeenCalledOnce();
+    timeline.subscription.unsubscribe();
+  });
+
+  it('re-projects when the live timeline is reset', async () => {
+    const { client, room, replaceTimeline } = world([msg('$a')]);
+    const timeline = watch(engineFor(client));
+
+    replaceTimeline([]);
+    room.emit(RoomEvent.TimelineReset, room);
+    await Promise.resolve();
+
+    expect(timeline.events()).toEqual([]);
     timeline.subscription.unsubscribe();
   });
 
@@ -622,6 +661,24 @@ describe('JsSdkTimelineEngine', () => {
     expect(result.ok).toBe(true);
     expect(room.addEventsToTimeline).not.toHaveBeenCalled();
     expect(timeline.events().map((item) => item.eventId)).toEqual(['$c']);
+    timeline.subscription.unsubscribe();
+  });
+
+  it('paginateUntil keeps paging after a reset drops a page', async () => {
+    const { client, replaceTimeline } = world([msg('$c')], { token: 't1' });
+    client.createMessagesRequest
+      .mockImplementationOnce(async () => {
+        replaceTimeline([msg('$c')]);
+        return { chunk: [msg('$b')], end: 't2' };
+      })
+      .mockResolvedValueOnce({ chunk: [msg('$a')], end: 't3' });
+    const engine = engineFor(client);
+    const timeline = watch(engine);
+
+    await expect(
+      firstValueFrom(engine.paginateUntil(ME, ROOM, '$a', 5)),
+    ).resolves.toEqual({ ok: true, value: { found: true } });
+    expect(client.createMessagesRequest).toHaveBeenCalledTimes(2);
     timeline.subscription.unsubscribe();
   });
 

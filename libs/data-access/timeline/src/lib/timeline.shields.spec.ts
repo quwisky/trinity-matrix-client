@@ -18,6 +18,7 @@ import {
   fakeEvent,
   matrixProvider,
   privacyProvider,
+  ROOM_KEY,
 } from './timeline.spec-harness';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
@@ -72,6 +73,7 @@ describe('per-message authenticity shields', () => {
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
+      getAccountData: () => undefined,
       on: (event: string, handler: (...a: unknown[]) => void) => {
         handlers.set(`room:${event}`, handler);
       },
@@ -123,7 +125,7 @@ describe('per-message authenticity shields', () => {
       providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     return { svc, handlers: client.handlers };
   }
 

@@ -1,14 +1,18 @@
 import { TestBed } from '@angular/core/testing';
+import { RoomEvent } from 'matrix-js-sdk';
+import { EngineRequestError } from '@trinity/util/matrix';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import {
+  clientFor,
   fakeClient,
   fakeEvent,
   fakeRoom,
   matrixProvider,
   mediaProvider,
   privacyProvider,
+  ROOM_KEY,
 } from './timeline.spec-harness';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
@@ -46,7 +50,7 @@ describe('unread divider', () => {
       providers: [TimelineService, matrixProvider(client), mediaProvider()],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     return { svc, client };
   }
 
@@ -167,7 +171,7 @@ describe('trimming the open room (#1366)', () => {
       ],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     return svc;
   }
 
@@ -232,30 +236,40 @@ describe('trimming the open room (#1366)', () => {
 
 describe('paging a rewound room back in', () => {
   /** A room with `history` messages whose live timeline was rewound to empty after opening. */
-  function rewound(history: number) {
+  async function rewound(history: number) {
     const all = Array.from({ length: history }, (_, i) =>
       fakeEvent({ id: `$${i + 1}`, sender: '@alice:hs', body: `${i + 1}` }),
     );
     const events = all.slice(-5);
-    const room = fakeRoom(events);
-    const client = fakeClient(room, []);
+    const base = fakeRoom(events);
+    const room = {
+      ...base,
+      getLiveTimeline: () => ({
+        ...base.getLiveTimeline(),
+        // Older history is left until all of it is paged in.
+        getPaginationToken: () => (events[0] === all[0] ? null : 'tok'),
+      }),
+    };
     const scrollback = vi.fn(async () => {
       const end = history - events.length;
       events.unshift(...all.slice(Math.max(0, end - 30), end));
       return room;
     });
-    client.scrollback = scrollback;
+    const client = clientFor(room, { scrollback });
     TestBed.configureTestingModule({
       providers: [TimelineService, matrixProvider(client), mediaProvider()],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
+    // The rewind swaps the live timeline, which the room reports as a reset.
     events.length = 0;
+    room.handlers.get(RoomEvent.TimelineReset)?.();
+    await Promise.resolve();
     return { svc, scrollback };
   }
 
   it('shows the open room rewound at once, then pages it back to about its depth', async () => {
-    const { svc, scrollback } = rewound(100);
+    const { svc, scrollback } = await rewound(100);
 
     const refilled = firstValueFrom(svc.refill(50));
     expect(svc.messages()).toEqual([]);
@@ -270,7 +284,7 @@ describe('paging a rewound room back in', () => {
   });
 
   it('pages one page back in while the Conversation is retained', async () => {
-    const { svc, scrollback } = rewound(100);
+    const { svc, scrollback } = await rewound(100);
     svc.setVisible(false);
 
     await firstValueFrom(svc.refill(50));
@@ -280,16 +294,18 @@ describe('paging a rewound room back in', () => {
   });
 
   it('allows paging again when a page fails', async () => {
-    const { svc, scrollback } = rewound(100);
+    const { svc, scrollback } = await rewound(100);
     scrollback.mockRejectedValueOnce(new Error('network'));
 
-    await expect(firstValueFrom(svc.refill(50))).rejects.toThrow('network');
+    await expect(firstValueFrom(svc.refill(50))).rejects.toBeInstanceOf(
+      EngineRequestError,
+    );
 
     expect(svc.loadingOlder()).toBe(false);
   });
 
   it('starts once older history being paged in has landed', async () => {
-    const { svc, scrollback } = rewound(100);
+    const { svc, scrollback } = await rewound(100);
     let land!: () => void;
     scrollback.mockImplementationOnce(
       () =>
@@ -309,7 +325,7 @@ describe('paging a rewound room back in', () => {
   });
 
   it('stops paging after the page in flight once unsubscribed', async () => {
-    const { svc, scrollback } = rewound(100);
+    const { svc, scrollback } = await rewound(100);
 
     svc.refill(90).subscribe().unsubscribe();
     await vi.waitFor(() => expect(svc.loadingOlder()).toBe(false));
