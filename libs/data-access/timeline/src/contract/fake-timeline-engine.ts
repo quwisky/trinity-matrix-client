@@ -25,6 +25,7 @@ import type {
   OutgoingText,
   Profile,
   ReactionDetailGroup,
+  RetentionHint,
   ThreadSummaryInfo,
   TimelineEngine,
   TimelineFocus,
@@ -723,6 +724,15 @@ export class FakeTimelineEngine implements TimelineEngine {
       );
       return engineOk(null);
     });
+  }
+
+  /** Holds every event in memory, so it has nothing to free. */
+  setRetention(
+    _accountId: string,
+    _roomId: string,
+    _hint: RetentionHint | null,
+  ): Observable<null> {
+    return of(null);
   }
 
   /** A cold command on the item `key` names, `message-unavailable` when there is none. */

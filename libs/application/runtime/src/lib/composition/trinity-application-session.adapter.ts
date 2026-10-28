@@ -25,7 +25,7 @@ import {
   TrustLifetime,
   TrustUsersService,
 } from '@trinity/data-access/trust';
-import { LiveTimelineTrimmer } from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { HostLifecycleService } from '@trinity/runtime/host';
 import {
   EMPTY,
@@ -62,7 +62,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly toast = inject(TrnToastService);
   private readonly hostLifecycle = inject(HostLifecycleService);
   private readonly memoryRelease = inject(BackgroundMemoryRelease);
-  private readonly timelineTrimmer = inject(LiveTimelineTrimmer);
+  private readonly conversations = inject(ConversationRuntime);
   private readonly hostHealth = inject(HostSessionHealthService);
   private readonly navigationFocus = inject(NavigationFocusService);
   private readonly routedSurfaces = inject(WorkspaceRoutedSurfaceAdapter);
@@ -245,7 +245,7 @@ export class TrinityApplicationSessionAdapter {
       this.whatsNewLauncher.runPending(),
       this.unprotectedStorage.runPendingNotice(),
       this.memoryRelease.run(),
-      this.timelineTrimmer.run(),
+      this.conversations.runRetention(),
     );
   }
 
