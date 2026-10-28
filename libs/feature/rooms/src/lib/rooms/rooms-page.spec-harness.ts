@@ -64,6 +64,7 @@ import {
 } from '@trinity/application/workspace';
 
 import { MockProvider } from 'ng-mocks';
+import { ImagePackService } from '@trinity/data-access/media';
 import { ACCOUNT_REMOVAL_LAUNCHER } from '@trinity/platform-native';
 import { BehaviorSubject, NEVER, Subject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
@@ -209,6 +210,11 @@ export const ACCOUNT_REMOVAL_LAUNCHER_STUB: Provider = {
  * a component's `providers:` array are invisible to `TestBed.inject(RoomsPage)`, so each
  * one has to be supplied to the TestBed by hand, in every block.
  */
+/** No pack is offered; the pack projection has its own specs. */
+export const IMAGE_PACKS_PROVIDER: Provider = MockProvider(ImagePackService, {
+  packsFor: () => signal([]).asReadonly(),
+});
+
 export const SHARED_MOCKS: Provider[] = [
   ACCOUNT_REMOVAL_LAUNCHER_STUB,
   SYSTEM_STATUS_PROVIDER,
@@ -232,6 +238,7 @@ export const SHARED_MOCKS: Provider[] = [
   ConversationTimelineStub,
   // The session is the mocked SessionStateService; the room list store only listens for changes.
   { provide: SESSION_ENGINE, useValue: { session: () => NEVER } },
+  IMAGE_PACKS_PROVIDER,
   // App lock is off; a spec that locks it overrides this.
   MockProvider(AppLockService, {
     enabled: signal(false).asReadonly(),

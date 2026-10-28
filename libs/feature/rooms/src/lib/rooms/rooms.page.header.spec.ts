@@ -69,6 +69,7 @@ import {
   ROUTE_PROVIDER,
   SYSTEM_STATUS_PROVIDER,
   sessionStateProvider,
+  IMAGE_PACKS_PROVIDER,
   setRouteRoom,
   stubLiveLayout,
 } from './rooms-page.spec-harness';
@@ -228,6 +229,7 @@ function renderHeader(
         activeUserId: signal<string | null>('@me:hs'),
       }),
       sessionStateProvider(),
+      IMAGE_PACKS_PROVIDER,
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
         presenceFor: (userId: string) =>
