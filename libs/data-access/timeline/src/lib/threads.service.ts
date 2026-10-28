@@ -16,6 +16,11 @@ import {
   map,
   of,
 } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  SESSION_ENGINE,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
 import { ImagePackEditorService } from '@trinity/data-access/media';
 import { DraftStoreService } from '@trinity/platform-native';
 import {
@@ -110,13 +115,25 @@ export class ThreadsService {
   private readonly attention = inject(CONVERSATION_ATTENTION, {
     optional: true,
   });
+  private readonly session = inject(SessionStateService);
   private conversationKey: ConversationKey | null = null;
   private summariesSubscription: Subscription | null = null;
+  /** The attached account's session generation the summaries feed was opened on. */
+  private summariesGeneration: number | null = null;
   /** Each engine summary's presented form, so an unchanged summary keeps its identity. */
   private presented = new WeakMap<ThreadSummaryInfo, ThreadSummary>();
   private summaryInfos: readonly ThreadSummaryInfo[] = NO_SUMMARIES;
-
   private readonly _summaries = signal<Record<string, ThreadSummary>>({});
+  private readonly store = signal<TimelineStore | null>(null);
+  private storeUpdates: Subscription | null = null;
+  // Latest thread event we have already sent a read receipt for, so live replies
+  // arriving while the thread is open mark read without re-sending on every update.
+  private lastReadEventId: string | null = null;
+  private threadReceiptSubscription: Subscription | null = null;
+  // The window regained focus with a thread open: send the receipt held back meanwhile.
+  private readonly onThreadFocus = (): void => this.markThreadRead();
+  private stopThreadFocusListener: (() => void) | null = null;
+
   /** Thread summaries for the active room, keyed by thread-root event id. */
   readonly summaries = this._summaries.asReadonly();
 
@@ -131,9 +148,6 @@ export class ThreadsService {
         a.rootEventId.localeCompare(b.rootEventId),
     ),
   );
-
-  private readonly store = signal<TimelineStore | null>(null);
-  private storeUpdates: Subscription | null = null;
 
   /** Live, decrypted messages of the opened thread (root first, then replies). */
   readonly threadMessages: Signal<readonly MessageView[]> = computed(
@@ -157,25 +171,23 @@ export class ThreadsService {
     return !!store?.available() && store.backPagination() === 'idle';
   });
 
-  // Latest thread event we have already sent a read receipt for, so live replies
-  // arriving while the thread is open mark read without re-sending on every update.
-  private lastReadEventId: string | null = null;
-  private threadReceiptSubscription: Subscription | null = null;
-  // The window regained focus with a thread open: send the receipt held back meanwhile.
-  private readonly onThreadFocus = (): void => this.markThreadRead();
-  private stopThreadFocusListener: (() => void) | null = null;
-
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.closeThread();
       this.close();
     });
+    // A restarted account's summaries come from its new client, not the stopped one.
+    inject(SESSION_ENGINE)
+      .session()
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.followSession());
     // App lock released: ack the open thread's replies that arrived behind the cover.
     effect(() => {
       if (this.attention?.attentive()) untracked(() => this.markThreadRead());
     });
   }
 
+  // Approximate diagnostics: the js-sdk engine's listeners per open feed, not counted live.
   resources(): { listenerCount: number; retainedBytes: number } {
     const summaryListeners = this.summariesSubscription ? 8 : 0;
     const threadListeners = this.store() ? 11 : 0;
@@ -200,6 +212,7 @@ export class ThreadsService {
     }
     this.close();
     this.conversationKey = Object.freeze({ ...key });
+    this.summariesGeneration = this.generationOf(key.accountId);
     this.summariesSubscription = this.engine
       .threadSummaries(key.accountId, key.roomId)
       .subscribe((diffs) => {
@@ -416,5 +429,19 @@ export class ThreadsService {
           this.lastReadEventId = null;
         }
       });
+  }
+
+  /** Reopens the summaries feed when the attached account's session generation changes. */
+  private followSession(): void {
+    const key = this.conversationKey;
+    if (!key || this.generationOf(key.accountId) === this.summariesGeneration) {
+      return;
+    }
+    this.close();
+    this.attach(key);
+  }
+
+  private generationOf(accountId: string): number | null {
+    return untracked(() => this.session.status(accountId))?.generation ?? null;
   }
 }

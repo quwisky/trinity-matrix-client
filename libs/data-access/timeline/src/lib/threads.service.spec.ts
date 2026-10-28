@@ -1390,6 +1390,7 @@ describe('ThreadsService', () => {
     const clientA = makeClient();
     const clientB = makeClient();
     const active = { client: clientA as unknown };
+    const session = liveSession(['@me:hs']);
 
     TestBed.configureTestingModule({
       providers: [
@@ -1397,7 +1398,7 @@ describe('ThreadsService', () => {
         MockProvider(MatrixClientService, {
           clientFor: () => active.client as never,
         }),
-        ...liveSession(['@me:hs']).providers,
+        ...session.providers,
         MockProvider(MediaService, {
           uploadMedia: fakeMediaService().uploadMedia,
         }),
@@ -1419,11 +1420,14 @@ describe('ThreadsService', () => {
     svc.attachThreadRoot('$a');
     expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(2);
 
-    active.client = clientB; // the account restarts on a new client
-    svc.close(); // as hiding the Conversation does, before it is shown again
-    svc.attach(KEY);
+    // The account restarts on a new client while the Conversation stays visible.
+    active.client = clientB;
+    session.publish(['@me:hs'], 2);
+    svc.attach(KEY); // still attached: a no-op
     svc.attachThreadRoot('$b'); // closes the first client's thread on the way in
 
+    // The summaries feed moved to the live client with the thread.
+    expect(clientB.listenerCount(MatrixEventEvent.Decrypted)).toBe(2);
     expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(0);
     expect(clientA.listenerCount(CryptoEvent.UserTrustStatusChanged)).toBe(0);
     expect(clientA.listenerCount(CryptoEvent.DevicesUpdated)).toBe(0);
