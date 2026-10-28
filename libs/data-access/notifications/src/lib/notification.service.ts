@@ -24,7 +24,7 @@ import {
   NOTIFICATION_SOUND_EVENT,
   NotificationSoundService,
 } from './notification-sound.service';
-import { copyLegacyAccountData } from './legacy-account-data';
+import { copyLegacyAccountData } from './js-sdk/legacy-account-data';
 import { Observable, Subscriber, Subscription, take, timeout } from 'rxjs';
 import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
 import type { NotificationRuntimeEvent } from './notification-intent';

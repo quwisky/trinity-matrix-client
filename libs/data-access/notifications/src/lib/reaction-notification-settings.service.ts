@@ -5,7 +5,7 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { Observable, defer, from, map, throwError } from 'rxjs';
-import { migratedAccountDataContent } from './legacy-account-data';
+import { migratedAccountDataContent } from './js-sdk/legacy-account-data';
 
 export const REACTION_NOTIFICATION_EVENT =
   'dev.trinityproject.trinity.reaction_notifications';

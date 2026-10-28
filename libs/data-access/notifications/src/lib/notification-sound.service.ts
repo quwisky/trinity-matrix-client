@@ -3,7 +3,7 @@ import { ClientEvent } from 'matrix-js-sdk';
 import { projectFromClient } from '@trinity/data-access/matrix-client';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { migratedAccountDataContent } from './legacy-account-data';
+import { migratedAccountDataContent } from './js-sdk/legacy-account-data';
 
 /**
  * Account-data type holding the global "play a sound" preference.
