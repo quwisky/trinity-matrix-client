@@ -29,8 +29,6 @@
     "libs/data-access/matrix-client/src/lib/secret-storage-key-holder.ts",
     "libs/data-access/matrix-client/src/lib/server-support.ts",
     "libs/data-access/matrix-client/src/lib/trust-crypto.port.ts",
-    "libs/data-access/media/src/lib/image-pack-editor.service.ts",
-    "libs/data-access/media/src/lib/image-pack-target.ts",
     "libs/data-access/notifications/src/lib/keyword-rules.service.ts",
     "libs/data-access/notifications/src/lib/matrix-notification-event.adapter.ts",
     "libs/data-access/notifications/src/lib/notification-sound.service.ts",
