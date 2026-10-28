@@ -18,6 +18,7 @@ import type {
   JsonObject,
   Membership,
   PowerLevel,
+  RawStateEvent,
   RoomAdministrationEngine,
   RoomMemberInfo,
   RoomMembers,
@@ -160,6 +161,13 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
       }),
     setDisplayName: async (roomId: string, name: string): Promise<void> =>
       this.rename(this.bob, roomId, name),
+    /** Writes any state event as bob, without a power check. */
+    setState: async (
+      roomId: string,
+      type: string,
+      content: JsonObject,
+      stateKey = '',
+    ): Promise<void> => this.put(roomId, type, stateKey, this.bob, content),
     ban: async (roomId: string, userId: string, reason: string) =>
       this.setMembership(roomId, userId, this.bob, {
         membership: 'ban',
@@ -239,6 +247,39 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
       }
       this.put(roomId, type, stateKey, accountId, structuredClone(content));
       return of(engineOk(null));
+    });
+  }
+
+  stateEvents(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly RawStateEvent[]>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      const state = this.rooms.get(roomId);
+      if (!state || !this.membershipOf(roomId, accountId)) {
+        return of(engineFail(failure('room-unavailable')));
+      }
+      return of(
+        engineOk(
+          [...state].flatMap(([type, byKey]) =>
+            [...byKey].map(([stateKey, event]) => ({
+              type,
+              stateKey,
+              event: structuredClone({
+                type,
+                state_key: stateKey,
+                sender: event.sender,
+                origin_server_ts: event.originServerTs,
+                room_id: roomId,
+                content: event.content,
+              }),
+            })),
+          ),
+        ),
+      );
     });
   }
 

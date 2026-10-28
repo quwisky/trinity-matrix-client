@@ -79,6 +79,7 @@ function fakeRoom(roomId: string, o: FakeRoomOptions = {}) {
     roomId,
     name: o.name ?? roomId,
     isSpaceRoom: () => o.space ?? false,
+    hasEncryptionStateEvent: () => false,
     getMyMembership: () => o.myMembership ?? 'join',
     getMembers: () => members,
     getMember: (userId: string) =>

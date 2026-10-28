@@ -1,7 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { fireEvent, render, screen, within } from '@trinity/testing';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import type { RoomStateEntry } from '@trinity/data-access/room-administration';
+import type {
+  JsonObject,
+  RoomStateEntry,
+} from '@trinity/data-access/room-administration';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomStateViewerComponent } from './room-state-viewer.component';
@@ -9,7 +12,7 @@ import { RoomStateViewerComponent } from './room-state-viewer.component';
 const entry = (
   type: string,
   stateKey: string,
-  content: Record<string, unknown> = {},
+  content: JsonObject = {},
 ): RoomStateEntry => ({
   type,
   stateKey,

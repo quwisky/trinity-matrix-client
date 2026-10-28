@@ -1,329 +1,225 @@
-import { signal } from '@angular/core';
+import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import {
-  HistoryVisibility,
-  JoinRule,
-  KnownMembership,
-  MatrixEvent,
-} from 'matrix-js-sdk';
-import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
-import { KNOCK_RESTRICTED, RoomSettingsService } from './room-settings.service';
+  EngineRequestError,
+  engineFail,
+  type EngineFailure,
+} from '@trinity/util/matrix';
+import { MockProvider } from 'ng-mocks';
+import { Subject, firstValueFrom, of, throwError } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { FakeRoomOptions } from '../contract/fake-room-administration-engine';
+import { RoomActionPermissionError } from './room-action-permissions.service';
+import { HistoryVisibility, JoinRule } from './room-access.models';
+import { RoomAdministrationError } from './room-administration-error';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
+import {
+  KNOCK_RESTRICTED,
+  RoomSettingsService,
+  type RoomSettingsSnapshot,
+} from './room-settings.service';
 
-function setup(
-  opts: {
-    may?: (type: string) => boolean;
-    noRoom?: boolean;
-    signedOut?: boolean;
-    joinRule?: string;
-    allow?: unknown;
-    version?: string;
-    historyVisibility?: string;
-    name?: string;
-    topic?: string;
-    avatarUrl?: string;
-    tombstone?: string;
-    events?: Map<string, Map<string, MatrixEvent>>;
-    stateEncrypted?: boolean;
-    storeEncrypted?: boolean;
-    store?: () => Promise<boolean>;
-  } = {},
-) {
-  const setRoomName = vi.fn().mockResolvedValue({});
-  const setRoomTopic = vi.fn().mockResolvedValue({});
-  const uploadContent = vi.fn().mockResolvedValue({ content_uri: 'mxc://a/b' });
-  const sendStateEvent = vi.fn().mockResolvedValue({});
-  const stateListeners = new Set<
-    (event?: { getRoomId(): string | null }, state?: { roomId: string }) => void
-  >();
-  const syncListeners = new Set<
-    (event?: { getRoomId(): string | null }, state?: { roomId: string }) => void
-  >();
-  const accountIds = signal<readonly string[]>(
-    opts.signedOut ? [] : ['@me:hs'],
-  );
-  const activeUserId = signal<string | null>(opts.signedOut ? null : '@me:hs');
-  const stateFor = (type: string) => {
-    if (type === 'm.room.join_rules' && opts.joinRule !== undefined) {
-      return {
-        getContent: () => ({ join_rule: opts.joinRule, allow: opts.allow }),
-      };
-    }
-    if (type === 'm.room.name' && opts.name !== undefined) {
-      return { getContent: () => ({ name: opts.name }) };
-    }
-    if (type === 'm.room.topic' && opts.topic !== undefined) {
-      return { getContent: () => ({ topic: opts.topic }) };
-    }
-    if (type === 'm.room.avatar' && opts.avatarUrl !== undefined) {
-      return { getContent: () => ({ url: opts.avatarUrl }) };
-    }
-    if (
-      type === 'm.room.history_visibility' &&
-      opts.historyVisibility !== undefined
-    ) {
-      return {
-        getContent: () => ({ history_visibility: opts.historyVisibility }),
-      };
-    }
-    if (type === 'm.room.tombstone' && opts.tombstone !== undefined) {
-      return { getContent: () => ({ replacement_room: opts.tombstone }) };
-    }
-    return null;
-  };
-  const room = opts.noRoom
-    ? null
-    : {
-        roomId: '!r:hs',
-        getVersion: () => opts.version ?? '10',
-        getMyMembership: () => KnownMembership.Join,
-        hasEncryptionStateEvent: () => opts.stateEncrypted ?? true,
-        // The service reads room state via the live timeline (liveRoomState()),
-        // which is what the SDK's deprecated `currentState` aliased.
-        getLiveTimeline: () => ({
-          getState: () => ({
-            maySendStateEvent: (type: string) =>
-              opts.may ? opts.may(type) : true,
-            getStateEvents: (type: string, _stateKey: string) => stateFor(type),
-            events: opts.events ?? new Map(),
-          }),
-        }),
-      };
-  const instance = {
-    setRoomName,
-    setRoomTopic,
-    uploadContent,
-    sendStateEvent,
-    getRoom: () => room,
-    getUserId: () => '@me:hs',
-    getCrypto: () => ({
-      isEncryptionEnabledInRoom:
-        opts.store ?? (() => Promise.resolve(opts.storeEncrypted ?? false)),
-    }),
-    on: vi.fn(
-      (
-        event: string,
-        listener: (
-          event?: { getRoomId(): string | null },
-          state?: { roomId: string },
-        ) => void,
-      ) => {
-        if (event === 'RoomState.events') stateListeners.add(listener);
-        if (event === 'sync') syncListeners.add(listener);
-      },
-    ),
-    off: vi.fn(
-      (
-        event: string,
-        listener: (
-          event?: { getRoomId(): string | null },
-          state?: { roomId: string },
-        ) => void,
-      ) => {
-        if (event === 'RoomState.events') stateListeners.delete(listener);
-        if (event === 'sync') syncListeners.delete(listener);
-      },
-    ),
-  };
-  const permissionFor = (type: string) => ({
-    available:
-      !opts.signedOut && !opts.noRoom && (opts.may ? opts.may(type) : true),
-    reason:
-      opts.signedOut || opts.noRoom || (opts.may && !opts.may(type))
-        ? 'Not allowed.'
-        : null,
-  });
-  const clientFor = vi.fn((accountId: string) =>
-    accountIds().includes(accountId) ? (instance as never) : null,
-  );
+const MXC = 'mxc://example.org/photo';
+
+/** Alice, at power 100, in a room bob created; the permissions projection is coherent. */
+async function setup(options: FakeRoomOptions = {}) {
+  const session = administrationSession();
+  const { engine } = session;
+  const roomId = await roomWithAlice(engine, options);
+  await engine.asBob.setPowerLevel(roomId, engine.alice, 100);
+  const uploadMedia = vi.fn(() => of({ mxc: MXC } as UploadedMedia));
   TestBed.configureTestingModule({
     providers: [
-      RoomSettingsService,
-      MockProvider(MatrixClientService, {
-        isInitialized: !opts.signedOut,
-        instance: instance as never,
-        accountIds: accountIds.asReadonly(),
-        activeUserId: activeUserId.asReadonly(),
-        clientFor,
-      }),
-      MockProvider(RoomActionPermissionsService, {
-        settings: () => ({
-          name: permissionFor('m.room.name'),
-          topic: permissionFor('m.room.topic'),
-          avatar: permissionFor('m.room.avatar'),
-          joinRule: permissionFor('m.room.join_rules'),
-          history: permissionFor('m.room.history_visibility'),
-          aliases: permissionFor('m.room.canonical_alias'),
-          upgrade: permissionFor('m.room.tombstone'),
-          encryption: permissionFor('m.room.encryption'),
-          directory: permissionFor('m.room.canonical_alias'),
-          imagePack: permissionFor('m.room.image_pack'),
-          permissions: permissionFor('m.room.power_levels'),
-        }),
-        settingsFor: () => ({
-          name: permissionFor('m.room.name'),
-          topic: permissionFor('m.room.topic'),
-          avatar: permissionFor('m.room.avatar'),
-          joinRule: permissionFor('m.room.join_rules'),
-          history: permissionFor('m.room.history_visibility'),
-          aliases: permissionFor('m.room.canonical_alias'),
-          upgrade: permissionFor('m.room.tombstone'),
-          encryption: permissionFor('m.room.encryption'),
-          directory: permissionFor('m.room.canonical_alias'),
-          imagePack: permissionFor('m.room.image_pack'),
-          permissions: permissionFor('m.room.power_levels'),
-        }),
-        assert: (permission: { available: boolean }) => {
-          if (!permission.available) throw new Error('Not allowed.');
-        },
-      }),
+      ...session.providers,
+      MockProvider(MediaService, { uploadMedia }),
     ],
   });
+  const projectionState = TestBed.inject(RoomAdministrationProjectionState);
+  projectionState.select(engine.alice, roomId);
+  projectionState.update('permissions', 'available', 'retained');
   return {
+    ...session,
+    roomId,
+    target: { accountId: engine.alice, roomId },
     svc: TestBed.inject(RoomSettingsService),
-    setRoomName,
-    setRoomTopic,
-    uploadContent,
-    sendStateEvent,
-    accountIds,
-    activeUserId,
-    clientFor,
-    setIdentity: (name: string, topic: string) => {
-      opts.name = name;
-      opts.topic = topic;
-    },
-    emitState: () => {
-      for (const listener of stateListeners) {
-        // Live RoomState events can omit the room id on the MatrixEvent while the
-        // accompanying RoomState still names it.
-        listener({ getRoomId: () => null }, { roomId: '!r:hs' });
-      }
-      for (const listener of syncListeners) listener();
-    },
+    setState: vi.spyOn(engine, 'setState'),
+    uploadMedia,
+    /** Writes room state as bob. */
+    put: (type: string, content: Record<string, unknown>) =>
+      engine.asBob.setState(roomId, type, content as never),
+    tick: () => TestBed.inject(ApplicationRef).tick(),
   };
 }
 
+afterEach(() => TestBed.resetTestingModule());
+
 describe('RoomSettingsService', () => {
   it('setName is cold and renames the room (trimmed) on subscribe', async () => {
-    const { svc, setRoomName } = setup();
+    const { svc, setState, roomId, engine } = await setup();
 
-    const action = svc.setName('!r:hs', '  New Name  ');
-    expect(setRoomName).not.toHaveBeenCalled(); // cold
+    const action = svc.setName(roomId, '  New Name  ');
+    expect(setState).not.toHaveBeenCalled(); // cold
 
     await firstValueFrom(action);
-    expect(setRoomName).toHaveBeenCalledWith('!r:hs', 'New Name');
+    expect(setState).toHaveBeenCalledWith(
+      engine.alice,
+      roomId,
+      'm.room.name',
+      '',
+      { name: 'New Name' },
+    );
   });
 
-  it('setTopic is cold and sets the topic (trimmed) on subscribe', async () => {
-    const { svc, setRoomTopic } = setup();
+  it('setTopic writes the trimmed topic with its MSC3765 plain-text rendering', async () => {
+    const { svc, setState, roomId, engine } = await setup();
 
-    await firstValueFrom(svc.setTopic('!r:hs', '  hello  '));
-    expect(setRoomTopic).toHaveBeenCalledWith('!r:hs', 'hello');
+    await firstValueFrom(svc.setTopic(roomId, '  hello  '));
+    await firstValueFrom(svc.setTopic(roomId, ''));
+
+    expect(setState.mock.calls.map((call) => call[4])).toEqual([
+      {
+        topic: 'hello',
+        'm.topic': { 'm.text': [{ body: 'hello', mimetype: 'text/plain' }] },
+      },
+      {
+        topic: '',
+        'm.topic': { 'm.text': [{ body: '', mimetype: 'text/plain' }] },
+      },
+    ]);
+    expect(setState).toHaveBeenCalledWith(
+      engine.alice,
+      roomId,
+      'm.room.topic',
+      '',
+      expect.anything(),
+    );
   });
 
   it('rechecks the live state permission before a write', async () => {
-    const { svc, setRoomName } = setup({
-      may: (type) => type !== 'm.room.name',
+    const { svc, setState, roomId, engine } = await setup();
+    await engine.asBob.setPowerLevels(roomId, {
+      events: { 'm.room.name': 101 },
     });
 
-    await expect(firstValueFrom(svc.setName('!r:hs', 'Nope'))).rejects.toThrow(
-      'Not allowed',
+    await expect(firstValueFrom(svc.setName(roomId, 'Nope'))).rejects.toThrow(
+      RoomActionPermissionError,
     );
-    expect(setRoomName).not.toHaveBeenCalled();
+    expect(setState).not.toHaveBeenCalled();
   });
 
-  it('setAvatar uploads the file then writes m.room.avatar', async () => {
-    const { svc, uploadContent, sendStateEvent } = setup();
+  it('reports a write the server refuses as server-rejected', async () => {
+    const { svc, roomId, engine } = await setup();
+    vi.spyOn(engine, 'setState').mockReturnValue(
+      of(
+        engineFail({
+          kind: 'network',
+          code: 'request-failed',
+          diagnostic: { kind: 'network' },
+        } as EngineFailure),
+      ),
+    );
+
+    const error = await firstValueFrom(svc.setName(roomId, 'X')).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(RoomAdministrationError);
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'server-rejected',
+      operation: 'set-name',
+    });
+  });
+
+  it('setAvatar uploads the file through media for the target account, then writes m.room.avatar', async () => {
+    const { svc, uploadMedia, setState, target } = await setup();
     const file = new File(['x'], 'photo.png', { type: 'image/png' });
 
-    await firstValueFrom(svc.setAvatar('!r:hs', file));
+    await firstValueFrom(svc.setAvatar(target, file));
 
-    expect(uploadContent).toHaveBeenCalledWith(file, expect.any(Object));
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
+    expect(uploadMedia).toHaveBeenCalledWith(
+      file,
+      false,
+      undefined,
+      undefined,
+      target.accountId,
+    );
+    expect(setState).toHaveBeenCalledWith(
+      target.accountId,
+      target.roomId,
       'm.room.avatar',
-      { url: 'mxc://a/b' },
       '',
+      { url: MXC },
     );
   });
 
-  it('setAvatar uploads a photo without its comment metadata', async () => {
-    const { svc, uploadContent } = setup();
-    const comment = Array.from('Shot at home', (c) => c.charCodeAt(0));
-    // SOI, a COM segment, a one-component scan with two bytes of data, EOI.
-    const jpeg = Uint8Array.of(
-      0xff,
-      0xd8,
-      0xff,
-      0xfe,
-      0x00,
-      comment.length + 2,
-      ...comment,
-      0xff,
-      0xda,
-      0x00,
-      0x08,
-      0x01,
-      0x01,
-      0x00,
-      0x00,
-      0x3f,
-      0x00,
-      0x12,
-      0x34,
-      0xff,
-      0xd9,
-    );
-    const photo = new File([jpeg], 'photo.jpg', { type: 'image/jpeg' });
+  it('setAvatar reports a failed upload before anything was written', async () => {
+    const { svc, uploadMedia, setState, target } = await setup();
+    uploadMedia.mockReturnValue(throwError(() => new Error('too large')));
 
-    await firstValueFrom(svc.setAvatar('!r:hs', photo));
+    const error = await firstValueFrom(
+      svc.setAvatar(target, new File(['x'], 'a.png', { type: 'image/png' })),
+    ).catch((e: unknown) => e);
 
-    const [body, opts] = uploadContent.mock.calls[0] as [File, unknown];
-    expect(body).not.toBe(photo);
-    expect(opts).toEqual({ name: 'photo.jpg', type: 'image/jpeg' });
-    expect(Array.from(new Uint8Array(await body.arrayBuffer()))).toEqual([
-      0xff, 0xd8, 0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00,
-      0x12, 0x34, 0xff, 0xd9,
-    ]);
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'server-rejected',
+      operation: 'upload-avatar',
+    });
+    expect(setState).not.toHaveBeenCalled();
+  });
+
+  it('setAvatar stops after the upload when the account got a new session meanwhile', async () => {
+    const { svc, uploadMedia, setState, target, signIn, engine } =
+      await setup();
+    const uploaded = new Subject<UploadedMedia>();
+    uploadMedia.mockReturnValue(uploaded);
+    const result = firstValueFrom(
+      svc.setAvatar(target, new File(['x'], 'a.png', { type: 'image/png' })),
+    ).catch((e: unknown) => e);
+
+    signIn([engine.alice], { generation: 2 });
+    uploaded.next({ mxc: MXC } as UploadedMedia);
+
+    expect(((await result) as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'partial-update',
+      operation: 'set-avatar',
+      completedStep: 'media-upload',
+    });
+    expect(setState).not.toHaveBeenCalled();
   });
 
   it('setJoinRule is cold and writes m.room.join_rules on subscribe', async () => {
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
-    const action = svc.setJoinRule('!r:hs', JoinRule.Public);
-    expect(sendStateEvent).not.toHaveBeenCalled(); // cold
+    const action = svc.setJoinRule(roomId, JoinRule.Public);
+    expect(setState).not.toHaveBeenCalled(); // cold
 
     await firstValueFrom(action);
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
+    expect(setState.mock.calls[0].slice(2)).toEqual([
       'm.room.join_rules',
-      { join_rule: 'public' },
       '',
-    );
+      { join_rule: 'public' },
+    ]);
   });
 
   it('setJoinRule sends the allow list with a restricted rule', async () => {
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
     await firstValueFrom(
-      svc.setJoinRule('!r:hs', JoinRule.Restricted, ['!space:hs', '!other:hs']),
+      svc.setJoinRule(roomId, JoinRule.Restricted, ['!space:hs', '!other:hs']),
     );
 
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
-      'm.room.join_rules',
-      {
-        join_rule: 'restricted',
-        allow: [
-          { type: 'm.room_membership', room_id: '!space:hs' },
-          { type: 'm.room_membership', room_id: '!other:hs' },
-        ],
-      },
-      '',
-    );
+    expect(setState.mock.calls[0][4]).toEqual({
+      join_rule: 'restricted',
+      allow: [
+        { type: 'm.room_membership', room_id: '!space:hs' },
+        { type: 'm.room_membership', room_id: '!other:hs' },
+      ],
+    });
   });
 
   it('setJoinRule preserves unfamiliar restricted allow entries', async () => {
@@ -331,81 +227,67 @@ describe('RoomSettingsService', () => {
       type: 'org.example.membership_claim',
       issuer: 'example.org',
     };
-    const { svc, sendStateEvent } = setup({
-      joinRule: JoinRule.Restricted,
+    const { svc, setState, roomId, put } = await setup();
+    await put('m.room.join_rules', {
+      join_rule: 'restricted',
       allow: [{ type: 'm.room_membership', room_id: '!old:hs' }, unknown],
     });
 
     await firstValueFrom(
-      svc.setJoinRule('!r:hs', JoinRule.Restricted, ['!new:hs']),
+      svc.setJoinRule(roomId, JoinRule.Restricted, ['!new:hs']),
     );
 
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
-      'm.room.join_rules',
-      {
-        join_rule: 'restricted',
-        allow: [{ type: 'm.room_membership', room_id: '!new:hs' }, unknown],
-      },
-      '',
-    );
+    expect(setState.mock.calls[0][4]).toEqual({
+      join_rule: 'restricted',
+      allow: [{ type: 'm.room_membership', room_id: '!new:hs' }, unknown],
+    });
   });
 
   it('setJoinRule rejects an invalid allowed Space ID before writing', async () => {
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
     await expect(
       firstValueFrom(
-        svc.setJoinRule('!r:hs', JoinRule.Restricted, ['not-a-room-id']),
+        svc.setJoinRule(roomId, JoinRule.Restricted, ['not-a-room-id']),
       ),
     ).rejects.toThrow('valid Matrix Room ID');
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(setState).not.toHaveBeenCalled();
   });
 
   it('setJoinRule de-duplicates allowed Spaces before writing', async () => {
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
     await firstValueFrom(
-      svc.setJoinRule('!r:hs', JoinRule.Restricted, ['!space:hs', '!space:hs']),
+      svc.setJoinRule(roomId, JoinRule.Restricted, ['!space:hs', '!space:hs']),
     );
 
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
-      'm.room.join_rules',
-      {
-        join_rule: 'restricted',
-        allow: [{ type: 'm.room_membership', room_id: '!space:hs' }],
-      },
-      '',
-    );
+    expect(setState.mock.calls[0][4]).toEqual({
+      join_rule: 'restricted',
+      allow: [{ type: 'm.room_membership', room_id: '!space:hs' }],
+    });
   });
 
   it('setJoinRule refuses a restricted rule with nothing allowed', async () => {
     // Sending this would lock every member out of a room only an admin could reopen, so it
     // is refused in the service — the one place every join-rule write passes through.
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
     await expect(
-      firstValueFrom(svc.setJoinRule('!r:hs', JoinRule.Restricted)),
+      firstValueFrom(svc.setJoinRule(roomId, JoinRule.Restricted)),
     ).rejects.toThrow(/at least one space/i);
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(setState).not.toHaveBeenCalled();
   });
 
   it('setJoinRule omits allow entirely for a non-restricted rule', async () => {
     // An `allow` left on a public rule is ignored by the server but misleads every client
     // that reads the state back, including our own seeding.
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
     await firstValueFrom(
-      svc.setJoinRule('!r:hs', JoinRule.Public, ['!space:hs']),
+      svc.setJoinRule(roomId, JoinRule.Public, ['!space:hs']),
     );
 
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
-      'm.room.join_rules',
-      { join_rule: 'public' },
-      '',
-    );
+    expect(setState.mock.calls[0][4]).toEqual({ join_rule: 'public' });
   });
 
   it.each([
@@ -416,83 +298,73 @@ describe('RoomSettingsService', () => {
     ['x', false, false],
   ])(
     'version %s supports knock %s, knock_restricted %s',
-    (version, knock, knockRestricted) => {
-      const { svc } = setup({ version });
-      expect(svc.supportsKnock('!r:hs')).toBe(knock);
-      expect(svc.supportsKnockRestricted('!r:hs')).toBe(knockRestricted);
+    async (roomVersion, knock, knockRestricted) => {
+      const { svc, roomId } = await setup({ roomVersion });
+      expect(svc.supportsKnock(roomId)).toBe(knock);
+      expect(svc.supportsKnockRestricted(roomId)).toBe(knockRestricted);
     },
   );
 
   it('snapshot carries both knock support flags', async () => {
-    const { svc } = setup({ version: '10' });
-    const snapshot = await firstValueFrom(
-      svc.observe({ accountId: '@me:hs', roomId: '!r:hs' }),
-    );
+    const { svc, target } = await setup({ roomVersion: '10' });
+    const snapshot = await firstValueFrom(svc.observe(target));
     expect(snapshot.supportsKnock).toBe(true);
     expect(snapshot.supportsKnockRestricted).toBe(true);
   });
 
   it('knock_restricted save writes allow like restricted', async () => {
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
     await firstValueFrom(
-      svc.setJoinRule('!r:hs', KNOCK_RESTRICTED, ['!space:hs']),
+      svc.setJoinRule(roomId, KNOCK_RESTRICTED, ['!space:hs']),
     );
 
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
-      'm.room.join_rules',
-      {
-        join_rule: 'knock_restricted',
-        allow: [{ type: 'm.room_membership', room_id: '!space:hs' }],
-      },
-      '',
-    );
+    expect(setState.mock.calls[0][4]).toEqual({
+      join_rule: 'knock_restricted',
+      allow: [{ type: 'm.room_membership', room_id: '!space:hs' }],
+    });
   });
 
   it('knock_restricted with no spaces is refused', async () => {
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
     await expect(
-      firstValueFrom(svc.setJoinRule('!r:hs', KNOCK_RESTRICTED)),
+      firstValueFrom(svc.setJoinRule(roomId, KNOCK_RESTRICTED)),
     ).rejects.toThrow(/at least one space/i);
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(setState).not.toHaveBeenCalled();
   });
 
   it('knock save writes no allow', async () => {
-    const { svc, sendStateEvent } = setup();
+    const { svc, setState, roomId } = await setup();
 
     await firstValueFrom(
-      svc.setJoinRule('!r:hs', JoinRule.Knock, ['!space:hs']),
+      svc.setJoinRule(roomId, JoinRule.Knock, ['!space:hs']),
     );
 
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
-      'm.room.join_rules',
-      { join_rule: 'knock' },
-      '',
-    );
+    expect(setState.mock.calls[0][4]).toEqual({ join_rule: 'knock' });
   });
 
-  it('currentAccess reads the allowed spaces of a knock_restricted rule', () => {
-    const { svc } = setup({
-      joinRule: 'knock_restricted',
+  it('currentAccess reads the allowed spaces of a knock_restricted rule', async () => {
+    const { svc, roomId, put } = await setup();
+    await put('m.room.join_rules', {
+      join_rule: 'knock_restricted',
       allow: [{ type: 'm.room_membership', room_id: '!space:hs' }],
     });
 
-    expect(svc.currentAccess('!r:hs').allowedSpaceIds).toEqual(['!space:hs']);
+    expect(svc.currentAccess(roomId).allowedSpaceIds).toEqual(['!space:hs']);
   });
 
-  it('currentAccess reads the allowed spaces of a restricted rule', () => {
-    const { svc } = setup({
-      joinRule: 'restricted',
+  it('currentAccess reads the allowed spaces of a restricted rule', async () => {
+    const { svc, roomId, put } = await setup();
+    await put('m.room.join_rules', {
+      join_rule: 'restricted',
       allow: [
         { type: 'm.room_membership', room_id: '!space:hs' },
         { type: 'm.room_membership', room_id: '!two:hs' },
       ],
     });
 
-    expect(svc.currentAccess('!r:hs').allowedSpaceIds).toEqual([
+    expect(svc.currentAccess(roomId).allowedSpaceIds).toEqual([
       '!space:hs',
       '!two:hs',
     ]);
@@ -500,59 +372,38 @@ describe('RoomSettingsService', () => {
 
   it('setJoinRule rejects rather than writing when signed out', async () => {
     // Every write in this service defers its signed-in check to subscribe time, so a
-    // caller that built the Observable before a logout must not reach sendStateEvent.
-    const { svc, sendStateEvent } = setup({ signedOut: true });
+    // caller that built the Observable before a logout must not reach the engine.
+    const { svc, setState, roomId, target, signIn } = await setup();
+    const byRoom = svc.setJoinRule(roomId, JoinRule.Public);
+    const byTarget = svc.setJoinRule(target, JoinRule.Public);
+    signIn([]);
 
-    await expect(
-      firstValueFrom(svc.setJoinRule('!r:hs', JoinRule.Public)),
-    ).rejects.toThrow(/not signed in/i);
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    await expect(firstValueFrom(byRoom)).rejects.toThrow(/not signed in/i);
+    await expect(firstValueFrom(byTarget)).rejects.toThrow(/not signed in/i);
+    expect(setState).not.toHaveBeenCalled();
   });
 
-  it('currentIdentity is blank when signed out', () => {
-    // The opener calls this synchronously just before creating the dialog; throwing here
+  it('reads blanks, spec defaults and no permissions when signed out', async () => {
+    // The opener calls these synchronously just before creating the dialog; throwing here
     // would take the whole settings dialog down rather than open it empty.
-    const { svc } = setup({ signedOut: true, name: 'Design', topic: 'T' });
+    const { svc, roomId, put, signIn } = await setup({ roomVersion: '10' });
+    await put('m.room.name', { name: 'Design' });
+    await put('m.room.join_rules', { join_rule: 'public' });
+    signIn([]);
 
-    expect(svc.currentIdentity('!r:hs')).toEqual({
+    expect(svc.currentIdentity(roomId)).toEqual({
       name: '',
       topic: '',
       avatarMxc: null,
     });
-  });
-
-  it('currentIdentity is blank for a room the client does not have', () => {
-    const { svc } = setup({ noRoom: true });
-
-    expect(svc.currentIdentity('!r:hs')).toEqual({
-      name: '',
-      topic: '',
-      avatarMxc: null,
-    });
-  });
-
-  it('currentAccess falls back to the spec defaults when signed out', () => {
-    const { svc } = setup({ signedOut: true, joinRule: 'public' });
-
-    expect(svc.currentAccess('!r:hs')).toEqual({
+    expect(svc.currentAccess(roomId)).toEqual({
       joinRule: JoinRule.Invite,
       historyVisibility: HistoryVisibility.Shared,
       allowedSpaceIds: [],
     });
-  });
-
-  it('supportsRestricted is false when signed out', () => {
-    // False rather than throwing: the room dialog asks this to decide whether to OFFER
-    // restricted, and a wrong `true` would present a choice that cannot be written.
-    const { svc } = setup({ signedOut: true, version: '10' });
-
-    expect(svc.supportsRestricted('!r:hs')).toBe(false);
-  });
-
-  it('editableFields grants nothing when signed out', () => {
-    const { svc } = setup({ signedOut: true });
-
-    expect(svc.editableFields('!r:hs')).toEqual({
+    // False rather than throwing: a wrong `true` would offer a choice that cannot be written.
+    expect(svc.supportsRestricted(roomId)).toBe(false);
+    expect(svc.editableFields(roomId)).toEqual({
       name: false,
       topic: false,
       avatar: false,
@@ -561,36 +412,39 @@ describe('RoomSettingsService', () => {
     });
   });
 
-  it('currentAccess ignores an allow list left under a non-restricted rule', () => {
+  it('currentAccess ignores an allow list left under a non-restricted rule', async () => {
     // Inert state some other client left behind. Surfacing it would make the dialog see an
     // access change where there is none, and then write one on an unrelated save.
-    const { svc } = setup({
-      joinRule: 'public',
+    const { svc, roomId, put } = await setup();
+    await put('m.room.join_rules', {
+      join_rule: 'public',
       allow: [{ type: 'm.room_membership', room_id: '!stale:hs' }],
     });
 
-    expect(svc.currentAccess('!r:hs').allowedSpaceIds).toEqual([]);
+    expect(svc.currentAccess(roomId).allowedSpaceIds).toEqual([]);
   });
 
-  it('currentAccess collapses a repeated allow entry', () => {
+  it('currentAccess collapses a repeated allow entry', async () => {
     // A caller comparing this against a list it built cannot tell ['!a','!a'] from ['!a']
     // by size, so the duplicate has to go before it is ever handed out.
-    const { svc } = setup({
-      joinRule: 'restricted',
+    const { svc, roomId, put } = await setup();
+    await put('m.room.join_rules', {
+      join_rule: 'restricted',
       allow: [
         { type: 'm.room_membership', room_id: '!a:hs' },
         { type: 'm.room_membership', room_id: '!a:hs' },
       ],
     });
 
-    expect(svc.currentAccess('!r:hs').allowedSpaceIds).toEqual(['!a:hs']);
+    expect(svc.currentAccess(roomId).allowedSpaceIds).toEqual(['!a:hs']);
   });
 
-  it('currentAccess drops malformed allow entries rather than surfacing them', () => {
+  it('currentAccess drops malformed allow entries rather than surfacing them', async () => {
     // The list is arbitrary state any client may have written. An empty-string id read back
     // here would be written straight back out on the next save.
-    const { svc } = setup({
-      joinRule: 'restricted',
+    const { svc, roomId, put } = await setup();
+    await put('m.room.join_rules', {
+      join_rule: 'restricted',
       allow: [
         { type: 'm.room_membership', room_id: '!good:hs' },
         { type: 'm.room_membership' },
@@ -601,115 +455,33 @@ describe('RoomSettingsService', () => {
       ],
     });
 
-    expect(svc.currentAccess('!r:hs').allowedSpaceIds).toEqual(['!good:hs']);
+    expect(svc.currentAccess(roomId).allowedSpaceIds).toEqual(['!good:hs']);
   });
 
-  it('supportsRestricted accepts room version 8, where MSC3083 landed', () => {
-    expect(setup({ version: '8' }).svc.supportsRestricted('!r:hs')).toBe(true);
-  });
-
-  it('supportsRestricted rejects a room older than version 8', () => {
+  it.each([
     // Version 7 accepts the string and enforces nothing, so the room silently stays as
     // open as it was — worse than refusing the option.
-    expect(setup({ version: '7' }).svc.supportsRestricted('!r:hs')).toBe(false);
-  });
+    ['8', true],
+    ['7', false],
+    ['org.example.9', false],
+  ])(
+    'supportsRestricted for room version %s is %s (MSC3083 landed in 8)',
+    async (roomVersion, supported) => {
+      const { svc, roomId } = await setup({ roomVersion });
+      expect(svc.supportsRestricted(roomId)).toBe(supported);
+    },
+  );
 
-  it('supportsRestricted rejects an unparseable version', () => {
-    expect(
-      setup({ version: 'org.example.9' }).svc.supportsRestricted('!r:hs'),
-    ).toBe(false);
-  });
+  it('reads blanks, defaults and nothing editable for a room the account does not know', async () => {
+    const { svc } = await setup();
 
-  it('supportsRestricted is false for a room the client does not have', () => {
-    expect(setup({ noRoom: true }).svc.supportsRestricted('!r:hs')).toBe(false);
-  });
-
-  it('setHistoryVisibility is cold and writes m.room.history_visibility', async () => {
-    const { svc, sendStateEvent } = setup();
-
-    await firstValueFrom(
-      svc.setHistoryVisibility('!r:hs', HistoryVisibility.WorldReadable),
-    );
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
-      'm.room.history_visibility',
-      { history_visibility: 'world_readable' },
-      '',
-    );
-  });
-
-  it('currentAccess reads the room state', () => {
-    const { svc } = setup({
-      joinRule: 'public',
-      historyVisibility: 'world_readable',
-    });
-    expect(svc.currentAccess('!r:hs')).toEqual({
-      joinRule: JoinRule.Public,
-      historyVisibility: HistoryVisibility.WorldReadable,
-      allowedSpaceIds: [],
-    });
-  });
-
-  it('currentAccess falls back to the spec defaults when state is absent', () => {
-    const { svc } = setup(); // no join_rules / history_visibility state
-    expect(svc.currentAccess('!r:hs')).toEqual({
-      joinRule: JoinRule.Invite,
-      historyVisibility: HistoryVisibility.Shared,
-      allowedSpaceIds: [],
-    });
-  });
-
-  it('currentIdentity reads name, topic and avatar from state', () => {
-    const { svc } = setup({
-      name: 'General',
-      topic: 'The topic',
-      avatarUrl: 'mxc://hs/abc',
-    });
-
-    expect(svc.currentIdentity('!r:hs')).toEqual({
-      name: 'General',
-      topic: 'The topic',
-      avatarMxc: 'mxc://hs/abc',
-    });
-  });
-
-  it('currentIdentity returns blanks rather than inventing a name', () => {
-    // The SDK's Room.name fabricates a display name from the member list for a nameless room.
-    // Seeding a form with that would compare the user's input against something nobody typed,
-    // and then write the invention back as a real name.
-    const { svc } = setup();
-
-    expect(svc.currentIdentity('!r:hs')).toEqual({
-      name: '',
-      topic: '',
-      avatarMxc: null,
-    });
-  });
-
-  it('currentIdentity is blank for an unknown room', () => {
-    const { svc } = setup({ noRoom: true });
-
+    expect(svc.supportsRestricted('!nope:hs')).toBe(false);
     expect(svc.currentIdentity('!nope:hs')).toEqual({
       name: '',
       topic: '',
       avatarMxc: null,
     });
-  });
-
-  it('editableFields reflects per-field power (name yes, the rest no)', () => {
-    const { svc } = setup({ may: (type) => type === 'm.room.name' });
-    expect(svc.editableFields('!r:hs')).toEqual({
-      name: true,
-      topic: false,
-      avatar: false,
-      joinRule: false,
-      history: false,
-    });
-  });
-
-  it('editableFields is all-false when the room is unknown', () => {
-    const { svc } = setup({ noRoom: true });
-    expect(svc.editableFields('!r:hs')).toEqual({
+    expect(svc.editableFields('!nope:hs')).toEqual({
       name: false,
       topic: false,
       avatar: false,
@@ -718,108 +490,196 @@ describe('RoomSettingsService', () => {
     });
   });
 
-  it('keeps exact Account ownership after the active Account changes', async () => {
-    const { svc, activeUserId, accountIds, clientFor, setRoomName } = setup();
-    activeUserId.set('@other:hs');
-    accountIds.set(['@me:hs', '@other:hs']);
+  it('setHistoryVisibility is cold and writes m.room.history_visibility', async () => {
+    const { svc, setState, roomId } = await setup();
 
-    await firstValueFrom(
-      svc.setName({ accountId: '@me:hs', roomId: '!r:hs' }, 'Exact target'),
+    const action = svc.setHistoryVisibility(
+      roomId,
+      HistoryVisibility.WorldReadable,
     );
+    expect(setState).not.toHaveBeenCalled();
 
-    expect(clientFor).toHaveBeenCalledWith('@me:hs');
-    expect(setRoomName).toHaveBeenCalledWith('!r:hs', 'Exact target');
+    await firstValueFrom(action);
+    expect(setState.mock.calls[0].slice(2)).toEqual([
+      'm.room.history_visibility',
+      '',
+      { history_visibility: 'world_readable' },
+    ]);
   });
 
-  it('observes exact Room state and never retargets when Account activity changes', () => {
-    const { svc, activeUserId, setIdentity, emitState } = setup({
-      name: 'Before',
-      topic: 'Original',
+  it('currentAccess reads the room state', async () => {
+    const { svc, roomId, put } = await setup();
+    await put('m.room.join_rules', { join_rule: 'public' });
+    await put('m.room.history_visibility', {
+      history_visibility: 'world_readable',
     });
-    const snapshots: string[] = [];
+
+    expect(svc.currentAccess(roomId)).toEqual({
+      joinRule: JoinRule.Public,
+      historyVisibility: HistoryVisibility.WorldReadable,
+      allowedSpaceIds: [],
+    });
+  });
+
+  it('currentAccess falls back to the spec defaults when state is absent', async () => {
+    const { svc, roomId } = await setup();
+
+    expect(svc.currentAccess(roomId)).toEqual({
+      joinRule: JoinRule.Invite,
+      historyVisibility: HistoryVisibility.Shared,
+      allowedSpaceIds: [],
+    });
+  });
+
+  it('currentIdentity reads name, topic and avatar from state', async () => {
+    const { svc, roomId, put } = await setup();
+    await put('m.room.name', { name: 'General' });
+    await put('m.room.topic', { topic: 'The topic' });
+    await put('m.room.avatar', { url: 'mxc://hs/abc' });
+
+    expect(svc.currentIdentity(roomId)).toEqual({
+      name: 'General',
+      topic: 'The topic',
+      avatarMxc: 'mxc://hs/abc',
+    });
+  });
+
+  it('currentIdentity returns blanks rather than inventing a name', async () => {
+    // A computed room name invents one from the member list for a nameless room. Seeding a
+    // form with that would compare the input against something nobody typed, and then write
+    // the invention back as a real name.
+    const { svc, roomId } = await setup();
+
+    expect(svc.currentIdentity(roomId)).toEqual({
+      name: '',
+      topic: '',
+      avatarMxc: null,
+    });
+  });
+
+  it('editableFields reflects per-field power (name yes, the rest no)', async () => {
+    const { svc, roomId, engine } = await setup();
+    await engine.asBob.setPowerLevels(roomId, {
+      state_default: 101,
+      events: { 'm.room.name': 50 },
+    });
+
+    expect(svc.editableFields(roomId)).toEqual({
+      name: true,
+      topic: false,
+      avatar: false,
+      joinRule: false,
+      history: false,
+    });
+  });
+
+  it('keeps exact Account ownership after the active Account changes', async () => {
+    const { svc, setState, target, engine, signIn } = await setup();
+    engine.setLive(engine.bob, true);
+    signIn([engine.alice, engine.bob], { active: engine.bob });
+
+    await firstValueFrom(svc.setName(target, 'Exact target'));
+
+    expect(setState).toHaveBeenCalledWith(
+      engine.alice,
+      target.roomId,
+      'm.room.name',
+      '',
+      { name: 'Exact target' },
+    );
+  });
+
+  it('observes exact Room state and never retargets when Account activity changes', async () => {
+    const { svc, target, put, tick, engine, signIn } = await setup();
+    await put('m.room.name', { name: 'Before' });
+    const snapshots: RoomSettingsSnapshot[] = [];
     const subscription = svc
-      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
-      .subscribe((snapshot) => snapshots.push(snapshot.identity.name));
+      .observe(target)
+      .subscribe((snapshot) => snapshots.push(snapshot));
 
-    expect(snapshots.at(-1)).toBe('Before');
-    activeUserId.set('@other:hs');
-    setIdentity('After', 'Remote');
-    emitState();
+    expect(snapshots.map(({ identity }) => identity.name)).toEqual(['Before']);
+    engine.setLive(engine.bob, true);
+    signIn([engine.alice, engine.bob], { active: engine.bob });
+    await put('m.room.name', { name: 'After' });
+    tick();
 
-    expect(snapshots.at(-1)).toBe('After');
+    expect(snapshots.at(-1)).toMatchObject({
+      target,
+      openingAccountActive: false,
+      identity: { name: 'After' },
+    });
     subscription.unsubscribe();
   });
 
-  it('shows encryption on for a room the crypto store has as encrypted when its state lacks the event', async () => {
-    const { svc } = setup({ stateEncrypted: false, storeEncrypted: true });
-    const snapshots: { encrypted: boolean | null; advanced: boolean }[] = [];
-    const subscription = svc
-      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
-      .subscribe((snapshot) =>
-        snapshots.push({
-          encrypted: snapshot.encrypted,
-          advanced: snapshot.advanced.encrypted,
-        }),
-      );
+  it('stops recomputing an observed snapshot once unsubscribed', async () => {
+    const { svc, target, put, tick } = await setup();
+    const snapshot = vi.spyOn(svc, 'snapshot');
+    const subscription = svc.observe(target).subscribe();
+    tick();
+    subscription.unsubscribe();
+    const calls = snapshot.mock.calls.length;
 
-    await vi.waitFor(() =>
-      expect(snapshots.at(-1)).toEqual({ encrypted: true, advanced: true }),
-    );
+    await put('m.room.name', { name: 'Later' });
+    tick();
+
+    expect(snapshot.mock.calls.length).toBe(calls);
+  });
+
+  it('shows encryption on for a room the crypto store has as encrypted when its state lacks the event', async () => {
+    const { svc, target, roomId, engine, tick } = await setup({
+      encryptionUnknown: true,
+    });
+    const snapshots: RoomSettingsSnapshot[] = [];
+    const subscription = svc
+      .observe(target)
+      .subscribe((snapshot) => snapshots.push(snapshot));
+
+    engine.answerEncryption(roomId, true);
+    tick();
+
+    expect(snapshots.at(-1)).toMatchObject({
+      encrypted: true,
+      advanced: { encrypted: true },
+    });
     subscription.unsubscribe();
   });
 
   it('keeps encryption off when the room state and the crypto store both say so', async () => {
-    const { svc } = setup({ stateEncrypted: false });
-    const snapshots: (boolean | null)[] = [];
-    const subscription = svc
-      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
-      .subscribe((snapshot) => snapshots.push(snapshot.encrypted));
-    await new Promise((resolve) => setTimeout(resolve));
+    const { svc, target } = await setup();
 
-    expect(snapshots.at(-1)).toBe(false);
-    subscription.unsubscribe();
+    expect(svc.snapshot(target)).toMatchObject({
+      encrypted: false,
+      advanced: { encrypted: false },
+    });
   });
 
   it('reports encryption as unknown, so nothing offers to turn it on, until the crypto store answers', async () => {
-    let answer!: (encrypted: boolean) => void;
-    const { svc } = setup({
-      stateEncrypted: false,
-      store: () => new Promise((done) => (answer = done)),
+    const { svc, target, roomId, engine, tick } = await setup({
+      encryptionUnknown: true,
     });
-    const target = { accountId: '@me:hs', roomId: '!r:hs' };
     const snapshots: (boolean | null)[] = [];
     const subscription = svc
       .observe(target)
       .subscribe((snapshot) => snapshots.push(snapshot.encrypted));
 
     expect(snapshots).toEqual([null]);
-    expect(svc.snapshot(target).encrypted).toBeNull();
-    answer(false);
-    await vi.waitFor(() => expect(snapshots.at(-1)).toBe(false));
-    subscription.unsubscribe();
-  });
-
-  it('shows encryption on when the crypto store fails to answer', async () => {
-    const { svc } = setup({
-      stateEncrypted: false,
-      store: () => Promise.reject(new Error('store unavailable')),
+    expect(svc.snapshot(target)).toMatchObject({
+      encrypted: null,
+      advanced: { encrypted: false },
     });
-    const snapshots: (boolean | null)[] = [];
-    const subscription = svc
-      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
-      .subscribe((snapshot) => snapshots.push(snapshot.encrypted));
-
-    await vi.waitFor(() => expect(snapshots.at(-1)).toBe(true));
+    engine.answerEncryption(roomId, false);
+    tick();
+    expect(snapshots.at(-1)).toBe(false);
     subscription.unsubscribe();
   });
 
-  it('classifies a signed-out exact target without inventing readable state', () => {
-    const { svc, accountIds } = setup({ name: 'Private', topic: 'Secret' });
-    accountIds.set([]);
+  it('classifies a signed-out exact target without inventing readable state', async () => {
+    const { svc, target, put, signIn } = await setup();
+    await put('m.room.name', { name: 'Private' });
+    await put('m.room.topic', { topic: 'Secret' });
+    signIn([]);
 
-    expect(
-      svc.snapshot({ accountId: '@me:hs', roomId: '!r:hs' }),
-    ).toMatchObject({
+    expect(svc.snapshot(target)).toMatchObject({
       availability: 'account-unavailable',
       unavailableReason: expect.stringContaining('account'),
       identity: { name: '', topic: '', avatarMxc: null },
@@ -827,68 +687,70 @@ describe('RoomSettingsService', () => {
     });
   });
 
-  it('recomputes the advanced details when Room state changes', () => {
-    const opts: { tombstone?: string } = {};
-    const { svc, emitState } = setup(opts);
+  it('recomputes the advanced details when Room state changes', async () => {
+    const { svc, target, put, tick } = await setup();
     const successors: (string | null)[] = [];
     const subscription = svc
-      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
+      .observe(target)
       .subscribe((snapshot) => successors.push(snapshot.advanced.successor));
 
-    expect(
-      svc.snapshot({ accountId: '@me:hs', roomId: '!r:hs' }).advanced,
-    ).toMatchObject({ roomId: '!r:hs', version: null, successor: null });
-    opts.tombstone = '!next:hs';
-    emitState();
+    expect(svc.snapshot(target).advanced).toMatchObject({
+      roomId: target.roomId,
+      version: '10',
+      successor: null,
+    });
+    await put('m.room.tombstone', { replacement_room: '!next:hs' });
+    tick();
 
     expect(successors.at(-1)).toBe('!next:hs');
     subscription.unsubscribe();
   });
 
-  it('lists every current state event as a plain copy of its JSON', () => {
-    const create = new MatrixEvent({
+  it('lists every current state event of the target, cold', async () => {
+    const { svc, target, engine } = await setup();
+    const stateEvents = vi.spyOn(engine, 'stateEvents');
+
+    const entries = svc.stateEvents(target);
+    expect(stateEvents).not.toHaveBeenCalled();
+
+    expect(await firstValueFrom(entries)).toContainEqual({
       type: 'm.room.create',
-      state_key: '',
-      sender: '@me:hs',
-      content: { room_version: '10' },
-    });
-    const member = new MatrixEvent({
-      type: 'm.room.member',
-      state_key: '@me:hs',
-      sender: '@me:hs',
-      content: { membership: 'join' },
-    });
-    const { svc } = setup({
-      events: new Map([
-        ['m.room.create', new Map([['', create]])],
-        ['m.room.member', new Map([['@me:hs', member]])],
-      ]),
-    });
-
-    const entries = svc.stateEvents({ accountId: '@me:hs', roomId: '!r:hs' });
-
-    expect(entries).toEqual([
-      {
+      stateKey: '',
+      event: expect.objectContaining({
         type: 'm.room.create',
-        stateKey: '',
-        event: expect.objectContaining({
-          type: 'm.room.create',
-          content: { room_version: '10' },
-        }),
-      },
-      {
-        type: 'm.room.member',
-        stateKey: '@me:hs',
-        event: expect.objectContaining({ content: { membership: 'join' } }),
-      },
-    ]);
-    expect(entries[0].event).not.toBe(create.event);
+        content: { room_version: '10' },
+      }),
+    });
+    expect(stateEvents).toHaveBeenCalledWith(target.accountId, target.roomId);
   });
 
-  it('lists no state for a Room the Account cannot see', () => {
-    const { svc } = setup({ noRoom: true });
-    expect(svc.stateEvents({ accountId: '@me:hs', roomId: '!r:hs' })).toEqual(
-      [],
+  it('lists no state for a Room the Account cannot see', async () => {
+    const { svc, engine, signIn, target } = await setup();
+
+    expect(
+      await firstValueFrom(
+        svc.stateEvents({ accountId: engine.alice, roomId: '!nope:hs' }),
+      ),
+    ).toEqual([]);
+    engine.setLive(engine.alice, false);
+    signIn([]);
+    expect(await firstValueFrom(svc.stateEvents(target))).toEqual([]);
+  });
+
+  it('fails a state listing the server refuses', async () => {
+    const { svc, engine, target } = await setup();
+    vi.spyOn(engine, 'stateEvents').mockReturnValue(
+      of(
+        engineFail({
+          kind: 'network',
+          code: 'request-failed',
+          diagnostic: { kind: 'network' },
+        } as EngineFailure),
+      ),
+    );
+
+    await expect(firstValueFrom(svc.stateEvents(target))).rejects.toThrow(
+      EngineRequestError,
     );
   });
 });
