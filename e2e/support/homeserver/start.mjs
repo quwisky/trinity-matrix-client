@@ -41,6 +41,7 @@ import {
   MAS_PASS,
   MAS_SERVER_NAME,
   MAS_USER,
+  PORTS,
   REGISTRATION_SHARED_SECRET,
   SECONDARY_HTTP,
   SERVER_NAME,
@@ -64,6 +65,7 @@ import {
 } from './kind.mts';
 import {
   ensureSydentVenv,
+  configuredTlsPort,
   ensureSynapseVenv,
   generateSynapseConfig,
   nativeCaddyfile,
@@ -468,6 +470,15 @@ async function startNative() {
         return false;
       },
     ));
+  // A crashed run leaves ./data behind, and its configs keep that run's ports.
+  const leftoverTls = existsSync(paths.config)
+    ? configuredTlsPort(await readFile(paths.config, 'utf8'))
+    : null;
+  if (leftoverTls !== null && leftoverTls !== PORTS.tls) {
+    throw new Error(
+      `${DATA} was set up for another TRINITY_E2E_PORT_OFFSET; remove it with \`pnpm e2e:verify:down\``,
+    );
+  }
   if (identity) await ensureSydentConfig({ native: true, log });
   await synapse.preparePrimary({
     signal: operationSignal,

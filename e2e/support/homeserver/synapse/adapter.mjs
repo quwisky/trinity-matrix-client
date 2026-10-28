@@ -10,6 +10,7 @@ import {
   DEX_ISSUER,
   HS_TLS,
   IDENTITY_SERVER_URL,
+  PORTS,
   REGISTRATION_SHARED_SECRET,
   SERVER_NAME,
 } from '../constants.mjs';
@@ -75,7 +76,7 @@ function oidcBlock(ctx) {
   // No compose network under the netns override or the native runtime, so no `dex` DNS
   // name — but everything shares one loopback there, so Dex's port is reachable as localhost.
   const internal =
-    ctx.networkContainer || ctx.native ? 'localhost:5556' : 'dex:5556';
+    ctx.networkContainer || ctx.native ? `localhost:${PORTS.dex}` : 'dex:5556';
   const appOrigin =
     process.env.TRINITY_E2E_APP_URL ??
     process.env.BASE_URL ??
@@ -196,6 +197,11 @@ export async function ensureConfig(ctx) {
   // generated line in place if present, otherwise append it below.
   let replacedSecret = false;
   let syncCacheChanged = false;
+  // The generated listener is 8008 (`- port:` from Docker, `port:` natively);
+  // TRINITY_E2E_PORT_OFFSET moves it.
+  const beforeListener = yaml;
+  yaml = yaml.replace(/^(\s+(?:- )?port:) 8008$/m, `$1 ${PORTS.homeserver}`);
+  const listenerChanged = yaml !== beforeListener;
   if (/^registration_shared_secret:.*$/m.test(yaml)) {
     const next = yaml.replace(
       /^registration_shared_secret:.*$/m,
@@ -311,7 +317,7 @@ export async function ensureConfig(ctx) {
     additions.push(
       'email:',
       `  smtp_host: "${smtpHost}"`,
-      '  smtp_port: 1025',
+      `  smtp_port: ${PORTS.smtp}`,
       '  notif_from: "Trinity e2e <noreply@localhost>"',
       '  enable_notifs: false',
     );
@@ -368,6 +374,7 @@ export async function ensureConfig(ctx) {
   if (
     additions.length ||
     replacedSecret ||
+    listenerChanged ||
     syncCacheChanged ||
     oidcChanged ||
     trustedKeysChanged
@@ -479,14 +486,14 @@ export async function ensureSydentConfig(ctx) {
     '',
     '[http]',
     'clientapi.http.bind_address = 127.0.0.1',
-    'clientapi.http.port = 8090',
+    `clientapi.http.port = ${PORTS.sydent}`,
     `client_http_base = ${IDENTITY_SERVER_URL}`,
     // Caddy's internal CA again, this time on Synapse's federation front.
     'federation.verifycerts = false',
     '',
     '[email]',
     `email.smtphost = ${smtpHost}`,
-    'email.smtpport = 1025',
+    `email.smtpport = ${PORTS.smtp}`,
     'email.hostname = localhost',
     'email.from = Trinity e2e identity <noreply@localhost>',
     // The default (5, then one per 5 minutes per address) would refuse reruns.

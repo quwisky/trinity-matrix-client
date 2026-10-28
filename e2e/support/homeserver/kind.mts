@@ -1,3 +1,5 @@
+import { resolvePortOffset } from './constants.mjs';
+
 /**
  * The homeservers the E2E stack can run; the first is the default. `tuwunel-oauth` is
  * Tuwunel with its built-in OAuth server and QR sign-in, and no SSO.
@@ -91,6 +93,13 @@ export function resolveHomeserverRuntime(
   if (!(HOMESERVER_RUNTIMES as readonly string[]).includes(value)) {
     throw new Error(
       `Unknown TRINITY_E2E_HOMESERVER_RUNTIME "${value}"; expected one of: ${HOMESERVER_RUNTIMES.join(', ')}`,
+    );
+  }
+  // shortcut: Docker and its MAS overlay publish fixed ports; offset their compose files
+  // when Docker runs need to share a machine too.
+  if (value !== 'native' && resolvePortOffset(env) !== 0) {
+    throw new Error(
+      'TRINITY_E2E_PORT_OFFSET needs TRINITY_E2E_HOMESERVER_RUNTIME=native; the Docker stack uses fixed ports',
     );
   }
   if (value === 'native' && resolveHomeserverKind(env) !== 'synapse') {

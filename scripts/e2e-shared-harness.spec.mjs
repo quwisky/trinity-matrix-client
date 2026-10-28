@@ -41,6 +41,9 @@ const RESTATED = [
   {
     what: "the homeserver's base URL",
     pattern: /(?:localhost|127\.0\.0\.1):8008/,
+    // Built from the base port plus TRINITY_E2E_PORT_OFFSET.
+    defined:
+      /homeserver: 8008,[\s\S]*`http:\/\/localhost:\$\{PORTS\.homeserver\}`/,
   },
 ];
 
@@ -104,8 +107,8 @@ describe('e2e harness constants', () => {
     // And the definition really does define them, so the assertion below is about
     // duplication rather than about a value that has been renamed out of existence.
     const source = read(DEFINITION);
-    for (const { pattern } of RESTATED) {
-      expect(source).toMatch(pattern);
+    for (const { pattern, defined = pattern } of RESTATED) {
+      expect(source).toMatch(defined);
     }
   });
 

@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareWebBundle, runPlaywright } from './run-playwright.mts';
-import { recoverResourceLock, resourceLockFile } from './recover-lock.mts';
+import { recoverResourceLock, resourceLockFiles } from './recover-lock.mts';
 import { existsSync, readFileSync } from 'node:fs';
 import {
   acquireHomeserverLease,
   homeserverLockFile,
+  homeserverPortLockFile,
 } from './homeserver/lease.mts';
 
 describe('E2E runner boundaries', () => {
@@ -33,11 +34,21 @@ describe('E2E runner boundaries', () => {
   });
 
   it('maps explicit recovery to the same support-owned homeserver lease', () => {
-    expect(resourceLockFile('homeserver')).toBe(homeserverLockFile);
-    const recover = vi.fn(() => true);
-    expect(recoverResourceLock('homeserver', recover)).toBe(true);
-    expect(recover).toHaveBeenCalledWith(homeserverLockFile);
-    expect(() => resourceLockFile('not-a-resource')).toThrow(
+    expect(resourceLockFiles('homeserver')).toEqual([
+      homeserverLockFile,
+      homeserverPortLockFile,
+    ]);
+    // A live port lock (another checkout) leaves the stale checkout lock recovered.
+    const live = new Error('Refusing to recover a live process lock');
+    const recover = vi.fn((file: string) => {
+      if (file === homeserverPortLockFile) throw live;
+      return true;
+    });
+    expect(recoverResourceLock('homeserver', recover)).toEqual([
+      { file: homeserverLockFile, outcome: true },
+      { file: homeserverPortLockFile, outcome: live },
+    ]);
+    expect(() => resourceLockFiles('not-a-resource')).toThrow(
       /Unknown E2E resource/,
     );
   });

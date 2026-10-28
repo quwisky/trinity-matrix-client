@@ -424,6 +424,39 @@ describe('Synapse adapter config generation', () => {
     ).toBe('localhost');
   });
 
+  it('moves every native port by TRINITY_E2E_PORT_OFFSET', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    vi.stubEnv('TRINITY_E2E_PORT_OFFSET', '100');
+    const { ensureConfig, ensureSydentConfig, SYDENT_CONFIG } =
+      await adapterIn(stateDir);
+    const generate = vi.fn(async () => {
+      mkdirSync(join(stateDir, 'data'), { recursive: true });
+      writeFileSync(
+        join(stateDir, 'data/homeserver.yaml'),
+        // Synapse's own --generate-config layout.
+        'server_name: "localhost"\nlisteners:\n  - bind_addresses:\n    - 127.0.0.1\n    port: 8008\n    type: http\n',
+      );
+    });
+    await ensureConfig({ log: () => undefined, native: true, generate });
+    const yaml = parse(
+      readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8'),
+    );
+    expect(yaml.listeners[0].port).toBe(8108);
+    expect(yaml.public_baseurl).toBe('https://localhost:8548/');
+    expect(yaml.email.smtp_port).toBe(1125);
+    expect(yaml.oidc_providers[0]).toMatchObject({
+      issuer: 'http://localhost:5656/dex',
+      authorization_endpoint: 'http://localhost:5656/dex/auth',
+      token_endpoint: 'http://localhost:5656/dex/token',
+    });
+    await ensureSydentConfig({ native: true, log: () => undefined });
+    const sydent = readFileSync(SYDENT_CONFIG, 'utf8');
+    expect(sydent).toContain('server.name = localhost:8552');
+    expect(sydent).toContain('clientapi.http.port = 8190');
+    expect(sydent).toContain('client_http_base = https://localhost:8552');
+    expect(sydent).toContain('email.smtpport = 1125');
+  });
+
   it('keeps the Dex block for the Docker runtime', async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);
