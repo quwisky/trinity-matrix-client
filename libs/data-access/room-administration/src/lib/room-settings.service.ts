@@ -3,8 +3,6 @@ import { toObservable } from '@angular/core/rxjs-interop';
 import {
   EventType,
   ClientEvent,
-  HistoryVisibility,
-  JoinRule,
   KnownMembership,
   RoomStateEvent,
   type MatrixClient,
@@ -13,13 +11,7 @@ import {
   type RoomState,
 } from 'matrix-js-sdk';
 
-// Re-exported because they appear in the public surface; components must never import
-// matrix-js-sdk themselves, and need the enum values to build choice lists.
-export {
-  HistoryVisibility,
-  JoinRule,
-  RestrictedAllowType,
-} from 'matrix-js-sdk';
+import { HistoryVisibility, JoinRule } from './room-access.models';
 import {
   Observable,
   defer,
@@ -32,7 +24,10 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { withoutImageMetadata } from '@trinity/data-access/media';
-import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
+import type {
+  RoomHistoryVisibilityEventContent,
+  RoomJoinRulesEventContent,
+} from 'matrix-js-sdk/lib/@types/state_events';
 import { isRoomEncrypted, liveRoomState } from '@trinity/util/matrix';
 import {
   RoomActionPermissionsService,
@@ -47,6 +42,7 @@ import {
   allowedSpaceIdsOf,
   invalidAllowedSpaceId,
   restrictedAllowEntriesForWrite,
+  type JoinRuleAllow,
 } from './room-access-policy';
 import { roomAdvancedInfo, type RoomAdvancedInfo } from './room-advanced-info';
 
@@ -119,7 +115,7 @@ const DEFAULT_JOIN_RULE = JoinRule.Invite;
 /** A room with no history-visibility state defaults to `shared`, per the spec. */
 const DEFAULT_HISTORY_VISIBILITY = HistoryVisibility.Shared;
 
-/** MSC3787 join rule; matrix-js-sdk's `JoinRule` enum has no member for it. */
+/** MSC3787 join rule; the local `JoinRule` constants have no member for it. */
 export const KNOCK_RESTRICTED = 'knock_restricted' as JoinRule;
 
 /** Whether the rule carries an `allow` list of spaces. */
@@ -262,7 +258,9 @@ export class RoomSettingsService {
           ),
         );
       }
-      const content: RoomJoinRulesEventContent = { join_rule: joinRule };
+      const content: { join_rule: JoinRule; allow?: JoinRuleAllow[] } = {
+        join_rule: joinRule,
+      };
       if (restricted) {
         const room = client.getRoom(roomId);
         const currentAllow = room
@@ -276,7 +274,12 @@ export class RoomSettingsService {
         );
       }
       return from(
-        client.sendStateEvent(roomId, EventType.RoomJoinRules, content, ''),
+        client.sendStateEvent(
+          roomId,
+          EventType.RoomJoinRules,
+          content as RoomJoinRulesEventContent,
+          '',
+        ),
       ).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('set-join-rule'),
@@ -334,7 +337,9 @@ export class RoomSettingsService {
         client.sendStateEvent(
           roomId,
           EventType.RoomHistoryVisibility,
-          { history_visibility: historyVisibility },
+          {
+            history_visibility: historyVisibility,
+          } as RoomHistoryVisibilityEventContent,
           '',
         ),
       ).pipe(

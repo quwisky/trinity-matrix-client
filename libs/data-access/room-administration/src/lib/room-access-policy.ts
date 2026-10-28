@@ -1,12 +1,14 @@
-import { RestrictedAllowType } from 'matrix-js-sdk';
-import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
+import { RestrictedAllowType } from './room-access.models';
+
+/** One `allow` entry of an `m.room.join_rules` content. */
+export type JoinRuleAllow = { type: string; room_id: string };
 
 /** Read the unique, well-formed Space IDs understood by Matrix restricted joins. */
 export function allowedSpaceIdsOf(allow: unknown): string[] {
   if (!Array.isArray(allow)) return [];
   return allow
     .filter(
-      (entry): entry is { type: string; room_id: string } =>
+      (entry): entry is JoinRuleAllow =>
         !!entry &&
         typeof entry === 'object' &&
         (entry as { type?: unknown }).type ===
@@ -33,7 +35,7 @@ export function invalidAllowedSpaceId(
 export function restrictedAllowEntriesForWrite(
   allowedSpaceIds: readonly string[],
   currentAllow: unknown,
-): RoomJoinRulesEventContent['allow'] {
+): JoinRuleAllow[] {
   const roomMembershipEntries = [...new Set(allowedSpaceIds)].map((roomId) => ({
     type: RestrictedAllowType.RoomMembership,
     room_id: roomId,
@@ -48,8 +50,5 @@ export function restrictedAllowEntriesForWrite(
             RestrictedAllowType.RoomMembership,
       )
     : [];
-  return [
-    ...roomMembershipEntries,
-    ...unknownEntries,
-  ] as RoomJoinRulesEventContent['allow'];
+  return [...roomMembershipEntries, ...unknownEntries] as JoinRuleAllow[];
 }
