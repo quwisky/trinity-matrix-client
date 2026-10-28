@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixClient } from 'matrix-js-sdk';
 import { describe, vi } from 'vitest';
 import { defineTimelineEngineContract } from '../../contract/timeline-engine.contract';
 import { JsSdkTimelineEngine } from './js-sdk-timeline-engine';
@@ -11,6 +10,7 @@ import {
   room,
   serverName,
   startSession,
+  stubUnencryptedRooms,
   useSynapseSuite,
 } from './synapse.spec-harness';
 
@@ -188,14 +188,7 @@ describe.skipIf(!baseUrl)('JsSdkTimelineEngine against Synapse', () => {
           },
         },
         // A crypto store that knows the contract's rooms are unencrypted, as the real one would.
-        knownUnencrypted: () => {
-          const spy = vi
-            .spyOn(MatrixClient.prototype, 'getCrypto')
-            .mockReturnValue({
-              isEncryptionEnabledInRoom: async () => false,
-            } as never);
-          return () => spy.mockRestore();
-        },
+        knownUnencrypted: stubUnencryptedRooms,
         dispose: () => session.dispose(),
       };
     },

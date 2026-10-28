@@ -115,6 +115,14 @@ export function useSynapseSuite(): void {
   });
 }
 
+/** Stubs the crypto store as knowing every room is unencrypted; returns the restore. */
+export function stubUnencryptedRooms(): () => void {
+  const spy = vi.spyOn(MatrixClient.prototype, 'getCrypto').mockReturnValue({
+    isEncryptionEnabledInRoom: async () => false,
+  } as unknown as ReturnType<MatrixClient['getCrypto']>);
+  return () => spy.mockRestore();
+}
+
 /** Logs `user` in and starts a synced session for them in a fresh TestBed. */
 export async function startSession(user: {
   readonly userId: string;

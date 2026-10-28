@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixClient } from 'matrix-js-sdk';
 import { describe, vi } from 'vitest';
 import { defineConversationContentEngineContract } from '../../contract/conversation-content-engine.contract';
 import { JsSdkConversationContentEngine } from './js-sdk-conversation-content-engine';
@@ -10,6 +9,7 @@ import {
   register,
   room,
   startSession,
+  stubUnencryptedRooms,
   useSynapseSuite,
 } from './synapse.spec-harness';
 
@@ -70,11 +70,7 @@ describe.skipIf(!baseUrl)(
         ]);
         const session = await startSession(aliceUser);
         // Crypto is stubbed: the room's state alone says whether it is encrypted.
-        const getCrypto = vi
-          .spyOn(MatrixClient.prototype, 'getCrypto')
-          .mockReturnValue({
-            isEncryptionEnabledInRoom: async () => false,
-          } as unknown as ReturnType<MatrixClient['getCrypto']>);
+        const restoreCrypto = stubUnencryptedRooms();
 
         return {
           engine: TestBed.inject(JsSdkConversationContentEngine),
@@ -142,7 +138,7 @@ describe.skipIf(!baseUrl)(
             },
           },
           dispose: async () => {
-            getCrypto.mockRestore();
+            restoreCrypto();
             await session.dispose();
           },
         };
