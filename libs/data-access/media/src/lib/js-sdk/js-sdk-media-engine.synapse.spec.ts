@@ -1,10 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, vi } from 'vitest';
+import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { defineMediaEngineContract } from '../../contract/media-engine.contract';
 import { JsSdkMediaEngine } from './js-sdk-media-engine';
 import {
   baseUrl,
+  cs,
   localpart,
+  room,
   register,
   startSession,
   useSynapseSuite,
@@ -48,6 +51,14 @@ describe.skipIf(!baseUrl)('JsSdkMediaEngine against Synapse', () => {
   defineMediaEngineContract(
     async () => {
       const session = await startSession(await register(localpart('alice')));
+      const client = TestBed.inject(JS_SDK_CLIENTS).clientFor(session.userId);
+      if (!client) throw new Error('No live client for alice');
+      const uploads = vi.spyOn(client, 'uploadContent');
+      // initRustCrypto is stubbed, so stand in a probe that reads the room's state.
+      const crypto = vi.spyOn(client, 'getCrypto').mockReturnValue({
+        isEncryptionEnabledInRoom: async (roomId: string) =>
+          client.getRoom(roomId)?.hasEncryptionStateEvent() ?? false,
+      } as never);
 
       return {
         engine: TestBed.inject(JsSdkMediaEngine),
@@ -70,6 +81,67 @@ describe.skipIf(!baseUrl)('JsSdkMediaEngine against Synapse', () => {
               .split(';')[0]
               .trim(),
           };
+        },
+        room: async (encrypted) => {
+          const { room_id } = (await cs(
+            session.accessToken,
+            'POST',
+            '/createRoom',
+            {
+              preset: 'private_chat',
+              ...(encrypted
+                ? {
+                    initial_state: [
+                      {
+                        type: 'm.room.encryption',
+                        state_key: '',
+                        content: { algorithm: 'm.megolm.v1.aes-sha2' },
+                      },
+                    ],
+                  }
+                : {}),
+            },
+          )) as { room_id: string };
+          await vi.waitFor(
+            () => {
+              const seen = client.getRoom(room_id);
+              if (!seen || seen.hasEncryptionStateEvent() !== encrypted) {
+                throw new Error(`Waiting for ${room_id}`);
+              }
+            },
+            { timeout: 30_000, interval: 100 },
+          );
+          return room_id;
+        },
+        messages: async (roomId) => {
+          const { chunk } = (await cs(
+            session.accessToken,
+            'GET',
+            `${room(roomId)}/messages?dir=f&limit=100`,
+          )) as {
+            chunk: { type: string; content: Record<string, unknown> }[];
+          };
+          return chunk
+            .filter(
+              (event) =>
+                event.type === 'm.room.message' &&
+                typeof event.content['msgtype'] === 'string',
+            )
+            .map(({ content }) => {
+              const info = content['info'] as
+                Record<string, unknown> | undefined;
+              return {
+                msgtype: String(content['msgtype']),
+                body: String(content['body']),
+                hasThumbnail: Boolean(
+                  info?.['thumbnail_url'] ?? info?.['thumbnail_file'],
+                ),
+              };
+            });
+        },
+        uploads: () => uploads.mock.calls.length,
+        withoutCrypto: () => {
+          crypto.mockReturnValue(undefined);
         },
         dispose: () => session.dispose(),
       };

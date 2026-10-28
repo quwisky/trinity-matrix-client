@@ -39,6 +39,7 @@ import {
 import { DEVICE_PIXEL_RATIO, displayThumbnailEdge } from './thumbnail-size';
 import {
   describeMedia,
+  msgTypeFor,
   needsDownscale,
   type GeneratedThumbnail,
 } from './media-processing';
@@ -659,19 +660,6 @@ export class MediaService {
     // Leaving the loop over the caps means everything left is pinned (on screen).
     this.release(evicted);
   }
-}
-
-function msgTypeFor(mime: string): UploadedMedia['msgtype'] {
-  if (mime.startsWith('image/')) {
-    return 'm.image';
-  }
-  if (mime.startsWith('video/')) {
-    return 'm.video';
-  }
-  if (mime.startsWith('audio/')) {
-    return 'm.audio';
-  }
-  return 'm.file';
 }
 
 function mediaInfo(

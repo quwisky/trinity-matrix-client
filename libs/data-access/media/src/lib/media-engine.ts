@@ -63,6 +63,52 @@ export type TransferUpdate<T> =
     }
   | { readonly kind: 'done'; readonly result: EngineResult<T> };
 
+export interface AttachmentRequest {
+  /** Same key = same upload: a retry reuses it; the pipeline changes the key to force a re-upload. */
+  readonly attachmentKey: string;
+  /**
+   * A previous key for the same message whose retained echo is withdrawn before this one is
+   * uploaded (metadata kept, now to be stripped). An echo still sending ends this send as
+   * `indeterminate` / `send-in-flight` instead.
+   */
+  readonly supersedes?: string;
+  readonly threadRootId: string | null;
+  /** Already metadata-stripped (or kept) by the pipeline. Not plain data: a handle. */
+  readonly file: Blob;
+  /** The picked file's name; the event body falls back to `attachment` without one. */
+  readonly filename: string;
+  readonly mimeType: string;
+  readonly msgtype: 'm.image' | 'm.video' | 'm.audio' | 'm.file';
+  /** Rust `AttachmentInfo` / BaseImageInfo / BaseVideoInfo. */
+  readonly info: {
+    readonly w: number | null;
+    readonly h: number | null;
+    readonly durationMs: number | null;
+  };
+  /** Rust `Thumbnail { data, content_type, width, height, size }`; stripped by the pipeline. */
+  readonly thumbnail: {
+    readonly blob: Blob;
+    readonly mimeType: string;
+    readonly w: number;
+    readonly h: number;
+  } | null;
+  readonly caption: string;
+  /**
+   * What the pipeline did with the file's identifying metadata. `strip-failed` means stripping
+   * threw and `file` is the original: an encrypted room refuses it before any progress
+   * (`request-failed`), a plain room sends it as picked.
+   */
+  readonly metadata: 'kept' | 'stripped' | 'strip-failed';
+}
+
+export type AttachmentOutcome =
+  | { readonly kind: 'sent'; readonly eventId: string }
+  /** The send may have left; a retry with the same key dedupes. */
+  | {
+      readonly kind: 'indeterminate';
+      readonly reason: 'local-echo-missing' | 'send-in-flight';
+    };
+
 /** Media bytes and uploads for one account at a time. The engine keeps no URL cache. */
 export interface MediaEngine {
   /**
@@ -93,4 +139,23 @@ export interface MediaEngine {
 
   /** Command: the homeserver's `m.upload.size`, or null when it states none or cannot be asked. */
   uploadLimit(accountId: string): Observable<EngineResult<number | null>>;
+
+  /**
+   * Command with progress: upload the attachment (encrypting iff the room is) and send one
+   * media message, its local echo in the timeline before `sent`. The engine retains the upload
+   * and echo under `attachmentKey` until {@link forgetAttachment}, so a retry neither uploads
+   * again nor sends twice; a changed caption withdraws a retained echo and sends a new event.
+   * Fails `account-not-live`, `conversation-unavailable`, `encryption-unavailable` (an encrypted
+   * room without crypto, before any upload), `too-large` or `request-failed`. A failure after a
+   * `sending` progress update failed the send; any other failed the upload. Unsubscribe aborts
+   * the upload and withdraws an echo not yet sending.
+   */
+  sendAttachment(
+    accountId: string,
+    roomId: string,
+    request: AttachmentRequest,
+  ): Observable<TransferUpdate<AttachmentOutcome>>;
+
+  /** Hint: forget the upload and echo retained under `attachmentKey`; withdraws nothing. Replies null. */
+  forgetAttachment(attachmentKey: string): Observable<null>;
 }
