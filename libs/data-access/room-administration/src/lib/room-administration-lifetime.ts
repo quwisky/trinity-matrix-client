@@ -6,7 +6,7 @@ import {
   type Signal,
   untracked,
 } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type CapabilityContext,
@@ -60,7 +60,7 @@ type RoomAdministrationProjectionId = RoomAdministrationProjection['id'];
 export class RoomAdministrationLifetime {
   private readonly injector = inject(Injector);
   private readonly runtime = inject(ProjectionRuntime);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
   private readonly permissions = inject(RoomActionPermissionsService);
   private readonly members = inject(RoomMembersService);
   private readonly presentation = inject(RoomAdministrationProjectionState);
@@ -257,7 +257,7 @@ export class RoomAdministrationLifetime {
       };
       const apply = (): void => {
         if (applying) return;
-        const nextAccount = this.matrix.activeUserId();
+        const nextAccount = this.session.activeAccountId();
         const nextRoom = roomId();
         const nextRequired = !!nextAccount && !!nextRoom && demanded();
         if (
@@ -315,7 +315,7 @@ export class RoomAdministrationLifetime {
         required &&
         demanded() &&
         accountId !== null &&
-        accountId === this.matrix.activeUserId() &&
+        accountId === this.session.activeAccountId() &&
         selectedRoomId !== null &&
         selectedRoomId === roomId();
       this.retry = (operation) => {
@@ -345,7 +345,7 @@ export class RoomAdministrationLifetime {
       apply();
       const changes = effect(
         () => {
-          this.matrix.activeUserId();
+          this.session.activeAccountId();
           demanded();
           roomId();
           untracked(apply);

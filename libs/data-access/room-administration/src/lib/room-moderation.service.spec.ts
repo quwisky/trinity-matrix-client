@@ -3,7 +3,10 @@ import { signal } from '@angular/core';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
 import { RoomModerationService } from './room-moderation.service';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
@@ -65,6 +68,9 @@ function setup(
         instance: instance as never,
         clientFor: (accountId: string) =>
           accountId === me ? (instance as never) : null,
+      }),
+      MockProvider(SessionStateService, {
+        activeAccountId: signal<string | null>(me).asReadonly(),
       }),
     ],
   });

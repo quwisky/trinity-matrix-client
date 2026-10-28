@@ -40,7 +40,6 @@
     "libs/data-access/notifications/src/lib/reaction-notification-settings.service.ts",
     "libs/data-access/notifications/src/lib/room-notifications.service.ts",
     "libs/data-access/room-administration/src/lib/content-reporting.service.ts",
-    "libs/data-access/room-administration/src/lib/room-access-policy.ts",
     "libs/data-access/room-administration/src/lib/room-action-permissions.service.ts",
     "libs/data-access/room-administration/src/lib/room-advanced-info.ts",
     "libs/data-access/room-administration/src/lib/room-aliases.service.ts",

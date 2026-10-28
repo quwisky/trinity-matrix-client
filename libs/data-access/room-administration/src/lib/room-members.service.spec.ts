@@ -3,7 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
 import { RoomMembersService } from './room-members.service';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
@@ -90,6 +93,9 @@ function setup(initialClient: ReturnType<typeof client>) {
       RoomMembersService,
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
+      }),
+      MockProvider(SessionStateService, {
+        activeAccountId: activeUserId.asReadonly(),
       }),
     ],
   });

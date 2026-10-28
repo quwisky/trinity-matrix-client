@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import type {
   RoomAdministrationAvailability,
   RoomAdministrationOperation,
@@ -18,7 +18,7 @@ const unavailable = (): Record<
 /** Internal exact-scope freshness ledger shared by Room Administration readers. */
 @Injectable({ providedIn: 'root' })
 export class RoomAdministrationProjectionState {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
   private scope: {
     readonly accountId: string;
     readonly roomId: string;
@@ -59,7 +59,7 @@ export class RoomAdministrationProjectionState {
     const scope = this.scope;
     return scope &&
       roomId === scope.roomId &&
-      this.matrix.activeUserId() === scope.accountId
+      this.session.activeAccountId() === scope.accountId
       ? this.state()[operation]
       : 'unavailable';
   }

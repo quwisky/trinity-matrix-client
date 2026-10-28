@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type ProjectionObservation,
@@ -56,8 +56,8 @@ describe('RoomAdministrationLifetime', () => {
       providers: [
         RoomAdministrationLifetime,
         RoomAdministrationProjectionState,
-        MockProvider(MatrixClientService, {
-          activeUserId: activeAccountId.asReadonly(),
+        MockProvider(SessionStateService, {
+          activeAccountId: activeAccountId.asReadonly(),
         }),
         MockProvider(RoomActionPermissionsService, {
           runProjection: () =>
