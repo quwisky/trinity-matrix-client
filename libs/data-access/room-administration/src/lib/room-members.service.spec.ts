@@ -1,495 +1,376 @@
-import { ApplicationRef, signal } from '@angular/core';
+import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { type MatrixClient } from 'matrix-js-sdk';
-import { MockProvider, ngMocks } from 'ng-mocks';
-import { describe, expect, it, type Mock, vi } from 'vitest';
-import {
-  MatrixClientService,
-  SessionStateService,
-} from '@trinity/data-access/matrix-client';
+import { ProjectionRuntime } from '@trinity/runtime/projection';
+import { firstValueFrom, filter } from 'rxjs';
+import { afterEach, describe, expect, it } from 'vitest';
 import { RoomMembersService } from './room-members.service';
+import type { RoomMembersSnapshot } from './room-members.service';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
 
-function member(
-  userId: string,
-  name: string,
-  powerLevel = 0,
-  avatarMxc?: string,
-) {
+/** Alice (active) in bob's room, with the members and bans operations coherent. */
+async function setup(options: { readonly roomVersion?: string } = {}) {
+  const session = administrationSession();
+  const { engine } = session;
+  const roomId = await roomWithAlice(engine, options);
+  TestBed.configureTestingModule({ providers: session.providers });
+  const projectionState = TestBed.inject(RoomAdministrationProjectionState);
+  projectionState.select(engine.alice, roomId);
+  projectionState.update('members', 'available', 'retained');
+  projectionState.update('bans', 'available', 'retained');
   return {
-    userId,
-    name,
-    powerLevel,
-    membership: 'join',
-    getMxcAvatarUrl: () => avatarMxc,
-  };
-}
-
-function bannedMember(userId: string, name: string, reason?: string) {
-  return {
-    userId,
-    name,
-    events: {
-      member: { getContent: () => ({ reason }) },
+    ...session,
+    roomId,
+    target: { accountId: engine.alice, roomId },
+    service: TestBed.inject(RoomMembersService),
+    projectionState,
+    /** Bob signs in beside alice and becomes the active account. */
+    activateBob: (): void => {
+      engine.setLive(engine.bob, true);
+      session.signIn([engine.alice, engine.bob], { active: engine.bob });
     },
   };
 }
 
-function knockingMember(
-  userId: string,
-  name: string,
-  reason?: string,
-  avatarMxc?: string,
-) {
-  return {
-    ...bannedMember(userId, name, reason),
-    getMxcAvatarUrl: () => avatarMxc,
-  };
-}
+const names = (members: readonly { readonly roomDisplayName: string }[]) =>
+  members.map((member) => member.roomDisplayName);
 
-function room(
-  roomId: string,
-  members: ReturnType<typeof member>[],
-  creator: string | null = null,
-  banned: ReturnType<typeof bannedMember>[] = [],
-  invited: ReturnType<typeof member>[] = [],
-  knocking: ReturnType<typeof knockingMember>[] = [],
-) {
-  return {
-    roomId,
-    getMyMembership: () => 'join',
-    getJoinedMembers: vi.fn(() => members),
-    getMembersWithMembership: vi.fn((membership: string) =>
-      membership === 'invite'
-        ? invited
-        : membership === 'ban'
-          ? banned
-          : membership === 'knock'
-            ? knocking
-            : [],
-    ),
-    getCreator: () => creator,
-    loadMembersIfNeeded: vi.fn(() => Promise.resolve(true)),
-  };
-}
-
-function client(rooms: ReturnType<typeof room>[]) {
-  const handlers = new Map<string, (...args: unknown[]) => void>();
-  return {
-    getRoom: (roomId: string) =>
-      rooms.find((candidate) => candidate.roomId === roomId) ?? null,
-    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
-      handlers.set(event, handler);
-    }),
-    off: vi.fn((event: string) => handlers.delete(event)),
-    handlers,
-  };
-}
-
-function setup(initialClient: ReturnType<typeof client>) {
-  const activeUserId = signal<string | null>('@me:hs');
-  TestBed.configureTestingModule({
-    providers: [
-      RoomMembersService,
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
-      }),
-      MockProvider(SessionStateService, {
-        activeAccountId: activeUserId.asReadonly(),
-      }),
-    ],
-  });
-  const matrix = TestBed.inject(MatrixClientService);
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(
-    matrix,
-    'instance',
-    initialClient as unknown as MatrixClient,
-  );
-  const service = TestBed.inject(RoomMembersService);
-  const projectionState = TestBed.inject(RoomAdministrationProjectionState);
-  projectionState.select(activeUserId(), '!room:hs');
-  projectionState.update('members', 'available', 'retained');
-  projectionState.update('bans', 'available', 'retained');
-  const lifetime = service.runProjection().subscribe();
-  return { service, matrix, activeUserId, lifetime, projectionState };
-}
-
-function fireMemberChange(
-  matrixClient: ReturnType<typeof client>,
-  roomId: string,
-): void {
-  matrixClient.handlers.get('RoomState.members')?.({}, { roomId }, {});
-}
+afterEach(() => TestBed.resetTestingModule());
 
 describe('RoomMembersService', () => {
-  it('loads the full member list of the room it observes (#1295)', () => {
-    const target = room('!shared:hs', [member('@ada:hs', 'Ada')]);
-    const opening = client([target]);
-    TestBed.configureTestingModule({
-      providers: [
-        RoomMembersService,
-        MockProvider(MatrixClientService, {
-          accountIds: signal<readonly string[]>(['@opening:hs']).asReadonly(),
-          activeUserId: signal<string | null>('@opening:hs').asReadonly(),
-          clientFor: () => opening as unknown as MatrixClient,
-        }),
-      ],
-    });
-    const observation = TestBed.inject(RoomMembersService)
-      .observe({ accountId: '@opening:hs', roomId: '!shared:hs' })
-      .subscribe();
-    TestBed.inject(ApplicationRef).tick();
+  it('projects sorted joined members with creator, avatar and power', async () => {
+    const { service, roomId, engine } = await setup();
+    await engine.asBob.setDisplayName(roomId, 'Zoe');
+    await engine.asBob.invite(roomId, engine.carol);
+    await engine.asCarol.join(roomId);
+    await engine.asCarol.setDisplayName(roomId, 'Ada');
+    await engine.asCarol.setAvatar(roomId, 'mxc://example.org/ada');
+    await engine.asBob.setPowerLevel(roomId, engine.carol, 50);
 
-    // A lazily synced room lists only the members its loaded events named; the settings
-    // member and ban lists need all of them. Arriving members re-publish through the
-    // RoomState.members listener.
-    expect(target.loadMembersIfNeeded).toHaveBeenCalledOnce();
-    observation.unsubscribe();
-  });
-
-  it('observes an exact opening Account without following the active Account', async () => {
-    const openingMembers = [member('@ada:hs', 'Ada')];
-    const openingClient = client([room('!shared:hs', openingMembers)]);
-    const otherClient = client([
-      room('!shared:hs', [member('@mallory:hs', 'Mallory')]),
-    ]);
-    const accountIds = signal<readonly string[]>(['@opening:hs', '@other:hs']);
-    TestBed.configureTestingModule({
-      providers: [
-        RoomMembersService,
-        MockProvider(MatrixClientService, {
-          accountIds: accountIds.asReadonly(),
-          activeUserId: signal<string | null>('@other:hs').asReadonly(),
-          clientFor: (accountId: string) =>
-            accountId === '@opening:hs'
-              ? (openingClient as unknown as MatrixClient)
-              : (otherClient as unknown as MatrixClient),
-        }),
-      ],
-    });
-    const service = TestBed.inject(RoomMembersService);
-    const seen: string[][] = [];
-    const observation = service
-      .observe({ accountId: '@opening:hs', roomId: '!shared:hs' })
-      .subscribe((value) =>
-        seen.push(value.members.map((candidate) => candidate.roomDisplayName)),
-      );
-    TestBed.inject(ApplicationRef).tick();
-
-    expect(seen.at(-1)).toEqual(['Ada']);
-
-    openingMembers.push(member('@bea:hs', 'Bea'));
-    fireMemberChange(openingClient, '!shared:hs');
-
-    expect(seen.at(-1)).toEqual(['Ada', 'Bea']);
-    expect(seen.flat()).not.toContain('Mallory');
-    observation.unsubscribe();
-  });
-
-  it('projects sorted authoritative summaries with creator, avatar, and power', () => {
-    const source = room(
-      '!room:hs',
-      [
-        member('@zoe:hs', 'Zoe', 50),
-        member('@ada:hs', 'Ada', 100, 'mxc://hs/ada'),
-      ],
-      '@ada:hs',
-    );
-    const { service } = setup(client([source]));
-
-    expect(service.membersOf('!room:hs')).toEqual([
+    expect(service.membersOf(roomId)).toEqual([
       {
-        userId: '@ada:hs',
-        roomDisplayName: 'Ada',
+        userId: engine.alice,
+        roomDisplayName: engine.alice,
         roomInitial: 'A',
-        roomAvatarMxc: 'mxc://hs/ada',
-        powerLevel: 100,
-        isCreator: true,
+        roomAvatarMxc: null,
+        powerLevel: 0,
+        isCreator: false,
       },
       {
-        userId: '@zoe:hs',
-        roomDisplayName: 'Zoe',
-        roomInitial: 'Z',
-        roomAvatarMxc: null,
+        userId: engine.carol,
+        roomDisplayName: 'Ada',
+        roomInitial: 'A',
+        roomAvatarMxc: 'mxc://example.org/ada',
         powerLevel: 50,
         isCreator: false,
       },
+      {
+        userId: engine.bob,
+        roomDisplayName: 'Zoe',
+        roomInitial: 'Z',
+        roomAvatarMxc: null,
+        powerLevel: 100,
+        isCreator: true,
+      },
     ]);
   });
 
-  it('shares a signal and updates only after an authoritative member event', async () => {
-    const members = [member('@ada:hs', 'Ada')];
-    const source = room('!room:hs', members);
-    const matrixClient = client([source]);
-    const { service } = setup(matrixClient);
-    const roster = service.membersFor('!room:hs');
+  it('gives a v12 creator infinite power and only the create sender the creator mark', async () => {
+    const session = administrationSession();
+    const { engine } = session;
+    const roomId = await engine.asBob.createRoom({
+      roomVersion: '12',
+      additionalCreators: [engine.alice],
+    });
+    await engine.asBob.invite(roomId, engine.alice);
+    await engine.asAlice.join(roomId);
+    TestBed.configureTestingModule({ providers: session.providers });
+    const members = TestBed.inject(RoomMembersService).membersOf(roomId);
 
-    expect(roster).toBe(service.membersFor('!room:hs'));
-    members.push(member('@bob:hs', 'Bob'));
-    expect(roster().map((item) => item.roomDisplayName)).toEqual(['Ada']);
-
-    fireMemberChange(matrixClient, '!room:hs');
-    await Promise.resolve();
-    expect(roster().map((item) => item.roomDisplayName)).toEqual([
-      'Ada',
-      'Bob',
+    expect(
+      members.map(({ userId, powerLevel, isCreator }) => ({
+        userId,
+        powerLevel,
+        isCreator,
+      })),
+    ).toEqual([
+      { userId: engine.alice, powerLevel: Infinity, isCreator: false },
+      { userId: engine.bob, powerLevel: Infinity, isCreator: true },
     ]);
   });
 
-  it('coalesces the SDK per-member fan-out into one roster read', async () => {
-    const source = room('!room:hs', [member('@ada:hs', 'Ada')]);
-    const matrixClient = client([source]);
-    const { service } = setup(matrixClient);
-    service.membersFor('!room:hs');
-    source.getJoinedMembers.mockClear();
+  it('shows the engine-disambiguated names in the role lists', async () => {
+    const { service, roomId, engine } = await setup();
+    await engine.asBob.invite(roomId, engine.carol);
+    await engine.asCarol.join(roomId);
+    await engine.asBob.setDisplayName(roomId, 'Twin');
+    await engine.asCarol.setDisplayName(roomId, 'Twin');
 
-    fireMemberChange(matrixClient, '!room:hs');
-    fireMemberChange(matrixClient, '!room:hs');
-    fireMemberChange(matrixClient, '!room:hs');
-    await Promise.resolve();
+    expect(names(service.membersOf(roomId))).toEqual([
+      engine.alice,
+      `Twin (${engine.bob})`,
+      `Twin (${engine.carol})`,
+    ]);
+  });
 
-    expect(source.getJoinedMembers).toHaveBeenCalledOnce();
+  it('shares a signal per room that follows member changes and keeps its list while unchanged', async () => {
+    const { service, roomId, engine } = await setup();
+    const roster = service.membersFor(roomId);
+    expect(roster).toBe(service.membersFor(roomId));
+    const before = roster();
+
+    await engine.asBob.setPowerLevels(roomId, { kick: 60 });
+    expect(roster()).toBe(before);
+
+    await engine.asBob.invite(roomId, engine.carol);
+    await engine.asCarol.join(roomId);
+    expect(roster().map((member) => member.userId)).toContain(engine.carol);
   });
 
   it('reprojects power changes even when member identity is unchanged', async () => {
-    const ada = member('@ada:hs', 'Ada');
-    const source = room('!room:hs', [ada]);
-    const matrixClient = client([source]);
-    const { service } = setup(matrixClient);
-    const roster = service.membersFor('!room:hs');
+    const { service, roomId, engine } = await setup();
+    const roster = service.membersFor(roomId);
 
-    ada.powerLevel = 100;
-    fireMemberChange(matrixClient, '!room:hs');
-    await Promise.resolve();
+    await engine.asBob.setPowerLevel(roomId, engine.alice, 50);
 
-    expect(roster()[0].powerLevel).toBe(100);
+    expect(
+      roster().find((member) => member.userId === engine.alice)?.powerLevel,
+    ).toBe(50);
   });
 
-  it('authoritatively rereads retained member and ban signals on retry', async () => {
-    const members = [member('@ada:hs', 'Ada')];
-    const source = room('!room:hs', members);
-    const { service } = setup(client([source]));
-    const roster = service.membersFor('!room:hs');
-
-    members.push(member('@bob:hs', 'Bob'));
-    service.retryProjection();
-    await Promise.resolve();
-
-    expect(roster().map((item) => item.roomDisplayName)).toEqual([
-      'Ada',
-      'Bob',
-    ]);
-  });
-
-  it('projects bans and waits for authoritative member events to update them', async () => {
-    const banned = [
-      bannedMember('@zed:hs', 'Zed', 'spam'),
-      bannedMember('@amy:hs', 'Amy'),
-    ];
-    const source = room('!room:hs', [], null, banned);
-    const matrixClient = client([source]);
-    const { service } = setup(matrixClient);
-    const bans = service.bannedFor('!room:hs');
+  it('projects sorted bans with their reasons and follows them', async () => {
+    const { service, roomId, engine } = await setup();
+    await engine.asBob.ban(roomId, '@zed:example.org', 'spam');
+    await engine.asBob.ban(roomId, '@amy:example.org', '');
+    const bans = service.bannedFor(roomId);
 
     expect(bans()).toEqual([
-      { userId: '@amy:hs', roomDisplayName: 'Amy', reason: null },
-      { userId: '@zed:hs', roomDisplayName: 'Zed', reason: 'spam' },
-    ]);
-
-    banned.splice(0, banned.length);
-    expect(bans()).toHaveLength(2);
-    fireMemberChange(matrixClient, '!room:hs');
-    await Promise.resolve();
-
-    expect(bans()).toEqual([]);
-  });
-
-  it('projects invited members apart from joined ones and follows member events', async () => {
-    const invited = [member('@zoe:hs', 'Zoe'), member('@ann:hs', 'Ann')];
-    const source = room(
-      '!room:hs',
-      [member('@me:hs', 'Me')],
-      null,
-      [],
-      invited,
-    );
-    const matrixClient = client([source]);
-    const { service } = setup(matrixClient);
-    const pending = service.invitedFor('!room:hs');
-
-    expect(pending().map((m) => m.userId)).toEqual(['@ann:hs', '@zoe:hs']);
-    expect(
-      service
-        .membersFor('!room:hs')()
-        .map((m) => m.userId),
-    ).toEqual(['@me:hs']);
-
-    invited.splice(0, 1);
-    fireMemberChange(matrixClient, '!room:hs');
-    await Promise.resolve();
-
-    expect(pending().map((m) => m.userId)).toEqual(['@ann:hs']);
-  });
-
-  it('projects knocks with reasons, sorted', () => {
-    const source = room(
-      '!room:hs',
-      [],
-      null,
-      [],
-      [],
-      [
-        knockingMember('@zed:hs', 'Zed', 'From the meetup', 'mxc://hs/zed'),
-        knockingMember('@amy:hs', 'Amy', ''),
-      ],
-    );
-    const { service } = setup(client([source]));
-
-    expect(service.knockingFor('!room:hs')()).toEqual([
       {
-        userId: '@amy:hs',
-        roomDisplayName: 'Amy',
-        roomInitial: 'A',
-        roomAvatarMxc: null,
+        userId: '@amy:example.org',
+        roomDisplayName: '@amy:example.org',
         reason: null,
       },
       {
-        userId: '@zed:hs',
-        roomDisplayName: 'Zed',
-        roomInitial: 'Z',
-        roomAvatarMxc: 'mxc://hs/zed',
+        userId: '@zed:example.org',
+        roomDisplayName: '@zed:example.org',
+        reason: 'spam',
+      },
+    ]);
+
+    await engine.asBob.ban(roomId, '@bea:example.org', 'spam');
+    expect(bans().map((ban) => ban.userId)).toEqual([
+      '@amy:example.org',
+      '@bea:example.org',
+      '@zed:example.org',
+    ]);
+  });
+
+  it('projects invited members apart from joined ones and follows them', async () => {
+    const { service, roomId, engine } = await setup();
+    await engine.asBob.invite(roomId, engine.carol);
+    await engine.asBob.invite(roomId, '@ann:example.org');
+    const pending = service.invitedFor(roomId);
+
+    expect(pending().map((member) => member.userId)).toEqual([
+      '@ann:example.org',
+      engine.carol,
+    ]);
+    expect(
+      service
+        .membersFor(roomId)()
+        .map((member) => member.userId),
+    ).toEqual([engine.alice, engine.bob]);
+
+    await engine.asCarol.join(roomId);
+    expect(pending().map((member) => member.userId)).toEqual([
+      '@ann:example.org',
+    ]);
+  });
+
+  it('projects a knock with its reason and avatar, and drops it once withdrawn', async () => {
+    const { service, roomId, engine } = await setup();
+    await engine.asCarol.knock(roomId, 'From the meetup');
+    await engine.asCarol.setDisplayName(roomId, 'Carol');
+    await engine.asCarol.setAvatar(roomId, 'mxc://example.org/carol');
+    const requests = service.knockingFor(roomId);
+
+    expect(requests()).toEqual([
+      {
+        userId: engine.carol,
+        roomDisplayName: 'Carol',
+        roomInitial: 'C',
+        roomAvatarMxc: 'mxc://example.org/carol',
         reason: 'From the meetup',
       },
     ]);
-  });
 
-  it('drops a withdrawn knock on the next member event', async () => {
-    const knocking = [knockingMember('@amy:hs', 'Amy')];
-    const matrixClient = client([room('!room:hs', [], null, [], [], knocking)]);
-    const { service } = setup(matrixClient);
-    const requests = service.knockingFor('!room:hs');
-    expect(requests()).toHaveLength(1);
-
-    knocking.splice(0, 1);
-    fireMemberChange(matrixClient, '!room:hs');
-    await Promise.resolve();
-
+    await engine.asCarol.leave(roomId);
     expect(requests()).toEqual([]);
   });
 
-  it('clears knocks on account reset', async () => {
-    const matrixClient = client([
-      room('!room:hs', [], null, [], [], [knockingMember('@amy:hs', 'Amy')]),
-    ]);
-    const { service, lifetime } = setup(matrixClient);
-    const requests = service.knockingFor('!room:hs');
-    expect(requests()).toHaveLength(1);
-
-    lifetime.unsubscribe();
-    TestBed.inject(ApplicationRef).tick();
-    await Promise.resolve();
-
-    expect(requests()).toEqual([]);
-  });
-
-  it('carries invited and knocking in the snapshot of an available exact target', () => {
-    const source = room(
-      '!room:hs',
-      [member('@me:hs', 'Me')],
-      null,
-      [],
-      [member('@ann:hs', 'Ann')],
-      [knockingMember('@amy:hs', 'Amy', 'Hi')],
-    );
-    const matrixClient = client([source]);
-    const matrix = {
-      clientFor: () => matrixClient as unknown as MatrixClient,
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        RoomMembersService,
-        MockProvider(MatrixClientService, matrix),
-      ],
-    });
-    const snapshot = TestBed.inject(RoomMembersService).snapshot({
-      accountId: '@me:hs',
-      roomId: '!room:hs',
-    });
-
-    expect(snapshot.members.map((m) => m.userId)).toEqual(['@me:hs']);
-    expect(snapshot.invited.map((m) => m.userId)).toEqual(['@ann:hs']);
-    expect(snapshot.knocking.map((k) => k.reason)).toEqual(['Hi']);
-  });
-
-  it('leaves invited and knocking empty when the room is unavailable', () => {
-    const source = {
-      ...room('!room:hs', [], null, [], [member('@ann:hs', 'Ann')]),
-      getMyMembership: () => 'leave',
-    };
-    const matrixClient = client([source]);
-    TestBed.configureTestingModule({
-      providers: [
-        RoomMembersService,
-        MockProvider(MatrixClientService, {
-          clientFor: () => matrixClient as unknown as MatrixClient,
-        }),
-      ],
-    });
-    const snapshot = TestBed.inject(RoomMembersService).snapshot({
-      accountId: '@me:hs',
-      roomId: '!room:hs',
-    });
-
-    expect(snapshot.availability).toBe('room-unavailable');
-    expect(snapshot.invited).toEqual([]);
-    expect(snapshot.knocking).toEqual([]);
-  });
-
-  it('clears outgoing Account values and detaches listeners on teardown', async () => {
-    const matrixClient = client([room('!room:hs', [member('@ada:hs', 'Ada')])]);
-    const { service, lifetime } = setup(matrixClient);
-    const roster = service.membersFor('!room:hs');
-    expect(roster()).toHaveLength(1);
-
-    lifetime.unsubscribe();
-    TestBed.inject(ApplicationRef).tick();
-    await Promise.resolve();
-
+  it('follows an account switch and never shows the previous account’s members', async () => {
+    const { service, roomId, engine, activateBob, signIn } = await setup();
+    const otherRoom = await engine.asBob.createRoom();
+    const roster = service.membersFor(otherRoom);
+    const here = service.membersFor(roomId);
     expect(roster()).toEqual([]);
-    expect(matrixClient.off as Mock).toHaveBeenCalled();
+    expect(here()).toHaveLength(2);
+
+    activateBob();
+    expect(roster().map((member) => member.userId)).toEqual([engine.bob]);
+
+    signIn([engine.alice]);
+    engine.setLive(engine.bob, false);
+    expect(roster()).toEqual([]);
+
+    signIn([]);
+    expect(here()).toEqual([]);
+    expect(service.knockingFor(roomId)()).toEqual([]);
   });
 
-  it('separates coherent, stale, and unavailable membership presentation', () => {
-    const source = room('!room:hs', [member('@ada:hs', 'Ada')]);
-    const { service, projectionState } = setup(client([source]));
+  it('carries invited and knocking in the snapshot of an available exact target', async () => {
+    const { service, roomId, engine, target } = await setup();
+    await engine.asBob.invite(roomId, '@ann:example.org');
+    await engine.asCarol.knock(roomId, 'Hi');
 
-    expect(service.membersView('!room:hs')).toMatchObject({
+    const snapshot = service.snapshot(target);
+
+    expect(snapshot).toMatchObject({
+      target,
+      availability: 'available',
+      unavailableReason: null,
+    });
+    expect(snapshot.members.map((member) => member.userId)).toEqual([
+      engine.alice,
+      engine.bob,
+    ]);
+    expect(snapshot.invited.map((member) => member.userId)).toEqual([
+      '@ann:example.org',
+    ]);
+    expect(snapshot.knocking.map((request) => request.reason)).toEqual(['Hi']);
+  });
+
+  it('leaves the lists empty when the room is not joined', async () => {
+    const { service, engine } = await setup();
+    const roomId = await engine.asBob.createRoom();
+    await engine.asBob.invite(roomId, engine.alice);
+    await engine.asBob.invite(roomId, '@ann:example.org');
+
+    const snapshot = service.snapshot({ accountId: engine.alice, roomId });
+
+    expect(snapshot).toMatchObject({
+      availability: 'room-unavailable',
+      unavailableReason: 'This room is no longer joined for this account.',
+      members: [],
+      banned: [],
+      invited: [],
+      knocking: [],
+    });
+  });
+
+  it('observes an exact opening account at once, independently of the active account', async () => {
+    const { service, roomId, engine, target, activateBob, signIn } =
+      await setup();
+    activateBob();
+    const seen: RoomMembersSnapshot[] = [];
+    const observation = service
+      .observe(target)
+      .subscribe((value) => seen.push(value));
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].availability).toBe('available');
+
+    await engine.asBob.invite(roomId, engine.carol);
+    await engine.asCarol.join(roomId);
+    TestBed.inject(ApplicationRef).tick();
+    expect(seen.at(-1)?.members.map((member) => member.userId)).toContain(
+      engine.carol,
+    );
+
+    signIn([engine.bob]);
+    TestBed.inject(ApplicationRef).tick();
+    expect(seen.at(-1)).toMatchObject({
+      availability: 'account-unavailable',
+      unavailableReason:
+        'This account is no longer available. The member list remains attached to this account.',
+      members: [],
+    });
+    observation.unsubscribe();
+  });
+
+  it('keeps the members lease for the active account', async () => {
+    const { service } = await setup();
+    const runtime = TestBed.inject(ProjectionRuntime);
+    const subscription = service.runProjection().subscribe();
+
+    await expect(
+      firstValueFrom(
+        runtime
+          .observe('room-administration.members', { kind: 'active-account' })
+          .pipe(filter((state) => state.condition === 'available')),
+      ),
+    ).resolves.toMatchObject({ condition: 'available' });
+    subscription.unsubscribe();
+  });
+
+  it('fails the members lease while a held list cannot be read and recovers on retry', async () => {
+    const { service, roomId } = await setup();
+    const runtime = TestBed.inject(ProjectionRuntime);
+    const condition = (wanted: string) =>
+      firstValueFrom(
+        runtime
+          .observe('room-administration.members', { kind: 'active-account' })
+          .pipe(filter((state) => state.condition === wanted)),
+      );
+    service.membersFor(roomId);
+    const subscription = service.runProjection().subscribe();
+    await condition('available');
+    const membersOf = service.membersOf;
+
+    service.membersOf = () => {
+      throw new Error('synthetic member read');
+    };
+    service.retryProjection();
+    await expect(condition('failed')).resolves.toBeTruthy();
+
+    service.membersOf = membersOf;
+    service.retryProjection();
+    await expect(condition('available')).resolves.toBeTruthy();
+    subscription.unsubscribe();
+  });
+
+  it('separates coherent, stale, and unavailable membership presentation', async () => {
+    const { service, roomId, engine, projectionState } = await setup();
+
+    expect(service.membersView(roomId)).toMatchObject({
       availability: 'coherent',
-      current: [{ userId: '@ada:hs' }],
+      current: [{ userId: engine.alice }, { userId: engine.bob }],
       stale: null,
     });
 
     projectionState.update('members', 'failed', 'retained');
-    expect(service.membersView('!room:hs')).toMatchObject({
+    expect(service.membersView(roomId)).toMatchObject({
       availability: 'stale',
       current: null,
-      stale: [{ userId: '@ada:hs' }],
+      stale: [{ userId: engine.alice }, { userId: engine.bob }],
     });
 
     projectionState.update('members', 'released', 'released');
-    expect(service.membersView('!room:hs')).toEqual({
+    expect(service.membersView(roomId)).toEqual({
       availability: 'unavailable',
       current: null,
       stale: null,
     });
   });
 
-  it('does not label an unavailable empty ban list as authoritative', () => {
-    const { service, projectionState } = setup(client([room('!room:hs', [])]));
+  it('does not label an unavailable empty ban list as authoritative', async () => {
+    const { service, roomId, projectionState } = await setup();
     projectionState.update('bans', 'released', 'released');
 
-    expect(service.bannedView('!room:hs')).toEqual({
+    expect(service.bannedView(roomId)).toEqual({
       availability: 'unavailable',
       current: null,
       stale: null,

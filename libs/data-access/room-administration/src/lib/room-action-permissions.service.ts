@@ -116,11 +116,9 @@ export class RoomActionPermissionsService {
     return this.projection.run();
   }
 
-  /** Reattach this retained projection without adding another lifetime owner. */
+  /** Reconcile this retained projection again without releasing its lease. */
   retryProjection(): void {
-    if (!this.projection.isConnected()) return;
-    this.projection.disconnect();
-    this.projection.connect();
+    this.projection.invalidate();
   }
 
   room(roomId: string): RoomActionPermissions {
