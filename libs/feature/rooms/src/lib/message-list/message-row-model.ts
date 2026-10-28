@@ -38,7 +38,7 @@ export class MessageRowModel {
   private readonly dateFormat = inject(DateTimeFormatService);
 
   constructor(
-    private readonly messages: Signal<MessageView[]>,
+    private readonly messages: Signal<readonly MessageView[]>,
     private readonly firstUnreadId: Signal<string | null>,
     private readonly threadSummaries: Signal<Record<string, ThreadSummary>>,
   ) {}

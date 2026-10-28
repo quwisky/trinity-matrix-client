@@ -119,9 +119,11 @@ export class ConversationTimelineStub implements ConversationTimeline {
   );
   readonly loadEvent: ConversationTimeline['loadEvent'] = vi.fn(() => of(true));
   readonly setTyping: ConversationTimeline['setTyping'] = vi.fn();
-  readonly rawEvent: ConversationTimeline['rawEvent'] = vi.fn(() => null);
+  readonly eventSource: ConversationTimeline['eventSource'] = vi.fn(() =>
+    of(null),
+  );
   readonly reactionDetails: ConversationTimeline['reactionDetails'] = vi.fn(
-    () => [],
+    () => of([]),
   );
   readonly setLiveView: ConversationTimeline['setLiveView'] = vi.fn();
   readonly open = vi.fn((roomId: string) => {

@@ -1,4 +1,5 @@
 import {
+  computed,
   type EnvironmentProviders,
   inject,
   type Provider,
@@ -47,6 +48,7 @@ import {
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   ROOM_LIST_STYLE,
+  RoomListStore,
   type RoomLibraryGovernancePolicy,
   provideRoomLibraryConfigEntries,
   provideRoomLibraryPreferences,
@@ -55,9 +57,11 @@ import {
   CONVERSATION_MESSAGE_POLICY,
   CONVERSATION_PIN_POLICY,
   CONVERSATION_PRIVACY_PREFERENCES,
+  CONVERSATION_TYPING,
   ConversationRuntime,
   type ConversationMessagePolicy,
   type ConversationPinPolicy,
+  type ConversationTypingPort,
   provideConversationPrivacyPreferences,
 } from '@trinity/data-access/timeline';
 import {
@@ -177,6 +181,33 @@ export function applicationCapabilityProviders(
           canMutate: (key) => governance.canMutate(key),
           authorize: (key, operation, eventId) =>
             governance.authorize(key, operation, eventId),
+        };
+      },
+    },
+    {
+      provide: CONVERSATION_TYPING,
+      useFactory: (): ConversationTypingPort => {
+        const rooms = inject(RoomListStore);
+        return {
+          typing: (accountId, roomId) => {
+            const typing = rooms.typing(accountId);
+            return computed(
+              () =>
+                (typing()[roomId] ?? []).filter(
+                  (typist) => typist.userId !== accountId,
+                ),
+              // Typing in another room re-emits the map; this room's list must not re-render.
+              {
+                equal: (a, b) =>
+                  a.length === b.length &&
+                  a.every(
+                    (typist, i) =>
+                      typist.userId === b[i].userId &&
+                      typist.displayName === b[i].displayName,
+                  ),
+              },
+            );
+          },
         };
       },
     },

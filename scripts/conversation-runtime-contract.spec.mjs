@@ -97,8 +97,9 @@ describe('Conversation Runtime production boundary', () => {
     const readiness = source(readinessImplementation);
 
     expect(factory).toContain('this.matrix.clientFor(key.accountId)');
-    expect(factory).toContain('readiness.start(key.roomId, client, timeline);');
-    expect(readiness).toContain('timeline.open(this.roomId, client)');
+    expect(factory).toContain('timeline.open(key);');
+    expect(factory).toContain('readiness.start(key, timeline);');
+    expect(readiness).toContain('this.session.status(this.key.accountId)');
   });
 
   it('binds message search to the same exact Conversation child', () => {

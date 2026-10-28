@@ -234,10 +234,13 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       if (!room) return of(engineFail(localFailure('message-unavailable')));
       let stopped = false;
       return from(
-        // Skipped when unsubscribed while it waited behind another page.
-        this.paged(client, room, async () => {
-          if (!stopped) await scrollbackLive(client, room, count);
-        }),
+        // Skipped, never shown as paging, when unsubscribed while queued behind another page.
+        this.paged(
+          client,
+          room,
+          () => scrollbackLive(client, room, count),
+          () => stopped,
+        ),
       ).pipe(
         map(() => engineOk({ startReached: atStart(room) })),
         finalize(() => (stopped = true)),
@@ -258,18 +261,33 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       if (loaded() || atStart(room)) return of(engineOk({ found: loaded() }));
       let stopped = false;
       return from(
-        this.paged(client, room, async () => {
-          for (let page = 0; page < maxPages && !stopped; page++) {
-            if (atStart(room)) break;
-            // Show the previous page before the next request, so live changes keep flowing.
-            if (page > 0) this.flushFeeds(client, roomId);
-            await scrollbackLive(client, room, SCROLLBACK);
-            if (loaded()) return true;
-          }
-          return false;
-        }),
+        this.paged(
+          client,
+          room,
+          async () => {
+            for (let page = 0; page < maxPages && !stopped; page++) {
+              if (atStart(room)) break;
+              // Show the previous page before the next request, so live changes keep flowing.
+              if (page > 0) this.flushFeeds(client, roomId);
+              const live = room.getLiveTimeline();
+              const before = live.getEvents().length;
+              await scrollbackLive(client, room, SCROLLBACK);
+              if (loaded()) return true;
+              // A page that brought nothing to the same timeline: the start of the room. A
+              // reset dropped the page instead, so paging goes on from the new timeline.
+              if (
+                room.getLiveTimeline() === live &&
+                live.getEvents().length === before
+              ) {
+                break;
+              }
+            }
+            return false;
+          },
+          () => stopped,
+        ),
       ).pipe(
-        map((found) => engineOk({ found })),
+        map((found) => engineOk({ found: found === true })),
         finalize(() => (stopped = true)),
       );
     });
@@ -430,9 +448,11 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     client: MatrixClient,
     room: Room,
     page: () => Promise<T>,
-  ): Promise<T> {
+    skip: () => boolean = () => false,
+  ): Promise<T | undefined> {
     const roomId = room.roomId;
-    const run = async (): Promise<T> => {
+    const run = async (): Promise<T | undefined> => {
+      if (skip()) return undefined;
       this.setPaging(client, roomId, true);
       try {
         return await page();
@@ -681,7 +701,10 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         backPagination: this.backPagination(client, room),
         room: roomState(),
       });
-      void resolveShields(checked);
+      // Nothing new to check once the crypto store has answered: no crypto call per flush.
+      if (checked.length > 0 || !encryption.answered(roomId)) {
+        void resolveShields(checked);
+      }
     };
     // A page shows only with the pagination state it ends in (T3): once it has landed,
     // changes wait the few microtasks until the flush that ends the page.
@@ -731,6 +754,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       rows.noteReceipt(event);
       schedule();
     };
+    // A redaction, or a rewind or trim swapping the live timeline, can change any row.
     const onRedaction = (): void => {
       rows.markAll();
       schedule();
@@ -771,6 +795,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     room.on(RoomEvent.LocalEchoUpdated, onLocalEcho);
     room.on(RoomEvent.Receipt, onReceipt);
     room.on(RoomEvent.Redaction, onRedaction);
+    room.on(RoomEvent.TimelineReset, onRedaction);
     room.on(RoomStateEvent.Members, onMember);
     room.on(RoomStateEvent.Events, onStateEvent);
     client.on(MatrixEventEvent.Decrypted, onEventChanged);
@@ -792,6 +817,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       room.off(RoomEvent.LocalEchoUpdated, onLocalEcho);
       room.off(RoomEvent.Receipt, onReceipt);
       room.off(RoomEvent.Redaction, onRedaction);
+      room.off(RoomEvent.TimelineReset, onRedaction);
       room.off(RoomStateEvent.Members, onMember);
       room.off(RoomStateEvent.Events, onStateEvent);
       client.off(MatrixEventEvent.Decrypted, onEventChanged);
