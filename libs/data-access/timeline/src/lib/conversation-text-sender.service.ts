@@ -42,7 +42,7 @@ const LIVE = { kind: 'live' } as const;
 const NO_THREAD = { threadRootId: null } as const;
 
 /** The engine's form of message content a builder in `@trinity/util/matrix` made. */
-function outgoingText(content: Record<string, unknown>): OutgoingText {
+export function outgoingText(content: Record<string, unknown>): OutgoingText {
   const mentions = (content['m.mentions'] ?? {}) as {
     readonly user_ids?: readonly string[];
     readonly room?: boolean;

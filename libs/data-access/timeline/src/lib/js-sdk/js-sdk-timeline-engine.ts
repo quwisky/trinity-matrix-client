@@ -7,16 +7,18 @@ import {
   M_POLL_END,
   M_POLL_RESPONSE,
   M_POLL_START,
+  MatrixEvent,
   MatrixEventEvent,
   ReceiptType,
   RoomEvent,
   RoomStateEvent,
+  ThreadEvent,
   type EventTimeline,
   type MatrixClient,
-  type MatrixEvent,
   type Room,
   type RoomMember,
   type RoomState,
+  type Thread,
 } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
@@ -51,15 +53,18 @@ import {
   voiceMessageContent,
   type EngineFailure,
   type EngineResult,
+  type VectorDiff,
 } from '@trinity/util/matrix';
 import type { MessageShield } from '../message-presentation';
-import { shieldCodeOf, shieldKey } from '../shield-presentation';
+import { shieldKey, shieldText } from '../shield-presentation';
 import type {
   EventTimelineItem,
   OutgoingMessage,
   OutgoingText,
   Profile,
   ReactionDetailGroup,
+  ShieldCode,
+  ThreadSummaryInfo,
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
@@ -90,10 +95,11 @@ import {
   resolvedShields,
   shieldsToCheck,
   shownContent,
-  shownShield,
+  shownShieldCode,
   shownSubject,
   unencryptedShieldFor,
 } from './shields';
+import { threadSummaryInfo, threadSummaryRevision } from './thread-summary';
 import { profileOf, toTimelineItem, transactionIdOf } from './timeline-item';
 import { TimelineRowCache } from './timeline-row-cache';
 
@@ -159,6 +165,11 @@ function plainEvent(event: MatrixEvent): Readonly<Record<string, unknown>> {
 /** A threaded reply that lives only in its thread (not the root, not an `m.in_reply_to`). */
 function isThreadReply(event: MatrixEvent): boolean {
   return event.threadRootId !== undefined && !event.isThreadRoot;
+}
+
+/** The pagination a page runs under: the room's live timeline, or one of its threads. */
+function pageKey(roomId: string, focus: TimelineFocus): string {
+  return focus.kind === 'live' ? roomId : `${roomId}\x1f${focus.rootEventId}`;
 }
 
 function atStart(room: Room): boolean {
@@ -293,6 +304,8 @@ function outgoing(
 interface Feed {
   readonly client: MatrixClient;
   readonly roomId: string;
+  /** See {@link pageKey}. */
+  readonly pageKey: string;
   /** Emits the current items now, dropping a queued emission. */
   flush(): void;
   /**
@@ -314,13 +327,60 @@ export class JsSdkTimelineEngine implements TimelineEngine {
   // Resolved on use: the media service needs the session's MatrixClientService.
   private readonly injector = inject(Injector);
   private readonly feeds = new Set<Feed>();
-  /** The rooms with a page in flight, per client. */
+  /** The {@link pageKey}s with a page in flight, per client. */
   private readonly paging = new WeakMap<MatrixClient, Set<string>>();
-  /** The last page queued per room, per client: a room pages one page at a time. */
+  /** The last page queued per {@link pageKey}, per client: each pages one page at a time. */
   private readonly queues = new WeakMap<
     MatrixClient,
     Map<string, Promise<unknown>>
   >();
+  /** Threads whose last page brought nothing: hidden replies the count still includes. */
+  private readonly exhausted = new WeakSet<Thread>();
+  /**
+   * Own thread sends not yet in their thread. The SDK keeps a threaded local echo out of every
+   * timeline until its remote echo syncs into the thread.
+   *
+   * shortcut: pruned on each thread projection, send and cancel of the room, so a send that
+   * syncs while no thread is open stays until the next; freed with its Room. Upgrade to a
+   * per-echo status listener if that ever holds more than a handful.
+   */
+  private readonly threadEchoes = new WeakMap<
+    Room,
+    readonly { readonly rootId: string; readonly echo: MatrixEvent }[]
+  >();
+
+  /** The room's tracked thread sends that are neither cancelled nor in their thread yet. */
+  private pruneThreadEchoes(
+    room: Room,
+  ): readonly { readonly rootId: string; readonly echo: MatrixEvent }[] {
+    const pending = (this.threadEchoes.get(room) ?? []).filter(
+      ({ rootId, echo }) => {
+        if (echo.status === EventStatus.CANCELLED) return false;
+        const events = room.getThread(rootId)?.events ?? [];
+        return !events.some((e) => e === echo || e.getId() === echo.getId());
+      },
+    );
+    if (pending.length) this.threadEchoes.set(room, pending);
+    else this.threadEchoes.delete(room);
+    return pending;
+  }
+
+  /** The thread's root, its displayable replies, then its own sends still on their way. */
+  private threadEvents(
+    room: Room,
+    rootId: string,
+    thread: Thread | null,
+  ): MatrixEvent[] {
+    const replies = (thread?.events ?? []).filter(isDisplayableMessage);
+    const ids = new Set(replies.map((e) => e.getId()));
+    const root = thread?.rootEvent ?? room.findEventById(rootId);
+    const pending = this.pruneThreadEchoes(room);
+    return [
+      ...(root && !ids.has(root.getId()) ? [root] : []),
+      ...replies,
+      ...pending.filter((p) => p.rootId === rootId).map((p) => p.echo),
+    ];
+  }
 
   timeline(
     accountId: string,
@@ -329,29 +389,60 @@ export class JsSdkTimelineEngine implements TimelineEngine {
   ): Observable<TimelineUpdate> {
     return defer(() => {
       const client = this.clients.clientFor(accountId);
-      // shortcut: a thread focus reads as unavailable until threads move here (PR 3, T23).
-      if (!client || focus.kind !== 'live') {
-        return concat(of(UNAVAILABLE), NEVER);
+      if (!client) return concat(of(UNAVAILABLE), NEVER);
+      return this.onceRoom<TimelineUpdate>(
+        client,
+        roomId,
+        (subscriber) => subscriber.next(UNAVAILABLE),
+        (room, subscriber) => this.attach(client, room, focus, subscriber),
+      );
+    });
+  }
+
+  threadSummaries(
+    accountId: string,
+    roomId: string,
+  ): Observable<readonly VectorDiff<ThreadSummaryInfo>[]> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      const none: readonly VectorDiff<ThreadSummaryInfo>[] = [
+        { op: 'reset', values: [] },
+      ];
+      if (!client) return concat(of(none), NEVER);
+      return this.onceRoom<readonly VectorDiff<ThreadSummaryInfo>[]>(
+        client,
+        roomId,
+        (subscriber) => subscriber.next(none),
+        (room, subscriber) => this.attachSummaries(client, room, subscriber),
+      );
+    });
+  }
+
+  /** Runs `attach` on the room once the client holds it, and `missing` until then. */
+  private onceRoom<T>(
+    client: MatrixClient,
+    roomId: string,
+    missing: (subscriber: Subscriber<T>) => void,
+    attach: (room: Room, subscriber: Subscriber<T>) => () => void,
+  ): Observable<T> {
+    return new Observable<T>((subscriber) => {
+      let detach: (() => void) | null = null;
+      const onRoom = (room: Room): void => {
+        if (room.roomId !== roomId || detach) return;
+        client.off(ClientEvent.Room, onRoom);
+        detach = attach(room, subscriber);
+      };
+      const room = client.getRoom(roomId);
+      if (room) {
+        detach = attach(room, subscriber);
+      } else {
+        missing(subscriber);
+        client.on(ClientEvent.Room, onRoom);
       }
-      return new Observable<TimelineUpdate>((subscriber) => {
-        let detach: (() => void) | null = null;
-        const onRoom = (room: Room): void => {
-          if (room.roomId !== roomId || detach) return;
-          client.off(ClientEvent.Room, onRoom);
-          detach = this.attach(client, room, subscriber);
-        };
-        const room = client.getRoom(roomId);
-        if (room) {
-          detach = this.attach(client, room, subscriber);
-        } else {
-          subscriber.next(UNAVAILABLE);
-          client.on(ClientEvent.Room, onRoom);
-        }
-        return () => {
-          client.off(ClientEvent.Room, onRoom);
-          detach?.();
-        };
-      });
+      return () => {
+        client.off(ClientEvent.Room, onRoom);
+        detach?.();
+      };
     });
   }
 
@@ -362,17 +453,38 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     count: number,
   ): Observable<EngineResult<{ readonly startReached: boolean }>> {
     return this.command(accountId, (client) => {
-      if (focus.kind !== 'live') {
-        return of(engineFail(localFailure('unsupported')));
-      }
       const room = client.getRoom(roomId);
       if (!room) return of(engineFail(localFailure('message-unavailable')));
       let stopped = false;
+      if (focus.kind === 'thread') {
+        const thread = room.getThread(focus.rootEventId);
+        if (!thread || !this.canPageThread(thread)) {
+          return of(engineOk({ startReached: true }));
+        }
+        return from(
+          this.paged(
+            client,
+            pageKey(roomId, focus),
+            async () => {
+              const before = thread.events.length;
+              await client.paginateEventTimeline(thread.liveTimeline, {
+                backwards: true,
+                limit: count,
+              });
+              if (thread.events.length === before) this.exhausted.add(thread);
+            },
+            () => stopped,
+          ),
+        ).pipe(
+          map(() => engineOk({ startReached: !this.canPageThread(thread) })),
+          finalize(() => (stopped = true)),
+        );
+      }
       return from(
         // Skipped, never shown as paging, when unsubscribed while queued behind another page.
         this.paged(
           client,
-          room,
+          roomId,
           () => scrollbackLive(client, room, count),
           () => stopped,
         ),
@@ -398,7 +510,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       return from(
         this.paged(
           client,
-          room,
+          roomId,
           async () => {
             for (let page = 0; page < maxPages && !stopped; page++) {
               if (atStart(room)) break;
@@ -586,7 +698,8 @@ export class JsSdkTimelineEngine implements TimelineEngine {
           ? of(loaded)
           : from(fetchRoomEvent(client, roomId, replyTo));
       });
-      return target.pipe(
+      return this.ensureThread(client, room, options.threadRootId).pipe(
+        switchMap(() => target),
         switchMap((event) => {
           const { type, content } = outgoing(room, message, replyTo, event);
           const transactionId = options.transactionId ?? client.makeTxnId();
@@ -605,21 +718,29 @@ export class JsSdkTimelineEngine implements TimelineEngine {
                   content as never,
                   transactionId,
                 );
+          const rootId = options.threadRootId;
+          const echo = rootId && room.getEventForTxnId(transactionId);
+          if (rootId && echo) {
+            const echoes = this.pruneThreadEchoes(room);
+            this.threadEchoes.set(room, [...echoes, { rootId, echo }]);
+          }
           void this.settleFeeds(client, roomId);
           return this.settled(
             client,
             roomId,
-            request.then(
-              ({ event_id }) =>
-                engineOk({ transactionId, eventId: event_id ?? null }),
-              (error: unknown) => {
-                // The echo stays, unsent, with its send state.
-                if (room.getEventForTxnId(transactionId)) {
-                  return engineOk({ transactionId, eventId: null });
-                }
-                throw error;
-              },
-            ),
+            request
+              .finally(() => this.pruneThreadEchoes(room))
+              .then(
+                ({ event_id }) =>
+                  engineOk({ transactionId, eventId: event_id ?? null }),
+                (error: unknown) => {
+                  // The echo stays, unsent, with its send state.
+                  if (room.getEventForTxnId(transactionId)) {
+                    return engineOk({ transactionId, eventId: null });
+                  }
+                  throw error;
+                },
+              ),
           );
         }),
       );
@@ -724,6 +845,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       try {
         // CANCELLED stops the reconnect resend; the caller lets go of any text it held.
         client.cancelPendingEvent(echo);
+        this.pruneThreadEchoes(room);
         return engineOk(null);
       } catch {
         // SENDING means the request may already have crossed the network boundary.
@@ -826,6 +948,43 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     });
   }
 
+  /**
+   * Creates the thread of `rootId` when it has none. matrix-js-sdk forms no thread from the
+   * sender's own first reply: its echo would leave the room's timeline and land nowhere. Done
+   * only on send, so a thread opened and abandoned leaves no empty thread behind.
+   */
+  private ensureThread(
+    client: MatrixClient,
+    room: Room,
+    rootId: string | null,
+  ): Observable<unknown> {
+    return defer(() => {
+      if (!rootId || room.getThread(rootId)) return of(null);
+      const local = room.findEventById(rootId);
+      if (local) return of(room.createThread(rootId, local, [], false));
+      // A root out of memory (an old thread) is fetched; when that fails, nothing is sent.
+      return from(client.fetchRoomEvent(room.roomId, rootId)).pipe(
+        map((raw) =>
+          room.createThread(rootId, new MatrixEvent(raw), [], false),
+        ),
+      );
+    });
+  }
+
+  /** Whether `thread` has older replies left: the server's count settles a stale token. */
+  private canPageThread(thread: Thread): boolean {
+    // A redacted reply lowers the server count, so it does not count as loaded either.
+    const loaded = thread.events.filter(
+      (e) =>
+        isDisplayableMessage(e) && e.getId() !== thread.id && !e.isRedacted(),
+    ).length;
+    return (
+      !this.exhausted.has(thread) &&
+      thread.liveTimeline.getPaginationToken(Direction.Backward) !== null &&
+      loaded < thread.length
+    );
+  }
+
   /** A cold command: `account-not-live` without a client, a thrown error as `request-failed`. */
   private command<T>(
     accountId: string,
@@ -851,40 +1010,39 @@ export class JsSdkTimelineEngine implements TimelineEngine {
    */
   private paged<T>(
     client: MatrixClient,
-    room: Room,
+    key: string,
     page: () => Promise<T>,
     skip: () => boolean = () => false,
   ): Promise<T | undefined> {
-    const roomId = room.roomId;
     const run = async (): Promise<T | undefined> => {
       if (skip()) return undefined;
-      this.setPaging(client, roomId, true);
+      this.setPaging(client, key, true);
       try {
         return await page();
       } finally {
-        this.setPaging(client, roomId, false);
+        this.setPaging(client, key, false);
       }
     };
     const queues =
       this.queues.get(client) ?? new Map<string, Promise<unknown>>();
     this.queues.set(client, queues);
-    const previous = queues.get(roomId);
+    const previous = queues.get(key);
     const result = previous ? previous.then(run, run) : run();
     const tail = result.catch(() => undefined);
-    queues.set(roomId, tail);
+    queues.set(key, tail);
     void tail.then(() => {
-      if (queues.get(roomId) === tail) queues.delete(roomId);
+      if (queues.get(key) === tail) queues.delete(key);
     });
     return result;
   }
 
-  private setPaging(client: MatrixClient, roomId: string, on: boolean): void {
-    const rooms = this.paging.get(client) ?? new Set<string>();
-    this.paging.set(client, rooms);
-    if (on) rooms.add(roomId);
-    else rooms.delete(roomId);
+  private setPaging(client: MatrixClient, key: string, on: boolean): void {
+    const keys = this.paging.get(client) ?? new Set<string>();
+    this.paging.set(client, keys);
+    if (on) keys.add(key);
+    else keys.delete(key);
     for (const feed of this.feeds) {
-      if (feed.client !== client || feed.roomId !== roomId) continue;
+      if (feed.client !== client || feed.pageKey !== key) continue;
       if (on) feed.announce();
       else feed.flush();
     }
@@ -941,33 +1099,151 @@ export class JsSdkTimelineEngine implements TimelineEngine {
   private backPagination(
     client: MatrixClient,
     room: Room,
+    focus: TimelineFocus,
   ): 'idle' | 'paginating' | 'start-reached' {
-    if (this.paging.get(client)?.has(room.roomId)) return 'paginating';
+    if (this.paging.get(client)?.has(pageKey(room.roomId, focus))) {
+      return 'paginating';
+    }
+    if (focus.kind === 'thread') {
+      const thread = room.getThread(focus.rootEventId);
+      return thread && this.canPageThread(thread) ? 'idle' : 'start-reached';
+    }
     return atStart(room) ? 'start-reached' : 'idle';
   }
 
-  /** Projects `room` into `subscriber` until the returned teardown runs. */
+  /**
+   * Projects the room's thread summaries into `subscriber` until the returned teardown runs.
+   * A summary is rebuilt only when its fingerprint changes, and the list re-emitted only then.
+   */
+  private attachSummaries(
+    client: MatrixClient,
+    room: Room,
+    subscriber: Subscriber<readonly VectorDiff<ThreadSummaryInfo>[]>,
+  ): () => void {
+    const roomId = room.roomId;
+    const encryption = new RoomEncryptionFlags();
+    const cache = new Map<
+      string,
+      { readonly rev: string; readonly summary: ThreadSummaryInfo }
+    >();
+    let emitted: readonly ThreadSummaryInfo[] | null = null;
+
+    const refresh = (): void => {
+      const encrypted = encryption.isEncrypted(room);
+      const summaries = room.getThreads().map((thread) => {
+        const rev = `${threadSummaryRevision(room, thread)}\x1f${encrypted}`;
+        const cached = cache.get(thread.id);
+        if (cached?.rev === rev) return cached.summary;
+        const summary = threadSummaryInfo(room, thread, encrypted);
+        cache.set(thread.id, { rev, summary });
+        return summary;
+      });
+      const ids = new Set(summaries.map((s) => s.rootEventId));
+      for (const id of [...cache.keys()]) if (!ids.has(id)) cache.delete(id);
+      if (
+        emitted?.length === summaries.length &&
+        summaries.every((summary, i) => summary === emitted?.[i])
+      ) {
+        return;
+      }
+      emitted = summaries;
+      subscriber.next([{ op: 'reset', values: summaries }]);
+    };
+    const onDecrypted = (event: MatrixEvent): void => {
+      if (event.getRoomId() === roomId) refresh();
+    };
+    // The fingerprint names no participant: a member change rebuilds the summaries naming them.
+    const onMember = (
+      _event: MatrixEvent,
+      _state: RoomState,
+      member: RoomMember,
+    ): void => {
+      if (member.roomId !== roomId) return;
+      let named = false;
+      for (const [id, { summary }] of cache) {
+        if (summary.participants.includes(member.userId)) {
+          cache.delete(id);
+          named = true;
+        }
+      }
+      if (named) refresh();
+    };
+    // The room re-emits its threads' events; Receipt and UnreadNotifications move the counts.
+    const roomEvents = [
+      ThreadEvent.New,
+      ThreadEvent.Update,
+      ThreadEvent.NewReply,
+      RoomEvent.Timeline,
+      RoomEvent.UnreadNotifications,
+      RoomEvent.Receipt,
+    ] as const;
+    for (const name of roomEvents) room.on(name, refresh);
+    room.on(RoomStateEvent.Members, onMember);
+    client.on(MatrixEventEvent.Decrypted, onDecrypted);
+    let closed = false;
+    void encryption.refresh(client.getCrypto?.(), roomId).then((encrypted) => {
+      if (encrypted && !closed) refresh();
+    });
+    refresh();
+    return () => {
+      closed = true;
+      for (const name of roomEvents) room.off(name, refresh);
+      room.off(RoomStateEvent.Members, onMember);
+      client.off(MatrixEventEvent.Decrypted, onDecrypted);
+    };
+  }
+
+  /** Projects `room` in `focus` into `subscriber` until the returned teardown runs. */
   private attach(
     client: MatrixClient,
     room: Room,
+    focus: TimelineFocus,
     subscriber: Subscriber<TimelineUpdate>,
   ): () => void {
     const roomId = room.roomId;
+    const rootId = focus.kind === 'thread' ? focus.rootEventId : null;
     const rows = new TimelineRowCache<EventTimelineItem>({
       poll: (item) => item.content.kind === 'poll',
       receipts: (item) => item.readBy.length > 0,
     });
     const encryption = new RoomEncryptionFlags();
     // Captured once, so the read marker stays where it was when the subscription opened.
-    const readMarker = fullyReadOf(room);
+    // A thread has no read marker.
+    const readMarker = rootId === null ? fullyReadOf(room) : null;
     let projectedTimeline: EventTimeline | null = null;
     let projectedEncryption = '';
     let relevantSenders = new Set<string>();
     let shieldsChecked = false;
     let closed = false;
 
+    /** The open thread, bound to once it exists: a reply, or our first send, can form it. */
+    let thread: Thread | null = null;
+    const currentThread = (): Thread | null => {
+      if (rootId === null) return null;
+      const found = room.getThread(rootId) ?? null;
+      if (found !== thread) bindThread(found);
+      return thread;
+    };
+    const bindThread = (next: Thread | null): void => {
+      thread?.off(ThreadEvent.Update, onThreadChanged);
+      thread?.off(ThreadEvent.NewReply, onThreadChanged);
+      thread?.off(RoomEvent.Timeline, onTimeline);
+      thread = next;
+      thread?.on(ThreadEvent.Update, onThreadChanged);
+      thread?.on(ThreadEvent.NewReply, onThreadChanged);
+      thread?.on(RoomEvent.Timeline, onTimeline);
+    };
+    /** Every event the focus holds, hidden ones included. */
+    const focusEvents = (): MatrixEvent[] => {
+      if (rootId === null) return room.getLiveTimeline().getEvents();
+      const current = currentThread();
+      const root = current?.rootEvent ?? room.findEventById(rootId);
+      const events = current?.events ?? [];
+      return root && !events.includes(root) ? [root, ...events] : events;
+    };
+
     const roomState = (): TimelineRoomState => {
-      const events = room.getLiveTimeline().getEvents();
+      const events = focusEvents();
       return {
         encryption: encryption.isEncrypted(room)
           ? 'encrypted'
@@ -986,6 +1262,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       event: MatrixEvent,
       id: string,
       shield: MessageShield | null,
+      code: ShieldCode | null,
       subjectId: string,
       roomEncrypted: boolean,
     ): EventTimelineItem | null => {
@@ -998,13 +1275,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         previous?.content === content && previous.rest === revision;
       const item = unchanged
         ? previous.view
-        : toTimelineItem(
-            client,
-            room,
-            event,
-            shield && shieldCodeOf(shield),
-            roomEncrypted,
-          );
+        : toTimelineItem(client, room, event, code, roomEncrypted);
       rows.store(
         id,
         {
@@ -1058,8 +1329,14 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       readonly items: TimelineItem[];
       readonly checked: MatrixEvent[];
     } => {
-      const liveTimeline = room.getLiveTimeline();
-      const events = liveTimeline.getEvents();
+      const liveTimeline =
+        rootId === null
+          ? room.getLiveTimeline()
+          : (currentThread()?.liveTimeline ?? null);
+      const events =
+        rootId === null
+          ? room.getLiveTimeline().getEvents()
+          : this.threadEvents(room, rootId, currentThread());
       const roomEncrypted = encryption.isEncrypted(room);
       const markFor = unencryptedShieldFor(room, roomEncrypted);
       // A replaced timeline or an encryption change can change any row.
@@ -1079,7 +1356,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       let unreadAt = -1;
       for (let i = 0; i < events.length; i++) {
         const event = events[i];
-        if (isThreadReply(event)) continue;
+        if (rootId === null && isThreadReply(event)) continue;
         const id = event.getId() ?? '';
         if (!isDisplayableMessage(event)) {
           if (!isPresentableSystemEvent(event)) continue;
@@ -1098,20 +1375,29 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         }
         const shown = shownSubject(event);
         const subjectId = shown.getId() ?? '';
-        const shield = markFor(event, shown) ?? shownShield(shown);
+        const mark = markFor(event, shown);
+        const code = mark ? null : shownShieldCode(shown);
+        const shield = mark ?? (code && shieldText(code));
         const reused = rows.reusable(id, event.replyEventId, shield, subjectId);
         if (reused) {
           if (reused.view) items.push(reused.view);
           continue;
         }
         checked.push(event);
-        const item = messageItem(event, id, shield, subjectId, roomEncrypted);
+        const item = messageItem(
+          event,
+          id,
+          shield,
+          code,
+          subjectId,
+          roomEncrypted,
+        );
         if (item) items.push(item);
       }
       const { pruned, rechecked } = rows.endPass();
       if (pruned || rechecked > 0) relevantSenders = rows.renderedMembers();
       if (unreadAt >= 0) items.splice(unreadAt, 0, READ_MARKER);
-      if (atStart(room)) items.unshift(TIMELINE_START);
+      if (rootId === null && atStart(room)) items.unshift(TIMELINE_START);
       return { items, checked };
     };
 
@@ -1126,7 +1412,10 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         if (encrypted && !closed) flusher.schedule();
       });
       const encrypted = events
-        .filter((e) => isDisplayableMessage(e) && !isThreadReply(e))
+        .filter(
+          (e) =>
+            isDisplayableMessage(e) && (rootId !== null || !isThreadReply(e)),
+        )
         .flatMap(shieldsToCheck);
       // Shields are kept per event, so the first check of a subscription asks afresh.
       const fresh = !shieldsChecked;
@@ -1145,7 +1434,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       subscriber.next({
         kind: 'items',
         diffs: [{ op: 'reset', values: items }],
-        backPagination: this.backPagination(client, room),
+        backPagination: this.backPagination(client, room, focus),
         room: roomState(),
       });
       // Nothing new to check once the crypto store has answered: no crypto call per flush.
@@ -1167,9 +1456,11 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       if (!pageLanded) emit();
     });
     const schedule = (): void => flusher.schedule();
+    const key = pageKey(roomId, focus);
     const feed: Feed = {
       client,
       roomId,
+      pageKey: key,
       flush: () => {
         pageLanded = false;
         flusher.cancel();
@@ -1188,7 +1479,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         subscriber.next({
           kind: 'items',
           diffs: [],
-          backPagination: this.backPagination(client, room),
+          backPagination: this.backPagination(client, room, focus),
           room: roomState(),
         }),
     };
@@ -1200,7 +1491,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       toStart?: boolean,
       removed?: boolean,
     ): void => {
-      if (toStart && this.paging.get(client)?.has(roomId)) pageLanded = true;
+      if (toStart && this.paging.get(client)?.has(key)) pageLanded = true;
       if (removed) rows.markAll();
       else rows.noteEvent(event);
       schedule();
@@ -1251,7 +1542,12 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     };
     // A trust change can flip any shield: re-resolve them all.
     const onTrust = (): void => {
-      void resolveShields(room.getLiveTimeline().getEvents(), true);
+      void resolveShields(focusEvents(), true);
+    };
+    // A thread's count, root or replies changed; the few rows it holds are all re-checked.
+    const onThreadChanged = (): void => {
+      rows.markAll();
+      schedule();
     };
 
     room.on(RoomEvent.Timeline, onTimeline);
@@ -1266,6 +1562,8 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     client.on(CryptoEvent.UserTrustStatusChanged, onTrust);
     client.on(CryptoEvent.DevicesUpdated, onTrust);
     client.on(CryptoEvent.KeysChanged, onTrust);
+    // A remote reply, or our first send, can form the thread after it opened.
+    if (rootId !== null) room.on(ThreadEvent.New, onThreadChanged);
     this.feeds.add(feed);
     // Members sync lazily; the senders' profiles arrive as RoomStateEvent.Members.
     void room.loadMembersIfNeeded().catch(() => undefined);
@@ -1289,6 +1587,16 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       client.off(CryptoEvent.UserTrustStatusChanged, onTrust);
       client.off(CryptoEvent.DevicesUpdated, onTrust);
       client.off(CryptoEvent.KeysChanged, onTrust);
+      room.off(ThreadEvent.New, onThreadChanged);
+      // As today's thread panel: closing the thread forgets that its pages ran dry.
+      const closing = rootId === null ? null : room.getThread(rootId);
+      if (
+        closing &&
+        ![...this.feeds].some((f) => f.client === client && f.pageKey === key)
+      ) {
+        this.exhausted.delete(closing);
+      }
+      bindThread(null);
     };
   }
 }

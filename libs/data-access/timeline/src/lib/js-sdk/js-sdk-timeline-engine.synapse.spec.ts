@@ -266,6 +266,24 @@ describe.skipIf(!baseUrl)('JsSdkTimelineEngine against Synapse', () => {
                 { msgtype: 'm.text', body },
               )) as { event_id: string }
             ).event_id,
+          sendInThread: async (roomId, rootId, body) =>
+            (
+              (await cs(
+                bob.accessToken,
+                'PUT',
+                `${room(roomId)}/send/m.room.message/${localpart('txn')}`,
+                {
+                  msgtype: 'm.text',
+                  body,
+                  'm.relates_to': {
+                    rel_type: 'm.thread',
+                    event_id: rootId,
+                    is_falling_back: true,
+                    'm.in_reply_to': { event_id: rootId },
+                  },
+                },
+              )) as { event_id: string }
+            ).event_id,
           react: async (roomId, eventId, key) => {
             await cs(
               bob.accessToken,
