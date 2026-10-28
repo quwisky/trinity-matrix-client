@@ -74,7 +74,7 @@ export class ImagePackManagementService {
     if (event.getType() === IMAGE_PACK_ROOMS_EVENT_TYPE) {
       const client = this.projection.client();
       if (client) {
-        this.selections.clear(client);
+        this.selections.clear(accountOf(client));
       }
       this.projection.schedule();
     } else if (event.getType() === LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE) {
@@ -97,7 +97,7 @@ export class ImagePackManagementService {
     },
     rebuild: (client) => {
       this.installedState.set(
-        readManagedImagePacks(client, this.selections.get(client)),
+        readManagedImagePacks(client, this.selections.get(accountOf(client))),
       );
     },
     reset: () => this.installedState.set([]),
@@ -106,7 +106,7 @@ export class ImagePackManagementService {
   constructor() {
     effect(() => {
       const client = this.projection.client();
-      if (client) this.selections.get(client);
+      if (client) this.selections.get(accountOf(client));
       if (this.projection.isConnected()) this.projection.schedule();
     });
   }
@@ -253,7 +253,10 @@ export class ImagePackManagementService {
         IMAGE_PACK_ROOMS_EVENT_TYPE,
       );
       if (verified !== null && sameJsonDocument(verified, next)) {
-        this.selections.set(client, { present: true, content: verified });
+        this.selections.set(accountOf(client), {
+          present: true,
+          content: verified,
+        });
         this.installedState.set(
           readManagedImagePacks(client, { present: true, content: verified }),
         );
@@ -339,4 +342,9 @@ function boundedRoomName(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, 256) : null;
+}
+
+/** The selection store's key for a client: its account (user) ID. */
+function accountOf(client: MatrixClient): string {
+  return client.getUserId() ?? '';
 }

@@ -1,5 +1,4 @@
 import { Injectable, signal, type WritableSignal } from '@angular/core';
-import type { MatrixClient } from 'matrix-js-sdk';
 
 export interface ImagePackSelectionSnapshot {
   readonly present: boolean;
@@ -16,38 +15,36 @@ interface StoredSelection {
 /** Shares the newest confirmed MSC2545 account data between management and picker projections. */
 @Injectable({ providedIn: 'root' })
 export class ImagePackSelectionStore {
-  // One signal per client, created on first access, so a reader re-runs only for its own
-  // client's selection.
-  private readonly selections = new WeakMap<
-    MatrixClient,
+  // One signal per account, created on first access, so a reader re-runs only for its own
+  // account's selection.
+  private readonly selections = new Map<
+    string,
     WritableSignal<StoredSelection | null>
   >();
 
-  private selection(
-    client: MatrixClient,
-  ): WritableSignal<StoredSelection | null> {
-    let selection = this.selections.get(client);
+  private selection(accountId: string): WritableSignal<StoredSelection | null> {
+    let selection = this.selections.get(accountId);
     if (!selection) {
       selection = signal<StoredSelection | null>(null);
-      this.selections.set(client, selection);
+      this.selections.set(accountId, selection);
     }
     return selection;
   }
 
-  get(client: MatrixClient): ImagePackSelectionSnapshot | null {
-    const stored = this.selection(client)();
+  get(accountId: string): ImagePackSelectionSnapshot | null {
+    const stored = this.selection(accountId)();
     return stored && stored.expiresAt > Date.now() ? stored.snapshot : null;
   }
 
-  set(client: MatrixClient, snapshot: ImagePackSelectionSnapshot): void {
-    this.selection(client).set({
+  set(accountId: string, snapshot: ImagePackSelectionSnapshot): void {
+    this.selection(accountId).set({
       snapshot,
       expiresAt: Date.now() + OPTIMISTIC_TTL_MS,
     });
   }
 
-  /** The SDK cache is authoritative once its account-data echo arrives. */
-  clear(client: MatrixClient): void {
-    this.selections.get(client)?.set(null);
+  /** The synced copy is authoritative once its account-data echo arrives. */
+  clear(accountId: string): void {
+    this.selections.get(accountId)?.set(null);
   }
 }
