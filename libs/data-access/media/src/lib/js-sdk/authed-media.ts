@@ -8,10 +8,14 @@ import {
   switchMap,
   throwError,
 } from 'rxjs';
-import { retryTransient } from './transient-errors';
+import { retryTransient } from '@trinity/util/matrix';
 
 /** Server-thumbnail dimensions, or null to fetch the resource as-is. */
-export type MediaResize = { w: number; h: number } | null;
+export type MediaResize = {
+  w: number;
+  h: number;
+  method?: 'scale' | 'crop';
+} | null;
 
 /** Build the http(s) URL for an `mxc://` (authenticated or legacy endpoint). */
 export function mediaHttpUrl(
@@ -25,7 +29,7 @@ export function mediaHttpUrl(
         mxc,
         resize.w,
         resize.h,
-        'scale',
+        resize.method ?? 'scale',
         false,
         true,
         useAuthentication,

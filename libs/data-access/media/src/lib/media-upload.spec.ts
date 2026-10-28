@@ -1,5 +1,5 @@
-import { firstValueFrom } from 'rxjs';
-import type { MatrixClient } from 'matrix-js-sdk';
+import { TestBed } from '@angular/core/testing';
+import { firstValueFrom, of } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -9,6 +9,7 @@ import {
   vi,
   type Mock,
 } from 'vitest';
+import { EngineRequestError, engineFail } from '@trinity/util/matrix';
 import {
   bytesWithoutMediaMetadata,
   withoutMediaMetadata,
@@ -18,29 +19,7 @@ import {
   identifyingJpeg,
 } from './image-metadata/image-metadata.fixture';
 import { identifyingMovie } from './image-metadata/video-metadata.fixture';
-import {
-  encryptMock,
-  mediaServiceSetup,
-  revokeObjectURL,
-  useMediaGlobals,
-} from './media.spec-harness';
-
-// Stub attachment-crypto (now in @trinity/util/matrix): exercise MediaService's
-// fetch→decrypt→blob and encrypt→upload wiring without a real WebCrypto `subtle`
-// backend (absent under jsdom). Partial-mock so the module's other exports stay
-// real; the crypto itself is round-tripped for real in attachment-crypto.spec.ts.
-vi.mock('@trinity/util/matrix', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-  decryptAttachment: vi.fn(() =>
-    Promise.resolve(new Uint8Array([7, 7, 7]).buffer),
-  ),
-  encryptAttachment: vi.fn(() =>
-    Promise.resolve({
-      data: new Uint8Array([9, 9, 9, 9]).buffer,
-      info: { url: '', v: 'v2', key: {}, iv: 'iv', hashes: { sha256: 'h' } },
-    }),
-  ),
-}));
+import { mediaServiceSetup } from './media.spec-harness';
 
 // Wrap the metadata stripper so the upload tests can see that, and when, it ran, while it
 // keeps doing the real work on real bytes.
@@ -56,14 +35,55 @@ vi.mock('./image-metadata/strip-file-metadata', async (importOriginal) => {
   };
 });
 
+/** The n-th `mxc://` the fake engine hands out (1-based). */
+const MEDIA = (n: number) => `mxc://example.org/media${n}`;
+
 /** The screen's devicePixelRatio as the service reads it; tests set it before resolving. */
 let devicePixelRatio = 1;
-const setup = mediaServiceSetup(() => devicePixelRatio);
+const baseSetup = mediaServiceSetup(() => devicePixelRatio);
 
-useMediaGlobals();
+/** MediaService over a fake engine; `uploads()` lists each `[file, request]` sent to it. */
+function setup() {
+  const world = baseSetup();
+  return {
+    ...world,
+    uploads: () =>
+      world.upload.mock.calls.map(
+        ([, file, request]) => [file, request] as const,
+      ),
+  };
+}
+
+async function bytesOf(blob: Blob | undefined): Promise<Uint8Array> {
+  return new Uint8Array(await (blob as Blob).arrayBuffer());
+}
+
+let createObjectURL: Mock;
+let revokeObjectURL: Mock;
+let origCreate: typeof URL.createObjectURL;
+let origRevoke: typeof URL.revokeObjectURL;
 
 beforeEach(() => {
   devicePixelRatio = 1;
+  // jsdom doesn't implement the object-URL API the media probes use, so swap it wholesale.
+  let counter = 0;
+  createObjectURL = vi.fn(() => `blob:probe-${++counter}`);
+  revokeObjectURL = vi.fn();
+  origCreate = URL.createObjectURL;
+  origRevoke = URL.revokeObjectURL;
+  URL.createObjectURL =
+    createObjectURL as unknown as typeof URL.createObjectURL;
+  URL.revokeObjectURL =
+    revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+  (withoutMediaMetadata as Mock).mockClear();
+  (bytesWithoutMediaMetadata as Mock).mockClear();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  URL.createObjectURL = origCreate;
+  URL.revokeObjectURL = origRevoke;
+  TestBed.resetTestingModule();
 });
 
 describe('uploadMedia', () => {
@@ -206,39 +226,42 @@ describe('uploadMedia', () => {
   });
 
   it('uploads a plaintext file and returns a url descriptor', async () => {
-    const { svc, client } = setup();
+    const { svc, upload, uploads } = setup();
 
     const res = await firstValueFrom(svc.uploadMedia(pngFile(), false));
 
-    expect(client.uploadContent).toHaveBeenCalledTimes(1);
-    const [body, opts] = client.uploadContent.mock.calls[0];
+    expect(upload).toHaveBeenCalledTimes(1);
+    const [body, opts] = uploads()[0];
     expect(body).toBeInstanceOf(File);
-    expect(opts.name).toBe('pic.png');
-    expect(opts.type).toBe('image/png');
-    expect(encryptMock).not.toHaveBeenCalled();
+    expect(opts.filename).toBe('pic.png');
+    expect(opts.mimeType).toBe('image/png');
+    expect(opts.encrypt).toBe(false);
     expect(res).toMatchObject({
       msgtype: 'm.image',
       body: 'pic.png',
-      mxc: 'mxc://hs/up',
+      mxc: MEDIA(1),
       file: null,
       info: { mimetype: 'image/png', size: 4 },
     });
   });
 
   it('encrypts then uploads ciphertext for an E2EE room, filling file.url', async () => {
-    const { svc, client } = setup();
+    const { svc, upload, uploads } = setup();
 
     const res = await firstValueFrom(svc.uploadMedia(pngFile(), true));
 
-    expect(encryptMock).toHaveBeenCalledTimes(1);
-    const [body, opts] = client.uploadContent.mock.calls[0];
+    expect(upload).toHaveBeenCalledTimes(1);
+    const [body, opts] = uploads()[0];
     expect(body).toBeInstanceOf(Blob);
     // Encrypted uploads must not leak the filename/MIME.
-    expect(opts.includeFilename).toBe(false);
-    expect(opts.type).toBe('application/octet-stream');
+    expect(opts).toEqual({
+      filename: null,
+      mimeType: 'application/octet-stream',
+      encrypt: true,
+    });
     expect(res.mxc).toBeNull();
-    expect(res.file).toMatchObject({ url: 'mxc://hs/up', v: 'v2' });
-    // size is the ciphertext length (mock returns 4 bytes), not the original.
+    expect(res.file).toMatchObject({ url: MEDIA(1), v: 'v2' });
+    // size is the ciphertext length, as the engine reports it.
     expect(res.info).toMatchObject({ mimetype: 'image/png', size: 4 });
   });
 
@@ -247,21 +270,21 @@ describe('uploadMedia', () => {
       new File([identifyingJpeg(6)], 'IMG_0001.jpg', { type: 'image/jpeg' });
 
     it('uploads a plaintext photo without its location, camera or capture time', async () => {
-      const { svc, client } = setup();
+      const { svc, uploads } = setup();
       const original = photo();
 
       const res = await firstValueFrom(svc.uploadMedia(original, false));
 
       expect(withoutMediaMetadata).toHaveBeenCalledWith(original);
-      const [body, opts] = client.uploadContent.mock.calls[0];
+      const [body, opts] = uploads()[0];
       expect(body).toBeInstanceOf(File);
       expect(body).not.toBe(original);
       const sent = new Uint8Array(await (body as File).arrayBuffer());
       expect(containsAscii(sent, '52.5200')).toBe(false);
       expect(containsAscii(sent, 'Canon')).toBe(false);
       expect(opts).toMatchObject({
-        name: 'IMG_0001.jpg',
-        type: 'image/jpeg',
+        filename: 'IMG_0001.jpg',
+        mimeType: 'image/jpeg',
       });
       // content.info describes what was uploaded, not what was picked.
       expect(res.info).toMatchObject({
@@ -271,28 +294,34 @@ describe('uploadMedia', () => {
       expect((body as File).size).toBeLessThan(original.size);
     });
 
-    it('strips an E2EE photo before it is encrypted', async () => {
-      const { svc } = setup();
+    it('strips an E2EE photo before the engine encrypts it', async () => {
+      const { svc, uploads } = setup();
       const original = photo();
 
       await firstValueFrom(svc.uploadMedia(original, true));
 
       expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(original);
-      const stripOrder = (bytesWithoutMediaMetadata as Mock).mock
-        .invocationCallOrder[0];
-      expect(stripOrder).toBeLessThan(
-        encryptMock.mock.invocationCallOrder[0] ?? 0,
-      );
-      const plaintext = new Uint8Array(
-        encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
-      );
+      expect(uploads()[0]?.[1].encrypt).toBe(true);
+      const plaintext = await bytesOf(uploads()[0]?.[0]);
       expect(plaintext.length).toBeLessThan(original.size);
       expect(containsAscii(plaintext, '52.5200')).toBe(false);
       expect(containsAscii(plaintext, 'Canon')).toBe(false);
     });
 
+    it('fails an encrypted upload whose metadata strip throws instead of sending the original', async () => {
+      const { svc, upload } = setup();
+      vi.mocked(bytesWithoutMediaMetadata).mockRejectedValueOnce(
+        new Error('strip failed'),
+      );
+
+      await expect(
+        firstValueFrom(svc.uploadMedia(photo(), true)),
+      ).rejects.toThrow('strip failed');
+      expect(upload).not.toHaveBeenCalled();
+    });
+
     it('uploads a plaintext photo byte for byte when its metadata is kept', async () => {
-      const { svc, client } = setup();
+      const { svc, uploads } = setup();
       const original = photo();
 
       const res = await firstValueFrom(
@@ -308,12 +337,12 @@ describe('uploadMedia', () => {
       );
 
       expect(withoutMediaMetadata).not.toHaveBeenCalled();
-      expect(client.uploadContent.mock.calls[0]?.[0]).toBe(original);
+      expect(uploads()[0]?.[0]).toBe(original);
       expect(res.info).toMatchObject({ size: original.size });
     });
 
     it('encrypts an E2EE photo byte for byte when its metadata is kept', async () => {
-      const { svc } = setup();
+      const { svc, uploads } = setup();
       const original = photo();
 
       await firstValueFrom(
@@ -329,9 +358,7 @@ describe('uploadMedia', () => {
       );
 
       expect(bytesWithoutMediaMetadata).not.toHaveBeenCalled();
-      const plaintext = new Uint8Array(
-        encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
-      );
+      const plaintext = await bytesOf(uploads()[0]?.[0]);
       expect(plaintext).toEqual(new Uint8Array(await original.arrayBuffer()));
     });
 
@@ -345,7 +372,7 @@ describe('uploadMedia', () => {
     });
 
     it('uploads a plaintext video without its location, at the same size', async () => {
-      const { svc, client } = setup();
+      const { svc, uploads } = setup();
       const clip = new File([identifyingMovie()], 'clip.mp4', {
         type: 'video/mp4',
       });
@@ -353,13 +380,16 @@ describe('uploadMedia', () => {
       const res = await firstValueFrom(svc.uploadMedia(clip, false));
 
       expect(withoutMediaMetadata).toHaveBeenCalledWith(clip);
-      const [body, opts] = client.uploadContent.mock.calls.at(-1) ?? [];
+      const [body, opts] = uploads().at(-1) ?? [];
       expect(body).not.toBe(clip);
       const sent = new Uint8Array(await (body as File).arrayBuffer());
       expect(sent.length).toBe(clip.size);
       expect(containsAscii(sent, '52.5200')).toBe(false);
       expect(containsAscii(sent, 'iPhone 15 Pro')).toBe(false);
-      expect(opts).toMatchObject({ name: 'clip.mp4', type: 'video/mp4' });
+      expect(opts).toMatchObject({
+        filename: 'clip.mp4',
+        mimeType: 'video/mp4',
+      });
       expect(res.info).toMatchObject({
         mimetype: 'video/mp4',
         size: clip.size,
@@ -367,7 +397,7 @@ describe('uploadMedia', () => {
     });
 
     it('strips an E2EE video before it is encrypted', async () => {
-      const { svc } = setup();
+      const { svc, uploads } = setup();
       const clip = new File([identifyingMovie()], 'clip.mov', {
         type: 'video/quicktime',
       });
@@ -375,16 +405,14 @@ describe('uploadMedia', () => {
       await firstValueFrom(svc.uploadMedia(clip, true));
 
       expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(clip);
-      const plaintext = new Uint8Array(
-        encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
-      );
+      const plaintext = await bytesOf(uploads()[0]?.[0]);
       expect(plaintext.length).toBe(clip.size);
       expect(containsAscii(plaintext, '52.5200')).toBe(false);
       expect(containsAscii(plaintext, 'iPhone 15 Pro')).toBe(false);
     });
 
     it('uploads a plaintext video byte for byte when its metadata is kept', async () => {
-      const { svc, client } = setup();
+      const { svc, uploads } = setup();
       const clip = new File([identifyingMovie()], 'clip.mp4', {
         type: 'video/mp4',
       });
@@ -402,12 +430,12 @@ describe('uploadMedia', () => {
       );
 
       expect(withoutMediaMetadata).not.toHaveBeenCalled();
-      expect(client.uploadContent.mock.calls.at(-1)?.[0]).toBe(clip);
+      expect(uploads().at(-1)?.[0]).toBe(clip);
       expect(res.info).toMatchObject({ size: clip.size });
     });
 
     it('encrypts an E2EE video byte for byte when its metadata is kept', async () => {
-      const { svc } = setup();
+      const { svc, uploads } = setup();
       const clip = new File([identifyingMovie()], 'clip.mov', {
         type: 'video/quicktime',
       });
@@ -425,20 +453,18 @@ describe('uploadMedia', () => {
       );
 
       expect(bytesWithoutMediaMetadata).not.toHaveBeenCalled();
-      const plaintext = new Uint8Array(
-        encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
-      );
+      const plaintext = await bytesOf(uploads()[0]?.[0]);
       expect(plaintext).toEqual(new Uint8Array(await clip.arrayBuffer()));
       expect(containsAscii(plaintext, 'iPhone 15 Pro')).toBe(true);
     });
 
     it('uploads a file that is neither a photo nor a movie exactly as picked', async () => {
-      const { svc, client } = setup();
+      const { svc, uploads } = setup();
       const clip = mediaFile('clip.webm', 'video/webm');
 
       await firstValueFrom(svc.uploadMedia(clip, false));
 
-      expect(client.uploadContent.mock.calls.at(-1)?.[0]).toBe(clip);
+      expect(uploads().at(-1)?.[0]).toBe(clip);
     });
   });
 
@@ -461,33 +487,29 @@ describe('uploadMedia', () => {
   });
 
   it('forwards upload progress as a fraction in [0, 1]', async () => {
-    const { svc, client } = setup();
+    const { svc } = setup();
     const seen: number[] = [];
 
     await firstValueFrom(
       svc.uploadMedia(pngFile(), false, (f) => seen.push(f)),
     );
 
-    const opts = client.uploadContent.mock.calls[0][1];
-    opts.progressHandler({ loaded: 5, total: 10 });
-    expect(seen).toEqual([0.5]);
+    // The fake engine reports one update, at the end.
+    expect(seen).toEqual([1]);
   });
 
   it('renders and uploads a thumbnail for a large plaintext image', async () => {
-    const { svc, client } = setup();
+    const { svc, upload } = setup();
     // The thumbnail uploads first (it's small), then the main resource.
-    client.uploadContent
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
     stubBitmap(1000, 500);
 
     const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
 
-    expect(client.uploadContent).toHaveBeenCalledTimes(2);
-    expect(res.mxc).toBe('mxc://hs/full');
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(res.mxc).toBe(MEDIA(2));
     expect(res.info.w).toBe(1000);
     expect(res.info.h).toBe(500);
-    expect(res.info.thumbnail_url).toBe('mxc://hs/thumb');
+    expect(res.info.thumbnail_url).toBe(MEDIA(1));
     expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
     // 1000×500 scaled to fit a 640px edge → 640×320.
     expect(res.info.thumbnail_info?.w).toBe(640);
@@ -498,10 +520,7 @@ describe('uploadMedia', () => {
     'renders a 640 px upload thumbnail whatever the sender screen (%sx)',
     async (dpr) => {
       devicePixelRatio = dpr;
-      const { svc, client } = setup();
-      client.uploadContent
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      const { svc } = setup();
       stubBitmap(3000, 2000);
 
       const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
@@ -512,60 +531,37 @@ describe('uploadMedia', () => {
   );
 
   it('encrypts the thumbnail for an E2EE image and sets thumbnail_file (not _url)', async () => {
-    const { svc, client } = setup();
-    encryptMock
-      .mockResolvedValueOnce({
-        data: new Uint8Array([1]).buffer,
-        info: {
-          url: '',
-          v: 'v2',
-          key: {},
-          iv: 'tiv',
-          hashes: { sha256: 'th' },
-        },
-      }) // thumbnail (encrypted first)
-      .mockResolvedValueOnce({
-        data: new Uint8Array([2]).buffer,
-        info: {
-          url: '',
-          v: 'v2',
-          key: {},
-          iv: 'fiv',
-          hashes: { sha256: 'fh' },
-        },
-      }); // main resource
-    client.uploadContent
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb-ct' })
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/full-ct' });
+    const { svc, uploads } = setup();
     stubBitmap(1024, 768);
 
     const res = await firstValueFrom(svc.uploadMedia(imageFile(), true));
 
-    expect(encryptMock).toHaveBeenCalledTimes(2);
+    expect(uploads().map(([, request]) => request.encrypt)).toEqual([
+      true,
+      true,
+    ]);
     expect(res.mxc).toBeNull();
+    expect(res.file).toMatchObject({ url: MEDIA(2), v: 'v2' });
     expect(res.info.thumbnail_url).toBeUndefined();
-    expect(res.info.thumbnail_file).toMatchObject({
-      url: 'mxc://hs/thumb-ct',
-      iv: 'tiv',
-      v: 'v2',
-    });
+    expect(res.info.thumbnail_file).toMatchObject({ url: MEDIA(1), v: 'v2' });
+    expect(res.info.thumbnail_file?.iv).not.toBe(res.file?.iv);
     expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
   });
 
   it('does not generate a thumbnail for an already-small image', async () => {
-    const { svc, client } = setup();
+    const { svc, upload } = setup();
     stubBitmap(320, 200); // within the 640px bound → original is its own thumbnail
 
     const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
 
-    expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+    expect(upload).toHaveBeenCalledTimes(1); // main only
     expect(res.info.thumbnail_url).toBeUndefined();
     // Intrinsic dimensions are still recorded.
     expect(res.info).toMatchObject({ w: 320, h: 200 });
   });
 
   it('still uploads the image when thumbnail generation fails', async () => {
-    const { svc, client } = setup();
+    const { svc, upload } = setup();
     vi.stubGlobal(
       'createImageBitmap',
       vi.fn(() => Promise.reject(new Error('decode failed'))),
@@ -573,31 +569,35 @@ describe('uploadMedia', () => {
 
     const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
 
-    expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+    expect(upload).toHaveBeenCalledTimes(1); // main only
     expect(res.info.thumbnail_url).toBeUndefined();
     expect(res.info.thumbnail_file).toBeUndefined();
-    expect(res.mxc).toBe('mxc://hs/up');
+    expect(res.mxc).toBe(MEDIA(1));
   });
 
   it('still sends when the thumbnail upload fails', async () => {
-    const { svc, client } = setup();
-    client.uploadContent
-      .mockRejectedValueOnce(new Error('thumb upload failed'))
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+    const { svc, upload } = setup();
+    upload.mockReturnValueOnce(
+      of({
+        kind: 'done',
+        result: engineFail({
+          kind: 'http',
+          code: 'request-failed',
+          diagnostic: { kind: 'http', httpStatus: 500 },
+        }),
+      }),
+    );
     stubBitmap(1000, 800);
 
     const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
 
-    expect(client.uploadContent).toHaveBeenCalledTimes(2);
+    expect(upload).toHaveBeenCalledTimes(2);
     expect(res.info.thumbnail_url).toBeUndefined();
-    expect(res.mxc).toBe('mxc://hs/full');
+    expect(res.mxc).toBe(MEDIA(1));
   });
 
   it('probes a video and captures a poster-frame thumbnail', async () => {
-    const { svc, client } = setup();
-    client.uploadContent
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster' }) // poster first
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' }); // then the video
+    const { svc, upload } = setup();
     videoMeta = { duration: 12.5, videoWidth: 1280, videoHeight: 960 };
     devicePixelRatio = 3; // the poster ignores the sender's screen
 
@@ -609,59 +609,34 @@ describe('uploadMedia', () => {
     expect(res.info.duration).toBe(12500);
     expect(res.info.w).toBe(1280);
     expect(res.info.h).toBe(960);
-    expect(client.uploadContent).toHaveBeenCalledTimes(2);
-    expect(res.mxc).toBe('mxc://hs/full');
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(res.mxc).toBe(MEDIA(2));
     // 1280×960 scaled to the fixed 640px upload edge → 640×480.
-    expect(res.info.thumbnail_url).toBe('mxc://hs/poster');
+    expect(res.info.thumbnail_url).toBe(MEDIA(1));
     expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
     expect(res.info.thumbnail_info?.w).toBe(640);
     expect(res.info.thumbnail_info?.h).toBe(480);
   });
 
   it('encrypts the video poster thumbnail for an E2EE room', async () => {
-    const { svc, client } = setup();
-    encryptMock
-      .mockResolvedValueOnce({
-        data: new Uint8Array([1]).buffer,
-        info: {
-          url: '',
-          v: 'v2',
-          key: {},
-          iv: 'pv',
-          hashes: { sha256: 'p' },
-        },
-      }) // poster (encrypted first)
-      .mockResolvedValueOnce({
-        data: new Uint8Array([2]).buffer,
-        info: {
-          url: '',
-          v: 'v2',
-          key: {},
-          iv: 'mv',
-          hashes: { sha256: 'm' },
-        },
-      }); // main video
-    client.uploadContent
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster-ct' })
-      .mockResolvedValueOnce({ content_uri: 'mxc://hs/full-ct' });
+    const { svc, uploads } = setup();
     videoMeta = { duration: 8, videoWidth: 1280, videoHeight: 720 };
 
     const res = await firstValueFrom(
       svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), true),
     );
 
-    expect(encryptMock).toHaveBeenCalledTimes(2);
+    expect(uploads().map(([, request]) => request.encrypt)).toEqual([
+      true,
+      true,
+    ]);
     expect(res.info.thumbnail_url).toBeUndefined();
-    expect(res.info.thumbnail_file).toMatchObject({
-      url: 'mxc://hs/poster-ct',
-      iv: 'pv',
-      v: 'v2',
-    });
+    expect(res.info.thumbnail_file).toMatchObject({ url: MEDIA(1), v: 'v2' });
     expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
   });
 
   it('keeps the video dimensions when the poster seek never completes', async () => {
-    const { svc, client } = setup();
+    const { svc, upload } = setup();
     videoMeta = { duration: 12.5, videoWidth: 640, videoHeight: 480 };
     videoSeekFires = false; // seeked never fires → the poster timeout fires
     vi.useFakeTimers();
@@ -671,20 +646,21 @@ describe('uploadMedia', () => {
       );
       // Advance past POSTER_TIMEOUT_MS (3000ms in media.service.ts).
       await vi.advanceTimersByTimeAsync(3000);
+      await vi.runAllTimersAsync(); // the fake engine's upload result
       const res = await pending;
 
       // Dimensions/duration survive even though no poster was captured.
       expect(res.info.duration).toBe(12500);
       expect(res.info.w).toBe(640);
       expect(res.info.thumbnail_url).toBeUndefined();
-      expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+      expect(upload).toHaveBeenCalledTimes(1); // main only
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('captures the first frame for an unknown-duration video without seeking', async () => {
-    const { svc, client } = setup();
+    const { svc, upload } = setup();
     // seekTo resolves to 0 (== currentTime), so no 'seeked' fires — the poster
     // must still be drawn from the current frame.
     videoMeta = { duration: NaN, videoWidth: 320, videoHeight: 240 };
@@ -695,7 +671,7 @@ describe('uploadMedia', () => {
     );
 
     expect(res.info.duration).toBeUndefined();
-    expect(client.uploadContent).toHaveBeenCalledTimes(2); // poster + main
+    expect(upload).toHaveBeenCalledTimes(2); // poster + main
     expect(res.info.thumbnail_url).toBeDefined();
     // 320×240 already within the 640px bound → kept as-is.
     expect(res.info.thumbnail_info?.w).toBe(320);
@@ -703,7 +679,7 @@ describe('uploadMedia', () => {
   });
 
   it('keeps the video dimensions when the poster frame fails to encode', async () => {
-    const { svc, client } = setup();
+    const { svc, upload } = setup();
     videoMeta = { duration: 5, videoWidth: 640, videoHeight: 480 };
     canvasContext = 'null'; // getContext('2d') → null, so drawPoster bails
 
@@ -714,11 +690,11 @@ describe('uploadMedia', () => {
     expect(res.info.duration).toBe(5000);
     expect(res.info.w).toBe(640);
     expect(res.info.thumbnail_url).toBeUndefined();
-    expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+    expect(upload).toHaveBeenCalledTimes(1); // main only
   });
 
   it('keeps the video dimensions when the poster seek errors', async () => {
-    const { svc, client } = setup();
+    const { svc, upload } = setup();
     videoMeta = { duration: 5, videoWidth: 640, videoHeight: 480 };
     videoErrorsOnSeek = true; // the element errors after metadata, during the seek
 
@@ -729,7 +705,7 @@ describe('uploadMedia', () => {
     expect(res.info.duration).toBe(5000);
     expect(res.info.w).toBe(640);
     expect(res.info.thumbnail_url).toBeUndefined();
-    expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+    expect(upload).toHaveBeenCalledTimes(1); // main only
   });
 
   describe('with capture hints', () => {
@@ -740,10 +716,7 @@ describe('uploadMedia', () => {
     });
 
     it('lets complete video hints win and skips the WebView probe entirely', async () => {
-      const { svc, client } = setup();
-      client.uploadContent
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/hinted-poster' })
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      const { svc } = setup();
       // What a probe WOULD report, so one that ran would show in the result.
       videoMeta = { duration: 3, videoWidth: 640, videoHeight: 480 };
       const created = vi.spyOn(document, 'createElement');
@@ -770,16 +743,13 @@ describe('uploadMedia', () => {
         w: 1920,
         h: 1080,
         duration: 12_500,
-        thumbnail_url: 'mxc://hs/hinted-poster',
+        thumbnail_url: MEDIA(1),
         thumbnail_info: { mimetype: 'image/jpeg', w: 480, h: 270, size: 2 },
       });
     });
 
     it('probes only for what partial hints leave out', async () => {
-      const { svc, client } = setup();
-      client.uploadContent
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster' })
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      const { svc } = setup();
       videoMeta = { duration: 8, videoWidth: 640, videoHeight: 480 };
 
       const res = await firstValueFrom(
@@ -797,15 +767,12 @@ describe('uploadMedia', () => {
       expect(res.info.w).toBe(1920);
       expect(res.info.h).toBe(1080);
       expect(res.info.duration).toBe(8000);
-      expect(res.info.thumbnail_url).toBe('mxc://hs/poster');
+      expect(res.info.thumbnail_url).toBe(MEDIA(1));
       expect(res.info.thumbnail_info).toMatchObject({ w: 640, h: 480 });
     });
 
     it('renders its own thumbnail when the hinted one exceeds the thumbnail bound', async () => {
-      const { svc, client } = setup();
-      client.uploadContent
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster' })
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      const { svc } = setup();
       videoMeta = { duration: 3, videoWidth: 640, videoHeight: 480 };
 
       const res = await firstValueFrom(
@@ -829,10 +796,7 @@ describe('uploadMedia', () => {
     });
 
     it('keeps a hinted thumbnail as large as the 640 px upload bound', async () => {
-      const { svc, client } = setup();
-      client.uploadContent
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/hinted-poster' })
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      const { svc } = setup();
 
       const res = await firstValueFrom(
         svc.uploadMedia(
@@ -850,15 +814,12 @@ describe('uploadMedia', () => {
         ),
       );
 
-      expect(res.info.thumbnail_url).toBe('mxc://hs/hinted-poster');
+      expect(res.info.thumbnail_url).toBe(MEDIA(1));
       expect(res.info.thumbnail_info).toMatchObject({ w: 640, h: 360 });
     });
 
     it('lets complete photo hints skip decoding the image', async () => {
-      const { svc, client } = setup();
-      client.uploadContent
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      const { svc } = setup();
       stubBitmap(4000, 3000);
 
       const res = await firstValueFrom(
@@ -871,7 +832,7 @@ describe('uploadMedia', () => {
 
       expect(createImageBitmap).not.toHaveBeenCalled();
       expect(res.info).toMatchObject({ w: 4032, h: 3024 });
-      expect(res.info.thumbnail_url).toBe('mxc://hs/thumb');
+      expect(res.info.thumbnail_url).toBe(MEDIA(1));
     });
 
     describe('a host thumbnail with GPS Exif', () => {
@@ -888,10 +849,7 @@ describe('uploadMedia', () => {
       });
 
       it('uploads it without its location in a plaintext room', async () => {
-        const { svc, client } = setup();
-        client.uploadContent
-          .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
-          .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+        const { svc, uploads } = setup();
 
         const res = await firstValueFrom(
           svc.uploadMedia(
@@ -904,8 +862,11 @@ describe('uploadMedia', () => {
           ),
         );
 
-        const [body, opts] = client.uploadContent.mock.calls[0] ?? [];
-        expect(opts).toMatchObject({ name: 'thumbnail', type: 'image/jpeg' });
+        const [body, opts] = uploads()[0] ?? [];
+        expect(opts).toMatchObject({
+          filename: 'thumbnail',
+          mimeType: 'image/jpeg',
+        });
         const sent = new Uint8Array(await (body as Blob).arrayBuffer());
         expect(containsAscii(sent, '52.5200')).toBe(false);
         expect(containsAscii(sent, 'Canon')).toBe(false);
@@ -917,7 +878,7 @@ describe('uploadMedia', () => {
       });
 
       it('strips it before it is encrypted in an E2EE room', async () => {
-        const { svc } = setup();
+        const { svc, uploads } = setup();
 
         await firstValueFrom(
           svc.uploadMedia(
@@ -931,16 +892,14 @@ describe('uploadMedia', () => {
         );
 
         // The thumbnail is encrypted (and uploaded) before the main file.
-        const plaintext = new Uint8Array(
-          encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
-        );
+        const plaintext = await bytesOf(uploads()[0]?.[0]);
         expect(plaintext.length).toBeGreaterThan(0);
         expect(containsAscii(plaintext, '52.5200')).toBe(false);
         expect(containsAscii(plaintext, 'Canon')).toBe(false);
       });
 
       it('strips it even when the video keeps its metadata', async () => {
-        const { svc, client } = setup();
+        const { svc, uploads } = setup();
         const clip = mediaFile('video.mov', 'video/quicktime');
 
         await firstValueFrom(
@@ -956,18 +915,25 @@ describe('uploadMedia', () => {
         );
 
         // A derived preview, not the person's file: keeping metadata covers the video only.
-        const thumb = client.uploadContent.mock.calls[0]?.[0] as Blob;
+        const thumb = uploads()[0]?.[0] as Blob;
         const sent = new Uint8Array(await thumb.arrayBuffer());
         expect(containsAscii(sent, '52.5200')).toBe(false);
-        expect(client.uploadContent.mock.calls.at(-1)?.[0]).toBe(clip);
+        expect(uploads().at(-1)?.[0]).toBe(clip);
       });
     });
 
     it('still sends when a hinted thumbnail fails to upload', async () => {
-      const { svc, client } = setup();
-      client.uploadContent
-        .mockRejectedValueOnce(new Error('thumb upload failed'))
-        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      const { svc, upload } = setup();
+      upload.mockReturnValueOnce(
+        of({
+          kind: 'done',
+          result: engineFail({
+            kind: 'http',
+            code: 'request-failed',
+            diagnostic: { kind: 'http', httpStatus: 500 },
+          }),
+        }),
+      );
 
       const res = await firstValueFrom(
         svc.uploadMedia(
@@ -985,7 +951,7 @@ describe('uploadMedia', () => {
         ),
       );
 
-      expect(res.mxc).toBe('mxc://hs/full');
+      expect(res.mxc).toBe(MEDIA(1));
       expect(res.info.thumbnail_url).toBeUndefined();
       expect(res.info.duration).toBe(4000);
     });
@@ -1017,7 +983,7 @@ describe('uploadMedia', () => {
   });
 
   it('resolves empty (no hang) when metadata never arrives, via the timeout', async () => {
-    const { svc, client } = setup();
+    const { svc, upload } = setup();
     mediaElementMode = 'silent'; // neither loadedmetadata nor error ever fires
     vi.useFakeTimers();
     try {
@@ -1027,6 +993,7 @@ describe('uploadMedia', () => {
       // Advance past METADATA_TIMEOUT_MS (5000ms in media.service.ts) so the
       // probe's safety timeout fires and resolves to empty dims.
       await vi.advanceTimersByTimeAsync(5000);
+      await vi.runAllTimersAsync(); // the fake engine's upload result
       const res = await pending;
 
       expect(res.msgtype).toBe('m.video');
@@ -1035,7 +1002,7 @@ describe('uploadMedia', () => {
       // The off-screen probe URL is revoked even on the timeout path.
       expect(revokeObjectURL).toHaveBeenCalled();
       // The main upload still ran.
-      expect(client.uploadContent).toHaveBeenCalledTimes(1);
+      expect(upload).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
@@ -1056,38 +1023,73 @@ describe('uploadMedia', () => {
 });
 
 describe('uploadLimit', () => {
-  it('reads m.upload.size once per client and shares it', async () => {
-    const getMediaConfig = vi
-      .fn()
-      .mockResolvedValue({ 'm.upload.size': 52_428_800 });
-    const { svc, client } = setup({ getMediaConfig });
-    const c = client as unknown as MatrixClient;
+  it("reads the active account's m.upload.size", async () => {
+    const { svc, engine } = setup();
+    engine.uploadLimitBytes = 52_428_800;
 
-    expect(await firstValueFrom(svc.uploadLimit(c))).toBe(52_428_800);
-    expect(await firstValueFrom(svc.uploadLimit(c))).toBe(52_428_800);
-    expect(getMediaConfig).toHaveBeenCalledTimes(1);
-    expect(getMediaConfig).toHaveBeenCalledWith(true); // authenticated media
+    expect(await firstValueFrom(svc.uploadLimit())).toBe(52_428_800);
   });
 
   it('is null when the server states no limit', async () => {
-    const { svc, client } = setup({
-      getMediaConfig: vi.fn().mockResolvedValue({}),
-    });
+    const { svc, engine } = setup();
+    engine.uploadLimitBytes = null;
 
-    expect(
-      await firstValueFrom(svc.uploadLimit(client as unknown as MatrixClient)),
-    ).toBeNull();
+    expect(await firstValueFrom(svc.uploadLimit(engine.alice))).toBeNull();
   });
 
-  it('is null when the server cannot be asked, and asks again next time', async () => {
-    const getMediaConfig = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce({ 'm.upload.size': 1000 });
-    const { svc, client } = setup({ getMediaConfig });
-    const c = client as unknown as MatrixClient;
+  it('is null for an account that is not live', async () => {
+    const { svc } = setup();
 
-    expect(await firstValueFrom(svc.uploadLimit(c))).toBeNull();
-    expect(await firstValueFrom(svc.uploadLimit(c))).toBe(1000);
+    expect(
+      await firstValueFrom(svc.uploadLimit('@gone:example.org')),
+    ).toBeNull();
+  });
+});
+
+describe('upload failures and aborts', () => {
+  const file = () =>
+    new File([new Uint8Array([1, 2, 3, 4])], 'notes.txt', {
+      type: 'text/plain',
+    });
+
+  it('fails a file over the upload limit as too-large', async () => {
+    const { svc, engine } = setup();
+    engine.uploadLimitBytes = 2;
+
+    const error = await firstValueFrom(svc.uploadMedia(file(), false)).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(EngineRequestError);
+    expect((error as EngineRequestError).failure.code).toBe('too-large');
+  });
+
+  it('aborts the engine upload when the caller aborts', async () => {
+    const { svc, engine } = setup();
+    const abortController = new AbortController();
+    const pending = firstValueFrom(
+      svc.uploadMedia(
+        file(),
+        false,
+        (fraction) => {
+          if (fraction > 0) abortController.abort();
+        },
+        abortController,
+      ),
+    );
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(engine.aborted).toBe(1);
+  });
+
+  it('does not upload once aborted', async () => {
+    const { svc, upload } = setup();
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await expect(
+      firstValueFrom(svc.uploadMedia(file(), true, undefined, abortController)),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(upload).not.toHaveBeenCalled();
   });
 });

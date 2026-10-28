@@ -294,7 +294,9 @@ export class ImagePackEditorService {
     const cached = this.uploads.get(file);
     if (cached?.client === client && cached.sticker === sticker) return cached;
     const prepared = await prepareImagePackImage(file, usage);
-    const limit = await firstValueFrom(this.media.uploadLimit(client));
+    const limit = await firstValueFrom(
+      this.media.uploadLimit(client.getUserId() ?? undefined),
+    );
     if (limit !== null && prepared.size > limit) {
       throw new ImagePackEditError(
         'too-large-for-server',
@@ -302,7 +304,13 @@ export class ImagePackEditorService {
       );
     }
     const uploaded = await firstValueFrom(
-      this.media.uploadMedia(prepared, false, undefined, undefined, client),
+      this.media.uploadMedia(
+        prepared,
+        false,
+        undefined,
+        undefined,
+        client.getUserId() ?? undefined,
+      ),
     );
     if (!uploaded.mxc) throw new Error('Unencrypted upload returned no mxc.');
     const result = {

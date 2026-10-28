@@ -1,16 +1,18 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, untracked } from '@angular/core';
 import {
   Observable,
   catchError,
   defer,
+  filter,
   from,
   map,
   of,
   shareReplay,
   switchMap,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { fetchMediaBytes } from '@trinity/util/matrix';
+import { unwrapEngineResult } from '@trinity/util/matrix';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { MEDIA_ENGINE } from './media-engine.token';
 import { withoutImageMetadata } from './image-metadata/strip-file-metadata';
 
 /** Default avatar edge (px) requested from the server thumbnailer. */
@@ -19,18 +21,13 @@ const AVATAR_PX = 96;
 const DPR = 2;
 
 /**
- * Resolves `mxc://` avatars to `blob:` URLs the UI can bind to `<img>`, fetching with the
- * access token: a plain `<img src=mxcUrlToHttp(...)>` can't send the bearer header and 401s
- * on authenticated-media (v1.11+) homeservers.
+ * Resolves `mxc://` avatars to URLs the UI can bind to `<img>`, through the media engine: a
+ * plain `<img src=mxcUrlToHttp(...)>` can't send the bearer header and 401s on
+ * authenticated-media (v1.11+) homeservers.
  *
- * Always attempts the authenticated endpoint and relies on {@link fetchMediaBytes}'s
- * authed→legacy fallback instead of probing `v1.11` first: a probe that transiently failed
- * would cache `authed=false` and break every avatar on the authenticated-media-only servers
- * this exists for.
- *
- * Resolutions are cached by mxc+size+account and revoked together on logout/login
+ * Resolutions are cached by mxc+size+account and released together on logout/login
  * ({@link releaseAll}); within a session the cache is an LRU capped at
- * {@link AVATAR_CACHE_LIMIT}. Evicting revokes the object URL, but never one a subscriber
+ * {@link AVATAR_CACHE_LIMIT}. Evicting releases the URL, but never one a subscriber
  * still holds (see {@link CacheEntry.holders}).
  *
  * A failure is remembered only for {@link FAILURE_COOLDOWN_MS}. Forgetting it at once would
@@ -60,7 +57,8 @@ interface CacheEntry {
 
 @Injectable({ providedIn: 'root' })
 export class AvatarService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(MEDIA_ENGINE);
+  private readonly session = inject(SessionStateService);
 
   /** Resolutions keyed by `mxc|size|account`, least recently used first. */
   private readonly cache = new Map<string, CacheEntry>();
@@ -68,7 +66,7 @@ export class AvatarService {
   private readonly retryAfter = new Map<string, number>();
 
   /**
-   * Resolve an `mxc://` avatar to a cached `blob:` URL, or null when unset/failed.
+   * Resolve an `mxc://` avatar to a cached URL, or null when unset/failed.
    *
    * Each subscription looks the entry up afresh, so an entry evicted since the last
    * subscribe is fetched again instead of replaying a revoked URL. The subscription holds
@@ -110,44 +108,46 @@ export class AvatarService {
    * time, like any other photo.
    */
   upload(file: File, accountId: string): Observable<string> {
-    return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) {
-        throw new Error('The owning account is no longer available.');
-      }
-      return from(withoutImageMetadata(file)).pipe(
-        switchMap((upload) =>
-          client.uploadContent(upload, {
-            name: file.name,
-            type: file.type || 'application/octet-stream',
-          }),
-        ),
-        map((response) => response.content_uri),
-      );
-    });
+    return defer(() => from(withoutImageMetadata(file))).pipe(
+      switchMap((upload) =>
+        this.engine.upload(accountId, upload, {
+          filename: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          encrypt: false,
+        }),
+      ),
+      filter((update) => update.kind === 'done'),
+      map((update) => update.result),
+      unwrapEngineResult(),
+      map((uploaded) => {
+        if (uploaded.kind !== 'plain')
+          throw new Error('Avatar upload was encrypted.');
+        return uploaded.mxc;
+      }),
+    );
   }
 
-  /** Revoke every cached avatar object URL and clear the cache (logout/login). */
+  /** Release every cached avatar URL and clear the cache (logout/login). */
   releaseAll(): void {
-    for (const { url } of this.cache.values()) {
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
-    }
+    this.release(
+      [...this.cache.values()].flatMap(({ url }) => (url ? [url] : [])),
+    );
     this.cache.clear();
     // A new session may be a different account on a different homeserver, so nothing
     // that failed under the old one should still be serving initials from a cooldown.
     this.retryAfter.clear();
   }
 
-  /** Revoke every resolved avatar no subscriber is showing (the app went to the background). */
+  /** Release every resolved avatar no subscriber is showing (the app went to the background). */
   releaseUnpinned(): void {
+    const released: string[] = [];
     for (const [key, entry] of this.cache) {
       if (entry.url && entry.holders === 0) {
         this.cache.delete(key);
-        URL.revokeObjectURL(entry.url);
+        released.push(entry.url);
       }
     }
+    this.release(released);
   }
 
   /** The live entry for a key (touched as most recent), a new fetch, or null in cooldown. */
@@ -171,23 +171,45 @@ export class AvatarService {
       this.retryAfter.delete(key);
     }
     const edge = Math.ceil(sizePx * DPR);
-    const client =
-      (accountId ? this.matrix.clientFor(accountId) : null) ??
-      this.matrix.instance;
     const entry: CacheEntry = {
       url: null,
       holders: 0,
-      resolved: fetchMediaBytes(client, mxc, { w: edge, h: edge }, true).pipe(
-        map((bytes) => {
+      resolved: defer(() =>
+        this.engine.content(
+          // A named account that is no longer live reads through the active one; read
+          // untracked, as a subscriber may sit inside an effect.
+          untracked(
+            () =>
+              (accountId && this.session.status(accountId)
+                ? accountId
+                : null) ??
+              this.session.activeAccountId() ??
+              '',
+          ),
+          {
+            source: { kind: 'plain', mxc },
+            format: {
+              kind: 'thumbnail',
+              width: edge,
+              height: edge,
+              method: 'scale',
+              animated: false,
+            },
+            mimeType: 'application/octet-stream',
+            downscaleTo: null,
+          },
+        ),
+      ).pipe(
+        unwrapEngineResult(),
+        map(({ url }) => {
           // releaseAll cannot cancel a fetch already in flight. If this one lands after
           // it, the entry is no longer cached, so no later releaseAll or eviction would
-          // ever find its URL: don't create one.
+          // ever find its URL: release it at once.
           if (this.cache.get(key) !== entry) {
+            this.release([url]);
             return null;
           }
-          entry.url = URL.createObjectURL(
-            new Blob([bytes], { type: 'application/octet-stream' }),
-          );
+          entry.url = url;
           this.evict();
           return entry.url;
         }),
@@ -208,21 +230,27 @@ export class AvatarService {
     return entry;
   }
 
-  /** Revoke least recently used unheld URLs until at most {@link AVATAR_CACHE_LIMIT} remain. */
+  /** Release least recently used unheld URLs until at most {@link AVATAR_CACHE_LIMIT} remain. */
   private evict(): void {
     let resolved = 0;
     for (const { url } of this.cache.values()) {
       resolved += url ? 1 : 0;
     }
+    const evicted: string[] = [];
     for (const [key, entry] of this.cache) {
       if (resolved <= AVATAR_CACHE_LIMIT) {
-        return;
+        break;
       }
       if (entry.url && entry.holders === 0) {
         this.cache.delete(key);
-        URL.revokeObjectURL(entry.url);
+        evicted.push(entry.url);
         resolved--;
       }
     }
+    this.release(evicted);
+  }
+
+  private release(urls: readonly string[]): void {
+    if (urls.length > 0) this.engine.release(urls).subscribe();
   }
 }
