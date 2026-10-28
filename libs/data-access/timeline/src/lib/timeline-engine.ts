@@ -301,6 +301,8 @@ export interface TimelineEngine {
    * Sends `message`, in the thread `threadRootId` when set. `replyTo` quotes that event, fetched
    * from the server when it is not loaded; only text replies. `eventId` is null when the send
    * failed and its echo stays, with its `sendState`, for `retrySend` or `cancelSend`.
+   * `transactionId`, when given, is the echo's, so the caller can cancel this send before
+   * it returns; it must be unique to the account.
    */
   send(
     accountId: string,
@@ -309,6 +311,7 @@ export interface TimelineEngine {
     options: {
       readonly threadRootId: string | null;
       readonly replyTo: string | null;
+      readonly transactionId?: string;
     },
   ): Observable<
     EngineResult<{

@@ -1,5 +1,16 @@
 import { Injectable, InjectionToken, inject, untracked } from '@angular/core';
-import { type Observable, defer, finalize, map, of, tap } from 'rxjs';
+import {
+  BehaviorSubject,
+  NEVER,
+  type Observable,
+  defer,
+  finalize,
+  map,
+  of,
+  switchMap,
+  take,
+  tap,
+} from 'rxjs';
 import {
   type EngineResult,
   outgoingReplyText,
@@ -50,26 +61,10 @@ function outgoingText(content: Record<string, unknown>): OutgoingText {
   };
 }
 
-/** The own local echo `store` holds now, with a transaction id not in `before`. */
-function newEcho(
-  store: TimelineStore,
-  before: ReadonlySet<string>,
-): string | null {
-  for (const item of untracked(store.items)) {
-    if (item.kind !== 'event' || !item.isOwn || item.transactionId === null)
-      continue;
-    if (!before.has(item.transactionId)) return item.transactionId;
-  }
-  return null;
-}
-
-function transactionIds(store: TimelineStore): ReadonlySet<string> {
-  const ids = new Set<string>();
-  for (const item of untracked(store.items)) {
-    if (item.kind === 'event' && item.transactionId !== null)
-      ids.add(item.transactionId);
-  }
-  return ids;
+function holds(store: TimelineStore, transactionId: string): boolean {
+  return untracked(store.items).some(
+    (item) => item.kind === 'event' && item.transactionId === transactionId,
+  );
 }
 
 @Injectable({ providedIn: 'root' })
@@ -83,24 +78,25 @@ class EngineConversationTextSender implements ConversationTextSender {
 
   send(request: ConversationTextSendRequest): ConversationTextSendOperation {
     const { accountId, roomId } = request.key;
+    const transactionId = `trinity-${crypto.randomUUID()}`;
+    // Cancelling unsubscribes the engine's send, so a request not yet made never is.
+    const stopped = new BehaviorSubject(false);
     let store: TimelineStore | null = null;
-    let before: ReadonlySet<string> = new Set();
     let settled = false;
     const outcome = defer(() => {
       const { store: opened, release } = this.stores.hold(request.key, LIVE);
       store = opened;
-      before = transactionIds(opened);
       let watching = false;
-      return this.deliver(request, opened).pipe(
-        map(({ delivery, transactionId }) => {
-          if (delivery.kind !== 'rejected' || !transactionId) return delivery;
+      return this.deliver(request, opened, transactionId).pipe(
+        map(({ delivery, transactionId: echo }) => {
+          if (delivery.kind !== 'rejected' || !echo) return delivery;
           watching = keepWhileWaiting(
             this.drafts,
             conversationDraftKey(request.key),
             request.body,
             {
-              transactionId,
-              states: opened.sendStates(transactionId).pipe(finalize(release)),
+              transactionId: echo,
+              states: opened.sendStates(echo).pipe(finalize(release)),
             },
           );
           return watching ? ({ kind: 'queued' } as const) : delivery;
@@ -115,25 +111,35 @@ class EngineConversationTextSender implements ConversationTextSender {
       );
     });
     return {
-      outcome,
-      cancel: () => {
-        if (settled || !store) return of(false);
-        const transactionId = newEcho(store, before);
-        // No echo shown yet proves nothing: the send may be on the wire behind a page flush.
-        if (transactionId === null) return of(false);
-        // `not-cancellable` once the request may have crossed the network boundary: that is
-        // indeterminate, rather than restoring text that could now be a duplicate.
-        return this.engine.cancelSend(accountId, roomId, transactionId).pipe(
-          map((result) => result.ok),
-          tap((cancelled) => (settled ||= cancelled)),
-        );
-      },
+      outcome: stopped.pipe(
+        switchMap((stop) => (stop ? NEVER : outcome)),
+        take(1),
+      ),
+      cancel: () =>
+        defer(() => {
+          // An edit's echo carries no id of ours; a cancelled edit only stops waiting for it.
+          if (settled || request.intent.kind === 'edit') return of(false);
+          const shown = store !== null && holds(store, transactionId);
+          stopped.next(true);
+          // `not-cancellable` once the request may have crossed the network boundary: that
+          // is indeterminate, rather than restoring text that could now be a duplicate.
+          return this.engine.cancelSend(accountId, roomId, transactionId).pipe(
+            map(
+              (result) =>
+                result.ok ||
+                // No echo was ever made, and with the send stopped none will be.
+                (result.failure.code === 'message-unavailable' && !shown),
+            ),
+            tap((cancelled) => (settled ||= cancelled)),
+          );
+        }),
     };
   }
 
   private deliver(
     request: ConversationTextSendRequest,
     store: TimelineStore,
+    transactionId: string,
   ): Observable<{
     readonly delivery: ConversationTextDelivery;
     readonly transactionId: string | null;
@@ -166,6 +172,7 @@ class EngineConversationTextSender implements ConversationTextSender {
         {
           threadRootId: null,
           replyTo: intent.kind === 'reply' ? intent.eventId : null,
+          transactionId,
         },
       )
       .pipe(
@@ -179,11 +186,7 @@ class EngineConversationTextSender implements ConversationTextSender {
               transactionId,
             };
           }
-          const echo = untracked(store.items).some(
-            (item) =>
-              item.kind === 'event' && item.transactionId === transactionId,
-          );
-          if (!echo) throw new MissingLocalEchoError();
+          if (!holds(store, transactionId)) throw new MissingLocalEchoError();
           return {
             delivery: { kind: 'accepted' as const, eventId },
             transactionId,

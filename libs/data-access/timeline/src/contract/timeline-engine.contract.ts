@@ -649,6 +649,38 @@ export function defineTimelineEngineContract(
     );
 
     it(
+      'send with a caller transaction id gives its echo that id',
+      async () => {
+        const {
+          roomId,
+          eventIds: [greetingId],
+        } = await roomWith(['hello alice']);
+        const timeline = watch(roomId);
+        try {
+          // As above: once alice's join has synced, no join resets the timeline.
+          await timeline.until((v) => !!byId(v, greetingId));
+          const transactionId = `contract-${Date.now()}`;
+
+          const sent = await ok(
+            engine.send(alice, roomId, text('mine'), {
+              ...MAIN,
+              transactionId,
+            }),
+          );
+
+          expect(sent.transactionId).toBe(transactionId);
+          expect(byTxn(timeline.view(), transactionId)).toMatchObject({
+            isOwn: true,
+            content: { kind: 'message', body: 'mine' },
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'send with replyTo has inReplyTo ready',
       async () => {
         const {

@@ -433,6 +433,7 @@ export class FakeTimelineEngine implements TimelineEngine {
     options: {
       readonly threadRootId: string | null;
       readonly replyTo: string | null;
+      readonly transactionId?: string;
     },
   ): Observable<
     EngineResult<{
@@ -442,7 +443,8 @@ export class FakeTimelineEngine implements TimelineEngine {
   > {
     return this.run(accountId, roomId, (room) => {
       const eventId = this.nextEventId();
-      const transactionId = `fake-txn-${this.nextEvent}`;
+      const transactionId =
+        options.transactionId ?? `fake-txn-${this.nextEvent}`;
       if (message.kind === 'poll-response' || message.kind === 'poll-end') {
         const poll = this.event(room, message.pollId);
         if (poll?.content.kind !== 'poll')

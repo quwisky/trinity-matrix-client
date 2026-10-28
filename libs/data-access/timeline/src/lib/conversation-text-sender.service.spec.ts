@@ -178,9 +178,11 @@ describe('MatrixConversationTextSender', () => {
         }).outcome,
       ),
     ).resolves.toEqual({ kind: 'queued' });
+    const txn = w.sends[0].echo.getTxnId();
+    expect(txn).toMatch(/^trinity-/);
     expect(drafts.holdWaiting).toHaveBeenCalledWith(
       conversationDraftKey(KEY),
-      'txn-1',
+      txn,
       'hello',
     );
 
@@ -192,7 +194,7 @@ describe('MatrixConversationTextSender', () => {
     await tick();
     expect(drafts.releaseWaiting).toHaveBeenCalledWith(
       conversationDraftKey(KEY),
-      'txn-1',
+      txn,
     );
   });
 
@@ -506,13 +508,13 @@ describe('MatrixConversationTextSender', () => {
     });
   });
 
-  it('reports a reply cancelled while its target is fetched as indeterminate, dropping the fetch', async () => {
-    const { sender, client } = setup();
+  /** A reply whose target is still being fetched, so its request has not gone out. */
+  function fetchingReply(context: ReturnType<typeof setup>) {
     let resolveFetch!: (raw: Partial<IEvent>) => void;
-    client.fetchRoomEvent.mockReturnValueOnce(
+    context.client.fetchRoomEvent.mockReturnValueOnce(
       new Promise((resolve) => (resolveFetch = resolve)),
     );
-    const operation = sender.send({
+    const operation = context.sender.send({
       key: KEY,
       body: 'reply text',
       mentions: [],
@@ -522,23 +524,56 @@ describe('MatrixConversationTextSender', () => {
     const subscription = operation.outcome.subscribe((outcome) =>
       outcomes.push(outcome),
     );
+    const fetched = async () => {
+      resolveFetch({
+        event_id: '$trimmed',
+        room_id: KEY.roomId,
+        type: 'm.room.message',
+        sender: '@bob:example.org',
+        origin_server_ts: 1,
+        content: { msgtype: 'm.text', body: 'trimmed text' },
+      });
+      await tick();
+    };
+    return { operation, outcomes, subscription, fetched };
+  }
 
-    // No echo shown is no proof nothing went out, so the composer keeps its text cleared.
+  it('cancels a reply while its target is fetched, so the composer gets its text back', async () => {
+    const context = setup();
+    const { operation, outcomes, subscription, fetched } =
+      fetchingReply(context);
+
+    // The composer's teardown: cancel, then let go of the outcome.
     const cancelled = firstValueFrom(operation.cancel());
     subscription.unsubscribe();
-    await expect(cancelled).resolves.toBe(false);
-    resolveFetch({
-      event_id: '$trimmed',
-      room_id: KEY.roomId,
-      type: 'm.room.message',
-      sender: '@bob:example.org',
-      origin_server_ts: 1,
-      content: { msgtype: 'm.text', body: 'trimmed text' },
-    });
-    await tick();
+    await expect(cancelled).resolves.toBe(true);
+    await fetched();
 
-    expect(client.sendMessage).not.toHaveBeenCalled();
+    expect(context.client.sendMessage).not.toHaveBeenCalled();
     expect(outcomes).toEqual([]);
+  });
+
+  it('leaves a concurrent own send alone when cancelling a text with no echo yet', async () => {
+    const context = setup({ server: 'pending' });
+    const { operation, subscription, fetched } = fetchingReply(context);
+    const { w } = context;
+    void w.client.sendEvent(
+      ROOM,
+      null,
+      'm.sticker',
+      { body: 'sticker' },
+      'media',
+    );
+    const media = w.sends[0].echo;
+    w.update(media, EventStatus.QUEUED);
+
+    await expect(firstValueFrom(operation.cancel())).resolves.toBe(true);
+    subscription.unsubscribe();
+    await fetched();
+
+    expect(context.client.cancelPendingEvent).not.toHaveBeenCalled();
+    expect(media.status).toBe(EventStatus.QUEUED);
+    expect(context.client.sendMessage).not.toHaveBeenCalled();
   });
 
   it('uses the error channel when an accepted event has no authoritative local echo', async () => {

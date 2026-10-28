@@ -563,6 +563,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
     options: {
       readonly threadRootId: string | null;
       readonly replyTo: string | null;
+      readonly transactionId?: string;
     },
   ): Observable<
     EngineResult<{
@@ -588,7 +589,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       return target.pipe(
         switchMap((event) => {
           const { type, content } = outgoing(room, message, replyTo, event);
-          const transactionId = client.makeTxnId();
+          const transactionId = options.transactionId ?? client.makeTxnId();
           const request =
             type === EventType.RoomMessage
               ? client.sendMessage(
