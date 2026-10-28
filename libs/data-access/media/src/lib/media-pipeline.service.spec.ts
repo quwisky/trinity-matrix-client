@@ -1,76 +1,50 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NEVER, firstValueFrom, of, take, toArray } from 'rxjs';
+import { firstValueFrom, of, take, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaService, type UploadedMedia } from './media.service';
+import { SESSION_SNAPSHOT } from '@trinity/data-access/matrix-client';
+import { engineOk, type MediaPayload } from '@trinity/util/matrix';
+import { FakeMediaEngine } from '../contract/fake-media-engine';
+import { strippedMedia } from './image-metadata/strip-file-metadata';
+import type { AttachmentOutcome, TransferUpdate } from './media-engine';
+import { MEDIA_ENGINE } from './media-engine.token';
+import { describeMedia } from './media-processing';
+import { MediaService } from './media.service';
 import { MediaPipeline } from './media-pipeline.service';
-import type { MediaPayload } from '@trinity/util/matrix';
+import type { MediaTransferRequest } from './media-pipeline.models';
+import { sessionWith } from './media.spec-harness';
 
-const KEY = {
-  accountId: '@alice:example.org',
-  roomId: '!room:example.org',
-} as const;
+// The WebView probe needs a real decoder; these specs give it the measurements directly.
+vi.mock('./media-processing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./media-processing')>()),
+  describeMedia: vi.fn(() => Promise.resolve({ dims: {}, thumbnail: null })),
+}));
 
-function uploaded(): UploadedMedia {
-  return {
-    msgtype: 'm.image' as UploadedMedia['msgtype'],
-    body: 'secret.png',
-    mxc: null,
-    file: {
-      url: 'mxc://example.org/ciphertext',
-      key: {} as JsonWebKey,
-      iv: 'iv',
-      hashes: { sha256: 'hash' },
-      v: 'v2',
-    },
-    info: { mimetype: 'image/png', size: 4 },
-  };
-}
+// Wrapped so a spec can make stripping fail; it keeps doing the real work otherwise.
+vi.mock('./image-metadata/strip-file-metadata', async (importOriginal) => {
+  const real =
+    await importOriginal<
+      typeof import('./image-metadata/strip-file-metadata')
+    >();
+  return { ...real, strippedMedia: vi.fn(real.strippedMedia) };
+});
 
-function setup() {
-  const localEcho = { id: '$event' };
-  const pendingEcho = {
-    id: `~${KEY.roomId}:txn-1`,
-    status: 'not_sent',
-    getId: () => `~${KEY.roomId}:txn-1`,
-  };
-  const room = {
-    roomId: KEY.roomId,
-    hasEncryptionStateEvent: vi.fn(() => true),
-    findEventById: vi.fn((id: string) => {
-      if (id === '$event') return localEcho;
-      if (id === pendingEcho.id) return pendingEcho;
-      return undefined;
-    }),
-  };
-  const crypto = {
-    isEncryptionEnabledInRoom: vi.fn((_roomId: string) =>
-      Promise.resolve(false),
-    ),
-  };
-  const client = {
-    getUserId: (): string => KEY.accountId,
-    getCrypto: vi.fn((): typeof crypto | undefined => crypto),
-    getRoom: vi.fn(() => room),
-    makeTxnId: vi.fn(() => 'txn-1'),
-    sendMessage: vi.fn((_roomId: string, _content: unknown, _txnId: string) =>
-      Promise.resolve({ event_id: '$event' }),
-    ),
-    resendEvent: vi.fn(() => Promise.resolve({ event_id: '$event' })),
-    cancelPendingEvent: vi.fn(),
-  };
+const ALICE = '@alice:example.org';
+const BOB = '@bob:example.org';
+
+const ENCRYPTED_FILE = {
+  url: 'mxc://example.org/ciphertext',
+  key: {} as JsonWebKey,
+  iv: 'iv',
+  hashes: { sha256: 'hash' },
+  v: 'v2',
+};
+
+function setup(options: { encrypted?: boolean } = {}) {
+  const engine = new FakeMediaEngine();
+  const roomId = engine.addRoom(options.encrypted ?? true);
+  const session = signal(sessionWith(ALICE, [ALICE, BOB]));
   const bytes = {
-    uploadMedia: vi.fn(
-      (
-        _file: File,
-        _encrypt: boolean,
-        _progress?: (fraction: number) => void,
-        _abortController?: AbortController,
-        _accountId?: string,
-        _hints?: unknown,
-        _imageMetadata?: 'strip' | 'keep',
-      ) => of(uploaded()),
-    ),
     resolveMedia: vi.fn(() => of('blob:resolved')),
     downloadMedia: vi.fn(),
     pin: vi.fn(),
@@ -79,183 +53,132 @@ function setup() {
     releaseAll: vi.fn(),
     uploadLimit: vi.fn(() => of(1024)),
   };
-  const matrix = {
-    clientFor: vi.fn((_accountId: string): typeof client | null => client),
-    instance: client,
-  };
   TestBed.configureTestingModule({
     providers: [
-      MediaPipeline,
+      { provide: MEDIA_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
       { provide: MediaService, useValue: bytes },
-      {
-        provide: MatrixClientService,
-        useValue: matrix,
-      },
     ],
   });
+  const pipeline = TestBed.inject(MediaPipeline);
+  const key = { accountId: ALICE, roomId };
   return {
-    pipeline: TestBed.inject(MediaPipeline),
+    pipeline,
+    engine,
     bytes,
-    client,
-    matrix,
-    room,
-    crypto,
-    pendingEcho,
+    session,
+    key,
+    roomId,
+    /** Stages a small file; throws if staging refuses it. */
+    stage(name = 'photo.png', type = 'image/png', hints?: object) {
+      const staged = pipeline.stage(
+        new File([new Uint8Array([1, 2, 3, 4])], name, { type }),
+        hints,
+      );
+      if (staged.kind !== 'staged') throw new Error('not staged');
+      return staged.media;
+    },
+    /** Runs a transfer to the room to completion, returning every event. */
+    run(request: Omit<MediaTransferRequest, 'key'>) {
+      return firstValueFrom(
+        pipeline.transfer({ key, ...request }).pipe(toArray()),
+      );
+    },
+    /** The engine key the pipeline sends a staged file to the room under. */
+    attachmentKey(id: string, imageMetadata: 'strip' | 'keep' = 'strip') {
+      return JSON.stringify([id, ALICE, roomId, null, imageMetadata]);
+    },
   };
 }
 
+const SENT = { kind: 'sent', eventId: expect.stringMatching(/^\$event/) };
+const SEND_REJECTED = {
+  kind: 'rejected',
+  failure: 'send-rejected',
+  retryable: true,
+} as const;
+const VALIDATING = { kind: 'progress', phase: 'validating', fraction: 0 };
+
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
   TestBed.resetTestingModule();
 });
 
 describe('MediaPipeline', () => {
-  it('keeps a transfer cold, encrypts for the exact Room, streams progress, and accepts its local echo', async () => {
-    const { pipeline, bytes, client } = setup();
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1, 2, 3, 4])], 'secret.png', {
-        type: 'image/png',
-      }),
-    );
-    expect(staged.kind).toBe('staged');
-    if (staged.kind !== 'staged') return;
+  it('keeps a transfer cold, then validates, encrypts, uploads and sends it to the exact room', async () => {
+    const { pipeline, engine, key, roomId, stage } = setup();
+    const media = stage('secret.png');
 
-    const command = pipeline.transfer({
-      key: KEY,
-      media: staged.media,
-      caption: 'classified',
-    });
-    expect(bytes.uploadMedia).not.toHaveBeenCalled();
-    expect(client.sendMessage).not.toHaveBeenCalled();
-
+    const command = pipeline.transfer({ key, media, caption: 'classified' });
+    expect(engine.uploads).toBe(0);
     const events = await firstValueFrom(command.pipe(toArray()));
 
-    expect(bytes.uploadMedia).toHaveBeenCalledWith(
-      expect.any(File),
-      true,
-      expect.any(Function),
-      expect.any(AbortController),
-      KEY.accountId,
-      undefined,
-      'strip',
-    );
-    expect(events.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
-    expect(events.some((event) => event.kind === 'progress')).toBe(true);
-    expect(client.sendMessage).toHaveBeenCalledWith(
-      KEY.roomId,
-      expect.objectContaining({ file: expect.any(Object) }),
-      'txn-1',
-    );
+    expect(events).toEqual([
+      VALIDATING,
+      { kind: 'progress', phase: 'encrypting', fraction: 0 },
+      { kind: 'progress', phase: 'uploading', fraction: 1 },
+      { kind: 'progress', phase: 'sending', fraction: 1 },
+      SENT,
+    ]);
+    expect(engine.messages(roomId)).toEqual([
+      {
+        msgtype: 'm.image',
+        body: 'classified',
+        hasThumbnail: false,
+        threadRootId: null,
+      },
+    ]);
+    expect(pipeline.hasStaged(media)).toBe(false);
   });
 
-  it('encrypts the upload when the crypto store has the room as encrypted but its state lacks the event', async () => {
-    const { pipeline, bytes, room, crypto } = setup();
-    room.hasEncryptionStateEvent.mockReturnValue(false);
-    crypto.isEncryptionEnabledInRoom.mockResolvedValue(true);
-    const staged = pipeline.stage(new File([new Uint8Array([1])], 'a.png'));
-    if (staged.kind !== 'staged') return;
+  it('rejects the send when the engine fails closed on an encrypted room without crypto', async () => {
+    const { engine, stage, run } = setup();
+    engine.crypto = false;
 
-    await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
+    const events = await run({ media: stage(), caption: '' });
 
-    expect(crypto.isEncryptionEnabledInRoom).toHaveBeenCalledWith(KEY.roomId);
-    expect(bytes.uploadMedia).toHaveBeenCalledWith(
-      expect.any(File),
-      true,
-      expect.any(Function),
-      expect.any(AbortController),
-      KEY.accountId,
-      undefined,
-      'strip',
-    );
+    expect(events).toEqual([VALIDATING, SEND_REJECTED]);
+    expect(engine.uploads).toBe(0);
   });
 
-  it('uploads in the clear only when the room state and the crypto store both say unencrypted', async () => {
-    const { pipeline, bytes, room } = setup();
-    room.hasEncryptionStateEvent.mockReturnValue(false);
-    const staged = pipeline.stage(new File([new Uint8Array([1])], 'a.png'));
-    if (staged.kind !== 'staged') return;
+  it('rejects a conversation that is gone before any progress', async () => {
+    const { pipeline, stage } = setup();
+    const media = stage();
 
-    await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
-
-    expect(bytes.uploadMedia.mock.calls[0]?.[1]).toBe(false);
+    for (const key of [
+      { accountId: ALICE, roomId: '!gone:example.org' },
+      { accountId: '@ghost:example.org', roomId: '!gone:example.org' },
+    ]) {
+      expect(
+        await firstValueFrom(
+          pipeline.transfer({ key, media, caption: '' }).pipe(toArray()),
+        ),
+      ).toEqual([
+        {
+          kind: 'rejected',
+          failure: 'conversation-unavailable',
+          retryable: false,
+        },
+      ]);
+    }
   });
 
-  it('encrypts the upload when the crypto store fails to answer', async () => {
-    const { pipeline, bytes, room, crypto } = setup();
-    room.hasEncryptionStateEvent.mockReturnValue(false);
-    crypto.isEncryptionEnabledInRoom.mockRejectedValue(new Error('store'));
-    const staged = pipeline.stage(new File([new Uint8Array([1])], 'a.png'));
-    if (staged.kind !== 'staged') return;
+  it('sends staged media to the exact thread root', async () => {
+    const { engine, roomId, stage, run } = setup();
 
-    await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
-
-    expect(bytes.uploadMedia.mock.calls[0]?.[1]).toBe(true);
-  });
-
-  it('refuses to upload when the crypto store is unavailable', async () => {
-    const { pipeline, bytes, client, room } = setup();
-    room.hasEncryptionStateEvent.mockReturnValue(false);
-    client.getCrypto.mockReturnValue(undefined);
-    const staged = pipeline.stage(new File([new Uint8Array([1])], 'a.png'));
-    if (staged.kind !== 'staged') return;
-
-    const events = await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
-
-    expect(events.at(-1)).toEqual({
-      kind: 'rejected',
-      failure: 'send-rejected',
-      retryable: true,
+    const events = await run({
+      threadRootId: '$thread-root',
+      media: stage('thread.png'),
+      caption: 'in thread',
     });
-    expect(bytes.uploadMedia).not.toHaveBeenCalled();
-    expect(client.sendMessage).not.toHaveBeenCalled();
-  });
 
-  it('sends staged media to the exact thread root through the SDK thread overload', async () => {
-    const { pipeline, client } = setup();
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1, 2, 3, 4])], 'thread.png', {
-        type: 'image/png',
-      }),
-    );
-    if (staged.kind !== 'staged') return;
-
-    const events = await firstValueFrom(
-      pipeline
-        .transfer({
-          key: KEY,
-          threadRootId: '$thread-root',
-          media: staged.media,
-          caption: 'in thread',
-        })
-        .pipe(toArray()),
-    );
-
-    expect(events.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
-    expect(client.sendMessage).toHaveBeenCalledWith(
-      KEY.roomId,
-      '$thread-root',
+    expect(events.at(-1)).toEqual(SENT);
+    expect(engine.messages(roomId)).toEqual([
       expect.objectContaining({
         body: 'in thread',
-        filename: 'secret.png',
+        threadRootId: '$thread-root',
       }),
-      'txn-1',
-    );
+    ]);
   });
 
   it('rejects invalid staged input as a typed terminal outcome', () => {
@@ -268,19 +191,33 @@ describe('MediaPipeline', () => {
     });
   });
 
+  it('rejects a released staged reference as unavailable', async () => {
+    const { pipeline, stage, run } = setup();
+    const media = stage();
+    pipeline.releaseStaged(media);
+
+    expect(await run({ media, caption: '' })).toEqual([
+      {
+        kind: 'rejected',
+        failure: 'staged-media-unavailable',
+        retryable: false,
+      },
+    ]);
+  });
+
   it('presents only safe metadata while retaining encrypted source material internally', async () => {
     const { pipeline, bytes } = setup();
     const reference = pipeline.present(
       {
         kind: 'image',
         mxc: null,
-        file: uploaded().file,
+        file: ENCRYPTED_FILE,
         filename: 'secret.png',
         mimeType: 'image/png',
         thumbnailMxc: null,
         thumbnailFile: null,
       },
-      KEY.accountId,
+      ALICE,
     );
 
     expect(reference).toMatchObject({
@@ -295,9 +232,9 @@ describe('MediaPipeline', () => {
       firstValueFrom(pipeline.resolveMedia(reference, 'full')),
     ).resolves.toBe('blob:resolved');
     expect(bytes.resolveMedia).toHaveBeenCalledWith(
-      expect.objectContaining({ file: uploaded().file }),
+      expect.objectContaining({ file: ENCRYPTED_FILE }),
       'full',
-      KEY.accountId,
+      ALICE,
     );
     bytes.downloadMedia.mockReturnValue(
       of({ blob: new Blob(['safe']), filename: 'secret.png' }),
@@ -306,14 +243,14 @@ describe('MediaPipeline', () => {
       firstValueFrom(pipeline.downloadMedia(reference)),
     ).resolves.toMatchObject({ filename: 'secret.png' });
     expect(bytes.downloadMedia).toHaveBeenCalledWith(
-      expect.objectContaining({ file: uploaded().file }),
-      KEY.accountId,
+      expect.objectContaining({ file: ENCRYPTED_FILE }),
+      ALICE,
     );
   });
 
   it.each([
     ['a plaintext thumbnail', { thumbnailMxc: 'mxc://example.org/t' }, true],
-    ['an encrypted thumbnail', { thumbnailFile: uploaded().file }, true],
+    ['an encrypted thumbnail', { thumbnailFile: ENCRYPTED_FILE }, true],
     ['no thumbnail', {}, false],
   ])(
     'presents whether the event bundles a thumbnail (%s)',
@@ -338,7 +275,7 @@ describe('MediaPipeline', () => {
   );
 
   it('rejects reads once the source Account client is removed', async () => {
-    const { pipeline, bytes, matrix } = setup();
+    const { pipeline, bytes, session } = setup();
     const reference = pipeline.present({
       kind: 'image',
       mxc: 'mxc://example.org/photo',
@@ -356,7 +293,7 @@ describe('MediaPipeline', () => {
       pipeline.resolveMedia(reference, 'full'),
       pipeline.downloadMedia(reference),
     ];
-    matrix.clientFor.mockReturnValue(null);
+    session.set(sessionWith(null, []));
 
     for (const read of reads) {
       await expect(firstValueFrom<unknown>(read)).rejects.toThrow(
@@ -368,7 +305,7 @@ describe('MediaPipeline', () => {
   });
 
   it('keeps media reads bound to their live opening Account after an Active Account switch', async () => {
-    const { pipeline, bytes, client, matrix } = setup();
+    const { pipeline, bytes, session } = setup();
     const reference = pipeline.present({
       kind: 'image',
       mxc: 'mxc://example.org/photo',
@@ -378,10 +315,7 @@ describe('MediaPipeline', () => {
       thumbnailMxc: null,
       thumbnailFile: null,
     });
-    matrix.instance = { ...client, getUserId: () => '@bob:example.org' };
-    matrix.clientFor.mockImplementation((id) =>
-      id === KEY.accountId ? client : matrix.instance,
-    );
+    session.set(sessionWith(BOB, [ALICE, BOB]));
     bytes.downloadMedia.mockReturnValue(
       of({ blob: new Blob(['photo']), filename: 'photo.png' }),
     );
@@ -396,12 +330,9 @@ describe('MediaPipeline', () => {
     expect(bytes.resolveMedia).toHaveBeenCalledWith(
       expect.any(Object),
       'full',
-      KEY.accountId,
+      ALICE,
     );
-    expect(bytes.downloadMedia).toHaveBeenCalledWith(
-      expect.any(Object),
-      KEY.accountId,
-    );
+    expect(bytes.downloadMedia).toHaveBeenCalledWith(expect.any(Object), ALICE);
   });
 
   describe('sameMedia', () => {
@@ -417,8 +348,8 @@ describe('MediaPipeline', () => {
 
     it('tells one message presented twice (a receipt or reaction re-projected it) as the same media', () => {
       const { pipeline } = setup();
-      const first = pipeline.present(photo, KEY.accountId);
-      const again = pipeline.present({ ...photo }, KEY.accountId);
+      const first = pipeline.present(photo, ALICE);
+      const again = pipeline.present({ ...photo }, ALICE);
 
       expect(first).not.toBe(again);
       expect(pipeline.sameMedia(first, again)).toBe(true);
@@ -426,15 +357,12 @@ describe('MediaPipeline', () => {
 
     it('tells an edit that swapped the file, its thumbnail, or its account apart', () => {
       const { pipeline } = setup();
-      const first = pipeline.present(photo, KEY.accountId);
+      const first = pipeline.present(photo, ALICE);
 
       expect(
         pipeline.sameMedia(
           first,
-          pipeline.present(
-            { ...photo, mxc: 'mxc://example.org/other' },
-            KEY.accountId,
-          ),
+          pipeline.present({ ...photo, mxc: 'mxc://example.org/other' }, ALICE),
         ),
       ).toBe(false);
       expect(
@@ -442,20 +370,20 @@ describe('MediaPipeline', () => {
           first,
           pipeline.present(
             { ...photo, thumbnailMxc: 'mxc://example.org/thumb' },
-            KEY.accountId,
+            ALICE,
           ),
         ),
       ).toBe(false);
-      expect(
-        pipeline.sameMedia(first, pipeline.present(photo, '@bob:example.org')),
-      ).toBe(false);
+      expect(pipeline.sameMedia(first, pipeline.present(photo, BOB))).toBe(
+        false,
+      );
     });
 
     it('compares encrypted media by the file it points at', () => {
       const { pipeline } = setup();
       const file = { url: 'mxc://example.org/cipher' } as never;
       const encrypted = { ...photo, mxc: null, file };
-      const first = pipeline.present(encrypted, KEY.accountId);
+      const first = pipeline.present(encrypted, ALICE);
 
       expect(
         pipeline.sameMedia(
@@ -465,7 +393,7 @@ describe('MediaPipeline', () => {
               ...encrypted,
               file: { url: 'mxc://example.org/cipher' } as never,
             },
-            KEY.accountId,
+            ALICE,
           ),
         ),
       ).toBe(true);
@@ -474,7 +402,7 @@ describe('MediaPipeline', () => {
           first,
           pipeline.present(
             { ...encrypted, file: { url: 'mxc://example.org/other' } as never },
-            KEY.accountId,
+            ALICE,
           ),
         ),
       ).toBe(false);
@@ -490,24 +418,18 @@ describe('MediaPipeline', () => {
         v: 'v2',
       });
       const encrypted = { ...photo, mxc: null, file: file('a') };
-      const first = pipeline.present(encrypted, KEY.accountId);
+      const first = pipeline.present(encrypted, ALICE);
 
       expect(
         pipeline.sameMedia(
           first,
-          pipeline.present({ ...encrypted, file: file('b') }, KEY.accountId),
+          pipeline.present({ ...encrypted, file: file('b') }, ALICE),
         ),
       ).toBe(false);
       expect(
         pipeline.sameMedia(
-          pipeline.present(
-            { ...encrypted, thumbnailFile: file('a') },
-            KEY.accountId,
-          ),
-          pipeline.present(
-            { ...encrypted, thumbnailFile: file('b') },
-            KEY.accountId,
-          ),
+          pipeline.present({ ...encrypted, thumbnailFile: file('a') }, ALICE),
+          pipeline.present({ ...encrypted, thumbnailFile: file('b') }, ALICE),
         ),
       ).toBe(false);
     });
@@ -533,8 +455,8 @@ describe('MediaPipeline', () => {
         const encrypted = { ...photo, mxc: null, file: cipher };
         const same = (a: MediaPayload, b: MediaPayload) =>
           pipeline.sameMedia(
-            pipeline.present(a, KEY.accountId),
-            pipeline.present(b, KEY.accountId),
+            pipeline.present(a, ALICE),
+            pipeline.present(b, ALICE),
           );
 
         expect(same(encrypted, { ...encrypted, file: changed })).toBe(false);
@@ -555,19 +477,19 @@ describe('MediaPipeline', () => {
         pipeline.sameMedia(
           pipeline.present(
             { ...thumbed, thumbnailMimeType: 'image/png' },
-            KEY.accountId,
+            ALICE,
           ),
           pipeline.present(
             { ...thumbed, thumbnailMimeType: 'image/jpeg' },
-            KEY.accountId,
+            ALICE,
           ),
         ),
       ).toBe(false);
     });
   });
 
-  it('drops a rendition from the cache under the client that presented it', () => {
-    const { pipeline, bytes, matrix } = setup();
+  it('drops a rendition from the cache under the account that presented it', () => {
+    const { pipeline, bytes, session } = setup();
     const media = {
       kind: 'image' as const,
       mxc: 'mxc://example.org/photo',
@@ -584,10 +506,10 @@ describe('MediaPipeline', () => {
     expect(bytes.drop).toHaveBeenCalledExactlyOnceWith('blob:photo', {
       media,
       variant: 'full',
-      accountId: KEY.accountId,
+      accountId: ALICE,
     });
     // Freeing pins never needs a live Account: a signed-out one's pins still go.
-    matrix.clientFor.mockReturnValue(null);
+    session.set(sessionWith(null, []));
     pipeline.drop(reference, 'full', 'blob:other');
     expect(bytes.unpin).toHaveBeenCalledWith('blob:other');
   });
@@ -605,29 +527,20 @@ describe('MediaPipeline', () => {
 
     it('resolves through the presenting account while it is live', async () => {
       const { pipeline, bytes } = setup();
-      const reference = pipeline.present(image, '@bob:example.org');
+      const reference = pipeline.present(image, BOB);
 
       await firstValueFrom(pipeline.resolveMedia(reference, 'full'));
 
-      expect(bytes.resolveMedia).toHaveBeenCalledWith(
-        image,
-        'full',
-        '@bob:example.org',
-      );
+      expect(bytes.resolveMedia).toHaveBeenCalledWith(image, 'full', BOB);
     });
 
     it('defaults to the active account', async () => {
-      const { pipeline, bytes, matrix } = setup();
+      const { pipeline, bytes } = setup();
       const reference = pipeline.present(image);
 
       await firstValueFrom(pipeline.resolveMedia(reference, 'full'));
 
-      expect(matrix.clientFor).toHaveBeenCalledWith(KEY.accountId);
-      expect(bytes.resolveMedia).toHaveBeenCalledWith(
-        image,
-        'full',
-        KEY.accountId,
-      );
+      expect(bytes.resolveMedia).toHaveBeenCalledWith(image, 'full', ALICE);
     });
 
     it('sameMedia is false across accounts', () => {
@@ -635,426 +548,314 @@ describe('MediaPipeline', () => {
 
       expect(
         pipeline.sameMedia(
-          pipeline.present(image, KEY.accountId),
-          pipeline.present({ ...image }, '@bob:example.org'),
+          pipeline.present(image, ALICE),
+          pipeline.present({ ...image }, BOB),
         ),
       ).toBe(false);
     });
   });
 
   it('does not start work when a synchronous progress consumer unsubscribes', async () => {
-    const { pipeline, bytes, client } = setup();
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'cancel.bin'),
-    );
-    if (staged.kind !== 'staged') return;
+    const { pipeline, engine, key, roomId, stage } = setup();
 
     await expect(
       firstValueFrom(
-        pipeline
-          .transfer({ key: KEY, media: staged.media, caption: '' })
-          .pipe(take(1)),
+        pipeline.transfer({ key, media: stage(), caption: '' }).pipe(take(1)),
       ),
-    ).resolves.toEqual({
+    ).resolves.toEqual(VALIDATING);
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(engine.uploads).toBe(0);
+    expect(engine.messages(roomId)).toEqual([]);
+  });
+
+  it('stops an upload on unsubscribe and keeps the staged reference retryable', async () => {
+    const { pipeline, engine, key, roomId, stage, run } = setup();
+    const media = stage();
+
+    await firstValueFrom(
+      pipeline.transfer({ key, media, caption: '' }).pipe(take(2)),
+    );
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(engine.messages(roomId)).toEqual([]);
+    expect(pipeline.hasStaged(media)).toBe(true);
+    expect((await run({ media, caption: '' })).at(-1)).toEqual(SENT);
+  });
+
+  it('withdraws the echo when unsubscribed during the send, then retries the retained upload', async () => {
+    const { pipeline, engine, key, roomId, stage, run } = setup();
+    const media = stage();
+
+    await new Promise<void>((resolve) => {
+      const subscription = pipeline
+        .transfer({ key, media, caption: '' })
+        .subscribe((event) => {
+          if (event.kind === 'progress' && event.phase === 'sending') {
+            // Once the send is under way, before the server answers.
+            queueMicrotask(() => {
+              subscription.unsubscribe();
+              resolve();
+            });
+          }
+        });
+    });
+    const retry = await run({ media, caption: '' });
+
+    expect(engine.withdrawn).toBe(1);
+    expect(engine.uploads).toBe(1);
+    expect(retry).toEqual([
+      VALIDATING,
+      { kind: 'progress', phase: 'sending', fraction: 1 },
+      SENT,
+    ]);
+    expect(engine.messages(roomId)).toHaveLength(1);
+  });
+
+  it('retries a failed send with the retained upload', async () => {
+    const { engine, roomId, stage, run } = setup();
+    engine.sendFailures = 1;
+    const media = stage();
+
+    const first = await run({ media, caption: '' });
+    const second = await run({ media, caption: '' });
+
+    expect(first.at(-2)).toEqual({
       kind: 'progress',
-      phase: 'validating',
-      fraction: 0,
+      phase: 'sending',
+      fraction: 1,
     });
-    expect(bytes.uploadMedia).not.toHaveBeenCalled();
-    expect(client.sendMessage).not.toHaveBeenCalled();
+    expect(first.at(-1)).toEqual(SEND_REJECTED);
+    expect(second.at(-1)).toEqual(SENT);
+    expect(engine.uploads).toBe(1);
+    expect(engine.withdrawn).toBe(0);
+    expect(engine.messages(roomId)).toHaveLength(1);
   });
 
-  it('aborts an in-flight upload on unsubscribe and keeps the staged reference retryable', async () => {
-    const { pipeline, bytes } = setup();
-    let controller: AbortController | undefined;
-    bytes.uploadMedia.mockImplementation(
-      (_file, _encrypt, _progress, abortController) => {
-        controller = abortController;
-        return NEVER;
-      },
-    );
-    const staged = pipeline.stage(new File([new Uint8Array([1])], 'retry.bin'));
-    if (staged.kind !== 'staged') return;
+  it('withdraws the failed echo and reuses the upload when a retry changes the caption', async () => {
+    const { engine, roomId, stage, run } = setup();
+    engine.sendFailures = 1;
+    const media = stage();
 
-    const subscription = pipeline
-      .transfer({ key: KEY, media: staged.media, caption: '' })
-      .subscribe();
-    await vi.waitFor(() => expect(bytes.uploadMedia).toHaveBeenCalled());
-    subscription.unsubscribe();
+    await run({ media, caption: 'old caption' });
+    const retry = await run({ media, caption: 'new caption' });
 
-    expect(controller?.signal.aborted).toBe(true);
-    expect(pipeline.hasStaged(staged.media)).toBe(true);
-  });
-
-  it('rotates the transaction id after cancelling a pending echo, then retries the cached upload', async () => {
-    const { pipeline, bytes, client } = setup();
-    client.makeTxnId.mockReturnValueOnce('txn-1').mockReturnValueOnce('txn-2');
-    client.sendMessage
-      .mockImplementationOnce(
-        () => new Promise<{ event_id: string }>(() => undefined),
-      )
-      .mockResolvedValueOnce({ event_id: '$event' });
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'cancel-send.png', {
-        type: 'image/png',
-      }),
-    );
-    if (staged.kind !== 'staged') return;
-
-    const subscription = pipeline
-      .transfer({ key: KEY, media: staged.media, caption: '' })
-      .subscribe();
-    await vi.waitFor(() => expect(client.sendMessage).toHaveBeenCalled());
-    subscription.unsubscribe();
-    const retry = await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
-
-    expect(client.cancelPendingEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ id: `~${KEY.roomId}:txn-1` }),
-    );
-    expect(client.sendMessage.mock.calls.map((call) => call[2])).toEqual([
-      'txn-1',
-      'txn-2',
-    ]);
-    expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
-    expect(retry.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
-  });
-
-  it('retries an uncertain send with the cached upload and the same transaction id', async () => {
-    const { pipeline, bytes, client } = setup();
-    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'retry.png', { type: 'image/png' }),
-    );
-    if (staged.kind !== 'staged') return;
-
-    const first = await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
-    const second = await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
-
-    expect(first.at(-1)).toEqual({
-      kind: 'rejected',
-      failure: 'send-rejected',
-      retryable: true,
-    });
-    expect(second.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
-    expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
-    expect(client.makeTxnId).toHaveBeenCalledTimes(1);
-    expect(client.sendMessage).toHaveBeenCalledTimes(1);
-    expect(client.sendMessage.mock.calls[0]?.[2]).toBe('txn-1');
-    expect(client.resendEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ id: `~${KEY.roomId}:txn-1` }),
-      expect.objectContaining({ roomId: KEY.roomId }),
-    );
-  });
-
-  it('cancels the failed echo and uses a fresh transaction when retry changes the caption', async () => {
-    const { pipeline, bytes, client } = setup();
-    client.makeTxnId.mockReturnValueOnce('txn-1').mockReturnValueOnce('txn-2');
-    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'caption.png', {
-        type: 'image/png',
-      }),
-    );
-    if (staged.kind !== 'staged') return;
-
-    await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: 'old caption' })
-        .pipe(toArray()),
-    );
-    const retry = await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: 'new caption' })
-        .pipe(toArray()),
-    );
-
-    expect(client.cancelPendingEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ id: `~${KEY.roomId}:txn-1` }),
-    );
-    expect(client.resendEvent).not.toHaveBeenCalled();
-    expect(client.sendMessage.mock.calls.map((call) => call[2])).toEqual([
-      'txn-1',
-      'txn-2',
-    ]);
-    expect(client.sendMessage.mock.calls[1]?.[1]).toEqual(
+    expect(engine.withdrawn).toBe(1);
+    expect(engine.uploads).toBe(1);
+    expect(retry.at(-1)).toEqual(SENT);
+    expect(engine.messages(roomId)).toEqual([
       expect.objectContaining({ body: 'new caption' }),
-    );
-    expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
-    expect(retry.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
+    ]);
   });
 
-  it('re-uploads stripped and sends a fresh event when a kept-metadata retry must now strip', async () => {
-    const { pipeline, bytes, client } = setup();
-    client.makeTxnId.mockReturnValueOnce('txn-1').mockReturnValueOnce('txn-2');
-    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
-    const kept = uploaded();
-    const stripped = uploaded();
-    stripped.file!.url = 'mxc://example.org/stripped';
-    bytes.uploadMedia
-      .mockImplementationOnce(() => of(kept))
-      .mockImplementationOnce(() => of(stripped));
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'photo.jpg', { type: 'image/jpeg' }),
-    );
-    if (staged.kind !== 'staged') return;
+  it('re-uploads stripped and withdraws the kept echo when a kept-metadata retry must now strip', async () => {
+    const { engine, roomId, stage, run, attachmentKey } = setup();
+    engine.sendFailures = 1;
+    const media = stage('photo.jpg', 'image/jpeg');
+    const send = vi.spyOn(engine, 'sendAttachment');
 
-    const first = await firstValueFrom(
-      pipeline
-        .transfer({
-          key: KEY,
-          media: staged.media,
-          caption: '',
-          imageMetadata: 'keep',
-        })
-        .pipe(toArray()),
-    );
+    const first = await run({ media, caption: '', imageMetadata: 'keep' });
     // The person turns Keep photo and video metadata off before retrying.
-    const retry = await firstValueFrom(
-      pipeline
-        .transfer({
-          key: KEY,
-          media: staged.media,
-          caption: '',
-          imageMetadata: 'strip',
-        })
-        .pipe(toArray()),
-    );
+    const retry = await run({ media, caption: '', imageMetadata: 'strip' });
 
-    expect(first.at(-1)).toEqual({
-      kind: 'rejected',
-      failure: 'send-rejected',
-      retryable: true,
-    });
-    expect(client.cancelPendingEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ id: `~${KEY.roomId}:txn-1` }),
-    );
-    expect(client.resendEvent).not.toHaveBeenCalled();
-    expect(bytes.uploadMedia.mock.calls.map((call) => call[6])).toEqual([
-      'keep',
-      'strip',
+    expect(first.at(-1)).toEqual(SEND_REJECTED);
+    expect(send.mock.calls.map(([, , request]) => request.metadata)).toEqual([
+      'kept',
+      'stripped',
     ]);
-    expect(client.sendMessage.mock.calls.map((call) => call[2])).toEqual([
-      'txn-1',
-      'txn-2',
-    ]);
-    expect(client.sendMessage.mock.calls[1]?.[1]).toEqual(
-      expect.objectContaining({
-        file: expect.objectContaining({ url: 'mxc://example.org/stripped' }),
-      }),
+    expect(send.mock.calls[1]?.[2].supersedes).toBe(
+      attachmentKey(media.id, 'keep'),
     );
-    expect(retry.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
+    expect(engine.withdrawn).toBe(1);
+    expect(engine.uploads).toBe(2);
+    expect(retry.at(-1)).toEqual(SENT);
+    expect(engine.messages(roomId)).toHaveLength(1);
   });
 
-  it('does not withdraw a kept-metadata echo the SDK still marks sending', async () => {
-    const { pipeline, bytes, client, pendingEcho } = setup();
-    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'photo.jpg', { type: 'image/jpeg' }),
-    );
-    if (staged.kind !== 'staged') return;
+  it('does not withdraw a kept-metadata echo the engine still marks sending', async () => {
+    const { engine, stage, run, attachmentKey } = setup();
+    engine.sendFailures = 1;
+    const media = stage('photo.jpg', 'image/jpeg');
 
-    await firstValueFrom(
-      pipeline
-        .transfer({
-          key: KEY,
-          media: staged.media,
-          caption: '',
-          imageMetadata: 'keep',
-        })
-        .pipe(toArray()),
-    );
-    pendingEcho.status = 'sending';
-    const retry = await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
+    await run({ media, caption: '', imageMetadata: 'keep' });
+    engine.markSending(attachmentKey(media.id, 'keep'));
+    const retry = await run({ media, caption: '' });
 
-    expect(retry.at(-1)).toEqual({
-      kind: 'indeterminate',
-      failure: 'send-in-flight',
-      retryable: true,
-    });
-    expect(client.cancelPendingEvent).not.toHaveBeenCalled();
-    expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
+    expect(retry).toEqual([
+      VALIDATING,
+      { kind: 'indeterminate', failure: 'send-in-flight', retryable: true },
+    ]);
+    expect(engine.withdrawn).toBe(0);
+    expect(engine.uploads).toBe(1);
   });
 
   it('reuses a stripped upload when a retry would keep metadata', async () => {
-    const { pipeline, bytes, client } = setup();
-    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'photo.jpg', { type: 'image/jpeg' }),
-    );
-    if (staged.kind !== 'staged') return;
+    const { engine, stage, run } = setup();
+    engine.sendFailures = 1;
+    const media = stage('photo.jpg', 'image/jpeg');
 
-    await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
-    const retry = await firstValueFrom(
-      pipeline
-        .transfer({
-          key: KEY,
-          media: staged.media,
-          caption: '',
-          imageMetadata: 'keep',
-        })
-        .pipe(toArray()),
-    );
+    await run({ media, caption: '' });
+    const retry = await run({ media, caption: '', imageMetadata: 'keep' });
 
-    expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
-    expect(client.cancelPendingEvent).not.toHaveBeenCalled();
-    expect(client.resendEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ id: `~${KEY.roomId}:txn-1` }),
-      expect.objectContaining({ roomId: KEY.roomId }),
-    );
-    expect(retry.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
+    expect(engine.uploads).toBe(1);
+    expect(engine.withdrawn).toBe(0);
+    expect(retry.at(-1)).toEqual(SENT);
   });
 
-  it('does not resend a retained echo while the SDK still marks it sending', async () => {
-    const { pipeline, client, pendingEcho } = setup();
-    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'still-sending.png', {
-        type: 'image/png',
-      }),
-    );
-    if (staged.kind !== 'staged') return;
+  it('does not resend a retained echo while the engine still marks it sending', async () => {
+    const { engine, roomId, stage, run, attachmentKey } = setup();
+    engine.sendFailures = 1;
+    const media = stage();
 
-    await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
-    pendingEcho.status = 'sending';
-    const retry = await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
+    await run({ media, caption: '' });
+    engine.markSending(attachmentKey(media.id));
+    const retry = await run({ media, caption: '' });
 
     expect(retry.at(-1)).toEqual({
       kind: 'indeterminate',
       failure: 'send-in-flight',
       retryable: true,
     });
-    expect(client.sendMessage).toHaveBeenCalledTimes(1);
-    expect(client.resendEvent).not.toHaveBeenCalled();
+    expect(engine.messages(roomId)).toEqual([]);
   });
 
-  it('reports an accepted server response without a local echo as indeterminate', async () => {
-    const { pipeline, room } = setup();
-    room.findEventById.mockReturnValue(undefined);
-    const staged = pipeline.stage(new File([new Uint8Array([1])], 'sent.bin'));
-    if (staged.kind !== 'staged') return;
-
-    const events = await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
+  it('reports a send the engine cannot confirm as indeterminate and keeps the file staged', async () => {
+    const { engine, stage, run } = setup();
+    vi.spyOn(engine, 'sendAttachment').mockReturnValue(
+      of<TransferUpdate<AttachmentOutcome>>({
+        kind: 'done',
+        result: engineOk({
+          kind: 'indeterminate',
+          reason: 'local-echo-missing',
+        }),
+      }),
     );
+    const media = stage();
+
+    expect(await run({ media, caption: '' })).toEqual([
+      VALIDATING,
+      { kind: 'indeterminate', failure: 'local-echo-missing', retryable: true },
+    ]);
+  });
+
+  it('rejects the upload when the engine cannot upload the file', async () => {
+    const { engine, stage, run } = setup();
+    engine.uploadLimitBytes = 1;
+
+    const events = await run({ media: stage(), caption: '' });
 
     expect(events.at(-1)).toEqual({
-      kind: 'indeterminate',
-      failure: 'local-echo-missing',
+      kind: 'rejected',
+      failure: 'upload-rejected',
       retryable: true,
     });
   });
 
-  it('revokes preview resources and permanently retires a released staged reference', () => {
-    const { pipeline } = setup();
-    const revoke = vi.spyOn(URL, 'revokeObjectURL');
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1])], 'preview.png', { type: 'image/png' }),
-    );
-    if (staged.kind !== 'staged') return;
+  it('keeps retained uploads for the two latest conversations of a staged file', async () => {
+    const { pipeline, engine, stage } = setup();
+    engine.sendFailures = 3;
+    const media = stage();
+    const rooms = [engine.addRoom(), engine.addRoom(), engine.addRoom()];
+    const keyFor = (roomId: string) =>
+      JSON.stringify([media.id, ALICE, roomId, null, 'strip']);
 
-    pipeline.releaseStaged(staged.media);
+    for (const roomId of rooms) {
+      await firstValueFrom(
+        pipeline
+          .transfer({ key: { accountId: ALICE, roomId }, media, caption: '' })
+          .pipe(toArray()),
+      );
+    }
 
-    expect(revoke).toHaveBeenCalledWith(staged.media.previewUrl);
-    expect(pipeline.hasStaged(staged.media)).toBe(false);
+    expect(rooms.map((roomId) => engine.retains(keyFor(roomId)))).toEqual([
+      false,
+      true,
+      true,
+    ]);
   });
 
-  it('keeps capture hints on the staged reference and forwards them to the upload', async () => {
-    const { pipeline, bytes } = setup();
+  it('revokes preview resources, forgets retained uploads and retires a released staged reference', async () => {
+    const { pipeline, engine, stage, run, attachmentKey } = setup();
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    engine.sendFailures = 1;
+    const media = stage('preview.png');
+    await run({ media, caption: '' });
+    expect(engine.retains(attachmentKey(media.id))).toBe(true);
+
+    pipeline.releaseStaged(media);
+
+    expect(revoke).toHaveBeenCalledWith(media.previewUrl);
+    expect(engine.retains(attachmentKey(media.id))).toBe(false);
+    expect(engine.withdrawn).toBe(0);
+    expect(pipeline.hasStaged(media)).toBe(false);
+  });
+
+  it('describes the file with its capture hints and sends what they measured', async () => {
+    const { engine, roomId, stage, run } = setup();
+    const poster = new Blob([new Uint8Array([1])], { type: 'image/jpeg' });
     const hints = {
       width: 1920,
       height: 1080,
       durationMs: 12_500,
-      thumbnail: {
-        blob: new Blob([new Uint8Array([1])], { type: 'image/jpeg' }),
-        w: 480,
-        h: 270,
-      },
+      thumbnail: { blob: poster, w: 480, h: 270 },
     };
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1, 2, 3])], 'video.mov', {
-        type: 'video/quicktime',
-      }),
-      hints,
-    );
-    if (staged.kind !== 'staged') throw new Error('not staged');
+    vi.mocked(describeMedia).mockResolvedValueOnce({
+      dims: { w: 1920, h: 1080, durationMs: 12_500 },
+      thumbnail: { blob: poster, w: 480, h: 270 },
+    });
+    const send = vi.spyOn(engine, 'sendAttachment');
+    const media = stage('video.mov', 'video/quicktime', hints);
 
-    expect(staged.media.hints).toEqual(hints);
-    await firstValueFrom(
-      pipeline
-        .transfer({ key: KEY, media: staged.media, caption: '' })
-        .pipe(toArray()),
-    );
+    expect(media.hints).toEqual(hints);
+    await run({ media, caption: '' });
 
-    expect(bytes.uploadMedia).toHaveBeenCalledWith(
-      expect.any(File),
-      true,
-      expect.any(Function),
-      expect.any(AbortController),
-      KEY.accountId,
-      hints,
-      'strip',
-    );
+    expect(describeMedia).toHaveBeenCalledWith(expect.any(File), hints);
+    expect(send.mock.calls[0]?.[2]).toMatchObject({
+      filename: 'video.mov',
+      mimeType: 'video/quicktime',
+      msgtype: 'm.video',
+      info: { w: 1920, h: 1080, durationMs: 12_500 },
+      thumbnail: { mimeType: 'image/jpeg', w: 480, h: 270 },
+    });
+    expect(engine.messages(roomId)).toEqual([
+      expect.objectContaining({ msgtype: 'm.video', hasThumbnail: true }),
+    ]);
   });
 
-  it('uploads with the image metadata policy the transfer asks for', async () => {
-    const { pipeline, bytes } = setup();
-    const staged = pipeline.stage(
-      new File([new Uint8Array([1, 2, 3, 4])], 'photo.jpg', {
-        type: 'image/jpeg',
-      }),
-    );
-    if (staged.kind !== 'staged') throw new Error('not staged');
+  it('hands over the file as picked when the transfer keeps its metadata', async () => {
+    const { engine, stage, run } = setup();
+    const send = vi.spyOn(engine, 'sendAttachment');
+    const media = stage('photo.jpg', 'image/jpeg');
 
-    await firstValueFrom(
-      pipeline
-        .transfer({
-          key: KEY,
-          media: staged.media,
-          caption: '',
-          imageMetadata: 'keep',
-        })
-        .pipe(toArray()),
-    );
+    await run({ media, caption: '', imageMetadata: 'keep' });
 
-    expect(bytes.uploadMedia).toHaveBeenCalledWith(
-      expect.any(File),
-      true,
-      expect.any(Function),
-      expect.any(AbortController),
-      KEY.accountId,
-      undefined,
-      'keep',
-    );
+    expect(strippedMedia).not.toHaveBeenCalled();
+    expect(send.mock.calls[0]?.[2].metadata).toBe('kept');
+  });
+
+  it('marks a file whose strip failed, which an encrypted room refuses as an upload failure', async () => {
+    const { engine, stage, run } = setup();
+    vi.mocked(strippedMedia).mockRejectedValueOnce(new Error('unreadable'));
+    const send = vi.spyOn(engine, 'sendAttachment');
+
+    const events = await run({ media: stage(), caption: '' });
+
+    expect(send.mock.calls[0]?.[2].metadata).toBe('strip-failed');
+    expect(events).toEqual([
+      VALIDATING,
+      { kind: 'rejected', failure: 'upload-rejected', retryable: true },
+    ]);
+    expect(engine.uploads).toBe(0);
+  });
+
+  it('sends a file whose strip failed as picked in a plain room', async () => {
+    const { engine, stage, run } = setup({ encrypted: false });
+    vi.mocked(strippedMedia).mockRejectedValueOnce(new Error('unreadable'));
+
+    const events = await run({ media: stage(), caption: '' });
+
+    expect(events.at(-1)).toEqual(SENT);
+    expect(engine.uploads).toBe(1);
   });
 
   it('previews a staged video from its hinted thumbnail and releases that preview', () => {
@@ -1087,19 +888,15 @@ describe('MediaPipeline', () => {
     expect(staged.media.hints).toBeUndefined();
   });
 
-  it('reads the upload limit through the exact account client', async () => {
-    const { pipeline, bytes, matrix } = setup();
+  it('reads the upload limit through the exact account', async () => {
+    const { pipeline, bytes } = setup();
 
-    expect(await firstValueFrom(pipeline.uploadLimit(KEY.accountId))).toBe(
-      1024,
-    );
-    expect(matrix.clientFor).toHaveBeenCalledWith(KEY.accountId);
-    expect(bytes.uploadLimit).toHaveBeenCalledWith(KEY.accountId);
+    expect(await firstValueFrom(pipeline.uploadLimit(ALICE))).toBe(1024);
+    expect(bytes.uploadLimit).toHaveBeenCalledWith(ALICE);
   });
 
   it('has no limit for a missing or unknown account', async () => {
-    const { pipeline, bytes, matrix } = setup();
-    matrix.clientFor.mockReturnValue(null);
+    const { pipeline, bytes } = setup();
 
     expect(await firstValueFrom(pipeline.uploadLimit(null))).toBeNull();
     expect(

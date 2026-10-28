@@ -154,6 +154,7 @@ describe('engineFailureMessage', () => {
     ['state-key-taken', 'That identifier is already in use.'],
     ['media-unavailable', 'This media is unavailable.'],
     ['too-large', 'This file is too large to upload.'],
+    ['conversation-unavailable', 'This conversation is unavailable.'],
   ] as const)('%s reads "%s"', (code, text) => {
     expect(
       engineFailureMessage({
