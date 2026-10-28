@@ -3,6 +3,7 @@ import { Observable, defer, map, of, switchMap, throwError } from 'rxjs';
 import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { unwrapEngineResult } from '@trinity/util/matrix';
 import { AdministeredRoomStore } from './administered-room.store';
+import { domainOf } from './room-power';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import type { JsonObject } from './room-administration-engine';
 import { ROOM_ADMINISTRATION_ENGINE } from './room-administration-engine.token';
@@ -163,11 +164,6 @@ export class RoomAliasesService {
       {}
     );
   }
-}
-
-function domainOf(userId: string): string | null {
-  const colon = userId.indexOf(':');
-  return colon >= 0 ? userId.slice(colon + 1) : null;
 }
 
 function withoutAlias(content: JsonObject): JsonObject {

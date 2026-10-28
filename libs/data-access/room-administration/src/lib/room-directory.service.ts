@@ -16,6 +16,7 @@ import {
   recoverRoomAdministrationRequest,
   roomAdministrationNotSignedIn,
 } from './room-administration-error';
+import { domainOf } from './room-power';
 import type { RoomSettingsTarget } from './room-settings.service';
 
 const LOAD = 'load-directory-visibility';
@@ -33,9 +34,8 @@ export class RoomDirectoryService {
 
   /** The server whose directory the listing is in: the Account ID's domain. */
   serverName(target: RoomSettingsTarget): string | null {
-    const colon = target.accountId.indexOf(':');
-    return this.session.status(target.accountId) && colon >= 0
-      ? target.accountId.slice(colon + 1)
+    return this.session.status(target.accountId)
+      ? domainOf(target.accountId)
       : null;
   }
 

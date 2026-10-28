@@ -115,6 +115,8 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
     { readonly roomId: string; readonly creator: string }
   >();
   private readonly listed = new Set<string>();
+  /** Per room, state types the snapshot leaves out while the server still holds them. */
+  private readonly withheld = new Map<string, Set<string>>();
   private readonly messages = new Map<string, Set<string>>();
   private readonly changes$ = new BehaviorSubject<void>(undefined);
   private nextRoom = 0;
@@ -246,6 +248,15 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
     this.changed();
   }
 
+  /** Leaves `type` out of `room()` snapshots, as state the client has not loaded yet. */
+  withholdFromSnapshot(roomId: string, type: string): void {
+    this.withheld.set(
+      roomId,
+      new Set([...(this.withheld.get(roomId) ?? []), type]),
+    );
+    this.changed();
+  }
+
   room(accountId: string, roomId: string): Observable<AdministeredRoom | null> {
     return this.changes$.pipe(
       map(() => this.roomSnapshot(accountId, roomId)),
@@ -313,6 +324,25 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
           ),
         ),
       );
+    });
+  }
+
+  /** Synapse answers 403 to a non-member, 404 `M_NOT_FOUND` (null here) for missing state. */
+  stateEvent(
+    accountId: string,
+    roomId: string,
+    type: string,
+    stateKey: string,
+  ): Observable<EngineResult<JsonObject | null>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      if (this.membershipOf(roomId, accountId) !== 'join') {
+        return of(engineFail(FORBIDDEN));
+      }
+      const content = this.content(roomId, type, stateKey);
+      return of(engineOk(content && structuredClone(content)));
     });
   }
 
@@ -532,7 +562,9 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
       return null;
     }
     const single = (type: string): JsonObject | null =>
-      this.content(roomId, type, '');
+      this.withheld.get(roomId)?.has(type)
+        ? null
+        : this.content(roomId, type, '');
     const create = state.get('m.room.create')?.get('') ?? null;
     return {
       roomId,

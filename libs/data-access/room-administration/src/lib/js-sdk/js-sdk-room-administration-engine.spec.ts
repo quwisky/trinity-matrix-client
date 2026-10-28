@@ -104,6 +104,9 @@ function setup(options: { encrypted?: boolean; roomVersion?: string } = {}) {
     deleteAlias: vi.fn(async () => ({})),
     getRoomDirectoryVisibility: vi.fn(async () => ({ visibility: 'public' })),
     setRoomDirectoryVisibility: vi.fn(async () => ({})),
+    getStateEvent: vi.fn(async (): Promise<Record<string, unknown>> => ({
+      users: {},
+    })),
     on: (event: string, listener: (...args: unknown[]) => void) =>
       listeners.set(event, (listeners.get(event) ?? new Set()).add(listener)),
     off: (event: string, listener: (...args: unknown[]) => void) =>
@@ -543,6 +546,35 @@ describe('JsSdkRoomAdministrationEngine', () => {
         failure: { code: 'account-not-live' },
       });
       expect(client.http.authedRequest).not.toHaveBeenCalled();
+    });
+
+    it('stateEvent answers the server content, or null when it has none', async () => {
+      const { engine, client } = setup();
+
+      expect(
+        await firstValueFrom(
+          engine.stateEvent(ME, ROOM_ID, 'm.room.power_levels', ''),
+        ),
+      ).toEqual({ ok: true, value: { users: {} } });
+      expect(client.getStateEvent).toHaveBeenCalledWith(
+        ROOM_ID,
+        'm.room.power_levels',
+        '',
+      );
+
+      client.getStateEvent.mockRejectedValueOnce(
+        new MatrixError({ errcode: 'M_NOT_FOUND', error: 'none' }, 404),
+      );
+      expect(
+        await firstValueFrom(engine.stateEvent(ME, ROOM_ID, 't', '')),
+      ).toEqual({ ok: true, value: null });
+
+      client.getStateEvent.mockRejectedValueOnce(
+        new MatrixError({ errcode: 'M_FORBIDDEN', error: 'no' }, 403),
+      );
+      expect(
+        await firstValueFrom(engine.stateEvent(ME, ROOM_ID, 't', '')),
+      ).toMatchObject({ ok: false, failure: { code: 'request-failed' } });
     });
 
     it('answer a refusal as request-failed with its status and errcode', async () => {

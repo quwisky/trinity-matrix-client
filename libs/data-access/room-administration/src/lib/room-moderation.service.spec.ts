@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
+import { engineFail, engineOk } from '@trinity/util/matrix';
+import { firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FakeRoomAdministrationEngine } from '../contract/fake-room-administration-engine';
 import { RoomAdministrationError } from './room-administration-error';
@@ -167,6 +168,65 @@ describe('RoomModerationService', () => {
       [engine.alice]: 100,
       [engine.carol]: 50,
     });
+  });
+
+  it('setPowerLevel without local power levels keeps everything the server has', async () => {
+    const { svc, engine, roomId } = await setup();
+    await engine.asBob.setPowerLevels(roomId, { 'org.example.custom': [1] });
+    engine.withholdFromSnapshot(roomId, 'm.room.power_levels');
+    const server = await firstValueFrom(
+      engine.stateEvent(engine.alice, roomId, 'm.room.power_levels', ''),
+    );
+    const setState = vi.spyOn(engine, 'setState');
+
+    await firstValueFrom(svc.setPowerLevel(roomId, engine.carol, 50));
+
+    expect(setState.mock.calls[0][4]).toEqual({
+      ...(server.ok ? server.value : {}),
+      users: {
+        [engine.bob]: 100,
+        [engine.alice]: 100,
+        [engine.carol]: 50,
+      },
+    });
+  });
+
+  it('setPowerLevel starts from empty power levels only when the server has none', async () => {
+    const { svc, engine, roomId } = await setup();
+    engine.withholdFromSnapshot(roomId, 'm.room.power_levels');
+    vi.spyOn(engine, 'stateEvent').mockReturnValue(of(engineOk(null)));
+    const setState = vi.spyOn(engine, 'setState');
+
+    await firstValueFrom(svc.setPowerLevel(roomId, engine.carol, 50));
+
+    expect(setState.mock.calls[0][4]).toEqual({
+      users: { [engine.carol]: 50 },
+    });
+  });
+
+  it('setPowerLevel sends nothing when the server copy cannot be read', async () => {
+    const { svc, engine, roomId } = await setup();
+    engine.withholdFromSnapshot(roomId, 'm.room.power_levels');
+    vi.spyOn(engine, 'stateEvent').mockReturnValue(
+      of(
+        engineFail({
+          kind: 'server',
+          code: 'request-failed',
+          diagnostic: { kind: 'server', httpStatus: 500, errcode: 'M_UNKNOWN' },
+        }),
+      ),
+    );
+    const setState = vi.spyOn(engine, 'setState');
+
+    const error = await failure(
+      firstValueFrom(svc.setPowerLevel(roomId, engine.carol, 50)),
+    );
+
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'server-rejected',
+      operation: 'set-power-level',
+    });
+    expect(setState).not.toHaveBeenCalled();
   });
 
   it('reportMessage is cold and reports the event as the named account', async () => {

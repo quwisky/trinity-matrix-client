@@ -721,5 +721,31 @@ export function defineRoomAdministrationEngineContract(
       },
       testTimeoutMs,
     );
+
+    it(
+      "stateEvent reads one event's content from the server, null when absent",
+      async () => {
+        const roomId = await sharedRoom();
+
+        const levels = await once(
+          engine.stateEvent(alice, roomId, 'm.room.power_levels', ''),
+        );
+        expect(levels.ok && levels.value?.['users']).toMatchObject({
+          [bob]: 100,
+        });
+        expect(
+          await once(engine.stateEvent(alice, roomId, 'org.trinity.none', '')),
+        ).toEqual({ ok: true, value: null });
+        expect(
+          await once(engine.stateEvent(alice, roomId, 'm.room.member', NOBODY)),
+        ).toEqual({ ok: true, value: null });
+        expect(
+          await failureOf(
+            engine.stateEvent(NOBODY, roomId, 'm.room.power_levels', ''),
+          ),
+        ).toMatchObject({ code: 'account-not-live' });
+      },
+      testTimeoutMs,
+    );
   });
 }

@@ -111,6 +111,17 @@ export interface RoomAdministrationEngine {
     roomId: string,
   ): Observable<EngineResult<readonly RawStateEvent[]>>;
 
+  /**
+   * One state event's content as the server holds it now; null when it has none. Fails
+   * `account-not-live` or `request-failed`. Rust: `get_state_events_for_key` via `Client::send`.
+   */
+  stateEvent(
+    accountId: string,
+    roomId: string,
+    type: string,
+    stateKey: string,
+  ): Observable<EngineResult<JsonObject | null>>;
+
   // Server commands below fail `account-not-live`, else leave every other check to the
   // server: its refusal arrives as `request-failed` with the status and errcode.
   kick(

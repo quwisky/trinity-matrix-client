@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { Observable, defer, map } from 'rxjs';
+import { Observable, catchError, defer, map, throwError } from 'rxjs';
 import type { EngineFailure, EngineResult } from '@trinity/util/matrix';
 import { ROOM_ADMINISTRATION_ENGINE } from './room-administration-engine.token';
 
@@ -80,6 +80,14 @@ export class ContentReportingService {
         }
         throw new ContentReportError(kind, failure);
       }),
+      // An engine fault reads as any other failed report, as an unclassified error did.
+      catchError((error: unknown) =>
+        throwError(() =>
+          error instanceof ContentReportError
+            ? error
+            : new ContentReportError(kind, { kind: 'failed' }),
+        ),
+      ),
     );
   }
 

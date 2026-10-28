@@ -1,7 +1,12 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, defer, map } from 'rxjs';
+import { Observable, defer, map, of, switchMap } from 'rxjs';
 import { SessionStateService } from '@trinity/data-access/matrix-client';
-import { type EngineResult, unwrapEngineResult } from '@trinity/util/matrix';
+import {
+  type EngineResult,
+  engineFail,
+  engineOk,
+  unwrapEngineResult,
+} from '@trinity/util/matrix';
 import { AdministeredRoomStore } from './administered-room.store';
 import {
   RoomActionPermissionsService,
@@ -104,23 +109,41 @@ export class RoomModerationService {
       'set-power-level',
       () => this.actionPermissions.role(target, userId, level),
       (accountId, roomId) => {
-        // js-sdk `setPowerLevel`: the current content with this user's level replaced.
-        const content = this.store.room(accountId, roomId)?.powerLevels ?? {};
-        const users = content['users'];
-        return this.engine.setState(
-          accountId,
-          roomId,
-          'm.room.power_levels',
-          '',
-          {
-            ...content,
-            users: {
-              ...(users && typeof users === 'object' && !Array.isArray(users)
-                ? users
-                : {}),
-              [userId]: level,
-            },
-          },
+        // js-sdk `setPowerLevel`: the local copy, else the server's (`{}` only when it has
+        // none), with this user's level replaced. Never write from a missing local copy.
+        const local = this.store.room(accountId, roomId)?.powerLevels;
+        return (
+          local
+            ? of(engineOk(local))
+            : this.engine.stateEvent(
+                accountId,
+                roomId,
+                'm.room.power_levels',
+                '',
+              )
+        ).pipe(
+          switchMap((current) => {
+            if (!current.ok) return of(engineFail(current.failure));
+            const content = current.value ?? {};
+            const users = content['users'];
+            return this.engine.setState(
+              accountId,
+              roomId,
+              'm.room.power_levels',
+              '',
+              {
+                ...content,
+                users: {
+                  ...(users &&
+                  typeof users === 'object' &&
+                  !Array.isArray(users)
+                    ? users
+                    : {}),
+                  [userId]: level,
+                },
+              },
+            );
+          }),
         );
       },
     );

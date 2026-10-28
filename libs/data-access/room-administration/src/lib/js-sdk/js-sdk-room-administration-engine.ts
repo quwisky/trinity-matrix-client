@@ -4,6 +4,7 @@ import {
   EventType,
   KnownMembership,
   type MatrixClient,
+  MatrixError,
   Method,
   type MatrixEvent,
   type Room,
@@ -211,6 +212,34 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
       );
       return of(engineOk(events));
     });
+  }
+
+  stateEvent(
+    accountId: string,
+    roomId: string,
+    type: string,
+    stateKey: string,
+  ): Observable<EngineResult<JsonObject | null>> {
+    // The SDK's typed state map cannot name an arbitrary event type.
+    const get = (client: MatrixClient) =>
+      (
+        client.getStateEvent.bind(client) as unknown as (
+          targetRoomId: string,
+          eventType: string,
+          targetStateKey: string,
+        ) => Promise<object>
+      )(roomId, type, stateKey);
+    return this.request(
+      accountId,
+      (client) =>
+        get(client).then(plain, (error: unknown) => {
+          if (error instanceof MatrixError && error.errcode === 'M_NOT_FOUND') {
+            return null;
+          }
+          throw error;
+        }),
+      (content) => content,
+    );
   }
 
   kick(

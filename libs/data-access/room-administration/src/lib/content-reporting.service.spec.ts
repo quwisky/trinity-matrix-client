@@ -4,7 +4,7 @@ import {
   type MatrixRequestFailureKind,
   engineFail,
 } from '@trinity/util/matrix';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ContentReportError,
@@ -186,6 +186,20 @@ describe('ContentReportingService', () => {
 
     expect(failure).toEqual({ kind: 'failed' });
     expect(svc.offers(engine.alice, 'user')).toBe(true);
+  });
+
+  it('types an engine fault as failed', async () => {
+    const { svc, engine } = await setup();
+    vi.spyOn(engine, 'reportUser').mockReturnValue(
+      throwError(() => new Error('engine fault')),
+    );
+
+    const error = await firstValueFrom(
+      svc.reportUser(engine.alice, '@x:hs', ''),
+    ).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ContentReportError);
+    expect((error as ContentReportError).failure).toEqual({ kind: 'failed' });
   });
 
   it('fails typed when the account is not signed in', async () => {
