@@ -10,6 +10,7 @@ import {
 import {
   NativePushLifetime,
   NotificationService,
+  NotificationSettingsStore,
   PushHandoffService,
   type NativePushLifetimeEvent,
   type NotificationRuntimeEvent,
@@ -20,6 +21,7 @@ import { MockProvider } from 'ng-mocks';
 import {
   BehaviorSubject,
   EMPTY,
+  Observable,
   Subject,
   type Subscription,
   filter,
@@ -27,7 +29,6 @@ import {
   of,
   take,
   throwError,
-  type Observable,
 } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CapabilityHealthService } from '../capability-health.service';
@@ -106,6 +107,11 @@ describe('NotificationSessionService', () => {
       (_userId: string, _roomId: string): Observable<void> => of(void 0),
     );
     const refreshBeforeBackground = vi.fn((): Observable<void> => of(void 0));
+    let settingsHeld = 0;
+    const settingsLifetime = new Observable<never>(() => {
+      settingsHeld += 1;
+      return () => (settingsHeld -= 1);
+    });
     const bringForward = vi
       .spyOn(window, 'focus')
       .mockImplementation(() => undefined);
@@ -116,6 +122,9 @@ describe('NotificationSessionService', () => {
           run: () => notifications as never,
         }),
         MockProvider(NativePushLifetime, { run: () => pushes as never }),
+        MockProvider(NotificationSettingsStore, {
+          run: () => settingsLifetime,
+        }),
         MockProvider(PushHandoffService, {
           run: () => EMPTY,
           clearRoom,
@@ -165,8 +174,18 @@ describe('NotificationSessionService', () => {
       report,
       bringForward,
       tap,
+      settingsHeld: () => settingsHeld,
     };
   }
+
+  it('keeps the notification settings warm for the whole session', () => {
+    const { settingsHeld, lifetime } = setup();
+    expect(settingsHeld()).toBe(1);
+
+    lifetime.unsubscribe();
+
+    expect(settingsHeld()).toBe(0);
+  });
 
   describe('the notification text mirror', () => {
     it('mirrors the notification text and clears notifications only when it gets more private', () => {

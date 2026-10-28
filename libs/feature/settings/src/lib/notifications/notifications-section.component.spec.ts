@@ -70,7 +70,7 @@ async function build(over: { setOn?: Mock } = {}) {
         activeAccountId: activeAccount.asReadonly(),
       }),
       // The section renders the keyword block, which would otherwise reach the real
-      // MatrixClientService — harmless today only because it reports uninitialised.
+      // notification settings store and engine.
       MockProvider(KeywordRulesService, { keywords: () => [] }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],

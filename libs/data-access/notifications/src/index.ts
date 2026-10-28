@@ -19,6 +19,14 @@ export * from './lib/room-notifications.service';
 export * from './lib/push-rules.service';
 export * from './lib/keyword-rules.service';
 export type {
+  DefaultPushRule,
+  KeywordRule,
+  NotificationEngine,
+  NotificationSettings,
+  PushRuleKind,
+} from './lib/notification-engine';
+export { NotificationSettingsStore } from './lib/notification-settings.store';
+export type {
   NotificationDestination,
   NotificationIntent,
   NotificationPolicyInput,
