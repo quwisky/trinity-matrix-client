@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { EventStatus, MatrixEvent } from 'matrix-js-sdk';
-import { UNDECRYPTABLE_BODY } from '@trinity/util/matrix';
-import { buildEditRevisions } from './edit-revisions';
+import { editRevisionSources } from './edit-revisions';
+
+/** Each version's id, timestamp and plain body, or null when it cannot be read. */
+function revisionsOf(original: MatrixEvent, edits: readonly MatrixEvent[]) {
+  return editRevisionSources(original, edits).map(({ event, content }) => ({
+    id: event.getId(),
+    timestamp: event.getTs(),
+    body: content ? content['body'] : null,
+  }));
+}
 
 const SENDER = '@alice:hs';
 
@@ -106,9 +114,9 @@ function edit(
   } as unknown as MatrixEvent;
 }
 
-describe('buildEditRevisions', () => {
+describe('editRevisionSources', () => {
   it('leads with the original as it was before any edit', () => {
-    const revisions = buildEditRevisions(original(), [edit()], SENDER);
+    const revisions = revisionsOf(original(), [edit()]);
 
     expect(revisions.map((r) => r.body)).toEqual(['v1', 'v2']);
     // The pre-edit text, NOT what getContent() now resolves to.
@@ -119,71 +127,33 @@ describe('buildEditRevisions', () => {
 
   it('reads each version from m.new_content, not the fallback body', () => {
     // The wire format prefixes the fallback with "* "; showing that would be a bug.
-    const revisions = buildEditRevisions(
-      original(),
-      [edit({ body: 'fixed' })],
-      SENDER,
-    );
+    const revisions = revisionsOf(original(), [edit({ body: 'fixed' })]);
 
     expect(revisions[1].body).toBe('fixed');
     expect(revisions[1].body).not.toContain('*');
   });
 
-  it('renders a formatted version through the sanitizer', () => {
-    const revisions = buildEditRevisions(
-      original(),
-      [
-        edit({
-          body: 'bold',
-          formattedBody: '<strong>bold</strong><script>alert(1)</script>',
-        }),
-      ],
-      SENDER,
-    );
-
-    expect(revisions[1].html).toContain('<strong>bold</strong>');
-    expect(revisions[1].html).not.toContain('script');
-  });
-
-  it('linkifies a plain-text version, as the timeline does', () => {
-    const revisions = buildEditRevisions(
-      original(),
-      [edit({ body: 'see https://example.com' })],
-      SENDER,
-    );
-
-    expect(revisions[1].html).toContain('href="https://example.com"');
-  });
-
   // The security-relevant rule: anyone in the room can send an m.replace pointed at
   // someone else's message. Rendering it would put words in the sender's mouth.
   it('drops an edit from anyone but the original sender', () => {
-    const revisions = buildEditRevisions(
-      original(),
-      [
-        edit({
-          id: '$mallory',
-          sender: '@mallory:evil.example',
-          body: 'I confess',
-        }),
-      ],
-      SENDER,
-    );
+    const revisions = revisionsOf(original(), [
+      edit({
+        id: '$mallory',
+        sender: '@mallory:evil.example',
+        body: 'I confess',
+      }),
+    ]);
 
     expect(revisions).toHaveLength(1);
     expect(revisions.map((r) => r.body)).not.toContain('I confess');
   });
 
   it('drops edits that are not messages, are redacted, or carry no new content', () => {
-    const revisions = buildEditRevisions(
-      original(),
-      [
-        edit({ id: '$a', type: 'm.reaction' }),
-        edit({ id: '$b', redacted: true }),
-        edit({ id: '$c', newContent: null }),
-      ],
-      SENDER,
-    );
+    const revisions = revisionsOf(original(), [
+      edit({ id: '$a', type: 'm.reaction' }),
+      edit({ id: '$b', redacted: true }),
+      edit({ id: '$c', newContent: null }),
+    ]);
 
     expect(revisions).toHaveLength(1); // the original only
   });
@@ -191,14 +161,10 @@ describe('buildEditRevisions', () => {
   // An in-flight or failed edit is not history yet: the timeline shows it optimistically,
   // but the history must not claim it as a version that happened.
   it('drops an edit aimed at another message, readable or not', () => {
-    const revisions = buildEditRevisions(
-      original(),
-      [
-        edit({ id: '$elsewhere', target: '$other' }),
-        edit({ id: '$sealed', target: '$other', undecryptable: true }),
-      ],
-      SENDER,
-    );
+    const revisions = revisionsOf(original(), [
+      edit({ id: '$elsewhere', target: '$other' }),
+      edit({ id: '$sealed', target: '$other', undecryptable: true }),
+    ]);
 
     expect(revisions.map((r) => r.id)).toEqual(['$orig']);
   });
@@ -231,34 +197,26 @@ describe('buildEditRevisions', () => {
       }),
     );
 
-    const revisions = buildEditRevisions(original(), [first], SENDER);
+    const revisions = revisionsOf(original(), [first]);
 
     expect(revisions.map((r) => r.body)).toEqual(['v1', 'v2']);
   });
 
   it('drops a local echo that has not been accepted', () => {
-    const revisions = buildEditRevisions(
-      original(),
-      [
-        edit({ id: '~!room:hs:txn', status: EventStatus.SENDING }),
-        edit({ id: '$failed', status: EventStatus.NOT_SENT }),
-      ],
-      SENDER,
-    );
+    const revisions = revisionsOf(original(), [
+      edit({ id: '~!room:hs:txn', status: EventStatus.SENDING }),
+      edit({ id: '$failed', status: EventStatus.NOT_SENT }),
+    ]);
 
     expect(revisions).toHaveLength(1);
   });
 
   it('orders edits oldest first, breaking ties on id for a stable list', () => {
-    const revisions = buildEditRevisions(
-      original(),
-      [
-        edit({ id: '$c', ts: 3000, body: 'third' }),
-        edit({ id: '$b', ts: 2000, body: 'second-b' }),
-        edit({ id: '$a', ts: 2000, body: 'second-a' }),
-      ],
-      SENDER,
-    );
+    const revisions = revisionsOf(original(), [
+      edit({ id: '$c', ts: 3000, body: 'third' }),
+      edit({ id: '$b', ts: 2000, body: 'second-b' }),
+      edit({ id: '$a', ts: 2000, body: 'second-a' }),
+    ]);
 
     expect(revisions.map((r) => r.body)).toEqual([
       'v1',
@@ -270,7 +228,7 @@ describe('buildEditRevisions', () => {
 
   it('ignores an edit seen twice across pages', () => {
     const twice = edit({ id: '$dup' });
-    const revisions = buildEditRevisions(original(), [twice, twice], SENDER);
+    const revisions = revisionsOf(original(), [twice, twice]);
 
     expect(revisions).toHaveLength(2);
   });
@@ -278,67 +236,19 @@ describe('buildEditRevisions', () => {
   // Deleting a message does not delete its edits on the server. Showing them would undo
   // the deletion the sender asked for.
   it('shows no history at all for a deleted message', () => {
-    const revisions = buildEditRevisions(
-      original({ redacted: true }),
-      [edit()],
-      SENDER,
-    );
+    const revisions = revisionsOf(original({ redacted: true }), [edit()]);
 
     expect(revisions).toEqual([]);
   });
 
-  // Only the sender may remove one of their own earlier versions, so every revision
-  // records whether it is theirs. Edits always share the original's sender (a foreign one
-  // is dropped), so one answer covers the list.
-  it('marks the versions as yours when you sent the message', () => {
-    const revisions = buildEditRevisions(original(), [edit()], SENDER);
-
-    expect(revisions.every((r) => r.isOwn)).toBe(true);
-  });
-
-  it('marks them as not yours when someone else sent it', () => {
-    const revisions = buildEditRevisions(original(), [edit()], '@bob:hs');
-
-    expect(revisions.some((r) => r.isOwn)).toBe(false);
-  });
-
-  it('treats an unknown current user as not yours', () => {
-    const revisions = buildEditRevisions(original(), [edit()], null);
-
-    expect(revisions.some((r) => r.isOwn)).toBe(false);
-  });
-
-  it('says so plainly when a version cannot be decrypted', () => {
-    const revisions = buildEditRevisions(
-      original({ undecryptable: true }),
-      [edit({ id: '$lost', undecryptable: true })],
-      SENDER,
-    );
-
-    expect(revisions.map((r) => r.kind)).toEqual([
-      'undecryptable',
-      'undecryptable',
+  it('lists a version it cannot decrypt without its content', () => {
+    const revisions = revisionsOf(original({ undecryptable: true }), [
+      edit({ id: '$lost', undecryptable: true }),
     ]);
-    // Never the SDK's internal "** Unable to decrypt: <reason> **" diagnostic.
-    for (const revision of revisions) {
-      expect(revision.body).toBe(UNDECRYPTABLE_BODY);
-      expect(revision.body).not.toContain('Unable to decrypt:');
-      expect(revision.html).toBeNull();
-    }
-  });
 
-  it('names mention pills from the room, as the timeline does', () => {
-    const revisions = buildEditRevisions(
-      original(),
-      [
-        edit({
-          formattedBody: '<a href="https://matrix.to/#/@b:hs">@Boss</a>',
-        }),
-      ],
-      SENDER,
-      (userId) => (userId === '@b:hs' ? 'Bob' : null),
-    );
-
-    expect(revisions[1].html).toContain('>@Bob</a>');
+    expect(revisions.map((r) => [r.id, r.body])).toEqual([
+      ['$orig', null],
+      ['$lost', null],
+    ]);
   });
 });

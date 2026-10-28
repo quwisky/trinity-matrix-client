@@ -1,15 +1,24 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  EMPTY_SESSION,
+  MatrixClientService,
+  SESSION_SNAPSHOT,
+} from '@trinity/data-access/matrix-client';
 import { UrlPreviewService } from './url-preview.service';
+
+const ALICE = '@alice:hs';
 
 function setup(
   getUrlPreview = vi.fn(),
   rooms: {
     stateEncrypted?: boolean;
     crypto?: { isEncryptionEnabledInRoom: () => Promise<boolean> } | null;
+    /** The active account; null when nobody is signed in. */
+    activeAccountId?: string | null;
   } = {},
 ) {
   const crypto =
@@ -27,16 +36,22 @@ function setup(
         : null,
     getCrypto: () => crypto ?? undefined,
   };
+  const session = signal({
+    ...EMPTY_SESSION,
+    activeAccountId:
+      rooms.activeAccountId === undefined ? ALICE : rooms.activeAccountId,
+  });
   TestBed.configureTestingModule({
     providers: [
       UrlPreviewService,
       MockProvider(MatrixClientService, {
-        isInitialized: true,
-        instance: instance as never,
+        clientFor: (accountId: string) =>
+          accountId === ALICE ? (instance as never) : null,
       }),
+      { provide: SESSION_SNAPSHOT, useValue: session },
     ],
   });
-  return { svc: TestBed.inject(UrlPreviewService), getUrlPreview };
+  return { svc: TestBed.inject(UrlPreviewService), getUrlPreview, session };
 }
 
 describe('UrlPreviewService', () => {
@@ -118,6 +133,45 @@ describe('UrlPreviewService', () => {
     expect(getUrlPreview).toHaveBeenCalledTimes(2);
   });
 
+  it('asks nothing when nobody is signed in', async () => {
+    const { svc, getUrlPreview } = setup(
+      vi.fn().mockResolvedValue({ 'og:title': 'Example' }),
+      { activeAccountId: null },
+    );
+
+    expect(await firstValueFrom(svc.preview('https://example.com'))).toBeNull();
+    expect(getUrlPreview).not.toHaveBeenCalled();
+  });
+
+  it('follows the active account', async () => {
+    const { svc, getUrlPreview, session } = setup(
+      vi.fn().mockResolvedValue({ 'og:title': 'Example' }),
+      { activeAccountId: '@bob:hs' },
+    );
+
+    // Bob has no live client here, so nothing reaches Alice's homeserver.
+    expect(await firstValueFrom(svc.preview('https://example.com'))).toBeNull();
+    expect(getUrlPreview).not.toHaveBeenCalled();
+
+    session.set({ ...EMPTY_SESSION, activeAccountId: ALICE });
+    expect(
+      await firstValueFrom(svc.preview('https://example.com')),
+    ).toMatchObject({ title: 'Example' });
+  });
+
+  // `preview` is the encrypted-rooms opt-in path: the caller has already allowed it.
+  it('previews a link from an encrypted room once the caller allows it', async () => {
+    const { svc, getUrlPreview } = setup(
+      vi.fn().mockResolvedValue({ 'og:title': 'Example' }),
+      { stateEncrypted: true },
+    );
+
+    expect(
+      await firstValueFrom(svc.preview('https://example.com')),
+    ).toMatchObject({ title: 'Example' });
+    expect(getUrlPreview).toHaveBeenCalledOnce();
+  });
+
   describe('supported', () => {
     it('starts unknown (null) before any request', () => {
       expect(setup().svc.supported()).toBeNull();
@@ -139,6 +193,12 @@ describe('UrlPreviewService', () => {
       );
       await firstValueFrom(svc.preview('https://x.test'));
       expect(svc.supported()).toBe(false);
+    });
+
+    it('stays unknown when a preview is refused without asking', async () => {
+      const { svc } = setup(vi.fn(), { stateEncrypted: true });
+      await firstValueFrom(svc.previewIfUnencrypted('https://x.test', '!r:hs'));
+      expect(svc.supported()).toBeNull();
     });
 
     it('stays unknown on a transient error (does not falsely report unsupported)', async () => {
@@ -184,6 +244,37 @@ describe('UrlPreviewService', () => {
         ),
       ).toBeNull();
       expect(getUrlPreview).not.toHaveBeenCalled();
+    });
+
+    it('does not ask the homeserver for a message without a room', async () => {
+      const { svc, getUrlPreview } = setup(ok());
+
+      expect(
+        await firstValueFrom(
+          svc.previewIfUnencrypted('https://example.com', null),
+        ),
+      ).toBeNull();
+      expect(getUrlPreview).not.toHaveBeenCalled();
+    });
+
+    it('caches a cleared preview for its room only', async () => {
+      const { svc, getUrlPreview } = setup(ok());
+
+      await firstValueFrom(
+        svc.previewIfUnencrypted('https://example.com', '!r:hs'),
+      );
+      await firstValueFrom(
+        svc.previewIfUnencrypted('https://example.com', '!r:hs'),
+      );
+      expect(getUrlPreview).toHaveBeenCalledTimes(1);
+
+      // Another room is checked on its own, and this one cannot be found.
+      expect(
+        await firstValueFrom(
+          svc.previewIfUnencrypted('https://example.com', '!gone:hs'),
+        ),
+      ).toBeNull();
+      expect(getUrlPreview).toHaveBeenCalledTimes(1);
     });
 
     it('does not ask the homeserver for a room it cannot find', async () => {

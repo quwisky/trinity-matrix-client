@@ -1,20 +1,11 @@
 import type { MatrixEvent } from 'matrix-js-sdk';
-import {
-  UNDECRYPTABLE_BODY,
-  isEditOf,
-  newContentOf,
-  renderTextBody,
-  validReplacement,
-  type MessageRevisionView,
-} from '@trinity/util/matrix';
+import { isEditOf, newContentOf, validReplacement } from '@trinity/util/matrix';
 
 /** One version of a message: the event it came from, and its content, or null when undecryptable. */
 export interface EditRevisionSource {
   readonly event: MatrixEvent;
   readonly content: Record<string, unknown> | null;
 }
-
-type MemberName = (userId: string) => string | null | undefined;
 
 /**
  * Whether an `m.replace` may be shown as a version of `original`: a valid replacement
@@ -83,39 +74,4 @@ export function editRevisionSources(
       (a.event.getId() ?? '').localeCompare(b.event.getId() ?? ''),
   );
   return [base, ...applied];
-}
-
-/** {@link editRevisionSources}, rendered for the edit-history view. */
-export function buildEditRevisions(
-  original: MatrixEvent,
-  edits: readonly MatrixEvent[],
-  currentUserId: string | null,
-  /** A member's display name, for mention pills. */
-  nameOf: MemberName = () => null,
-): MessageRevisionView[] {
-  // Every valid edit shares the original's sender (isShowableEdit), so one check covers all.
-  const isOwn = !!currentUserId && original.getSender() === currentUserId;
-  return editRevisionSources(original, edits).map(({ event, content }) => {
-    if (!content) {
-      return {
-        id: event.getId() ?? '',
-        timestamp: event.getTs(),
-        body: UNDECRYPTABLE_BODY,
-        html: null,
-        kind: 'undecryptable',
-        isOwn,
-      };
-    }
-    // `isReply: false`: an edit carries no reply fallback; the reply relation lives on the
-    // original event, whose body was already stripped when rendered.
-    const { text, textHtml } = renderTextBody(content, false, '', nameOf);
-    return {
-      id: event.getId() ?? '',
-      timestamp: event.getTs(),
-      body: text,
-      html: textHtml,
-      kind: 'text',
-      isOwn,
-    };
-  });
 }
