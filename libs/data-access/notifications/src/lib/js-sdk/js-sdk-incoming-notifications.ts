@@ -33,6 +33,19 @@ function addCapped<K, V>(map: Map<K, V>, key: K, value: V, cap: number): void {
   if (map.size > cap) map.delete(map.keys().next().value as K);
 }
 
+function perClient<T extends object>(
+  store: WeakMap<MatrixClient, T>,
+  client: MatrixClient,
+  create: () => T,
+): T {
+  let value = store.get(client);
+  if (!value) {
+    value = create();
+    store.set(client, value);
+  }
+  return value;
+}
+
 function annotationOf(
   accountId: string,
   client: MatrixClient,
@@ -76,8 +89,9 @@ function annotationOf(
 }
 
 /**
- * The incoming half of the js-sdk notification engine. Encryption flags and the reactions handed
- * out are kept per client, so `reactionTarget` shares what a `notifications` feed learned.
+ * The incoming half of the js-sdk notification engine. Encryption flags, the reactions handed
+ * out and the events awaiting decryption are kept per client, so `reactionTarget` and a later
+ * feed on the same client (after a presentation recovery) share what a feed learned.
  */
 export class JsSdkIncomingNotifications {
   private readonly encryption = new WeakMap<
@@ -88,6 +102,8 @@ export class JsSdkIncomingNotifications {
     MatrixClient,
     Map<string, MatrixEvent>
   >();
+  /** Live events only, so scrollback that later decrypts never notifies. */
+  private readonly pending = new WeakMap<MatrixClient, Map<string, true>>();
 
   /** `current` is false once the account's client has been replaced; nothing is emitted then. */
   feed(
@@ -100,9 +116,12 @@ export class JsSdkIncomingNotifications {
       let firstSyncCompleted =
         syncState === SyncState.Prepared || syncState === SyncState.Syncing;
       const encryption = this.encryptionOf(client);
-      const reactions = this.reactionsOf(client);
-      /** Live events only, so scrollback that later decrypts never notifies. */
-      const pendingDecryption = new Map<string, true>();
+      const reactions = perClient(this.reactions, client, () => new Map());
+      const pendingDecryption = perClient(
+        this.pending,
+        client,
+        () => new Map(),
+      );
       // A room counts as encrypted by its state OR by the crypto store. The store's answer is
       // async, so ask it once per room up front; a room first seen later is covered next sync.
       const warmEncryption = (): void => {
@@ -272,20 +291,6 @@ export class JsSdkIncomingNotifications {
   }
 
   private encryptionOf(client: MatrixClient): RoomEncryptionFlags {
-    let flags = this.encryption.get(client);
-    if (!flags) {
-      flags = new RoomEncryptionFlags();
-      this.encryption.set(client, flags);
-    }
-    return flags;
-  }
-
-  private reactionsOf(client: MatrixClient): Map<string, MatrixEvent> {
-    let reactions = this.reactions.get(client);
-    if (!reactions) {
-      reactions = new Map();
-      this.reactions.set(client, reactions);
-    }
-    return reactions;
+    return perClient(this.encryption, client, () => new RoomEncryptionFlags());
   }
 }

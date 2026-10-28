@@ -273,6 +273,24 @@ describe('JsSdkNotificationEngine incoming notifications', () => {
       );
     });
 
+    it('notifies a pending event once its key arrives after a re-subscribe on the same client', () => {
+      const first = subscribe();
+      client.live(message({ id: '$late', encrypted: true }));
+      first.unsubscribe();
+      // Two feeds briefly open on the client: the event still notifies once.
+      const second = subscribe();
+      const overlap = subscribe();
+
+      client.emit(
+        MatrixEventEvent.Decrypted,
+        message({ id: '$late', decrypted: true }),
+      );
+
+      expect(items.map((item) => item.eventId)).toEqual(['$late']);
+      second.unsubscribe();
+      overlap.unsubscribe();
+    });
+
     it('ignores the decryption of an event it never saw live', () => {
       subscribe();
 
