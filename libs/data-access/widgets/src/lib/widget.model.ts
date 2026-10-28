@@ -1,3 +1,6 @@
+/** The legacy room-state event used by deployed Matrix widgets. */
+export const WIDGET_EVENT_TYPE = 'im.vector.modular.widgets';
+
 /** One active `im.vector.modular.widgets` declaration, with SDK details removed. */
 export interface RoomWidget {
   /** The state key, and therefore the widget's room-local identifier. */

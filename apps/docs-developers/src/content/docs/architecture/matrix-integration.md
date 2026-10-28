@@ -75,6 +75,10 @@ Creating a room, space or DM, joining, leaving and tagging show their effect in 
 | `shield`, `unencryptedMark` | a shield code (colour and reason) rather than text, and the unencrypted mark                    |
 | `profiles`                  | display name and avatar for every user the item names                                           |
 
+### Room widget engine {#room-widget-engine}
+
+`RoomWidgetEngine` (`libs/data-access/widgets`) exposes a room's `im.vector.modular.widgets` declarations. `roomWidgets(accountId, roomId)` emits a whole `RoomWidgetSnapshot` on each change: the widgets, whether the account may manage them, and the identity a widget URL may request. An account that is not live gets an empty snapshot. `putRoomWidget` fails with `state-key-taken` when room state already holds the id, and `removeRoomWidget` fails with `conflict` once the widget's live revision is no longer the one the caller confirmed. `WidgetsService` subscribes again when the account gets a new client, and `ROOM_WIDGET_ENGINE` provides the `matrix-js-sdk` adapter. One contract, `defineRoomWidgetEngineContract`, runs against `FakeRoomWidgetEngine` in unit tests and against Synapse in `trinity-e2e-engine:contract`.
+
 ## Treat synchronization as authoritative {#sync-authority}
 
 Commands call the SDK and then allow sync or the relevant SDK event to reconcile current state. Preserve a typed error or outcome for the initiating action, but do not claim that an accepted network request has already become authoritative local state unless the SDK contract guarantees it.

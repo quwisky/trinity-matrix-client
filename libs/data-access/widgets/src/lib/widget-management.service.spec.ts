@@ -1,75 +1,41 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { EngineRequestError } from '@trinity/util/matrix';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FakeRoomWidgetEngine } from '../contract/fake-room-widget-engine';
+import { ROOM_WIDGET_ENGINE } from './room-widget-engine.token';
 import type { RoomWidget, WidgetLaunch } from './widget.model';
 import {
   WidgetManagementError,
   WidgetManagementService,
 } from './widget-management.service';
-import { WidgetsService, WIDGET_EVENT_TYPE } from './widgets.service';
+import { WidgetsService } from './widgets.service';
 
-const ROOM_ID = '!room:example.org';
-const USER_ID = '@alice:example.org';
-const TARGET = { accountId: USER_ID, roomId: ROOM_ID } as const;
-const WIDGET: RoomWidget = {
-  id: 'board',
-  name: 'Planning board',
-  type: 'm.custom',
-  rawUrl: 'https://widgets.example/board',
-  data: {},
-  creatorUserId: USER_ID,
-  waitForIframeLoad: true,
-  sourceEventId: '$board-v1',
-};
+const GENERIC = { type: 'm.custom', url: 'https://widgets.example/board' };
 
-function stateEvent(
-  id: string,
-  eventId = `$${id}-v1`,
-  content: Record<string, unknown> = {
+async function setup(options: { canManage?: boolean } = {}) {
+  const engine = new FakeRoomWidgetEngine();
+  const roomId = await engine.joinedRoom({
+    canManage: options.canManage ?? true,
+  });
+  const target = { accountId: engine.alice, roomId } as const;
+  const sourceEventId = await engine.asBob.putWidget(roomId, 'board', GENERIC);
+  const widget: RoomWidget = {
+    id: 'board',
+    name: 'Planning board',
     type: 'm.custom',
-    url: `https://widgets.example/${id}`,
-  },
-) {
-  return {
-    getId: () => eventId,
-    getContent: () => content,
+    rawUrl: GENERIC.url,
+    data: {},
+    creatorUserId: engine.bob,
+    waitForIframeLoad: true,
+    sourceEventId,
   };
-}
-
-function setup() {
-  let membership = 'join';
-  let guest = false;
-  let maySend = true;
-  const events = new Map<string, ReturnType<typeof stateEvent>>();
-  events.set(WIDGET.id, stateEvent(WIDGET.id, WIDGET.sourceEventId as string));
-  const getStateEvents = vi.fn((_type: string, id?: string) =>
-    id === undefined ? [...events.values()] : (events.get(id) ?? null),
-  );
-  const state = {
-    getStateEvents,
-    mayClientSendStateEvent: vi.fn(() => maySend),
-  };
-  const room = {
-    getMyMembership: () => membership,
-    getLiveTimeline: () => ({ getState: () => state }),
-  };
-  const sendStateEvent = vi.fn().mockResolvedValue({ event_id: '$written' });
-  const client = {
-    getRoom: vi.fn((roomId: string) => (roomId === ROOM_ID ? room : null)),
-    getUserId: () => USER_ID,
-    isGuest: () => guest,
-    sendStateEvent,
-  };
-  const activeClient = { ...client, getUserId: () => '@active:example.org' };
-  const clientFor = vi.fn((accountId: string) =>
-    accountId === USER_ID ? client : null,
-  );
-  const matrix = { isInitialized: true, instance: activeClient, clientFor };
+  const put = vi.spyOn(engine, 'putRoomWidget');
+  const remove = vi.spyOn(engine, 'removeRoomWidget');
   const launchFor = vi.fn(
-    (_target: typeof TARGET, widget: RoomWidget): WidgetLaunch => ({
-      url: widget.rawUrl,
-      origin: new URL(widget.rawUrl).origin,
+    (_target: typeof target, draft: RoomWidget): WidgetLaunch => ({
+      url: draft.rawUrl,
+      origin: new URL(draft.rawUrl).origin,
       disclosures: [],
       insecure: false,
       failure: null,
@@ -78,20 +44,18 @@ function setup() {
   TestBed.configureTestingModule({
     providers: [
       WidgetManagementService,
-      { provide: MatrixClientService, useValue: matrix },
+      { provide: ROOM_WIDGET_ENGINE, useValue: engine },
       { provide: WidgetsService, useValue: { launchFor } },
     ],
   });
   return {
     service: TestBed.inject(WidgetManagementService),
-    events,
-    getStateEvents,
+    engine,
+    target,
+    widget,
+    put,
+    remove,
     launchFor,
-    clientFor,
-    sendStateEvent,
-    setMembership: (value: string) => (membership = value),
-    setGuest: (value: boolean) => (guest = value),
-    setMaySend: (value: boolean) => (maySend = value),
   };
 }
 
@@ -99,35 +63,34 @@ describe('WidgetManagementService', () => {
   beforeEach(() => TestBed.resetTestingModule());
   afterEach(() => vi.unstubAllGlobals());
 
-  it('is cold and sends the exact generic-widget payload after subscription', async () => {
+  it('is cold and writes the exact generic-widget payload after subscription', async () => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'generated-id') });
-    const { service, launchFor, sendStateEvent } = setup();
-    const request = service.create(TARGET, {
+    const { service, engine, target, launchFor, put } = await setup();
+    const request = service.create(target, {
       name: '  Planning board  ',
       rawUrl: ' https://widgets.example/$matrix_room_id ',
     });
 
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
     await expect(firstValueFrom(request)).resolves.toBe('generated-id');
 
     expect(launchFor).toHaveBeenCalledWith(
-      TARGET,
-      expect.objectContaining({ id: 'generated-id', type: 'm.custom' }),
-    );
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      ROOM_ID,
-      WIDGET_EVENT_TYPE,
-      {
+      target,
+      expect.objectContaining({
         id: 'generated-id',
-        name: 'Planning board',
         type: 'm.custom',
-        url: 'https://widgets.example/$matrix_room_id',
-        creatorUserId: USER_ID,
-        data: {},
-        waitForIframeLoad: true,
-      },
-      'generated-id',
+        creatorUserId: engine.alice,
+      }),
     );
+    expect(put).toHaveBeenCalledWith(engine.alice, target.roomId, {
+      id: 'generated-id',
+      name: 'Planning board',
+      type: 'm.custom',
+      url: 'https://widgets.example/$matrix_room_id',
+      creatorUserId: engine.alice,
+      data: {},
+      waitForIframeLoad: true,
+    });
   });
 
   it('retries UUID collisions and never falls back to a predictable ID', async () => {
@@ -136,57 +99,73 @@ describe('WidgetManagementService', () => {
       .mockReturnValueOnce('taken')
       .mockReturnValueOnce('available');
     vi.stubGlobal('crypto', { randomUUID });
-    const { service, events, sendStateEvent } = setup();
-    events.set('taken', stateEvent('taken'));
+    const { service, engine, target } = await setup();
+    await engine.asBob.putWidget(target.roomId, 'taken', {});
 
-    await firstValueFrom(
-      service.create(TARGET, {
-        name: 'Board',
-        rawUrl: 'https://widgets.example',
-      }),
-    );
+    await expect(
+      firstValueFrom(
+        service.create(target, {
+          name: 'Board',
+          rawUrl: 'https://widgets.example',
+        }),
+      ),
+    ).resolves.toBe('available');
 
     expect(randomUUID).toHaveBeenCalledTimes(2);
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      ROOM_ID,
-      WIDGET_EVENT_TYPE,
-      expect.objectContaining({ id: 'available' }),
-      'available',
-    );
   });
 
-  it.each([
-    [
-      'left member',
-      (fixture: ReturnType<typeof setup>) => fixture.setMembership('leave'),
-    ],
-    ['guest', (fixture: ReturnType<typeof setup>) => fixture.setGuest(true)],
-    [
-      'insufficient power',
-      (fixture: ReturnType<typeof setup>) => fixture.setMaySend(false),
-    ],
-  ])('denies a %s at subscription time', async (_label, deny) => {
+  it('gives up after eight taken ids', async () => {
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'taken') });
+    const { service, engine, target, put } = await setup();
+    await engine.asBob.putWidget(target.roomId, 'taken', {});
+
+    await expect(
+      firstValueFrom(
+        service.create(target, {
+          name: 'Board',
+          rawUrl: 'https://widgets.example',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'uuid-collision' });
+    expect(put).toHaveBeenCalledTimes(8);
+  });
+
+  it('denies an account without power at subscription time', async () => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'generated-id') });
-    const fixture = setup();
-    const request = fixture.service.create(TARGET, {
+    const { service, engine, target, put } = await setup();
+    const request = service.create(target, {
       name: 'Board',
       rawUrl: 'https://widgets.example',
     });
-    deny(fixture);
+    await engine.asBob.setPowerLevel(target.roomId, engine.alice, 0);
 
     await expect(firstValueFrom(request)).rejects.toMatchObject({
       code: 'forbidden',
     });
-    expect(fixture.sendStateEvent).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('answers not-signed-in for an account that is not live', async () => {
+    const { service, engine, target } = await setup();
+    engine.setLive(engine.alice, false);
+
+    await expect(
+      firstValueFrom(
+        service.create(target, {
+          name: 'Board',
+          rawUrl: 'https://widgets.example',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'not-signed-in' });
   });
 
   it('returns a typed validation failure without writing', async () => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'generated-id') });
-    const { service, sendStateEvent } = setup();
+    const { service, target, put } = await setup();
 
     await expect(
       firstValueFrom(
-        service.create(TARGET, {
+        service.create(target, {
           name: 'Board',
           rawUrl: 'https://user:secret@widgets.example',
         }),
@@ -197,72 +176,107 @@ describe('WidgetManagementService', () => {
         draftFailure: 'credentials',
       }),
     );
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('rejects an origin that the expanded template changes', async () => {
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'generated-id') });
+    const { service, target, put, launchFor } = await setup();
+    launchFor.mockReturnValueOnce({
+      url: 'https://elsewhere.example',
+      origin: 'https://elsewhere.example',
+      disclosures: [],
+      insecure: false,
+      failure: null,
+    });
+
+    await expect(
+      firstValueFrom(
+        service.create(target, {
+          name: 'Board',
+          rawUrl: 'https://widgets.example',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'invalid-draft',
+      draftFailure: 'dynamic-origin',
+    });
+    expect(put).not.toHaveBeenCalled();
   });
 
   it('tombstones only the exact active revision that was confirmed', async () => {
-    const { service, sendStateEvent } = setup();
+    const { service, engine, target, widget, remove } = await setup();
 
-    await expect(firstValueFrom(service.remove(TARGET, WIDGET))).resolves.toBe(
-      undefined,
-    );
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      ROOM_ID,
-      WIDGET_EVENT_TYPE,
-      {},
-      WIDGET.id,
+    await expect(
+      firstValueFrom(service.remove(target, widget)),
+    ).resolves.toBeUndefined();
+    expect(remove).toHaveBeenCalledWith(
+      engine.alice,
+      target.roomId,
+      'board',
+      widget.sourceEventId,
     );
   });
 
-  it.each([
-    ['missing event', null],
-    ['replaced event', stateEvent(WIDGET.id, '$board-v2')],
-    ['tombstone', stateEvent(WIDGET.id, '$board-v1', {})],
-  ])('rejects a %s as a conflict', async (_label, replacement) => {
-    const { service, events, sendStateEvent } = setup();
-    if (replacement) {
-      events.set(WIDGET.id, replacement);
-    } else {
-      events.delete(WIDGET.id);
-    }
+  it('rejects a replaced revision as a conflict', async () => {
+    const { service, target, widget } = await setup();
 
     await expect(
-      firstValueFrom(service.remove(TARGET, WIDGET)),
+      firstValueFrom(
+        service.remove(target, { ...widget, sourceEventId: '$stale' }),
+      ),
     ).rejects.toMatchObject({ code: 'conflict' });
-    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejects a widget without a confirmed revision as a conflict', async () => {
+    const { service, target, widget, remove } = await setup();
+
+    await expect(
+      firstValueFrom(
+        service.remove(target, { ...widget, sourceEventId: null }),
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it('refuses to remove call widgets', async () => {
-    const { service, sendStateEvent } = setup();
+    const { service, target, widget, remove } = await setup();
 
     await expect(
-      firstValueFrom(service.remove(TARGET, { ...WIDGET, type: 'm.jitsi' })),
+      firstValueFrom(service.remove(target, { ...widget, type: 'm.jitsi' })),
     ).rejects.toMatchObject({ code: 'unsupported-type' });
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it('trusts the current state type over a forged generic projection', async () => {
-    const { service, events, sendStateEvent } = setup();
-    events.set(
-      WIDGET.id,
-      stateEvent(WIDGET.id, WIDGET.sourceEventId as string, {
-        type: 'm.jitsi',
-        url: 'https://widgets.example/call',
-      }),
-    );
+    const { service, engine, target, widget } = await setup();
+    const sourceEventId = await engine.asBob.putWidget(target.roomId, 'board', {
+      type: 'm.jitsi',
+      url: 'https://widgets.example/call',
+    });
 
     await expect(
-      firstValueFrom(service.remove(TARGET, WIDGET)),
+      firstValueFrom(service.remove(target, { ...widget, sourceEventId })),
     ).rejects.toMatchObject({ code: 'unsupported-type' });
-    expect(sendStateEvent).not.toHaveBeenCalled();
   });
 
-  it('preserves homeserver write failures', async () => {
-    const { service, sendStateEvent } = setup();
-    sendStateEvent.mockRejectedValueOnce(new Error('M_FORBIDDEN'));
+  it('rejects an account without power as forbidden', async () => {
+    const { service, target, widget } = await setup({ canManage: false });
 
     await expect(
-      firstValueFrom(service.remove(TARGET, WIDGET)),
-    ).rejects.toThrow('M_FORBIDDEN');
+      firstValueFrom(service.remove(target, widget)),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('carries a homeserver write failure as an engine request error', async () => {
+    const { service, engine, target, widget } = await setup();
+    engine.failNext('request-failed');
+
+    const error = await firstValueFrom(service.remove(target, widget)).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(EngineRequestError);
+    expect((error as EngineRequestError).failure.code).toBe('request-failed');
   });
 });

@@ -21,6 +21,7 @@ const LIBS = [
   'data-access-matrix-client',
   'data-access-room-library',
   'data-access-timeline',
+  'data-access-widgets',
 ] as const;
 
 export async function runEngineContract(
