@@ -155,6 +155,7 @@ describe('engineFailureMessage', () => {
     ['media-unavailable', 'This media is unavailable.'],
     ['too-large', 'This file is too large to upload.'],
     ['conversation-unavailable', 'This conversation is unavailable.'],
+    ['room-unavailable', 'This room is unavailable.'],
   ] as const)('%s reads "%s"', (code, text) => {
     expect(
       engineFailureMessage({

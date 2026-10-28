@@ -15,7 +15,11 @@ import type {
   ConversationReactionRequest,
 } from './conversation-messages';
 import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
-import type { TimelineItemKey } from './timeline-engine';
+import type {
+  EventTimelineItem,
+  TimelineFocus,
+  TimelineItemKey,
+} from './timeline-engine';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
 import { TimelineStores } from './timeline-store';
 
@@ -123,7 +127,17 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {
-      const decision = this.policy.authorizeRedaction(request);
+      const item = this.eventOf(request);
+      if (!item) return of(rejected('redaction', 'message-unavailable'));
+      // As js-sdk's maySendRedactionForEvent: only a sent, unredacted event.
+      if (item.sendState !== null || item.content.kind === 'redacted') {
+        return of(rejected('redaction', 'not-allowed'));
+      }
+      const decision = this.policy.authorizeRedaction({
+        key: request.key,
+        messageId: request.messageId,
+        senderId: item.sender,
+      });
       if (decision.kind === 'rejected') {
         return of(rejected('redaction', decision.failure));
       }
@@ -181,6 +195,26 @@ class EngineConversationMessageAdapter implements ConversationMessageAdapter {
         map((result) => outcome('cancel', result)),
       );
     });
+  }
+
+  /** The row the request names, from the items its conversation holds. */
+  private eventOf(
+    request: ConversationMessageActionRequest,
+  ): EventTimelineItem | null {
+    const { eventId, transactionId } = itemKey(request);
+    const focus: TimelineFocus = request.threadRootId
+      ? { kind: 'thread', rootEventId: request.threadRootId }
+      : LIVE;
+    const { store, release } = this.stores.hold(request.key, focus);
+    const item = untracked(store.items).find(
+      (candidate) =>
+        candidate.kind === 'event' &&
+        (eventId === null
+          ? candidate.transactionId === transactionId
+          : candidate.eventId === eventId),
+    );
+    release();
+    return item?.kind === 'event' ? item : null;
   }
 
   private uncancellable(

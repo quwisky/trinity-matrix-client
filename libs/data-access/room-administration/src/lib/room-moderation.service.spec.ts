@@ -7,7 +7,10 @@ import {
   MatrixClientService,
   SessionStateService,
 } from '@trinity/data-access/matrix-client';
+import { AdministeredRoomStore } from './administered-room.store';
+import type { Membership } from './room-administration-engine';
 import { RoomModerationService } from './room-moderation.service';
+import { administeredRoom } from './room-administration.spec-harness';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
 function setup(
@@ -34,21 +37,39 @@ function setup(
   const me = opts.me ?? '@me:hs';
   const myLevel = opts.myLevel ?? 100;
   const targetLevel = opts.targetLevel ?? 0;
-  const room = {
-    getMember: (id: string) => ({
-      powerLevel: id === me ? myLevel : targetLevel,
-      membership: id === me ? 'join' : (opts.targetMembership ?? 'join'),
-    }),
-    getMyMembership: () => 'join',
-    // The service reads room state via the live timeline (liveRoomState()),
-    // which is what the SDK's deprecated `currentState` aliased.
-    getLiveTimeline: () => ({
-      getState: () => ({
-        hasSufficientPowerLevelFor: (action: string, level: number) =>
-          opts.may ? opts.may(action) : level >= 50,
-        maySendStateEvent: () => opts.maySetPower ?? true,
-      }),
-    }),
+  // Thresholds a level always or never meets stand in for per-action answers.
+  const threshold = (allowed: boolean) => (allowed ? 0 : 1_000);
+  const powerLevels = {
+    ...(opts.may
+      ? { kick: threshold(opts.may('kick')), ban: threshold(opts.may('ban')) }
+      : { kick: 50, ban: 50 }),
+    events: { 'm.room.power_levels': threshold(opts.maySetPower ?? true) },
+  };
+  const store: Pick<AdministeredRoomStore, 'room' | 'members'> = {
+    room: (accountId, roomId) =>
+      accountId === me
+        ? administeredRoom(roomId, me, { ownPower: myLevel, powerLevels })
+        : null,
+    members: (accountId, roomId) =>
+      accountId === me
+        ? {
+            roomId,
+            complete: true,
+            members: [
+              { userId: me, power: myLevel, membership: 'join' as Membership },
+              {
+                userId: '@bob:hs',
+                power: targetLevel,
+                membership: (opts.targetMembership ?? 'join') as Membership,
+              },
+            ].map((member) => ({
+              ...member,
+              displayName: member.userId,
+              avatarMxc: null,
+              reason: null,
+            })),
+          }
+        : null,
   };
   const instance = {
     kick,
@@ -56,7 +77,6 @@ function setup(
     unban,
     setPowerLevel,
     reportEvent,
-    getRoom: () => room,
     getUserId: () => me,
   };
   TestBed.configureTestingModule({
@@ -69,6 +89,7 @@ function setup(
         clientFor: (accountId: string) =>
           accountId === me ? (instance as never) : null,
       }),
+      { provide: AdministeredRoomStore, useValue: store },
       MockProvider(SessionStateService, {
         activeAccountId: signal<string | null>(me).asReadonly(),
       }),

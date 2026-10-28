@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ConnectionError,
@@ -19,6 +20,8 @@ import { JsSdkConversationContentEngine } from './js-sdk/js-sdk-conversation-con
 import { fakeEmitter } from '@trinity/testing';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { liveSession } from './timeline.spec-harness';
+import { TimelineStores } from './timeline-store';
+import { fakeEventItem } from '../contract/fake-timeline-engine';
 
 const KEY = {
   accountId: '@alice:example.org',
@@ -133,9 +136,20 @@ function setup({ roomEncrypted = false } = {}) {
     authorize: vi.fn(() => ({ kind: 'allowed' as const })),
   };
   const session = liveSession([KEY.accountId]);
+  // The live timeline holds the messages these specs pin.
+  const timelineItems = signal(
+    ['$two', '$new'].map((id) => fakeEventItem(id, '@bob:example.org')),
+  );
+  const stores = {
+    hold: vi.fn((_key: unknown, _focus: unknown) => ({
+      store: { items: timelineItems.asReadonly() },
+      release: vi.fn(),
+    })),
+  };
   TestBed.configureTestingModule({
     providers: [
       ConversationPinsController,
+      { provide: TimelineStores, useValue: stores },
       { provide: CONVERSATION_PIN_POLICY, useValue: policy },
       {
         provide: JS_SDK_CLIENTS,
@@ -157,6 +171,8 @@ function setup({ roomEncrypted = false } = {}) {
     client,
     room,
     policy,
+    stores,
+    timelineItems,
     sendStateEvent,
     remote,
     fetchRoomEvent,
@@ -231,7 +247,10 @@ describe('ConversationPinsController', () => {
       kind: 'applied',
       operation: 'pin',
     });
-    expect(policy.authorize).toHaveBeenCalledWith(KEY, 'pin', '$two');
+    expect(policy.authorize).toHaveBeenCalledWith(
+      { key: KEY, messageId: '$two', senderId: '@bob:example.org' },
+      'pin',
+    );
     expect(sendStateEvent).toHaveBeenCalledWith(
       KEY.roomId,
       EventType.RoomPinnedEvents,
@@ -257,6 +276,30 @@ describe('ConversationPinsController', () => {
       retryable: false,
     });
     expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejects pinning a message the live timeline lacks and still permits stale-id removal', async () => {
+    const { controller, policy, stores, timelineItems, sendStateEvent } =
+      setup();
+    timelineItems.set([]);
+
+    await expect(firstValueFrom(controller.pin('$two'))).resolves.toEqual({
+      kind: 'rejected',
+      operation: 'pin',
+      failure: 'message-unavailable',
+      retryable: false,
+    });
+    expect(policy.authorize).not.toHaveBeenCalled();
+    await expect(firstValueFrom(controller.unpin('$one'))).resolves.toEqual({
+      kind: 'applied',
+      operation: 'unpin',
+    });
+    expect(policy.authorize).toHaveBeenCalledWith(
+      { key: KEY, messageId: '$one', senderId: null },
+      'unpin',
+    );
+    expect(stores.hold).toHaveBeenCalledWith(KEY, { kind: 'live' });
+    expect(sendStateEvent).toHaveBeenCalledTimes(1);
   });
 
   it.each([{}, 7, 'abc', null, { length: 0 }])(

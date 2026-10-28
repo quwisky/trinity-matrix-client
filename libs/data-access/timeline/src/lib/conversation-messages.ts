@@ -73,15 +73,22 @@ export type ConversationRedactionDecision =
   | { readonly kind: 'allowed' }
   | {
       readonly kind: 'rejected';
-      readonly failure:
-        'conversation-unavailable' | 'message-unavailable' | 'not-allowed';
+      readonly failure: 'conversation-unavailable' | 'not-allowed';
     };
+
+/** A message the timeline holds, for a Room Administration decision about it. */
+export interface ConversationMessageRef {
+  readonly key: ConversationKey;
+  readonly messageId: string;
+  readonly senderId: string;
+}
 
 /** Room Administration port consumed by Conversations; it contains no SDK types. */
 export interface ConversationMessagePolicy {
   canRedactOthers(key: ConversationKey): boolean;
   canSendMessages(key: ConversationKey): boolean;
+  /** The timeline has already found the message; a missing one never reaches the policy. */
   authorizeRedaction(
-    request: ConversationMessageActionRequest,
+    request: ConversationMessageRef,
   ): ConversationRedactionDecision;
 }
