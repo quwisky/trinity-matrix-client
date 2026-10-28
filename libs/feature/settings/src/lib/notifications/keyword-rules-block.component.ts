@@ -10,7 +10,6 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnSwitchComponent } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import {
   KeywordRulesService,
@@ -29,8 +28,7 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
  *
  * Reads are synchronous snapshots off the synced push rules, re-read after every write rather
  * than patched optimistically: a keyword write is a create or delete against the server, and
- * showing a word that is not stored is worse than a moment's latency. A pending sound change
- * is the exception: see {@link optimisticSound}.
+ * showing a word that is not stored is worse than a moment's latency.
  */
 @Component({
   selector: 'trn-keyword-rules',
@@ -42,7 +40,6 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
     TrnSettingsGroupComponent,
     FormField,
     TrnButton,
-    TrnSwitchComponent,
     TrnInput,
   ],
 })
@@ -68,17 +65,6 @@ export class KeywordRulesBlockComponent implements OnInit {
   readonly adding = signal(false);
   /** Keywords with a write in flight, so their row's controls disable. */
   private readonly busy = signal<ReadonlySet<string>>(new Set());
-  /**
-   * Sound states shown ahead of the server, keyed by rule id (as the section's own toggles).
-   *
-   * `TrnSwitchComponent` flips itself on click and holds that in a `linkedSignal` over its
-   * `checked` input, which only recomputes when the INPUT changes. Binding the input to this
-   * map means a rejected write moves it back to the server's value, a real transition, so the
-   * control resyncs without reaching into Helm internals or depending on a row's position.
-   */
-  private readonly optimisticSound = signal<ReadonlyMap<string, boolean>>(
-    new Map(),
-  );
 
   /** The word being added. */
   private readonly keywordModel = signal({ word: '' });
@@ -93,13 +79,8 @@ export class KeywordRulesBlockComponent implements OnInit {
     this.reload();
   }
 
-  isBusy(ruleId: string): boolean {
-    return this.busy().has(ruleId);
-  }
-
-  /** What the row's Sound box should show: the pending value, else the server's. */
-  soundOf(keyword: KeywordRule): boolean {
-    return this.optimisticSound().get(keyword.ruleId) ?? keyword.sound;
+  isBusy(pattern: string): boolean {
+    return this.busy().has(pattern);
   }
 
   /**
@@ -156,46 +137,19 @@ export class KeywordRulesBlockComponent implements OnInit {
 
   /** Stop notifying on a keyword. */
   remove(keyword: KeywordRule): void {
-    this.setBusy(keyword.ruleId, true);
+    this.setBusy(keyword.pattern, true);
     this.keywordsSvc
-      .remove(keyword.ruleId)
+      .remove(keyword.pattern)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
-          this.setBusy(keyword.ruleId, false);
+          this.setBusy(keyword.pattern, false);
           this.reload();
         },
         error: () => {
-          this.setBusy(keyword.ruleId, false);
+          this.setBusy(keyword.pattern, false);
           this.reload();
           this.toast.show(`Could not remove “${keyword.pattern}”.`, {
-            duration: 4000,
-            variant: 'danger',
-          });
-        },
-      });
-  }
-
-  /** Turn a keyword's sound on or off. */
-  toggleSound(keyword: KeywordRule, sound: boolean): void {
-    this.setBusy(keyword.ruleId, true);
-    this.setOptimisticSound(keyword.ruleId, sound);
-    this.keywordsSvc
-      .setSound(keyword.ruleId, sound)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => {
-          this.setBusy(keyword.ruleId, false);
-          this.reload();
-          this.clearOptimisticSound(keyword.ruleId);
-        },
-        error: () => {
-          this.setBusy(keyword.ruleId, false);
-          // Back to the server's value and re-read: the write may have landed with only the
-          // response lost.
-          this.setOptimisticSound(keyword.ruleId, keyword.sound);
-          this.reload();
-          this.toast.show(`Could not update “${keyword.pattern}”.`, {
             duration: 4000,
             variant: 'danger',
           });
@@ -216,27 +170,13 @@ export class KeywordRulesBlockComponent implements OnInit {
     this.loaded.set(this.keywordsSvc.hasLoaded());
   }
 
-  private setOptimisticSound(ruleId: string, sound: boolean): void {
-    this.optimisticSound.update((current) =>
-      new Map(current).set(ruleId, sound),
-    );
-  }
-
-  private clearOptimisticSound(ruleId: string): void {
-    this.optimisticSound.update((current) => {
-      const next = new Map(current);
-      next.delete(ruleId);
-      return next;
-    });
-  }
-
-  private setBusy(ruleId: string, on: boolean): void {
+  private setBusy(pattern: string, on: boolean): void {
     this.busy.update((current) => {
       const next = new Set(current);
       if (on) {
-        next.add(ruleId);
+        next.add(pattern);
       } else {
-        next.delete(ruleId);
+        next.delete(pattern);
       }
       return next;
     });
