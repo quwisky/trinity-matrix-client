@@ -72,8 +72,6 @@
     "libs/data-access/trust/src/lib/trust-users.service.ts",
     "libs/data-access/trust/src/lib/trust-verification.service.ts",
     "libs/data-access/trust/src/lib/trust.service.ts",
-    "libs/data-access/widgets/src/lib/widget-management.service.ts",
-    "libs/data-access/widgets/src/lib/widgets.service.ts",
     "libs/feature/auth/src/lib/login/login.page.ts",
     "libs/util/matrix/src/lib/authed-media.ts",
     "libs/util/matrix/src/lib/message-content.ts",

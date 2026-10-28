@@ -144,6 +144,23 @@ describe('engineFailureMessage', () => {
     ).toBe('Encryption is unavailable.');
   });
 
+  it.each([
+    ['forbidden', 'You do not have permission to do that.'],
+    [
+      'conflict',
+      'This changed before it could be saved. Review it and try again.',
+    ],
+    ['state-key-taken', 'That identifier is already in use.'],
+  ] as const)('%s reads "%s"', (code, text) => {
+    expect(
+      engineFailureMessage({
+        kind: 'unexpected',
+        code,
+        diagnostic: { kind: 'unexpected' },
+      }),
+    ).toBe(text);
+  });
+
   it.each<[DiscoveryFailureReason, string]>([
     ['invalid', 'Invalid homeserver discovery response'],
     [

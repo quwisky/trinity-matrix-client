@@ -56,6 +56,10 @@ export type EngineFailure = {
   | { readonly code: 'not-forwardable' }
   /** The room is encrypted and the account has no crypto to encrypt with. */
   | { readonly code: 'encryption-unavailable' }
+  | { readonly code: 'forbidden' }
+  /** The target changed since the revision the caller confirmed. */
+  | { readonly code: 'conflict' }
+  | { readonly code: 'state-key-taken' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -100,6 +104,12 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This message cannot be forwarded.';
     case 'encryption-unavailable':
       return 'Encryption is unavailable.';
+    case 'forbidden':
+      return 'You do not have permission to do that.';
+    case 'conflict':
+      return 'This changed before it could be saved. Review it and try again.';
+    case 'state-key-taken':
+      return 'That identifier is already in use.';
   }
 }
 
