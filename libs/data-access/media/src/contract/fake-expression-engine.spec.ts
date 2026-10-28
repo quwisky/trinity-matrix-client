@@ -19,6 +19,7 @@ defineExpressionEngineContract(
           alias,
           joined: false,
           writable: false,
+          worldReadable: true,
           state: [
             { type: IMAGE_PACK_EVENT_TYPE, state_key: '', content: pack },
           ],
