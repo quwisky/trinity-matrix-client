@@ -8,6 +8,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { RoomActionPermissionError } from './room-action-permissions.service';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 import { RoomPermissionsService } from './room-permissions.service';
+import { AdministeredRoomStore } from './administered-room.store';
+import { administeredRoom } from './room-administration.spec-harness';
 
 const ROOM = '!room:hs';
 const HIGHER = 'Only someone with a higher role can change this';
@@ -56,8 +58,23 @@ function fixture(
 
 function setup(...fixtures: ReturnType<typeof fixture>[]) {
   const clients = new Map(
-    fixtures.map((x) => [x.client.getUserId(), x.client] as const),
+    fixtures.map((x) => [x.client.getUserId(), x] as const),
   );
+  const store: Pick<AdministeredRoomStore, 'room' | 'members'> = {
+    room: (accountId, roomId) => {
+      const f = clients.get(accountId)?.f;
+      return f
+        ? administeredRoom(roomId, accountId, {
+            ownPower: f.power === Infinity ? 'infinite' : f.power,
+            // A threshold the power always or never meets.
+            powerLevels: {
+              events: { 'm.room.power_levels': f.mayChange ? 0 : 1e9 },
+            },
+          })
+        : null;
+    },
+    members: () => null,
+  };
   TestBed.configureTestingModule({
     providers: [
       MockProvider(MatrixClientService, {
@@ -65,9 +82,10 @@ function setup(...fixtures: ReturnType<typeof fixture>[]) {
         get instance() {
           return fixtures[0].client as never;
         },
-        clientFor: (id: string) => (clients.get(id) as never) ?? null,
+        clientFor: (id: string) => (clients.get(id)?.client as never) ?? null,
         activeUserId: signal(fixtures[0].client.getUserId()).asReadonly(),
       }),
+      { provide: AdministeredRoomStore, useValue: store },
     ],
   });
   const state = TestBed.inject(RoomAdministrationProjectionState);

@@ -64,8 +64,12 @@ function setup(
   } = {},
 ) {
   const { echo = { kind: 'waiting' } } = options;
-  const items =
-    echo === 'absent'
+  const items = [
+    fakeEventItem('$message', '@bob:hs'),
+    fakeEventItem('$redacted', '@bob:hs', {
+      content: { kind: 'redacted', replyFallback: false },
+    }),
+    ...(echo === 'absent'
       ? []
       : [
           fakeEventItem('$echo', KEY.accountId, {
@@ -74,9 +78,10 @@ function setup(
             isOwn: true,
             sendState: echo,
           }),
-        ];
+        ]),
+  ];
   const stores = {
-    hold: vi.fn(() => ({
+    hold: vi.fn((_key: unknown, _focus: unknown) => ({
       store: { items: signal(items).asReadonly() },
       release: vi.fn(),
     })),
@@ -113,6 +118,7 @@ function setup(
     adapter: TestBed.inject(CONVERSATION_MESSAGE_ADAPTER),
     engine,
     drafts,
+    stores,
   };
 }
 
@@ -180,11 +186,72 @@ describe('ConversationMessageAdapter', () => {
       failure: 'not-allowed',
       retryable: false,
     });
+    expect(policy.authorizeRedaction).toHaveBeenCalledWith({
+      key: KEY,
+      messageId: '$message',
+      senderId: '@bob:hs',
+    });
     expect(engine.redact).not.toHaveBeenCalled();
   });
 
-  it('redacts an echo by its transaction id', async () => {
-    const { adapter, engine } = setup();
+  it('refuses to redact a message the conversation does not hold', async () => {
+    const authorizeRedaction = vi.fn((): ConversationRedactionDecision => ({
+      kind: 'allowed',
+    }));
+    const { adapter, engine } = setup({
+      policy: {
+        canRedactOthers: () => true,
+        canSendMessages: () => true,
+        authorizeRedaction,
+      },
+    });
+
+    await expect(
+      firstValueFrom(adapter.redact({ key: KEY, messageId: '$missing' })),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      operation: 'redaction',
+      failure: 'message-unavailable',
+      retryable: false,
+    });
+    expect(authorizeRedaction).not.toHaveBeenCalled();
+    expect(engine.redact).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: 'an echo still sending',
+      messageId: ECHO,
+      echo: { kind: 'sending' } as const,
+    },
+    { name: 'an already redacted message', messageId: '$redacted', echo: null },
+  ])('refuses to redact $name', async ({ messageId, echo }) => {
+    const authorizeRedaction = vi.fn((): ConversationRedactionDecision => ({
+      kind: 'allowed',
+    }));
+    const { adapter, engine } = setup({
+      echo,
+      policy: {
+        canRedactOthers: () => true,
+        canSendMessages: () => true,
+        authorizeRedaction,
+      },
+    });
+
+    await expect(
+      firstValueFrom(adapter.redact({ key: KEY, messageId })),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      operation: 'redaction',
+      failure: 'not-allowed',
+      retryable: false,
+    });
+    expect(authorizeRedaction).not.toHaveBeenCalled();
+    expect(engine.redact).not.toHaveBeenCalled();
+  });
+
+  it('redacts a sent echo by its transaction id', async () => {
+    const { adapter, engine } = setup({ echo: null });
 
     await firstValueFrom(adapter.redact({ key: KEY, messageId: ECHO }));
 
@@ -460,7 +527,7 @@ describe('ConversationMessageAdapter', () => {
   });
 
   it('passes the thread root to reactions and redactions', async () => {
-    const { adapter, engine } = setup();
+    const { adapter, engine, stores } = setup();
     const thread = { threadRootId: '$thread-root' };
 
     await firstValueFrom(
@@ -488,5 +555,9 @@ describe('ConversationMessageAdapter', () => {
       MESSAGE,
       thread,
     );
+    expect(stores.hold).toHaveBeenCalledWith(KEY, {
+      kind: 'thread',
+      rootEventId: '$thread-root',
+    });
   });
 });

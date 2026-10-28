@@ -1,21 +1,18 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
-  EventType,
-  KnownMembership,
-  type MatrixClient,
-  type MatrixEvent,
-  type Room,
-  RoomStateEvent,
-} from 'matrix-js-sdk';
-import {
-  MatrixClientService,
-  projectFromClient,
+  SessionStateService,
+  projectActiveAccount,
 } from '@trinity/data-access/matrix-client';
 import { IMAGE_PACK_EVENT_TYPE } from '@trinity/data-access/media';
-import { liveRoomState } from '@trinity/util/matrix';
-import type { Observable } from 'rxjs';
+import { NEVER, type Observable, concat, of } from 'rxjs';
+import { AdministeredRoomStore } from './administered-room.store';
+import type {
+  AdministeredRoom,
+  Membership,
+} from './room-administration-engine';
 import { RoomAdministrationError } from './room-administration-error';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import { mayAct, maySendState, powerValue } from './room-power';
 
 export interface ActionAvailability {
   readonly available: boolean;
@@ -76,8 +73,8 @@ export class RoomActionPermissionError extends RoomAdministrationError {
 }
 
 interface PermissionContext {
-  readonly room: Room;
-  readonly userId: string;
+  readonly key: RoomActionPermissionsKey;
+  readonly room: AdministeredRoom;
   readonly myPower: number;
 }
 
@@ -89,43 +86,29 @@ const denied = (reason: string): ActionAvailability => ({
 });
 
 /** Matrix lets a higher-ranked moderator remove invited and knocking users, not only joined ones. */
-const MANAGEABLE_MEMBERSHIPS: ReadonlySet<string> = new Set([
-  KnownMembership.Join,
-  KnownMembership.Invite,
-  KnownMembership.Knock,
-]);
+const MANAGEABLE_MEMBERSHIPS: ReadonlySet<Membership | undefined> = new Set<
+  Membership | undefined
+>(['join', 'invite', 'knock']);
 
 /**
  * Live Matrix authorization for permission-sensitive room actions.
  *
- * Callers read synchronous view models, while a filtered room-state projection supplies
- * the signal dependency that makes those reads update after remote power-level or
- * membership changes. Mutation services also read this class inside their cold action so
- * a permission revoked while a picker or confirmation is open is checked again immediately
- * before the homeserver write.
+ * Callers read synchronous view models over {@link AdministeredRoomStore}, so those reads
+ * update after remote power-level or membership changes for any account. Mutation services
+ * also read this class inside their cold action so a permission revoked while a picker or
+ * confirmation is open is checked again immediately before the homeserver write.
  */
 @Injectable({ providedIn: 'root' })
 export class RoomActionPermissionsService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly store = inject(AdministeredRoomStore);
+  private readonly session = inject(SessionStateService);
   private readonly projectionState = inject(RoomAdministrationProjectionState);
-  private readonly revision = signal(0);
 
-  private readonly onStateEvent = (event: MatrixEvent): void => {
-    if (
-      event.getType() === EventType.RoomPowerLevels ||
-      event.getType() === EventType.RoomMember
-    ) {
-      this.projection.schedule();
-    }
-  };
-
-  private readonly projection = projectFromClient({
+  // Reads are reactive through the store; the lease keeps the session lifetime's health facts.
+  private readonly projection = projectActiveAccount<void>({
     id: 'room-administration.action-permissions',
-    matrix: this.matrix,
-    bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
-    unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
-    rebuild: () => this.revision.update((value) => value + 1),
-    reset: () => this.revision.update((value) => value + 1),
+    subscribe: () => concat(of(undefined), NEVER),
+    rebuild: () => undefined,
   });
 
   /** Cold authority projection retained by the Room Administration session lifetime. */
@@ -133,9 +116,11 @@ export class RoomActionPermissionsService {
     return this.projection.run();
   }
 
-  /** Repair this retained projection without adding another listener owner. */
+  /** Reattach this retained projection without adding another lifetime owner. */
   retryProjection(): void {
-    this.projection.schedule();
+    if (!this.projection.isConnected()) return;
+    this.projection.disconnect();
+    this.projection.connect();
   }
 
   room(roomId: string): RoomActionPermissions {
@@ -145,10 +130,7 @@ export class RoomActionPermissionsService {
   }
 
   roomFor(key: RoomActionPermissionsKey): RoomActionPermissions {
-    this.revision();
-    return this.roomPermissions(
-      this.contextForClient(this.matrix.clientFor(key.accountId), key.roomId),
-    );
+    return this.roomPermissions(this.contextFor(key));
   }
 
   settings(roomId: string): RoomSettingsPermissions {
@@ -173,10 +155,7 @@ export class RoomActionPermissionsService {
 
   /** Current settings authority for one immutable Account-and-Room target. */
   settingsFor(key: RoomActionPermissionsKey): RoomSettingsPermissions {
-    this.revision();
-    return this.settingsPermissions(
-      this.contextForClient(this.matrix.clientFor(key.accountId), key.roomId),
-    );
+    return this.settingsPermissions(this.contextFor(key));
   }
 
   private settingsPermissions(
@@ -198,31 +177,29 @@ export class RoomActionPermissionsService {
         permissions: unavailable,
       };
     }
-    const may = (type: EventType | string): boolean =>
-      !!liveRoomState(context.room)?.maySendStateEvent(type, context.userId);
-    const maySend = (
-      type: EventType | string,
-      label: string,
-    ): ActionAvailability =>
+    const { powerLevels, ownPower } = context.room;
+    const may = (type: string): boolean =>
+      maySendState(powerLevels, ownPower, type);
+    const maySend = (type: string, label: string): ActionAvailability =>
       may(type)
         ? ALLOWED
         : denied(`Your role cannot change this room's ${label}.`);
     return {
-      name: maySend(EventType.RoomName, 'name'),
-      topic: maySend(EventType.RoomTopic, 'topic'),
-      avatar: maySend(EventType.RoomAvatar, 'photo'),
-      joinRule: maySend(EventType.RoomJoinRules, 'join rule'),
-      history: maySend(EventType.RoomHistoryVisibility, 'history visibility'),
-      aliases: maySend(EventType.RoomCanonicalAlias, 'addresses'),
-      upgrade: maySend(EventType.RoomTombstone, 'version'),
-      encryption: may(EventType.RoomEncryption)
+      name: maySend('m.room.name', 'name'),
+      topic: maySend('m.room.topic', 'topic'),
+      avatar: maySend('m.room.avatar', 'photo'),
+      joinRule: maySend('m.room.join_rules', 'join rule'),
+      history: maySend('m.room.history_visibility', 'history visibility'),
+      aliases: maySend('m.room.canonical_alias', 'addresses'),
+      upgrade: maySend('m.room.tombstone', 'version'),
+      encryption: may('m.room.encryption')
         ? ALLOWED
         : denied(
             'Only people who can change room settings can turn on encryption.',
           ),
-      directory: maySend(EventType.RoomCanonicalAlias, 'directory listing'),
+      directory: maySend('m.room.canonical_alias', 'directory listing'),
       imagePack: maySend(IMAGE_PACK_EVENT_TYPE, 'emoji'),
-      permissions: maySend(EventType.RoomPowerLevels, 'permissions'),
+      permissions: maySend('m.room.power_levels', 'permissions'),
     };
   }
 
@@ -237,26 +214,20 @@ export class RoomActionPermissionsService {
       return this.deniedMember(
         freshness.reason ?? 'Current room permissions are unavailable.',
       );
-    const context =
-      typeof target === 'string'
-        ? this.context(roomId)
-        : this.contextForClient(
-            this.matrix.clientFor(target.accountId),
-            target.roomId,
-          );
+    const context = this.targetContext(target);
     if (!context) {
       return this.deniedMember('Join this room to manage its members.');
     }
-    const targetMember = context.room.getMember(targetUserId);
-    const targetPower = targetMember?.powerLevel ?? 0;
-    if (targetUserId === context.userId) {
+    const targetMember = this.memberOf(context, targetUserId);
+    const targetPower = targetMember ? powerValue(targetMember.power) : 0;
+    if (targetUserId === context.room.ownUserId) {
       return this.deniedMember(
         'Use your own room actions instead of moderating yourself.',
         context.myPower,
         targetPower,
       );
     }
-    if (!MANAGEABLE_MEMBERSHIPS.has(targetMember?.membership ?? '')) {
+    if (!MANAGEABLE_MEMBERSHIPS.has(targetMember?.membership)) {
       return this.deniedMember(
         'This person is no longer in the room.',
         context.myPower,
@@ -271,18 +242,15 @@ export class RoomActionPermissionsService {
       );
     }
 
-    const state = liveRoomState(context.room);
+    const { powerLevels, ownPower } = context.room;
     return {
-      kick: state?.hasSufficientPowerLevelFor('kick', context.myPower)
+      kick: mayAct(powerLevels, ownPower, 'kick')
         ? ALLOWED
         : denied('Your role cannot remove members from this room.'),
-      ban: state?.hasSufficientPowerLevelFor('ban', context.myPower)
+      ban: mayAct(powerLevels, ownPower, 'ban')
         ? ALLOWED
         : denied('Your role cannot ban members from this room.'),
-      setPower: state?.maySendStateEvent(
-        EventType.RoomPowerLevels,
-        context.userId,
-      )
+      setPower: maySendState(powerLevels, ownPower, 'm.room.power_levels')
         ? ALLOWED
         : denied("Your role cannot change another member's role."),
       myPower: context.myPower,
@@ -312,27 +280,21 @@ export class RoomActionPermissionsService {
     const freshness =
       typeof target === 'string' ? this.freshness(roomId) : null;
     if (freshness) return freshness;
-    const context =
-      typeof target === 'string'
-        ? this.context(roomId)
-        : this.contextForClient(
-            this.matrix.clientFor(target.accountId),
-            target.roomId,
-          );
+    const context = this.targetContext(target);
     if (!context) {
       return denied('Join this room to manage its banned members.');
     }
-    const targetMember = context.room.getMember(targetUserId);
-    const targetPower = targetMember?.powerLevel ?? 0;
-    if (targetMember?.membership !== KnownMembership.Ban) {
+    const targetMember = this.memberOf(context, targetUserId);
+    const targetPower = targetMember ? powerValue(targetMember.power) : 0;
+    if (targetMember?.membership !== 'ban') {
       return denied('This user is no longer banned from the room.');
     }
     if (context.myPower <= targetPower) {
       return denied('You can only unban users with a lower role.');
     }
-    const state = liveRoomState(context.room);
-    return state?.hasSufficientPowerLevelFor('kick', context.myPower) &&
-      state.hasSufficientPowerLevelFor('ban', context.myPower)
+    const { powerLevels, ownPower } = context.room;
+    return mayAct(powerLevels, ownPower, 'kick') &&
+      mayAct(powerLevels, ownPower, 'ban')
       ? ALLOWED
       : denied('Your role cannot unban members from this room.');
   }
@@ -350,15 +312,12 @@ export class RoomActionPermissionsService {
       const unavailable = denied('Join this room to use this action.');
       return { invite: unavailable, curateSpace: unavailable };
     }
-    const state = liveRoomState(context.room);
+    const { powerLevels, ownPower } = context.room;
     return {
-      invite: state?.hasSufficientPowerLevelFor('invite', context.myPower)
+      invite: mayAct(powerLevels, ownPower, 'invite')
         ? ALLOWED
         : denied('Your role cannot invite people to this room.'),
-      curateSpace: state?.maySendStateEvent(
-        EventType.SpaceChild,
-        context.userId,
-      )
+      curateSpace: maySendState(powerLevels, ownPower, 'm.space.child')
         ? ALLOWED
         : denied('Your role cannot manage rooms in this space.'),
     };
@@ -373,33 +332,30 @@ export class RoomActionPermissionsService {
         );
   }
 
+  /** The active account's context; it follows an account switch at once. */
   private context(roomId: string): PermissionContext | null {
-    this.revision();
-    this.matrix.activeUserId();
-    return this.contextForClient(this.readClient(), roomId);
+    const accountId = this.session.activeAccountId();
+    return accountId ? this.contextFor({ accountId, roomId }) : null;
   }
 
-  private contextForClient(
-    client: MatrixClient | null,
-    roomId: string,
+  private targetContext(
+    target: string | RoomActionPermissionsKey,
   ): PermissionContext | null {
-    const room = client?.getRoom(roomId) ?? null;
-    const userId = client?.getUserId() ?? null;
-    if (!room || !userId || room.getMyMembership() !== KnownMembership.Join) {
-      return null;
-    }
-    return {
-      room,
-      userId,
-      myPower: room.getMember(userId)?.powerLevel ?? 0,
-    };
+    return typeof target === 'string'
+      ? this.context(target)
+      : this.contextFor(target);
   }
 
-  private readClient(): MatrixClient | null {
-    // The projection may still be detaching from the previous client during an account
-    // switch or logout. Authorization reads must follow the Matrix service immediately;
-    // using the bound listener client here would briefly expose stale account permissions.
-    return this.matrix.isInitialized ? this.matrix.instance : null;
+  private contextFor(key: RoomActionPermissionsKey): PermissionContext | null {
+    const room = this.store.room(key.accountId, key.roomId);
+    if (room?.ownMembership !== 'join') return null;
+    return { key, room, myPower: powerValue(room.ownPower) };
+  }
+
+  private memberOf(context: PermissionContext, userId: string) {
+    return this.store
+      .members(context.key.accountId, context.key.roomId)
+      ?.members.find((member) => member.userId === userId);
   }
 
   private deniedMember(

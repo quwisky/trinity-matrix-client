@@ -168,8 +168,8 @@ export function applicationCapabilityProviders(
         return {
           canRedactOthers: (key) => governance.canRedactOthers(key),
           canSendMessages: (key) => governance.canSendMessages(key),
-          authorizeRedaction: ({ key, messageId }) =>
-            governance.authorizeRedaction({ ...key, messageId }),
+          authorizeRedaction: ({ key, senderId }) =>
+            governance.authorizeRedaction({ ...key, senderId }),
         };
       },
     },
@@ -179,8 +179,7 @@ export function applicationCapabilityProviders(
         const governance = inject(RoomPinGovernanceService);
         return {
           canMutate: (key) => governance.canMutate(key),
-          authorize: (key, operation, eventId) =>
-            governance.authorize(key, operation, eventId),
+          authorize: ({ key }) => governance.authorize(key),
         };
       },
     },

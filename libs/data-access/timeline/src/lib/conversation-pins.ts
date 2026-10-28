@@ -53,16 +53,22 @@ export type ConversationPinDecision =
   | { readonly kind: 'allowed' }
   | {
       readonly kind: 'rejected';
-      readonly failure:
-        'conversation-unavailable' | 'message-unavailable' | 'not-allowed';
+      readonly failure: 'conversation-unavailable' | 'not-allowed';
     };
+
+/** A message to pin or unpin; `senderId` is null for an unpin of a message the timeline lacks. */
+export interface ConversationPinRequest {
+  readonly key: ConversationPinPolicyKey;
+  readonly messageId: string;
+  readonly senderId: string | null;
+}
 
 /** Room Administration port consumed by Conversations; it contains no SDK types. */
 export interface ConversationPinPolicy {
   canMutate(key: ConversationPinPolicyKey): boolean;
+  /** The timeline has already found a message to pin; unpinning needs none. */
   authorize(
-    key: ConversationPinPolicyKey,
+    request: ConversationPinRequest,
     operation: ConversationPinOperation,
-    eventId: string,
   ): ConversationPinDecision;
 }
