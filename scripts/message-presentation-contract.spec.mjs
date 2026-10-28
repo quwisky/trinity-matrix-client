@@ -55,22 +55,18 @@ describe('Message Presentation production boundary', () => {
     expect(source(`${timelineRoot}/timeline-store.ts`)).toMatch(
       /presentNormalizedTimelineEvent\(\s*normalizedFromItem\(item, room\),\s*this\.presentMedia,?\s*\)/,
     );
-    expect(source(`${timelineRoot}/threads.service.ts`)).toMatch(
-      /projectMessage\(\s*client,\s*room,\s*e,\s*shield,\s*roomEncrypted,\s*this\.mediaPipeline,\s*\)/,
+    // An opened thread is a store too, at thread focus.
+    const threads = source(`${timelineRoot}/threads.service.ts`);
+    expect(threads).toMatch(
+      /this\.stores\.open\(key, threadFocus\(rootEventId\)\)/,
     );
-
-    const projection = source(`${timelineRoot}/js-sdk/project-message.ts`);
-    expect(projection).toMatch(
-      /normalizeTimelineEvent\(\s*client,\s*room,\s*event,\s*shield,\s*roomEncrypted,?\s*\)/,
+    expect(threads).not.toMatch(
+      /presentNormalizedTimelineEvent|normalizeTimelineEvent/,
     );
-    expect(projection).toContain('presentNormalizedTimelineEvent(normalized');
     // Whether a row shows its edit is decided in one place, never passed in or fixed.
     expect(
       source(`${timelineRoot}/js-sdk/normalize-timeline-event.ts`),
     ).toContain('showsEdit(event)');
-    expect(projection).toContain(
-      "presentMedia.present(media, client.getUserId() ?? '')",
-    );
   });
 
   it('does not restore the retired util text or system-event API', () => {

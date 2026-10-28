@@ -4,15 +4,21 @@ import {
   type Room,
   type Thread,
 } from 'matrix-js-sdk';
-import { initialOf } from '@trinity/util/matrix';
-import { shownContent } from './js-sdk/shields';
-import type { ThreadParticipant } from './conversation-threads';
+import {
+  initialOf,
+  messagePreview,
+  unencryptedMarkFor,
+} from '@trinity/util/matrix';
+import { shownContent, shownSubject } from './shields';
+import type { ThreadParticipant } from '../conversation-threads';
+import type { Profile, ThreadSummaryInfo } from '../timeline-engine';
+import { profileOf } from './timeline-item';
 
 /** Most participant avatars shown in a summary cluster before "+N". */
 const MAX_PARTICIPANTS = 8;
 
 /**
- * A compact fingerprint of every input {@link ThreadsService.summaryFor} reads that can
+ * A compact fingerprint of every input {@link threadSummaryInfo} reads that can
  * change for a thread: its reply count (also tracks new participants), its root and
  * latest-reply events (id/timestamp/redaction/decryption/body/sender + resolved name, so
  * edits and redactions are caught) and its unread counts. The summary is rebuilt only
@@ -106,4 +112,48 @@ export function participantsOf(
     }
   }
   return participants;
+}
+
+/** The summary of `thread`, naming users by id; their names are in `profiles`. */
+export function threadSummaryInfo(
+  room: Room,
+  thread: Thread,
+  roomEncrypted: boolean,
+): ThreadSummaryInfo {
+  const markFor = unencryptedMarkFor(room, roomEncrypted);
+  // Each preview's mark flags unencrypted text, so the text itself stays readable.
+  const preview = (event: MatrixEvent) => ({
+    sender: event.getSender() ?? '',
+    preview: messagePreview(event, shownContent(event)),
+    unencryptedMark: markFor(event, shownSubject(event)),
+  });
+  const root = thread.rootEvent ?? null;
+  const latest = thread.replyToEvent;
+  // The SDK falls back to the root when every reply is redacted: no latest reply then.
+  const latestReply =
+    latest && latest.getId() !== thread.id
+      ? { ...preview(latest), ts: latest.getTs() }
+      : null;
+  const participants = participantsOf(room, thread).map(({ id }) => id);
+  const profiles: Record<string, Profile> = {};
+  for (const userId of [
+    ...(root ? [root.getSender() ?? ''] : []),
+    ...(latestReply ? [latestReply.sender] : []),
+    ...participants,
+  ]) {
+    const profile = profileOf(userId, room.getMember(userId));
+    if (profile) profiles[userId] = profile;
+  }
+  const unread = threadUnread(room, thread.id);
+  return {
+    rootEventId: thread.id,
+    replyCount: thread.length,
+    latestActivityTs: latestReply?.ts ?? root?.getTs() ?? 0,
+    root: root ? preview(root) : null,
+    latestReply,
+    participants,
+    profiles,
+    unreadCount: unread.count,
+    highlight: unread.highlight,
+  };
 }
