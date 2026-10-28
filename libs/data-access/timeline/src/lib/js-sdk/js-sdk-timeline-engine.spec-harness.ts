@@ -1,7 +1,14 @@
 import { EventEmitter } from 'events';
 import type { Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ClientEvent, Direction, RoomEvent } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  Direction,
+  EventStatus,
+  MatrixEvent,
+  RoomEvent,
+  type IEvent,
+} from 'matrix-js-sdk';
 import { expect, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import {
@@ -148,4 +155,107 @@ export function failureCode<T>(result: EngineResult<T>): string | null {
 
 export function msg(id: string, sender = '@alice:hs', extra: object = {}) {
   return Object.assign(fakeEvent({ id, sender, body: id }), extra) as FakeEvent;
+}
+
+export interface Send {
+  readonly echo: MatrixEvent;
+  readonly args: readonly unknown[];
+  resolve(value: unknown): void;
+  reject(error: unknown): void;
+}
+
+/** {@link world} with a client that adds a real local echo per send, as the SDK does. */
+export function sendingWorld(
+  events: FakeEvent[] = [msg('$a')],
+  options: Options = {},
+) {
+  const w = world(events, options);
+  const { room, client } = w;
+  const sends: Send[] = [];
+  const echoes = new Map<string, MatrixEvent>();
+  let txn = 0;
+  const update = (echo: MatrixEvent, status: EventStatus | null) => {
+    const oldId = echo.getId();
+    echo.setStatus(status);
+    room.emit(RoomEvent.LocalEchoUpdated, echo, room, oldId);
+  };
+  const send = (type: string, args: unknown[]) => {
+    // The SDK's overloads: (roomId, [threadId,] [type,] content, txnId).
+    const [, ...rest] = args;
+    const content = rest.find(
+      (arg) => typeof arg === 'object' && arg !== null,
+    ) as Record<string, unknown>;
+    const txnId = rest[rest.length - 1] as string;
+    const echo = new MatrixEvent({
+      type,
+      content,
+      sender: ME,
+      room_id: args[0] as string,
+      event_id: `~${ROOM}:${txnId}`,
+      origin_server_ts: 1,
+    });
+    echo.setTxnId(txnId);
+    echo.setStatus(EventStatus.SENDING);
+    if (args[0] === ROOM) {
+      echoes.set(txnId, echo);
+      room
+        .getLiveTimeline()
+        .getEvents()
+        .push(echo as unknown as FakeEvent);
+      room.emit(RoomEvent.Timeline, echo, room, false, false);
+    }
+    return new Promise((resolve, reject) =>
+      sends.push({ echo, args, resolve, reject }),
+    );
+  };
+  Object.assign(room, {
+    getEventForTxnId: (txnId: string) => echoes.get(txnId),
+  });
+  const sending = Object.assign(client, {
+    makeTxnId: () => `txn-${++txn}`,
+    sendMessage: vi.fn((...args: unknown[]) => send('m.room.message', args)),
+    sendEvent: vi.fn((...args: unknown[]) =>
+      send(
+        args.find(
+          (a, i) => i > 0 && typeof a === 'string' && !a.startsWith('$'),
+        ) as string,
+        args,
+      ),
+    ),
+    redactEvent: vi.fn(() => Promise.resolve({ event_id: '$redaction' })),
+    resendEvent: vi.fn((echo: MatrixEvent) => {
+      update(echo, EventStatus.SENDING);
+      return Promise.resolve({ event_id: '$resent' });
+    }),
+    cancelPendingEvent: vi.fn((echo: MatrixEvent) => {
+      if (echo.status !== EventStatus.NOT_SENT) {
+        throw new Error(`cannot cancel an event with status ${echo.status}`);
+      }
+      // As the SDK does, a cancelled echo leaves the timeline.
+      const events = room.getLiveTimeline().getEvents();
+      events.splice(events.indexOf(echo as unknown as FakeEvent), 1);
+      update(echo, EventStatus.CANCELLED);
+    }),
+    getEventMapper: () => (raw: Partial<IEvent>) => new MatrixEvent(raw),
+  });
+  return {
+    ...w,
+    client: sending,
+    sends,
+    /** The server accepted send `index` as `eventId`. */
+    confirm(index: number, eventId: string) {
+      const { echo, resolve } = sends[index];
+      echo.replaceLocalEventId(eventId);
+      update(echo, EventStatus.SENT);
+      resolve({ event_id: eventId });
+    },
+    /** Send `index` failed with `error`, leaving its echo unsent. */
+    fail(index: number, error: Error) {
+      const { echo, reject } = sends[index];
+      echo.error = error as never;
+      update(echo, EventStatus.NOT_SENT);
+      reject(error);
+    },
+    update,
+  };
 }

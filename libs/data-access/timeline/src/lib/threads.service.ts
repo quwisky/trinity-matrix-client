@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import {
   Direction,
+  EventStatus,
   EventType,
   MatrixEvent,
   MatrixEventEvent,
@@ -42,6 +43,7 @@ import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import {
   collectMessageSenders,
   isDisplayableMessage,
+  mapStatus,
 } from './js-sdk/event-reads';
 import {
   resolveShieldsInto,
@@ -57,6 +59,7 @@ import { eventRevision } from './js-sdk/event-revision';
 import { onWindowFocus, windowHasFocus } from './window-focus';
 import { projectMessage } from './js-sdk/project-message';
 import type { MessageShield, MessageView } from './message-presentation';
+import type { SendState } from './timeline-engine';
 import type { ConversationKey } from './conversation-messages';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
@@ -659,12 +662,10 @@ export class ThreadsService {
       client.sendMessage(room.roomId, threadId, content as never, txnId),
     ).pipe(
       catchError((error: unknown) =>
-        keepWhileWaiting(
-          this.drafts,
-          threadDraftKey(threadId),
-          room.getEventForTxnId(txnId),
-          body,
-        )
+        keepWhileWaiting(this.drafts, threadDraftKey(threadId), body, {
+          transactionId: txnId,
+          states: echoSendStates(room.getEventForTxnId(txnId)),
+        })
           ? of(undefined)
           : throwError(() => error),
       ),
@@ -962,4 +963,28 @@ export class ThreadsService {
       highlight: unread.highlight,
     };
   }
+}
+
+/**
+ * The send states of a thread echo, as `TimelineStore.sendStates` gives them for the room:
+ * `null` once sent, complete once cancelled. Threads move onto the engine with PR 3.
+ */
+function echoSendStates(
+  echo: MatrixEvent | undefined,
+): Observable<SendState | null> {
+  return new Observable((subscriber) => {
+    if (!echo) return subscriber.complete();
+    const emit = (): void => {
+      const status = mapStatus(echo);
+      if (echo.status === EventStatus.CANCELLED) subscriber.complete();
+      else if (echo.status === EventStatus.SENT || echo.status === null)
+        subscriber.next(null);
+      else if (status === 'failed')
+        subscriber.next({ kind: 'failed', recoverable: true });
+      else subscriber.next({ kind: status ?? 'sending' });
+    };
+    emit();
+    echo.on(MatrixEventEvent.Status, emit);
+    return () => echo.off(MatrixEventEvent.Status, emit);
+  });
 }

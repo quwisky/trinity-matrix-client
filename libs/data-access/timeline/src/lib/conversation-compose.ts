@@ -16,7 +16,8 @@ export type ConversationTextSendFailure =
   | 'send-rejected';
 
 export type ConversationTextSendOutcome =
-  | { readonly kind: 'sent'; readonly eventId: string }
+  /** `eventId` is null for an edit: the row keeps the original's id. */
+  | { readonly kind: 'sent'; readonly eventId: string | null }
   /** Failed offline: it waits in the timeline and goes out by itself on reconnect. */
   | { readonly kind: 'queued' }
   | {
@@ -33,14 +34,14 @@ export interface ConversationTextSendRequest {
 }
 
 export type ConversationTextDelivery =
-  | { readonly kind: 'accepted'; readonly eventId: string }
+  | { readonly kind: 'accepted'; readonly eventId: string | null }
   | { readonly kind: 'queued' }
   | { readonly kind: 'rejected'; readonly retryable: boolean };
 
 export interface ConversationTextSendOperation {
   readonly outcome: Observable<ConversationTextDelivery>;
-  /** Cancel only when the SDK can prove the event has not left the client. */
-  cancel(): boolean;
+  /** True only when the SDK can prove the event has not left the client. */
+  cancel(): Observable<boolean>;
 }
 
 export interface ConversationTextSender {
@@ -242,8 +243,10 @@ export class ConversationComposeController {
             complete: () => subscriber.complete(),
           });
         return () => {
-          if (!settled && operation.cancel()) {
-            this.restore(draft, intent, revision);
+          if (!settled) {
+            operation.cancel().subscribe((cancelled) => {
+              if (cancelled) this.restore(draft, intent, revision);
+            });
           }
           delivery.unsubscribe();
         };

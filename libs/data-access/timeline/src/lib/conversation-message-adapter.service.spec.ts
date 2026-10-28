@@ -4,7 +4,10 @@ import { EventStatus, MatrixError, ReceiptType } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import {
   CONVERSATION_MESSAGE_ADAPTER,
   CONVERSATION_MESSAGE_POLICY,
@@ -19,6 +22,7 @@ import {
   fakeRelations,
   fakeRoom,
 } from './timeline.spec-harness';
+import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
 
 const KEY = { accountId: '@alice:hs', roomId: '!shared:hs' } as const;
 
@@ -33,11 +37,15 @@ function setup(
     readonly rejectWith?: unknown;
   } = {},
 ) {
-  const event = fakeEvent({
-    id: '$message',
-    sender: KEY.accountId,
-    status: options.eventStatus ?? undefined,
-  });
+  const event = Object.assign(
+    fakeEvent({
+      id: '$message',
+      sender: KEY.accountId,
+      status: options.eventStatus ?? undefined,
+    }),
+    { getTxnId: () => 'txn-1' },
+  );
+  const drafts = { holdWaiting: vi.fn(), releaseWaiting: vi.fn() };
   const reactions: Record<string, ReturnType<typeof fakeRelations>> = {};
   if (options.existingReaction) {
     reactions['$message'] = fakeRelations([
@@ -97,6 +105,7 @@ function setup(
         },
       },
       { provide: CONVERSATION_MESSAGE_POLICY, useValue: policy },
+      { provide: DraftStoreService, useValue: drafts },
     ],
   });
   return {
@@ -105,6 +114,7 @@ function setup(
     alternateClient,
     event,
     room,
+    drafts,
   };
 }
 
@@ -256,6 +266,32 @@ describe('MatrixConversationMessageAdapter', () => {
       failure: 'event-not-retryable',
     });
     expect(sent.client.cancelPendingEvent).not.toHaveBeenCalled();
+    expect(sent.drafts.releaseWaiting).not.toHaveBeenCalled();
+  });
+
+  it('row cancel releases the held draft', async () => {
+    const room = setup({ eventStatus: EventStatus.NOT_SENT });
+    await firstValueFrom(
+      room.adapter.cancel({ key: KEY, messageId: '$message' }),
+    );
+    expect(room.drafts.releaseWaiting).toHaveBeenCalledWith(
+      conversationDraftKey(KEY),
+      'txn-1',
+    );
+
+    TestBed.resetTestingModule();
+    const thread = setup({ eventStatus: EventStatus.NOT_SENT });
+    await firstValueFrom(
+      thread.adapter.cancel({
+        key: KEY,
+        messageId: '$message',
+        threadRootId: '$root',
+      }),
+    );
+    expect(thread.drafts.releaseWaiting).toHaveBeenCalledWith(
+      threadDraftKey('$root'),
+      'txn-1',
+    );
   });
 
   it('sends privacy-aware receipts and the persisted read marker together', async () => {

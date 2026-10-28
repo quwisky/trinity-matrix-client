@@ -10,7 +10,10 @@ import {
   type Observable,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import {
   annotationContent,
   isTransientMatrixError,
@@ -24,6 +27,8 @@ import type {
   ConversationReactionRequest,
 } from './conversation-messages';
 import { myReactionIds } from './js-sdk/outgoing-content';
+import { transactionIdOf } from './js-sdk/timeline-item';
+import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
 
 const unavailablePolicy: ConversationMessagePolicy = {
   canRedactOthers: () => false,
@@ -44,6 +49,7 @@ export const CONVERSATION_MESSAGE_POLICY =
 class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
+  private readonly drafts = inject(DraftStoreService);
   private readonly policy = inject(CONVERSATION_MESSAGE_POLICY);
 
   toggleReaction(
@@ -165,8 +171,17 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       if (event.status !== EventStatus.NOT_SENT) {
         return of(this.rejected('cancel', 'event-not-retryable'));
       }
-      // CANCELLED is what releases the waiting draft record and stops the reconnect resend.
+      // CANCELLED stops the reconnect resend; the text held for a reload goes with it.
       context.client.cancelPendingEvent(event);
+      const transactionId = transactionIdOf(event);
+      if (transactionId) {
+        this.drafts.releaseWaiting(
+          request.threadRootId
+            ? threadDraftKey(request.threadRootId)
+            : conversationDraftKey(request.key),
+          transactionId,
+        );
+      }
       return of(this.applied('cancel'));
     });
   }

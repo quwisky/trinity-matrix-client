@@ -111,7 +111,7 @@ function setup(
     | { readonly kind: 'queued' }
   >();
   const sender: ConversationTextSender = senderOverride ?? {
-    send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
+    send: vi.fn(() => ({ outcome: sends, cancel: () => of(false) })),
   };
   const mediaEvents = new Subject<MediaTransferEvent>();
   const keepPhotoMetadata = signal(false);
@@ -1169,7 +1169,7 @@ describe('ConversationRuntime', () => {
   });
 
   it('cancels the finite command without losing the draft or leaving send state behind', () => {
-    const cancelled = vi.fn(() => true);
+    const cancelled = vi.fn(() => of(true));
     const sender: ConversationTextSender = {
       send: vi.fn(() => ({ outcome: NEVER, cancel: cancelled })),
     };
@@ -1190,7 +1190,7 @@ describe('ConversationRuntime', () => {
 
   it('does not falsely restore a draft when SDK cancellation is indeterminate', () => {
     const sender: ConversationTextSender = {
-      send: vi.fn(() => ({ outcome: NEVER, cancel: () => false })),
+      send: vi.fn(() => ({ outcome: NEVER, cancel: () => of(false) })),
     };
     const { runtime } = setup(0, sender);
     const original = runtime.focus({

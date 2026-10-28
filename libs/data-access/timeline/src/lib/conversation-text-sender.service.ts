@@ -1,35 +1,24 @@
-import { Injectable, InjectionToken, inject } from '@angular/core';
-import { type MatrixClient, type MatrixEvent, type Room } from 'matrix-js-sdk';
+import { Injectable, InjectionToken, inject, untracked } from '@angular/core';
+import { type Observable, defer, finalize, map, of, tap } from 'rxjs';
 import {
-  type Observable,
-  catchError,
-  defer,
-  finalize,
-  from,
-  map,
-  of,
-  switchMap,
-  tap,
-  throwError,
-} from 'rxjs';
-import {
-  editMessageContent,
+  type EngineResult,
   outgoingReplyText,
   renderMarkdown,
   slashCommandContent,
   textMessageContent,
 } from '@trinity/util/matrix';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackEditorService } from '@trinity/data-access/media';
 import { DraftStoreService } from '@trinity/platform-native';
 import {
+  type ConversationTextDelivery,
   type ConversationTextSendOperation,
   type ConversationTextSendRequest,
   type ConversationTextSender,
 } from './conversation-compose';
-import { fetchRoomEvent, replyMessageContent } from './js-sdk/outgoing-content';
-import { shownContent } from './js-sdk/shields';
 import { conversationDraftKey } from './conversation-draft-key';
+import type { OutgoingText } from './timeline-engine';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
+import { type TimelineStore, TimelineStores } from './timeline-store';
 import { keepWhileWaiting } from './waiting-draft';
 
 class MissingLocalEchoError extends Error {
@@ -38,146 +27,200 @@ class MissingLocalEchoError extends Error {
   }
 }
 
+const LIVE = { kind: 'live' } as const;
+const NO_THREAD = { threadRootId: null } as const;
+
+/** The engine's form of message content a builder in `@trinity/util/matrix` made. */
+function outgoingText(content: Record<string, unknown>): OutgoingText {
+  const mentions = (content['m.mentions'] ?? {}) as {
+    readonly user_ids?: readonly string[];
+    readonly room?: boolean;
+  };
+  const formatted = content['formatted_body'];
+  return {
+    msgtype: String(content['msgtype']).slice(
+      'm.'.length,
+    ) as OutgoingText['msgtype'],
+    body: String(content['body']),
+    formattedBody: typeof formatted === 'string' ? formatted : null,
+    mentions: {
+      userIds: mentions.user_ids ?? [],
+      room: mentions.room === true,
+    },
+  };
+}
+
+/** The own local echo `store` holds now, with a transaction id not in `before`. */
+function newEcho(
+  store: TimelineStore,
+  before: ReadonlySet<string>,
+): string | null {
+  for (const item of untracked(store.items)) {
+    if (item.kind !== 'event' || !item.isOwn || item.transactionId === null)
+      continue;
+    if (!before.has(item.transactionId)) return item.transactionId;
+  }
+  return null;
+}
+
+function transactionIds(store: TimelineStore): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const item of untracked(store.items)) {
+    if (item.kind === 'event' && item.transactionId !== null)
+      ids.add(item.transactionId);
+  }
+  return ids;
+}
+
 @Injectable({ providedIn: 'root' })
-class MatrixConversationTextSender implements ConversationTextSender {
-  private readonly matrix = inject(MatrixClientService);
+class EngineConversationTextSender implements ConversationTextSender {
+  private readonly engine = inject(TIMELINE_ENGINE);
+  // Held per send: the echo's state is watched past the Conversation's lifetime.
+  private readonly stores = inject(TimelineStores);
   // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
   private readonly packs = inject(ImagePackEditorService);
   private readonly drafts = inject(DraftStoreService);
 
   send(request: ConversationTextSendRequest): ConversationTextSendOperation {
-    const client = this.matrix.clientFor(request.key.accountId);
-    const room = client?.getRoom(request.key.roomId) ?? null;
-    if (!client || !room || client.getUserId() !== request.key.accountId) {
-      return this.settled(of({ kind: 'rejected', retryable: false }));
-    }
-    let txnId: string | null = null;
-    let localEventId: string | null = null;
-    let fetchingTarget = false;
+    const { accountId, roomId } = request.key;
+    let store: TimelineStore | null = null;
+    let before: ReadonlySet<string> = new Set();
     let settled = false;
-    const outcome = this.replyTarget(client, room, request, (fetching) => {
-      fetchingTarget = fetching;
-    }).pipe(
-      switchMap((target) => {
-        const content = this.content(request, room, target);
-        txnId = client.makeTxnId();
-        localEventId = `~${room.roomId}:${txnId}`;
-        return from(client.sendMessage(room.roomId, content as never, txnId));
-      }),
-      map(({ event_id }) => {
-        if (!event_id || !room.findEventById(event_id)) {
-          throw new MissingLocalEchoError();
-        }
-        return { kind: 'accepted' as const, eventId: event_id };
-      }),
-      catchError((error: unknown) => {
-        if (error instanceof MissingLocalEchoError) {
-          return throwError(() => error);
-        }
-        const waiting = keepWhileWaiting(
-          this.drafts,
-          conversationDraftKey(request.key),
-          txnId ? room.getEventForTxnId(txnId) : undefined,
-          request.body,
-        );
-        return of(
-          waiting
-            ? ({ kind: 'queued' } as const)
-            : ({ kind: 'rejected', retryable: true } as const),
-        );
-      }),
-      tap({
-        next: () => (settled = true),
-        error: () => (settled = true),
-      }),
-    );
+    const outcome = defer(() => {
+      const { store: opened, release } = this.stores.hold(request.key, LIVE);
+      store = opened;
+      before = transactionIds(opened);
+      let watching = false;
+      return this.deliver(request, opened).pipe(
+        map(({ delivery, transactionId }) => {
+          if (delivery.kind !== 'rejected' || !transactionId) return delivery;
+          watching = keepWhileWaiting(
+            this.drafts,
+            conversationDraftKey(request.key),
+            request.body,
+            {
+              transactionId,
+              states: opened.sendStates(transactionId).pipe(finalize(release)),
+            },
+          );
+          return watching ? ({ kind: 'queued' } as const) : delivery;
+        }),
+        tap({
+          next: () => (settled = true),
+          error: () => (settled = true),
+        }),
+        finalize(() => {
+          if (!watching) release();
+        }),
+      );
+    });
     return {
       outcome,
       cancel: () => {
-        if (settled) return false;
-        // Nothing has been sent while the reply target is still being fetched.
-        if (fetchingTarget) {
-          settled = true;
-          return true;
-        }
-        const localEcho = localEventId
-          ? room.findEventById(localEventId)
-          : undefined;
-        if (!localEcho) return false;
-        try {
-          client.cancelPendingEvent(localEcho);
-          settled = true;
-          return true;
-        } catch {
-          // SENDING means the request may already have crossed the network boundary. Treat
-          // that as indeterminate rather than restoring text that could now be a duplicate.
-          return false;
-        }
+        if (settled || !store) return of(false);
+        const transactionId = newEcho(store, before);
+        // No echo shown yet proves nothing: the send may be on the wire behind a page flush.
+        if (transactionId === null) return of(false);
+        // `not-cancellable` once the request may have crossed the network boundary: that is
+        // indeterminate, rather than restoring text that could now be a duplicate.
+        return this.engine.cancelSend(accountId, roomId, transactionId).pipe(
+          map((result) => result.ok),
+          tap((cancelled) => (settled ||= cancelled)),
+        );
       },
     };
   }
 
-  private settled(
-    outcome: ConversationTextSendOperation['outcome'],
-  ): ConversationTextSendOperation {
-    return { outcome, cancel: () => false };
-  }
-
-  /**
-   * The event a reply quotes. A reply can outlive its target in memory: the compose intent
-   * survives the handle, whose retirement trims the room's older history, and a draft
-   * survives a restart. Such a target is fetched from the server; when that fails the reply
-   * is still sent, keeping its relation but no quote.
-   */
-  private replyTarget(
-    client: MatrixClient,
-    room: Room,
+  private deliver(
     request: ConversationTextSendRequest,
-    onFetching: (fetching: boolean) => void,
-  ): Observable<MatrixEvent | undefined> {
-    return defer(() => {
-      if (request.intent.kind !== 'reply') return of(undefined);
-      const { eventId } = request.intent;
-      const loaded = room.findEventById(eventId);
-      if (loaded) return of(loaded);
-      onFetching(true);
-      return from(fetchRoomEvent(client, room.roomId, eventId)).pipe(
-        finalize(() => onFetching(false)),
+    store: TimelineStore,
+  ): Observable<{
+    readonly delivery: ConversationTextDelivery;
+    readonly transactionId: string | null;
+  }> {
+    const { accountId, roomId } = request.key;
+    const { intent } = request;
+    if (intent.kind === 'edit') {
+      return this.engine
+        .edit(
+          accountId,
+          roomId,
+          { eventId: intent.eventId, transactionId: null },
+          this.text(request),
+          NO_THREAD,
+        )
+        .pipe(
+          map((result) => ({
+            delivery: result.ok
+              ? { kind: 'accepted' as const, eventId: null }
+              : rejected(result),
+            transactionId: null,
+          })),
+        );
+    }
+    return this.engine
+      .send(
+        accountId,
+        roomId,
+        { kind: 'text', ...this.text(request) },
+        {
+          threadRootId: null,
+          replyTo: intent.kind === 'reply' ? intent.eventId : null,
+        },
+      )
+      .pipe(
+        map((result) => {
+          if (!result.ok)
+            return { delivery: rejected(result), transactionId: null };
+          const { transactionId, eventId } = result.value;
+          if (eventId === null) {
+            return {
+              delivery: { kind: 'rejected', retryable: true } as const,
+              transactionId,
+            };
+          }
+          const echo = untracked(store.items).some(
+            (item) =>
+              item.kind === 'event' && item.transactionId === transactionId,
+          );
+          if (!echo) throw new MissingLocalEchoError();
+          return {
+            delivery: { kind: 'accepted' as const, eventId },
+            transactionId,
+          };
+        }),
       );
-    });
   }
 
-  private content(
-    request: ConversationTextSendRequest,
-    room: Room,
-    target: MatrixEvent | undefined,
-  ): object {
+  private text(request: ConversationTextSendRequest): OutgoingText {
     const mentions = [...request.mentions];
     const emoticons = this.packs.emoticons();
     const render = (text: string) => renderMarkdown(text, emoticons);
-    switch (request.intent.kind) {
+    const { body, intent } = request;
+    switch (intent.kind) {
       case 'message':
-        return (
-          slashCommandContent(request.body, render, mentions) ??
-          textMessageContent(request.body, render(request.body), mentions)
+        return outgoingText(
+          slashCommandContent(body, render, mentions) ??
+            textMessageContent(body, render(body), mentions),
         );
       case 'reply':
-        return replyMessageContent(
-          room,
-          request.intent.eventId,
-          outgoingReplyText(request.body, render(request.body), mentions),
-          target,
-          shownContent,
-        );
+        return outgoingReplyText(body, render(body), mentions);
       case 'edit':
-        return editMessageContent(
-          request.intent.eventId,
-          request.body,
-          render(request.body),
-          mentions,
-        );
+        // The engine adds the `m.replace` relation and the `* ` fallback around it.
+        return outgoingText(textMessageContent(body, render(body), mentions));
     }
   }
+}
+
+/** A send the account cannot make now is final; anything else may be tried again. */
+function rejected(
+  result: Extract<EngineResult<unknown>, { ok: false }>,
+): ConversationTextDelivery {
+  const { code } = result.failure;
+  return {
+    kind: 'rejected',
+    retryable: code !== 'account-not-live' && code !== 'message-unavailable',
+  };
 }
 
 export const CONVERSATION_TEXT_SENDER =
@@ -185,7 +228,7 @@ export const CONVERSATION_TEXT_SENDER =
     'conversation-runtime.text-sender',
     {
       providedIn: 'root',
-      factory: () => inject(MatrixConversationTextSender),
+      factory: () => inject(EngineConversationTextSender),
     },
   );
 

@@ -14,7 +14,7 @@ import {
   FakeTimelineEngine,
   fakeEventItem,
 } from '../contract/fake-timeline-engine';
-import type { TimelineItem } from './timeline-engine';
+import type { EventTimelineItem, TimelineItem } from './timeline-engine';
 import { TIMELINE_ENGINE } from './timeline-engine.token';
 import { TimelineStores } from './timeline-store';
 
@@ -265,5 +265,45 @@ describe('TimelineStore', () => {
 
     expect(store.available()).toBe(false);
     expect(store.items()).toEqual([]);
+  });
+  it('sendStates emits the current state at once and completes when the item leaves', () => {
+    const echo = (patch: Partial<EventTimelineItem>) =>
+      fakeEventItem('$sent', alice, {
+        uniqueId: 'txn:t1',
+        eventId: null,
+        transactionId: 't1',
+        isOwn: true,
+        ...patch,
+      });
+    fake.seed(alice, ROOM, [echo({ sendState: { kind: 'waiting' } })]);
+    const store = open();
+    const states: unknown[] = [];
+    let completed = false;
+
+    store.sendStates('t1').subscribe({
+      next: (state) => states.push(state),
+      complete: () => (completed = true),
+    });
+    expect(states).toEqual([{ kind: 'waiting' }]);
+
+    // An echo with no state and no event id yet is still on its way.
+    fake.emitDiffs(alice, ROOM, [
+      { op: 'set', index: 0, value: echo({ sendState: null }) },
+    ]);
+    fake.emitDiffs(alice, ROOM, [
+      { op: 'set', index: 0, value: echo({ eventId: '$sent' }) },
+    ]);
+    expect(states).toEqual([{ kind: 'waiting' }, { kind: 'sending' }, null]);
+    expect(completed).toBe(false);
+
+    fake.emitDiffs(alice, ROOM, [{ op: 'remove', index: 0 }]);
+    expect(completed).toBe(true);
+
+    let unknownCompleted = false;
+    store.sendStates('t2').subscribe({
+      next: () => expect.unreachable(),
+      complete: () => (unknownCompleted = true),
+    });
+    expect(unknownCompleted).toBe(true);
   });
 });

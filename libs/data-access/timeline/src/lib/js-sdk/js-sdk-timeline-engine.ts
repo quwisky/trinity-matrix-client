@@ -721,7 +721,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       const echo = echoOf(room, transactionId);
       if (!echo) return engineFail(localFailure('message-unavailable'));
       try {
-        // CANCELLED is what releases the waiting draft record and stops the reconnect resend.
+        // CANCELLED stops the reconnect resend; the caller lets go of any text it held.
         client.cancelPendingEvent(echo);
         return engineOk(null);
       } catch {
