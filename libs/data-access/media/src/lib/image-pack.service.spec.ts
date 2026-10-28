@@ -1,7 +1,10 @@
 import { computed, effect, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SESSION_SNAPSHOT } from '@trinity/data-access/matrix-client';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { FakeExpressionEngine } from '../contract/fake-expression-engine';
+import type { PackRoomSnapshot } from './expression-engine';
+import { EXPRESSION_ENGINE } from './expression-engine.token';
 import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
@@ -15,74 +18,76 @@ import {
   isValidMxcUri,
   readImagePacks,
 } from './image-pack.service';
+import type { RawImagePackStateEvent } from './image-pack-management.model';
 import { ImagePackSelectionStore } from './image-pack-selection.store';
+import { sessionWith } from './media.spec-harness';
 
 function event(
   type: string,
   stateKey: string,
   content: unknown,
-  roomId = '!pack:hs',
-) {
+): RawImagePackStateEvent {
+  return { type, state_key: stateKey, content };
+}
+
+/** Account data and room snapshots for {@link readImagePacks}. */
+function snapshots() {
+  const account = new Map<string, RawImagePackStateEvent>();
+  const roomEvents = new Map<string, RawImagePackStateEvent[]>();
+  const memberships = new Map<string, string>();
+  const read = (currentRoomId: string) =>
+    readImagePacks(
+      Object.fromEntries(
+        [...account].map(([type, stored]) => [type, stored.content]),
+      ),
+      [...roomEvents].map(([roomId, packEvents]): PackRoomSnapshot => ({
+        roomId,
+        joined: (memberships.get(roomId) ?? 'join') === 'join',
+        name: `Room ${roomId}`,
+        canWritePack: false,
+        packEvents,
+      })),
+      currentRoomId,
+    );
+  return { account, roomEvents, memberships, read };
+}
+
+/** The service on a fake engine, with alice active. */
+function setup() {
+  const engine = new FakeExpressionEngine();
+  const alice = engine.alice;
+  const session = signal(sessionWith(alice, [alice, '@bob:fake']));
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: EXPRESSION_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
+    ],
+  });
+  const room = engine.addRoom({ name: 'Current' });
+  const write = (roomId: string, stateKey: string, content: object) =>
+    engine
+      .setRoomState(alice, roomId, IMAGE_PACK_EVENT_TYPE, stateKey, {
+        ...content,
+      })
+      .subscribe();
+  const account = (type: string, content: object) =>
+    engine.setAccountData(alice, type, { ...content }).subscribe();
   return {
-    getType: () => type,
-    getStateKey: () => stateKey,
-    getContent: () => content,
-    getRoomId: () => roomId,
+    service: TestBed.inject(ImagePackService),
+    engine,
+    alice,
+    session,
+    room,
+    write,
+    account,
   };
 }
 
-function setup() {
-  const activeUserId = signal<string | null>('@alice:hs');
-  const account = new Map<string, ReturnType<typeof event>>();
-  const roomEvents = new Map<string, ReturnType<typeof event>[]>();
-  const rooms = new Map<string, unknown>();
-  const memberships = new Map<string, string>();
-  const rebuildRoom = (roomId: string) => {
-    const state = {
-      getStateEvents: (type: string, stateKey?: string) => {
-        const matches = (roomEvents.get(roomId) ?? []).filter(
-          (candidate) => candidate.getType() === type,
-        );
-        return stateKey === undefined
-          ? matches
-          : (matches.find(
-              (candidate) => candidate.getStateKey() === stateKey,
-            ) ?? null);
-      },
-    };
-    rooms.set(roomId, {
-      roomId,
-      name: `Room ${roomId}`,
-      getMyMembership: () => memberships.get(roomId) ?? 'join',
-      getLiveTimeline: () => ({ getState: () => state }),
-    });
-  };
-  const client = {
-    getUserId: () => '@alice:hs',
-    getAccountData: (type: string) => account.get(type),
-    getRoom: (roomId: string) => rooms.get(roomId) ?? null,
-    on: vi.fn(),
-    off: vi.fn(),
-  };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-    activeUserId: activeUserId.asReadonly(),
-  };
-  TestBed.configureTestingModule({
-    providers: [
-      ImagePackService,
-      { provide: MatrixClientService, useValue: matrix },
-    ],
-  });
-  return {
-    service: TestBed.inject(ImagePackService),
-    client,
-    account,
-    roomEvents,
-    memberships,
-    rebuildRoom,
-  };
+/** Lets effects run and a scheduled reconcile publish. */
+async function settle(): Promise<void> {
+  TestBed.tick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  TestBed.tick();
 }
 
 function pack(name: string, usage?: unknown, extraImages = 0) {
@@ -127,7 +132,7 @@ describe('ImagePackService', () => {
   };
 
   it('puts the personal pack first', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       PERSONAL_IMAGE_PACK_EVENT_TYPE,
       event(PERSONAL_IMAGE_PACK_EVENT_TYPE, '', personal),
@@ -135,9 +140,8 @@ describe('ImagePackService', () => {
     roomEvents.set('!current:hs', [
       event(IMAGE_PACK_EVENT_TYPE, 'local', pack('Local')),
     ]);
-    rebuildRoom('!current:hs');
 
-    const packs = readImagePacks(client as never, '!current:hs');
+    const packs = read('!current:hs');
 
     expect(packs.map((item) => item.name)).toEqual(['Your emoji', 'Local']);
     expect(packs[0]).toMatchObject({
@@ -163,36 +167,29 @@ describe('ImagePackService', () => {
   });
 
   it('omits it when empty or absent', () => {
-    const { client, account } = setup();
-    expect(readImagePacks(client as never, '!x:hs')).toEqual([]);
+    const { account, read } = snapshots();
+    expect(read('!x:hs')).toEqual([]);
     account.set(
       PERSONAL_IMAGE_PACK_EVENT_TYPE,
       event(PERSONAL_IMAGE_PACK_EVENT_TYPE, '', { pack: {}, images: {} }),
     );
-    expect(readImagePacks(client as never, '!x:hs')).toEqual([]);
+    expect(read('!x:hs')).toEqual([]);
   });
 
   it('updates on an m.image_pack account-data event', async () => {
-    const { service, client, account, roomEvents, rebuildRoom } = setup();
-    roomEvents.set('!current:hs', []);
-    rebuildRoom('!current:hs');
-    const packs = service.packsFor('!current:hs');
-    service.connect('!current:hs');
-    account.set(
-      PERSONAL_IMAGE_PACK_EVENT_TYPE,
-      event(PERSONAL_IMAGE_PACK_EVENT_TYPE, '', personal),
-    );
-    const handler = client.on.mock.calls.find(
-      ([name]) => name === 'accountData',
-    )?.[1] as ((changed: ReturnType<typeof event>) => void) | undefined;
-    handler?.(event(PERSONAL_IMAGE_PACK_EVENT_TYPE, '', personal));
-    await Promise.resolve();
+    const { service, room, account } = setup();
+    const packs = service.packsFor(room);
+    service.connect(room);
+    await settle();
+
+    account(PERSONAL_IMAGE_PACK_EVENT_TYPE, personal);
+    await settle();
 
     expect(packs().map((item) => item.name)).toEqual(['Your emoji']);
   });
 
   it('orders account-selected packs before current-room packs and reads both usages', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -205,10 +202,8 @@ describe('ImagePackService', () => {
     roomEvents.set('!current:hs', [
       event(IMAGE_PACK_EVENT_TYPE, 'local', pack('Local', ['sticker'])),
     ]);
-    rebuildRoom('!pack:hs');
-    rebuildRoom('!current:hs');
 
-    const packs = readImagePacks(client as never, '!current:hs');
+    const packs = read('!current:hs');
 
     expect(packs.map((item) => item.name)).toEqual(['Global', 'Local']);
     expect(packs.map((item) => item.scope.sticker)).toEqual([
@@ -228,7 +223,7 @@ describe('ImagePackService', () => {
   });
 
   it('uses account preferences per usage and falls back to current-room scope', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -240,11 +235,10 @@ describe('ImagePackService', () => {
       }),
     );
     roomEvents.set('!current:hs', [
-      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed'), '!current:hs'),
+      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed')),
     ]);
-    rebuildRoom('!current:hs');
 
-    const packs = readImagePacks(client as never, '!current:hs');
+    const packs = read('!current:hs');
 
     expect(packs).toHaveLength(1);
     expect(packs[0].scope).toEqual({
@@ -255,7 +249,7 @@ describe('ImagePackService', () => {
   });
 
   it('reads the retired enabled-usage key while only it exists', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -267,11 +261,10 @@ describe('ImagePackService', () => {
       }),
     );
     roomEvents.set('!current:hs', [
-      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed'), '!current:hs'),
+      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed')),
     ]);
-    rebuildRoom('!current:hs');
 
-    const packs = readImagePacks(client as never, '!current:hs');
+    const packs = read('!current:hs');
 
     expect(packs).toHaveLength(1);
     expect(packs[0].scope).toEqual({
@@ -282,7 +275,7 @@ describe('ImagePackService', () => {
   });
 
   it('prefers the new enabled-usage key over the retired one', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -297,11 +290,10 @@ describe('ImagePackService', () => {
       }),
     );
     roomEvents.set('!current:hs', [
-      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed'), '!current:hs'),
+      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed')),
     ]);
-    rebuildRoom('!current:hs');
 
-    const packs = readImagePacks(client as never, '!current:hs');
+    const packs = read('!current:hs');
 
     expect(packs).toHaveLength(1);
     expect(packs[0].scope).toEqual({
@@ -312,7 +304,7 @@ describe('ImagePackService', () => {
   });
 
   it('omits a fully disabled account pack outside its source room', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -326,13 +318,12 @@ describe('ImagePackService', () => {
     roomEvents.set('!pack:hs', [
       event(IMAGE_PACK_EVENT_TYPE, 'disabled', pack('Disabled')),
     ]);
-    rebuildRoom('!pack:hs');
 
-    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
+    expect(read('!current:hs')).toEqual([]);
   });
 
   it('lets stable pack state override a legacy selection for the same source', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -344,15 +335,15 @@ describe('ImagePackService', () => {
       event(IMAGE_PACK_EVENT_TYPE, 'same', pack('Stable')),
       event(LEGACY_IMAGE_PACK_EVENT_TYPE, 'old', pack('Old')),
     ]);
-    rebuildRoom('!pack:hs');
 
-    expect(
-      readImagePacks(client as never, '!current:hs').map((item) => item.name),
-    ).toEqual(['Old', 'Stable']);
+    expect(read('!current:hs').map((item) => item.name)).toEqual([
+      'Old',
+      'Stable',
+    ]);
   });
 
   it('uses legacy account selections only when stable account data is absent', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -369,15 +360,12 @@ describe('ImagePackService', () => {
       event(IMAGE_PACK_EVENT_TYPE, 'stale', pack('Stale')),
       event(IMAGE_PACK_EVENT_TYPE, 'selected', pack('Selected')),
     ]);
-    rebuildRoom('!pack:hs');
 
-    expect(
-      readImagePacks(client as never, '!current:hs').map((item) => item.name),
-    ).toEqual(['Selected']);
+    expect(read('!current:hs').map((item) => item.name)).toEqual(['Selected']);
   });
 
   it('rejects legacy boolean references in stable account data', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -387,13 +375,12 @@ describe('ImagePackService', () => {
     roomEvents.set('!pack:hs', [
       event(IMAGE_PACK_EVENT_TYPE, 'malformed', pack('Malformed')),
     ]);
-    rebuildRoom('!pack:hs');
 
-    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
+    expect(read('!current:hs')).toEqual([]);
   });
 
   it('stops exposing a selected pack after leaving its source room', () => {
-    const { client, account, roomEvents, memberships, rebuildRoom } = setup();
+    const { account, roomEvents, memberships, read } = snapshots();
     account.set(
       IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -404,46 +391,33 @@ describe('ImagePackService', () => {
       event(IMAGE_PACK_EVENT_TYPE, 'selected', pack('Selected')),
     ]);
     memberships.set('!pack:hs', 'leave');
-    rebuildRoom('!pack:hs');
 
-    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
+    expect(read('!current:hs')).toEqual([]);
   });
 
   it('uses the source room name when a pack has no display name', () => {
-    const { client, roomEvents, rebuildRoom } = setup();
+    const { roomEvents, read } = snapshots();
     roomEvents.set('!current:hs', [
-      event(
-        IMAGE_PACK_EVENT_TYPE,
-        'opaque-state-key',
-        { images: pack('Unnamed').images },
-        '!current:hs',
-      ),
+      event(IMAGE_PACK_EVENT_TYPE, 'opaque-state-key', {
+        images: pack('Unnamed').images,
+      }),
     ]);
-    rebuildRoom('!current:hs');
 
-    expect(readImagePacks(client as never, '!current:hs')[0].name).toBe(
-      'Room !current:hs',
-    );
+    expect(read('!current:hs')[0].name).toBe('Room !current:hs');
   });
 
   it('drops malformed URLs/usages and bounds oversized packs', () => {
-    const { client, roomEvents, rebuildRoom } = setup();
+    const { roomEvents, read } = snapshots();
     const oversized = pack('Big', [], 600);
     (oversized.images as Record<string, unknown>)['remote'] = {
       url: 'https://tracker.example/pixel.png',
     };
     roomEvents.set('!current:hs', [
-      event(IMAGE_PACK_EVENT_TYPE, 'big', oversized, '!current:hs'),
-      event(
-        IMAGE_PACK_EVENT_TYPE,
-        'invalid',
-        pack('Invalid', ['not-a-usage']),
-        '!current:hs',
-      ),
+      event(IMAGE_PACK_EVENT_TYPE, 'big', oversized),
+      event(IMAGE_PACK_EVENT_TYPE, 'invalid', pack('Invalid', ['not-a-usage'])),
     ]);
-    rebuildRoom('!current:hs');
 
-    const packs = readImagePacks(client as never, '!current:hs');
+    const packs = read('!current:hs');
     expect(packs).toHaveLength(1);
     expect(packs[0].images).toHaveLength(500);
     expect(packs[0].images.some((item) => item.url.startsWith('https:'))).toBe(
@@ -460,7 +434,7 @@ describe('ImagePackService', () => {
   });
 
   it('uses unambiguous ids for room and state-key pairs containing colons', () => {
-    const { client, account, roomEvents, rebuildRoom } = setup();
+    const { account, roomEvents, read } = snapshots();
     account.set(
       IMAGE_PACK_ROOMS_EVENT_TYPE,
       event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
@@ -471,58 +445,38 @@ describe('ImagePackService', () => {
       }),
     );
     roomEvents.set('!pack:hs', [
-      event(IMAGE_PACK_EVENT_TYPE, '8448:fun', pack('First'), '!pack:hs'),
+      event(IMAGE_PACK_EVENT_TYPE, '8448:fun', pack('First')),
     ]);
     roomEvents.set('!pack:hs:8448', [
-      event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Second'), '!pack:hs:8448'),
+      event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Second')),
     ]);
-    rebuildRoom('!pack:hs');
-    rebuildRoom('!pack:hs:8448');
 
-    const ids = readImagePacks(client as never, '!current:hs').map(
-      (item) => item.id,
-    );
+    const ids = read('!current:hs').map((item) => item.id);
 
     expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(2);
   });
 
   it('rebuilds for relevant live events and detaches cleanly', async () => {
-    const { service, client, roomEvents, rebuildRoom } = setup();
-    roomEvents.set('!current:hs', []);
-    rebuildRoom('!current:hs');
-    const packs = service.packsFor('!current:hs');
-    service.connect('!current:hs');
-    roomEvents
-      .get('!current:hs')
-      ?.push(
-        event(IMAGE_PACK_EVENT_TYPE, 'local', pack('Live'), '!current:hs'),
-      );
-    const handler = client.on.mock.calls.find(
-      ([name]) => name === 'RoomState.events',
-    )?.[1] as ((changed: ReturnType<typeof event>) => void) | undefined;
-    handler?.(event(IMAGE_PACK_EVENT_TYPE, 'local', {}, '!current:hs'));
-    await Promise.resolve();
+    const { service, room, write } = setup();
+    const packs = service.packsFor(room);
+    service.connect(room);
+    await settle();
+
+    write(room, 'local', pack('Live'));
+    await settle();
 
     expect(packs().map((item) => item.name)).toEqual(['Live']);
-    service.disconnect('!current:hs');
+    service.disconnect(room);
     expect(packs()).toEqual([]);
-    expect(client.off).toHaveBeenCalledWith('RoomState.events', handler);
-    expect(client.on).toHaveBeenCalledWith(
-      'Room.myMembership',
-      expect.any(Function),
-    );
-    expect(client.off).toHaveBeenCalledWith(
-      'Room.myMembership',
-      expect.any(Function),
-    );
+    write(room, 'later', pack('Later'));
+    await settle();
+    expect(packs()).toEqual([]);
   });
 
   it('keeps a room consumer current after an account selection change', async () => {
-    const { service, client, roomEvents, rebuildRoom } = setup();
-    roomEvents.set('!current:hs', []);
-    rebuildRoom('!current:hs');
-    const roomId = signal('!current:hs');
+    const { service, alice, room, write } = setup();
+    const roomId = signal(room);
     // The room page's shape: its template reads the active room's packs, and an effect
     // holds that room's projection while the room is active.
     const packs = computed(() => service.packsFor(roomId())());
@@ -533,28 +487,61 @@ describe('ImagePackService', () => {
         onCleanup(() => service.disconnect(id));
       }),
     );
-    TestBed.tick();
+    await settle();
     expect(packs()).toEqual([]);
 
     // Installing a pack confirms new account data while the room still projects no pack.
-    TestBed.inject(ImagePackSelectionStore).set('@alice:hs', {
+    TestBed.inject(ImagePackSelectionStore).set(alice, {
       present: true,
       content: { rooms: {} },
     });
-    TestBed.tick();
+    await settle();
 
-    roomEvents
-      .get('!current:hs')
-      ?.push(
-        event(IMAGE_PACK_EVENT_TYPE, 'local', pack('Live'), '!current:hs'),
-      );
-    const handler = client.on.mock.calls.find(
-      ([name]) => name === 'RoomState.events',
-    )?.[1] as ((changed: ReturnType<typeof event>) => void) | undefined;
-    expect(handler).toBeDefined();
-    handler!(event(IMAGE_PACK_EVENT_TYPE, 'local', {}, '!current:hs'));
-    await Promise.resolve();
+    write(room, 'local', pack('Live'));
+    await settle();
 
     expect(packs().map((item) => item.name)).toEqual(['Live']);
+  });
+
+  it('shows a pack from a confirmed selection before its echo, then clears the copy', async () => {
+    const { service, engine, alice, room, account } = setup();
+    const source = engine.addRoom({
+      name: 'Source',
+      state: [event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Fun'))],
+    });
+    const packs = service.packsFor(room);
+    service.connect(room);
+    await settle();
+    const store = TestBed.inject(ImagePackSelectionStore);
+    const selection = { rooms: { [source]: { fun: {} } } };
+
+    store.set(alice, { present: true, content: selection });
+    await settle();
+    expect(packs().map((item) => item.name)).toEqual(['Fun']);
+
+    account(IMAGE_PACK_ROOMS_EVENT_TYPE, selection);
+    await settle();
+    expect(store.get(alice)).toBeNull();
+    expect(packs().map((item) => item.name)).toEqual(['Fun']);
+  });
+
+  it("shows no previous account's packs after a switch", async () => {
+    const { service, alice, session, room, write, account } = setup();
+    write(room, 'local', pack('Alice'));
+    account(PERSONAL_IMAGE_PACK_EVENT_TYPE, personal);
+    const packs = service.packsFor(room);
+    service.connect(room);
+    await settle();
+    expect(packs().map((item) => item.name)).toEqual(['Your emoji', 'Alice']);
+
+    session.set(sessionWith('@bob:fake', [alice, '@bob:fake']));
+    // Before the projection has followed bob: a room opened now must not show alice's packs.
+    expect(service.packsFor('!other:fake')()).toEqual([]);
+    await settle();
+    expect(packs()).toEqual([]);
+
+    session.set(sessionWith(alice, [alice, '@bob:fake']));
+    await settle();
+    expect(packs().map((item) => item.name)).toEqual(['Your emoji', 'Alice']);
   });
 });

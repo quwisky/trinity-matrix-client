@@ -1,17 +1,24 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { firstValueFrom } from 'rxjs';
-import { MatrixError, Method } from 'matrix-js-sdk';
+import { SESSION_SNAPSHOT } from '@trinity/data-access/matrix-client';
+import { EngineRequestError, engineFail, engineOk } from '@trinity/util/matrix';
+import { firstValueFrom, from, of, switchMap } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FakeExpressionEngine } from '../contract/fake-expression-engine';
+import type { PackRoomSnapshot } from './expression-engine';
+import { EXPRESSION_ENGINE } from './expression-engine.token';
 import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
+  LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
   LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
 } from './image-pack.service';
-import { mutateSelectionEnabledUsage } from './image-pack-management.model';
+import {
+  mutateSelectionEnabledUsage,
+  type RawImagePackStateEvent,
+} from './image-pack-management.model';
 import {
   ImagePackManagementError,
   ImagePackManagementService,
@@ -19,13 +26,14 @@ import {
   readManagedImagePacks,
   validateImagePackSource,
 } from './image-pack-management.service';
+import { sessionWith } from './media.spec-harness';
 
-function event(type: string, stateKey: string, content: unknown) {
-  return {
-    getType: () => type,
-    getStateKey: () => stateKey,
-    getContent: () => content,
-  };
+function event(
+  type: string,
+  stateKey: string,
+  content: unknown,
+): RawImagePackStateEvent {
+  return { type, state_key: stateKey, content };
 }
 
 function pack(name: string, usage: unknown = ['sticker']) {
@@ -35,94 +43,90 @@ function pack(name: string, usage: unknown = ['sticker']) {
   };
 }
 
-function room(roomId: string, events: ReturnType<typeof event>[]) {
-  const state = {
-    getStateEvents: (type: string, stateKey?: string) => {
-      const matches = events.filter(
-        (candidate) => candidate.getType() === type,
-      );
-      return stateKey === undefined
-        ? matches
-        : (matches.find((candidate) => candidate.getStateKey() === stateKey) ??
-            null);
-    },
-  };
+function room(
+  roomId: string,
+  packEvents: readonly RawImagePackStateEvent[],
+  joined = true,
+): PackRoomSnapshot {
   return {
     roomId,
+    joined,
     name: `Room ${roomId}`,
-    getMyMembership: () => 'join',
-    getLiveTimeline: () => ({ getState: () => state }),
+    canWritePack: false,
+    packEvents,
   };
 }
 
+const ALIAS = '#packs:fake';
+const FAILED = {
+  kind: 'http',
+  code: 'request-failed',
+  diagnostic: { kind: 'http', httpStatus: 500 },
+} as const;
+
 function setup(options?: {
-  stable?: unknown | null;
-  legacy?: unknown | null;
-  roomEvents?: ReturnType<typeof event>[];
+  stable?: Record<string, unknown> | null;
+  legacy?: Record<string, unknown> | null;
+  roomEvents?: RawImagePackStateEvent[];
 }) {
-  const activeUserId = signal<string | null>('@alice:hs');
-  let stable: unknown | null = options?.stable ?? null;
-  const legacy: unknown | null = options?.legacy ?? null;
-  const packRoom = room('!pack:hs', options?.roomEvents ?? []);
-  const setAccountData = vi.fn(async (_type: string, content: unknown) => {
-    stable = structuredClone(content);
+  const engine = new FakeExpressionEngine();
+  const alice = engine.alice;
+  // Bound before the spies, so another device's writes are not counted as this one's.
+  const remote = engine.setAccountData.bind(engine);
+  if (options?.stable) {
+    remote(alice, IMAGE_PACK_ROOMS_EVENT_TYPE, options.stable).subscribe();
+  }
+  if (options?.legacy) {
+    remote(
+      alice,
+      LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
+      options.legacy,
+    ).subscribe();
+  }
+  const packRoom = engine.addRoom({
+    name: 'Pack room',
+    alias: ALIAS,
+    joined: false,
+    state: options?.roomEvents ?? [],
   });
-  const client = {
-    getUserId: vi.fn(() => '@alice:hs'),
-    getAccountData: vi.fn((type: string) => {
-      const content = type === IMAGE_PACK_ROOMS_EVENT_TYPE ? stable : legacy;
-      return content === null ? undefined : event(type, '', content);
-    }),
-    http: {
-      authedRequest: vi.fn(async (_method: Method, path: string) => {
-        const content = path.endsWith(
-          encodeURIComponent(IMAGE_PACK_ROOMS_EVENT_TYPE),
-        )
-          ? stable
-          : legacy;
-        if (content === null) {
-          throw new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
-        }
-        return structuredClone(content);
-      }),
-    },
-    setAccountData,
-    setAccountDataRaw: setAccountData,
-    getRoom: vi.fn((roomId: string) =>
-      roomId === '!pack:hs' ? packRoom : null,
-    ),
-    getRoomIdForAlias: vi.fn(async () => ({
-      room_id: '!pack:hs',
-      servers: ['hs'],
-    })),
-    joinRoom: vi.fn(async () => packRoom),
-    roomState: vi.fn(async () =>
-      (options?.roomEvents ?? []).map((candidate) => ({
-        type: candidate.getType(),
-        state_key: candidate.getStateKey(),
-        content: candidate.getContent(),
-        room_id: '!pack:hs',
-      })),
-    ),
-    on: vi.fn(),
-    off: vi.fn(),
-  };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-    activeUserId: activeUserId.asReadonly(),
-  };
+  const write = vi.spyOn(engine, 'setAccountData');
+  const fetch = vi.spyOn(engine, 'fetchAccountData');
+  const session = signal(sessionWith(alice, [alice, '@bob:fake']));
   TestBed.configureTestingModule({
     providers: [
-      ImagePackManagementService,
-      { provide: MatrixClientService, useValue: matrix },
+      { provide: EXPRESSION_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
     ],
   });
-  return {
-    client,
-    service: TestBed.inject(ImagePackManagementService),
-    stable: () => stable,
+  /** The server's copy of the stable selection. */
+  const stable = (): unknown => {
+    let content: unknown = null;
+    engine
+      .accountData(alice, [IMAGE_PACK_ROOMS_EVENT_TYPE])
+      .subscribe(
+        (snapshot) => (content = snapshot[IMAGE_PACK_ROOMS_EVENT_TYPE]),
+      )
+      .unsubscribe();
+    return content;
   };
+  return {
+    service: TestBed.inject(ImagePackManagementService),
+    engine,
+    alice,
+    session,
+    packRoom,
+    remote,
+    write,
+    fetch,
+    stable,
+  };
+}
+
+/** Lets effects run and a scheduled reconcile publish. */
+async function settle(): Promise<void> {
+  TestBed.tick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  TestBed.tick();
 }
 
 describe('image-pack management parsing', () => {
@@ -212,18 +216,16 @@ describe('image-pack management parsing', () => {
   });
 
   it('keeps inaccessible references removable and ignores room-level empty maps', () => {
-    const client = {
-      getAccountData: () =>
-        event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
-          rooms: {
-            '!empty:hs': {},
-            '!missing:hs': { pack: {} },
-          },
-        }),
-      getRoom: () => null,
+    const data = {
+      [IMAGE_PACK_ROOMS_EVENT_TYPE]: {
+        rooms: {
+          '!empty:hs': {},
+          '!missing:hs': { pack: {} },
+        },
+      },
     };
 
-    expect(readManagedImagePacks(client as never)).toMatchObject([
+    expect(readManagedImagePacks(data, [])).toMatchObject([
       {
         roomId: '!missing:hs',
         stateKey: 'pack',
@@ -233,40 +235,60 @@ describe('image-pack management parsing', () => {
   });
 
   it('reads a namespaced enabled-usage preference from installed references', () => {
-    const client = {
-      getAccountData: () =>
-        event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
-          rooms: {
-            '!pack:hs': {
-              fun: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'] },
-            },
+    const data = {
+      [IMAGE_PACK_ROOMS_EVENT_TYPE]: {
+        rooms: {
+          '!pack:hs': {
+            fun: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'] },
           },
-        }),
-      getRoom: () =>
-        room('!pack:hs', [
-          event(
-            IMAGE_PACK_EVENT_TYPE,
-            'fun',
-            pack('Fun', ['emoticon', 'sticker']),
-          ),
-        ]),
+        },
+      },
     };
+    const rooms = [
+      room('!pack:hs', [
+        event(
+          IMAGE_PACK_EVENT_TYPE,
+          'fun',
+          pack('Fun', ['emoticon', 'sticker']),
+        ),
+      ]),
+    ];
 
-    expect(readManagedImagePacks(client as never)).toMatchObject([
+    expect(readManagedImagePacks(data, rooms)).toMatchObject([
       { usage: ['emoticon', 'sticker'], enabledUsage: ['emoticon'] },
     ]);
   });
 
   it('uses stable account data exclusively when legacy references also exist', () => {
-    const client = {
-      getAccountData: (type: string) =>
-        type === IMAGE_PACK_ROOMS_EVENT_TYPE
-          ? event(type, '', { rooms: {} })
-          : event(type, '', { rooms: { '!legacy:hs': { old: true } } }),
-      getRoom: () => null,
+    const data = {
+      [IMAGE_PACK_ROOMS_EVENT_TYPE]: { rooms: {} },
+      [LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE]: {
+        rooms: { '!legacy:hs': { old: true } },
+      },
     };
 
-    expect(readManagedImagePacks(client as never)).toEqual([]);
+    expect(readManagedImagePacks(data, [])).toEqual([]);
+  });
+
+  it('names an unavailable pack after its room and reports a missing one', () => {
+    const data = {
+      [IMAGE_PACK_ROOMS_EVENT_TYPE]: {
+        rooms: { '!left:hs': { fun: {} }, '!pack:hs': { gone: {} } },
+      },
+    };
+    const rooms = [
+      room(
+        '!left:hs',
+        [event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Fun'))],
+        false,
+      ),
+      room('!pack:hs', []),
+    ];
+
+    expect(readManagedImagePacks(data, rooms)).toMatchObject([
+      { roomId: '!left:hs', name: 'Room !left:hs', status: 'unavailable' },
+      { roomId: '!pack:hs', name: 'Room !pack:hs', status: 'missing' },
+    ]);
   });
 });
 
@@ -274,23 +296,79 @@ describe('ImagePackManagementService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('resolves an alias, discovers authoritative state, and deduplicates legacy', async () => {
-    const { service, client } = setup({
+    const { service, engine, alice, packRoom } = setup({
       roomEvents: [
         event(LEGACY_IMAGE_PACK_EVENT_TYPE, 'fun', pack('Old')),
         event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Fun')),
         event(IMAGE_PACK_EVENT_TYPE, 'second', pack('Second')),
       ],
     });
+    const join = vi.spyOn(engine, 'joinPackRoom');
 
-    const result = await firstValueFrom(service.discover('#packs:hs'));
+    const result = await firstValueFrom(service.discover(` ${ALIAS} `));
 
-    expect(client.getRoomIdForAlias).toHaveBeenCalledWith('#packs:hs');
-    expect(client.roomState).toHaveBeenCalledWith('!pack:hs');
+    expect(join).toHaveBeenCalledWith(alice, ALIAS);
+    expect(result.roomId).toBe(packRoom);
+    expect(result.roomName).toBe('Pack room');
     expect(result.packs.map((candidate) => candidate.name)).toEqual([
       'Fun',
       'Second',
     ]);
     expect(result.packs[0].eventType).toBe('stable');
+  });
+
+  it('reports a room without usable packs, and a failed join as a request failure', async () => {
+    const { service } = setup();
+
+    await expect(firstValueFrom(service.discover(ALIAS))).rejects.toMatchObject(
+      {
+        code: 'no-packs',
+      },
+    );
+    await expect(
+      firstValueFrom(service.discover('#unknown:fake')),
+    ).rejects.toBeInstanceOf(EngineRequestError);
+  });
+
+  it('refuses to manage packs with no active account', async () => {
+    const { service, session } = setup();
+    session.set(sessionWith(null, []));
+
+    await expect(firstValueFrom(service.discover(ALIAS))).rejects.toMatchObject(
+      {
+        code: 'not-signed-in',
+      },
+    );
+    await expect(
+      firstValueFrom(service.install({ roomId: '!pack:hs', stateKey: 'x' })),
+    ).rejects.toMatchObject({ code: 'not-signed-in' });
+  });
+
+  it('projects installed packs for the active account and shows an install at once', async () => {
+    const { service, alice, session, packRoom } = setup({
+      roomEvents: [event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Fun'))],
+    });
+    service.connect();
+    await settle();
+    expect(service.installed()).toEqual([]);
+
+    await firstValueFrom(service.discover(ALIAS));
+    await firstValueFrom(
+      service.install({ roomId: packRoom, stateKey: 'fun' }),
+    );
+    expect(service.installed()).toMatchObject([
+      { roomId: packRoom, stateKey: 'fun', name: 'Fun', status: 'available' },
+    ]);
+
+    session.set(sessionWith('@bob:fake', [alice, '@bob:fake']));
+    await settle();
+    expect(service.installed()).toEqual([]);
+
+    session.set(sessionWith(alice, [alice, '@bob:fake']));
+    await settle();
+    expect(service.installed()).toMatchObject([{ name: 'Fun' }]);
+    service.disconnect();
+    expect(service.installed()).toEqual([]);
   });
 
   it('migrates legacy references on first stable install and writes empty objects', async () => {
@@ -475,19 +553,15 @@ describe('ImagePackManagementService', () => {
   });
 
   it('reads account data directly from the server before merging', async () => {
-    const { service, client, stable } = setup({
+    const { service, alice, fetch, stable } = setup({
       stable: { rooms: { '!other:hs': { remote: {} } } },
     });
-    client.getAccountData.mockReturnValue(undefined);
 
     await firstValueFrom(
       service.install({ roomId: '!pack:hs', stateKey: 'local' }),
     );
 
-    expect(client.http.authedRequest).toHaveBeenCalledWith(
-      Method.Get,
-      '/user/%40alice%3Ahs/account_data/m.image_pack.rooms',
-    );
+    expect(fetch).toHaveBeenCalledWith(alice, IMAGE_PACK_ROOMS_EVENT_TYPE);
     expect(stable()).toEqual({
       rooms: {
         '!other:hs': { remote: {} },
@@ -497,39 +571,33 @@ describe('ImagePackManagementService', () => {
   });
 
   it('retries when verification contains an unrelated remote change', async () => {
-    const { service, client, stable } = setup({ stable: { rooms: {} } });
-    client.http.authedRequest
-      .mockResolvedValueOnce({ rooms: {} })
-      .mockResolvedValueOnce({
-        remote: { revision: 1 },
-        rooms: { '!pack:hs': { local: {} } },
-      })
-      .mockResolvedValueOnce({
-        remote: { revision: 1 },
-        rooms: { '!pack:hs': { local: {} } },
-      });
+    const { service, write, fetch, stable } = setup({ stable: { rooms: {} } });
+    const changed = {
+      remote: { revision: 1 },
+      rooms: { '!pack:hs': { local: {} } },
+    };
+    fetch
+      .mockReturnValueOnce(of(engineOk({ rooms: {} })))
+      .mockReturnValueOnce(of(engineOk(changed)))
+      .mockReturnValueOnce(of(engineOk(changed)));
 
     await firstValueFrom(
       service.install({ roomId: '!pack:hs', stateKey: 'local' }),
     );
 
-    expect(client.setAccountData).toHaveBeenCalledTimes(2);
+    expect(write).toHaveBeenCalledTimes(2);
     expect(stable()).toEqual({
       remote: { revision: 1 },
       rooms: { '!pack:hs': { local: {} } },
     });
   });
 
-  it('serializes same-client writes and merges each against fresh state', async () => {
-    const { service, client, stable } = setup({ stable: { rooms: {} } });
+  it('serializes same-account writes and merges each against fresh state', async () => {
+    const { service, remote, write, stable } = setup({ stable: { rooms: {} } });
     let releaseFirst: (() => void) | undefined;
-    client.setAccountData.mockImplementationOnce(
-      async (_type: string, content: unknown) => {
-        await new Promise<void>((resolve) => (releaseFirst = resolve));
-        await Promise.resolve();
-        const target = stable() as Record<string, unknown>;
-        Object.assign(target, structuredClone(content));
-      },
+    const gate = new Promise<void>((resolve) => (releaseFirst = resolve));
+    write.mockImplementationOnce((accountId, type, content) =>
+      from(gate).pipe(switchMap(() => remote(accountId, type, content))),
     );
 
     const first = firstValueFrom(
@@ -538,25 +606,40 @@ describe('ImagePackManagementService', () => {
     const second = firstValueFrom(
       service.install({ roomId: '!pack:hs', stateKey: 'two' }),
     );
-    await vi.waitFor(() => expect(releaseFirst).toBeTypeOf('function'));
-    expect(client.setAccountData).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(write).toHaveBeenCalledTimes(1);
     releaseFirst?.();
     await Promise.all([first, second]);
 
-    expect(client.setAccountData).toHaveBeenCalledTimes(2);
+    expect(write).toHaveBeenCalledTimes(2);
     expect(stable()).toEqual({
       rooms: { '!pack:hs': { one: {}, two: {} } },
     });
   });
 
   it('reports a conflict after bounded failed verification', async () => {
-    const { service, client } = setup({ stable: { rooms: {} } });
-    client.setAccountData.mockResolvedValue(undefined);
+    const { service, write } = setup({ stable: { rooms: {} } });
+    write.mockReturnValue(of(engineOk(null)));
 
     await expect(
       firstValueFrom(service.install({ roomId: '!pack:hs', stateKey: 'lost' })),
     ).rejects.toMatchObject({ code: 'write-conflict' });
-    expect(client.setAccountData).toHaveBeenCalledTimes(3);
+    expect(write).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects a failed write and keeps the next one queued behind it', async () => {
+    const { service, write, stable } = setup({ stable: { rooms: {} } });
+    write.mockReturnValueOnce(of(engineFail(FAILED)));
+
+    await expect(
+      firstValueFrom(service.install({ roomId: '!pack:hs', stateKey: 'one' })),
+    ).rejects.toBeInstanceOf(EngineRequestError);
+    await firstValueFrom(
+      service.install({ roomId: '!pack:hs', stateKey: 'two' }),
+    );
+
+    expect(stable()).toEqual({ rooms: { '!pack:hs': { two: {} } } });
   });
 });
 

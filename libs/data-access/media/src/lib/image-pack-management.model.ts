@@ -1,16 +1,20 @@
-import type { MatrixClient, MatrixEvent } from 'matrix-js-sdk';
-import { liveRoomState } from '@trinity/util/matrix';
+import type {
+  AccountDataSnapshot,
+  PackRoomSnapshot,
+} from './expression-engine';
 import {
   IMAGE_PACK_EVENT_TYPE,
-  IMAGE_PACK_ROOMS_EVENT_TYPE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
   LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
   isSafeImagePackStateKey,
   isValidMxcUri,
   type ImagePackUsage,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
-  LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
 } from './image-pack.service';
+import {
+  type ImagePackSelectionSnapshot,
+  selectedPackRooms,
+} from './image-pack-selection.store';
 
 const MAX_SOURCE_LENGTH = 1024;
 const MAX_PACKS = 100;
@@ -74,50 +78,33 @@ export function validateImagePackSource(source: string): string {
 }
 
 export function readManagedImagePacks(
-  client: MatrixClient,
-  selection: {
-    readonly present: boolean;
-    readonly content: unknown;
-  } | null = null,
+  data: AccountDataSnapshot,
+  rooms: readonly PackRoomSnapshot[],
+  selection: ImagePackSelectionSnapshot | null = null,
 ): readonly ManagedImagePack[] {
-  const getAccountData = client.getAccountData
-    ? (client.getAccountData.bind(client) as (
-        type: string,
-      ) => MatrixEvent | undefined)
-    : () => undefined;
-  const stableEvent = getAccountData(IMAGE_PACK_ROOMS_EVENT_TYPE);
-  const stablePresent = selection?.present ?? stableEvent !== undefined;
-  const content = stablePresent
-    ? selection
-      ? selection.content
-      : stableEvent?.getContent()
-    : getAccountData(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE)?.getContent();
-  const sources = accountPackSources(content, !stablePresent);
-  return sources.slice(0, MAX_PACKS).map((source) => {
-    const room = client.getRoom?.(source.roomId);
-    const roomName = boundedText(room?.name);
-    if (!room || room.getMyMembership() !== 'join') {
-      return unavailablePack(source, roomName);
-    }
-    const state = liveRoomState(room);
-    const stable = state?.getStateEvents(
-      IMAGE_PACK_EVENT_TYPE,
-      source.stateKey,
-    ) as MatrixEvent | null;
-    const legacy = state?.getStateEvents(
-      LEGACY_IMAGE_PACK_EVENT_TYPE,
-      source.stateKey,
-    ) as MatrixEvent | null;
-    const event = stable ?? legacy;
-    if (!event) return missingPack(source, roomName);
-    return inspectPack(
-      source,
-      roomName,
-      stable ? 'stable' : 'legacy',
-      event.getContent(),
-      source.enabledUsage,
-    );
-  });
+  const { content, legacy } = selectedPackRooms(data, selection);
+  const byId = new Map(rooms.map((room) => [room.roomId, room]));
+  return accountPackSources(content, legacy)
+    .slice(0, MAX_PACKS)
+    .map((source) => {
+      const room = byId.get(source.roomId);
+      const roomName = boundedText(room?.name);
+      if (!room?.joined) return unavailablePack(source, roomName);
+      const find = (type: string) =>
+        room.packEvents.find(
+          (event) => event.type === type && event.state_key === source.stateKey,
+        );
+      const stable = find(IMAGE_PACK_EVENT_TYPE);
+      const event = stable ?? find(LEGACY_IMAGE_PACK_EVENT_TYPE);
+      if (!event) return missingPack(source, roomName);
+      return inspectPack(
+        source,
+        roomName,
+        stable ? 'stable' : 'legacy',
+        event.content,
+        source.enabledUsage,
+      );
+    });
 }
 
 export interface RawImagePackStateEvent {
@@ -155,15 +142,6 @@ export function inspectStatePacks(
         null,
       );
     });
-}
-
-export function roomNameFromState(
-  events: readonly RawImagePackStateEvent[],
-): string | null {
-  const content = events.find(
-    (event) => event.type === 'm.room.name' && event.state_key === '',
-  )?.content;
-  return boundedText(isRecord(content) ? content['name'] : null);
 }
 
 export function mutateSelectionContent(
