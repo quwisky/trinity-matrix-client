@@ -20,6 +20,7 @@ export * from './lib/push-rules.service';
 export * from './lib/keyword-rules.service';
 export type {
   DefaultPushRule,
+  KeywordRule,
   NotificationEngine,
   NotificationSettings,
   PushRuleKind,
