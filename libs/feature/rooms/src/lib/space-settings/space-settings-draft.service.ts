@@ -70,7 +70,7 @@ export class SpaceSettingsDraftService {
   private readonly destroyRef = inject(DestroyRef);
   private readonly target = signal<RoomSettingsTarget | null>(null);
   private readonly baseline = signal<GeneralBaseline>({ name: '', topic: '' });
-  private readonly accessBaseline = signal(JoinRule.Invite);
+  private readonly accessBaseline = signal<JoinRule>(JoinRule.Invite);
   private readonly snapshotState = signal<RoomSettingsSnapshot | null>(null);
   private readonly modelState = signal<SpaceSettingsModel>({
     name: '',
