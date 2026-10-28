@@ -104,7 +104,7 @@ describe('Identity production boundary', () => {
     expect(profile).toContain('this.avatars.upload(');
     expect(profile).not.toContain('uploadContent');
     expect(media).toContain('upload(file: File, accountId: string)');
-    expect(media).toContain('client.uploadContent(');
+    expect(media).toContain('this.engine.upload(accountId,');
     expect(identity).toContain('return defer(() =>');
     expect(identity).toContain("'offline'");
     expect(identity).toContain("'unavailable'");

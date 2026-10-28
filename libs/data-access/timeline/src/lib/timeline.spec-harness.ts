@@ -70,7 +70,7 @@ export function mediaProvider() {
       of<UploadedMedia>(
         encrypt
           ? {
-              msgtype: 'm.image' as UploadedMedia['msgtype'],
+              msgtype: 'm.image',
               body: 'pic.png',
               mxc: null,
               file: {
@@ -83,7 +83,7 @@ export function mediaProvider() {
               info: { mimetype: 'image/png', size: 4 },
             }
           : {
-              msgtype: 'm.image' as UploadedMedia['msgtype'],
+              msgtype: 'm.image',
               body: 'pic.png',
               mxc: 'mxc://hs/up',
               file: null,

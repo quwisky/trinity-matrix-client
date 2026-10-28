@@ -66,7 +66,7 @@ function setup() {
         _encrypt: boolean,
         _progress?: (fraction: number) => void,
         _abortController?: AbortController,
-        _client?: unknown,
+        _accountId?: string,
         _hints?: unknown,
         _imageMetadata?: 'strip' | 'keep',
       ) => of(uploaded()),
@@ -135,7 +135,7 @@ describe('MediaPipeline', () => {
       true,
       expect.any(Function),
       expect.any(AbortController),
-      client,
+      KEY.accountId,
       undefined,
       'strip',
     );
@@ -167,7 +167,7 @@ describe('MediaPipeline', () => {
       true,
       expect.any(Function),
       expect.any(AbortController),
-      expect.anything(),
+      KEY.accountId,
       undefined,
       'strip',
     );
@@ -269,7 +269,7 @@ describe('MediaPipeline', () => {
   });
 
   it('presents only safe metadata while retaining encrypted source material internally', async () => {
-    const { pipeline, bytes, client } = setup();
+    const { pipeline, bytes } = setup();
     const reference = pipeline.present(
       {
         kind: 'image',
@@ -297,7 +297,7 @@ describe('MediaPipeline', () => {
     expect(bytes.resolveMedia).toHaveBeenCalledWith(
       expect.objectContaining({ file: uploaded().file }),
       'full',
-      client,
+      KEY.accountId,
     );
     bytes.downloadMedia.mockReturnValue(
       of({ blob: new Blob(['safe']), filename: 'secret.png' }),
@@ -307,7 +307,7 @@ describe('MediaPipeline', () => {
     ).resolves.toMatchObject({ filename: 'secret.png' });
     expect(bytes.downloadMedia).toHaveBeenCalledWith(
       expect.objectContaining({ file: uploaded().file }),
-      client,
+      KEY.accountId,
     );
   });
 
@@ -396,11 +396,11 @@ describe('MediaPipeline', () => {
     expect(bytes.resolveMedia).toHaveBeenCalledWith(
       expect.any(Object),
       'full',
-      client,
+      KEY.accountId,
     );
     expect(bytes.downloadMedia).toHaveBeenCalledWith(
       expect.any(Object),
-      client,
+      KEY.accountId,
     );
   });
 
@@ -567,7 +567,7 @@ describe('MediaPipeline', () => {
   });
 
   it('drops a rendition from the cache under the client that presented it', () => {
-    const { pipeline, bytes, client, matrix } = setup();
+    const { pipeline, bytes, matrix } = setup();
     const media = {
       kind: 'image' as const,
       mxc: 'mxc://example.org/photo',
@@ -584,7 +584,7 @@ describe('MediaPipeline', () => {
     expect(bytes.drop).toHaveBeenCalledExactlyOnceWith('blob:photo', {
       media,
       variant: 'full',
-      client,
+      accountId: KEY.accountId,
     });
     // Freeing pins never needs a live Account: a signed-out one's pins still go.
     matrix.clientFor.mockReturnValue(null);
@@ -603,29 +603,31 @@ describe('MediaPipeline', () => {
       thumbnailFile: null,
     };
 
-    it("resolves the presenting account's client at load time", async () => {
-      const { pipeline, bytes, client, matrix } = setup();
-      const bob = { ...client, getUserId: () => '@bob:example.org' };
-      matrix.clientFor.mockImplementation((id) =>
-        id === '@bob:example.org' ? bob : client,
-      );
+    it('resolves through the presenting account while it is live', async () => {
+      const { pipeline, bytes } = setup();
       const reference = pipeline.present(image, '@bob:example.org');
-      const lateBob = { ...bob };
-      matrix.clientFor.mockImplementation(() => lateBob);
 
       await firstValueFrom(pipeline.resolveMedia(reference, 'full'));
 
-      expect(bytes.resolveMedia).toHaveBeenCalledWith(image, 'full', lateBob);
+      expect(bytes.resolveMedia).toHaveBeenCalledWith(
+        image,
+        'full',
+        '@bob:example.org',
+      );
     });
 
     it('defaults to the active account', async () => {
-      const { pipeline, bytes, client, matrix } = setup();
+      const { pipeline, bytes, matrix } = setup();
       const reference = pipeline.present(image);
 
       await firstValueFrom(pipeline.resolveMedia(reference, 'full'));
 
       expect(matrix.clientFor).toHaveBeenCalledWith(KEY.accountId);
-      expect(bytes.resolveMedia).toHaveBeenCalledWith(image, 'full', client);
+      expect(bytes.resolveMedia).toHaveBeenCalledWith(
+        image,
+        'full',
+        KEY.accountId,
+      );
     });
 
     it('sameMedia is false across accounts', () => {
@@ -987,7 +989,7 @@ describe('MediaPipeline', () => {
   });
 
   it('keeps capture hints on the staged reference and forwards them to the upload', async () => {
-    const { pipeline, bytes, client } = setup();
+    const { pipeline, bytes } = setup();
     const hints = {
       width: 1920,
       height: 1080,
@@ -1018,14 +1020,14 @@ describe('MediaPipeline', () => {
       true,
       expect.any(Function),
       expect.any(AbortController),
-      client,
+      KEY.accountId,
       hints,
       'strip',
     );
   });
 
   it('uploads with the image metadata policy the transfer asks for', async () => {
-    const { pipeline, bytes, client } = setup();
+    const { pipeline, bytes } = setup();
     const staged = pipeline.stage(
       new File([new Uint8Array([1, 2, 3, 4])], 'photo.jpg', {
         type: 'image/jpeg',
@@ -1049,7 +1051,7 @@ describe('MediaPipeline', () => {
       true,
       expect.any(Function),
       expect.any(AbortController),
-      client,
+      KEY.accountId,
       undefined,
       'keep',
     );
@@ -1086,13 +1088,13 @@ describe('MediaPipeline', () => {
   });
 
   it('reads the upload limit through the exact account client', async () => {
-    const { pipeline, bytes, client, matrix } = setup();
+    const { pipeline, bytes, matrix } = setup();
 
     expect(await firstValueFrom(pipeline.uploadLimit(KEY.accountId))).toBe(
       1024,
     );
     expect(matrix.clientFor).toHaveBeenCalledWith(KEY.accountId);
-    expect(bytes.uploadLimit).toHaveBeenCalledWith(client);
+    expect(bytes.uploadLimit).toHaveBeenCalledWith(KEY.accountId);
   });
 
   it('has no limit for a missing or unknown account', async () => {

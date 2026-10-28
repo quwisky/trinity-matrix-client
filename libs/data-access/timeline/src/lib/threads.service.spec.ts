@@ -174,7 +174,7 @@ function fakeMediaService() {
   return {
     uploadMedia: () =>
       of<UploadedMedia>({
-        msgtype: 'm.image' as UploadedMedia['msgtype'],
+        msgtype: 'm.image',
         body: 'pic.png',
         mxc: 'mxc://hs/up',
         file: null,
