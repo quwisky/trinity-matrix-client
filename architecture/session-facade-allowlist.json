@@ -29,8 +29,6 @@
     "libs/data-access/notifications/src/lib/room-notifications.service.ts",
     "libs/data-access/room-administration/src/lib/content-reporting.service.ts",
     "libs/data-access/room-administration/src/lib/room-action-permissions.service.ts",
-    "libs/data-access/room-administration/src/lib/room-administration-lifetime.ts",
-    "libs/data-access/room-administration/src/lib/room-administration-projection-state.service.ts",
     "libs/data-access/room-administration/src/lib/room-aliases.service.ts",
     "libs/data-access/room-administration/src/lib/room-directory.service.ts",
     "libs/data-access/room-administration/src/lib/room-encryption.service.ts",

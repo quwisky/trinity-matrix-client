@@ -1,6 +1,9 @@
 import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
 import { EventType, KnownMembership } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -113,6 +116,9 @@ function setup(initial = clientFixture()) {
         clientFor: (accountId: string) =>
           (clients.get(accountId)?.client as never) ?? null,
         activeUserId: activeUserId.asReadonly(),
+      }),
+      MockProvider(SessionStateService, {
+        activeAccountId: activeUserId.asReadonly(),
       }),
     ],
   });
