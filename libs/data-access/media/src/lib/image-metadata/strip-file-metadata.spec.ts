@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { joinParts } from './image-metadata';
 import { SVG_SNIFF_BYTES } from './svg-metadata';
 import {
+  JPEG_IMAGE_DATA,
+  JPEG_JFIF,
   JPEG_SOI,
   ascii,
   concat,
@@ -16,6 +19,7 @@ import {
   topLevelBox,
 } from './video-metadata.fixture';
 import {
+  bytesWithoutMediaMetadata,
   withoutImageMetadata,
   withoutMediaMetadata,
 } from './strip-file-metadata';
@@ -24,6 +28,11 @@ import {
   identifyingPage,
   tiffLayout,
 } from './tiff-metadata.fixture';
+
+vi.mock('./image-metadata', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./image-metadata')>();
+  return { ...real, joinParts: vi.fn(real.joinParts) };
+});
 
 function expectNoVideoLocation(bytes: Uint8Array): void {
   for (const marker of VIDEO_IDENTIFYING_MARKERS) {
@@ -277,5 +286,98 @@ describe('withoutMediaMetadata', () => {
 
     expect(await withoutMediaMetadata(broken)).toBe(broken);
     expect(await withoutMediaMetadata(unreadable)).toBe(unreadable);
+  });
+});
+
+describe('bytesWithoutMediaMetadata', () => {
+  it('blanks a video in the buffer it read, without a second copy', async () => {
+    const input = largeMovie();
+    const original = new File([input], 'clip.mp4', { type: 'video/mp4' });
+
+    const { result, sizes } = await blobReads(() =>
+      bytesWithoutMediaMetadata(original),
+    );
+
+    expect(sizes).toEqual([original.size]);
+    const bytes = new Uint8Array(result);
+    expect(bytes.length).toBe(input.length);
+    expectNoVideoLocation(bytes);
+    const mdat = topLevelBox(input, 'mdat');
+    expect(
+      sameBytes(
+        bytes.subarray(mdat.start, mdat.end),
+        input.subarray(mdat.start, mdat.end),
+      ),
+    ).toBe(true);
+  });
+
+  it('returns the original bytes of a malformed video', async () => {
+    const input = identifyingMovie().slice(0, -4);
+    const original = new File([input], 'broken.mp4', { type: 'video/mp4' });
+
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(original));
+
+    expect(Array.from(bytes)).toEqual(Array.from(input));
+  });
+});
+
+describe('bytesWithoutMediaMetadata for images', () => {
+  beforeEach(() => {
+    vi.mocked(joinParts).mockClear();
+  });
+
+  it('hands over a stripped TIFF without copying it again', async () => {
+    const layout = tiffLayout('MM', [identifyingPage('MM')]);
+    const scan = new File([layout.bytes], 'scan.tif', { type: 'image/tiff' });
+
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(scan));
+
+    expect(Array.from(bytes)).toEqual(Array.from(expectedStrip(layout)));
+    expect(joinParts).not.toHaveBeenCalled();
+  });
+
+  it('copies a single part that is only a view into the original', async () => {
+    const clean = concat(JPEG_SOI, JPEG_JFIF, JPEG_IMAGE_DATA);
+    const photo = new File([clean, ascii('trailing data')], 'IMG.jpg', {
+      type: 'image/jpeg',
+    });
+
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(photo));
+
+    expect(Array.from(bytes)).toEqual(Array.from(clean));
+  });
+
+  it('returns the stripped plaintext for an image', async () => {
+    const original = new File([identifyingJpeg()], 'IMG_0001.jpg', {
+      type: 'image/jpeg',
+    });
+
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(original));
+
+    expect(bytes.length).toBeLessThan(original.size);
+    expect(containsAscii(bytes, 'Canon')).toBe(false);
+  });
+
+  it('passes the file name on, so a raw file keeps its camera data', async () => {
+    const layout = tiffLayout('MM', [identifyingPage('MM')]);
+    const raw = new File([layout.bytes], 'DSC_0001.nef', {
+      type: 'image/x-nikon-nef',
+    });
+
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(raw));
+
+    expect(Array.from(bytes)).toEqual(
+      Array.from(expectedStrip(layout, { raw: true })),
+    );
+    expect(containsAscii(bytes, 'Canon')).toBe(true);
+  });
+
+  it('returns the original bytes for anything else', async () => {
+    const payload = ascii('Canon at 52.5200N');
+    const text = new File([payload], 'notes.txt', { type: 'text/plain' });
+
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(text));
+
+    expect(Array.from(bytes)).toEqual(Array.from(payload));
   });
 });

@@ -32,6 +32,7 @@ import type {
 import { MEDIA_ENGINE } from './media-engine.token';
 import type { ImageMetadataPolicy, MediaHints } from './media-pipeline.models';
 import {
+  bytesWithoutMediaMetadata,
   withoutImageMetadata,
   withoutMediaMetadata,
 } from './image-metadata/strip-file-metadata';
@@ -287,7 +288,13 @@ export class MediaService {
     // handle with certainty uploads as picked. Keeping metadata (the opt-in) uploads the file
     // untouched, never a partial strip.
     const keep = imageMetadata === 'keep';
-    const upload = keep ? file : await withoutMediaMetadata(file);
+    let upload: Blob = file;
+    if (!keep) {
+      // The encrypted path fails on a strip error rather than send the file as picked.
+      upload = encrypt
+        ? new Blob([await bytesWithoutMediaMetadata(file)])
+        : await withoutMediaMetadata(file);
+    }
     signal?.throwIfAborted();
     const uploaded = await this.send(
       accountId,

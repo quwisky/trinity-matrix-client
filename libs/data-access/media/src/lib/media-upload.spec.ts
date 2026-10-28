@@ -10,7 +10,10 @@ import {
   type Mock,
 } from 'vitest';
 import { EngineRequestError, engineFail } from '@trinity/util/matrix';
-import { withoutMediaMetadata } from './image-metadata/strip-file-metadata';
+import {
+  bytesWithoutMediaMetadata,
+  withoutMediaMetadata,
+} from './image-metadata/strip-file-metadata';
 import {
   containsAscii,
   identifyingJpeg,
@@ -28,6 +31,7 @@ vi.mock('./image-metadata/strip-file-metadata', async (importOriginal) => {
   return {
     ...real,
     withoutMediaMetadata: vi.fn(real.withoutMediaMetadata),
+    bytesWithoutMediaMetadata: vi.fn(real.bytesWithoutMediaMetadata),
   };
 });
 
@@ -72,6 +76,7 @@ beforeEach(() => {
   URL.revokeObjectURL =
     revokeObjectURL as unknown as typeof URL.revokeObjectURL;
   (withoutMediaMetadata as Mock).mockClear();
+  (bytesWithoutMediaMetadata as Mock).mockClear();
 });
 
 afterEach(() => {
@@ -295,12 +300,24 @@ describe('uploadMedia', () => {
 
       await firstValueFrom(svc.uploadMedia(original, true));
 
-      expect(withoutMediaMetadata).toHaveBeenCalledWith(original);
+      expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(original);
       expect(uploads()[0]?.[1].encrypt).toBe(true);
       const plaintext = await bytesOf(uploads()[0]?.[0]);
       expect(plaintext.length).toBeLessThan(original.size);
       expect(containsAscii(plaintext, '52.5200')).toBe(false);
       expect(containsAscii(plaintext, 'Canon')).toBe(false);
+    });
+
+    it('fails an encrypted upload whose metadata strip throws instead of sending the original', async () => {
+      const { svc, upload } = setup();
+      vi.mocked(bytesWithoutMediaMetadata).mockRejectedValueOnce(
+        new Error('strip failed'),
+      );
+
+      await expect(
+        firstValueFrom(svc.uploadMedia(photo(), true)),
+      ).rejects.toThrow('strip failed');
+      expect(upload).not.toHaveBeenCalled();
     });
 
     it('uploads a plaintext photo byte for byte when its metadata is kept', async () => {
@@ -340,7 +357,7 @@ describe('uploadMedia', () => {
         ),
       );
 
-      expect(withoutMediaMetadata).not.toHaveBeenCalled();
+      expect(bytesWithoutMediaMetadata).not.toHaveBeenCalled();
       const plaintext = await bytesOf(uploads()[0]?.[0]);
       expect(plaintext).toEqual(new Uint8Array(await original.arrayBuffer()));
     });
@@ -351,7 +368,7 @@ describe('uploadMedia', () => {
 
       await firstValueFrom(svc.uploadMedia(original, true));
 
-      expect(withoutMediaMetadata).toHaveBeenCalledWith(original);
+      expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(original);
     });
 
     it('uploads a plaintext video without its location, at the same size', async () => {
@@ -387,7 +404,7 @@ describe('uploadMedia', () => {
 
       await firstValueFrom(svc.uploadMedia(clip, true));
 
-      expect(withoutMediaMetadata).toHaveBeenCalledWith(clip);
+      expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(clip);
       const plaintext = await bytesOf(uploads()[0]?.[0]);
       expect(plaintext.length).toBe(clip.size);
       expect(containsAscii(plaintext, '52.5200')).toBe(false);
@@ -435,7 +452,7 @@ describe('uploadMedia', () => {
         ),
       );
 
-      expect(withoutMediaMetadata).not.toHaveBeenCalled();
+      expect(bytesWithoutMediaMetadata).not.toHaveBeenCalled();
       const plaintext = await bytesOf(uploads()[0]?.[0]);
       expect(plaintext).toEqual(new Uint8Array(await clip.arrayBuffer()));
       expect(containsAscii(plaintext, 'iPhone 15 Pro')).toBe(true);
