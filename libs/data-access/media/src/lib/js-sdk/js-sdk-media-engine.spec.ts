@@ -84,6 +84,17 @@ describe('JsSdkMediaEngine', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  /** The blob the engine hands to `URL.createObjectURL` during `run`. */
+  async function mintedBlob(run: () => Promise<unknown>): Promise<Blob> {
+    const mint = vi.spyOn(URL, 'createObjectURL');
+    try {
+      await run();
+      return mint.mock.calls[0][0] as Blob;
+    } finally {
+      mint.mockRestore();
+    }
+  }
+
   /** Serve `ciphertext` for every fetch; the file info decrypts it. */
   async function serveEncrypted(
     plaintext: Uint8Array,
@@ -118,6 +129,16 @@ describe('JsSdkMediaEngine', () => {
     await firstValueFrom(engine.content(ALICE, plainRequest({ kind: 'file' })));
 
     expect(fetchMock.mock.calls[0][1].headers).toBeUndefined();
+  });
+
+  it('mints a plain file with the requested mime type', async () => {
+    setup();
+
+    const blob = await mintedBlob(() =>
+      firstValueFrom(engine.content(ALICE, plainRequest({ kind: 'file' }))),
+    );
+
+    expect(blob.type).toBe('image/png');
   });
 
   it.each([
@@ -173,6 +194,17 @@ describe('JsSdkMediaEngine', () => {
     });
     expect(String(fetchMock.mock.calls[0][0])).toContain('hs/cipher');
     expect(downscaleImage).not.toHaveBeenCalled();
+  });
+
+  it('mints a decrypted file with the requested mime type', async () => {
+    setup();
+    const file = await serveEncrypted(new Uint8Array([1, 2, 3]));
+
+    const blob = await mintedBlob(() =>
+      firstValueFrom(engine.content(ALICE, encryptedRequest(file, null))),
+    );
+
+    expect(blob.type).toBe('image/jpeg');
   });
 
   it('shrinks a decrypted image to the requested edge before minting it', async () => {
