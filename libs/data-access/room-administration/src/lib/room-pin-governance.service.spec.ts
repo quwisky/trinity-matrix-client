@@ -1,83 +1,44 @@
 import { TestBed } from '@angular/core/testing';
-import { EventType } from 'matrix-js-sdk';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { afterEach, describe, expect, it } from 'vitest';
 import { RoomPinGovernanceService } from './room-pin-governance.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
 
 afterEach(() => TestBed.resetTestingModule());
 
 describe('RoomPinGovernanceService', () => {
-  function setup(options: { allowed?: boolean; eventLoaded?: boolean } = {}) {
-    const maySendStateEvent = vi.fn(() => options.allowed ?? true);
-    const room = {
-      roomId: '!room:example.org',
-      findEventById: vi.fn(() =>
-        options.eventLoaded === false ? undefined : { getId: () => '$event' },
-      ),
-      getLiveTimeline: () => ({
-        getState: () => ({ maySendStateEvent }),
-      }),
-    };
-    const aliceClient = {
-      getUserId: () => '@alice:example.org',
-      getRoom: (roomId: string) => (roomId === room.roomId ? room : null),
-    };
-    const clientFor = vi.fn((accountId: string) =>
-      accountId === '@alice:example.org' ? aliceClient : null,
-    );
-    TestBed.configureTestingModule({
-      providers: [
-        RoomPinGovernanceService,
-        { provide: MatrixClientService, useValue: { clientFor } },
-      ],
-    });
+  async function setup(alicePower: number) {
+    const session = administrationSession();
+    const { engine } = session;
+    const roomId = await roomWithAlice(engine);
+    await engine.asBob.setPowerLevel(roomId, engine.alice, alicePower);
+    TestBed.configureTestingModule({ providers: session.providers });
     return {
+      engine,
       service: TestBed.inject(RoomPinGovernanceService),
-      room,
-      maySendStateEvent,
-      clientFor,
+      key: { accountId: engine.alice, roomId },
     };
   }
 
-  const key = {
-    accountId: '@alice:example.org',
-    roomId: '!room:example.org',
-  } as const;
-
-  it('delegates the permission decision to exact-room state for the exact Account', () => {
-    const { service, maySendStateEvent, clientFor } = setup();
+  it('decides from the exact room state for the exact Account', async () => {
+    const { service, key, engine } = await setup(50);
 
     expect(service.canMutate(key)).toBe(true);
-    expect(clientFor).toHaveBeenCalledWith('@alice:example.org');
-    expect(maySendStateEvent).toHaveBeenCalledWith(
-      EventType.RoomPinnedEvents,
-      '@alice:example.org',
-    );
-    expect(service.canMutate({ ...key, accountId: '@bob:example.org' })).toBe(
-      false,
-    );
-  });
-
-  it('rejects pinning an unavailable message and still permits stale-id removal', () => {
-    const { service } = setup({ eventLoaded: false });
-
-    expect(service.authorize(key, 'pin', '$missing')).toEqual({
+    expect(service.authorize(key)).toEqual({ kind: 'allowed' });
+    expect(service.canMutate({ ...key, accountId: engine.bob })).toBe(false);
+    expect(service.authorize({ ...key, accountId: engine.bob })).toEqual({
       kind: 'rejected',
-      failure: 'message-unavailable',
-    });
-    expect(service.authorize(key, 'unpin', '$missing')).toEqual({
-      kind: 'allowed',
+      failure: 'conversation-unavailable',
     });
   });
 
-  it('rejects both mutations when room power levels deny the state event', () => {
-    const { service } = setup({ allowed: false });
+  it('rejects pin mutations when room power levels deny the state event', async () => {
+    const { service, key } = await setup(49);
 
-    expect(service.authorize(key, 'pin', '$event')).toEqual({
-      kind: 'rejected',
-      failure: 'not-allowed',
-    });
-    expect(service.authorize(key, 'unpin', '$event')).toEqual({
+    expect(service.canMutate(key)).toBe(false);
+    expect(service.authorize(key)).toEqual({
       kind: 'rejected',
       failure: 'not-allowed',
     });

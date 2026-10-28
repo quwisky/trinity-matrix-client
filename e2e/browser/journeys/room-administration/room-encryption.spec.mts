@@ -16,17 +16,20 @@ import {
 } from '../../support/room-settings-journey.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
-/** The dev build's Angular debug API, reaching the active account's Matrix client. */
+/**
+ * The dev build's Angular debug API, reaching the active account's Matrix client through the
+ * long-lived Identity lifetime, as the presence journey does.
+ */
 interface MatrixClientWindow extends Window {
   ng: {
     getComponent(element: Element): {
       runtime: {
         adapter: {
           session: {
-            roomAdministration: {
-              permissions: {
-                matrix: {
-                  instance: {
+            identity: {
+              matrix: {
+                active(): {
+                  client: {
                     getCrypto(): {
                       isEncryptionEnabledInRoom(
                         roomId: string,
@@ -52,7 +55,8 @@ function encryptsOnThisDevice(page: Page, roomId: string): Promise<boolean> {
     if (!root) return false;
     const crypto = (window as unknown as MatrixClientWindow).ng
       .getComponent(root)
-      .runtime.adapter.session.roomAdministration.permissions.matrix.instance.getCrypto();
+      .runtime.adapter.session.identity.matrix.active()
+      .client.getCrypto();
     return (
       (await crypto.isEncryptionEnabledInRoom(id)) &&
       !!crypto.roomEncryptors?.[id]
