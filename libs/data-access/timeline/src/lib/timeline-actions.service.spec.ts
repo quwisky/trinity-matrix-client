@@ -1,6 +1,5 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of } from 'rxjs';
-import type { MatrixClient, Room } from 'matrix-js-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MediaService } from '@trinity/data-access/media';
 import { ConversationActionContextService } from './conversation-action-context.service';
@@ -14,8 +13,12 @@ import {
   voiceMessageContent,
 } from '@trinity/util/matrix';
 import {
+  ROOM_KEY,
+  fakeClient,
   fakeEdit,
   fakeEvent,
+  fakeRoom,
+  matrixProvider,
   privacyProvider,
   setupActions,
 } from './timeline.spec-harness';
@@ -620,6 +623,29 @@ describe('TimelineActionsService', () => {
     ).rejects.toThrow();
   });
 
+  it('forward of a missing message rejects with "Message not found."', async () => {
+    const svc = setupActions([]);
+    await expect(
+      firstValueFrom(svc.forwardMessage('!r:hs', '$missing', '!target:hs')),
+    ).rejects.toThrow('Message not found.');
+  });
+
+  it('errors when a send fails and its echo stays unsent', async () => {
+    const room = { ...fakeRoom([]), getEventForTxnId: () => ({}) };
+    const client = {
+      ...fakeClient(room, []),
+      sendEvent: () => Promise.reject(new Error('offline')),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineActionsService, matrixProvider(client)],
+    });
+    TestBed.inject(ConversationActionContextService).bind(() => ROOM_KEY);
+
+    await expect(
+      firstValueFrom(TestBed.inject(TimelineActionsService).endPoll('$p')),
+    ).rejects.toThrow();
+  });
+
   it('creates a poll via an MSC3381 poll start event', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
@@ -689,7 +715,7 @@ describe('TimelineActionsService voice clips', () => {
       isEncryptionEnabledInRoom: () => Promise<boolean>;
     } | null,
   ) {
-    const uploadMedia = vi.fn((_file: File, _encrypt: boolean) =>
+    const uploadMedia = vi.fn((..._args: unknown[]) =>
       of({
         msgtype: 'm.audio',
         body: 'voice-message.webm',
@@ -697,18 +723,21 @@ describe('TimelineActionsService voice clips', () => {
         info: { mimetype: 'audio/webm', size: 1 },
       }),
     );
+    const room = { roomId: '!r:hs', hasEncryptionStateEvent: () => false };
     const client = {
+      getUserId: () => ROOM_KEY.accountId,
+      getRoom: () => room,
+      makeTxnId: () => 'txn',
       getCrypto: () => crypto ?? undefined,
       sendMessage: vi.fn(() => Promise.resolve({ event_id: '$voice' })),
     };
-    const room = { roomId: '!r:hs', hasEncryptionStateEvent: () => false };
     TestBed.configureTestingModule({
-      providers: [{ provide: MediaService, useValue: { uploadMedia } }],
+      providers: [
+        matrixProvider(client),
+        { provide: MediaService, useValue: { uploadMedia } },
+      ],
     });
-    TestBed.inject(ConversationActionContextService).bind(() => ({
-      client: client as unknown as MatrixClient,
-      room: room as unknown as Room,
-    }));
+    TestBed.inject(ConversationActionContextService).bind(() => ROOM_KEY);
     return { svc: TestBed.inject(TimelineActionsService), uploadMedia, client };
   }
 
@@ -719,7 +748,13 @@ describe('TimelineActionsService voice clips', () => {
 
     await firstValueFrom(svc.sendVoiceMessage(recording));
 
-    expect(uploadMedia).toHaveBeenCalledWith(expect.any(File), true);
+    expect(uploadMedia).toHaveBeenCalledWith(
+      expect.any(File),
+      true,
+      undefined,
+      undefined,
+      expect.anything(),
+    );
   });
 
   it('encrypts a clip when the crypto store fails to answer', async () => {
@@ -729,7 +764,13 @@ describe('TimelineActionsService voice clips', () => {
 
     await firstValueFrom(svc.sendVoiceMessage(recording));
 
-    expect(uploadMedia).toHaveBeenCalledWith(expect.any(File), true);
+    expect(uploadMedia).toHaveBeenCalledWith(
+      expect.any(File),
+      true,
+      undefined,
+      undefined,
+      expect.anything(),
+    );
   });
 
   it('refuses to upload a clip when the crypto store is unavailable', async () => {

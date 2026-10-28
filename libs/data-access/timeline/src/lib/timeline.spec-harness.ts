@@ -12,7 +12,6 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of } from 'rxjs';
 import { vi } from 'vitest';
-import type { MatrixClient, Room } from 'matrix-js-sdk';
 import { TimelineService } from './timeline.service';
 import { TimelineActionsService } from './timeline-actions.service';
 import { ConversationActionContextService } from './conversation-action-context.service';
@@ -390,6 +389,9 @@ export function fakeClient(
   // Captured event listeners keyed by event name, so a test can fire e.g. the
   // RoomMember.typing handler the service registers in open().
   const handlers = new Map<string, (...args: unknown[]) => void>();
+  let txn = 0;
+  const threaded = ([first]: unknown[]) =>
+    first === null || (typeof first === 'string' && first.startsWith('$'));
   return {
     baseUrl: 'https://hs',
     getRoom: () => room,
@@ -418,17 +420,20 @@ export function fakeClient(
       sent.push(['html', body, html]);
       return Promise.resolve({});
     },
-    sendMessage: (_rid: string, content: unknown) => {
-      sent.push(['message', content]);
-      return Promise.resolve({});
+    makeTxnId: () => `txn${++txn}`,
+    // Both SDK overloads: without a thread id, and the engine's with one (null or `$…`).
+    sendMessage: (_rid: string, ...args: unknown[]) => {
+      sent.push(['message', threaded(args) ? args[1] : args[0]]);
+      return Promise.resolve({ event_id: `$sent${sent.length}` });
     },
     redactEvent: (_rid: string, eventId: string) => {
       sent.push(['redact', eventId]);
       return Promise.resolve({});
     },
-    sendEvent: (_rid: string, type: string, content: unknown) => {
+    sendEvent: (_rid: string, ...args: unknown[]) => {
+      const [type, content] = threaded(args) ? args.slice(1) : args;
       sent.push(['event', type, content]);
-      return Promise.resolve({});
+      return Promise.resolve({ event_id: `$sent${sent.length}` });
     },
   };
 }
@@ -485,10 +490,7 @@ export function setupActions(
     ],
   });
   TestBed.inject(TimelineService).open(ROOM_KEY);
-  TestBed.inject(ConversationActionContextService).bind(() => ({
-    client: client as unknown as MatrixClient,
-    room: room as unknown as Room,
-  }));
+  TestBed.inject(ConversationActionContextService).bind(() => ROOM_KEY);
   return TestBed.inject(TimelineActionsService);
 }
 

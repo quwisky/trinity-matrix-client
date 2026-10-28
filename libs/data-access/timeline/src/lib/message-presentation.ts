@@ -201,10 +201,7 @@ export function isEditableMessage(message: MessageView): boolean {
   );
 }
 
-/**
- * Whether a row can cancel the message: only an echo that failed to send, though the engine
- * would also cancel one still queued.
- */
+/** Whether a row can cancel the message: an echo that has not been sent (waiting or failed). */
 export function isCancellableMessage(message: MessageView): boolean {
   return message.status === 'waiting' || message.status === 'failed';
 }

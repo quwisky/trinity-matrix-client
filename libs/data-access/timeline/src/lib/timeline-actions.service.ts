@@ -1,24 +1,18 @@
 import { Injectable, inject } from '@angular/core';
-import {
-  EventType,
-  M_POLL_END,
-  M_POLL_RESPONSE,
-  M_POLL_START,
-} from 'matrix-js-sdk';
-import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
-import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
+import { Observable, defer, map, of, throwError } from 'rxjs';
+import { type ImagePackImage } from '@trinity/data-access/media';
 import { type VoiceRecording } from '@trinity/platform-native';
 import {
-  isRoomEncrypted,
-  locationMessageContent,
-  pollEndContent,
-  pollResponseContent,
-  pollStartContent,
-  voiceMessageContent,
+  EngineRequestError,
+  NOT_SIGNED_IN,
+  type EngineResult,
+  unwrapEngineResult,
 } from '@trinity/util/matrix';
 import { ConversationActionContextService } from './conversation-action-context.service';
-import { forwardedContent, voiceExtension } from './js-sdk/outgoing-content';
-import { shownContent } from './js-sdk/shields';
+import type { OutgoingMessage } from './timeline-engine';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
+
+const NO_RELATION = { threadRootId: null, replyTo: null } as const;
 
 /**
  * Transitional non-message writes to a room's timeline: polls, attachments, voice clips,
@@ -26,9 +20,9 @@ import { shownContent } from './js-sdk/shields';
  * Conversation handle's typed `messages` surface.
  *
  * The counterpart to the Conversation Runtime's timeline projection, which owns every
- * listener; nothing here subscribes to the SDK or holds room state. The open room is asked
- * for on subscribe through the runtime's internal action context, so there is one answer
- * to "which room, on which account".
+ * listener; nothing here subscribes to the timeline or holds room state. The open room is
+ * asked for on subscribe through the runtime's internal action context, so there is one
+ * answer to "which room, on which account".
  *
  * Every method returns a COLD Observable: nothing is sent until someone subscribes, and
  * the focused Conversation is resolved then. An action built before focus changes (or
@@ -38,44 +32,27 @@ import { shownContent } from './js-sdk/shields';
 @Injectable({ providedIn: 'root' })
 export class TimelineActionsService {
   private readonly actionContext = inject(ConversationActionContextService);
-  private readonly mediaSvc = inject(MediaService);
+  private readonly engine = inject(TIMELINE_ENGINE);
 
   /** Send a shared location (`m.location`) to the active room. Cold — runs on subscribe. */
   sendLocation(lat: number, lng: number): Observable<void> {
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx) {
-        return of(void 0);
-      }
-      const { client, room } = ctx;
-      return from(
-        client.sendMessage(
-          room.roomId,
-          locationMessageContent(lat, lng) as never,
-        ),
-      ).pipe(map(() => void 0));
-    });
+    return this.send({ kind: 'location', lat, lng, label: null });
   }
 
   /** Send an MSC2545 image-pack entry as a standalone `m.sticker` event. */
   sendSticker(sticker: ImagePackImage): Observable<void> {
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (
-        !ctx ||
-        !sticker.usage.includes('sticker') ||
-        !/^mxc:\/\/[^/\s]+\/[^\s]+$/.test(sticker.url)
-      ) {
-        return of(void 0);
-      }
-      return from(
-        ctx.client.sendEvent(ctx.room.roomId, EventType.Sticker, {
-          body: sticker.body || sticker.shortcode,
-          url: sticker.url,
-          info: sticker.info,
-        }),
-      );
-    }).pipe(map(() => void 0));
+    if (
+      !sticker.usage.includes('sticker') ||
+      !/^mxc:\/\/[^/\s]+\/[^\s]+$/.test(sticker.url)
+    ) {
+      return of(void 0);
+    }
+    return this.send({
+      kind: 'sticker',
+      body: sticker.body || sticker.shortcode,
+      url: sticker.url,
+      info: sticker.info,
+    });
   }
 
   /**
@@ -85,44 +62,15 @@ export class TimelineActionsService {
    */
   sendVoiceMessage(recording: VoiceRecording): Observable<void> {
     return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx || recording.blob.size === 0) {
+      const key = this.actionContext.resolve();
+      if (!key || recording.blob.size === 0) {
         return of(void 0);
       }
-      const { client, room } = ctx;
-      const crypto = client.getCrypto?.();
-      const file = new File(
-        [recording.blob],
-        `voice-message.${voiceExtension(recording.mimeType)}`,
-        { type: recording.mimeType },
+      return this.engine.sendVoice(key.accountId, key.roomId, recording).pipe(
+        unwrapEngineResult(),
+        map(() => void 0),
       );
-      return from(isRoomEncrypted(room, crypto)).pipe(
-        switchMap((encrypt) => {
-          // Without a crypto store the SDK would send the event, and the clip's key, in the clear.
-          if (encrypt && !crypto) {
-            throw new Error('Encryption is unavailable.');
-          }
-          return this.mediaSvc.uploadMedia(file, encrypt);
-        }),
-        switchMap((media) =>
-          from(
-            client.sendMessage(
-              room.roomId,
-              voiceMessageContent(
-                {
-                  mxc: media.mxc,
-                  file: media.file,
-                  mimeType: media.info.mimetype,
-                  size: media.info.size,
-                },
-                recording.durationMs,
-                recording.waveform,
-              ) as never,
-            ),
-          ),
-        ),
-      );
-    }).pipe(map(() => void 0));
+    });
   }
 
   /**
@@ -138,35 +86,17 @@ export class TimelineActionsService {
     targetRoomId: string,
   ): Observable<void> {
     return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx) {
-        return throwError(() => new Error('Not signed in.'));
+      const key = this.actionContext.resolve();
+      if (!key) {
+        return throwError(() => new EngineRequestError(NOT_SIGNED_IN));
       }
-      const { client } = ctx;
-      const event = client.getRoom(sourceRoomId)?.findEventById(eventId);
-      if (!event) {
-        return throwError(() => new Error('Message not found.'));
-      }
-      // What the row shows (an encrypted edit only once its own shield is checked), cut to
-      // the message's own fields.
-      const forwarded = forwardedContent(
-        event.getType(),
-        shownContent(event),
-        Boolean(event.replyEventId),
-      );
-      if (!forwarded) {
-        return throwError(() => new Error('This message cannot be forwarded.'));
-      }
-      return from(
-        event.getType() === EventType.Sticker
-          ? client.sendEvent(
-              targetRoomId,
-              EventType.Sticker,
-              forwarded as never,
-            )
-          : client.sendMessage(targetRoomId, forwarded as never),
-      );
-    }).pipe(map(() => void 0));
+      return this.engine
+        .forward(key.accountId, sourceRoomId, eventId, targetRoomId)
+        .pipe(
+          unwrapEngineResult(),
+          map(() => void 0),
+        );
+    });
   }
 
   /**
@@ -178,24 +108,19 @@ export class TimelineActionsService {
     options: string[],
     maxSelections = 1,
   ): Observable<void> {
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      const clean = options.map((o) => o.trim()).filter(Boolean);
-      if (!ctx || !question.trim() || clean.length < 2) {
-        return of(void 0);
-      }
-      return from(
-        ctx.client.sendEvent(
-          ctx.room.roomId,
-          M_POLL_START.name as never,
-          pollStartContent(
-            question.trim(),
-            clean,
-            Math.min(Math.max(Math.trunc(maxSelections), 1), clean.length),
-          ) as never,
-        ),
-      );
-    }).pipe(map(() => void 0));
+    const clean = options.map((o) => o.trim()).filter(Boolean);
+    if (!question.trim() || clean.length < 2) {
+      return of(void 0);
+    }
+    return this.send({
+      kind: 'poll-start',
+      question: question.trim(),
+      answers: clean,
+      maxSelections: Math.min(
+        Math.max(Math.trunc(maxSelections), 1),
+        clean.length,
+      ),
+    });
   }
 
   /**
@@ -203,35 +128,33 @@ export class TimelineActionsService {
    * Cold: runs on subscribe.
    */
   votePoll(pollId: string, answerIds: readonly string[]): Observable<void> {
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx) {
-        return of(void 0);
-      }
-      return from(
-        ctx.client.sendEvent(
-          ctx.room.roomId,
-          M_POLL_RESPONSE.name as never,
-          pollResponseContent(pollId, answerIds) as never,
-        ),
-      );
-    }).pipe(map(() => void 0));
+    return this.send({ kind: 'poll-response', pollId, answerIds });
   }
 
   /** Close a poll so no further votes count (creator action). Cold: runs on subscribe. */
   endPoll(pollId: string): Observable<void> {
+    return this.send({ kind: 'poll-end', pollId });
+  }
+
+  /** Sends `message` to the focused room, or nothing when no Conversation is focused. */
+  private send(message: OutgoingMessage): Observable<void> {
     return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx) {
+      const key = this.actionContext.resolve();
+      if (!key) {
         return of(void 0);
       }
-      return from(
-        ctx.client.sendEvent(
-          ctx.room.roomId,
-          M_POLL_END.name as never,
-          pollEndContent(pollId) as never,
-        ),
-      );
-    }).pipe(map(() => void 0));
+      return this.engine
+        .send(key.accountId, key.roomId, message, NO_RELATION)
+        .pipe(map(delivered));
+    });
   }
+}
+
+/** A send whose echo stayed unsent fails the action, as the SDK's rejected send did. */
+function delivered(
+  result: EngineResult<{ readonly eventId: string | null }>,
+): void {
+  if (!result.ok) throw new EngineRequestError(result.failure);
+  if (result.value.eventId === null)
+    throw new Error('The message was not sent.');
 }

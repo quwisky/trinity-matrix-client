@@ -73,7 +73,6 @@
     "libs/data-access/timeline/src/lib/rewind-unread-hold.ts",
     "libs/data-access/timeline/src/lib/thread-summary.ts",
     "libs/data-access/timeline/src/lib/threads.service.ts",
-    "libs/data-access/timeline/src/lib/timeline-actions.service.ts",
     "libs/data-access/timeline/src/lib/url-preview.service.ts",
     "libs/data-access/trust/src/lib/cross-signing-repair.ts",
     "libs/data-access/trust/src/lib/recovery-reset.ts",
@@ -97,7 +96,6 @@
     "libs/util/matrix/src/lib/room-encryption.ts",
     "libs/util/matrix/src/lib/room-state.ts",
     "libs/util/matrix/src/lib/transient-errors.ts",
-    "libs/util/matrix/src/lib/voice.ts",
     "libs/util/matrix/src/lib/waiting-to-send.ts"
   ]
 }

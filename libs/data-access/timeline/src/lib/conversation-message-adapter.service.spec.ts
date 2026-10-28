@@ -32,6 +32,7 @@ const LIVE = { threadRootId: null } as const;
 function failure(
   code:
     | 'request-failed'
+    | 'not-signed-in'
     | 'account-not-live'
     | 'message-unavailable'
     | 'not-cancellable',
@@ -191,6 +192,10 @@ describe('ConversationMessageAdapter', () => {
       retryable: false,
     });
     await expect(outcome(failure('account-not-live'))).resolves.toMatchObject({
+      failure: 'conversation-unavailable',
+      retryable: false,
+    });
+    await expect(outcome(failure('not-signed-in'))).resolves.toMatchObject({
       failure: 'conversation-unavailable',
       retryable: false,
     });
