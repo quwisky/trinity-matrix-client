@@ -201,6 +201,14 @@ export function isEditableMessage(message: MessageView): boolean {
   );
 }
 
+/**
+ * Whether a row can cancel the message: only an echo that failed to send, though the engine
+ * would also cancel one still queued.
+ */
+export function isCancellableMessage(message: MessageView): boolean {
+  return message.status === 'waiting' || message.status === 'failed';
+}
+
 /** Whether the presented body is meaningful input for the quote composer. */
 export function isQuotableMessage(message: MessageView): boolean {
   return (

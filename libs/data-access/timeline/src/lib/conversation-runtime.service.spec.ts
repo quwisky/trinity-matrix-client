@@ -1299,7 +1299,9 @@ describe('ConversationRuntime', () => {
   });
 
   it('routes a thread cancel to the adapter with the thread root', async () => {
-    const { runtime, messageAdapter } = setup();
+    const { runtime, messageAdapter } = setup(2, undefined, [
+      message('$reply', { status: 'failed' }),
+    ]);
     const conversation = runtime.focus({
       accountId: ALICE,
       roomId: '!room:example.org',
@@ -1314,6 +1316,38 @@ describe('ConversationRuntime', () => {
       threadRootId: '$root',
       messageId: '$reply',
     });
+  });
+
+  it('cancels only a row that is waiting or failed, in the room and in a thread', async () => {
+    const { runtime, messageAdapter } = setup(2, undefined, [
+      message('$waiting', { status: 'waiting' }),
+      message('$sending', { status: 'sending' }),
+      message('$sent'),
+    ]);
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const thread = conversation.threads.forRoot('$root')!;
+
+    await expect(
+      firstValueFrom(conversation.messages.cancel('$waiting')),
+    ).resolves.toEqual({ kind: 'applied', operation: 'cancel' });
+    for (const id of ['$sending', '$sent']) {
+      await expect(
+        firstValueFrom(conversation.messages.cancel(id)),
+      ).resolves.toMatchObject({ failure: 'event-not-retryable' });
+      await expect(firstValueFrom(thread.cancel(id))).resolves.toMatchObject({
+        failure: 'event-not-retryable',
+      });
+    }
+    await expect(
+      firstValueFrom(conversation.messages.cancel('$missing')),
+    ).resolves.toMatchObject({ failure: 'message-unavailable' });
+    await expect(
+      firstValueFrom(thread.cancel('$missing')),
+    ).resolves.toMatchObject({ failure: 'message-unavailable' });
+    expect(messageAdapter.cancel).toHaveBeenCalledOnce();
   });
 
   it('permanently releases the previous root child when thread navigation changes', async () => {
