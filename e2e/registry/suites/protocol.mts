@@ -121,7 +121,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     targetArtifactRoot: 'dist/.playwright/trinity-e2e-engine/<run-id>',
     targetProject: 'trinity-e2e-engine',
     currentTarget: 'trinity-e2e-engine:contract',
-    ciTier: 'local-only',
+    ciTier: 'pull-request',
     sourceEntrypoints: ['e2e/engine/run.mts'],
   },
   {
