@@ -1,5 +1,6 @@
 import type { Observable } from 'rxjs';
 import type { EngineResult } from '@trinity/util/matrix';
+import type { NotificationEvent } from './notification-intent';
 
 export type PushRuleKind =
   'override' | 'content' | 'room' | 'sender' | 'underride';
@@ -47,6 +48,37 @@ export interface NotificationSettings {
   readonly sound: boolean;
   /** Whether reactions to the account's messages notify; off unless the account opts in. */
   readonly reactionNotifications: boolean;
+}
+
+/** A live `m.annotation` reaction by someone else, not ignored, to any event in the room. */
+export interface ReactionAnnotation {
+  readonly kind: 'reaction-annotation';
+  readonly accountId: string;
+  readonly roomId: string;
+  readonly roomName: string | null;
+  /** The reaction's own event. */
+  readonly eventId: string;
+  readonly targetEventId: string;
+  /** Not blank. */
+  readonly key: string;
+  readonly senderId: string;
+  readonly senderName: string;
+}
+
+/**
+ * An item of {@link NotificationEngine.notifications}: a message the push rules say notifies, or
+ * a reaction annotation, which push rules do not filter.
+ */
+export type IncomingNotification =
+  | Extract<NotificationEvent, { kind: 'message' | 'unsupported' }>
+  | ReactionAnnotation;
+
+/** The reacted-to message, from {@link NotificationEngine.reactionTarget}. */
+export interface ReactionTarget {
+  /** The previewable text, or null (see {@link NotificationEngine.notifications}). */
+  readonly body: string | null;
+  /** The given reactions that are still live: not redacted, their sender not ignored. */
+  readonly liveReactionIds: readonly string[];
 }
 
 /**
@@ -119,4 +151,28 @@ export interface NotificationEngine {
     preference: NotificationPreference,
     on: boolean,
   ): Observable<EngineResult<null>>;
+
+  /**
+   * A feed of the account's incoming notifications: no snapshot, no replay, and nothing for an
+   * account without a live client. Only events that arrive live after the account's first sync
+   * count, never the account's own. An encrypted event waits for its decryption, however late,
+   * and its rules are then scored on the cleartext. A message's text is that of its valid edit
+   * (`validReplacement`), and is previewed only when that text arrived encrypted or the room is
+   * not encrypted (by its state or the crypto store); otherwise `body` is null. Rust:
+   * `Client::register_notification_handler` for messages, an `m.reaction` event handler for
+   * annotations, and `NotificationClient::get_notification` for a late-decrypted event.
+   */
+  notifications(accountId: string): Observable<IncomingNotification>;
+
+  /**
+   * The reacted-to event if it is the account's own decrypted, unredacted `m.room.message`, with
+   * which of `reactionIds` are still live; null when it is not, or when none of them is.
+   * Rust: `Room::load_or_fetch_event`, plus `Room::event` per reaction.
+   */
+  reactionTarget(
+    accountId: string,
+    roomId: string,
+    targetEventId: string,
+    reactionIds: readonly string[],
+  ): Observable<EngineResult<ReactionTarget | null>>;
 }

@@ -89,16 +89,17 @@ parameter, or shell store.
 `dev.trinityproject.trinity.reaction_notifications` account data (`{ enabled: boolean }`, default `false`).
 Accounts that still hold the retired `eu.qwky.trinity.reaction_notifications` event are read from it, and the notification engine copies it to the new name once while the warm settings store follows the account (every signed-in account).
 It does not alter server push rules or pusher registration. Each account's notification lifetime
-owns a `ReactionNotificationBatch` for live `m.reaction` annotation events. The original message
-must belong to that account; own reactions, ignored senders, redactions, history and backfill are
-excluded. The master disable and room mute are checked again before delivery; mentions-only room
+owns a `ReactionNotificationBatch` for the reaction annotations of the engine's `notifications`
+feed. The original message must belong to that account; own reactions, ignored senders,
+redactions, history and backfill are excluded. The master disable and room mute are checked again before delivery; mentions-only room
 mode still permits opted-in reaction alerts. Existing sound and visibility policy applies.
 
 Batches are keyed by room and original message within the owning account. A two-second quiet
 window has a ten-second maximum burst duration. Each batch counts distinct people and reaction
 keys, with at most 100 pending batches, 100 reactions per batch and 500 deduplicated event IDs.
-Missing targets are fetched through the exact owning client and decrypted before previewing;
-lookup has a ten-second deadline and unavailable targets are suppressed. Detaching an account or
+The engine's `reactionTarget` checks the target once per batch, fetching a missing one through
+the owning account's client and decrypting it before previewing, and drops reactions redacted
+since; the lookup has a ten-second deadline and unavailable targets are suppressed. Detaching an account or
 presentation owner releases timers and subscriptions so late lookup results cannot present.
 
 The presentation tag distinguishes reactions from messages and includes the original target.

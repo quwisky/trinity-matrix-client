@@ -33,13 +33,16 @@ import {
 } from '@trinity/util/matrix';
 import type {
   DefaultPushRule,
+  IncomingNotification,
   KeywordRule,
   NotificationEngine,
   NotificationPreference,
   NotificationSettings,
   PushRuleKind,
+  ReactionTarget,
   RoomNotifyMode,
 } from '../notification-engine';
+import { JsSdkIncomingNotifications } from './js-sdk-incoming-notifications';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,
   LEGACY_REACTION_NOTIFICATION_EVENT,
@@ -313,6 +316,7 @@ export class JsSdkNotificationEngine implements NotificationEngine {
   private readonly refreshed = new Subject<MatrixClient>();
   /** Each account's last room-mode write: the next one snapshots the rules after it. */
   private readonly roomModeWrites = new Map<string, Promise<unknown>>();
+  private readonly incoming = new JsSdkIncomingNotifications();
 
   settings(accountId: string): Observable<NotificationSettings> {
     return defer(() => {
@@ -544,6 +548,36 @@ export class JsSdkNotificationEngine implements NotificationEngine {
       this.refreshed.next(client);
       return null;
     });
+  }
+
+  notifications(accountId: string): Observable<IncomingNotification> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      return client
+        ? this.incoming.feed(
+            accountId,
+            client,
+            () => this.clients.clientFor(accountId) === client,
+          )
+        : NEVER;
+    });
+  }
+
+  reactionTarget(
+    accountId: string,
+    roomId: string,
+    targetEventId: string,
+    reactionIds: readonly string[],
+  ): Observable<EngineResult<ReactionTarget | null>> {
+    return this.request(accountId, (client) =>
+      this.incoming.target(
+        accountId,
+        client,
+        roomId,
+        targetEventId,
+        reactionIds,
+      ),
+    );
   }
 
   /**

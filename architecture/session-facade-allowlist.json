@@ -17,7 +17,6 @@
     "libs/data-access/matrix-client/src/lib/project-from-client.ts",
     "libs/data-access/matrix-client/src/lib/reproject-on-switch.ts",
     "libs/data-access/matrix-client/src/lib/trust-crypto.port.ts",
-    "libs/data-access/notifications/src/lib/notification.service.ts",
     "libs/data-access/notifications/src/lib/push-handoff.service.ts",
     "libs/data-access/notifications/src/lib/push.service.ts",
     "libs/data-access/room-administration/src/lib/content-reporting.service.ts",
