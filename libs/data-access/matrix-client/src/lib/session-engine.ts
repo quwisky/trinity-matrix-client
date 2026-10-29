@@ -55,6 +55,8 @@ export const EMPTY_SESSION: SessionSnapshot = {
 };
 
 export interface SessionAccessToken {
+  /** The homeserver the token is for. Rust: `Client::homeserver()`. */
+  readonly homeserverUrl: string;
   readonly accessToken: string;
   /** Epoch ms; null when the server gave no lifetime, and for password and SSO tokens. */
   readonly expiresAt: number | null;

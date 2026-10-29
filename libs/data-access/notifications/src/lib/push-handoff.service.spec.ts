@@ -1,20 +1,24 @@
-import { EventEmitter } from 'node:events';
-import { signal } from '@angular/core';
+import { ErrorHandler, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ClientEvent, EventType, RoomEvent, SyncState } from 'matrix-js-sdk';
 import {
-  MatrixClientService,
-  type AccessTokenRotation,
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionAccessToken,
+  type SessionAccountStatus,
+  type SessionSnapshot,
 } from '@trinity/data-access/matrix-client';
+import { plainEqual } from '@trinity/util/matrix';
 import {
   PushHandoffBridge,
   type BackgroundWork,
 } from '@trinity/capacitor-push';
-import { MockProvider } from 'ng-mocks';
 import {
+  BehaviorSubject,
   NEVER,
   Subject,
   defer,
+  distinctUntilChanged,
   firstValueFrom,
   of,
   take,
@@ -24,7 +28,9 @@ import {
 } from 'rxjs';
 import type { NotificationTextMode } from './notification-text.port';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NOTIFICATION_SOUND_EVENT } from './js-sdk/legacy-account-data';
+import { FakeNotificationEngine } from '../contract/fake-notification-engine';
+import type { PushRoom } from './notification-engine';
+import { NOTIFICATION_ENGINE } from './notification-engine.token';
 import {
   BACKGROUND_REFRESH_GRANT_TIMEOUT_MS,
   BACKGROUND_REFRESH_MIN_AGE_MS,
@@ -42,58 +48,22 @@ vi.mock('@capacitor/core', () => ({
   },
 }));
 
-interface FakeRoom {
-  roomId: string;
-  name: string;
-  membership: string;
-  /** Whether the room's state holds `m.room.encryption`. */
-  encryptionState?: boolean;
-}
+/** The fake engine's account with settings and `m.direct`. */
+const ME = '@alice:fake';
+const PW = '@pw:fake';
+const TEAM = { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false };
 
-/** The parts of one account's MatrixClient the handoff reads, with a real event emitter. */
-function fakeClient(userId: string, rooms: FakeRoom[]) {
-  const events = new EventEmitter();
-  const state = {
-    token: `token-${userId}`,
-    rooms,
-    direct: {} as Record<string, string[]>,
-    /** What the crypto store answers per room; unlisted rooms are not encrypted. */
-    storeEncrypted: {} as Record<string, boolean>,
-    /** The stored sound preference; unset reads as on. */
-    sound: undefined as boolean | undefined,
-  };
+function status(accountId: string, generation: number): SessionAccountStatus {
   return {
-    userId,
-    state,
-    emit: (event: string, ...args: unknown[]) => events.emit(event, ...args),
-    listeners: () => events.eventNames().length,
-    on: (event: string, listener: (...args: unknown[]) => void) =>
-      events.on(event, listener),
-    off: (event: string, listener: (...args: unknown[]) => void) =>
-      events.off(event, listener),
-    getAccessToken: () => state.token,
-    getHomeserverUrl: () => 'https://hs.example',
-    getRooms: () =>
-      state.rooms.map((room) => ({
-        roomId: room.roomId,
-        name: room.name,
-        getMyMembership: () => room.membership,
-        hasEncryptionStateEvent: () => room.encryptionState === true,
-      })),
-    getCrypto: () => ({
-      isEncryptionEnabledInRoom: (roomId: string) =>
-        Promise.resolve(state.storeEncrypted[roomId] === true),
-    }),
-    getAccountData: (type: string) =>
-      type === EventType.Direct
-        ? { getContent: () => state.direct }
-        : type === NOTIFICATION_SOUND_EVENT && state.sound !== undefined
-          ? { getContent: () => ({ enabled: state.sound }) }
-          : undefined,
+    accountId,
+    generation,
+    syncState: 'syncing',
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
   };
 }
-
-type FakeClient = ReturnType<typeof fakeClient>;
 
 /** Background time granted with the given id; protected data available unless overridden. */
 function grant(
@@ -103,18 +73,61 @@ function grant(
   return { id, protectedDataAvailable: true, locking: false, ...state };
 }
 
-function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
-  const clients = new Map(
-    (
-      opts.clients ?? [
-        fakeClient('@me:hs', [
-          { roomId: '!a:hs', name: 'Team', membership: 'join' },
-        ]),
-      ]
-    ).map((client) => [client.userId, client]),
-  );
-  const accountIds = signal<readonly string[]>([...clients.keys()]);
-  const rotations = new Subject<AccessTokenRotation>();
+/**
+ * The fake engine with one room, `Team`, every account is in; a session whose accounts each
+ * hold a token that expires at `expiresAt`.
+ */
+function setup(
+  opts: {
+    available?: boolean;
+    accounts?: string[];
+    expiresAt?: number | null;
+    refreshable?: boolean;
+  } = {},
+) {
+  const engine = new FakeNotificationEngine();
+  engine.createRoom('Team', { roomId: TEAM.roomId });
+  const snapshot = signal<SessionSnapshot>(EMPTY_SESSION);
+  const tokens = new Map<string, BehaviorSubject<SessionAccessToken | null>>();
+  const tokenOf = (accountId: string) => {
+    let token = tokens.get(accountId);
+    if (!token)
+      tokens.set(
+        accountId,
+        (token = new BehaviorSubject<SessionAccessToken | null>(null)),
+      );
+    return token;
+  };
+  /** The session's token for the account changes, as a refresh or a new sign-in leaves it. */
+  const setToken = (
+    accountId: string,
+    patch: Partial<SessionAccessToken>,
+  ): void => {
+    const current = tokenOf(accountId).value as SessionAccessToken;
+    tokenOf(accountId).next({ ...current, ...patch });
+  };
+  /** The live accounts, each at generation 1 unless given; a new generation is a new sign-in. */
+  const setAccounts = (
+    ids: readonly string[],
+    generations: Record<string, number> = {},
+  ): void => {
+    for (const id of ids) engine.live.add(id);
+    snapshot.set({
+      ...EMPTY_SESSION,
+      activeAccountId: ids[0] ?? null,
+      accounts: ids.map((id) => status(id, generations[id] ?? 1)),
+    });
+  };
+  const accounts = opts.accounts ?? [ME];
+  for (const id of accounts) {
+    tokenOf(id).next({
+      homeserverUrl: 'https://hs.example',
+      accessToken: `token-${id}`,
+      expiresAt: opts.expiresAt ?? null,
+      refreshable: opts.refreshable ?? true,
+    });
+  }
+  setAccounts(accounts);
   const bridge = {
     available: opts.available ?? true,
     setAccount: vi.fn((): Observable<void> => of(void 0)),
@@ -129,37 +142,36 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     ),
     clearDelivered: vi.fn((): Observable<void> => of(void 0)),
   };
-  const expiry = vi.fn(
-    (_userId: string, _accessToken: string): number | undefined => undefined,
-  );
   const refresh = vi.fn(
     (_userId: string, _options?: { timeoutMs?: number }): Observable<boolean> =>
       of(true),
   );
-  const refreshable = vi.fn((_userId: string): boolean => true);
   TestBed.configureTestingModule({
     providers: [
       PushHandoffService,
-      MockProvider(MatrixClientService, {
-        accountIds: accountIds.asReadonly(),
-        clientFor: (id: string) => (clients.get(id) as never) ?? null,
-        accessTokenRotations: rotations.asObservable(),
-        accessTokenExpiry: expiry,
-        refreshAccessToken: refresh,
-        canRefreshAccessToken: refreshable,
-      }),
+      { provide: NOTIFICATION_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: snapshot },
+      {
+        provide: SESSION_ENGINE,
+        useValue: {
+          accessToken: (accountId: string) =>
+            tokenOf(accountId).pipe(
+              distinctUntilChanged<SessionAccessToken | null>(plainEqual),
+            ),
+          refreshAccessToken: refresh,
+        },
+      },
       { provide: PushHandoffBridge, useValue: bridge },
     ],
   });
   return {
     service: TestBed.inject(PushHandoffService),
-    clients,
-    accountIds,
-    rotations,
+    engine,
+    tokens,
+    setToken,
+    setAccounts,
     bridge,
-    expiry,
     refresh,
-    refreshable,
   };
 }
 
@@ -172,8 +184,6 @@ async function start(h: ReturnType<typeof setup>): Promise<Subscription> {
   await flush();
   return lifetime;
 }
-
-const me = (h: ReturnType<typeof setup>) => h.clients.get('@me:hs')!;
 
 /** The accounts refreshed so far, in order. */
 const refreshed = (h: ReturnType<typeof setup>) =>
@@ -202,7 +212,7 @@ describe('PushHandoffService', () => {
       const h = setup();
       const gate = new Subject<void>();
       h.bridge.removeAccount.mockReturnValueOnce(gate.pipe(take(1)));
-      const forgetting = firstValueFrom(h.service.forget('@me:hs'), {
+      const forgetting = firstValueFrom(h.service.forget(ME), {
         defaultValue: undefined,
       });
       const writing = firstValueFrom(
@@ -275,9 +285,9 @@ describe('PushHandoffService', () => {
     await start(h);
 
     expect(h.bridge.setAccount).toHaveBeenCalledWith({
-      userId: '@me:hs',
+      userId: ME,
       homeserverUrl: 'https://hs.example',
-      accessToken: 'token-@me:hs',
+      accessToken: `token-${ME}`,
       sound: true,
     });
   });
@@ -286,27 +296,22 @@ describe('PushHandoffService', () => {
     const h = setup();
     await start(h);
 
-    h.rotations.next({ userId: '@me:hs', accessToken: 'fresh' });
+    h.setToken(ME, { accessToken: 'fresh' });
     await flush();
 
     expect(h.bridge.setAccount).toHaveBeenLastCalledWith(
-      expect.objectContaining({ userId: '@me:hs', accessToken: 'fresh' }),
+      expect.objectContaining({ userId: ME, accessToken: 'fresh' }),
     );
   });
 
   it('hands the access-token expiry over with the token it belongs to', async () => {
-    const h = setup();
-    h.expiry.mockImplementation((userId: string, token: string) =>
-      userId === '@me:hs' && token === 'token-@me:hs'
-        ? 1_760_000_000_000
-        : undefined,
-    );
+    const h = setup({ expiresAt: 1_760_000_000_000 });
     await start(h);
 
     expect(h.bridge.setAccount).toHaveBeenCalledWith({
-      userId: '@me:hs',
+      userId: ME,
       homeserverUrl: 'https://hs.example',
-      accessToken: 'token-@me:hs',
+      accessToken: `token-${ME}`,
       sound: true,
       accessTokenExpiresAt: 1_760_000_000_000,
     });
@@ -314,16 +319,13 @@ describe('PushHandoffService', () => {
 
   it('writes a refreshed token with its own expiry', async () => {
     const h = setup();
-    h.expiry.mockImplementation((_userId: string, token: string) =>
-      token === 'fresh' ? 1_760_000_300_000 : undefined,
-    );
     await start(h);
 
-    h.rotations.next({ userId: '@me:hs', accessToken: 'fresh' });
+    h.setToken(ME, { accessToken: 'fresh', expiresAt: 1_760_000_300_000 });
     await flush();
 
     expect(h.bridge.setAccount).toHaveBeenLastCalledWith({
-      userId: '@me:hs',
+      userId: ME,
       homeserverUrl: 'https://hs.example',
       accessToken: 'fresh',
       sound: true,
@@ -331,88 +333,51 @@ describe('PushHandoffService', () => {
     });
   });
 
-  it('hands over no expiry for a token the client does not hold', async () => {
-    const h = setup();
-    h.expiry.mockImplementation((_userId: string, token: string) =>
-      token === 'token-@me:hs' ? 1_760_000_000_000 : undefined,
-    );
+  it('hands over no expiry for a token without one', async () => {
+    const h = setup({ expiresAt: 1_760_000_000_000 });
     await start(h);
 
-    h.rotations.next({ userId: '@me:hs', accessToken: 'stale' });
+    h.setToken(ME, { accessToken: 'stale', expiresAt: null });
     await flush();
 
     expect(h.bridge.setAccount).toHaveBeenLastCalledWith({
-      userId: '@me:hs',
+      userId: ME,
       homeserverUrl: 'https://hs.example',
       accessToken: 'stale',
       sound: true,
     });
   });
 
-  it('writes joined room names and DM flags as one batch', async () => {
-    const h = setup({
-      clients: [
-        fakeClient('@me:hs', [
-          { roomId: '!a:hs', name: 'Team', membership: 'join' },
-          { roomId: '!dm:hs', name: 'Bob', membership: 'join' },
-          { roomId: '!inv:hs', name: 'Invite', membership: 'invite' },
-        ]),
-      ],
-    });
-    h.clients.get('@me:hs')!.state.direct = { '@bob:hs': ['!dm:hs'] };
-    await start(h);
-
-    // Once before the crypto store answered (both encrypted), once after.
-    expect(h.bridge.setRooms).toHaveBeenCalledTimes(2);
-    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false },
-      { roomId: '!dm:hs', name: 'Bob', direct: true, encrypted: false },
-    ]);
-  });
-
-  it('writes a room as encrypted until the crypto store has answered for it', async () => {
-    const h = setup({
-      clients: [
-        fakeClient('@me:hs', [
-          { roomId: '!plain:hs', name: 'Plain', membership: 'join' },
-          { roomId: '!stored:hs', name: 'Stored', membership: 'join' },
-          {
-            roomId: '!state:hs',
-            name: 'State',
-            membership: 'join',
-            encryptionState: true,
-          },
-        ]),
-      ],
-    });
-    me(h).state.storeEncrypted = { '!stored:hs': true };
-    await start(h);
-
-    expect(h.bridge.setRooms).toHaveBeenNthCalledWith(1, '@me:hs', [
-      { roomId: '!plain:hs', name: 'Plain', direct: false, encrypted: true },
-      { roomId: '!stored:hs', name: 'Stored', direct: false, encrypted: true },
-      { roomId: '!state:hs', name: 'State', direct: false, encrypted: true },
-    ]);
-    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!plain:hs', name: 'Plain', direct: false, encrypted: false },
-    ]);
-  });
-
-  it('rewrites a room stored as unencrypted once its state turns encryption on', async () => {
+  it('writes joined room names and DM and encryption flags as one batch', async () => {
     const h = setup();
+    const dm = h.engine.createRoom('Bob', { roomId: '!dm:hs' });
+    h.engine.createRoom('Secret', { roomId: '!s:hs', encrypted: true });
+    h.engine.writeAccountData('m.direct', { '@bob:hs': [dm] });
     await start(h);
-    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false },
-    ]);
-    h.bridge.setRooms.mockClear();
-
-    me(h).state.rooms[0].encryptionState = true;
-    me(h).emit(ClientEvent.Sync, SyncState.Syncing);
-    await flush();
 
     expect(h.bridge.setRooms).toHaveBeenCalledOnce();
-    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', direct: false, encrypted: true },
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith(ME, [
+      TEAM,
+      { roomId: '!dm:hs', name: 'Bob', direct: true, encrypted: false },
+      { roomId: '!s:hs', name: 'Secret', direct: false, encrypted: true },
+    ]);
+  });
+
+  it('rewrites a room whose encryption or DM flag changed', async () => {
+    const h = setup();
+    const rooms = new Subject<readonly PushRoom[]>();
+    vi.spyOn(h.engine, 'pushRooms').mockReturnValue(rooms);
+    await start(h);
+
+    rooms.next([TEAM]);
+    rooms.next([{ ...TEAM, encrypted: true }]);
+    rooms.next([{ ...TEAM, encrypted: true, direct: true }]);
+    await flush();
+
+    expect(h.bridge.setRooms.mock.calls).toEqual([
+      [ME, [TEAM]],
+      [ME, [{ ...TEAM, encrypted: true }]],
+      [ME, [{ ...TEAM, encrypted: true, direct: true }]],
     ]);
   });
 
@@ -421,25 +386,19 @@ describe('PushHandoffService', () => {
     await start(h);
     h.bridge.setRooms.mockClear();
 
-    me(h).emit(ClientEvent.Sync, SyncState.Syncing);
+    h.engine.syncRooms();
     await flush();
     expect(h.bridge.setRooms).not.toHaveBeenCalled();
 
-    me(h).state.rooms[0].name = 'Renamed';
-    me(h).emit(RoomEvent.Name);
+    h.engine.renameRoom(TEAM.roomId, 'Renamed');
     await flush();
-    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Renamed', direct: false, encrypted: false },
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith(ME, [
+      { ...TEAM, name: 'Renamed' },
     ]);
 
-    me(h).state.rooms.push({
-      roomId: '!b:hs',
-      name: 'New',
-      membership: 'join',
-    });
-    me(h).emit(ClientEvent.Sync, SyncState.Syncing);
+    h.engine.createRoom('New', { roomId: '!b:hs' });
     await flush();
-    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith(ME, [
       { roomId: '!b:hs', name: 'New', direct: false, encrypted: false },
     ]);
   });
@@ -450,33 +409,42 @@ describe('PushHandoffService', () => {
     h.bridge.setRooms.mockReturnValueOnce(
       throwError(() => new Error('keychain locked')),
     );
-    me(h).state.rooms[0].name = 'Renamed';
-    me(h).emit(RoomEvent.Name);
+    h.engine.renameRoom(TEAM.roomId, 'Renamed');
     await flush();
     h.bridge.setRooms.mockClear();
 
-    me(h).emit(ClientEvent.Sync, SyncState.Syncing);
+    h.engine.syncRooms();
     await flush();
 
     expect(h.bridge.setRooms).toHaveBeenCalledOnce();
-    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Renamed', direct: false, encrypted: false },
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith(ME, [
+      { ...TEAM, name: 'Renamed' },
     ]);
   });
 
   it('rewrites the account when its sound setting changes', async () => {
     const h = setup();
     await start(h);
-    me(h).state.sound = false;
 
-    me(h).emit(ClientEvent.AccountData, {
-      getType: () => NOTIFICATION_SOUND_EVENT,
-    });
+    await firstValueFrom(h.engine.setPreference(ME, 'sound', false));
     await flush();
 
     expect(h.bridge.setAccount).toHaveBeenLastCalledWith(
-      expect.objectContaining({ userId: '@me:hs', sound: false }),
+      expect.objectContaining({ userId: ME, sound: false }),
     );
+  });
+
+  it('reports a faulted account stream to the error handler', async () => {
+    const h = setup();
+    const handleError = vi
+      .spyOn(TestBed.inject(ErrorHandler), 'handleError')
+      .mockImplementation(() => undefined);
+    await start(h);
+    const fault = new Error('token store gone');
+
+    h.tokens.get(ME)?.error(fault);
+
+    expect(handleError).toHaveBeenCalledWith(fault);
   });
 
   it('does not write an account again after forgetting it, until it signs in again', async () => {
@@ -485,44 +453,39 @@ describe('PushHandoffService', () => {
     h.bridge.setAccount.mockClear();
     h.bridge.setRooms.mockClear();
 
-    await firstValueFrom(h.service.forget('@me:hs'));
-    expect(h.bridge.removeAccount).toHaveBeenCalledWith('@me:hs');
+    await firstValueFrom(h.service.forget(ME));
+    expect(h.bridge.removeAccount).toHaveBeenCalledWith(ME);
 
     // Late events while sign-out is still running must not recreate the entry.
-    me(h).state.rooms[0].name = 'Late rename';
-    me(h).emit(RoomEvent.Name);
-    me(h).emit(ClientEvent.Sync, SyncState.Syncing);
-    h.rotations.next({ userId: '@me:hs', accessToken: 'late' });
+    h.engine.renameRoom(TEAM.roomId, 'Late rename');
+    h.engine.syncRooms();
+    h.setToken(ME, { accessToken: 'late' });
     await flush();
     expect(h.bridge.setAccount).not.toHaveBeenCalled();
     expect(h.bridge.setRooms).not.toHaveBeenCalled();
 
     // Signed out, then signed in again: written afresh.
-    h.accountIds.set([]);
+    h.setAccounts([]);
     TestBed.tick();
-    h.accountIds.set(['@me:hs']);
+    h.setAccounts([ME]);
     TestBed.tick();
     await flush();
     expect(h.bridge.setAccount).toHaveBeenCalledOnce();
-    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Late rename', direct: false, encrypted: false },
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith(ME, [
+      { ...TEAM, name: 'Late rename' },
     ]);
   });
 
-  it('writes a signed-in-again account afresh when only its client changed', async () => {
+  it('writes a signed-in-again account afresh when only its session generation changed', async () => {
     const h = setup();
     await start(h);
     await firstValueFrom(h.service.forget());
     h.bridge.setAccount.mockClear();
 
-    // Replacing every live account with the same user: a new client under the same id,
+    // Replacing every live account with the same user: a new session under the same id,
     // with no change of the id list observed in between.
-    const fresh = fakeClient('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', membership: 'join' },
-    ]);
-    fresh.state.token = 'new-session';
-    h.clients.set('@me:hs', fresh);
-    h.accountIds.set(['@me:hs']);
+    h.setToken(ME, { accessToken: 'new-session' });
+    h.setAccounts([ME], { [ME]: 2 });
     TestBed.tick();
     await flush();
 
@@ -532,41 +495,31 @@ describe('PushHandoffService', () => {
     );
   });
 
-  it('writes nothing for an account whose client was swapped while it was being forgotten', async () => {
+  it('writes nothing for an account whose session was replaced while it was being forgotten', async () => {
     const h = setup();
     await start(h);
-    const old = me(h);
     h.bridge.setAccount.mockClear();
     h.bridge.setRooms.mockClear();
 
-    // A re-authentication swapped the client, and sign-out began before the handoff
-    // observed the swap.
-    const swapped = fakeClient('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', membership: 'join' },
-    ]);
-    swapped.state.token = 'swapped-session';
-    h.clients.set('@me:hs', swapped);
-    h.accountIds.set(['@me:hs']);
-    await firstValueFrom(h.service.forget('@me:hs'));
+    // A re-authentication replaced the session, and sign-out began before the handoff
+    // observed the change.
+    h.setAccounts([ME], { [ME]: 2 });
+    await firstValueFrom(h.service.forget(ME));
+    h.setToken(ME, { accessToken: 'swapped-session' });
     TestBed.tick();
     await flush();
-    old.emit(ClientEvent.Sync, SyncState.Syncing);
-    swapped.emit(ClientEvent.Sync, SyncState.Syncing);
-    swapped.emit(RoomEvent.Name);
-    h.rotations.next({ userId: '@me:hs', accessToken: 'late' });
+    h.engine.syncRooms();
+    h.engine.renameRoom(TEAM.roomId, 'Late rename');
+    h.setToken(ME, { accessToken: 'late' });
     await flush();
 
-    expect(h.bridge.removeAccount).toHaveBeenCalledWith('@me:hs');
+    expect(h.bridge.removeAccount).toHaveBeenCalledWith(ME);
     expect(h.bridge.setAccount).not.toHaveBeenCalled();
     expect(h.bridge.setRooms).not.toHaveBeenCalled();
 
     // A genuinely new sign-in afterwards is written again.
-    const signedIn = fakeClient('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', membership: 'join' },
-    ]);
-    signedIn.state.token = 'new-session';
-    h.clients.set('@me:hs', signedIn);
-    h.accountIds.set(['@me:hs']);
+    h.setToken(ME, { accessToken: 'new-session' });
+    h.setAccounts([ME], { [ME]: 3 });
     TestBed.tick();
     await flush();
     expect(h.bridge.setAccount).toHaveBeenCalledOnce();
@@ -578,16 +531,13 @@ describe('PushHandoffService', () => {
   it('writes an account signed in again after the session ended during its sign-out', async () => {
     const h = setup();
     const lifetime = await start(h);
-    await firstValueFrom(h.service.forget('@me:hs'));
+    await firstValueFrom(h.service.forget(ME));
     // The session ends before it sees the account leave.
     lifetime.unsubscribe();
     h.bridge.setAccount.mockClear();
 
-    const fresh = fakeClient('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', membership: 'join' },
-    ]);
-    fresh.state.token = 'new-session';
-    h.clients.set('@me:hs', fresh);
+    h.setToken(ME, { accessToken: 'new-session' });
+    h.setAccounts([ME], { [ME]: 2 });
     await start(h);
 
     expect(h.bridge.setAccount).toHaveBeenCalledWith(
@@ -598,13 +548,13 @@ describe('PushHandoffService', () => {
   it('keeps a forgotten account unwritten when a new session finds it still live', async () => {
     const h = setup();
     const lifetime = await start(h);
-    await firstValueFrom(h.service.forget('@me:hs'));
+    await firstValueFrom(h.service.forget(ME));
     lifetime.unsubscribe();
     h.bridge.setAccount.mockClear();
     h.bridge.setRooms.mockClear();
 
     await start(h);
-    me(h).emit(ClientEvent.Sync, SyncState.Syncing);
+    h.engine.syncRooms();
     await flush();
 
     expect(h.bridge.setAccount).not.toHaveBeenCalled();
@@ -617,14 +567,14 @@ describe('PushHandoffService', () => {
     h.bridge.setAccount.mockReturnValueOnce(inFlight);
     await start(h);
 
-    const forgotten = firstValueFrom(h.service.forget('@me:hs'));
+    const forgotten = firstValueFrom(h.service.forget(ME));
     await flush();
     expect(h.bridge.removeAccount).not.toHaveBeenCalled();
 
     inFlight.next();
     inFlight.complete();
     await forgotten;
-    expect(h.bridge.removeAccount).toHaveBeenCalledWith('@me:hs');
+    expect(h.bridge.removeAccount).toHaveBeenCalledWith(ME);
   });
 
   it('reports a removal the native store refused', async () => {
@@ -634,7 +584,7 @@ describe('PushHandoffService', () => {
     );
     await start(h);
 
-    await expect(firstValueFrom(h.service.forget('@me:hs'))).rejects.toThrow(
+    await expect(firstValueFrom(h.service.forget(ME))).rejects.toThrow(
       'keychain locked',
     );
   });
@@ -645,8 +595,7 @@ describe('PushHandoffService', () => {
     h.bridge.setRooms.mockClear();
 
     await firstValueFrom(h.service.forget());
-    me(h).state.rooms[0].name = 'Late rename';
-    me(h).emit(RoomEvent.Name);
+    h.engine.renameRoom(TEAM.roomId, 'Late rename');
     await flush();
 
     expect(h.bridge.clear).toHaveBeenCalledOnce();
@@ -657,10 +606,10 @@ describe('PushHandoffService', () => {
   it('writes nothing on web or desktop', async () => {
     const h = setup({ available: false });
     await start(h);
-    me(h).emit(ClientEvent.Sync, SyncState.Syncing);
-    await firstValueFrom(h.service.forget('@me:hs'));
+    h.engine.syncRooms();
+    await firstValueFrom(h.service.forget(ME));
     await firstValueFrom(h.service.forget());
-    await firstValueFrom(h.service.clearRoom('@me:hs', '!a:hs'));
+    await firstValueFrom(h.service.clearRoom(ME, TEAM.roomId));
     await flush();
 
     for (const method of [
@@ -677,10 +626,10 @@ describe('PushHandoffService', () => {
   it("clears an opened room's delivered notifications through the bridge", async () => {
     const h = setup();
 
-    await firstValueFrom(h.service.clearRoom('@me:hs', '!a:hs'));
+    await firstValueFrom(h.service.clearRoom(ME, TEAM.roomId));
 
     expect(h.bridge.clearRoom).toHaveBeenCalledOnce();
-    expect(h.bridge.clearRoom).toHaveBeenCalledWith('@me:hs', '!a:hs');
+    expect(h.bridge.clearRoom).toHaveBeenCalledWith(ME, TEAM.roomId);
   });
 
   it('completes quietly when the native side cannot clear a room', async () => {
@@ -690,44 +639,46 @@ describe('PushHandoffService', () => {
     );
 
     await expect(
-      firstValueFrom(h.service.clearRoom('@me:hs', '!a:hs')),
+      firstValueFrom(h.service.clearRoom(ME, TEAM.roomId)),
     ).resolves.toBeUndefined();
   });
 
-  it('detaches every client listener when its lifetime ends', async () => {
+  it('stops following every account when its lifetime ends', async () => {
     const h = setup();
     const lifetime = await start(h);
-    expect(me(h).listeners()).toBeGreaterThan(0);
+    expect(h.tokens.get(ME)?.observed).toBe(true);
+    h.bridge.setAccount.mockClear();
+    h.bridge.setRooms.mockClear();
 
     lifetime.unsubscribe();
+    h.engine.renameRoom(TEAM.roomId, 'Renamed');
+    await firstValueFrom(h.engine.setPreference(ME, 'sound', false));
+    await flush();
 
-    expect(me(h).listeners()).toBe(0);
+    expect(h.tokens.get(ME)?.observed).toBe(false);
+    expect(h.bridge.setAccount).not.toHaveBeenCalled();
+    expect(h.bridge.setRooms).not.toHaveBeenCalled();
   });
 
   describe('refreshBeforeBackground', () => {
     afterEach(() => vi.useRealTimers());
 
     it('refreshes each account whose token expires, and no other', async () => {
-      const h = setup({
-        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
-      });
-      h.expiry.mockImplementation((userId: string) =>
-        userId === '@me:hs' ? Date.now() + 300_000 : undefined,
-      );
+      const h = setup({ accounts: [ME, PW] });
+      h.setToken(ME, { expiresAt: Date.now() + 300_000 });
       await start(h);
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(refreshed(h)).toEqual(['@me:hs']);
+      expect(refreshed(h)).toEqual([ME]);
     });
 
     it('skips an account whose token rotated within the last minute', async () => {
       vi.useFakeTimers({ toFake: ['Date'] });
       vi.setSystemTime(1_000_000);
-      const h = setup();
-      h.expiry.mockReturnValue(1_300_000);
+      const h = setup({ expiresAt: 1_300_000 });
       await start(h);
-      h.rotations.next({ userId: '@me:hs', accessToken: 'token-@me:hs' });
+      h.setToken(ME, { accessToken: 'rotated' });
       await flush();
 
       vi.setSystemTime(1_000_000 + BACKGROUND_REFRESH_MIN_AGE_MS - 1);
@@ -736,59 +687,53 @@ describe('PushHandoffService', () => {
 
       vi.setSystemTime(1_000_000 + BACKGROUND_REFRESH_MIN_AGE_MS);
       await firstValueFrom(h.service.refreshBeforeBackground());
-      expect(refreshed(h)).toEqual(['@me:hs']);
+      expect(refreshed(h)).toEqual([ME]);
     });
 
     it("does not let one account's rotation suppress another's refresh", async () => {
-      const h = setup({
-        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
-      });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ accounts: [ME, PW], expiresAt: Date.now() + 300_000 });
       await start(h);
-      h.rotations.next({ userId: '@me:hs', accessToken: 'token-@me:hs' });
+      h.setToken(ME, { accessToken: 'rotated' });
       await flush();
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(refreshed(h)).toEqual(['@pw:hs']);
+      expect(refreshed(h)).toEqual([PW]);
     });
 
     it('forgets a recent rotation when the account leaves and is added again', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
-      h.rotations.next({ userId: '@me:hs', accessToken: 'token-@me:hs' });
+      h.setToken(ME, { accessToken: 'rotated' });
       await flush();
-      h.accountIds.set([]);
+      h.setAccounts([]);
       TestBed.tick();
-      h.accountIds.set(['@me:hs']);
+      h.setAccounts([ME]);
       TestBed.tick();
       await flush();
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(refreshed(h)).toEqual(['@me:hs']);
+      expect(refreshed(h)).toEqual([ME]);
     });
 
     it('ignores a rotation that arrives after the account left', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
-      h.accountIds.set([]);
+      h.setAccounts([]);
       TestBed.tick();
-      h.rotations.next({ userId: '@me:hs', accessToken: 'late' });
-      h.accountIds.set(['@me:hs']);
+      h.setToken(ME, { accessToken: 'late' });
+      h.setAccounts([ME]);
       TestBed.tick();
       await flush();
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(refreshed(h)).toEqual(['@me:hs']);
+      expect(refreshed(h)).toEqual([ME]);
     });
 
     it('refreshes nothing off a native host', async () => {
-      const h = setup({ available: false });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ available: false, expiresAt: Date.now() + 300_000 });
       await start(h);
 
       await firstValueFrom(h.service.refreshBeforeBackground());
@@ -797,10 +742,9 @@ describe('PushHandoffService', () => {
     });
 
     it('does not refresh an account whose sign-out began', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
-      await firstValueFrom(h.service.forget('@me:hs'));
+      await firstValueFrom(h.service.forget(ME));
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
@@ -808,8 +752,7 @@ describe('PushHandoffService', () => {
     });
 
     it('completes even when a refresh fails', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       h.refresh.mockReturnValue(throwError(() => new Error('offline')));
       await start(h);
 
@@ -828,7 +771,7 @@ describe('PushHandoffService', () => {
     function rotating(h: ReturnType<typeof setup>) {
       return (userId: string): Observable<boolean> =>
         defer(() => {
-          h.rotations.next({ userId, accessToken: `new-${userId}` });
+          h.setToken(userId, { accessToken: `new-${userId}` });
           return of(true);
         });
     }
@@ -844,8 +787,7 @@ describe('PushHandoffService', () => {
     }
 
     it('gives up on a hung refresh after the bound, without an error, and refreshes again next time', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       useFakeTimers();
       h.refresh.mockReturnValueOnce(NEVER);
@@ -860,40 +802,36 @@ describe('PushHandoffService', () => {
       const next = watch(h.service.refreshBeforeBackground());
       await vi.advanceTimersByTimeAsync(0);
       expect(next.outcome).toEqual({ done: true, error: undefined });
-      expect(refreshed(h)).toEqual(['@me:hs', '@me:hs']);
+      expect(refreshed(h)).toEqual([ME, ME]);
     });
 
     it('finishes the other accounts in a run where one refresh hangs', async () => {
-      const h = setup({
-        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
-      });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ accounts: [ME, PW], expiresAt: Date.now() + 300_000 });
       await start(h);
       h.bridge.setAccount.mockClear();
       useFakeTimers();
       const rotate = rotating(h);
       h.refresh.mockImplementation((userId) =>
-        userId === '@me:hs' ? NEVER : rotate(userId),
+        userId === ME ? NEVER : rotate(userId),
       );
 
       const { outcome } = watch(h.service.refreshBeforeBackground());
       await vi.advanceTimersByTimeAsync(0);
       expect(h.bridge.setAccount).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: '@pw:hs',
-          accessToken: 'new-@pw:hs',
+          userId: PW,
+          accessToken: `new-${PW}`,
         }),
       );
       expect(outcome.done).toBe(false);
 
       await vi.advanceTimersByTimeAsync(BACKGROUND_REFRESH_TIMEOUT_MS);
       expect(outcome).toEqual({ done: true, error: undefined });
-      expect(refreshed(h)).toEqual(['@me:hs', '@pw:hs']);
+      expect(refreshed(h)).toEqual([ME, PW]);
     });
 
     it('holds background time from before the refresh until its store write has landed, and completes after the release', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       const order: string[] = [];
       h.bridge.beginBackgroundWork.mockImplementation(() =>
@@ -941,8 +879,7 @@ describe('PushHandoffService', () => {
     });
 
     it('completes by the run deadline when background time is never granted, and still ends a late grant', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       useFakeTimers();
       const granted = new Subject<BackgroundWork>();
@@ -963,16 +900,13 @@ describe('PushHandoffService', () => {
     });
 
     it('cuts a run whose refresh and store write both hang off at the run deadline', async () => {
-      const h = setup({
-        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
-      });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ accounts: [ME, PW], expiresAt: Date.now() + 300_000 });
       await start(h);
       useFakeTimers();
       h.bridge.setAccount.mockReturnValue(NEVER);
       const rotate = rotating(h);
       h.refresh.mockImplementation((userId) =>
-        userId === '@me:hs' ? NEVER : rotate(userId),
+        userId === ME ? NEVER : rotate(userId),
       );
 
       const { outcome } = watch(h.service.refreshBeforeBackground());
@@ -985,8 +919,7 @@ describe('PushHandoffService', () => {
     });
 
     it('releases background time when the refresh gives up', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       useFakeTimers();
       h.refresh.mockReturnValue(NEVER);
@@ -1001,8 +934,7 @@ describe('PushHandoffService', () => {
     });
 
     it('stops waiting for a store write that never lands, and releases background time', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       useFakeTimers();
       h.bridge.setAccount.mockReturnValue(NEVER);
@@ -1018,8 +950,7 @@ describe('PushHandoffService', () => {
     });
 
     it('releases background time when the action is unsubscribed', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       h.refresh.mockReturnValue(NEVER);
 
@@ -1033,8 +964,7 @@ describe('PushHandoffService', () => {
     });
 
     it('releases background time granted only after the action was unsubscribed', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       const granted = new Subject<BackgroundWork>();
       h.bridge.beginBackgroundWork.mockReturnValue(granted);
@@ -1050,8 +980,7 @@ describe('PushHandoffService', () => {
     });
 
     it('still refreshes when the host grants no background time', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       h.bridge.beginBackgroundWork.mockReturnValue(
         throwError(() => new Error('no background time')),
@@ -1061,30 +990,26 @@ describe('PushHandoffService', () => {
         firstValueFrom(h.service.refreshBeforeBackground()),
       ).resolves.toBeUndefined();
 
-      expect(refreshed(h)).toEqual(['@me:hs']);
+      expect(refreshed(h)).toEqual([ME]);
       expect(h.bridge.endBackgroundWork).not.toHaveBeenCalled();
     });
 
     it('bounds the token grant of every refresh it starts', async () => {
-      const h = setup({
-        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
-      });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ accounts: [ME, PW], expiresAt: Date.now() + 300_000 });
       await start(h);
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
       expect(h.refresh.mock.calls).toEqual([
-        ['@me:hs', { timeoutMs: BACKGROUND_REFRESH_GRANT_TIMEOUT_MS }],
-        ['@pw:hs', { timeoutMs: BACKGROUND_REFRESH_GRANT_TIMEOUT_MS }],
+        [ME, { timeoutMs: BACKGROUND_REFRESH_GRANT_TIMEOUT_MS }],
+        [PW, { timeoutMs: BACKGROUND_REFRESH_GRANT_TIMEOUT_MS }],
       ]);
       // Inside the roughly 10 s iOS keeps the session's keychain items writable after a lock.
       expect(BACKGROUND_REFRESH_GRANT_TIMEOUT_MS).toBeLessThan(10_000);
     });
 
     it('refreshes nothing when protected data is unavailable, and still releases background time', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       h.bridge.beginBackgroundWork.mockReturnValue(
         of(grant(7, { protectedDataAvailable: false })),
@@ -1099,8 +1024,7 @@ describe('PushHandoffService', () => {
     });
 
     it('refreshes nothing while the device is locking, and still releases background time', async () => {
-      const h = setup();
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ expiresAt: Date.now() + 300_000 });
       await start(h);
       h.bridge.beginBackgroundWork.mockReturnValue(
         of(grant(7, { locking: true })),
@@ -1116,15 +1040,12 @@ describe('PushHandoffService', () => {
       // The next background event, with the device unlocked, refreshes again.
       h.bridge.beginBackgroundWork.mockReturnValue(of(grant(8)));
       await firstValueFrom(h.service.refreshBeforeBackground());
-      expect(refreshed(h)).toEqual(['@me:hs']);
+      expect(refreshed(h)).toEqual([ME]);
       expect(h.bridge.endBackgroundWork.mock.calls).toEqual([[7], [8]]);
     });
 
     it('starts every due refresh as soon as background time is granted, so a lock that follows finds none left to start', async () => {
-      const h = setup({
-        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
-      });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ accounts: [ME, PW], expiresAt: Date.now() + 300_000 });
       await start(h);
       useFakeTimers();
       const granted = new Subject<BackgroundWork>();
@@ -1139,12 +1060,12 @@ describe('PushHandoffService', () => {
       granted.complete();
       // Microtasks only: no timer, bridge event or other task runs in between.
       for (let i = 0; i < 5; i++) await Promise.resolve();
-      expect(refreshed(h)).toEqual(['@me:hs', '@pw:hs']);
+      expect(refreshed(h)).toEqual([ME, PW]);
 
       // A lock now can stop nothing further; the run ends with its bounds and releases.
       await vi.advanceTimersByTimeAsync(BACKGROUND_REFRESH_TIMEOUT_MS);
       expect(outcome).toEqual({ done: true, error: undefined });
-      expect(refreshed(h)).toEqual(['@me:hs', '@pw:hs']);
+      expect(refreshed(h)).toEqual([ME, PW]);
       expect(h.bridge.endBackgroundWork.mock.calls).toEqual([[7]]);
     });
 
@@ -1161,10 +1082,10 @@ describe('PushHandoffService', () => {
 
     it('asks for no background time when no due account can refresh', async () => {
       const h = setup({
-        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
+        accounts: [ME, PW],
+        expiresAt: Date.now() + 300_000,
+        refreshable: false,
       });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
-      h.refreshable.mockReturnValue(false);
       await start(h);
 
       await firstValueFrom(h.service.refreshBeforeBackground());
@@ -1175,22 +1096,18 @@ describe('PushHandoffService', () => {
     });
 
     it('refreshes only the accounts that can refresh', async () => {
-      const h = setup({
-        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
-      });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
-      h.refreshable.mockImplementation((userId) => userId === '@pw:hs');
+      const h = setup({ accounts: [ME, PW], expiresAt: Date.now() + 300_000 });
+      h.setToken(ME, { refreshable: false });
       await start(h);
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(refreshed(h)).toEqual(['@pw:hs']);
+      expect(refreshed(h)).toEqual([PW]);
       expect(h.bridge.beginBackgroundWork).toHaveBeenCalledOnce();
     });
 
     it('asks for no background time off a native host', async () => {
-      const h = setup({ available: false });
-      h.expiry.mockReturnValue(Date.now() + 300_000);
+      const h = setup({ available: false, expiresAt: Date.now() + 300_000 });
       await start(h);
 
       await firstValueFrom(h.service.refreshBeforeBackground());
