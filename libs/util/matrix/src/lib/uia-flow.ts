@@ -1,3 +1,6 @@
+import { type Observable, firstValueFrom } from 'rxjs';
+import { EngineRequestError, type EngineResult } from './engine-result';
+
 /** Prompts the user for their password when a UIA stage requires it (null = cancel). */
 export type PasswordPrompt = () => Promise<string | null>;
 
@@ -184,4 +187,37 @@ function nextStage(challenge: UiaChallenge, stages: UiaStages): string | null {
     remaining.find((rest) => rest.every(inApp)) ??
     remaining.find((rest) => rest.every(usable));
   return flow?.[0] ?? null;
+}
+
+/**
+ * An engine command as the `send` of {@link driveUia}: a `uia-required` failure is its
+ * challenge, and any other failure throws as an {@link EngineRequestError}.
+ */
+export function engineUia<T>(
+  command: (auth: UiaAuth | null) => Observable<EngineResult<T>>,
+): (auth: UiaAuth | null) => Promise<UiaResponse<T>> {
+  return async (auth) => {
+    const result = await firstValueFrom(command(auth));
+    if (result.ok) return { kind: 'done', result: result.value };
+    if (result.failure.code === 'uia-required') {
+      return {
+        kind: 'uia-required',
+        challenge: result.failure.params.challenge,
+      };
+    }
+    throw new EngineRequestError(result.failure);
+  };
+}
+
+/** The homeserver's own page for a UIA stage Trinity cannot render in the app. */
+export function uiaFallbackUrl(
+  homeserverUrl: string,
+  stage: string,
+  session: string,
+): string {
+  const url = new URL(
+    `${homeserverUrl.replace(/\/$/, '')}/_matrix/client/v3/auth/${encodeURIComponent(stage)}/fallback/web`,
+  );
+  url.searchParams.append('session', session);
+  return url.href;
 }

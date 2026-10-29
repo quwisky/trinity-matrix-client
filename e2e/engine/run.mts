@@ -12,6 +12,8 @@ import {
   runManagedCommand,
 } from '../support/managed-command.mts';
 import {
+  IDENTITY_SERVER_URL,
+  MAILPIT_HTTP,
   REGISTRATION_SHARED_SECRET,
   SERVER_NAME,
 } from '../support/homeserver/start.mjs';
@@ -29,6 +31,7 @@ const LIBS = [
   'data-access-notifications',
   'data-access-room-administration',
   'data-access-trust',
+  'data-access-contact-addresses',
 ] as const;
 
 export async function runEngineContract(
@@ -69,6 +72,13 @@ export async function runEngineContract(
       TRINITY_ENGINE_CONTRACT_SERVER_NAME: SERVER_NAME,
       TRINITY_ENGINE_CONTRACT_DOMAIN: new URL(homeserver.hs).host,
       TRINITY_ENGINE_CONTRACT_SHARED_SECRET: REGISTRATION_SHARED_SECRET,
+      // The identity cases need Sydent, which mails its links through Mailpit.
+      ...(homeserver.unavailable?.some((f) => f === 'mail' || f === 'identity')
+        ? {}
+        : {
+            TRINITY_ENGINE_CONTRACT_IDENTITY: IDENTITY_SERVER_URL,
+            TRINITY_ENGINE_CONTRACT_MAILPIT: MAILPIT_HTTP,
+          }),
     };
     let status = 0;
     let passed = 0;
