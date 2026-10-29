@@ -1,12 +1,5 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import {
-  ClientEvent,
-  MatrixEventEvent,
-  RoomEvent,
-  SyncState,
-  type MatrixClient,
-} from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { NEVER, Subject, Subscription, defer, lastValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,7 +12,16 @@ import type {
   NotificationDestination,
   NotificationRuntimeEvent,
 } from './notification-intent';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  EMPTY_SESSION,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import { FakeNotificationEngine } from '../contract/fake-notification-engine';
+import type { IncomingNotification } from './notification-engine';
+import { NOTIFICATION_ENGINE } from './notification-engine.token';
+import { NotificationSettingsStore } from './notification-settings.store';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
 import {
   NOTIFICATION_TEXT,
@@ -55,23 +57,15 @@ class MockNotification {
   }
 }
 
-/** A client shaped like the bits NotificationService reads, keyed to one account. */
-function fakeClient(userId: string, soundEnabled?: boolean) {
+function status(accountId: string, generation = 1): SessionAccountStatus {
   return {
-    getUserId: () => userId,
-    // The sound preference is read from the account that OWNS the notification, so it
-    // lives on the per-account client rather than on the active-client stand-in.
-    getAccountData: () =>
-      soundEnabled === undefined
-        ? undefined
-        : { getContent: () => ({ enabled: soundEnabled }) },
-    getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
-    getRoom: vi.fn(() => room),
-    getRooms: vi.fn((): unknown[] => []),
-    getCrypto: vi.fn((): unknown => undefined),
-    getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
-    on: vi.fn(),
-    off: vi.fn(),
+    accountId,
+    generation,
+    syncState: 'syncing',
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
   };
 }
 
@@ -84,8 +78,8 @@ function setup(
     hidden?: boolean;
     /** Stored "play a sound" preference; omitted means "not set" (defaults to on). */
     soundEnabled?: boolean;
-    /** Pre-built per-account clients, for cases where two accounts must differ. */
-    clients?: Map<string, ReturnType<typeof fakeClient>>;
+    /** Per-account sound preferences, for cases where two accounts must differ. */
+    sound?: Record<string, boolean>;
     hostNotifications?: Pick<
       HostNotificationPresentationService,
       'support' | 'activated' | 'requestPermission' | 'present'
@@ -98,25 +92,46 @@ function setup(
 ) {
   const accounts = opts.accounts ?? ['@me:hs'];
   const active = opts.active ?? accounts[0];
-  const clients =
-    opts.clients ??
-    new Map(accounts.map((id) => [id, fakeClient(id, opts.soundEnabled)]));
-  const accountIds = signal<readonly string[]>(accounts);
-  const activeUserId = signal<string | null>(active);
+  const engine = new FakeNotificationEngine();
+  const snapshot = signal<SessionSnapshot>({
+    ...EMPTY_SESSION,
+    activeAccountId: active || null,
+    accounts: accounts.map((id) => status(id)),
+  });
+  /** The live accounts, as a sign-in, sign-out or re-auth (a new generation) leaves them. */
+  const setAccounts = (
+    ids: readonly string[],
+    generations: Record<string, number> = {},
+  ): void => {
+    for (const id of ids) engine.live.add(id);
+    snapshot.update((current) => ({
+      ...current,
+      accounts: ids.map((id) => status(id, generations[id])),
+    }));
+  };
+  setAccounts(accounts);
   const timeline = { openRoomId: null as string | null };
   TestBed.configureTestingModule({
     providers: [
       provideHostCapabilities(),
       NotificationService,
+      { provide: NOTIFICATION_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: snapshot },
+      MockProvider(NotificationSettingsStore, {
+        settings: () => ({
+          loaded: true,
+          defaultRules: [],
+          keywords: [],
+          roomModes: {},
+          sound: true,
+          reactionNotifications: false,
+        }),
+      }),
       {
         provide: NotificationSoundService,
-        // The owning client's stored preference, as the settings store holds it.
+        // The owning account's stored preference, as the settings store holds it.
         useValue: {
-          isOn: (id: string) =>
-            (
-              clients.get(id)?.getAccountData()?.getContent() as
-                { enabled?: boolean } | undefined
-            )?.enabled ?? true,
+          isOn: (id: string) => opts.sound?.[id] ?? opts.soundEnabled ?? true,
         },
       },
       MockProvider(ReactionNotificationSettingsService, { isOn: () => false }),
@@ -126,15 +141,6 @@ function setup(
           opts.backgroundDelivery ?? 'app',
         ).asReadonly(),
       }),
-      MockProvider(MatrixClientService, {
-        // A session can start signed out. Notification Runtime must remain dormant
-        // instead of completing, then attach when the first Account appears.
-        isInitialized: active !== '',
-        accountIds: accountIds.asReadonly(),
-        activeUserId: activeUserId.asReadonly(),
-        clientFor: (id: string) =>
-          (clients.get(id) as unknown as MatrixClient) ?? null,
-      }),
       {
         provide: NOTIFICATION_VISIBILITY,
         useValue: {
@@ -143,7 +149,7 @@ function setup(
             hidden: opts.hidden ?? false,
             conversation: timeline.openRoomId
               ? {
-                  accountId: activeUserId() ?? '',
+                  accountId: snapshot().activeAccountId ?? '',
                   roomId: timeline.openRoomId,
                 }
               : null,
@@ -192,13 +198,30 @@ function setup(
       lifetime = null;
     },
   });
+  /** A live message from Alice in General, notified by the push rules. */
+  const deliver = (
+    overrides: Partial<
+      Exclude<IncomingNotification, { kind: 'reaction-annotation' }>
+    > = {},
+  ): void =>
+    engine.deliver({
+      kind: 'message',
+      accountId: '@me:hs',
+      roomId: '!r:hs',
+      eventId: '$event',
+      senderId: '@alice:hs',
+      senderName: 'Alice',
+      roomName: 'General',
+      body: 'hello there',
+      ...overrides,
+    });
   return {
     svc,
-    client: clients.get(active)!,
-    clients,
-    // The writable account-id signal, so tests can add/remove accounts after
-    // connect() and flush the reconcile effect via ApplicationRef.tick().
-    accountIds,
+    engine,
+    deliver,
+    // Tests add/remove accounts after connect() and flush the reconcile effect via
+    // ApplicationRef.tick().
+    setAccounts,
     timeline,
     activations,
     health,
@@ -261,88 +284,6 @@ async function settleDesktopNegotiation(): Promise<void> {
   await Promise.resolve();
 }
 
-function event(
-  opts: {
-    sender?: string;
-    body?: string;
-    id?: string;
-    /** Encrypted, with cleartext not yet available (ciphertext timeline emit). */
-    encrypted?: boolean;
-    /** Encrypted but already decrypted (clear content present). */
-    decrypted?: boolean;
-    /** Encrypted and decryption permanently failed. */
-    failure?: boolean;
-    /** An edit attached to the message: its sender and the text it would show. */
-    editedBy?: { sender: string; body: string; encrypted?: boolean };
-  } = {},
-) {
-  const isEncrypted = !!(opts.encrypted || opts.decrypted || opts.failure);
-  const hasClear = !!opts.decrypted;
-  const own = { body: opts.body ?? 'hello there' };
-  const edit = opts.editedBy && {
-    getSender: () => opts.editedBy?.sender,
-    getType: () => 'm.room.message',
-    getRelation: () => ({
-      rel_type: 'm.replace',
-      event_id: opts.id ?? '$event',
-    }),
-    getContent: () => ({ 'm.new_content': { body: opts.editedBy?.body } }),
-    getOriginalContent: () => ({
-      'm.new_content': { body: opts.editedBy?.body },
-    }),
-    isEncrypted: () => opts.editedBy?.encrypted ?? false,
-    getClearContent: () => (opts.editedBy?.encrypted ? {} : null),
-  };
-  return {
-    getId: () => opts.id ?? '$event',
-    getRoomId: () => '!r:hs',
-    getSender: () => opts.sender ?? '@alice:hs',
-    sender: { name: 'Alice' },
-    getType: () => 'm.room.message',
-    // As the SDK does: an attached edit's m.new_content, checked or not.
-    getContent: () => (edit ? edit.getContent()['m.new_content'] : own),
-    getOriginalContent: () => own,
-    isRedacted: () => false,
-    replacingEvent: () => edit ?? null,
-    isRelation: () => false,
-    isEncrypted: () => isEncrypted,
-    getClearContent: () =>
-      hasClear ? { body: opts.body ?? 'hello there' } : null,
-    isDecryptionFailure: () => !!opts.failure,
-  };
-}
-const room = {
-  roomId: '!r:hs',
-  name: 'General',
-  hasEncryptionStateEvent: () => false,
-};
-const live = { liveEvent: true };
-
-/** Grab the RoomEvent.Timeline handler registered via client.on. */
-function timelineHandler(client: { on: { mock: { calls: unknown[][] } } }) {
-  const call = client.on.mock.calls.find((c) => c[0] === RoomEvent.Timeline);
-  return call?.[1] as (...args: unknown[]) => void;
-}
-
-/** Grab the MatrixEventEvent.Decrypted handler registered via client.on. */
-function decryptedHandler(client: { on: { mock: { calls: unknown[][] } } }) {
-  const call = client.on.mock.calls.find(
-    (c) => c[0] === MatrixEventEvent.Decrypted,
-  );
-  return call?.[1] as (...args: unknown[]) => void;
-}
-
-/** Grab the ClientEvent.Sync handler registered via client.on. */
-function syncHandler(client: { on: { mock: { calls: unknown[][] } } }) {
-  const call = client.on.mock.calls.find((c) => c[0] === ClientEvent.Sync);
-  return call?.[1] as (state: SyncState) => void;
-}
-
-/** The event types bound via client.on, in order. */
-function boundEvents(client: { on: { mock: { calls: unknown[][] } } }) {
-  return client.on.mock.calls.map(([type]) => type);
-}
-
 describe('NotificationService', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
@@ -355,26 +296,21 @@ describe('NotificationService', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('attaches a timeline listener after permission is granted', async () => {
+  it('subscribes to the account’s notifications after permission is granted', async () => {
     MockNotification.permission = 'default';
-    const { svc, client } = setup();
+    const { svc, engine } = setup();
 
     svc.connect();
 
     expect(MockNotification.requestPermission).toHaveBeenCalled();
-    await vi.waitFor(() =>
-      expect(client.on).toHaveBeenCalledWith(
-        RoomEvent.Timeline,
-        expect.any(Function),
-      ),
-    );
+    await vi.waitFor(() => expect(engine.feeds('@me:hs')).toBe(1));
   });
 
   it('notifies on a live message from someone else while unfocused', () => {
-    const { svc, client } = setup();
+    const { svc, deliver } = setup();
     svc.connect();
 
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
 
     expect(MockNotification.instances).toHaveLength(1);
     expect(MockNotification.instances[0].title).toBe('Alice · General');
@@ -384,29 +320,12 @@ describe('NotificationService', () => {
     });
   });
 
-  it("previews what a message's sender wrote, not someone else's edit of it", () => {
-    const { svc, client } = setup();
-    svc.connect();
-
-    timelineHandler(client)(
-      event({ editedBy: { sender: '@m:hs', body: 'forged' } }),
-      room,
-      false,
-      false,
-      live,
-    );
-
-    expect(MockNotification.instances[0].options).toMatchObject({
-      body: 'hello there',
-    });
-  });
-
   describe('notification text (App lock)', () => {
     it('shows only “New message” while App lock hides notification text', () => {
-      const { svc, client } = setup({ textMode: () => 'always-hide' });
+      const { svc, deliver } = setup({ textMode: () => 'always-hide' });
       svc.connect();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
 
       expect(MockNotification.instances).toHaveLength(1);
       expect(MockNotification.instances[0].title).toBe('Trinity');
@@ -421,31 +340,25 @@ describe('NotificationService', () => {
     });
 
     it('names the running app in a hidden notification', () => {
-      const { svc, client } = setup({
+      const { svc, deliver } = setup({
         textMode: () => 'always-hide',
         appName: 'Trinity Next',
       });
       svc.connect();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
 
       expect(MockNotification.instances[0].title).toBe('Trinity Next');
     });
 
     it('reads the choice for each notification', () => {
       let mode: NotificationTextMode = 'always-hide';
-      const { svc, client } = setup({ textMode: () => mode });
+      const { svc, deliver } = setup({ textMode: () => mode });
       svc.connect();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
       mode = 'show';
-      timelineHandler(client)(
-        event({ id: '$second' }),
-        room,
-        false,
-        false,
-        live,
-      );
+      deliver({ eventId: '$second' });
 
       expect(MockNotification.instances.map((n) => n.title)).toEqual([
         'Trinity',
@@ -456,94 +369,48 @@ describe('NotificationService', () => {
 
   describe('once Android push owns the background', () => {
     it('leaves a hidden-page message to the native push renderer', () => {
-      const { svc, client } = setup({
+      const { svc, deliver } = setup({
         backgroundDelivery: 'push',
         hidden: true,
       });
       svc.connect();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
 
       expect(MockNotification.instances).toHaveLength(0);
     });
 
     it('still notifies while the page is visible but unfocused', () => {
       vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-      const { svc, client } = setup({
+      const { svc, deliver } = setup({
         backgroundDelivery: 'push',
         hidden: false,
       });
       svc.connect();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
 
       expect(MockNotification.instances).toHaveLength(1);
     });
 
     it('keeps notifying while hidden when push is not registered', () => {
-      const { svc, client } = setup({
+      const { svc, deliver } = setup({
         backgroundDelivery: 'app',
         hidden: true,
       });
       svc.connect();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
 
       expect(MockNotification.instances).toHaveLength(1);
     });
   });
 
-  it('ignores initial-sync history before notifying on the first ready event', () => {
-    const { svc, client } = setup();
-    client.getSyncState.mockReturnValue(null);
-    svc.connect();
-
-    timelineHandler(client)(
-      event({ id: '$history' }),
-      room,
-      false,
-      false,
-      live,
-    );
-    expect(MockNotification.instances).toHaveLength(0);
-
-    client.getSyncState.mockReturnValue(SyncState.Error);
-    timelineHandler(client)(
-      event({ id: '$history-after-error' }),
-      room,
-      false,
-      false,
-      live,
-    );
-    expect(MockNotification.instances).toHaveLength(0);
-
-    client.getSyncState.mockReturnValue(SyncState.Reconnecting);
-    timelineHandler(client)(
-      event({ id: '$history-while-reconnecting' }),
-      room,
-      false,
-      false,
-      live,
-    );
-    expect(MockNotification.instances).toHaveLength(0);
-
-    syncHandler(client)(SyncState.Prepared);
-    timelineHandler(client)(
-      event({ id: '$after-ready' }),
-      room,
-      false,
-      false,
-      live,
-    );
-
-    expect(MockNotification.instances).toHaveLength(1);
-  });
-
   it('is audible by default — sound is on unless the account says otherwise', () => {
-    const { svc, client } = setup();
+    const { svc, deliver } = setup();
     svc.connect();
 
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
 
     expect(MockNotification.instances[0].options).toMatchObject({
       silent: false,
@@ -551,10 +418,10 @@ describe('NotificationService', () => {
   });
 
   it('marks the notification silent once the preference is off', () => {
-    const { svc, client } = setup({ soundEnabled: false });
+    const { svc, deliver } = setup({ soundEnabled: false });
     svc.connect();
 
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
 
     expect(MockNotification.instances[0].options).toMatchObject({
       silent: true,
@@ -567,20 +434,14 @@ describe('NotificationService', () => {
     // an account the user silenced. Two accounts with opposite settings is the only shape
     // that can catch it.
     const accounts = ['@me:hs', '@other:hs'];
-    const clients = new Map([
-      ['@me:hs', fakeClient('@me:hs', true)], // active: sound ON
-      ['@other:hs', fakeClient('@other:hs', false)], // background: silenced
-    ]);
-    const { svc } = setup({ accounts, active: '@me:hs', clients });
+    const { svc, deliver } = setup({
+      accounts,
+      active: '@me:hs',
+      sound: { '@me:hs': true, '@other:hs': false }, // active ON, background silenced
+    });
     svc.connect();
 
-    timelineHandler(clients.get('@other:hs')!)(
-      event(),
-      room,
-      false,
-      false,
-      live,
-    );
+    deliver({ accountId: '@other:hs' });
 
     expect(MockNotification.instances[0].options).toMatchObject({
       silent: true,
@@ -588,81 +449,53 @@ describe('NotificationService', () => {
   });
 
   it('ignores the user’s own messages', () => {
-    const { svc, client } = setup();
+    const { svc, deliver } = setup();
     svc.connect();
 
-    timelineHandler(client)(
-      event({ sender: '@me:hs' }),
-      room,
-      false,
-      false,
-      live,
-    );
+    deliver({ senderId: '@me:hs' });
 
     expect(MockNotification.instances).toHaveLength(0);
   });
 
   it('stays quiet when focused on the room the message is in', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-    const { svc, client, timeline } = setup();
+    const { svc, deliver, timeline } = setup();
     ngMocks.stubMember(timeline, 'openRoomId', '!r:hs'); // the user is viewing this very room
     svc.connect();
 
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
 
     expect(MockNotification.instances).toHaveLength(0);
   });
 
   it('notifies for the open room when the window is unfocused (not actually looking)', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // window unfocused…
-    const { svc, client, timeline } = setup();
+    const { svc, deliver, timeline } = setup();
     ngMocks.stubMember(timeline, 'openRoomId', '!r:hs'); // …even though this very room is "open"
     svc.connect();
 
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
 
     expect(MockNotification.instances).toHaveLength(1);
   });
 
   it('notifies for a message to a different (not open) room even while focused', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-    const { svc, client, timeline } = setup();
+    const { svc, deliver, timeline } = setup();
     ngMocks.stubMember(timeline, 'openRoomId', '!other:hs'); // user is looking at a different room
     svc.connect();
 
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
 
     expect(MockNotification.instances).toHaveLength(1);
   });
 
-  it('respects push rules (no notify when the event should not notify)', () => {
-    const { svc, client } = setup();
-    client.getPushActionsForEvent.mockReturnValue({
-      notify: false,
-      tweaks: {},
-    });
-    svc.connect();
-
-    timelineHandler(client)(event(), room, false, false, live);
-
-    expect(MockNotification.instances).toHaveLength(0);
-  });
-
-  it('ignores backfilled (non-live) events', () => {
-    const { svc, client } = setup();
-    svc.connect();
-
-    timelineHandler(client)(event(), room, false, false, { liveEvent: false });
-
-    expect(MockNotification.instances).toHaveLength(0);
-  });
-
-  it('does not attach delivery listeners without granted permission', () => {
+  it('does not subscribe to notifications without granted permission', () => {
     MockNotification.permission = 'denied';
-    const { svc, client, health } = setup();
+    const { svc, engine, health } = setup();
     svc.connect();
 
-    expect(boundEvents(client)).toEqual([]);
+    expect(engine.feeds('@me:hs')).toBe(0);
     expect(MockNotification.instances).toHaveLength(0);
     expect(health.at(-1)).toBe('notification-presentation-disabled');
   });
@@ -696,7 +529,7 @@ describe('NotificationService', () => {
   it('delivers through the same presenter contract on native mobile', () => {
     cap.native = true;
     const present = vi.fn(() => of({ kind: 'completed' as const }));
-    const { svc, client } = setup({
+    const { svc, deliver } = setup({
       hostNotifications: {
         support: () => of({ kind: 'supported' as const }),
         activated: NEVER,
@@ -706,7 +539,7 @@ describe('NotificationService', () => {
     });
 
     svc.connect();
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
 
     expect(present).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -720,9 +553,9 @@ describe('NotificationService', () => {
   });
 
   it('emits the exact typed destination when a notification is clicked', () => {
-    const { svc, client, activations } = setup();
+    const { svc, deliver, activations } = setup();
     svc.connect();
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
 
     MockNotification.instances[0].onclick?.();
 
@@ -735,42 +568,35 @@ describe('NotificationService', () => {
     ]);
   });
 
-  it('swallows errors so a notification failure cannot disrupt sync', () => {
-    const { svc, client } = setup();
-    client.getPushActionsForEvent.mockImplementation(() => {
+  it('swallows errors so a notification failure cannot disrupt the feed', () => {
+    const { svc, deliver } = setup();
+    vi.spyOn(
+      TestBed.inject(NotificationSoundService),
+      'isOn',
+    ).mockImplementation(() => {
       throw new Error('boom');
     });
     svc.connect();
-    const handler = timelineHandler(client);
 
-    expect(() => handler(event(), room, false, false, live)).not.toThrow();
+    expect(() => deliver()).not.toThrow();
     expect(MockNotification.instances).toHaveLength(0);
   });
 
-  it('disconnect detaches every listener', () => {
-    const { svc, client } = setup();
+  it('disconnect closes every feed', () => {
+    const { svc, engine } = setup({ accounts: ['@me:hs', '@bg:hs'] });
     svc.connect();
+    expect(engine.feeds('@bg:hs')).toBe(1);
 
     svc.disconnect();
 
-    expect(client.off).toHaveBeenCalledWith(
-      ClientEvent.Sync,
-      expect.any(Function),
-    );
-    expect(client.off).toHaveBeenCalledWith(
-      RoomEvent.Timeline,
-      expect.any(Function),
-    );
-    expect(client.off).toHaveBeenCalledWith(
-      MatrixEventEvent.Decrypted,
-      expect.any(Function),
-    );
+    expect(engine.feeds('@me:hs')).toBe(0);
+    expect(engine.feeds('@bg:hs')).toBe(0);
   });
 
   it('cancels pending support negotiation so a late result cannot reconnect', () => {
     const support = new Subject<HostCapabilitySupport>();
     const requestPermission = vi.fn(() => of({ kind: 'completed' } as const));
-    const { svc, client } = setup({
+    const { svc, engine } = setup({
       hostNotifications: {
         support: () => support,
         activated: NEVER,
@@ -780,12 +606,12 @@ describe('NotificationService', () => {
     });
 
     svc.connect();
-    expect(boundEvents(client)).toEqual([]);
+    expect(engine.feeds('@me:hs')).toBe(0);
     svc.disconnect();
     support.next({ kind: 'supported' });
 
     expect(support.observed).toBe(false);
-    expect(boundEvents(client)).toEqual([]);
+    expect(engine.feeds('@me:hs')).toBe(0);
     expect(requestPermission).not.toHaveBeenCalled();
   });
 
@@ -803,18 +629,16 @@ describe('NotificationService', () => {
       requestPermission: () => of({ kind: 'completed' as const }),
       present: () => of({ kind: 'completed' as const }),
     };
-    const { svc, client, health, healthFacts } = setup({
+    const { svc, engine, health, healthFacts } = setup({
       hostNotifications,
     });
+    const notifications = vi.spyOn(engine, 'notifications');
 
     svc.connect();
     firstOwner.complete();
 
     expect(health.at(-1)).toBe('notification-activation-ownership-released');
-    expect(client.off).toHaveBeenCalledWith(
-      RoomEvent.Timeline,
-      expect.any(Function),
-    );
+    expect(engine.feeds('@me:hs')).toBe(0);
     const released = healthFacts.at(-1)!;
 
     await expect(
@@ -824,12 +648,13 @@ describe('NotificationService', () => {
     ).resolves.toEqual({ kind: 'success' });
     expect(support).toHaveBeenCalledTimes(2);
     expect(health.at(-1)).toBe('notification-presentation-ready');
-    // Delivery binds Sync + Timeline + Decrypted on each of the two attaches.
-    expect(client.on).toHaveBeenCalledTimes(6);
+    // One feed per attach.
+    expect(notifications).toHaveBeenCalledTimes(2);
+    expect(engine.feeds('@me:hs')).toBe(1);
   });
 
   it('reports disabled permission without attaching or ending the session', () => {
-    const { svc, client, health } = setup({
+    const { svc, engine, health } = setup({
       hostNotifications: {
         support: () => of({ kind: 'supported' as const }),
         activated: NEVER,
@@ -845,12 +670,12 @@ describe('NotificationService', () => {
     svc.connect();
 
     expect(health.at(-1)).toBe('notification-presentation-disabled');
-    expect(boundEvents(client)).toEqual([]);
+    expect(engine.feeds('@me:hs')).toBe(0);
   });
 
   it('reports a presenter rejection as an incident while keeping activation delivery alive', () => {
     const activated = new Subject<NotificationDestination>();
-    const { svc, client, incidents, activations } = setup({
+    const { svc, deliver, incidents, activations } = setup({
       hostNotifications: {
         support: () => of({ kind: 'supported' as const }),
         activated,
@@ -863,7 +688,7 @@ describe('NotificationService', () => {
       },
     });
     svc.connect();
-    timelineHandler(client)(event(), room, false, false, live);
+    deliver();
     activated.next({
       accountId: '@me:hs',
       roomId: '!r:hs',
@@ -880,250 +705,30 @@ describe('NotificationService', () => {
     ]);
   });
 
-  describe('E2EE (decryption-aware)', () => {
-    it('attaches a decrypted listener too', () => {
-      const { svc, client } = setup();
-      svc.connect();
-
-      expect(client.on).toHaveBeenCalledWith(
-        MatrixEventEvent.Decrypted,
-        expect.any(Function),
-      );
-    });
-
-    it('does not notify on the ciphertext timeline emit, only on decrypt', () => {
-      const { svc, client } = setup();
-      svc.connect();
-      const enc = event({ id: '$e1', encrypted: true });
-
-      // Ciphertext arrives live — must NOT notify yet.
-      timelineHandler(client)(enc, room, false, false, live);
-      expect(MockNotification.instances).toHaveLength(0);
-
-      // Now it decrypts — notify, recalculating push rules on the cleartext.
-      decryptedHandler(client)(event({ id: '$e1', decrypted: true }));
-      expect(MockNotification.instances).toHaveLength(1);
-      expect(client.getPushActionsForEvent).toHaveBeenCalledWith(
-        expect.anything(),
-        true,
-      );
-    });
-
-    it('ignores decryption of events it never saw live (backfill)', () => {
-      const { svc, client } = setup();
-      svc.connect();
-
-      // No prior live timeline emit for $b1 → not pending → no notification.
-      decryptedHandler(client)(event({ id: '$b1', decrypted: true }));
-
-      expect(MockNotification.instances).toHaveLength(0);
-    });
-
-    it('does not notify when decryption fails', () => {
-      const { svc, client } = setup();
-      svc.connect();
-      const enc = event({ id: '$e2', encrypted: true });
-
-      timelineHandler(client)(enc, room, false, false, live);
-      decryptedHandler(client)(event({ id: '$e2', failure: true }));
-
-      expect(MockNotification.instances).toHaveLength(0);
-    });
-
-    // A message sent without encryption into an encrypted room is not what the room's
-    // members can vouch for, so its text stays out of the notification preview.
-    it('does not preview the text of a plaintext message in an encrypted room', () => {
-      const { svc, client } = setup();
-      svc.connect();
-      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
-
-      timelineHandler(client)(
-        event({ body: 'sent in the clear' }),
-        encryptedRoom,
-        false,
-        false,
-        live,
-      );
-
-      expect(MockNotification.instances).toHaveLength(1);
-      expect(MockNotification.instances[0].options).toMatchObject({
-        body: 'New message',
-      });
-    });
-
-    // The client encrypts for a room its crypto store has recorded as encrypted even when
-    // the room's state lacks the encryption event, so the same rule applies here.
-    it('does not preview plaintext when only the crypto store knows the room is encrypted', async () => {
-      const { svc, client } = setup();
-      const isEncryptionEnabledInRoom = vi.fn(() => Promise.resolve(true));
-      client.getCrypto.mockReturnValue({ isEncryptionEnabledInRoom });
-      client.getRooms.mockReturnValue([room]);
-      svc.connect();
-      await vi.waitFor(() =>
-        expect(isEncryptionEnabledInRoom).toHaveBeenCalledWith('!r:hs'),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      timelineHandler(client)(
-        event({ body: 'sent in the clear' }),
-        room,
-        false,
-        false,
-        live,
-      );
-
-      expect(MockNotification.instances).toHaveLength(1);
-      expect(MockNotification.instances[0].options).toMatchObject({
-        body: 'New message',
-      });
-    });
-
-    it('still previews a decrypted message in an encrypted room', () => {
-      const { svc, client } = setup();
-      svc.connect();
-      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
-      client.getRoom.mockReturnValue(encryptedRoom);
-
-      timelineHandler(client)(
-        event({ id: '$e5', encrypted: true }),
-        encryptedRoom,
-        false,
-        false,
-        live,
-      );
-      decryptedHandler(client)(
-        event({ id: '$e5', decrypted: true, body: 'sealed hello' }),
-      );
-
-      expect(MockNotification.instances).toHaveLength(1);
-      expect(MockNotification.instances[0].options).toMatchObject({
-        body: 'sealed hello',
-      });
-    });
-
-    it('previews the original, not a plaintext edit, of a decrypted message in an encrypted room', () => {
-      const { svc, client } = setup();
-      svc.connect();
-      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
-      client.getRoom.mockReturnValue(encryptedRoom);
-
-      timelineHandler(client)(
-        event({ id: '$e6', encrypted: true }),
-        encryptedRoom,
-        false,
-        false,
-        live,
-      );
-      decryptedHandler(client)(
-        event({
-          id: '$e6',
-          decrypted: true,
-          body: 'sealed hello',
-          editedBy: { sender: '@alice:hs', body: 'sent in the clear' },
-        }),
-      );
-
-      expect(MockNotification.instances[0].options).toMatchObject({
-        body: 'sealed hello',
-      });
-    });
-
-    it('previews an encrypted edit of a decrypted message in an encrypted room', () => {
-      const { svc, client } = setup();
-      svc.connect();
-      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
-      client.getRoom.mockReturnValue(encryptedRoom);
-
-      timelineHandler(client)(
-        event({ id: '$e7', encrypted: true }),
-        encryptedRoom,
-        false,
-        false,
-        live,
-      );
-      decryptedHandler(client)(
-        event({
-          id: '$e7',
-          decrypted: true,
-          body: 'sealed hello',
-          editedBy: {
-            sender: '@alice:hs',
-            body: 'sealed edit',
-            encrypted: true,
-          },
-        }),
-      );
-
-      expect(MockNotification.instances[0].options).toMatchObject({
-        body: 'sealed edit',
-      });
-    });
-
-    it('notifies a decrypted event at most once', () => {
-      const { svc, client } = setup();
-      svc.connect();
-      const enc = event({ id: '$e3', encrypted: true });
-
-      timelineHandler(client)(enc, room, false, false, live);
-      decryptedHandler(client)(event({ id: '$e3', decrypted: true }));
-      // A re-decrypt (e.g. retry) must not double-notify.
-      decryptedHandler(client)(event({ id: '$e3', decrypted: true }));
-
-      expect(MockNotification.instances).toHaveLength(1);
-    });
-  });
-
   describe('multiple accounts', () => {
     it('notifies for a live message on a background (non-active) account', () => {
       // Focused on the same room id on the ACTIVE account — a background account's
       // message to that room id must still notify (the user isn't looking at it there).
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-      const { svc, clients, timeline } = setup({
+      const { svc, deliver, timeline } = setup({
         accounts: ['@me:hs', '@bg:hs'],
         active: '@me:hs',
       });
       ngMocks.stubMember(timeline, 'openRoomId', '!r:hs');
       svc.connect();
 
-      timelineHandler(clients.get('@bg:hs')!)(
-        event(),
-        room,
-        false,
-        false,
-        live,
-      );
+      deliver({ accountId: '@bg:hs' });
 
       expect(MockNotification.instances).toHaveLength(1);
     });
 
-    it('scores push rules against the account the event is on', () => {
-      const { svc, clients } = setup({
-        accounts: ['@me:hs', '@bg:hs'],
-        active: '@me:hs',
-      });
-      const bg = clients.get('@bg:hs')!;
-      bg.getPushActionsForEvent.mockReturnValue({ notify: false, tweaks: {} });
-      svc.connect();
-
-      timelineHandler(bg)(event(), room, false, false, live);
-
-      expect(MockNotification.instances).toHaveLength(0);
-      expect(bg.getPushActionsForEvent).toHaveBeenCalled();
-    });
-
     it('keeps the owning account in the emitted activation', () => {
-      const { svc, clients, activations } = setup({
+      const { svc, deliver, activations } = setup({
         accounts: ['@me:hs', '@bg:hs'],
         active: '@me:hs',
       });
       svc.connect();
-      timelineHandler(clients.get('@bg:hs')!)(
-        event(),
-        room,
-        false,
-        false,
-        live,
-      );
+      deliver({ accountId: '@bg:hs' });
 
       MockNotification.instances[0].onclick?.();
 
@@ -1138,155 +743,115 @@ describe('NotificationService', () => {
 
     it('attaches to and notifies for an account that goes live after connect()', () => {
       // The other multi-account tests pre-populate both accounts before connect();
-      // here @bg warm-starts and only appears in accountIds() afterwards, so the
-      // effect-driven attach is what must bind its listeners.
-      const { svc, clients, accountIds } = setup({
+      // here @bg warm-starts and only goes live afterwards, so the effect-driven attach is
+      // what must subscribe to its feed.
+      const { svc, deliver, engine, setAccounts } = setup({
         accounts: ['@me:hs'],
         active: '@me:hs',
       });
       svc.connect();
 
-      const bg = fakeClient('@bg:hs');
-      clients.set('@bg:hs', bg);
-      accountIds.set(['@me:hs', '@bg:hs']);
+      setAccounts(['@me:hs', '@bg:hs']);
       TestBed.inject(ApplicationRef).tick(); // flush the reconcile effect
 
-      expect(bg.on).toHaveBeenCalledWith(
-        RoomEvent.Timeline,
-        expect.any(Function),
-      );
-      expect(bg.on).toHaveBeenCalledWith(
-        MatrixEventEvent.Decrypted,
-        expect.any(Function),
-      );
+      expect(engine.feeds('@bg:hs')).toBe(1);
 
-      timelineHandler(bg)(event(), room, false, false, live);
+      deliver({ accountId: '@bg:hs' });
 
       expect(MockNotification.instances).toHaveLength(1);
     });
 
-    it('detaches listeners and clears the dedupe when an account signs out (reconcile)', () => {
-      const { svc, clients, accountIds } = setup({
+    it('closes the feed and clears the dedupe when an account signs out (reconcile)', () => {
+      const { svc, deliver, engine, setAccounts } = setup({
         accounts: ['@me:hs', '@bg:hs'],
         active: '@me:hs',
       });
       svc.connect();
-      const bg = clients.get('@bg:hs')!;
 
       // @bg notifies event $x once — its dedupe key is now recorded.
-      timelineHandler(bg)(event({ id: '$x' }), room, false, false, live);
+      deliver({ accountId: '@bg:hs', eventId: '$x' });
       expect(MockNotification.instances).toHaveLength(1);
 
-      // @bg signs out: it drops out of accountIds() and the reconcile effect runs.
-      accountIds.set(['@me:hs']);
+      // @bg signs out: it leaves the session and the reconcile effect runs.
+      setAccounts(['@me:hs']);
       TestBed.inject(ApplicationRef).tick();
 
-      expect(bg.off).toHaveBeenCalledWith(
-        RoomEvent.Timeline,
-        expect.any(Function),
-      );
-      expect(bg.off).toHaveBeenCalledWith(
-        MatrixEventEvent.Decrypted,
-        expect.any(Function),
-      );
+      expect(engine.feeds('@bg:hs')).toBe(0);
 
       // @bg is re-added and the SAME live event fires again. A stale dedupe key
       // would silently suppress it; forgetAccount() dropped it, so it notifies anew.
-      accountIds.set(['@me:hs', '@bg:hs']);
+      setAccounts(['@me:hs', '@bg:hs']);
       TestBed.inject(ApplicationRef).tick();
-      timelineHandler(bg)(event({ id: '$x' }), room, false, false, live);
+      deliver({ accountId: '@bg:hs', eventId: '$x' });
 
       expect(MockNotification.instances).toHaveLength(2);
     });
 
-    it('re-binds when an account is handed a NEW client object', () => {
+    it('re-subscribes when an account’s session generation changes', () => {
       // Re-adding / re-authenticating an already signed-in account stops the old client
-      // and creates a new one under the same user id. Keying the notifier by user id
+      // and creates a new one under the same user id. Keying the feed by user id
       // alone strands it on the stopped client, and that account silently stops
       // producing notifications.
-      const { svc, clients, accountIds } = setup({ accounts: ['@me:hs'] });
+      const { svc, deliver, engine, setAccounts } = setup({
+        accounts: ['@me:hs'],
+      });
+      const notifications = vi.spyOn(engine, 'notifications');
       svc.connect();
-      const old = clients.get('@me:hs')!;
 
-      const fresh = fakeClient('@me:hs');
-      clients.set('@me:hs', fresh);
-      accountIds.set(['@me:hs']); // same id, new client
+      setAccounts(['@me:hs'], { '@me:hs': 2 }); // same id, new session
       TestBed.inject(ApplicationRef).tick();
 
-      expect(old.off).toHaveBeenCalledWith(
-        RoomEvent.Timeline,
-        expect.any(Function),
-      );
-      expect(fresh.on).toHaveBeenCalledTimes(3); // Sync + Timeline + Decrypted
+      expect(notifications).toHaveBeenCalledTimes(2);
+      expect(engine.feeds('@me:hs')).toBe(1);
 
-      timelineHandler(fresh)(event(), room, false, false, live);
+      deliver({ accountId: '@me:hs' });
 
       expect(MockNotification.instances).toHaveLength(1);
     });
 
-    it('stays dormant across sign-out and attaches a later login in the same app session', () => {
-      const { svc, clients, accountIds } = setup({ accounts: ['@me:hs'] });
+    it('keeps the feed while only the sync state changes', () => {
+      const { svc, engine } = setup({ accounts: ['@me:hs'] });
+      const notifications = vi.spyOn(engine, 'notifications');
       svc.connect();
-      const me = clients.get('@me:hs')!;
 
-      accountIds.set([]); // logout: the client is gone
+      const session = TestBed.inject(SESSION_SNAPSHOT) as unknown as {
+        update(fn: (s: SessionSnapshot) => SessionSnapshot): void;
+      };
+      session.update((current) => ({
+        ...current,
+        accounts: [{ ...status('@me:hs'), syncState: 'reconnecting' }],
+      }));
       TestBed.inject(ApplicationRef).tick();
 
-      expect(me.off).toHaveBeenCalledWith(
-        RoomEvent.Timeline,
-        expect.any(Function),
-      );
+      expect(notifications).toHaveBeenCalledTimes(1);
+    });
 
-      const next = fakeClient('@next:hs');
-      clients.set('@next:hs', next);
-      accountIds.set(['@next:hs']);
+    it('stays dormant across sign-out and attaches a later login in the same app session', () => {
+      const { svc, engine, setAccounts } = setup({ accounts: ['@me:hs'] });
+      svc.connect();
+
+      setAccounts([]); // logout: the client is gone
       TestBed.inject(ApplicationRef).tick();
 
-      expect(next.on).toHaveBeenCalledTimes(3);
+      expect(engine.feeds('@me:hs')).toBe(0);
+
+      setAccounts(['@next:hs']);
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(engine.feeds('@next:hs')).toBe(1);
     });
 
     it('does not negotiate Web permission until the session has an account', () => {
       MockNotification.permission = 'default';
-      const { svc, clients, accountIds } = setup({ accounts: [], active: '' });
+      const { svc, setAccounts } = setup({ accounts: [], active: '' });
 
       svc.connect();
       expect(MockNotification.requestPermission).not.toHaveBeenCalled();
 
-      clients.set('@next:hs', fakeClient('@next:hs'));
-      accountIds.set(['@next:hs']);
+      setAccounts(['@next:hs']);
       TestBed.inject(ApplicationRef).tick();
 
       expect(MockNotification.requestPermission).toHaveBeenCalledOnce();
-    });
-
-    it('skips a warm-starting account with no client yet, attaching once it appears', () => {
-      // @bg is signed in (present in accountIds) but its client is still warm-starting,
-      // so clientFor('@bg:hs') returns null when connect() first reconciles.
-      const { svc, clients, accountIds } = setup({
-        accounts: ['@me:hs'],
-        active: '@me:hs',
-      });
-      accountIds.set(['@me:hs', '@bg:hs']);
-
-      // The null client must be skipped, not passed to buildNotifier — no throw.
-      expect(() => svc.connect()).not.toThrow();
-
-      // Warm start completes: @bg's client goes live and a later reconcile re-runs.
-      const bg = fakeClient('@bg:hs');
-      clients.set('@bg:hs', bg);
-      accountIds.set(['@me:hs', '@bg:hs']); // new array ref → effect re-runs
-      TestBed.inject(ApplicationRef).tick();
-
-      // Attached exactly once: the account-data copy + Sync + Timeline + Decrypted.
-      expect(bg.on).toHaveBeenCalledTimes(3);
-      expect(bg.on).toHaveBeenCalledWith(
-        RoomEvent.Timeline,
-        expect.any(Function),
-      );
-      expect(bg.on).toHaveBeenCalledWith(
-        MatrixEventEvent.Decrypted,
-        expect.any(Function),
-      );
     });
   });
 
@@ -1310,10 +875,10 @@ describe('NotificationService', () => {
 
     it('shows via the SW registration when one controls the page', async () => {
       const { showNotification } = stubServiceWorker();
-      const { svc, client } = setup();
+      const { svc, deliver } = setup();
       svc.connect();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
       await Promise.resolve(); // let navigator.serviceWorker.ready resolve
       await Promise.resolve(); // let the adapter's finite presentation command emit
 
@@ -1333,10 +898,10 @@ describe('NotificationService', () => {
     });
 
     it('falls back to the constructor when no SW controls the page', () => {
-      const { svc, client } = setup();
+      const { svc, deliver } = setup();
       svc.connect();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
 
       expect(MockNotification.instances).toHaveLength(1);
     });
@@ -1351,12 +916,10 @@ describe('NotificationService', () => {
           }
         },
       );
-      const { svc, client } = setup();
+      const { svc, deliver } = setup();
       svc.connect();
 
-      expect(() =>
-        timelineHandler(client)(event(), room, false, false, live),
-      ).not.toThrow();
+      expect(() => deliver()).not.toThrow();
     });
   });
 
@@ -1372,7 +935,7 @@ describe('NotificationService', () => {
       // Electron auto-grants Web permission and never prompts; the bridge path
       // must work regardless of the renderer Web permission state.
       MockNotification.permission = 'default';
-      const { svc, client } = setup();
+      const { svc, deliver } = setup();
       svc.connect();
       await settleDesktopNegotiation();
 
@@ -1381,7 +944,7 @@ describe('NotificationService', () => {
         harness.bridge.capabilities.notificationPresentation.subscribeClicks,
       ).toHaveBeenCalledTimes(1);
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
 
       expect(
         harness.bridge.capabilities.notificationPresentation.present,
@@ -1406,11 +969,11 @@ describe('NotificationService', () => {
 
     it('notifies even when the Web Notification permission is not granted', async () => {
       MockNotification.permission = 'denied';
-      const { svc, client } = setup();
+      const { svc, deliver } = setup();
       svc.connect();
       await settleDesktopNegotiation();
 
-      timelineHandler(client)(event(), room, false, false, live);
+      deliver();
 
       expect(
         harness.bridge.capabilities.notificationPresentation.present,
@@ -1419,17 +982,11 @@ describe('NotificationService', () => {
     });
 
     it('still honors gating (own messages / focus / push rules)', async () => {
-      const { svc, client } = setup();
+      const { svc, deliver } = setup();
       svc.connect();
       await settleDesktopNegotiation();
 
-      timelineHandler(client)(
-        event({ sender: '@me:hs' }),
-        room,
-        false,
-        false,
-        live,
-      );
+      deliver({ senderId: '@me:hs' });
 
       expect(
         harness.bridge.capabilities.notificationPresentation.present,

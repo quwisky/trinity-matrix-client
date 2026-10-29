@@ -1,8 +1,11 @@
 import {
+  NEVER,
   type Observable,
   Subject,
   defer,
   distinctUntilChanged,
+  filter,
+  finalize,
   map,
   of,
   startWith,
@@ -16,11 +19,13 @@ import {
 } from '@trinity/util/matrix';
 import type {
   DefaultPushRule,
+  IncomingNotification,
   KeywordRule,
   NotificationEngine,
   NotificationPreference,
   NotificationSettings,
   PushRuleKind,
+  ReactionTarget,
   RoomNotifyMode,
 } from '../lib/notification-engine';
 import type { ServerRoomRule } from './notification-engine.contract';
@@ -37,6 +42,25 @@ const KEYWORD_ACTIONS = [
   { set_tweak: 'sound', value: 'default' },
   { set_tweak: 'highlight' },
 ];
+
+interface FakeEvent {
+  readonly sender: string;
+  /** A message's text, or a reaction's target. */
+  readonly body: string;
+  readonly reaction: boolean;
+  redacted: boolean;
+}
+
+interface FakeRoom {
+  readonly name: string;
+  readonly encrypted: boolean;
+  readonly events: Map<string, FakeEvent>;
+}
+
+/** As Synapse names a registered user: its localpart. */
+function localpartOf(userId: string): string {
+  return userId.slice(1).split(':')[0];
+}
 
 interface FakeRoomRule {
   readonly kind: 'override' | 'room' | 'underride';
@@ -105,7 +129,11 @@ function roomIdOf(rule: FakeRoomRule): string | undefined {
   return typeof condition?.pattern === 'string' ? condition.pattern : undefined;
 }
 
-/** An in-memory {@link NotificationEngine} with one live account, {@link alice}. */
+/**
+ * An in-memory {@link NotificationEngine}. {@link alice} is live and has settings; {@link live}
+ * lists the accounts whose feeds and commands work. Messages notify every other live account
+ * unless the one ruleset mutes the room or the master rule is on.
+ */
 export class FakeNotificationEngine implements NotificationEngine {
   private readonly defaults: DefaultPushRule[] = [
     { ruleId: '.m.rule.master', kind: 'override', enabled: false },
@@ -119,8 +147,109 @@ export class FakeNotificationEngine implements NotificationEngine {
   private roomRules: FakeRoomRule[] = [];
   private readonly accountData = new Map<string, object>();
   private readonly changes = new Subject<void>();
+  private readonly rooms = new Map<string, FakeRoom>();
+  private readonly incoming = new Subject<IncomingNotification>();
+  private readonly openFeeds = new Map<string, number>();
+  private sequence = 0;
 
   readonly alice = '@alice:fake';
+  readonly bob = '@bob:fake';
+  /** Accounts with a live client; add more for a multi-account test. */
+  readonly live = new Set([this.alice]);
+
+  /**
+   * A room every live account and bob are in, encrypted by its state when asked. The fake sends
+   * nothing encrypted, so no text is previewed there.
+   */
+  createRoom(
+    name: string,
+    options: { readonly encrypted?: boolean; readonly roomId?: string } = {},
+  ): string {
+    const roomId = options.roomId ?? `!room${++this.sequence}:fake`;
+    this.rooms.set(roomId, {
+      name,
+      encrypted: options.encrypted ?? false,
+      events: new Map(),
+    });
+    return roomId;
+  }
+
+  /** `sender` sends a text message, live; returns its event id. */
+  send(sender: string, roomId: string, body: string): string {
+    const room = this.room(roomId);
+    const eventId = this.store(room, { sender, body, reaction: false });
+    const notifies =
+      !this.roomModes()[roomId] &&
+      !this.defaults.find((rule) => rule.ruleId === '.m.rule.master')?.enabled;
+    for (const accountId of this.live) {
+      if (accountId === sender || !notifies) continue;
+      this.deliver({
+        kind: 'message',
+        accountId,
+        roomId,
+        eventId,
+        senderId: sender,
+        senderName: localpartOf(sender),
+        roomName: room.name,
+        body: room.encrypted ? null : body,
+      });
+    }
+    return eventId;
+  }
+
+  /** `sender` reacts to `targetEventId` with `key`, live; returns the reaction's event id. */
+  react(
+    sender: string,
+    roomId: string,
+    targetEventId: string,
+    key: string,
+  ): string {
+    const room = this.room(roomId);
+    const eventId = this.store(room, {
+      sender,
+      body: targetEventId,
+      reaction: true,
+    });
+    for (const accountId of this.live) {
+      if (accountId === sender) continue;
+      this.deliver({
+        kind: 'reaction-annotation',
+        accountId,
+        roomId,
+        roomName: room.name,
+        eventId,
+        targetEventId,
+        key,
+        senderId: sender,
+        senderName: localpartOf(sender),
+      });
+    }
+    return eventId;
+  }
+
+  redact(roomId: string, eventId: string): void {
+    const event = this.room(roomId).events.get(eventId);
+    if (event) event.redacted = true;
+  }
+
+  /** Hands `item` to its account's open feeds as it is; an annotation's reaction becomes live. */
+  deliver(item: IncomingNotification): void {
+    const events = this.rooms.get(item.roomId)?.events;
+    if (item.kind === 'reaction-annotation' && !events?.has(item.eventId)) {
+      events?.set(item.eventId, {
+        sender: item.senderId,
+        body: item.targetEventId,
+        reaction: true,
+        redacted: false,
+      });
+    }
+    this.incoming.next(item);
+  }
+
+  /** How many `notifications` subscriptions of the account are open. */
+  feeds(accountId: string): number {
+    return this.openFeeds.get(accountId) ?? 0;
+  }
 
   /**
    * Another client PUTs the content rule `ruleId`, then switches it off unless `enabled`, as a
@@ -320,6 +449,63 @@ export class FakeNotificationEngine implements NotificationEngine {
       this.writeAccountData(PREFERENCES[preference].type, { enabled: on });
       return engineOk(null);
     });
+  }
+
+  notifications(accountId: string): Observable<IncomingNotification> {
+    return defer(() => {
+      if (!this.live.has(accountId)) return NEVER;
+      this.openFeeds.set(accountId, this.feeds(accountId) + 1);
+      return this.incoming.pipe(
+        filter((item) => item.accountId === accountId),
+        finalize(() =>
+          this.openFeeds.set(accountId, this.feeds(accountId) - 1),
+        ),
+      );
+    });
+  }
+
+  reactionTarget(
+    accountId: string,
+    roomId: string,
+    targetEventId: string,
+    reactionIds: readonly string[],
+  ): Observable<EngineResult<ReactionTarget | null>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) return of(engineFail(NOT_LIVE));
+      const room = this.rooms.get(roomId);
+      const target = room?.events.get(targetEventId);
+      const liveReactionIds = reactionIds.filter((id) => {
+        const reaction = room?.events.get(id);
+        return reaction?.reaction === true && !reaction.redacted;
+      });
+      return of(
+        engineOk(
+          room &&
+            target &&
+            !target.reaction &&
+            !target.redacted &&
+            target.sender === accountId &&
+            liveReactionIds.length > 0
+            ? {
+                body: room.encrypted ? null : target.body,
+                liveReactionIds,
+              }
+            : null,
+        ),
+      );
+    });
+  }
+
+  private room(roomId: string): FakeRoom {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new Error(`No fake room ${roomId}`);
+    return room;
+  }
+
+  private store(room: FakeRoom, event: Omit<FakeEvent, 'redacted'>): string {
+    const eventId = `$event${++this.sequence}`;
+    room.events.set(eventId, { ...event, redacted: false });
+    return eventId;
   }
 
   private putRoomRule(

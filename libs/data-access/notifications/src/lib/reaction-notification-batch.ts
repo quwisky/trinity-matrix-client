@@ -1,40 +1,34 @@
 import {
-  EventType,
-  RelationType,
-  type MatrixClient,
-  type MatrixEvent,
-  type Room,
-} from 'matrix-js-sdk';
-import {
   EMPTY,
+  type Observable,
   Subscription,
   catchError,
   defer,
-  filter,
   finalize,
-  from,
-  map,
-  of,
-  switchMap,
   timeout,
 } from 'rxjs';
-import { displayContent, validReplacement } from '@trinity/util/matrix';
+import type { EngineResult } from '@trinity/util/matrix';
+import type { ReactionAnnotation, ReactionTarget } from './notification-engine';
 import type { ReactionNotificationEvent } from './notification-intent';
 
 export interface ReactionNotificationBatchOptions {
   readonly accountId: string;
-  readonly client: MatrixClient;
-  readonly allowed: (room: Room, senderId: string) => boolean;
+  readonly allowed: (roomId: string, senderId: string) => boolean;
+  /** The account's `NotificationEngine.reactionTarget`. */
+  readonly lookup: (
+    roomId: string,
+    targetEventId: string,
+    reactionIds: readonly string[],
+  ) => Observable<EngineResult<ReactionTarget | null>>;
   readonly present: (event: ReactionNotificationEvent) => void;
-  /** Whether the room counts as encrypted (see `RoomEncryptionFlags`). */
-  readonly roomEncrypted: (room: Room) => boolean;
 }
 
 interface PendingReactions {
-  readonly room: Room;
+  readonly roomId: string;
+  readonly roomName: string | null;
   readonly targetId: string;
   readonly started: number;
-  readonly events: Map<string, MatrixEvent>;
+  readonly reactions: Map<string, ReactionAnnotation>;
   timer: ReturnType<typeof setTimeout> | null;
   lookup: Subscription | null;
 }
@@ -46,7 +40,7 @@ const MAX_BATCHES = 100;
 const MAX_REACTIONS_PER_BATCH = 100;
 const MAX_SEEN_EVENTS = 500;
 
-/** Transient reaction work owned by one exact account/client notification lifetime. */
+/** Transient reaction work owned by one exact account/session notification lifetime. */
 export class ReactionNotificationBatch {
   private readonly pending = new Map<string, PendingReactions>();
   private readonly seen = new Set<string>();
@@ -54,32 +48,31 @@ export class ReactionNotificationBatch {
 
   constructor(private readonly options: ReactionNotificationBatchOptions) {}
 
-  add(event: MatrixEvent, room: Room): void {
-    const relation = this.annotation(event, room);
-    if (!relation) return;
-    const eventId = event.getId()!;
-    if (this.seen.has(eventId)) return;
-    this.seen.add(eventId);
+  add(reaction: ReactionAnnotation): void {
+    if (!this.eligible(reaction)) return;
+    if (this.seen.has(reaction.eventId)) return;
+    this.seen.add(reaction.eventId);
     if (this.seen.size > MAX_SEEN_EVENTS) {
       this.seen.delete(this.seen.values().next().value!);
     }
 
-    const key = `${room.roomId} ${relation.event_id}`;
+    const key = `${reaction.roomId} ${reaction.targetEventId}`;
     let batch = this.pending.get(key);
     if (!batch) {
       if (this.pending.size >= MAX_BATCHES) return;
       batch = {
-        room,
-        targetId: relation.event_id,
+        roomId: reaction.roomId,
+        roomName: reaction.roomName,
+        targetId: reaction.targetEventId,
         started: Date.now(),
-        events: new Map(),
+        reactions: new Map(),
         timer: null,
         lookup: null,
       };
       this.pending.set(key, batch);
     }
-    if (batch.events.size >= MAX_REACTIONS_PER_BATCH) return;
-    batch.events.set(eventId, event);
+    if (batch.reactions.size >= MAX_REACTIONS_PER_BATCH) return;
+    batch.reactions.set(reaction.eventId, reaction);
     // A target lookup already in progress consumes the whole batch when it finishes.
     if (batch.lookup) return;
     if (batch.timer !== null) clearTimeout(batch.timer);
@@ -100,33 +93,15 @@ export class ReactionNotificationBatch {
     this.seen.clear();
   }
 
-  private annotation(event: MatrixEvent, room: Room) {
+  private eligible(reaction: ReactionAnnotation): boolean {
     try {
-      if (
-        this.disposed ||
-        event.getType() !== EventType.Reaction ||
-        !event.getId() ||
-        event.getRoomId() !== room.roomId ||
-        event.isRedacted()
-      )
-        return null;
-      const senderId = event.getSender();
-      if (
-        !senderId ||
-        senderId === this.options.client.getUserId() ||
-        !this.options.allowed(room, senderId)
-      )
-        return null;
-      const relation = event.getRelation();
-      return relation?.rel_type === RelationType.Annotation &&
-        typeof relation.event_id === 'string' &&
-        relation.event_id.length > 0 &&
-        typeof relation.key === 'string' &&
-        relation.key.trim().length > 0
-        ? { event_id: relation.event_id, key: relation.key }
-        : null;
+      return (
+        !this.disposed &&
+        reaction.accountId === this.options.accountId &&
+        this.options.allowed(reaction.roomId, reaction.senderId)
+      );
     } catch {
-      return null;
+      return false;
     }
   }
 
@@ -135,43 +110,17 @@ export class ReactionNotificationBatch {
     if (this.disposed || this.pending.get(key) !== batch) return;
     const lookup = new Subscription();
     batch.lookup = lookup;
+    const asked = new Set<string>();
     lookup.add(
       defer(() => {
-        const stillEligible = [...batch.events.values()].some((event) =>
-          this.annotation(event, batch.room),
-        );
-        if (!stillEligible) return EMPTY;
-        const local = batch.room.findEventById(batch.targetId);
-        return local
-          ? of(local)
-          : from(
-              this.options.client.fetchRoomEvent(
-                batch.room.roomId,
-                batch.targetId,
-              ),
-            ).pipe(
-              filter(
-                (raw) => !raw.room_id || raw.room_id === batch.room.roomId,
-              ),
-              map((raw) =>
-                this.options.client.getEventMapper({ decrypt: false })({
-                  ...raw,
-                  room_id: batch.room.roomId,
-                }),
-              ),
-            );
+        for (const reaction of batch.reactions.values()) {
+          if (this.eligible(reaction)) asked.add(reaction.eventId);
+        }
+        if (asked.size === 0) return EMPTY;
+        return this.options.lookup(batch.roomId, batch.targetId, [...asked]);
       })
         .pipe(
-          filter((target) => this.isOwnTarget(target, batch)),
-          switchMap((target) =>
-            target.isEncrypted() && target.getClearContent() == null
-              ? from(this.options.client.decryptEventIfNeeded(target)).pipe(
-                  map(() => target),
-                )
-              : of(target),
-          ),
           timeout(LOOKUP_TIMEOUT_MS),
-          map((target) => this.presentBatch(batch, target)),
           // A missing target or key is not a failure of the host presentation capability.
           catchError(() => EMPTY),
           finalize(() => {
@@ -179,60 +128,45 @@ export class ReactionNotificationBatch {
             batch.lookup = null;
           }),
         )
-        .subscribe(),
+        .subscribe((result) => {
+          if (result.ok && result.value) {
+            this.presentBatch(batch, asked, result.value);
+          }
+        }),
     );
   }
 
-  private isOwnTarget(target: MatrixEvent, batch: PendingReactions): boolean {
-    return (
-      !this.disposed &&
-      target.getId() === batch.targetId &&
-      target.getRoomId() === batch.room.roomId &&
-      target.getSender() === this.options.client.getUserId() &&
-      !target.isRedacted()
-    );
-  }
-
-  private presentBatch(batch: PendingReactions, target: MatrixEvent): void {
-    if (
-      !this.isOwnTarget(target, batch) ||
-      target.getType() !== EventType.RoomMessage ||
-      target.isDecryptionFailure()
-    )
-      return;
-
+  /** Reactions added during the lookup were not `asked` about; they count while eligible. */
+  private presentBatch(
+    batch: PendingReactions,
+    asked: ReadonlySet<string>,
+    target: ReactionTarget,
+  ): void {
+    if (this.disposed) return;
+    const live = new Set(target.liveReactionIds);
     const senders = new Map<string, string>();
     const keys = new Set<string>();
-    for (const event of batch.events.values()) {
-      const relation = this.annotation(event, batch.room);
-      if (!relation || relation.event_id !== batch.targetId) continue;
-      const senderId = event.getSender()!;
-      senders.set(
-        senderId,
-        event.sender?.name || batch.room.getMember(senderId)?.name || senderId,
-      );
-      keys.add(relation.key!);
+    for (const reaction of batch.reactions.values()) {
+      const dropped =
+        asked.has(reaction.eventId) && !live.has(reaction.eventId);
+      if (dropped || !this.eligible(reaction)) continue;
+      senders.set(reaction.senderId, reaction.senderName);
+      keys.add(reaction.key);
     }
     const first = senders.entries().next().value;
     if (!first) return;
-    const body: unknown = displayContent(target)['body'];
-    // As for messages: text that arrived in the clear in an encrypted room is not previewed.
-    const previewable =
-      typeof body === 'string' &&
-      ((validReplacement(target) ?? target).isEncrypted() ||
-        !this.options.roomEncrypted(batch.room));
     this.options.present(
       Object.freeze({
         kind: 'reaction',
         accountId: this.options.accountId,
-        roomId: batch.room.roomId,
+        roomId: batch.roomId,
         eventId: batch.targetId,
         senderId: first[0],
         senderName: first[1],
         senderCount: senders.size,
         reactionKeys: Object.freeze([...keys]),
-        roomName: batch.room.name || null,
-        body: previewable ? body : null,
+        roomName: batch.roomName,
+        body: target.body,
       }),
     );
   }

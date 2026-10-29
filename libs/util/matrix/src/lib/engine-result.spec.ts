@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertPlainData,
   assertProgressThenResult,
+  recordFeed,
   type DiscoveryFailureReason,
   type EngineFailure,
   engineFailureMessage,
@@ -434,5 +435,49 @@ describe('assertProgressThenResult', () => {
     void assertProgressThenResult(NEVER).then(() => (settled = true));
     await new Promise((resolve) => setTimeout(resolve));
     expect(settled).toBe(false);
+  });
+});
+
+describe('recordFeed', () => {
+  it('records plain items and resolves until with a recorded or later item', async () => {
+    const source = new Subject<{ n: number }>();
+    const feed = recordFeed(source);
+    source.next({ n: 1 });
+    await expect(feed.until((item) => item.n === 1, 100)).resolves.toEqual({
+      n: 1,
+    });
+    const later = feed.until((item) => item.n === 2, 100);
+    source.next({ n: 2 });
+    await expect(later).resolves.toEqual({ n: 2 });
+    expect(feed.items).toEqual([{ n: 1 }, { n: 2 }]);
+    feed.unsubscribe();
+    expect(source.observed).toBe(false);
+  });
+
+  it.each([
+    ['emits', of({ n: 1 })],
+    ['completes', of()],
+    ['errors', throwError(() => new Error('x'))],
+  ])('throws when the feed %s on subscribe', (_name, source) => {
+    expect(() => recordFeed(source)).toThrow(TypeError);
+  });
+
+  it.each([
+    [
+      'an item that is not plain data',
+      (s: Subject<unknown>) => s.next(new Date()),
+    ],
+    ['completion', (s: Subject<unknown>) => s.complete()],
+  ])('rejects until after %s', async (_name, breach) => {
+    const source = new Subject<unknown>();
+    const feed = recordFeed(source);
+    const pending = feed.until(() => true, 1_000);
+    breach(source);
+    await expect(pending).rejects.toThrow(TypeError);
+  });
+
+  it('rejects until after the timeout', async () => {
+    const feed = recordFeed(NEVER);
+    await expect(feed.until(() => true, 1)).rejects.toThrow();
   });
 });

@@ -1,19 +1,20 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import {
-  ClientEvent,
-  EventType,
-  MatrixEvent,
-  RelationType,
-  SyncState,
-  type MatrixClient,
-  type Room,
-} from 'matrix-js-sdk';
 import { Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  EMPTY_SESSION,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
 import { HostNotificationPresentationService } from '@trinity/runtime/host';
+import { type EngineResult, engineOk } from '@trinity/util/matrix';
+import { FakeNotificationEngine } from '../contract/fake-notification-engine';
+import type { ReactionTarget } from './notification-engine';
+import { NOTIFICATION_ENGINE } from './notification-engine.token';
 import { NotificationPolicy } from './notification-policy';
+import { NotificationSettingsStore } from './notification-settings.store';
 import { NotificationService } from './notification.service';
 import { PushService } from './push.service';
 import { ReactionNotificationSettingsService } from './reaction-notification-settings.service';
@@ -22,100 +23,51 @@ import { NotificationSoundService } from './notification-sound.service';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
 
 const ACCOUNT = '@me:hs';
-const ROOM = '!room:hs';
-const TARGET = '$target';
+const OTHER = '@other:hs';
 
-function target(sender = ACCOUNT): MatrixEvent {
-  return new MatrixEvent({
-    event_id: TARGET,
-    room_id: ROOM,
-    sender,
-    type: EventType.RoomMessage,
-    content: { msgtype: 'm.text', body: 'Original message' },
-  });
-}
-
-function reaction(id: string, sender = '@alice:hs', key = '👍'): MatrixEvent {
-  return new MatrixEvent({
-    event_id: id,
-    room_id: ROOM,
-    sender,
-    type: EventType.Reaction,
-    content: {
-      'm.relates_to': {
-        rel_type: RelationType.Annotation,
-        event_id: TARGET,
-        key,
-      },
-    },
-  });
+function status(accountId: string, generation = 1): SessionAccountStatus {
+  return {
+    accountId,
+    generation,
+    syncState: 'syncing',
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
+  };
 }
 
 describe('reaction notifications integration', () => {
-  let client: ReturnType<typeof setupClient>;
+  let engine: FakeNotificationEngine;
+  let room: string;
+  let target: string;
   let present: ReturnType<typeof vi.fn>;
   let settings: { isOn: ReturnType<typeof vi.fn> };
   let rooms: { modeFor: ReturnType<typeof vi.fn> };
   let sound: { isOn: ReturnType<typeof vi.fn> };
+  let master: boolean;
   let visibility: { snapshot: ReturnType<typeof vi.fn> };
-  let handlers: Map<string, (...args: unknown[]) => void>;
   let owner: { unsubscribe(): void };
   let service: NotificationService;
   let backgroundDelivery: ReturnType<typeof signal<'app' | 'push'>>;
-  let accountIds: ReturnType<typeof signal<readonly string[]>>;
-  let clients: Map<string, ReturnType<typeof setupClient>>;
+  let session: ReturnType<typeof signal<SessionSnapshot>>;
   let activation: Subject<{
     accountId: string;
     roomId: string;
     eventId: string;
   }>;
 
-  function setupClient(userId = ACCOUNT) {
-    const listeners = new Map<string, (...args: unknown[]) => void>();
-    const events = new Map([[TARGET, target(userId)]]);
-    const value = {
-      getUserId: () => userId,
-      getSyncState: vi.fn(() => SyncState.Prepared),
-      getRoom: () => room,
-      getRooms: () => [],
-      getCrypto: () => undefined,
-      getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
-      getAccountData: () => undefined,
-      pushRules: {
-        global: { override: [{ rule_id: '.m.rule.master', enabled: false }] },
-      },
-      isUserIgnored: vi.fn(() => false),
-      on: vi.fn((kind: string, handler: (...args: unknown[]) => void) =>
-        listeners.set(kind, handler),
-      ),
-      off: vi.fn(),
-      fetchRoomEvent: vi.fn(async () => events.get(TARGET)!.event),
-      findEventById: (id: string) => events.get(id),
-      getEventMapper: vi.fn(
-        () => (raw: MatrixEvent['event']) => new MatrixEvent(raw),
-      ),
-      decryptEventIfNeeded: vi.fn(async () => undefined),
-      listeners,
-    };
-    return value;
-  }
-
-  const room = {
-    roomId: ROOM,
-    hasEncryptionStateEvent: () => false,
-    name: 'General',
-    findEventById: (id: string) => client.findEventById(id),
-    getMember: (id: string) => ({ name: id === '@alice:hs' ? 'Alice' : id }),
-  } as unknown as Room;
-
   beforeEach(() => {
     vi.useFakeTimers();
-    client = setupClient();
-    handlers = client.listeners as Map<string, (...args: unknown[]) => void>;
+    engine = new FakeNotificationEngine();
+    engine.live.add(ACCOUNT);
+    room = engine.createRoom('General');
+    target = engine.send(ACCOUNT, room, 'Original message');
     present = vi.fn(() => of({ kind: 'completed' as const }));
     settings = { isOn: vi.fn(() => false) };
     rooms = { modeFor: vi.fn(() => 'all') };
     sound = { isOn: vi.fn(() => true) };
+    master = false;
     visibility = {
       snapshot: vi.fn(() => ({
         foreground: false,
@@ -124,21 +76,26 @@ describe('reaction notifications integration', () => {
       })),
     };
     backgroundDelivery = signal<'app' | 'push'>('app');
-    accountIds = signal<readonly string[]>([ACCOUNT]);
-    clients = new Map([[ACCOUNT, client]]);
+    session = signal<SessionSnapshot>({
+      ...EMPTY_SESSION,
+      activeAccountId: ACCOUNT,
+      accounts: [status(ACCOUNT)],
+    });
     activation = new Subject();
     TestBed.configureTestingModule({
       providers: [
         NotificationService,
         NotificationPolicy,
+        { provide: NOTIFICATION_ENGINE, useValue: engine },
+        { provide: SESSION_SNAPSHOT, useValue: session },
         {
-          provide: MatrixClientService,
+          provide: NotificationSettingsStore,
           useValue: {
-            isInitialized: true,
-            accountIds: accountIds.asReadonly(),
-            clientFor: (id: string) =>
-              clients.get(id) as unknown as MatrixClient,
-            instance: client,
+            settings: () => ({
+              defaultRules: [
+                { ruleId: '.m.rule.master', kind: 'override', enabled: master },
+              ],
+            }),
           },
         },
         { provide: ReactionNotificationSettingsService, useValue: settings },
@@ -170,61 +127,50 @@ describe('reaction notifications integration', () => {
     TestBed.resetTestingModule();
   });
 
-  function emit(event: MatrixEvent, liveEvent = true): void {
-    (
-      handlers.get('Room.timeline') as
-        | ((
-            event: MatrixEvent,
-            room: Room,
-            toStart?: boolean,
-            removed?: boolean,
-            data?: unknown,
-          ) => void)
-        | undefined
-    )?.(event, room, false, false, { liveEvent });
+  const react = (sender = '@alice:hs', key = '👍', on = target): string =>
+    engine.react(sender, room, on, key);
+
+  /** Holds the account's next target lookup until the returned subject emits. */
+  function holdLookup(): Subject<EngineResult<ReactionTarget | null>> {
+    const held = new Subject<EngineResult<ReactionTarget | null>>();
+    vi.spyOn(engine, 'reactionTarget').mockReturnValueOnce(held);
+    return held;
   }
 
   it('keeps the opt-in disabled by default and presents an enabled grouped reaction', async () => {
-    emit(reaction('$off'));
+    react('@alice:hs');
     await vi.advanceTimersByTimeAsync(2_000);
     expect(present).not.toHaveBeenCalled();
 
     settings.isOn.mockReturnValue(true);
-    emit(reaction('$one'));
-    emit(reaction('$two', '@bob:hs', '✅'));
+    react('@alice:hs');
+    react('@bob:hs', '✅');
     await vi.advanceTimersByTimeAsync(2_000);
     expect(present).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Alice and 1 other reacted 👍 ✅ · General',
+        title: 'alice and 1 other reacted 👍 ✅ · General',
         body: 'Your message: Original message',
         silent: false,
-        destination: { accountId: ACCOUNT, roomId: ROOM, eventId: TARGET },
+        destination: { accountId: ACCOUNT, roomId: room, eventId: target },
       }),
     );
   });
 
   it.each([
-    [
-      'master disabled',
-      () => {
-        client.pushRules.global.override[0].enabled = true;
-      },
-    ],
+    ['master disabled', () => (master = true)],
     ['room muted', () => rooms.modeFor.mockReturnValue('mute')],
-    ['sender ignored', () => client.isUserIgnored.mockReturnValue(true)],
   ])(
     'honors %s while still allowing mentions-only rooms',
     async (_label, change) => {
       settings.isOn.mockReturnValue(true);
       change();
-      emit(reaction('$blocked'));
+      react();
       await vi.advanceTimersByTimeAsync(2_000);
       expect(present).not.toHaveBeenCalled();
 
-      client.pushRules.global.override[0].enabled = false;
+      master = false;
       rooms.modeFor.mockReturnValue('mentions');
-      client.isUserIgnored.mockReturnValue(false);
-      emit(reaction('$allowed'));
+      react();
       await vi.advanceTimersByTimeAsync(2_000);
       expect(present).toHaveBeenCalledTimes(1);
     },
@@ -238,7 +184,7 @@ describe('reaction notifications integration', () => {
       hidden: true,
       conversation: null,
     });
-    emit(reaction('$hidden'));
+    react();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(present).toHaveBeenCalledTimes(1);
   });
@@ -248,9 +194,9 @@ describe('reaction notifications integration', () => {
     visibility.snapshot.mockReturnValue({
       foreground: true,
       hidden: false,
-      conversation: { accountId: ACCOUNT, roomId: ROOM },
+      conversation: { accountId: ACCOUNT, roomId: room },
     });
-    emit(reaction('$visible'));
+    react();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(present).not.toHaveBeenCalled();
 
@@ -260,80 +206,59 @@ describe('reaction notifications integration', () => {
       conversation: null,
     });
     sound.isOn.mockReturnValue(false);
-    emit(reaction('$sound'));
+    react();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(present).toHaveBeenCalledWith(
       expect.objectContaining({ silent: true }),
     );
   });
 
-  it('ignores backfill and releases reaction work with the notification session', async () => {
+  it('releases reaction work with the notification session', async () => {
     settings.isOn.mockReturnValue(true);
-    emit(reaction('$history'), false);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(present).not.toHaveBeenCalled();
-    emit(reaction('$pending'));
+    react();
     owner.unsubscribe();
     await vi.advanceTimersByTimeAsync(20_000);
     expect(present).not.toHaveBeenCalled();
-  });
-
-  it('waits for the first prepared sync and ignores initial live-labelled history', async () => {
-    owner.unsubscribe();
-    client.getSyncState.mockReturnValue(null as unknown as SyncState);
-    owner = service.run().subscribe();
-    settings.isOn.mockReturnValue(true);
-
-    emit(reaction('$initial'), true);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(present).not.toHaveBeenCalled();
-
-    client.getSyncState.mockReturnValue(SyncState.Prepared);
-    handlers.get(ClientEvent.Sync)?.(SyncState.Prepared);
-    emit(reaction('$after-ready'), true);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(present).toHaveBeenCalledTimes(1);
+    expect(engine.feeds(ACCOUNT)).toBe(0);
   });
 
   it('keeps same event ids isolated across accounts and uses each owning setting', async () => {
-    settings.isOn.mockImplementation((id: string) => id === '@other:hs');
-    const other = setupClient('@other:hs');
-    clients.set('@other:hs', other);
-    accountIds.set([ACCOUNT, '@other:hs']);
+    settings.isOn.mockImplementation((id: string) => id === OTHER);
+    engine.live.add(OTHER);
+    const otherTarget = engine.send(OTHER, room, 'Other message');
+    present.mockClear(); // The message itself notified @me.
+    session.update((current) => ({
+      ...current,
+      accounts: [status(ACCOUNT), status(OTHER)],
+    }));
     await vi.advanceTimersByTimeAsync(0);
+    const annotation = (accountId: string, eventId: string, on: string) =>
+      engine.deliver({
+        kind: 'reaction-annotation',
+        accountId,
+        roomId: room,
+        roomName: 'General',
+        eventId,
+        targetEventId: on,
+        key: '👍',
+        senderId: '@alice:hs',
+        senderName: 'Alice',
+      });
 
-    emit(reaction('$me-target'), true);
-    const otherTimeline = other.listeners.get('Room.timeline') as
-      | ((
-          event: MatrixEvent,
-          room: Room,
-          a?: boolean,
-          b?: boolean,
-          data?: unknown,
-        ) => void)
-      | undefined;
-    const otherRoom = {
-      ...room,
-      findEventById: (id: string) => other.findEventById(id),
-    } as unknown as Room;
-    otherTimeline?.(reaction('$same-id'), otherRoom, false, false, {
-      liveEvent: true,
-    });
+    annotation(ACCOUNT, '$me-only', target);
+    annotation(OTHER, '$same-id', otherTarget);
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(present).toHaveBeenCalledTimes(1);
     expect(present).toHaveBeenCalledWith(
       expect.objectContaining({
-        destination: { accountId: '@other:hs', roomId: ROOM, eventId: TARGET },
+        destination: { accountId: OTHER, roomId: room, eventId: otherTarget },
       }),
     );
 
     settings.isOn.mockReturnValue(true);
-    const sameReactionId = '$same-id-both-accounts';
-    emit(reaction(sameReactionId), true);
-    otherTimeline?.(reaction(sameReactionId), otherRoom, false, false, {
-      liveEvent: true,
-    });
+    annotation(ACCOUNT, '$same-id-both-accounts', target);
+    annotation(OTHER, '$same-id-both-accounts', otherTarget);
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(present).toHaveBeenCalledTimes(3);
@@ -341,45 +266,40 @@ describe('reaction notifications integration', () => {
       present.mock.calls
         .slice(1)
         .map(([intent]) => intent.destination.accountId),
-    ).toEqual(['@me:hs', '@other:hs']);
+    ).toEqual([ACCOUNT, OTHER]);
   });
 
-  it('drops a fetched reaction when the owning client is replaced before reconciliation', async () => {
-    settings.isOn.mockReturnValue(true);
-    let resolve!: (event: MatrixEvent['event']) => void;
-    client.findEventById = () => undefined;
-    client.fetchRoomEvent.mockReturnValue(
-      new Promise((done) => {
-        resolve = done;
-      }),
-    );
-    emit(reaction('$replacement'), true);
-    await vi.advanceTimersByTimeAsync(2_000);
+  it.each([
+    ['presents', 1, 1],
+    ['drops', 2, 0],
+  ])(
+    '%s a looked-up reaction by session generation, before reconciliation',
+    async (_label, generation, presented) => {
+      settings.isOn.mockReturnValue(true);
+      const held = holdLookup();
+      const reaction = react();
+      await vi.advanceTimersByTimeAsync(2_000);
 
-    const old = client;
-    client = setupClient();
-    clients.set(ACCOUNT, client);
-    resolve(target().event);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(present).not.toHaveBeenCalled();
-    expect(old.fetchRoomEvent).toHaveBeenCalledOnce();
-  });
+      session.update((current) => ({
+        ...current,
+        accounts: [status(ACCOUNT, generation)],
+      }));
+      held.next(
+        engineOk({ body: 'Original message', liveReactionIds: [reaction] }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(present).toHaveBeenCalledTimes(presented);
+    },
+  );
 
-  it('cancels a pending fetch when presentation activation ownership is released', async () => {
+  it('cancels a pending lookup when presentation activation ownership is released', async () => {
     settings.isOn.mockReturnValue(true);
-    let resolve!: (event: MatrixEvent['event']) => void;
-    client.findEventById = () => undefined;
-    client.fetchRoomEvent.mockReturnValue(
-      new Promise((done) => {
-        resolve = done;
-      }),
-    );
-    emit(reaction('$ownership'), true);
+    const held = holdLookup();
+    react();
     await vi.advanceTimersByTimeAsync(2_000);
     activation.complete();
-    resolve(target().event);
-    await vi.advanceTimersByTimeAsync(0);
+    expect(held.observed).toBe(false);
     expect(present).not.toHaveBeenCalled();
-    expect(client.off).toHaveBeenCalled();
+    expect(engine.feeds(ACCOUNT)).toBe(0);
   });
 });

@@ -1,77 +1,60 @@
-import {
-  EventType,
-  MatrixEvent,
-  RelationType,
-  type MatrixClient,
-  type Room,
-} from 'matrix-js-sdk';
+import { Subject, delayWhen, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { engineFail } from '@trinity/util/matrix';
+import { FakeNotificationEngine } from '../contract/fake-notification-engine';
+import type { ReactionAnnotation } from './notification-engine';
 import { ReactionNotificationBatch } from './reaction-notification-batch';
 
-const ACCOUNT = '@me:hs';
-const ROOM = '!room:hs';
+const BODY = 'Please review the release notes';
 
-function message(id = '$target', sender = ACCOUNT) {
-  return new MatrixEvent({
-    event_id: id,
-    room_id: ROOM,
-    sender,
-    type: EventType.RoomMessage,
-    content: { msgtype: 'm.text', body: 'Please review the release notes' },
-  });
-}
-
-function reaction(
-  id: string,
-  sender = '@alice:hs',
-  target = '$target',
-  key = '👍',
-) {
-  return new MatrixEvent({
-    event_id: id,
-    room_id: ROOM,
-    sender,
-    type: EventType.Reaction,
-    content: {
-      'm.relates_to': {
-        rel_type: RelationType.Annotation,
-        event_id: target,
-        key,
-      },
+function setup({ encrypted = false } = {}) {
+  const engine = new FakeNotificationEngine();
+  const me = engine.alice;
+  const room = engine.createRoom('General', { encrypted });
+  const target = engine.send(me, room, BODY);
+  /** While set, lookups wait for it to emit. */
+  let gate: Subject<void> | null = null;
+  const lookup = vi.fn(
+    (roomId: string, targetId: string, ids: readonly string[]) => {
+      const answer = engine.reactionTarget(me, roomId, targetId, ids);
+      const held = gate;
+      return held ? answer.pipe(delayWhen(() => held)) : answer;
     },
-  });
-}
-
-function setup({ roomEncrypted = false } = {}) {
-  const targets = new Map([['$target', message()]]);
-  const room = {
-    roomId: ROOM,
-    name: 'General',
-    findEventById: vi.fn((id: string) => targets.get(id)),
-    getMember: (id: string) => ({ name: id === '@alice:hs' ? 'Alice' : id }),
-  } as unknown as Room;
-  const client = {
-    getUserId: () => ACCOUNT,
-    fetchRoomEvent: vi
-      .fn<MatrixClient['fetchRoomEvent']>()
-      .mockResolvedValue(message().event),
-    getEventMapper: vi.fn(
-      () => (raw: MatrixEvent['event']) => new MatrixEvent(raw),
-    ),
-    decryptEventIfNeeded: vi
-      .fn<MatrixClient['decryptEventIfNeeded']>()
-      .mockResolvedValue(undefined),
-  };
+  );
   const allowed = vi.fn(() => true);
   const present = vi.fn();
   const batch = new ReactionNotificationBatch({
-    accountId: ACCOUNT,
-    client: client as unknown as MatrixClient,
+    accountId: me,
+    allowed,
+    lookup,
+    present,
+  });
+  const annotations: ReactionAnnotation[] = [];
+  const feed = engine.notifications(me).subscribe((item) => {
+    if (item.kind !== 'reaction-annotation') return;
+    annotations.push(item);
+    batch.add(item);
+  });
+  return {
+    engine,
+    me,
+    room,
+    target,
+    batch,
+    lookup,
     allowed,
     present,
-    roomEncrypted: () => roomEncrypted,
-  });
-  return { targets, room, client, allowed, present, batch };
+    annotations,
+    feed,
+    react: (sender = '@alice:hs', key = '👍', on = target) =>
+      engine.react(sender, room, on, key),
+    hold: () => (gate = new Subject<void>()),
+    release: () => {
+      const held = gate;
+      gate = null;
+      held?.next();
+    },
+  };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -79,35 +62,32 @@ afterEach(() => vi.useRealTimers());
 
 describe('ReactionNotificationBatch', () => {
   it('groups five people into one notification for the original message', async () => {
-    const { batch, room, present } = setup();
+    const { react, present, me, room, target } = setup();
     for (let i = 0; i < 5; i++) {
-      batch.add(
-        reaction(`$reaction${i}`, i ? `@user${i}:hs` : '@alice:hs'),
-        room,
-      );
+      react(i ? `@user${i}:hs` : '@alice:hs');
     }
     await vi.advanceTimersByTimeAsync(1999);
     expect(present).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(present).toHaveBeenCalledExactlyOnceWith({
       kind: 'reaction',
-      accountId: ACCOUNT,
-      roomId: ROOM,
-      eventId: '$target',
+      accountId: me,
+      roomId: room,
+      eventId: target,
       senderId: '@alice:hs',
-      senderName: 'Alice',
+      senderName: 'alice',
       senderCount: 5,
       reactionKeys: ['👍'],
       roomName: 'General',
-      body: 'Please review the release notes',
+      body: BODY,
     });
   });
 
   it('counts people once across multiple emojis and deduplicates reaction events', async () => {
-    const { batch, room, present } = setup();
-    batch.add(reaction('$one'), room);
-    batch.add(reaction('$one'), room);
-    batch.add(reaction('$two', '@alice:hs', '$target', '✅'), room);
+    const { react, present, batch, annotations } = setup();
+    react();
+    batch.add(annotations[0]);
+    react('@alice:hs', '✅');
     await vi.advanceTimersByTimeAsync(2000);
     expect(present).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
@@ -115,15 +95,15 @@ describe('ReactionNotificationBatch', () => {
         reactionKeys: ['👍', '✅'],
       }),
     );
-    batch.add(reaction('$one'), room);
+    batch.add(annotations[0]);
     await vi.advanceTimersByTimeAsync(2000);
     expect(present).toHaveBeenCalledTimes(1);
   });
 
   it('waits for a quiet period but flushes a continuous burst within ten seconds', async () => {
-    const { batch, room, present } = setup();
+    const { react, present } = setup();
     for (let i = 0; i < 10; i++) {
-      batch.add(reaction(`$reaction${i}`), room);
+      react();
       await vi.advanceTimersByTimeAsync(1000);
       if (i < 9) expect(present).not.toHaveBeenCalled();
     }
@@ -131,248 +111,116 @@ describe('ReactionNotificationBatch', () => {
   });
 
   it('keeps different message targets separate', async () => {
-    const { batch, targets, room, present } = setup();
-    targets.set('$second', message('$second'));
-    batch.add(reaction('$one'), room);
-    batch.add(reaction('$two', '@bob:hs', '$second'), room);
+    const { engine, me, room, target, react, present } = setup();
+    const second = engine.send(me, room, 'second');
+    react();
+    react('@bob:hs', '👍', second);
     await vi.advanceTimersByTimeAsync(2000);
     expect(present.mock.calls.map(([event]) => event.eventId)).toEqual([
-      '$target',
-      '$second',
+      target,
+      second,
     ]);
   });
 
-  it('never notifies for own reactions or someone else’s message', async () => {
-    const { batch, targets, room, present } = setup();
-    targets.set('$other', message('$other', '@bob:hs'));
-    batch.add(reaction('$own', ACCOUNT), room);
-    batch.add(reaction('$other-reaction', '@alice:hs', '$other'), room);
+  it('never notifies for a reaction to someone else’s message', async () => {
+    const { engine, room, react, present } = setup();
+    const theirs = engine.send('@bob:hs', room, 'theirs');
+    react('@alice:hs', '👍', theirs);
     await vi.advanceTimersByTimeAsync(2000);
     expect(present).not.toHaveBeenCalled();
   });
 
-  it('ignores malformed relations, cross-room events and redacted reactions', async () => {
-    const { batch, room, present, client } = setup();
-    const malformed = reaction('$bad');
-    malformed.event.content = {
-      'm.relates_to': { rel_type: 'm.reference', event_id: '$target' },
-    };
-    const wrongRoom = reaction('$wrong-room');
-    wrongRoom.event.room_id = '!different:hs';
-    const redacted = reaction('$redacted');
-    vi.spyOn(redacted, 'isRedacted').mockReturnValue(true);
-    for (const event of [malformed, wrongRoom, redacted])
-      batch.add(event, room);
+  it('rechecks redactions at delivery time, asking once per batch', async () => {
+    const { engine, room, target, react, present, lookup } = setup();
+    const removed = react();
+    react('@bob:hs');
+    engine.redact(room, removed);
     await vi.advanceTimersByTimeAsync(2000);
-    expect(present).not.toHaveBeenCalled();
-    expect(client.fetchRoomEvent).not.toHaveBeenCalled();
-  });
-
-  it('rechecks eligibility and redactions at delivery time', async () => {
-    const { batch, room, present, targets } = setup();
-    const removed = reaction('$removed');
-    batch.add(removed, room);
-    batch.add(reaction('$kept', '@bob:hs'), room);
-    vi.spyOn(removed, 'isRedacted').mockReturnValue(true);
-    await vi.advanceTimersByTimeAsync(2000);
+    expect(lookup).toHaveBeenCalledOnce();
     expect(present).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        senderId: '@bob:hs',
-        senderCount: 1,
-      }),
+      expect.objectContaining({ senderId: '@bob:hs', senderCount: 1 }),
     );
-    batch.add(reaction('$target-removed'), room);
-    vi.spyOn(targets.get('$target')!, 'isRedacted').mockReturnValue(true);
+    react();
+    engine.redact(room, target);
     await vi.advanceTimersByTimeAsync(2000);
     expect(present).toHaveBeenCalledTimes(1);
   });
 
-  it('fetches a missing target once and includes reactions arriving during lookup', async () => {
-    const { batch, room, present, targets, client } = setup();
-    targets.clear();
-    let resolve!: (value: MatrixEvent['event']) => void;
-    client.fetchRoomEvent.mockReturnValue(
-      new Promise((done) => {
-        resolve = done;
-      }),
-    );
-    batch.add(reaction('$one'), room);
+  it('includes reactions arriving during the lookup', async () => {
+    const { react, present, lookup, hold, release } = setup();
+    hold();
+    react();
     await vi.advanceTimersByTimeAsync(2000);
-    batch.add(reaction('$two', '@bob:hs'), room);
-    resolve(message().event);
+    react('@bob:hs');
+    release();
     await vi.advanceTimersByTimeAsync(0);
-    expect(client.fetchRoomEvent).toHaveBeenCalledExactlyOnceWith(
-      ROOM,
-      '$target',
-    );
-    expect(client.getEventMapper).toHaveBeenCalledWith({ decrypt: false });
+    expect(lookup).toHaveBeenCalledOnce();
     expect(present).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ senderCount: 2 }),
     );
   });
 
-  it("previews what the message's sender wrote, not someone else's edit of it", async () => {
-    const { batch, room, present, targets } = setup();
-    const target = message();
-    target.makeReplaced(
-      new MatrixEvent({
-        event_id: '$forged',
-        room_id: ROOM,
-        sender: '@mallory:hs',
-        type: EventType.RoomMessage,
-        content: {
-          msgtype: 'm.text',
-          body: '* forged',
-          'm.new_content': { msgtype: 'm.text', body: 'forged' },
-          'm.relates_to': {
-            rel_type: RelationType.Replace,
-            event_id: '$target',
-          },
-        },
-      }),
-    );
-    targets.set('$target', target);
-    batch.add(reaction('$one'), room);
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(present).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ body: 'Please review the release notes' }),
-    );
-  });
-
-  it('decrypts an encrypted target before using its preview', async () => {
-    const { batch, room, present, targets, client } = setup();
-    const encrypted = new MatrixEvent({
-      event_id: '$target',
-      room_id: ROOM,
-      sender: ACCOUNT,
-      type: EventType.RoomMessageEncrypted,
-      content: { ciphertext: 'private' },
-    });
-    targets.set('$target', encrypted);
-    client.decryptEventIfNeeded.mockImplementation(async (event) => {
-      vi.spyOn(event, 'getType').mockReturnValue(EventType.RoomMessage);
-      vi.spyOn(event, 'getContent').mockReturnValue({
-        body: 'Decrypted preview',
-      });
-      vi.spyOn(event, 'getClearContent').mockReturnValue({
-        body: 'Decrypted preview',
-      });
-      vi.spyOn(event, 'getOriginalContent').mockReturnValue({
-        body: 'Decrypted preview',
-      });
-    });
-    batch.add(reaction('$one'), room);
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(client.decryptEventIfNeeded).toHaveBeenCalledWith(encrypted);
-    expect(present).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ body: 'Decrypted preview' }),
-    );
-  });
-
-  it('does not preview text sent in the clear into an encrypted room', async () => {
-    const { batch, room, present } = setup({ roomEncrypted: true });
-    batch.add(reaction('$one'), room);
+  it('presents the preview the engine allows', async () => {
+    const { react, present } = setup({ encrypted: true });
+    react();
     await vi.advanceTimersByTimeAsync(2000);
     expect(present).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ body: null }),
     );
   });
 
-  it('previews the original, not a plaintext edit, of an encrypted message in an encrypted room', async () => {
-    const { batch, room, present, targets } = setup({ roomEncrypted: true });
-    const target = message();
-    vi.spyOn(target, 'isEncrypted').mockReturnValue(true);
-    target.makeReplaced(
-      new MatrixEvent({
-        event_id: '$edit',
-        room_id: ROOM,
-        sender: ACCOUNT,
-        type: EventType.RoomMessage,
-        content: {
-          msgtype: 'm.text',
-          body: '* in the clear',
-          'm.new_content': { msgtype: 'm.text', body: 'in the clear' },
-          'm.relates_to': {
-            rel_type: RelationType.Replace,
-            event_id: '$target',
-          },
-        },
-      }),
+  it('suppresses failed and erroring lookups', async () => {
+    const { react, present, lookup } = setup();
+    lookup.mockReturnValueOnce(
+      of(
+        engineFail({
+          kind: 'http',
+          code: 'request-failed',
+          diagnostic: { kind: 'http', httpStatus: 404 },
+        }),
+      ),
     );
-    targets.set('$target', target);
-    batch.add(reaction('$one'), room);
+    react();
     await vi.advanceTimersByTimeAsync(2000);
-    expect(present).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ body: 'Please review the release notes' }),
-    );
-  });
-
-  it('suppresses lookup failures and undecryptable targets', async () => {
-    const { batch, room, present, targets, client } = setup();
-    targets.clear();
-    client.fetchRoomEvent.mockRejectedValue(new Error('Unavailable'));
-    batch.add(reaction('$one'), room);
-    await vi.advanceTimersByTimeAsync(2000);
-    targets.set(
-      '$target',
-      new MatrixEvent({
-        event_id: '$target',
-        room_id: ROOM,
-        sender: ACCOUNT,
-        type: EventType.RoomMessageEncrypted,
-        content: { ciphertext: 'private' },
-      }),
-    );
-    client.decryptEventIfNeeded.mockRejectedValue(new Error('Missing key'));
-    batch.add(reaction('$two'), room);
+    lookup.mockImplementationOnce(() => {
+      throw new Error('Missing key');
+    });
+    react('@bob:hs');
     await vi.advanceTimersByTimeAsync(2000);
     expect(present).not.toHaveBeenCalled();
   });
 
-  it('drops batches if the preference, mute or owning client changes', async () => {
-    const { batch, room, present, allowed } = setup();
-    batch.add(reaction('$one'), room);
+  it('drops batches if the preference, mute or session changes', async () => {
+    const { react, present, allowed } = setup();
+    react();
     allowed.mockReturnValue(false);
     await vi.advanceTimersByTimeAsync(2000);
     expect(present).not.toHaveBeenCalled();
   });
 
-  it('cancels timers and ignores a fetched target after disposal', async () => {
-    const { batch, room, present, targets, client } = setup();
-    targets.clear();
-    let resolve!: (value: MatrixEvent['event']) => void;
-    client.fetchRoomEvent.mockReturnValue(
-      new Promise((done) => {
-        resolve = done;
-      }),
-    );
-    batch.add(reaction('$one'), room);
+  it('cancels timers and ignores a looked-up target after disposal', async () => {
+    const { react, present, lookup, hold, release, batch } = setup();
+    hold();
+    react();
     await vi.advanceTimersByTimeAsync(2000);
     batch.dispose();
-    resolve(message().event);
-    batch.add(reaction('$two'), room);
+    release();
+    react('@bob:hs');
     await vi.advanceTimersByTimeAsync(20_000);
     expect(present).not.toHaveBeenCalled();
-    expect(client.fetchRoomEvent).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledTimes(1);
   });
 
   it('releases a timed-out lookup and ignores its late result', async () => {
-    const { batch, room, present, targets, client } = setup();
-    targets.clear();
-    let resolve!: (value: MatrixEvent['event']) => void;
-    client.fetchRoomEvent.mockReturnValue(
-      new Promise((done) => {
-        resolve = done;
-      }),
-    );
-    batch.add(reaction('$stalled'), room);
+    const { react, present, hold, release } = setup();
+    hold();
+    react();
     await vi.advanceTimersByTimeAsync(12_000);
-    resolve(message().event);
+    release();
     await vi.advanceTimersByTimeAsync(0);
     expect(present).not.toHaveBeenCalled();
 
-    targets.set('$target', message());
-    batch.add(reaction('$later'), room);
+    react('@bob:hs');
     await vi.advanceTimersByTimeAsync(2000);
     expect(present).toHaveBeenCalledTimes(1);
   });
