@@ -10,6 +10,7 @@ import {
   type SsoStateStash,
 } from '@trinity/data-access/auth';
 import { MockProvider } from 'ng-mocks';
+import { EngineRequestError } from '@trinity/util/matrix';
 import { from, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { SsoCallbackPage } from './sso-callback.page';
@@ -264,6 +265,42 @@ describe('SsoCallbackPage', () => {
       expect(cmp.error()).toBe('token expired');
       expect(navigateByUrl).not.toHaveBeenCalled();
     });
+
+    it.each([
+      [
+        'invalid-token',
+        'This sign-in link has expired or was already used. Sign in again.',
+      ],
+      ['deactivated', 'This account has been deleted.'],
+    ] as const)(
+      'words a login token the server refused as %s',
+      async (reason, text) => {
+        const { cmp, navigateByUrl } = await renderPage({
+          auth: {
+            completeSsoLogin: vi.fn(() =>
+              throwError(
+                () =>
+                  new EngineRequestError({
+                    kind: 'permission',
+                    code: 'login-refused',
+                    diagnostic: {
+                      kind: 'permission',
+                      httpStatus: 403,
+                      errcode: 'M_FORBIDDEN',
+                    },
+                    params: { reason },
+                  }),
+              ),
+            ),
+          } as unknown as Partial<AuthService>,
+          params: { loginToken: 'TOKEN', sso_state: 'NONCE' },
+          ssoStash: { state: 'NONCE', baseUrl: 'https://hs.example' },
+        });
+
+        expect(cmp.error()).toBe(text);
+        expect(navigateByUrl).not.toHaveBeenCalled();
+      },
+    );
 
     it('names the stored account and its server when the sign-in is refused', async () => {
       const { cmp, navigateByUrl } = await renderPage({

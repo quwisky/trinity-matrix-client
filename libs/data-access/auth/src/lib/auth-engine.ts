@@ -1,0 +1,83 @@
+import type { Observable } from 'rxjs';
+import type { EngineResult, UiaAuth } from '@trinity/util/matrix';
+import type { AuthMetadata } from './auth-metadata';
+
+/** The credentials a sign-in produced, before TypeScript establishes them as an account. */
+export interface SignedInSession {
+  readonly userId: string;
+  readonly deviceId: string;
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+}
+
+export interface PasswordLogin {
+  readonly localpart: string;
+  readonly password: string;
+  readonly deviceDisplayName: string;
+  /** The existing device a re-authentication signs back in on, else null for a new one. */
+  readonly deviceId: string | null;
+}
+
+export interface TokenLogin {
+  readonly token: string;
+  readonly deviceDisplayName: string;
+  readonly deviceId: string | null;
+}
+
+export interface EmailTokenRequest {
+  readonly email: string;
+  readonly clientSecret: string;
+  readonly sendAttempt: number;
+}
+
+export interface PasswordReset {
+  readonly sid: string;
+  readonly clientSecret: string;
+  readonly newPassword: string;
+  readonly logoutDevices: boolean;
+}
+
+/**
+ * Sign-in and password commands, as plain data. Every command is cold, emits once and
+ * completes; expected failures are values. A request the server answers with user-interactive
+ * auth fails `uia-required` with the challenge, and is sent again with an `auth` for it.
+ */
+export interface AuthEngine {
+  loginFlows(baseUrl: string): Observable<EngineResult<readonly string[]>>;
+  /** Null when the server answers without OAuth 2.0 metadata; a failure when it cannot be asked. */
+  authMetadata(baseUrl: string): Observable<EngineResult<AuthMetadata | null>>;
+  /** A server that does not register accounts fails `forbidden`. */
+  usernameAvailable(
+    baseUrl: string,
+    localpart: string,
+  ): Observable<EngineResult<boolean>>;
+  ssoLoginUrl(
+    baseUrl: string,
+    redirectUrl: string,
+  ): Observable<EngineResult<string>>;
+  /** A refused password or deactivated account fails `login-refused`. */
+  loginWithPassword(
+    baseUrl: string,
+    login: PasswordLogin,
+  ): Observable<EngineResult<SignedInSession>>;
+  /** A refused token (expired or already used) or deactivated account fails `login-refused`. */
+  loginWithToken(
+    baseUrl: string,
+    login: TokenLogin,
+  ): Observable<EngineResult<SignedInSession>>;
+  requestPasswordResetToken(
+    baseUrl: string,
+    request: EmailTokenRequest,
+  ): Observable<EngineResult<{ readonly sid: string }>>;
+  /** A link not confirmed yet fails `uia-required`. */
+  resetPassword(
+    baseUrl: string,
+    reset: PasswordReset,
+  ): Observable<EngineResult<null>>;
+  /** Keeps the account's other sessions signed in; the probe sends no `auth` at all. */
+  changePassword(
+    accountId: string,
+    newPassword: string,
+    auth: UiaAuth | null,
+  ): Observable<EngineResult<null>>;
+}

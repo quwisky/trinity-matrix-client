@@ -117,6 +117,35 @@ describe('engineFailureMessage', () => {
     expect(engineFailureMessage(NOT_SIGNED_IN)).toBe('Not signed in.');
   });
 
+  it.each([
+    ['invalid-credentials', 'Incorrect username or password.'],
+    [
+      'invalid-token',
+      'This sign-in link has expired or was already used. Sign in again.',
+    ],
+    ['deactivated', 'This account has been deleted.'],
+  ] as const)('words a sign-in refused as %s', (reason, text) => {
+    expect(
+      engineFailureMessage({
+        kind: 'permission',
+        code: 'login-refused',
+        diagnostic: { kind: 'permission', httpStatus: 403 },
+        params: { reason },
+      }),
+    ).toBe(text);
+  });
+
+  it('words a UIA challenge like the request failure it stands for', () => {
+    expect(
+      engineFailureMessage({
+        kind: 'http',
+        code: 'uia-required',
+        diagnostic: { kind: 'http', httpStatus: 401 },
+        params: { challenge: { flows: [] } },
+      }),
+    ).toBe(engineFailureMessage(requestFailed('http')));
+  });
+
   it('message-unavailable reads "Message not found."', () => {
     expect(
       engineFailureMessage({

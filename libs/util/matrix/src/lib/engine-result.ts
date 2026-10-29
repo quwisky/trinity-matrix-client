@@ -42,6 +42,20 @@ const RECOVERY_REFUSAL_MESSAGES: Readonly<Record<RecoveryRefusal, string>> = {
   incorrect: 'That key or passphrase is incorrect.',
 };
 
+/**
+ * Why the homeserver refused a sign-in: a wrong username or password, a login token that
+ * expired or was already used, or an account it has deactivated.
+ */
+export type LoginRefusal =
+  'invalid-credentials' | 'invalid-token' | 'deactivated';
+
+const LOGIN_REFUSAL_MESSAGES: Readonly<Record<LoginRefusal, string>> = {
+  'invalid-credentials': 'Incorrect username or password.',
+  'invalid-token':
+    'This sign-in link has expired or was already used. Sign in again.',
+  deactivated: 'This account has been deleted.',
+};
+
 /** Why a persisted account could not start; mirrors the matrix-client startup outcomes. */
 export type AccountStartFailureReason =
   | 'reauthentication-required'
@@ -65,8 +79,16 @@ export type EngineFailure = {
     }
   | {
       readonly code: 'request-failed';
-      /** `session-refresh` marks a failed token refresh, worded apart from a plain network failure. */
-      readonly params?: { readonly cause?: 'session-refresh' };
+      readonly params?: {
+        /** `session-refresh` marks a failed token refresh, worded apart from a plain network failure. */
+        readonly cause?: 'session-refresh';
+        /** Text the homeserver wrote for a person to read, such as an `M_WEAK_PASSWORD` reason. */
+        readonly serverMessage?: string;
+      };
+    }
+  | {
+      readonly code: 'login-refused';
+      readonly params: { readonly reason: LoginRefusal };
     }
   | {
       readonly code: 'account-start-failed';
@@ -200,6 +222,8 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This password prompt is no longer open.';
     case 'recovery-refused':
       return RECOVERY_REFUSAL_MESSAGES[failure.params.reason];
+    case 'login-refused':
+      return LOGIN_REFUSAL_MESSAGES[failure.params.reason];
   }
 }
 
