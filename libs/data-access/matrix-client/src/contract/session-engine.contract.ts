@@ -221,6 +221,7 @@ export function defineSessionEngineContract(
         await expect(
           firstValueFrom(engine.accessToken(s.userId)),
         ).resolves.toEqual({
+          homeserverUrl: s.baseUrl,
           accessToken: s.accessToken,
           expiresAt: null,
           refreshable: false,

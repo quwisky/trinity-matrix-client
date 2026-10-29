@@ -369,7 +369,12 @@ describe('JsSdkSessionEngine', () => {
       const { engine } = await live(client);
 
       expect(collect(engine.accessToken(SESSION.userId))).toEqual([
-        { accessToken: 'tok', expiresAt: null, refreshable: false },
+        {
+          homeserverUrl: 'https://hs.example',
+          accessToken: 'tok',
+          expiresAt: null,
+          refreshable: false,
+        },
       ]);
     });
 
@@ -389,8 +394,18 @@ describe('JsSdkSessionEngine', () => {
       });
 
       expect(values).toEqual([
-        { accessToken: 'tok', expiresAt: 1234, refreshable: true },
-        { accessToken: 'tok-new', expiresAt: 9_999, refreshable: true },
+        {
+          homeserverUrl: 'https://hs.example',
+          accessToken: 'tok',
+          expiresAt: 1234,
+          refreshable: true,
+        },
+        {
+          homeserverUrl: 'https://hs.example',
+          accessToken: 'tok-new',
+          expiresAt: 9_999,
+          refreshable: true,
+        },
       ]);
     });
 
@@ -422,7 +437,12 @@ describe('JsSdkSessionEngine', () => {
       TestBed.tick();
 
       expect(values).toEqual([
-        { accessToken: 'tok-r', expiresAt: 5_555, refreshable: true },
+        {
+          homeserverUrl: 'https://hs.example',
+          accessToken: 'tok-r',
+          expiresAt: 5_555,
+          refreshable: true,
+        },
       ]);
     });
   });
