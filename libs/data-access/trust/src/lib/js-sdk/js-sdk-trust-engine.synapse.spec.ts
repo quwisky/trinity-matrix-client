@@ -8,6 +8,7 @@ import {
   baseUrl,
   cs,
   localpart,
+  login,
   publishIdentityElsewhere,
   register,
   startSecondDevice,
@@ -34,15 +35,60 @@ describe.skipIf(!baseUrl)('JsSdkTrustEngine against Synapse', () => {
     async () => {
       const session = await startSession(await register(localpart('alice')));
       const devices: MatrixClient[] = [];
+      const bob = await register(localpart('bob'));
+      const crypto = () => {
+        const found = TestBed.inject(JS_SDK_CLIENTS)
+          .clientFor(session.userId)
+          ?.getCrypto();
+        if (!found) throw new Error('No crypto for alice');
+        return found;
+      };
+      let sharedRoom = false;
       return {
         engine: TestBed.inject(JsSdkTrustEngine),
         alice: session.userId,
+        password: session.password,
+        deviceId: session.deviceId,
+        bob: bob.userId,
+        addDevice: async () => (await login(session)).device_id,
+        publishIdentityElsewhere: () => publishIdentityElsewhere(session),
+        bobPublishesIdentity: async () => {
+          // A shared encrypted room makes alice track bob, so his key changes reach her.
+          if (!sharedRoom) {
+            const { room_id: roomId } = (await cs(
+              bob.accessToken,
+              'POST',
+              '/createRoom',
+              {
+                invite: [session.userId],
+                initial_state: [
+                  {
+                    type: 'm.room.encryption',
+                    state_key: '',
+                    content: { algorithm: 'm.megolm.v1.aes-sha2' },
+                  },
+                ],
+              },
+            )) as { room_id: string };
+            await cs(
+              session.accessToken,
+              'POST',
+              `/join/${encodeURIComponent(roomId)}`,
+              {},
+            );
+          }
+          await publishIdentityElsewhere(bob);
+          if (sharedRoom) return;
+          sharedRoom = true;
+          // Bob's first identity must be pinned before a change can need approval.
+          for (let i = 0; i < 120; i++) {
+            if (await crypto().userHasCrossSigningKeys(bob.userId)) return;
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+          throw new Error("Alice never saw bob's identity");
+        },
         publishIdentity: async () => {
-          const crypto = TestBed.inject(JS_SDK_CLIENTS)
-            .clientFor(session.userId)
-            ?.getCrypto();
-          if (!crypto) throw new Error('No crypto for alice');
-          await crypto.bootstrapCrossSigning({
+          await crypto().bootstrapCrossSigning({
             setupNewCrossSigning: true,
             authUploadDeviceSigningKeys: async (makeRequest) => {
               await makeRequest({

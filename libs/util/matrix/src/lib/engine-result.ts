@@ -87,6 +87,14 @@ export type EngineFailure = {
   | { readonly code: 'verification-gone' }
   /** No QR code can be shown for this verification. */
   | { readonly code: 'qr-unavailable' }
+  /** The person cancelled a password prompt, or stopped the command that raised it. */
+  | { readonly code: 'uia-cancelled' }
+  /** The server asks for an authentication stage other than a password. */
+  | { readonly code: 'uia-unsupported' }
+  /** The server rejected every allowed password attempt. */
+  | { readonly code: 'uia-attempts-exceeded' }
+  /** No open password prompt has this id: it was answered, cancelled or never raised. */
+  | { readonly code: 'prompt-gone' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -155,6 +163,14 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This verification is no longer in progress.';
     case 'qr-unavailable':
       return 'QR verification isn’t available for these sessions.';
+    case 'uia-cancelled':
+      return 'Password confirmation was cancelled.';
+    case 'uia-unsupported':
+      return 'This account needs additional verification that Trinity can’t complete here.';
+    case 'uia-attempts-exceeded':
+      return 'Too many password attempts.';
+    case 'prompt-gone':
+      return 'This password prompt is no longer open.';
   }
 }
 
