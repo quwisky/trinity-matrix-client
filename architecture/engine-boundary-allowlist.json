@@ -33,8 +33,6 @@
     "libs/data-access/trust/src/lib/cross-signing-repair.ts",
     "libs/data-access/trust/src/lib/recovery-reset.ts",
     "libs/data-access/trust/src/lib/setup-guards.ts",
-    "libs/data-access/trust/src/lib/trust-devices.service.ts",
-    "libs/data-access/trust/src/lib/trust-users.service.ts",
     "libs/data-access/trust/src/lib/trust.service.ts",
     "libs/feature/auth/src/lib/login/login.page.ts",
     "libs/util/matrix/src/lib/message-content.ts",

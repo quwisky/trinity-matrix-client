@@ -1,244 +1,247 @@
-import { ApplicationRef, signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { MatrixClient } from 'matrix-js-sdk';
-import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
-import { MockProvider, ngMocks } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  SESSION_SNAPSHOT,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import { Subject, firstValueFrom, of } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
+import { type EngineResult, engineOk } from '@trinity/util/matrix';
+import { FakeTrustEngine } from '../contract/fake-trust-engine';
+import type { UserTrustFacts } from './trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 import { TrustOperationError } from './trust-operation-error';
 import { TrustUsersService } from './trust-users.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 const ALICE = '@alice:hs';
 const BOB = '@bob:hs';
+const ME2 = '@me2:contract.invalid';
 
-interface Status {
-  isCrossSigningVerified(): boolean;
-  wasCrossSigningVerified(): boolean;
-  readonly needsUserApproval: boolean;
-}
-
-const status = (is: boolean, was: boolean, approve = false): Status => ({
-  isCrossSigningVerified: () => is,
-  wasCrossSigningVerified: () => was,
-  needsUserApproval: approve,
-});
-
-function fakeClient(
-  read: (userId: string) => Promise<Status> = async () => status(false, false),
-  crypto = true,
-) {
-  const getUserVerificationStatus = vi.fn(read);
-  const pinCurrentUserIdentity = vi.fn(async (_userId: string) => undefined);
-  const withdrawVerificationRequirement = vi.fn(
-    async (_userId: string) => undefined,
-  );
+function sessionWith(active: string | null, accounts: readonly string[]) {
   return {
-    getUserId: vi.fn(() => '@me:hs'),
-    getCrypto: vi.fn(() =>
-      crypto
-        ? {
-            getUserVerificationStatus,
-            pinCurrentUserIdentity,
-            withdrawVerificationRequirement,
-          }
-        : undefined,
-    ),
-    getUserVerificationStatus,
-    pinCurrentUserIdentity,
-    withdrawVerificationRequirement,
-    on: vi.fn(),
-    off: vi.fn(),
-  };
+    activeAccountId: active,
+    accounts: accounts.map((accountId) => ({
+      accountId,
+      deviceId: 'FAKEDEVICE',
+      generation: 1,
+      syncState: 'syncing' as const,
+      serverSynced: true,
+      roomsPrepared: true,
+      waitingCount: 0,
+      cryptoStoreEncrypted: true,
+    })),
+    softLoggedOut: [],
+  } satisfies SessionSnapshot;
 }
 
-const activeUserId = signal<string | null>(null);
-
-function setup(client = fakeClient()) {
-  activeUserId.set('@me:hs');
+function setup() {
+  const engine = new FakeTrustEngine();
+  const me = engine.alice;
+  engine.addAccount(ME2);
+  const session = signal(sessionWith(me, [me, ME2]));
   TestBed.configureTestingModule({
     providers: [
-      TrustUsersService,
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
-      }),
+      { provide: TRUST_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
     ],
   });
-  const matrix = TestBed.inject(MatrixClientService);
-  ngMocks.stubMember(matrix, 'instance', client as unknown as MatrixClient);
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  return { svc: TestBed.inject(TrustUsersService), client, matrix };
+  const svc = TestBed.inject(TrustUsersService);
+  return { svc, engine, me, session };
 }
 
-/** The `UserTrustStatusChanged` handler the service bound on the client. */
-function trustHandler(client: ReturnType<typeof fakeClient>) {
-  return client.on.mock.calls.find(
-    (c) => c[0] === CryptoEvent.UserTrustStatusChanged,
-  )?.[1] as (userId: string, next: Status) => void;
+function run(svc: TrustUsersService) {
+  const lifetime = svc.runProjection().subscribe();
+  TestBed.tick();
+  return lifetime;
 }
 
-const settle = async (): Promise<void> => {
-  for (let i = 0; i < 5; i++) await Promise.resolve();
-};
+/** Lets a queued reconcile run. */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  TestBed.tick();
+}
 
 describe('TrustUsersService', () => {
-  beforeEach(() => TestBed.resetTestingModule());
+  it.each([
+    ['verified', { verified: true, wasVerified: true }],
+    ['verified-identity-changed', { wasVerified: true, needsApproval: true }],
+    ['identity-changed', { needsApproval: true }],
+    ['unverified', {}],
+  ] as const)('reads %s', async (expected, trust) => {
+    const { svc, engine, me } = setup();
+    engine.setUserTrust(me, ALICE, trust);
+    const lifetime = run(svc);
 
-  it('returns verified when the user is cross-signing verified', async () => {
-    const { svc } = setup(fakeClient(async () => status(true, true)));
-    const lifetime = svc.runProjection().subscribe();
-    const trust = svc.userTrust(ALICE);
+    const state = svc.userTrust(ALICE);
     await settle();
-    expect(trust()).toBe('verified');
-    expect(svc.userTrust(ALICE)).toBe(trust);
+
+    expect(state()).toBe(expected);
+    expect(svc.userTrust(ALICE)).toBe(state);
     lifetime.unsubscribe();
   });
 
-  it('returns verified-identity-changed when a previously verified identity is no longer verified', async () => {
-    const { svc } = setup(fakeClient(async () => status(false, true, true)));
-    const lifetime = svc.runProjection().subscribe();
-    const trust = svc.userTrust(ALICE);
+  it('follows changes for that user only', async () => {
+    const { svc, engine, me } = setup();
+    const lifetime = run(svc);
+    const alice = svc.userTrust(ALICE);
+    const bob = svc.userTrust(BOB);
     await settle();
-    expect(trust()).toBe('verified-identity-changed');
+    expect(alice()).toBe('unverified');
+
+    engine.setUserTrust(me, BOB, { verified: true });
+    await settle();
+    expect(alice()).toBe('unverified');
+    expect(bob()).toBe('verified');
+
+    engine.setUserTrust(me, ALICE, { verified: true });
+    await settle();
+    expect(alice()).toBe('verified');
     lifetime.unsubscribe();
   });
 
-  it('returns identity-changed when an unverified identity needs approval', async () => {
-    const { svc } = setup(fakeClient(async () => status(false, false, true)));
-    const lifetime = svc.runProjection().subscribe();
-    const trust = svc.userTrust(ALICE);
+  it('reads users asked about before the projection started', async () => {
+    const { svc, engine, me } = setup();
+    engine.setUserTrust(me, ALICE, { verified: true });
+    const state = svc.userTrust(ALICE);
+    expect(state()).toBeNull();
+
+    const lifetime = run(svc);
     await settle();
-    expect(trust()).toBe('identity-changed');
+
+    expect(state()).toBe('verified');
     lifetime.unsubscribe();
   });
 
-  it('returns unverified for a user never verified', async () => {
-    const { svc } = setup(fakeClient(async () => status(false, false)));
-    const lifetime = svc.runProjection().subscribe();
-    const trust = svc.userTrust(ALICE);
-    await settle();
-    expect(trust()).toBe('unverified');
-    lifetime.unsubscribe();
-  });
-
-  it('returns unverified when the status read fails', async () => {
-    const { svc } = setup(
-      fakeClient(() => Promise.reject(new Error('store closed'))),
+  it('is null while crypto is unavailable', async () => {
+    const { svc, engine, session } = setup();
+    engine.addAccount('@carol:contract.invalid', { crypto: false });
+    session.set(
+      sessionWith('@carol:contract.invalid', ['@carol:contract.invalid']),
     );
-    const lifetime = svc.runProjection().subscribe();
-    const trust = svc.userTrust(ALICE);
+    const lifetime = run(svc);
+    const state = svc.userTrust(ALICE);
     await settle();
-    expect(trust()).toBe('unverified');
+
+    expect(state()).toBeNull();
     lifetime.unsubscribe();
   });
 
-  it('refreshes on UserTrustStatusChanged for that user only', async () => {
-    const { svc, client } = setup(fakeClient(async () => status(false, false)));
-    const lifetime = svc.runProjection().subscribe();
-    const trust = svc.userTrust(ALICE);
+  it('follows the newly active account on a switch, null until it reads', async () => {
+    const { svc, engine, me, session } = setup();
+    engine.setUserTrust(me, ALICE, { verified: true });
+    const lifetime = run(svc);
+    const state = svc.userTrust(ALICE);
     await settle();
-    expect(trust()).toBe('unverified');
+    expect(state()).toBe('verified');
+    const read = new Subject<EngineResult<UserTrustFacts>>();
+    vi.spyOn(engine, 'userTrust').mockReturnValue(read);
 
-    trustHandler(client)(BOB, status(true, true));
+    session.set(sessionWith(ME2, [me, ME2]));
+    TestBed.tick();
     await settle();
-    expect(trust()).toBe('unverified');
+    expect(state()).toBeNull();
+    expect(engine.userTrust).toHaveBeenCalledWith(ME2, ALICE);
 
-    trustHandler(client)(ALICE, status(true, true));
-    await settle();
-    expect(trust()).toBe('verified');
-    lifetime.unsubscribe();
-  });
-
-  it('discards a slower earlier read once a newer status has arrived', async () => {
-    let resolveFirst: (s: Status) => void = () => undefined;
-    const { svc, client } = setup(
-      fakeClient(
-        () => new Promise<Status>((resolve) => (resolveFirst = resolve)),
-      ),
+    read.next(
+      engineOk({ verified: false, wasVerified: false, needsApproval: false }),
     );
-    const lifetime = svc.runProjection().subscribe();
-    const trust = svc.userTrust(ALICE);
-
-    trustHandler(client)(ALICE, status(true, true));
-    resolveFirst(status(false, false));
     await settle();
-    expect(trust()).toBe('verified');
+    expect(state()).toBe('unverified');
     lifetime.unsubscribe();
   });
 
-  it('is null while crypto is unavailable and after an account switch', async () => {
-    const { svc, matrix } = setup(
-      fakeClient(async () => status(true, true), false),
-    );
-    const lifetime = svc.runProjection().subscribe();
-    const trust = svc.userTrust(ALICE);
+  it('releases every user subscription when the projection stops', async () => {
+    const { svc, engine, me } = setup();
+    const lifetime = run(svc);
+    const state = svc.userTrust(ALICE);
+    svc.userTrust(BOB);
     await settle();
-    expect(trust()).toBeNull();
-
-    const clientA = fakeClient(async () => status(true, true));
-    ngMocks.stubMember(matrix, 'instance', clientA as unknown as MatrixClient);
-    activeUserId.set('@a:hs');
-    TestBed.inject(ApplicationRef).tick();
-    await settle();
-    expect(trust()).toBe('verified');
-
-    const clientB = fakeClient(() => new Promise<Status>(() => undefined));
-    ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
-    activeUserId.set('@b:hs');
-    TestBed.inject(ApplicationRef).tick();
-    await settle();
-    expect(trust()).toBeNull();
+    expect(engine.userSubscriptions(me)).toBe(2);
 
     lifetime.unsubscribe();
+
+    expect(engine.userSubscriptions(me)).toBe(0);
+    expect(state()).toBeNull();
   });
 
   it('is null when no projection is running', async () => {
-    const { svc } = setup(fakeClient(async () => status(true, true)));
-    const trust = svc.userTrust(ALICE);
+    const { svc, engine, me } = setup();
+    engine.setUserTrust(me, ALICE, { verified: true });
+
+    const state = svc.userTrust(ALICE);
     await settle();
-    expect(trust()).toBeNull();
+
+    expect(state()).toBeNull();
   });
 
   describe('identity actions', () => {
     it.each([
-      ['acknowledgeIdentity', 'pinCurrentUserIdentity'],
-      ['withdrawVerification', 'withdrawVerificationRequirement'],
+      ['acknowledgeIdentity', 'pinIdentity', { needsApproval: true }],
+      ['withdrawVerification', 'withdrawVerification', { wasVerified: true }],
     ] as const)(
-      '%s calls %s and re-reads the user',
-      async (action, sdkMethod) => {
-        let next = status(false, true, true);
-        const client = fakeClient(async () => next);
-        const { svc } = setup(client);
-        const lifetime = svc.runProjection().subscribe();
-        const trust = svc.userTrust(ALICE);
+      '%s calls %s and the user reads unverified before it completes',
+      async (action, engineMethod, before) => {
+        const { svc, engine, me } = setup();
+        engine.setUserTrust(me, ALICE, before);
+        const call = vi.spyOn(engine, engineMethod);
+        const lifetime = run(svc);
+        const state = svc.userTrust(ALICE);
         await settle();
-        expect(trust()).toBe('verified-identity-changed');
+        expect(state()).not.toBe('unverified');
 
-        next = status(false, false);
         await firstValueFrom(svc[action](ALICE), { defaultValue: undefined });
-        await settle();
 
-        expect(client[sdkMethod]).toHaveBeenCalledWith(ALICE);
-        expect(trust()).toBe('unverified');
+        expect(call).toHaveBeenCalledWith(me, ALICE);
+        expect(state()).toBe('unverified');
         lifetime.unsubscribe();
       },
     );
 
+    it('keeps the newest status when the projection publishes after the re-read', async () => {
+      const { svc, engine, me } = setup();
+      engine.setUserTrust(me, ALICE, { needsApproval: true });
+      const lifetime = run(svc);
+      const state = svc.userTrust(ALICE);
+      await settle();
+
+      await firstValueFrom(svc.acknowledgeIdentity(ALICE), {
+        defaultValue: undefined,
+      });
+      engine.setUserTrust(me, BOB, { verified: true }); // another user's change
+      svc.userTrust(BOB);
+      await settle();
+
+      expect(state()).toBe('unverified');
+      lifetime.unsubscribe();
+    });
+
     it('is cold: nothing runs until subscribed', () => {
-      const client = fakeClient();
-      const { svc } = setup(client);
+      const { svc, engine } = setup();
+      const pin = vi.spyOn(engine, 'pinIdentity');
 
       svc.acknowledgeIdentity(ALICE);
 
-      expect(client.pinCurrentUserIdentity).not.toHaveBeenCalled();
+      expect(pin).not.toHaveBeenCalled();
     });
 
-    it('reports a failure as a TrustOperationError', async () => {
-      const client = fakeClient();
-      client.withdrawVerificationRequirement.mockRejectedValue(
-        new Error('no identity for @alice:hs'),
+    it('reports an account without crypto as not ready', async () => {
+      const { svc, engine, session } = setup();
+      engine.addAccount('@carol:contract.invalid', { crypto: false });
+      session.set(
+        sessionWith('@carol:contract.invalid', ['@carol:contract.invalid']),
       );
-      const { svc } = setup(client);
+
+      await expect(
+        firstValueFrom(svc.acknowledgeIdentity(ALICE)),
+      ).rejects.toMatchObject({
+        operation: 'acknowledge-identity',
+        kind: 'not-ready',
+        recovery: 'retry',
+      });
+    });
+
+    it('reports a failure as a TrustOperationError without the user id', async () => {
+      const { svc } = setup(); // ALICE's identity was never seen: the engine refuses
 
       const error = await firstValueFrom(svc.withdrawVerification(ALICE)).catch(
         (e: unknown) => e,
@@ -248,7 +251,30 @@ describe('TrustUsersService', () => {
       expect((error as TrustOperationError).operation).toBe(
         'withdraw-verification',
       );
-      expect((error as Error).message).not.toContain('@alice:hs');
+      expect((error as Error).message).not.toContain(ALICE);
+    });
+
+    it('waits for the re-read before completing', async () => {
+      const { svc, engine, me } = setup();
+      engine.setUserTrust(me, ALICE, { needsApproval: true });
+      const lifetime = run(svc);
+      svc.userTrust(ALICE);
+      await settle();
+      const reread = new Subject<EngineResult<UserTrustFacts>>();
+      vi.spyOn(engine, 'pinIdentity').mockReturnValue(of(engineOk(null)));
+      vi.spyOn(engine, 'userTrust').mockReturnValue(reread);
+      let completed = false;
+
+      svc.acknowledgeIdentity(ALICE).subscribe({
+        complete: () => (completed = true),
+      });
+      expect(completed).toBe(false);
+      reread.next(
+        engineOk({ verified: false, wasVerified: false, needsApproval: false }),
+      );
+
+      expect(completed).toBe(true);
+      lifetime.unsubscribe();
     });
   });
 });
