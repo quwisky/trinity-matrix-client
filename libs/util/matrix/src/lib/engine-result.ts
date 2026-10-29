@@ -13,6 +13,7 @@ import {
   type MatrixRequestFailureMetadata,
   requestFailureMessage,
 } from './request-failure';
+import type { UiaChallenge } from './uia-flow';
 
 export type EngineFailureCode = EngineFailure['code'];
 
@@ -102,6 +103,11 @@ export type EngineFailure = {
   | { readonly code: 'verification-gone' }
   /** No QR code can be shown for this verification. */
   | { readonly code: 'qr-unavailable' }
+  /** The server wants user-interactive authentication first; the challenge says which stages. */
+  | {
+      readonly code: 'uia-required';
+      readonly params: { readonly challenge: UiaChallenge };
+    }
   /** The person cancelled a password prompt, or stopped the command that raised it. */
   | { readonly code: 'uia-cancelled' }
   /** The server asks for an authentication stage other than a password. */
@@ -152,6 +158,7 @@ export function engineFailureMessage(failure: EngineFailure): string {
     case 'invite-blocked':
     case 'unsupported':
     case 'not-cancellable':
+    case 'uia-required':
       return requestFailureMessage(failure.kind, failure.diagnostic);
     case 'message-unavailable':
       return 'Message not found.';
