@@ -9,7 +9,6 @@
     "libs/data-access/accounts/src/lib/matrix-account-runtime.adapter.ts",
     "libs/data-access/auth/src/lib/auth.service.ts",
     "libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.service.ts",
-    "libs/data-access/contact-addresses/src/lib/email-addresses.workflow.ts",
     "libs/data-access/discovery/src/lib/user-directory-discovery.service.ts",
     "libs/data-access/homeserver/src/lib/homeserver-info.service.ts",
     "libs/data-access/matrix-client/src/lib/identity-matrix.port.ts",

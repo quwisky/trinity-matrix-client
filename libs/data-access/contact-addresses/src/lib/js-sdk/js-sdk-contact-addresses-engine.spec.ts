@@ -8,7 +8,7 @@ import { JsSdkContactAddressesEngine } from './js-sdk-contact-addresses-engine';
 const ME = '@me:example.org';
 
 // What the Synapse contract cannot reach: a well-known identity server, malformed account
-// data, a disabled 3PID capability and the raw unbind request.
+// data, a disabled 3PID capability, the raw unbind request and a removal that unbinds.
 function setup(accountData: Record<string, unknown> = {}) {
   const client = {
     getAccountDataFromServer: vi.fn(
@@ -25,6 +25,9 @@ function setup(accountData: Record<string, unknown> = {}) {
       .mockResolvedValue({ 'm.3pid_changes': { enabled: false } }),
     setIdentityServerUrl: vi.fn(),
     bindThreePid: vi.fn(),
+    deleteThreePid: vi
+      .fn()
+      .mockResolvedValue({ id_server_unbind_result: 'success' }),
     http: {
       authedRequest: vi
         .fn()
@@ -112,6 +115,15 @@ describe('JsSdkContactAddressesEngine', () => {
       { medium: 'email', address: 'a@x.org', id_server: 'is.example' },
     );
     expect(client.setIdentityServerUrl).not.toHaveBeenCalled();
+  });
+
+  it('reports a removal the identity server unbound', async () => {
+    const { engine, client } = setup();
+
+    expect(
+      await firstValueFrom(engine.deleteThreePid(ME, 'email', 'a@x.org')),
+    ).toEqual({ ok: true, value: { unbind: 'success' } });
+    expect(client.deleteThreePid).toHaveBeenCalledWith('email', 'a@x.org');
   });
 
   it('carries the errcode of a refused bind', async () => {

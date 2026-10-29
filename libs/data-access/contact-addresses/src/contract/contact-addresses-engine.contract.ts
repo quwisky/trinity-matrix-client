@@ -1,6 +1,6 @@
 import { type Observable, firstValueFrom, toArray } from 'rxjs';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { assertPlainData } from '@trinity/util/matrix';
+import { type UiaAuth, assertPlainData } from '@trinity/util/matrix';
 import type { ContactAddressesEngine } from '../lib/contact-addresses-engine';
 
 /** An identity-server validation session and the access token it was opened with. */
@@ -16,12 +16,21 @@ export interface ContactAddressesContractSetup {
   accountId: string;
   /** An email address the account has on its homeserver. */
   address: string;
+  /** The account's password, for the re-authentication adding an address asks for. */
+  password: string;
   serverName: string;
   /**
    * The identity server the engine reports from the client well-known. Null on Synapse:
    * js-sdk reads the well-known only while polling it, which Trinity does not configure.
    */
   wellKnownIdentityServer: string | null;
+  /** Present when the homeserver mails validation links. */
+  mail?: {
+    /** A lowercase address no account has yet, new on each call. */
+    newAddress(): string;
+    /** Opens the link the homeserver mailed to `address` for `clientSecret`, as a person would. */
+    openLink(address: string, clientSecret: string): Promise<void>;
+  };
   /** Present when the contract runs with an identity server. */
   identity?: {
     /** Host and port, as bind and unbind take it. */
@@ -41,7 +50,7 @@ const NOBODY = '@nobody:invalid';
 
 export function defineContactAddressesEngineContract(
   setup: () => Promise<ContactAddressesContractSetup>,
-  options: { readonly identity: boolean },
+  options: { readonly identity: boolean; readonly mail: boolean },
 ): void {
   describe('ContactAddressesEngine contract', () => {
     let context: ContactAddressesContractSetup;
@@ -120,6 +129,13 @@ export function defineContactAddressesEngineContract(
       const session = { sid: 's', clientSecret: 'c', idAccessToken: 't' };
       const commands: Observable<unknown>[] = [
         engine.threePids(NOBODY),
+        engine.requestAddEmailToken(NOBODY, {
+          email: 'a@x.invalid',
+          clientSecret: 'c',
+          sendAttempt: 1,
+        }),
+        engine.addThreePid(NOBODY, { sid: 's', clientSecret: 'c' }, null),
+        engine.deleteThreePid(NOBODY, 'email', 'a@x.invalid'),
         engine.identityServerSetting(NOBODY),
         engine.setIdentityServer(NOBODY, null),
         engine.acceptedTerms(NOBODY),
@@ -138,6 +154,110 @@ export function defineContactAddressesEngineContract(
           failure: { code: 'account-not-live' },
         });
       }
+    });
+
+    describe.skipIf(!options.mail)('with mail', () => {
+      const password = (session: string): UiaAuth => ({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: context.accountId },
+        password: context.password,
+        session,
+      });
+
+      /** Mails a link for a new address; returns the request that adds it and its address. */
+      async function sendLink() {
+        const email = context.mail!.newAddress();
+        const clientSecret = `secret-${Math.random().toString(36).slice(2)}`;
+        const sent = await once(
+          context.engine.requestAddEmailToken(context.accountId, {
+            email,
+            clientSecret,
+            sendAttempt: 1,
+          }),
+        );
+        expect(sent).toMatchObject({
+          ok: true,
+          value: { sid: expect.any(String) },
+        });
+        if (!sent.ok) throw new Error('No link was mailed');
+        return { email, request: { sid: sent.value.sid, clientSecret } };
+      }
+
+      /** Sends `addThreePid` without auth and returns the session its challenge opens. */
+      async function challenge(request: {
+        readonly sid: string;
+        readonly clientSecret: string;
+      }): Promise<string> {
+        const result = await once(
+          context.engine.addThreePid(context.accountId, request, null),
+        );
+        expect(result).toMatchObject({
+          ok: false,
+          failure: {
+            code: 'uia-required',
+            params: {
+              challenge: {
+                session: expect.any(String),
+                flows: expect.arrayContaining([
+                  { stages: ['m.login.password'] },
+                ]),
+              },
+            },
+          },
+        });
+        if (result.ok || result.failure.code !== 'uia-required') {
+          throw new Error('No challenge');
+        }
+        return result.failure.params.challenge.session ?? '';
+      }
+
+      it('asks for the password, refuses an unopened link, then adds on that session', async () => {
+        const { engine, accountId } = context;
+        const { email, request } = await sendLink();
+        const session = await challenge(request);
+
+        expect(
+          await once(engine.addThreePid(accountId, request, password(session))),
+        ).toMatchObject({
+          ok: false,
+          failure: {
+            code: 'request-failed',
+            diagnostic: { errcode: 'M_THREEPID_AUTH_FAILED' },
+          },
+        });
+
+        await context.mail!.openLink(email, request.clientSecret);
+        expect(
+          await once(engine.addThreePid(accountId, request, { session })),
+        ).toEqual({ ok: true, value: null });
+        expect(await once(engine.threePids(accountId))).toMatchObject({
+          ok: true,
+          value: {
+            addresses: expect.arrayContaining([
+              { medium: 'email', address: email },
+            ]),
+          },
+        });
+      });
+
+      it('removes an address no identity server has, reporting no-support', async () => {
+        const { engine, accountId } = context;
+        const { email, request } = await sendLink();
+        await context.mail!.openLink(email, request.clientSecret);
+        const session = await challenge(request);
+        expect(
+          await once(engine.addThreePid(accountId, request, password(session))),
+        ).toEqual({ ok: true, value: null });
+
+        expect(
+          await once(engine.deleteThreePid(accountId, 'email', email)),
+        ).toEqual({ ok: true, value: { unbind: 'no-support' } });
+        const listed = await once(engine.threePids(accountId));
+        expect(listed.ok && listed.value.addresses).not.toContainEqual({
+          medium: 'email',
+          address: email,
+        });
+      });
     });
 
     describe.skipIf(!options.identity)('with an identity server', () => {
@@ -198,6 +318,27 @@ export function defineContactAddressesEngineContract(
             }),
           ),
         ).toEqual({ ok: true, value: 'success' });
+        expect(await identity.lookup(address)).toBeNull();
+      });
+
+      // Last: it removes `address` from the account.
+      it('removes a bound address, unbinding it at the identity server', async () => {
+        const { engine, accountId, address } = context;
+        const identity = context.identity!;
+        const session = await identity.validatedSession();
+        expect(
+          await once(
+            engine.bindThreePid(accountId, {
+              ...session,
+              idServer: identity.idServer,
+            }),
+          ),
+        ).toEqual({ ok: true, value: null });
+        expect(await identity.lookup(address)).toBe(accountId);
+
+        expect(
+          await once(engine.deleteThreePid(accountId, 'email', address)),
+        ).toEqual({ ok: true, value: { unbind: 'success' } });
         expect(await identity.lookup(address)).toBeNull();
       });
     });

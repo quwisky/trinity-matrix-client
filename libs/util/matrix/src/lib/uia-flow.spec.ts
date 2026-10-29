@@ -1,9 +1,12 @@
+import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { EngineRequestError, engineFail, engineOk } from './engine-result';
 import {
   UiaAttemptsExceededError,
   UiaCancelledError,
   UiaUnsupportedError,
   driveUia,
+  engineUia,
   type UiaResponse,
 } from './uia-flow';
 
@@ -453,5 +456,48 @@ describe('driveUia', () => {
     await expect(
       driveUia(send, { password: { user: USER, prompt: vi.fn() } }),
     ).rejects.toThrow('Authentication failed: missing auth session.');
+  });
+});
+
+describe('engineUia', () => {
+  const challenge = { flows: [{ stages: ['m.login.password'] }], session: 's' };
+
+  it('answers with the result, or the challenge of a uia-required failure', async () => {
+    const send = engineUia((auth) =>
+      of(
+        auth
+          ? engineOk('done')
+          : engineFail({
+              kind: 'http',
+              code: 'uia-required',
+              diagnostic: { kind: 'http', httpStatus: 401 },
+              params: { challenge },
+            }),
+      ),
+    );
+
+    await expect(send(null)).resolves.toEqual({
+      kind: 'uia-required',
+      challenge,
+    });
+    await expect(send({ session: 's' })).resolves.toEqual({
+      kind: 'done',
+      result: 'done',
+    });
+  });
+
+  it('throws any other failure as an EngineRequestError', async () => {
+    const failure = {
+      kind: 'permission',
+      code: 'forbidden',
+      diagnostic: { kind: 'permission', errcode: 'M_FORBIDDEN' },
+    } as const;
+
+    const error = await engineUia(() => of(engineFail(failure)))(null).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(EngineRequestError);
+    expect((error as EngineRequestError).failure).toBe(failure);
   });
 });

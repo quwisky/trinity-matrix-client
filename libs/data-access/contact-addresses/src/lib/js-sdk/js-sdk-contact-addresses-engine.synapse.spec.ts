@@ -15,7 +15,7 @@ import {
 import { JsSdkContactAddressesEngine } from './js-sdk-contact-addresses-engine';
 
 // Runs the engine contract against a live Synapse; skipped unless TRINITY_ENGINE_CONTRACT_HS is
-// set. The identity cases also need the harness's Sydent and Mailpit.
+// set. The mail cases need the harness's Mailpit, the identity cases Sydent too.
 const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'];
 const serverName = process.env['TRINITY_ENGINE_CONTRACT_SERVER_NAME'] ?? '';
 const secret = process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
@@ -39,11 +39,16 @@ async function register(username: string, admin = false) {
     body: JSON.stringify({ nonce, username, password, mac, admin }),
   });
   if (!res.ok) throw new Error(`Synapse registration failed: ${res.status}`);
-  return (await res.json()) as { user_id: string; access_token: string };
+  const user = (await res.json()) as { user_id: string; access_token: string };
+  return { ...user, password };
 }
 
-/** Opens the validation link Sydent mailed for `clientSecret`, as a person would. */
-async function openMailedLink(address: string, clientSecret: string) {
+/** Opens the link mailed to `address` for `clientSecret` at `origin`, as a person would. */
+async function openMailedLink(
+  address: string,
+  clientSecret: string,
+  origin: string,
+) {
   for (let i = 0; i < 60; i++) {
     const search = await fetch(
       `${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${address}"`)}`,
@@ -59,15 +64,15 @@ async function openMailedLink(address: string, clientSecret: string) {
         url.includes(`client_secret=${clientSecret}`),
       );
       if (!link) continue;
-      // Sydent builds the link from its own public base; reach it where the contract does.
+      // Servers build the link from their own public base; reach it where the contract does.
       const { pathname, search: query } = new URL(link);
-      const opened = await fetch(`${identityUrl}${pathname}${query}`);
+      const opened = await fetch(`${origin}${pathname}${query}`);
       if (!opened.ok) throw new Error(`Validation link: ${opened.status}`);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error('Sydent mailed no validation link');
+  throw new Error('No validation link was mailed');
 }
 
 describe.skipIf(!baseUrl)('JsSdkContactAddressesEngine against Synapse', () => {
@@ -145,7 +150,7 @@ describe.skipIf(!baseUrl)('JsSdkContactAddressesEngine against Synapse', () => {
           unvalidatedSession: session,
           validatedSession: async () => {
             const opened = await session();
-            await openMailedLink(address, opened.clientSecret);
+            await openMailedLink(address, opened.clientSecret, base);
             return opened;
           },
           lookup: async (asked: string) =>
@@ -153,15 +158,26 @@ describe.skipIf(!baseUrl)('JsSdkContactAddressesEngine against Synapse', () => {
         };
       };
 
+      let newAddresses = 0;
       return {
         engine,
         accountId: me.user_id,
         address,
+        password: me.password,
         serverName,
         wellKnownIdentityServer: null,
+        ...(mailpit
+          ? {
+              mail: {
+                newAddress: () => `ca-${unique}-${++newAddresses}@example.test`,
+                openLink: (to: string, clientSecret: string) =>
+                  openMailedLink(to, clientSecret, baseUrl as string),
+              },
+            }
+          : {}),
         ...(identityUrl && mailpit ? { identity: await identity() } : {}),
       };
     },
-    { identity: Boolean(identityUrl && mailpit) },
+    { identity: Boolean(identityUrl && mailpit), mail: Boolean(mailpit) },
   );
 });

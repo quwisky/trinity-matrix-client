@@ -1,5 +1,6 @@
-import { MatrixError } from 'matrix-js-sdk';
+import { MatrixError, createClient } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
+import { uiaFallbackUrl } from '@trinity/util/matrix';
 import { jsSdkUia, uiaChallengeOf } from './uia';
 
 describe('uiaChallengeOf', () => {
@@ -112,5 +113,16 @@ describe('jsSdkUia', () => {
     await expect(
       jsSdkUia(vi.fn().mockRejectedValue(failure))(null),
     ).rejects.toBe(failure);
+  });
+});
+
+describe('uiaFallbackUrl', () => {
+  it.each([
+    ['https://hs.example', 'm.login.sso', 's1'],
+    ['https://hs.example/base/', 'm.login.recaptcha', 'a b/c&d'],
+  ])('builds the URL the SDK builds for %s', (baseUrl, stage, session) => {
+    expect(uiaFallbackUrl(baseUrl, stage, session)).toBe(
+      createClient({ baseUrl }).getFallbackAuthUrl(stage, session),
+    );
   });
 });

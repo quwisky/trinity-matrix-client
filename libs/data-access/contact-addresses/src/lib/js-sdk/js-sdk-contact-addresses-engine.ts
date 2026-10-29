@@ -1,10 +1,14 @@
 import { Injectable, inject } from '@angular/core';
 import { Method, type MatrixClient } from 'matrix-js-sdk';
 import { Observable, catchError, defer, from, map, of } from 'rxjs';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  uiaChallengeOf,
+} from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
+  type UiaAuth,
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
@@ -23,6 +27,10 @@ const NOT_LIVE: EngineFailure = {
 
 function requestFailed(error: unknown): EngineFailure {
   const { kind, diagnostic } = describeMatrixRequestFailure(error);
+  const challenge = uiaChallengeOf(error);
+  if (challenge) {
+    return { kind, code: 'uia-required', diagnostic, params: { challenge } };
+  }
   return {
     kind,
     code: 'request-failed',
@@ -64,6 +72,63 @@ export class JsSdkContactAddressesEngine implements ContactAddressesEngine {
           address,
         })),
         canChange: capabilities['m.3pid_changes']?.enabled !== false,
+      };
+    });
+  }
+
+  requestAddEmailToken(
+    accountId: string,
+    request: {
+      readonly email: string;
+      readonly clientSecret: string;
+      readonly sendAttempt: number;
+    },
+  ): Observable<EngineResult<{ readonly sid: string }>> {
+    return this.request(accountId, async (client) => {
+      const { sid } = await client.requestAdd3pidEmailToken(
+        request.email,
+        request.clientSecret,
+        request.sendAttempt,
+      );
+      return { sid };
+    });
+  }
+
+  addThreePid(
+    accountId: string,
+    request: { readonly sid: string; readonly clientSecret: string },
+    auth: UiaAuth | null,
+  ): Observable<EngineResult<null>> {
+    return this.request(accountId, async (client) => {
+      await client.addThreePidOnly({
+        sid: request.sid,
+        client_secret: request.clientSecret,
+        // The SDK types `auth` as `{ type }`, but a fallback stage answers with `{ session }` alone.
+        ...(auth
+          ? {
+              auth: auth as Parameters<
+                typeof client.addThreePidOnly
+              >[0]['auth'],
+            }
+          : {}),
+      });
+      return null;
+    });
+  }
+
+  deleteThreePid(
+    accountId: string,
+    medium: string,
+    address: string,
+  ): Observable<EngineResult<{ readonly unbind: 'success' | 'no-support' }>> {
+    return this.request(accountId, async (client) => {
+      const { id_server_unbind_result } = await client.deleteThreePid(
+        medium,
+        address,
+      );
+      return {
+        unbind:
+          id_server_unbind_result === 'no-support' ? 'no-support' : 'success',
       };
     });
   }

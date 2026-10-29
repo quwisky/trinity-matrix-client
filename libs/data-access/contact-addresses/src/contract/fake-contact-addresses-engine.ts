@@ -2,6 +2,7 @@ import { type Observable, defer, of } from 'rxjs';
 import {
   type EngineFailure,
   type EngineResult,
+  type UiaAuth,
   engineFail,
   engineOk,
 } from '@trinity/util/matrix';
@@ -15,6 +16,8 @@ import type {
 export interface FakeContactAccount {
   threePids: ThreePid[];
   canChange: boolean;
+  /** What the one re-authentication stage, a password, accepts. */
+  password: string;
   /** `m.identity_server`; undefined until written. */
   identityServer?: { baseUrl: string | null };
   acceptedTerms: string[];
@@ -34,11 +37,30 @@ function refused(httpStatus: number, errcode: string): EngineFailure {
   };
 }
 
+function passwordRequired(session: string): EngineFailure {
+  return {
+    kind: 'http',
+    code: 'uia-required',
+    diagnostic: { kind: 'http', httpStatus: 401 },
+    params: {
+      challenge: {
+        session,
+        flows: [{ stages: ['m.login.password'] }],
+        completed: [],
+      },
+    },
+  };
+}
+
 /** In-memory homeserver with one identity server's validation sessions and bindings. */
 export class FakeContactAddressesEngine implements ContactAddressesEngine {
+  private nextId = 0;
+  /** Re-authentication sessions a right password was sent in. */
+  private readonly reauthenticated = new Set<string>();
+
   readonly accounts = new Map<string, FakeContactAccount>();
   wellKnown: string | null = null;
-  /** Validation sessions by sid, as the identity server holds them. */
+  /** Validation sessions by sid, the homeserver's and the identity server's alike. */
   readonly sessions = new Map<
     string,
     { clientSecret: string; address: string; validated: boolean }
@@ -56,6 +78,7 @@ export class FakeContactAddressesEngine implements ContactAddressesEngine {
     this.accounts.set(accountId, {
       threePids: [],
       canChange: true,
+      password: 'password',
       acceptedTerms: [],
       ...account,
     });
@@ -71,6 +94,72 @@ export class FakeContactAddressesEngine implements ContactAddressesEngine {
       addresses: account.threePids.map((pid) => ({ ...pid })),
       canChange: account.canChange,
     }));
+  }
+
+  requestAddEmailToken(
+    accountId: string,
+    request: {
+      readonly email: string;
+      readonly clientSecret: string;
+      readonly sendAttempt: number;
+    },
+  ): Observable<EngineResult<{ readonly sid: string }>> {
+    return this.live(accountId, () => {
+      const sid = `hs-sid-${++this.nextId}`;
+      this.sessions.set(sid, {
+        clientSecret: request.clientSecret,
+        address: request.email,
+        validated: false,
+      });
+      return { sid };
+    });
+  }
+
+  addThreePid(
+    accountId: string,
+    request: { readonly sid: string; readonly clientSecret: string },
+    auth: UiaAuth | null,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const account = this.accounts.get(accountId);
+      if (!account) return of(engineFail(NOT_LIVE));
+      if (auth && 'password' in auth && auth.password === account.password) {
+        this.reauthenticated.add(auth.session);
+      }
+      if (!auth || !this.reauthenticated.has(auth.session)) {
+        return of(
+          engineFail(passwordRequired(auth?.session ?? `uia-${++this.nextId}`)),
+        );
+      }
+      const session = this.sessions.get(request.sid);
+      if (
+        !session?.validated ||
+        session.clientSecret !== request.clientSecret
+      ) {
+        return of(engineFail(refused(400, 'M_THREEPID_AUTH_FAILED')));
+      }
+      if (!account.threePids.some((pid) => pid.address === session.address)) {
+        account.threePids.push({ medium: 'email', address: session.address });
+      }
+      return of(engineOk(null));
+    });
+  }
+
+  deleteThreePid(
+    accountId: string,
+    medium: string,
+    address: string,
+  ): Observable<EngineResult<{ readonly unbind: 'success' | 'no-support' }>> {
+    return this.live(accountId, (account) => {
+      account.threePids = account.threePids.filter(
+        (pid) => pid.medium !== medium || pid.address !== address,
+      );
+      const bound = [...this.bindings.keys()].filter((key) =>
+        key.endsWith(`\n${address}`),
+      );
+      for (const key of bound) this.bindings.delete(key);
+      return { unbind: bound.length ? 'success' : 'no-support' } as const;
+    });
   }
 
   identityServerSetting(accountId: string): Observable<

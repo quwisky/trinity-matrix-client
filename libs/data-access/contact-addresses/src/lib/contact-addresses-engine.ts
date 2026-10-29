@@ -1,5 +1,5 @@
 import type { Observable } from 'rxjs';
-import type { EngineResult } from '@trinity/util/matrix';
+import type { EngineResult, UiaAuth } from '@trinity/util/matrix';
 
 /** A third-party identifier bound to the account on its homeserver. */
 export interface ThreePid {
@@ -29,6 +29,40 @@ export interface ContactAddressesEngine {
       readonly canChange: boolean;
     }>
   >;
+
+  /**
+   * Asks the homeserver to mail `email` a link that validates it for this account.
+   * Rust: `Account::request_3pid_email_token`.
+   */
+  requestAddEmailToken(
+    accountId: string,
+    request: {
+      readonly email: string;
+      readonly clientSecret: string;
+      readonly sendAttempt: number;
+    },
+  ): Observable<EngineResult<{ readonly sid: string }>>;
+
+  /**
+   * Adds the address validated in session `sid`. The homeserver asks for user-interactive
+   * auth first: that fails `uia-required` with the challenge, to send again with an `auth`.
+   * Rust: `Account::add_3pid`.
+   */
+  addThreePid(
+    accountId: string,
+    request: { readonly sid: string; readonly clientSecret: string },
+    auth: UiaAuth | null,
+  ): Observable<EngineResult<null>>;
+
+  /**
+   * Removes an address and unbinds it at the identity servers the homeserver recorded;
+   * `no-support` when that did not happen. Rust: `Account::delete_3pid`.
+   */
+  deleteThreePid(
+    accountId: string,
+    medium: string,
+    address: string,
+  ): Observable<EngineResult<{ readonly unbind: 'success' | 'no-support' }>>;
 
   /**
    * `m.identity_server` account data from the server (`account` null when it was never

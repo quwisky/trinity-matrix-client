@@ -12,6 +12,7 @@ defineContactAddressesEngineContract(
     engine.signIn(ME, { threePids: [{ medium: 'email', address: ADDRESS }] });
     engine.wellKnown = WELL_KNOWN;
     let next = 0;
+    let addresses = 0;
     const session = (validated: boolean) => {
       const sid = `sid-${++next}`;
       engine.sessions.set(sid, {
@@ -29,8 +30,23 @@ defineContactAddressesEngineContract(
       engine,
       accountId: ME,
       address: ADDRESS,
+      password: 'password',
       serverName: 'example.org',
       wellKnownIdentityServer: WELL_KNOWN,
+      mail: {
+        newAddress: () => `new-${++addresses}@example.org`,
+        openLink: (address, clientSecret) => {
+          for (const session of engine.sessions.values()) {
+            if (
+              session.address === address &&
+              session.clientSecret === clientSecret
+            ) {
+              session.validated = true;
+            }
+          }
+          return Promise.resolve();
+        },
+      },
       identity: {
         idServer: ID_SERVER,
         otherIdServer: 'other.example.org',
@@ -43,5 +59,5 @@ defineContactAddressesEngineContract(
       },
     };
   },
-  { identity: true },
+  { identity: true, mail: true },
 );
