@@ -56,9 +56,7 @@ import {
   TrustDevicesService,
 } from '@trinity/data-access/trust';
 import {
-  AuthService,
   QR_LINK_IDENTITY_CHECK,
-  QR_SIGN_IN_COMPLETION,
   QrSignInAvailability,
 } from '@trinity/data-access/auth';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
@@ -481,7 +479,7 @@ describe('Trinity application provider composition', () => {
     }
   });
 
-  it('finishes a QR sign-in through the shared sign-in path', () => {
+  it('checks the published identity through trust before a QR link', () => {
     TestBed.configureTestingModule({
       providers: [
         provideTrinityApplication({
@@ -504,9 +502,6 @@ describe('Trinity application provider composition', () => {
     });
 
     try {
-      expect(TestBed.inject(QR_SIGN_IN_COMPLETION)).toBe(
-        TestBed.inject(AuthService),
-      );
       expect(TestBed.inject(QR_LINK_IDENTITY_CHECK)).toBe(
         TestBed.inject(TrustDevicesService),
       );
