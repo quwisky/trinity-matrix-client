@@ -6,13 +6,6 @@
     "libs/data-access/matrix-client/src/lib/mutual-rooms.ts",
     "libs/data-access/matrix-client/src/lib/project-from-client.ts",
     "libs/data-access/room-library/src/lib/rooms-in-common.service.ts",
-    "libs/util/matrix/src/lib/message-content.ts",
-    "libs/util/matrix/src/lib/replacement.ts",
-    "libs/util/matrix/src/lib/room-avatar.ts",
-    "libs/util/matrix/src/lib/room-create.ts",
-    "libs/util/matrix/src/lib/room-encryption.ts",
-    "libs/util/matrix/src/lib/room-state.ts",
-    "libs/util/matrix/src/lib/transient-errors.ts",
-    "libs/util/matrix/src/lib/waiting-to-send.ts"
+    "libs/util/matrix/src/lib/transient-errors.ts"
   ]
 }

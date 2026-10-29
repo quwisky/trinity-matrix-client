@@ -13,4 +13,8 @@ export * from './lib/js-sdk/server-support';
 export * from './lib/mutual-rooms';
 export * from './lib/js-sdk/js-sdk-clients';
 export * from './lib/js-sdk/uia';
+export * from './lib/js-sdk/replacement';
+export * from './lib/js-sdk/room-state';
+export * from './lib/js-sdk/room-encryption';
+export * from './lib/js-sdk/waiting-to-send';
 export * from './lib/session-state.service';

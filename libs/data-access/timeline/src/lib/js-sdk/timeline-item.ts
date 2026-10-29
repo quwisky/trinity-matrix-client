@@ -7,9 +7,9 @@ import type {
 import {
   MAX_NAMED_REACTORS,
   linkedUserIds,
-  unencryptedMarkFor,
   type UnencryptedMark,
 } from '@trinity/util/matrix';
+import { unencryptedMarkFor } from '@trinity/data-access/matrix-client';
 import type { NormalizedTimelineEvent } from '../message-presentation';
 import { shieldText, unencryptedShield } from '../shield-presentation';
 import type {

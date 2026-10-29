@@ -13,9 +13,11 @@ import {
 } from 'matrix-js-sdk';
 import { firstValueFrom, tap, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import {
+  JS_SDK_CLIENTS,
   RoomEncryptionFlags,
+} from '@trinity/data-access/matrix-client';
+import {
   assertPlainData,
   type EngineResult,
   type VectorDiff,

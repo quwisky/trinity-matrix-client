@@ -8,13 +8,12 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
+import { type PollOption, type PollView } from '@trinity/util/matrix';
 import {
   arrivedInClear,
   displayContent,
   liveRoomState,
-  type PollOption,
-  type PollView,
-} from '@trinity/util/matrix';
+} from '@trinity/data-access/matrix-client';
 
 /**
  * Cap on poll options we project/render. MSC3381 limits a poll to 20 answers; a malicious

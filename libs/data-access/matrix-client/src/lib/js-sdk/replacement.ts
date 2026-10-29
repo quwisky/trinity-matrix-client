@@ -1,4 +1,5 @@
 import { RelationType, type MatrixEvent } from 'matrix-js-sdk';
+import { stripReplyFallbackText } from '@trinity/util/matrix';
 
 /** The `m.new_content` block of an edit: the replacement message, unwrapped. */
 export function newContentOf(
@@ -69,4 +70,25 @@ export function displayContent(event: MatrixEvent): Record<string, unknown> {
   return (
     (edit && replacementContent(event, edit)) ?? event.getOriginalContent()
   );
+}
+
+/**
+ * Short, single-line preview of a message event's text, for the thread indicator and the room
+ * list's muted last-message line. Handles undecryptable and redacted events, strips any
+ * reply-fallback quote, and returns '…' when nothing renders. `content` is what to preview,
+ * by default the message's checked current content. Text that arrived unencrypted is shown as
+ * is; callers mark it themselves.
+ */
+export function messagePreview(
+  event: MatrixEvent,
+  content: Record<string, unknown> = displayContent(event),
+): string {
+  if (event.isDecryptionFailure()) {
+    return '⚠️ Unable to decrypt';
+  }
+  if (event.isRedacted()) {
+    return '(message deleted)';
+  }
+  const body = stripReplyFallbackText((content['body'] as string) ?? '');
+  return body.replace(/\s+/g, ' ').trim() || '…';
 }

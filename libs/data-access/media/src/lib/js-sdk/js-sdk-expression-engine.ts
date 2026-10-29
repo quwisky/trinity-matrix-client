@@ -20,13 +20,16 @@ import {
   map,
   of,
 } from 'rxjs';
-import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  coalesce,
+  liveRoomState,
+} from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
   engineFail,
   engineOk,
-  liveRoomState,
   plainEqual,
 } from '@trinity/util/matrix';
 import type {

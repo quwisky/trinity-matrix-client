@@ -7,7 +7,10 @@ import {
   RoomStateEvent,
 } from 'matrix-js-sdk';
 import { NEVER, Observable, catchError, concat, defer, from, of } from 'rxjs';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  liveRoomState,
+} from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
@@ -15,7 +18,6 @@ import {
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
-  liveRoomState,
 } from '@trinity/util/matrix';
 import type {
   RoomWidgetEngine,

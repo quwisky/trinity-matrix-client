@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { MatrixEvent } from 'matrix-js-sdk';
-import { messagePreview } from './message-content';
-import { displayContent, validReplacement } from './replacement';
+import {
+  displayContent,
+  messagePreview,
+  validReplacement,
+} from './replacement';
 
 const ALICE = '@alice:hs';
 const MALLORY = '@mallory:hs';
@@ -287,5 +290,77 @@ describe('previews of an edited message', () => {
 
   it('quote the original over an edit from another sender in a reply', () => {
     expect(replyQuote(forged())).toBe('v1');
+  });
+});
+
+// A fake shaped like the bits messagePreview() reads off a MatrixEvent.
+function fakeEvent(o: {
+  body?: string;
+  redacted?: boolean;
+  decryptFail?: boolean;
+  encrypted?: boolean;
+  edit?: MatrixEvent;
+}): MatrixEvent {
+  return {
+    getOriginalContent: () => ({ body: o.body ?? '' }),
+    isRedacted: () => o.redacted ?? false,
+    isDecryptionFailure: () => o.decryptFail ?? false,
+    isEncrypted: () => o.encrypted ?? false,
+    isState: () => false,
+    replacingEvent: () => o.edit ?? null,
+    status: null,
+  } as unknown as MatrixEvent;
+}
+
+describe('messagePreview', () => {
+  it('returns the body trimmed and with internal whitespace collapsed', () => {
+    expect(messagePreview(fakeEvent({ body: '  hello   world  \n\n' }))).toBe(
+      'hello world',
+    );
+  });
+
+  it('strips a reply fallback quote, keeping only the actual message', () => {
+    const event = fakeEvent({
+      body: '> <@user:hs> quoted\n\nactual',
+    });
+    expect(messagePreview(event)).toBe('actual');
+  });
+
+  it("returns '(message deleted)' for a redacted event", () => {
+    const event = fakeEvent({ body: 'gone now', redacted: true });
+    expect(messagePreview(event)).toBe('(message deleted)');
+  });
+
+  it("returns '⚠️ Unable to decrypt' for a decryption failure, before checking redaction", () => {
+    const event = fakeEvent({ decryptFail: true, redacted: true });
+    expect(messagePreview(event)).toBe('⚠️ Unable to decrypt');
+  });
+
+  it("returns '…' for an empty or whitespace-only body", () => {
+    expect(messagePreview(fakeEvent({ body: '' }))).toBe('…');
+    expect(messagePreview(fakeEvent({ body: '   \n  ' }))).toBe('…');
+  });
+
+  it('previews an encrypted message as sent, not its edit that arrived in the clear', () => {
+    const edit = {
+      getSender: () => '@a:hs',
+      getType: () => 'm.room.message',
+      getRelation: () => ({ rel_type: 'm.replace', event_id: '$e' }),
+      getOriginalContent: () => ({ 'm.new_content': { body: 'edited' } }),
+      isEncrypted: () => false,
+      isRedacted: () => false,
+      isState: () => false,
+      status: null,
+    } as unknown as MatrixEvent;
+    const event = Object.assign(
+      fakeEvent({ body: 'original', encrypted: true, edit }),
+      {
+        getId: () => '$e',
+        getSender: () => '@a:hs',
+        getType: () => 'm.room.message',
+        isRelation: () => false,
+      },
+    );
+    expect(messagePreview(event)).toBe('original');
   });
 });
