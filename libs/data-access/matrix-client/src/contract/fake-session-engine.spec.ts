@@ -24,6 +24,15 @@ defineSessionEngineContract(
       newSession: async () => session(),
       tokenAccepted: async (s) => !engine.revokedTokens.has(s.accessToken),
       softLogout: async (s) => engine.softLogout(s.userId),
+      revokeToken: async (s) => {
+        engine.revokedTokens.add(s.accessToken);
+      },
+      passwordFor: () => engine.password,
+      signInAgain: async (s) => ({
+        ...s,
+        deviceId: `${s.deviceId}-again`,
+        accessToken: `${s.accessToken}-again`,
+      }),
       dispose: async () => undefined,
     };
   },
@@ -104,6 +113,44 @@ describe('FakeSessionEngine', () => {
       expiresAt: 99,
       refreshable: true,
     });
+  });
+
+  it("reads an OAuth session's refresh token with its access token", async () => {
+    const engine = new FakeSessionEngine();
+    const oidc = {
+      ...session(),
+      refreshToken: 'r',
+      oidc: {} as NonNullable<MatrixSession['oidc']>,
+    };
+    await firstValueFrom(engine.restorePersisted(oidc, 'activate'));
+
+    await expect(
+      firstValueFrom(engine.liveCredentials(oidc.userId)),
+    ).resolves.toEqual({ accessToken: oidc.accessToken, refreshToken: 'r' });
+    await firstValueFrom(engine.remove(oidc.userId));
+    await expect(
+      firstValueFrom(engine.liveCredentials(oidc.userId)),
+    ).resolves.toBeNull();
+  });
+
+  it('keeps a dead token from wiping once any holder released as deleted', async () => {
+    const engine = new FakeSessionEngine();
+    const s = session();
+    await firstValueFrom(engine.restorePersisted(s, 'activate'));
+    const ids: string[] = [];
+    const record = (update: { kind: string; holdId?: string }) => {
+      if (update.holdId) ids.push(update.holdId);
+    };
+    engine.holdServerLogout(s.userId).subscribe(record);
+    engine.holdServerLogout(s.userId).subscribe(record);
+    engine.revokedTokens.add(s.accessToken);
+    await firstValueFrom(engine.deactivateAccount(s.userId, false, null));
+
+    await firstValueFrom(engine.releaseServerLogoutHold(ids[0], true));
+    await firstValueFrom(engine.releaseServerLogoutHold(ids[1], false));
+
+    const snap = await firstValueFrom(engine.session());
+    expect(snap.accounts.map((a) => a.accountId)).toEqual([s.userId]);
   });
 
   it('re-emits on accessToken after a rotation', async () => {

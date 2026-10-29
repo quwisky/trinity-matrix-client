@@ -68,6 +68,7 @@ async function waitForBackgroundUpdates(): Promise<void> {
 }
 
 let sequence = 0;
+const passwords = new Map<string, string>();
 
 /** A password session with its own device; no refresh token or lifetime is requested. */
 async function newPasswordSession(): Promise<MatrixSession> {
@@ -75,12 +76,18 @@ async function newPasswordSession(): Promise<MatrixSession> {
   const user = await register(
     `sess-${Date.now().toString(36)}-${sequence}-${Math.random().toString(36).slice(2, 6)}`,
   );
+  passwords.set(user.userId, user.password);
+  return login(user.userId);
+}
+
+/** Signs in with the account's password as a new device. */
+async function login(userId: string): Promise<MatrixSession> {
   const res = await fetch(`${baseUrl}/_matrix/client/v3/login`, {
     method: 'POST',
     body: JSON.stringify({
       type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: user.userId },
-      password: user.password,
+      identifier: { type: 'm.id.user', user: userId },
+      password: passwords.get(userId),
     }),
   });
   if (!res.ok) throw new Error(`Synapse login failed: ${res.status}`);
@@ -164,6 +171,15 @@ describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
               ),
             );
         },
+        revokeToken: async (session) => {
+          const res = await fetch(`${baseUrl}/_matrix/client/v3/logout`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${session.accessToken}` },
+          });
+          if (!res.ok) throw new Error(`Synapse logout failed: ${res.status}`);
+        },
+        passwordFor: (session) => passwords.get(session.userId) ?? '',
+        signInAgain: (session) => login(session.userId),
         dispose: async () => {
           TestBed.resetTestingModule();
         },

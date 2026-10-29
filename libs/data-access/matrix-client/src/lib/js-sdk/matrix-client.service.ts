@@ -71,8 +71,10 @@ import type {
   AccountServerStatus,
   PendingTextMessage,
   PersistedAccountActivation,
+  ServerLogoutHoldUpdate,
   SessionAccessToken,
 } from '../session-engine';
+import type { ServerLogoutHold } from '../server-logout-hold';
 import {
   MatrixClientStartupError,
   classifyCryptoStartupFailure,
@@ -180,26 +182,15 @@ type TokenRefreshOwner =
   | { readonly kind: 'started'; readonly client: () => MatrixClient | null }
   | { readonly kind: 'detached' };
 
-/**
- * Holds back the hard-logout wipe for one account while a deletion request is in flight:
- * a non-soft `M_UNKNOWN_TOKEN` then only stops the client and is recorded.
- */
-export interface ServerLogoutHold {
-  /** Whether the server revoked the account's token while held. */
-  readonly tokenDied: () => boolean;
-  /** False once released, or once the account left this device and took its holds with it. */
-  readonly isHeld: () => boolean;
-  /**
-   * `deleted: true` hands what follows to the deletion cleanup; `deleted: false` replays a
-   * recorded logout through the ordinary hard path.
-   */
-  release(outcome: { readonly deleted: boolean }): void;
-}
+/** What a held account's holders are told after the hold is in place. */
+export type ServerLogoutHoldFact = Exclude<
+  ServerLogoutHoldUpdate,
+  { readonly kind: 'held' }
+>['kind'];
 
 interface LogoutHoldState {
   readonly holds: Set<object>;
-  readonly listeners: Set<() => void>;
-  readonly signedInAgain: Set<() => void>;
+  readonly listeners: Set<(fact: ServerLogoutHoldFact) => void>;
   died: MatrixError | null;
   deleted: boolean;
 }
@@ -737,21 +728,17 @@ export class MatrixClientService {
   /**
    * Hold the hard-logout wipe for `userId` until released. Deactivation revokes every token,
    * so a concurrent sync can see `M_UNKNOWN_TOKEN` before the deactivate response arrives.
+   * `onFact` hears each fact synchronously, as it happens.
    */
   holdServerLogout(
     userId: string,
-    options: {
-      readonly onTokenDied?: () => void;
-      /** A sign-in after a soft logout succeeded, which a deleted account cannot do. */
-      readonly onSignedInAgain?: () => void;
-    } = {},
+    onFact?: (fact: ServerLogoutHoldFact) => void,
   ): ServerLogoutHold {
     let state = this.logoutHolds.get(userId);
     if (!state) {
       state = {
         holds: new Set(),
         listeners: new Set(),
-        signedInAgain: new Set(),
         died: null,
         deleted: false,
       };
@@ -759,14 +746,9 @@ export class MatrixClientService {
     }
     const held = state;
     const token = {};
-    const listener = options.onTokenDied;
-    const onSignedInAgain = options.onSignedInAgain;
     held.holds.add(token);
-    if (listener) {
-      held.listeners.add(listener);
-    }
-    if (onSignedInAgain) {
-      held.signedInAgain.add(onSignedInAgain);
+    if (onFact) {
+      held.listeners.add(onFact);
     }
     return {
       tokenDied: () => held.died !== null,
@@ -776,11 +758,8 @@ export class MatrixClientService {
         if (!held.holds.delete(token)) {
           return;
         }
-        if (listener) {
-          held.listeners.delete(listener);
-        }
-        if (onSignedInAgain) {
-          held.signedInAgain.delete(onSignedInAgain);
+        if (onFact) {
+          held.listeners.delete(onFact);
         }
         held.deleted ||= deleted;
         if (held.holds.size > 0 || this.logoutHolds.get(userId) !== held) {
@@ -1138,19 +1117,18 @@ export class MatrixClientService {
           // A logout recorded for a replaced client must not end this one; a token that is
           // still dead reports itself again.
           const held = this.logoutHolds.get(session.userId);
-          if (held) {
+          if (held?.died) {
             held.died = null;
+            notifyHolders(held, 'token-renewed');
           }
           this._accountIds.set([...this.clients.keys()]);
           this.publishCorsOrigins();
           // A successful (re-)start means re-auth restored the account.
           const signedInAgain = this._softLoggedOut().includes(session.userId);
           this.clearSoftLoggedOut(session.userId);
-          if (signedInAgain) {
-            const held = this.logoutHolds.get(session.userId);
-            for (const notify of [...(held?.signedInAgain ?? [])]) {
-              notify();
-            }
+          const holders = this.logoutHolds.get(session.userId);
+          if (signedInAgain && holders) {
+            notifyHolders(holders, 'signed-in-again');
           }
           return started;
         }),
@@ -1414,7 +1392,9 @@ export class MatrixClientService {
     this.publishCorsOrigins();
     this._activeUserId.set(null);
     this._softLoggedOut.set([]);
+    const holds = [...this.logoutHolds.values()];
     this.logoutHolds.clear();
+    for (const held of holds) notifyHolders(held, 'released');
   }
 
   /**
@@ -1423,8 +1403,10 @@ export class MatrixClientService {
    */
   private removeInternal(userId: string, wipe: boolean): void {
     this.clearSoftLoggedOut(userId);
-    if (wipe) {
+    const held = wipe ? this.logoutHolds.get(userId) : undefined;
+    if (held) {
       this.logoutHolds.delete(userId);
+      notifyHolders(held, 'released');
     }
     const account = this.clients.get(userId);
     // Only the removed client's pair: a start in flight for this account keeps its own.
@@ -1532,9 +1514,7 @@ export class MatrixClientService {
     if (held) {
       this.clients.get(userId)?.client.stopClient();
       held.died ??= err;
-      for (const listener of [...held.listeners]) {
-        listener();
-      }
+      notifyHolders(held, 'token-died');
       return;
     }
     if (soft) {
@@ -1612,4 +1592,11 @@ function retainedSyncProjectionBytes(
 /** Deterministic payload bytes; runtime/engine object overhead remains profiler evidence. */
 function retainedSyncStateBytes(state: SyncState | null): number {
   return state === null ? 0 : state.length * 2;
+}
+
+function notifyHolders(
+  held: LogoutHoldState,
+  fact: ServerLogoutHoldFact,
+): void {
+  for (const listener of [...held.listeners]) listener(fact);
 }

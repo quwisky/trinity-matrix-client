@@ -5,6 +5,8 @@ import {
   ClientEvent,
   ConnectionError,
   EventStatus,
+  HTTPError,
+  HttpApiEvent,
   MatrixError,
   SyncState,
   createClient,
@@ -446,6 +448,168 @@ describe('JsSdkSessionEngine', () => {
         },
       ]);
     });
+  });
+
+  describe('holds a server logout', () => {
+    function loggedOut(client: ReturnType<typeof fakeClient>) {
+      const [, handler] = client.on.mock.calls.find(
+        ([event]) => event === HttpApiEvent.SessionLoggedOut,
+      ) as [string, (err: MatrixError) => void];
+      handler(new MatrixError({ errcode: 'M_UNKNOWN_TOKEN' }, 401));
+    }
+
+    it('reports the dead token as it happens and replays it once released', async () => {
+      const client = fakeClient();
+      const { engine, storage } = await live(client);
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      let completed = false;
+      const updates: unknown[] = [];
+      engine.holdServerLogout(SESSION.userId).subscribe({
+        next: (update) => updates.push(update),
+        complete: () => (completed = true),
+      });
+
+      loggedOut(client);
+
+      expect(updates).toEqual([
+        { kind: 'held', holdId: '1', tokenDied: false },
+        { kind: 'token-died' },
+      ]);
+      expect(engine.snapshot().accounts).toHaveLength(1);
+      await firstValueFrom(engine.releaseServerLogoutHold('1', false));
+      expect(completed).toBe(true);
+      expect(engine.snapshot().accounts).toEqual([]);
+      expect(storage.remove).toHaveBeenCalledWith(SESSION.userId);
+    });
+
+    it('releases as not deleted on unsubscribe, and ends when the account leaves', async () => {
+      const client = fakeClient();
+      const { engine, storage } = await live(client);
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const dropped = engine.holdServerLogout(SESSION.userId).subscribe();
+      const kept = collect(engine.holdServerLogout(SESSION.userId));
+      loggedOut(client);
+
+      dropped.unsubscribe();
+      expect(engine.snapshot().accounts).toHaveLength(1);
+      await firstValueFrom(engine.remove(SESSION.userId));
+
+      expect(kept.map((u) => (u as { kind: string }).kind)).toEqual([
+        'held',
+        'token-died',
+        'released',
+      ]);
+    });
+
+    it('sends the deactivation with the auth given and maps a UIA challenge', async () => {
+      const client = {
+        ...fakeClient(),
+        deactivateAccount: vi
+          .fn()
+          .mockRejectedValueOnce(
+            new MatrixError(
+              { flows: [{ stages: ['m.login.password'] }], session: 's' },
+              401,
+            ),
+          )
+          .mockResolvedValueOnce({}),
+      };
+      const { engine } = await live(client);
+
+      const probe = await firstValueFrom(
+        engine.deactivateAccount(SESSION.userId, true, null),
+      );
+      const done = await firstValueFrom(
+        engine.deactivateAccount(SESSION.userId, false, { session: 's' }),
+      );
+
+      expect(probe).toEqual({
+        ok: false,
+        failure: {
+          kind: 'http',
+          code: 'uia-required',
+          diagnostic: { kind: 'http', httpStatus: 401 },
+          params: {
+            challenge: {
+              flows: [{ stages: ['m.login.password'] }],
+              completed: [],
+              session: 's',
+            },
+          },
+        },
+      });
+      expect(done).toEqual({ ok: true, value: null });
+      expect(client.deactivateAccount.mock.calls).toEqual([
+        [undefined, true],
+        [{ session: 's' }, false],
+      ]);
+    });
+
+    it.each([
+      [new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 400), 'unsupported'],
+      [new MatrixError({}, 404), 'unsupported'],
+      [new MatrixError({}, 405), 'unsupported'],
+      [new MatrixError({ errcode: 'M_NOT_FOUND' }, 404), 'request-failed'],
+      [new MatrixError({ errcode: 'M_FORBIDDEN' }, 403), 'forbidden'],
+      [new HTTPError('not found', 404), 'request-failed'],
+      [new MatrixError({ errcode: 'M_UNKNOWN_TOKEN' }, 401), 'request-failed'],
+      [new ConnectionError('offline'), 'request-failed'],
+    ])('maps %s to %s', async (error, code) => {
+      const client = {
+        ...fakeClient(),
+        deactivateAccount: vi.fn().mockRejectedValue(error),
+      };
+      const { engine } = await live(client);
+
+      const result = await firstValueFrom(
+        engine.deactivateAccount(SESSION.userId, false, null),
+      );
+
+      expect(!result.ok && result.failure.code).toBe(code);
+      expect(() => assertPlainData(result)).not.toThrow();
+    });
+
+    it('logs out with the live client, or a detached one that saves no refresh', async () => {
+      const client = { ...fakeClient(), logout: vi.fn(async () => ({})) };
+      const { engine, svc } = await live(client);
+      const detached = { logout: vi.fn(async () => ({})) };
+      const detach = vi
+        .spyOn(svc, 'detachedClient')
+        .mockReturnValue(detached as never);
+
+      await expect(
+        firstValueFrom(engine.logoutRemote(SESSION.userId)),
+      ).resolves.toEqual({ ok: true, value: null });
+      await expect(
+        firstValueFrom(engine.logoutSession(OIDC_SESSION)),
+      ).resolves.toEqual({ ok: true, value: null });
+
+      expect(client.logout).toHaveBeenCalledWith(true);
+      expect(detach).toHaveBeenCalledWith(OIDC_SESSION, {
+        persistRefreshedTokens: false,
+      });
+      expect(detached.logout).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it('reads the live tokens once, the refresh token included', async () => {
+    const client = {
+      ...fakeClient(),
+      // Not the restored session's token: the engine must read the client's current one.
+      getRefreshToken: vi.fn(() => 'rotated-refresh'),
+    };
+    const { svc } = setup(client);
+    await firstValueFrom(svc.restorePersisted(OIDC_SESSION, 'activate'));
+    const engine = TestBed.inject(JsSdkSessionEngine);
+
+    await expect(
+      firstValueFrom(engine.liveCredentials(SESSION.userId)),
+    ).resolves.toEqual({ accessToken: 'tok', refreshToken: 'rotated-refresh' });
+    await expect(
+      firstValueFrom(engine.liveCredentials(SESSION_B.userId)),
+    ).resolves.toBeNull();
   });
 
   it('reports outgoing work and pending texts as plain data', async () => {

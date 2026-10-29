@@ -1,7 +1,16 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Observable, ReplaySubject, defer, finalize, map } from 'rxjs';
+import {
+  Observable,
+  ReplaySubject,
+  defer,
+  finalize,
+  map,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import {
   TrnSurfaceService,
   TrnToastService,
@@ -13,7 +22,9 @@ import {
 } from '@trinity/data-access/accounts';
 import { AuthService, deletionLink } from '@trinity/data-access/auth';
 import {
-  MatrixClientService,
+  SESSION_ENGINE,
+  SessionStateService,
+  serverLogoutHold,
   type ServerLogoutHold,
 } from '@trinity/data-access/matrix-client';
 import {
@@ -35,7 +46,8 @@ const DELETED_TOAST_MS = 8000;
 export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
   private readonly workflow = inject(AccountDeletionWorkflow);
   private readonly auth = inject(AuthService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(SESSION_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly browser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly surfaces = inject(TrnSurfaceService);
@@ -91,17 +103,13 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
   }
 
   openProvider(accountId: string, url: string): Observable<boolean> {
-    return defer(() => {
-      if (!this.providerHolds.get(accountId)?.isHeld()) {
-        this.providerHolds.set(
-          accountId,
-          this.matrix.holdServerLogout(accountId, {
+    return defer(() =>
+      this.providerHolds.get(accountId)?.isHeld()
+        ? of(null)
+        : serverLogoutHold(this.engine, accountId, {
             onTokenDied: () => this.finishAtProvider(accountId),
-          }),
-        );
-      }
-      return this.browser.open(url);
-    });
+          }).pipe(tap((hold) => this.providerHolds.set(accountId, hold))),
+    ).pipe(switchMap(() => this.browser.open(url)));
   }
 
   dismissDeletedNotice(): void {
@@ -164,7 +172,7 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
         : null;
     const next = settled
       ? settled.activeAccountId
-      : (this.matrix.accountIds().find((id) => id !== accountId) ?? null);
+      : (this.session.accountIds().find((id) => id !== accountId) ?? null);
     const complete = cleanup.kind === 'ready';
     if (!next) {
       this.notice.set(accountId);

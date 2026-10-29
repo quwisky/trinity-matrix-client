@@ -5,9 +5,9 @@ import { signal } from '@angular/core';
 import { type Observable, of } from 'rxjs';
 import { vi } from 'vitest';
 import {
-  MatrixClientService,
   SESSION_ENGINE,
   SessionStateService,
+  type SessionAccountStatus,
   type SessionEngine,
   type SessionSnapshot,
 } from '@trinity/data-access/matrix-client';
@@ -54,6 +54,10 @@ type EngineStub = Pick<
   | 'setActive'
   | 'stop'
   | 'signOutAll'
+  | 'remove'
+  | 'liveCredentials'
+  | 'logoutRemote'
+  | 'logoutSession'
 >;
 
 /** A snapshot in which exactly these accounts are live. */
@@ -91,6 +95,9 @@ export function startFailed(
 
 export function setup(activeAccountId: string | null = '@old:hs') {
   const active = signal(activeAccountId);
+  /** Live accounts in registry order, with their client generation. */
+  const liveAccounts = new Map<string, number>();
+  const refreshTokens = new Map<string, string>();
   const wipeIndexedDb = vi.fn((_records: readonly never[]) =>
     Promise.resolve({ blocked: [], failed: [], enumerated: true }),
   );
@@ -142,17 +149,40 @@ export function setup(activeAccountId: string | null = '@old:hs') {
     setActive: vi.fn<EngineStub['setActive']>(() => of(null)),
     stop: vi.fn<EngineStub['stop']>(() => of(null)),
     signOutAll: vi.fn<EngineStub['signOutAll']>(() => of(null)),
+    /** Retires the account and repoints the active one, as the engine does. */
+    remove: vi.fn<EngineStub['remove']>((accountId) => {
+      liveAccounts.delete(accountId);
+      if (active() === accountId) {
+        active.set(liveAccounts.keys().next().value ?? null);
+      }
+      return of(null);
+    }),
+    liveCredentials: vi.fn<EngineStub['liveCredentials']>((accountId) =>
+      of(
+        liveAccounts.has(accountId)
+          ? {
+              // Per generation, so a spec can tell the captured token from a newer sign-in's.
+              accessToken: `live-${accountId}-g${liveAccounts.get(accountId)}`,
+              refreshToken: refreshTokens.get(accountId) ?? null,
+            }
+          : null,
+      ),
+    ),
+    logoutRemote: vi.fn<EngineStub['logoutRemote']>(() => started()),
+    logoutSession: vi.fn<EngineStub['logoutSession']>(() => started()),
   } satisfies EngineStub;
   TestBed.configureTestingModule({
     providers: [
       MatrixAccountRuntimeAdapter,
       { provide: SESSION_ENGINE, useValue: engine },
-      MockProvider(MatrixClientService, {
-        activeUserId: active.asReadonly(),
-        clientFor: vi.fn(() => ({}) as never),
-      }),
       MockProvider(SessionStateService, {
         activeAccountId: active.asReadonly(),
+        status: vi.fn((accountId: string) => {
+          const generation = liveAccounts.get(accountId);
+          return generation === undefined
+            ? null
+            : ({ accountId, generation } as SessionAccountStatus);
+        }),
       }),
       MockProvider(SessionStorageService),
       MockProvider(SecureStorageService, {
@@ -170,8 +200,18 @@ export function setup(activeAccountId: string | null = '@old:hs') {
   });
   return {
     adapter: TestBed.inject(MatrixAccountRuntimeAdapter),
-    matrix: TestBed.inject(MatrixClientService),
     engine,
+    /** Makes these accounts live, each with a client of the given generation. */
+    goLive: (
+      accountIds: readonly string[],
+      generation = 1,
+      refreshToken: string | null = null,
+    ) => {
+      for (const accountId of accountIds) {
+        liveAccounts.set(accountId, generation);
+        if (refreshToken) refreshTokens.set(accountId, refreshToken);
+      }
+    },
     storage: TestBed.inject(SessionStorageService),
     wipe: TestBed.inject(LocalDataWipeService),
     secure: TestBed.inject(SecureStorageService),
