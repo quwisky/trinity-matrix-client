@@ -26,6 +26,9 @@ const UNLOADED: NotificationSettings = {
   loaded: false,
   defaultRules: [],
   keywords: [],
+  roomModes: {},
+  sound: true,
+  reactionNotifications: false,
 };
 
 /**

@@ -24,10 +24,7 @@ import {
 } from 'rxjs';
 import type { NotificationTextMode } from './notification-text.port';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  NOTIFICATION_SOUND_EVENT,
-  NotificationSoundService,
-} from './notification-sound.service';
+import { NOTIFICATION_SOUND_EVENT } from './js-sdk/legacy-account-data';
 import {
   BACKGROUND_REFRESH_GRANT_TIMEOUT_MS,
   BACKGROUND_REFRESH_MIN_AGE_MS,
@@ -62,6 +59,8 @@ function fakeClient(userId: string, rooms: FakeRoom[]) {
     direct: {} as Record<string, string[]>,
     /** What the crypto store answers per room; unlisted rooms are not encrypted. */
     storeEncrypted: {} as Record<string, boolean>,
+    /** The stored sound preference; unset reads as on. */
+    sound: undefined as boolean | undefined,
   };
   return {
     userId,
@@ -88,7 +87,9 @@ function fakeClient(userId: string, rooms: FakeRoom[]) {
     getAccountData: (type: string) =>
       type === EventType.Direct
         ? { getContent: () => state.direct }
-        : undefined,
+        : type === NOTIFICATION_SOUND_EVENT && state.sound !== undefined
+          ? { getContent: () => ({ enabled: state.sound }) }
+          : undefined,
   };
 }
 
@@ -128,7 +129,6 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     ),
     clearDelivered: vi.fn((): Observable<void> => of(void 0)),
   };
-  const sound = { isOn: vi.fn(() => true) };
   const expiry = vi.fn(
     (_userId: string, _accessToken: string): number | undefined => undefined,
   );
@@ -149,7 +149,6 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
         canRefreshAccessToken: refreshable,
       }),
       { provide: PushHandoffBridge, useValue: bridge },
-      { provide: NotificationSoundService, useValue: sound },
     ],
   });
   return {
@@ -158,7 +157,6 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     accountIds,
     rotations,
     bridge,
-    sound,
     expiry,
     refresh,
     refreshable,
@@ -469,14 +467,13 @@ describe('PushHandoffService', () => {
   it('rewrites the account when its sound setting changes', async () => {
     const h = setup();
     await start(h);
-    h.sound.isOn.mockReturnValue(false);
+    me(h).state.sound = false;
 
     me(h).emit(ClientEvent.AccountData, {
       getType: () => NOTIFICATION_SOUND_EVENT,
     });
     await flush();
 
-    expect(h.sound.isOn).toHaveBeenCalledWith('@me:hs');
     expect(h.bridge.setAccount).toHaveBeenLastCalledWith(
       expect.objectContaining({ userId: '@me:hs', sound: false }),
     );

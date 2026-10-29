@@ -2,7 +2,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  OnDestroy,
   OnInit,
   effect,
   inject,
@@ -42,7 +41,7 @@ import { Subject, takeUntil } from 'rxjs';
     KeywordRulesBlockComponent,
   ],
 })
-export class NotificationsSectionComponent implements OnInit, OnDestroy {
+export class NotificationsSectionComponent implements OnInit {
   private readonly push = inject(PushRulesService);
   private readonly sound = inject(NotificationSoundService);
   private readonly reactions = inject(ReactionNotificationSettingsService);
@@ -97,15 +96,6 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
       seeded.set(toggle.id, this.push.isOn(toggle));
     }
     this.state.set(seeded);
-    // Tracks account data, so a value that arrives after this page has rendered (a cold
-    // load, or a change made on another device) still shows.
-    this.sound.connect();
-    this.reactions.connect();
-  }
-
-  ngOnDestroy(): void {
-    this.sound.disconnect();
-    this.reactions.disconnect();
   }
 
   /**

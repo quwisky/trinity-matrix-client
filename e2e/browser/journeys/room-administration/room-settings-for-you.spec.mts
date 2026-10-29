@@ -98,29 +98,42 @@ async function expectMode(
   }
 }
 
+/** The room's mode as the notification engine reads it (Rust semantics, enabled rules only). */
 async function serverMode(
   request: APIRequestContext,
   hs: string,
   account: ApiUser,
   roomId: string,
 ): Promise<'all' | 'mentions' | 'mute'> {
+  interface Rule {
+    rule_id?: string;
+    enabled?: boolean;
+    actions?: unknown[];
+    conditions?: Array<{ kind?: string; key?: string; pattern?: string }>;
+  }
   const rules = (await request
     .get(`${hs}/_matrix/client/v3/pushrules/`, { headers: account.headers })
     .then((response) => response.json())) as {
-    global?: {
-      room?: Array<{ rule_id?: string; enabled?: boolean }>;
-      override?: Array<{ rule_id?: string; enabled?: boolean }>;
-    };
+    global?: { room?: Rule[]; override?: Rule[] };
   };
+  const silent = (rule: Rule) =>
+    rule.enabled === true && !(rule.actions ?? []).includes('notify');
   if (
     rules.global?.override?.some(
-      (rule) => rule.rule_id === roomId && rule.enabled,
+      (rule) =>
+        silent(rule) &&
+        (rule.conditions ?? []).some(
+          (condition) =>
+            condition.kind === 'event_match' &&
+            condition.key === 'room_id' &&
+            condition.pattern === roomId,
+        ),
     )
   ) {
     return 'mute';
   }
   return rules.global?.room?.some(
-    (rule) => rule.rule_id === roomId && rule.enabled,
+    (rule) => rule.rule_id === roomId && silent(rule),
   )
     ? 'mentions'
     : 'all';
