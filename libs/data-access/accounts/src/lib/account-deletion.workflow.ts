@@ -1,16 +1,18 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  MatrixClientService,
+  SESSION_ENGINE,
+  serverLogoutHold,
   type ServerLogoutHold,
-  jsSdkUia,
 } from '@trinity/data-access/matrix-client';
 import {
-  MatrixError,
+  EngineRequestError,
   UiaAttemptsExceededError,
   UiaCancelledError,
   UiaUnsupportedError,
   describeMatrixRequestFailure,
   driveUia,
+  engineUia,
+  uiaFallbackUrl,
   type UiaPasswordPrompt,
 } from '@trinity/util/matrix';
 import {
@@ -23,6 +25,7 @@ import {
   of,
   switchMap,
   Subject,
+  take,
 } from 'rxjs';
 import { AccountRuntimeService } from './account-runtime.service';
 import type { AccountSignOutOutcome } from './account-runtime.models';
@@ -89,7 +92,7 @@ type ServerAnswer =
  */
 @Injectable({ providedIn: 'root' })
 export class AccountDeletionWorkflow {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(SESSION_ENGINE);
   private readonly accounts = inject(AccountRuntimeService);
   /**
    * Holds kept after an unconfirmed deletion: the account was most likely deleted, so a
@@ -110,34 +113,13 @@ export class AccountDeletionWorkflow {
       if (this.accounts.deletionBlocker()) {
         return of(kept(accountId, 'busy'));
       }
-      const client = this.matrix.clientFor(accountId);
-      if (!client) {
-        return of(kept(accountId, 'account-unavailable'));
-      }
-      const hold = this.holdFor(accountId);
-      let authenticated = false;
-      let sentAlive = false;
-      const sent = driveUia(
-        jsSdkUia((auth) => {
-          authenticated ||= auth !== null;
-          sentAlive = !hold.tokenDied();
-          return client.deactivateAccount(auth ?? undefined, request.erase);
-        }),
-        {
-          password: { user: accountId, prompt: request.stages.password },
-          fallback: ({ stage, session, pending }) =>
-            request.stages.confirmInBrowser({
-              url: client.getFallbackAuthUrl(stage, session),
-              pending,
-            }),
-        },
-      );
-      return from(sent).pipe(
-        map((): ServerAnswer => ({ kind: 'deleted' })),
-        catchError((err: unknown) =>
-          this.classify(err, accountId, hold, authenticated, sentAlive),
+      return this.engine.accessToken(accountId).pipe(
+        take(1),
+        switchMap((live) =>
+          live
+            ? this.deactivate(request, live.homeserverUrl)
+            : of(kept(accountId, 'account-unavailable')),
         ),
-        switchMap((answer) => this.settle(accountId, hold, answer)),
       );
     });
   }
@@ -147,9 +129,12 @@ export class AccountDeletionWorkflow {
     return defer(() => {
       const known = this.finished.get(accountId);
       if (known) return of(known);
-      const hold = this.holdFor(accountId);
-      return this.resolveUnknown(accountId, hold, true).pipe(
-        switchMap((answer) => this.settle(accountId, hold, answer)),
+      return this.holdFor(accountId).pipe(
+        switchMap((hold) =>
+          this.resolveUnknown(accountId, hold, true).pipe(
+            switchMap((answer) => this.settle(accountId, hold, answer)),
+          ),
+        ),
       );
     });
   }
@@ -165,8 +150,48 @@ export class AccountDeletionWorkflow {
     );
   }
 
-  private holdFor(accountId: string): ServerLogoutHold {
-    return this.matrix.holdServerLogout(accountId, {
+  /** The hold is in place before the first send: the request may revoke its own token. */
+  private deactivate(
+    request: AccountDeletionRequest,
+    homeserverUrl: string,
+  ): Observable<AccountDeletionResult> {
+    const { accountId } = request;
+    return this.holdFor(accountId).pipe(
+      switchMap((hold) => {
+        let authenticated = false;
+        let sentAlive = false;
+        const sent = driveUia(
+          engineUia((auth) => {
+            authenticated ||= auth !== null;
+            sentAlive = !hold.tokenDied();
+            return this.engine.deactivateAccount(
+              accountId,
+              request.erase,
+              auth,
+            );
+          }),
+          {
+            password: { user: accountId, prompt: request.stages.password },
+            fallback: ({ stage, session, pending }) =>
+              request.stages.confirmInBrowser({
+                url: uiaFallbackUrl(homeserverUrl, stage, session),
+                pending,
+              }),
+          },
+        );
+        return from(sent).pipe(
+          map((): ServerAnswer => ({ kind: 'deleted' })),
+          catchError((err: unknown) =>
+            this.classify(err, accountId, hold, authenticated, sentAlive),
+          ),
+          switchMap((answer) => this.settle(accountId, hold, answer)),
+        );
+      }),
+    );
+  }
+
+  private holdFor(accountId: string): Observable<ServerLogoutHold> {
+    return serverLogoutHold(this.engine, accountId, {
       onTokenDied: () => this.finishUnconfirmed(accountId),
       onSignedInAgain: () => this.keepUnconfirmed(accountId),
     });
@@ -205,15 +230,14 @@ export class AccountDeletionWorkflow {
     if (err instanceof UiaUnsupportedError) {
       return of(refused('no-usable-stage'));
     }
+    const failure = describeMatrixRequestFailure(err);
     if (hold.tokenDied()) {
       // A token already dead when the request left, or that the server refused it with, was
       // ended by something else: the server checks the token before it deactivates anything.
       const endedElsewhere =
-        !sentAlive ||
-        (err instanceof MatrixError && err.errcode === 'M_UNKNOWN_TOKEN');
+        !sentAlive || failure.diagnostic.errcode === 'M_UNKNOWN_TOKEN';
       return of(endedElsewhere ? refused('signed-out') : { kind: 'deleted' });
     }
-    const failure = describeMatrixRequestFailure(err);
     if (failure.kind === 'rate-limit') {
       const retryAfterMs = failure.diagnostic.retryAfterMs;
       return of({
@@ -245,7 +269,7 @@ export class AccountDeletionWorkflow {
     authenticated: boolean,
   ): Observable<ServerAnswer> {
     if (hold.tokenDied()) return of({ kind: 'deleted' });
-    return this.matrix.accountStatus(accountId).pipe(
+    return this.engine.accountStatus(accountId).pipe(
       map((status): ServerAnswer => {
         if (status === 'gone' || hold.tokenDied()) return { kind: 'deleted' };
         if (status === 'active') {
@@ -296,19 +320,15 @@ function refused(reason: AccountDeletionRefusal): ServerAnswer {
   return { kind: 'kept', reason };
 }
 
-/**
- * `M_UNRECOGNIZED`, or a 404/405 that is not `M_NOT_FOUND`, means the endpoint is missing;
- * `M_FORBIDDEN` without UIA flows is the server's policy.
- */
+/** A missing endpoint, or `M_FORBIDDEN` without UIA flows: the server's policy. */
 function refusalOf(err: unknown): AccountDeletionRefusal {
-  if (!(err instanceof MatrixError)) return 'failed';
-  if (err.errcode === 'M_UNRECOGNIZED') return 'unsupported';
-  if (
-    (err.httpStatus === 404 || err.httpStatus === 405) &&
-    err.errcode !== 'M_NOT_FOUND'
-  ) {
-    return 'unsupported';
+  if (!(err instanceof EngineRequestError)) return 'failed';
+  switch (err.failure.code) {
+    case 'unsupported':
+      return 'unsupported';
+    case 'forbidden':
+      return 'forbidden';
+    default:
+      return 'failed';
   }
-  if (err.errcode === 'M_FORBIDDEN') return 'forbidden';
-  return 'failed';
 }

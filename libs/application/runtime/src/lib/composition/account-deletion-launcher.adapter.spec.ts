@@ -1,7 +1,8 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { MockProvider } from 'ng-mocks';
-import { Subject, firstValueFrom, of } from 'rxjs';
+import { Observable, Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TrnSurfaceService,
@@ -13,7 +14,11 @@ import {
   type AccountSignOutOutcome,
 } from '@trinity/data-access/accounts';
 import { AuthService, type AccountServerApi } from '@trinity/data-access/auth';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  SESSION_ENGINE,
+  SessionStateService,
+  type ServerLogoutHoldUpdate,
+} from '@trinity/data-access/matrix-client';
 import {
   ExternalBrowserService,
   type AccountDeletionPrompts,
@@ -51,9 +56,21 @@ function setup(
     api?: AccountServerApi;
   } = {},
 ) {
-  const onTokenDied: (() => void)[] = [];
-  let held = true;
+  const holds: { next: (update: ServerLogoutHoldUpdate) => void }[] = [];
   const release = vi.fn();
+  const engine = {
+    holdServerLogout: vi.fn(
+      (_id: string) =>
+        new Observable<ServerLogoutHoldUpdate>((subscriber) => {
+          holds.push(subscriber);
+          subscriber.next({ kind: 'held', holdId: 'hold', tokenDied: false });
+        }),
+    ),
+    releaseServerLogoutHold: vi.fn((_holdId: string, deleted: boolean) => {
+      release({ deleted });
+      return of(null);
+    }),
+  };
   const late = new Subject<AccountDeletionResult>();
   TestBed.configureTestingModule({
     providers: [
@@ -73,14 +90,9 @@ function setup(
           of(options.api ?? ({ kind: 'legacy' } as const)),
         ),
       }),
-      MockProvider(MatrixClientService, {
-        holdServerLogout: vi.fn(
-          (_id: string, hooks?: { onTokenDied?: () => void }) => {
-            if (hooks?.onTokenDied) onTokenDied.push(hooks.onTokenDied);
-            held = true;
-            return { tokenDied: () => false, isHeld: () => held, release };
-          },
-        ),
+      { provide: SESSION_ENGINE, useValue: engine },
+      MockProvider(SessionStateService, {
+        accountIds: signal([ALICE, BOB]).asReadonly(),
       }),
       MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
       MockProvider(TrnToastService, { show: vi.fn() }),
@@ -95,7 +107,7 @@ function setup(
   return {
     launcher: TestBed.inject(AccountDeletionLauncherAdapter),
     workflow: TestBed.inject(AccountDeletionWorkflow),
-    matrix: TestBed.inject(MatrixClientService),
+    engine,
     browser: TestBed.inject(ExternalBrowserService),
     toast: TestBed.inject(TrnToastService),
     surfaces: TestBed.inject(TrnSurfaceService),
@@ -103,10 +115,8 @@ function setup(
     prompts,
     release,
     late,
-    tokenDies: () => onTokenDied.forEach((hook) => hook()),
-    wipeHolds: () => {
-      held = false;
-    },
+    tokenDies: () => holds.forEach((hold) => hold.next({ kind: 'token-died' })),
+    wipeHolds: () => holds.forEach((hold) => hold.next({ kind: 'released' })),
   };
 }
 
@@ -279,10 +289,7 @@ describe('AccountDeletionLauncherAdapter', () => {
       expect(test.browser.open).toHaveBeenCalledWith(
         'https://auth.example.org/account/',
       );
-      expect(test.matrix.holdServerLogout).toHaveBeenCalledWith(
-        ALICE,
-        expect.anything(),
-      );
+      expect(test.engine.holdServerLogout).toHaveBeenCalledWith(ALICE);
       expect(test.workflow.removeDeleted).not.toHaveBeenCalled();
 
       test.tokenDies();
@@ -299,7 +306,7 @@ describe('AccountDeletionLauncherAdapter', () => {
       await firstValueFrom(test.launcher.openProvider(ALICE, 'https://a/'));
       await firstValueFrom(test.launcher.openProvider(ALICE, 'https://a/'));
 
-      expect(test.matrix.holdServerLogout).toHaveBeenCalledOnce();
+      expect(test.engine.holdServerLogout).toHaveBeenCalledOnce();
     });
 
     it('holds again after the account left the device and came back', async () => {
@@ -309,7 +316,7 @@ describe('AccountDeletionLauncherAdapter', () => {
 
       await firstValueFrom(test.launcher.openProvider(ALICE, 'https://a/'));
 
-      expect(test.matrix.holdServerLogout).toHaveBeenCalledTimes(2);
+      expect(test.engine.holdServerLogout).toHaveBeenCalledTimes(2);
     });
 
     it('finishes once when Check now and the dead token both notice', async () => {

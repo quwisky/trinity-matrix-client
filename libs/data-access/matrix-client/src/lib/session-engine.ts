@@ -4,6 +4,7 @@ import type {
   EngineFailure,
   EngineResult,
   MatrixSession,
+  UiaAuth,
 } from '@trinity/util/matrix';
 
 export type PersistedAccountActivation = 'activate' | 'background';
@@ -65,6 +66,30 @@ export interface SessionAccessToken {
   readonly refreshable: boolean;
 }
 
+/** A live session's own tokens, read once so they can end it after its client is gone. */
+export interface SessionCredentials {
+  readonly accessToken: string;
+  /** Null for a session without one, such as a password or SSO session. */
+  readonly refreshToken: string | null;
+}
+
+/** What a hold on one account's hard-logout wipe reports, `held` first. */
+export type ServerLogoutHoldUpdate =
+  | {
+      readonly kind: 'held';
+      readonly holdId: string;
+      /** Whether the server had already revoked the token when the hold was taken. */
+      readonly tokenDied: boolean;
+    }
+  /** The server revoked the token: the client stopped and nothing was wiped. */
+  | { readonly kind: 'token-died' }
+  /** A new client replaced the one whose token died. */
+  | { readonly kind: 'token-renewed' }
+  /** A sign-in after a soft logout succeeded, which a deleted account cannot do. */
+  | { readonly kind: 'signed-in-again' }
+  /** The account left this device and took its holds with it; the stream completes. */
+  | { readonly kind: 'released' };
+
 /** A text message a live client has not got onto the homeserver. */
 export interface PendingTextMessage {
   readonly accountId: string;
@@ -123,4 +148,30 @@ export interface SessionEngine {
   ): Observable<boolean>;
   accountStatus(accountId: string): Observable<AccountServerStatus>;
   roomKeysBackedUp(accountId: string): Observable<boolean | null>;
+  /**
+   * Holds back one account's hard-logout wipe while subscribed: a non-soft `M_UNKNOWN_TOKEN`
+   * then only stops its client. `token-died` reaches the subscriber before the result of any
+   * engine request that met the dead token. Unsubscribing releases the hold as not deleted.
+   */
+  holdServerLogout(accountId: string): Observable<ServerLogoutHoldUpdate>;
+  /**
+   * Ends a hold and completes its stream; an unknown id is ignored. `deleted: true` leaves
+   * the account to the deletion cleanup, `false` replays a recorded logout's wipe.
+   */
+  releaseServerLogoutHold(holdId: string, deleted: boolean): Observable<null>;
+  /** `POST /account/deactivate` with the live client; `uia-required` carries the challenge. */
+  deactivateAccount(
+    accountId: string,
+    erase: boolean,
+    auth: UiaAuth | null,
+  ): Observable<EngineResult<null>>;
+  /** Ends the live session at its homeserver, or at its provider for OAuth, and stops it. */
+  logoutRemote(accountId: string): Observable<EngineResult<null>>;
+  /** Ends a session that is not live the same way, without starting it or saving a refresh. */
+  logoutSession(session: MatrixSession): Observable<EngineResult<null>>;
+  /**
+   * The live client's tokens, or null when none is live. Only for credentials that must outlive
+   * the client; never logged or put in a failure.
+   */
+  liveCredentials(accountId: string): Observable<SessionCredentials | null>;
 }

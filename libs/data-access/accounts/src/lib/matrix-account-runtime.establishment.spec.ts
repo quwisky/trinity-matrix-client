@@ -398,9 +398,6 @@ describe('replacing a stored device', () => {
     vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
       of(void 0),
     );
-    vi.mocked(test.matrix.detachedClient).mockReturnValue({
-      logout: vi.fn(() => Promise.resolve()),
-    } as never);
     const facts = published(test);
 
     await expect(
@@ -536,23 +533,19 @@ describe('replacing a stored device', () => {
   it('signs the replaced device out with its old token once the new session has started', async () => {
     const test = setup();
     const order: string[] = [];
-    const logout = vi.fn(() => {
-      order.push('logout');
-      return Promise.resolve();
-    });
     saved(test, OLD_SESSION);
-    vi.mocked(test.matrix.detachedClient).mockReturnValue({
-      logout,
-    } as never);
+    test.engine.logoutSession.mockImplementation(() => {
+      order.push('logout');
+      return started();
+    });
 
     await expect(establish(test, order)).resolves.toEqual({ kind: 'ready' });
 
     expect(test.storage.load).toHaveBeenCalledWith('@new:hs');
-    // Its token refreshes must never be saved over the new device's tokens.
-    expect(test.matrix.detachedClient).toHaveBeenCalledWith(OLD_SESSION, {
-      persistRefreshedTokens: false,
-    });
-    expect(logout).toHaveBeenCalledWith(true);
+    // The engine never saves a refresh of its tokens over the new device's tokens.
+    expect(test.engine.logoutSession).toHaveBeenCalledExactlyOnceWith(
+      OLD_SESSION,
+    );
     // The old record is read before the save overwrites it; the sign-out waits until the
     // new session is saved and started, which also detached any old live client.
     expect(order).toEqual(['persist', 'start', 'logout']);
@@ -576,7 +569,7 @@ describe('replacing a stored device', () => {
       kind: 'failed',
       failure: 'local-state-unavailable',
     });
-    expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    expect(test.engine.logoutSession).not.toHaveBeenCalled();
   });
 
   it('keeps the replaced device signed in when the new session does not start', async () => {
@@ -597,18 +590,17 @@ describe('replacing a stored device', () => {
         ),
       ),
     ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
-    expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    expect(test.engine.logoutSession).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['fails', () => Promise.reject(new Error('offline'))],
-    ['never answers', () => new Promise<never>(() => undefined)],
+    ['fails', () => startFailed('transient-network')],
+    ['faults', () => throwError(() => new Error('bad base URL'))],
+    ['never answers', () => NEVER],
   ])('still signs in when that logout %s', async (_case, logout) => {
     const test = setup();
     saved(test, OLD_SESSION);
-    vi.mocked(test.matrix.detachedClient).mockReturnValue({
-      logout: vi.fn(logout),
-    } as never);
+    test.engine.logoutSession.mockImplementation(logout);
 
     await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
   });
@@ -638,17 +630,7 @@ describe('replacing a stored device', () => {
       failure: 'homeserver-mismatch',
       storedBaseUrl: 'https://stored.example',
     });
-    expect(test.matrix.detachedClient).not.toHaveBeenCalled();
-  });
-
-  it('still signs in when the detached client cannot be built', async () => {
-    const test = setup();
-    saved(test, OLD_SESSION);
-    vi.mocked(test.matrix.detachedClient).mockImplementation(() => {
-      throw new Error('bad base URL');
-    });
-
-    await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+    expect(test.engine.logoutSession).not.toHaveBeenCalled();
   });
 
   it('does not mark a re-login on the device of a signed-out account as new', async () => {
@@ -664,7 +646,7 @@ describe('replacing a stored device', () => {
     await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
     expect(facts).toEqual([]);
 
-    expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    expect(test.engine.logoutSession).not.toHaveBeenCalled();
   });
 
   it('leaves the device alone on a same-device re-login', async () => {
@@ -675,7 +657,7 @@ describe('replacing a stored device', () => {
     await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
     expect(facts).toEqual([]);
 
-    expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    expect(test.engine.logoutSession).not.toHaveBeenCalled();
   });
 });
 
