@@ -38,6 +38,7 @@ describe('AccountSectionComponent', () => {
   /** `null` leaves the server's answer pending. */
   async function renderSection(
     api: AccountServerApi | null = { kind: 'legacy' },
+    accountId: string | null = '@alice:example.org',
   ) {
     const result = await render(AccountSectionComponent, {
       providers: [
@@ -46,7 +47,7 @@ describe('AccountSectionComponent', () => {
           accountManagementFor: vi.fn(() => (api ? of(api) : NEVER)),
         }),
         MockProvider(SessionStateService, {
-          activeAccountId: signal('@alice:example.org').asReadonly(),
+          activeAccountId: signal(accountId).asReadonly(),
         }),
         MockProvider(TrnToastService),
         MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
@@ -251,7 +252,11 @@ describe('AccountSectionComponent', () => {
 
     cmp.submit();
 
-    expect(auth.changePassword).toHaveBeenCalledWith('old-pw', 'new-secret-pw');
+    expect(auth.changePassword).toHaveBeenCalledWith(
+      '@alice:example.org',
+      'old-pw',
+      'new-secret-pw',
+    );
     expect(cmp.form.newPassword().value()).toBe(''); // reset()
     // Cleared AND untouched. Emptying the values alone leaves three now-invalid
     // required fields marked touched, which is a primed error state — the reason
@@ -304,6 +309,20 @@ describe('AccountSectionComponent', () => {
     cmp.submit();
 
     expect(cmp.error()).toContain('at least');
+    expect(auth.changePassword).not.toHaveBeenCalled();
+  });
+
+  it('says it is not signed in, and changes nothing, without an account', async () => {
+    const { cmp, auth } = await renderSection({ kind: 'legacy' }, null);
+    fill(cmp, {
+      currentPassword: 'old-pw',
+      newPassword: 'new-secret-pw',
+      confirmPassword: 'new-secret-pw',
+    });
+
+    cmp.submit();
+
+    expect(cmp.error()).toBe('Not signed in.');
     expect(auth.changePassword).not.toHaveBeenCalled();
   });
 

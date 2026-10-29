@@ -50,9 +50,8 @@ function setup(
         events.push('save oidc');
       }),
   );
-  const getSsoUrl = vi.fn(
-    (_baseUrl: string, redirect: string) =>
-      `https://hs.example/sso?r=${redirect}`,
+  const getSsoUrl = vi.fn((_baseUrl: string, redirect: string) =>
+    of(`https://hs.example/sso?r=${redirect}`),
   );
   const build =
     overrides.build ?? vi.fn((_params: unknown) => of(OIDC_REQUEST));
@@ -333,8 +332,8 @@ describe('SignInRedirectService on the desktop host', () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
       desktopBridgeFixture();
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
-    const getSsoUrl = vi.fn(
-      (_b: string, r: string) => `https://hs.example/sso?r=${r}`,
+    const getSsoUrl = vi.fn((_b: string, r: string) =>
+      of(`https://hs.example/sso?r=${r}`),
     );
     const build = vi.fn((_params: unknown) => of(OIDC_REQUEST));
     TestBed.configureTestingModule({
