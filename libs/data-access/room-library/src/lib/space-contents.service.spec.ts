@@ -94,6 +94,7 @@ function setup(
     accounts: [
       {
         accountId: ALICE,
+        deviceId: 'DEVICE',
         generation: 1,
         syncState: 'syncing',
         serverSynced: true,

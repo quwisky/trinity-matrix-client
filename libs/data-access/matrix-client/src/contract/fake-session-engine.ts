@@ -131,6 +131,7 @@ export class FakeSessionEngine implements SessionEngine {
       this.generation += 1;
       const status: SessionAccountStatus = {
         accountId,
+        deviceId: session.deviceId,
         generation: this.generation,
         syncState: 'syncing',
         serverSynced: true,

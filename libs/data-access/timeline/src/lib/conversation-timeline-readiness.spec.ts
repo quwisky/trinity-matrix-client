@@ -35,6 +35,7 @@ const KEY = { accountId: '@me:hs', roomId: ROOM };
 function fakeSession(history: readonly SessionSyncState[] = ['syncing']) {
   let status: SessionAccountStatus = {
     accountId: KEY.accountId,
+    deviceId: 'DEVICE',
     generation: 1,
     syncState: 'starting',
     serverSynced: false,
@@ -586,6 +587,7 @@ describe('ConversationTimelineReadiness', () => {
             accounts: [
               {
                 accountId: fake.alice,
+                deviceId: 'DEVICE',
                 generation: 1,
                 syncState: 'syncing',
                 serverSynced: true,

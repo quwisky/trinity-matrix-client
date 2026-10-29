@@ -28,6 +28,8 @@ export type SessionSyncState =
 
 export interface SessionAccountStatus {
   readonly accountId: string;
+  /** This device's id; null while the client has none. */
+  readonly deviceId: string | null;
   /** Grows each time a new client is registered for the account. */
   readonly generation: number;
   readonly syncState: SessionSyncState;

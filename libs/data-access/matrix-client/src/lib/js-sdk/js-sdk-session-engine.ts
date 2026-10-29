@@ -64,6 +64,7 @@ export class JsSdkSessionEngine implements SessionEngine {
           ? [
               {
                 accountId,
+                deviceId: account.client.getDeviceId(),
                 generation: generations.get(accountId) ?? 0,
                 syncState: toSessionSyncState(account.syncState()),
                 serverSynced: account.serverSynced(),

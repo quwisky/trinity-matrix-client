@@ -125,6 +125,7 @@ describe('keepWhileWaiting', () => {
           : [
               {
                 accountId: fake.alice,
+                deviceId: 'DEVICE',
                 generation,
                 syncState: 'syncing',
                 serverSynced: true,
