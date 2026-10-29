@@ -16,7 +16,7 @@ import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.
 import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
-// presence indicators from the SDK's User.presence through IdentityPresenceService.
+// presence indicators from the identity engine's presence through IdentityPresenceService.
 // Unknown presence has no online/offline dot. The current user's known presence
 // proves rendering, while injected read failure proves unknown state and targeted retry.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
@@ -183,7 +183,7 @@ interface PresenceFaultWindow extends Window {
         adapter: {
           session: {
             identity: {
-              matrix: { activeAccountId(): string };
+              session: { activeAccountId(): string };
               presence: {
                 presenceFor(userId: string): () => unknown;
                 currentPresence: (...args: unknown[]) => unknown;
@@ -238,7 +238,7 @@ for (const mobile of [false, true]) {
           const identity =
             target.ng.getComponent(root).runtime.adapter.session.identity;
           target.currentPresenceValue = identity.presence.presenceFor(
-            identity.matrix.activeAccountId(),
+            identity.session.activeAccountId(),
           );
         });
         await expect

@@ -46,6 +46,8 @@ export class FakeIdentityEngine implements IdentityEngine {
   readonly presences = new Map<string, Omit<PresenceInfo, 'userId'>>();
   /** Each account's ignore list. */
   readonly ignored = new Map<string, readonly string[]>();
+  /** A failure every command of a live account answers with instead, until cleared. */
+  failure: EngineFailure | null = null;
 
   signIn(accountId: string, profile: UserProfile = NO_PROFILE): void {
     this.live.add(accountId);
@@ -181,8 +183,9 @@ export class FakeIdentityEngine implements IdentityEngine {
     accountId: string,
     run: () => T,
   ): Observable<EngineResult<T>> {
-    return defer(() =>
-      of(this.live.has(accountId) ? engineOk(run()) : engineFail(NOT_LIVE)),
-    );
+    return defer(() => {
+      if (!this.live.has(accountId)) return of(engineFail(NOT_LIVE));
+      return of(this.failure ? engineFail(this.failure) : engineOk(run()));
+    });
   }
 }

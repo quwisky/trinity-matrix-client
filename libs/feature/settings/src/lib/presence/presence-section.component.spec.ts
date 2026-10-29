@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type PresenceState } from '@trinity/util/matrix';
@@ -22,7 +22,7 @@ function providers(
           over.presence ?? 'online',
         ).asReadonly(),
         myStatusMessage: signal(over.status ?? '').asReadonly(),
-        loadOwnPresence: vi.fn(),
+        loadOwnPresence: vi.fn(() => of(undefined)),
         setOwnPresence,
       }),
     ],
@@ -88,5 +88,44 @@ describe('PresenceSectionComponent', () => {
     });
     expect(fixture.componentInstance.stateDraft()).toBe('unavailable');
     expect(fixture.componentInstance.statusDraft()).toBe('brb');
+  });
+
+  it('takes its values when the own presence arrives late, keeping Save off until then', async () => {
+    const myPresence = signal<PresenceState>('online');
+    const myStatusMessage = signal('');
+    const answer = new Subject<void>();
+    const { fixture, container } = await render(PresenceSectionComponent, {
+      providers: [
+        MockProvider(IdentityPresenceService, {
+          myPresence: myPresence.asReadonly(),
+          myStatusMessage: myStatusMessage.asReadonly(),
+          loadOwnPresence: () => answer,
+          setOwnPresence: vi.fn(() => of(undefined)),
+        }),
+      ],
+    });
+    const cmp = fixture.componentInstance;
+    const save = container.querySelector<HTMLButtonElement>(
+      '[data-testid=presence-save]',
+    )!;
+
+    cmp.onStateChange('offline');
+    fixture.detectChanges();
+    expect(save.disabled).toBe(true);
+
+    // The service holds the server's answer before its load completes.
+    myPresence.set('unavailable');
+    myStatusMessage.set('brb');
+    answer.complete();
+    fixture.detectChanges();
+
+    expect(cmp.stateDraft()).toBe('unavailable');
+    expect(cmp.statusDraft()).toBe('brb');
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid=presence-status]',
+      )!.value,
+    ).toBe('brb');
+    expect(save.disabled).toBe(true);
   });
 });

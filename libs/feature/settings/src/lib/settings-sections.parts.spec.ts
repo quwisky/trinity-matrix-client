@@ -108,7 +108,7 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(IdentityPresenceService, {
         myPresence: signal('online' as const).asReadonly(),
         myStatusMessage: signal('').asReadonly(),
-        loadOwnPresence: () => undefined,
+        loadOwnPresence: () => of(undefined),
       }),
     ],
   }),

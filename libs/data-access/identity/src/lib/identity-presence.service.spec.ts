@@ -1,236 +1,110 @@
-import { ApplicationRef, computed, signal } from '@angular/core';
+import { computed } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MockProvider, ngMocks } from 'ng-mocks';
-import { UserEvent, type MatrixClient } from 'matrix-js-sdk';
-import { firstValueFrom } from 'rxjs';
+import { Subject, firstValueFrom, lastValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { toPresenceState } from '@trinity/util/matrix';
+import {
+  type EngineResult,
+  type PresenceState,
+  engineOk,
+} from '@trinity/util/matrix';
+import type { PresenceInfo } from './identity-engine';
 import { IdentityPresenceService } from './identity-presence.service';
-import type { IdentitySdkUser } from '@trinity/data-access/matrix-client';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { ME, identityFixture, sessionWith } from './identity.spec-harness';
 
-/**
- * The fakes here implement only the slice of MatrixClient the service touches, so the
- * widening cast lives at this one visible seam rather than implicitly at every stub site.
- */
-const asClient = (fake: object): MatrixClient =>
-  fake as unknown as MatrixClient;
+const OTHER = '@other:hs';
+const NOW = 1_700_000_000_000;
 
-/** The signed-in user's id — distinct from the seeded co-members below. */
-const SELF = '@self:hs';
-
-/** A fake SDK client: getUser reports seeded presence; on/off track the listener. */
-function fakeClient(
-  users: Record<string, string> = {},
-  statuses: Record<string, string> = {},
-) {
-  return {
-    on: vi.fn(),
-    off: vi.fn(),
-    getUserId: vi.fn(() => SELF),
-    getUser: vi.fn((id: string): IdentitySdkUser | null =>
-      id in users
-        ? {
-            userId: id,
-            presence: users[id],
-            presenceStatusMsg: statuses[id],
-          }
-        : null,
-    ),
-    setPresence: vi.fn(() => Promise.resolve()),
+function setup() {
+  const fixture = identityFixture([ME, OTHER]);
+  TestBed.configureTestingModule({ providers: fixture.providers });
+  const svc = TestBed.inject(IdentityPresenceService);
+  const run = () => {
+    const lifetime = svc.runProjection().subscribe();
+    TestBed.tick();
+    return lifetime;
   };
+  /** Presence the server sent for `userId`; every account receives it. */
+  const receive = (
+    userId: string,
+    info: Partial<Omit<PresenceInfo, 'userId'>> = {},
+  ) => {
+    fixture.engine.presences.set(userId, {
+      presence: 'online',
+      statusMessage: null,
+      lastActiveAt: null,
+      currentlyActive: false,
+      ...info,
+    });
+    fixture.engine.changed();
+  };
+  return { ...fixture, svc, run, receive };
 }
 
-function setup(
-  users: Record<string, string> = {},
-  statuses: Record<string, string> = {},
-) {
-  const client = fakeClient(users, statuses);
-  const activeUserId = signal<string | null>(SELF);
-  TestBed.configureTestingModule({
-    providers: [
-      IdentityPresenceService,
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
-      }),
-    ],
-  });
-  const matrix = TestBed.inject(MatrixClientService);
-  ngMocks.stubMember(matrix, 'instance', asClient(client));
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  return {
-    svc: TestBed.inject(IdentityPresenceService),
-    client,
-    matrix,
-    activeUserId,
-  };
-}
-
-/** The `User.presence` handler the service registered on the client. */
-function presenceHandler(client: ReturnType<typeof fakeClient>) {
-  return client.on.mock.calls.find((c) => c[0] === UserEvent.Presence)?.[1] as (
-    event: unknown,
-    user: { userId: string; presence: string },
-  ) => void;
+/** Lets a queued reconcile run. */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  TestBed.tick();
 }
 
 describe('IdentityPresenceService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('can register a presence view from a computed member row without writing signals during the read', async () => {
-    const { svc } = setup({ '@online:hs': 'online' });
-    const lifetime = svc.runProjection().subscribe();
+    const { svc, run, receive } = setup();
+    receive('@online:hs');
+    const lifetime = run();
     const row = computed(() => svc.presenceFor('@online:hs')());
+
     expect(row()).toBeNull();
-    await Promise.resolve();
-    await Promise.resolve();
+    await settle();
     expect(row()).toBe('online');
     lifetime.unsubscribe();
   });
 
   it('reports the signed-in user as online even when the server never echoes our own presence', () => {
-    // getUser(self) is null/offline here (homeservers typically don't send you your
-    // own presence), but we ARE online while our client runs — self must read online.
-    const { svc } = setup();
-    const state = svc.presenceFor(SELF);
+    const { svc, run } = setup();
+    const state = svc.presenceFor(ME);
     expect(state()).toBeNull();
-    svc.runProjection().subscribe();
+
+    run();
+
     expect(state()).toBe('online');
   });
 
   it('keeps the signed-in user online even if a self presence event says otherwise', async () => {
-    const { svc, client } = setup();
-    const state = svc.presenceFor(SELF);
-    svc.runProjection().subscribe();
-    presenceHandler(client)(undefined, { userId: SELF, presence: 'offline' });
-    await Promise.resolve();
+    const { svc, run, receive } = setup();
+    const state = svc.presenceFor(ME);
+    run();
+
+    receive(ME, { presence: 'offline' });
+    await settle();
+
     expect(state()).toBe('online');
   });
 
-  it('seeds presence from the client and leaves unknown users unknown', () => {
-    const { svc } = setup({ '@online:hs': 'online' });
+  it('seeds received presence and leaves unknown users unknown', () => {
+    const { svc, run, receive } = setup();
+    receive('@online:hs');
     const online = svc.presenceFor('@online:hs');
     const stranger = svc.presenceFor('@stranger:hs');
-    svc.runProjection().subscribe();
+
+    run();
+
     expect(online()).toBe('online');
     expect(stranger()).toBeNull();
   });
 
-  describe('presenceDetailsFor', () => {
-    const NOW = 1_700_000_000_000;
-    const seed = (client: ReturnType<typeof fakeClient>, presence: string) =>
-      client.getUser.mockReturnValue({
-        userId: '@a:hs',
-        presence,
-        presenceStatusMsg: 'On holiday',
-        lastActiveAgo: 7_200_000,
-        lastPresenceTs: NOW,
-        currentlyActive: false,
-      });
-
-    beforeEach(() => {
-      vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  it('shows a room member the account never received presence for as unknown, not offline', () => {
+    const { svc, run, engine } = setup();
+    engine.profiles.set('@silent:hs', {
+      displayName: 'Silent',
+      avatarMxc: null,
     });
+    const silent = svc.presenceFor('@silent:hs');
 
-    it('presenceDetailsFor exposes state, status message and last active time', () => {
-      const { svc, client } = setup();
-      seed(client, 'unavailable');
-      const details = svc.presenceDetailsFor('@a:hs');
-      svc.runProjection().subscribe();
-      expect(details()).toEqual({
-        state: toPresenceState('unavailable'),
-        statusMessage: 'On holiday',
-        lastActiveAt: NOW - 7_200_000,
-        currentlyActive: false,
-      });
-    });
+    run();
 
-    it("lastActiveAt stays fixed when another user's presence event rebuilds the projection", async () => {
-      const { svc, client } = setup();
-      seed(client, 'unavailable');
-      const details = svc.presenceDetailsFor('@a:hs');
-      svc.runProjection().subscribe();
-      const before = details();
-
-      vi.spyOn(Date, 'now').mockReturnValue(NOW + 3 * 3_600_000);
-      presenceHandler(client)(undefined, {
-        userId: '@b:hs',
-        presence: 'online',
-      });
-      await Promise.resolve();
-
-      expect(details()?.lastActiveAt).toBe(NOW - 7_200_000);
-      expect(details()).toBe(before);
-    });
-
-    it('is null for a user with no presence event (SDK default offline)', () => {
-      const { svc, client } = setup();
-      client.getUser.mockReturnValue({
-        userId: '@a:hs',
-        presence: 'offline',
-        lastActiveAgo: 0,
-        lastPresenceTs: 0,
-      });
-      const details = svc.presenceDetailsFor('@a:hs');
-      svc.runProjection().subscribe();
-      expect(details()).toBeNull();
-    });
-
-    it('lastActiveAt is null when lastActiveAgo is missing', () => {
-      const { svc, client } = setup();
-      client.getUser.mockReturnValue({
-        userId: '@a:hs',
-        presence: 'online',
-        lastPresenceTs: NOW,
-      });
-      const details = svc.presenceDetailsFor('@a:hs');
-      svc.runProjection().subscribe();
-      expect(details()).toMatchObject({ state: 'online', lastActiveAt: null });
-    });
-
-    it('keeps the signed-in user online without a presence event', () => {
-      const { svc } = setup();
-      const details = svc.presenceDetailsFor(SELF);
-      svc.runProjection().subscribe();
-      expect(details()).toMatchObject({ state: 'online', lastActiveAt: null });
-    });
-
-    it('presenceDetailsFor is null for a user the client does not know', () => {
-      const { svc } = setup();
-      const details = svc.presenceDetailsFor('@ghost:hs');
-      svc.runProjection().subscribe();
-      expect(details()).toBeNull();
-    });
-
-    it('presenceDetailsFor is null while presence is unavailable', () => {
-      const { svc, client } = setup();
-      seed(client, 'online');
-      expect(svc.presenceDetailsFor('@a:hs')()).toBeNull();
-    });
-
-    it('presenceDetailsFor updates on a presence event', async () => {
-      const { svc, client } = setup();
-      const details = svc.presenceDetailsFor('@a:hs');
-      svc.runProjection().subscribe();
-      expect(details()).toBeNull();
-      seed(client, 'online');
-      presenceHandler(client)(undefined, {
-        userId: '@a:hs',
-        presence: 'online',
-      });
-      await Promise.resolve();
-      expect(details()?.state).toBe('online');
-    });
-
-    it('presenceDetailsFor resets to null on account switch', () => {
-      const { svc, client } = setup();
-      seed(client, 'online');
-      const details = svc.presenceDetailsFor('@a:hs');
-      const lifetime = svc.runProjection().subscribe();
-      expect(details()).not.toBeNull();
-      lifetime.unsubscribe();
-      expect(details()).toBeNull();
-    });
+    expect(silent()).toBeNull();
   });
 
   it('memoizes the signal per user id', () => {
@@ -238,149 +112,287 @@ describe('IdentityPresenceService', () => {
     expect(svc.presenceFor('@a:hs')).toBe(svc.presenceFor('@a:hs'));
   });
 
-  it('updates a tracked user’s signal when a presence event arrives', async () => {
-    const { svc, client } = setup();
-    const state = svc.presenceFor('@a:hs'); // track it (starts offline)
+  it('updates a tracked user’s signal when their presence changes', async () => {
+    const { svc, run, receive } = setup();
+    const state = svc.presenceFor('@a:hs');
+    run();
     expect(state()).toBeNull();
 
-    svc.runProjection().subscribe();
-    client.getUser.mockReturnValue({
-      userId: '@a:hs',
-      presence: 'online',
-      presenceStatusMsg: '',
-    });
-    presenceHandler(client)(undefined, { userId: '@a:hs', presence: 'online' });
-    await Promise.resolve();
+    receive('@a:hs', { presence: 'online' });
+    await settle();
     expect(state()).toBe('online');
 
-    client.getUser.mockReturnValue({
-      userId: '@a:hs',
-      presence: 'unavailable',
-      presenceStatusMsg: '',
-    });
-    presenceHandler(client)(undefined, {
-      userId: '@a:hs',
-      presence: 'unavailable',
-    });
-    await Promise.resolve();
+    receive('@a:hs', { presence: 'unavailable' });
+    await settle();
     expect(state()).toBe('unavailable');
   });
 
-  it('ignores presence for users nobody is watching', () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    // No throw, and no signal is created for an untracked user.
-    expect(() =>
-      presenceHandler(client)(undefined, {
-        userId: '@nobody:hs',
-        presence: 'online',
-      }),
-    ).not.toThrow();
+  it('re-projects onto the newly active account when the active account switches', async () => {
+    const { svc, run, receive, session } = setup();
+    receive(OTHER, { presence: 'offline' });
+    const me = svc.presenceFor(ME);
+    const other = svc.presenceFor(OTHER);
+    run();
+    expect([me(), other()]).toEqual(['online', 'offline']);
+
+    session.set(sessionWith(OTHER, [ME, OTHER]));
+    TestBed.tick();
+    await settle();
+
+    expect([me(), other()]).toEqual([null, 'online']);
   });
 
-  it('one owned lifetime wires exactly one presence listener', () => {
-    const { svc, client } = setup();
-    const lifetime = svc.runProjection().subscribe();
-    expect(
-      client.on.mock.calls.filter((c) => c[0] === UserEvent.Presence),
-    ).toHaveLength(1);
-    lifetime.unsubscribe();
+  it('subscribes again for a new session generation of the same account', async () => {
+    const { svc, run, engine, session } = setup();
+    const subscribe = vi.spyOn(engine, 'presence');
+    const me = svc.presenceFor(ME);
+    run();
+    expect(subscribe).toHaveBeenCalledTimes(1);
+
+    session.set(sessionWith(ME, [ME, OTHER], 2));
+    TestBed.tick();
+    await settle();
+
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    expect(me()).toBe('online');
   });
 
-  it('teardown detaches the listener', () => {
-    const { svc, client } = setup();
-    const lifetime = svc.runProjection().subscribe();
-    lifetime.unsubscribe();
-    expect(client.off).toHaveBeenCalledWith(
-      UserEvent.Presence,
-      expect.any(Function),
-    );
-  });
-
-  it('re-projects onto the newly-active account when the active account switches', () => {
-    const { svc, client, matrix, activeUserId } = setup({ '@a:hs': 'online' });
-    activeUserId.set('@a:hs');
-    svc.runProjection().subscribe(); // wired to the first client
-    TestBed.inject(ApplicationRef).tick(); // effect's first run: same client → no-op
-    client.off.mockClear();
-
-    // Switch accounts: the active client becomes a new one; the effect re-wires.
-    const client2 = fakeClient({ '@a:hs': 'offline' });
-    ngMocks.stubMember(matrix, 'instance', asClient(client2));
-    activeUserId.set('@b:hs');
-    TestBed.inject(ApplicationRef).tick();
-
-    expect(client.off).toHaveBeenCalledWith(
-      UserEvent.Presence,
-      expect.any(Function),
-    ); // detached from the old account's client
-    expect(client2.on).toHaveBeenCalledWith(
-      UserEvent.Presence,
-      expect.any(Function),
-    ); // attached to the new one
-  });
-
-  it('re-binds onto a fresh client after a re-login and re-seeds tracked users', () => {
-    const { svc, client, matrix } = setup({ '@a:hs': 'online' });
+  it('is unknown for everyone while no projection is held', () => {
+    const { svc, run, receive } = setup();
+    receive('@a:hs');
     const state = svc.presenceFor('@a:hs');
-    svc.runProjection().subscribe();
+    const lifetime = run();
     expect(state()).toBe('online');
 
-    // A re-login hands the service a new client where @a is now offline.
-    const client2 = fakeClient({ '@a:hs': 'offline' });
-    ngMocks.stubMember(matrix, 'instance', asClient(client2));
-    svc.runProjection().subscribe();
+    lifetime.unsubscribe();
 
-    expect(client.off).toHaveBeenCalledWith(
-      UserEvent.Presence,
-      expect.any(Function),
-    );
-    expect(state()).toBe('offline'); // re-seeded from the new client
+    expect(state()).toBeNull();
+    expect(svc.presenceAvailable()).toBe(false);
+  });
+
+  describe('presenceDetailsFor', () => {
+    beforeEach(() => {
+      vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    });
+
+    it('exposes state, status message and last active time', () => {
+      const { svc, run, receive } = setup();
+      receive('@a:hs', {
+        presence: 'unavailable',
+        statusMessage: 'On holiday',
+        lastActiveAt: NOW - 7_200_000,
+      });
+      const details = svc.presenceDetailsFor('@a:hs');
+
+      run();
+
+      expect(details()).toEqual({
+        state: 'unavailable',
+        statusMessage: 'On holiday',
+        lastActiveAt: NOW - 7_200_000,
+        currentlyActive: false,
+      });
+    });
+
+    it("keeps the same object when another user's presence rebuilds the projection", async () => {
+      const { svc, run, receive } = setup();
+      receive('@a:hs', {
+        presence: 'unavailable',
+        lastActiveAt: NOW - 7_200_000,
+      });
+      const details = svc.presenceDetailsFor('@a:hs');
+      run();
+      const before = details();
+
+      receive('@b:hs');
+      await settle();
+
+      expect(details()).toBe(before);
+    });
+
+    it('drops a status message the user cleared', async () => {
+      const { svc, run, receive } = setup();
+      receive('@a:hs', { statusMessage: 'brb' });
+      const details = svc.presenceDetailsFor('@a:hs');
+      run();
+      expect(details()?.statusMessage).toBe('brb');
+
+      receive('@a:hs', { statusMessage: null });
+      await settle();
+
+      expect(details()?.statusMessage).toBe('');
+    });
+
+    it('has no last active time when the server did not say', () => {
+      const { svc, run, receive } = setup();
+      receive('@a:hs');
+      const details = svc.presenceDetailsFor('@a:hs');
+
+      run();
+
+      expect(details()).toMatchObject({ state: 'online', lastActiveAt: null });
+    });
+
+    it('keeps the signed-in user online without a presence event', () => {
+      const { svc, run } = setup();
+      const details = svc.presenceDetailsFor(ME);
+
+      run();
+
+      expect(details()).toEqual({
+        state: 'online',
+        statusMessage: '',
+        lastActiveAt: null,
+        currentlyActive: false,
+      });
+    });
+
+    it('keeps the signed-in user online with the status message the server echoed', () => {
+      const { svc, run, receive } = setup();
+      receive(ME, { presence: 'unavailable', statusMessage: 'brb' });
+      const details = svc.presenceDetailsFor(ME);
+
+      run();
+
+      expect(details()).toMatchObject({
+        state: 'online',
+        statusMessage: 'brb',
+      });
+    });
+
+    it('is null for a user the account never received presence for', () => {
+      const { svc, run } = setup();
+      const details = svc.presenceDetailsFor('@ghost:hs');
+
+      run();
+
+      expect(details()).toBeNull();
+    });
+
+    it('is null while presence is unavailable', () => {
+      const { svc, receive } = setup();
+      receive('@a:hs');
+
+      expect(svc.presenceDetailsFor('@a:hs')()).toBeNull();
+    });
+
+    it('updates when presence arrives', async () => {
+      const { svc, run, receive } = setup();
+      const details = svc.presenceDetailsFor('@a:hs');
+      run();
+      expect(details()).toBeNull();
+
+      receive('@a:hs');
+      await settle();
+
+      expect(details()?.state).toBe('online');
+    });
+
+    it('resets to null when the projection is released', () => {
+      const { svc, run, receive } = setup();
+      receive('@a:hs');
+      const details = svc.presenceDetailsFor('@a:hs');
+      const lifetime = run();
+      expect(details()).not.toBeNull();
+
+      lifetime.unsubscribe();
+
+      expect(details()).toBeNull();
+    });
   });
 
   describe('own presence', () => {
-    it('seeds myPresence and myStatusMessage from the client', () => {
-      const { svc } = setup({ [SELF]: 'unavailable' }, { [SELF]: 'brb' });
-      svc.loadOwnPresence();
+    it('seeds myPresence and myStatusMessage from the server, then completes', async () => {
+      const { svc, receive } = setup();
+      receive(ME, { presence: 'unavailable', statusMessage: 'brb' });
+
+      await lastValueFrom(svc.loadOwnPresence(), { defaultValue: undefined });
+
       expect(svc.myPresence()).toBe('unavailable');
       expect(svc.myStatusMessage()).toBe('brb');
     });
 
-    it('defaults own presence to online when the server has none', () => {
-      const { svc } = setup(); // getUser(self) → null
-      svc.loadOwnPresence();
+    it('is cold and completes only once a late answer has seeded the signals', () => {
+      const { svc, engine } = setup();
+      const answer = new Subject<
+        EngineResult<{
+          presence: PresenceState | null;
+          statusMessage: string | null;
+        }>
+      >();
+      const read = vi.spyOn(engine, 'ownPresence').mockReturnValue(answer);
+      const load = svc.loadOwnPresence();
+      expect(read).not.toHaveBeenCalled();
+
+      let done = false;
+      load.subscribe({ complete: () => (done = true) });
+      expect([done, svc.myPresence()]).toEqual([false, 'online']);
+
+      answer.next(engineOk({ presence: 'unavailable', statusMessage: 'brb' }));
+      answer.complete();
+
+      expect(done).toBe(true);
+      expect(svc.myPresence()).toBe('unavailable');
+      expect(svc.myStatusMessage()).toBe('brb');
+    });
+
+    it('defaults own presence to online when the server has not echoed it', () => {
+      const { svc, engine } = setup();
+      engine.presences.set(ME, {
+        presence: 'unavailable',
+        statusMessage: 'stale',
+        lastActiveAt: null,
+        currentlyActive: false,
+      });
+      svc.loadOwnPresence().subscribe();
+      expect(svc.myPresence()).toBe('unavailable');
+
+      engine.presences.delete(ME);
+      svc.loadOwnPresence().subscribe();
+
       expect(svc.myPresence()).toBe('online');
       expect(svc.myStatusMessage()).toBe('');
     });
 
+    it('completes without reading or changing own presence without an active Account', () => {
+      const { svc, session, engine } = setup();
+      const read = vi.spyOn(engine, 'ownPresence');
+      session.set(sessionWith(null, []));
+      let done = false;
+
+      svc.loadOwnPresence().subscribe({ complete: () => (done = true) });
+
+      expect(done).toBe(true);
+      expect(read).not.toHaveBeenCalled();
+      expect(svc.myPresence()).toBe('online');
+    });
+
     it('publishes presence + trimmed status and updates the signals', async () => {
-      const { svc, client } = setup();
+      const { svc, engine } = setup();
+      const write = vi.spyOn(engine, 'setPresence');
+
       await firstValueFrom(svc.setOwnPresence('unavailable', '  heads down  '));
-      expect(client.setPresence).toHaveBeenCalledWith({
-        presence: 'unavailable',
-        status_msg: 'heads down',
-      });
+
+      expect(write).toHaveBeenCalledWith(ME, 'unavailable', 'heads down');
       expect(svc.myPresence()).toBe('unavailable');
       expect(svc.myStatusMessage()).toBe('heads down');
     });
 
-    it('omits an empty status message', async () => {
-      const { svc, client } = setup();
+    it('clears an empty status message', async () => {
+      const { svc, engine } = setup();
+      const write = vi.spyOn(engine, 'setPresence');
+
       await firstValueFrom(svc.setOwnPresence('offline', '   '));
-      expect(client.setPresence).toHaveBeenCalledWith({
-        presence: 'offline',
-        status_msg: undefined,
-      });
+
+      expect(write).toHaveBeenCalledWith(ME, 'offline', null);
       expect(svc.myStatusMessage()).toBe('');
     });
 
     it('clears own presence presentation when the projection disconnects', () => {
-      const { svc } = setup(
-        { [SELF]: 'unavailable' },
-        { [SELF]: 'heads down' },
-      );
-      const lifetime = svc.runProjection().subscribe();
-      svc.loadOwnPresence();
+      const { svc, run, receive } = setup();
+      receive(ME, { presence: 'unavailable', statusMessage: 'heads down' });
+      const lifetime = run();
+      svc.loadOwnPresence().subscribe();
 
       lifetime.unsubscribe();
 
@@ -389,19 +401,15 @@ describe('IdentityPresenceService', () => {
     });
 
     it('does not publish a completed write into a newly active account', async () => {
-      const { svc, client, activeUserId } = setup();
-      let complete!: () => void;
-      client.setPresence.mockReturnValue(
-        new Promise<void>((resolve) => {
-          complete = resolve;
-        }),
-      );
+      const { svc, engine, session } = setup();
+      const reply = new Subject<EngineResult<null>>();
+      vi.spyOn(engine, 'setPresence').mockReturnValue(reply);
       const pending = firstValueFrom(
         svc.setOwnPresence('unavailable', 'old account'),
       );
 
-      activeUserId.set('@next:hs');
-      complete();
+      session.set(sessionWith(OTHER, [ME, OTHER]));
+      reply.next(engineOk(null));
       await pending;
 
       expect(svc.myPresence()).toBe('online');
@@ -409,14 +417,25 @@ describe('IdentityPresenceService', () => {
     });
 
     it('is cold — nothing is sent until subscribed', () => {
-      const { svc, client } = setup();
-      svc.setOwnPresence('online', 'hi'); // not subscribed
-      expect(client.setPresence).not.toHaveBeenCalled();
+      const { svc, engine } = setup();
+      const write = vi.spyOn(engine, 'setPresence');
+
+      svc.setOwnPresence('online', 'hi');
+
+      expect(write).not.toHaveBeenCalled();
     });
 
     it('maps a disabled presence endpoint to an unavailable failure', async () => {
-      const { svc, client } = setup();
-      client.setPresence.mockRejectedValue({ errcode: 'M_UNRECOGNIZED' });
+      const { svc, engine } = setup();
+      engine.failure = {
+        kind: 'http',
+        code: 'request-failed',
+        diagnostic: {
+          kind: 'http',
+          httpStatus: 400,
+          errcode: 'M_UNRECOGNIZED',
+        },
+      };
 
       await expect(
         firstValueFrom(svc.setOwnPresence('online', 'hi')),
