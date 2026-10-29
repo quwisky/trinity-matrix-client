@@ -1,4 +1,6 @@
 import {
+  EngineRequestError,
+  type EngineFailure,
   UiaAttemptsExceededError,
   UiaCancelledError,
   UiaUnsupportedError,
@@ -25,6 +27,48 @@ describe('trustOperationFailure', () => {
         recovery,
       });
       expect(failure).not.toHaveProperty('cause');
+    },
+  );
+
+  it.each([
+    ['uia-cancelled', 'cancelled', 'none', 'The Trust change was cancelled.'],
+    [
+      'uia-unsupported',
+      'provider-action-required',
+      'open-provider',
+      'Your identity provider must complete this Trust change.',
+    ],
+    [
+      'uia-attempts-exceeded',
+      'permission-denied',
+      'retry',
+      'The homeserver did not accept the authentication attempt.',
+    ],
+    [
+      'forbidden',
+      'permission-denied',
+      'retry',
+      'The homeserver refused this Trust change.',
+    ],
+    [
+      'request-failed',
+      'server-failure',
+      'retry',
+      'The homeserver could not complete this Trust change. Try again.',
+    ],
+  ] as const)(
+    'maps the engine failure %s to the same text as its error',
+    (code, kind, recovery, message) => {
+      const failure = trustOperationFailure(
+        'delete-device',
+        new EngineRequestError({
+          kind: 'unexpected',
+          code,
+          diagnostic: { kind: 'unexpected' },
+        } as EngineFailure),
+      );
+
+      expect(failure).toMatchObject({ kind, recovery, message });
     },
   );
 

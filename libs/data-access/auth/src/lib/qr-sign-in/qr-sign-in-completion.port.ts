@@ -59,7 +59,7 @@ export interface QrLinkIdentityCheck {
    * homeserver publishes. Keys a cancelled reset left behind were never published, and the
    * new device would trust them without asking the server.
    */
-  holdsPublishedIdentity(client: MatrixClient): Observable<boolean>;
+  holdsPublishedIdentity(accountId: string): Observable<boolean>;
 }
 
 export const QR_LINK_IDENTITY_CHECK = new InjectionToken<QrLinkIdentityCheck>(

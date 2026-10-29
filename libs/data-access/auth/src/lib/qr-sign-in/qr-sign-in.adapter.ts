@@ -282,7 +282,11 @@ export class QrSignInAdapter {
         // Security: share only the identity the server publishes. Checked before the grant, so
         // a refusal leaves no approved device behind; it fails as `unknown` and, through
         // teardown, declines and cancels on the new device.
-        if (!(await run.read(this.identity.holdsPublishedIdentity(client)))) {
+        const accountId = client.getUserId();
+        if (
+          !accountId ||
+          !(await run.read(this.identity.holdsPublishedIdentity(accountId)))
+        ) {
           throw new Error(
             'This device does not hold the published cross-signing identity.',
           );
