@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, vi } from 'vitest';
+import { MatrixClient, type Room } from 'matrix-js-sdk';
+import { beforeEach, describe, vi } from 'vitest';
 import { defineRoomAdministrationEngineContract } from '../../contract/room-administration-engine.contract';
 import { JsSdkRoomAdministrationEngine } from './js-sdk-room-administration-engine';
 import {
@@ -42,6 +43,19 @@ describe.skipIf(!baseUrl)(
   () => {
     useSynapseSuite();
 
+    // Rust crypto is stubbed (no .wasm in jsdom); this stands in for the crypto store's
+    // room-encryption record that turning encryption on reads and writes.
+    beforeEach(() => {
+      const encrypted = new Set<string>();
+      vi.spyOn(MatrixClient.prototype, 'getCrypto').mockReturnValue({
+        isEncryptionEnabledInRoom: async (roomId: string) =>
+          encrypted.has(roomId),
+        onCryptoEvent: async (target: Room) => {
+          encrypted.add(target.roomId);
+        },
+      } as never);
+    });
+
     defineRoomAdministrationEngineContract(
       async () => {
         const [aliceUser, bob, carol] = await Promise.all([
@@ -70,13 +84,12 @@ describe.skipIf(!baseUrl)(
                   ...(options.roomVersion
                     ? { room_version: options.roomVersion }
                     : {}),
-                  ...(options.additionalCreators
-                    ? {
-                        creation_content: {
-                          additional_creators: options.additionalCreators,
-                        },
-                      }
-                    : {}),
+                  creation_content: {
+                    ...(options.additionalCreators
+                      ? { additional_creators: options.additionalCreators }
+                      : {}),
+                    ...(options.space ? { type: 'm.space' } : {}),
+                  },
                   ...(options.encrypted
                     ? {
                         initial_state: [
@@ -112,6 +125,14 @@ describe.skipIf(!baseUrl)(
                 user_id: userId,
                 reason,
               });
+            },
+            setState: async (roomId, type, content, stateKey = '') => {
+              await cs(
+                bob.accessToken,
+                'PUT',
+                `${room(roomId)}/state/${encodeURIComponent(type)}/${encodeURIComponent(stateKey)}`,
+                content,
+              );
             },
             sendMessage: async (roomId, body) => {
               const txn = `ra-${Date.now()}-${Math.random().toString(36).slice(2)}`;

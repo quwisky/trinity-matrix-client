@@ -17,6 +17,7 @@ import type {
   AdministeredRoom,
   DirectoryVisibility,
   JsonObject,
+  LinkingSpace,
   Membership,
   PowerLevel,
   RawStateEvent,
@@ -72,8 +73,12 @@ function failure(code: 'account-not-live' | 'room-unavailable'): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
 }
 
+function localFailure(code: 'already-encrypted'): EngineFailure {
+  return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
+}
+
 /** A server refusal as the js-sdk engine describes it. */
-function rejected(httpStatus: 403 | 404, errcode: string): EngineFailure {
+function rejected(httpStatus: 400 | 403 | 404, errcode: string): EngineFailure {
   const kind = httpStatus === 403 ? 'permission' : 'http';
   return {
     kind,
@@ -84,6 +89,10 @@ function rejected(httpStatus: 403 | 404, errcode: string): EngineFailure {
 
 const FORBIDDEN = rejected(403, 'M_FORBIDDEN');
 const NOT_FOUND = rejected(404, 'M_NOT_FOUND');
+/** Room versions Synapse knows. */
+const KNOWN_VERSIONS: ReadonlySet<string> = new Set(
+  Array.from({ length: 12 }, (_, index) => String(index + 1)),
+);
 const MANAGEABLE: ReadonlySet<Membership | null> = new Set<Membership | null>([
   'join',
   'invite',
@@ -140,6 +149,7 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
       this.rooms.set(roomId, new Map());
       this.put(roomId, 'm.room.create', '', this.bob, {
         room_version: version,
+        ...(options.space ? { type: 'm.space' } : {}),
         ...(options.additionalCreators
           ? { additional_creators: [...options.additionalCreators] }
           : {}),
@@ -495,6 +505,165 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
     });
   }
 
+  /** Synapse event auth for an invite: a joined inviter at the invite level; never a member or a banned user. */
+  invite(
+    accountId: string,
+    roomId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, () => {
+      const target = this.membershipOf(roomId, userId);
+      if (
+        this.membershipOf(roomId, accountId) !== 'join' ||
+        !mayAct(
+          this.content(roomId, 'm.room.power_levels', ''),
+          this.powerOf(roomId, accountId),
+          'invite',
+        ) ||
+        target === 'join' ||
+        target === 'ban'
+      ) {
+        return FORBIDDEN;
+      }
+      this.setMembership(roomId, userId, accountId, { membership: 'invite' });
+      return null;
+    });
+  }
+
+  /**
+   * Synapse `upgrade_room`: 400 for an unknown version, 404 for an unknown room, 403 unless
+   * the account may send the tombstone. The new room copies the power levels.
+   */
+  upgradeRoom(
+    accountId: string,
+    roomId: string,
+    version: string,
+    additionalCreators: readonly string[] | null,
+  ): Observable<EngineResult<{ readonly replacementRoomId: string }>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      if (!KNOWN_VERSIONS.has(version)) {
+        return of(engineFail(rejected(400, 'M_UNSUPPORTED_ROOM_VERSION')));
+      }
+      if (!this.rooms.has(roomId)) return of(engineFail(NOT_FOUND));
+      const levels = this.content(roomId, 'm.room.power_levels', '');
+      if (
+        this.membershipOf(roomId, accountId) !== 'join' ||
+        !maySendState(
+          levels,
+          this.powerOf(roomId, accountId),
+          'm.room.tombstone',
+        )
+      ) {
+        return of(engineFail(FORBIDDEN));
+      }
+      const replacementRoomId = `!fake-${++this.nextRoom}:${this.serverName}`;
+      this.rooms.set(replacementRoomId, new Map());
+      this.put(replacementRoomId, 'm.room.create', '', accountId, {
+        room_version: version,
+        predecessor: { room_id: roomId },
+        ...(isHydraRoomVersion(version) && additionalCreators
+          ? { additional_creators: [...additionalCreators] }
+          : {}),
+      });
+      this.put(replacementRoomId, 'm.room.member', accountId, accountId, {
+        membership: 'join',
+      });
+      if (levels) {
+        this.put(
+          replacementRoomId,
+          'm.room.power_levels',
+          '',
+          accountId,
+          structuredClone(levels),
+        );
+      }
+      this.put(roomId, 'm.room.tombstone', '', accountId, {
+        body: 'This room has been replaced',
+        replacement_room: replacementRoomId,
+      });
+      return of(engineOk({ replacementRoomId }));
+    });
+  }
+
+  /** Follows the js-sdk adapter, which fails closed: an unanswered crypto store refuses. */
+  enableEncryption(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      if (!this.rooms.has(roomId) || !this.membershipOf(roomId, accountId)) {
+        return of(engineFail(failure('room-unavailable')));
+      }
+      if (this.encryptionOf(roomId) !== 'unencrypted') {
+        return of(engineFail(localFailure('already-encrypted')));
+      }
+      // The server's event wins over sending a second one (sync missed it).
+      if (!this.content(roomId, 'm.room.encryption', '')) {
+        if (
+          !maySendState(
+            this.content(roomId, 'm.room.power_levels', ''),
+            this.powerOf(roomId, accountId),
+            'm.room.encryption',
+          )
+        ) {
+          return of(engineFail(FORBIDDEN));
+        }
+        this.put(roomId, 'm.room.encryption', '', accountId, {
+          algorithm: 'm.megolm.v1.aes-sha2',
+        });
+      }
+      this.answerEncryption(roomId, true);
+      return of(engineOk(null));
+    });
+  }
+
+  linkingSpaces(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly LinkingSpace[]>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) {
+        return of(engineFail(failure('account-not-live')));
+      }
+      if (!this.rooms.has(roomId) || !this.membershipOf(roomId, accountId)) {
+        return of(engineFail(failure('room-unavailable')));
+      }
+      const spaces = [...this.rooms.keys()].flatMap(
+        (spaceId): LinkingSpace[] => {
+          const childContent = this.content(spaceId, 'm.space.child', roomId);
+          if (
+            spaceId === roomId ||
+            !childContent ||
+            this.membershipOf(spaceId, accountId) !== 'join' ||
+            this.content(spaceId, 'm.room.create', '')?.['type'] !== 'm.space'
+          ) {
+            return [];
+          }
+          return [
+            {
+              spaceId,
+              name:
+                text(this.content(spaceId, 'm.room.name', '')?.['name']) ??
+                spaceId,
+              childContent: structuredClone(childContent),
+              ownPower: this.powerOf(spaceId, accountId),
+              powerLevels: structuredClone(
+                this.content(spaceId, 'm.room.power_levels', ''),
+              ),
+            },
+          ];
+        },
+      );
+      return of(engineOk(spaces));
+    });
+  }
+
   /** A server command for a live account; `run` answers its refusal or null. */
   private command(
     accountId: string,
@@ -626,7 +795,12 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
   }
 
   private encryptionOf(roomId: string): AdministeredRoom['encryption'] {
-    if (this.content(roomId, 'm.room.encryption', '')) return 'encrypted';
+    if (
+      this.content(roomId, 'm.room.encryption', '') &&
+      !this.withheld.get(roomId)?.has('m.room.encryption')
+    ) {
+      return 'encrypted';
+    }
     const answer = this.encryptionAnswers.get(roomId);
     if (answer === null) return 'unknown';
     return answer ? 'encrypted' : 'unencrypted';

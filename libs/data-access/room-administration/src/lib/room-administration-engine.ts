@@ -66,7 +66,7 @@ export interface RoomMemberInfo {
 
 export interface RoomMembers {
   readonly roomId: string;
-  /** False while lazily loaded members are still being fetched. */
+  /** False while lazily loaded members are still being fetched; true once that ends, even if it failed. */
   readonly complete: boolean;
   readonly members: readonly RoomMemberInfo[];
 }
@@ -79,6 +79,19 @@ export interface RawStateEvent {
   readonly stateKey: string;
   /** The whole event as JSON (state events are not end-to-end encrypted). */
   readonly event: JsonObject;
+}
+
+/** One space this account has joined that links the room. */
+export interface LinkingSpace {
+  readonly spaceId: string;
+  readonly name: string;
+  /**
+   * The space's `m.space.child` content for the room (an empty `via` means removed); null
+   * when the space's state is not loaded and only the room's `m.space.parent` names it.
+   */
+  readonly childContent: JsonObject | null;
+  readonly ownPower: PowerLevel;
+  readonly powerLevels: JsonObject | null;
 }
 
 /**
@@ -179,4 +192,40 @@ export interface RoomAdministrationEngine {
     roomId: string,
     visibility: DirectoryVisibility,
   ): Observable<EngineResult<null>>;
+  invite(
+    accountId: string,
+    roomId: string,
+    userId: string,
+  ): Observable<EngineResult<null>>;
+  /**
+   * Asks the server to replace the room with one of `version`; `additionalCreators` are
+   * sent as given (v12+ targets only). Rust: ruma `upgrade_room::v3` via `Client::send`.
+   */
+  upgradeRoom(
+    accountId: string,
+    roomId: string,
+    version: string,
+    additionalCreators: readonly string[] | null,
+  ): Observable<EngineResult<{ readonly replacementRoomId: string }>>;
+
+  /**
+   * Sends Megolm `m.room.encryption` and applies it on this device. Adopts the server's
+   * event instead when sync missed it. Fails `account-not-live`, `room-unavailable` when
+   * the account does not know the room, `already-encrypted` (state or crypto store; a
+   * store that cannot answer counts as encrypted), `request-failed`, or
+   * `encryption-not-applied` when the server has the event but this device could not
+   * apply it. Rust: `Room::enable_encryption()`.
+   */
+  enableEncryption(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<null>>;
+  /**
+   * Joined spaces whose state links the room, plus spaces only the room's parent events
+   * name. Fails `account-not-live` or `room-unavailable`.
+   */
+  linkingSpaces(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly LinkingSpace[]>>;
 }
