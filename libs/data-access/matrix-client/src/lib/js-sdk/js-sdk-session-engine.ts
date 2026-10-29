@@ -1,8 +1,9 @@
 import { Injectable, type Signal, computed, inject } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
-import { SyncState } from 'matrix-js-sdk';
+import { MatrixError, type MatrixClient, SyncState } from 'matrix-js-sdk';
 import {
-  type Observable,
+  Observable,
+  type Subscriber,
   catchError,
   concat,
   defer,
@@ -15,8 +16,10 @@ import {
   throwError,
 } from 'rxjs';
 import {
+  type EngineFailure,
   type EngineResult,
   type MatrixSession,
+  type UiaAuth,
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
@@ -27,13 +30,17 @@ import type {
   AccountServerStatus,
   PendingTextMessage,
   PersistedAccountActivation,
+  ServerLogoutHoldUpdate,
   SessionAccessToken,
   SessionAccountStatus,
+  SessionCredentials,
   SessionEngine,
   SessionSnapshot,
   SessionSyncState,
 } from '../session-engine';
+import type { ServerLogoutHold } from '../server-logout-hold';
 import { MatrixClientService } from './matrix-client.service';
+import { uiaChallengeOf } from './uia';
 
 const SYNC_STATES: Readonly<Record<SyncState, SessionSyncState>> = {
   [SyncState.Prepared]: 'prepared',
@@ -48,10 +55,66 @@ export function toSessionSyncState(state: SyncState | null): SessionSyncState {
   return state === null ? 'starting' : SYNC_STATES[state];
 }
 
+const ACCOUNT_NOT_LIVE: EngineFailure = {
+  kind: 'unexpected',
+  code: 'account-not-live',
+  diagnostic: { kind: 'unexpected' },
+};
+
+/**
+ * A failed request as a result: a UIA challenge, a missing endpoint (`M_UNRECOGNIZED`, or a
+ * Matrix 404/405 that is not `M_NOT_FOUND`), a policy refusal (`M_FORBIDDEN`), or else
+ * `request-failed`. Only the allowlisted diagnostic crosses.
+ */
+function requestFailure(error: unknown): EngineResult<never> {
+  const { kind, diagnostic } = describeMatrixRequestFailure(error);
+  const challenge = uiaChallengeOf(error);
+  if (challenge) {
+    return engineFail({
+      kind,
+      diagnostic,
+      code: 'uia-required',
+      params: { challenge },
+    });
+  }
+  if (!(error instanceof MatrixError)) {
+    return engineFail({ kind, diagnostic, code: 'request-failed' });
+  }
+  const missing =
+    error.errcode === 'M_UNRECOGNIZED' ||
+    ((error.httpStatus === 404 || error.httpStatus === 405) &&
+      error.errcode !== 'M_NOT_FOUND');
+  const code = missing
+    ? 'unsupported'
+    : error.errcode === 'M_FORBIDDEN'
+      ? 'forbidden'
+      : 'request-failed';
+  return engineFail({ kind, diagnostic, code });
+}
+
+async function settle(
+  request: () => Promise<unknown>,
+): Promise<EngineResult<null>> {
+  try {
+    await request();
+    return engineOk(null);
+  } catch (error: unknown) {
+    return requestFailure(error);
+  }
+}
+
 /** {@link SessionEngine} over the live matrix-js-sdk clients of {@link MatrixClientService}. */
 @Injectable({ providedIn: 'root' })
 export class JsSdkSessionEngine implements SessionEngine {
   private readonly svc = inject(MatrixClientService);
+  private readonly holds = new Map<
+    string,
+    {
+      readonly hold: ServerLogoutHold;
+      readonly subscriber: Subscriber<ServerLogoutHoldUpdate>;
+    }
+  >();
+  private holdCount = 0;
 
   private readonly accounts = computed(
     (): readonly SessionAccountStatus[] => {
@@ -222,5 +285,87 @@ export class JsSdkSessionEngine implements SessionEngine {
 
   roomKeysBackedUp(accountId: string): Observable<boolean | null> {
     return this.svc.roomKeysBackedUp(accountId);
+  }
+
+  holdServerLogout(accountId: string): Observable<ServerLogoutHoldUpdate> {
+    return new Observable<ServerLogoutHoldUpdate>((subscriber) => {
+      const holdId = String(++this.holdCount);
+      // Facts arrive synchronously from the SDK's logout event, which it emits before the
+      // failing request rejects: so `token-died` precedes that request's result.
+      const hold = this.svc.holdServerLogout(accountId, (fact) => {
+        subscriber.next({ kind: fact });
+        if (fact === 'released') subscriber.complete();
+      });
+      this.holds.set(holdId, { hold, subscriber });
+      subscriber.next({ kind: 'held', holdId, tokenDied: hold.tokenDied() });
+      return () => this.releaseHold(holdId, false);
+    });
+  }
+
+  releaseServerLogoutHold(holdId: string, deleted: boolean): Observable<null> {
+    return defer(() => {
+      this.releaseHold(holdId, deleted);
+      return of(null);
+    });
+  }
+
+  deactivateAccount(
+    accountId: string,
+    erase: boolean,
+    auth: UiaAuth | null,
+  ): Observable<EngineResult<null>> {
+    return this.withClient(accountId, (client) =>
+      client.deactivateAccount(auth ?? undefined, erase),
+    );
+  }
+
+  logoutRemote(accountId: string): Observable<EngineResult<null>> {
+    return this.withClient(accountId, (client) => client.logout(true));
+  }
+
+  logoutSession(session: MatrixSession): Observable<EngineResult<null>> {
+    // A refresh on a device being signed out must never overwrite the stored tokens.
+    return defer(() =>
+      settle(() =>
+        this.svc
+          .detachedClient(session, { persistRefreshedTokens: false })
+          .logout(true),
+      ),
+    );
+  }
+
+  liveCredentials(accountId: string): Observable<SessionCredentials | null> {
+    return defer(() => {
+      const client = this.svc.clientFor(accountId);
+      const token = this.svc.accessTokenState(accountId);
+      return of(
+        client && token
+          ? {
+              accessToken: token.accessToken,
+              refreshToken: client.getRefreshToken(),
+            }
+          : null,
+      );
+    });
+  }
+
+  private withClient(
+    accountId: string,
+    request: (client: MatrixClient) => Promise<unknown>,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const client = this.svc.clientFor(accountId);
+      return client
+        ? settle(() => request(client))
+        : of(engineFail(ACCOUNT_NOT_LIVE));
+    });
+  }
+
+  private releaseHold(holdId: string, deleted: boolean): void {
+    const entry = this.holds.get(holdId);
+    if (!entry) return;
+    this.holds.delete(holdId);
+    entry.hold.release({ deleted });
+    entry.subscriber.complete();
   }
 }
