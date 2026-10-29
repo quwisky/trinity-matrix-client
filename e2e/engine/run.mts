@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  suiteSummaryPath,
+  wdioSuiteSummary,
+} from '../support/execution-report.mts';
 import { openE2EInvocation } from '../support/invocation.mts';
 import {
   createProcessTerminationScope,
@@ -32,10 +35,9 @@ export async function runEngineContract(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<number> {
   const termination = createProcessTerminationScope();
-  let reports: string | undefined;
+  const startedAt = Date.now();
   let invocation: Awaited<ReturnType<typeof openE2EInvocation>> | undefined;
   try {
-    reports = mkdtempSync(join(tmpdir(), 'trinity-engine-contract-'));
     invocation = await openE2EInvocation({
       resources: ['homeserver'],
       workspaceRoot,
@@ -46,6 +48,20 @@ export async function runEngineContract(
     if (!homeserver?.available || !homeserver.hs) {
       throw new Error('The engine contract needs a running homeserver');
     }
+    if (homeserver.kind !== 'synapse') {
+      throw new Error(
+        'The engine contract needs Synapse: set TRINITY_E2E_HOMESERVER=synapse',
+      );
+    }
+    // The registry's artifact root: CI uploads the reports, and an aggregate reads the summary.
+    const summaryFile = suiteSummaryPath(
+      workspaceRoot,
+      'trinity-e2e-engine',
+      invocation.descriptor.id,
+      'engine.js-sdk',
+    );
+    const reports = dirname(summaryFile);
+    mkdirSync(reports, { recursive: true });
     // The session environment already relaxes TLS for the disposable local server.
     const contractEnvironment: NodeJS.ProcessEnv = {
       ...invocation.environment,
@@ -55,6 +71,7 @@ export async function runEngineContract(
       TRINITY_ENGINE_CONTRACT_SHARED_SECRET: REGISTRATION_SHARED_SECRET,
     };
     let status = 0;
+    let passed = 0;
     for (const project of LIBS) {
       const reportFile = join(reports, `${project}.json`);
       const result = await runManagedCommand(
@@ -70,6 +87,8 @@ export async function runEngineContract(
           '--reporter=default',
           '--reporter=json',
           `--outputFile.json=${reportFile}`,
+          '--reporter=junit',
+          `--outputFile.junit=${join(reports, `${project}.xml`)}`,
         ],
         {
           cwd: workspaceRoot,
@@ -87,13 +106,20 @@ export async function runEngineContract(
       }
       const verdict = evaluateVitestReport(project, json);
       console.info(`[engine-contract] ${verdict.message}`);
-      if (!verdict.ok) status ||= 1;
+      if (verdict.ok) passed += 1;
+      else status ||= 1;
     }
+    const summary = wdioSuiteSummary({
+      suiteId: 'engine.js-sdk',
+      exitCode: status,
+      durationMs: Date.now() - startedAt,
+      result: { passed, failed: LIBS.length - passed, retries: 0 },
+    });
+    writeFileSync(summaryFile, `${JSON.stringify(summary, null, 2)}\n`);
     return status;
   } finally {
     termination.close();
     await invocation?.close();
-    if (reports) rmSync(reports, { recursive: true, force: true });
   }
 }
 

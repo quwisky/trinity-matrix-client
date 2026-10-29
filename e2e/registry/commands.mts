@@ -293,6 +293,11 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['mobile.android'],
   },
   {
+    command: 'pnpm exec nx run trinity-e2e-engine:contract',
+    tier: 'pull-request',
+    suiteIds: ['engine.js-sdk'],
+  },
+  {
     command: 'pnpm exec nx run trinity-e2e-components:scrollbars',
     tier: 'pull-request',
     suiteIds: ['components.scrollbars'],
