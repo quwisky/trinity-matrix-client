@@ -9,7 +9,11 @@ import {
 } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type EngineResult, assertPlainData } from '@trinity/util/matrix';
-import type { TrustEngine, TrustFacts } from '../lib/trust-engine';
+import type {
+  TrustEngine,
+  TrustFacts,
+  VerificationSnapshot,
+} from '../lib/trust-engine';
 
 export interface TrustContractSetup {
   readonly engine: TrustEngine;
@@ -19,6 +23,13 @@ export interface TrustContractSetup {
   publishIdentity(): Promise<void>;
   /** Another client of alice's points the server's secret storage at `keyId`. */
   setServerDefaultKey(keyId: string): Promise<void>;
+  /** Signs alice in on another device, which then asks to verify the one in `engine`. */
+  secondDevice(): Promise<{
+    readonly deviceId: string;
+    requestVerification(): Promise<void>;
+  }>;
+  /** Another user with a published identity, in an encrypted DM with alice. */
+  directRoom(): Promise<{ readonly userId: string; readonly roomId: string }>;
   dispose(): Promise<void>;
 }
 
@@ -213,6 +224,114 @@ export function defineTrustEngineContract(
         );
         // The local pointer follows once the change arrives.
         await facts.until((r) => !!factsOf(r)?.hasDefaultKey);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'has no verification on a fresh account or one that is not live',
+      async () => {
+        expect(await firstValueFrom(engine.verification(alice))).toBeNull();
+        expect(await firstValueFrom(engine.verification(NOBODY))).toBeNull();
+        expect(await code(engine.requestOwnVerification(NOBODY))).toBe(
+          'account-not-live',
+        );
+        expect(await code(engine.cancelVerification(NOBODY, 'flow'))).toBe(
+          'account-not-live',
+        );
+        expect(await code(engine.acceptVerification(alice, 'flow'))).toBe(
+          'verification-gone',
+        );
+        expect(await code(engine.showQr(alice, 'flow'))).toBe(
+          'verification-gone',
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'requests its own verification and cancels it',
+      async () => {
+        await context.publishIdentity();
+        const verification = watch(engine.verification(alice));
+
+        const { flowId } = await value(engine.requestOwnVerification(alice));
+
+        expect(
+          await verification.until((s) => s?.flowId === flowId),
+        ).toMatchObject({
+          flowId,
+          phase: 'requested',
+          otherUserId: alice,
+          isSelfVerification: true,
+          initiatedByMe: true,
+          sas: null,
+          qrScannedByOther: false,
+          cancellation: null,
+        } satisfies Partial<VerificationSnapshot>);
+
+        expect(await code(engine.cancelVerification(alice, flowId))).toBe('ok');
+
+        expect(
+          await verification.until((s) => s?.phase === 'cancelled'),
+        ).toMatchObject({ flowId, cancellation: { code: 'm.user' } });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reaches ready when another device of the account asks to verify this one',
+      async () => {
+        await context.publishIdentity();
+        const second = await context.secondDevice();
+        const verification = watch(engine.verification(alice));
+        await verification.until(() => true);
+
+        await second.requestVerification();
+
+        const request = await verification.until(
+          (s) => s?.otherDeviceId === second.deviceId,
+        );
+        expect(request).toMatchObject({
+          phase: 'requested',
+          otherUserId: alice,
+          isSelfVerification: true,
+          initiatedByMe: false,
+        });
+        const flowId = request?.flowId ?? '';
+
+        expect(await code(engine.acceptVerification(alice, flowId))).toBe('ok');
+
+        const ready = await verification.until((s) => s?.phase === 'ready');
+        expect(ready?.flowId).toBe(flowId);
+        expect(ready?.theirMethods).toContain('m.sas.v1');
+        await once(engine.cancelVerification(alice, flowId));
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'sends a DM verification request once the user identity is known, and forgets it unwatched',
+      async () => {
+        const { userId, roomId } = await context.directRoom();
+        const verification = watch(engine.verification(alice));
+
+        const { flowId } = await value(
+          engine.requestUserVerification(alice, userId, roomId),
+        );
+
+        expect(
+          await verification.until((s) => s?.flowId === flowId),
+        ).toMatchObject({
+          phase: 'requested',
+          otherUserId: userId,
+          isSelfVerification: false,
+          initiatedByMe: true,
+        });
+
+        // Unwatched, the request is forgotten; a DM request is not taken up again.
+        for (const subscription of subscriptions) subscription.unsubscribe();
+        expect(await firstValueFrom(engine.verification(alice))).toBeNull();
       },
       testTimeoutMs,
     );

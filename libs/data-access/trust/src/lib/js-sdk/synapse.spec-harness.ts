@@ -1,6 +1,17 @@
 import { TestBed } from '@angular/core/testing';
 import { createHmac } from 'node:crypto';
-import { MatrixClient } from 'matrix-js-sdk';
+import {
+  DeviceId,
+  OlmMachine,
+  UserId,
+  initAsync,
+} from '@matrix-org/matrix-sdk-crypto-wasm';
+import {
+  ClientEvent,
+  MatrixClient,
+  SyncState,
+  createClient,
+} from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { filter, firstValueFrom, of, timeout } from 'rxjs';
 import { afterAll, beforeAll, beforeEach, vi } from 'vitest';
@@ -75,6 +86,97 @@ export async function cs(
   return res.json();
 }
 
+async function login(user: {
+  readonly userId: string;
+  readonly password: string;
+}): Promise<{ user_id: string; device_id: string; access_token: string }> {
+  const res = await fetch(`${baseUrl}/_matrix/client/v3/login`, {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'm.login.password',
+      identifier: { type: 'm.id.user', user: user.userId },
+      password: user.password,
+    }),
+  });
+  if (!res.ok) throw new Error(`Synapse login failed: ${res.status}`);
+  return res.json() as Promise<{
+    user_id: string;
+    device_id: string;
+    access_token: string;
+  }>;
+}
+
+/**
+ * Publishes a cross-signing identity for `user` that no device keeps: a throwaway crypto
+ * machine uploads the public keys and is dropped (as e2e/support/cross-signing.mts).
+ */
+export async function publishIdentityElsewhere(user: {
+  readonly userId: string;
+  readonly password: string;
+}): Promise<void> {
+  const session = await login(user);
+  await initAsync();
+  const machine = await OlmMachine.initialize(
+    new UserId(session.user_id),
+    new DeviceId(session.device_id),
+  );
+  try {
+    const requests = await machine.bootstrapCrossSigning(true);
+    const keys = JSON.parse(requests.uploadSigningKeysRequest.body) as Record<
+      string,
+      unknown
+    >;
+    const upload = (body: unknown) =>
+      fetch(`${baseUrl}/_matrix/client/v3/keys/device_signing/upload`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(body),
+      });
+    let res = await upload(keys);
+    if (res.status === 401) {
+      const { session: uia } = (await res.json()) as { session?: string };
+      res = await upload({
+        ...keys,
+        auth: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: session.user_id },
+          password: user.password,
+          ...(uia ? { session: uia } : {}),
+        },
+      });
+    }
+    if (!res.ok) throw new Error(`Identity upload failed: ${res.status}`);
+  } finally {
+    machine.close();
+  }
+}
+
+/** Signs `user` in on another device: a bare client with in-memory Rust crypto, synced. */
+export async function startSecondDevice(user: {
+  readonly userId: string;
+  readonly password: string;
+}): Promise<{ readonly client: MatrixClient; readonly deviceId: string }> {
+  const session = await login(user);
+  const client = createClient({
+    baseUrl: baseUrl as string,
+    userId: session.user_id,
+    deviceId: session.device_id,
+    accessToken: session.access_token,
+  });
+  await client.initRustCrypto({ useIndexedDB: false });
+  const prepared = new Promise<void>((resolve) => {
+    const onSync = (state: SyncState) => {
+      if (state !== SyncState.Prepared) return;
+      client.off(ClientEvent.Sync, onSync);
+      resolve();
+    };
+    client.on(ClientEvent.Sync, onSync);
+  });
+  await client.startClient({ initialSyncLimit: 1 });
+  await prepared;
+  return { client, deviceId: session.device_id };
+}
+
 let sequence = 0;
 
 export function localpart(role: string): string {
@@ -128,17 +230,7 @@ export async function startSession(user: {
   readonly accessToken: string;
   dispose(): Promise<void>;
 }> {
-  const login = (await fetch(`${baseUrl}/_matrix/client/v3/login`, {
-    method: 'POST',
-    body: JSON.stringify({
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: user.userId },
-      password: user.password,
-    }),
-  }).then((res) => {
-    if (!res.ok) throw new Error(`Synapse login failed: ${res.status}`);
-    return res.json();
-  })) as { user_id: string; device_id: string; access_token: string };
+  const account = await login(user);
 
   TestBed.configureTestingModule({
     providers: [
@@ -158,9 +250,9 @@ export async function startSession(user: {
     session.restorePersisted(
       {
         baseUrl: baseUrl as string,
-        userId: login.user_id,
-        deviceId: login.device_id,
-        accessToken: login.access_token,
+        userId: account.user_id,
+        deviceId: account.device_id,
+        accessToken: account.access_token,
       },
       'activate',
     ),
@@ -171,16 +263,18 @@ export async function startSession(user: {
       filter((s) =>
         s.accounts.some(
           (a) =>
-            a.accountId === login.user_id && a.serverSynced && a.roomsPrepared,
+            a.accountId === account.user_id &&
+            a.serverSynced &&
+            a.roomsPrepared,
         ),
       ),
       timeout(90_000),
     ),
   );
   return {
-    userId: login.user_id,
+    userId: account.user_id,
     password: user.password,
-    accessToken: login.access_token,
+    accessToken: account.access_token,
     dispose: async () => {
       try {
         await firstValueFrom(session.stop());

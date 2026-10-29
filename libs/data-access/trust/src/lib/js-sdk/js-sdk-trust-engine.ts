@@ -5,16 +5,23 @@ import {
   Method,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { type CryptoApi, CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
+import {
+  type CryptoApi,
+  CryptoEvent,
+  type VerificationRequest,
+  VerificationPhase,
+} from 'matrix-js-sdk/lib/crypto-api';
 import {
   NEVER,
-  type Observable,
+  Observable,
   asapScheduler,
   catchError,
   concat,
   debounceTime,
   defer,
   distinctUntilChanged,
+  filter,
+  finalize,
   from,
   fromEventPattern,
   map,
@@ -22,6 +29,7 @@ import {
   of,
   startWith,
   switchMap,
+  take,
 } from 'rxjs';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import {
@@ -37,11 +45,17 @@ import type {
   OwnIdentityCheck,
   TrustEngine,
   TrustFacts,
+  VerificationSnapshot,
 } from '../trust-engine';
 import {
   readPublishedMasterKey,
   readThisDeviceVerified,
 } from '../trust-snapshot';
+import {
+  ClientVerification,
+  flowIdOf,
+  isTerminal,
+} from './js-sdk-verification';
 
 /** The crypto and account-data events that can move an account's facts. */
 const FACT_EVENTS = [
@@ -65,10 +79,38 @@ const CRYPTO_NOT_READY: EngineFailure = {
   diagnostic: { kind: 'unexpected' },
 };
 
+const VERIFICATION_GONE: EngineFailure = {
+  kind: 'unexpected',
+  code: 'verification-gone',
+  diagnostic: { kind: 'unexpected' },
+};
+
+const QR_UNAVAILABLE: EngineFailure = {
+  kind: 'unexpected',
+  code: 'qr-unavailable',
+  diagnostic: { kind: 'unexpected' },
+};
+
+const toBase64 = (bytes: Uint8ClampedArray): string =>
+  btoa(String.fromCharCode(...bytes));
+
+const fromBase64 = (base64: string): Uint8ClampedArray =>
+  Uint8ClampedArray.from(atob(base64), (char) => char.charCodeAt(0));
+
 /** `request-failed` with privacy-safe metadata only: no message, body or secret. */
 function requestFailed(error: unknown): EngineFailure {
   const { kind, diagnostic } = describeMatrixRequestFailure(error);
   return { kind, code: 'request-failed', diagnostic };
+}
+
+/** A failure a step throws on purpose, as opposed to an SDK error. */
+function isFailure(error: unknown): error is EngineFailure {
+  return [
+    NOT_LIVE,
+    CRYPTO_NOT_READY,
+    VERIFICATION_GONE,
+    QR_UNAVAILABLE,
+  ].includes(error as EngineFailure);
 }
 
 async function readFacts(
@@ -119,6 +161,11 @@ function changesOf(client: MatrixClient): Observable<void> {
 @Injectable({ providedIn: 'root' })
 export class JsSdkTrustEngine implements TrustEngine {
   private readonly clients = inject(JS_SDK_CLIENTS);
+  /** Per client, so a replaced client under the same account starts with none. */
+  private readonly verifications = new WeakMap<
+    MatrixClient,
+    ClientVerification
+  >();
 
   facts(accountId: string): Observable<EngineResult<TrustFacts>> {
     return defer(() => {
@@ -207,6 +254,221 @@ export class JsSdkTrustEngine implements TrustEngine {
     });
   }
 
+  verification(accountId: string): Observable<VerificationSnapshot | null> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      const crypto = client?.getCrypto();
+      const userId = client?.getUserId();
+      if (!client || !crypto || !userId) return concat(of(null), NEVER);
+      const state = this.verificationOf(client);
+      const incoming = (request: VerificationRequest): void =>
+        state.offer(request);
+      state.watch();
+      client.on(CryptoEvent.VerificationRequestReceived, incoming);
+      // Takes up a request that predates the listener, e.g. sent during a reload.
+      const inProgress =
+        crypto.getVerificationRequestsToDeviceInProgress(userId)[0];
+      if (inProgress) state.offer(inProgress);
+      return state.snapshot.pipe(
+        finalize(() => {
+          client.off(CryptoEvent.VerificationRequestReceived, incoming);
+          state.unwatch();
+        }),
+      );
+    });
+  }
+
+  requestOwnVerification(
+    accountId: string,
+  ): Observable<EngineResult<{ readonly flowId: string }>> {
+    return this.request(accountId, async (client, crypto) => {
+      const request = await crypto.requestOwnUserVerification();
+      if (this.clients.clientFor(accountId) !== client) {
+        void request.cancel().catch(() => undefined);
+        throw NOT_LIVE;
+      }
+      this.verificationOf(client).adopt(request);
+      return { flowId: flowIdOf(request) };
+    });
+  }
+
+  requestUserVerification(
+    accountId: string,
+    userId: string,
+    roomId: string,
+  ): Observable<EngineResult<{ readonly flowId: string }>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(NOT_LIVE));
+      const crypto = client.getCrypto();
+      if (!crypto) return of(engineFail(CRYPTO_NOT_READY));
+      const current = () => this.clients.clientFor(accountId) === client;
+      const identity = fromEventPattern<string>(
+        (handler) => client.on(CryptoEvent.UserTrustStatusChanged, handler),
+        (handler) => client.off(CryptoEvent.UserTrustStatusChanged, handler),
+        // The event also carries the trust level; only the user id matters here.
+        (changed: string) => changed,
+      ).pipe(
+        filter((changed) => changed === userId),
+        startWith(userId),
+        // The encrypted DM makes the client track this user. Wait for the identity to
+        // reach Rust crypto; an uncached HTTP key lookup is not enough.
+        switchMap(() => crypto.userHasCrossSigningKeys(userId)),
+        filter((known) => known || !current()),
+        take(1),
+      );
+      return identity.pipe(
+        switchMap(() =>
+          current()
+            ? this.sendUserVerification(client, crypto, userId, roomId, current)
+            : of(engineFail(NOT_LIVE)),
+        ),
+        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+      );
+    });
+  }
+
+  acceptVerification(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<null>> {
+    return this.onFlow(accountId, flowId, async (request) => {
+      await request.accept();
+    });
+  }
+
+  startSas(accountId: string, flowId: string): Observable<EngineResult<null>> {
+    return this.onFlow(accountId, flowId, async (request, state) => {
+      state.attach(await request.startVerification('m.sas.v1'));
+    });
+  }
+
+  confirmSas(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<null>> {
+    return this.onFlow(accountId, flowId, async (_request, state) => {
+      const sas = state.sas();
+      if (!sas) throw VERIFICATION_GONE;
+      await sas.confirm();
+    });
+  }
+
+  mismatchSas(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<null>> {
+    return this.onFlow(accountId, flowId, async (_request, state) => {
+      state.sas()?.mismatch();
+    });
+  }
+
+  showQr(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<{ readonly qr: string }>> {
+    return this.onFlow(accountId, flowId, async (request, state) => {
+      const data = await request.generateQRCode();
+      if (!data?.length) throw QR_UNAVAILABLE;
+      if (
+        state.request !== request ||
+        request.phase !== VerificationPhase.Ready
+      ) {
+        throw VERIFICATION_GONE;
+      }
+      return { qr: toBase64(data) };
+    });
+  }
+
+  scanQr(
+    accountId: string,
+    flowId: string,
+    qr: string,
+  ): Observable<EngineResult<null>> {
+    return this.onFlow(accountId, flowId, async (request, state) => {
+      const verifier = await request.scanQRCode(fromBase64(qr));
+      if (state.request !== request || isTerminal(request)) {
+        verifier.cancel(
+          new Error('The verification request changed while scanning.'),
+        );
+        return;
+      }
+      state.attach(verifier);
+    });
+  }
+
+  confirmQr(accountId: string, flowId: string): Observable<EngineResult<null>> {
+    return this.onFlow(accountId, flowId, async (_request, state) => {
+      if (!state.confirmQr()) throw VERIFICATION_GONE;
+    });
+  }
+
+  cancelVerification(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<null>> {
+    return this.onFlow(accountId, flowId, async (request, state) => {
+      state.cancelVerifier();
+      if (!isTerminal(request)) await request.cancel();
+    });
+  }
+
+  private verificationOf(client: MatrixClient): ClientVerification {
+    let state = this.verifications.get(client);
+    if (!state) {
+      state = new ClientVerification();
+      this.verifications.set(client, state);
+    }
+    return state;
+  }
+
+  private sendUserVerification(
+    client: MatrixClient,
+    crypto: CryptoApi,
+    userId: string,
+    roomId: string,
+    current: () => boolean,
+  ): Observable<EngineResult<{ readonly flowId: string }>> {
+    return new Observable((subscriber) => {
+      crypto.requestVerificationDM(userId, roomId).then(
+        (request) => {
+          // SDK sends cannot be aborted: a late or orphaned request is cancelled, not taken up.
+          if (!current() || subscriber.closed) {
+            void request.cancel().catch(() => undefined);
+            subscriber.next(engineFail(NOT_LIVE));
+            subscriber.complete();
+            return;
+          }
+          this.verificationOf(client).adopt(request);
+          subscriber.next(engineOk({ flowId: flowIdOf(request) }));
+          subscriber.complete();
+        },
+        (error: unknown) => {
+          subscriber.next(engineFail(requestFailed(error)));
+          subscriber.complete();
+        },
+      );
+    });
+  }
+
+  /** Runs `step` on the current request of `flowId`; `verification-gone` when it is not. */
+  private onFlow<T>(
+    accountId: string,
+    flowId: string,
+    step: (
+      request: VerificationRequest,
+      state: ClientVerification,
+    ) => Promise<T>,
+  ): Observable<EngineResult<T extends void ? null : T>> {
+    return this.request(accountId, async (client) => {
+      const state = this.verificationOf(client);
+      const request = state.find(flowId);
+      if (!request) throw VERIFICATION_GONE;
+      const value = await step(request, state);
+      return (value ?? null) as T extends void ? null : T;
+    });
+  }
+
   private request<T>(
     accountId: string,
     run: (client: MatrixClient, crypto: CryptoApi) => Promise<T>,
@@ -218,7 +480,9 @@ export class JsSdkTrustEngine implements TrustEngine {
       if (!crypto) return of(engineFail(CRYPTO_NOT_READY));
       return from(run(client, crypto)).pipe(
         map((value) => engineOk(value)),
-        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+        catchError((error: unknown) =>
+          of(engineFail(isFailure(error) ? error : requestFailed(error))),
+        ),
       );
     });
   }

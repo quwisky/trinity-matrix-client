@@ -163,6 +163,8 @@ describe('engineFailureMessage', () => {
       "Encryption is on, but this device couldn't apply it.",
     ],
     ['crypto-not-ready', 'Encryption is not ready for this account yet.'],
+    ['verification-gone', 'This verification is no longer in progress.'],
+    ['qr-unavailable', 'QR verification isn’t available for these sessions.'],
   ] as const)('%s reads "%s"', (code, text) => {
     expect(
       engineFailureMessage({
