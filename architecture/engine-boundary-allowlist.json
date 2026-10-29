@@ -29,8 +29,6 @@
     "libs/data-access/matrix-client/src/lib/secret-storage-key-holder.ts",
     "libs/data-access/matrix-client/src/lib/server-support.ts",
     "libs/data-access/matrix-client/src/lib/trust-crypto.port.ts",
-    "libs/data-access/room-administration/src/lib/room-encryption.service.ts",
-    "libs/data-access/room-administration/src/lib/room-upgrade.service.ts",
     "libs/data-access/room-library/src/lib/rooms-in-common.service.ts",
     "libs/data-access/trust/src/lib/cross-signing-repair.ts",
     "libs/data-access/trust/src/lib/recovery-reset.ts",
