@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 const allowlistPath = 'architecture/engine-boundary-allowlist.json';
 const sdkReach =
-  /from ['"]matrix-js-sdk(?:\/[^'"]*)?['"]|\.clientFor\(|\bmatrix\.instance\b|\.detachedClient\(|MatrixClientService\[\s*['"](?:clientFor|instance|all|detachedClient)['"]\s*\]/;
+  /from ['"]matrix-js-sdk(?:\/[^'"]*)?['"]|\.clientFor\(|\.holderFor\(|\bmatrix\.instance\b|\.detachedClient\(|MatrixClientService\[\s*['"](?:clientFor|holderFor|instance|all|detachedClient)['"]\s*\]/;
 const utilMatrixImport =
   /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]@trinity\/util\/matrix['"]/g;
 const sdkClasses = new Set(['ConnectionError', 'HTTPError', 'MatrixError']);
@@ -86,6 +86,19 @@ describe('reachesSdk', () => {
     const source =
       "type C = NonNullable<ReturnType<MatrixClientService['clientFor']>>;";
     expect(reachesSdk(file, source)).toBe(true);
+  });
+
+  it('matches the secret-storage key holder outside adapters and harnesses', () => {
+    const source = 'inject(JS_SDK_CLIENTS).holderFor(accountId)';
+    expect(reachesSdk(file, source)).toBe(true);
+    expect(
+      reachesSdk(
+        file,
+        "type H = ReturnType<MatrixClientService['holderFor']>;",
+      ),
+    ).toBe(true);
+    expect(reachesSdk('libs/y/a.spec-harness.ts', source)).toBe(false);
+    expect(reachesSdk('libs/y/js-sdk/a.ts', source)).toBe(false);
   });
 
   it('matches .all() only with MatrixClientService', () => {

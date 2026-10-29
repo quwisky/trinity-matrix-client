@@ -1,5 +1,6 @@
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
+import { decryptMegolmKeyFile } from '@trinity/util/matrix';
 import { defineTrustEngineContract } from './trust-engine.contract';
 import { FakeTrustEngine } from './fake-trust-engine';
 
@@ -31,6 +32,18 @@ defineTrustEngineContract(
         engine.addUserIdentity(userId);
         return { userId, roomId: '!dm:contract.invalid' };
       },
+      setUpRecoveryElsewhere: async (passphrase) =>
+        engine.setUpRecoveryElsewhere(engine.alice, passphrase),
+      strandUnpublishedIdentity: async () =>
+        engine.strandUnpublishedIdentity(engine.alice),
+      exportFromAnotherSession: (passphrase) =>
+        engine.exportFromAnotherSession(passphrase),
+      importInAnotherSession: async (fileText, passphrase) =>
+        (
+          JSON.parse(await decryptMegolmKeyFile(fileText, passphrase)) as {
+            session_id: string;
+          }[]
+        ).map((key) => key.session_id),
       dispose: async () => undefined,
     };
   },

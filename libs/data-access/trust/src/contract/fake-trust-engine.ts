@@ -16,6 +16,9 @@ import {
 import {
   type EngineFailure,
   type EngineResult,
+  type RecoveryRefusal,
+  decryptMegolmKeyFile,
+  encryptMegolmKeyFile,
   engineFail,
   engineOk,
   plainEqual,
@@ -24,6 +27,7 @@ import type {
   InteractiveUpdate,
   OwnDevice,
   OwnIdentityCheck,
+  RecoverySecret,
   TrustEngine,
   TrustFacts,
   UserTrustFacts,
@@ -72,8 +76,23 @@ const failure = (code: EngineFailure['code']): EngineFailure =>
     diagnostic: { kind: 'unexpected' },
   }) as EngineFailure;
 
+const refused = (reason: RecoveryRefusal): EngineFailure => ({
+  kind: 'unexpected',
+  code: 'recovery-refused',
+  params: { reason },
+  diagnostic: { kind: 'unexpected' },
+});
+
 /** Like the shared password-UIA budget: three rejected passwords end the command. */
 const PASSWORD_ATTEMPTS = 3;
+
+/** The base58 alphabet recovery keys are written in. */
+const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+/** Shaped like a recovery key: `Es`, then 46 base58 characters, spaces ignored. */
+const WELL_FORMED_KEY = /^Es[1-9A-HJ-NP-Za-km-z]{46}$/;
+
+const compact = (key: string): string => key.replace(/\s/g, '');
 
 const UNVERIFIED: UserTrustFacts = {
   verified: false,
@@ -117,6 +136,10 @@ interface FakeAccount {
   readonly identities: Set<string>;
   /** The server asks for a non-password stage, as for an SSO-only account. */
   providerAuthOnly: boolean;
+  /** The account's secret storage, set up from a key or a passphrase. */
+  recovery: { readonly key: string; readonly passphrase: string | null } | null;
+  /** The session ids of the room keys this device holds. */
+  readonly roomKeys: Set<string>;
 }
 
 const terminal = (snapshot: VerificationSnapshot | null) =>
@@ -174,6 +197,8 @@ export class FakeTrustEngine implements TrustEngine {
       users: new Map(),
       identities: new Set(),
       providerAuthOnly: false,
+      recovery: null,
+      roomKeys: new Set(),
     });
   }
 
@@ -345,6 +370,71 @@ export class FakeTrustEngine implements TrustEngine {
   setServerDefaultKey(accountId: string, keyId: string): void {
     this.require(accountId).serverDefaultKeyId = keyId;
     this.setFacts(accountId, { hasDefaultKey: true });
+  }
+
+  /**
+   * Another device publishes an identity, secret storage and a key backup, from a random
+   * recovery key or from `passphrase`; returns the recovery key.
+   */
+  setUpRecoveryElsewhere(accountId: string, passphrase?: string): string {
+    const account = this.require(accountId);
+    const digits = Array.from(
+      { length: 46 },
+      () => BASE58[Math.floor(Math.random() * BASE58.length)],
+    ).join('');
+    const key = `Es${digits}`.replace(/(.{4})(?!$)/g, '$1 ');
+    account.recovery = { key, passphrase: passphrase ?? null };
+    this.publishIdentityElsewhere(accountId);
+    account.serverDefaultKeyId = `fake-4s-${++this.keys}`;
+    this.setFacts(accountId, {
+      hasDefaultKey: true,
+      crossSigning: {
+        publicKeysOnDevice: true,
+        privateKeysInSecretStorage: true,
+        privateKeysCachedLocally: {
+          masterKey: false,
+          selfSigningKey: false,
+          userSigningKey: false,
+        },
+      },
+    });
+    return key;
+  }
+
+  /** This device rotates its identity for a reset that never uploads it. */
+  strandUnpublishedIdentity(accountId: string): void {
+    const account = this.require(accountId);
+    account.localMasterKey = `stranded-key-${++this.keys}`;
+    const current = account.facts.value;
+    this.setFacts(accountId, {
+      crossSigningReady: false,
+      thisDeviceCrossSigned: false,
+      crossSigning: {
+        publicKeysOnDevice: true,
+        privateKeysInSecretStorage: current.ok
+          ? current.value.crossSigning.privateKeysInSecretStorage
+          : false,
+        privateKeysCachedLocally: {
+          masterKey: true,
+          selfSigningKey: true,
+          userSigningKey: true,
+        },
+      },
+    });
+  }
+
+  /** A key file of one room key, as another session of the account exports it. */
+  async exportFromAnotherSession(
+    passphrase: string,
+  ): Promise<{ readonly fileText: string; readonly sessionId: string }> {
+    const sessionId = `fake-session-${++this.sequence}`;
+    return {
+      fileText: await encryptMegolmKeyFile(
+        JSON.stringify([roomKey(sessionId)]),
+        passphrase,
+      ),
+      sessionId,
+    };
   }
 
   facts(accountId: string): Observable<EngineResult<TrustFacts>> {
@@ -689,6 +779,83 @@ export class FakeTrustEngine implements TrustEngine {
     return this.identityChange(accountId, userId, { wasVerified: false });
   }
 
+  recover(
+    accountId: string,
+    secret: RecoverySecret,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const account = this.accounts.get(accountId);
+      if (!account) return of(engineFail(NOT_LIVE));
+      if (!account.facts.value.ok) return of(account.facts.value);
+      const recovery = account.recovery;
+      if (!recovery) return of(engineFail(refused('not-configured')));
+      if (secret.kind === 'recovery-key') {
+        if (!WELL_FORMED_KEY.test(compact(secret.value))) {
+          return of(engineFail(refused('malformed-key')));
+        }
+        if (compact(secret.value) !== compact(recovery.key)) {
+          return of(engineFail(refused('incorrect')));
+        }
+      } else if (recovery.passphrase === null) {
+        return of(engineFail(refused('no-passphrase')));
+      } else if (secret.value !== recovery.passphrase) {
+        return of(engineFail(refused('incorrect')));
+      }
+      account.localMasterKey = account.publishedMasterKey;
+      this.setFacts(accountId, {
+        crossSigningReady: true,
+        secretStorageReady: true,
+        keyBackupActive: true,
+        thisDeviceCrossSigned: true,
+        crossSigning: {
+          publicKeysOnDevice: true,
+          privateKeysInSecretStorage: true,
+          privateKeysCachedLocally: {
+            masterKey: true,
+            selfSigningKey: true,
+            userSigningKey: true,
+          },
+        },
+      });
+      return of(engineOk(null));
+    });
+  }
+
+  exportRoomKeys(
+    accountId: string,
+    passphrase: string,
+  ): Observable<EngineResult<string>> {
+    return defer(async () => {
+      const account = this.accounts.get(accountId);
+      if (!account) return engineFail(NOT_LIVE);
+      if (!account.facts.value.ok) return account.facts.value;
+      const keys = [...account.roomKeys].map(roomKey);
+      return engineOk(
+        await encryptMegolmKeyFile(JSON.stringify(keys), passphrase),
+      );
+    });
+  }
+
+  importRoomKeys(
+    accountId: string,
+    fileText: string,
+    passphrase: string,
+  ): Observable<EngineResult<null>> {
+    return defer(async () => {
+      const account = this.accounts.get(accountId);
+      if (!account) return engineFail(NOT_LIVE);
+      if (!account.facts.value.ok) return account.facts.value;
+      let keys: { session_id: string }[];
+      try {
+        keys = JSON.parse(await decryptMegolmKeyFile(fileText, passphrase));
+      } catch {
+        return engineFail(refused('incorrect'));
+      }
+      for (const key of keys) account.roomKeys.add(key.session_id);
+      return engineOk(null);
+    });
+  }
+
   /** Whether a password prompt is open. */
   promptOpen(): boolean {
     return this.prompts.size > 0;
@@ -803,4 +970,17 @@ export class FakeTrustEngine implements TrustEngine {
     if (!account) throw new Error(`No fake account ${accountId}`);
     return account;
   }
+}
+
+/** One exported room key, in the key-export JSON shape. */
+function roomKey(sessionId: string) {
+  return {
+    algorithm: 'm.megolm.v1.aes-sha2',
+    room_id: '!fake:contract.invalid',
+    sender_key: 'fake-sender-key',
+    session_id: sessionId,
+    session_key: 'fake-session-key',
+    sender_claimed_keys: {},
+    forwarding_curve25519_key_chain: [],
+  };
 }
