@@ -1,44 +1,38 @@
 import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CryptoEvent,
-  VerificationPhase,
-  VerificationRequestEvent,
-  VerifierEvent,
-  type ShowQrCodeCallbacks,
-  type ShowSasCallbacks,
-  type VerificationRequest,
-  type Verifier,
-} from 'matrix-js-sdk/lib/crypto-api';
-import {
   Observable,
   Subject,
-  Subscription,
+  type Subscription,
   defer,
-  filter,
   finalize,
-  from,
   map,
   of,
   switchMap,
   take,
   takeUntil,
-  tap,
   throwError,
   timeout,
 } from 'rxjs';
 import {
-  TrustCryptoPort,
-  type TrustCryptoApi,
-  type TrustMatrixClient,
+  SessionStateService,
+  projectActiveAccount,
 } from '@trinity/data-access/matrix-client';
+import {
+  type EngineFailure,
+  type EngineResult,
+  EngineRequestError,
+} from '@trinity/util/matrix';
+import type { VerificationSnapshot } from './trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 import { TrustDevicesService } from './trust-devices.service';
 import { TrustHealthService } from './trust-health.service';
 import {
   TrustOperationError,
+  type TrustOperation,
   recoverTrustOperation,
 } from './trust-operation-error';
 
-/** UI-facing stage of the active verification (maps the SDK's numeric phase). */
+/** UI-facing stage of the active verification. */
 export type VerificationStage =
   | 'requested'
   | 'ready'
@@ -71,7 +65,7 @@ export interface NewSessionDetails {
   lastSeenTs: number | null;
 }
 
-/** Plain view model of the active verification — no SDK types leak to the UI. */
+/** Plain view model of the active verification. */
 export interface VerificationView {
   /** Monotonic identity for this request, used to scope transient UI intent. */
   requestId: number;
@@ -86,7 +80,7 @@ export interface VerificationView {
   emoji: SasEmoji[] | null;
   /**
    * We confirmed the emoji match and are waiting for the other side to confirm too.
-   * The SDK phase stays `Started` throughout, so this local flag is what tells the UI
+   * The phase stays `started` throughout, so this local flag is what tells the UI
    * to stop asking and start waiting.
    */
   sasConfirmed: boolean;
@@ -114,29 +108,93 @@ function displayText(value: string | null | undefined): string | null {
   return value?.replace(/[\p{Cc}\p{Cf}]/gu, '').trim() || null;
 }
 
-const SAS_METHOD = 'm.sas.v1';
 const QR_SCAN_METHOD = 'm.qr_code.scan.v1';
 const QR_SHOW_METHOD = 'm.qr_code.show.v1';
 
+const toBase64 = (bytes: Uint8ClampedArray): string =>
+  btoa(String.fromCharCode(...bytes));
+
+const fromBase64 = (base64: string): Uint8ClampedArray =>
+  Uint8ClampedArray.from(atob(base64), (char) => char.charCodeAt(0));
+
+const isTerminal = (snapshot: VerificationSnapshot): boolean =>
+  snapshot.phase === 'done' || snapshot.phase === 'cancelled';
+
+/** An engine failure as the Trust error today's callers see. */
+function verificationFailure(
+  operation: TrustOperation,
+  failure: EngineFailure,
+): Error {
+  switch (failure.code) {
+    case 'verification-gone':
+      return new TrustOperationError(
+        operation,
+        'stale-state',
+        'retry',
+        'The verification request changed. Try again.',
+      );
+    case 'qr-unavailable':
+      return new TrustOperationError(
+        operation,
+        'unsupported',
+        'retry',
+        'QR verification isn’t available for these sessions. Use emoji verification instead.',
+      );
+    case 'account-not-live':
+      return new TrustOperationError(
+        operation,
+        'stale-state',
+        'retry',
+        'The active account changed. Start verification again.',
+      );
+    case 'crypto-not-ready':
+      return new TrustOperationError(
+        operation,
+        'not-ready',
+        'retry',
+        'Trust is not ready for this account yet.',
+      );
+    default:
+      return failure.diagnostic.errcode === 'M_FORBIDDEN'
+        ? new TrustOperationError(
+            operation,
+            'permission-denied',
+            'retry',
+            'The homeserver refused this Trust change.',
+          )
+        : new EngineRequestError(failure);
+  }
+}
+
+function unwrap<T>(
+  operation: TrustOperation,
+): (source: Observable<EngineResult<T>>) => Observable<T> {
+  return map((result) => {
+    if (!result.ok) throw verificationFailure(operation, result.failure);
+    return result.value;
+  });
+}
+
 /**
- * Drives interactive device verification (QR or emoji SAS). Wraps the SDK's
- * `VerificationRequest`/`Verifier` so the UI never touches matrix-js-sdk: a single
- * `active` signal exposes the current verification as a {@link VerificationView},
- * and cold Observables perform the actions.
+ * Drives interactive device verification (QR or emoji SAS) over the {@link TRUST_ENGINE}'s
+ * verification snapshots: a single `active` signal exposes the current verification as a
+ * {@link VerificationView}, and cold Observables perform the actions.
  *
  * QR is self-device-only. SAS verification also supports another user over a DM via
  * {@link startUserVerification}.
  */
 @Injectable({ providedIn: 'root' })
 export class TrustVerificationService {
-  private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly engine = inject(TRUST_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly health = inject(TrustHealthService);
   private readonly devices = inject(TrustDevicesService);
   private readonly stopStartup = new Subject<void>();
-  private request: VerificationRequest | null = null;
-  private verifier: Verifier | null = null;
-  private sas: ShowSasCallbacks | null = null;
-  private qrReciprocate: ShowQrCodeCallbacks | null = null;
+  /** The engine's current verification and the account it belongs to. */
+  private snapshot: VerificationSnapshot | null = null;
+  private accountId: string | null = null;
+  /** A request the user closed; the engine keeps it until another replaces it. */
+  private dismissedFlowId: string | null = null;
   /** Presentation state only; sensitive QR bytes are emitted once and never retained. */
   private qrShown = false;
   private qrScanStarted = false;
@@ -145,54 +203,11 @@ export class TrustVerificationService {
   /** The `/devices` lookup that fills in the current request's details. */
   private lookup: Subscription | null = null;
   /** The request whose side waits for this device's trust state to become known. */
-  private awaitingTrustState: VerificationRequest | null = null;
+  private awaitingTrustState: string | null = null;
   private requestSequence = 0;
   private requestId = 0;
 
   private readonly _active = signal<VerificationView | null>(null);
-  /** The active verification, or `null` when none is in flight. */
-  readonly active = this._active.asReadonly();
-
-  private readonly onIncoming = (request: VerificationRequest): void => {
-    // One verification at a time (MVP): ignore new requests while one is live.
-    if (this.request && !this.isTerminal(this.request)) {
-      return;
-    }
-    this.adopt(request);
-  };
-
-  private readonly onRequestChange = (): void => {
-    const req = this.request;
-    if (!req) {
-      return;
-    }
-    if (req.phase !== VerificationPhase.Ready) {
-      this.qrShown = false;
-    }
-    // Once in flight, attach to the verifier (created by us or the other device)
-    // and drive the SAS exchange.
-    if (
-      req.phase === VerificationPhase.Started &&
-      !this.verifier &&
-      req.verifier
-    ) {
-      this.attachVerifier(req.verifier);
-    }
-    this.recompute();
-  };
-
-  private readonly onShowSas = (sas: ShowSasCallbacks): void => {
-    this.sas = sas;
-    this.sasConfirmed = false;
-    this.recompute();
-  };
-
-  private readonly onShowReciprocateQr = (qr: ShowQrCodeCallbacks): void => {
-    this.qrReciprocate = qr;
-    this.recompute();
-  };
-
-  private readonly onVerifierCancel = (): void => this.recompute();
 
   /**
    * A request that arrives before this device's trust state is known is presented as a new
@@ -205,12 +220,13 @@ export class TrustVerificationService {
       return;
     }
     untracked(() => {
-      const request = this.awaitingTrustState;
+      const flowId = this.awaitingTrustState;
       this.awaitingTrustState = null;
       if (
-        request &&
+        flowId &&
         verified === false &&
-        this.stageOf(request) === 'requested'
+        this.snapshot?.flowId === flowId &&
+        this.stageOf(this.snapshot) === 'requested'
       ) {
         this.newSession = null;
         this.recompute();
@@ -218,39 +234,26 @@ export class TrustVerificationService {
     });
   });
 
-  /**
-   * The one event is bound by hand because it carries the incoming request, which a no-arg
-   * listener could not read, so there is no coalescing to configure. An incoming
-   * verification is human-initiated, so bursts are not a concern.
-   */
-  private readonly projection = this.cryptoPort.project({
-    id: 'crypto.verification-requests',
-    bind: (client) =>
-      client.on(CryptoEvent.VerificationRequestReceived, this.onIncoming),
-    unbind: (client) =>
-      client.off(CryptoEvent.VerificationRequestReceived, this.onIncoming),
-    // Adopt a request that predates the listener (e.g. started on another device during
-    // a reload). Runs on connect only, since nothing above schedules a rebuild.
-    rebuild: (client) => {
-      const inProgress = this.inProgressRequest(client);
-      if (inProgress) {
-        this.adopt(inProgress);
-      }
-    },
-    reset: () => {
-      this.stopStartup.next();
-      this.clearRequest();
-      this._active.set(null);
-    },
-  });
+  private readonly projection =
+    projectActiveAccount<VerificationSnapshot | null>({
+      id: 'crypto.verification-requests',
+      subscribe: (accountId) => this.engine.verification(accountId),
+      rebuild: (snapshot, accountId) => this.follow(snapshot, accountId),
+      reset: () => {
+        this.stopStartup.next();
+        this.clearRequest();
+        this._active.set(null);
+      },
+    });
+
+  /** The active verification, or `null` when none is in flight. */
+  readonly active = this._active.asReadonly();
 
   /** Cold incoming-verification projection retained by the named session lifetime. */
   runProjection(): Observable<void> {
     return this.projection.run().pipe(
       finalize(() => {
         this.stopStartup.next();
-        // A locally-started verification can exist before the projection attaches, so the
-        // projection reset is not sufficient on its own.
         this.clearRequest();
         this._active.set(null);
       }),
@@ -265,14 +268,12 @@ export class TrustVerificationService {
   /** Send a verification request to our other devices (emoji SAS). */
   startSelfVerification(): Observable<void> {
     return defer(() =>
-      from(
-        (async (): Promise<void> => {
-          const request =
-            await this.requireCrypto().requestOwnUserVerification();
-          this.adopt(request);
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('start-verification'));
+      this.engine.requestOwnVerification(this.requireAccount()),
+    ).pipe(
+      unwrap('start-verification'),
+      map(() => undefined),
+      recoverTrustOperation('start-verification'),
+    );
   }
 
   /**
@@ -285,21 +286,36 @@ export class TrustVerificationService {
     directRoom: Observable<string>,
   ): Observable<void> {
     return defer(() => {
-      const context = this.cryptoPort.active();
-      const client = context.client;
-      const crypto = this.requireCrypto(context.crypto);
-      return directRoom.pipe(
+      const started = this.session.active();
+      if (!started) throw this.notReady();
+      // Checked before the DM is acquired, as acquiring it may create the room.
+      return this.engine.facts(started.accountId).pipe(
         take(1),
+        switchMap((facts) => {
+          if (!facts.ok && facts.failure.code !== 'request-failed') {
+            throw this.notReady();
+          }
+          return directRoom.pipe(take(1));
+        }),
         switchMap((roomId) => {
-          this.requireCurrentCrypto(client, crypto);
-          return this.waitForIdentity(client, crypto, userId).pipe(
-            switchMap(() => {
-              this.requireCurrentCrypto(client, crypto);
-              return this.sendUserVerification(client, crypto, userId, roomId);
-            }),
+          const current = this.session.active();
+          if (
+            current?.accountId !== started.accountId ||
+            current.generation !== started.generation
+          ) {
+            throw verificationFailure('start-verification', {
+              kind: 'unexpected',
+              code: 'account-not-live',
+              diagnostic: { kind: 'unexpected' },
+            });
+          }
+          return this.engine.requestUserVerification(
+            started.accountId,
+            userId,
+            roomId,
           );
         }),
-        tap((request) => this.adopt(request)),
+        unwrap('start-verification'),
         map(() => undefined),
         timeout({
           first: 30_000,
@@ -323,58 +339,40 @@ export class TrustVerificationService {
 
   /** Accept an incoming verification request. */
   accept(): Observable<void> {
-    return defer(() => from(this.requireRequest().accept())).pipe(
-      recoverTrustOperation('accept-verification'),
+    return this.command('accept-verification', (accountId, flowId) =>
+      this.engine.acceptVerification(accountId, flowId),
     );
   }
 
   /** Begin the emoji-SAS method once the request is `ready`. */
   startSas(): Observable<void> {
-    return defer(() =>
-      from(
-        (async (): Promise<void> => {
-          this.qrShown = false;
-          this.recompute();
-          const verifier =
-            await this.requireRequest().startVerification(SAS_METHOD);
-          this.attachVerifier(verifier);
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('start-verification'));
+    return this.command('start-verification', (accountId, flowId) => {
+      this.qrShown = false;
+      this.recompute();
+      return this.engine.startSas(accountId, flowId);
+    });
   }
 
   /** Generate and reveal a QR payload only after this explicit user action. */
   showQr(): Observable<Uint8ClampedArray> {
-    return defer(() =>
-      from(
-        (async (): Promise<Uint8ClampedArray> => {
-          const request = this.requireSelfRequest();
-          const data = await request.generateQRCode();
-          if (!data?.length) {
-            throw new TrustOperationError(
-              'show-qr',
-              'unsupported',
-              'retry',
-              'QR verification isn’t available for these sessions. Use emoji verification instead.',
-            );
-          }
-          if (
-            request !== this.request ||
-            request.phase !== VerificationPhase.Ready
-          ) {
-            throw new TrustOperationError(
-              'show-qr',
-              'stale-state',
-              'retry',
-              'The verification request changed. Try again.',
-            );
+    return defer(() => {
+      const { accountId, snapshot } = this.requireSelfRequest();
+      return this.engine.showQr(accountId, snapshot.flowId).pipe(
+        unwrap('show-qr'),
+        map(({ qr }) => {
+          if (this.snapshot?.flowId !== snapshot.flowId) {
+            throw verificationFailure('show-qr', {
+              kind: 'unexpected',
+              code: 'verification-gone',
+              diagnostic: { kind: 'unexpected' },
+            });
           }
           this.qrShown = true;
           this.recompute();
-          return data.slice();
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('show-qr'));
+          return fromBase64(qr);
+        }),
+      );
+    }).pipe(recoverTrustOperation('show-qr'));
   }
 
   /** Return from the sensitive QR display to the method chooser. */
@@ -385,46 +383,44 @@ export class TrustVerificationService {
 
   /** Start QR reciprocation with the raw bytes decoded from the other device. */
   scanQr(data: Uint8ClampedArray): Observable<void> {
-    return defer(() =>
-      from(
-        (async (): Promise<void> => {
-          if (!data.length) {
-            throw new TrustOperationError(
-              'scan-qr',
-              'invalid-secret',
-              'retry',
-              'The scanned QR code was empty.',
-            );
-          }
-          this.qrShown = false;
-          const request = this.requireSelfRequest();
-          const verifier = await request.scanQRCode(data);
-          if (request !== this.request || this.isTerminal(request)) {
-            verifier.cancel(
-              new Error('The verification request changed while scanning.'),
-            );
-            return;
-          }
-          this.qrScanStarted = true;
-          this.attachVerifier(verifier);
-          this.recompute();
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('scan-qr'));
+    return defer(() => {
+      if (!data.length) {
+        throw new TrustOperationError(
+          'scan-qr',
+          'invalid-secret',
+          'retry',
+          'The scanned QR code was empty.',
+        );
+      }
+      this.qrShown = false;
+      const { accountId, snapshot } = this.requireSelfRequest();
+      return this.engine
+        .scanQr(accountId, snapshot.flowId, toBase64(data))
+        .pipe(
+          unwrap('scan-qr'),
+          map(() => {
+            // A request that changed while scanning had its late verifier cancelled.
+            if (
+              this.snapshot?.flowId !== snapshot.flowId ||
+              isTerminal(this.snapshot)
+            ) {
+              return;
+            }
+            this.qrScanStarted = true;
+            this.recompute();
+          }),
+        );
+    }).pipe(recoverTrustOperation('scan-qr'));
   }
 
   /** Confirm that the device which scanned our displayed code is in front of us. */
   confirmQr(): Observable<void> {
-    return defer(() => {
-      const qr = this.qrReciprocate;
-      if (!qr) {
+    return this.command('confirm-verification', (accountId, flowId) => {
+      if (!this.snapshot?.qrScannedByOther) {
         throw new Error('There is no QR scan to confirm yet.');
       }
-      qr.confirm();
-      this.qrReciprocate = null;
-      this.recompute();
-      return of(void 0);
-    }).pipe(recoverTrustOperation('confirm-verification'));
+      return this.engine.confirmQr(accountId, flowId);
+    });
   }
 
   /**
@@ -434,118 +430,77 @@ export class TrustVerificationService {
    */
   confirmSas(): Observable<void> {
     return defer(() => {
-      const sas = this.sas;
-      if (!sas) {
+      const accountId = this.accountId;
+      const snapshot = this.snapshot;
+      if (!accountId || !snapshot?.sas) {
         throw new Error('There is nothing to confirm yet.');
       }
-      return from(
-        (async (): Promise<void> => {
-          this.setSasConfirmed(true);
-          try {
-            await sas.confirm();
-          } catch (error) {
+      this.setSasConfirmed(true);
+      return this.engine.confirmSas(accountId, snapshot.flowId).pipe(
+        map((result) => {
+          if (!result.ok) {
             // Our MAC never went out, so drop back to asking rather than waiting forever.
-            this.setSasConfirmed(false);
-            throw error;
+            if (this.snapshot?.flowId === snapshot.flowId) {
+              this.setSasConfirmed(false);
+            }
+            throw verificationFailure('confirm-verification', result.failure);
           }
-        })(),
+        }),
       );
     }).pipe(recoverTrustOperation('confirm-verification'));
   }
 
   /** Report that the SAS emoji do NOT match (aborts as a security failure). */
   mismatchSas(): Observable<void> {
-    return defer(() => {
-      this.sas?.mismatch();
-      return of(void 0);
-    }).pipe(recoverTrustOperation('confirm-verification'));
+    return this.optional('confirm-verification', (accountId, flowId) =>
+      this.engine.mismatchSas(accountId, flowId),
+    );
   }
 
   /** Cancel or decline the active verification. */
   cancel(): Observable<void> {
-    return defer(() =>
-      from(
-        (async (): Promise<void> => {
-          this.verifier?.cancel(new Error('Verification cancelled.'));
-          const req = this.request;
-          if (req && !this.isTerminal(req)) {
-            await req.cancel();
-          }
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('cancel-verification'));
+    return this.optional('cancel-verification', (accountId, flowId) =>
+      this.engine.cancelVerification(accountId, flowId),
+    );
   }
 
   /** Clear a finished/cancelled verification so its UI can close. */
   dismiss(): void {
+    this.dismissedFlowId = this.snapshot?.flowId ?? null;
     this.clearRequest();
     this._active.set(null);
   }
 
-  private sendUserVerification(
-    client: TrustMatrixClient,
-    crypto: TrustCryptoApi,
-    userId: string,
-    roomId: string,
-  ): Observable<VerificationRequest> {
-    return new Observable((subscriber) => {
-      void crypto.requestVerificationDM(userId, roomId).then(
-        (request) => {
-          try {
-            this.requireCurrentCrypto(client, crypto);
-          } catch (error) {
-            void request.cancel().catch(() => undefined);
-            subscriber.error(error);
-            return;
-          }
-          if (subscriber.closed) {
-            // SDK sends cannot be aborted. Cancel a late result without adopting it.
-            void request.cancel().catch(() => undefined);
-            return;
-          }
-          subscriber.next(request);
-          subscriber.complete();
-        },
-        (error: unknown) => subscriber.error(error),
-      );
-    });
-  }
-
-  private waitForIdentity(
-    client: TrustMatrixClient,
-    crypto: TrustCryptoApi,
-    userId: string,
-  ): Observable<boolean> {
-    return new Observable<void>((subscriber) => {
-      const changed = (changedUserId: string): void => {
-        if (changedUserId === userId) subscriber.next();
-      };
-      client.on(CryptoEvent.UserTrustStatusChanged, changed);
-      subscriber.next();
-      return () => client.off(CryptoEvent.UserTrustStatusChanged, changed);
-    }).pipe(
-      // The encrypted DM makes Matrix Runtime track this user. Wait for its
-      // identity to reach Rust crypto; an uncached HTTP key lookup is insufficient.
-      switchMap(() => crypto.userHasCrossSigningKeys(userId)),
-      filter(Boolean),
-      take(1),
-    );
-  }
-
-  private adopt(request: VerificationRequest): void {
-    this.clearRequest();
-    this.request = request;
-    this.requestId = ++this.requestSequence;
-    this.newSession = this.describeNewSession(request);
-    request.on(VerificationRequestEvent.Change, this.onRequestChange);
-    if (request.phase === VerificationPhase.Started && request.verifier) {
-      this.attachVerifier(request.verifier);
+  /** Takes the engine's latest snapshot; a new flow starts with fresh presentation state. */
+  private follow(next: VerificationSnapshot | null, accountId: string): void {
+    const snapshot = next?.flowId === this.dismissedFlowId ? null : next;
+    if (snapshot?.flowId !== this.snapshot?.flowId) {
+      this.clearRequest();
+      this.accountId = accountId;
+      this.snapshot = snapshot;
+      if (snapshot) this.adopt(snapshot, accountId);
+      else this.recompute();
+      return;
     }
+    if (snapshot && snapshot.phase !== 'ready') {
+      this.qrShown = false;
+    }
+    // Newly shown emoji are asked about, not waited on.
+    if (snapshot?.sas && !this.snapshot?.sas) {
+      this.sasConfirmed = false;
+    }
+    this.snapshot = snapshot;
+    this.recompute();
+  }
+
+  private adopt(snapshot: VerificationSnapshot, accountId: string): void {
+    this.requestId = ++this.requestSequence;
+    this.newSession = this.describeNewSession(snapshot);
     this.recompute();
     if (this.newSession) {
       this.awaitingTrustState =
-        this.health.thisDeviceVerified() === null ? request : null;
-      this.fillInNewSession(request);
+        this.health.thisDeviceVerified() === null ? snapshot.flowId : null;
+      this.fillInNewSession(snapshot, accountId);
     }
   }
 
@@ -555,17 +510,17 @@ export class TrustVerificationService {
    * sign-in wording until its trust state resolves.
    */
   private describeNewSession(
-    request: VerificationRequest,
+    snapshot: VerificationSnapshot,
   ): NewSessionDetails | null {
     if (
-      request.initiatedByMe ||
-      !request.isSelfVerification ||
+      snapshot.initiatedByMe ||
+      !snapshot.isSelfVerification ||
       this.health.thisDeviceVerified() === false
     ) {
       return null;
     }
     return {
-      deviceId: displayText(request.otherDeviceId),
+      deviceId: displayText(snapshot.otherDeviceId),
       displayName: null,
       lastSeenIp: null,
       lastSeenTs: null,
@@ -577,11 +532,19 @@ export class TrustVerificationService {
    * request is presented first, a failed or slow lookup leaves the details unknown, and the
    * answer is dropped with the request it was asked for.
    */
-  private fillInNewSession(request: VerificationRequest): void {
+  private fillInNewSession(
+    snapshot: VerificationSnapshot,
+    accountId: string,
+  ): void {
     this.lookup = this.devices.list().subscribe({
       next: (devices) => {
-        const device = devices.find((d) => d.id === request.otherDeviceId);
-        if (!device || !this.newSession || this.request !== request) {
+        const device = devices.find((d) => d.id === snapshot.otherDeviceId);
+        if (
+          !device ||
+          !this.newSession ||
+          this.snapshot?.flowId !== snapshot.flowId ||
+          this.accountId !== accountId
+        ) {
           return;
         }
         const deviceId = displayText(device.id);
@@ -598,39 +561,9 @@ export class TrustVerificationService {
     });
   }
 
-  private attachVerifier(verifier: Verifier): void {
-    if (this.verifier) {
-      return;
-    }
-    this.verifier = verifier;
-    verifier.on(VerifierEvent.ShowSas, this.onShowSas);
-    verifier.on(VerifierEvent.ShowReciprocateQr, this.onShowReciprocateQr);
-    verifier.on(VerifierEvent.Cancel, this.onVerifierCancel);
-    const sas = verifier.getShowSasCallbacks();
-    if (sas) {
-      this.onShowSas(sas);
-    }
-    const qr = verifier.getReciprocateQrCodeCallbacks();
-    if (qr) {
-      this.onShowReciprocateQr(qr);
-    }
-    // Drives the exchange and emits the method-specific prompt; the result surfaces via
-    // the phase/cancel events, so the rejection here is intentionally swallowed.
-    verifier.verify().catch(() => undefined);
-  }
-
   private clearRequest(): void {
-    this.request?.off(VerificationRequestEvent.Change, this.onRequestChange);
-    this.verifier?.off(VerifierEvent.ShowSas, this.onShowSas);
-    this.verifier?.off(
-      VerifierEvent.ShowReciprocateQr,
-      this.onShowReciprocateQr,
-    );
-    this.verifier?.off(VerifierEvent.Cancel, this.onVerifierCancel);
-    this.request = null;
-    this.verifier = null;
-    this.sas = null;
-    this.qrReciprocate = null;
+    this.snapshot = null;
+    this.accountId = null;
     this.qrShown = false;
     this.qrScanStarted = false;
     this.sasConfirmed = false;
@@ -646,57 +579,52 @@ export class TrustVerificationService {
   }
 
   private recompute(): void {
-    const req = this.request;
-    if (!req) {
+    const snapshot = this.snapshot;
+    if (!snapshot) {
       this._active.set(null);
       return;
     }
     this._active.set({
       requestId: this.requestId,
-      stage: this.stageOf(req),
-      otherUserId: req.otherUserId ?? null,
-      otherDeviceId: displayText(req.otherDeviceId),
-      isSelfVerification: req.isSelfVerification,
-      incoming: !req.initiatedByMe,
+      stage: this.stageOf(snapshot),
+      otherUserId: snapshot.otherUserId,
+      otherDeviceId: displayText(snapshot.otherDeviceId),
+      isSelfVerification: snapshot.isSelfVerification,
+      incoming: !snapshot.initiatedByMe,
       emoji:
-        this.sas?.sas.emoji?.map(([glyph, name]) => ({ glyph, name })) ?? null,
+        snapshot.sas?.emoji.map(({ glyph, name }) => ({ glyph, name })) ?? null,
       sasConfirmed: this.sasConfirmed,
       newSession: this.newSession,
-      qrShowAvailable: this.qrMethodAvailable(req, QR_SCAN_METHOD),
-      qrScanAvailable: this.qrMethodAvailable(req, QR_SHOW_METHOD),
+      qrShowAvailable: this.qrMethodAvailable(snapshot, QR_SCAN_METHOD),
+      qrScanAvailable: this.qrMethodAvailable(snapshot, QR_SHOW_METHOD),
       cancelReason:
-        req.phase === VerificationPhase.Cancelled
-          ? this.cancelReason(req)
-          : null,
+        snapshot.phase === 'cancelled' ? this.cancelReason(snapshot) : null,
     });
   }
 
-  private stageOf(req: VerificationRequest): VerificationStage {
-    switch (req.phase) {
-      case VerificationPhase.Unsent:
-      case VerificationPhase.Requested:
+  private stageOf(snapshot: VerificationSnapshot): VerificationStage {
+    switch (snapshot.phase) {
+      case 'requested':
         return 'requested';
-      case VerificationPhase.Ready:
+      case 'ready':
         if (this.qrScanStarted) {
           return 'waiting';
         }
         return this.qrShown ? 'qr-shown' : 'ready';
-      case VerificationPhase.Started:
-        if (this.qrReciprocate) {
+      case 'started':
+        if (snapshot.qrScannedByOther) {
           return 'qr-confirm';
         }
-        return this.sas ? 'sas-shown' : 'waiting';
-      case VerificationPhase.Done:
+        return snapshot.sas ? 'sas-shown' : 'waiting';
+      case 'done':
         return 'done';
-      case VerificationPhase.Cancelled:
+      case 'cancelled':
         return 'cancelled';
-      default:
-        return 'requested';
     }
   }
 
-  private cancelReason(req: VerificationRequest): string {
-    switch (req.cancellationCode) {
+  private cancelReason(snapshot: VerificationSnapshot): string {
+    switch (snapshot.cancellation?.code) {
       case 'm.mismatched_sas':
         return 'The emoji did not match — verification was stopped.';
       case 'm.timeout':
@@ -706,56 +634,60 @@ export class TrustVerificationService {
     }
   }
 
-  private isTerminal(req: VerificationRequest): boolean {
-    return (
-      req.phase === VerificationPhase.Done ||
-      req.phase === VerificationPhase.Cancelled
+  /** A command on the current flow. */
+  private command(
+    operation: TrustOperation,
+    run: (accountId: string, flowId: string) => Observable<EngineResult<null>>,
+  ): Observable<void> {
+    return defer(() => {
+      const { accountId, snapshot } = this.requireRequest();
+      return run(accountId, snapshot.flowId);
+    }).pipe(
+      unwrap(operation),
+      map(() => undefined),
+      recoverTrustOperation(operation),
     );
   }
 
-  private inProgressRequest(
-    client: TrustMatrixClient,
-  ): VerificationRequest | null {
-    const crypto = client.getCrypto();
-    const userId = client.getUserId();
-    if (!crypto || !userId) {
-      return null;
-    }
-    return crypto.getVerificationRequestsToDeviceInProgress(userId)[0] ?? null;
-  }
-
-  private requireCurrentCrypto(
-    client: TrustMatrixClient,
-    crypto: TrustCryptoApi,
-  ): void {
-    if (this.cryptoPort.isAvailable()) {
-      const current = this.cryptoPort.active();
-      if (current.client === client && current.crypto === crypto) return;
-    }
-    throw new TrustOperationError(
-      'start-verification',
-      'stale-state',
-      'retry',
-      'The active account changed. Start verification again.',
-    );
-  }
-
-  private requireCrypto(
-    crypto: TrustCryptoApi | null = this.cryptoPort.active().crypto,
-  ): TrustCryptoApi {
-    if (!crypto) {
-      throw new TrustOperationError(
-        'start-verification',
-        'not-ready',
-        'retry',
-        'Trust is not ready for this account yet.',
+  /** A command that does nothing without a current flow, or once that flow is gone. */
+  private optional(
+    operation: TrustOperation,
+    run: (accountId: string, flowId: string) => Observable<EngineResult<null>>,
+  ): Observable<void> {
+    return defer(() => {
+      const accountId = this.accountId;
+      const snapshot = this.snapshot;
+      if (!accountId || !snapshot) return of(void 0);
+      return run(accountId, snapshot.flowId).pipe(
+        map((result) => {
+          if (!result.ok && result.failure.code !== 'verification-gone') {
+            throw verificationFailure(operation, result.failure);
+          }
+        }),
       );
-    }
-    return crypto;
+    }).pipe(recoverTrustOperation(operation));
   }
 
-  private requireRequest(): VerificationRequest {
-    if (!this.request) {
+  private requireAccount(): string {
+    const accountId = this.session.activeAccountId();
+    if (!accountId) throw this.notReady();
+    return accountId;
+  }
+
+  private notReady(): TrustOperationError {
+    return new TrustOperationError(
+      'start-verification',
+      'not-ready',
+      'retry',
+      'Trust is not ready for this account yet.',
+    );
+  }
+
+  private requireRequest(): {
+    accountId: string;
+    snapshot: VerificationSnapshot;
+  } {
+    if (!this.snapshot || !this.accountId) {
       throw new TrustOperationError(
         'start-verification',
         'stale-state',
@@ -763,12 +695,15 @@ export class TrustVerificationService {
         'No verification is in progress.',
       );
     }
-    return this.request;
+    return { accountId: this.accountId, snapshot: this.snapshot };
   }
 
-  private requireSelfRequest(): VerificationRequest {
+  private requireSelfRequest(): {
+    accountId: string;
+    snapshot: VerificationSnapshot;
+  } {
     const request = this.requireRequest();
-    if (!request.isSelfVerification) {
+    if (!request.snapshot.isSelfVerification) {
       throw new TrustOperationError(
         'show-qr',
         'unsupported',
@@ -780,13 +715,13 @@ export class TrustVerificationService {
   }
 
   private qrMethodAvailable(
-    request: VerificationRequest,
+    snapshot: VerificationSnapshot,
     method: string,
   ): boolean {
     return (
-      request.phase === VerificationPhase.Ready &&
-      request.isSelfVerification &&
-      request.otherPartySupportsMethod(method)
+      snapshot.phase === 'ready' &&
+      snapshot.isSelfVerification &&
+      (snapshot.theirMethods as readonly string[]).includes(method)
     );
   }
 }
