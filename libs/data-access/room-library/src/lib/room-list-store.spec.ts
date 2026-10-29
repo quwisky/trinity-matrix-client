@@ -20,6 +20,7 @@ import { RoomListStore } from './room-list-store';
 function account(accountId: string, generation = 1): SessionAccountStatus {
   return {
     accountId,
+    deviceId: 'DEVICE',
     generation,
     syncState: 'syncing',
     serverSynced: true,

@@ -74,6 +74,7 @@ function account(
 ): SessionAccountStatus {
   return {
     accountId,
+    deviceId: 'DEVICE',
     generation,
     syncState: 'syncing',
     serverSynced: synced,

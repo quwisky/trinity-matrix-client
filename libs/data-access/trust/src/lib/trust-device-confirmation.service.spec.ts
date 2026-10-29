@@ -3,7 +3,11 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
+import {
+  SessionStateService,
+  TrustCryptoPort,
+  type SessionAccountStatus,
+} from '@trinity/data-access/matrix-client';
 import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceStorageAdapter,
@@ -140,7 +144,8 @@ function setup(options: Options = {}) {
     }),
   };
   const client = {
-    getDeviceId: () => options.deviceId ?? 'DEVICE',
+    // Never the session's device id, so a read that bypasses the session snapshot fails a test.
+    getDeviceId: () => 'CLIENT-DEVICE',
     getUserId: () => '@a:hs',
     secretStorage: { getDefaultKeyId: vi.fn(async () => defaultKeyId) },
     downloadKeysForUsers,
@@ -148,8 +153,16 @@ function setup(options: Options = {}) {
   TestBed.configureTestingModule({
     providers: [
       TrustDeviceConfirmationService,
-      MockProvider(TrustCryptoPort, {
+      MockProvider(SessionStateService, {
         activeAccountId: activeAccountId.asReadonly(),
+        status: (id: string) =>
+          id === '@a:hs' && live.value
+            ? ({
+                deviceId: options.deviceId ?? 'DEVICE',
+              } as SessionAccountStatus)
+            : null,
+      }),
+      MockProvider(TrustCryptoPort, {
         forAccount: (id: string) =>
           id === '@a:hs' && live.value ? ({ client, crypto } as never) : null,
       }),

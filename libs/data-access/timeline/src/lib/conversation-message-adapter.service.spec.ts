@@ -413,6 +413,7 @@ describe('ConversationMessageAdapter', () => {
             accounts: [
               {
                 accountId: key.accountId,
+                deviceId: 'DEVICE',
                 generation: 1,
                 syncState: 'syncing',
                 serverSynced: true,
