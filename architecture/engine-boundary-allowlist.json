@@ -5,8 +5,6 @@
     "libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in-completion.port.ts",
     "libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.adapter.ts",
     "libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.service.ts",
-    "libs/data-access/auth/src/lib/registration-uia.ts",
-    "libs/data-access/auth/src/lib/registration.service.ts",
     "libs/data-access/matrix-client/src/lib/identity-matrix.port.ts",
     "libs/data-access/matrix-client/src/lib/known-names.ts",
     "libs/data-access/matrix-client/src/lib/matrix-sdk-logging.ts",

@@ -13,6 +13,9 @@ import type {
   EmailTokenRequest,
   PasswordLogin,
   PasswordReset,
+  RegisteredAccount,
+  Registration,
+  RegistrationAuth,
   SignedInSession,
   TokenLogin,
   TokenOwner,
@@ -25,17 +28,22 @@ interface FakeUser {
   email?: string;
 }
 
-interface PendingResetLink {
+interface PendingEmailLink {
   readonly email: string;
   readonly clientSecret: string;
   confirmed: boolean;
 }
 
-function httpFailure(httpStatus: number, errcode: string): EngineFailure {
+function httpFailure(
+  httpStatus: number,
+  errcode: string,
+  serverMessage?: string,
+): EngineFailure {
   return {
     kind: 'http',
     code: 'request-failed',
     diagnostic: { kind: 'http', httpStatus, errcode },
+    ...(serverMessage ? { params: { serverMessage } } : {}),
   };
 }
 
@@ -48,6 +56,8 @@ function refused(reason: LoginRefusal): EngineFailure {
   };
 }
 
+const REGISTRATION_FLOWS = [['m.login.dummy'], ['m.login.email.identity']];
+
 function challenge(session: string, stage: string): EngineFailure {
   return {
     kind: 'http',
@@ -55,6 +65,16 @@ function challenge(session: string, stage: string): EngineFailure {
     diagnostic: { kind: 'http', httpStatus: 401 },
     params: { challenge: { session, flows: [{ stages: [stage] }] } },
   };
+}
+
+function confirmNewest(
+  links: ReadonlyMap<string, PendingEmailLink>,
+  clientSecret: string,
+): void {
+  const link = [...links.values()]
+    .reverse()
+    .find((l) => l.clientSecret === clientSecret);
+  if (link) link.confirmed = true;
 }
 
 /** One in-memory homeserver: users by localpart, live accounts, login tokens and reset links. */
@@ -72,7 +92,11 @@ export class FakeAuthEngine implements AuthEngine {
   readonly accessTokens = new Map<string, TokenOwner>();
   /** Login tokens by token, naming a localpart. */
   readonly loginTokens = new Map<string, string>();
-  readonly resetLinks = new Map<string, PendingResetLink>();
+  readonly resetLinks = new Map<string, PendingEmailLink>();
+  /** Registration's email links by sid. */
+  readonly registrationLinks = new Map<string, PendingEmailLink>();
+  /** The stages each registration UIA session has completed. */
+  private readonly registrations = new Map<string, Set<string>>();
   /** A failure every command answers with instead, until cleared. */
   failure: EngineFailure | null = null;
   private devices = 0;
@@ -145,6 +169,95 @@ export class FakeAuthEngine implements AuthEngine {
     });
   }
 
+  register(
+    baseUrl: string,
+    registration: Registration,
+    auth: RegistrationAuth | null,
+  ): Observable<EngineResult<RegisteredAccount>> {
+    const step = auth ? (auth.type ?? 'session') : 'probe';
+    return this.command(`register:${registration.localpart}:${step}`, () => {
+      if (!this.registrationOpen) {
+        return engineFail(httpFailure(403, 'M_FORBIDDEN'));
+      }
+      if (this.users.has(registration.localpart)) {
+        return engineFail(
+          httpFailure(400, 'M_USER_IN_USE', 'User ID already taken.'),
+        );
+      }
+      if (
+        auth?.session !== undefined &&
+        !this.registrations.has(auth.session)
+      ) {
+        return engineFail(
+          httpFailure(400, 'M_UNKNOWN', `Unknown session ID: ${auth.session}`),
+        );
+      }
+      const session = auth?.session ?? `registration-${++this.sessions}`;
+      const completed = this.registrations.get(session) ?? new Set<string>();
+      this.registrations.set(session, completed);
+      if (
+        auth?.type === 'm.login.dummy' ||
+        (auth?.type === 'm.login.email.identity' && this.confirmedEmail(auth))
+      ) {
+        completed.add(auth.type);
+      }
+      if (!REGISTRATION_FLOWS.some((f) => f.every((s) => completed.has(s)))) {
+        return engineFail({
+          kind: 'http',
+          code: 'uia-required',
+          diagnostic: { kind: 'http', httpStatus: 401 },
+          params: {
+            challenge: {
+              session,
+              flows: REGISTRATION_FLOWS.map((stages) => ({ stages })),
+              completed: [...completed],
+            },
+          },
+        });
+      }
+      this.registrations.delete(session);
+      this.users.set(registration.localpart, {
+        password: registration.password,
+      });
+      const { userId, deviceId, accessToken } = this.session(
+        registration.localpart,
+        null,
+      );
+      return engineOk({
+        userId,
+        deviceId,
+        accessToken,
+        refreshToken: null,
+        expiresInMs: null,
+      });
+    });
+  }
+
+  requestRegistrationEmailToken(
+    baseUrl: string,
+    request: EmailTokenRequest,
+  ): Observable<EngineResult<{ readonly sid: string }>> {
+    return this.command('requestRegistrationEmailToken', () => {
+      if ([...this.users.values()].some((u) => u.email === request.email)) {
+        return engineFail(
+          httpFailure(400, 'M_THREEPID_IN_USE', 'Email is already in use'),
+        );
+      }
+      const sid = `registration-sid-${this.registrationLinks.size + 1}`;
+      this.registrationLinks.set(sid, {
+        email: request.email,
+        clientSecret: request.clientSecret,
+        confirmed: false,
+      });
+      return engineOk({ sid });
+    });
+  }
+
+  /** Confirms the newest registration link sent with `clientSecret`, as the person would. */
+  confirmRegistrationLink(clientSecret: string): void {
+    confirmNewest(this.registrationLinks, clientSecret);
+  }
+
   requestPasswordResetToken(
     baseUrl: string,
     request: EmailTokenRequest,
@@ -180,9 +293,7 @@ export class FakeAuthEngine implements AuthEngine {
 
   /** Confirms the newest reset link sent with `clientSecret`, as the person would. */
   confirmResetLink(clientSecret: string): void {
-    const links = [...this.resetLinks.values()];
-    const link = links.reverse().find((l) => l.clientSecret === clientSecret);
-    if (link) link.confirmed = true;
+    confirmNewest(this.resetLinks, clientSecret);
   }
 
   whoami(
@@ -238,6 +349,13 @@ export class FakeAuthEngine implements AuthEngine {
     };
     this.accessTokens.set(accessToken, owner);
     return { ...owner, accessToken, refreshToken: null };
+  }
+
+  private confirmedEmail(auth: RegistrationAuth): boolean {
+    const creds = auth['threepid_creds'] as
+      { readonly sid?: string; readonly client_secret?: string } | undefined;
+    const link = this.registrationLinks.get(creds?.sid ?? '');
+    return !!link?.confirmed && link.clientSecret === creds?.client_secret;
   }
 
   private localpartOf(userId: string): string {

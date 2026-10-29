@@ -24,6 +24,32 @@ export interface TokenLogin {
   readonly deviceId: string | null;
 }
 
+export interface Registration {
+  readonly localpart: string;
+  readonly password: string;
+  readonly deviceDisplayName: string;
+}
+
+/** A registration stage's `auth`: the UIA session, the stage `type` and its own fields. */
+export interface RegistrationAuth {
+  readonly session?: string;
+  readonly type?: string;
+  readonly [field: string]: unknown;
+}
+
+/**
+ * What the homeserver answered for a created account, as it sent it: the caller checks the
+ * identity and the tokens before establishing anything.
+ */
+export interface RegisteredAccount {
+  readonly userId: string;
+  readonly deviceId: string | null;
+  readonly accessToken: string | null;
+  readonly refreshToken: string | null;
+  /** The access token's lifetime from now, when it expires. */
+  readonly expiresInMs: number | null;
+}
+
 export interface EmailTokenRequest {
   readonly email: string;
   readonly clientSecret: string;
@@ -76,6 +102,21 @@ export interface AuthEngine {
     baseUrl: string,
     login: TokenLogin,
   ): Observable<EngineResult<SignedInSession>>;
+  /**
+   * Creates an account and signs it in on a new device. The server's user-interactive auth
+   * fails `uia-required` with the challenge, its stage params and the server's text; a
+   * refused step's text crosses as `serverMessage` too.
+   */
+  register(
+    baseUrl: string,
+    registration: Registration,
+    auth: RegistrationAuth | null,
+  ): Observable<EngineResult<RegisteredAccount>>;
+  /** A refused address carries the server's text as `serverMessage`. */
+  requestRegistrationEmailToken(
+    baseUrl: string,
+    request: EmailTokenRequest,
+  ): Observable<EngineResult<{ readonly sid: string }>>;
   requestPasswordResetToken(
     baseUrl: string,
     request: EmailTokenRequest,

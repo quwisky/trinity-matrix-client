@@ -29,6 +29,8 @@ export interface AuthContractSetup {
   };
   /** Whether the homeserver still accepts `accessToken` (whoami succeeds). */
   sessionAlive(accessToken: string): Promise<boolean>;
+  /** Confirms the newest registration link mailed to `email` for `clientSecret`; needs mail delivery. */
+  confirmRegistrationLink?(email: string, clientSecret: string): Promise<void>;
 }
 
 const NOBODY = '@nobody:invalid';
@@ -255,6 +257,154 @@ export function defineAuthEngineContract(
           'login-refused',
         );
       });
+    });
+
+    describe('registering an account', () => {
+      const fresh = (name: string) =>
+        `${name}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const registration = (localpart: string) => ({
+        localpart,
+        password: `pw-${localpart}`,
+        deviceDisplayName: DISPLAY_NAME,
+      });
+
+      async function challenge(localpart: string) {
+        const failure = failureOf(
+          await once(
+            context.engine.register(
+              context.baseUrl,
+              registration(localpart),
+              null,
+            ),
+          ),
+        );
+        expect(failure.code).toBe('uia-required');
+        if (failure.code !== 'uia-required') throw new Error('no challenge');
+        const { session, flows } = failure.params.challenge;
+        expect(typeof session).toBe('string');
+        return { session: session as string, flows };
+      }
+
+      it('answers with a challenge, then registers through the dummy stage and signs in', async () => {
+        const localpart = fresh('reg-dummy');
+        const { session, flows } = await challenge(localpart);
+        expect(flows).toContainEqual({ stages: ['m.login.dummy'] });
+
+        const result = await once(
+          context.engine.register(context.baseUrl, registration(localpart), {
+            type: 'm.login.dummy',
+            session,
+          }),
+        );
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const server = context.user.userId.slice(
+          context.user.userId.indexOf(':') + 1,
+        );
+        expect(result.value.userId).toBe(`@${localpart}:${server}`);
+        expect(result.value.deviceId).toEqual(expect.any(String));
+        expect(result.value.accessToken).toEqual(expect.any(String));
+        await expect(
+          once(
+            context.engine.whoami(
+              context.baseUrl,
+              result.value.accessToken as string,
+            ),
+          ),
+        ).resolves.toEqual({
+          ok: true,
+          value: {
+            userId: result.value.userId,
+            deviceId: result.value.deviceId,
+          },
+        });
+      });
+
+      it('refuses an answer for a session it never issued', async () => {
+        const failure = failureOf(
+          await once(
+            context.engine.register(
+              context.baseUrl,
+              registration(fresh('reg-unknown')),
+              { type: 'm.login.dummy', session: 'never-issued' },
+            ),
+          ),
+        );
+
+        expect(failure).toMatchObject({
+          code: 'request-failed',
+          diagnostic: { httpStatus: 400 },
+        });
+      });
+
+      it('refuses a username that is taken, with the server text', async () => {
+        const failure = failureOf(
+          await once(
+            context.engine.register(
+              context.baseUrl,
+              registration(context.user.localpart),
+              null,
+            ),
+          ),
+        );
+
+        expect(failure).toMatchObject({
+          code: 'request-failed',
+          diagnostic: { errcode: 'M_USER_IN_USE' },
+          params: { serverMessage: expect.any(String) },
+        });
+      });
+
+      it.skipIf(!options.mail)(
+        'registers through the email stage only once the mailed link is confirmed',
+        async () => {
+          const confirm = context.confirmRegistrationLink;
+          if (!confirm) throw new Error('registration by email needs mail');
+          const localpart = fresh('reg-email');
+          const email = `${localpart}@example.test`;
+          const clientSecret = `contract${crypto.randomUUID().replaceAll('-', '')}`;
+          const { session, flows } = await challenge(localpart);
+          expect(flows).toContainEqual({ stages: ['m.login.email.identity'] });
+
+          const sent = await once(
+            context.engine.requestRegistrationEmailToken(context.baseUrl, {
+              email,
+              clientSecret,
+              sendAttempt: 1,
+            }),
+          );
+          expect(sent.ok).toBe(true);
+          if (!sent.ok) return;
+          const answer = () =>
+            once(
+              context.engine.register(
+                context.baseUrl,
+                registration(localpart),
+                {
+                  type: 'm.login.email.identity',
+                  threepid_creds: {
+                    sid: sent.value.sid,
+                    client_secret: clientSecret,
+                  },
+                  session,
+                },
+              ),
+            );
+
+          const early = failureOf(await answer());
+          expect(early.code).toBe('uia-required');
+          if (early.code !== 'uia-required') return;
+          expect(early.params.challenge.completed ?? []).not.toContain(
+            'm.login.email.identity',
+          );
+          await confirm(email, clientSecret);
+          const done = await answer();
+          expect(done.ok && done.value.userId).toMatch(
+            new RegExp(`^@${localpart}:`, 'u'),
+          );
+        },
+      );
     });
 
     describe('resetting a forgotten password', () => {

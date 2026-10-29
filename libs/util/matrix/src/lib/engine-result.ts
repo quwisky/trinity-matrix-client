@@ -128,7 +128,11 @@ export type EngineFailure = {
   /** The server wants user-interactive authentication first; the challenge says which stages. */
   | {
       readonly code: 'uia-required';
-      readonly params: { readonly challenge: UiaChallenge };
+      readonly params: {
+        readonly challenge: UiaChallenge;
+        /** Text the homeserver wrote about the stage it refused, such as a registration step's error. */
+        readonly serverMessage?: string;
+      };
     }
   /** The person cancelled a password prompt, or stopped the command that raised it. */
   | { readonly code: 'uia-cancelled' }
