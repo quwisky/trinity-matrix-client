@@ -49,7 +49,6 @@ describe('Trust production boundary', () => {
       /export interface TrustCryptoProjectionConfig \{(?<body>[\s\S]*?)\n\}/,
     )?.groups?.body;
 
-    expect(trust).toContain('TrustCryptoPort');
     expect(trust).not.toContain('MatrixClientService');
     expect(trust).not.toContain('initRustCrypto');
     expect(port).not.toMatch(

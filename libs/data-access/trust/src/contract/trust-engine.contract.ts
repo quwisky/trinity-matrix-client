@@ -138,6 +138,13 @@ export function defineTrustEngineContract(
       return result.value;
     }
 
+    /** The own identity check, which must know an identity. */
+    async function knownIdentity() {
+      const check = await value(engine.ownIdentityCheck(alice));
+      if (!check.identityKnown) throw new Error('No identity known');
+      return check;
+    }
+
     async function code(source: Observable<EngineResult<unknown>>) {
       const result = await once(source);
       return result.ok ? 'ok' : result.failure.code;
@@ -280,11 +287,9 @@ export function defineTrustEngineContract(
     it(
       'reports no identity on an account that publishes none',
       async () => {
+        // No identity after the re-query: nothing else is read.
         expect(await value(engine.ownIdentityCheck(alice))).toEqual({
           identityKnown: false,
-          publishedMasterKey: null,
-          localMasterKey: null,
-          facts: NOTHING_READY,
         });
         expect(await value(engine.publishedMasterKey(alice))).toBeNull();
       },
@@ -314,8 +319,7 @@ export function defineTrustEngineContract(
             },
           },
         });
-        const check = await value(engine.ownIdentityCheck(alice));
-        expect(check.identityKnown).toBe(true);
+        const check = await knownIdentity();
         expect(check.publishedMasterKey).toEqual(expect.any(String));
         expect(check.localMasterKey).toBe(check.publishedMasterKey);
         expect(await value(engine.publishedMasterKey(alice))).toBe(
@@ -665,9 +669,8 @@ export function defineTrustEngineContract(
       async () => {
         await context.publishIdentityElsewhere();
 
-        const check = await value(engine.ownIdentityCheck(alice));
+        const check = await knownIdentity();
 
-        expect(check.identityKnown).toBe(true);
         expect(check.publishedMasterKey).toEqual(expect.any(String));
         expect(check.localMasterKey).not.toBe(check.publishedMasterKey);
         expect(check.facts.crossSigning.privateKeysCachedLocally).toEqual({
@@ -835,7 +838,7 @@ export function defineTrustEngineContract(
         );
 
         await facts.until(recovered);
-        const check = await value(engine.ownIdentityCheck(alice));
+        const check = await knownIdentity();
         expect(check.localMasterKey).toBe(check.publishedMasterKey);
       },
       testTimeoutMs,

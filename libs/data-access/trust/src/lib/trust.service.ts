@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import type { UIAuthCallback } from 'matrix-js-sdk';
 import {
   Observable,
   catchError,
@@ -8,26 +7,19 @@ import {
   from,
   map,
   of,
+  take,
   throwError,
 } from 'rxjs';
-import {
-  SessionStateService,
-  TrustCryptoPort,
-  type TrustCryptoApi,
-} from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   EngineRequestError,
   type EngineFailure,
   type EngineResult,
   type RecoveryRefusal,
-  runPasswordUia,
   type PasswordPrompt,
 } from '@trinity/util/matrix';
-import {
-  PartialRecoveryResetError,
-  encodedRecoveryKey,
-  runRecoveryReset,
-} from './recovery-reset';
+import { answerPasswordPrompts } from './password-prompts';
+import { PartialRecoveryResetError, runRecoveryReset } from './recovery-reset';
 import {
   TrustOperationError,
   recoverTrustOperation,
@@ -55,14 +47,13 @@ export type {
 const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
 
 /**
- * The account-level Trust module on top of the lifecycle-free {@link TrustCryptoPort}:
- * bootstraps cross-signing, secret storage (4S) and key backup, exposes readiness as
- * signals, and recovers a fresh device from the recovery key. Wraps `client.getCrypto()`
- * (the CryptoApi) so components never touch matrix-js-sdk directly.
+ * The account-level Trust module on top of the {@link TRUST_ENGINE}: sets up
+ * cross-signing, secret storage (4S) and key backup, exposes readiness as signals, and
+ * recovers a fresh device from the recovery key. Every decision and message stays here;
+ * the engine runs the protocol steps.
  */
 @Injectable({ providedIn: 'root' })
 export class TrustService {
-  private readonly cryptoPort = inject(TrustCryptoPort);
   private readonly providerRecovery = inject(TRUST_PROVIDER_RECOVERY);
   private readonly healthRuntime = inject(TrustHealthService);
   private readonly engine = inject(TRUST_ENGINE);
@@ -110,43 +101,46 @@ export class TrustService {
    *   closed: the upload that follows needs the same server, and a wrong "no identity"
    *   is the destructive answer.
    *
+   * An account that cannot answer a password (SSO-only, OIDC-native) ends as
+   * `provider-action-required`.
+   *
    * When this device holds an identity the server never received (a first setup cancelled
    * or failed before its upload), setup creates and uploads new keys rather than storing
    * the unpublished ones in secret storage.
    */
   setUp(promptPassword: PasswordPrompt): Observable<string> {
-    return defer(() =>
-      from(
-        (async (): Promise<string> => {
-          // Captured once: the server read and the key generation below are both awaits,
-          // and an account switch mid-flight must not retarget the UIA user id onto a
-          // different account (or find no client at all, once the old one signed out).
-          const context = this.cryptoPort.active();
-          const client = context.client;
-          const crypto = this.requireCrypto('setup', context.crypto);
-          const userId = client.getUserId() ?? '';
-          await assertNoRecoveryOnAccount(client);
-          const identity = await assertNoIdentityElsewhere(client, crypto);
-          const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
-          await crypto.bootstrapCrossSigning({
-            authUploadDeviceSigningKeys: this.passwordUia(
-              promptPassword,
-              userId,
-            ),
-            // Keys this device made and never uploaded: bootstrapping without this does
-            // nothing, so the 4S set up next would hold keys no server has. The server has
-            // no identity, so new keys replace nothing.
-            ...(identity === 'unpublished' && { setupNewCrossSigning: true }),
-          });
-          await crypto.bootstrapSecretStorage({
-            setupNewKeyBackup: true,
-            createSecretStorageKey: async () => recoveryKey,
-          });
-          await this.healthRuntime.reconcile();
-          return encodedRecoveryKey(recoveryKey);
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('setup'));
+    return defer(() => {
+      // Captured once: an account switch mid-flight must not retarget the setup.
+      const accountId = this.session.activeAccountId();
+      if (!accountId) throw notReady('setup');
+      return this.engine.serverDefaultKeyId(accountId).pipe(
+        concatMap((server) => {
+          assertNoRecoveryOnAccount(server);
+          return this.engine.ownIdentityCheck(accountId);
+        }),
+        concatMap((check) => {
+          if (!check.ok) throw commandRefusal('setup', check.failure);
+          const identity = assertNoIdentityElsewhere(check.value);
+          return answerPasswordPrompts(
+            this.engine,
+            accountId,
+            // Keys this device made and never uploaded are replaced: the server has no
+            // identity, so new keys replace nothing.
+            this.engine.setUpRecovery(accountId, {
+              newIdentity: identity === 'unpublished',
+            }),
+            promptPassword,
+          );
+        }),
+        map((result) => {
+          if (!result.ok) throw commandRefusal('setup', result.failure);
+          return result.value.recoveryKey;
+        }),
+        concatMap((recoveryKey) =>
+          from(this.healthRuntime.reconcile()).pipe(map(() => recoveryKey)),
+        ),
+      );
+    }).pipe(recoverTrustOperation('setup'));
   }
 
   /**
@@ -159,21 +153,26 @@ export class TrustService {
    */
   resetRecovery(promptPassword: PasswordPrompt): Observable<string> {
     return defer(() => {
-      // Captured once: the reset spans several awaits, and an account switch mid-flight
+      // Captured once: the reset spans several steps, and an account switch mid-flight
       // must not retarget the rollback (or the UIA user id) onto a different account.
-      const context = this.cryptoPort.active();
-      const client = context.client;
-      return from(
-        runRecoveryReset(
-          {
-            crypto: this.requireCrypto('reset-recovery', context.crypto),
-            client,
-            storage: client.secretStorage,
-            userId: client.getUserId() ?? '',
-            refreshStatus: () => this.healthRuntime.reconcile(),
-          },
-          promptPassword,
-        ),
+      const accountId = this.session.activeAccountId();
+      if (!accountId) throw notReady('reset-recovery');
+      // Refused before the password is asked for when the account has no crypto.
+      return this.engine.facts(accountId).pipe(
+        take(1),
+        concatMap((facts) => {
+          if (!facts.ok && facts.failure.code !== 'request-failed') {
+            throw commandRefusal('reset-recovery', facts.failure);
+          }
+          return runRecoveryReset(
+            {
+              engine: this.engine,
+              accountId,
+              refreshStatus: () => this.healthRuntime.reconcile(),
+            },
+            promptPassword,
+          );
+        }),
       );
     }).pipe(
       catchError((cause: unknown) =>
@@ -256,26 +255,6 @@ export class TrustService {
       }),
       recoverTrustOperation(operation),
     );
-  }
-
-  /**
-   * UIA callback for uploading new device-signing keys, via the shared password-UIA loop.
-   * `userId` is passed in rather than read here: the callback is built after several
-   * awaits, so the account it authenticates as must be the one the caller captured.
-   */
-  private passwordUia(
-    promptPassword: PasswordPrompt,
-    userId: string,
-  ): UIAuthCallback<void> {
-    return (makeRequest) => runPasswordUia(makeRequest, promptPassword, userId);
-  }
-
-  private requireCrypto(
-    operation: TrustOperation,
-    crypto = this.cryptoPort.active().crypto,
-  ): TrustCryptoApi {
-    if (!crypto) throw notReady(operation);
-    return crypto;
   }
 }
 

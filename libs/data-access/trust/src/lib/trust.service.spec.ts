@@ -1,56 +1,14 @@
-import { ApplicationRef, signal } from '@angular/core';
+import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MockProvider, ngMocks } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { ngMocks } from 'ng-mocks';
+import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientEvent, MatrixError } from 'matrix-js-sdk';
-import {
-  CryptoEvent,
-  type BootstrapCrossSigningOpts,
-} from 'matrix-js-sdk/lib/crypto-api';
-import {
-  MatrixClientService,
-  SESSION_SNAPSHOT,
-  type SessionSnapshot,
-  TrustCryptoPort,
-} from '@trinity/data-access/matrix-client';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
-import { FakeTrustEngine } from '../contract/fake-trust-engine';
-import { TRUST_ENGINE } from './trust-engine.token';
-import { TRUST_PROVIDER_RECOVERY } from './trust-provider-recovery.port';
 import { TrustService } from './trust.service';
-import { setup, uiaError } from './trust.spec-harness';
-
-/** TrustService over the fake engine, with `active` the session's active account. */
-function onFakeEngine(active: string | null = '@alice:contract.invalid') {
-  const engine = new FakeTrustEngine();
-  const session = signal<SessionSnapshot>({
-    activeAccountId: active,
-    accounts: [engine.alice].map((accountId) => ({
-      accountId,
-      deviceId: engine.deviceIdOf(accountId),
-      generation: 1,
-      syncState: 'syncing' as const,
-      serverSynced: true,
-      roomsPrepared: true,
-      waitingCount: 0,
-      cryptoStoreEncrypted: true,
-    })),
-    softLoggedOut: [],
-  });
-  TestBed.configureTestingModule({
-    providers: [
-      { provide: TRUST_ENGINE, useValue: engine },
-      { provide: SESSION_SNAPSHOT, useValue: session },
-      MockProvider(TrustCryptoPort),
-      {
-        provide: TRUST_PROVIDER_RECOVERY,
-        useValue: { accountManagement: () => of(null) },
-      },
-    ],
-  });
-  return { svc: TestBed.inject(TrustService), engine, alice: engine.alice };
-}
+import { onFakeEngine, setup } from './trust.spec-harness';
 
 describe('TrustService', () => {
   beforeEach(() => TestBed.resetTestingModule());
@@ -421,92 +379,91 @@ describe('TrustService', () => {
     });
   });
 
-  describe('passwordUia (device-signing upload auth)', () => {
-    // Capture the authUploadDeviceSigningKeys callback setUp hands to bootstrapCrossSigning.
-    async function captureUia(promptPassword: () => Promise<string | null>) {
-      const { svc, crypto } = setup({ defaultKeyId: 'k' });
-      let uia!: (mr: (a: unknown) => Promise<unknown>) => Promise<unknown>;
-      crypto.bootstrapCrossSigning.mockImplementation(
-        async (opts: BootstrapCrossSigningOpts) => {
-          uia = opts.authUploadDeviceSigningKeys as typeof uia;
-        },
-      );
-      await firstValueFrom(svc.setUp(promptPassword));
-      return uia;
-    }
+  describe('setup on the engine', () => {
+    it('sets up a fresh account: one prompt, then this device is verified with backup on', async () => {
+      const { svc, engine } = onFakeEngine();
+      const prompt = vi.fn(async () => engine.password);
 
-    it('does not prompt when the upload needs no auth', async () => {
-      const prompt = vi.fn();
-      const uia = await captureUia(prompt);
-      const makeRequest = vi.fn().mockResolvedValue(undefined);
+      const shown = await firstValueFrom(svc.setUp(prompt));
 
-      await uia(makeRequest);
-
-      expect(makeRequest).toHaveBeenCalledTimes(1);
-      expect(makeRequest).toHaveBeenCalledWith(null);
-      expect(prompt).not.toHaveBeenCalled();
-    });
-
-    it('submits the password against the returned UIA session', async () => {
-      const prompt = vi.fn().mockResolvedValue('s3cret');
-      const uia = await captureUia(prompt);
-      const makeRequest = vi
-        .fn()
-        .mockRejectedValueOnce(uiaError('sess1'))
-        .mockResolvedValueOnce(undefined);
-
-      await uia(makeRequest);
-
+      expect(shown).toMatch(/^Es/);
       expect(prompt).toHaveBeenCalledOnce();
-      expect(makeRequest).toHaveBeenCalledTimes(2);
-      expect(makeRequest.mock.calls[1][0]).toMatchObject({
-        type: 'm.login.password',
-        password: 's3cret',
-        session: 'sess1',
+      expect(svc.status()).toBe('ready');
+      expect(svc.thisDeviceVerified()).toBe(true);
+      expect(svc.keyBackupActive()).toBe(true);
+    });
+
+    it('refuses, before asking, an account whose identity another device holds', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.publishIdentityElsewhere(alice);
+      const prompt = vi.fn(async () => engine.password);
+
+      await expect(firstValueFrom(svc.setUp(prompt))).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'stale-state',
+        recovery: 'verify-another-device',
       });
-    });
-
-    it('re-prompts after a rejected password, then succeeds', async () => {
-      const prompt = vi
-        .fn()
-        .mockResolvedValueOnce('wrong')
-        .mockResolvedValueOnce('right');
-      const uia = await captureUia(prompt);
-      const makeRequest = vi
-        .fn()
-        .mockRejectedValueOnce(uiaError('s1')) // probe
-        .mockRejectedValueOnce(uiaError('s2')) // wrong password
-        .mockResolvedValueOnce(undefined); // right password
-
-      await uia(makeRequest);
-
-      expect(prompt).toHaveBeenCalledTimes(2);
-      expect(makeRequest).toHaveBeenCalledTimes(3);
-      expect(makeRequest.mock.calls[2][0]).toMatchObject({
-        password: 'right',
-        session: 's2',
-      });
-    });
-
-    it('throws when the user cancels the password prompt', async () => {
-      const prompt = vi.fn().mockResolvedValue(null);
-      const uia = await captureUia(prompt);
-      const makeRequest = vi.fn().mockRejectedValueOnce(uiaError('s1'));
-
-      await expect(uia(makeRequest)).rejects.toThrow(/cancel/i);
-    });
-
-    it('rethrows a non-UIA error from the probe without prompting', async () => {
-      const prompt = vi.fn();
-      const uia = await captureUia(prompt);
-      const makeRequest = vi
-        .fn()
-        .mockRejectedValue(
-          new MatrixError({ errcode: 'M_LIMIT_EXCEEDED' }, 429),
-        );
-
-      await expect(uia(makeRequest)).rejects.toBeInstanceOf(MatrixError);
       expect(prompt).not.toHaveBeenCalled();
+      expect(engine.steps.map((step) => step.name)).toEqual([
+        'ownIdentityCheck',
+      ]);
+    });
+
+    it('refuses an account the server says already has recovery', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.setServerDefaultKey(alice, 'still-valid');
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => engine.password)),
+      ).rejects.toThrow(/already has a recovery key/i);
+    });
+
+    it('replaces an identity this device made but never published', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.strandUnpublishedIdentity(alice);
+      engine.setFacts(alice, { crossSigningReady: true });
+
+      await firstValueFrom(svc.setUp(async () => engine.password));
+
+      expect(engine.steps.map((step) => step.name)).toContain(
+        'setUpRecovery(true)',
+      );
+    });
+
+    it('ends as provider-action-required for an account without a password', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.requireProviderAuth(alice);
+      const prompt = vi.fn(async () => engine.password);
+
+      await expect(firstValueFrom(svc.setUp(prompt))).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'provider-action-required',
+        recovery: 'open-provider',
+      });
+      expect(prompt).not.toHaveBeenCalled();
+    });
+
+    it('is cancelled when the password prompt is', async () => {
+      const { svc } = onFakeEngine();
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => null)),
+      ).rejects.toMatchObject({ operation: 'setup', kind: 'cancelled' });
+    });
+
+    it('is not ready without an active account or its crypto', async () => {
+      const signedOut = onFakeEngine(null);
+      await expect(
+        firstValueFrom(signedOut.svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({ operation: 'setup', kind: 'not-ready' });
+      TestBed.resetTestingModule();
+
+      const nocrypto = '@nocrypto:contract.invalid';
+      const { svc, engine } = onFakeEngine(nocrypto);
+      engine.addAccount(nocrypto, { crypto: false });
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({ operation: 'setup', kind: 'not-ready' });
     });
   });
 
