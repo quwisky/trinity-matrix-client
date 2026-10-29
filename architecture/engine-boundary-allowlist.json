@@ -31,7 +31,6 @@
     "libs/feature/auth/src/lib/login/login.page.ts",
     "libs/util/matrix/src/lib/message-content.ts",
     "libs/util/matrix/src/lib/oidc-issuer-discovery.ts",
-    "libs/util/matrix/src/lib/password-uia.ts",
     "libs/util/matrix/src/lib/replacement.ts",
     "libs/util/matrix/src/lib/room-avatar.ts",
     "libs/util/matrix/src/lib/room-create.ts",

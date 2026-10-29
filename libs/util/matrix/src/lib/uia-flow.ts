@@ -1,5 +1,3 @@
-import { MatrixError, type AuthDict } from 'matrix-js-sdk';
-
 /** Prompts the user for their password when a UIA stage requires it (null = cancel). */
 export type PasswordPrompt = () => Promise<string | null>;
 
@@ -37,38 +35,33 @@ export class UiaAttemptsExceededError extends Error {
   }
 }
 
-/**
- * Whether `err` is the UIA flow reporting that the user was *not* authenticated —
- * cancelled, refused by the server, or out of attempts — as opposed to the underlying
- * request failing for its own reasons.
- */
-export function isUiaRefusal(err: unknown): boolean {
-  return (
-    err instanceof UiaCancelledError ||
-    err instanceof UiaUnsupportedError ||
-    err instanceof UiaAttemptsExceededError
-  );
-}
-
 /** Max password attempts the *user* gets before we give up on a UIA flow. */
 const MAX_ATTEMPTS = 3;
 
-/** Tuning for {@link runPasswordUia}. */
-export interface PasswordUiaOptions {
-  /**
-   * How many of the prompt's first answers are a replayed, previously accepted password
-   * rather than the user's. They get their own budget on top of {@link MAX_ATTEMPTS}, so a
-   * rejected replay (password changed in between) does not cost the human a try.
-   */
-  readonly replayedAttempts?: number;
+/** A UIA challenge: the flows the server offers, the stages already done and its session. */
+export interface UiaChallenge {
+  readonly session?: string;
+  readonly flows: readonly { readonly stages: readonly string[] }[];
+  readonly completed?: readonly string[];
 }
 
-/** The subset of a UIA 401 body we read. */
-interface UiaData {
-  session?: string;
-  flows?: { stages?: string[] }[];
-  completed?: string[];
-}
+/** The `auth` a request answers a challenge stage with, as the Matrix UIA wire shape. */
+export type UiaAuth =
+  | {
+      readonly type: 'm.login.password';
+      readonly identifier: {
+        readonly type: 'm.id.user';
+        readonly user: string;
+      };
+      readonly password: string;
+      readonly session: string;
+    }
+  | { readonly session: string };
+
+/** One send of the request: its result, or the challenge the server answered with. */
+export type UiaResponse<T> =
+  | { readonly kind: 'done'; readonly result: T }
+  | { readonly kind: 'uia-required'; readonly challenge: UiaChallenge };
 
 /** What a completed UIA flow yields: the request's result and the accepted password. */
 export interface UiaOutcome<T> {
@@ -100,36 +93,33 @@ export interface UiaStages {
     readonly prompt: UiaPasswordPrompt;
   };
   readonly fallback?: UiaFallback;
+  /**
+   * How many of the password prompt's first answers are a replayed, previously accepted
+   * password rather than the user's. They get their own budget on top of
+   * {@link MAX_ATTEMPTS}, so a rejected replay (password changed in between) does not cost
+   * the human a try.
+   */
   readonly replayedAttempts?: number;
 }
 
 const PASSWORD_STAGE = 'm.login.password';
 
 /**
- * Drive a request that may require UIA: `makeRequest(null)` probes, then each remaining
- * stage of the first usable flow is completed in turn, in-app for a password and through
- * the fallback page for anything else.
+ * Drive a request that may require UIA: `send(null)` probes, then each remaining stage of
+ * the first usable flow is completed in turn, in-app for a password and through the
+ * fallback page for anything else. A failure `send` throws is rethrown as it is.
  */
 export async function driveUia<T>(
-  makeRequest: (auth: AuthDict | null) => Promise<T>,
+  send: (auth: UiaAuth | null) => Promise<UiaResponse<T>>,
   stages: UiaStages,
 ): Promise<UiaOutcome<T>> {
-  let challenge: UiaData;
-  try {
-    return { result: await makeRequest(null), password: null };
-  } catch (err) {
-    const probe = uiaChallenge(err);
-    if (!probe) {
-      throw err;
-    }
-    challenge = probe;
-  }
-
+  let response = await send(null);
   const passwordLimit = MAX_ATTEMPTS + (stages.replayedAttempts ?? 0);
   let passwordAttempts = 0;
   let password: string | null = null;
   let submitted: string | null = null;
-  for (;;) {
+  while (response.kind === 'uia-required') {
+    const { challenge } = response;
     if (
       submitted === PASSWORD_STAGE &&
       passwordAttempts >= passwordLimit &&
@@ -146,7 +136,7 @@ export async function driveUia<T>(
       throw new Error('Authentication failed: missing auth session.');
     }
     const pending = submitted === stage;
-    let auth: AuthDict;
+    let auth: UiaAuth;
     if (stage === PASSWORD_STAGE && stages.password) {
       const answer = await stages.password.prompt({ rejected: pending });
       if (answer === null) {
@@ -168,81 +158,23 @@ export async function driveUia<T>(
       auth = { session };
     }
     submitted = stage;
-    try {
-      return { result: await makeRequest(auth), password };
-    } catch (err) {
-      const next = uiaChallenge(err);
-      if (!next) {
-        throw err;
-      }
-      challenge = next;
-    }
+    response = await send(auth);
   }
-}
-
-/**
- * Run `makeRequest` for its result, completing a password UIA flow if the server asks.
- *
- * Throws {@link UiaCancelledError} if the prompt is cancelled, and
- * {@link UiaUnsupportedError} when the server requires a stage Trinity can't satisfy
- * (rather than looping to the attempt cap).
- *
- * Pass {@link PasswordUiaOptions.replayedAttempts} when `promptPassword` answers its first
- * calls from a stored password, so the human still gets the full {@link MAX_ATTEMPTS}.
- */
-export async function runPasswordUia<T>(
-  makeRequest: (auth: AuthDict | null) => Promise<T>,
-  promptPassword: PasswordPrompt,
-  userId: string,
-  options?: PasswordUiaOptions,
-): Promise<T> {
-  const { result } = await driveUia(makeRequest, {
-    password: { user: userId, prompt: () => promptPassword() },
-    replayedAttempts: options?.replayedAttempts,
-  });
-  return result;
-}
-
-/**
- * Run the same flow for its *authentication* rather than its result, against a harmless
- * request, and report the accepted password (null if none was asked for).
- *
- * An irreversible action uses this to prove the user can authenticate *before* it starts;
- * the password can then be replayed into the real request's challenge.
- */
-export async function completePasswordUia(
-  makeRequest: (auth: AuthDict | null) => Promise<unknown>,
-  promptPassword: PasswordPrompt,
-  userId: string,
-): Promise<string | null> {
-  const { password } = await driveUia(makeRequest, {
-    password: { user: userId, prompt: () => promptPassword() },
-  });
-  return password;
-}
-
-/** A UIA 401 carries `flows` + a `session`; return its data, or null. */
-function uiaChallenge(err: unknown): UiaData | null {
-  const data = err instanceof MatrixError ? err.data : undefined;
-  return data && 'flows' in data ? (data as UiaData) : null;
+  return { result: response.result, password };
 }
 
 /**
  * The next stage to complete: from the first flow finishable in-app, else the first flow
- * whose remaining stages all have a handler. Unknown or empty flows attempt a password.
+ * whose remaining stages all have a handler. An empty flow set attempts a password.
  */
-function nextStage(data: UiaData, stages: UiaStages): string | null {
-  const flows = data.flows;
-  if (!Array.isArray(flows) || flows.length === 0) {
+function nextStage(challenge: UiaChallenge, stages: UiaStages): string | null {
+  const { flows } = challenge;
+  if (flows.length === 0) {
     return stages.password ? PASSWORD_STAGE : null;
   }
-  const completed = data.completed ?? [];
+  const completed = challenge.completed ?? [];
   const remaining = flows
-    .map((flow) =>
-      Array.isArray(flow.stages)
-        ? flow.stages.filter((stage) => !completed.includes(stage))
-        : [],
-    )
+    .map((flow) => flow.stages.filter((stage) => !completed.includes(stage)))
     .filter((rest) => rest.length > 0);
   const inApp = (stage: string) =>
     stage === PASSWORD_STAGE && stages.password !== undefined;

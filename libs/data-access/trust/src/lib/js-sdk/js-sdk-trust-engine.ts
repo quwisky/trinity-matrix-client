@@ -40,6 +40,7 @@ import {
 import {
   JS_SDK_CLIENTS,
   type JsSdkClients,
+  jsSdkUia,
 } from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
@@ -809,7 +810,7 @@ export class JsSdkTrustEngine implements TrustEngine {
       // Signing this device out is logout, not device management.
       if (deviceId === client.getDeviceId()) return engineFail(OWN_DEVICE);
       await driveUia(
-        (auth) => client.deleteDevice(deviceId, auth ?? undefined),
+        jsSdkUia((auth) => client.deleteDevice(deviceId, auth ?? undefined)),
         {
           password: { user: client.getUserId() ?? '', prompt },
         },
@@ -824,7 +825,7 @@ export class JsSdkTrustEngine implements TrustEngine {
   ): Observable<InteractiveUpdate<{ readonly password: string | null }>> {
     return this.interactive(accountId, async (client, prompt) => {
       const { password } = await driveUia(
-        (auth) => client.deleteMultipleDevices([], auth ?? undefined),
+        jsSdkUia((auth) => client.deleteMultipleDevices([], auth ?? undefined)),
         { password: { user: client.getUserId() ?? '', prompt } },
       );
       return engineOk({ password });
@@ -950,7 +951,11 @@ export class JsSdkTrustEngine implements TrustEngine {
       const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
       await crypto.bootstrapCrossSigning({
         authUploadDeviceSigningKeys: async (makeRequest) =>
-          (await driveUia(makeRequest, { password: { user, prompt } })).result,
+          (
+            await driveUia(jsSdkUia(makeRequest), {
+              password: { user, prompt },
+            })
+          ).result,
         // Keys this device made and never uploaded: bootstrapping without this does
         // nothing, so the 4S set up next would hold keys no server has.
         ...(newIdentity && { setupNewCrossSigning: true }),
@@ -977,7 +982,7 @@ export class JsSdkTrustEngine implements TrustEngine {
         // it, and a rejected replay is the engine's retry, not one of the person's attempts.
         authUploadDeviceSigningKeys: async (makeRequest) =>
           (
-            await driveUia(makeRequest, {
+            await driveUia(jsSdkUia(makeRequest), {
               password: { user, prompt: replayFirst(replay, prompt) },
               replayedAttempts: replay === null ? 0 : 1,
             })

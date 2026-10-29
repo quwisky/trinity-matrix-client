@@ -29,7 +29,7 @@ export * from './lib/poll';
 export * from './lib/transient-errors';
 export * from './lib/waiting-to-send';
 export * from './lib/request-failure';
-export * from './lib/password-uia';
+export * from './lib/uia-flow';
 export * from './lib/attachment-crypto';
 export * from './lib/key-file-crypto';
 export * from './lib/room-avatar';
