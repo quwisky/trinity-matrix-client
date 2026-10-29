@@ -1,20 +1,14 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import {
-  MatrixClientService,
-  SessionStateService,
-} from '@trinity/data-access/matrix-client';
-import { ProjectionRuntime } from '@trinity/runtime/projection';
-import type { MatrixClient } from 'matrix-js-sdk';
-import { MockProvider, ngMocks } from 'ng-mocks';
 import { lastValueFrom } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setupLiveNotificationSettings } from '../contract/live-notification-settings';
 import type { NotificationRuleHealth } from './notification-health.models';
 import { NotificationLifetime } from './notification-lifetime';
 import { RoomNotificationsService } from './room-notifications.service';
 
 interface FaultableRoomNotifications {
-  rebindClients(): void;
+  acknowledgeRules(): void;
   retryProjection(): void;
 }
 
@@ -22,30 +16,7 @@ describe('NotificationLifetime with the real Room-rule projection', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   it('clears a retained reconciliation failure after the authoritative retry succeeds', async () => {
-    const accountId = signal<string | null>('@a:example.org');
-    const accountIds = signal<readonly string[]>(['@a:example.org']);
-    const client = { on: vi.fn(), off: vi.fn() };
-    TestBed.configureTestingModule({
-      providers: [
-        NotificationLifetime,
-        RoomNotificationsService,
-        ProjectionRuntime,
-        MockProvider(SessionStateService, {
-          activeAccountId: accountId.asReadonly(),
-          accountIds: accountIds.asReadonly(),
-        }),
-        MockProvider(MatrixClientService, {
-          activeUserId: accountId.asReadonly(),
-          accountIds: accountIds.asReadonly(),
-        }),
-      ],
-    });
-    const matrix = TestBed.inject(MatrixClientService);
-    ngMocks.stubMember(matrix, 'isInitialized', true);
-    ngMocks.stubMember(matrix, 'instance', client as unknown as MatrixClient);
-    ngMocks.stubMember(matrix, 'all', () => [
-      { client: client as unknown as MatrixClient } as never,
-    ]);
+    setupLiveNotificationSettings();
     const lifetime = TestBed.inject(NotificationLifetime);
     const roomNotifications = TestBed.inject(
       RoomNotificationsService,
@@ -54,8 +25,9 @@ describe('NotificationLifetime with the real Room-rule projection', () => {
     const owner = lifetime.run(signal(true).asReadonly()).subscribe((event) => {
       if (event.kind === 'health') facts.push(event.fact);
     });
-    const rebindClients = roomNotifications.rebindClients;
-    roomNotifications.rebindClients = () => {
+    expect(facts.at(-1)).toMatchObject({ condition: 'available' });
+    const acknowledgeRules = roomNotifications.acknowledgeRules;
+    roomNotifications.acknowledgeRules = () => {
       throw new Error('private response');
     };
 
@@ -67,7 +39,7 @@ describe('NotificationLifetime with the real Room-rule projection', () => {
       code: 'room-rules-reconciliation-failed',
     });
 
-    roomNotifications.rebindClients = rebindClients;
+    roomNotifications.acknowledgeRules = acknowledgeRules;
     await expect(
       lastValueFrom(lifetime.recover(failed.context, failed.generation)),
     ).resolves.toEqual({ kind: 'success' });

@@ -1,6 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, vi } from 'vitest';
-import { defineNotificationEngineContract } from '../../contract/notification-engine.contract';
+import {
+  type ServerRoomRule,
+  defineNotificationEngineContract,
+} from '../../contract/notification-engine.contract';
 import { JsSdkNotificationEngine } from './js-sdk-notification-engine';
 import {
   baseUrl,
@@ -19,6 +22,13 @@ vi.mock('@trinity/util/matrix', async (importOriginal) => {
     preloadCryptoWasm: () => rxOf(undefined),
   };
 });
+
+interface ServerRule {
+  readonly rule_id: string;
+  readonly enabled: boolean;
+  readonly actions: unknown;
+  readonly conditions?: readonly { key?: string; pattern?: string }[];
+}
 
 // Runs the notification contract against a live Synapse; skipped unless
 // TRINITY_ENGINE_CONTRACT_HS is set.
@@ -51,6 +61,58 @@ describe.skipIf(!baseUrl)('JsSdkNotificationEngine against Synapse', () => {
           )) as { actions?: unknown } | null;
           return rule?.actions;
         },
+        foreignRoomRule: async (kind, ruleId, rule, enabled) => {
+          const path = `/pushrules/global/${kind}/${encodeURIComponent(ruleId)}`;
+          await cs(session.accessToken, 'PUT', path, rule);
+          if (!enabled) {
+            await cs(session.accessToken, 'PUT', `${path}/enabled`, {
+              enabled: false,
+            });
+          }
+        },
+        roomRules: async (roomId) => {
+          const all = (await cs(session.accessToken, 'GET', '/pushrules/')) as {
+            global: Record<string, ServerRule[] | undefined>;
+          };
+          return (['override', 'room', 'underride'] as const)
+            .flatMap((kind) =>
+              (all.global[kind] ?? [])
+                .filter(
+                  (rule) =>
+                    rule.rule_id === roomId ||
+                    (rule.conditions ?? []).some(
+                      (condition) =>
+                        condition.key === 'room_id' &&
+                        condition.pattern === roomId,
+                    ),
+                )
+                .map((rule): ServerRoomRule => ({
+                  kind,
+                  ruleId: rule.rule_id,
+                  enabled: rule.enabled,
+                  actions: rule.actions,
+                })),
+            )
+            .sort(
+              (a, b) =>
+                a.kind.localeCompare(b.kind) ||
+                a.ruleId.localeCompare(b.ruleId),
+            );
+        },
+        foreignAccountData: async (type, content) => {
+          await cs(
+            session.accessToken,
+            'PUT',
+            `/user/${encodeURIComponent(session.userId)}/account_data/${type}`,
+            content,
+          );
+        },
+        accountData: async (type) =>
+          (await cs(
+            session.accessToken,
+            'GET',
+            `/user/${encodeURIComponent(session.userId)}/account_data/${type}`,
+          )) ?? undefined,
         dispose: () => session.dispose(),
       };
     },

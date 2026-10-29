@@ -22,7 +22,14 @@ import { FakeNotificationEngine } from '../contract/fake-notification-engine';
 import { NOTIFICATION_ENGINE } from './notification-engine.token';
 import { NotificationSettingsStore } from './notification-settings.store';
 
-const UNLOADED = { loaded: false, defaultRules: [], keywords: [] };
+const UNLOADED = {
+  loaded: false,
+  defaultRules: [],
+  keywords: [],
+  roomModes: {},
+  sound: true,
+  reactionNotifications: false,
+};
 
 function account(accountId: string, generation = 1): SessionAccountStatus {
   return {

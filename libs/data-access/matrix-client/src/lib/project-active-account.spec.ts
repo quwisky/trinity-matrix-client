@@ -156,6 +156,27 @@ describe('projectActiveAccount', () => {
     expect(subscribe).toHaveBeenCalledOnce();
   });
 
+  it('schedule reconciles again from the latest value, recovering a failed rebuild', async () => {
+    const { projection, rebuild, model, conditions, subscribe } = harness();
+    projection.connect();
+    const connected = conditions.length;
+    rebuild.mockImplementationOnce(() => {
+      throw new Error('rebuild failed');
+    });
+
+    projection.schedule();
+    await Promise.resolve();
+    expect(conditions.at(-1)).toBe('failed');
+
+    projection.schedule();
+    await Promise.resolve();
+
+    expect(conditions.at(-1)).toBe('available');
+    expect(model()).toBe('@a:hs:0');
+    expect(conditions.slice(connected)).not.toContain('released');
+    expect(subscribe).toHaveBeenCalledOnce();
+  });
+
   it('follows an account switch, resetting first and never showing the previous value', () => {
     const { projection, snapshot, sources, model, rebuild, reset, tick } =
       harness();

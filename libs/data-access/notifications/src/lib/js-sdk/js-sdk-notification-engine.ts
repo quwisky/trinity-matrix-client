@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import {
   ClientEvent,
+  ConditionKind,
   type IPushRule,
   type MatrixClient,
   type MatrixEvent,
@@ -34,9 +35,19 @@ import type {
   DefaultPushRule,
   KeywordRule,
   NotificationEngine,
+  NotificationPreference,
   NotificationSettings,
   PushRuleKind,
+  RoomNotifyMode,
 } from '../notification-engine';
+import {
+  LEGACY_NOTIFICATION_SOUND_EVENT,
+  LEGACY_REACTION_NOTIFICATION_EVENT,
+  NOTIFICATION_SOUND_EVENT,
+  REACTION_NOTIFICATION_EVENT,
+  copyLegacyAccountData,
+  enabledFlag,
+} from './legacy-account-data';
 
 const KINDS: readonly PushRuleKind[] = [
   'override',
@@ -50,7 +61,32 @@ const UNLOADED: NotificationSettings = {
   loaded: false,
   defaultRules: [],
   keywords: [],
+  roomModes: {},
+  sound: true,
+  reactionNotifications: false,
 };
+
+const PREFERENCES: Record<
+  NotificationPreference,
+  { readonly type: string; readonly legacy: string; readonly fallback: boolean }
+> = {
+  sound: {
+    type: NOTIFICATION_SOUND_EVENT,
+    legacy: LEGACY_NOTIFICATION_SOUND_EVENT,
+    fallback: true,
+  },
+  reactionNotifications: {
+    type: REACTION_NOTIFICATION_EVENT,
+    legacy: LEGACY_REACTION_NOTIFICATION_EVENT,
+    fallback: false,
+  },
+};
+
+const PREFERENCE_TYPES = new Set(
+  Object.values(PREFERENCES).flatMap(({ type, legacy }) => [type, legacy]),
+);
+
+type RoomRuleKind = 'override' | 'room' | 'underride';
 
 const NOT_LIVE: EngineFailure = {
   kind: 'unexpected',
@@ -66,6 +102,12 @@ const KEYWORD_ACTIONS: PushRuleAction[] = [
   PushRuleActionName.Notify,
   { set_tweak: TweakName.Sound, value: 'default' },
   { set_tweak: TweakName.Highlight },
+];
+
+/** Rust `get_notify_actions(true)`: an AllMessages room rule notifies with the default sound. */
+const NOTIFY_ACTIONS: PushRuleAction[] = [
+  PushRuleActionName.Notify,
+  { set_tweak: TweakName.Sound, value: 'default' },
 ];
 
 /** `request-failed`, with a refresh failure marked as the session's. */
@@ -123,8 +165,122 @@ function keywordRules(client: MatrixClient): {
   });
 }
 
+interface RoomRule {
+  readonly kind: RoomRuleKind;
+  readonly ruleId: string;
+  readonly enabled: boolean;
+  readonly notifies: boolean;
+  /** The rooms its `room_id` conditions match; a room rule's id is its room. */
+  readonly rooms: readonly string[];
+}
+
+/** The account's own room, override and underride rules, with the rooms they match. */
+function roomRules(client: MatrixClient): RoomRule[] {
+  return (['override', 'room', 'underride'] as const).flatMap((kind) =>
+    rulesOf(client, kind).flatMap((value): RoomRule[] => {
+      const ruleId = ruleIdOf(value);
+      if (!ruleId || isServerRule(ruleId)) return [];
+      const rule = value as Partial<IPushRule>;
+      const conditions: unknown[] = Array.isArray(rule.conditions)
+        ? rule.conditions
+        : [];
+      const rooms = conditions.flatMap((entry) => {
+        const condition = entry as {
+          kind?: unknown;
+          key?: unknown;
+          pattern?: unknown;
+        } | null;
+        return condition?.kind === ConditionKind.EventMatch &&
+          condition.key === 'room_id' &&
+          typeof condition.pattern === 'string'
+          ? [condition.pattern]
+          : [];
+      });
+      return [
+        {
+          kind,
+          ruleId,
+          enabled: rule.enabled !== false,
+          notifies:
+            Array.isArray(rule.actions) &&
+            rule.actions.includes(PushRuleActionName.Notify),
+          rooms: kind === 'room' ? [ruleId] : rooms,
+        },
+      ];
+    }),
+  );
+}
+
+/** Rust `get_custom_rules_for_room`: keyed by the room or matching it. */
+function matchesRoom(rule: RoomRule, roomId: string): boolean {
+  return rule.ruleId === roomId || rule.rooms.includes(roomId);
+}
+
+/**
+ * Rust `get_user_defined_room_notification_mode` (counting enabled rules only): null when the
+ * room has no rule that sets a mode, `all` for an enabled notifying room rule.
+ */
+function userDefinedMode(
+  client: MatrixClient,
+  roomId: string,
+): RoomNotifyMode | null {
+  const mode = roomModesOf(client)[roomId];
+  if (mode) return mode;
+  return roomRules(client).some(
+    (rule) => rule.kind === 'room' && rule.ruleId === roomId && rule.enabled,
+  )
+    ? 'all'
+    : null;
+}
+
+function roomModesOf(
+  client: MatrixClient,
+): Record<string, Exclude<RoomNotifyMode, 'all'>> {
+  const modes: Record<string, Exclude<RoomNotifyMode, 'all'>> = {};
+  for (const rule of roomRules(client)) {
+    if (!rule.enabled || rule.notifies) continue;
+    for (const roomId of rule.rooms) {
+      if (rule.kind === 'override') modes[roomId] = 'mute';
+      else if (rule.kind === 'room') modes[roomId] ??= 'mentions';
+    }
+  }
+  return modes;
+}
+
+function preferencesOf(
+  client: MatrixClient,
+): Pick<NotificationSettings, 'sound' | 'reactionNotifications'> {
+  const flag = (preference: NotificationPreference): boolean => {
+    const { type, legacy, fallback } = PREFERENCES[preference];
+    return enabledFlag(client as never, type, legacy, fallback);
+  };
+  return {
+    sound: flag('sound'),
+    reactionNotifications: flag('reactionNotifications'),
+  };
+}
+
+/**
+ * Copies each retired preference name to its current one when only the old one exists. Runs
+ * on every publish of a `settings` subscription, inside the SDK's emit loop, so a throw must
+ * never escape; a failed write is retried at the next publish.
+ */
+function copyRetiredPreferences(client: MatrixClient): void {
+  try {
+    for (const { type, legacy } of Object.values(PREFERENCES)) {
+      copyLegacyAccountData(client as never, type, legacy);
+    }
+  } catch {
+    /* the old value stays readable; the next publish retries (an m.push_rules or preference
+       account-data event, a sync before the rules load, or a command's re-read) */
+  }
+}
+
 function settingsOf(client: MatrixClient | null): NotificationSettings {
-  if (!client?.pushRules?.global) return UNLOADED;
+  if (!client) return UNLOADED;
+  if (!client.pushRules?.global) {
+    return { ...UNLOADED, ...preferencesOf(client) };
+  }
   const defaultRules = KINDS.flatMap((kind) =>
     rulesOf(client, kind).flatMap((rule): DefaultPushRule[] => {
       const ruleId = ruleIdOf(rule);
@@ -144,6 +300,8 @@ function settingsOf(client: MatrixClient | null): NotificationSettings {
       pattern,
       enabled,
     })),
+    roomModes: roomModesOf(client),
+    ...preferencesOf(client),
   };
 }
 
@@ -153,6 +311,8 @@ export class JsSdkNotificationEngine implements NotificationEngine {
   private readonly clients = inject(JS_SDK_CLIENTS);
   /** A client whose rules a command has just re-read. */
   private readonly refreshed = new Subject<MatrixClient>();
+  /** Each account's last room-mode write: the next one snapshots the rules after it. */
+  private readonly roomModeWrites = new Map<string, Promise<unknown>>();
 
   settings(accountId: string): Observable<NotificationSettings> {
     return defer(() => {
@@ -162,6 +322,7 @@ export class JsSdkNotificationEngine implements NotificationEngine {
         const onSync = (): void => queued.schedule();
         const publish = (): void => {
           if (this.clients.clientFor(accountId) !== client) return;
+          copyRetiredPreferences(client);
           const settings = settingsOf(client);
           // Later changes arrive as m.push_rules account data.
           if (settings.loaded) client.off(ClientEvent.Sync, onSync);
@@ -169,7 +330,10 @@ export class JsSdkNotificationEngine implements NotificationEngine {
         };
         const queued = coalesce(publish);
         const onAccountData = (event: MatrixEvent): void => {
-          if (event.getType() === 'm.push_rules') queued.schedule();
+          const type = event.getType();
+          if (type === 'm.push_rules' || PREFERENCE_TYPES.has(type)) {
+            queued.schedule();
+          }
         };
         // The rules fetched before the first sync arrive without an account-data event.
         client.on(ClientEvent.Sync, onSync);
@@ -268,6 +432,120 @@ export class JsSdkNotificationEngine implements NotificationEngine {
     );
   }
 
+  setRoomMode(
+    accountId: string,
+    roomId: string,
+    mode: RoomNotifyMode,
+  ): Observable<EngineResult<null>> {
+    // The re-read is queued too, so a later write's reply never precedes an earlier re-read.
+    return this.request(accountId, (client) =>
+      this.serializeRoomModes(accountId, () =>
+        this.writeAndRefresh(client, () =>
+          this.writeRoomMode(client, roomId, mode),
+        ),
+      ),
+    );
+  }
+
+  private serializeRoomModes<T>(
+    accountId: string,
+    write: () => Promise<T>,
+  ): Promise<T> {
+    const next = (this.roomModeWrites.get(accountId) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(write);
+    this.roomModeWrites.set(accountId, next);
+    void next
+      .finally(() => {
+        if (this.roomModeWrites.get(accountId) === next) {
+          this.roomModeWrites.delete(accountId);
+        }
+      })
+      .catch(() => undefined);
+    return next;
+  }
+
+  private async writeRoomMode(
+    client: MatrixClient,
+    roomId: string,
+    mode: RoomNotifyMode,
+  ): Promise<void> {
+    // The cache can lag another device's write; replace what the server holds.
+    await client.getPushRules();
+    if (userDefinedMode(client, roomId) === mode) return;
+    const kind = mode === 'mute' ? 'override' : 'room';
+    const rules = roomRules(client);
+    await client.addPushRule('global', kind as SdkPushRuleKind, roomId, {
+      actions: mode === 'all' ? NOTIFY_ACTIONS : [],
+      ...(kind === 'override'
+        ? {
+            conditions: [
+              {
+                kind: ConditionKind.EventMatch,
+                key: 'room_id',
+                pattern: roomId,
+              },
+            ],
+          }
+        : {}),
+    });
+    // The PUT keeps an existing rule's enabled flag (Rust leaves it off).
+    const overwritten = rules.find(
+      (rule) => rule.kind === kind && rule.ruleId === roomId,
+    );
+    if (overwritten && !overwritten.enabled) {
+      await client.setPushRuleEnabled(
+        'global',
+        kind as SdkPushRuleKind,
+        roomId,
+        true,
+      );
+    }
+    for (const rule of rules) {
+      if (
+        matchesRoom(rule, roomId) &&
+        !(rule.kind === kind && rule.ruleId === roomId)
+      ) {
+        await client.deletePushRule(
+          'global',
+          rule.kind as SdkPushRuleKind,
+          rule.ruleId,
+        );
+      }
+    }
+  }
+
+  readRoomMode(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<RoomNotifyMode>> {
+    return this.request(accountId, async (client) => {
+      await client.getPushRules();
+      this.refreshed.next(client);
+      return roomModesOf(client)[roomId] ?? 'all';
+    });
+  }
+
+  setPreference(
+    accountId: string,
+    preference: NotificationPreference,
+    on: boolean,
+  ): Observable<EngineResult<null>> {
+    return this.request(accountId, async (client) => {
+      const { type } = PREFERENCES[preference];
+      const write = (): Promise<unknown> =>
+        client.setAccountData(type as never, { enabled: on } as never);
+      // Resolves on the next echo of `type`, which can be an earlier write's, such as the
+      // retired-name copy's: write again once the store holds that one.
+      await write();
+      const stored = client.getAccountData(type as never)?.getContent() as
+        { enabled?: unknown } | undefined;
+      if (stored?.enabled !== on) await write();
+      this.refreshed.next(client);
+      return null;
+    });
+  }
+
   /**
    * Runs `write`, re-reads the rules and publishes them to `settings` before replying, so the
    * reply never precedes its effect. A failed re-read leaves the rules to the sync echo: the
@@ -277,21 +555,33 @@ export class JsSdkNotificationEngine implements NotificationEngine {
     accountId: string,
     write: (client: MatrixClient) => Promise<unknown>,
   ): Observable<EngineResult<null>> {
+    return this.request(accountId, (client) =>
+      this.writeAndRefresh(client, () => write(client)),
+    );
+  }
+
+  private async writeAndRefresh(
+    client: MatrixClient,
+    write: () => Promise<unknown>,
+  ): Promise<null> {
+    try {
+      await write();
+    } finally {
+      // Also after a partial failure: some of the writes may have landed.
+      await client.getPushRules().catch(() => undefined);
+      this.refreshed.next(client);
+    }
+    return null;
+  }
+
+  private request<T>(
+    accountId: string,
+    run: (client: MatrixClient) => Promise<T>,
+  ): Observable<EngineResult<T>> {
     return defer(() => {
       const client = this.clients.clientFor(accountId);
       if (!client) return of(engineFail(NOT_LIVE));
-      return from(
-        (async () => {
-          try {
-            await write(client);
-          } finally {
-            // Also after a partial failure: some of the writes may have landed.
-            await client.getPushRules().catch(() => undefined);
-            this.refreshed.next(client);
-          }
-          return null;
-        })(),
-      ).pipe(
+      return from(run(client)).pipe(
         map((value) => engineOk(value)),
         catchError((error: unknown) => of(engineFail(requestFailed(error)))),
       );

@@ -214,13 +214,9 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(PushRulesService, { toggles: [] }),
       MockProvider(NotificationSoundService, {
         enabled: signal(true).asReadonly(),
-        connect: () => undefined,
-        disconnect: () => undefined,
       }),
       MockProvider(ReactionNotificationSettingsService, {
         enabled: signal(false).asReadonly(),
-        connect: () => undefined,
-        disconnect: () => undefined,
       }),
       MockProvider(SessionStateService, {
         activeAccountId: signal<string | null>('@me:hs').asReadonly(),
