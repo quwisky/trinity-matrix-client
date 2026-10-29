@@ -1,10 +1,10 @@
 import { EngineRequestError, engineFailureMessage } from './engine-result';
 import {
-  ConnectionError,
-  HTTPError,
-  isMatrixRequestAbortError,
-  MatrixError,
-} from './transient-errors';
+  isMatrixConnectionError,
+  isMatrixHttpError,
+  type MatrixHttpErrorShape,
+} from './matrix-error-shape';
+import { isMatrixRequestAbortError } from './transient-errors';
 
 /** Stable failure groups used for user messages and privacy-safe diagnostics. */
 export type MatrixRequestFailureKind =
@@ -111,8 +111,16 @@ function safeErrcode(value: unknown): string | undefined {
     : undefined;
 }
 
-function retryAfterMs(error: HTTPError): number | undefined {
-  if (!error.isRateLimitError()) return undefined;
+function isRateLimited(error: MatrixHttpErrorShape): boolean {
+  return (
+    typeof error.isRateLimitError === 'function' && error.isRateLimitError()
+  );
+}
+
+function retryAfterMs(error: MatrixHttpErrorShape): number | undefined {
+  if (!isRateLimited(error) || typeof error.getRetryAfterMs !== 'function') {
+    return undefined;
+  }
   try {
     const delay = error.getRetryAfterMs();
     return delay !== null &&
@@ -131,7 +139,7 @@ function isTimeout(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return (
     error.name === 'TimeoutError' ||
-    (error instanceof ConnectionError &&
+    (isMatrixConnectionError(error) &&
       /timed?\s*out|timeout/i.test(error.message))
   );
 }
@@ -196,14 +204,14 @@ export function describeMatrixRequestFailure(
     );
   }
 
-  if (error instanceof ConnectionError) {
+  if (isMatrixConnectionError(error)) {
     return failure('network', requestFailureMessage('network'), error);
   }
 
-  if (error instanceof HTTPError) {
+  if (isMatrixHttpError(error)) {
     const httpStatus = safeHttpStatus(error.httpStatus);
-    const errcode =
-      error instanceof MatrixError ? safeErrcode(error.errcode) : undefined;
+    // Only a MatrixError has one.
+    const errcode = safeErrcode(error.errcode);
     const metadata = {
       ...(httpStatus !== undefined ? { httpStatus } : {}),
       ...(errcode ? { errcode } : {}),
@@ -227,7 +235,7 @@ export function describeMatrixRequestFailure(
         metadata,
       );
     }
-    if (error.isRateLimitError()) {
+    if (isRateLimited(error)) {
       const delay = retryAfterMs(error);
       return failure(
         'rate-limit',

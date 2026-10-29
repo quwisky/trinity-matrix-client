@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { render, screen } from '@trinity/testing';
+import { render, screen, matrixError } from '@trinity/testing';
 import {
   RoomAdministrationError,
   RoomDirectoryService,
@@ -7,7 +7,6 @@ import {
   type RoomSettingsPermissions,
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
-import { MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -246,7 +245,7 @@ describe('RoomSettingsDirectoryComponent', () => {
           setOutcome(
             'permission-denied',
             "Your server doesn't let you list rooms in its directory.",
-            new MatrixError({ errcode: 'M_FORBIDDEN', error: 'nope' }, 403),
+            matrixError('M_FORBIDDEN', 403, { error: 'nope' }),
           ),
         ),
     });
@@ -275,10 +274,7 @@ describe('RoomSettingsDirectoryComponent', () => {
           setOutcome(
             'server-rejected',
             'MatrixError: [500] upstream body',
-            new MatrixError(
-              { errcode: 'M_UNKNOWN', error: 'upstream body' },
-              500,
-            ),
+            matrixError('M_UNKNOWN', 500, { error: 'upstream body' }),
           ),
         ),
     });
