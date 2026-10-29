@@ -1,16 +1,18 @@
 import { Injectable, inject } from '@angular/core';
+import { SESSION_ENGINE } from '@trinity/data-access/matrix-client';
 import {
-  MatrixClientService,
-  jsSdkUia,
-} from '@trinity/data-access/matrix-client';
-import {
+  EngineRequestError,
   UiaAttemptsExceededError,
   UiaCancelledError,
   UiaUnsupportedError,
   describeMatrixRequestFailure,
   driveUia,
+  engineUia,
+  uiaFallbackUrl,
+  unwrapEngineResult,
 } from '@trinity/util/matrix';
-import { Observable, catchError, defer, forkJoin, from, map, of } from 'rxjs';
+import { Observable, catchError, from, map, of, switchMap, take } from 'rxjs';
+import { CONTACT_ADDRESSES_ENGINE } from './contact-addresses-engine.token';
 import type {
   ContactAddress,
   EmailAddResult,
@@ -21,41 +23,36 @@ import type {
   EmailRemoveResult,
   PendingEmail,
 } from './email-addresses.models';
+import { newClientSecret } from './identity-server-http';
 
 /** Reads and changes the email addresses bound to one account on its homeserver. */
 @Injectable({ providedIn: 'root' })
 export class EmailAddressesWorkflow {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(CONTACT_ADDRESSES_ENGINE);
+  private readonly session = inject(SESSION_ENGINE);
 
   load(accountId: string): Observable<EmailAddressesLoad> {
-    return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) return of(refused('account-unavailable'));
-      return forkJoin([
-        defer(() => from(client.getThreePids())),
-        defer(() => from(client.getCapabilities())),
-      ]).pipe(
-        map(([{ threepids }, capabilities]): EmailAddressesLoad => ({
-          kind: 'loaded',
-          addresses: threepids.flatMap(({ medium, address }) =>
-            medium === 'email' || medium === 'msisdn'
-              ? [{ medium, address } satisfies ContactAddress]
-              : [],
-          ),
-          canChange: capabilities['m.3pid_changes']?.enabled !== false,
-        })),
-        catchError((err: unknown) => of(refusalOf(err))),
-      );
-    });
+    return this.engine.threePids(accountId).pipe(
+      unwrapEngineResult(),
+      map(({ addresses, canChange }): EmailAddressesLoad => ({
+        kind: 'loaded',
+        addresses: addresses.flatMap(({ medium, address }) =>
+          medium === 'email' || medium === 'msisdn'
+            ? [{ medium, address } satisfies ContactAddress]
+            : [],
+        ),
+        canChange,
+      })),
+      catchError((err: unknown) => of(refusalOf(err))),
+    );
   }
 
   sendLink(accountId: string, email: string): Observable<EmailLinkResult> {
-    const client = this.matrix.clientFor(accountId);
     return this.requestLink({
       accountId,
       email: email.trim(),
       sid: '',
-      clientSecret: client?.generateClientSecret() ?? '',
+      clientSecret: newClientSecret(),
       sendAttempt: 1,
     });
   }
@@ -72,95 +69,84 @@ export class EmailAddressesWorkflow {
     pending: PendingEmail,
     stages: EmailAddressStages,
   ): Observable<EmailAddResult> {
-    return defer(() => {
-      const client = this.matrix.clientFor(pending.accountId);
-      if (!client) return of(refused('account-unavailable'));
-      // Synapse checks re-authentication before the link, so an early Continue completes
-      // the session; sending it back skips a second password prompt.
-      let session = pending.uiaSession;
-      return from(
-        driveUia(
-          jsSdkUia((probe) => {
-            const auth = probe ?? (session ? { session } : null);
-            if (auth && 'session' in auth && typeof auth.session === 'string') {
-              session = auth.session;
-            }
-            return client.addThreePidOnly({
-              sid: pending.sid,
-              client_secret: pending.clientSecret,
-              // The SDK types `auth` as `{ type }`, but a fallback stage answers with `{ session }` alone.
-              ...(auth
+    const { accountId } = pending;
+    return this.session.accessToken(accountId).pipe(
+      take(1),
+      // Keep only the URL, so the fallback closure holds no token through the dialog.
+      map((live) => live?.homeserverUrl ?? null),
+      switchMap((homeserverUrl): Observable<EmailAddResult> => {
+        if (homeserverUrl === null) return of(refused('account-unavailable'));
+        // Synapse checks re-authentication before the link, so an early Continue completes
+        // the session; sending it back skips a second password prompt.
+        let session = pending.uiaSession;
+        return from(
+          driveUia(
+            engineUia((probe) => {
+              const auth = probe ?? (session ? { session } : null);
+              if (auth) session = auth.session;
+              return this.engine.addThreePid(
+                accountId,
+                { sid: pending.sid, clientSecret: pending.clientSecret },
+                auth,
+              );
+            }),
+            {
+              password: { user: accountId, prompt: stages.password },
+              fallback: ({ stage, session, pending: stillPending }) =>
+                stages.confirmInBrowser({
+                  url: uiaFallbackUrl(homeserverUrl, stage, session),
+                  pending: stillPending,
+                }),
+            },
+          ),
+        ).pipe(
+          map((): EmailAddResult => ({ kind: 'added' })),
+          catchError((err: unknown): Observable<EmailAddResult> => {
+            const refusal = refusalOf(err);
+            return of(
+              refusal.reason === 'not-verified'
                 ? {
-                    auth: auth as Parameters<
-                      typeof client.addThreePidOnly
-                    >[0]['auth'],
+                    kind: 'not-verified',
+                    pending: session
+                      ? { ...pending, uiaSession: session }
+                      : pending,
                   }
-                : {}),
-            });
+                : refusal,
+            );
           }),
-          {
-            password: { user: pending.accountId, prompt: stages.password },
-            fallback: ({ stage, session, pending: stillPending }) =>
-              stages.confirmInBrowser({
-                url: client.getFallbackAuthUrl(stage, session),
-                pending: stillPending,
-              }),
-          },
-        ),
-      ).pipe(
-        map((): EmailAddResult => ({ kind: 'added' })),
-        catchError((err: unknown): Observable<EmailAddResult> => {
-          const refusal = refusalOf(err);
-          return of(
-            refusal.reason === 'not-verified'
-              ? {
-                  kind: 'not-verified',
-                  pending: session
-                    ? { ...pending, uiaSession: session }
-                    : pending,
-                }
-              : refusal,
-          );
-        }),
-      );
-    });
+        );
+      }),
+    );
   }
 
   remove(
     accountId: string,
     address: ContactAddress,
   ): Observable<EmailRemoveResult> {
-    return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) return of(refused('account-unavailable'));
-      return from(client.deleteThreePid(address.medium, address.address)).pipe(
-        map(({ id_server_unbind_result }): EmailRemoveResult => ({
-          kind: 'removed',
-          unbind: id_server_unbind_result ?? 'success',
-        })),
+    return this.engine
+      .deleteThreePid(accountId, address.medium, address.address)
+      .pipe(
+        unwrapEngineResult(),
+        map(({ unbind }): EmailRemoveResult => ({ kind: 'removed', unbind })),
         catchError((err: unknown) => of(refusalOf(err))),
       );
-    });
   }
 
   private requestLink(pending: PendingEmail): Observable<EmailLinkResult> {
-    return defer(() => {
-      const client = this.matrix.clientFor(pending.accountId);
-      if (!client) return of(refused('account-unavailable'));
-      return from(
-        client.requestAdd3pidEmailToken(
-          pending.email,
-          pending.clientSecret,
-          pending.sendAttempt,
-        ),
-      ).pipe(
+    return this.engine
+      .requestAddEmailToken(pending.accountId, {
+        email: pending.email,
+        clientSecret: pending.clientSecret,
+        sendAttempt: pending.sendAttempt,
+      })
+      .pipe(
+        unwrapEngineResult(),
         map(({ sid }): EmailLinkResult => ({
           kind: 'sent',
           pending: { ...pending, sid },
         })),
         catchError((err: unknown) => of(refusalOf(err))),
       );
-    });
   }
 }
 
@@ -186,6 +172,12 @@ function refusalOf(err: unknown): EmailAddressRefused {
     return refused('attempts-exceeded');
   }
   if (err instanceof UiaUnsupportedError) return refused('no-usable-stage');
+  if (
+    err instanceof EngineRequestError &&
+    err.failure.code === 'account-not-live'
+  ) {
+    return refused('account-unavailable');
+  }
   const failure = describeMatrixRequestFailure(err);
   if (failure.kind === 'network' || failure.kind === 'timeout') {
     return refused('unreachable');

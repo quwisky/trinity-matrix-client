@@ -1,65 +1,76 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ConnectionError, MatrixError } from '@trinity/util/matrix';
-import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { SESSION_ENGINE } from '@trinity/data-access/matrix-client';
+import {
+  type EngineFailure,
+  type EngineResult,
+  engineFail,
+  engineOk,
+} from '@trinity/util/matrix';
+import { firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  FakeContactAddressesEngine,
+  type FakeContactAccount,
+} from '../contract/fake-contact-addresses-engine';
+import { CONTACT_ADDRESSES_ENGINE } from './contact-addresses-engine.token';
 import { EmailAddressesWorkflow } from './email-addresses.workflow';
 
 const ALICE = '@alice:example.org';
+const HS = 'https://hs.example';
 
 function setup(
-  options: {
-    threepids?: unknown[];
-    capabilities?: unknown;
-    getThreePids?: ReturnType<typeof vi.fn>;
-    requestAdd3pidEmailToken?: ReturnType<typeof vi.fn>;
-    addThreePidOnly?: ReturnType<typeof vi.fn>;
-    deleteThreePid?: ReturnType<typeof vi.fn>;
-    client?: boolean;
-  } = {},
+  options: { live?: boolean; account?: Partial<FakeContactAccount> } = {},
 ) {
-  const client = {
-    getThreePids:
-      options.getThreePids ??
-      vi.fn().mockResolvedValue({ threepids: options.threepids ?? [] }),
-    getCapabilities: vi.fn().mockResolvedValue(options.capabilities ?? {}),
-    generateClientSecret: vi.fn(() => 'secret-1'),
-    requestAdd3pidEmailToken:
-      options.requestAdd3pidEmailToken ??
-      vi.fn().mockResolvedValue({ sid: 'sid-1' }),
-    addThreePidOnly: options.addThreePidOnly ?? vi.fn().mockResolvedValue({}),
-    deleteThreePid: options.deleteThreePid ?? vi.fn().mockResolvedValue({}),
-    getFallbackAuthUrl: vi.fn(
-      (stage: string, session: string) => `https://hs/fb/${stage}/${session}`,
+  const engine = new FakeContactAddressesEngine();
+  if (options.live !== false) engine.signIn(ALICE, options.account);
+  const accessToken = vi.fn((accountId: string) =>
+    of(
+      engine.accounts.has(accountId)
+        ? {
+            homeserverUrl: HS,
+            accessToken: 'token',
+            expiresAt: null,
+            refreshable: false,
+          }
+        : null,
     ),
-  };
-  const clientFor = vi.fn((_accountId: string) =>
-    options.client === false ? null : (client as never),
   );
   TestBed.configureTestingModule({
     providers: [
       EmailAddressesWorkflow,
-      MockProvider(MatrixClientService, { clientFor }),
+      { provide: CONTACT_ADDRESSES_ENGINE, useValue: engine },
+      { provide: SESSION_ENGINE, useValue: { accessToken } },
     ],
   });
   return Object.assign(TestBed.inject(EmailAddressesWorkflow), {
-    client,
-    clientFor,
+    fake: engine,
+    accessToken,
+  });
+}
+
+function failed(
+  kind: EngineFailure['kind'],
+  diagnostic: Omit<EngineFailure['diagnostic'], 'kind'> = {},
+): EngineResult<never> {
+  return engineFail({
+    kind,
+    code: 'request-failed',
+    diagnostic: { kind, ...diagnostic },
   });
 }
 
 describe('EmailAddressesWorkflow.load', () => {
   it('returns email and msisdn addresses and drops other media', async () => {
     const workflow = setup({
-      threepids: [
-        { medium: 'email', address: 'a@b.c', added_at: 1 },
-        { medium: 'msisdn', address: '4412' },
-        { medium: 'x.other', address: 'z' },
-      ],
+      account: {
+        threePids: [
+          { medium: 'email', address: 'a@b.c' },
+          { medium: 'msisdn', address: '4412' },
+          { medium: 'x.other', address: 'z' },
+        ],
+      },
     });
-    const result = await firstValueFrom(workflow.load(ALICE));
-    expect(result).toEqual({
+    expect(await firstValueFrom(workflow.load(ALICE))).toEqual({
       kind: 'loaded',
       addresses: [
         { medium: 'email', address: 'a@b.c' },
@@ -69,24 +80,15 @@ describe('EmailAddressesWorkflow.load', () => {
     });
   });
 
-  it('reads canChange from m.3pid_changes', async () => {
-    const workflow = setup({
-      capabilities: { 'm.3pid_changes': { enabled: false } },
-    });
+  it('passes on whether the addresses may change', async () => {
+    const workflow = setup({ account: { canChange: false } });
     expect(await firstValueFrom(workflow.load(ALICE))).toMatchObject({
       canChange: false,
     });
   });
 
-  it('treats a missing m.3pid_changes as changeable', async () => {
-    const workflow = setup({ capabilities: {} });
-    expect(await firstValueFrom(workflow.load(ALICE))).toMatchObject({
-      canChange: true,
-    });
-  });
-
-  it('refuses with account-unavailable when the account has no client', async () => {
-    const workflow = setup({ client: false });
+  it('refuses with account-unavailable when the account is not live', async () => {
+    const workflow = setup({ live: false });
     expect(await firstValueFrom(workflow.load(ALICE))).toEqual({
       kind: 'refused',
       reason: 'account-unavailable',
@@ -94,9 +96,8 @@ describe('EmailAddressesWorkflow.load', () => {
   });
 
   it('maps a network failure to unreachable', async () => {
-    const workflow = setup({
-      getThreePids: vi.fn().mockRejectedValue(new ConnectionError('x')),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'threePids').mockReturnValue(of(failed('network')));
     expect(await firstValueFrom(workflow.load(ALICE))).toEqual({
       kind: 'refused',
       reason: 'unreachable',
@@ -115,34 +116,50 @@ describe('EmailAddressesWorkflow.sendLink and resend', () => {
 
   it('sendLink trims the address and sends attempt 1 with a fresh secret', async () => {
     const workflow = setup();
+    const request = vi.spyOn(workflow.fake, 'requestAddEmailToken');
+
     const result = await firstValueFrom(workflow.sendLink(ALICE, '  A@b.c '));
-    expect(workflow.client.requestAdd3pidEmailToken).toHaveBeenCalledWith(
-      'A@b.c',
-      'secret-1',
-      1,
-    );
-    expect(result).toEqual({ kind: 'sent', pending });
+
+    const [[accountId, sent]] = request.mock.calls;
+    expect(accountId).toBe(ALICE);
+    expect(sent).toEqual({
+      email: 'A@b.c',
+      clientSecret: expect.stringMatching(/^[0-9a-f]{48}$/),
+      sendAttempt: 1,
+    });
+    expect(result).toEqual({
+      kind: 'sent',
+      pending: {
+        accountId: ALICE,
+        email: 'A@b.c',
+        sid: 'hs-sid-1',
+        clientSecret: sent.clientSecret,
+        sendAttempt: 1,
+      },
+    });
+    await firstValueFrom(workflow.sendLink(ALICE, 'A@b.c'));
+    expect(request.mock.calls[1][1].clientSecret).not.toBe(sent.clientSecret);
   });
 
   it('resend keeps the secret and bumps the attempt', async () => {
-    const requestAdd3pidEmailToken = vi
-      .fn()
-      .mockResolvedValue({ sid: 'sid-2' });
-    const workflow = setup({ requestAdd3pidEmailToken });
+    const workflow = setup();
+    const request = vi
+      .spyOn(workflow.fake, 'requestAddEmailToken')
+      .mockReturnValue(of(engineOk({ sid: 'sid-2' })));
     const result = await firstValueFrom(workflow.resend(pending));
-    expect(requestAdd3pidEmailToken).toHaveBeenCalledWith(
-      'A@b.c',
-      'secret-1',
-      2,
-    );
+    expect(request).toHaveBeenCalledWith(ALICE, {
+      email: 'A@b.c',
+      clientSecret: 'secret-1',
+      sendAttempt: 2,
+    });
     expect(result).toEqual({
       kind: 'sent',
       pending: { ...pending, sid: 'sid-2', sendAttempt: 2 },
     });
   });
 
-  it('refuses with account-unavailable when the account has no client', async () => {
-    const workflow = setup({ client: false });
+  it('refuses with account-unavailable when the account is not live', async () => {
+    const workflow = setup({ live: false });
     expect(await firstValueFrom(workflow.sendLink(ALICE, 'a@b.c'))).toEqual({
       kind: 'refused',
       reason: 'account-unavailable',
@@ -160,11 +177,10 @@ describe('EmailAddressesWorkflow.sendLink and resend', () => {
     ['constructor', 'failed'],
     ['toString', 'failed'],
   ])('maps %s to %s', async (errcode, reason) => {
-    const workflow = setup({
-      requestAdd3pidEmailToken: vi
-        .fn()
-        .mockRejectedValue(new MatrixError({ errcode }, 400)),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'requestAddEmailToken').mockReturnValue(
+      of(failed('http', { httpStatus: 400, errcode })),
+    );
     expect(await firstValueFrom(workflow.sendLink(ALICE, 'a@b.c'))).toEqual({
       kind: 'refused',
       reason,
@@ -172,16 +188,16 @@ describe('EmailAddressesWorkflow.sendLink and resend', () => {
   });
 
   it('sendLink passes retryAfterMs on M_LIMIT_EXCEEDED', async () => {
-    const workflow = setup({
-      requestAdd3pidEmailToken: vi
-        .fn()
-        .mockRejectedValue(
-          new MatrixError(
-            { errcode: 'M_LIMIT_EXCEEDED', retry_after_ms: 3000 },
-            429,
-          ),
-        ),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'requestAddEmailToken').mockReturnValue(
+      of(
+        failed('rate-limit', {
+          httpStatus: 429,
+          errcode: 'M_LIMIT_EXCEEDED',
+          retryAfterMs: 3000,
+        }),
+      ),
+    );
     expect(await firstValueFrom(workflow.sendLink(ALICE, 'a@b.c'))).toEqual({
       kind: 'refused',
       reason: 'rate-limited',
@@ -190,13 +206,12 @@ describe('EmailAddressesWorkflow.sendLink and resend', () => {
   });
 
   it('omits retryAfterMs when the rate limit carries none', async () => {
-    const workflow = setup({
-      requestAdd3pidEmailToken: vi
-        .fn()
-        .mockRejectedValue(
-          new MatrixError({ errcode: 'M_LIMIT_EXCEEDED' }, 429),
-        ),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'requestAddEmailToken').mockReturnValue(
+      of(
+        failed('rate-limit', { httpStatus: 429, errcode: 'M_LIMIT_EXCEEDED' }),
+      ),
+    );
     const result = await firstValueFrom(workflow.sendLink(ALICE, 'a@b.c'));
     expect(result).toMatchObject({ reason: 'rate-limited' });
     expect(result).not.toHaveProperty('retryAfterMs');
@@ -211,40 +226,58 @@ describe('EmailAddressesWorkflow.add', () => {
     clientSecret: 'secret-1',
     sendAttempt: 1,
   };
-  const uia = (stages: string[]) =>
-    new MatrixError({ session: 's', flows: [{ stages }] }, 401);
+  const uia = (stages: string[]): EngineResult<never> =>
+    engineFail({
+      kind: 'http',
+      code: 'uia-required',
+      diagnostic: { kind: 'http', httpStatus: 401 },
+      params: { challenge: { session: 's', flows: [{ stages }] } },
+    });
+  const notOpened = () =>
+    failed('http', { httpStatus: 400, errcode: 'M_THREEPID_AUTH_FAILED' });
   const stages = (password: string | null = 'pw') => ({
     password: vi.fn().mockResolvedValue(password),
     confirmInBrowser: vi.fn().mockResolvedValue(true),
   });
+  const added = (
+    workflow: ReturnType<typeof setup>,
+    ...answers: EngineResult<null>[]
+  ) => {
+    const spy = vi.spyOn(workflow.fake, 'addThreePid');
+    for (const answer of answers) spy.mockReturnValueOnce(of(answer));
+    return spy.mockReturnValue(of(engineOk(null)));
+  };
 
   it('adds with the pending session and no auth on the probe', async () => {
     const workflow = setup();
+    const addThreePid = added(workflow);
     const result = await firstValueFrom(workflow.add(pending, stages()));
     expect(result).toEqual({ kind: 'added' });
-    expect(workflow.client.addThreePidOnly).toHaveBeenCalledTimes(1);
-    const body = workflow.client.addThreePidOnly.mock.calls[0][0];
-    expect(body).toMatchObject({ sid: 'sid-1', client_secret: 'secret-1' });
-    expect(body.auth).toBeUndefined();
+    expect(addThreePid).toHaveBeenCalledTimes(1);
+    expect(addThreePid).toHaveBeenCalledWith(
+      ALICE,
+      { sid: 'sid-1', clientSecret: 'secret-1' },
+      null,
+    );
   });
 
   it('uses the pending account, not the active one', async () => {
     const workflow = setup();
+    workflow.fake.signIn('@bob:example.org');
+    const addThreePid = added(workflow);
     await firstValueFrom(
       workflow.add({ ...pending, accountId: '@bob:example.org' }, stages()),
     );
-    expect(workflow.clientFor).toHaveBeenCalledWith('@bob:example.org');
+    expect(workflow.accessToken).toHaveBeenCalledWith('@bob:example.org');
+    expect(addThreePid.mock.calls[0][0]).toBe('@bob:example.org');
   });
 
   it('answers a password stage', async () => {
-    const addThreePidOnly = vi
-      .fn()
-      .mockRejectedValueOnce(uia(['m.login.password']))
-      .mockResolvedValueOnce({});
-    const workflow = setup({ addThreePidOnly });
+    const workflow = setup();
+    const addThreePid = added(workflow, uia(['m.login.password']));
     const result = await firstValueFrom(workflow.add(pending, stages()));
     expect(result).toEqual({ kind: 'added' });
-    expect(addThreePidOnly.mock.calls[1][0].auth).toEqual({
+    expect(addThreePid.mock.calls[1][2]).toEqual({
       type: 'm.login.password',
       identifier: { type: 'm.id.user', user: ALICE },
       password: 'pw',
@@ -253,13 +286,8 @@ describe('EmailAddressesWorkflow.add', () => {
   });
 
   it('answers not-verified with the pending email when the link was not opened', async () => {
-    const workflow = setup({
-      addThreePidOnly: vi
-        .fn()
-        .mockRejectedValue(
-          new MatrixError({ errcode: 'M_THREEPID_AUTH_FAILED' }, 400),
-        ),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'addThreePid').mockReturnValue(of(notOpened()));
     expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
       kind: 'not-verified',
       pending,
@@ -267,16 +295,8 @@ describe('EmailAddressesWorkflow.add', () => {
   });
 
   it('reuses the completed session once the link is opened', async () => {
-    const notOpened = new MatrixError(
-      { errcode: 'M_THREEPID_AUTH_FAILED' },
-      400,
-    );
-    const addThreePidOnly = vi
-      .fn()
-      .mockRejectedValueOnce(uia(['m.login.password']))
-      .mockRejectedValueOnce(notOpened)
-      .mockResolvedValueOnce({});
-    const workflow = setup({ addThreePidOnly });
+    const workflow = setup();
+    const addThreePid = added(workflow, uia(['m.login.password']), notOpened());
     const s = stages();
 
     const first = await firstValueFrom(workflow.add(pending, s));
@@ -288,25 +308,20 @@ describe('EmailAddressesWorkflow.add', () => {
 
     const second = await firstValueFrom(workflow.add(first.pending, s));
     expect(second).toEqual({ kind: 'added' });
-    expect(addThreePidOnly.mock.calls[2][0].auth).toEqual({ session: 's' });
+    expect(addThreePid.mock.calls[2][2]).toEqual({ session: 's' });
     expect(s.password).toHaveBeenCalledTimes(1);
   });
 
   it('asks again when the remembered session has expired', async () => {
-    const addThreePidOnly = vi
-      .fn()
-      .mockRejectedValueOnce(uia(['m.login.password']))
-      .mockResolvedValueOnce({});
-    const workflow = setup({ addThreePidOnly });
+    const workflow = setup();
+    const addThreePid = added(workflow, uia(['m.login.password']));
     const s = stages();
     const result = await firstValueFrom(
       workflow.add({ ...pending, uiaSession: 'expired' }, s),
     );
     expect(result).toEqual({ kind: 'added' });
-    expect(addThreePidOnly.mock.calls[0][0].auth).toEqual({
-      session: 'expired',
-    });
-    expect(addThreePidOnly.mock.calls[1][0].auth).toMatchObject({
+    expect(addThreePid.mock.calls[0][2]).toEqual({ session: 'expired' });
+    expect(addThreePid.mock.calls[1][2]).toMatchObject({
       type: 'm.login.password',
       session: 's',
     });
@@ -314,37 +329,31 @@ describe('EmailAddressesWorkflow.add', () => {
   });
 
   it('maps a cancelled prompt to cancelled', async () => {
-    const workflow = setup({
-      addThreePidOnly: vi.fn().mockRejectedValue(uia(['m.login.password'])),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'addThreePid').mockReturnValue(
+      of(uia(['m.login.password'])),
+    );
     expect(await firstValueFrom(workflow.add(pending, stages(null)))).toEqual({
       kind: 'refused',
       reason: 'cancelled',
     });
   });
 
-  it('opens the fallback page for a non-password stage', async () => {
-    const addThreePidOnly = vi
-      .fn()
-      .mockRejectedValueOnce(uia(['m.login.sso']))
-      .mockResolvedValueOnce({});
-    const workflow = setup({ addThreePidOnly });
+  it('opens the homeserver’s fallback page for a non-password stage', async () => {
+    const workflow = setup();
+    added(workflow, uia(['m.login.sso']));
     const s = stages();
     const result = await firstValueFrom(workflow.add(pending, s));
     expect(result).toEqual({ kind: 'added' });
     expect(s.confirmInBrowser).toHaveBeenCalledWith({
-      url: workflow.client.getFallbackAuthUrl('m.login.sso', 's'),
+      url: `${HS}/_matrix/client/v3/auth/m.login.sso/fallback/web?session=s`,
       pending: false,
     });
   });
 
   it('flags the fallback step pending when the server repeats the stage', async () => {
-    const addThreePidOnly = vi
-      .fn()
-      .mockRejectedValueOnce(uia(['m.login.sso']))
-      .mockRejectedValueOnce(uia(['m.login.sso']))
-      .mockResolvedValueOnce({});
-    const workflow = setup({ addThreePidOnly });
+    const workflow = setup();
+    added(workflow, uia(['m.login.sso']), uia(['m.login.sso']));
     const s = stages();
     await firstValueFrom(workflow.add(pending, s));
     expect(s.confirmInBrowser.mock.calls.map(([step]) => step.pending)).toEqual(
@@ -353,13 +362,8 @@ describe('EmailAddressesWorkflow.add', () => {
   });
 
   it('maps a challenge with no stage left to no-usable-stage', async () => {
-    const workflow = setup({
-      addThreePidOnly: vi
-        .fn()
-        .mockRejectedValue(
-          new MatrixError({ session: 's', flows: [{ stages: [] }] }, 401),
-        ),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'addThreePid').mockReturnValue(of(uia([])));
     expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
       kind: 'refused',
       reason: 'no-usable-stage',
@@ -367,17 +371,35 @@ describe('EmailAddressesWorkflow.add', () => {
   });
 
   it('maps repeated rejected passwords to attempts-exceeded', async () => {
-    const workflow = setup({
-      addThreePidOnly: vi.fn().mockRejectedValue(uia(['m.login.password'])),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'addThreePid').mockReturnValue(
+      of(uia(['m.login.password'])),
+    );
     expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
       kind: 'refused',
       reason: 'attempts-exceeded',
     });
   });
 
-  it('refuses with account-unavailable when the account has no client', async () => {
-    const workflow = setup({ client: false });
+  it('refuses with account-unavailable when the account is not live', async () => {
+    const workflow = setup({ live: false });
+    expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
+      kind: 'refused',
+      reason: 'account-unavailable',
+    });
+  });
+
+  it('refuses with account-unavailable when the account goes during the add', async () => {
+    const workflow = setup();
+    workflow.accessToken.mockReturnValue(
+      of({
+        homeserverUrl: HS,
+        accessToken: 'token',
+        expiresAt: null,
+        refreshable: false,
+      }),
+    );
+    workflow.fake.accounts.delete(ALICE);
     expect(await firstValueFrom(workflow.add(pending, stages()))).toEqual({
       kind: 'refused',
       reason: 'account-unavailable',
@@ -388,36 +410,18 @@ describe('EmailAddressesWorkflow.add', () => {
 describe('EmailAddressesWorkflow.remove', () => {
   const address = { medium: 'email', address: 'a@b.c' } as const;
 
-  it('deletes by medium and address', async () => {
-    const workflow = setup();
-    expect(await firstValueFrom(workflow.remove(ALICE, address))).toEqual({
-      kind: 'removed',
-      unbind: 'success',
-    });
-    expect(workflow.client.deleteThreePid).toHaveBeenCalledWith(
-      'email',
-      'a@b.c',
-    );
-  });
-
-  it('reports an identity server that could not unbind', async () => {
-    const workflow = setup({
-      deleteThreePid: vi
-        .fn()
-        .mockResolvedValue({ id_server_unbind_result: 'no-support' }),
-    });
+  it('deletes by medium and address, reporting an address no server unbound', async () => {
+    const workflow = setup({ account: { threePids: [{ ...address }] } });
     expect(await firstValueFrom(workflow.remove(ALICE, address))).toEqual({
       kind: 'removed',
       unbind: 'no-support',
     });
+    expect(workflow.fake.accounts.get(ALICE)?.threePids).toEqual([]);
   });
 
   it('passes a successful unbind through', async () => {
-    const workflow = setup({
-      deleteThreePid: vi
-        .fn()
-        .mockResolvedValue({ id_server_unbind_result: 'success' }),
-    });
+    const workflow = setup({ account: { threePids: [{ ...address }] } });
+    workflow.fake.bindings.set(`is.example\n${address.address}`, ALICE);
     expect(await firstValueFrom(workflow.remove(ALICE, address))).toEqual({
       kind: 'removed',
       unbind: 'success',
@@ -425,22 +429,21 @@ describe('EmailAddressesWorkflow.remove', () => {
   });
 
   it('maps a failure to failed', async () => {
-    const workflow = setup({
-      deleteThreePid: vi
-        .fn()
-        .mockRejectedValue(new MatrixError({ errcode: 'M_UNKNOWN' }, 500)),
-    });
+    const workflow = setup();
+    vi.spyOn(workflow.fake, 'deleteThreePid').mockReturnValue(
+      of(failed('server', { httpStatus: 500, errcode: 'M_UNKNOWN' })),
+    );
     expect(await firstValueFrom(workflow.remove(ALICE, address))).toEqual({
       kind: 'refused',
       reason: 'failed',
     });
   });
 
-  it('resolves the client at subscribe time', async () => {
-    const workflow = setup();
+  it('changes nothing until subscribed', async () => {
+    const workflow = setup({ account: { threePids: [{ ...address }] } });
     const result$ = workflow.remove(ALICE, address);
-    expect(workflow.clientFor).not.toHaveBeenCalled();
+    expect(workflow.fake.accounts.get(ALICE)?.threePids).toHaveLength(1);
     await firstValueFrom(result$);
-    expect(workflow.clientFor).toHaveBeenCalledWith(ALICE);
+    expect(workflow.fake.accounts.get(ALICE)?.threePids).toEqual([]);
   });
 });
