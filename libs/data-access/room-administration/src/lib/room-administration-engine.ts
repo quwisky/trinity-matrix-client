@@ -71,6 +71,8 @@ export interface RoomMembers {
   readonly members: readonly RoomMemberInfo[];
 }
 
+export type DirectoryVisibility = 'public' | 'private';
+
 /** One current state event, for the read-only state viewer. */
 export interface RawStateEvent {
   readonly type: string;
@@ -108,4 +110,73 @@ export interface RoomAdministrationEngine {
     accountId: string,
     roomId: string,
   ): Observable<EngineResult<readonly RawStateEvent[]>>;
+
+  /**
+   * One state event's content as the server holds it now; null when it has none. Fails
+   * `account-not-live` or `request-failed`. Rust: `get_state_events_for_key` via `Client::send`.
+   */
+  stateEvent(
+    accountId: string,
+    roomId: string,
+    type: string,
+    stateKey: string,
+  ): Observable<EngineResult<JsonObject | null>>;
+
+  // Server commands below fail `account-not-live`, else leave every other check to the
+  // server: its refusal arrives as `request-failed` with the status and errcode.
+  kick(
+    accountId: string,
+    roomId: string,
+    userId: string,
+    reason: string | null,
+  ): Observable<EngineResult<null>>;
+  ban(
+    accountId: string,
+    roomId: string,
+    userId: string,
+    reason: string | null,
+  ): Observable<EngineResult<null>>;
+  unban(
+    accountId: string,
+    roomId: string,
+    userId: string,
+  ): Observable<EngineResult<null>>;
+  /** Reports an event to the account's server admins with the strongest score (-100). */
+  reportEvent(
+    accountId: string,
+    roomId: string,
+    eventId: string,
+    reason: string,
+  ): Observable<EngineResult<null>>;
+  reportRoom(
+    accountId: string,
+    roomId: string,
+    reason: string,
+  ): Observable<EngineResult<null>>;
+  reportUser(
+    accountId: string,
+    userId: string,
+    reason: string,
+  ): Observable<EngineResult<null>>;
+  /** The room's aliases in the account's server directory. */
+  localAliases(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly string[]>>;
+  publishAlias(
+    accountId: string,
+    roomId: string,
+    alias: string,
+  ): Observable<EngineResult<null>>;
+  removeAlias(accountId: string, alias: string): Observable<EngineResult<null>>;
+  /** Whether the room is listed in the account's server room directory. */
+  directoryVisibility(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<DirectoryVisibility>>;
+  setDirectoryVisibility(
+    accountId: string,
+    roomId: string,
+    visibility: DirectoryVisibility,
+  ): Observable<EngineResult<null>>;
 }

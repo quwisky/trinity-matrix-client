@@ -113,6 +113,16 @@ describe.skipIf(!baseUrl)(
                 reason,
               });
             },
+            sendMessage: async (roomId, body) => {
+              const txn = `ra-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+              const sent = (await cs(
+                bob.accessToken,
+                'PUT',
+                `${room(roomId)}/send/m.room.message/${txn}`,
+                { msgtype: 'm.text', body },
+              )) as { event_id: string };
+              return sent.event_id;
+            },
           },
           asCarol: {
             join: (roomId) => join(carol.accessToken, roomId),
