@@ -61,7 +61,12 @@ interface FakeRoom {
 }
 
 function failure(code: FailNextCode): EngineFailure {
-  return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
+  // Cast: assigning a union-typed code is checked only up to 25 union members.
+  return {
+    kind: 'unexpected',
+    code,
+    diagnostic: { kind: 'unexpected' },
+  } as EngineFailure;
 }
 
 const MESSAGE_UNAVAILABLE = failure('message-unavailable');

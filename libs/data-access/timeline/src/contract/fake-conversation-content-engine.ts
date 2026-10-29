@@ -52,7 +52,12 @@ const MAX_PINS = 100;
 const NO_PINS: PinnedEvents = { eventIds: [], allEventIds: [], entries: [] };
 
 function failure(code: FailNextCode): EngineFailure {
-  return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
+  // Cast: assigning a union-typed code is checked only up to 25 union members.
+  return {
+    kind: 'unexpected',
+    code,
+    diagnostic: { kind: 'unexpected' },
+  } as EngineFailure;
 }
 
 function profilesOf(userId: string): Record<string, Profile> {
