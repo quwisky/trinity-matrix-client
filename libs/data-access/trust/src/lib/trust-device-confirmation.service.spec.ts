@@ -144,7 +144,8 @@ function setup(options: Options = {}) {
     }),
   };
   const client = {
-    getDeviceId: () => options.deviceId ?? 'DEVICE',
+    // Never the session's device id, so a read that bypasses the session snapshot fails a test.
+    getDeviceId: () => 'CLIENT-DEVICE',
     getUserId: () => '@a:hs',
     secretStorage: { getDefaultKeyId: vi.fn(async () => defaultKeyId) },
     downloadKeysForUsers,
