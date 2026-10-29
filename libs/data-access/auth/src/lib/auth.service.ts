@@ -212,12 +212,16 @@ export class AuthService implements QrSignInCompletion {
   }
 
   /**
-   * Forget the cached dynamic-registration client id for a homeserver's issuer so the
+   * Forget the rejected dynamic-registration client id for a homeserver's issuer so the
    * next login re-registers — called when the provider rejects the id (`invalid_client`),
    * which would otherwise wedge login until app storage is wiped.
    */
-  forgetOidcClientId(baseUrl: string, issuer: string): Observable<void> {
-    return this.oidc.forgetClientId(baseUrl, issuer);
+  forgetOidcClientId(
+    baseUrl: string,
+    issuer: string,
+    rejectedClientId: string,
+  ): Observable<void> {
+    return this.oidc.forgetClientId(baseUrl, issuer, rejectedClientId);
   }
 
   /**

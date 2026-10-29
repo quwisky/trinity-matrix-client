@@ -143,6 +143,8 @@ export type EngineFailure = {
       readonly code: 'recovery-refused';
       readonly params: { readonly reason: RecoveryRefusal };
     }
+  /** The OAuth 2.0 provider no longer knows the client (`invalid_client`): register again. */
+  | { readonly code: 'oauth-client-rejected' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -224,6 +226,8 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return RECOVERY_REFUSAL_MESSAGES[failure.params.reason];
     case 'login-refused':
       return LOGIN_REFUSAL_MESSAGES[failure.params.reason];
+    case 'oauth-client-rejected':
+      return 'The sign-in provider no longer recognises this app. Try signing in again.';
   }
 }
 

@@ -2,7 +2,6 @@
   "issue": "#1153",
   "files": [
     "libs/data-access/auth/src/lib/auth.service.ts",
-    "libs/data-access/auth/src/lib/oidc-client.service.ts",
     "libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in-completion.port.ts",
     "libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.adapter.ts",
     "libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.service.ts",

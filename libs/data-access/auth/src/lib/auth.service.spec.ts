@@ -1239,11 +1239,14 @@ describe('AuthService', () => {
     const oidc = TestBed.inject(OidcClientService);
     vi.mocked(oidc.forgetClientId).mockReturnValue(of(undefined));
 
-    await firstValueFrom(auth.forgetOidcClientId('https://hs', 'https://op'));
+    await firstValueFrom(
+      auth.forgetOidcClientId('https://hs', 'https://op', 'client-1'),
+    );
 
     expect(oidc.forgetClientId).toHaveBeenCalledWith(
       'https://hs',
       'https://op',
+      'client-1',
     );
   });
 

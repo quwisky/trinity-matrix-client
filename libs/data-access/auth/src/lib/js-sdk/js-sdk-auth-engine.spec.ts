@@ -15,6 +15,7 @@ import {
 } from 'matrix-js-sdk';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { NOT_SIGNED_IN } from '@trinity/util/matrix';
+import { AUTH_METADATA } from '../auth-metadata.fixture';
 import { JsSdkAuthEngine } from './js-sdk-auth-engine';
 
 const BASE = 'https://hs';
@@ -24,6 +25,8 @@ describe('JsSdkAuthEngine', () => {
     loginRequest: vi.fn(),
     setPassword: vi.fn(),
     isUsernameAvailable: vi.fn(),
+    getAuthMetadata: vi.fn(),
+    whoami: vi.fn(),
   };
   const live = { setPassword: vi.fn() };
   let engine: JsSdkAuthEngine;
@@ -138,6 +141,32 @@ describe('JsSdkAuthEngine', () => {
     await expect(password()).resolves.toMatchObject({
       ok: false,
       failure: { kind: 'network', code: 'request-failed' },
+    });
+  });
+
+  it('passes the metadata through as served, the RFC 9207 iss flag included', async () => {
+    const served = {
+      ...AUTH_METADATA,
+      authorization_response_iss_parameter_supported: true,
+    };
+    client.getAuthMetadata.mockResolvedValue(served);
+
+    await expect(firstValueFrom(engine.authMetadata(BASE))).resolves.toEqual({
+      ok: true,
+      value: served,
+    });
+  });
+
+  it('asks whoami with the token, a session without a device naming none', async () => {
+    client.whoami.mockResolvedValue({ user_id: '@me:hs' });
+
+    await expect(firstValueFrom(engine.whoami(BASE, 'tok'))).resolves.toEqual({
+      ok: true,
+      value: { userId: '@me:hs', deviceId: null },
+    });
+    expect(createClient).toHaveBeenCalledWith({
+      baseUrl: BASE,
+      accessToken: 'tok',
     });
   });
 

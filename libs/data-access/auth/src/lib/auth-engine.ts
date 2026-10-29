@@ -30,6 +30,12 @@ export interface EmailTokenRequest {
   readonly sendAttempt: number;
 }
 
+/** Who an access token belongs to; a session without a device has `deviceId` null. */
+export interface TokenOwner {
+  readonly userId: string;
+  readonly deviceId: string | null;
+}
+
 export interface PasswordReset {
   readonly sid: string;
   readonly clientSecret: string;
@@ -44,7 +50,12 @@ export interface PasswordReset {
  */
 export interface AuthEngine {
   loginFlows(baseUrl: string): Observable<EngineResult<readonly string[]>>;
-  /** Null when the server answers without OAuth 2.0 metadata; a failure when it cannot be asked. */
+  /**
+   * The metadata document as the homeserver serves it, every field Trinity reads passed
+   * through unchanged, `authorization_response_iss_parameter_supported` included: the RFC
+   * 9207 callback check depends on it. Null when the server answers without OAuth 2.0
+   * metadata; a failure when it cannot be asked.
+   */
   authMetadata(baseUrl: string): Observable<EngineResult<AuthMetadata | null>>;
   /** A server that does not register accounts fails `forbidden`. */
   usernameAvailable(
@@ -74,6 +85,11 @@ export interface AuthEngine {
     baseUrl: string,
     reset: PasswordReset,
   ): Observable<EngineResult<null>>;
+  /** The user and device an access token was issued for, asked of the homeserver. */
+  whoami(
+    baseUrl: string,
+    accessToken: string,
+  ): Observable<EngineResult<TokenOwner>>;
   /** Keeps the account's other sessions signed in; the probe sends no `auth` at all. */
   changePassword(
     accountId: string,

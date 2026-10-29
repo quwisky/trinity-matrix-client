@@ -15,6 +15,7 @@ import type {
   PasswordReset,
   SignedInSession,
   TokenLogin,
+  TokenOwner,
 } from '../lib/auth-engine';
 import type { AuthMetadata } from '../lib/auth-metadata';
 
@@ -67,8 +68,8 @@ export class FakeAuthEngine implements AuthEngine {
   readonly users = new Map<string, FakeUser>();
   /** User ids with a live session, the accounts `changePassword` can reach. */
   readonly accounts = new Set<string>();
-  /** Access tokens the homeserver accepts; changing a password keeps them all. */
-  readonly accessTokens = new Set<string>();
+  /** Access tokens the homeserver accepts, by owner; changing a password keeps them all. */
+  readonly accessTokens = new Map<string, TokenOwner>();
   /** Login tokens by token, naming a localpart. */
   readonly loginTokens = new Map<string, string>();
   readonly resetLinks = new Map<string, PendingResetLink>();
@@ -184,6 +185,26 @@ export class FakeAuthEngine implements AuthEngine {
     if (link) link.confirmed = true;
   }
 
+  whoami(
+    baseUrl: string,
+    accessToken: string,
+  ): Observable<EngineResult<TokenOwner>> {
+    return this.command(`whoami:${baseUrl}`, () => {
+      const owner = this.accessTokens.get(accessToken);
+      return owner
+        ? engineOk(owner)
+        : engineFail({
+            kind: 'authentication',
+            code: 'request-failed',
+            diagnostic: {
+              kind: 'authentication',
+              httpStatus: 401,
+              errcode: 'M_UNKNOWN_TOKEN',
+            },
+          });
+    });
+  }
+
   changePassword(
     accountId: string,
     newPassword: string,
@@ -211,13 +232,12 @@ export class FakeAuthEngine implements AuthEngine {
 
   private session(localpart: string, deviceId: string | null): SignedInSession {
     const accessToken = `token-${localpart}-${this.accessTokens.size + 1}`;
-    this.accessTokens.add(accessToken);
-    return {
+    const owner = {
       userId: `@${localpart}:${this.serverName}`,
       deviceId: deviceId ?? `DEVICE${++this.devices}`,
-      accessToken,
-      refreshToken: null,
     };
+    this.accessTokens.set(accessToken, owner);
+    return { ...owner, accessToken, refreshToken: null };
   }
 
   private localpartOf(userId: string): string {

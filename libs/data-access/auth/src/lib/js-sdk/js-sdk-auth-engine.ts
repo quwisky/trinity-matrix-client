@@ -28,6 +28,7 @@ import type {
   PasswordReset,
   SignedInSession,
   TokenLogin,
+  TokenOwner,
 } from '../auth-engine';
 import type { AuthMetadata } from '../auth-metadata';
 
@@ -209,6 +210,16 @@ export class JsSdkAuthEngine implements AuthEngine {
         reset.logoutDevices,
       );
       return null;
+    });
+  }
+
+  whoami(
+    baseUrl: string,
+    accessToken: string,
+  ): Observable<EngineResult<TokenOwner>> {
+    return request(async () => {
+      const who = await createClient({ baseUrl, accessToken }).whoami();
+      return { userId: who.user_id, deviceId: who.device_id ?? null };
     });
   }
 

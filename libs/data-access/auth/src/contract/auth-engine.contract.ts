@@ -138,6 +138,32 @@ export function defineAuthEngineContract(
       expect(again.ok && again.value.deviceId).toBe(first.value.deviceId);
     });
 
+    it('names the user and device an access token was issued for', async () => {
+      const session = await signIn(context.user, context.user.password);
+      if (!session.ok) throw new Error('the user did not sign in');
+
+      await expect(
+        once(context.engine.whoami(context.baseUrl, session.value.accessToken)),
+      ).resolves.toEqual({
+        ok: true,
+        value: {
+          userId: context.user.userId,
+          deviceId: session.value.deviceId,
+        },
+      });
+    });
+
+    it('refuses an access token the homeserver does not know', async () => {
+      const failure = failureOf(
+        await once(context.engine.whoami(context.baseUrl, 'not-a-token')),
+      );
+
+      expect(failure).toMatchObject({
+        code: 'request-failed',
+        diagnostic: { httpStatus: 401, errcode: 'M_UNKNOWN_TOKEN' },
+      });
+    });
+
     it('refuses a wrong password as invalid credentials', async () => {
       const failure = failureOf(await signIn(context.user, 'not-the-password'));
 
