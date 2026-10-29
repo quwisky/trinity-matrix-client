@@ -1,5 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  jsSdkUia,
+} from '@trinity/data-access/matrix-client';
 import {
   UiaAttemptsExceededError,
   UiaCancelledError,
@@ -77,7 +80,7 @@ export class EmailAddressesWorkflow {
       let session = pending.uiaSession;
       return from(
         driveUia(
-          (probe) => {
+          jsSdkUia((probe) => {
             const auth = probe ?? (session ? { session } : null);
             if (auth && 'session' in auth && typeof auth.session === 'string') {
               session = auth.session;
@@ -94,7 +97,7 @@ export class EmailAddressesWorkflow {
                   }
                 : {}),
             });
-          },
+          }),
           {
             password: { user: pending.accountId, prompt: stages.password },
             fallback: ({ stage, session, pending: stillPending }) =>

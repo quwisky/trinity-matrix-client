@@ -11,4 +11,5 @@ export * from './lib/session-engine.token';
 export * from './lib/server-support';
 export * from './lib/mutual-rooms';
 export * from './lib/js-sdk/js-sdk-clients';
+export * from './lib/js-sdk/uia';
 export * from './lib/session-state.service';

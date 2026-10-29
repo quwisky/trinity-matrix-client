@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import {
   MatrixClientService,
   type ServerLogoutHold,
+  jsSdkUia,
 } from '@trinity/data-access/matrix-client';
 import {
   MatrixError,
@@ -117,11 +118,11 @@ export class AccountDeletionWorkflow {
       let authenticated = false;
       let sentAlive = false;
       const sent = driveUia(
-        (auth) => {
+        jsSdkUia((auth) => {
           authenticated ||= auth !== null;
           sentAlive = !hold.tokenDied();
           return client.deactivateAccount(auth ?? undefined, request.erase);
-        },
+        }),
         {
           password: { user: accountId, prompt: request.stages.password },
           fallback: ({ stage, session, pending }) =>

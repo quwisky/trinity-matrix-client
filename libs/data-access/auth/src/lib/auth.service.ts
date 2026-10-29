@@ -20,7 +20,10 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  jsSdkUia,
+} from '@trinity/data-access/matrix-client';
 import {
   AccountRuntimeService,
   UnprotectedStorageGate,
@@ -33,9 +36,8 @@ import {
 } from '@trinity/platform-native';
 import {
   UiaCancelledError,
-  runPasswordUia,
+  driveUia,
   type OidcSessionBinding,
-  type PasswordPrompt,
 } from '@trinity/util/matrix';
 import {
   OidcClientService,
@@ -435,7 +437,7 @@ export class AuthService implements QrSignInCompletion {
   /**
    * Change the active account's password. Cold — runs on subscribe. The homeserver
    * requires a user-interactive-auth (UIA) password stage, which we satisfy with the
-   * supplied `currentPassword` via {@link runPasswordUia}; a rejected password surfaces
+   * supplied `currentPassword` via {@link driveUia}; a rejected password surfaces
    * as a clear "incorrect password" error rather than a raw UIA failure. Other sessions
    * are kept signed in (`logoutDevices: false`).
    */
@@ -448,28 +450,26 @@ export class AuthService implements QrSignInCompletion {
         return throwError(() => new Error('Not signed in.'));
       }
       const client = this.matrix.instance;
-      let provided = false;
-      const promptPassword: PasswordPrompt = () => {
-        // A second prompt means the server rejected the first — bail rather than loop.
-        if (provided) {
-          return Promise.resolve(null);
-        }
-        provided = true;
-        return Promise.resolve(currentPassword);
-      };
       return from(
-        runPasswordUia(
+        driveUia(
           // The probe sends no `auth` at all: an empty dict is malformed UIA data that
           // ruma-based servers reject with M_BAD_JSON instead of the 401 challenge. The
           // SDK types the dict as required but serialises an undefined one away.
-          (auth) =>
+          jsSdkUia((auth) =>
             client.setPassword(
               auth ?? (undefined as unknown as AuthDict),
               newPassword,
               false,
             ),
-          promptPassword,
-          client.getUserId() ?? '',
+          ),
+          {
+            password: {
+              user: client.getUserId() ?? '',
+              // A second prompt means the server rejected the first — bail rather than loop.
+              prompt: ({ rejected }) =>
+                Promise.resolve(rejected ? null : currentPassword),
+            },
+          },
         ),
       ).pipe(
         map(() => void 0),
