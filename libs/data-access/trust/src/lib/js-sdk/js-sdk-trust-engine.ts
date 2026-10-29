@@ -28,6 +28,7 @@ import {
   merge,
   of,
   startWith,
+  Subject,
   switchMap,
   take,
 } from 'rxjs';
@@ -35,16 +36,24 @@ import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
+  UiaAttemptsExceededError,
+  UiaCancelledError,
+  UiaUnsupportedError,
+  type UiaPasswordPrompt,
   describeMatrixRequestFailure,
+  driveUia,
   engineFail,
   engineOk,
   plainEqual,
 } from '@trinity/util/matrix';
 import { DEFAULT_KEY_EVENT, withTimeout } from '../recovery-reset';
 import type {
+  InteractiveUpdate,
+  OwnDevice,
   OwnIdentityCheck,
   TrustEngine,
   TrustFacts,
+  UserTrustFacts,
   VerificationSnapshot,
 } from '../trust-engine';
 import {
@@ -113,6 +122,113 @@ function isFailure(error: unknown): error is EngineFailure {
   ].includes(error as EngineFailure);
 }
 
+const OWN_DEVICE: EngineFailure = {
+  kind: 'unexpected',
+  code: 'unsupported',
+  diagnostic: { kind: 'unexpected' },
+};
+
+const PROMPT_GONE: EngineFailure = {
+  kind: 'unexpected',
+  code: 'prompt-gone',
+  diagnostic: { kind: 'unexpected' },
+};
+
+const UNVERIFIED: UserTrustFacts = {
+  verified: false,
+  wasVerified: false,
+  needsApproval: false,
+};
+
+/** A command failure: the UIA outcomes and M_FORBIDDEN by code, else {@link requestFailed}. */
+function commandFailed(error: unknown): EngineFailure {
+  const uia =
+    error instanceof UiaCancelledError
+      ? 'uia-cancelled'
+      : error instanceof UiaUnsupportedError
+        ? 'uia-unsupported'
+        : error instanceof UiaAttemptsExceededError
+          ? 'uia-attempts-exceeded'
+          : null;
+  if (uia)
+    return {
+      kind: 'unexpected',
+      code: uia,
+      diagnostic: { kind: 'unexpected' },
+    };
+  const { kind, diagnostic } = describeMatrixRequestFailure(error);
+  return diagnostic.errcode === 'M_FORBIDDEN'
+    ? { kind, code: 'forbidden', diagnostic }
+    : { kind, code: 'request-failed', diagnostic };
+}
+
+async function readDevices(client: MatrixClient): Promise<OwnDevice[]> {
+  const userId = client.getUserId();
+  const currentId = client.getDeviceId();
+  const crypto = client.getCrypto();
+  const { devices } = await client.getDevices();
+  return Promise.all(
+    devices.map(async (device): Promise<OwnDevice> => {
+      // Decorative: a store error on one device must not fail the whole list.
+      const status =
+        crypto && userId
+          ? await crypto
+              .getDeviceVerificationStatus(userId, device.device_id)
+              .catch(() => null)
+          : null;
+      return {
+        deviceId: device.device_id,
+        displayName: device.display_name || null,
+        lastSeenTs: device.last_seen_ts ?? null,
+        lastSeenIp: device.last_seen_ip ?? null,
+        isCurrent: device.device_id === currentId,
+        verified: status?.isVerified() ?? false,
+      };
+    }),
+  );
+}
+
+async function readUserTrust(
+  crypto: CryptoApi,
+  userId: string,
+): Promise<UserTrustFacts> {
+  try {
+    const status = await crypto.getUserVerificationStatus(userId);
+    return {
+      verified: status.isCrossSigningVerified(),
+      wasVerified: status.wasCrossSigningVerified(),
+      needsApproval: status.needsUserApproval,
+    };
+  } catch {
+    // Decorative: a failed read shows the user as unverified.
+    return UNVERIFIED;
+  }
+}
+
+/** Re-reads `read` on each `changes`, one read per burst, dropping an overtaken read. */
+function readOnChange<T>(
+  changes: Observable<unknown>,
+  read: () => Promise<EngineResult<T>>,
+): Observable<EngineResult<T>> {
+  return changes.pipe(
+    startWith(undefined),
+    debounceTime(0, asapScheduler),
+    switchMap(() => from(read())),
+    distinctUntilChanged<EngineResult<T>>(plainEqual),
+  );
+}
+
+function eventsOf<A extends unknown[]>(
+  client: MatrixClient,
+  event: string,
+): Observable<A> {
+  return fromEventPattern<A>(
+    (handler) => client.on(event as never, handler as never),
+    (handler) => client.off(event as never, handler as never),
+    (...args: unknown[]) => args as A,
+  );
+}
+
 async function readFacts(
   client: MatrixClient,
   crypto: CryptoApi,
@@ -166,6 +282,16 @@ export class JsSdkTrustEngine implements TrustEngine {
     MatrixClient,
     ClientVerification
   >();
+  /** Open password prompts by id, answered through {@link answerPrompt}. */
+  private readonly prompts = new Map<
+    string,
+    { readonly accountId: string; answer(password: string | null): void }
+  >();
+  private promptSequence = 0;
+  /** Account ids whose device list this engine just changed, so open lists read again. */
+  private readonly devicesChanged = new Subject<string>();
+  /** `accountId\nuserId` pairs whose identity this engine just pinned or withdrew. */
+  private readonly identitiesChanged = new Subject<string>();
 
   facts(accountId: string): Observable<EngineResult<TrustFacts>> {
     return defer(() => {
@@ -466,6 +592,202 @@ export class JsSdkTrustEngine implements TrustEngine {
       if (!request) throw VERIFICATION_GONE;
       const value = await step(request, state);
       return (value ?? null) as T extends void ? null : T;
+    });
+  }
+
+  ownDevices(
+    accountId: string,
+  ): Observable<EngineResult<readonly OwnDevice[]>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return concat(of(engineFail(NOT_LIVE)), NEVER);
+      const me = client.getUserId();
+      // The initial bulk fetch is not a change: the first read covers it.
+      const ownListChanged = eventsOf<[string[], boolean?]>(
+        client,
+        CryptoEvent.DevicesUpdated,
+      ).pipe(
+        filter(([users, initial]) => !initial && !!me && users.includes(me)),
+      );
+      return readOnChange(
+        merge(ownListChanged, this.touched(this.devicesChanged, accountId)),
+        () =>
+          readDevices(client).then(
+            (devices) => engineOk(devices),
+            (error: unknown) => engineFail(requestFailed(error)),
+          ),
+      );
+    });
+  }
+
+  renameDevice(
+    accountId: string,
+    deviceId: string,
+    name: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, false, async (client) => {
+      await client.setDeviceDetails(deviceId, { display_name: name });
+      this.devicesChanged.next(accountId);
+    });
+  }
+
+  deleteDevice(
+    accountId: string,
+    deviceId: string,
+  ): Observable<InteractiveUpdate<null>> {
+    return this.interactive(accountId, async (client, prompt) => {
+      // Signing this device out is logout, not device management.
+      if (deviceId === client.getDeviceId()) return engineFail(OWN_DEVICE);
+      await driveUia(
+        (auth) => client.deleteDevice(deviceId, auth ?? undefined),
+        {
+          password: { user: client.getUserId() ?? '', prompt },
+        },
+      );
+      this.devicesChanged.next(accountId);
+      return engineOk(null);
+    });
+  }
+
+  preAuthenticate(
+    accountId: string,
+  ): Observable<InteractiveUpdate<{ readonly password: string | null }>> {
+    return this.interactive(accountId, async (client, prompt) => {
+      const { password } = await driveUia(
+        (auth) => client.deleteMultipleDevices([], auth ?? undefined),
+        { password: { user: client.getUserId() ?? '', prompt } },
+      );
+      return engineOk({ password });
+    });
+  }
+
+  answerPrompt(
+    accountId: string,
+    promptId: string,
+    password: string | null,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const prompt = this.prompts.get(promptId);
+      if (prompt?.accountId !== accountId) return of(engineFail(PROMPT_GONE));
+      prompt.answer(password);
+      return of(engineOk(null));
+    });
+  }
+
+  userTrust(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<UserTrustFacts>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return concat(of(engineFail(NOT_LIVE)), NEVER);
+      const crypto = client.getCrypto();
+      if (!crypto) return concat(of(engineFail(CRYPTO_NOT_READY)), NEVER);
+      const changed = eventsOf<[string]>(
+        client,
+        CryptoEvent.UserTrustStatusChanged,
+      ).pipe(filter(([changedUser]) => changedUser === userId));
+      return readOnChange(
+        merge(
+          changed,
+          this.touched(this.identitiesChanged, `${accountId}\n${userId}`),
+        ),
+        () => readUserTrust(crypto, userId).then((trust) => engineOk(trust)),
+      );
+    });
+  }
+
+  pinIdentity(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, true, async (_client, crypto) => {
+      await crypto.pinCurrentUserIdentity(userId);
+      this.identitiesChanged.next(`${accountId}\n${userId}`);
+    });
+  }
+
+  withdrawVerification(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, true, async (_client, crypto) => {
+      await crypto.withdrawVerificationRequirement(userId);
+      this.identitiesChanged.next(`${accountId}\n${userId}`);
+    });
+  }
+
+  private touched(changes: Subject<string>, key: string): Observable<unknown> {
+    return changes.pipe(filter((changed) => changed === key));
+  }
+
+  /** A one-result command; `needsCrypto` refuses an account without crypto. */
+  private command(
+    accountId: string,
+    needsCrypto: boolean,
+    run: (client: MatrixClient, crypto: CryptoApi) => Promise<void>,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(NOT_LIVE));
+      const crypto = client.getCrypto();
+      if (needsCrypto && !crypto) return of(engineFail(CRYPTO_NOT_READY));
+      return from(run(client, crypto as CryptoApi)).pipe(
+        map(() => engineOk(null)),
+        catchError((error: unknown) => of(engineFail(commandFailed(error)))),
+      );
+    });
+  }
+
+  /**
+   * Runs a command that may raise password prompts. Each prompt is a `password-required`
+   * update answered through {@link answerPrompt}; unsubscribing answers every open prompt
+   * with a cancel, so the request is never sent on.
+   */
+  private interactive<T>(
+    accountId: string,
+    run: (
+      client: MatrixClient,
+      prompt: UiaPasswordPrompt,
+    ) => Promise<EngineResult<T>>,
+  ): Observable<InteractiveUpdate<T>> {
+    return new Observable<InteractiveUpdate<T>>((subscriber) => {
+      const done = (result: EngineResult<T>): void => {
+        subscriber.next({ kind: 'done', result });
+        subscriber.complete();
+      };
+      const client = this.clients.clientFor(accountId);
+      if (!client) {
+        done(engineFail(NOT_LIVE));
+        return undefined;
+      }
+      const open = new Set<string>();
+      let closed = false;
+      const prompt: UiaPasswordPrompt = ({ rejected }) =>
+        new Promise((resolve) => {
+          if (closed) {
+            resolve(null);
+            return;
+          }
+          const promptId = `prompt-${++this.promptSequence}`;
+          open.add(promptId);
+          this.prompts.set(promptId, {
+            accountId,
+            answer: (password) => {
+              this.prompts.delete(promptId);
+              open.delete(promptId);
+              resolve(password);
+            },
+          });
+          subscriber.next({ kind: 'password-required', promptId, rejected });
+        });
+      run(client, prompt).then(done, (error: unknown) =>
+        done(engineFail(commandFailed(error))),
+      );
+      return () => {
+        closed = true;
+        for (const promptId of open) this.prompts.get(promptId)?.answer(null);
+      };
     });
   }
 

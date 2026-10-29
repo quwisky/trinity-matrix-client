@@ -41,6 +41,32 @@ export interface OwnIdentityCheck {
   readonly facts: TrustFacts;
 }
 
+/** One signed-in device of the account, as the server lists it. */
+export interface OwnDevice {
+  readonly deviceId: string;
+  /** null when the device has no display name. */
+  readonly displayName: string | null;
+  readonly lastSeenTs: number | null;
+  readonly lastSeenIp: string | null;
+  /** The device this engine runs as. */
+  readonly isCurrent: boolean;
+  /**
+   * Locally verified or cross-signed (js `isVerified()`), unlike
+   * {@link TrustFacts.thisDeviceCrossSigned}. A failed read counts as unverified.
+   */
+  readonly verified: boolean;
+}
+
+/** How the account sees another user's cross-signing identity. */
+export interface UserTrustFacts {
+  /** The current identity is cross-signing verified. */
+  readonly verified: boolean;
+  /** An identity of this user was verified at some point. */
+  readonly wasVerified: boolean;
+  /** The identity changed after a different one was pinned. */
+  readonly needsApproval: boolean;
+}
+
 /** A password prompt raised inside an interactive command, then exactly one `done`. */
 export type InteractiveUpdate<T> =
   | {
@@ -157,5 +183,60 @@ export interface TrustEngine {
   cancelVerification(
     accountId: string,
     flowId: string,
+  ): Observable<EngineResult<null>>;
+
+  /**
+   * The account's devices on subscribe, then again when its device list changes here or
+   * on the server. A failed read is a `request-failed` value; a replaced client is not followed.
+   */
+  ownDevices(accountId: string): Observable<EngineResult<readonly OwnDevice[]>>;
+  renameDevice(
+    accountId: string,
+    deviceId: string,
+    name: string,
+  ): Observable<EngineResult<null>>;
+  /**
+   * Signs another device out. Interactive: password prompts, then one `done`; unsubscribing
+   * cancels. The device this engine runs as is refused with `unsupported`.
+   */
+  deleteDevice(
+    accountId: string,
+    deviceId: string,
+  ): Observable<InteractiveUpdate<null>>;
+  /**
+   * A harmless authenticated request, so an irreversible step can prove the person can
+   * authenticate first. `done` carries the accepted password, null when none was asked for.
+   */
+  preAuthenticate(
+    accountId: string,
+  ): Observable<InteractiveUpdate<{ readonly password: string | null }>>;
+  /**
+   * Answers an open prompt; null cancels it (`uia-cancelled`). `prompt-gone` when no open
+   * prompt of this account has `promptId`. Three rejected passwords end the command with
+   * `uia-attempts-exceeded`.
+   */
+  answerPrompt(
+    accountId: string,
+    promptId: string,
+    password: string | null,
+  ): Observable<EngineResult<null>>;
+
+  /**
+   * How the account sees `userId` on subscribe, then after each change. A failed read is
+   * reported as unverified.
+   */
+  userTrust(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<UserTrustFacts>>;
+  /** Accepts the user's current identity, clearing `needsApproval`. */
+  pinIdentity(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<null>>;
+  /** Clears `wasVerified`, so a changed identity no longer needs verifying again. */
+  withdrawVerification(
+    accountId: string,
+    userId: string,
   ): Observable<EngineResult<null>>;
 }

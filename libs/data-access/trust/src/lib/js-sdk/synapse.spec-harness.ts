@@ -86,7 +86,7 @@ export async function cs(
   return res.json();
 }
 
-async function login(user: {
+export async function login(user: {
   readonly userId: string;
   readonly password: string;
 }): Promise<{ user_id: string; device_id: string; access_token: string }> {
@@ -226,6 +226,7 @@ export async function startSession(user: {
   readonly password: string;
 }): Promise<{
   readonly userId: string;
+  readonly deviceId: string;
   readonly password: string;
   readonly accessToken: string;
   dispose(): Promise<void>;
@@ -273,6 +274,7 @@ export async function startSession(user: {
   );
   return {
     userId: account.user_id,
+    deviceId: account.device_id,
     password: user.password,
     accessToken: account.access_token,
     dispose: async () => {

@@ -1,4 +1,5 @@
 import {
+  EngineRequestError,
   UiaAttemptsExceededError,
   UiaCancelledError,
   UiaUnsupportedError,
@@ -86,7 +87,9 @@ export function trustOperationFailure(
       partial || cause.partial,
     );
   }
-  if (cause instanceof UiaCancelledError) {
+  const engineCode =
+    cause instanceof EngineRequestError ? cause.failure.code : null;
+  if (cause instanceof UiaCancelledError || engineCode === 'uia-cancelled') {
     return new TrustOperationError(
       operation,
       'cancelled',
@@ -95,7 +98,10 @@ export function trustOperationFailure(
       partial,
     );
   }
-  if (cause instanceof UiaUnsupportedError) {
+  if (
+    cause instanceof UiaUnsupportedError ||
+    engineCode === 'uia-unsupported'
+  ) {
     return new TrustOperationError(
       operation,
       'provider-action-required',
@@ -104,7 +110,10 @@ export function trustOperationFailure(
       partial,
     );
   }
-  if (cause instanceof UiaAttemptsExceededError) {
+  if (
+    cause instanceof UiaAttemptsExceededError ||
+    engineCode === 'uia-attempts-exceeded'
+  ) {
     return new TrustOperationError(
       operation,
       'permission-denied',
@@ -117,7 +126,7 @@ export function trustOperationFailure(
     typeof cause === 'object' && cause !== null && 'errcode' in cause
       ? (cause as { readonly errcode?: unknown }).errcode
       : null;
-  if (errorCode === 'M_FORBIDDEN') {
+  if (errorCode === 'M_FORBIDDEN' || engineCode === 'forbidden') {
     return new TrustOperationError(
       operation,
       'permission-denied',

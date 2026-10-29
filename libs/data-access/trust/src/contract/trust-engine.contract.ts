@@ -1,6 +1,7 @@
 import {
   BehaviorSubject,
   type Observable,
+  concatMap,
   type Subscription,
   filter,
   firstValueFrom,
@@ -10,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type EngineResult, assertPlainData } from '@trinity/util/matrix';
 import type {
+  InteractiveUpdate,
   TrustEngine,
   TrustFacts,
   VerificationSnapshot,
@@ -19,6 +21,18 @@ export interface TrustContractSetup {
   readonly engine: TrustEngine;
   /** A live, synced account in `engine` with crypto and no identity yet. */
   readonly alice: string;
+  /** Alice's password, which the server's password prompts accept. */
+  readonly password: string;
+  /** The device `engine` runs as for alice. */
+  readonly deviceId: string;
+  /** Another user of the server, whose identity alice has not seen yet. */
+  readonly bob: string;
+  /** Alice signs in on another device; resolves its id. */
+  addDevice(): Promise<string>;
+  /** Another device of alice's publishes a cross-signing identity. */
+  publishIdentityElsewhere(): Promise<void>;
+  /** Bob publishes a new identity and alice's engine fetches it. */
+  bobPublishesIdentity(): Promise<void>;
   /** Alice's device here creates and publishes a cross-signing identity. */
   publishIdentity(): Promise<void>;
   /** Another client of alice's points the server's secret storage at `keyId`. */
@@ -127,6 +141,50 @@ export function defineTrustEngineContract(
     const factsOf = (result: EngineResult<TrustFacts>) =>
       result.ok ? result.value : null;
 
+    /**
+     * Runs an interactive command, answering each prompt from `answers` (null once they
+     * run out). Every update must be plain data, `done` must come last, exactly once.
+     */
+    async function interactive<T>(
+      source: Observable<InteractiveUpdate<T>>,
+      answers: (string | null)[],
+    ) {
+      const updates: InteractiveUpdate<T>[] = [];
+      await new Promise<void>((resolve, reject) => {
+        const subscription = source.subscribe({
+          next: (update) => {
+            expect(() => assertPlainData(update)).not.toThrow();
+            updates.push(update);
+            if (update.kind !== 'password-required') return;
+            engine
+              .answerPrompt(alice, update.promptId, answers.shift() ?? null)
+              .subscribe((answered) => {
+                if (!answered.ok) reject(new Error(answered.failure.code));
+              });
+          },
+          error: reject,
+          complete: resolve,
+        });
+        subscriptions.push(subscription);
+      });
+      const done = updates.at(-1);
+      if (done?.kind !== 'done') throw new Error('No done update');
+      expect(updates.filter((u) => u.kind === 'done')).toHaveLength(1);
+      return {
+        prompts: updates.flatMap((u) =>
+          u.kind === 'password-required' ? [u.rejected] : [],
+        ),
+        result: done.result,
+      };
+    }
+
+    const resultCode = (result: EngineResult<unknown>) =>
+      result.ok ? 'ok' : result.failure.code;
+
+    const deviceIds = (
+      result: EngineResult<readonly { deviceId: string }[]>,
+    ) => (result.ok ? result.value.map((d) => d.deviceId) : []);
+
     it(
       'emits the facts of a fresh account first, with nothing ready',
       async () => {
@@ -155,6 +213,19 @@ export function defineTrustEngineContract(
         expect(await code(engine.publishedMasterKey(NOBODY))).toBe(
           'account-not-live',
         );
+        const devices = await watch(engine.ownDevices(NOBODY)).until(
+          () => true,
+        );
+        expect(resultCode(devices)).toBe('account-not-live');
+        const trust = await watch(engine.userTrust(NOBODY, alice)).until(
+          () => true,
+        );
+        expect(resultCode(trust)).toBe('account-not-live');
+        expect(await code(engine.renameDevice(NOBODY, 'X', 'name'))).toBe(
+          'account-not-live',
+        );
+        const deleted = await interactive(engine.deleteDevice(NOBODY, 'X'), []);
+        expect(resultCode(deleted.result)).toBe('account-not-live');
       },
       testTimeoutMs,
     );
@@ -332,6 +403,262 @@ export function defineTrustEngineContract(
         // Unwatched, the request is forgotten; a DM request is not taken up again.
         for (const subscription of subscriptions) subscription.unsubscribe();
         expect(await firstValueFrom(engine.verification(alice))).toBeNull();
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'lists the own devices, this one marked current',
+      async () => {
+        const other = await context.addDevice();
+
+        const devices = await watch(engine.ownDevices(alice)).until((r) =>
+          deviceIds(r).includes(other),
+        );
+
+        if (!devices.ok) throw new Error(devices.failure.code);
+        expect(
+          devices.value.find((d) => d.deviceId === context.deviceId),
+        ).toMatchObject({ isCurrent: true });
+        expect(devices.value.find((d) => d.deviceId === other)).toMatchObject({
+          isCurrent: false,
+          verified: false,
+        });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'renames a device and the list follows',
+      async () => {
+        const other = await context.addDevice();
+        const devices = watch(engine.ownDevices(alice));
+        await devices.until((r) => deviceIds(r).includes(other));
+
+        expect(await code(engine.renameDevice(alice, other, 'Contract'))).toBe(
+          'ok',
+        );
+
+        await devices.until(
+          (r) =>
+            r.ok &&
+            r.value.some(
+              (d) => d.deviceId === other && d.displayName === 'Contract',
+            ),
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'deletes a device after one password prompt and the list follows',
+      async () => {
+        const other = await context.addDevice();
+        const devices = watch(engine.ownDevices(alice));
+        await devices.until((r) => deviceIds(r).includes(other));
+
+        const { prompts, result } = await interactive(
+          engine.deleteDevice(alice, other),
+          [context.password],
+        );
+
+        expect(prompts).toEqual([false]);
+        expect(result).toEqual({ ok: true, value: null });
+        await devices.until((r) => r.ok && !deviceIds(r).includes(other));
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'asks again after a rejected password, then deletes',
+      async () => {
+        const other = await context.addDevice();
+
+        const { prompts, result } = await interactive(
+          engine.deleteDevice(alice, other),
+          ['not-the-password', context.password],
+        );
+
+        expect(prompts).toEqual([false, true]);
+        expect(result.ok).toBe(true);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'keeps the device when the prompt is cancelled',
+      async () => {
+        const other = await context.addDevice();
+
+        const { result } = await interactive(
+          engine.deleteDevice(alice, other),
+          [null],
+        );
+
+        expect(resultCode(result)).toBe('uia-cancelled');
+        const devices = await watch(engine.ownDevices(alice)).until(() => true);
+        expect(deviceIds(devices)).toContain(other);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'cancels an open prompt when the command is unsubscribed',
+      async () => {
+        const other = await context.addDevice();
+        const prompt = await firstValueFrom(
+          engine
+            .deleteDevice(alice, other)
+            .pipe(filter((u) => u.kind === 'password-required')),
+        );
+        if (prompt.kind !== 'password-required') throw new Error('No prompt');
+
+        expect(
+          await code(
+            engine.answerPrompt(alice, prompt.promptId, context.password),
+          ),
+        ).toBe('prompt-gone');
+        const devices = await watch(engine.ownDevices(alice)).until(() => true);
+        expect(deviceIds(devices)).toContain(other);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'gives up after three rejected passwords',
+      async () => {
+        const other = await context.addDevice();
+
+        const { prompts, result } = await interactive(
+          engine.deleteDevice(alice, other),
+          ['wrong-1', 'wrong-2', 'wrong-3'],
+        );
+
+        expect(prompts).toEqual([false, true, true]);
+        expect(resultCode(result)).toBe('uia-attempts-exceeded');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'refuses to delete the device it runs as, without a prompt',
+      async () => {
+        const { prompts, result } = await interactive(
+          engine.deleteDevice(alice, context.deviceId),
+          [context.password],
+        );
+
+        expect(prompts).toEqual([]);
+        expect(resultCode(result)).toBe('unsupported');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'pre-authenticates and returns the accepted password',
+      async () => {
+        const { prompts, result } = await interactive(
+          engine.preAuthenticate(alice),
+          [context.password],
+        );
+
+        expect(prompts).toEqual([false]);
+        expect(result).toEqual({
+          ok: true,
+          value: { password: context.password },
+        });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "refuses another account's answer to an open prompt, which stays open",
+      async () => {
+        const other = await context.addDevice();
+        let answered = false;
+        const { prompts, result } = await interactive(
+          engine.deleteDevice(alice, other).pipe(
+            concatMap(async (update) => {
+              if (update.kind === 'password-required' && !answered) {
+                answered = true;
+                expect(
+                  await code(
+                    engine.answerPrompt(
+                      NOBODY,
+                      update.promptId,
+                      context.password,
+                    ),
+                  ),
+                ).toBe('prompt-gone');
+              }
+              return update;
+            }),
+          ),
+          [context.password],
+        );
+
+        expect(prompts).toEqual([false]);
+        expect(result.ok).toBe(true);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'refuses an answer to a prompt that is not open',
+      async () => {
+        expect(
+          await code(engine.answerPrompt(alice, 'no-such-prompt', 'x')),
+        ).toBe('prompt-gone');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'sees an identity published by another device, not held here',
+      async () => {
+        await context.publishIdentityElsewhere();
+
+        const check = await value(engine.ownIdentityCheck(alice));
+
+        expect(check.identityKnown).toBe(true);
+        expect(check.publishedMasterKey).toEqual(expect.any(String));
+        expect(check.localMasterKey).not.toBe(check.publishedMasterKey);
+        expect(check.facts.crossSigning.privateKeysCachedLocally).toEqual({
+          masterKey: false,
+          selfSigningKey: false,
+          userSigningKey: false,
+        });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "follows another user's identity: pinned on sight, a change needs approval until pinned",
+      async () => {
+        const bob = watch(engine.userTrust(alice, context.bob));
+        const unverified = {
+          verified: false,
+          wasVerified: false,
+          needsApproval: false,
+        };
+        expect(await bob.until(() => true)).toEqual({
+          ok: true,
+          value: unverified,
+        });
+
+        await context.bobPublishesIdentity();
+        await context.bobPublishesIdentity();
+        await bob.until((r) => r.ok && r.value.needsApproval);
+
+        expect(await value(engine.pinIdentity(alice, context.bob))).toBeNull();
+
+        await bob.until((r) => r.ok && !r.value.needsApproval);
+        // Bob was never verified (that needs interactive verification), so this only checks
+        // that withdraw succeeds; the fake spec checks it clears `wasVerified`.
+        expect(
+          await value(engine.withdrawVerification(alice, context.bob)),
+        ).toBeNull();
+        expect(bob.emissions().at(-1)).toEqual({ ok: true, value: unverified });
       },
       testTimeoutMs,
     );
