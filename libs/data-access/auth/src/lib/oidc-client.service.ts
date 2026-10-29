@@ -4,6 +4,7 @@ import {
   OAuth2Error,
   OAuthGrantType,
   createClient,
+  isValidAuthMetadata,
   type BearerTokenResponse,
   type OAuthRegistrationRequest,
   type ValidatedAuthMetadata,
@@ -22,11 +23,13 @@ import {
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import {
+  OIDC_PROVIDER_MISMATCH,
   type OidcSessionBinding,
   verifiedDeviceGrantMetadata,
   verifiedEndpoints,
   type VerifiedEndpoints,
 } from '@trinity/util/matrix';
+import type { AuthMetadata } from './auth-metadata';
 import { checkIssuer, checkSavedEndpoints } from './oidc-issuer-check';
 
 /** Stable https identifier for the app (dynamic-registration `client_uri`). */
@@ -75,7 +78,7 @@ export type OidcApplicationType = 'web' | 'native';
 /** Inputs for building an OIDC authorization request. */
 export interface OidcAuthorizationParams {
   baseUrl: string;
-  metadata: ValidatedAuthMetadata;
+  metadata: AuthMetadata;
   redirectUri: string;
   applicationType: OidcApplicationType;
   /** OIDC `prompt` (e.g. `create` for registration); omitted for a normal login. */
@@ -162,12 +165,23 @@ export class OidcClientService {
   buildAuthorizationRequest(
     params: OidcAuthorizationParams,
   ): Observable<OidcAuthorizationRequest> {
-    return this.ensureClientId(
-      params.baseUrl,
-      params.metadata,
-      params.applicationType,
-      [params.redirectUri],
-    ).pipe(switchMap((clientId) => from(this.buildUrl(params, clientId))));
+    return defer(() => {
+      const { metadata } = params;
+      // Only getAuthMetadata()'s answer reaches here, and it passed this guard already.
+      if (!isValidAuthMetadata(metadata)) {
+        throw new Error(OIDC_PROVIDER_MISMATCH);
+      }
+      return this.ensureClientId(
+        params.baseUrl,
+        metadata,
+        params.applicationType,
+        [params.redirectUri],
+      ).pipe(
+        switchMap((clientId) =>
+          from(this.buildUrl(params, metadata, clientId)),
+        ),
+      );
+    });
   }
 
   /**
@@ -522,9 +536,10 @@ export class OidcClientService {
 
   private async buildUrl(
     params: OidcAuthorizationParams,
+    metadata: ValidatedAuthMetadata,
     clientId: string,
   ): Promise<OidcAuthorizationRequest> {
-    const auth = new OAuth2(params.metadata, {
+    const auth = new OAuth2(metadata, {
       clientId,
       // Omitted for a normal login, where OAuth2 mints one (`?? secureRandomString(10)`).
       ...(params.deviceId ? { deviceId: params.deviceId } : {}),

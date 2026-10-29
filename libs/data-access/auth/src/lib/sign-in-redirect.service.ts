@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { Observable, defer, map, switchMap, take } from 'rxjs';
-import type { ValidatedAuthMetadata } from 'matrix-js-sdk';
 import type { LoginMode } from './account-establishment';
+import type { AuthMetadata } from './auth-metadata';
 import { AuthService } from './auth.service';
 import { OidcStateStore } from './oidc-state.store';
 import { SsoStateStore } from './sso-state.store';
@@ -10,7 +10,7 @@ import { SsoStateStore } from './sso-state.store';
 /** What an OIDC ("next-gen auth") redirect needs beyond the discovered provider. */
 export interface OidcRedirectRequest {
   baseUrl: string;
-  metadata: ValidatedAuthMetadata;
+  metadata: AuthMetadata;
   mode: LoginMode;
   /** `'create'` sends the user to the provider's registration flow instead of login. */
   prompt?: string;

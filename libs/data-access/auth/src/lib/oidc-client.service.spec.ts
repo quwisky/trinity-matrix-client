@@ -34,6 +34,7 @@ import {
   isValidAuthMetadata,
 } from 'matrix-js-sdk';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
+import { OIDC_PROVIDER_MISMATCH } from '@trinity/util/matrix';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import {
   OidcClientService,
@@ -211,6 +212,18 @@ describe('OidcClientService', () => {
   });
 
   describe('buildAuthorizationRequest', () => {
+    it('refuses metadata the SDK would not accept, before any request', async () => {
+      const fetchMock = stubFetch({});
+      const { code_challenge_methods_supported: _, ...partial } = AUTH_METADATA;
+
+      await expect(
+        firstValueFrom(
+          svc.buildAuthorizationRequest({ ...PARAMS, metadata: partial }),
+        ),
+      ).rejects.toThrow(OIDC_PROVIDER_MISMATCH);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('registers this client with the provider (snake_case wire shape)', async () => {
       const fetchMock = stubFetch({
         registration: () => jsonResponse({ client_id: CLIENT_ID }),

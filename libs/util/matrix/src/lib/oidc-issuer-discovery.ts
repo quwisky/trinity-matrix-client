@@ -1,10 +1,17 @@
-import type { ValidatedAuthMetadata } from 'matrix-js-sdk';
-
 /** Shown when the callback or the homeserver names a provider other than the one signed in with. */
 export const OIDC_PROVIDER_MISMATCH =
   "Sign-in could not be completed with this server's sign-in provider. Try again.";
 /** The issuer's own discovery is a side check; an unresponsive host must not hold the callback. */
 const DISCOVERY_TIMEOUT_MS = 8_000;
+
+/** The provider fields of a homeserver's auth metadata that these checks compare. */
+export interface OidcProviderMetadata {
+  readonly issuer: string;
+  readonly authorization_endpoint: string;
+  readonly token_endpoint: string;
+  readonly revocation_endpoint: string;
+  readonly device_authorization_endpoint?: string;
+}
 
 /** The token endpoint, and the revocation and device endpoints when they are usable. */
 export interface VerifiedEndpoints {
@@ -26,7 +33,7 @@ export interface VerifiedEndpoints {
  * a provider that sends RFC 9207 `iss` closes the rest.
  */
 export async function checkIssuerDiscovery(
-  metadata: ValidatedAuthMetadata,
+  metadata: OidcProviderMetadata,
 ): Promise<VerifiedEndpoints | null> {
   const own = await issuerDiscovery(metadata.issuer);
   if (!own) {
@@ -76,7 +83,7 @@ export async function checkIssuerDiscovery(
  * when the document disagrees, or when a required or unconfirmed token endpoint is missing.
  */
 export async function verifiedEndpoints(
-  metadata: ValidatedAuthMetadata,
+  metadata: OidcProviderMetadata,
   requireDocument = false,
 ): Promise<VerifiedEndpoints> {
   const confirmed = await checkIssuerDiscovery(metadata);
@@ -102,9 +109,9 @@ export async function verifiedEndpoints(
  * Throws when either is not verified, so neither the device code request nor the token
  * poll goes to an endpoint the issuer has not confirmed.
  */
-export async function verifiedDeviceGrantMetadata(
-  metadata: ValidatedAuthMetadata,
-): Promise<ValidatedAuthMetadata> {
+export async function verifiedDeviceGrantMetadata<
+  M extends OidcProviderMetadata,
+>(metadata: M): Promise<M> {
   const { tokenEndpoint, deviceAuthorizationEndpoint } =
     await verifiedEndpoints(metadata);
   if (!deviceAuthorizationEndpoint) {
@@ -137,7 +144,7 @@ function endpoints({
 /** `url` when its scheme, host and port are the issuer's, else undefined. */
 function onIssuerOrigin(
   url: string | undefined,
-  metadata: ValidatedAuthMetadata,
+  metadata: OidcProviderMetadata,
 ): string | undefined {
   try {
     const origin = url === undefined ? undefined : new URL(url).origin;
