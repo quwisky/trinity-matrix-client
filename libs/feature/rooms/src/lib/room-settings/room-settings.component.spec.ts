@@ -287,7 +287,7 @@ async function build(options: BuildOptions = {}) {
         ).asReadonly(),
         load: () => of(undefined),
       }),
-      MockProvider(RoomUpgradeService, { plan: () => UPGRADE_PLAN }),
+      MockProvider(RoomUpgradeService, { plan: () => of(UPGRADE_PLAN) }),
       MockProvider(RoomEncryptionService, { turnOn: () => of(undefined) }),
       MockProvider(RoomDirectoryService, {
         serverName: () => 'hs',

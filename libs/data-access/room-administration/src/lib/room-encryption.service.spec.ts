@@ -1,294 +1,153 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { EventType, MatrixError, type MatrixEvent } from 'matrix-js-sdk';
-import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
-import {
-  RoomActionPermissionError,
-  RoomActionPermissionsService,
-  type ActionAvailability,
-} from './room-action-permissions.service';
+import { type EngineFailure, engineFail } from '@trinity/util/matrix';
+import { Subject, firstValueFrom, of } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { FakeRoomOptions } from '../contract/fake-room-administration-engine';
+import { AdministeredRoomStore } from './administered-room.store';
+import { RoomActionPermissionError } from './room-action-permissions.service';
 import { RoomAdministrationError } from './room-administration-error';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
 import { RoomEncryptionService } from './room-encryption.service';
+import type { EngineResult } from '@trinity/util/matrix';
 
-const TARGET = { accountId: '@me:hs', roomId: '!room:hs' } as const;
-const ALLOWED: ActionAvailability = { available: true, reason: null };
-
-function setup(
-  options: {
-    encrypted?: boolean;
-    encryption?: ActionAvailability;
-    signedIn?: boolean;
-    send?: () => Promise<unknown>;
-    serverState?: () => Promise<unknown>;
-    store?: () => Promise<boolean>;
-    /** The store's answer once the local apply has run. */
-    applied?: () => Promise<boolean>;
-    onCryptoEvent?: ((...args: unknown[]) => Promise<void>) | null;
-  } = {},
-) {
-  let afterApply = false;
-  const onCryptoEvent = vi.fn(
-    options.onCryptoEvent ??
-      (async () => {
-        afterApply = true;
-      }),
-  );
-  const getStateEvent = vi.fn(
-    options.serverState ??
-      (() =>
-        Promise.reject(
-          new MatrixError(
-            { errcode: 'M_NOT_FOUND', error: 'Event not found.' },
-            404,
-          ),
-        )),
-  );
-  const sendStateEvent = vi.fn(
-    options.send ?? (() => Promise.resolve({ event_id: '$e' })),
-  );
-  const room = {
-    roomId: TARGET.roomId,
-    hasEncryptionStateEvent: () => options.encrypted ?? false,
-  };
-  const client = {
-    getStateEvent,
-    sendStateEvent,
-    getCrypto: () => ({
-      isEncryptionEnabledInRoom: () =>
-        afterApply
-          ? (options.applied ?? (() => Promise.resolve(true)))()
-          : (options.store ?? (() => Promise.resolve(false)))(),
-      ...(options.onCryptoEvent === null ? {} : { onCryptoEvent }),
-    }),
-    getRoom: (roomId: string) => (roomId === TARGET.roomId ? room : null),
-  };
-  const settingsFor = vi.fn(() => ({
-    encryption: options.encryption ?? ALLOWED,
-  }));
-  TestBed.configureTestingModule({
-    providers: [
-      RoomEncryptionService,
-      MockProvider(MatrixClientService, {
-        clientFor: (accountId: string) =>
-          options.signedIn !== false && accountId === TARGET.accountId
-            ? (client as never)
-            : null,
-      }),
-      MockProvider(RoomActionPermissionsService, {
-        settingsFor: settingsFor as never,
-        assert: (availability: ActionAvailability) => {
-          if (!availability.available) {
-            throw new RoomActionPermissionError(availability);
-          }
-        },
-      }),
-    ],
-  });
+/** Bob's room with alice at `alicePower` (100 may turn encryption on). */
+async function setup({
+  alicePower = 100,
+  ...options
+}: FakeRoomOptions & { alicePower?: number } = {}) {
+  const session = administrationSession();
+  const { engine } = session;
+  const roomId = await roomWithAlice(engine, options);
+  await engine.asBob.setPowerLevel(roomId, engine.alice, alicePower);
+  TestBed.configureTestingModule({ providers: session.providers });
+  const state = TestBed.inject(RoomAdministrationProjectionState);
+  state.select(engine.alice, roomId);
+  state.update('permissions', 'available', 'retained');
+  const target = { accountId: engine.alice, roomId };
   return {
-    service: TestBed.inject(RoomEncryptionService),
-    getStateEvent,
-    sendStateEvent,
-    settingsFor,
-    onCryptoEvent,
-    room,
+    ...session,
+    target,
+    enable: vi.spyOn(engine, 'enableEncryption'),
+    room: () =>
+      TestBed.inject(AdministeredRoomStore).room(engine.alice, roomId),
+    svc: TestBed.inject(RoomEncryptionService),
   };
 }
 
-async function notAppliedError(
-  options: Parameters<typeof setup>[0],
-): Promise<RoomAdministrationError> {
-  const { service, sendStateEvent } = setup(options);
-  const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-    (cause: unknown) => cause,
+const failure = (action: Promise<unknown>) =>
+  action.then(
+    () => null,
+    (error: unknown) => error,
   );
-  expect(sendStateEvent).toHaveBeenCalledTimes(1);
-  expect(error).toBeInstanceOf(RoomAdministrationError);
-  return error as RoomAdministrationError;
-}
+
+const failed = (code: string, extra: Partial<EngineFailure> = {}) =>
+  of(
+    engineFail({
+      kind: 'unexpected',
+      code,
+      diagnostic: { kind: 'unexpected' },
+      ...extra,
+    } as EngineFailure),
+  );
+
+afterEach(() => TestBed.resetTestingModule());
 
 describe('RoomEncryptionService', () => {
-  it('sends the Megolm m.room.encryption content new rooms are created with', async () => {
-    const { service, sendStateEvent, settingsFor } = setup();
+  it('is cold, then turns encryption on as the opening account', async () => {
+    const { svc, target, enable, room } = await setup();
 
-    await firstValueFrom(service.turnOn(TARGET), { defaultValue: undefined });
+    const action = svc.turnOn(target);
+    expect(enable).not.toHaveBeenCalled();
 
-    expect(settingsFor).toHaveBeenCalledWith(TARGET);
-    expect(sendStateEvent).toHaveBeenCalledExactlyOnceWith(
-      TARGET.roomId,
-      EventType.RoomEncryption,
-      { algorithm: 'm.megolm.v1.aes-sha2' },
-      '',
+    await firstValueFrom(action, { defaultValue: undefined });
+    expect(enable).toHaveBeenCalledExactlyOnceWith(
+      target.accountId,
+      target.roomId,
     );
+    expect(room()?.state.encryption).toEqual({
+      algorithm: 'm.megolm.v1.aes-sha2',
+    });
   });
 
-  it('is cold: nothing is sent until subscribed', () => {
-    const { service, sendStateEvent } = setup();
+  it('adopts the event the server has when sync missed it', async () => {
+    const { svc, target, engine, room } = await setup({ encrypted: true });
+    engine.withholdFromSnapshot(target.roomId, 'm.room.encryption');
+    expect(room()?.encryption).toBe('unencrypted');
 
-    service.turnOn(TARGET);
+    await firstValueFrom(svc.turnOn(target), { defaultValue: undefined });
 
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(room()?.encryption).toBe('encrypted');
+    const events = await firstValueFrom(
+      engine.stateEvents(target.accountId, target.roomId),
+    );
+    const encryption = events.ok
+      ? events.value.find(({ type }) => type === 'm.room.encryption')
+      : undefined;
+    expect(encryption?.event).toMatchObject({ sender: engine.bob });
   });
 
-  it('refuses an already encrypted room without re-sending its settings', async () => {
-    const { service, sendStateEvent } = setup({ encrypted: true });
+  it('refuses a room the room state or the crypto store has encrypted, without asking the engine', async () => {
+    for (const options of [
+      { encrypted: true },
+      { encryptionUnknown: true },
+    ] as const) {
+      TestBed.resetTestingModule();
+      const { svc, target, enable, engine } = await setup(options);
+      if (options.encryptionUnknown) {
+        engine.answerEncryption(target.roomId, true);
+      }
 
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
+      const error = await failure(firstValueFrom(svc.turnOn(target)));
+
+      expect((error as RoomAdministrationError).outcome.failure).toBe(
+        'invalid-input',
+      );
+      expect((error as Error).message).toBe('This room is already encrypted.');
+      expect(enable).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    [
+      'already-encrypted',
+      { failure: 'invalid-input' },
+      'This room is already encrypted.',
+    ],
+    [
+      'encryption-not-applied',
+      { failure: 'partial-update', recovery: 'review-room-state' },
+      "Encryption is on, but this device couldn't apply it.",
+    ],
+    ['account-not-live', { failure: 'not-signed-in' }, 'Not signed in.'],
+    ['room-unavailable', { failure: 'not-signed-in' }, 'Not signed in.'],
+  ])('maps the engine failure %s', async (code, outcome, message) => {
+    const { svc, target, enable } = await setup();
+    enable.mockReturnValue(failed(code));
+
+    const error = await failure(firstValueFrom(svc.turnOn(target)));
 
     expect(error).toBeInstanceOf(RoomAdministrationError);
-    expect((error as RoomAdministrationError).outcome.failure).toBe(
-      'invalid-input',
-    );
-    expect(sendStateEvent).not.toHaveBeenCalled();
-  });
-
-  it('sends no second m.room.encryption when only the crypto store knows the room is encrypted', async () => {
-    const { service, sendStateEvent } = setup({
-      store: () => Promise.resolve(true),
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      ...outcome,
+      operation: 'turn-on-encryption',
     });
-
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
-
-    expect((error as Error).message).toBe('This room is already encrypted.');
-    expect(sendStateEvent).not.toHaveBeenCalled();
-  });
-
-  it('sends nothing when the crypto store fails to answer', async () => {
-    const { service, sendStateEvent } = setup({
-      store: () => Promise.reject(new Error('store unavailable')),
-    });
-
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
-
-    expect((error as Error).message).toBe('This room is already encrypted.');
-    expect(sendStateEvent).not.toHaveBeenCalled();
-  });
-
-  it("applies the server's settings here instead of sending a second event when only this device lacks them", async () => {
-    const onServer = {
-      algorithm: 'm.megolm.v1.aes-sha2',
-      rotation_period_ms: 604_800_000,
-    };
-    const { service, getStateEvent, sendStateEvent, onCryptoEvent, room } =
-      setup({ serverState: () => Promise.resolve(onServer) });
-
-    await firstValueFrom(service.turnOn(TARGET), { defaultValue: undefined });
-
-    expect(getStateEvent).toHaveBeenCalledWith(
-      TARGET.roomId,
-      EventType.RoomEncryption,
-      '',
-    );
-    expect(sendStateEvent).not.toHaveBeenCalled();
-    expect(onCryptoEvent).toHaveBeenCalledTimes(1);
-    const [appliedRoom, event] = onCryptoEvent.mock.calls[0] as [
-      unknown,
-      MatrixEvent,
-    ];
-    expect(appliedRoom).toBe(room);
-    expect(event.getContent()).toEqual(onServer);
-  });
-
-  it('reports a partial update when the server has the event but this device cannot apply it', async () => {
-    const { service, sendStateEvent } = setup({
-      serverState: () => Promise.resolve({ algorithm: 'm.megolm.v1.aes-sha2' }),
-      applied: () => Promise.resolve(false),
-    });
-
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
-
-    expect((error as RoomAdministrationError).outcome.failure).toBe(
-      'partial-update',
-    );
-    expect(sendStateEvent).not.toHaveBeenCalled();
-  });
-
-  it('sends nothing when the server state cannot be read', async () => {
-    const { service, sendStateEvent } = setup({
-      serverState: () =>
-        Promise.reject(
-          new MatrixError({ errcode: 'M_UNKNOWN', error: 'busy' }, 500),
-        ),
-    });
-
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
-
-    expect((error as RoomAdministrationError).outcome.failure).toBe(
-      'server-rejected',
-    );
-    expect(sendStateEvent).not.toHaveBeenCalled();
-  });
-
-  it('refuses without permission and sends nothing', async () => {
-    const reason =
-      'Only people who can change room settings can turn on encryption.';
-    const { service, sendStateEvent } = setup({
-      encryption: { available: false, reason },
-    });
-
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
-
-    expect(error).toBeInstanceOf(RoomActionPermissionError);
-    expect((error as Error).message).toBe(reason);
-    expect(sendStateEvent).not.toHaveBeenCalled();
-  });
-
-  it('refuses when the opening account is gone', async () => {
-    const { service, sendStateEvent } = setup({ signedIn: false });
-
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
-
-    expect((error as RoomAdministrationError).outcome.failure).toBe(
-      'not-signed-in',
-    );
-    expect(sendStateEvent).not.toHaveBeenCalled();
-  });
-
-  it('refuses a second request while the first is in flight', async () => {
-    let resolve!: (value: unknown) => void;
-    const { service, sendStateEvent } = setup({
-      send: () => new Promise((done) => (resolve = done)),
-    });
-
-    const first = firstValueFrom(service.turnOn(TARGET), {
-      defaultValue: undefined,
-    });
-    const second = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
-    await vi.waitFor(() => expect(sendStateEvent).toHaveBeenCalled());
-    resolve({ event_id: '$e' });
-    await first;
-
-    expect((second as RoomAdministrationError).outcome.failure).toBe(
-      'invalid-input',
-    );
-    expect(sendStateEvent).toHaveBeenCalledTimes(1);
+    expect((error as Error).message).toBe(message);
   });
 
   it('reports a server rejection as a retryable typed error', async () => {
-    const { service } = setup({
-      send: () => Promise.reject(new Error('M_FORBIDDEN')),
-    });
-
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
+    const { svc, target, enable } = await setup();
+    enable.mockReturnValue(
+      failed('request-failed', {
+        kind: 'permission',
+        diagnostic: { kind: 'permission', httpStatus: 403 },
+      }),
     );
+
+    const error = await failure(firstValueFrom(svc.turnOn(target)));
 
     expect((error as RoomAdministrationError).outcome).toMatchObject({
       failure: 'server-rejected',
@@ -297,69 +156,48 @@ describe('RoomEncryptionService', () => {
     });
   });
 
-  it('applies the sent content to this device once the server accepts it', async () => {
-    const { service, onCryptoEvent, room } = setup();
+  it('refuses without permission and asks nothing', async () => {
+    const { svc, target, enable } = await setup({ alicePower: 0 });
 
-    await firstValueFrom(service.turnOn(TARGET), { defaultValue: undefined });
+    const error = await failure(firstValueFrom(svc.turnOn(target)));
 
-    expect(onCryptoEvent).toHaveBeenCalledTimes(1);
-    const [appliedRoom, event] = onCryptoEvent.mock.calls[0] as [
-      unknown,
-      MatrixEvent,
-    ];
-    expect(appliedRoom).toBe(room);
-    expect(event.getType()).toBe(EventType.RoomEncryption);
-    expect(event.getStateKey()).toBe('');
-    expect(event.getRoomId()).toBe(TARGET.roomId);
-    expect(event.getContent()).toEqual({ algorithm: 'm.megolm.v1.aes-sha2' });
+    expect(error).toBeInstanceOf(RoomActionPermissionError);
+    expect(enable).not.toHaveBeenCalled();
   });
 
-  it('applies nothing when the server rejects the event', async () => {
-    const { service, onCryptoEvent } = setup({
-      send: () => Promise.reject(new Error('M_FORBIDDEN')),
+  it('refuses when the opening account is gone', async () => {
+    const { svc, target, enable, signIn } = await setup();
+    signIn([]);
+
+    const error = await failure(firstValueFrom(svc.turnOn(target)));
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'not-signed-in',
+    );
+    expect(enable).not.toHaveBeenCalled();
+  });
+
+  it('refuses a second request while the first is in flight, then frees the room', async () => {
+    const { svc, target, enable } = await setup();
+    const answer = new Subject<EngineResult<null>>();
+    enable.mockReturnValueOnce(answer);
+
+    const first = firstValueFrom(svc.turnOn(target), {
+      defaultValue: undefined,
     });
+    const second = await failure(firstValueFrom(svc.turnOn(target)));
+    answer.next({ ok: true, value: null });
+    answer.complete();
+    await first;
 
-    await firstValueFrom(service.turnOn(TARGET)).catch(() => undefined);
-
-    expect(onCryptoEvent).not.toHaveBeenCalled();
-  });
-
-  it('applies nothing to a room that is already encrypted', async () => {
-    for (const options of [
-      { encrypted: true },
-      { store: () => Promise.resolve(true) },
-    ]) {
-      TestBed.resetTestingModule();
-      const { service, onCryptoEvent } = setup(options);
-
-      await firstValueFrom(service.turnOn(TARGET)).catch(() => undefined);
-
-      expect(onCryptoEvent).not.toHaveBeenCalled();
-    }
-  });
-
-  it('reports a partial update when the crypto backend cannot apply it', async () => {
-    const error = await notAppliedError({ onCryptoEvent: null });
-
-    expect(error.outcome).toMatchObject({
-      failure: 'partial-update',
-      operation: 'turn-on-encryption',
-    });
-  });
-
-  it('reports a partial update when applying it throws', async () => {
-    const error = await notAppliedError({
-      onCryptoEvent: () => Promise.reject(new Error('encryptor mismatch')),
-    });
-
-    expect(error.outcome.failure).toBe('partial-update');
-  });
-
-  it('reports a partial update when the crypto store does not read back as encrypted', async () => {
-    const error = await notAppliedError({
-      applied: () => Promise.resolve(false),
-    });
-
-    expect(error.outcome.failure).toBe('partial-update');
+    expect((second as RoomAdministrationError).outcome.failure).toBe(
+      'invalid-input',
+    );
+    expect((second as Error).message).toBe(
+      'Encryption is already being turned on.',
+    );
+    expect(enable).toHaveBeenCalledTimes(1);
+    await firstValueFrom(svc.turnOn(target), { defaultValue: undefined });
+    expect(enable).toHaveBeenCalledTimes(2);
   });
 });

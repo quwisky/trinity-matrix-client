@@ -88,6 +88,7 @@ const RESULT: RoomUpgradeResult = {
 interface UpgradeSetup {
   readonly upgrade?: ActionAvailability;
   readonly result?: Observable<RoomUpgradeResult | null>;
+  readonly plan?: Observable<RoomUpgradePlan | null>;
 }
 
 const homeserver = (
@@ -118,7 +119,7 @@ async function build(
   const stateEvents = vi.fn((): Observable<readonly RoomStateEntry[]> =>
     of(STATE),
   );
-  const plan = vi.fn(() => PLAN);
+  const plan = vi.fn(() => upgradeSetup.plan ?? of(PLAN));
   const openRoom = vi.fn();
   const result = await render(RoomSettingsAdvancedComponent, {
     inputs: {
@@ -461,6 +462,39 @@ describe('RoomSettingsAdvancedComponent upgrade', () => {
     });
     expect(options.dismissGuard({ busy: () => true })).toBe(false);
     expect(options.dismissGuard({ busy: () => false })).toBe(true);
+  });
+
+  it('shows Upgrade room loading until the plan arrives, opening it once', async () => {
+    const planned = new Subject<RoomUpgradePlan | null>();
+    const { upgradeButton, plan, openAndWait, fixture } = await build(
+      LIVE,
+      NEWER,
+      { upgrade: ALLOWED, plan: planned },
+    );
+
+    fireEvent.click(upgradeButton()!);
+    fireEvent.click(upgradeButton()!);
+    fixture.detectChanges();
+
+    expect(upgradeButton()?.getAttribute('aria-busy')).toBe('true');
+    expect(plan).toHaveBeenCalledTimes(1);
+    expect(openAndWait).not.toHaveBeenCalled();
+    planned.next(PLAN);
+    planned.complete();
+    expect(openAndWait).toHaveBeenCalledTimes(1);
+    fixture.detectChanges();
+    expect(upgradeButton()?.getAttribute('aria-busy')).toBeNull();
+  });
+
+  it('opens nothing when the room cannot be planned', async () => {
+    const { upgradeButton, openAndWait } = await build(LIVE, NEWER, {
+      upgrade: ALLOWED,
+      plan: of(null),
+    });
+
+    fireEvent.click(upgradeButton()!);
+
+    expect(openAndWait).not.toHaveBeenCalled();
   });
 
   it('asks to open the new room after the upgrade', async () => {

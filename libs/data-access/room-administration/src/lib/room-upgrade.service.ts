@@ -2,33 +2,39 @@ import { Injectable, inject } from '@angular/core';
 import {
   Observable,
   catchError,
+  combineLatest,
   concat,
   defer,
   finalize,
-  from,
+  first,
   map,
   of,
   switchMap,
+  take,
   throwError,
   toArray,
 } from 'rxjs';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
-  EventType,
-  JoinRule,
-  KnownMembership,
-  type MatrixClient,
-  type Room,
-} from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { liveRoomState } from '@trinity/util/matrix';
-import { roomSnapshot } from './js-sdk/js-sdk-room-administration-engine';
-import { roomAdvancedInfo, type RoomAdvancedInfo } from './room-advanced-info';
+  type EngineResult,
+  engineFailureMessage,
+  unwrapEngineResult,
+} from '@trinity/util/matrix';
+import { AdministeredRoomStore } from './administered-room.store';
+import { roomAdvancedInfo } from './room-advanced-info';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
+import type {
+  AdministeredRoom,
+  LinkingSpace,
+  RoomMembers,
+} from './room-administration-engine';
+import { ROOM_ADMINISTRATION_ENGINE } from './room-administration-engine.token';
 import {
   recoverRoomAdministrationRequest,
   roomAdministrationInvalidInput,
   roomAdministrationNotSignedIn,
 } from './room-administration-error';
+import { domainOf, maySendState, powerValue } from './room-power';
 
 /** The `m.room_versions` facts a plan needs. `HomeserverCapabilities` satisfies it. */
 export interface RoomUpgradeCapabilities {
@@ -161,34 +167,41 @@ export function roomUpgradeTargets(
  */
 @Injectable({ providedIn: 'root' })
 export class RoomUpgradeService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(ROOM_ADMINISTRATION_ENGINE);
+  private readonly session = inject(SessionStateService);
+  private readonly store = inject(AdministeredRoomStore);
   private readonly permissions = inject(RoomActionPermissionsService);
   /** `${accountId}|${roomId}` of upgrades in flight. */
   private readonly upgrading = new Set<string>();
 
-  /** What upgrading `roomId` would do; null when the Account or the Room is unavailable. */
+  /**
+   * What upgrading `roomId` would do, once the members and linking spaces are read. Cold;
+   * emits once: null when the Account or the Room is unavailable.
+   */
   plan(
     accountId: string,
     roomId: string,
     capabilities: RoomUpgradeCapabilities | null,
-  ): RoomUpgradePlan | null {
-    const client = this.matrix.clientFor(accountId);
-    const room = client?.getRoom(roomId) ?? null;
-    if (!client || !room) return null;
-    const context = readContext(client, room);
-    return {
-      ...context,
-      targets: roomUpgradeTargets(context.currentVersion, capabilities),
-      spaces: context.spaces.map(publicSpace),
-    };
+  ): Observable<RoomUpgradePlan | null> {
+    return this.context(accountId, roomId).pipe(
+      map((context) =>
+        context
+          ? {
+              ...context,
+              targets: roomUpgradeTargets(context.currentVersion, capabilities),
+              spaces: context.spaces.map(publicSpace),
+            }
+          : null,
+      ),
+    );
   }
 
   /**
    * Upgrade one room and carry its members and space links over. Cold: runs on subscribe.
    *
-   * Errors only when nothing changed: no client for the opening Account, no permission to send
-   * the tombstone, or the server rejected the upgrade itself. After the upgrade every step
-   * reports its own failures in the result, and nothing is rolled back.
+   * Errors only when nothing changed: the opening Account is signed out, no permission to
+   * send the tombstone, or the server rejected the upgrade itself. After the upgrade every
+   * step reports its own failures in the result, and nothing is rolled back.
    */
   upgrade(
     accountId: string,
@@ -216,19 +229,17 @@ export class RoomUpgradeService {
     options: RoomUpgradeOptions,
   ): Observable<RoomUpgradeResult> {
     return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) {
+      if (!this.session.status(accountId)) {
         return throwError(() => roomAdministrationNotSignedIn('upgrade-room'));
       }
       this.permissions.assert(
         this.permissions.settingsFor({ accountId, roomId }).upgrade,
       );
-      // Unreachable after the permission check, which needs the joined room; narrows the type.
-      const room = client.getRoom(roomId);
+      const room = this.store.room(accountId, roomId);
       if (!room) {
         return throwError(() => roomAdministrationNotSignedIn('upgrade-room'));
       }
-      if (advancedInfo(client, room).successor) {
+      if (roomAdvancedInfo(roomId, room).successor) {
         return throwError(() =>
           roomAdministrationInvalidInput(
             'upgrade-room',
@@ -237,251 +248,265 @@ export class RoomUpgradeService {
         );
       }
       this.upgrading.add(key);
-      // Members sync lazily: the room may know only the senders it has seen, and
-      // the invitations below must reach everyone. A failed load still upgrades with the
-      // members that are known.
-      return from(room.loadMembersIfNeeded().catch(() => false)).pipe(
-        switchMap(() => {
-          const before = readContext(client, room);
+      return this.context(accountId, roomId).pipe(
+        switchMap((before) => {
+          if (!before) throw roomAdministrationNotSignedIn('upgrade-room');
           const creators =
             isWholeNumber(options.version) &&
             Number(options.version) >= 12 &&
             before.additionalCreators.length > 0
-              ? [...before.additionalCreators]
-              : undefined;
-          return from(
-            client.upgradeRoom(roomId, options.version, creators),
-          ).pipe(
-            recoverRoomAdministrationRequest('upgrade-room'),
-            switchMap(({ replacement_room }) =>
-              followUp(client, roomId, replacement_room, before, options),
-            ),
-          );
+              ? before.additionalCreators
+              : null;
+          return this.engine
+            .upgradeRoom(accountId, roomId, options.version, creators)
+            .pipe(
+              unwrapEngineResult(),
+              recoverRoomAdministrationRequest('upgrade-room'),
+              switchMap(({ replacementRoomId }) =>
+                this.followUp(
+                  accountId,
+                  roomId,
+                  replacementRoomId,
+                  before,
+                  options,
+                ),
+              ),
+            );
         }),
         finalize(() => this.upgrading.delete(key)),
       );
     });
   }
+
+  /**
+   * The room, its full member list (lazily synced members are loaded first, so the
+   * invitations reach everyone; a failed load keeps the known ones) and its linking spaces.
+   */
+  private context(
+    accountId: string,
+    roomId: string,
+  ): Observable<UpgradeContext | null> {
+    return defer(() =>
+      combineLatest([
+        this.engine
+          .members(accountId, roomId)
+          .pipe(first((members) => members === null || members.complete)),
+        this.engine.linkingSpaces(accountId, roomId),
+      ]),
+    ).pipe(
+      map(([members, spaces]) => {
+        const room = this.store.room(accountId, roomId);
+        return room && members && spaces.ok
+          ? readContext(room, members, spaces.value)
+          : null;
+      }),
+    );
+  }
+
+  /** Invite, then relink, one at a time; every failure is collected, none is thrown. */
+  private followUp(
+    accountId: string,
+    oldRoomId: string,
+    newRoomId: string,
+    before: UpgradeContext,
+    options: RoomUpgradeOptions,
+  ): Observable<RoomUpgradeResult> {
+    const server = serverOf(newRoomId) ?? domainOf(accountId);
+    const invites = (
+      options.inviteMembers
+        ? this.engine.members(accountId, newRoomId).pipe(take(1))
+        : of(null)
+    ).pipe(
+      switchMap((present) =>
+        concat(
+          ...(options.inviteMembers ? before.members : [])
+            .filter((userId) => !isPresent(present, userId))
+            .map((userId) =>
+              outcome(() =>
+                this.engine.invite(accountId, newRoomId, userId),
+              ).pipe(map((reason) => ({ userId, reason }))),
+            ),
+        ),
+      ),
+      toArray(),
+    );
+    const relinks = concat(
+      ...before.spaces
+        .filter((space) => space.relinkable)
+        .map((space) =>
+          this.relink(accountId, space, oldRoomId, newRoomId, server),
+        ),
+    ).pipe(toArray());
+    return invites.pipe(
+      switchMap((inviteOutcomes) =>
+        relinks.pipe(
+          map((relinkOutcomes) => ({
+            newRoomId,
+            invited: inviteOutcomes
+              .filter(({ reason }) => reason === null)
+              .map(({ userId }) => userId),
+            inviteFailed: inviteOutcomes.flatMap(({ userId, reason }) =>
+              reason === null ? [] : [{ userId, reason }],
+            ),
+            relinked: relinkOutcomes
+              .filter(({ failure }) => failure === null)
+              .map(({ spaceId }) => spaceId),
+            relinkFailed: relinkOutcomes.flatMap(({ failure }) =>
+              failure ? [failure] : [],
+            ),
+            skippedSpaces: before.spaces
+              .filter((space) => !space.relinkable)
+              .map(publicSpace),
+          })),
+        ),
+      ),
+    );
+  }
+
+  /** Link the new room, then unlink the old one; the old link stays if the first write fails. */
+  private relink(
+    accountId: string,
+    space: LinkedSpace,
+    oldRoomId: string,
+    newRoomId: string,
+    server: string | null,
+  ): Observable<RelinkOutcome> {
+    const { spaceId } = space;
+    const link = {
+      via: [...new Set([...space.via, ...(server ? [server] : [])])],
+      ...(space.order === undefined ? {} : { order: space.order }),
+      ...(space.suggested === undefined ? {} : { suggested: space.suggested }),
+    };
+    const failed = (reason: string, linkedTwice: boolean): RelinkOutcome => ({
+      spaceId,
+      failure: { spaceId, reason, linkedTwice },
+    });
+    return outcome(() =>
+      this.engine.setState(
+        accountId,
+        spaceId,
+        'm.space.child',
+        newRoomId,
+        link,
+      ),
+    ).pipe(
+      switchMap((reason) =>
+        reason !== null
+          ? of(failed(reason, false))
+          : outcome(() =>
+              this.engine.setState(
+                accountId,
+                spaceId,
+                'm.space.child',
+                oldRoomId,
+                {},
+              ),
+            ).pipe(
+              map((second) =>
+                second === null
+                  ? { spaceId, failure: null }
+                  : failed(second, true),
+              ),
+            ),
+      ),
+    );
+  }
 }
 
-function readContext(client: MatrixClient, room: Room): UpgradeContext {
-  const me = client.getUserId() ?? '';
-  const state = liveRoomState(room);
-  const info = advancedInfo(client, room);
-  const joinRule = state?.getJoinRule() ?? JoinRule.Invite;
-  return {
-    currentVersion: info.version,
-    invitePrivateDefault:
-      joinRule === JoinRule.Invite || joinRule === JoinRule.Knock,
-    members: room
-      .getMembers()
-      .filter(
-        ({ userId, membership }) =>
-          userId !== me &&
-          (membership === KnownMembership.Join ||
-            membership === KnownMembership.Invite),
-      )
-      .map(({ userId }) => userId),
-    spaces: linkedSpaces(client, room, me),
-    ...carriedCreators(room, info, me),
-  };
-}
-
-/** shortcut: reads the js-sdk engine's projection directly; RA5 moves the upgrade onto the engine. */
-function advancedInfo(client: MatrixClient, room: Room): RoomAdvancedInfo {
-  return roomAdvancedInfo(
-    room.roomId,
-    roomSnapshot(client, client.getUserId() ?? '', room, undefined),
+/** A command's failure text, or null on success; never errors. Created on subscribe. */
+function outcome(
+  command: () => Observable<EngineResult<unknown>>,
+): Observable<string | null> {
+  return defer(command).pipe(
+    map((result) => (result.ok ? null : engineFailureMessage(result.failure))),
+    catchError(() => of('The homeserver rejected the request.')),
   );
 }
 
-/** Creators for a v12+ target; the source era decides who is still trusted to stay one. */
-function carriedCreators(
-  room: Room,
-  info: RoomAdvancedInfo,
-  me: string,
-): Pick<UpgradeContext, 'additionalCreators' | 'additionalCreatorNames'> {
+function readContext(
+  room: AdministeredRoom,
+  members: RoomMembers,
+  spaces: readonly LinkingSpace[],
+): UpgradeContext {
+  const me = room.ownUserId;
+  const info = roomAdvancedInfo(room.roomId, room);
+  const joinRule = room.state.joinRules?.['join_rule'] ?? 'invite';
   const fromV12 =
     info.version !== null &&
     isWholeNumber(info.version) &&
     Number(info.version) >= 12;
-  const myPower = room.getMember(me)?.powerLevel ?? 0;
-  const kept = info.createdBy.filter(
-    ({ userId }) =>
-      userId !== me &&
-      (fromV12 ||
-        (room.getMember(userId)?.membership === KnownMembership.Join &&
-          (room.getMember(userId)?.powerLevel ?? 0) >= myPower)),
-  );
+  const member = (userId: string) =>
+    members.members.find((candidate) => candidate.userId === userId);
+  const myPower = powerValue(room.ownPower);
+  // Creators for a v12+ target; the source era decides who is still trusted to stay one.
+  const kept = info.createdBy.filter(({ userId }) => {
+    if (userId === me) return false;
+    if (fromV12) return true;
+    const creator = member(userId);
+    return (
+      creator?.membership === 'join' && powerValue(creator.power) >= myPower
+    );
+  });
   return {
+    currentVersion: info.version,
+    invitePrivateDefault: joinRule === 'invite' || joinRule === 'knock',
+    members: members.members
+      .filter(
+        ({ userId, membership }) =>
+          userId !== me && (membership === 'join' || membership === 'invite'),
+      )
+      .map(({ userId }) => userId),
+    spaces: spaces.flatMap(linkedSpace),
     additionalCreators: kept.map(({ userId }) => userId),
     additionalCreatorNames: kept.map(({ displayName }) => displayName),
   };
 }
 
-/** Invite, then relink, one at a time; every failure is collected, none is thrown. */
-function followUp(
-  client: MatrixClient,
-  oldRoomId: string,
-  newRoomId: string,
-  before: UpgradeContext,
-  options: RoomUpgradeOptions,
-): Observable<RoomUpgradeResult> {
-  const newRoom = client.getRoom(newRoomId);
-  const invitees = options.inviteMembers
-    ? before.members.filter((userId) => !isPresent(newRoom, userId))
-    : [];
-  const server = serverOf(newRoomId, client);
-  const invites = concat(
-    ...invitees.map((userId) =>
-      defer(() => client.invite(newRoomId, userId)).pipe(
-        map(() => ({ userId, reason: null as string | null })),
-        catchError((cause: unknown) => of({ userId, reason: reasonOf(cause) })),
-      ),
-    ),
-  ).pipe(toArray());
-  const relinks = concat(
-    ...before.spaces
-      .filter((space) => space.relinkable)
-      .map((space) => relink(client, space, oldRoomId, newRoomId, server)),
-  ).pipe(toArray());
-  return invites.pipe(
-    switchMap((inviteOutcomes) =>
-      relinks.pipe(
-        map((relinkOutcomes) => ({
-          newRoomId,
-          invited: inviteOutcomes
-            .filter(({ reason }) => reason === null)
-            .map(({ userId }) => userId),
-          inviteFailed: inviteOutcomes.flatMap(({ userId, reason }) =>
-            reason === null ? [] : [{ userId, reason }],
-          ),
-          relinked: relinkOutcomes
-            .filter(({ failure }) => failure === null)
-            .map(({ spaceId }) => spaceId),
-          relinkFailed: relinkOutcomes.flatMap(({ failure }) =>
-            failure ? [failure] : [],
-          ),
-          skippedSpaces: before.spaces
-            .filter((space) => !space.relinkable)
-            .map(publicSpace),
-        })),
-      ),
-    ),
-  );
-}
-
-/** Link the new room, then unlink the old one; the old link stays if the first write fails. */
-function relink(
-  client: MatrixClient,
-  space: LinkedSpace,
-  oldRoomId: string,
-  newRoomId: string,
-  server: string | null,
-): Observable<RelinkOutcome> {
-  const { spaceId } = space;
-  const failed = (cause: unknown, linkedTwice: boolean) =>
-    of<RelinkOutcome>({
-      spaceId,
-      failure: { spaceId, reason: reasonOf(cause), linkedTwice },
-    });
-  const link = {
-    via: [...new Set([...space.via, ...(server ? [server] : [])])],
-    ...(space.order === undefined ? {} : { order: space.order }),
-    ...(space.suggested === undefined ? {} : { suggested: space.suggested }),
-  };
-  return defer(() =>
-    client.sendStateEvent(spaceId, EventType.SpaceChild, link, newRoomId),
-  ).pipe(
-    switchMap(() =>
-      defer(() =>
-        client.sendStateEvent(spaceId, EventType.SpaceChild, {}, oldRoomId),
-      ).pipe(
-        map((): RelinkOutcome => ({ spaceId, failure: null })),
-        catchError((cause: unknown) => failed(cause, true)),
-      ),
-    ),
-    catchError((cause: unknown) => failed(cause, false)),
-  );
-}
-
-/** The new room's server: from its ID, or the Account's for a v12 ID that has none. */
-function serverOf(roomId: string, client: MatrixClient): string | null {
-  const colon = roomId.indexOf(':');
-  return colon >= 0 ? roomId.slice(colon + 1) : client.getDomain();
-}
-
-function isPresent(room: Room | null, userId: string): boolean {
-  const membership = room?.getMember(userId)?.membership;
-  return (
-    membership === KnownMembership.Join || membership === KnownMembership.Invite
-  );
-}
-
-function reasonOf(cause: unknown): string {
-  return cause instanceof Error && cause.message
-    ? cause.message
-    : 'The homeserver rejected the request.';
-}
-
-/** Joined spaces of this Account whose live state links `room`. */
-function linkedSpaces(
-  client: MatrixClient,
-  room: Room,
-  me: string,
-): LinkedSpace[] {
-  const parents = new Set(
-    (liveRoomState(room)?.getStateEvents(EventType.SpaceParent) ?? []).map(
-      (event) => event.getStateKey(),
-    ),
-  );
-  return client.getRooms().flatMap((space): LinkedSpace[] => {
-    if (
-      space.roomId === room.roomId ||
-      space.getMyMembership() !== KnownMembership.Join
-    ) {
-      return [];
-    }
-    const named = { spaceId: space.roomId, name: space.name };
-    const state = liveRoomState(space);
-    if (!state?.getStateEvents(EventType.RoomCreate, '')) {
-      // Without its state the link is invisible; only the room's own parent event says it exists.
-      return parents.has(space.roomId)
-        ? [
-            {
-              ...named,
-              relinkable: false,
-              reason: 'state not loaded' as const,
-              via: [],
-            },
-          ]
-        : [];
-    }
-    if (!space.isSpaceRoom()) return [];
-    const content: Record<string, unknown> =
-      state.getStateEvents(EventType.SpaceChild, room.roomId)?.getContent() ??
-      {};
-    const via = Array.isArray(content['via'])
-      ? content['via'].filter(
-          (server): server is string => typeof server === 'string',
-        )
-      : [];
-    // An empty `via` is how a space removes a child.
-    if (via.length === 0) return [];
-    const relinkable = !!state.maySendStateEvent(EventType.SpaceChild, me);
-    const order = content['order'];
-    const suggested = content['suggested'];
+function linkedSpace(space: LinkingSpace): LinkedSpace[] {
+  const named = { spaceId: space.spaceId, name: space.name };
+  const content = space.childContent;
+  if (!content) {
     return [
-      {
-        ...named,
-        relinkable,
-        ...(relinkable ? {} : { reason: 'no permission' as const }),
-        via,
-        ...(typeof order === 'string' ? { order } : {}),
-        ...(typeof suggested === 'boolean' ? { suggested } : {}),
-      },
+      { ...named, relinkable: false, reason: 'state not loaded', via: [] },
     ];
-  });
+  }
+  const via = Array.isArray(content['via'])
+    ? content['via'].filter(
+        (server): server is string => typeof server === 'string',
+      )
+    : [];
+  // An empty `via` is how a space removes a child.
+  if (via.length === 0) return [];
+  const relinkable = maySendState(
+    space.powerLevels,
+    space.ownPower,
+    'm.space.child',
+  );
+  const order = content['order'];
+  const suggested = content['suggested'];
+  return [
+    {
+      ...named,
+      relinkable,
+      ...(relinkable ? {} : { reason: 'no permission' as const }),
+      via,
+      ...(typeof order === 'string' ? { order } : {}),
+      ...(typeof suggested === 'boolean' ? { suggested } : {}),
+    },
+  ];
+}
+
+/** The new room's server from its ID; null for a v12 ID that has none. */
+function serverOf(roomId: string): string | null {
+  const colon = roomId.indexOf(':');
+  return colon >= 0 ? roomId.slice(colon + 1) : null;
+}
+
+function isPresent(members: RoomMembers | null, userId: string): boolean {
+  const membership = members?.members.find(
+    (member) => member.userId === userId,
+  )?.membership;
+  return membership === 'join' || membership === 'invite';
 }
 
 function publicSpace({

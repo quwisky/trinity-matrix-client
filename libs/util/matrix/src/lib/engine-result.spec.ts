@@ -157,6 +157,11 @@ describe('engineFailureMessage', () => {
     ['too-large', 'This file is too large to upload.'],
     ['conversation-unavailable', 'This conversation is unavailable.'],
     ['room-unavailable', 'This room is unavailable.'],
+    ['already-encrypted', 'This room is already encrypted.'],
+    [
+      'encryption-not-applied',
+      "Encryption is on, but this device couldn't apply it.",
+    ],
   ] as const)('%s reads "%s"', (code, text) => {
     expect(
       engineFailureMessage({

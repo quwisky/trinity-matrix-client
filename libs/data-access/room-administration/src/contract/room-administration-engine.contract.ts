@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type EngineResult, assertPlainData } from '@trinity/util/matrix';
 import type {
   AdministeredRoom,
+  JsonObject,
   RoomAdministrationEngine,
   RoomMemberInfo,
   RoomMembers,
@@ -23,6 +24,8 @@ export interface ContractRoomOptions {
   readonly additionalCreators?: readonly string[];
   /** Creates the room with Megolm `m.room.encryption` state. */
   readonly encrypted?: boolean;
+  /** Creates a space (`type: m.space`). */
+  readonly space?: boolean;
 }
 
 export interface RoomAdministrationContractSetup {
@@ -44,6 +47,12 @@ export interface RoomAdministrationContractSetup {
     ban(roomId: string, userId: string, reason: string): Promise<void>;
     /** Sends a text message and resolves its event ID. */
     sendMessage(roomId: string, body: string): Promise<string>;
+    setState(
+      roomId: string,
+      type: string,
+      content: JsonObject,
+      stateKey?: string,
+    ): Promise<void>;
   };
   readonly asCarol: {
     join(roomId: string): Promise<void>;
@@ -743,6 +752,277 @@ export function defineRoomAdministrationEngineContract(
           await failureOf(
             engine.stateEvent(NOBODY, roomId, 'm.room.power_levels', ''),
           ),
+        ).toMatchObject({ code: 'account-not-live' });
+      },
+      testTimeoutMs,
+    );
+    it(
+      'enableEncryption sends Megolm encryption once; the room reports it',
+      async () => {
+        const roomId = await sharedRoom();
+        await context.asBob.setPowerLevel(roomId, alice, 100);
+        const room = watch(engine.room(alice, roomId));
+        try {
+          await room.until((r) => r.ownPower === 100);
+          const enable = engine.enableEncryption(alice, roomId);
+          // Cold: nothing is sent before subscribing.
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          expect(room.seen.some((r) => r.state.encryption !== null)).toBe(
+            false,
+          );
+
+          expect(await failureOf(enable)).toBeNull();
+
+          const after = await room.until(
+            (r) => r.state.encryption !== null && r.encryption === 'encrypted',
+          );
+          expect(after.state.encryption).toMatchObject({
+            algorithm: 'm.megolm.v1.aes-sha2',
+          });
+          expect(
+            await failureOf(engine.enableEncryption(alice, roomId)),
+          ).toMatchObject({ code: 'already-encrypted' });
+        } finally {
+          room.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'enableEncryption refuses an encrypted or unknown room, no power and no live account',
+      async () => {
+        const plain = await sharedRoom();
+        const encrypted = await sharedRoom({ encrypted: true });
+        const rooms = [
+          watch(engine.room(alice, plain)),
+          watch(engine.room(alice, encrypted)),
+        ];
+        try {
+          await rooms[0].until((r) => r.ownMembership === 'join');
+          await rooms[1].until((r) => r.encryption === 'encrypted');
+
+          expect(
+            await rejectionOf(engine.enableEncryption(alice, plain)),
+          ).toMatchObject({
+            code: 'request-failed',
+            kind: 'permission',
+            httpStatus: 403,
+          });
+          expect(
+            await failureOf(engine.enableEncryption(alice, encrypted)),
+          ).toMatchObject({ code: 'already-encrypted' });
+          expect(
+            await failureOf(engine.enableEncryption(alice, '!unknown:invalid')),
+          ).toMatchObject({ code: 'room-unavailable' });
+          expect(
+            await failureOf(engine.enableEncryption(NOBODY, plain)),
+          ).toMatchObject({ code: 'account-not-live' });
+        } finally {
+          rooms.forEach((room) => room.close());
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'upgradeRoom replaces the room and tombstones the old one',
+      async () => {
+        const roomId = await sharedRoom();
+        await context.asBob.setPowerLevel(roomId, alice, 100);
+        const room = watch(engine.room(alice, roomId));
+        try {
+          await room.until((r) => r.ownPower === 100);
+          const upgrade = engine.upgradeRoom(alice, roomId, '11', null);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          expect(room.seen.some((r) => r.state.tombstone !== null)).toBe(false);
+
+          const result = await once(upgrade);
+          if (!result.ok) throw new Error(result.failure.code);
+          const { replacementRoomId } = result.value;
+
+          await room.until(
+            (r) =>
+              r.state.tombstone?.['replacement_room'] === replacementRoomId,
+          );
+          const next = watch(engine.room(alice, replacementRoomId));
+          try {
+            const created = await next.until(
+              (r) => r.ownMembership === 'join' && r.state.create !== null,
+            );
+            expect(created.state.create?.content).toMatchObject({
+              room_version: '11',
+              predecessor: { room_id: roomId },
+            });
+            expect(created.creators.map((c) => c.userId)).toEqual([alice]);
+          } finally {
+            next.close();
+          }
+        } finally {
+          room.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'upgradeRoom to v12 makes the additional creators creators',
+      async () => {
+        const roomId = await sharedRoom();
+        await context.asBob.setPowerLevel(roomId, alice, 100);
+        const room = watch(engine.room(alice, roomId));
+        try {
+          await room.until((r) => r.ownPower === 100);
+        } finally {
+          room.close();
+        }
+
+        const result = await once(
+          engine.upgradeRoom(alice, roomId, '12', [bob]),
+        );
+        if (!result.ok) throw new Error(result.failure.code);
+        const next = watch(engine.room(alice, result.value.replacementRoomId));
+        try {
+          const created = await next.until(
+            (r) => r.ownMembership === 'join' && r.ownPower === 'infinite',
+          );
+          expect(created.creators.map((c) => c.userId)).toEqual([alice, bob]);
+        } finally {
+          next.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'upgradeRoom is refused without the power, for an unknown room or version',
+      async () => {
+        const roomId = await sharedRoom();
+
+        expect(
+          await rejectionOf(engine.upgradeRoom(alice, roomId, '11', null)),
+        ).toMatchObject({
+          code: 'request-failed',
+          kind: 'permission',
+          httpStatus: 403,
+        });
+        expect(
+          await rejectionOf(
+            engine.upgradeRoom(alice, '!unknown:invalid', '11', null),
+          ),
+        ).toMatchObject({
+          code: 'request-failed',
+          httpStatus: 404,
+          errcode: 'M_NOT_FOUND',
+        });
+        expect(
+          await rejectionOf(
+            engine.upgradeRoom(alice, roomId, 'org.trinity.none', null),
+          ),
+        ).toMatchObject({
+          code: 'request-failed',
+          httpStatus: 400,
+          errcode: 'M_UNSUPPORTED_ROOM_VERSION',
+        });
+        expect(
+          await failureOf(engine.upgradeRoom(NOBODY, roomId, '11', null)),
+        ).toMatchObject({ code: 'account-not-live' });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'invite invites a user; a banned user is refused',
+      async () => {
+        const roomId = await sharedRoom();
+        const members = watch(engine.members(alice, roomId));
+        try {
+          await members.until((m) => memberOf(m, alice)?.membership === 'join');
+          const invite = engine.invite(alice, roomId, carol);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          expect(
+            memberOf(await members.until(() => true), carol),
+          ).toBeUndefined();
+
+          expect(await failureOf(invite)).toBeNull();
+          await members.until(
+            (m) => memberOf(m, carol)?.membership === 'invite',
+          );
+
+          await context.asBob.ban(roomId, carol, 'spam');
+          await members.until((m) => memberOf(m, carol)?.membership === 'ban');
+          expect(
+            await rejectionOf(engine.invite(alice, roomId, carol)),
+          ).toMatchObject({
+            code: 'request-failed',
+            kind: 'permission',
+            httpStatus: 403,
+          });
+          expect(
+            await failureOf(engine.invite(NOBODY, roomId, carol)),
+          ).toMatchObject({ code: 'account-not-live' });
+        } finally {
+          members.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'linkingSpaces lists the joined spaces that link the room',
+      async () => {
+        const roomId = await sharedRoom();
+        const server = alice.slice(alice.indexOf(':') + 1);
+        const spaceId = await context.asBob.createRoom({ space: true });
+        await context.asBob.setState(spaceId, 'm.room.name', {
+          name: 'Contract space',
+        });
+        await context.asBob.setState(
+          spaceId,
+          'm.space.child',
+          { via: [server], order: 'a' },
+          roomId,
+        );
+        // A space alice has not joined does not count.
+        const other = await context.asBob.createRoom({ space: true });
+        await context.asBob.setState(
+          other,
+          'm.space.child',
+          { via: [server] },
+          roomId,
+        );
+        await context.asBob.invite(spaceId, alice);
+        await context.asAlice.join(spaceId);
+        const space = watch(engine.room(alice, spaceId));
+        try {
+          await space.until(
+            (r) =>
+              r.ownMembership === 'join' && r.isSpace && r.state.name !== null,
+          );
+        } finally {
+          space.close();
+        }
+
+        const result = await once(engine.linkingSpaces(alice, roomId));
+        expect(result).toEqual({
+          ok: true,
+          value: [
+            {
+              spaceId,
+              name: 'Contract space',
+              childContent: { via: [server], order: 'a' },
+              ownPower: 0,
+              powerLevels: expect.objectContaining({
+                users: expect.objectContaining({ [bob]: 100 }),
+              }),
+            },
+          ],
+        });
+        expect(
+          await failureOf(engine.linkingSpaces(alice, '!unknown:invalid')),
+        ).toMatchObject({ code: 'room-unavailable' });
+        expect(
+          await failureOf(engine.linkingSpaces(NOBODY, roomId)),
         ).toMatchObject({ code: 'account-not-live' });
       },
       testTimeoutMs,
