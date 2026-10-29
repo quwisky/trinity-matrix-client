@@ -166,7 +166,7 @@ describe('TrustVerificationService', () => {
   it('starts a cross-user verification over a DM and adopts it', async () => {
     const context = setup();
     await run(context.svc);
-    context.engine.addUserIdentity('@carol:hs');
+    context.engine.publishUserIdentity(context.alice, '@carol:hs');
 
     await firstValueFrom(
       context.svc.startUserVerification('@carol:hs', of('!dm:hs')),
@@ -196,7 +196,7 @@ describe('TrustVerificationService', () => {
     expect(context.engine.sentDirectRequests).toEqual([]);
     expect(context.svc.active()).toBeNull();
 
-    context.engine.addUserIdentity('@carol:hs');
+    context.engine.publishUserIdentity(context.alice, '@carol:hs');
 
     await expect(outcome).resolves.toBe('started');
     await settle();
@@ -224,7 +224,7 @@ describe('TrustVerificationService', () => {
         }),
       ]);
 
-      context.engine.addUserIdentity('@carol:hs');
+      context.engine.publishUserIdentity(context.alice, '@carol:hs');
 
       expect(context.engine.sentDirectRequests).toEqual([]);
     } finally {
@@ -240,7 +240,7 @@ describe('TrustVerificationService', () => {
       .subscribe({ error: () => undefined });
 
     lifetime.unsubscribe();
-    context.engine.addUserIdentity('@carol:hs');
+    context.engine.publishUserIdentity(context.alice, '@carol:hs');
 
     expect(attempt.closed).toBe(true);
     expect(context.engine.sentDirectRequests).toEqual([]);
@@ -265,7 +265,7 @@ describe('TrustVerificationService', () => {
 
   it('retains the initiating Account while its direct room is being created', async () => {
     const context = setup();
-    context.engine.addUserIdentity('@carol:hs');
+    context.engine.publishUserIdentity(context.alice, '@carol:hs');
     const directRoom = new Subject<string>();
     const outcome = firstValueFrom(
       context.svc.startUserVerification('@carol:hs', directRoom),
@@ -673,7 +673,7 @@ describe('TrustVerificationService', () => {
   it('does not show a DM verification again after switching away and back', async () => {
     const context = setup();
     await run(context.svc);
-    context.engine.addUserIdentity('@carol:hs');
+    context.engine.publishUserIdentity(context.alice, '@carol:hs');
     await firstValueFrom(
       context.svc.startUserVerification('@carol:hs', of('!dm:hs')),
     );
