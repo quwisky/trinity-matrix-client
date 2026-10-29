@@ -441,5 +441,45 @@ export function defineRoomAdministrationEngineContract(
       },
       testTimeoutMs,
     );
+
+    it(
+      'stateEvents lists the current state of a known room',
+      async () => {
+        const roomId = await sharedRoom();
+        const room = watch(engine.room(alice, roomId));
+        try {
+          await room.until((r) => r.ownMembership === 'join');
+        } finally {
+          room.close();
+        }
+
+        const result = await once(engine.stateEvents(alice, roomId));
+        const events = result.ok ? result.value : [];
+        expect(
+          events.find(({ type }) => type === 'm.room.create'),
+        ).toMatchObject({
+          stateKey: '',
+          event: { type: 'm.room.create', state_key: '', sender: bob },
+        });
+        expect(
+          events.find(
+            ({ type, stateKey }) =>
+              type === 'm.room.member' && stateKey === alice,
+          )?.event['content'],
+        ).toMatchObject({ membership: 'join' });
+
+        const codes = await Promise.all(
+          [
+            engine.stateEvents(NOBODY, roomId),
+            engine.stateEvents(alice, '!unknown:invalid'),
+          ].map(async (command) => {
+            const failed = await once(command);
+            return failed.ok ? null : failed.failure.code;
+          }),
+        );
+        expect(codes).toEqual(['account-not-live', 'room-unavailable']);
+      },
+      testTimeoutMs,
+    );
   });
 }

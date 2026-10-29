@@ -21,7 +21,7 @@ import {
 } from '@trinity/data-access/room-administration';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of, type Observable } from 'rxjs';
+import { Subject, of, throwError, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomStateViewerComponent } from '../room-state-viewer/room-state-viewer.component';
 import {
@@ -115,7 +115,9 @@ async function build(
   const open = vi.fn();
   const openAndWait = vi.fn(() => upgradeSetup.result ?? of(null));
   const show = vi.fn();
-  const stateEvents = vi.fn(() => STATE);
+  const stateEvents = vi.fn((): Observable<readonly RoomStateEntry[]> =>
+    of(STATE),
+  );
   const plan = vi.fn(() => PLAN);
   const openRoom = vi.fn();
   const result = await render(RoomSettingsAdvancedComponent, {
@@ -341,6 +343,39 @@ describe('RoomSettingsAdvancedComponent', () => {
     expect(open).toHaveBeenCalledWith(RoomStateViewerComponent, {
       inputs: { entries: STATE },
     });
+  });
+
+  it('shows View room state as loading until the state arrives', async () => {
+    const { getByRole, open, stateEvents, fixture } = await build();
+    const pending = new Subject<readonly RoomStateEntry[]>();
+    stateEvents.mockReturnValue(pending);
+    const button = getByRole('button', { name: 'View room state' });
+
+    fireEvent.click(button);
+    fixture.detectChanges();
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button).toBeDisabled();
+    expect(open).not.toHaveBeenCalled();
+
+    pending.next(STATE);
+    pending.complete();
+    fixture.detectChanges();
+    expect(open).toHaveBeenCalledOnce();
+    expect(button.getAttribute('aria-busy')).toBeNull();
+    expect(button).not.toBeDisabled();
+  });
+
+  it('toasts when the room state cannot be read', async () => {
+    const { getByRole, open, show, stateEvents } = await build();
+    stateEvents.mockReturnValue(throwError(() => new Error('offline')));
+
+    fireEvent.click(getByRole('button', { name: 'View room state' }));
+
+    expect(open).not.toHaveBeenCalled();
+    expect(show).toHaveBeenCalledWith(
+      expect.stringContaining('room state'),
+      expect.objectContaining({ variant: 'danger' }),
+    );
   });
 });
 

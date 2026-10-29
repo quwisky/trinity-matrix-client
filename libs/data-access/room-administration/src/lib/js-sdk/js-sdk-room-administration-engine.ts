@@ -38,6 +38,7 @@ import type {
   JsonObject,
   Membership,
   PowerLevel,
+  RawStateEvent,
   RoomAdministrationEngine,
   RoomCreatorInfo,
   RoomMemberInfo,
@@ -187,6 +188,28 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
     });
   }
 
+  stateEvents(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly RawStateEvent[]>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(localFailure('account-not-live')));
+      const room = client.getRoom(roomId);
+      if (!room) return of(engineFail(localFailure('room-unavailable')));
+      // The js-sdk store holds the whole current state; Rust asks the server's `/state`.
+      const events = [...(liveRoomState(room)?.events ?? [])].flatMap(
+        ([type, byKey]) =>
+          [...byKey].map(([stateKey, event]) => ({
+            type,
+            stateKey,
+            event: plain(event.event),
+          })),
+      );
+      return of(engineOk(events));
+    });
+  }
+
   /**
    * A snapshot subscription for one account: `null` at once while the account is not
    * live, else a synchronous first value and microtask-coalesced re-reads, stopping when
@@ -252,7 +275,8 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
   }
 }
 
-function roomSnapshot(
+/** The room as the engine emits it; exported only for the upgrade service until RA5. */
+export function roomSnapshot(
   client: MatrixClient,
   accountId: string,
   room: Room,

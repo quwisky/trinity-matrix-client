@@ -1,8 +1,10 @@
 import { Injectable, inject } from '@angular/core';
-import { EventType, KnownMembership } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { liveRoomState } from '@trinity/util/matrix';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { unwrapEngineResult } from '@trinity/util/matrix';
 import { defer, map, throwError, type Observable } from 'rxjs';
+import { AdministeredRoomStore } from './administered-room.store';
+import type { JsonObject } from './room-administration-engine';
+import { ROOM_ADMINISTRATION_ENGINE } from './room-administration-engine.token';
 import {
   RoomActionPermissionError,
   RoomActionPermissionsService,
@@ -22,6 +24,7 @@ import {
   type PermissionTargetKind,
   type PowerLevelsContent,
 } from './room-permission-rows';
+import { powerValue } from './room-power';
 
 export interface RoomPermissionsKey {
   readonly accountId: string;
@@ -58,7 +61,9 @@ interface Live {
 /** Live view and cold save of a room's `m.room.power_levels`, for the permissions editor. */
 @Injectable({ providedIn: 'root' })
 export class RoomPermissionsService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(ROOM_ADMINISTRATION_ENGINE);
+  private readonly store = inject(AdministeredRoomStore);
+  private readonly session = inject(SessionStateService);
   private readonly permissions = inject(RoomActionPermissionsService);
 
   view(
@@ -98,8 +103,7 @@ export class RoomPermissionsService {
     changes: ReadonlyMap<string, number>,
   ): Observable<void> {
     return defer(() => {
-      const client = this.matrix.clientFor(key.accountId);
-      if (!client) {
+      if (!this.session.status(key.accountId)) {
         return throwError(() => roomAdministrationNotSignedIn(OPERATION));
       }
       this.permissions.assert(this.section(key, kind));
@@ -124,14 +128,15 @@ export class RoomPermissionsService {
           );
         }
       }
-      return client
-        .sendStateEvent(
+      return this.engine
+        .setState(
+          key.accountId,
           key.roomId,
-          EventType.RoomPowerLevels,
-          applyChanges(content, rows, changes),
+          'm.room.power_levels',
           '',
+          applyChanges(content, rows, changes) as JsonObject,
         )
-        .then(() => undefined);
+        .pipe(unwrapEngineResult());
     }).pipe(
       map(() => undefined),
       recoverRoomAdministrationRequest<void>(OPERATION),
@@ -162,20 +167,15 @@ export class RoomPermissionsService {
   }
 
   private live(key: RoomPermissionsKey): Live {
-    const client = this.matrix.clientFor(key.accountId);
-    const room = client?.getRoom(key.roomId) ?? null;
-    const userId = client?.getUserId() ?? null;
-    if (!room || !userId || room.getMyMembership() !== KnownMembership.Join) {
+    const room = this.store.room(key.accountId, key.roomId);
+    if (room?.ownMembership !== 'join') {
       return { content: null, myPower: 0, powerFromDefault: false };
     }
-    const content: PowerLevelsContent | null =
-      liveRoomState(room)
-        ?.getStateEvents(EventType.RoomPowerLevels, '')
-        ?.getContent() ?? null;
-    const myPower = room.getMember(userId)?.powerLevel ?? 0;
+    const content = room.powerLevels;
+    const myPower = powerValue(room.ownPower);
     const users = content?.['users'];
     const listed =
-      typeof users === 'object' && users !== null && userId in users;
+      typeof users === 'object' && users !== null && room.ownUserId in users;
     return {
       content,
       myPower,
