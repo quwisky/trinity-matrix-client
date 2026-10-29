@@ -7,10 +7,13 @@ import type { MatrixClient } from 'matrix-js-sdk';
 import {
   baseUrl,
   cs,
+  exportFromThrowawaySession,
+  importInThrowawaySession,
   localpart,
   login,
   publishIdentityElsewhere,
   register,
+  setUpRecoveryFromAnotherDevice,
   startSecondDevice,
   startSession,
   useSynapseSuite,
@@ -36,10 +39,13 @@ describe.skipIf(!baseUrl)('JsSdkTrustEngine against Synapse', () => {
       const session = await startSession(await register(localpart('alice')));
       const devices: MatrixClient[] = [];
       const bob = await register(localpart('bob'));
+      const aliceClient = () => {
+        const found = TestBed.inject(JS_SDK_CLIENTS).clientFor(session.userId);
+        if (!found) throw new Error('No client for alice');
+        return found;
+      };
       const crypto = () => {
-        const found = TestBed.inject(JS_SDK_CLIENTS)
-          .clientFor(session.userId)
-          ?.getCrypto();
+        const found = aliceClient().getCrypto();
         if (!found) throw new Error('No crypto for alice');
         return found;
       };
@@ -149,6 +155,49 @@ describe.skipIf(!baseUrl)('JsSdkTrustEngine against Synapse', () => {
           );
           return { userId: bob.userId, roomId };
         },
+        setUpRecoveryElsewhere: async (passphrase) => {
+          const recoveryKey = await setUpRecoveryFromAnotherDevice(
+            session,
+            passphrase,
+          );
+          // Alice's device sees the new secret storage, backup and identity.
+          for (let i = 0; i < 120; i++) {
+            const client = aliceClient();
+            if (
+              (await client.secretStorage.getDefaultKeyId()) &&
+              client.getAccountData('m.cross_signing.master' as never) &&
+              client.getAccountData('m.megolm_backup.v1' as never)
+            ) {
+              await crypto().userHasCrossSigningKeys(undefined, true);
+              return recoveryKey;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+          throw new Error('Alice never saw the new secret storage');
+        },
+        strandUnpublishedIdentity: async () => {
+          // The new keys are made here before the upload asks for a password; refusing
+          // it leaves them unpublished, as a reset cancelled at the prompt does.
+          await crypto()
+            .bootstrapCrossSigning({
+              setupNewCrossSigning: true,
+              authUploadDeviceSigningKeys: async () => {
+                throw new Error('Cancelled at the password prompt');
+              },
+            })
+            .then(
+              () => {
+                throw new Error('The upload went through');
+              },
+              () => undefined,
+            );
+          // As the abandoned reset does, re-read the published identity.
+          await crypto().userHasCrossSigningKeys(undefined, true);
+        },
+        exportFromAnotherSession: (passphrase) =>
+          exportFromThrowawaySession(session.userId, passphrase),
+        importInAnotherSession: (fileText, passphrase) =>
+          importInThrowawaySession(session.userId, fileText, passphrase),
         dispose: async () => {
           for (const device of devices) device.stopClient();
           await session.dispose();
