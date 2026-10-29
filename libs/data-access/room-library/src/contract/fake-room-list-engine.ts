@@ -33,7 +33,7 @@ import { compareOrder, isValidOrder } from '../lib/space-child-order';
 
 type FailNextCode = Exclude<
   EngineFailureCode,
-  'discovery-failed' | 'account-start-failed'
+  'discovery-failed' | 'account-start-failed' | 'recovery-refused'
 >;
 type PerAccount<T> = Readonly<Record<string, Readonly<Record<string, T>>>>;
 

@@ -26,7 +26,7 @@ import type { Profile } from '../lib/timeline-engine';
 
 type FailNextCode = Exclude<
   EngineFailureCode,
-  'discovery-failed' | 'account-start-failed'
+  'discovery-failed' | 'account-start-failed' | 'recovery-refused'
 >;
 
 interface FakeEvent {

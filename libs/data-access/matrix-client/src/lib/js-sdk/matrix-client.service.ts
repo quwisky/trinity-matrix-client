@@ -58,7 +58,7 @@ import {
   syncStoreIndexedDbName,
   verifiedEndpoints,
 } from '@trinity/util/matrix';
-import { SecretStorageKeyHolder } from '../secret-storage-key-holder';
+import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';
 import {
   clientHasOutgoingWork,
@@ -382,9 +382,9 @@ export class MatrixClientService {
     return [...this.clients.values()];
   }
 
-  /** The active account's 4S key holder (populated by the crypto-setup UI), or null. */
-  activeHolder(): SecretStorageKeyHolder | null {
-    return this.active()?.holder ?? null;
+  /** The 4S key holder wired into `userId`'s live client, or null when it has none. */
+  holderFor(userId: string): SecretStorageKeyHolder | null {
+    return this.clients.get(userId)?.holder ?? null;
   }
 
   /**

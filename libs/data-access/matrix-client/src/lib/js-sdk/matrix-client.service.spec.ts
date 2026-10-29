@@ -27,7 +27,7 @@ import {
   SessionStorageService,
 } from '@trinity/platform-native';
 import { type ProjectionReadiness } from '@trinity/runtime/projection';
-import { SecretStorageKeyHolder } from '../secret-storage-key-holder';
+import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { desktopBridgeFixture } from '@trinity/testing';
 import type { MatrixSession } from '@trinity/util/matrix';
 import {
@@ -2128,12 +2128,12 @@ describe('MatrixClientService', () => {
 
   // --- per-account crypto isolation -----------------------------------------
 
-  it('wires each account its own 4S holder and follows the active account', async () => {
+  it('wires each account its own 4S holder, reachable by account id', async () => {
     const a = fakeClient();
     const b = fakeClient();
     const { svc } = setup(a, b);
 
-    expect(svc.activeHolder()).toBeNull(); // nothing signed in yet
+    expect(svc.holderFor(SESSION.userId)).toBeNull(); // nothing signed in yet
 
     await firstValueFrom(svc.init(SESSION)); // A
     await firstValueFrom(svc.add(SESSION_B)); // B, now active
@@ -2146,18 +2146,14 @@ describe('MatrixClientService', () => {
       callB.cryptoCallbacks?.getSecretStorageKey,
     );
 
-    // activeHolder() follows the active account: B's holder while B is active...
-    const holderB = svc.activeHolder();
-    expect(holderB).not.toBeNull();
-    expect(holderB!.getSecretStorageKey).toBe(
-      callB.cryptoCallbacks?.getSecretStorageKey,
-    );
-
-    // ...and A's DISTINCT holder after switching back to A.
-    svc.setActive('@me:hs');
-    const holderA = svc.activeHolder();
+    // Each account's holder is the one wired into its own client, active or not.
+    const holderA = svc.holderFor(SESSION.userId);
+    const holderB = svc.holderFor(SESSION_B.userId);
     expect(holderA!.getSecretStorageKey).toBe(
       callA.cryptoCallbacks?.getSecretStorageKey,
+    );
+    expect(holderB!.getSecretStorageKey).toBe(
+      callB.cryptoCallbacks?.getSecretStorageKey,
     );
     expect(holderA).not.toBe(holderB);
   });

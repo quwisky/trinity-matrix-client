@@ -24,7 +24,7 @@ import { isCallWidgetType } from '../lib/widget-embed-policy';
 
 type FailNextCode = Exclude<
   EngineFailureCode,
-  'discovery-failed' | 'account-start-failed'
+  'discovery-failed' | 'account-start-failed' | 'recovery-refused'
 >;
 
 interface FakeState {

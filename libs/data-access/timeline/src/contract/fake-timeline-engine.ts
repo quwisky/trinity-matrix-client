@@ -39,7 +39,7 @@ import type {
 
 type FailNextCode = Exclude<
   EngineFailureCode,
-  'discovery-failed' | 'account-start-failed'
+  'discovery-failed' | 'account-start-failed' | 'recovery-refused'
 >;
 
 interface FakeRoom {
