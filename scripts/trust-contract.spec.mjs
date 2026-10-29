@@ -30,40 +30,25 @@ describe('Trust production boundary', () => {
     );
   });
 
-  it('depends on a lifecycle-free Matrix crypto port', () => {
+  it('reaches Matrix only through its engine', () => {
     // The Trust spec harness mocks MatrixClientService; only production code is frozen.
     const trust = productionSources
       .filter((file) => file.startsWith('libs/data-access/trust/'))
       .map(source)
       .join('\n');
-    const port = source(
-      'libs/data-access/matrix-client/src/lib/trust-crypto.port.ts',
-    );
-    const activeView = port.match(
-      /export interface ActiveTrustCrypto \{(?<body>[\s\S]*?)\n\}/,
-    )?.groups?.body;
-    const clientView = port.match(
-      /export type TrustMatrixClient = Pick<(?<body>[\s\S]*?)>;\n/,
-    )?.groups?.body;
-    const projectionConfig = port.match(
-      /export interface TrustCryptoProjectionConfig \{(?<body>[\s\S]*?)\n\}/,
-    )?.groups?.body;
 
+    expect(trust).toContain('TRUST_ENGINE');
+    expect(trust).not.toContain('TrustCryptoPort');
     expect(trust).not.toContain('MatrixClientService');
     expect(trust).not.toContain('initRustCrypto');
-    expect(port).not.toMatch(
-      /\b(?:addAccount|removeAccount|switchAccount|startClient|stopClient|initRustCrypto)\b\s*\(/,
-    );
-    expect(activeView).toBeDefined();
-    expect(activeView).not.toMatch(/\b(?:MatrixClient|CryptoApi)\b/);
-    expect(clientView).toBeDefined();
-    expect(clientView).not.toMatch(
-      /\b(?:addAccount|removeAccount|switchAccount|startClient|stopClient|initRustCrypto)\b/,
-    );
-    expect(projectionConfig).toBeDefined();
-    expect(projectionConfig).not.toMatch(
-      /\b(?:MatrixClient|CryptoApi|ProjectFromClientConfig)\b/,
-    );
+    expect(
+      existsSync(
+        join(
+          workspaceRoot,
+          'libs/data-access/matrix-client/src/lib/trust-crypto.port.ts',
+        ),
+      ),
+    ).toBe(false);
   });
 
   it('keeps commands cold and exposes typed recovery meaning', () => {
