@@ -591,7 +591,9 @@ describe('TrustService', () => {
     });
 
     it('rewires onto a new client after re-login and recomputes status', async () => {
-      const { svc, client, matrix } = setup({ defaultKeyId: null }); // A: needs-setup
+      const { svc, client, matrix, generation } = setup({
+        defaultKeyId: null,
+      }); // A: needs-setup
       svc.runProjection().subscribe();
       await firstValueFrom(svc.refresh());
       expect(svc.status()).toBe('needs-setup');
@@ -604,6 +606,15 @@ describe('TrustService', () => {
         getDeviceVerificationStatus: vi
           .fn()
           .mockResolvedValue({ crossSigningVerified: false }),
+        getCrossSigningStatus: vi.fn().mockResolvedValue({
+          publicKeysOnDevice: false,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: false,
+            selfSigningKey: false,
+            userSigningKey: false,
+          },
+        }),
       };
       const clientB = {
         getCrypto: () => cryptoB,
@@ -619,7 +630,9 @@ describe('TrustService', () => {
         clientB as unknown as MatrixClientService['instance'],
       );
 
-      svc.runProjection().subscribe();
+      // The session registers the new client under a new generation.
+      generation.set(2);
+      TestBed.inject(ApplicationRef).tick();
       await firstValueFrom(svc.refresh());
 
       expect(client.off).toHaveBeenCalled(); // old listeners detached
@@ -648,6 +661,15 @@ describe('TrustService', () => {
         getDeviceVerificationStatus: vi
           .fn()
           .mockResolvedValue({ crossSigningVerified: false }),
+        getCrossSigningStatus: vi.fn().mockResolvedValue({
+          publicKeysOnDevice: false,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: false,
+            selfSigningKey: false,
+            userSigningKey: false,
+          },
+        }),
       };
       const clientB = {
         getCrypto: () => cryptoB,

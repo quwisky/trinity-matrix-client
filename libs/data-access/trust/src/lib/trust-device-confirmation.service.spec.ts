@@ -1,13 +1,15 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { catchError, defer, firstValueFrom, from, map, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SessionStateService,
-  TrustCryptoPort,
   type SessionAccountStatus,
 } from '@trinity/data-access/matrix-client';
+import { type EngineFailure, engineFail, engineOk } from '@trinity/util/matrix';
+import type { TrustEngine, TrustFacts } from './trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceStorageAdapter,
@@ -55,6 +57,12 @@ const PUBLISHED = {
       keys: { 'ed25519:MASTER': 'MASTER' },
     },
   },
+};
+
+const FAILED: EngineFailure = {
+  kind: 'unexpected',
+  code: 'request-failed',
+  diagnostic: { kind: 'unexpected' },
 };
 
 /** Persisted payloads, by storage key and Account, shared across "restarts". */
@@ -120,35 +128,45 @@ function setup(options: Options = {}) {
   const live = { value: options.live ?? true };
   const local = options.local ?? 'needs-recovery';
   const defaultKeyId = local === 'needs-recovery' ? 'k' : null;
+  /** The homeserver's `/keys/query`, behind the engine's identity check. */
   const downloadKeysForUsers = vi.fn(options.server ?? (async () => PUBLISHED));
-  const crypto = {
-    isCrossSigningReady: vi.fn(async () => verifiedNow.value),
-    isSecretStorageReady: vi.fn(async () => {
-      if (options.localReadFails) throw new Error('read failed');
-      return defaultKeyId !== null;
-    }),
-    getActiveSessionBackupVersion: vi.fn(async () => null),
-    getDeviceVerificationStatus: vi.fn(async () => ({
-      crossSigningVerified: verifiedNow.value,
-    })),
-    getCrossSigningStatus: vi.fn(async () => {
-      return {
-        publicKeysOnDevice: local !== 'needs-setup',
-        privateKeysInSecretStorage: defaultKeyId !== null,
-        privateKeysCachedLocally: {
-          masterKey: false,
-          selfSigningKey: false,
-          userSigningKey: false,
-        },
-      };
-    }),
-  };
-  const client = {
-    // Never the session's device id, so a read that bypasses the session snapshot fails a test.
-    getDeviceId: () => 'CLIENT-DEVICE',
-    getUserId: () => '@a:hs',
-    secretStorage: { getDefaultKeyId: vi.fn(async () => defaultKeyId) },
-    downloadKeysForUsers,
+  const facts = (): TrustFacts => ({
+    crossSigningReady: verifiedNow.value,
+    secretStorageReady: defaultKeyId !== null,
+    keyBackupActive: false,
+    hasDefaultKey: defaultKeyId !== null,
+    thisDeviceCrossSigned: verifiedNow.value,
+    crossSigning: {
+      publicKeysOnDevice: local !== 'needs-setup',
+      privateKeysInSecretStorage: defaultKeyId !== null,
+      privateKeysCachedLocally: {
+        masterKey: false,
+        selfSigningKey: false,
+        userSigningKey: false,
+      },
+    },
+  });
+  const isLive = (id: string) => id === '@a:hs' && live.value;
+  const engine: Pick<TrustEngine, 'facts' | 'publishedMasterKey'> = {
+    facts: (id) =>
+      defer(() =>
+        of(
+          !isLive(id) || options.localReadFails
+            ? engineFail(FAILED)
+            : engineOk(facts()),
+        ),
+      ),
+    publishedMasterKey: (id) =>
+      defer(() => from(downloadKeysForUsers())).pipe(
+        map((response) =>
+          engineOk(
+            (response as typeof PUBLISHED).master_keys?.[id as '@a:hs']?.keys[
+              'ed25519:MASTER'
+            ] ?? null,
+          ),
+        ),
+        catchError(() => of(engineFail(FAILED))),
+      ),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -162,10 +180,7 @@ function setup(options: Options = {}) {
               } as SessionAccountStatus)
             : null,
       }),
-      MockProvider(TrustCryptoPort, {
-        forAccount: (id: string) =>
-          id === '@a:hs' && live.value ? ({ client, crypto } as never) : null,
-      }),
+      { provide: TRUST_ENGINE, useValue: engine },
       MockProvider(TrustHealthService, { health: health.asReadonly() }),
       { provide: PREFERENCE_STORAGE_ADAPTER, useValue: adapter },
       {
