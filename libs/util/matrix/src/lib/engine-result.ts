@@ -1,8 +1,11 @@
 import {
+  BehaviorSubject,
   type Observable,
   type OperatorFunction,
+  filter,
   firstValueFrom,
   map,
+  timeout,
   toArray,
 } from 'rxjs';
 import {
@@ -231,6 +234,67 @@ export async function assertProgressThenResult<
     throw new TypeError(`Update ${early} is not progress before the one done`);
   }
   return { progress: progress as P[], result: last.result };
+}
+
+/** A feed subscribed by {@link recordFeed}. */
+export interface FeedRecording<T> {
+  /** Every item so far, in order. */
+  readonly items: readonly T[];
+  /** The first item, already recorded or later, that matches; rejects on a breach or timeout. */
+  until(predicate: (item: T) => boolean, timeoutMs: number): Promise<T>;
+  unsubscribe(): void;
+}
+
+/**
+ * Subscribes to a feed: a subscription with no snapshot and no replay, whose items are plain
+ * data and which neither completes nor errors. Throws a TypeError when it emits, completes or
+ * errors on subscribe; a later breach rejects every `until`.
+ */
+export function recordFeed<T>(source: Observable<T>): FeedRecording<T> {
+  const items: T[] = [];
+  const changes = new BehaviorSubject<void>(undefined);
+  let breach: TypeError | null = null;
+  let subscribing = true;
+  const fail = (message: string): void => {
+    breach ??= new TypeError(message);
+    changes.next();
+  };
+  const subscription = source.subscribe({
+    next: (item) => {
+      if (subscribing)
+        return fail('Emitted on subscribe: a feed has no snapshot');
+      try {
+        assertPlainData(item, `$[${items.length}]`);
+      } catch (error) {
+        return fail((error as Error).message);
+      }
+      items.push(item);
+      changes.next();
+    },
+    error: () => fail('The feed errored'),
+    complete: () => fail('The feed completed'),
+  });
+  subscribing = false;
+  if (breach) {
+    subscription.unsubscribe();
+    throw breach;
+  }
+  return {
+    items,
+    until: (predicate, timeoutMs) =>
+      firstValueFrom(
+        changes.pipe(
+          map(() => {
+            if (breach) throw breach;
+            return items.findIndex(predicate);
+          }),
+          filter((index) => index !== -1),
+          map((index) => items[index]),
+          timeout(timeoutMs),
+        ),
+      ),
+    unsubscribe: () => subscription.unsubscribe(),
+  };
 }
 
 /** Structural equality for plain data (see {@link assertPlainData}): objects, arrays and primitives. */
