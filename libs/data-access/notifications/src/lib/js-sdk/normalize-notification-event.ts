@@ -1,6 +1,6 @@
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
 import { displayContent, validReplacement } from '@trinity/util/matrix';
-import type { NotificationEvent } from './notification-intent';
+import type { IncomingNotification } from '../notification-engine';
 
 /**
  * Narrow one SDK event into the value-only record consumed by Notifications policy.
@@ -11,7 +11,7 @@ export function normalizeNotificationEvent(
   event: MatrixEvent,
   room: Room,
   roomEncrypted: boolean,
-): NotificationEvent {
+): IncomingNotification {
   const senderId = event.getSender() ?? '';
   const senderName = event.sender?.name ?? (senderId || 'Someone');
   const content = displayContent(event);

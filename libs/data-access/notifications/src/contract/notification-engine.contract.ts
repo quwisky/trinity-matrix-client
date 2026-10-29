@@ -8,8 +8,13 @@ import {
   toArray,
 } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { type EngineResult, assertPlainData } from '@trinity/util/matrix';
+import {
+  type EngineResult,
+  assertPlainData,
+  recordFeed,
+} from '@trinity/util/matrix';
 import type {
+  IncomingNotification,
   NotificationEngine,
   NotificationSettings,
   PushRuleKind,
@@ -49,6 +54,16 @@ export interface NotificationContractSetup {
   foreignAccountData(type: string, content: object): Promise<void>;
   /** Alice's account data of `type` as the server holds it, or undefined. */
   accountData(type: string): Promise<unknown>;
+  /** Another user, whose display name is their localpart. */
+  readonly bob: string;
+  /** A room named `name` that alice has joined with bob, encrypted by its state when asked. */
+  sharedRoom(name: string, encrypted: boolean): Promise<string>;
+  /** `sender` (alice or bob) sends a text message, in the clear; resolves its event id. */
+  send(sender: string, roomId: string, body: string): Promise<string>;
+  /** Bob reacts to `targetEventId`; resolves the reaction's event id. */
+  react(roomId: string, targetEventId: string, key: string): Promise<string>;
+  /** Bob redacts one of his events. */
+  redact(roomId: string, eventId: string): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -109,6 +124,10 @@ function unique(): string {
 
 function uniqueRoom(): string {
   return `!${unique()}:contract.invalid`;
+}
+
+function localpartOf(userId: string): string {
+  return userId.slice(1).split(':')[0];
 }
 
 function enabledOf(
@@ -538,8 +557,164 @@ export function defineNotificationEngineContract(
           sound: true,
           reactionNotifications: false,
         });
+        const target = await once(
+          engine.reactionTarget(NOBODY, uniqueRoom(), '$target', ['$r']),
+        );
+        expect(target.ok ? 'ok' : target.failure.code).toBe('account-not-live');
+        recordFeed(engine.notifications(NOBODY)).unsubscribe();
       },
       testTimeoutMs,
     );
+
+    describe('incoming notifications', () => {
+      const feeds: { unsubscribe(): void }[] = [];
+      afterEach(() => {
+        for (const feed of feeds.splice(0)) feed.unsubscribe();
+      });
+
+      /** A feed: nothing on subscribe, every item plain data. */
+      function feed() {
+        const recording = recordFeed(engine.notifications(alice));
+        feeds.push(recording);
+        return {
+          ...recording,
+          item: (eventId: string): Promise<IncomingNotification> =>
+            recording.until(
+              (item) => item.eventId === eventId,
+              settleTimeoutMs,
+            ),
+        };
+      }
+
+      it(
+        'emits a live message from someone else, and does not replay it to a later subscriber',
+        async () => {
+          const name = unique();
+          const room = await context.sharedRoom(name, false);
+          const first = feed();
+          const firstId = await context.send(context.bob, room, 'first');
+
+          expect(await first.item(firstId)).toEqual({
+            kind: 'message',
+            accountId: alice,
+            roomId: room,
+            eventId: firstId,
+            senderId: context.bob,
+            senderName: localpartOf(context.bob),
+            roomName: name,
+            body: 'first',
+          });
+          first.unsubscribe();
+
+          const second = feed();
+          const secondId = await context.send(context.bob, room, 'second');
+          await second.item(secondId);
+          expect(second.items.map((item) => item.eventId)).toEqual([secondId]);
+        },
+        testTimeoutMs,
+      );
+
+      it(
+        'leaves out the account’s own messages',
+        async () => {
+          const room = await context.sharedRoom(unique(), false);
+          const notifications = feed();
+          await context.send(alice, room, 'mine');
+          const theirs = await context.send(context.bob, room, 'theirs');
+
+          await notifications.item(theirs);
+          expect(notifications.items.map((item) => item.eventId)).toEqual([
+            theirs,
+          ]);
+        },
+        testTimeoutMs,
+      );
+
+      it(
+        'leaves out a message the push rules silence, but not a reaction to it',
+        async () => {
+          const name = unique();
+          const room = await context.sharedRoom(name, false);
+          await ok(engine.setRoomMode(alice, room, 'mute'));
+          const notifications = feed();
+          const quiet = await context.send(context.bob, room, 'quiet');
+          const reaction = await context.react(room, quiet, '👍');
+
+          expect(await notifications.item(reaction)).toEqual({
+            kind: 'reaction-annotation',
+            accountId: alice,
+            roomId: room,
+            roomName: name,
+            eventId: reaction,
+            targetEventId: quiet,
+            key: '👍',
+            senderId: context.bob,
+            senderName: localpartOf(context.bob),
+          });
+          expect(notifications.items.map((item) => item.eventId)).toEqual([
+            reaction,
+          ]);
+        },
+        testTimeoutMs,
+      );
+
+      it(
+        'does not preview text that arrived in the clear in an encrypted room',
+        async () => {
+          const room = await context.sharedRoom(unique(), true);
+          const notifications = feed();
+          const clear = await context.send(context.bob, room, 'in the clear');
+
+          expect(await notifications.item(clear)).toMatchObject({
+            kind: 'message',
+            eventId: clear,
+            body: null,
+          });
+        },
+        testTimeoutMs,
+      );
+
+      it(
+        'finds the target of a reaction to an own message only, while a reaction is live',
+        async () => {
+          const room = await context.sharedRoom(unique(), false);
+          const notifications = feed();
+          const mine = await context.send(alice, room, 'mine');
+          const theirs = await context.send(context.bob, room, 'theirs');
+          const kept = await context.react(room, mine, '👍');
+          const removed = await context.react(room, mine, '🎉');
+          const other = await context.react(room, theirs, '👍');
+          await notifications.item(other);
+          expect(
+            notifications.items.map((item) =>
+              item.kind === 'reaction-annotation' ? item.targetEventId : null,
+            ),
+          ).toEqual([null, mine, mine, theirs]);
+
+          expect(
+            await value(
+              engine.reactionTarget(alice, room, mine, [kept, removed]),
+            ),
+          ).toEqual({ body: 'mine', liveReactionIds: [kept, removed] });
+          expect(
+            await value(engine.reactionTarget(alice, room, theirs, [other])),
+          ).toBeNull();
+
+          await context.redact(room, removed);
+          await eventually(
+            () =>
+              value(engine.reactionTarget(alice, room, mine, [kept, removed])),
+            { body: 'mine', liveReactionIds: [kept] },
+          );
+          await context.redact(room, kept);
+          await eventually(
+            () =>
+              value(engine.reactionTarget(alice, room, mine, [kept, removed])),
+            null,
+          );
+        },
+        testTimeoutMs,
+      );
+    });
   });
 }
