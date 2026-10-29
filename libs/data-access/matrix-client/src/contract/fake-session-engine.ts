@@ -1,6 +1,7 @@
 import {
   BehaviorSubject,
-  type Observable,
+  Observable,
+  type Subscriber,
   defer,
   distinctUntilChanged,
   map,
@@ -8,8 +9,10 @@ import {
 } from 'rxjs';
 import {
   type AccountStartFailureReason,
+  type EngineFailure,
   type EngineResult,
   type MatrixSession,
+  type UiaAuth,
   engineFail,
   engineOk,
   plainEqual,
@@ -19,8 +22,10 @@ import {
   EMPTY_SESSION,
   type PendingTextMessage,
   type PersistedAccountActivation,
+  type ServerLogoutHoldUpdate,
   type SessionAccessToken,
   type SessionAccountStatus,
+  type SessionCredentials,
   type SessionEngine,
   type SessionSnapshot,
 } from '../lib/session-engine';
@@ -34,6 +39,27 @@ const START_FAILURE_KIND = {
   'secure-storage-unavailable': 'unexpected',
 } as const satisfies Record<AccountStartFailureReason, string>;
 
+const NOT_LIVE: EngineFailure = {
+  kind: 'unexpected',
+  code: 'account-not-live',
+  diagnostic: { kind: 'unexpected' },
+};
+
+const UNKNOWN_TOKEN: EngineFailure = {
+  kind: 'authentication',
+  code: 'request-failed',
+  diagnostic: {
+    kind: 'authentication',
+    httpStatus: 401,
+    errcode: 'M_UNKNOWN_TOKEN',
+  },
+};
+
+interface FakeHold {
+  readonly accountId: string;
+  readonly subscriber: Subscriber<ServerLogoutHoldUpdate>;
+}
+
 /** In-memory accounts with scripted start failures, sync progress and token rotation. */
 export class FakeSessionEngine implements SessionEngine {
   private readonly snapshot$ = new BehaviorSubject<SessionSnapshot>(
@@ -45,13 +71,22 @@ export class FakeSessionEngine implements SessionEngine {
   private readonly startFailures = new Map<string, AccountStartFailureReason>();
   private readonly serverStatuses = new Map<string, AccountServerStatus>();
   private readonly backedUp = new Map<string, boolean | null>();
+  private readonly refreshTokens = new Map<string, string>();
+  private readonly holds = new Map<string, FakeHold>();
+  /** Accounts whose token died while held, kept live until the hold ends. */
+  private readonly diedWhileHeld = new Set<string>();
+  /** Held accounts a holder released as deleted, which keeps a recorded death from wiping. */
+  private readonly releasedAsDeleted = new Set<string>();
   private generation = 0;
+  private holdCount = 0;
   private outgoingWork = false;
   private outgoingTexts: readonly PendingTextMessage[] = [];
 
   readonly calls: string[] = [];
-  /** Tokens `signOutAll` has revoked, for the contract's `tokenAccepted`. */
+  /** Tokens the server no longer accepts, for the contract's `tokenAccepted`. */
   readonly revokedTokens = new Set<string>();
+  /** The password `deactivateAccount` accepts for every account. */
+  readonly password = 'fake-password';
 
   failStart(accountId: string, reason: AccountStartFailureReason): void {
     this.startFailures.set(accountId, reason);
@@ -138,6 +173,13 @@ export class FakeSessionEngine implements SessionEngine {
         });
       }
       this.generation += 1;
+      if (session.refreshToken) {
+        this.refreshTokens.set(accountId, session.refreshToken);
+      } else {
+        this.refreshTokens.delete(accountId);
+      }
+      const signedInAgain =
+        this.snapshot$.value.softLoggedOut.includes(accountId);
       const status: SessionAccountStatus = {
         accountId,
         deviceId: session.deviceId,
@@ -163,6 +205,11 @@ export class FakeSessionEngine implements SessionEngine {
         ],
         softLoggedOut: s.softLoggedOut.filter((id) => id !== accountId),
       }));
+      // As the SDK adapter does: a recorded death belonged to the replaced client.
+      if (this.diedWhileHeld.delete(accountId)) {
+        this.tell(accountId, { kind: 'token-renewed' });
+      }
+      if (signedInAgain) this.tell(accountId, { kind: 'signed-in-again' });
       return engineOk(null);
     });
   }
@@ -217,6 +264,7 @@ export class FakeSessionEngine implements SessionEngine {
 
   remove(accountId: string): Observable<null> {
     return this.run(`remove:${accountId}`, () => {
+      this.leave(accountId);
       this.drop(accountId);
       this.update((s) => ({
         ...s,
@@ -228,6 +276,11 @@ export class FakeSessionEngine implements SessionEngine {
 
   stop(): Observable<null> {
     return this.run('stop', () => {
+      for (const accountId of this.snapshot$.value.accounts.map(
+        (a) => a.accountId,
+      )) {
+        this.leave(accountId);
+      }
       this.snapshot$.next(EMPTY_SESSION);
       this.tokens$.next(new Map());
       return null;
@@ -281,6 +334,152 @@ export class FakeSessionEngine implements SessionEngine {
     );
   }
 
+  holdServerLogout(accountId: string): Observable<ServerLogoutHoldUpdate> {
+    return new Observable<ServerLogoutHoldUpdate>((subscriber) => {
+      this.calls.push(`holdServerLogout:${accountId}`);
+      const holdId = `hold-${++this.holdCount}`;
+      this.holds.set(holdId, { accountId, subscriber });
+      subscriber.next({
+        kind: 'held',
+        holdId,
+        tokenDied: this.diedWhileHeld.has(accountId),
+      });
+      return () => this.release(holdId, false);
+    });
+  }
+
+  releaseServerLogoutHold(holdId: string, deleted: boolean): Observable<null> {
+    return this.run(`releaseServerLogoutHold:${holdId}:${deleted}`, () => {
+      this.release(holdId, deleted);
+      return null;
+    });
+  }
+
+  deactivateAccount(
+    accountId: string,
+    erase: boolean,
+    auth: UiaAuth | null,
+  ): Observable<EngineResult<null>> {
+    return this.run(`deactivateAccount:${accountId}:${erase}`, () =>
+      this.request(accountId, () => {
+        const password = auth && 'password' in auth ? auth.password : null;
+        if (password !== this.password) {
+          return engineFail({
+            kind: 'http',
+            code: 'uia-required',
+            diagnostic: { kind: 'http', httpStatus: 401 },
+            params: {
+              challenge: {
+                flows: [{ stages: ['m.login.password'] }],
+                session: 'fake-uia',
+                completed: [],
+              },
+            },
+          });
+        }
+        this.revoke(accountId);
+        // The account's own sync then meets the revoked token.
+        this.tokenDied(accountId);
+        return engineOk(null);
+      }),
+    );
+  }
+
+  logoutRemote(accountId: string): Observable<EngineResult<null>> {
+    return this.run(`logoutRemote:${accountId}`, () =>
+      this.request(accountId, () => {
+        this.revoke(accountId);
+        return engineOk(null);
+      }),
+    );
+  }
+
+  logoutSession(session: MatrixSession): Observable<EngineResult<null>> {
+    return this.run(`logoutSession:${session.userId}`, () => {
+      if (this.revokedTokens.has(session.accessToken)) {
+        return engineFail(UNKNOWN_TOKEN);
+      }
+      this.revokedTokens.add(session.accessToken);
+      return engineOk(null);
+    });
+  }
+
+  liveCredentials(accountId: string): Observable<SessionCredentials | null> {
+    return this.run(`liveCredentials:${accountId}`, () => {
+      const token = this.tokens$.value.get(accountId);
+      return token
+        ? {
+            accessToken: token.accessToken,
+            refreshToken: this.refreshTokens.get(accountId) ?? null,
+          }
+        : null;
+    });
+  }
+
+  private revoke(accountId: string): void {
+    const token = this.tokens$.value.get(accountId);
+    if (token) this.revokedTokens.add(token.accessToken);
+  }
+
+  /** A request with the live client, which meets a revoked token as the SDK would. */
+  private request(
+    accountId: string,
+    send: () => EngineResult<null>,
+  ): EngineResult<null> {
+    const token = this.tokens$.value.get(accountId);
+    if (!this.isLive(accountId) || !token) return engineFail(NOT_LIVE);
+    if (!this.revokedTokens.has(token.accessToken)) return send();
+    this.tokenDied(accountId);
+    return engineFail(UNKNOWN_TOKEN);
+  }
+
+  /** A hard logout: held, it is only recorded and reported; otherwise the account is wiped. */
+  private tokenDied(accountId: string): void {
+    const held = [...this.holds.values()].filter(
+      (hold) => hold.accountId === accountId,
+    );
+    if (held.length === 0) {
+      this.drop(accountId);
+      return;
+    }
+    this.diedWhileHeld.add(accountId);
+    this.tell(accountId, { kind: 'token-died' });
+  }
+
+  private tell(accountId: string, update: ServerLogoutHoldUpdate): void {
+    for (const hold of [...this.holds.values()]) {
+      if (hold.accountId === accountId) hold.subscriber.next(update);
+    }
+  }
+
+  private release(holdId: string, deleted: boolean): void {
+    const hold = this.holds.get(holdId);
+    if (!hold) return;
+    this.holds.delete(holdId);
+    hold.subscriber.complete();
+    const { accountId } = hold;
+    if (deleted) this.releasedAsDeleted.add(accountId);
+    if ([...this.holds.values()].some((h) => h.accountId === accountId)) {
+      return;
+    }
+    const keep = this.releasedAsDeleted.delete(accountId);
+    if (this.diedWhileHeld.delete(accountId) && !keep) {
+      this.drop(accountId);
+    }
+  }
+
+  /** The account leaves the device and takes its holds with it. */
+  private leave(accountId: string): void {
+    this.diedWhileHeld.delete(accountId);
+    this.releasedAsDeleted.delete(accountId);
+    for (const [holdId, hold] of [...this.holds]) {
+      if (hold.accountId !== accountId) continue;
+      this.holds.delete(holdId);
+      hold.subscriber.next({ kind: 'released' });
+      hold.subscriber.complete();
+    }
+  }
+
   private run<T>(call: string, action: () => T): Observable<T> {
     return defer(() => {
       this.calls.push(call);
@@ -299,6 +498,7 @@ export class FakeSessionEngine implements SessionEngine {
   /** Retires a live account and repoints the active one to the first that remains. */
   private drop(accountId: string): void {
     this.setToken(accountId, null);
+    this.refreshTokens.delete(accountId);
     this.update((s) => {
       const accounts = s.accounts.filter((a) => a.accountId !== accountId);
       return {

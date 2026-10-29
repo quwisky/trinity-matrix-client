@@ -1408,8 +1408,8 @@ describe('MatrixClientService', () => {
       const client = fakeClient();
       const { svc, storage } = setup(client);
       await firstValueFrom(svc.init(SESSION));
-      const onTokenDied = vi.fn();
-      const hold = svc.holdServerLogout('@me:hs', { onTokenDied });
+      const onFact = vi.fn();
+      const hold = svc.holdServerLogout('@me:hs', onFact);
 
       loggedOutHandler(client)({ data: { soft_logout: false } });
 
@@ -1417,7 +1417,7 @@ describe('MatrixClientService', () => {
       expect(client.clearStores).not.toHaveBeenCalled();
       expect(storage.remove).not.toHaveBeenCalled();
       expect(hold.tokenDied()).toBe(true);
-      expect(onTokenDied).toHaveBeenCalledOnce();
+      expect(onFact).toHaveBeenCalledExactlyOnceWith('token-died');
       expect(svc.accountIds()).toEqual(['@me:hs']);
     });
 
@@ -1440,13 +1440,15 @@ describe('MatrixClientService', () => {
       const signedIn = fakeClient();
       const { svc, storage } = setup(old, signedIn);
       await firstValueFrom(svc.init(SESSION));
-      const hold = svc.holdServerLogout('@me:hs');
+      const onFact = vi.fn();
+      const hold = svc.holdServerLogout('@me:hs', onFact);
       loggedOutHandler(old)({ data: { soft_logout: false } });
       await firstValueFrom(svc.add(SESSION));
 
       hold.release({ deleted: false });
 
       expect(hold.tokenDied()).toBe(false);
+      expect(onFact.mock.calls).toEqual([['token-died'], ['token-renewed']]);
       expect(signedIn.stopClient).not.toHaveBeenCalled();
       expect(signedIn.clearStores).not.toHaveBeenCalled();
       expect(storage.remove).not.toHaveBeenCalled();
@@ -1476,7 +1478,8 @@ describe('MatrixClientService', () => {
       const { svc } = setup(fakeClient());
       await firstValueFrom(svc.init(SESSION));
       const released = svc.holdServerLogout('@me:hs');
-      const removed = svc.holdServerLogout('@me:hs');
+      const onFact = vi.fn();
+      const removed = svc.holdServerLogout('@me:hs', onFact);
       expect(removed.isHeld()).toBe(true);
 
       released.release({ deleted: false });
@@ -1484,6 +1487,7 @@ describe('MatrixClientService', () => {
 
       expect(released.isHeld()).toBe(false);
       expect(removed.isHeld()).toBe(false);
+      expect(onFact).toHaveBeenCalledExactlyOnceWith('released');
     });
 
     it('leaves the account to the deletion cleanup when released as deleted', async () => {
@@ -1543,16 +1547,16 @@ describe('MatrixClientService', () => {
       vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
       vi.mocked(storage.setActive).mockReturnValue(of(undefined));
       await firstValueFrom(svc.init(SESSION));
-      const onSignedInAgain = vi.fn();
-      svc.holdServerLogout('@me:hs', { onSignedInAgain });
+      const onFact = vi.fn();
+      svc.holdServerLogout('@me:hs', onFact);
 
       await firstValueFrom(svc.add(SESSION));
-      expect(onSignedInAgain).not.toHaveBeenCalled();
+      expect(onFact).not.toHaveBeenCalled();
 
       loggedOutHandler(b)({ data: { soft_logout: true } });
       await firstValueFrom(svc.add(SESSION));
 
-      expect(onSignedInAgain).toHaveBeenCalledOnce();
+      expect(onFact).toHaveBeenCalledExactlyOnceWith('signed-in-again');
     });
 
     it('holds only the named account', async () => {

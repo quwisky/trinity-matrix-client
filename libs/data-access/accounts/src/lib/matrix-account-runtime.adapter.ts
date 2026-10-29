@@ -1,6 +1,5 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  MatrixClientService,
   SESSION_ENGINE,
   SessionStateService,
   accountStartFailureReason,
@@ -57,7 +56,6 @@ type DeviceNovelty = 'new' | 'existing' | 'unknown';
 
 @Injectable({ providedIn: 'root' })
 export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
-  private readonly matrix = inject(MatrixClientService);
   private readonly engine = inject(SESSION_ENGINE);
   private readonly storage = inject(SessionStorageService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
@@ -463,15 +461,12 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
    * Sign the replaced device out on the server, once the new session is saved and started:
    * starting it detached any old live client for this account, so that client's logout
    * handling never sees this sign-out, and a failed save never leaves the account without
-   * any session. Best-effort with the old token on a detached client (for OAuth,
-   * `logout(true)` revokes at the provider); it never delays or fails the sign-in.
+   * any session. Best-effort with the old token, never saving a refresh over the new
+   * device's tokens (for OAuth it revokes at the provider); it never delays or fails the
+   * sign-in.
    */
   private signOutReplacedDevice(stored: MatrixSession): void {
-    defer(() =>
-      this.matrix
-        .detachedClient(stored, { persistRefreshedTokens: false })
-        .logout(true),
-    ).subscribe({ error: () => undefined });
+    this.engine.logoutSession(stored).subscribe({ error: () => undefined });
   }
 
   /** Reads the engine's next snapshot, which already reflects any command that has replied. */
