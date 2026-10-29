@@ -1,5 +1,5 @@
-import type { ValidatedAuthMetadata } from 'matrix-js-sdk';
 import { OIDC_PROVIDER_MISMATCH, isSameUrl } from '@trinity/util/matrix';
+import type { AuthMetadata } from './auth-metadata';
 import type { OidcGrantContext } from './oidc-client.service';
 
 /**
@@ -11,7 +11,7 @@ import type { OidcGrantContext } from './oidc-client.service';
  * endpoint it gives is not that provider's.
  */
 export function checkIssuer(
-  metadata: ValidatedAuthMetadata,
+  metadata: AuthMetadata,
   context: OidcGrantContext,
 ): void {
   const issRequired =
@@ -30,7 +30,7 @@ export function checkIssuer(
  * the redirect, so the code goes to the token endpoint the sign-in was started with.
  */
 export function checkSavedEndpoints(
-  metadata: ValidatedAuthMetadata,
+  metadata: AuthMetadata,
   context: OidcGrantContext,
 ): void {
   if (
