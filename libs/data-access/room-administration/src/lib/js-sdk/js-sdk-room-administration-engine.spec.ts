@@ -207,6 +207,27 @@ describe('JsSdkRoomAdministrationEngine', () => {
     },
   );
 
+  it('lists each creator once, falling back to the legacy creator field', () => {
+    const { engine, state } = setup();
+    const creators = () =>
+      watch<AdministeredRoom | null>(
+        engine.room(ME, ROOM_ID),
+      ).seen[0]?.creators.map(({ userId }) => userId);
+
+    state.setStateEvents([
+      stateEvent('m.room.create', '', ME, {
+        room_version: '12',
+        additional_creators: ['@carol:example.org', ME, 7],
+      }),
+    ]);
+    expect(creators()).toEqual([ME, '@carol:example.org']);
+
+    state.setStateEvents([
+      stateEvent('m.room.create', '', '', { creator: CO }),
+    ]);
+    expect(creators()).toEqual([CO]);
+  });
+
   it('reports encryption unknown until the crypto store answers', async () => {
     const { engine, answer, crypto } = setup();
     const { seen } = watch<AdministeredRoom | null>(engine.room(ME, ROOM_ID));
@@ -398,6 +419,45 @@ describe('JsSdkRoomAdministrationEngine', () => {
         ok: false,
         failure: { code: 'request-failed', kind: 'permission' },
       });
+    });
+  });
+
+  describe('stateEvents', () => {
+    it('lists every current state event as a deep, plain copy', async () => {
+      const { engine, state } = setup();
+
+      const result = await firstValueFrom(engine.stateEvents(ME, ROOM_ID));
+
+      assertPlainData(result);
+      const events = result.ok ? result.value : [];
+      expect(events.map(({ type, stateKey }) => `${type}|${stateKey}`)).toEqual(
+        [
+          'm.room.create|',
+          'm.room.power_levels|',
+          `m.room.member|${ME}`,
+          `m.room.member|${CO}`,
+          'm.room.member|@carol:example.org',
+        ],
+      );
+      const create = state.getStateEvents('m.room.create', '');
+      expect(events[0].event).toEqual(create?.event);
+      expect(events[0].event['content']).not.toBe(create?.event.content);
+    });
+
+    it('fails without a live account or a known room', async () => {
+      const { engine } = setup();
+
+      const codes = await Promise.all(
+        [
+          engine.stateEvents('@nobody:example.org', ROOM_ID),
+          engine.stateEvents(ME, '!other:example.org'),
+        ].map(async (command) => {
+          const result = await firstValueFrom(command);
+          return result.ok ? null : result.failure.code;
+        }),
+      );
+
+      expect(codes).toEqual(['account-not-live', 'room-unavailable']);
     });
   });
 });

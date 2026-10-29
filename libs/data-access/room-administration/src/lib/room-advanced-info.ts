@@ -1,4 +1,4 @@
-import { EventType, type MatrixEvent, type RoomState } from 'matrix-js-sdk';
+import type { AdministeredRoom } from './room-administration-engine';
 
 /** One room creator, named as the room currently knows them. */
 export interface RoomCreator {
@@ -21,11 +21,11 @@ export interface RoomAdvancedInfo {
   readonly roomId: string;
   /** `room_version`; `'1'` when the create event omits it; null when unknown. */
   readonly version: string | null;
-  /** The creator plus, from version 12, `additional_creators`; empty when unknown. */
+  /** {@link AdministeredRoom.creators}; empty when the create event is missing. */
   readonly createdBy: readonly RoomCreator[];
   /** The create event's `origin_server_ts`, or null. */
   readonly createdAt: number | null;
-  /** True whenever the room has an `m.room.encryption` event, even a redacted one. */
+  /** From room state (even a redacted `m.room.encryption`) or the crypto store; false while unknown. */
   readonly encrypted: boolean;
   /** The `m.room.encryption` algorithm, or null when absent or unusable. */
   readonly encryption: string | null;
@@ -42,17 +42,12 @@ export interface RoomAdvancedInfo {
  */
 export function roomAdvancedInfo(
   roomId: string,
-  state: RoomState | undefined,
+  room: AdministeredRoom | null,
 ): RoomAdvancedInfo {
-  const encryptionEvent = state?.getStateEvents(EventType.RoomEncryption, '');
-  const encrypted = !!encryptionEvent;
-  const encryption = text(encryptionEvent?.getContent()['algorithm']);
-  const successor = text(
-    state?.getStateEvents(EventType.RoomTombstone, '')?.getContent()[
-      'replacement_room'
-    ],
-  );
-  const create = state?.getStateEvents(EventType.RoomCreate, '');
+  const encryption = text(room?.state.encryption?.['algorithm']);
+  const encrypted = room?.encryption === 'encrypted';
+  const successor = text(room?.state.tombstone?.['replacement_room']);
+  const create = room?.state.create;
   if (!create) {
     return {
       roomId,
@@ -66,18 +61,17 @@ export function roomAdvancedInfo(
       successor,
     };
   }
-  const content: Record<string, unknown> = create.getContent();
+  const { content } = create;
   const rawVersion = content['room_version'];
   // Absent means version 1, per the spec; present but malformed is unknown, not a guess.
   const version = rawVersion === undefined ? '1' : text(rawVersion);
   const predecessor = record(content['predecessor']);
   const predecessorId = text(predecessor?.['room_id']);
-  const createdAt = create.getTs();
   return {
     roomId,
     version,
-    createdBy: creatorsOf(create, version, state),
-    createdAt: validTs(createdAt),
+    createdBy: room.creators,
+    createdAt: validTs(create.originServerTs),
     encrypted,
     encryption,
     federated: content['m.federate'] !== false,
@@ -88,32 +82,9 @@ export function roomAdvancedInfo(
   };
 }
 
-/** The create event's sender (or legacy `creator`), plus v12+ `additional_creators`. */
-function creatorsOf(
-  create: MatrixEvent,
-  version: string | null,
-  state: RoomState | undefined,
-): readonly RoomCreator[] {
-  const content: Record<string, unknown> = create.getContent();
-  const ids = [text(create.getSender()) ?? text(content['creator'])];
-  const additional = content['additional_creators'];
-  // `additional_creators` only means something from room version 12 (MSC4289).
-  if (version !== null && /^\d+$/.test(version) && Number(version) >= 12) {
-    if (Array.isArray(additional)) ids.push(...additional.map(text));
-  }
-  return [...new Set(ids.filter((id): id is string => id !== null))].map(
-    (userId) => ({
-      userId,
-      displayName: state?.getMember(userId)?.name || userId,
-    }),
-  );
-}
-
 /** A positive timestamp `Date` can represent (and so `Intl` can format), or null. */
-function validTs(ts: unknown): number | null {
-  return typeof ts === 'number' &&
-    ts > 0 &&
-    Number.isFinite(new Date(ts).getTime())
+function validTs(ts: number | null): number | null {
+  return ts !== null && ts > 0 && Number.isFinite(new Date(ts).getTime())
     ? ts
     : null;
 }
