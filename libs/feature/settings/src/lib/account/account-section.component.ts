@@ -217,11 +217,15 @@ export class AccountSectionComponent {
       this.error.set(this.firstError() ?? INCOMPLETE);
       return;
     }
-    runWithBusy(this.auth.changePassword(currentPassword, newPassword), {
-      busy: this.saving,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    }).subscribe(() => {
+    const accountId = this.accountId();
+    if (!accountId) {
+      this.error.set('Not signed in.');
+      return;
+    }
+    runWithBusy(
+      this.auth.changePassword(accountId, currentPassword, newPassword),
+      { busy: this.saving, error: this.error, destroyRef: this.destroyRef },
+    ).subscribe(() => {
       // reset(value), not a bare model set: it clears touched/dirty across the tree too, so
       // three required fields aren't left empty-and-touched, a primed error state.
       this.form().reset({ ...EMPTY_PASSWORDS });

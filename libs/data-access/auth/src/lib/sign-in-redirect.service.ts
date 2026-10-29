@@ -62,10 +62,12 @@ export class SignInRedirectService {
             webUrl: `${window.location.origin}/sso-callback`,
             appUrl: 'dev.trinityproject.trinity://sso-callback',
           });
-          const redirect = `${callback.url}?sso_state=${encodeURIComponent(state)}`;
-          return this.auth.getSsoUrl(baseUrl, redirect);
+          return `${callback.url}?sso_state=${encodeURIComponent(state)}`;
         });
-    }).pipe(switchMap((url) => this.redirect({ url, privateCallback: true })));
+    }).pipe(
+      switchMap((redirect) => this.auth.getSsoUrl(baseUrl, redirect)),
+      switchMap((url) => this.redirect({ url, privateCallback: true })),
+    );
   }
 
   /**
