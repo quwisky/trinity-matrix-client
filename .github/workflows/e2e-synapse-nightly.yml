@@ -7,7 +7,9 @@ name: E2E (Synapse nightly)
 # The browser journeys split into three shards, as in pull-request CI: one process no longer
 # finishes the suite inside its 20-minute ceiling. A separate job runs the MAS sign-in
 # journeys every night; pull requests run them only when they touch sign-in code (the
-# `mas-e2e` job in ci.yml).
+# `mas-e2e` job in ci.yml). The `engine` job runs the engine contract on its own, so a protocol
+# suite that fails before it in `pnpm e2e:protocol` cannot hide it; pull requests run it only when
+# they touch an engine or the harness (the `engine-contract` job in ci.yml).
 on:
   schedule:
     - cron: '47 2 * * *'
@@ -180,10 +182,31 @@ jobs:
           surface: browser-mas-qr
           report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
 
+  # Each engine's contract against Synapse, as ci.yml's `engine-contract` job runs it.
+  engine:
+    name: Engine contract (Synapse)
+    runs-on: ubuntu-latest
+    # Hang containment: setup, the image pulls and ten libraries' contract runs.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - id: contract
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-engine:contract
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.contract.outputs.started == 'true' }}
+        with:
+          surface: engine-contract-synapse
+          report-path: dist/.playwright/trinity-e2e-engine/**
+
   # A red cron run notifies nobody: open (or update) an issue, and close it on the next green run.
   notify:
     name: Nightly failure issue
-    needs: [browser, electron, protocol, mas]
+    needs: [browser, electron, protocol, mas, engine]
     if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     permissions:
       issues: write
