@@ -4,12 +4,14 @@ import {
   MatrixError,
   Method,
   type MatrixClient,
+  retryNetworkOperation,
 } from 'matrix-js-sdk';
 import {
   type CryptoApi,
   CryptoEvent,
   decodeRecoveryKey,
   deriveRecoveryKeyFromPassphrase,
+  type GeneratedSecretStorageKey,
   type VerificationRequest,
   VerificationPhase,
 } from 'matrix-js-sdk/lib/crypto-api';
@@ -55,11 +57,11 @@ import {
   engineOk,
   plainEqual,
 } from '@trinity/util/matrix';
-import { DEFAULT_KEY_EVENT, withTimeout } from '../recovery-reset';
 import type {
   InteractiveUpdate,
   OwnDevice,
   OwnIdentityCheck,
+  PointerWrite,
   RecoverySecret,
   TrustEngine,
   TrustFacts,
@@ -67,9 +69,11 @@ import type {
   VerificationSnapshot,
 } from '../trust-engine';
 import {
+  DEFAULT_KEY_EVENT,
   readPublishedMasterKey,
   readThisDeviceVerified,
-} from '../trust-snapshot';
+  withTimeout,
+} from './sdk-reads';
 import {
   hasStrandedCrossSigning,
   repairStaleCrossSigning,
@@ -113,6 +117,13 @@ const QR_UNAVAILABLE: EngineFailure = {
   code: 'qr-unavailable',
   diagnostic: { kind: 'unexpected' },
 };
+
+/** Dehydrated devices (MSC3814) are still unstable-prefixed in Synapse and the SDK. */
+const DEHYDRATED_DEVICE_PREFIX =
+  '/_matrix/client/unstable/org.matrix.msc3814.v1';
+
+/** The pointer restore is a bare request; a dropped connection gets two more tries (2 s, 4 s). */
+const RESTORE_ATTEMPTS = 3;
 
 const toBase64 = (bytes: Uint8ClampedArray): string =>
   btoa(String.fromCharCode(...bytes));
@@ -254,6 +265,7 @@ function eventsOf<A extends unknown[]>(
 async function readFacts(
   client: MatrixClient,
   crypto: CryptoApi,
+  { lenient = false } = {},
 ): Promise<TrustFacts> {
   // Today's read order: readiness first, then this device, then the key status.
   const [crossSigningReady, secretStorageReady, backupVersion, defaultKeyId] =
@@ -263,7 +275,11 @@ async function readFacts(
       crypto.getActiveSessionBackupVersion(),
       client.secretStorage.getDefaultKeyId(),
     ]);
-  const thisDeviceCrossSigned = await readThisDeviceVerified(client, crypto);
+  const verified = readThisDeviceVerified(client, crypto);
+  // Lenient for the setup guard, where this read only picks the refusal's sentence.
+  const thisDeviceCrossSigned = await (lenient
+    ? verified.catch(() => false)
+    : verified);
   const status = await crypto.getCrossSigningStatus();
   const cached = status.privateKeysCachedLocally;
   return {
@@ -293,6 +309,31 @@ function changesOf(client: MatrixClient): Observable<void> {
       ),
     ),
   ).pipe(map(() => undefined));
+}
+
+/**
+ * The own identity, re-queried first: for the own user that also re-reads the published
+ * identity, so the local reads are judged against the server's copy. No identity there
+ * ends the check, before `/keys/query` and the local reads, as setup always did.
+ */
+async function readOwnIdentity(
+  client: MatrixClient,
+  crypto: CryptoApi,
+): Promise<OwnIdentityCheck> {
+  if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
+    return { identityKnown: false };
+  }
+  const publishedMasterKey = await readPublishedMasterKey(client);
+  const [localMasterKey, facts] = await Promise.all([
+    crypto.getCrossSigningKeyId(),
+    readFacts(client, crypto, { lenient: true }),
+  ]);
+  return {
+    identityKnown: true,
+    publishedMasterKey,
+    localMasterKey: localMasterKey ?? null,
+    facts,
+  };
 }
 
 /** The secret-storage key `secret` stands for, or why it stands for none. */
@@ -387,6 +428,28 @@ async function repairStrandedIdentity(
   }
 }
 
+/** The encoded recovery key to show the user, or a clear failure if there isn't one. */
+function encodedRecoveryKey(key: GeneratedSecretStorageKey): string {
+  if (!key.encodedPrivateKey) {
+    throw new Error('Failed to generate a recovery key.');
+  }
+  return key.encodedPrivateKey;
+}
+
+/** A password prompt that answers once from `replay`, then asks. */
+function replayFirst(
+  replay: string | null,
+  prompt: UiaPasswordPrompt,
+): UiaPasswordPrompt {
+  let pending = replay;
+  return async (context) => {
+    if (pending === null) return prompt(context);
+    const password = pending;
+    pending = null; // a rejected replay must reach the person, not loop
+    return password;
+  };
+}
+
 /** {@link TrustEngine} over the live matrix-js-sdk clients of {@link JS_SDK_CLIENTS}. */
 @Injectable({ providedIn: 'root' })
 export class JsSdkTrustEngine implements TrustEngine {
@@ -433,23 +496,16 @@ export class JsSdkTrustEngine implements TrustEngine {
   ownIdentityCheck(
     accountId: string,
   ): Observable<EngineResult<OwnIdentityCheck>> {
-    return this.request(accountId, async (client, crypto) => {
-      // First: for the own user this also re-queries the published identity, so the
-      // local reads below are judged against the server's copy.
-      const identityKnown = await withTimeout(
-        crypto.userHasCrossSigningKeys(undefined, true),
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(NOT_LIVE));
+      const crypto = client.getCrypto();
+      if (!crypto) return of(engineFail(CRYPTO_NOT_READY));
+      return from(readOwnIdentity(client, crypto)).pipe(
+        map((check) => engineOk(check)),
+        // M_FORBIDDEN stays forbidden, as when the setup guard called the SDK itself.
+        catchError((error: unknown) => of(engineFail(commandFailed(error)))),
       );
-      const publishedMasterKey = await readPublishedMasterKey(client);
-      const [localMasterKey, facts] = await Promise.all([
-        crypto.getCrossSigningKeyId(),
-        readFacts(client, crypto),
-      ]);
-      return {
-        identityKnown,
-        publishedMasterKey,
-        localMasterKey: localMasterKey ?? null,
-        facts,
-      };
     });
   }
 
@@ -882,6 +938,128 @@ export class JsSdkTrustEngine implements TrustEngine {
     });
   }
 
+  setUpRecovery(
+    accountId: string,
+    { newIdentity }: { readonly newIdentity: boolean },
+  ): Observable<InteractiveUpdate<{ readonly recoveryKey: string }>> {
+    return this.interactive(accountId, async (client, prompt) => {
+      const crypto = client.getCrypto();
+      if (!crypto) return engineFail(CRYPTO_NOT_READY);
+      // Read before the awaits below: the upload authenticates as this client's user.
+      const user = client.getUserId() ?? '';
+      const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
+      await crypto.bootstrapCrossSigning({
+        authUploadDeviceSigningKeys: async (makeRequest) =>
+          (await driveUia(makeRequest, { password: { user, prompt } })).result,
+        // Keys this device made and never uploaded: bootstrapping without this does
+        // nothing, so the 4S set up next would hold keys no server has.
+        ...(newIdentity && { setupNewCrossSigning: true }),
+      });
+      await crypto.bootstrapSecretStorage({
+        setupNewKeyBackup: true,
+        createSecretStorageKey: async () => recoveryKey,
+      });
+      return engineOk({ recoveryKey: encodedRecoveryKey(recoveryKey) });
+    });
+  }
+
+  rotateCrossSigning(
+    accountId: string,
+    replay: string | null,
+  ): Observable<InteractiveUpdate<null>> {
+    return this.interactive(accountId, async (client, prompt) => {
+      const crypto = client.getCrypto();
+      if (!crypto) return engineFail(CRYPTO_NOT_READY);
+      const user = client.getUserId() ?? '';
+      await crypto.bootstrapCrossSigning({
+        setupNewCrossSigning: true,
+        // The upload has its own UIA session, so it is challenged again: the replay answers
+        // it, and a rejected replay is the engine's retry, not one of the person's attempts.
+        authUploadDeviceSigningKeys: async (makeRequest) =>
+          (
+            await driveUia(makeRequest, {
+              password: { user, prompt: replayFirst(replay, prompt) },
+              replayedAttempts: replay === null ? 0 : 1,
+            })
+          ).result,
+      });
+      return engineOk(null);
+    });
+  }
+
+  setDefaultKeyPointer(
+    accountId: string,
+    keyId: string | null,
+    mode: 'confirmed' | 'raw-retry',
+  ): Observable<EngineResult<PointerWrite>> {
+    return this.onClient(accountId, async (client) => {
+      if (mode === 'raw-retry') {
+        // A bare PUT that resolves on the HTTP response, unlike the echo-waiting writer:
+        // after a lost echo the local store holds a stale value, so no read may gate it.
+        await retryNetworkOperation(RESTORE_ATTEMPTS, () =>
+          client.setAccountDataRaw(
+            DEFAULT_KEY_EVENT,
+            keyId === null ? {} : { key: keyId },
+          ),
+        );
+        return { previous: null, confirmed: true };
+      }
+      const storage = client.secretStorage;
+      const previous = (await withTimeout(storage.getDefaultKeyId())) ?? null;
+      // On an agreeing store setDefaultKeyId writes nothing and never resolves.
+      if (previous === keyId) return { previous, confirmed: true };
+      try {
+        // Resolves only on the /sync echo, and its PUT goes out first.
+        await withTimeout(storage.setDefaultKeyId(keyId));
+        return { previous, confirmed: true };
+      } catch {
+        return { previous, confirmed: false };
+      }
+    });
+  }
+
+  deleteDehydratedDevice(accountId: string): Observable<EngineResult<null>> {
+    // Not reachable through CryptoApi (resetEncryption calls the manager directly).
+    return this.onClient(accountId, async (client) => {
+      await client.http.authedRequest(
+        Method.Delete,
+        '/dehydrated_device',
+        undefined,
+        {},
+        { prefix: DEHYDRATED_DEVICE_PREFIX },
+      );
+      return null;
+    });
+  }
+
+  createRecoveryAndBackup(
+    accountId: string,
+  ): Observable<EngineResult<{ readonly recoveryKey: string }>> {
+    return this.request(accountId, async (_client, crypto) => {
+      const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
+      // setupNewKeyBackup is what makes the backup: resetKeyBackup opens by deleting
+      // every key-backup version, so this one call is the whole destructive step.
+      await crypto.bootstrapSecretStorage({
+        setupNewKeyBackup: true,
+        createSecretStorageKey: async () => recoveryKey,
+      });
+      return { recoveryKey: encodedRecoveryKey(recoveryKey) };
+    });
+  }
+
+  dropKeyDescription(
+    accountId: string,
+    keyId: string,
+  ): Observable<EngineResult<null>> {
+    return this.onClient(accountId, async (client) => {
+      const storage = client.secretStorage;
+      // Still the default: the new key never landed, so the description is not orphaned.
+      if ((await storage.getDefaultKeyId()) === keyId) return null;
+      await storage.store(`m.secret_storage.key.${keyId}`, null);
+      return null;
+    });
+  }
+
   private touched(changes: Subject<string>, key: string): Observable<unknown> {
     return changes.pipe(filter((changed) => changed === key));
   }
@@ -953,6 +1131,21 @@ export class JsSdkTrustEngine implements TrustEngine {
         closed = true;
         for (const promptId of open) this.prompts.get(promptId)?.answer(null);
       };
+    });
+  }
+
+  /** A one-result step that needs the client but not its crypto. */
+  private onClient<T>(
+    accountId: string,
+    run: (client: MatrixClient) => Promise<T>,
+  ): Observable<EngineResult<T>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(NOT_LIVE));
+      return from(run(client)).pipe(
+        map((value) => engineOk(value)),
+        catchError((error: unknown) => of(engineFail(commandFailed(error)))),
+      );
     });
   }
 

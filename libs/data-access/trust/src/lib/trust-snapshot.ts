@@ -1,8 +1,3 @@
-import type {
-  TrustCryptoApi,
-  TrustMatrixClient,
-} from '@trinity/data-access/matrix-client';
-import { withTimeout } from './recovery-reset';
 import type { CrossSigningFacts, TrustFacts } from './trust-engine';
 import type { TrustHealthSnapshot } from './trust-health.service';
 
@@ -45,41 +40,6 @@ export function deriveTrustSnapshot(facts: TrustFacts): TrustHealthSnapshot {
 }
 
 /**
- * The Account's cross-signing master key as the homeserver publishes it (`/keys/query`),
- * or null when the server has none. Throws when the server cannot be asked.
- *
- * The device's own view cannot answer this. A first setup cancelled before its upload
- * leaves the olm machine holding an identity it created and marked verified, and a key
- * query that returns no master key does not remove it, so `userHasCrossSigningKeys`,
- * `getCrossSigningStatus` and `isCrossSigningReady` all report that identity.
- */
-export async function readPublishedMasterKey(
-  client: Pick<TrustMatrixClient, 'downloadKeysForUsers' | 'getUserId'>,
-): Promise<string | null> {
-  const userId = client.getUserId();
-  if (!userId) {
-    throw new Error('No signed-in user to query cross-signing keys for.');
-  }
-  const response = await withTimeout(client.downloadKeysForUsers([userId]));
-  const keys = response.master_keys?.[userId]?.keys;
-  return (keys && Object.values(keys)[0]) || null;
-}
-
-/** Whether this device is cross-signed by its own Account's identity. */
-export async function readThisDeviceVerified(
-  client: Pick<TrustMatrixClient, 'getDeviceId' | 'getUserId'>,
-  crypto: Pick<TrustCryptoApi, 'getDeviceVerificationStatus'>,
-): Promise<boolean> {
-  const deviceId = client.getDeviceId();
-  const userId = client.getUserId();
-  const deviceStatus =
-    userId && deviceId
-      ? await crypto.getDeviceVerificationStatus(userId, deviceId)
-      : null;
-  return deviceStatus?.crossSigningVerified ?? false;
-}
-
-/**
  * Whether this device holds the Account's cross-signing identity: all three private keys
  * cached locally, and those keys matching the published identity.
  *
@@ -96,8 +56,8 @@ export async function readThisDeviceVerified(
  * locally and marks it verified, so stranded privates can still read as held. The query
  * itself closes that window: matrix-sdk-crypto replaces the local identity with the
  * published one and clears private keys that differ from it. `assertNoIdentityElsewhere`
- * therefore asks the server before it calls this, and `abandonReset` re-queries for the
- * same reason. `hasStrandedCrossSigning` relies on the same distinction.
+ * therefore judges it on `ownIdentityCheck`, which asks the server first, and `abandonReset`
+ * re-queries for the same reason. `hasStrandedCrossSigning` relies on the same distinction.
  */
 export function holdsCrossSigningIdentity(
   status: Pick<CrossSigningFacts, 'privateKeysCachedLocally'>,
