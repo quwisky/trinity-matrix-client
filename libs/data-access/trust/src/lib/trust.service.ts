@@ -1,28 +1,28 @@
 import { Injectable, inject } from '@angular/core';
 import type { UIAuthCallback } from 'matrix-js-sdk';
 import {
-  decodeRecoveryKey,
-  deriveRecoveryKeyFromPassphrase,
-} from 'matrix-js-sdk/lib/crypto-api';
-import type {
-  SecretStorageKeyDescriptionAesV1,
-  ServerSideSecretStorage,
-} from 'matrix-js-sdk/lib/secret-storage';
-import { Observable, catchError, defer, from, map, of, throwError } from 'rxjs';
+  Observable,
+  catchError,
+  concatMap,
+  defer,
+  from,
+  map,
+  of,
+  throwError,
+} from 'rxjs';
 import {
+  SessionStateService,
   TrustCryptoPort,
   type TrustCryptoApi,
 } from '@trinity/data-access/matrix-client';
 import {
-  decryptMegolmKeyFile,
-  encryptMegolmKeyFile,
+  EngineRequestError,
+  type EngineFailure,
+  type EngineResult,
+  type RecoveryRefusal,
   runPasswordUia,
   type PasswordPrompt,
 } from '@trinity/util/matrix';
-import {
-  hasStrandedCrossSigning,
-  repairStaleCrossSigning,
-} from './cross-signing-repair';
 import {
   PartialRecoveryResetError,
   encodedRecoveryKey,
@@ -43,6 +43,8 @@ import {
   assertNoRecoveryOnAccount,
 } from './setup-guards';
 import { TrustHealthService } from './trust-health.service';
+import type { RecoverySecret } from './trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 
 export type {
   TrustHealth,
@@ -63,6 +65,8 @@ export class TrustService {
   private readonly cryptoPort = inject(TrustCryptoPort);
   private readonly providerRecovery = inject(TRUST_PROVIDER_RECOVERY);
   private readonly healthRuntime = inject(TrustHealthService);
+  private readonly engine = inject(TRUST_ENGINE);
+  private readonly session = inject(SessionStateService);
 
   /** Atomic Trust state; no caller can observe a status assembled across generations. */
   readonly health = this.healthRuntime.health;
@@ -196,7 +200,7 @@ export class TrustService {
 
   /** Unlock this device from the account's recovery key. */
   recoverWithKey(recoveryKey: string): Observable<void> {
-    return this.recover(async () => ({ privateKey: this.decode(recoveryKey) }));
+    return this.recover({ kind: 'recovery-key', value: recoveryKey });
   }
 
   /**
@@ -205,24 +209,7 @@ export class TrustService {
    * Trinity-onboarded accounts use {@link recoverWithKey} instead.
    */
   recoverWithPassphrase(passphrase: string): Observable<void> {
-    return this.recover(async (keyInfo) => {
-      const info = keyInfo.passphrase;
-      if (!info) {
-        throw new TrustOperationError(
-          'recover',
-          'unsupported',
-          'reenter-secret',
-          'This account has no recovery passphrase — enter the recovery key instead.',
-        );
-      }
-      const privateKey = await deriveRecoveryKeyFromPassphrase(
-        passphrase,
-        info.salt,
-        info.iterations,
-        info.bits,
-      );
-      return { privateKey };
-    });
+    return this.recover({ kind: 'passphrase', value: passphrase });
   }
 
   /**
@@ -231,15 +218,9 @@ export class TrustService {
    * net independent of the server key backup.
    */
   exportRoomKeys(passphrase: string): Observable<string> {
-    return defer(() =>
-      from(
-        (async (): Promise<string> => {
-          const json =
-            await this.requireCrypto('export-keys').exportRoomKeysAsJson();
-          return encryptMegolmKeyFile(json, passphrase);
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('export-keys'));
+    return this.onActiveAccount('export-keys', (accountId) =>
+      this.engine.exportRoomKeys(accountId, passphrase),
+    );
   }
 
   /**
@@ -247,135 +228,34 @@ export class TrustService {
    * a corrupted file) surfaces as an error rather than importing nothing.
    */
   importRoomKeys(armored: string, passphrase: string): Observable<void> {
-    return defer(() =>
-      from(
-        (async (): Promise<void> => {
-          // Resolved before the decrypt, which is long enough to span an account
-          // switch: these keys belong to the account the import was started on.
-          const crypto = this.requireCrypto('import-keys');
-          let json: string;
-          try {
-            json = await decryptMegolmKeyFile(armored, passphrase);
-          } catch {
-            throw new TrustOperationError(
-              'import-keys',
-              'invalid-secret',
-              'reenter-secret',
-              'The key export or its passphrase could not be verified.',
-            );
-          }
-          await crypto.importRoomKeysAsJson(json);
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('import-keys'));
+    return this.onActiveAccount('import-keys', (accountId) =>
+      this.engine.importRoomKeys(accountId, armored, passphrase),
+    ).pipe(map(() => undefined));
   }
 
-  /**
-   * Shared recovery body: resolve the private key (from a key or passphrase),
-   * verify it against the stored key info, cache it for the SDK callbacks, import
-   * cross-signing from 4S so this device becomes trusted, and enable key backup.
-   * History decrypts lazily from the backup once enabled, so the (potentially
-   * huge) bulk `restoreKeyBackup()` is intentionally skipped.
-   */
-  private recover(
-    resolveKey: (
-      keyInfo: SecretStorageKeyDescriptionAesV1,
-    ) => Promise<{ privateKey: Uint8Array<ArrayBuffer> }>,
-  ): Observable<void> {
-    return defer(() =>
-      from(
-        (async (): Promise<void> => {
-          const context = this.cryptoPort.active();
-          const crypto = this.requireCrypto('recover', context.crypto);
-          // Capture the account's 4S holder up front so a mid-recovery account switch
-          // can't retarget the cached key onto a different account's holder.
-          const holder = this.cryptoPort.secretStorageKey();
-          const client = context.client;
-          const secretStorage = client.secretStorage;
-          const keyId = await secretStorage.getDefaultKeyId();
-          const tuple = keyId ? await secretStorage.getKey(keyId) : null;
-          if (!keyId || !tuple) {
-            throw new TrustOperationError(
-              'recover',
-              'recovery-not-configured',
-              'verify-another-device',
-              'No recovery key is set up on this account.',
-            );
-          }
-          const keyInfo = tuple[1];
-          const { privateKey } = await resolveKey(keyInfo);
-          if (!(await secretStorage.checkKey(privateKey, keyInfo))) {
-            privateKey.fill(0);
-            throw new TrustOperationError(
-              'recover',
-              'invalid-secret',
-              'reenter-secret',
-              'That recovery key is incorrect.',
-            );
-          }
-
-          holder?.set(keyId, privateKey);
-          // Pulls the cross-signing private keys out of 4S and trusts this device;
-          // no UIA, since the keys already exist server-side.
-          await crypto.bootstrapCrossSigning({});
-
-          // ...unless the olm machine already holds privates, in which case that call does
-          // nothing, including when they are ones a reset rotated and never published (see
-          // repairStaleCrossSigning). Unlocking 4S is when that is both detectable and
-          // fixable, so repair it here rather than leave the device at needs-recovery forever.
-          await this.repairStrandedIdentity(
-            crypto,
-            secretStorage,
-            client.getDeviceId(),
-          );
-
-          // Enable key backup if one exists. The device is already trusted at this
-          // point, so a missing/stale backup key in 4S must not fail the recovery —
-          // backup can self-enable later via the crypto event listeners.
-          try {
-            if (await crypto.getKeyBackupInfo()) {
-              await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
-              await crypto.checkKeyBackupAndEnable();
-            }
-          } catch {
-            // best effort; status still reflects the (successful) device trust below
-          }
-          await this.healthRuntime.reconcile();
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('recover'));
+  /** Unlock 4S on the active account, so this device is trusted and backup is on. */
+  private recover(secret: RecoverySecret): Observable<void> {
+    return this.onActiveAccount('recover', (accountId) =>
+      this.engine.recover(accountId, secret),
+    ).pipe(concatMap(() => this.healthRuntime.reconcile()));
   }
 
-  /**
-   * Evict cross-signing privates stranded by an interrupted reset, when that is what this
-   * device is actually holding — see {@link hasStrandedCrossSigning} for why the check is
-   * narrower than "cross-signing isn't ready".
-   *
-   * The repair is optional in a way the recovery around it is not. It sits after
-   * `bootstrapCrossSigning`, which may already have trusted this device, and it can fail
-   * for reasons that say nothing about the user's key: `exportSecretsBundle` /
-   * `importSecretsBundle` are optional on `CryptoApi`, the bundle shape is probed at
-   * runtime, and the WASM crate refuses to export unless all three privates are present.
-   * A user who typed the CORRECT key must not be shown a raw SDK error over a device that
-   * is in fact trusted, so a failure recomputes the status first and is re-raised only when
-   * the device really is still untrusted.
-   */
-  private async repairStrandedIdentity(
-    crypto: TrustCryptoApi,
-    storage: ServerSideSecretStorage,
-    deviceId: string | null,
-  ): Promise<void> {
-    if (!(await hasStrandedCrossSigning(crypto))) {
-      return;
-    }
-    try {
-      await repairStaleCrossSigning(crypto, storage, deviceId);
-    } catch (err) {
-      await this.healthRuntime.reconcile();
-      if (this.health().current?.thisDeviceVerified !== true) {
-        throw err;
-      }
-    }
+  /** Runs one engine command on the account active now, failing with Trust's texts. */
+  private onActiveAccount<T>(
+    operation: TrustOperation,
+    run: (accountId: string) => Observable<EngineResult<T>>,
+  ): Observable<T> {
+    return defer(() => {
+      const accountId = this.session.activeAccountId();
+      if (!accountId) throw notReady(operation);
+      return run(accountId);
+    }).pipe(
+      map((result) => {
+        if (!result.ok) throw commandRefusal(operation, result.failure);
+        return result.value;
+      }),
+      recoverTrustOperation(operation),
+    );
   }
 
   /**
@@ -394,28 +274,70 @@ export class TrustService {
     operation: TrustOperation,
     crypto = this.cryptoPort.active().crypto,
   ): TrustCryptoApi {
-    if (!crypto) {
-      throw new TrustOperationError(
-        operation,
-        'not-ready',
-        'retry',
-        'Trust is not ready for this account yet.',
-      );
-    }
+    if (!crypto) throw notReady(operation);
     return crypto;
   }
+}
 
-  private decode(recoveryKey: string): Uint8Array<ArrayBuffer> {
-    try {
-      return decodeRecoveryKey(recoveryKey.trim());
-    } catch {
-      throw new TrustOperationError(
-        'recover',
+const notReady = (operation: TrustOperation) =>
+  new TrustOperationError(
+    operation,
+    'not-ready',
+    'retry',
+    'Trust is not ready for this account yet.',
+  );
+
+function recoveryRefusal(
+  operation: TrustOperation,
+  reason: RecoveryRefusal,
+): TrustOperationError {
+  switch (reason) {
+    case 'not-configured':
+      return new TrustOperationError(
+        operation,
+        'recovery-not-configured',
+        'verify-another-device',
+        'No recovery key is set up on this account.',
+      );
+    case 'malformed-key':
+      return new TrustOperationError(
+        operation,
         'invalid-secret',
         'reenter-secret',
         'That does not look like a valid recovery key.',
       );
-    }
+    case 'no-passphrase':
+      return new TrustOperationError(
+        operation,
+        'unsupported',
+        'reenter-secret',
+        'This account has no recovery passphrase — enter the recovery key instead.',
+      );
+    case 'incorrect':
+      return new TrustOperationError(
+        operation,
+        'invalid-secret',
+        'reenter-secret',
+        operation === 'import-keys'
+          ? 'The key export or its passphrase could not be verified.'
+          : 'That recovery key is incorrect.',
+      );
+  }
+}
+
+/** Trust's text for an engine refusal; anything else is classified by {@link trustOperationFailure}. */
+function commandRefusal(
+  operation: TrustOperation,
+  failure: EngineFailure,
+): Error {
+  switch (failure.code) {
+    case 'account-not-live':
+    case 'crypto-not-ready':
+      return notReady(operation);
+    case 'recovery-refused':
+      return recoveryRefusal(operation, failure.params.reason);
+    default:
+      return new EngineRequestError(failure);
   }
 }
 

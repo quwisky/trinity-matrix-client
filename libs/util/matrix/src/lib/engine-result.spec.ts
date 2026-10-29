@@ -5,6 +5,7 @@ import {
   assertProgressThenResult,
   recordFeed,
   type DiscoveryFailureReason,
+  type RecoveryRefusal,
   type EngineFailure,
   engineFailureMessage,
   engineFail,
@@ -177,6 +178,22 @@ describe('engineFailureMessage', () => {
       engineFailureMessage({
         kind: 'unexpected',
         code,
+        diagnostic: { kind: 'unexpected' },
+      }),
+    ).toBe(text);
+  });
+
+  it.each<[RecoveryRefusal, string]>([
+    ['not-configured', 'No recovery key is set up on this account.'],
+    ['malformed-key', 'That does not look like a valid recovery key.'],
+    ['no-passphrase', 'This account has no recovery passphrase.'],
+    ['incorrect', 'That key or passphrase is incorrect.'],
+  ])('a recovery refused as %s reads "%s"', (reason, text) => {
+    expect(
+      engineFailureMessage({
+        kind: 'unexpected',
+        code: 'recovery-refused',
+        params: { reason },
         diagnostic: { kind: 'unexpected' },
       }),
     ).toBe(text);

@@ -24,7 +24,7 @@ import { isCallWidgetType } from '../lib/widget-embed-policy';
 
 type FailNextCode = Exclude<
   EngineFailureCode,
-  'discovery-failed' | 'account-start-failed'
+  'discovery-failed' | 'account-start-failed' | 'recovery-refused'
 >;
 
 interface FakeState {
@@ -50,7 +50,12 @@ const EMPTY: RoomWidgetSnapshot = {
 };
 
 function failure(code: FailNextCode): EngineFailure {
-  return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
+  // Cast: assigning a union-typed code is checked only up to 25 union members.
+  return {
+    kind: 'unexpected',
+    code,
+    diagnostic: { kind: 'unexpected' },
+  } as EngineFailure;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
