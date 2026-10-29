@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type CapabilityHealthFact,
@@ -49,7 +49,7 @@ describe('TrustLifetime', () => {
     events = [];
     TestBed.configureTestingModule({
       providers: [
-        MockProvider(TrustCryptoPort, { activeAccountId }),
+        MockProvider(SessionStateService, { activeAccountId }),
         MockProvider(TrustService, {
           runProjection: () =>
             projection('trust.health', {

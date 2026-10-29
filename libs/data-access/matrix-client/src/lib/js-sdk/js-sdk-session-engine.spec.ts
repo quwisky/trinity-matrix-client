@@ -133,6 +133,7 @@ describe('JsSdkSessionEngine', () => {
     }
     expect(snapshot.accounts[0]).toEqual({
       accountId: SESSION.userId,
+      deviceId: SESSION.deviceId,
       generation: expect.any(Number),
       syncState: 'starting',
       serverSynced: false,

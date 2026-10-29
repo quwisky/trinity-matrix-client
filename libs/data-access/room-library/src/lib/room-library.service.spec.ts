@@ -31,6 +31,7 @@ const OTHER = '@other:example.org';
 function account(accountId: string): SessionAccountStatus {
   return {
     accountId,
+    deviceId: 'DEVICE',
     generation: 1,
     syncState: 'syncing',
     serverSynced: true,

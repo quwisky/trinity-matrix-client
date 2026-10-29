@@ -108,6 +108,7 @@ export function liveSession(accountIds: readonly string[]) {
     ...EMPTY_SESSION,
     accounts: ids.map((accountId) => ({
       accountId,
+      deviceId: 'DEVICE',
       generation,
       syncState: 'syncing' as const,
       serverSynced: true,

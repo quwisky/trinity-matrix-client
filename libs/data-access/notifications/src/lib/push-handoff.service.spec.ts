@@ -56,6 +56,7 @@ const TEAM = { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false };
 function status(accountId: string, generation: number): SessionAccountStatus {
   return {
     accountId,
+    deviceId: 'DEVICE',
     generation,
     syncState: 'syncing',
     serverSynced: true,

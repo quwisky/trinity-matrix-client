@@ -36,6 +36,7 @@ export function sessionWith(
     activeAccountId: active,
     accounts: accounts.map((accountId) => ({
       accountId,
+      deviceId: 'DEVICE',
       generation,
       syncState: 'syncing',
       serverSynced: true,

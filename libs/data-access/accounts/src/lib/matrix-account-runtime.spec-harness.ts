@@ -62,6 +62,7 @@ export function liveSession(...accountIds: string[]): SessionSnapshot {
     activeAccountId: null,
     accounts: accountIds.map((accountId) => ({
       accountId,
+      deviceId: 'DEVICE',
       generation: 1,
       syncState: 'syncing',
       serverSynced: true,
