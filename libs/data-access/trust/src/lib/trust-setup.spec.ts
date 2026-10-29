@@ -1,11 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixError } from 'matrix-js-sdk';
-import { type BootstrapCrossSigningOpts } from 'matrix-js-sdk/lib/crypto-api';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { setup, uiaError } from './trust.spec-harness';
+import { setup } from './trust.spec-harness';
 
 // PBKDF2 (WebCrypto subtle) isn't available in the test environment, so stub the
 // passphrase derivation while keeping the real encode/decode + CryptoEvent.
@@ -19,6 +16,9 @@ vi.mock('matrix-js-sdk/lib/crypto-api', async (importOriginal) => {
 });
 
 beforeEach(() => TestBed.resetTestingModule());
+
+// TrustService over the js-sdk engine on SDK doubles: the setup guards end to end. The
+// upload's password handling is in js-sdk/js-sdk-trust-engine.reset.spec.ts.
 
 describe('setUp', () => {
   it('bootstraps cross-signing, secret storage and key backup, returning the recovery key', async () => {
@@ -249,6 +249,34 @@ describe('setUp', () => {
     );
   });
 
+  it('stops asking once the server knows no identity, so a failing key query cannot block a fresh account', async () => {
+    const { svc, crypto, client } = setup();
+    client.downloadKeysForUsers.mockRejectedValue(new Error('offline'));
+
+    await expect(firstValueFrom(svc.setUp(async () => 'pw'))).resolves.toBe(
+      'EsTRecoveryKey',
+    );
+    // No identity after the re-query: no key query and no local identity read.
+    expect(client.downloadKeysForUsers).not.toHaveBeenCalled();
+    expect(crypto.getCrossSigningKeyId).not.toHaveBeenCalled();
+  });
+
+  it('shows a refused identity query as a permission refusal', async () => {
+    const { svc, crypto } = setup();
+    crypto.userHasCrossSigningKeys.mockRejectedValue(
+      new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
+    );
+
+    await expect(
+      firstValueFrom(svc.setUp(async () => 'pw')),
+    ).rejects.toMatchObject({
+      operation: 'setup',
+      kind: 'permission-denied',
+      recovery: 'retry',
+    });
+    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+  });
+
   it('goes ahead on a fresh account, whose server holds no identity yet', async () => {
     const { svc, crypto } = setup();
 
@@ -458,42 +486,6 @@ describe('setUp', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it('authenticates as the account it started on, not whichever is active now', async () => {
-    // Several awaits — the server reads, the local crypto reads and the key generation —
-    // sit between entering setUp and building the UIA callback. A switch across any of
-    // them must not name the new account
-    // in the m.id.user identifier: the homeserver refuses an identifier that is not the
-    // requester, stranding the setup after the olm machine has been touched.
-    const { svc, crypto, client, matrix } = setup({ defaultKeyId: 'k' });
-    let uia!: (mr: (auth: unknown) => Promise<unknown>) => Promise<unknown>;
-    crypto.createRecoveryKeyFromPassphrase.mockImplementation(async () => {
-      ngMocks.stubMember(matrix, 'instance', {
-        ...client,
-        getUserId: () => '@other:hs',
-      } as unknown as MatrixClientService['instance']);
-      return {
-        encodedPrivateKey: 'EsTShown',
-        privateKey: new Uint8Array(32),
-      };
-    });
-    crypto.bootstrapCrossSigning.mockImplementation(
-      async (opts: BootstrapCrossSigningOpts) => {
-        uia = opts.authUploadDeviceSigningKeys as typeof uia;
-      },
-    );
-
-    await firstValueFrom(svc.setUp(async () => 's3cret'));
-    const makeRequest = vi
-      .fn()
-      .mockRejectedValueOnce(uiaError('sess1'))
-      .mockResolvedValueOnce(undefined);
-    await uia(makeRequest);
-
-    expect(makeRequest.mock.calls[1][0]).toMatchObject({
-      identifier: { type: 'm.id.user', user: '@me:hs' },
-    });
   });
 });
 

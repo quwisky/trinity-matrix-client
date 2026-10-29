@@ -182,7 +182,9 @@ export class TrustDevicesService {
         if (!result.ok && result.failure.code === 'crypto-not-ready') {
           return false;
         }
-        const { publishedMasterKey, localMasterKey, facts } = unwrap(result);
+        const check = unwrap(result);
+        if (!check.identityKnown) return false;
+        const { publishedMasterKey, localMasterKey, facts } = check;
         return (
           publishedMasterKey !== null &&
           localMasterKey === publishedMasterKey &&

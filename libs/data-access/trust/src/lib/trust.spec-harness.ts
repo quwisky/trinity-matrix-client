@@ -1,8 +1,8 @@
 // Shared TestBed scaffolding for the TrustService specs.
 //
-// trust.service.spec.ts, trust-setup.spec.ts and trust-recovery-reset.spec.ts drive the
-// same service over the same fake crypto, secret storage and client, so they share one
-// copy of the doubles here instead of three that can drift.
+// trust.service.spec.ts and trust-setup.spec.ts drive the service over the real js-sdk
+// engine on the same fake crypto, secret storage and client (`setup`), and over the fake
+// engine (`onFakeEngine`), so they share one copy of the doubles here.
 import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
@@ -17,8 +17,12 @@ import {
 import {
   JS_SDK_CLIENTS,
   MatrixClientService,
+  SESSION_SNAPSHOT,
+  type SessionSnapshot,
   SessionStateService,
 } from '@trinity/data-access/matrix-client';
+import { FakeTrustEngine } from '../contract/fake-trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 
 /** A 401 UIA challenge carrying flows + session, as the SDK surfaces it. */
 export function uiaError(session: string): MatrixError {
@@ -273,5 +277,42 @@ export function setup(opts: CryptoOpts = {}) {
     matrix,
     activeUserId,
     generation,
+  };
+}
+
+/** TrustService over the fake engine, with `active` the session's active account. */
+export function onFakeEngine(
+  active: string | null = '@alice:contract.invalid',
+) {
+  const engine = new FakeTrustEngine();
+  const session = signal<SessionSnapshot>({
+    activeAccountId: active,
+    accounts: [engine.alice].map((accountId) => ({
+      accountId,
+      deviceId: engine.deviceIdOf(accountId),
+      generation: 1,
+      syncState: 'syncing' as const,
+      serverSynced: true,
+      roomsPrepared: true,
+      waitingCount: 0,
+      cryptoStoreEncrypted: true,
+    })),
+    softLoggedOut: [],
+  });
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: TRUST_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
+      {
+        provide: TRUST_PROVIDER_RECOVERY,
+        useValue: { accountManagement: () => of(null) },
+      },
+    ],
+  });
+  return {
+    svc: TestBed.inject(TrustService),
+    engine,
+    alice: engine.alice,
+    session,
   };
 }

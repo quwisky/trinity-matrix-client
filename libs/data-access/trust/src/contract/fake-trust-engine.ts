@@ -2,6 +2,7 @@ import {
   BehaviorSubject,
   Observable,
   concat,
+  concatMap,
   defer,
   distinctUntilChanged,
   filter,
@@ -12,6 +13,8 @@ import {
   startWith,
   Subject,
   take,
+  tap,
+  timer,
 } from 'rxjs';
 import {
   type EngineFailure,
@@ -27,6 +30,7 @@ import type {
   InteractiveUpdate,
   OwnDevice,
   OwnIdentityCheck,
+  PointerWrite,
   RecoverySecret,
   TrustEngine,
   TrustFacts,
@@ -136,11 +140,35 @@ interface FakeAccount {
   readonly identities: Set<string>;
   /** The server asks for a non-password stage, as for an SSO-only account. */
   providerAuthOnly: boolean;
+  /** The LOCAL secret-storage pointer; it lags {@link serverDefaultKeyId} after a lost echo. */
+  localDefaultKeyId: string | null;
   /** The account's secret storage, set up from a key or a passphrase. */
   recovery: { readonly key: string; readonly passphrase: string | null } | null;
   /** The session ids of the room keys this device holds. */
   readonly roomKeys: Set<string>;
 }
+
+/** The setup and reset steps a test can script with {@link FakeTrustEngine.scriptStep}. */
+export type FakeStep =
+  | 'preAuthenticate'
+  | 'setDefaultKeyPointer'
+  | 'rotateCrossSigning'
+  | 'deleteDehydratedDevice'
+  | 'createRecoveryAndBackup'
+  | 'dropKeyDescription'
+  | 'ownIdentityCheck';
+
+/**
+ * What the next call of a step does instead of running normally: never answer, answer
+ * late, fail, or (pointer writes) go out unconfirmed, or (pre-authentication) not be
+ * challenged at all.
+ */
+export type FakeOutcome =
+  | 'hang'
+  | 'unconfirmed'
+  | 'unchallenged'
+  | { readonly delayMs: number }
+  | EngineFailure;
 
 const terminal = (snapshot: VerificationSnapshot | null) =>
   snapshot?.phase === 'done' || snapshot?.phase === 'cancelled';
@@ -163,9 +191,13 @@ export class FakeTrustEngine implements TrustEngine {
   readonly sentDirectRequests: string[] = [];
   private sequence = 0;
 
+  /** Setup and reset steps in call order, as `name(args)`, for ordering assertions. */
+  readonly steps: { readonly name: string; readonly accountId: string }[] = [];
+  private readonly script = new Map<FakeStep, FakeOutcome[]>();
+
   readonly alice = '@alice:contract.invalid';
-  /** Every fake account's password. */
-  readonly password = 'fake-password';
+  /** Every fake account's password; a test may change it, as the person could elsewhere. */
+  password = 'fake-password';
 
   constructor() {
     this.addAccount(this.alice);
@@ -181,6 +213,7 @@ export class FakeTrustEngine implements TrustEngine {
       publishedMasterKey: null,
       localMasterKey: null,
       serverDefaultKeyId: null,
+      localDefaultKeyId: null,
       verification: new BehaviorSubject<VerificationSnapshot | null>(null),
       listening: 0,
       deviceId: 'FAKEDEVICE',
@@ -368,7 +401,9 @@ export class FakeTrustEngine implements TrustEngine {
 
   /** Another client points the server's secret storage at `keyId`; this device then learns it. */
   setServerDefaultKey(accountId: string, keyId: string): void {
-    this.require(accountId).serverDefaultKeyId = keyId;
+    const account = this.require(accountId);
+    account.serverDefaultKeyId = keyId;
+    account.localDefaultKeyId = keyId;
     this.setFacts(accountId, { hasDefaultKey: true });
   }
 
@@ -378,14 +413,11 @@ export class FakeTrustEngine implements TrustEngine {
    */
   setUpRecoveryElsewhere(accountId: string, passphrase?: string): string {
     const account = this.require(accountId);
-    const digits = Array.from(
-      { length: 46 },
-      () => BASE58[Math.floor(Math.random() * BASE58.length)],
-    ).join('');
-    const key = `Es${digits}`.replace(/(.{4})(?!$)/g, '$1 ');
+    const key = newRecoveryKey();
     account.recovery = { key, passphrase: passphrase ?? null };
     this.publishIdentityElsewhere(accountId);
     account.serverDefaultKeyId = `fake-4s-${++this.keys}`;
+    account.localDefaultKeyId = account.serverDefaultKeyId;
     this.setFacts(accountId, {
       hasDefaultKey: true,
       crossSigning: {
@@ -437,6 +469,23 @@ export class FakeTrustEngine implements TrustEngine {
     };
   }
 
+  /** The next call of `step` does `outcome` instead; outcomes queue per step. */
+  scriptStep(step: FakeStep, outcome: FakeOutcome): void {
+    this.script.set(step, [...(this.script.get(step) ?? []), outcome]);
+  }
+
+  /** The secret-storage pointer as the server and as this device have it. */
+  defaultKeyIds(accountId: string): {
+    readonly server: string | null;
+    readonly local: string | null;
+  } {
+    const account = this.require(accountId);
+    return {
+      server: account.serverDefaultKeyId,
+      local: account.localDefaultKeyId,
+    };
+  }
+
   facts(accountId: string): Observable<EngineResult<TrustFacts>> {
     return defer(() => {
       const account = this.accounts.get(accountId);
@@ -450,14 +499,23 @@ export class FakeTrustEngine implements TrustEngine {
   ownIdentityCheck(
     accountId: string,
   ): Observable<EngineResult<OwnIdentityCheck>> {
-    return this.read(accountId, (account, facts) => ({
-      identityKnown:
-        account.publishedMasterKey !== null ||
-        facts.crossSigning.publicKeysOnDevice,
-      publishedMasterKey: account.publishedMasterKey,
-      localMasterKey: account.localMasterKey,
-      facts,
-    }));
+    return this.scripted(
+      'ownIdentityCheck',
+      accountId,
+      'ownIdentityCheck',
+      () =>
+        this.read(accountId, (account, facts): OwnIdentityCheck =>
+          account.publishedMasterKey !== null ||
+          facts.crossSigning.publicKeysOnDevice
+            ? {
+                identityKnown: true,
+                publishedMasterKey: account.publishedMasterKey,
+                localMasterKey: account.localMasterKey,
+                facts,
+              }
+            : { identityKnown: false },
+        ),
+    );
   }
 
   publishedMasterKey(
@@ -729,8 +787,167 @@ export class FakeTrustEngine implements TrustEngine {
   preAuthenticate(
     accountId: string,
   ): Observable<InteractiveUpdate<{ readonly password: string | null }>> {
-    return this.interactive(accountId, (_account, password) =>
-      engineOk({ password }),
+    return defer(() => {
+      this.steps.push({ name: 'preAuthenticate', accountId });
+      const outcome = this.script.get('preAuthenticate')?.shift();
+      if (outcome === 'unchallenged') {
+        return of<InteractiveUpdate<{ readonly password: string | null }>>({
+          kind: 'done',
+          result: engineOk({ password: null }),
+        });
+      }
+      if (typeof outcome === 'object' && 'code' in outcome) {
+        return of<InteractiveUpdate<{ readonly password: string | null }>>({
+          kind: 'done',
+          result: engineFail(outcome),
+        });
+      }
+      return this.interactive(accountId, (_account, password) =>
+        engineOk({ password }),
+      );
+    });
+  }
+
+  setUpRecovery(
+    accountId: string,
+    { newIdentity }: { readonly newIdentity: boolean },
+  ): Observable<InteractiveUpdate<{ readonly recoveryKey: string }>> {
+    return defer(() => {
+      this.steps.push({ name: `setUpRecovery(${newIdentity})`, accountId });
+      const account = this.accounts.get(accountId);
+      const facts = account?.facts.value;
+      if (account && facts && !facts.ok) {
+        return of<InteractiveUpdate<{ readonly recoveryKey: string }>>({
+          kind: 'done',
+          result: facts,
+        });
+      }
+      const set = (held: FakeAccount) => {
+        if (newIdentity || held.publishedMasterKey === null) {
+          this.holdNewIdentity(held);
+        }
+        return engineOk({ recoveryKey: this.newSecretStorage(accountId) });
+      };
+      // As js: a device holding the published identity uploads nothing, so nobody is asked.
+      const holds =
+        !!account?.localMasterKey &&
+        account.localMasterKey === account.publishedMasterKey;
+      return account && holds && !newIdentity
+        ? of<InteractiveUpdate<{ readonly recoveryKey: string }>>({
+            kind: 'done',
+            result: set(account),
+          })
+        : this.interactive(accountId, (held) => set(held));
+    });
+  }
+
+  rotateCrossSigning(
+    accountId: string,
+    replay: string | null,
+  ): Observable<InteractiveUpdate<null>> {
+    return defer(() => {
+      this.steps.push({ name: 'rotateCrossSigning', accountId });
+      const outcome = this.script.get('rotateCrossSigning')?.shift();
+      const account = this.accounts.get(accountId);
+      const facts = account?.facts.value;
+      const done = (result: EngineResult<null>) =>
+        of<InteractiveUpdate<null>>({ kind: 'done', result });
+      if (account && facts && !facts.ok) return done(facts);
+      const rotated = (result: EngineResult<null>) => {
+        // As js: the keys rotate on the device before the upload is authorised.
+        if (!result.ok && this.accounts.has(accountId)) {
+          this.strandUnpublishedIdentity(accountId);
+        }
+      };
+      if (typeof outcome === 'object' && 'code' in outcome) {
+        rotated(engineFail(outcome));
+        return done(engineFail(outcome));
+      }
+      // As js: the rotated keys go into the current secret storage first, which this
+      // person cannot open, so the rotation fails before its upload unless it is parked.
+      if (account?.localDefaultKeyId) {
+        rotated(engineFail(REQUEST_FAILED));
+        return done(engineFail(REQUEST_FAILED));
+      }
+      const upload = (held: FakeAccount) => {
+        this.holdNewIdentity(held);
+        return ok;
+      };
+      const updates =
+        account && !account.providerAuthOnly && replay === this.password
+          ? done(upload(account))
+          : this.interactive(accountId, upload, replay !== null);
+      return updates.pipe(
+        tap((update) => {
+          if (update.kind === 'done') rotated(update.result);
+        }),
+      );
+    });
+  }
+
+  setDefaultKeyPointer(
+    accountId: string,
+    keyId: string | null,
+    mode: 'confirmed' | 'raw-retry',
+  ): Observable<EngineResult<PointerWrite>> {
+    return this.scripted(
+      'setDefaultKeyPointer',
+      accountId,
+      `setDefaultKeyPointer(${keyId}, ${mode})`,
+      (outcome) => {
+        const account = this.accounts.get(accountId);
+        if (!account) return of(engineFail(NOT_LIVE));
+        if (mode === 'raw-retry') {
+          account.serverDefaultKeyId = keyId;
+          return of(engineOk({ previous: null, confirmed: true }));
+        }
+        const previous = account.localDefaultKeyId;
+        if (previous === keyId) {
+          return of(engineOk({ previous, confirmed: true }));
+        }
+        account.serverDefaultKeyId = keyId;
+        // The write landed on the server; its echo never came back.
+        if (outcome === 'unconfirmed') {
+          return of(engineOk({ previous, confirmed: false }));
+        }
+        this.setLocalPointer(accountId, keyId);
+        return of(engineOk({ previous, confirmed: true }));
+      },
+    );
+  }
+
+  deleteDehydratedDevice(accountId: string): Observable<EngineResult<null>> {
+    return this.scripted(
+      'deleteDehydratedDevice',
+      accountId,
+      'deleteDehydratedDevice',
+      () => of(this.accounts.get(accountId) ? ok : engineFail(NOT_LIVE)),
+    );
+  }
+
+  createRecoveryAndBackup(
+    accountId: string,
+  ): Observable<EngineResult<{ readonly recoveryKey: string }>> {
+    return this.scripted(
+      'createRecoveryAndBackup',
+      accountId,
+      'createRecoveryAndBackup',
+      () =>
+        this.read(accountId, () => ({
+          recoveryKey: this.newSecretStorage(accountId),
+        })),
+    );
+  }
+
+  dropKeyDescription(
+    accountId: string,
+    keyId: string,
+  ): Observable<EngineResult<null>> {
+    return this.scripted(
+      'dropKeyDescription',
+      accountId,
+      `dropKeyDescription(${keyId})`,
+      () => of(this.accounts.get(accountId) ? ok : engineFail(NOT_LIVE)),
     );
   }
 
@@ -868,6 +1085,73 @@ export class FakeTrustEngine implements TrustEngine {
     ).length;
   }
 
+  /** Logs the step and runs it, unless a scripted outcome replaces it. */
+  private scripted<T>(
+    step: FakeStep,
+    accountId: string,
+    name: string,
+    run: (outcome: FakeOutcome | undefined) => Observable<EngineResult<T>>,
+  ): Observable<EngineResult<T>> {
+    return defer(() => {
+      this.steps.push({ name, accountId });
+      const outcome = this.script.get(step)?.shift();
+      if (outcome === 'hang') return NEVER;
+      if (typeof outcome === 'object' && 'delayMs' in outcome) {
+        return timer(outcome.delayMs).pipe(concatMap(() => run(undefined)));
+      }
+      if (typeof outcome === 'object') return of(engineFail(outcome));
+      return run(outcome);
+    });
+  }
+
+  /** This device creates, publishes and holds a new identity. */
+  private holdNewIdentity(account: FakeAccount): void {
+    const key = `master-key-${++this.keys}`;
+    account.publishedMasterKey = key;
+    account.localMasterKey = key;
+    const current = account.facts.value;
+    account.facts.next(
+      engineOk({
+        ...(current.ok ? current.value : NOTHING_READY),
+        crossSigningReady: true,
+        thisDeviceCrossSigned: true,
+        crossSigning: {
+          publicKeysOnDevice: true,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: true,
+            selfSigningKey: true,
+            userSigningKey: true,
+          },
+        },
+      }),
+    );
+  }
+
+  /** New secret storage holding the identity, and a new key backup; returns the recovery key. */
+  private newSecretStorage(accountId: string): string {
+    const account = this.require(accountId);
+    const key = newRecoveryKey();
+    account.recovery = { key, passphrase: null };
+    account.serverDefaultKeyId = `fake-4s-${++this.keys}`;
+    this.setLocalPointer(accountId, account.serverDefaultKeyId);
+    const current = account.facts.value;
+    const crossSigning = current.ok
+      ? current.value.crossSigning
+      : NOTHING_READY.crossSigning;
+    this.setFacts(accountId, {
+      secretStorageReady: true,
+      keyBackupActive: true,
+      crossSigning: { ...crossSigning, privateKeysInSecretStorage: true },
+    });
+    return key;
+  }
+
+  private setLocalPointer(accountId: string, keyId: string | null): void {
+    this.require(accountId).localDefaultKeyId = keyId;
+    this.setFacts(accountId, { hasDefaultKey: keyId !== null });
+  }
+
   private identityChange(
     accountId: string,
     userId: string,
@@ -894,6 +1178,7 @@ export class FakeTrustEngine implements TrustEngine {
   private interactive<T>(
     accountId: string,
     run: (account: FakeAccount, password: string) => EngineResult<T>,
+    firstRejected = false,
   ): Observable<InteractiveUpdate<T>> {
     return new Observable<InteractiveUpdate<T>>((subscriber) => {
       const done = (result: EngineResult<T>): void => {
@@ -931,7 +1216,7 @@ export class FakeTrustEngine implements TrustEngine {
         });
         subscriber.next({ kind: 'password-required', promptId: id, rejected });
       };
-      ask(false);
+      ask(firstRejected);
       return () => {
         if (promptId) this.prompts.delete(promptId);
       };
@@ -970,6 +1255,15 @@ export class FakeTrustEngine implements TrustEngine {
     if (!account) throw new Error(`No fake account ${accountId}`);
     return account;
   }
+}
+
+/** A random recovery key, grouped in fours as clients show it. */
+function newRecoveryKey(): string {
+  const digits = Array.from(
+    { length: 46 },
+    () => BASE58[Math.floor(Math.random() * BASE58.length)],
+  ).join('');
+  return `Es${digits}`.replace(/(.{4})(?!$)/g, '$1 ');
 }
 
 /** One exported room key, in the key-export JSON shape. */

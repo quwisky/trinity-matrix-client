@@ -1,15 +1,7 @@
-import { Method } from 'matrix-js-sdk';
-import type {
-  TrustCryptoApi,
-  TrustMatrixClient,
-} from '@trinity/data-access/matrix-client';
-import { DEFAULT_KEY_EVENT, withTimeout } from './recovery-reset';
+import type { EngineResult } from '@trinity/util/matrix';
+import type { OwnIdentityCheck } from './trust-engine';
 import { TrustOperationError } from './trust-operation-error';
-import {
-  holdsCrossSigningIdentity,
-  readPublishedMasterKey,
-  readThisDeviceVerified,
-} from './trust-snapshot';
+import { holdsCrossSigningIdentity } from './trust-snapshot';
 
 /**
  * Refuse first-device setup on an account that already has a 4S key.
@@ -20,20 +12,20 @@ import {
  * the still-valid one the user holds — and `resetKeyBackup` opens by deleting every
  * key-backup version on the account.
  *
- * `needs-setup` is derived from `secretStorage.getDefaultKeyId()`, which after initial
- * sync answers from this client's LOCAL store, so it goes stale for as long as a /sync
- * echo is missing — up to the ~110s the sync loop takes to notice a dead long-poll. That
- * is exactly the window a rolled-back recovery reset opens, so the local view cannot be
- * the check here. Ask the server.
+ * `needs-setup` is derived from the LOCAL pointer (`TrustFacts.hasDefaultKey`), which goes
+ * stale for as long as a /sync echo is missing — up to the ~110s the sync loop takes to
+ * notice a dead long-poll. That is exactly the window a rolled-back recovery reset opens,
+ * so the local view cannot be the check here. `server` is the SERVER's pointer
+ * ({@link TrustEngine.serverDefaultKeyId}).
  *
  * **Fails open on purpose.** Only a pointer the server positively reports stops the setup;
- * an unreachable or unhappy server does not. This exists to block a known-destructive
- * action, not to become a new way for genuine first-run setup to fail.
+ * an unreachable or unhappy server (a failed read) does not. This exists to block a
+ * known-destructive action, not to become a new way for genuine first-run setup to fail.
  */
-export async function assertNoRecoveryOnAccount(
-  client: TrustMatrixClient,
-): Promise<void> {
-  if (!(await readServerDefaultKeyId(client))) {
+export function assertNoRecoveryOnAccount(
+  server: EngineResult<string | null>,
+): void {
+  if (!server.ok || !server.value) {
     return;
   }
   throw new TrustOperationError(
@@ -63,10 +55,12 @@ const RECOVERY_ELSEWHERE_MESSAGE =
  * then the raw `/keys/query`) can disagree with a lagging server; neither disagreement may
  * end in creating keys over an identity the server has or had.
  */
-type SetupIdentity = 'none' | 'unpublished' | 'held';
+export type SetupIdentity = 'none' | 'unpublished' | 'held';
 
 /**
- * Refuse first-device setup on an Account whose cross-signing identity lives elsewhere.
+ * Refuse first-device setup on an Account whose cross-signing identity lives elsewhere,
+ * judged on {@link TrustEngine.ownIdentityCheck}, which re-reads the published identity
+ * from the server before the local reads.
  *
  * With no private keys on this device and none in secret storage, `bootstrapCrossSigning`
  * "creat[es] new keys": the identity is replaced, every other device of the user stops
@@ -75,7 +69,8 @@ type SetupIdentity = 'none' | 'unpublished' | 'held';
  * explicitly confirmed action (`resetRecovery`).
  *
  * **Fails closed**, unlike {@link assertNoRecoveryOnAccount}: the upload that follows
- * needs the same homeserver, and a wrong "no identity" here is the destructive answer.
+ * needs the same homeserver, and a wrong "no identity" here is the destructive answer. A
+ * failed identity check is the caller's to refuse on; this only judges a successful one.
  *
  * Privates on this device count only when they match the published identity (see
  * {@link holdsCrossSigningIdentity}): a reset cancelled before its upload leaves a full
@@ -87,27 +82,22 @@ type SetupIdentity = 'none' | 'unpublished' | 'held';
  * recovery. The verification read only picks the sentence; if it fails, setup is still
  * refused, with the unverified device's copy.
  */
-export async function assertNoIdentityElsewhere(
-  client: Pick<
-    TrustMatrixClient,
-    'downloadKeysForUsers' | 'getDeviceId' | 'getUserId'
-  >,
-  crypto: TrustCryptoApi,
-): Promise<SetupIdentity> {
-  // The local view can lag right after sign-in; ask the homeserver (own user). Asked
-  // first because, for the own user, this also re-queries the published identity, so the
-  // match below is judged against the server's copy.
-  if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
+export function assertNoIdentityElsewhere(
+  check: OwnIdentityCheck,
+): SetupIdentity {
+  // The local view can lag right after sign-in; the check re-queried the homeserver (own
+  // user) first, so the match below is judged against the server's copy.
+  if (!check.identityKnown) {
     return 'none';
   }
   // That answer comes from the olm machine, which keeps an identity it created even when
   // the query returns no master key. Only the server can say whether it was ever published.
-  const published = await readPublishedMasterKey(client);
-  const [status, crossSigningReady] = await Promise.all([
-    crypto.getCrossSigningStatus(),
-    crypto.isCrossSigningReady(),
-  ]);
-  const holds = holdsCrossSigningIdentity(status, crossSigningReady);
+  const published = check.publishedMasterKey;
+  const { facts } = check;
+  const holds = holdsCrossSigningIdentity(
+    facts.crossSigning,
+    facts.crossSigningReady,
+  );
   if (!published) {
     // Replacing is safe only for this device's own unpublished identity. Without its keys
     // here, the two reads disagree: the first saw an identity the second missed. Refuse
@@ -120,14 +110,11 @@ export async function assertNoIdentityElsewhere(
       'The homeserver could not confirm this account’s encryption identity. Try again.',
     );
   }
-  if (holds && (await crypto.getCrossSigningKeyId()) === published) {
+  if (holds && check.localMasterKey === published) {
     // This device holds the published identity: bootstrap keeps it and only adds recovery.
     return 'held';
   }
-  const verified = await readThisDeviceVerified(client, crypto).catch(
-    () => false,
-  );
-  throw verified
+  throw facts.thisDeviceCrossSigned
     ? new TrustOperationError(
         'setup',
         'stale-state',
@@ -140,34 +127,4 @@ export async function assertNoIdentityElsewhere(
         'verify-another-device',
         IDENTITY_ELSEWHERE_MESSAGE,
       );
-}
-
-/**
- * The account's 4S pointer as the SERVER has it, or null when there is none — which is
- * also what a failed read yields, since the caller fails open.
- */
-async function readServerDefaultKeyId(
-  client: TrustMatrixClient,
-): Promise<string | null> {
-  const userId = client.getUserId();
-  if (!userId) {
-    return null;
-  }
-  try {
-    // Use the tighter crypto-flow deadline rather than the client's 30-second default, so
-    // a socket the homeserver accepts and never answers cannot hold first-run setup. A
-    // timeout lands in the same catch as every other read failure.
-    const content = await withTimeout(
-      client.http.authedRequest<{ key?: string }>(
-        Method.Get,
-        `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(DEFAULT_KEY_EVENT)}`,
-      ),
-    );
-    return content.key ?? null;
-  } catch {
-    // `M_NOT_FOUND` is the ordinary first-run answer, and anything else (offline, 5xx,
-    // a homeserver that stopped answering) is a read we cannot trust either way. Both
-    // mean "let the setup proceed".
-    return null;
-  }
 }

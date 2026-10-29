@@ -1,239 +1,252 @@
+// The reset's ORDER, on the fake engine: the guard every engine's reset is held to. What
+// one engine's steps do underneath (echo waits, retries, request shapes) is in its adapter
+// spec, e.g. js-sdk/js-sdk-trust-engine.reset.spec.ts.
 import { TestBed } from '@angular/core/testing';
-import { ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConnectionError, MatrixError } from 'matrix-js-sdk';
-import { type BootstrapCrossSigningOpts } from 'matrix-js-sdk/lib/crypto-api';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util/matrix';
-import { setup, ssoOnlyUiaError, uiaError } from './trust.spec-harness';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EngineFailure } from '@trinity/util/matrix';
+import type { FakeStep, FakeTrustEngine } from '../contract/fake-trust-engine';
+import { onFakeEngine } from './trust.spec-harness';
 
-// PBKDF2 (WebCrypto subtle) isn't available in the test environment, so stub the
-// passphrase derivation while keeping the real encode/decode + CryptoEvent.
-vi.mock('matrix-js-sdk/lib/crypto-api', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('matrix-js-sdk/lib/crypto-api')>();
-  return {
-    ...actual,
-    deriveRecoveryKeyFromPassphrase: vi.fn(async () => new Uint8Array(32)),
-  };
-});
+const failure = (code: string) =>
+  ({
+    kind: 'unexpected',
+    code,
+    diagnostic: { kind: 'unexpected' },
+  }) as EngineFailure;
+
+/** Alice with recovery set up on another device and lost: the account a reset is for. */
+function lostRecovery() {
+  const fixture = onFakeEngine();
+  const { engine, alice } = fixture;
+  engine.setUpRecoveryElsewhere(alice);
+  const oldKeyId = engine.defaultKeyIds(alice).server ?? '';
+  const oldMasterKey = currentMasterKey(engine, alice);
+  return { ...fixture, oldKeyId, oldMasterKey };
+}
+
+function currentMasterKey(engine: FakeTrustEngine, accountId: string) {
+  let key: string | null = null;
+  engine.publishedMasterKey(accountId).subscribe((result) => {
+    key = result.ok ? result.value : null;
+  });
+  return key;
+}
+
+/** The steps the reset ran, by name. */
+const stepNames = (engine: FakeTrustEngine) =>
+  engine.steps.map((step) => step.name);
+
+/** Whether `step` ran at all. */
+const ran = (engine: FakeTrustEngine, step: FakeStep) =>
+  engine.steps.some((call) => call.name.startsWith(step));
+
+/** The password changes elsewhere just before the upload, so the replay is rejected. */
+function passwordChangesBeforeUpload(engine: FakeTrustEngine) {
+  const rotate = engine.rotateCrossSigning.bind(engine);
+  vi.spyOn(engine, 'rotateCrossSigning').mockImplementation(
+    (accountId, replay) => {
+      engine.password = 'changed-elsewhere';
+      return rotate(accountId, replay);
+    },
+  );
+}
+
+/** Nothing destructive happened: no new identity, no new secret storage or backup. */
+function expectNothingDestroyed(
+  engine: FakeTrustEngine,
+  alice: string,
+  oldMasterKey: string | null,
+) {
+  expect(ran(engine, 'createRecoveryAndBackup')).toBe(false);
+  expect(ran(engine, 'deleteDehydratedDevice')).toBe(false);
+  expect(currentMasterKey(engine, alice)).toBe(oldMasterKey);
+}
 
 beforeEach(() => TestBed.resetTestingModule());
+afterEach(() => vi.useRealTimers());
 
 describe('resetRecovery', () => {
-  it('publishes the new identity, then re-bootstraps 4S and returns the NEW key', async () => {
-    const { svc, crypto } = setup({
-      recoveryKey: {
-        encodedPrivateKey: 'EsTAfterReset',
-        privateKey: new Uint8Array(32),
-      },
+  it('publishes a new identity, then new secret storage and backup, and returns the NEW key', async () => {
+    const { svc, engine, alice, oldKeyId, oldMasterKey } = lostRecovery();
+
+    const shown = await firstValueFrom(
+      svc.resetRecovery(async () => engine.password),
+    );
+
+    expect(shown).toMatch(/^Es/);
+    expect(currentMasterKey(engine, alice)).not.toBe(oldMasterKey);
+    expect(engine.defaultKeyIds(alice).server).not.toBe(oldKeyId);
+    expect(svc.status()).toBe('ready');
+    expect(svc.keyBackupActive()).toBe(true);
+    expect(svc.thisDeviceVerified()).toBe(true);
+  });
+
+  // THE test. Call counts alone pass on a destructive ordering; only the sequence
+  // distinguishes "authenticate, then destroy" from "destroy, then ask".
+  it('authenticates, parks, rotates, and only then destroys', async () => {
+    const { svc, engine, oldKeyId } = lostRecovery();
+
+    await firstValueFrom(svc.resetRecovery(async () => engine.password));
+
+    expect(stepNames(engine)).toEqual([
+      'preAuthenticate',
+      'setDefaultKeyPointer(null, confirmed)',
+      'rotateCrossSigning',
+      'deleteDehydratedDevice',
+      'createRecoveryAndBackup',
+      `dropKeyDescription(${oldKeyId})`,
+    ]);
+  });
+
+  it('parks nothing and drops nothing when the account has no secret storage', async () => {
+    const { svc, engine, alice } = onFakeEngine();
+    engine.publishIdentityElsewhere(alice);
+
+    await firstValueFrom(svc.resetRecovery(async () => engine.password));
+
+    expect(stepNames(engine).some((name) => name.includes('raw-retry'))).toBe(
+      false,
+    );
+    expect(ran(engine, 'dropKeyDescription')).toBe(false);
+  });
+
+  it('asks for the password once, replaying it into the key upload', async () => {
+    const { svc, engine } = lostRecovery();
+    const prompt = vi.fn(async () => engine.password);
+
+    await firstValueFrom(svc.resetRecovery(prompt));
+
+    expect(prompt).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to asking when the replayed password is rejected', async () => {
+    const { svc, engine } = lostRecovery();
+    passwordChangesBeforeUpload(engine);
+    const prompt = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce(engine.password)
+      .mockResolvedValue('changed-elsewhere');
+
+    await firstValueFrom(svc.resetRecovery(prompt));
+
+    expect(prompt).toHaveBeenCalledTimes(2);
+  });
+
+  it('still gives the person three tries when the replayed password is rejected', async () => {
+    // The replay is the reset's own retry, not one of the person's.
+    const { svc, engine, alice, oldMasterKey } = lostRecovery();
+    passwordChangesBeforeUpload(engine);
+    const prompt = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce(engine.password)
+      .mockResolvedValue('wrong');
+
+    await expect(
+      firstValueFrom(svc.resetRecovery(prompt)),
+    ).rejects.toMatchObject({
+      operation: 'reset-recovery',
+      kind: 'permission-denied',
+      recovery: 'retry',
     });
 
-    const shown = await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith(
-      expect.objectContaining({ setupNewCrossSigning: true }),
-    );
-    expect(shown).toBe('EsTAfterReset');
-    const ssOpts = crypto.bootstrapSecretStorage.mock.calls[0][0];
-    await expect(ssOpts.createSecretStorageKey()).resolves.toMatchObject({
-      encodedPrivateKey: 'EsTAfterReset',
-    });
-  });
-
-  // THE test. Call counts alone pass on the old, destructive ordering; only the
-  // sequence distinguishes "authenticate, then destroy" from "destroy, then ask".
-  it('authenticates BEFORE anything destructive runs', async () => {
-    const order: string[] = [];
-    const { svc, crypto, secretStorage } = setup({ defaultKeyId: 'old-key' });
-    secretStorage.setDefaultKeyId.mockImplementation(
-      async () => void order.push('park'),
-    );
-    crypto.bootstrapCrossSigning.mockImplementation(
-      async () => void order.push('upload'),
-    );
-    crypto.bootstrapSecretStorage.mockImplementation(
-      async () => void order.push('destroy'),
-    );
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(order).toEqual(['park', 'upload', 'destroy']);
-  });
-
-  it('asks for a new key backup, because nothing else now makes one', async () => {
-    // The inverse of what this flow needed while it called resetEncryption, which made
-    // the backup itself. `setupKeyBackup` opens by deleting every existing version, so
-    // this single call is the whole destructive tail.
-    const { svc, crypto } = setup();
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(
-      crypto.bootstrapSecretStorage.mock.calls[0][0].setupNewKeyBackup,
-    ).toBe(true);
-  });
-
-  it('parks the 4S pointer so the rotation can reach the upload', async () => {
-    // resetCrossSigning exports the rotated privates into the CURRENT 4S key first, but
-    // only when one is set — and this user cannot open theirs, so it would die there.
-    const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(secretStorage.setDefaultKeyId).toHaveBeenCalledWith(null);
-  });
-
-  it('leaves the pointer alone when the account has no 4S', async () => {
-    const { svc, secretStorage, client } = setup({ defaultKeyId: null });
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
-    // The restore's PUT is unconditional given a pointer to restore; there wasn't one.
-    expect(client.setAccountDataRaw).not.toHaveBeenCalled();
-  });
-
-  it('drives the upload through the password UIA callback', async () => {
-    const { svc, crypto } = setup();
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(
-      crypto.bootstrapCrossSigning.mock.calls[0][0].authUploadDeviceSigningKeys,
-    ).toBeTypeOf('function');
+    // One for the pre-auth, then three of the person's own.
+    expect(prompt).toHaveBeenCalledTimes(4);
+    expectNothingDestroyed(engine, alice, oldMasterKey);
   });
 
   it('recomputes status, so the UI stops reporting the old posture', async () => {
-    const { svc } = setup({
-      crossSigningReady: true,
-      secretStorageReady: true,
-      defaultKeyId: 'k',
-    });
+    const { svc, engine } = lostRecovery();
+    await firstValueFrom(svc.refresh());
+    expect(svc.status()).toBe('needs-recovery');
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery(async () => engine.password));
 
     expect(svc.status()).toBe('ready');
   });
 
-  it('drops the orphaned key description once the new pointer lands', async () => {
-    const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
-    secretStorage.getDefaultKeyId
-      .mockResolvedValueOnce('old-key')
-      .mockResolvedValue('new-key');
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(secretStorage.store).toHaveBeenCalledWith(
-      'm.secret_storage.key.old-key',
-      null,
-    );
-  });
-
-  it('keeps the old description when the new key never landed', async () => {
-    const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(secretStorage.store).not.toHaveBeenCalled();
-  });
-
   // Each of these is a route to the measured data loss: the account's backup used to be
   // gone by the time any of them could happen.
-  for (const [label, error, kind, recovery] of [
+  for (const [label, code, kind, recovery] of [
     [
-      'the user cancels the password prompt',
-      new UiaCancelledError(),
+      'the person cancels the upload password prompt',
+      'uia-cancelled',
       'cancelled',
       'none',
     ],
     [
-      'the server will not take a password',
-      new UiaUnsupportedError(),
+      'the server will not take a password for the upload',
+      'uia-unsupported',
       'provider-action-required',
       'open-provider',
     ],
     [
-      'the password is wrong too many times',
-      new Error('Too many attempts.'),
-      'server-failure',
+      'the upload password is wrong too many times',
+      'uia-attempts-exceeded',
+      'permission-denied',
       'retry',
     ],
+    ['the upload itself fails', 'request-failed', 'server-failure', 'retry'],
   ] as const) {
-    it(`destroys nothing when ${label}`, async () => {
-      const { svc, crypto, client } = setup({
-        defaultKeyId: 'old-key',
-      });
-      crypto.bootstrapCrossSigning.mockRejectedValue(error);
+    it(`destroys nothing and puts the pointer back when ${label}`, async () => {
+      const { svc, engine, alice, oldKeyId, oldMasterKey } = lostRecovery();
+      engine.scriptStep('rotateCrossSigning', failure(code));
 
       await expect(
-        firstValueFrom(svc.resetRecovery(async () => 'pw')),
-      ).rejects.toMatchObject({
-        operation: 'reset-recovery',
-        kind,
-        recovery,
-      });
+        firstValueFrom(svc.resetRecovery(async () => engine.password)),
+      ).rejects.toMatchObject({ operation: 'reset-recovery', kind, recovery });
 
-      expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
-      expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
-      // The effect, not the attempt: the pointer is back on the SERVER. Asserting the
-      // SDK writer instead would pass on a rollback that reached no further than this
-      // client's own store.
-      expect(client.setAccountDataRaw).toHaveBeenCalledWith(
-        'm.secret_storage.default_key',
-        { key: 'old-key' },
-      );
+      expectNothingDestroyed(engine, alice, oldMasterKey);
+      // The effect, not the attempt: the pointer is back on the SERVER, by the unread
+      // write, and then this device's own view.
+      expect(engine.defaultKeyIds(alice)).toEqual({
+        server: oldKeyId,
+        local: oldKeyId,
+      });
+      expect(stepNames(engine).slice(2)).toEqual([
+        'rotateCrossSigning',
+        `setDefaultKeyPointer(${oldKeyId}, raw-retry)`,
+        `setDefaultKeyPointer(${oldKeyId}, confirmed)`,
+        'ownIdentityCheck',
+      ]);
     });
   }
 
   it('re-seats the real identity after a refused upload', async () => {
-    // The olm machine rotated its private keys before the upload was authorised, so
-    // without a forced key query this device believes in an identity nobody published.
-    const { svc, crypto } = setup({ defaultKeyId: 'old-key' });
-    crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
+    // The device rotated its keys before the upload was authorised; without a forced
+    // re-query it believes in an identity nobody published.
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('rotateCrossSigning', failure('uia-cancelled'));
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
-    ).rejects.toMatchObject({
-      operation: 'reset-recovery',
-      kind: 'cancelled',
-    });
+      firstValueFrom(svc.resetRecovery(async () => engine.password)),
+    ).rejects.toMatchObject({ kind: 'cancelled' });
 
-    expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith('@me:hs', true);
+    expect(stepNames(engine).at(-1)).toBe('ownIdentityCheck');
+    // Then the status is recomputed: the pointer is back, so recovery is what is missing.
+    expect(svc.status()).toBe('needs-recovery');
   });
 
-  it('lets the original error through even if the rollback fails', async () => {
-    const { svc, crypto, secretStorage, client } = setup({
-      defaultKeyId: 'old-key',
-    });
-    crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
-    // Both halves of the rollback fail: the server-bound PUT and the local realign.
-    client.setAccountDataRaw.mockRejectedValue(new Error('PUT exploded'));
-    secretStorage.setDefaultKeyId
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValue(new Error('rollback exploded'));
+  it('lets the original error through even if every repair of the rollback fails', async () => {
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('setDefaultKeyPointer', { delayMs: 0 }); // the park, confirmed
+    engine.scriptStep('rotateCrossSigning', failure('uia-cancelled'));
+    engine.scriptStep('setDefaultKeyPointer', failure('request-failed'));
+    engine.scriptStep('ownIdentityCheck', failure('request-failed'));
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
-    ).rejects.toMatchObject({
-      operation: 'reset-recovery',
-      kind: 'cancelled',
-    });
+      firstValueFrom(svc.resetRecovery(async () => engine.password)),
+    ).rejects.toMatchObject({ operation: 'reset-recovery', kind: 'cancelled' });
   });
 
   it('still recomputes status when the destructive tail fails', async () => {
     // Past the point of no return the account HAS changed; the one thing left that can
     // still go wrong is the UI going on describing the account it used to be.
-    const { svc, crypto } = setup({
-      defaultKeyId: 'old-key',
-    });
-    crypto.bootstrapSecretStorage.mockRejectedValue(new Error('network down'));
-    crypto.isCrossSigningReady.mockResolvedValue(true);
-    crypto.isSecretStorageReady.mockResolvedValue(true);
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('createRecoveryAndBackup', failure('request-failed'));
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery(async () => engine.password)),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'partial-update',
@@ -241,116 +254,112 @@ describe('resetRecovery', () => {
       partial: true,
     });
 
-    expect(svc.status()).toBe('ready'); // recomputed, not left stale at 'unknown'
+    // The new identity is held; recomputed, not left at the pre-reset needs-recovery.
+    expect(svc.thisDeviceVerified()).toBe(true);
+    expect(svc.status()).toBe('needs-setup');
   });
 
   it('repairs the account it started on, not whichever is active now', async () => {
     // The password prompt is a long await. Switching accounts underneath it must not
-    // point the rollback at the new account's olm machine — the keys needing re-seating
-    // belong to the old one.
-    const { svc, crypto, matrix } = setup({ defaultKeyId: 'old-key' });
-    const otherCrypto = { userHasCrossSigningKeys: vi.fn() };
-    crypto.bootstrapCrossSigning.mockImplementation(async () => {
-      ngMocks.stubMember(matrix, 'instance', {
-        getCrypto: () => otherCrypto,
-        getUserId: () => '@other:hs',
-      } as unknown as MatrixClientService['instance']);
-      throw new UiaCancelledError();
-    });
+    // point the rollback at the new account.
+    const { svc, engine, alice, session } = lostRecovery();
+    const bob = '@bob:contract.invalid';
+    engine.addAccount(bob);
+    engine.scriptStep('rotateCrossSigning', failure('uia-cancelled'));
+    let asked = 0;
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
-    ).rejects.toMatchObject({
+      firstValueFrom(
+        svc.resetRecovery(async () => {
+          if (++asked === 1) {
+            session.update((snapshot) => ({
+              ...snapshot,
+              activeAccountId: bob,
+            }));
+          }
+          return engine.password;
+        }),
+      ),
+    ).rejects.toMatchObject({ kind: 'cancelled' });
+
+    expect(engine.steps.every((step) => step.accountId === alice)).toBe(true);
+  });
+
+  it('delivers the original error even if the pointer restore never settles', async () => {
+    vi.useFakeTimers();
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('setDefaultKeyPointer', { delayMs: 0 }); // the park
+    engine.scriptStep('rotateCrossSigning', failure('uia-cancelled'));
+    engine.scriptStep('setDefaultKeyPointer', 'hang'); // the server write
+
+    const failed = firstValueFrom(
+      svc.resetRecovery(async () => engine.password),
+    );
+    const assertion = expect(failed).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'cancelled',
     });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await assertion;
 
-    expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith('@me:hs', true);
-    expect(otherCrypto.userHasCrossSigningKeys).not.toHaveBeenCalled();
+    // The cheap local repair still ran after the hanging one ran out of budget.
+    expect(stepNames(engine).at(-1)).toBe('ownIdentityCheck');
   });
 
-  it('delivers the original error even if the rollback never settles', async () => {
-    // setDefaultKeyId resolves on the /sync echo, so a stalled sync leaves it pending —
-    // and an unbounded wait there would swallow the cancellation the user is waiting on.
+  it('re-seats the identity even while the local realign is hanging', async () => {
     vi.useFakeTimers();
-    try {
-      const { svc, crypto, secretStorage } = setup({
-        defaultKeyId: 'old-key',
-      });
-      crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
-      secretStorage.getDefaultKeyId
-        .mockResolvedValueOnce('old-key') // read before parking
-        .mockResolvedValue(null); // the park echoed; the local store is parked
-      secretStorage.setDefaultKeyId
-        .mockResolvedValueOnce(undefined)
-        .mockReturnValue(new Promise(() => undefined)); // never settles
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('setDefaultKeyPointer', { delayMs: 0 }); // the park
+    engine.scriptStep('rotateCrossSigning', failure('uia-cancelled'));
+    engine.scriptStep('setDefaultKeyPointer', { delayMs: 0 }); // the server write
+    engine.scriptStep('setDefaultKeyPointer', 'hang'); // the local realign
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(failure).rejects.toMatchObject({
-        operation: 'reset-recovery',
-        kind: 'cancelled',
-      });
-      await vi.advanceTimersByTimeAsync(15_000);
-      await assertion;
-    } finally {
-      vi.useRealTimers();
-    }
+    const failed = firstValueFrom(
+      svc.resetRecovery(async () => engine.password),
+    );
+    const assertion = expect(failed).rejects.toMatchObject({
+      kind: 'cancelled',
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await assertion;
+
+    expect(stepNames(engine).at(-1)).toBe('ownIdentityCheck');
   });
 
-  it('refuses before the rotation when the server offers no password stage', async () => {
-    const { svc, crypto, secretStorage, client } = setup({
-      defaultKeyId: 'old-key',
-    });
-    client.deleteMultipleDevices.mockRejectedValue(ssoOnlyUiaError());
+  it('refuses before anything is parked when the server offers no password stage', async () => {
+    const { svc, engine, alice, oldKeyId, oldMasterKey } = lostRecovery();
+    engine.requireProviderAuth(alice);
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery(async () => engine.password)),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'provider-action-required',
       recovery: 'open-provider',
     });
-    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
-    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
-    expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+
+    expect(stepNames(engine)).toEqual(['preAuthenticate']);
+    expect(engine.defaultKeyIds(alice).server).toBe(oldKeyId);
+    expectNothingDestroyed(engine, alice, oldMasterKey);
   });
 
-  it('authenticates against an empty device list, so the check itself deletes nothing', async () => {
-    const { svc, client } = setup();
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    // Both the unauthed probe and the authed retry, and neither names a device.
-    expect(client.deleteMultipleDevices).toHaveBeenCalledTimes(2);
-    for (const [devices] of client.deleteMultipleDevices.mock.calls) {
-      expect(devices).toEqual([]);
-    }
-  });
-
-  // Cancelling used to cost the user their 4S pointer and a local key rotation, because
+  // Cancelling used to cost the person their 4S pointer and a local key rotation, because
   // the only thing asked beforehand was whether the server OFFERS a password — never
-  // whether this user knows it.
+  // whether this person knows it.
   it('performs no write and no rotation when the password prompt is cancelled', async () => {
-    const { svc, crypto, secretStorage } = setup({ defaultKeyId: 'old-key' });
+    const { svc, engine, alice, oldKeyId } = lostRecovery();
 
     await expect(
       firstValueFrom(svc.resetRecovery(async () => null)),
-    ).rejects.toMatchObject({
-      operation: 'reset-recovery',
-      kind: 'cancelled',
-    });
+    ).rejects.toMatchObject({ operation: 'reset-recovery', kind: 'cancelled' });
 
-    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
-    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
-    expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+    expect(stepNames(engine)).toEqual(['preAuthenticate']);
+    expect(engine.defaultKeyIds(alice).server).toBe(oldKeyId);
   });
 
   it('performs no write and no rotation when the password is wrong every time', async () => {
-    const { svc, crypto, secretStorage, client } = setup({
-      defaultKeyId: 'old-key',
-    });
-    client.deleteMultipleDevices.mockRejectedValue(uiaError('probe'));
-    const prompt = vi.fn().mockResolvedValue('wrong');
+    const { svc, engine } = lostRecovery();
+    const prompt = vi.fn(async () => 'wrong');
 
     await expect(
       firstValueFrom(svc.resetRecovery(prompt)),
@@ -361,518 +370,216 @@ describe('resetRecovery', () => {
     });
 
     expect(prompt).toHaveBeenCalledTimes(3);
-    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
-    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    expect(stepNames(engine)).toEqual(['preAuthenticate']);
   });
 
-  it('asks for the password once, replaying it into the key upload', async () => {
-    // The upload has its own UIA session and is challenged again; a second prompt for
-    // the same password would read as "that didn't work, try again".
-    const { svc, crypto, client } = setup();
-    const prompt = vi.fn().mockResolvedValue('s3cret');
-    let uia!: (mr: (a: unknown) => Promise<unknown>) => Promise<unknown>;
-    crypto.bootstrapCrossSigning.mockImplementation(
-      async (opts: BootstrapCrossSigningOpts) => {
-        uia = opts.authUploadDeviceSigningKeys as typeof uia;
-      },
+  it('goes ahead when the pre-authentication cannot answer, rather than inventing a failure', async () => {
+    // A dropped connection, or a server that gates /delete_devices differently from the
+    // key upload, leaves the person where they were and the upload still asks.
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('preAuthenticate', failure('request-failed'));
+    const prompt = vi.fn(async () => engine.password);
+
+    await expect(firstValueFrom(svc.resetRecovery(prompt))).resolves.toBeTypeOf(
+      'string',
     );
-
-    await firstValueFrom(svc.resetRecovery(prompt));
-    const makeRequest = vi
-      .fn()
-      .mockRejectedValueOnce(uiaError('upload'))
-      .mockResolvedValueOnce(undefined);
-    await uia(makeRequest);
-
-    expect(prompt).toHaveBeenCalledTimes(1);
-    // Once for the pre-auth...
-    expect(client.deleteMultipleDevices.mock.calls[1][1]).toMatchObject({
-      password: 's3cret',
-      session: 'probe',
-    });
-    // ...and the same password again for the upload, without asking.
-    expect(makeRequest.mock.calls[1][0]).toMatchObject({
-      password: 's3cret',
-      session: 'upload', // the upload's own session, not the pre-auth one
-    });
+    expect(prompt).toHaveBeenCalledOnce(); // by the upload
   });
 
-  it('falls back to prompting when the replayed password is rejected', async () => {
-    const { svc, crypto } = setup();
-    const prompt = vi
-      .fn()
-      .mockResolvedValueOnce('accepted-then-rotated')
-      .mockResolvedValueOnce('typed-again');
-    let uia!: (mr: (a: unknown) => Promise<unknown>) => Promise<unknown>;
-    crypto.bootstrapCrossSigning.mockImplementation(
-      async (opts: BootstrapCrossSigningOpts) => {
-        uia = opts.authUploadDeviceSigningKeys as typeof uia;
-      },
-    );
-
-    await firstValueFrom(svc.resetRecovery(prompt));
-    const makeRequest = vi
-      .fn()
-      .mockRejectedValueOnce(uiaError('u1')) // unauthed probe
-      .mockRejectedValueOnce(uiaError('u2')) // the replay is refused
-      .mockResolvedValueOnce(undefined);
-    await uia(makeRequest);
-
-    expect(prompt).toHaveBeenCalledTimes(2);
-    expect(makeRequest.mock.calls[2][0]).toMatchObject({
-      password: 'typed-again',
-    });
-  });
-
-  it('goes ahead when the pre-auth request cannot answer, rather than inventing a failure', async () => {
-    // Authenticating early must not become a new way for the reset to fail: a dropped
-    // connection, or a server that gates /delete_devices differently from the key
-    // upload, leaves the user where they were and the upload still prompts.
-    const { svc, crypto, client } = setup();
-    client.deleteMultipleDevices.mockRejectedValue(new Error('network down'));
-
-    await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
-    ).resolves.toBeTypeOf('string');
-    expect(crypto.bootstrapCrossSigning).toHaveBeenCalledOnce();
-  });
-
-  it('goes ahead when the pre-auth request is not challenged at all', async () => {
-    const { svc, crypto, client } = setup();
-    client.deleteMultipleDevices.mockResolvedValue({});
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(crypto.bootstrapCrossSigning).toHaveBeenCalledOnce();
-  });
-
-  it('rolls back when an unchallenged pre-auth leaves the upload asking first', async () => {
+  it('rolls back when an unchallenged pre-authentication leaves the upload asking first', async () => {
     // The residual of "authenticate first": a server that does not gate /delete_devices
     // (Synapse passes can_skip_ui_auth there; MSC3861 bypasses it) leaves the FIRST
-    // prompt the user ever sees inside the upload — with the pointer already parked and
-    // the local identity already rotated. The rollback is what covers that, so pin it
-    // with a real 4S pointer, which the sibling test above leaves null.
+    // prompt the person ever sees inside the upload, with the pointer already parked.
+    const { svc, engine, alice, oldKeyId } = lostRecovery();
+    engine.scriptStep('preAuthenticate', 'unchallenged');
     const order: string[] = [];
-    const { svc, crypto, secretStorage, client } = setup({
-      defaultKeyId: 'old-key',
-    });
-    client.deleteMultipleDevices.mockResolvedValue({}); // no challenge at all
-    secretStorage.setDefaultKeyId.mockImplementation(
-      async (keyId: string | null) => void order.push(`pointer:${keyId}`),
-    );
-    client.setAccountDataRaw.mockImplementation(
-      async (_type: string, content: { key?: string }) =>
-        void order.push(`pointer:${content.key}`),
-    );
-    crypto.bootstrapCrossSigning.mockImplementation(
-      async (opts: BootstrapCrossSigningOpts) =>
-        (
-          opts.authUploadDeviceSigningKeys as (
-            mr: (a: unknown) => Promise<unknown>,
-          ) => Promise<unknown>
-        )(vi.fn().mockRejectedValue(uiaError('upload'))),
-    );
-    const prompt = vi.fn(async () => {
-      order.push('first prompt');
-      return null; // the user cancels the one prompt they are given
-    });
 
     await expect(
-      firstValueFrom(svc.resetRecovery(prompt)),
-    ).rejects.toMatchObject({
-      operation: 'reset-recovery',
-      kind: 'cancelled',
-    });
+      firstValueFrom(
+        svc.resetRecovery(async () => {
+          order.push(...stepNames(engine), 'first prompt');
+          return null; // the person cancels the one prompt they are given
+        }),
+      ),
+    ).rejects.toMatchObject({ operation: 'reset-recovery', kind: 'cancelled' });
 
-    expect(order).toEqual(['pointer:null', 'first prompt', 'pointer:old-key']);
-    expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith('@me:hs', true);
-  });
-
-  it('still gives the user three tries when the replayed password is rejected', async () => {
-    // The replay is the reset's own retry, not one of the user's. Spending an attempt
-    // on it would silently cut a rejected replay's cost out of the human's budget.
-    const { svc, crypto } = setup();
-    const prompt = vi.fn().mockResolvedValue('unchanged');
-    let uia!: (mr: (a: unknown) => Promise<unknown>) => Promise<unknown>;
-    crypto.bootstrapCrossSigning.mockImplementation(
-      async (opts: BootstrapCrossSigningOpts) => {
-        uia = opts.authUploadDeviceSigningKeys as typeof uia;
-      },
-    );
-
-    await firstValueFrom(svc.resetRecovery(prompt));
-    const makeRequest = vi.fn().mockRejectedValue(uiaError('upload'));
-    await expect(uia(makeRequest)).rejects.toThrow(/too many/i);
-
-    // One for the pre-auth, then three of the user's own — the replay is not one.
-    expect(prompt).toHaveBeenCalledTimes(4);
-  });
-
-  it('deletes the dehydrated device, which the new identity can no longer sign', async () => {
-    const { svc, client } = setup();
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(client.http.authedRequest).toHaveBeenCalledWith(
-      'DELETE',
-      '/dehydrated_device',
-      undefined,
-      {},
-      { prefix: '/_matrix/client/unstable/org.matrix.msc3814.v1' },
-    );
-  });
-
-  it('deletes the dehydrated device inside the destructive tail, not before the upload', async () => {
-    // The SDK's resetEncryption does this first thing. Here nothing may be destroyed
-    // until the identity upload is authorised, so it heads the tail instead.
-    const order: string[] = [];
-    const { svc, crypto, secretStorage, client } = setup({
-      defaultKeyId: 'old-key',
-    });
-    secretStorage.setDefaultKeyId.mockImplementation(
-      async () => void order.push('park'),
-    );
-    crypto.bootstrapCrossSigning.mockImplementation(
-      async () => void order.push('upload'),
-    );
-    client.http.authedRequest.mockImplementation(
-      async () => void order.push('dehydrated'),
-    );
-    crypto.bootstrapSecretStorage.mockImplementation(
-      async () => void order.push('destroy'),
-    );
-
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
-
-    expect(order).toEqual(['park', 'upload', 'dehydrated', 'destroy']);
+    expect(order).toEqual([
+      'preAuthenticate',
+      'setDefaultKeyPointer(null, confirmed)',
+      'rotateCrossSigning',
+      'first prompt',
+    ]);
+    expect(engine.defaultKeyIds(alice).server).toBe(oldKeyId);
+    expect(stepNames(engine).at(-1)).toBe('ownIdentityCheck');
   });
 
   it('completes the reset when there is no dehydrated device to delete', async () => {
-    const { svc, client } = setup();
-    client.http.authedRequest.mockRejectedValue(
-      new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404),
-    );
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('deleteDehydratedDevice', failure('request-failed'));
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery(async () => engine.password)),
     ).resolves.toBeTypeOf('string');
   });
 
-  it('writes the pointer to the server first, then tries to realign the local store', async () => {
-    // The park echoed, so the LOCAL store reads null; then sync stalled, so every
-    // echo-waiting write hangs (setDefaultKeyId wraps setAccountData in a SECOND echo
-    // listener). The server gets its value from the raw PUT — which resolves on the HTTP
-    // response — and only afterwards does the echo-waiting writer get a bounded attempt
-    // at this client's own view.
+  it('finishes the reset when the dehydrated-device delete never answers', async () => {
     vi.useFakeTimers();
-    try {
-      const order: string[] = [];
-      const { svc, crypto, secretStorage, client } = setup({
-        defaultKeyId: 'old-key',
-      });
-      crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
-      secretStorage.getDefaultKeyId
-        .mockResolvedValueOnce('old-key') // read before parking
-        .mockResolvedValue(null); // the park echoed; the local store stays parked
-      client.setAccountDataRaw.mockImplementation(async () => {
-        order.push('server');
-        return {};
-      });
-      secretStorage.setDefaultKeyId
-        .mockResolvedValueOnce(undefined) // parking it echoed back fine
-        .mockImplementation(() => {
-          order.push('local');
-          return new Promise(() => undefined); // then the echo stopped coming
-        });
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('deleteDehydratedDevice', 'hang');
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(failure).rejects.toMatchObject({
-        operation: 'reset-recovery',
-        kind: 'cancelled',
-      });
-      await vi.advanceTimersByTimeAsync(30_000);
-      await assertion;
-
-      expect(client.setAccountDataRaw).toHaveBeenCalledWith(
-        'm.secret_storage.default_key',
-        { key: 'old-key' },
-      );
-      // The server is settled before anything waits on a /sync echo, and a realign that
-      // never settles is bounded rather than fatal.
-      expect(order).toEqual(['server', 'local']);
-      expect(client.setAccountData).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+    const shown = firstValueFrom(
+      svc.resetRecovery(async () => engine.password),
+    );
+    const assertion = expect(shown).resolves.toMatch(/^Es/);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await assertion;
   });
 
-  it('puts the pointer back on the server even when every local read says it is already there', async () => {
-    // Scenario A, exactly as the SDK produces it: the park's PUT landed, its /sync echo
-    // was lost, so the LOCAL store still holds the PRE-park value. Every read reachable
-    // from here answers out of that store (getDefaultKeyId → getAccountDataFromServer,
-    // which reads locally once initial sync is complete), so a re-read reports 'old-key'
-    // while the SERVER holds {}. Treating that as confirmation left the pointer parked
-    // account-wide and reported success; the server write is unconditional for that
-    // reason, and nothing may gate it.
-    vi.useFakeTimers();
-    try {
-      const { svc, secretStorage, client } = setup({
-        defaultKeyId: 'old-key',
-      });
-      // The park never echoes...
-      secretStorage.setDefaultKeyId.mockReturnValue(
-        new Promise(() => undefined),
-      );
-      // ...so the local store never moves off the pre-park value.
-      secretStorage.getDefaultKeyId.mockResolvedValue('old-key');
+  it('puts the pointer back on the server when the park goes out unconfirmed', async () => {
+    // The park's PUT landed and its echo was lost: the LOCAL pointer still holds the
+    // pre-park value while the SERVER holds none. Only an unread server write fixes it.
+    const { svc, engine, alice, oldKeyId, oldMasterKey } = lostRecovery();
+    engine.scriptStep('setDefaultKeyPointer', 'unconfirmed');
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(failure).rejects.toMatchObject({
-        operation: 'reset-recovery',
-        kind: 'server-failure',
-        recovery: 'retry',
-      });
-      await vi.advanceTimersByTimeAsync(30_000);
-      await assertion;
+    await expect(
+      firstValueFrom(svc.resetRecovery(async () => engine.password)),
+    ).rejects.toMatchObject({
+      operation: 'reset-recovery',
+      kind: 'server-failure',
+      recovery: 'retry',
+    });
 
-      expect(client.setAccountDataRaw).toHaveBeenCalledWith(
-        'm.secret_storage.default_key',
-        { key: 'old-key' },
-      );
-      // Only the park. Re-entering the echo-waiting writer against a store that already
-      // agrees would write nothing at all and then wait forever for an echo no write
-      // caused, so the realign is skipped rather than left to burn its budget.
-      expect(secretStorage.setDefaultKeyId).toHaveBeenCalledOnce();
-      expect(secretStorage.setDefaultKeyId).toHaveBeenCalledWith(null);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(engine.defaultKeyIds(alice)).toEqual({
+      server: oldKeyId,
+      local: oldKeyId,
+    });
+    // Aborted before a single key was rotated.
+    expect(ran(engine, 'rotateCrossSigning')).toBe(false);
+    expect(stepNames(engine)).toContain(
+      `setDefaultKeyPointer(${oldKeyId}, raw-retry)`,
+    );
+    expectNothingDestroyed(engine, alice, oldMasterKey);
   });
 
-  it('retries the pointer restore through a dropped connection', async () => {
-    // The restore is a bare request, unlike the echo-waiting writer it replaced, which
-    // reached the network through retryNetworkOperation. Losing the retry would bite
-    // hardest where it is least affordable: a lost echo usually means the connection
-    // died, which is exactly when the next PUT throws — so one blip would lose the only
-    // write the rollback exists to make.
-    vi.useFakeTimers();
-    const retryLog = vi.spyOn(console, 'debug').mockImplementation(() => {});
-    try {
-      const { svc, secretStorage, client } = setup({
-        defaultKeyId: 'old-key',
-      });
-      secretStorage.setDefaultKeyId.mockReturnValue(
-        new Promise(() => undefined),
-      );
-      secretStorage.getDefaultKeyId.mockResolvedValue('old-key');
-      client.setAccountDataRaw
-        .mockRejectedValueOnce(new ConnectionError('flaky'))
-        .mockResolvedValue({});
+  it('stops with nothing to put back when the park fails before writing', async () => {
+    // A failed park wrote nothing, by the step's contract, so there is no restore step.
+    const { svc, engine, alice, oldKeyId, oldMasterKey } = lostRecovery();
+    engine.scriptStep('setDefaultKeyPointer', failure('request-failed'));
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(failure).rejects.toMatchObject({
-        operation: 'reset-recovery',
-        kind: 'server-failure',
-        recovery: 'retry',
-      });
-      await vi.advanceTimersByTimeAsync(60_000);
-      await assertion;
+    await expect(
+      firstValueFrom(svc.resetRecovery(async () => engine.password)),
+    ).rejects.toMatchObject({
+      operation: 'reset-recovery',
+      kind: 'server-failure',
+    });
 
-      // Attempted twice, and the second one landed — a single rejection must not be
-      // the end of it.
-      expect(client.setAccountDataRaw).toHaveBeenCalledTimes(2);
-      expect(client.setAccountDataRaw).toHaveBeenLastCalledWith(
-        'm.secret_storage.default_key',
-        { key: 'old-key' },
-      );
-      expect(retryLog).toHaveBeenCalledExactlyOnceWith(
-        'network operation failed 1 times, retrying in 2000ms...',
-      );
-    } finally {
-      retryLog.mockRestore();
-      vi.useRealTimers();
-    }
+    expect(stepNames(engine)).toEqual([
+      'preAuthenticate',
+      'setDefaultKeyPointer(null, confirmed)',
+    ]);
+    expect(engine.defaultKeyIds(alice)).toEqual({
+      server: oldKeyId,
+      local: oldKeyId,
+    });
+    expectNothingDestroyed(engine, alice, oldMasterKey);
   });
 
-  it('aborts before rotating anything when parking the pointer is not confirmed', async () => {
-    // The park's PUT goes out before the echo it waits on, so an unconfirmed park may
-    // still have landed account-wide. Waiting on it forever would leave the pointer
-    // parked with no error, no status refresh and nothing emitted to the caller.
+  it('stops waiting for a park that never answers after 30 s', async () => {
     vi.useFakeTimers();
-    try {
-      const { svc, crypto, secretStorage, client } = setup({
-        defaultKeyId: 'old-key',
-      });
-      secretStorage.setDefaultKeyId.mockReturnValue(
-        new Promise(() => undefined), // the park never echoes
-      );
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('setDefaultKeyPointer', 'hang');
+    let settled = false;
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(failure).rejects.toMatchObject({
-        operation: 'reset-recovery',
-        kind: 'server-failure',
-        recovery: 'retry',
-      });
-      await vi.advanceTimersByTimeAsync(30_000);
-      await assertion;
+    const failed = firstValueFrom(
+      svc.resetRecovery(async () => engine.password),
+    ).finally(() => (settled = true));
+    const assertion = expect(failed).rejects.toMatchObject({
+      operation: 'reset-recovery',
+      kind: 'server-failure',
+    });
+    await vi.advanceTimersByTimeAsync(29_900);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(200);
+    await assertion;
 
-      // The effect the abort owes the account, not the attempt it made at it.
-      expect(client.setAccountDataRaw).toHaveBeenCalledWith(
-        'm.secret_storage.default_key',
-        { key: 'old-key' },
-      );
-      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
-      expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(ran(engine, 'rotateCrossSigning')).toBe(false);
   });
 
-  it('shows the new recovery key even if the last read never answers', async () => {
-    // getDefaultKeyId answers from the local store only while the initial sync is
-    // complete; once a stalled long-poll drops the sync loop out — which takes ~110s,
-    // inside the destructive tail's own budget — it becomes a bare network GET on a
-    // client with no request timeout. Unbounded, it would hang here, after the tail has
-    // already run, and the user would never see the key it just minted.
-    vi.useFakeTimers();
-    try {
-      const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
-      secretStorage.getDefaultKeyId
-        .mockResolvedValueOnce('old-key')
-        .mockReturnValueOnce(new Promise(() => undefined))
-        .mockResolvedValue('new-key');
+  it('writes nothing when the password prompt itself throws', async () => {
+    const { svc, engine, alice, oldKeyId } = lostRecovery();
 
-      const shown = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(shown).resolves.toBe('EsTRecoveryKey');
-      await vi.advanceTimersByTimeAsync(30_000);
-      await assertion;
-    } finally {
-      vi.useRealTimers();
-    }
+    await expect(
+      firstValueFrom(
+        svc.resetRecovery(async () => {
+          throw new Error('dialog failed');
+        }),
+      ),
+    ).rejects.toMatchObject({ operation: 'reset-recovery' });
+
+    expect(stepNames(engine)).toEqual(['preAuthenticate']);
+    expect(engine.defaultKeyIds(alice).server).toBe(oldKeyId);
   });
 
-  it('shows the new recovery key even if dropping the old description never echoes', async () => {
+  it('shows the new recovery key even if dropping the old description never answers', async () => {
     // The last step runs AFTER the destructive tail. Hanging there would leave the
-    // user's only copy of the new key undisplayed, with another reset as the only fix.
+    // person's only copy of the new key undisplayed, with another reset as the only fix.
     vi.useFakeTimers();
-    try {
-      const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
-      secretStorage.getDefaultKeyId
-        .mockResolvedValueOnce('old-key')
-        .mockResolvedValue('new-key');
-      secretStorage.store.mockReturnValue(new Promise(() => undefined));
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('dropKeyDescription', 'hang');
 
-      const shown = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(shown).resolves.toBe('EsTRecoveryKey');
-      await vi.advanceTimersByTimeAsync(30_000);
-      await assertion;
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('re-seats the identity even while the pointer restore is hanging', async () => {
-    // One shared budget let the account-data write — the step that can hang — eat the
-    // whole allowance, so the cheap local repair never ran at all.
-    vi.useFakeTimers();
-    try {
-      const { svc, crypto, secretStorage } = setup({
-        defaultKeyId: 'old-key',
-      });
-      crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
-      secretStorage.getDefaultKeyId
-        .mockResolvedValueOnce('old-key') // read before parking
-        .mockResolvedValue(null); // the park echoed; the local store is parked
-      secretStorage.setDefaultKeyId
-        .mockResolvedValueOnce(undefined)
-        .mockReturnValue(new Promise(() => undefined)); // never settles
-
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(failure).rejects.toMatchObject({
-        operation: 'reset-recovery',
-        kind: 'cancelled',
-      });
-      await vi.advanceTimersByTimeAsync(15_000);
-      await assertion;
-
-      expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith(
-        '@me:hs',
-        true,
-      );
-    } finally {
-      vi.useRealTimers();
-    }
+    const shown = firstValueFrom(
+      svc.resetRecovery(async () => engine.password),
+    );
+    const assertion = expect(shown).resolves.toMatch(/^Es/);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await assertion;
   });
 
   it('gives up on a destructive tail that stops answering, and says it may be half-done', async () => {
-    // bootstrapSecretStorage is ~6 echo-waiting account-data writes plus the backup
-    // deletions. Each request has the client deadline, but the sequence still needs one
-    // whole-operation bound so a stalled sync cannot keep the new 4S key live while its
-    // recovery key is never shown.
     vi.useFakeTimers();
-    try {
-      const { svc, crypto } = setup({
-        defaultKeyId: 'old-key',
-      });
-      crypto.bootstrapSecretStorage.mockReturnValue(
-        new Promise(() => undefined),
-      );
-      crypto.isCrossSigningReady.mockResolvedValue(true);
-      crypto.isSecretStorageReady.mockResolvedValue(true);
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('createRecoveryAndBackup', 'hang');
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      // Not "timed out": a timeout here cannot undo anything the tail already did, so
-      // the user has to be told where to look rather than just that it failed.
-      const assertion = expect(failure).rejects.toMatchObject({
-        operation: 'reset-recovery',
-        kind: 'partial-update',
-        recovery: 'review-security-settings',
-        partial: true,
-      });
-      await vi.advanceTimersByTimeAsync(200_000);
-      await assertion;
+    const failed = firstValueFrom(
+      svc.resetRecovery(async () => engine.password),
+    );
+    // Not "timed out": a timeout here cannot undo anything the tail already did, so the
+    // person has to be told where to look rather than just that it failed.
+    const assertion = expect(failed).rejects.toMatchObject({
+      operation: 'reset-recovery',
+      kind: 'partial-update',
+      recovery: 'review-security-settings',
+      partial: true,
+    });
+    await vi.advanceTimersByTimeAsync(151_000);
+    await assertion;
 
-      expect(svc.status()).toBe('ready'); // the finally still recomputed it
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(svc.thisDeviceVerified()).toBe(true); // the finally still recomputed it
   });
 
   it('waits out a slow destructive tail rather than a stalled one', async () => {
-    // The budget is deliberately above the ~110s a dead /sync long-poll takes to be
-    // noticed (pollTimeout 30s + BUFFER_PERIOD_MS 80s), so a tail the sync loop is about
-    // to unblock is not aborted and reported as half-failed.
+    // The budget is above the ~110s a dead /sync long-poll takes to be noticed.
     vi.useFakeTimers();
-    try {
-      const { svc, crypto } = setup({ defaultKeyId: 'old-key' });
-      crypto.bootstrapSecretStorage.mockReturnValue(
-        new Promise((resolve) => setTimeout(resolve, 120_000)),
-      );
+    const { svc, engine } = lostRecovery();
+    engine.scriptStep('createRecoveryAndBackup', { delayMs: 120_000 });
 
-      const shown = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(shown).resolves.toBe('EsTRecoveryKey');
-      await vi.advanceTimersByTimeAsync(200_000);
-      await assertion;
-    } finally {
-      vi.useRealTimers();
-    }
+    const shown = firstValueFrom(
+      svc.resetRecovery(async () => engine.password),
+    );
+    const assertion = expect(shown).resolves.toMatch(/^Es/);
+    await vi.advanceTimersByTimeAsync(200_000);
+    await assertion;
   });
 
-  it('finishes the reset when the dehydrated-device delete never answers', async () => {
-    // It heads the destructive tail and is a bare authedRequest with nothing under it to
-    // time out, so an unanswered socket there would stall the reset before the tail it
-    // opens — and the user would never be shown the key the reset is for.
-    vi.useFakeTimers();
-    try {
-      const { svc, client } = setup();
-      client.http.authedRequest.mockReturnValue(new Promise(() => undefined));
+  it('is not ready, without asking, on an account without crypto', async () => {
+    const nocrypto = '@nocrypto:contract.invalid';
+    const { svc, engine } = onFakeEngine(nocrypto);
+    engine.addAccount(nocrypto, { crypto: false });
+    const prompt = vi.fn(async () => engine.password);
 
-      const shown = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-      const assertion = expect(shown).resolves.toBe('EsTRecoveryKey');
-      await vi.advanceTimersByTimeAsync(30_000);
-      await assertion;
-    } finally {
-      vi.useRealTimers();
-    }
+    await expect(
+      firstValueFrom(svc.resetRecovery(prompt)),
+    ).rejects.toMatchObject({ operation: 'reset-recovery', kind: 'not-ready' });
+    expect(prompt).not.toHaveBeenCalled();
   });
 });
