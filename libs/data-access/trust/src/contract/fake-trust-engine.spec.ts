@@ -10,6 +10,17 @@ defineTrustEngineContract(
       publishIdentity: async () => engine.publishIdentity(engine.alice),
       setServerDefaultKey: async (keyId) =>
         engine.setServerDefaultKey(engine.alice, keyId),
+      secondDevice: async () => ({
+        deviceId: 'SECOND',
+        requestVerification: async () => {
+          engine.receiveVerification(engine.alice, { otherDeviceId: 'SECOND' });
+        },
+      }),
+      directRoom: async () => {
+        const userId = '@bob:contract.invalid';
+        engine.addUserIdentity(userId);
+        return { userId, roomId: '!dm:contract.invalid' };
+      },
       dispose: async () => undefined,
     };
   },
