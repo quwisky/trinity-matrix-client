@@ -50,6 +50,36 @@ export type InteractiveUpdate<T> =
     }
   | { readonly kind: 'done'; readonly result: EngineResult<T> };
 
+export type VerificationPhase =
+  'requested' | 'ready' | 'started' | 'done' | 'cancelled';
+
+export type VerificationMethod =
+  'm.sas.v1' | 'm.qr_code.show.v1' | 'm.qr_code.scan.v1' | 'm.reciprocate.v1';
+
+/** The account's current verification, as plain data. Never carries QR bytes. */
+export interface VerificationSnapshot {
+  readonly flowId: string;
+  readonly phase: VerificationPhase;
+  readonly otherUserId: string;
+  /** As the other device sent it, unfiltered; null until it is known. */
+  readonly otherDeviceId: string | null;
+  readonly isSelfVerification: boolean;
+  readonly initiatedByMe: boolean;
+  /** The methods the other side supports; empty until it has answered. */
+  readonly theirMethods: readonly VerificationMethod[];
+  /** Set once the SAS keys are exchanged. */
+  readonly sas: {
+    readonly emoji: readonly {
+      readonly glyph: string;
+      readonly name: string;
+    }[];
+  } | null;
+  /** The other device scanned this one's QR code and waits for {@link TrustEngine.confirmQr}. */
+  readonly qrScannedByOther: boolean;
+  /** Protocol timeouts arrive here too, as `m.timeout`. */
+  readonly cancellation: { readonly code: string } | null;
+}
+
 /**
  * One account's crypto, as plain data. The engine reports facts and runs protocol steps;
  * Trust owns every status decision and message.
@@ -77,4 +107,55 @@ export interface TrustEngine {
   serverDefaultKeyId(
     accountId: string,
   ): Observable<EngineResult<string | null>>;
+
+  /**
+   * The account's current verification on subscribe, then after each change; null when
+   * there is none or the account is not live. One at a time: a request that arrives while
+   * another is live is ignored. On subscribe a to-device request already in progress is
+   * taken up. A replaced client is not followed: subscribe again.
+   */
+  verification(accountId: string): Observable<VerificationSnapshot | null>;
+  /** Asks the account's other devices to verify this one. Needs a published identity. */
+  requestOwnVerification(
+    accountId: string,
+  ): Observable<EngineResult<{ readonly flowId: string }>>;
+  /**
+   * Waits until `userId`'s identity reaches the crypto store, then sends the request in
+   * `roomId`. Unsubscribing stops the wait; a request sent after that is cancelled.
+   */
+  requestUserVerification(
+    accountId: string,
+    userId: string,
+    roomId: string,
+  ): Observable<EngineResult<{ readonly flowId: string }>>;
+  acceptVerification(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<null>>;
+  startSas(accountId: string, flowId: string): Observable<EngineResult<null>>;
+  confirmSas(accountId: string, flowId: string): Observable<EngineResult<null>>;
+  mismatchSas(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<null>>;
+  /** The QR payload as base64, returned once and never kept; `qr-unavailable` when empty. */
+  showQr(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<{ readonly qr: string }>>;
+  /**
+   * Starts reciprocation with the scanned payload (base64). If the request changed while
+   * scanning, the late verifier is cancelled and the result is still ok.
+   */
+  scanQr(
+    accountId: string,
+    flowId: string,
+    qr: string,
+  ): Observable<EngineResult<null>>;
+  confirmQr(accountId: string, flowId: string): Observable<EngineResult<null>>;
+  /** Cancels the verifier, then the request unless it is already over. */
+  cancelVerification(
+    accountId: string,
+    flowId: string,
+  ): Observable<EngineResult<null>>;
 }
