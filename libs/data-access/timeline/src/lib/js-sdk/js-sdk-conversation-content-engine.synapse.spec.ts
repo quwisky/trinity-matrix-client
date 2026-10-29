@@ -25,11 +25,24 @@ vi.mock('@trinity/util/matrix', async (importOriginal) => {
 // Runs the conversation content contract against a live Synapse; skipped unless
 // TRINITY_ENGINE_CONTRACT_HS is set.
 const SETTLE_TIMEOUT_MS = 30_000;
+/** As `resolvePortOffset` in e2e/support/homeserver/constants.mjs: the native stack's port shift. */
+function portOffset(): number {
+  const value = process.env['TRINITY_E2E_PORT_OFFSET'] ?? '';
+  if (value === '') return 0;
+  const offset = Number(value);
+  if (!/^\d+$/.test(value) || offset % 100 !== 0 || offset >= 7000) {
+    throw new Error(
+      `Invalid TRINITY_E2E_PORT_OFFSET "${value}"; expected a multiple of 100 from 0 to 6900`,
+    );
+  }
+  return offset;
+}
+
 // The harness's Open Graph page, as Synapse reaches it (see the link-preview journey):
 // 127.0.0.1 natively, one shared loopback in a network container, else compose DNS.
 const OG_PAGE =
   process.env['TRINITY_E2E_HOMESERVER_RUNTIME'] === 'native'
-    ? 'http://127.0.0.1:8080/og'
+    ? `http://127.0.0.1:${8080 + portOffset()}/og`
     : process.env['TRINITY_E2E_NETWORK_CONTAINER']
       ? 'http://localhost:8080/og'
       : 'http://caddy:8080/og';

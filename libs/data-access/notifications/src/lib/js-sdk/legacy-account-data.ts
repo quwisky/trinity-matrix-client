@@ -3,6 +3,15 @@
  * `dev.trinityproject.trinity.*` name and fall back to the old one; a one-time copy moves
  * the old value across. The old event stays on the server: account data can't be deleted.
  */
+export const NOTIFICATION_SOUND_EVENT =
+  'dev.trinityproject.trinity.notification_sound';
+export const LEGACY_NOTIFICATION_SOUND_EVENT =
+  'eu.qwky.trinity.notification_sound';
+export const REACTION_NOTIFICATION_EVENT =
+  'dev.trinityproject.trinity.reaction_notifications';
+export const LEGACY_REACTION_NOTIFICATION_EVENT =
+  'eu.qwky.trinity.reaction_notifications';
+
 interface AccountDataReader {
   getAccountData?: (type: never) => { getContent?: () => unknown } | undefined;
 }
@@ -21,6 +30,18 @@ export function migratedAccountDataContent(
   const current = client?.getAccountData?.(type as never);
   if (current) return current.getContent?.();
   return client?.getAccountData?.(legacyType as never)?.getContent?.();
+}
+
+/** The `{ enabled }` flag under `type` (or its retired name), else `fallback`. */
+export function enabledFlag(
+  client: AccountDataReader | null | undefined,
+  type: string,
+  legacyType: string,
+  fallback: boolean,
+): boolean {
+  const content = migratedAccountDataContent(client, type, legacyType) as
+    { enabled?: unknown } | undefined;
+  return typeof content?.enabled === 'boolean' ? content.enabled : fallback;
 }
 
 const copying = new WeakMap<object, Set<string>>();

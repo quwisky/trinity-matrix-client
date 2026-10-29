@@ -1,85 +1,39 @@
-import { Injectable, Signal, inject, signal } from '@angular/core';
-import { ClientEvent, type MatrixClient } from 'matrix-js-sdk';
-import {
-  MatrixClientService,
-  projectFromClient,
-} from '@trinity/data-access/matrix-client';
-import { Observable, defer, from, map, throwError } from 'rxjs';
-import { migratedAccountDataContent } from './legacy-account-data';
+import { Injectable, computed, inject } from '@angular/core';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { unwrapEngineResult } from '@trinity/util/matrix';
+import { Observable, defer, map, throwError } from 'rxjs';
+import { NOTIFICATION_ENGINE } from './notification-engine.token';
+import { NotificationSettingsStore } from './notification-settings.store';
 
-export const REACTION_NOTIFICATION_EVENT =
-  'dev.trinityproject.trinity.reaction_notifications';
-/** Retired name; read while only it exists; `NotificationService` copies it to {@link REACTION_NOTIFICATION_EVENT}. */
-export const LEGACY_REACTION_NOTIFICATION_EVENT =
-  'eu.qwky.trinity.reaction_notifications';
-
-const DEFAULT_ON = false;
-
+/** Whether reactions to the account's own messages notify; off unless the account opts in. */
 @Injectable({ providedIn: 'root' })
 export class ReactionNotificationSettingsService {
-  private readonly matrix = inject(MatrixClientService);
-  private readonly _enabled = signal(DEFAULT_ON);
+  private readonly engine = inject(NOTIFICATION_ENGINE);
+  private readonly store = inject(NotificationSettingsStore);
+  private readonly session = inject(SessionStateService);
 
-  readonly enabled: Signal<boolean> = this._enabled.asReadonly();
+  /** The active account's preference. */
+  readonly enabled = computed(() => this.isOn());
 
-  private readonly onAccountData = (): void => this._enabled.set(this.isOn());
-
-  private readonly projection = projectFromClient({
-    id: 'notifications.reaction-settings',
-    matrix: this.matrix,
-    rebuild: (client) => this._enabled.set(this.readClient(client)),
-    bind: (client) => client.on(ClientEvent.AccountData, this.onAccountData),
-    unbind: (client) => client.off(ClientEvent.AccountData, this.onAccountData),
-    reset: () => this._enabled.set(DEFAULT_ON),
-  });
-
-  connect(): void {
-    this.projection.connect();
-  }
-
-  disconnect(): void {
-    this.projection.disconnect();
-  }
-
+  /** The preference of `accountId`, else of the active account. */
   isOn(accountId?: string): boolean {
-    if (!this.matrix.isInitialized) {
-      return DEFAULT_ON;
-    }
-    const client = accountId
-      ? this.matrix.clientFor(accountId)
-      : this.matrix.instance;
-    return client ? this.readClient(client) : DEFAULT_ON;
+    const owner = accountId ?? this.session.activeAccountId();
+    return owner ? this.store.settings(owner).reactionNotifications : false;
   }
 
+  /** Persist the active account's preference to account data. Cold: runs on subscribe. */
   setOn(on: boolean): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const accountId = this.session.activeAccountId();
+      if (!accountId) {
         return throwError(() => new Error('Not signed in.'));
       }
-      // Capture the owning client when subscribed. The active account can change before
-      // an asynchronous account-data write completes.
-      const client = this.matrix.instance;
-      return from(
-        client.setAccountData(
-          REACTION_NOTIFICATION_EVENT as never,
-          { enabled: on } as never,
-        ),
-      ).pipe(
-        map(() => {
-          if (this.matrix.instance === client) {
-            this._enabled.set(on);
-          }
-        }),
-      );
+      return this.engine
+        .setPreference(accountId, 'reactionNotifications', on)
+        .pipe(
+          unwrapEngineResult<null>(),
+          map(() => undefined),
+        );
     });
-  }
-
-  private readClient(client: MatrixClient): boolean {
-    const content = migratedAccountDataContent(
-      client as never,
-      REACTION_NOTIFICATION_EVENT,
-      LEGACY_REACTION_NOTIFICATION_EVENT,
-    ) as { enabled?: unknown } | undefined;
-    return typeof content?.enabled === 'boolean' ? content.enabled : DEFAULT_ON;
   }
 }

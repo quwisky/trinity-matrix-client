@@ -37,8 +37,8 @@ import type { NotificationTextMode } from './notification-text.port';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,
   NOTIFICATION_SOUND_EVENT,
-  NotificationSoundService,
-} from './notification-sound.service';
+  enabledFlag,
+} from './js-sdk/legacy-account-data';
 
 /**
  * A token that rotated more recently than this is not refreshed again as the app goes to the
@@ -101,7 +101,6 @@ interface HandoffBinding {
 export class PushHandoffService {
   private readonly matrix = inject(MatrixClientService);
   private readonly bridge = inject(PushHandoffBridge);
-  private readonly sound = inject(NotificationSoundService);
   private readonly injector = inject(Injector);
   private readonly bindings = new Map<string, HandoffBinding>();
   /**
@@ -347,7 +346,13 @@ export class PushHandoffService {
       userId,
       homeserverUrl: binding.client.getHomeserverUrl(),
       accessToken: token,
-      sound: this.sound.isOn(userId),
+      // From the client: the settings store learns of the change a microtask after this event.
+      sound: enabledFlag(
+        binding.client as never,
+        NOTIFICATION_SOUND_EVENT,
+        LEGACY_NOTIFICATION_SOUND_EVENT,
+        true,
+      ),
       ...(expiresAt === undefined ? {} : { accessTokenExpiresAt: expiresAt }),
     };
     void this.schedule(() => this.bridge.setAccount(account)).catch(
