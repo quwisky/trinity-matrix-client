@@ -136,6 +136,26 @@ describe('projectActiveAccount', () => {
     expect(conditions.at(-1)).toBe('failed');
   });
 
+  it('rebuilds the latest value again on invalidate without releasing the lease', async () => {
+    let failing = true;
+    const { projection, conditions, subscribe } = harness({
+      rebuild: (value) => {
+        if (failing) throw new Error(`rebuild ${value} failed`);
+      },
+    });
+    projection.connect();
+    expect(conditions.at(-1)).toBe('failed');
+    const failedAt = conditions.length;
+
+    failing = false;
+    projection.invalidate();
+    await Promise.resolve();
+
+    expect(conditions.at(-1)).toBe('available');
+    expect(conditions.slice(failedAt)).not.toContain('released');
+    expect(subscribe).toHaveBeenCalledOnce();
+  });
+
   it('follows an account switch, resetting first and never showing the previous value', () => {
     const { projection, snapshot, sources, model, rebuild, reset, tick } =
       harness();

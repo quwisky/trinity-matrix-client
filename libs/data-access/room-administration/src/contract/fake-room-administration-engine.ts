@@ -49,6 +49,18 @@ const MEMBERSHIPS: ReadonlySet<string> = new Set<Membership>([
   'ban',
 ]);
 
+// From js-sdk `room-member.ts` and `utils.ts`.
+const MXID_PATTERN = /@.+:.+/;
+const DIRECTION_MARKS = /[\u200E\u200F\u202A-\u202F]/;
+const DIRECTION_OVERRIDES = /[\u202D-\u202E]/g;
+const HIDDEN_CHARS =
+  /[\u2000-\u200F\u202A-\u202F\u0300-\u036F\uFEFF\u061C\u2800\u2062-\u2063\s]/g;
+
+/** js-sdk `removeHiddenChars`. shortcut: skips its `unhomoglyph` folding (not a dependency here); add it if a case needs look-alike letters. */
+function withoutHiddenChars(name: string): string {
+  return name.normalize('NFD').replace(HIDDEN_CHARS, '');
+}
+
 function failure(code: 'account-not-live' | 'room-unavailable'): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
 }
@@ -162,9 +174,15 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
       this.setMembership(roomId, this.carol, this.carol, {
         membership: 'leave',
       }),
-    knock: async (roomId: string): Promise<void> =>
+    knock: async (roomId: string, reason?: string): Promise<void> =>
       this.setMembership(roomId, this.carol, this.carol, {
         membership: 'knock',
+        ...(reason ? { reason } : {}),
+      }),
+    setAvatar: async (roomId: string, mxc: string): Promise<void> =>
+      this.put(roomId, 'm.room.member', this.carol, this.carol, {
+        ...this.content(roomId, 'm.room.member', this.carol),
+        avatar_url: mxc,
       }),
     setDisplayName: async (roomId: string, name: string): Promise<void> =>
       this.rename(this.carol, roomId, name),
@@ -337,16 +355,29 @@ export class FakeRoomAdministrationEngine implements RoomAdministrationEngine {
     return [...new Set(ids)];
   }
 
-  /** js-sdk `RoomMember.name`: a name another member also uses gets the user id appended. */
+  /**
+   * js-sdk `RoomMember.name`: the user id is appended to a name that looks like a user id,
+   * has direction marks, or matches another member's after hidden-character removal.
+   */
   private displayNameOf(roomId: string, userId: string): string {
     const members = this.rooms.get(roomId)?.get('m.room.member');
-    const name = text(members?.get(userId)?.content['displayname']);
-    if (!name || name === userId) return userId;
-    const shared = [...(members ?? [])].some(
-      ([other, event]) =>
-        other !== userId && event.content['displayname'] === name,
-    );
-    return shared ? `${name} (${userId})` : name;
+    const name = members?.get(userId)?.content['displayname'];
+    if (typeof name !== 'string' || !name || name === userId) return userId;
+    const key = withoutHiddenChars(name);
+    if (!key) return userId;
+    const ambiguous =
+      MXID_PATTERN.test(key) ||
+      DIRECTION_MARKS.test(name) ||
+      [...(members ?? [])].some(([other, event]) => {
+        const otherName = event.content['displayname'];
+        return (
+          other !== userId &&
+          typeof otherName === 'string' &&
+          withoutHiddenChars(otherName) === key
+        );
+      });
+    const shown = name.replace(DIRECTION_OVERRIDES, '');
+    return ambiguous ? `${shown} (${userId})` : shown;
   }
 
   private membershipOf(roomId: string, userId: string): Membership | null {

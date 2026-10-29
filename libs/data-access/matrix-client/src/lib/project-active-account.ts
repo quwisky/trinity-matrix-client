@@ -16,6 +16,8 @@ export interface ActiveAccountProjection {
   connect(): void;
   /** Unsubscribe, drop any queued rebuild, and reset the read model. */
   disconnect(): void;
+  /** Rebuild the latest value again, keeping the lease and subscription; a no-op while detached. */
+  invalidate(): void;
   isConnected(): boolean;
   /** The account the subscription follows, or null. */
   accountId(): string | null;
@@ -47,6 +49,7 @@ interface Attachment<T> {
   readonly accountId: string;
   readonly generation: number;
   readonly latest: BehaviorSubject<Latest<T>>;
+  readonly invalidate: () => void;
 }
 
 /**
@@ -119,7 +122,7 @@ export function projectActiveAccount<T>(
             error: (error: unknown) => settle({ kind: 'error', error }),
           });
           subscribed = true;
-          const attachment: Attachment<T> = { ...current, latest };
+          const attachment: Attachment<T> = { ...current, latest, invalidate };
           attached = attachment;
           return () => {
             subscription.unsubscribe();
@@ -151,6 +154,8 @@ export function projectActiveAccount<T>(
       lease.release();
       lease = null;
     },
+
+    invalidate: () => attached?.invalidate(),
 
     isConnected: () => attached !== null,
 

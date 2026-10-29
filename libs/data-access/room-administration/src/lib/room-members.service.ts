@@ -1,31 +1,23 @@
 import {
-  Injector,
   Injectable,
+  Injector,
   type Signal,
-  type WritableSignal,
+  computed,
+  effect,
   inject,
-  signal,
+  untracked,
 } from '@angular/core';
-import { toObservable } from '@angular/core/rxjs-interop';
 import {
-  ClientEvent,
-  KnownMembership,
-  RoomEvent,
-  RoomStateEvent,
-  type MatrixClient,
-  type MatrixEvent,
-  type RoomMember,
-  type RoomState,
-} from 'matrix-js-sdk';
-import {
-  MatrixClientService,
-  coalesce,
-  projectFromClient,
+  SessionStateService,
+  projectActiveAccount,
 } from '@trinity/data-access/matrix-client';
 import { initialOf } from '@trinity/util/matrix';
-import { Observable, of, switchMap } from 'rxjs';
+import { NEVER, Observable, concat, distinctUntilChanged, of } from 'rxjs';
+import { AdministeredRoomStore } from './administered-room.store';
+import type { Membership, RoomMemberInfo } from './room-administration-engine';
 import type { RoomAdministrationView } from './room-administration-health.models';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import { powerValue } from './room-power';
 import type { RoomSettingsTarget } from './room-settings.service';
 
 /** A joined member projected from authoritative Matrix room state.
@@ -78,112 +70,39 @@ const EMPTY_MEMBERS: readonly MemberSummary[] = Object.freeze([]);
 const EMPTY_BANS: readonly BannedMember[] = Object.freeze([]);
 const EMPTY_KNOCKS: readonly KnockRequest[] = Object.freeze([]);
 
-/** Live joined and banned membership summaries owned by Room Administration. */
+type ListKind = 'join' | 'invite' | 'ban' | 'knock';
+
+/**
+ * Live joined, invited, banned and knocking members owned by Room Administration, read
+ * from {@link AdministeredRoomStore}. Every read is reactive and keyed by account, so an
+ * account switch or sign-out never shows the previous account's members.
+ */
 @Injectable({ providedIn: 'root' })
 export class RoomMembersService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly store = inject(AdministeredRoomStore);
+  private readonly session = inject(SessionStateService);
   private readonly injector = inject(Injector);
   private readonly projectionState = inject(RoomAdministrationProjectionState);
-  private readonly memberSignals = new Map<
-    string,
-    WritableSignal<readonly MemberSummary[]>
-  >();
-  private readonly invitedSignals = new Map<
-    string,
-    WritableSignal<readonly MemberSummary[]>
-  >();
-  private readonly bannedSignals = new Map<
-    string,
-    WritableSignal<readonly BannedMember[]>
-  >();
-  private readonly knockingSignals = new Map<
-    string,
-    WritableSignal<readonly KnockRequest[]>
-  >();
-  private readonly dirtyRooms = new Set<string>();
-  private allDirty = false;
-  private lastClient: MatrixClient | null = null;
-  private retryRequested = false;
   private readonly collator = new Intl.Collator();
-  private readonly memberCache = new Map<
+  private readonly signals = new Map<
     string,
-    { readonly fingerprint: string; readonly members: readonly MemberSummary[] }
+    { readonly list: Signal<readonly unknown[]>; readonly read: () => unknown }
   >();
-  private readonly bannedCache = new Map<
+  /** The last list per kind, account and room: it keeps its reference while unchanged. */
+  private readonly lists = new Map<
     string,
-    { readonly fingerprint: string; readonly members: readonly BannedMember[] }
-  >();
-  private readonly knockCache = new Map<
-    string,
-    { readonly fingerprint: string; readonly members: readonly KnockRequest[] }
+    { readonly fingerprint: string; readonly items: readonly unknown[] }
   >();
 
-  private readonly flusher = coalesce(() => {
-    if (this.allDirty) {
-      this.allDirty = false;
-      this.dirtyRooms.clear();
-      this.reread(null);
-      return;
-    }
-    const rooms = [...this.dirtyRooms];
-    this.dirtyRooms.clear();
-    for (const roomId of rooms) {
-      this.reread(roomId);
-    }
-  });
-
-  private readonly onMemberChanged = (
-    _event: MatrixEvent,
-    state: RoomState,
-  ): void => this.schedule(state.roomId);
-
-  private readonly onMyMembership = (room?: { roomId?: string }): void =>
-    this.schedule(room?.roomId ?? null);
-
-  private readonly projection = projectFromClient({
+  // Reads are reactive through the store; the lease keeps the session lifetime's health
+  // facts, and its reconcile rereads every held list, so a failing read fails the lease.
+  private readonly projection = projectActiveAccount<void>({
     id: 'room-administration.members',
-    matrix: this.matrix,
-    events: [ClientEvent.Sync],
-    rebuild: (client) => {
-      if (client !== this.lastClient || this.retryRequested) {
-        this.retryRequested = false;
-        this.lastClient = client;
-        this.memberCache.clear();
-        this.bannedCache.clear();
-        this.knockCache.clear();
-        this.reread(null);
-      }
+    subscribe: () => concat(of(undefined), NEVER),
+    rebuild: () => {
+      for (const { read } of this.signals.values()) read();
     },
-    bind: (client) => {
-      client.on(RoomStateEvent.Members, this.onMemberChanged);
-      client.on(RoomEvent.MyMembership, this.onMyMembership);
-    },
-    unbind: (client) => {
-      client.off(RoomStateEvent.Members, this.onMemberChanged);
-      client.off(RoomEvent.MyMembership, this.onMyMembership);
-    },
-    reset: () => {
-      this.lastClient = null;
-      this.memberCache.clear();
-      this.bannedCache.clear();
-      this.knockCache.clear();
-      this.flusher.cancel();
-      this.dirtyRooms.clear();
-      this.allDirty = false;
-      this.retryRequested = false;
-      for (const members of this.memberSignals.values()) {
-        members.set(EMPTY_MEMBERS);
-      }
-      for (const members of this.invitedSignals.values()) {
-        members.set(EMPTY_MEMBERS);
-      }
-      for (const bans of this.bannedSignals.values()) {
-        bans.set(EMPTY_BANS);
-      }
-      for (const requests of this.knockingSignals.values()) {
-        requests.set(EMPTY_KNOCKS);
-      }
-    },
+    reset: () => this.lists.clear(),
   });
 
   /** Cold membership projection retained by the Room Administration session lifetime. */
@@ -191,21 +110,14 @@ export class RoomMembersService {
     return this.projection.run();
   }
 
-  /** Repair this retained projection without adding another listener owner. */
+  /** Reconcile this retained projection again without releasing its lease. */
   retryProjection(): void {
-    this.retryRequested = true;
-    this.projection.schedule();
+    this.projection.invalidate();
   }
 
   /** A memoized signal for one Room's joined members. */
   membersFor(roomId: string | null): Signal<readonly MemberSummary[]> {
-    const key = roomId ?? '';
-    let members = this.memberSignals.get(key);
-    if (!members) {
-      members = signal(this.membersOf(roomId));
-      this.memberSignals.set(key, members);
-    }
-    return members.asReadonly();
+    return this.memo('join', roomId, () => this.membersOf(roomId));
   }
 
   /** Joined members with explicit current, stale, or unavailable authority. */
@@ -221,27 +133,22 @@ export class RoomMembersService {
 
   /** One authoritative snapshot of a Room's joined members. */
   membersOf(roomId: string | null): readonly MemberSummary[] {
-    if (!roomId || !this.matrix.isInitialized) {
-      return EMPTY_MEMBERS;
-    }
-    return this.membersFrom(
-      this.matrix.instance,
-      roomId,
-      `active\x1f${roomId}`,
-    );
+    const accountId = this.session.activeAccountId();
+    return roomId && accountId
+      ? this.summaries({ accountId, roomId }, 'join')
+      : EMPTY_MEMBERS;
   }
 
   /** Read one settings roster from its immutable opening Account. */
   snapshot(target: RoomSettingsTarget): RoomMembersSnapshot {
-    const client = this.matrix.clientFor(target.accountId);
-    const room = client?.getRoom(target.roomId) ?? null;
-    const joined = room?.getMyMembership() === KnownMembership.Join;
-    const availability: RoomMembersAvailability = !client
+    const live = this.session.status(target.accountId) !== null;
+    const room = live ? this.store.room(target.accountId, target.roomId) : null;
+    const availability: RoomMembersAvailability = !live
       ? 'account-unavailable'
-      : !room || !joined
+      : room?.ownMembership !== 'join'
         ? 'room-unavailable'
         : 'available';
-    const cacheKey = `${target.accountId}\x1f${target.roomId}`;
+    const available = availability === 'available';
     return {
       target,
       availability,
@@ -251,139 +158,46 @@ export class RoomMembersService {
           : availability === 'room-unavailable'
             ? 'This room is no longer joined for this account.'
             : null,
-      members:
-        client && availability === 'available'
-          ? this.membersFrom(client, target.roomId, cacheKey)
-          : EMPTY_MEMBERS,
-      banned:
-        client && availability === 'available'
-          ? this.bannedFrom(client, target.roomId, cacheKey)
-          : EMPTY_BANS,
-      invited:
-        client && availability === 'available'
-          ? this.membersFrom(
-              client,
-              target.roomId,
-              `invited\x1f${cacheKey}`,
-              KnownMembership.Invite,
-            )
-          : EMPTY_MEMBERS,
-      knocking:
-        client && availability === 'available'
-          ? this.knockingFrom(client, target.roomId, `knock\x1f${cacheKey}`)
-          : EMPTY_KNOCKS,
+      members: available ? this.summaries(target, 'join') : EMPTY_MEMBERS,
+      banned: available ? this.bans(target) : EMPTY_BANS,
+      invited: available ? this.summaries(target, 'invite') : EMPTY_MEMBERS,
+      knocking: available ? this.knocks(target) : EMPTY_KNOCKS,
     };
   }
 
   /**
-   * Observe one exact settings target. Subscription owns only that Account's filtered
-   * membership listeners and reattaches if the Account is removed or restored.
+   * Observe one exact settings target: its snapshot at once, then after each change of
+   * that Account's room, members or session.
    */
   observe(target: RoomSettingsTarget): Observable<RoomMembersSnapshot> {
-    return toObservable(this.matrix.accountIds, {
-      injector: this.injector,
-    }).pipe(switchMap(() => this.observeCurrentClient(target)));
-  }
-
-  private observeCurrentClient(
-    target: RoomSettingsTarget,
-  ): Observable<RoomMembersSnapshot> {
-    const client = this.matrix.clientFor(target.accountId);
-    if (!client) return of(this.snapshot(target));
-    return new Observable((subscriber) => {
-      const publish = (): void => subscriber.next(this.snapshot(target));
-      const onMember = (_event: MatrixEvent, state: RoomState): void => {
-        if (state.roomId === target.roomId) publish();
-      };
-      const onMembership = (room?: { roomId?: string }): void => {
-        if (!room?.roomId || room.roomId === target.roomId) publish();
-      };
-      client.on(RoomStateEvent.Members, onMember);
-      client.on(RoomEvent.MyMembership, onMembership);
-      client.on(ClientEvent.Sync, publish);
-      publish();
-      // Lazily synced members: load the rest for the member and ban lists. They
-      // arrive as RoomState.members events and re-publish through `onMember`.
-      void client
-        .getRoom(target.roomId)
-        ?.loadMembersIfNeeded()
-        .catch(() => undefined);
-      return () => {
-        client.off(RoomStateEvent.Members, onMember);
-        client.off(RoomEvent.MyMembership, onMembership);
-        client.off(ClientEvent.Sync, publish);
-      };
-    });
+    return new Observable<RoomMembersSnapshot>((subscriber) => {
+      const current = computed(() => this.snapshot(target));
+      subscriber.next(untracked(current));
+      // Owned by this subscription: a root-injector effect would outlive it.
+      const watcher = effect(() => subscriber.next(current()), {
+        injector: this.injector,
+        manualCleanup: true,
+      });
+      return () => watcher.destroy();
+    }).pipe(distinctUntilChanged());
   }
 
   /** A memoized signal for one Room's invited (not yet joined) members. */
   invitedFor(roomId: string | null): Signal<readonly MemberSummary[]> {
-    const key = roomId ?? '';
-    let members = this.invitedSignals.get(key);
-    if (!members) {
-      members = signal(this.invitedMembersOf(roomId));
-      this.invitedSignals.set(key, members);
-    }
-    return members.asReadonly();
+    return this.memo('invite', roomId, () => this.invitedMembersOf(roomId));
   }
 
   /** One authoritative snapshot of a Room's invited members. */
   invitedMembersOf(roomId: string | null): readonly MemberSummary[] {
-    if (!roomId || !this.matrix.isInitialized) {
-      return EMPTY_MEMBERS;
-    }
-    return this.membersFrom(
-      this.matrix.instance,
-      roomId,
-      `invited\x1f${roomId}`,
-      KnownMembership.Invite,
-    );
-  }
-
-  private membersFrom(
-    client: MatrixClient,
-    roomId: string,
-    cacheKey: string,
-    membership:
-      KnownMembership.Join | KnownMembership.Invite = KnownMembership.Join,
-  ): readonly MemberSummary[] {
-    const room = client.getRoom(roomId);
-    if (!room) {
-      return EMPTY_MEMBERS;
-    }
-    const joined =
-      membership === KnownMembership.Join
-        ? room.getJoinedMembers()
-        : room.getMembersWithMembership(membership);
-    const fingerprint = joined
-      .map(
-        (member) =>
-          `${member.userId}\x1f${member.name}\x1f${member.getMxcAvatarUrl() ?? ''}\x1f${member.powerLevel}`,
-      )
-      .join('\x1e');
-    const cached = this.memberCache.get(cacheKey);
-    if (cached?.fingerprint === fingerprint) {
-      return cached.members;
-    }
-    const creatorId = room.getCreator();
-    const members = joined
-      .map((member) => this.toSummary(member, creatorId))
-      .sort((a, b) =>
-        this.collator.compare(a.roomDisplayName, b.roomDisplayName),
-      );
-    this.memberCache.set(cacheKey, { fingerprint, members });
-    return members;
+    const accountId = this.session.activeAccountId();
+    return roomId && accountId
+      ? this.summaries({ accountId, roomId }, 'invite')
+      : EMPTY_MEMBERS;
   }
 
   /** A memoized signal for one Room's banned members. */
   bannedFor(roomId: string | null): Signal<readonly BannedMember[]> {
-    const key = roomId ?? '';
-    let members = this.bannedSignals.get(key);
-    if (!members) {
-      members = signal(this.bannedMembersOf(roomId));
-      this.bannedSignals.set(key, members);
-    }
-    return members.asReadonly();
+    return this.memo('ban', roomId, () => this.bannedMembersOf(roomId));
   }
 
   /** Banned members with explicit current, stale, or unavailable authority. */
@@ -395,159 +209,91 @@ export class RoomMembersService {
 
   /** One authoritative snapshot of a Room's banned members. */
   bannedMembersOf(roomId: string | null): readonly BannedMember[] {
-    if (!roomId || !this.matrix.isInitialized) {
-      return EMPTY_BANS;
-    }
-    return this.bannedFrom(this.matrix.instance, roomId, `active\x1f${roomId}`);
-  }
-
-  private bannedFrom(
-    client: MatrixClient,
-    roomId: string,
-    cacheKey: string,
-  ): readonly BannedMember[] {
-    const room = client.getRoom(roomId);
-    if (!room) {
-      return EMPTY_BANS;
-    }
-    const banned = room.getMembersWithMembership(KnownMembership.Ban);
-    const summaries = banned.map((member) => {
-      const reason = member.events?.member?.getContent()?.['reason'];
-      return {
-        userId: member.userId,
-        roomDisplayName: member.name || member.userId,
-        reason: typeof reason === 'string' && reason ? reason : null,
-      } satisfies BannedMember;
-    });
-    const fingerprint = summaries
-      .map(
-        (member) =>
-          `${member.userId}\x1f${member.roomDisplayName}\x1f${member.reason ?? ''}`,
-      )
-      .join('\x1e');
-    const cached = this.bannedCache.get(cacheKey);
-    if (cached?.fingerprint === fingerprint) {
-      return cached.members;
-    }
-    summaries.sort((a, b) =>
-      this.collator.compare(a.roomDisplayName, b.roomDisplayName),
-    );
-    this.bannedCache.set(cacheKey, { fingerprint, members: summaries });
-    return summaries;
+    const accountId = this.session.activeAccountId();
+    return roomId && accountId ? this.bans({ accountId, roomId }) : EMPTY_BANS;
   }
 
   /** A memoized signal for one Room's requests to join. */
   knockingFor(roomId: string | null): Signal<readonly KnockRequest[]> {
-    const key = roomId ?? '';
-    let requests = this.knockingSignals.get(key);
-    if (!requests) {
-      requests = signal(this.knockingMembersOf(roomId));
-      this.knockingSignals.set(key, requests);
-    }
-    return requests.asReadonly();
+    return this.memo('knock', roomId, () => this.knockingMembersOf(roomId));
   }
 
   /** One authoritative snapshot of a Room's requests to join. */
   knockingMembersOf(roomId: string | null): readonly KnockRequest[] {
-    if (!roomId || !this.matrix.isInitialized) {
-      return EMPTY_KNOCKS;
-    }
-    return this.knockingFrom(
-      this.matrix.instance,
-      roomId,
-      `knock\x1f${roomId}`,
-    );
+    const accountId = this.session.activeAccountId();
+    return roomId && accountId
+      ? this.knocks({ accountId, roomId })
+      : EMPTY_KNOCKS;
   }
 
-  private knockingFrom(
-    client: MatrixClient,
-    roomId: string,
-    cacheKey: string,
-  ): readonly KnockRequest[] {
-    const room = client.getRoom(roomId);
-    if (!room) {
-      return EMPTY_KNOCKS;
+  private memo<T>(
+    kind: ListKind,
+    roomId: string | null,
+    read: () => readonly T[],
+  ): Signal<readonly T[]> {
+    const key = `${kind}\u001f${roomId ?? ''}`;
+    let entry = this.signals.get(key);
+    if (!entry) {
+      entry = { list: computed(read), read };
+      this.signals.set(key, entry);
     }
-    const requests = room
-      .getMembersWithMembership(KnownMembership.Knock)
-      .map((member) => {
-        const reason = member.events?.member?.getContent()?.['reason'];
-        const roomDisplayName = member.name || member.userId;
-        return {
-          userId: member.userId,
-          roomDisplayName,
-          roomInitial: initialOf(roomDisplayName),
-          roomAvatarMxc: member.getMxcAvatarUrl() ?? null,
-          reason: typeof reason === 'string' && reason ? reason : null,
-        } satisfies KnockRequest;
-      });
-    const fingerprint = requests
-      .map(
-        (request) =>
-          `${request.userId}\x1f${request.roomDisplayName}\x1f${request.roomAvatarMxc ?? ''}\x1f${request.reason ?? ''}`,
-      )
-      .join('\x1e');
-    const cached = this.knockCache.get(cacheKey);
-    if (cached?.fingerprint === fingerprint) {
-      return cached.members;
-    }
-    requests.sort((a, b) =>
+    return entry.list as Signal<readonly T[]>;
+  }
+
+  private summaries(
+    target: RoomSettingsTarget,
+    membership: 'join' | 'invite',
+  ): readonly MemberSummary[] {
+    const creatorId =
+      this.store.room(target.accountId, target.roomId)?.creators[0]?.userId ??
+      null;
+    return this.list(target, membership, (member) => ({
+      userId: member.userId,
+      roomDisplayName: member.displayName,
+      roomInitial: initialOf(member.displayName),
+      roomAvatarMxc: member.avatarMxc,
+      powerLevel: powerValue(member.power),
+      isCreator: member.userId === creatorId,
+    }));
+  }
+
+  private bans(target: RoomSettingsTarget): readonly BannedMember[] {
+    return this.list(target, 'ban', (member) => ({
+      userId: member.userId,
+      roomDisplayName: member.displayName,
+      reason: member.reason,
+    }));
+  }
+
+  private knocks(target: RoomSettingsTarget): readonly KnockRequest[] {
+    return this.list(target, 'knock', (member) => ({
+      userId: member.userId,
+      roomDisplayName: member.displayName,
+      roomInitial: initialOf(member.displayName),
+      roomAvatarMxc: member.avatarMxc,
+      reason: member.reason,
+    }));
+  }
+
+  /** The members with `membership`, sorted by name; the same list while nothing changed. */
+  private list<T extends { readonly roomDisplayName: string }>(
+    { accountId, roomId }: RoomSettingsTarget,
+    membership: Membership,
+    project: (member: RoomMemberInfo) => T,
+  ): readonly T[] {
+    const items = (this.store.members(accountId, roomId)?.members ?? [])
+      .filter((member) => member.membership === membership)
+      .map(project);
+    items.sort((a, b) =>
       this.collator.compare(a.roomDisplayName, b.roomDisplayName),
     );
-    this.knockCache.set(cacheKey, { fingerprint, members: requests });
-    return requests;
-  }
-
-  private schedule(roomId: string | null): void {
-    if (roomId === null) {
-      this.allDirty = true;
-    } else if (
-      this.memberSignals.has(roomId) ||
-      this.invitedSignals.has(roomId) ||
-      this.bannedSignals.has(roomId) ||
-      this.knockingSignals.has(roomId)
-    ) {
-      this.dirtyRooms.add(roomId);
-    } else {
-      return;
-    }
-    this.flusher.schedule();
-  }
-
-  private reread(roomId: string | null): void {
-    if (roomId !== null) {
-      this.memberSignals.get(roomId)?.set(this.membersOf(roomId));
-      this.invitedSignals.get(roomId)?.set(this.invitedMembersOf(roomId));
-      this.bannedSignals.get(roomId)?.set(this.bannedMembersOf(roomId));
-      this.knockingSignals.get(roomId)?.set(this.knockingMembersOf(roomId));
-      return;
-    }
-    for (const [key, members] of this.memberSignals) {
-      members.set(this.membersOf(key || null));
-    }
-    for (const [key, members] of this.invitedSignals) {
-      members.set(this.invitedMembersOf(key || null));
-    }
-    for (const [key, bans] of this.bannedSignals) {
-      bans.set(this.bannedMembersOf(key || null));
-    }
-    for (const [key, requests] of this.knockingSignals) {
-      requests.set(this.knockingMembersOf(key || null));
-    }
-  }
-
-  private toSummary(
-    member: RoomMember,
-    creatorId: string | null,
-  ): MemberSummary {
-    const roomDisplayName = member.name || member.userId;
-    return {
-      userId: member.userId,
-      roomDisplayName,
-      roomInitial: initialOf(roomDisplayName),
-      roomAvatarMxc: member.getMxcAvatarUrl() ?? null,
-      powerLevel: member.powerLevel,
-      isCreator: !!creatorId && member.userId === creatorId,
-    };
+    // Sorted first, so a reordered but equal list keeps its reference. `Infinity` prints as null.
+    const fingerprint = JSON.stringify(items);
+    const key = `${membership}\u001f${accountId}\u001f${roomId}`;
+    const cached = this.lists.get(key);
+    if (cached?.fingerprint === fingerprint)
+      return cached.items as readonly T[];
+    this.lists.set(key, { fingerprint, items });
+    return items;
   }
 }
