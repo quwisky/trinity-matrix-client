@@ -4,12 +4,15 @@ import {
   EventType,
   KnownMembership,
   type MatrixClient,
+  MatrixError,
+  Method,
   type MatrixEvent,
   type Room,
   RoomEvent,
   type RoomMember,
   type RoomState,
   RoomStateEvent,
+  Visibility,
 } from 'matrix-js-sdk';
 import {
   NEVER,
@@ -35,6 +38,7 @@ import {
 } from '@trinity/util/matrix';
 import type {
   AdministeredRoom,
+  DirectoryVisibility,
   JsonObject,
   Membership,
   PowerLevel,
@@ -207,6 +211,178 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
           })),
       );
       return of(engineOk(events));
+    });
+  }
+
+  stateEvent(
+    accountId: string,
+    roomId: string,
+    type: string,
+    stateKey: string,
+  ): Observable<EngineResult<JsonObject | null>> {
+    // The SDK's typed state map cannot name an arbitrary event type.
+    const get = (client: MatrixClient) =>
+      (
+        client.getStateEvent.bind(client) as unknown as (
+          targetRoomId: string,
+          eventType: string,
+          targetStateKey: string,
+        ) => Promise<object>
+      )(roomId, type, stateKey);
+    return this.request(
+      accountId,
+      (client) =>
+        get(client).then(plain, (error: unknown) => {
+          if (error instanceof MatrixError && error.errcode === 'M_NOT_FOUND') {
+            return null;
+          }
+          throw error;
+        }),
+      (content) => content,
+    );
+  }
+
+  kick(
+    accountId: string,
+    roomId: string,
+    userId: string,
+    reason: string | null,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) =>
+      client.kick(roomId, userId, reason ?? undefined),
+    );
+  }
+
+  ban(
+    accountId: string,
+    roomId: string,
+    userId: string,
+    reason: string | null,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) =>
+      client.ban(roomId, userId, reason ?? undefined),
+    );
+  }
+
+  unban(
+    accountId: string,
+    roomId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) => client.unban(roomId, userId));
+  }
+
+  reportEvent(
+    accountId: string,
+    roomId: string,
+    eventId: string,
+    reason: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) =>
+      client.reportEvent(roomId, eventId, -100, reason),
+    );
+  }
+
+  reportRoom(
+    accountId: string,
+    roomId: string,
+    reason: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) =>
+      client.reportRoom(roomId, reason),
+    );
+  }
+
+  reportUser(
+    accountId: string,
+    userId: string,
+    reason: string,
+  ): Observable<EngineResult<null>> {
+    // MSC4260; js-sdk has no method for it.
+    return this.command(accountId, (client) =>
+      client.http.authedRequest(
+        Method.Post,
+        `/users/${encodeURIComponent(userId)}/report`,
+        undefined,
+        { reason },
+      ),
+    );
+  }
+
+  localAliases(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly string[]>> {
+    return this.request(
+      accountId,
+      (client) => client.getLocalAliases(roomId),
+      ({ aliases }) => [...(aliases ?? [])],
+    );
+  }
+
+  publishAlias(
+    accountId: string,
+    roomId: string,
+    alias: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) =>
+      client.createAlias(alias, roomId),
+    );
+  }
+
+  removeAlias(
+    accountId: string,
+    alias: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) => client.deleteAlias(alias));
+  }
+
+  directoryVisibility(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<DirectoryVisibility>> {
+    return this.request(
+      accountId,
+      (client) => client.getRoomDirectoryVisibility(roomId),
+      ({ visibility }) =>
+        visibility === Visibility.Public ? 'public' : 'private',
+    );
+  }
+
+  setDirectoryVisibility(
+    accountId: string,
+    roomId: string,
+    visibility: DirectoryVisibility,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) =>
+      client.setRoomDirectoryVisibility(
+        roomId,
+        visibility === 'public' ? Visibility.Public : Visibility.Private,
+      ),
+    );
+  }
+
+  /** {@link request} for a command whose answer carries nothing. */
+  private command(
+    accountId: string,
+    send: (client: MatrixClient) => Promise<unknown>,
+  ): Observable<EngineResult<null>> {
+    return this.request(accountId, send, () => null);
+  }
+
+  /** One server request as the account, cold; a refusal answers `request-failed`. */
+  private request<R, T>(
+    accountId: string,
+    send: (client: MatrixClient) => Promise<R>,
+    value: (response: R) => T,
+  ): Observable<EngineResult<T>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(localFailure('account-not-live')));
+      return from(send(client)).pipe(
+        map((response) => engineOk(value(response))),
+        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+      );
     });
   }
 

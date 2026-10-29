@@ -1,13 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
-import {
-  HTTPError,
-  MatrixError,
-  Method,
-  type MatrixClient,
-} from 'matrix-js-sdk';
-import { Observable, catchError, defer, from, map, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { describeMatrixRequestFailure } from '@trinity/util/matrix';
+import { Observable, catchError, defer, map, throwError } from 'rxjs';
+import type { EngineFailure, EngineResult } from '@trinity/util/matrix';
+import { ROOM_ADMINISTRATION_ENGINE } from './room-administration-engine.token';
 
 /** What can be reported to the reporter's own homeserver admins. */
 export type ReportKind = 'room' | 'user';
@@ -38,7 +32,7 @@ export class ContentReportError extends Error {
  */
 @Injectable({ providedIn: 'root' })
 export class ContentReportingService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(ROOM_ADMINISTRATION_ENGINE);
   private readonly unsupported = signal<
     ReadonlyMap<string, ReadonlySet<ReportKind>>
   >(new Map());
@@ -56,8 +50,8 @@ export class ContentReportingService {
     target: { readonly accountId: string; readonly roomId: string },
     reason: string,
   ): Observable<void> {
-    return this.send(target.accountId, 'room', (client) =>
-      client.reportRoom(target.roomId, reason),
+    return this.send(target.accountId, 'room', () =>
+      this.engine.reportRoom(target.accountId, target.roomId, reason),
     );
   }
 
@@ -67,38 +61,34 @@ export class ContentReportingService {
     userId: string,
     reason: string,
   ): Observable<void> {
-    return this.send(accountId, 'user', (client) =>
-      client.http.authedRequest(
-        Method.Post,
-        `/users/${encodeURIComponent(userId)}/report`,
-        undefined,
-        { reason },
-      ),
+    return this.send(accountId, 'user', () =>
+      this.engine.reportUser(accountId, userId, reason),
     );
   }
 
   private send(
     accountId: string,
     kind: ReportKind,
-    request: (client: MatrixClient) => Promise<unknown>,
+    request: () => Observable<EngineResult<null>>,
   ): Observable<void> {
-    return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) {
-        return throwError(
-          () => new ContentReportError(kind, { kind: 'not-signed-in' }),
-        );
-      }
-      return from(request(client)).pipe(
-        map(() => void 0),
-        catchError((error: unknown) => {
-          const failure = classify(error);
-          if (failure.kind === 'unsupported')
-            this.markUnsupported(accountId, kind);
-          return throwError(() => new ContentReportError(kind, failure));
-        }),
-      );
-    });
+    return defer(request).pipe(
+      map((result) => {
+        if (result.ok) return;
+        const failure = classify(result.failure);
+        if (failure.kind === 'unsupported') {
+          this.markUnsupported(accountId, kind);
+        }
+        throw new ContentReportError(kind, failure);
+      }),
+      // An engine fault reads as any other failed report, as an unclassified error did.
+      catchError((error: unknown) =>
+        throwError(() =>
+          error instanceof ContentReportError
+            ? error
+            : new ContentReportError(kind, { kind: 'failed' }),
+        ),
+      ),
+    );
   }
 
   private markUnsupported(accountId: string, kind: ReportKind): void {
@@ -110,21 +100,24 @@ export class ContentReportingService {
   }
 }
 
-function classify(error: unknown): ContentReportFailure {
-  const errcode = error instanceof MatrixError ? error.errcode : undefined;
-  const status = error instanceof HTTPError ? error.httpStatus : undefined;
-  if (errcode === 'M_LIMIT_EXCEEDED' || status === 429) {
+function classify({ code, diagnostic }: EngineFailure): ContentReportFailure {
+  if (code === 'account-not-live') return { kind: 'not-signed-in' };
+  const { errcode, httpStatus } = diagnostic;
+  if (errcode === 'M_LIMIT_EXCEEDED' || httpStatus === 429) {
     return {
       kind: 'rate-limited',
-      retryAfterMs:
-        describeMatrixRequestFailure(error).diagnostic.retryAfterMs ?? null,
+      retryAfterMs: diagnostic.retryAfterMs ?? null,
     };
   }
   if (errcode === 'M_NOT_FOUND') return { kind: 'not-found' };
   // Tuwunel caps the reason at 2000 bytes; the only free-form parameter is the reason.
   if (errcode === 'M_INVALID_PARAM') return { kind: 'reason-too-long' };
   // A server without the endpoint answers M_UNRECOGNIZED, or a bare 404/405 from its router.
-  if (errcode === 'M_UNRECOGNIZED' || status === 404 || status === 405) {
+  if (
+    errcode === 'M_UNRECOGNIZED' ||
+    httpStatus === 404 ||
+    httpStatus === 405
+  ) {
     return { kind: 'unsupported' };
   }
   return { kind: 'failed' };

@@ -1,21 +1,22 @@
 import { Injectable, inject } from '@angular/core';
-import { HTTPError, Visibility, type MatrixClient } from 'matrix-js-sdk';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { EngineRequestError, unwrapEngineResult } from '@trinity/util/matrix';
 import {
   Observable,
   catchError,
   defer,
-  from,
   map,
   throwError,
   type MonoTypeOperatorFunction,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
+import { ROOM_ADMINISTRATION_ENGINE } from './room-administration-engine.token';
 import {
   RoomAdministrationError,
   recoverRoomAdministrationRequest,
   roomAdministrationNotSignedIn,
 } from './room-administration-error';
+import { domainOf } from './room-power';
 import type { RoomSettingsTarget } from './room-settings.service';
 
 const LOAD = 'load-directory-visibility';
@@ -27,23 +28,27 @@ const SET = 'set-directory-visibility';
  */
 @Injectable({ providedIn: 'root' })
 export class RoomDirectoryService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(ROOM_ADMINISTRATION_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly permissions = inject(RoomActionPermissionsService);
 
-  /** The server whose directory the listing is in. */
+  /** The server whose directory the listing is in: the Account ID's domain. */
   serverName(target: RoomSettingsTarget): string | null {
-    return this.matrix.clientFor(target.accountId)?.getDomain() ?? null;
+    return this.session.status(target.accountId)
+      ? domainOf(target.accountId)
+      : null;
   }
 
   /** Whether the room is listed. Cold: fetches on subscribe. */
   listed(target: RoomSettingsTarget): Observable<boolean> {
     return defer(() => {
-      const client = this.clientOrThrow(target, LOAD);
-      return from(client.getRoomDirectoryVisibility(target.roomId)).pipe(
-        map(({ visibility }) => visibility === Visibility.Public),
-        recoverRoomAdministrationRequest(LOAD),
-      );
-    });
+      this.assertSignedIn(target, LOAD);
+      return this.engine.directoryVisibility(target.accountId, target.roomId);
+    }).pipe(
+      unwrapEngineResult(),
+      map((visibility) => visibility === 'public'),
+      recoverRoomAdministrationRequest(LOAD),
+    );
   }
 
   /**
@@ -52,35 +57,33 @@ export class RoomDirectoryService {
    */
   setListed(target: RoomSettingsTarget, listed: boolean): Observable<void> {
     return defer(() => {
-      const client = this.clientOrThrow(target, SET);
+      this.assertSignedIn(target, SET);
       this.permissions.assert(this.permissions.settingsFor(target).directory);
-      return from(
-        client.setRoomDirectoryVisibility(
+      return this.engine
+        .setDirectoryVisibility(
+          target.accountId,
           target.roomId,
-          listed ? Visibility.Public : Visibility.Private,
-        ),
-      ).pipe(
-        map(() => void 0),
-        serverDenied(),
-        recoverRoomAdministrationRequest(SET),
-      );
-    });
+          listed ? 'public' : 'private',
+        )
+        .pipe(unwrapEngineResult(), serverDenied());
+    }).pipe(
+      map(() => void 0),
+      recoverRoomAdministrationRequest(SET),
+    );
   }
 
-  private clientOrThrow(
-    target: RoomSettingsTarget,
-    operation: string,
-  ): MatrixClient {
-    const client = this.matrix.clientFor(target.accountId);
-    if (!client) throw roomAdministrationNotSignedIn(operation);
-    return client;
+  private assertSignedIn(target: RoomSettingsTarget, operation: string): void {
+    if (!this.session.status(target.accountId)) {
+      throw roomAdministrationNotSignedIn(operation);
+    }
   }
 }
 
 function serverDenied<T>(): MonoTypeOperatorFunction<T> {
   return catchError((cause: unknown) =>
     throwError(() =>
-      cause instanceof HTTPError && cause.httpStatus === 403
+      cause instanceof EngineRequestError &&
+      cause.failure.diagnostic.httpStatus === 403
         ? new RoomAdministrationError(
             {
               kind: 'rejected',
