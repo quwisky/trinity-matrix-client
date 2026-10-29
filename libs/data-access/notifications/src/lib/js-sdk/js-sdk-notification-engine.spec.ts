@@ -17,6 +17,17 @@ function fakeClient(initial?: Rules) {
   const client = {
     pushRules: initial,
     server: initial,
+    accountData: {} as Record<string, unknown>,
+    getAccountData: (type: string) =>
+      type in client.accountData
+        ? { getContent: () => client.accountData[type] }
+        : undefined,
+    /** Stores and echoes the event, as the SDK resolves only after the sync echo. */
+    setAccountData: vi.fn(async (type: string, content: unknown) => {
+      client.accountData[type] = content;
+      client.emit(ClientEvent.AccountData, { getType: () => type });
+      return {};
+    }),
     emit(event: string, ...args: unknown[]) {
       for (const fn of listeners.get(event) ?? []) fn(...args);
     },
@@ -114,6 +125,9 @@ describe('JsSdkNotificationEngine', () => {
           { pattern: 'cat', enabled: true },
           { pattern: 'dog', enabled: true },
         ],
+        roomModes: {},
+        sound: true,
+        reactionNotifications: false,
       },
     ]);
   });
@@ -122,7 +136,16 @@ describe('JsSdkNotificationEngine', () => {
     setup();
     const seen: NotificationSettings[] = [];
     engine.settings(ALICE).subscribe((settings) => seen.push(settings));
-    expect(seen).toEqual([{ loaded: false, defaultRules: [], keywords: [] }]);
+    expect(seen).toEqual([
+      {
+        loaded: false,
+        defaultRules: [],
+        keywords: [],
+        roomModes: {},
+        sound: true,
+        reactionNotifications: false,
+      },
+    ]);
 
     client.pushRules = { global: { content: [keyword('cat', 'cat')] } };
     client.emit(ClientEvent.Sync, 'PREPARED');
@@ -305,6 +328,323 @@ describe('JsSdkNotificationEngine', () => {
     expect(result.ok || result.failure).toMatchObject({
       code: 'request-failed',
       kind: 'permission',
+    });
+  });
+
+  describe('room modes', () => {
+    const ROOM = '!r:hs';
+    const roomMatch = (roomId: string) => [
+      { kind: 'event_match', key: 'room_id', pattern: roomId },
+    ];
+
+    it('classifies rooms as Rust does, counting only enabled rules', () => {
+      setup({
+        global: {
+          override: [
+            { rule_id: '.m.rule.master', enabled: false, default: true },
+            // Legacy no-notify actions mute as well as `[]` does.
+            {
+              rule_id: 'a',
+              enabled: true,
+              actions: ['dont_notify'],
+              conditions: roomMatch('!muted:hs'),
+            },
+            {
+              rule_id: '!off:hs',
+              enabled: false,
+              actions: [],
+              conditions: roomMatch('!off:hs'),
+            },
+            {
+              rule_id: '!both:hs',
+              enabled: true,
+              actions: [],
+              conditions: roomMatch('!both:hs'),
+            },
+            {
+              rule_id: 'loud',
+              enabled: true,
+              actions: ['notify'],
+              conditions: roomMatch('!loud:hs'),
+            },
+          ],
+          room: [
+            { rule_id: '!mentions:hs', enabled: true, actions: ['coalesce'] },
+            { rule_id: '!both:hs', enabled: true, actions: [] },
+            { rule_id: '!off:hs', enabled: false, actions: [] },
+            { rule_id: '!loud:hs', enabled: true, actions: ['notify'] },
+          ],
+        },
+      });
+      let latest: NotificationSettings | undefined;
+      engine.settings(ALICE).subscribe((settings) => (latest = settings));
+
+      expect(latest?.roomModes).toEqual({
+        '!muted:hs': 'mute',
+        '!both:hs': 'mute',
+        '!mentions:hs': 'mentions',
+      });
+    });
+
+    it('re-reads the server, writes the mode’s rule first, then deletes the room’s other rules', async () => {
+      setup({ global: {} });
+      client.server = {
+        global: {
+          override: [
+            {
+              rule_id: 'custom',
+              enabled: true,
+              actions: ['notify'],
+              conditions: roomMatch(ROOM),
+            },
+            {
+              rule_id: 'other',
+              enabled: true,
+              actions: [],
+              conditions: roomMatch('!x:hs'),
+            },
+          ],
+          room: [{ rule_id: ROOM, enabled: true, actions: ['notify'] }],
+          underride: [{ rule_id: ROOM, enabled: true, actions: ['notify'] }],
+        },
+      };
+      const order: string[] = [];
+      client.addPushRule.mockImplementation(async (_scope, kind, id) => {
+        order.push(`put ${kind} ${id}`);
+        return {};
+      });
+      client.deletePushRule.mockImplementation(async (_scope, kind, id) => {
+        order.push(`delete ${kind} ${id}`);
+        return {};
+      });
+
+      const result = await firstValueFrom(
+        engine.setRoomMode(ALICE, ROOM, 'mute'),
+      );
+
+      expect(result).toEqual({ ok: true, value: null });
+      expect(client.addPushRule).toHaveBeenCalledWith(
+        'global',
+        'override',
+        ROOM,
+        {
+          actions: [],
+          conditions: roomMatch(ROOM),
+        },
+      );
+      expect(order).toEqual([
+        `put override ${ROOM}`,
+        'delete override custom',
+        `delete room ${ROOM}`,
+        `delete underride ${ROOM}`,
+      ]);
+      expect(client.setPushRuleEnabled).not.toHaveBeenCalled();
+    });
+
+    it('enables a disabled rule it overwrites, and writes a notifying room rule for all', async () => {
+      const disabled = {
+        global: { room: [{ rule_id: ROOM, enabled: false, actions: [] }] },
+      };
+      setup(disabled);
+
+      await firstValueFrom(engine.setRoomMode(ALICE, ROOM, 'mentions'));
+      expect(client.setPushRuleEnabled).toHaveBeenCalledWith(
+        'global',
+        'room',
+        ROOM,
+        true,
+      );
+
+      client.server = {
+        global: { room: [{ rule_id: ROOM, enabled: true, actions: [] }] },
+      };
+      client.server = {
+        global: {
+          override: [
+            {
+              rule_id: ROOM,
+              enabled: true,
+              actions: [],
+              conditions: roomMatch(ROOM),
+            },
+          ],
+          room: [{ rule_id: ROOM, enabled: true, actions: [] }],
+        },
+      };
+      client.setPushRuleEnabled.mockClear();
+      await firstValueFrom(engine.setRoomMode(ALICE, ROOM, 'all'));
+      expect(client.addPushRule).toHaveBeenLastCalledWith(
+        'global',
+        'room',
+        ROOM,
+        {
+          actions: ['notify', { set_tweak: 'sound', value: 'default' }],
+        },
+      );
+      expect(client.deletePushRule.mock.calls).toEqual([
+        ['global', 'override', ROOM],
+      ]);
+      expect(client.setPushRuleEnabled).not.toHaveBeenCalled();
+    });
+
+    it('reads a notifying room rule as all, and writes nothing for all over it', async () => {
+      setup({
+        global: {
+          room: [{ rule_id: ROOM, enabled: true, actions: ['notify'] }],
+        },
+      });
+      let latest: NotificationSettings | undefined;
+      engine.settings(ALICE).subscribe((settings) => (latest = settings));
+      expect(latest?.roomModes).toEqual({});
+
+      await firstValueFrom(engine.setRoomMode(ALICE, ROOM, 'all'));
+
+      expect(client.addPushRule).not.toHaveBeenCalled();
+      expect(client.deletePushRule).not.toHaveBeenCalled();
+    });
+
+    it('writes the notifying room rule for all on a room without rules', async () => {
+      setup({ global: {} });
+
+      await firstValueFrom(engine.setRoomMode(ALICE, ROOM, 'all'));
+
+      expect(client.addPushRule).toHaveBeenCalledWith('global', 'room', ROOM, {
+        actions: ['notify', { set_tweak: 'sound', value: 'default' }],
+      });
+    });
+
+    it('queues an account’s room-mode writes, each re-reading after the previous one', async () => {
+      setup({ global: {} });
+      let release = (): void => undefined;
+      client.addPushRule.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve({});
+          }),
+      );
+
+      const first = firstValueFrom(engine.setRoomMode(ALICE, ROOM, 'mute'));
+      const second = firstValueFrom(engine.setRoomMode(ALICE, ROOM, 'all'));
+      await vi.waitFor(() => expect(client.addPushRule).toHaveBeenCalledOnce());
+      // Only the first write's opening re-read so far.
+      expect(client.getPushRules).toHaveBeenCalledOnce();
+
+      release();
+      await first;
+      await second;
+
+      expect(client.addPushRule).toHaveBeenCalledTimes(2);
+      // first: re-read, write, re-read; second: re-read, write, re-read
+      expect(client.getPushRules).toHaveBeenCalledTimes(4);
+    });
+
+    it('writes nothing when the room already has the mode', async () => {
+      setup({
+        global: { room: [{ rule_id: ROOM, enabled: true, actions: [] }] },
+      });
+
+      await firstValueFrom(engine.setRoomMode(ALICE, ROOM, 'mentions'));
+
+      expect(client.getPushRules).toHaveBeenCalled();
+      expect(client.addPushRule).not.toHaveBeenCalled();
+      expect(client.deletePushRule).not.toHaveBeenCalled();
+    });
+
+    it('reads the mode from a fresh read of the server, and fails when that read fails', async () => {
+      setup({ global: {} });
+      client.server = {
+        global: { room: [{ rule_id: ROOM, enabled: true, actions: [] }] },
+      };
+
+      expect(await firstValueFrom(engine.readRoomMode(ALICE, ROOM))).toEqual({
+        ok: true,
+        value: 'mentions',
+      });
+
+      client.getPushRules.mockRejectedValueOnce(new Error('offline'));
+      const failed = await firstValueFrom(engine.readRoomMode(ALICE, ROOM));
+      expect(failed.ok || failed.failure.code).toBe('request-failed');
+    });
+  });
+
+  describe('preferences', () => {
+    const SOUND = 'dev.trinityproject.trinity.notification_sound';
+    const LEGACY_SOUND = 'eu.qwky.trinity.notification_sound';
+    const REACTIONS = 'dev.trinityproject.trinity.reaction_notifications';
+    const LEGACY_REACTIONS = 'eu.qwky.trinity.reaction_notifications';
+
+    it('reads them before the push rules sync, falling back on malformed content', () => {
+      setup();
+      client.accountData[SOUND] = { enabled: 'no' };
+      client.accountData[REACTIONS] = { enabled: true };
+      let latest: NotificationSettings | undefined;
+      engine.settings(ALICE).subscribe((settings) => (latest = settings));
+
+      expect(latest).toMatchObject({
+        loaded: false,
+        sound: true,
+        reactionNotifications: true,
+      });
+    });
+
+    it('copies retired names once while subscribed, never over a current one', async () => {
+      setup({ global: {} });
+      client.accountData[LEGACY_SOUND] = { enabled: false };
+      client.accountData[REACTIONS] = { enabled: false };
+      client.accountData[LEGACY_REACTIONS] = { enabled: true };
+      let latest: NotificationSettings | undefined;
+      const sub = engine.settings(ALICE).subscribe((s) => (latest = s));
+
+      expect(latest).toMatchObject({
+        sound: false,
+        reactionNotifications: false,
+      });
+      expect(client.setAccountData.mock.calls).toEqual([
+        [SOUND, { enabled: false }],
+      ]);
+      sub.unsubscribe();
+    });
+
+    it('copies a retired name that arrives later on its account-data event', async () => {
+      setup({ global: {} });
+      engine.settings(ALICE).subscribe();
+      client.accountData[LEGACY_REACTIONS] = { enabled: true };
+      client.emit(ClientEvent.AccountData, { getType: () => LEGACY_REACTIONS });
+      await Promise.resolve();
+
+      expect(client.setAccountData).toHaveBeenCalledWith(REACTIONS, {
+        enabled: true,
+      });
+    });
+
+    it('writes again when the echo it waited on was an earlier write’s', async () => {
+      setup({ global: {} });
+      client.setAccountData.mockImplementationOnce(async (type: string) => {
+        // The retired-name copy's echo lands first and resolves the wait.
+        client.accountData[type] = { enabled: false };
+        return {};
+      });
+
+      await firstValueFrom(engine.setPreference(ALICE, 'sound', true));
+
+      expect(client.setAccountData).toHaveBeenCalledTimes(2);
+      expect(client.accountData[SOUND]).toEqual({ enabled: true });
+    });
+
+    it('re-emits on a preference change and replies to a write after the snapshot holds it', async () => {
+      setup({ global: {} });
+      const seen: NotificationSettings[] = [];
+      engine.settings(ALICE).subscribe((s) => seen.push(s));
+
+      const result = await firstValueFrom(
+        engine.setPreference(ALICE, 'reactionNotifications', true),
+      );
+
+      expect(result).toEqual({ ok: true, value: null });
+      expect(client.setAccountData).toHaveBeenCalledWith(REACTIONS, {
+        enabled: true,
+      });
+      expect(seen.at(-1)?.reactionNotifications).toBe(true);
     });
   });
 });

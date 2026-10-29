@@ -12,7 +12,17 @@ import { type EngineResult, assertPlainData } from '@trinity/util/matrix';
 import type {
   NotificationEngine,
   NotificationSettings,
+  PushRuleKind,
+  RoomNotifyMode,
 } from '../lib/notification-engine';
+
+/** A rule of the account's as the server holds it. */
+export interface ServerRoomRule {
+  readonly kind: PushRuleKind;
+  readonly ruleId: string;
+  readonly enabled: boolean;
+  readonly actions: unknown;
+}
 
 export interface NotificationContractSetup {
   readonly engine: NotificationEngine;
@@ -26,6 +36,19 @@ export interface NotificationContractSetup {
   ): Promise<void>;
   /** The actions of alice's content rule `ruleId` as the server holds them. */
   keywordActions(ruleId: string): Promise<unknown>;
+  /** Another client of alice's PUTs a room or override rule, then switches it off unless `enabled`. */
+  foreignRoomRule(
+    kind: 'room' | 'override',
+    ruleId: string,
+    rule: { readonly actions: unknown[]; readonly conditions?: unknown[] },
+    enabled: boolean,
+  ): Promise<void>;
+  /** Alice's room, override and underride rules keyed by or matching `roomId`, sorted by kind and id. */
+  roomRules(roomId: string): Promise<readonly ServerRoomRule[]>;
+  /** Another client of alice's writes account data. */
+  foreignAccountData(type: string, content: object): Promise<void>;
+  /** Alice's account data of `type` as the server holds it, or undefined. */
+  accountData(type: string): Promise<unknown>;
   dispose(): Promise<void>;
 }
 
@@ -45,6 +68,33 @@ interface Watch {
 }
 
 const NOBODY = '@nobody:invalid';
+const SOUND = 'dev.trinityproject.trinity.notification_sound';
+const LEGACY_SOUND = 'eu.qwky.trinity.notification_sound';
+const REACTIONS = 'dev.trinityproject.trinity.reaction_notifications';
+const LEGACY_REACTIONS = 'eu.qwky.trinity.reaction_notifications';
+
+/** The rule each mode writes, as Rust `set_room_notification_mode` writes it. */
+function modeRules(roomId: string, mode: RoomNotifyMode): ServerRoomRule[] {
+  switch (mode) {
+    case 'all':
+      return [
+        {
+          kind: 'room',
+          ruleId: roomId,
+          enabled: true,
+          actions: ['notify', { set_tweak: 'sound', value: 'default' }],
+        },
+      ];
+    case 'mentions':
+      return [{ kind: 'room', ruleId: roomId, enabled: true, actions: [] }];
+    case 'mute':
+      return [{ kind: 'override', ruleId: roomId, enabled: true, actions: [] }];
+  }
+}
+
+function roomMatch(roomId: string): unknown[] {
+  return [{ kind: 'event_match', key: 'room_id', pattern: roomId }];
+}
 
 /** Today's keyword actions; highlight is what colours the room in the list. */
 const KEYWORD_ACTIONS = [
@@ -55,6 +105,10 @@ const KEYWORD_ACTIONS = [
 
 function unique(): string {
   return `w${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function uniqueRoom(): string {
+  return `!${unique()}:contract.invalid`;
 }
 
 function enabledOf(
@@ -97,6 +151,26 @@ export function defineNotificationEngineContract(
       const result = await once(source);
       if (!result.ok) throw new Error(`Command failed: ${result.failure.code}`);
       expect(result.value).toBeNull();
+    }
+
+    async function value<T>(source: Observable<EngineResult<T>>): Promise<T> {
+      const result = await once(source);
+      if (!result.ok) throw new Error(`Command failed: ${result.failure.code}`);
+      return result.value;
+    }
+
+    /** Polls `read` until it returns `expected`, for a write the engine makes on its own. */
+    async function eventually(
+      read: () => Promise<unknown>,
+      expected: unknown,
+    ): Promise<void> {
+      const deadline = Date.now() + settleTimeoutMs;
+      let last = await read();
+      while (JSON.stringify(last) !== JSON.stringify(expected)) {
+        if (Date.now() > deadline) expect(last).toEqual(expected);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        last = await read();
+      }
     }
 
     /** Subscribes; every emission must be plain data, and the first must arrive synchronously. */
@@ -266,6 +340,164 @@ export function defineNotificationEngineContract(
     );
 
     it(
+      'round-trips all, mentions and mute, replying once the snapshot holds the mode',
+      async () => {
+        const settings = watch(engine.settings(alice));
+        const room = uniqueRoom();
+        expect(settings.latest().roomModes).toEqual({});
+        expect(await value(engine.readRoomMode(alice, room))).toBe('all');
+
+        // Like Rust, `all` on a room without rules still writes its notifying room rule.
+        for (const mode of [
+          'all',
+          'mentions',
+          'mute',
+          'mentions',
+          'all',
+        ] as const) {
+          await ok(engine.setRoomMode(alice, room, mode));
+
+          expect(settings.latest().roomModes[room] ?? 'all').toBe(mode);
+          expect(await value(engine.readRoomMode(alice, room))).toBe(mode);
+          expect(await context.roomRules(room)).toEqual(modeRules(room, mode));
+        }
+        expect(settings.latest().roomModes).toEqual({});
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'replaces the room’s custom rules with the rule for the mode, as Rust does',
+      async () => {
+        const settings = watch(engine.settings(alice));
+        const room = uniqueRoom();
+        const other = uniqueRoom();
+        const customId = `custom-${unique()}`;
+        await context.foreignRoomRule(
+          'override',
+          customId,
+          { actions: ['notify'], conditions: roomMatch(room) },
+          true,
+        );
+        await context.foreignRoomRule(
+          'room',
+          room,
+          { actions: ['notify', { set_tweak: 'sound', value: 'ping' }] },
+          true,
+        );
+        await context.foreignRoomRule('room', other, { actions: [] }, true);
+        // Another client's rules that still notify read as `all`.
+        expect(await value(engine.readRoomMode(alice, room))).toBe('all');
+        expect(settings.latest().roomModes).toEqual({ [other]: 'mentions' });
+
+        await ok(engine.setRoomMode(alice, room, 'mute'));
+
+        expect(await context.roomRules(room)).toEqual(modeRules(room, 'mute'));
+        expect(settings.latest().roomModes).toEqual({
+          [room]: 'mute',
+          [other]: 'mentions',
+        });
+
+        await ok(engine.setRoomMode(alice, room, 'all'));
+
+        expect(await context.roomRules(room)).toEqual(modeRules(room, 'all'));
+        expect(settings.latest().roomModes).toEqual({ [other]: 'mentions' });
+        expect(await context.roomRules(other)).toEqual(
+          modeRules(other, 'mentions'),
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'runs back-to-back room-mode writes one after another, so the last one wins alone',
+      async () => {
+        const settings = watch(engine.settings(alice));
+        const room = uniqueRoom();
+
+        const [muted, all] = await Promise.all([
+          once(engine.setRoomMode(alice, room, 'mute')),
+          once(engine.setRoomMode(alice, room, 'all')),
+        ]);
+
+        expect([muted.ok, all.ok]).toEqual([true, true]);
+        expect(await context.roomRules(room)).toEqual(modeRules(room, 'all'));
+        expect(settings.latest().roomModes).toEqual({});
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'enables a disabled rule of the chosen mode, and reads a disabled one as nothing',
+      async () => {
+        const settings = watch(engine.settings(alice));
+        const room = uniqueRoom();
+        await context.foreignRoomRule(
+          'override',
+          room,
+          { actions: [], conditions: roomMatch(room) },
+          false,
+        );
+        await context.foreignRoomRule('room', room, { actions: [] }, false);
+        expect(await value(engine.readRoomMode(alice, room))).toBe('all');
+
+        await ok(engine.setRoomMode(alice, room, 'mute'));
+
+        expect(settings.latest().roomModes).toEqual({ [room]: 'mute' });
+        expect(await context.roomRules(room)).toEqual(modeRules(room, 'mute'));
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'round-trips the preferences, defaulting to sound on and reactions off',
+      async () => {
+        const settings = watch(engine.settings(alice));
+        expect(settings.latest()).toMatchObject({
+          sound: true,
+          reactionNotifications: false,
+        });
+
+        await ok(engine.setPreference(alice, 'sound', false));
+        await ok(engine.setPreference(alice, 'reactionNotifications', true));
+
+        expect(settings.latest()).toMatchObject({
+          sound: false,
+          reactionNotifications: true,
+        });
+        expect(await context.accountData(SOUND)).toEqual({ enabled: false });
+        expect(await context.accountData(REACTIONS)).toEqual({ enabled: true });
+
+        await ok(engine.setPreference(alice, 'sound', true));
+
+        expect(settings.latest().sound).toBe(true);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reads the retired preference names while only they exist, and copies them across',
+      async () => {
+        const settings = watch(engine.settings(alice));
+        await context.foreignAccountData(LEGACY_SOUND, { enabled: false });
+        await context.foreignAccountData(LEGACY_REACTIONS, { enabled: true });
+
+        await settings.until(
+          (latest) => !latest.sound && latest.reactionNotifications,
+        );
+        await eventually(() => context.accountData(SOUND), { enabled: false });
+        await eventually(() => context.accountData(REACTIONS), {
+          enabled: true,
+        });
+
+        // The current name wins once it exists.
+        await ok(engine.setPreference(alice, 'sound', true));
+        expect(settings.latest().sound).toBe(true);
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'fails commands for an account that is not live and emits an unloaded snapshot',
       async () => {
         const failure = async (
@@ -290,10 +522,21 @@ export function defineNotificationEngineContract(
         expect(await failure(engine.removeKeyword(NOBODY, 'word'))).toBe(
           'account-not-live',
         );
+        expect(
+          await failure(engine.setRoomMode(NOBODY, uniqueRoom(), 'mute')),
+        ).toBe('account-not-live');
+        const read = await once(engine.readRoomMode(NOBODY, uniqueRoom()));
+        expect(read.ok ? 'ok' : read.failure.code).toBe('account-not-live');
+        expect(
+          await failure(engine.setPreference(NOBODY, 'sound', false)),
+        ).toBe('account-not-live');
         expect(watch(engine.settings(NOBODY)).latest()).toEqual({
           loaded: false,
           defaultRules: [],
           keywords: [],
+          roomModes: {},
+          sound: true,
+          reactionNotifications: false,
         });
       },
       testTimeoutMs,
