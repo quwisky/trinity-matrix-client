@@ -136,7 +136,10 @@ interface FakeAccount {
   readonly deviceId: string;
   /** How the account sees each user it was asked about. */
   readonly users: Map<string, BehaviorSubject<UserTrustFacts>>;
-  /** Users the account has seen an identity of; a later publish is a change. */
+  /**
+   * Users the account has seen an identity of; a later publish is a change. DM
+   * verification requests wait for the user to be here.
+   */
   readonly identities: Set<string>;
   /** The server asks for a non-password stage, as for an SSO-only account. */
   providerAuthOnly: boolean;
@@ -176,8 +179,6 @@ const terminal = (snapshot: VerificationSnapshot | null) =>
 /** An in-memory {@link TrustEngine}: one device per account, no homeserver. */
 export class FakeTrustEngine implements TrustEngine {
   private readonly accounts = new Map<string, FakeAccount>();
-  /** Users whose identity this device knows, for DM verification requests. */
-  private readonly identities = new Set<string>();
   private readonly changes = new Subject<void>();
   private readonly prompts = new Map<
     string,
@@ -286,12 +287,6 @@ export class FakeTrustEngine implements TrustEngine {
     this.changes.next();
   }
 
-  /** This device learns `userId`'s identity, as the crypto store would after a key query. */
-  addUserIdentity(userId: string): void {
-    this.identities.add(userId);
-    this.changes.next();
-  }
-
   /** Another device asks this one to verify; ignored unless subscribed and none is live. */
   receiveVerification(
     accountId: string,
@@ -341,6 +336,7 @@ export class FakeTrustEngine implements TrustEngine {
     const account = this.require(accountId);
     if (!account.identities.has(userId)) {
       account.identities.add(userId);
+      this.changes.next();
       return;
     }
     const user = this.userOf(account, userId);
@@ -355,6 +351,7 @@ export class FakeTrustEngine implements TrustEngine {
   ): void {
     const account = this.require(accountId);
     account.identities.add(userId);
+    this.changes.next();
     const user = this.userOf(account, userId);
     user.next({ ...user.value, ...trust });
   }
@@ -586,7 +583,7 @@ export class FakeTrustEngine implements TrustEngine {
     return this.changes.pipe(
       startWith(undefined),
       map(() => this.accounts.get(accountId)),
-      filter((account) => !account || this.identities.has(userId)),
+      filter((account) => !account || account.identities.has(userId)),
       take(1),
       map((account) => {
         if (!account) return engineFail(NOT_LIVE);

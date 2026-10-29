@@ -29,7 +29,7 @@ defineTrustEngineContract(
       }),
       directRoom: async () => {
         const userId = '@bob:contract.invalid';
-        engine.addUserIdentity(userId);
+        engine.publishUserIdentity(engine.alice, userId);
         return { userId, roomId: '!dm:contract.invalid' };
       },
       setUpRecoveryElsewhere: async (passphrase) =>
