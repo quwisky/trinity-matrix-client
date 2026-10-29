@@ -28,10 +28,13 @@ interface TrustFaultWindow extends Window {
             trust: {
               health: {
                 healthRuntime: {
-                  cryptoPort: {
-                    active(): {
-                      crypto: {
-                        isCrossSigningReady: () => Promise<boolean>;
+                  session: { activeAccountId(): string | null };
+                  engine: {
+                    clients: {
+                      clientFor(accountId: string): {
+                        getCrypto():
+                          | { isCrossSigningReady: () => Promise<boolean> }
+                          | undefined;
                       } | null;
                     };
                   };
@@ -144,7 +147,10 @@ test.describe('Security settings', () => {
       const health =
         target.ng.getComponent(root).runtime.adapter.session.trust.health
           .healthRuntime;
-      const crypto = health.cryptoPort.active().crypto;
+      const accountId = health.session.activeAccountId();
+      const crypto = accountId
+        ? health.engine.clients.clientFor(accountId)?.getCrypto()
+        : undefined;
       if (!crypto) throw new Error('Trust crypto unavailable');
       const read = crypto.isCrossSigningReady;
       target.restoreTrustRead = () => {

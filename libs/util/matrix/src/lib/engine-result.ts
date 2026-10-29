@@ -81,6 +81,8 @@ export type EngineFailure = {
   | { readonly code: 'already-encrypted' }
   /** The server has `m.room.encryption`, but this device could not apply it. */
   | { readonly code: 'encryption-not-applied' }
+  /** The account is live but its crypto has not started. */
+  | { readonly code: 'crypto-not-ready' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -143,6 +145,8 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This room is already encrypted.';
     case 'encryption-not-applied':
       return "Encryption is on, but this device couldn't apply it.";
+    case 'crypto-not-ready':
+      return 'Encryption is not ready for this account yet.';
   }
 }
 

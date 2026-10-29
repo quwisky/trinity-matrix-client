@@ -1,15 +1,22 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { ClientEvent } from 'matrix-js-sdk';
-import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
-import { Observable, defer, from } from 'rxjs';
 import {
-  TrustCryptoPort,
-  type TrustCryptoApi,
-  type TrustMatrixClient,
+  Observable,
+  Subject,
+  defer,
+  firstValueFrom,
+  startWith,
+  switchMap,
+  take,
+} from 'rxjs';
+import {
+  SessionStateService,
+  projectActiveAccount,
 } from '@trinity/data-access/matrix-client';
-import type { ProjectionReconcileContext } from '@trinity/runtime/projection';
+import { EngineRequestError, type EngineResult } from '@trinity/util/matrix';
+import type { TrustFacts } from './trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 import { recoverTrustOperation } from './trust-operation-error';
-import { readTrustSnapshot } from './trust-snapshot';
+import { deriveTrustSnapshot } from './trust-snapshot';
 
 /**
  * Where this device stands relative to the Account's encryption setup.
@@ -59,23 +66,11 @@ const UNAVAILABLE_TRUST_HEALTH: TrustHealth = Object.freeze({
   stale: null,
 });
 
-/**
- * The crypto and account-data events that can move an Account's trust status. The
- * active-Account projection and the per-Account summaries react to the same list.
- */
-export const TRUST_HEALTH_EVENTS = [
-  CryptoEvent.KeysChanged,
-  CryptoEvent.UserTrustStatusChanged,
-  CryptoEvent.KeyBackupStatus,
-  CryptoEvent.DevicesUpdated,
-  // Restored /sync may contain old secrets until fresh account data arrives.
-  ClientEvent.AccountData,
-] as const;
-
 /** Internal active-Account projection behind {@link TrustService}'s health facade. */
 @Injectable({ providedIn: 'root' })
 export class TrustHealthService {
-  private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly engine = inject(TRUST_ENGINE);
+  private readonly session = inject(SessionStateService);
 
   private readonly _health = signal<TrustHealth>(UNAVAILABLE_TRUST_HEALTH);
   readonly health = this._health.asReadonly();
@@ -105,11 +100,25 @@ export class TrustHealthService {
    */
   private statusGeneration = 0;
 
-  private readonly projection = this.cryptoPort.project({
+  /** Re-subscribes the facts, so a retry reads them again rather than replaying a failure. */
+  private readonly retries = new Subject<void>();
+
+  private readonly projection = projectActiveAccount<EngineResult<TrustFacts>>({
     id: 'trust.health',
-    events: TRUST_HEALTH_EVENTS,
-    rebuild: (client, context) =>
-      defer(() => from(this.reconcileProjection(client, context))),
+    subscribe: (accountId) =>
+      this.retries.pipe(
+        startWith(undefined),
+        switchMap(() => this.engine.facts(accountId)),
+      ),
+    rebuild: (result) => {
+      this.statusGeneration++;
+      if (!result.ok) {
+        this.publishFailure();
+        // Fails the reconcile, so the session's Trust lifetime sees and retries it.
+        throw new EngineRequestError(result.failure);
+      }
+      this.publishSnapshot(result.value);
+    },
     reset: () => {
       this.statusGeneration++;
       this._health.set(UNAVAILABLE_TRUST_HEALTH);
@@ -122,31 +131,15 @@ export class TrustHealthService {
 
   /** Explicit command: unlike event reconciliation, a failed read is visible to callers. */
   refresh(): Observable<void> {
-    return defer(() => {
-      const context = this.cryptoPort.isAvailable()
-        ? this.cryptoPort.active()
-        : null;
-      return from(
-        this.refreshCurrent(context?.client ?? null, context?.crypto ?? null),
-      );
-    }).pipe(recoverTrustOperation('refresh-health'));
+    return defer(() => this.refreshCurrent()).pipe(
+      recoverTrustOperation('refresh-health'),
+    );
   }
 
   /** Best-effort internal reconciliation after a completed Trust mutation. */
-  async reconcile(projectedClient?: TrustMatrixClient): Promise<void> {
-    const context = projectedClient
-      ? {
-          client: projectedClient,
-          crypto: projectedClient.getCrypto() ?? null,
-        }
-      : this.cryptoPort.isAvailable()
-        ? this.cryptoPort.active()
-        : null;
+  async reconcile(): Promise<void> {
     try {
-      await this.refreshCurrent(
-        context?.client ?? null,
-        context?.crypto ?? null,
-      );
+      await this.refreshCurrent();
     } catch {
       // The mutation remains authoritative. Its follow-up view is explicitly stale or
       // unavailable, while the session projection owns visible recovery.
@@ -155,54 +148,35 @@ export class TrustHealthService {
 
   /** Retry the retained projection rather than pretending a standalone refresh reattached it. */
   retryProjection(): void {
-    this.projection.schedule();
+    this.retries.next();
   }
 
-  private async reconcileProjection(
-    client: TrustMatrixClient,
-    context: ProjectionReconcileContext,
-  ): Promise<void> {
+  /** One fresh read of the active Account; an Account without crypto reads as unavailable. */
+  private async refreshCurrent(): Promise<void> {
     const generation = ++this.statusGeneration;
-    try {
-      const crypto = client.getCrypto() ?? null;
-      if (!crypto)
-        throw new Error('Trust crypto is unavailable for the active Account.');
-      const snapshot = await this.readSnapshot(client, crypto);
-      if (generation !== this.statusGeneration) return;
-      context.publish(() => this.publishSnapshot(snapshot));
-    } catch (cause) {
-      if (generation === this.statusGeneration) {
-        context.publish(() => this.publishFailure());
-      }
-      throw cause;
+    const accountId = this.session.activeAccountId();
+    const result = accountId
+      ? await firstValueFrom(this.engine.facts(accountId).pipe(take(1)))
+      : null;
+    const failure =
+      result && !result.ok && result.failure.code === 'request-failed'
+        ? result.failure
+        : null;
+    if (generation === this.statusGeneration) {
+      if (failure) this.publishFailure();
+      else this.publishSnapshot(result?.ok ? result.value : null);
     }
+    if (failure) throw new EngineRequestError(failure);
   }
 
-  private async refreshCurrent(
-    client: TrustMatrixClient | null,
-    crypto: TrustCryptoApi | null,
-  ): Promise<void> {
-    const generation = ++this.statusGeneration;
-    try {
-      const snapshot = await this.readSnapshot(client, crypto);
-      if (generation === this.statusGeneration) this.publishSnapshot(snapshot);
-    } catch (cause) {
-      if (generation === this.statusGeneration) this.publishFailure();
-      throw cause;
-    }
-  }
-
-  private async readSnapshot(
-    client: TrustMatrixClient | null,
-    crypto: TrustCryptoApi | null,
-  ): Promise<TrustHealthSnapshot | null> {
-    return client && crypto ? readTrustSnapshot(client, crypto) : null;
-  }
-
-  private publishSnapshot(snapshot: TrustHealthSnapshot | null): void {
+  private publishSnapshot(facts: TrustFacts | null): void {
     this._health.set(
-      snapshot
-        ? { availability: 'coherent', current: snapshot, stale: null }
+      facts
+        ? {
+            availability: 'coherent',
+            current: deriveTrustSnapshot(facts),
+            stale: null,
+          }
         : UNAVAILABLE_TRUST_HEALTH,
     );
   }

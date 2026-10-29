@@ -162,6 +162,7 @@ describe('engineFailureMessage', () => {
       'encryption-not-applied',
       "Encryption is on, but this device couldn't apply it.",
     ],
+    ['crypto-not-ready', 'Encryption is not ready for this account yet.'],
   ] as const)('%s reads "%s"', (code, text) => {
     expect(
       engineFailureMessage({

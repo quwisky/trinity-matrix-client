@@ -23,6 +23,7 @@ defineSessionEngineContract(
       engine,
       newSession: async () => session(),
       tokenAccepted: async (s) => !engine.revokedTokens.has(s.accessToken),
+      softLogout: async (s) => engine.softLogout(s.userId),
       dispose: async () => undefined,
     };
   },
