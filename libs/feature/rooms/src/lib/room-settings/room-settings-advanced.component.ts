@@ -9,7 +9,7 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { finalize } from 'rxjs';
+import { EMPTY, finalize, switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import {
@@ -65,6 +65,7 @@ export class RoomSettingsAdvancedComponent implements OnInit {
   );
   protected readonly fmt = inject(DateTimeFormatService);
   protected readonly loadingState = signal(false);
+  protected readonly loadingPlan = signal(false);
 
   readonly accountId = input.required<string>();
   readonly info = input.required<RoomAdvancedInfo>();
@@ -129,22 +130,31 @@ export class RoomSettingsAdvancedComponent implements OnInit {
   }
 
   openUpgrade(): void {
+    if (this.loadingPlan()) return;
     const accountId = this.accountId();
     const roomId = this.info().roomId;
-    const plan = this.upgrades.plan(accountId, roomId, this.capabilities());
-    if (!plan || plan.targets.length === 0) return;
-    this.dialog
-      .openAndWait$<RoomUpgradeResult, RoomUpgradeDialogComponent>(
-        RoomUpgradeDialogComponent,
-        {
-          ariaDescribedBy: ROOM_UPGRADE_WARNING_ID,
-          // Closing mid-run would hide a workflow that keeps going.
-          dismissGuard: (dialog) => !dialog?.busy(),
-          inputs: { accountId, roomId, plan },
-        },
+    this.loadingPlan.set(true);
+    this.upgrades
+      .plan(accountId, roomId, this.capabilities())
+      .pipe(
+        // Upstream of the dialog: the plan, not the dialog, is what is loading.
+        finalize(() => this.loadingPlan.set(false)),
+        switchMap((plan) =>
+          !plan || plan.targets.length === 0
+            ? EMPTY
+            : this.dialog.openAndWait$<
+                RoomUpgradeResult,
+                RoomUpgradeDialogComponent
+              >(RoomUpgradeDialogComponent, {
+                ariaDescribedBy: ROOM_UPGRADE_WARNING_ID,
+                // Closing mid-run would hide a workflow that keeps going.
+                dismissGuard: (dialog) => !dialog?.busy(),
+                inputs: { accountId, roomId, plan },
+              }),
+        ),
+        // If Room settings closed mid-run, the dialog still finishes and toasts; nothing opens.
+        takeUntilDestroyed(this.destroyRef),
       )
-      // If Room settings closed mid-run, the dialog still finishes and toasts; nothing opens.
-      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
         if (result) this.openRoom.emit(result.newRoomId);
       });

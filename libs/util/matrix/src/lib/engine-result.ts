@@ -77,6 +77,10 @@ export type EngineFailure = {
   | { readonly code: 'conversation-unavailable' }
   /** The account has not joined the room. */
   | { readonly code: 'room-unavailable' }
+  /** The room state or this device's crypto store already has the room encrypted. */
+  | { readonly code: 'already-encrypted' }
+  /** The server has `m.room.encryption`, but this device could not apply it. */
+  | { readonly code: 'encryption-not-applied' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -135,6 +139,10 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This conversation is unavailable.';
     case 'room-unavailable':
       return 'This room is unavailable.';
+    case 'already-encrypted':
+      return 'This room is already encrypted.';
+    case 'encryption-not-applied':
+      return "Encryption is on, but this device couldn't apply it.";
   }
 }
 

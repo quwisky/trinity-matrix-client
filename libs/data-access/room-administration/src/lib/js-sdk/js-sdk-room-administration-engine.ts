@@ -29,17 +29,20 @@ import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
+  applyRoomEncryption,
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
   isRoomEncrypted,
   liveRoomState,
   plainEqual,
+  roomEncryptionContent,
 } from '@trinity/util/matrix';
 import type {
   AdministeredRoom,
   DirectoryVisibility,
   JsonObject,
+  LinkingSpace,
   Membership,
   PowerLevel,
   RawStateEvent,
@@ -59,7 +62,11 @@ const MEMBERSHIPS: ReadonlySet<string> = new Set<Membership>([
 ]);
 
 function localFailure(
-  code: 'account-not-live' | 'room-unavailable',
+  code:
+    | 'account-not-live'
+    | 'room-unavailable'
+    | 'already-encrypted'
+    | 'encryption-not-applied',
 ): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
 }
@@ -142,6 +149,7 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
       client.on(RoomStateEvent.Members, onMember);
       client.on(RoomEvent.MyMembership, onMembership);
       let requested = false;
+      let settled = false;
       return {
         read: () => {
           const room = client.getRoom(roomId);
@@ -149,13 +157,16 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
           if (!requested) {
             requested = true;
             // Lazily synced members: load the rest. They arrive as RoomState.members
-            // events; the load finishing flips `complete`.
+            // events; the load ending, even in failure, flips `complete`.
             void room
               .loadMembersIfNeeded()
-              .then(schedule)
-              .catch(() => undefined);
+              .catch(() => undefined)
+              .then(() => {
+                settled = true;
+                schedule();
+              });
           }
-          return membersSnapshot(room);
+          return membersSnapshot(room, settled);
         },
         detach: () => {
           client.off(RoomStateEvent.Members, onMember);
@@ -362,6 +373,63 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
     );
   }
 
+  invite(
+    accountId: string,
+    roomId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(accountId, (client) => client.invite(roomId, userId));
+  }
+
+  upgradeRoom(
+    accountId: string,
+    roomId: string,
+    version: string,
+    additionalCreators: readonly string[] | null,
+  ): Observable<EngineResult<{ readonly replacementRoomId: string }>> {
+    return this.request(
+      accountId,
+      (client) =>
+        client.upgradeRoom(
+          roomId,
+          version,
+          additionalCreators ? [...additionalCreators] : undefined,
+        ),
+      ({ replacement_room }) => ({ replacementRoomId: replacement_room }),
+    );
+  }
+
+  enableEncryption(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(localFailure('account-not-live')));
+      const room = client.getRoom(roomId);
+      if (!room) return of(engineFail(localFailure('room-unavailable')));
+      // A second m.room.encryption replaces the algorithm and rotation settings every
+      // member's client is using, so an encrypted room is never sent one.
+      if (room.hasEncryptionStateEvent()) {
+        return of(engineFail(localFailure('already-encrypted')));
+      }
+      return from(enableEncryption(client, room));
+    });
+  }
+
+  linkingSpaces(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly LinkingSpace[]>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(localFailure('account-not-live')));
+      const room = client.getRoom(roomId);
+      if (!room) return of(engineFail(localFailure('room-unavailable')));
+      return of(engineOk(linkingSpaces(client, room)));
+    });
+  }
+
   /** {@link request} for a command whose answer carries nothing. */
   private command(
     accountId: string,
@@ -451,8 +519,95 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
   }
 }
 
-/** The room as the engine emits it; exported only for the upgrade service until RA5. */
-export function roomSnapshot(
+/**
+ * Sync can miss the event (Tuwunel's state_after race), so the crypto store and the server
+ * decide too; a store that cannot answer counts as encrypted. The server's event is adopted
+ * rather than sent twice, and whatever lands is applied here at once, since until something
+ * configures the crypto backend the SDK sends in the clear.
+ */
+async function enableEncryption(
+  client: MatrixClient,
+  room: Room,
+): Promise<EngineResult<null>> {
+  const crypto = client.getCrypto?.();
+  if (await isRoomEncrypted(room, crypto)) {
+    return engineFail(localFailure('already-encrypted'));
+  }
+  let content: JsonObject;
+  try {
+    const onServer = await client
+      .getStateEvent(room.roomId, EventType.RoomEncryption, '')
+      .catch((error: unknown) => {
+        if (error instanceof MatrixError && error.errcode === 'M_NOT_FOUND') {
+          return null;
+        }
+        throw error;
+      });
+    if (onServer) {
+      content = plain(onServer);
+    } else {
+      const fresh = roomEncryptionContent();
+      await client.sendStateEvent(
+        room.roomId,
+        EventType.RoomEncryption,
+        fresh,
+        '',
+      );
+      content = plain(fresh);
+    }
+  } catch (error) {
+    return engineFail(requestFailed(error));
+  }
+  try {
+    if (await applyRoomEncryption(crypto, room, content)) return engineOk(null);
+  } catch {
+    // Reported as not applied.
+  }
+  return engineFail(localFailure('encryption-not-applied'));
+}
+
+/** Joined spaces whose live state links `room`, and unloaded ones its parent events name. */
+function linkingSpaces(client: MatrixClient, room: Room): LinkingSpace[] {
+  const me = client.getUserId() ?? '';
+  const parents = new Set(
+    (liveRoomState(room)?.getStateEvents(EventType.SpaceParent) ?? []).map(
+      (event) => event.getStateKey(),
+    ),
+  );
+  return client.getRooms().flatMap((space): LinkingSpace[] => {
+    if (
+      space.roomId === room.roomId ||
+      space.getMyMembership() !== KnownMembership.Join
+    ) {
+      return [];
+    }
+    const named = {
+      spaceId: space.roomId,
+      name: space.name,
+      ownPower: powerOf(space.getMember(me)?.powerLevel ?? 0),
+    };
+    const state = liveRoomState(space);
+    if (!state?.getStateEvents(EventType.RoomCreate, '')) {
+      // Without its state the link is invisible; only the room's own parent event says it exists.
+      return parents.has(space.roomId)
+        ? [{ ...named, childContent: null, powerLevels: null }]
+        : [];
+    }
+    const child = state.getStateEvents(EventType.SpaceChild, room.roomId);
+    if (!space.isSpaceRoom() || !child) return [];
+    const powerLevels = state.getStateEvents(EventType.RoomPowerLevels, '');
+    return [
+      {
+        ...named,
+        childContent: plain(child.getContent()),
+        powerLevels: powerLevels ? plain(powerLevels.getContent()) : null,
+      },
+    ];
+  });
+}
+
+/** The room as the engine emits it. */
+function roomSnapshot(
   client: MatrixClient,
   accountId: string,
   room: Room,
@@ -505,10 +660,10 @@ export function roomSnapshot(
   };
 }
 
-function membersSnapshot(room: Room): RoomMembers {
+function membersSnapshot(room: Room, loadEnded: boolean): RoomMembers {
   return {
     roomId: room.roomId,
-    complete: room.membersLoaded(),
+    complete: loadEnded || room.membersLoaded(),
     members: room.getMembers().flatMap((member): RoomMemberInfo[] => {
       const membership = membershipOf(member.membership);
       return membership ? [memberInfo(member, membership)] : [];
