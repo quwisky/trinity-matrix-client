@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { createHmac } from 'node:crypto';
-import { MatrixClient } from 'matrix-js-sdk';
+import { HttpApiEvent, MatrixClient, MatrixError } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { afterAll, beforeAll, beforeEach, describe, vi } from 'vitest';
@@ -152,6 +152,18 @@ describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
         engine: TestBed.inject(JsSdkSessionEngine),
         newSession: newPasswordSession,
         tokenAccepted: (session) => whoamiAccepts(session.accessToken),
+        // What the SDK emits when the server answers 401 M_UNKNOWN_TOKEN with soft_logout.
+        softLogout: async (session) => {
+          TestBed.inject(MatrixClientService)
+            .clientFor(session.userId)
+            ?.emit(
+              HttpApiEvent.SessionLoggedOut,
+              new MatrixError(
+                { errcode: 'M_UNKNOWN_TOKEN', soft_logout: true },
+                401,
+              ),
+            );
+        },
         dispose: async () => {
           TestBed.resetTestingModule();
         },

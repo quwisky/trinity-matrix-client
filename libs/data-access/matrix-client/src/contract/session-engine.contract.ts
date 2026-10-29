@@ -20,6 +20,8 @@ export interface SessionContractSetup {
   newSession(): Promise<MatrixSession>;
   /** Whether the server still accepts the session's token (whoami). */
   tokenAccepted(session: MatrixSession): Promise<boolean>;
+  /** The server ends a live session with a soft logout (`M_UNKNOWN_TOKEN`, `soft_logout: true`). */
+  softLogout(session: MatrixSession): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -314,6 +316,28 @@ export function defineSessionEngineContract(
         const after = await snapshot();
         expect(after.softLoggedOut).toEqual([s.userId]);
         expect(after.accounts.map((x) => x.accountId)).toEqual([s.userId]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'drops the client of an account the server soft-logs out',
+      async () => {
+        const a = await context.newSession();
+        const b = await context.newSession();
+        await restore(a);
+        await restore(b, 'background');
+
+        await context.softLogout(a);
+
+        const after = await firstValueFrom(
+          engine.session().pipe(
+            filter((x) => x.softLoggedOut.includes(a.userId)),
+            timeout(syncTimeoutMs),
+          ),
+        );
+        expect(after.accounts.map((x) => x.accountId)).toEqual([b.userId]);
+        expect(after.activeAccountId).toBe(b.userId);
       },
       testTimeoutMs,
     );

@@ -69,6 +69,15 @@ export class FakeSessionEngine implements SessionEngine {
     }));
   }
 
+  /** The server soft-logs the account out: its client stops and leaves the snapshot. */
+  softLogout(accountId: string): void {
+    this.drop(accountId);
+    this.update((s) => ({
+      ...s,
+      softLoggedOut: [...new Set([...s.softLoggedOut, accountId])],
+    }));
+  }
+
   setToken(accountId: string, token: SessionAccessToken | null): void {
     const next = new Map(this.tokens$.value);
     if (token) next.set(accountId, token);
