@@ -32,6 +32,7 @@ const LIBS = [
   'data-access-room-administration',
   'data-access-trust',
   'data-access-contact-addresses',
+  'data-access-auth',
 ] as const;
 
 export async function runEngineContract(
@@ -72,13 +73,14 @@ export async function runEngineContract(
       TRINITY_ENGINE_CONTRACT_SERVER_NAME: SERVER_NAME,
       TRINITY_ENGINE_CONTRACT_DOMAIN: new URL(homeserver.hs).host,
       TRINITY_ENGINE_CONTRACT_SHARED_SECRET: REGISTRATION_SHARED_SECRET,
+      // The mail cases (password reset, adding an address) read Synapse's mail from Mailpit.
+      ...(homeserver.unavailable?.includes('mail')
+        ? {}
+        : { TRINITY_ENGINE_CONTRACT_MAILPIT: MAILPIT_HTTP }),
       // The identity cases need Sydent, which mails its links through Mailpit.
       ...(homeserver.unavailable?.some((f) => f === 'mail' || f === 'identity')
         ? {}
-        : {
-            TRINITY_ENGINE_CONTRACT_IDENTITY: IDENTITY_SERVER_URL,
-            TRINITY_ENGINE_CONTRACT_MAILPIT: MAILPIT_HTTP,
-          }),
+        : { TRINITY_ENGINE_CONTRACT_IDENTITY: IDENTITY_SERVER_URL }),
     };
     let status = 0;
     let passed = 0;

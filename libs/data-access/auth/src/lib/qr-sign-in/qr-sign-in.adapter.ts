@@ -25,7 +25,7 @@ import {
   type Subscriber,
 } from 'rxjs';
 import { verifyAccountServer } from '../account-establishment';
-import { lacksAuthMetadata } from '../account-server-api';
+import { lacksAuthMetadata } from '../js-sdk/js-sdk-auth-engine';
 import { AUTHENTICATION_HOMESERVER_DISCOVERY } from '../homeserver-discovery.port';
 import {
   QR_LINK_IDENTITY_CHECK,

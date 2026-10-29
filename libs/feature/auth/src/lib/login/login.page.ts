@@ -61,8 +61,7 @@ import {
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
 import {
-  HTTPError,
-  MatrixError,
+  EngineRequestError,
   describeMatrixRequestFailure,
   type OidcSessionBinding,
 } from '@trinity/util/matrix';
@@ -83,9 +82,9 @@ const DISCOVERY_FALLBACK =
 const SIGN_IN_FALLBACK = "We couldn't sign you in. Try again.";
 
 /**
- * Plain-language text for a failed discovery or sign-in request. A 401/403 from the
- * login endpoint means refused credentials, not "no permission", so it is mapped here.
- * Anything unrecognised gets the fallback: raw SDK messages carry status lines and URLs.
+ * Plain-language text for a failed discovery or sign-in request. A refused sign-in is
+ * worded as refused credentials or a deleted account, not as "no permission". Anything
+ * unrecognised gets the fallback: raw SDK messages carry status lines and URLs.
  */
 function describeSignInError(error: unknown, fallback: string): string {
   if (
@@ -97,16 +96,11 @@ function describeSignInError(error: unknown, fallback: string): string {
   ) {
     return error.message;
   }
-  if (error instanceof MatrixError && error.errcode === 'M_USER_DEACTIVATED') {
-    return 'This account has been deleted.';
-  }
   if (
-    error instanceof HTTPError &&
-    (error.httpStatus === 401 ||
-      error.httpStatus === 403 ||
-      (error instanceof MatrixError && error.errcode === 'M_FORBIDDEN'))
+    error instanceof EngineRequestError &&
+    error.failure.code === 'login-refused'
   ) {
-    return 'Incorrect username or password.';
+    return error.message;
   }
   return describeMatrixRequestFailure(error, fallback).message;
 }

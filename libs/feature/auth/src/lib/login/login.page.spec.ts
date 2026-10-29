@@ -50,7 +50,21 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isNativeAndroid: () => platform.android,
 }));
-import { ConnectionError, MatrixError } from '@trinity/util/matrix';
+import {
+  ConnectionError,
+  EngineRequestError,
+  type LoginRefusal,
+} from '@trinity/util/matrix';
+
+/** A sign-in the homeserver refused, as the auth engine reports it. */
+function loginRefused(reason: LoginRefusal): EngineRequestError {
+  return new EngineRequestError({
+    kind: 'permission',
+    code: 'login-refused',
+    diagnostic: { kind: 'permission', httpStatus: 403 },
+    params: { reason },
+  });
+}
 
 const READY_OUTCOME = {
   kind: 'ready',
@@ -750,13 +764,7 @@ describe('LoginPage', () => {
   it('says a deleted account has been deleted rather than calling the password wrong', async () => {
     const { cmp, fixture } = await renderLogin({
       loginWithPassword: vi.fn(() =>
-        throwError(
-          () =>
-            new MatrixError(
-              { errcode: 'M_USER_DEACTIVATED', error: 'deactivated' },
-              403,
-            ),
-        ),
+        throwError(() => loginRefused('deactivated')),
       ),
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
@@ -941,14 +949,7 @@ describe('LoginPage', () => {
   it('reads a wrong password in plain language, linked to the password field', async () => {
     const { cmp, router, fixture } = await renderLogin({
       loginWithPassword: vi.fn(() =>
-        throwError(
-          () =>
-            new MatrixError(
-              { errcode: 'M_FORBIDDEN', error: 'Invalid username or password' },
-              403,
-              'https://hs.example/_matrix/client/v3/login',
-            ),
-        ),
+        throwError(() => loginRefused('invalid-credentials')),
       ),
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
@@ -971,7 +972,14 @@ describe('LoginPage', () => {
   it('says the homeserver is unreachable when password sign-in hits a network error', async () => {
     const { cmp } = await renderLogin({
       loginWithPassword: vi.fn(() =>
-        throwError(() => new ConnectionError('fetch failed')),
+        throwError(
+          () =>
+            new EngineRequestError({
+              kind: 'network',
+              code: 'request-failed',
+              diagnostic: { kind: 'network' },
+            }),
+        ),
       ),
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
@@ -985,7 +993,12 @@ describe('LoginPage', () => {
     const { cmp } = await renderLogin({
       loginWithPassword: vi.fn(() =>
         throwError(
-          () => new Error('MatrixError: [500] boom (https://hs/login)'),
+          () =>
+            new EngineRequestError({
+              kind: 'unexpected',
+              code: 'request-failed',
+              diagnostic: { kind: 'unexpected', errorName: 'Error' },
+            }),
         ),
       ),
     } as unknown as Partial<AuthService>);

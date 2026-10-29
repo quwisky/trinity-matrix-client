@@ -44,8 +44,13 @@ import {
   OidcClientService,
   type OidcGrantContext,
 } from './oidc-client.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SESSION_ENGINE,
+  type SessionEngine,
+} from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
+import { EngineRequestError } from '@trinity/util/matrix';
 const createClientMock = vi.mocked(createClient);
 
 /** A user-interactive-auth 401 offering the password stage for `session`. */
@@ -75,6 +80,13 @@ describe('AuthService', () => {
         MockProvider(MatrixClientService),
         MockProvider(SessionStorageService),
         MockProvider(OidcClientService),
+        {
+          provide: SESSION_ENGINE,
+          useValue: {
+            accessToken: vi.fn(() => of(null)),
+            roomKeysBackedUp: vi.fn(() => of(null)),
+          } satisfies Pick<SessionEngine, 'accessToken' | 'roomKeysBackedUp'>,
+        },
         {
           provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
           useValue: {
@@ -128,13 +140,13 @@ describe('AuthService', () => {
     );
   });
 
-  it('builds the SSO login URL via the SDK', () => {
+  it('builds the SSO login URL via the SDK', async () => {
     const getSsoLoginUrl = vi.fn(() => 'https://hs/_matrix/sso?redirect=cb');
     createClientMock.mockReturnValue({ getSsoLoginUrl } as never);
 
-    expect(auth.getSsoUrl('https://hs', 'cb')).toBe(
-      'https://hs/_matrix/sso?redirect=cb',
-    );
+    await expect(
+      firstValueFrom(auth.getSsoUrl('https://hs', 'cb')),
+    ).resolves.toBe('https://hs/_matrix/sso?redirect=cb');
     expect(getSsoLoginUrl).toHaveBeenCalledWith('cb', 'sso');
   });
 
@@ -245,11 +257,22 @@ describe('AuthService', () => {
   });
 
   describe('accountManagementFor', () => {
+    /** The account is live on `homeserverUrl`. */
+    function liveOn(homeserverUrl: string) {
+      const sessions = TestBed.inject(SESSION_ENGINE);
+      vi.mocked(sessions.accessToken).mockReturnValue(
+        of({
+          homeserverUrl,
+          accessToken: 'tok',
+          expiresAt: null,
+          refreshable: false,
+        }),
+      );
+      return sessions;
+    }
+
     it("asks the named account's own server", async () => {
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        baseUrl: 'https://alice.hs',
-      } as never);
+      const sessions = liveOn('https://alice.hs');
       createClientMock.mockReturnValue({
         getAuthMetadata: vi.fn().mockResolvedValue({
           account_management_uri: 'https://auth.alice.hs/account/',
@@ -266,7 +289,7 @@ describe('AuthService', () => {
           actionsSupported: [],
         },
       });
-      expect(matrix.clientFor).toHaveBeenCalledWith('@alice:alice.hs');
+      expect(sessions.accessToken).toHaveBeenCalledWith('@alice:alice.hs');
       expect(createClientMock).toHaveBeenCalledWith({
         baseUrl: 'https://alice.hs',
       });
@@ -294,10 +317,7 @@ describe('AuthService', () => {
     });
 
     it('reports an OAuth server that publishes no account page', async () => {
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        baseUrl: 'https://hs',
-      } as never);
+      liveOn('https://hs');
       createClientMock.mockReturnValue({
         getAuthMetadata: vi.fn().mockResolvedValue({ issuer: 'https://op/' }),
       } as never);
@@ -312,10 +332,7 @@ describe('AuthService', () => {
       ['a 403 from a proxy', new HTTPError('Forbidden', 403)],
       ['a 501', new MatrixError({}, 501)],
     ])('reads %s as a server without OAuth', async (_label, error) => {
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        baseUrl: 'https://hs',
-      } as never);
+      liveOn('https://hs');
       createClientMock.mockReturnValue({
         getAuthMetadata: vi.fn().mockRejectedValue(error),
       } as never);
@@ -332,10 +349,7 @@ describe('AuthService', () => {
       ['a server error', new MatrixError({ errcode: 'M_UNKNOWN' }, 502)],
       ['metadata that is not valid', new Error('OP does not support')],
     ])('does not guess when it gets %s', async (_label, error) => {
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        baseUrl: 'https://hs',
-      } as never);
+      liveOn('https://hs');
       createClientMock.mockReturnValue({
         getAuthMetadata: vi.fn().mockRejectedValue(error),
       } as never);
@@ -1265,32 +1279,25 @@ describe('AuthService', () => {
   });
 
   describe('changePassword', () => {
-    // isInitialized/instance are getters ng-mocks leaves undefined; define them per
-    // test so changePassword sees a live client (or, for the guard test, no session).
-    function useClient(client: {
-      setPassword: unknown;
-      getUserId: unknown;
-    }): void {
-      const matrix = TestBed.inject(MatrixClientService);
-      Object.defineProperty(matrix, 'isInitialized', {
-        get: () => true,
-        configurable: true,
-      });
-      Object.defineProperty(matrix, 'instance', {
-        get: () => client,
-        configurable: true,
-      });
+    /** `@me:hs` is live on `client`; any other account has no client. */
+    function useClient(client: { setPassword: unknown }): void {
+      vi.mocked(
+        TestBed.inject(MatrixClientService).clientFor,
+      ).mockImplementation((id) =>
+        id === '@me:hs' ? (client as never) : null,
+      );
     }
 
     it('sets the new password when the server needs no interactive auth', async () => {
       const client = {
         setPassword: vi.fn().mockResolvedValue(undefined),
-        getUserId: vi.fn(() => '@me:hs'),
       };
       useClient(client);
 
       await expect(
-        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+        firstValueFrom(
+          auth.changePassword('@me:hs', 'old-pw', 'new-secret-pw'),
+        ),
       ).resolves.toBeUndefined();
 
       // First attempt carries no auth at all — an empty `auth: {}` is a malformed UIA
@@ -1309,12 +1316,13 @@ describe('AuthService', () => {
           .fn()
           .mockRejectedValueOnce(uia('sess-1'))
           .mockResolvedValueOnce(undefined),
-        getUserId: vi.fn(() => '@me:hs'),
       };
       useClient(client);
 
       await expect(
-        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+        firstValueFrom(
+          auth.changePassword('@me:hs', 'old-pw', 'new-secret-pw'),
+        ),
       ).resolves.toBeUndefined();
 
       expect(client.setPassword).toHaveBeenCalledTimes(2);
@@ -1334,18 +1342,38 @@ describe('AuthService', () => {
           .fn()
           .mockRejectedValueOnce(uia('sess-1'))
           .mockRejectedValueOnce(uia('sess-2')),
-        getUserId: vi.fn(() => '@me:hs'),
       };
       useClient(client);
 
       await expect(
-        firstValueFrom(auth.changePassword('wrong-pw', 'new-secret-pw')),
+        firstValueFrom(
+          auth.changePassword('@me:hs', 'wrong-pw', 'new-secret-pw'),
+        ),
       ).rejects.toThrow('Your current password is incorrect.');
+    });
+
+    it("words a new password the server finds too weak with the server's reason", async () => {
+      useClient({
+        setPassword: vi
+          .fn()
+          .mockRejectedValue(
+            new MatrixError(
+              { errcode: 'M_WEAK_PASSWORD', error: 'Password is too short' },
+              400,
+            ),
+          ),
+      });
+
+      await expect(
+        firstValueFrom(auth.changePassword('@me:hs', 'old-pw', 'short')),
+      ).rejects.toThrow(/^Password is too short$/);
     });
 
     it('errors without touching the client when not signed in', async () => {
       await expect(
-        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+        firstValueFrom(
+          auth.changePassword('@me:hs', 'old-pw', 'new-secret-pw'),
+        ),
       ).rejects.toThrow('Not signed in.');
     });
   });
@@ -1676,20 +1704,20 @@ describe('AuthService', () => {
           cryptoPrefix: `trinity-crypto:@me:hs:${storedDevice}`,
         }),
       );
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.roomKeysBackedUp).mockReturnValue(of(backedUp));
+      const sessions = TestBed.inject(SESSION_ENGINE);
+      vi.mocked(sessions.roomKeysBackedUp).mockReturnValue(of(backedUp));
       const confirm = vi
         .spyOn(TestBed.inject(NEW_DEVICE_SIGN_IN), 'confirm')
         .mockReturnValue(of(choice));
       return {
         confirm,
-        matrix,
+        sessions,
         accounts: TestBed.inject(AccountRuntimeService),
       };
     }
 
     it('asks before the stored device is replaced, and Cancel keeps it', async () => {
-      const { confirm, matrix, accounts } = arrange({
+      const { confirm, sessions, accounts } = arrange({
         backedUp: false,
         choice: false,
       });
@@ -1698,7 +1726,7 @@ describe('AuthService', () => {
         firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
       ).rejects.toBeInstanceOf(NewDeviceSignInCancelledError);
 
-      expect(matrix.roomKeysBackedUp).toHaveBeenCalledWith('@me:hs');
+      expect(sessions.roomKeysBackedUp).toHaveBeenCalledWith('@me:hs');
       expect(confirm).toHaveBeenCalledWith({
         userId: '@me:hs',
         roomKeysBackedUp: false,
@@ -1729,7 +1757,7 @@ describe('AuthService', () => {
     });
 
     it('does not ask about a stored account saved through another server', async () => {
-      const { confirm, matrix, accounts } = arrange({
+      const { confirm, sessions, accounts } = arrange({
         backedUp: false,
         choice: false,
       });
@@ -1740,7 +1768,7 @@ describe('AuthService', () => {
 
       // Saving refuses this sign-in and keeps the stored device, so there is nothing to
       // warn about: the refusal names the server the account is saved through.
-      expect(matrix.roomKeysBackedUp).not.toHaveBeenCalled();
+      expect(sessions.roomKeysBackedUp).not.toHaveBeenCalled();
       expect(confirm).not.toHaveBeenCalled();
       expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledOnce();
     });
@@ -1870,7 +1898,7 @@ describe('AuthService', () => {
       createClientMock.mockReturnValue({ loginRequest } as never);
       await expect(
         firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
-      ).rejects.toThrow('stop');
+      ).rejects.toBeInstanceOf(EngineRequestError);
       expect(names(loginRequest)).toEqual(['Trinity']);
     });
 
@@ -1883,10 +1911,10 @@ describe('AuthService', () => {
       createClientMock.mockReturnValue({ loginRequest } as never);
       await expect(
         firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
-      ).rejects.toThrow('stop');
+      ).rejects.toBeInstanceOf(EngineRequestError);
       await expect(
         firstValueFrom(auth.completeSsoLogin('https://hs', 'login-token')),
-      ).rejects.toThrow('stop');
+      ).rejects.toBeInstanceOf(EngineRequestError);
       expect(names(loginRequest)).toEqual(['Trinity Next', 'Trinity Next']);
     });
   });
