@@ -1,138 +1,78 @@
-import { ApplicationRef, signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { MatrixClient } from 'matrix-js-sdk';
-import { MockProvider, ngMocks } from 'ng-mocks';
-import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MockProvider } from 'ng-mocks';
 import {
-  CryptoEvent,
-  VerificationPhase,
-  VerificationRequestEvent,
-  VerifierEvent,
-} from 'matrix-js-sdk/lib/crypto-api';
-import { TrustVerificationService } from './trust-verification.service';
+  Observable,
+  Subject,
+  firstValueFrom,
+  of,
+  throwError,
+  type Subscription,
+} from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  SESSION_SNAPSHOT,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import { type EngineResult, engineFail } from '@trinity/util/matrix';
+import { FakeTrustEngine } from '../contract/fake-trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 import { TrustDevicesService, type DeviceInfo } from './trust-devices.service';
 import { TrustHealthService } from './trust-health.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { fakeEmitter } from '@trinity/testing';
+import { TrustVerificationService } from './trust-verification.service';
 
-function fakeSas(
-  emoji: [string, string][] = [
-    ['🐶', 'Dog'],
-    ['🐱', 'Cat'],
-    ['🦁', 'Lion'],
-    ['🐎', 'Horse'],
-    ['🦄', 'Unicorn'],
-    ['🐷', 'Pig'],
-    ['🐘', 'Elephant'],
-  ],
+const BOB = '@bob:contract.invalid';
+
+function sessionWith(
+  active: string | null,
+  accounts: readonly string[],
+  generation = 1,
 ) {
   return {
-    sas: { emoji },
-    confirm: vi.fn().mockResolvedValue(undefined),
-    mismatch: vi.fn(),
-    cancel: vi.fn(),
-  };
+    activeAccountId: active,
+    accounts: accounts.map((accountId) => ({
+      accountId,
+      deviceId: 'DEVICE',
+      generation,
+      syncState: 'syncing' as const,
+      serverSynced: true,
+      roomsPrepared: true,
+      waitingCount: 0,
+      cryptoStoreEncrypted: true,
+    })),
+    softLoggedOut: [],
+  } satisfies SessionSnapshot;
 }
 
-function fakeVerifier() {
-  const e = fakeEmitter();
-  let currentSas: ReturnType<typeof fakeSas> | null = null;
-  let currentQr: {
-    confirm: ReturnType<typeof vi.fn>;
-    cancel: ReturnType<typeof vi.fn>;
-  } | null = null;
-  return {
-    ...e,
-    verify: vi.fn().mockResolvedValue(undefined),
-    cancel: vi.fn(),
-    getShowSasCallbacks: () => currentSas,
-    getReciprocateQrCodeCallbacks: () => currentQr,
-    showSas(sas: ReturnType<typeof fakeSas>) {
-      currentSas = sas;
-      e.emit(VerifierEvent.ShowSas, sas);
-    },
-    showReciprocateQr(qr: NonNullable<typeof currentQr>) {
-      currentQr = qr;
-      e.emit(VerifierEvent.ShowReciprocateQr, qr);
-    },
-    fireCancel() {
-      e.emit(VerifierEvent.Cancel, new Error('x'));
-    },
-  };
-}
+const failure = (code: 'verification-gone' | 'request-failed') =>
+  engineFail({
+    kind: 'unexpected',
+    code,
+    diagnostic: { kind: 'unexpected' },
+  });
 
-function fakeRequest(
-  opts: {
-    phase?: VerificationPhase;
-    initiatedByMe?: boolean;
-    otherDeviceId?: string;
-    cancellationCode?: string | null;
-    otherUserId?: string;
-    isSelfVerification?: boolean;
-    supportedMethods?: string[];
-  } = {},
-) {
-  const e = fakeEmitter();
-  let verifier: ReturnType<typeof fakeVerifier> | null = null;
-  const req = {
-    ...e,
-    phase: opts.phase ?? VerificationPhase.Requested,
-    initiatedByMe: opts.initiatedByMe ?? false,
-    isSelfVerification: opts.isSelfVerification ?? true,
-    otherUserId: opts.otherUserId ?? '@me:hs',
-    otherDeviceId: opts.otherDeviceId ?? 'OTHER',
-    cancellationCode: opts.cancellationCode ?? null,
-    accept: vi.fn().mockResolvedValue(undefined),
-    cancel: vi.fn().mockResolvedValue(undefined),
-    startVerification: vi.fn(),
-    generateQRCode: vi.fn(),
-    scanQRCode: vi.fn(),
-    otherPartySupportsMethod: vi.fn((method: string) =>
-      (opts.supportedMethods ?? []).includes(method),
-    ),
-    get verifier() {
-      return verifier;
-    },
-    attachVerifier(v: ReturnType<typeof fakeVerifier>) {
-      verifier = v;
-    },
-    setPhase(p: VerificationPhase) {
-      req.phase = p;
-      e.emit(VerificationRequestEvent.Change);
-    },
-  };
-  return req;
-}
+let lifetimes: Subscription[] = [];
 
-const activeUserId = signal<string | null>(null);
+afterEach(() => {
+  for (const lifetime of lifetimes) lifetime.unsubscribe();
+  lifetimes = [];
+  vi.useRealTimers();
+  TestBed.resetTestingModule();
+});
 
 function setup(
   opts: {
-    inProgress?: ReturnType<typeof fakeRequest>;
     /** Whether THIS device is verified; `null` is the unknown/unavailable health state. */
     thisDeviceVerified?: boolean | null;
     /** What the device list answers with. */
     devices?: Observable<DeviceInfo[]>;
   } = {},
 ) {
-  const crypto = {
-    userHasCrossSigningKeys: vi.fn().mockResolvedValue(true),
-    requestOwnUserVerification: vi.fn(),
-    requestVerificationDM: vi.fn(),
-    getVerificationRequestsToDeviceInProgress: vi.fn(() =>
-      opts.inProgress ? [opts.inProgress] : [],
-    ),
-  };
-  const client = {
-    ...fakeEmitter(),
-    getCrypto: () => crypto,
-    getUserId: () => '@me:hs',
-  };
-
-  // The MatrixClient itself is a matrix-js-sdk object we must never build for real,
-  // so we keep the hand-rolled emitter fake above and expose it through a ng-mocks
-  // mock of MatrixClientService (its `isInitialized`/`instance` getters overridden).
+  const engine = new FakeTrustEngine();
+  const alice = engine.alice;
+  engine.publishIdentity(alice);
+  engine.addAccount(BOB);
+  const session = signal(sessionWith(alice, [alice, BOB]));
   const thisDeviceVerified = signal<boolean | null>(
     opts.thisDeviceVerified ?? null,
   );
@@ -140,143 +80,139 @@ function setup(
   TestBed.configureTestingModule({
     providers: [
       TrustVerificationService,
+      { provide: TRUST_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
       MockProvider(TrustHealthService, { thisDeviceVerified }),
       MockProvider(TrustDevicesService, { list }),
-      MockProvider(MatrixClientService, {
-        isInitialized: true,
-        instance: client as unknown as MatrixClient,
-        // Writable so a test can drive an account switch; the projection re-wires off it.
-        activeUserId: activeUserId.asReadonly(),
-      }),
     ],
   });
-  const matrix = TestBed.inject(MatrixClientService);
-  return {
-    svc: TestBed.inject(TrustVerificationService),
-    crypto,
-    client,
-    matrix,
-    thisDeviceVerified,
-    list,
-  };
+  const svc = TestBed.inject(TrustVerificationService);
+  return { svc, engine, alice, session, thisDeviceVerified, list };
 }
 
+/** Lets a queued reconcile publish the engine's latest snapshot. */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  TestBed.tick();
+}
+
+async function run(svc: TrustVerificationService): Promise<Subscription> {
+  const lifetime = svc.runProjection().subscribe();
+  lifetimes.push(lifetime);
+  await settle();
+  return lifetime;
+}
+
+/** Alice's own request, taken to `phase` by the other device. */
+async function outgoing(
+  { svc, engine, alice }: ReturnType<typeof setup>,
+  change: Parameters<FakeTrustEngine['updateVerification']>[1] = {},
+) {
+  await firstValueFrom(svc.startSelfVerification());
+  engine.updateVerification(alice, change);
+  await settle();
+}
+
+async function incoming(
+  { engine, alice }: ReturnType<typeof setup>,
+  request: Parameters<FakeTrustEngine['receiveVerification']>[1] = {},
+) {
+  engine.receiveVerification(alice, request);
+  await settle();
+}
+
+const READY_WITH_QR = {
+  phase: 'ready',
+  theirMethods: ['m.qr_code.scan.v1', 'm.qr_code.show.v1'],
+} as const;
+
 describe('TrustVerificationService', () => {
-  beforeEach(() => TestBed.resetTestingModule());
+  it('takes up a request that predates the projection', async () => {
+    const context = setup();
+    await firstValueFrom(context.svc.startSelfVerification());
+    context.engine.updateVerification(context.alice, { phase: 'ready' });
 
-  it('adopts an in-progress request on connect', () => {
-    const req = fakeRequest({
-      phase: VerificationPhase.Ready,
-      initiatedByMe: true,
+    await run(context.svc);
+
+    expect(context.svc.active()).toMatchObject({
+      stage: 'ready',
+      incoming: false,
     });
-    const { svc } = setup({ inProgress: req });
-
-    svc.runProjection().subscribe();
-
-    expect(svc.active()?.stage).toBe('ready');
-    expect(svc.active()?.incoming).toBe(false);
   });
 
-  it('surfaces an incoming verification request', () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
+  it('surfaces an incoming verification request', async () => {
+    const context = setup();
+    await run(context.svc);
 
-    client.emit(
-      CryptoEvent.VerificationRequestReceived,
-      fakeRequest({ otherDeviceId: 'PHONE' }),
-    );
+    await incoming(context, { otherDeviceId: 'PHONE' });
 
-    expect(svc.active()).toMatchObject({
+    expect(context.svc.active()).toMatchObject({
       stage: 'requested',
       incoming: true,
       otherDeviceId: 'PHONE',
     });
   });
 
-  it('ignores a new incoming request while one is active', () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
+  it('ignores a new incoming request while one is active', async () => {
+    const context = setup();
+    await run(context.svc);
 
-    client.emit(
-      CryptoEvent.VerificationRequestReceived,
-      fakeRequest({ otherDeviceId: 'A' }),
-    );
-    client.emit(
-      CryptoEvent.VerificationRequestReceived,
-      fakeRequest({ otherDeviceId: 'B' }),
-    );
+    await incoming(context, { otherDeviceId: 'A' });
+    await incoming(context, { otherDeviceId: 'B' });
 
-    expect(svc.active()?.otherDeviceId).toBe('A'); // first one kept
+    expect(context.svc.active()?.otherDeviceId).toBe('A');
   });
 
   it('starts a cross-user verification over a DM and adopts it', async () => {
-    const { svc, crypto } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({
-      phase: VerificationPhase.Requested,
-      initiatedByMe: true,
-      otherUserId: '@bob:hs',
-      isSelfVerification: false,
-    });
-    crypto.requestVerificationDM.mockResolvedValue(req);
+    const context = setup();
+    await run(context.svc);
+    context.engine.addUserIdentity('@carol:hs');
 
-    await firstValueFrom(svc.startUserVerification('@bob:hs', of('!dm:hs')));
-
-    expect(crypto.requestVerificationDM).toHaveBeenCalledWith(
-      '@bob:hs',
-      '!dm:hs',
+    await firstValueFrom(
+      context.svc.startUserVerification('@carol:hs', of('!dm:hs')),
     );
-    expect(svc.active()?.otherUserId).toBe('@bob:hs');
-    expect(svc.active()?.isSelfVerification).toBe(false);
+    await settle();
+
+    expect(context.engine.sentDirectRequests).toEqual(['@carol:hs !dm:hs']);
+    expect(context.svc.active()).toMatchObject({
+      stage: 'requested',
+      otherUserId: '@carol:hs',
+      isSelfVerification: false,
+      incoming: false,
+    });
   });
 
   it('waits for the counterpart identity before sending and presenting verification', async () => {
-    const { svc, crypto, client } = setup();
-    let identityReady = false;
-    crypto.userHasCrossSigningKeys.mockImplementation(
-      async () => identityReady,
-    );
-    crypto.requestVerificationDM.mockImplementation(async () => {
-      if (!identityReady) throw new Error('unknown userId');
-      return fakeRequest({
-        initiatedByMe: true,
-        otherUserId: '@bob:hs',
-        isSelfVerification: false,
-      });
-    });
+    const context = setup();
+    await run(context.svc);
     const outcome = firstValueFrom(
-      svc.startUserVerification('@bob:hs', of('!dm:hs')),
+      context.svc.startUserVerification('@carol:hs', of('!dm:hs')),
     ).then(
       () => 'started',
       () => 'failed',
     );
-    await Promise.resolve();
+    await settle();
 
-    expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
-    expect(svc.active()).toBeNull();
+    expect(context.engine.sentDirectRequests).toEqual([]);
+    expect(context.svc.active()).toBeNull();
 
-    identityReady = true;
-    client.emit(CryptoEvent.UserTrustStatusChanged, '@bob:hs');
+    context.engine.addUserIdentity('@carol:hs');
 
     await expect(outcome).resolves.toBe('started');
-    expect(svc.active()).toMatchObject({
-      stage: 'requested',
-      otherUserId: '@bob:hs',
+    await settle();
+    expect(context.svc.active()).toMatchObject({
+      otherUserId: '@carol:hs',
       isSelfVerification: false,
     });
   });
 
   it('reports unavailable identity finitely and ignores a later refresh', async () => {
     vi.useFakeTimers();
-    const { svc, crypto, client } = setup();
-    crypto.userHasCrossSigningKeys.mockResolvedValue(false);
-    crypto.requestVerificationDM.mockResolvedValue(fakeRequest());
+    const context = setup();
     const errors: unknown[] = [];
-    const attempt = svc
-      .startUserVerification('@bob:hs', of('!dm:hs'))
-      .subscribe({
-        error: (error: unknown) => errors.push(error),
-      });
+    const attempt = context.svc
+      .startUserVerification('@carol:hs', of('!dm:hs'))
+      .subscribe({ error: (error: unknown) => errors.push(error) });
     try {
       await vi.advanceTimersByTimeAsync(30_000);
       expect(errors).toEqual([
@@ -284,530 +220,418 @@ describe('TrustVerificationService', () => {
           operation: 'start-verification',
           kind: 'not-ready',
           recovery: 'retry',
+          message: 'Verification is not ready for this user yet. Try again.',
         }),
       ]);
-      crypto.userHasCrossSigningKeys.mockResolvedValue(true);
-      client.emit(CryptoEvent.UserTrustStatusChanged, '@bob:hs');
-      await vi.advanceTimersByTimeAsync(0);
-      expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
-      expect(svc.active()).toBeNull();
+
+      context.engine.addUserIdentity('@carol:hs');
+
+      expect(context.engine.sentDirectRequests).toEqual([]);
     } finally {
       attempt.unsubscribe();
-      vi.useRealTimers();
     }
   });
 
   it('stops pending verification startup when the session lifetime ends', async () => {
-    const { svc, crypto, client } = setup();
-    crypto.userHasCrossSigningKeys.mockResolvedValue(false);
-    crypto.requestVerificationDM.mockResolvedValue(fakeRequest());
-    const lifetime = svc.runProjection().subscribe();
-    const attempt = svc
-      .startUserVerification('@bob:hs', of('!dm:hs'))
-      .subscribe();
-    await Promise.resolve();
+    const context = setup();
+    const lifetime = await run(context.svc);
+    const attempt = context.svc
+      .startUserVerification('@carol:hs', of('!dm:hs'))
+      .subscribe({ error: () => undefined });
 
     lifetime.unsubscribe();
-    crypto.userHasCrossSigningKeys.mockResolvedValue(true);
-    client.emit(CryptoEvent.UserTrustStatusChanged, '@bob:hs');
-    await new Promise<void>((resolve) => queueMicrotask(resolve));
-    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    context.engine.addUserIdentity('@carol:hs');
 
-    try {
-      expect(attempt.closed).toBe(true);
-      expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
-      expect(svc.active()).toBeNull();
-    } finally {
-      attempt.unsubscribe();
-    }
+    expect(attempt.closed).toBe(true);
+    expect(context.engine.sentDirectRequests).toEqual([]);
+    expect(context.svc.active()).toBeNull();
   });
 
-  it.each(['signed out', 'replaced'])(
-    'does not send after the captured Account client is %s during identity lookup',
-    async (transition) => {
-      const { svc, crypto, client, matrix } = setup();
-      let ready!: (value: boolean) => void;
-      crypto.userHasCrossSigningKeys.mockReturnValue(
-        new Promise<boolean>((resolve) => {
-          ready = resolve;
-        }),
-      );
-      crypto.requestVerificationDM.mockResolvedValue(fakeRequest());
-      const outcome = firstValueFrom(
-        svc.startUserVerification('@bob:hs', of('!dm:hs')),
-      ).catch((error: unknown) => error);
+  it('does not send after the account signs out during identity lookup', async () => {
+    const context = setup();
+    const outcome = firstValueFrom(
+      context.svc.startUserVerification('@carol:hs', of('!dm:hs')),
+    ).catch((error: unknown) => error);
+    await settle();
 
-      if (transition === 'signed out') {
-        ngMocks.stubMember(matrix, 'isInitialized', false);
-      } else {
-        ngMocks.stubMember(matrix, 'instance', {
-          ...client,
-        } as unknown as MatrixClient);
-      }
-      ready(true);
+    context.engine.removeAccount(context.alice);
 
-      await expect(outcome).resolves.toMatchObject({ kind: 'stale-state' });
-      expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
-      expect(svc.active()).toBeNull();
-    },
-  );
+    await expect(outcome).resolves.toMatchObject({
+      kind: 'stale-state',
+      message: 'The active account changed. Start verification again.',
+    });
+    expect(context.engine.sentDirectRequests).toEqual([]);
+  });
 
   it('retains the initiating Account while its direct room is being created', async () => {
-    const { svc, crypto, client, matrix } = setup();
+    const context = setup();
+    context.engine.addUserIdentity('@carol:hs');
     const directRoom = new Subject<string>();
     const outcome = firstValueFrom(
-      svc.startUserVerification('@bob:hs', directRoom),
+      context.svc.startUserVerification('@carol:hs', directRoom),
     ).catch((error: unknown) => error);
+    await settle();
 
-    expect(crypto.userHasCrossSigningKeys).not.toHaveBeenCalled();
-    ngMocks.stubMember(matrix, 'instance', {
-      ...client,
-    } as unknown as MatrixClient);
+    context.session.set(sessionWith(context.alice, [context.alice, BOB], 2));
     directRoom.next('!dm:hs');
     directRoom.complete();
 
     await expect(outcome).resolves.toMatchObject({ kind: 'stale-state' });
-    expect(crypto.userHasCrossSigningKeys).not.toHaveBeenCalled();
-    expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
-    expect(svc.active()).toBeNull();
+    expect(context.engine.sentDirectRequests).toEqual([]);
   });
 
-  it.each(['unsubscribe', 'session end', 'Account replacement'])(
-    'cancels an unadopted request that arrives after %s',
-    async (transition) => {
-      const { svc, crypto, client, matrix } = setup();
-      const request = fakeRequest();
-      let sent!: (value: ReturnType<typeof fakeRequest>) => void;
-      crypto.requestVerificationDM.mockReturnValue(
-        new Promise<ReturnType<typeof fakeRequest>>((resolve) => {
-          sent = resolve;
-        }),
-      );
-      const lifetime = svc.runProjection().subscribe();
-      const errors: unknown[] = [];
-      const attempt = svc
-        .startUserVerification('@bob:hs', of('!dm:hs'))
-        .subscribe({
-          error: (error: unknown) => errors.push(error),
-        });
-      await vi.waitFor(() =>
-        expect(crypto.requestVerificationDM).toHaveBeenCalled(),
-      );
+  it('refuses before acquiring the DM when the account has no crypto', async () => {
+    const context = setup();
+    context.engine.addAccount(context.alice, { crypto: false });
+    const directRoom = vi.fn(() => of('!dm:hs'));
 
-      if (transition === 'unsubscribe') attempt.unsubscribe();
-      else if (transition === 'session end') lifetime.unsubscribe();
-      else {
-        ngMocks.stubMember(matrix, 'instance', {
-          ...client,
-        } as unknown as MatrixClient);
-      }
-      sent(request);
-
-      try {
-        await vi.waitFor(() => expect(request.cancel).toHaveBeenCalledOnce());
-        expect(svc.active()).toBeNull();
-        if (transition === 'Account replacement') {
-          expect(errors).toEqual([
-            expect.objectContaining({ kind: 'stale-state' }),
-          ]);
-        }
-      } finally {
-        attempt.unsubscribe();
-        lifetime.unsubscribe();
-      }
-    },
-  );
-
-  it('clears an active verification on disconnect even if connect never ran', async () => {
-    // A verification can be started without connect(): startSelfVerification adopts the
-    // request directly. The projection's reset only runs when listeners were attached,
-    // so disconnect() has to clear unconditionally or the host keeps presenting a dead
-    // request.
-    const { svc, crypto } = setup();
-    const req = fakeRequest({
-      phase: VerificationPhase.Requested,
-      initiatedByMe: true,
+    await expect(
+      firstValueFrom(
+        context.svc.startUserVerification(
+          '@carol:hs',
+          new Observable<string>((subscriber) =>
+            directRoom().subscribe(subscriber),
+          ),
+        ),
+      ),
+    ).rejects.toMatchObject({
+      kind: 'not-ready',
+      message: 'Trust is not ready for this account yet.',
     });
-    crypto.requestOwnUserVerification.mockResolvedValue(req);
-    await firstValueFrom(svc.startSelfVerification());
-    expect(svc.active()).not.toBeNull();
+    expect(directRoom).not.toHaveBeenCalled();
+  });
 
-    const lifetime = svc.runProjection().subscribe();
+  it('clears an active verification when the session lifetime ends', async () => {
+    const context = setup();
+    const lifetime = await run(context.svc);
+    await outgoing(context);
+    expect(context.svc.active()).not.toBeNull();
+
     lifetime.unsubscribe();
 
-    expect(svc.active()).toBeNull();
+    expect(context.svc.active()).toBeNull();
   });
 
   it('drives the SAS flow: start → waiting → emoji shown', async () => {
-    const { svc, crypto } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({
-      phase: VerificationPhase.Ready,
-      initiatedByMe: true,
+    const context = setup();
+    await run(context.svc);
+    await outgoing(context, { phase: 'ready' });
+    expect(context.svc.active()?.stage).toBe('ready');
+
+    await firstValueFrom(context.svc.startSas());
+    await settle();
+    expect(context.svc.active()?.stage).toBe('waiting'); // started, no emoji yet
+
+    context.engine.showSas(context.alice);
+    await settle();
+    expect(context.svc.active()?.stage).toBe('sas-shown');
+    expect(context.svc.active()?.emoji).toHaveLength(7);
+    expect(context.svc.active()?.emoji?.[0]).toEqual({
+      glyph: '🐶',
+      name: 'Dog',
     });
-    crypto.requestOwnUserVerification.mockResolvedValue(req);
-
-    await firstValueFrom(svc.startSelfVerification());
-    expect(svc.active()?.stage).toBe('ready');
-
-    const verifier = fakeVerifier();
-    req.startVerification.mockResolvedValue(verifier);
-    await firstValueFrom(svc.startSas());
-    req.setPhase(VerificationPhase.Started);
-
-    expect(verifier.verify).toHaveBeenCalledOnce();
-    expect(svc.active()?.stage).toBe('waiting'); // started, no emoji yet
-
-    verifier.showSas(fakeSas());
-    expect(svc.active()?.stage).toBe('sas-shown');
-    expect(svc.active()?.emoji).toHaveLength(7);
-    expect(svc.active()?.emoji?.[0]).toEqual({ glyph: '🐶', name: 'Dog' });
   });
 
-  it('offers QR directions only for self-verification methods the other device supports', () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    client.emit(
-      CryptoEvent.VerificationRequestReceived,
-      fakeRequest({
-        phase: VerificationPhase.Ready,
-        supportedMethods: ['m.qr_code.scan.v1', 'm.qr_code.show.v1'],
-      }),
-    );
+  it('offers QR directions only for self-verification methods the other device supports', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, READY_WITH_QR);
 
-    expect(svc.active()).toMatchObject({
+    expect(context.svc.active()).toMatchObject({
       qrShowAvailable: true,
       qrScanAvailable: true,
     });
 
-    const crossUser = fakeRequest({
-      phase: VerificationPhase.Ready,
+    context.engine.updateVerification(context.alice, { phase: 'done' });
+    await incoming(context, {
+      ...READY_WITH_QR,
       isSelfVerification: false,
-      supportedMethods: ['m.qr_code.scan.v1', 'm.qr_code.show.v1'],
+      otherUserId: '@carol:hs',
     });
-    svc.dismiss();
-    client.emit(CryptoEvent.VerificationRequestReceived, crossUser);
 
-    expect(svc.active()).toMatchObject({
+    expect(context.svc.active()).toMatchObject({
       qrShowAvailable: false,
       qrScanAvailable: false,
     });
   });
 
   it('does not expose QR bytes until the user explicitly asks to show them', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({
-      phase: VerificationPhase.Ready,
-      supportedMethods: ['m.qr_code.scan.v1'],
-    });
-    const payload = new Uint8ClampedArray([0, 255, 7, 128]);
-    req.generateQRCode.mockResolvedValue(payload);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, READY_WITH_QR);
+    expect(context.svc.active()?.stage).toBe('ready');
 
-    const emitted = await firstValueFrom(svc.showQr());
+    const emitted = await firstValueFrom(context.svc.showQr());
 
-    expect(svc.active()?.stage).toBe('qr-shown');
-    expect(emitted).toEqual(payload);
-    expect(emitted).not.toBe(payload);
-    expect(svc.active()).not.toHaveProperty('qrCodeData');
+    expect(context.svc.active()?.stage).toBe('qr-shown');
+    expect(emitted).toEqual(new Uint8ClampedArray([0, 255, 7, 128]));
+    expect(context.svc.active()).not.toHaveProperty('qrCodeData');
   });
 
-  it('drops the sensitive QR payload once a verification method starts', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({
-      phase: VerificationPhase.Ready,
-      supportedMethods: ['m.qr_code.scan.v1'],
-    });
-    req.generateQRCode.mockResolvedValue(new Uint8ClampedArray([1, 2, 3]));
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
-    await firstValueFrom(svc.showQr());
+  it('leaves the QR display once a verification method starts', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, READY_WITH_QR);
+    await firstValueFrom(context.svc.showQr());
 
-    const verifier = fakeVerifier();
-    req.attachVerifier(verifier);
-    req.setPhase(VerificationPhase.Started);
+    context.engine.updateVerification(context.alice, { phase: 'started' });
+    await settle();
 
-    expect(svc.active()).not.toHaveProperty('qrCodeData');
+    expect(context.svc.active()?.stage).toBe('waiting');
   });
 
-  it('does not retain a QR payload generated after the request has started', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({
-      phase: VerificationPhase.Ready,
-      supportedMethods: ['m.qr_code.scan.v1'],
-    });
-    let resolveQr!: (payload: Uint8ClampedArray) => void;
-    req.generateQRCode.mockReturnValue(
-      new Promise((resolve) => {
-        resolveQr = resolve;
-      }),
+  it('reports a QR code generated after the request moved on as stale', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, READY_WITH_QR);
+    vi.spyOn(context.engine, 'showQr').mockReturnValue(
+      of(failure('verification-gone')),
     );
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
 
-    const showQr = firstValueFrom(svc.showQr());
-    req.attachVerifier(fakeVerifier());
-    req.setPhase(VerificationPhase.Started);
-    resolveQr(new Uint8ClampedArray([1, 2, 3]));
-    await expect(showQr).rejects.toMatchObject({
+    await expect(firstValueFrom(context.svc.showQr())).rejects.toMatchObject({
       kind: 'stale-state',
       operation: 'show-qr',
+      message: 'The verification request changed. Try again.',
     });
-
-    expect(svc.active()).not.toHaveProperty('qrCodeData');
-    expect(svc.active()?.stage).toBe('waiting');
+    expect(context.svc.active()?.stage).toBe('ready');
   });
 
-  it('drops the sensitive QR payload when the request is cancelled', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({
-      phase: VerificationPhase.Ready,
-      supportedMethods: ['m.qr_code.scan.v1'],
+  it('leaves the QR display when the request is cancelled', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, READY_WITH_QR);
+    await firstValueFrom(context.svc.showQr());
+
+    context.engine.updateVerification(context.alice, {
+      phase: 'cancelled',
+      cancellation: { code: 'm.user' },
     });
-    req.generateQRCode.mockResolvedValue(new Uint8ClampedArray([1, 2, 3]));
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
-    await firstValueFrom(svc.showQr());
+    await settle();
 
-    req.setPhase(VerificationPhase.Cancelled);
-
-    expect(svc.active()).not.toHaveProperty('qrCodeData');
-    expect(svc.active()?.stage).toBe('cancelled');
+    expect(context.svc.active()?.stage).toBe('cancelled');
   });
 
   it('keeps SAS available when QR generation has no usable payload', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({
-      phase: VerificationPhase.Ready,
-      supportedMethods: ['m.qr_code.scan.v1'],
-    });
-    req.generateQRCode.mockResolvedValue(undefined);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, READY_WITH_QR);
+    context.engine.qrPayload = '';
 
-    await expect(firstValueFrom(svc.showQr())).rejects.toThrow(
-      /QR verification isn’t available/i,
-    );
-    expect(svc.active()?.stage).toBe('ready');
+    await expect(firstValueFrom(context.svc.showQr())).rejects.toMatchObject({
+      kind: 'unsupported',
+      message:
+        'QR verification isn’t available for these sessions. Use emoji verification instead.',
+    });
+    expect(context.svc.active()?.stage).toBe('ready');
   });
 
-  it('passes scanned bytes to the SDK unchanged and drives its verifier', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({
-      phase: VerificationPhase.Ready,
-      supportedMethods: ['m.qr_code.show.v1'],
+  it('refuses QR for a cross-user verification', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, {
+      ...READY_WITH_QR,
+      isSelfVerification: false,
+      otherUserId: '@carol:hs',
     });
-    const verifier = fakeVerifier();
-    req.scanQRCode.mockResolvedValue(verifier);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
-    const payload = new Uint8ClampedArray([0, 255, 7, 128]);
 
-    await firstValueFrom(svc.scanQr(payload));
-
-    expect(req.scanQRCode).toHaveBeenCalledWith(payload);
-    expect(verifier.verify).toHaveBeenCalledOnce();
-    expect(svc.active()?.stage).toBe('waiting');
+    await expect(firstValueFrom(context.svc.showQr())).rejects.toMatchObject({
+      kind: 'unsupported',
+      recovery: 'none',
+    });
   });
 
-  it('cancels a late QR verifier instead of attaching it to a replacement request', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const oldRequest = fakeRequest({
-      phase: VerificationPhase.Ready,
-      supportedMethods: ['m.qr_code.show.v1'],
-    });
-    let resolveScan!: (verifier: ReturnType<typeof fakeVerifier>) => void;
-    oldRequest.scanQRCode.mockReturnValue(
-      new Promise((resolve) => {
-        resolveScan = resolve;
-      }),
-    );
-    client.emit(CryptoEvent.VerificationRequestReceived, oldRequest);
-    const scan = firstValueFrom(
-      svc.scanQr(new Uint8ClampedArray([0, 255, 7, 128])),
+  it('passes scanned bytes to the engine unchanged and waits for the other device', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, READY_WITH_QR);
+    const scan = vi.spyOn(context.engine, 'scanQr');
+
+    await firstValueFrom(
+      context.svc.scanQr(new Uint8ClampedArray([0, 255, 7, 128])),
     );
 
-    oldRequest.setPhase(VerificationPhase.Cancelled);
-    const replacement = fakeRequest({
-      phase: VerificationPhase.Ready,
-      otherDeviceId: 'REPLACEMENT',
-    });
-    client.emit(CryptoEvent.VerificationRequestReceived, replacement);
-    const staleVerifier = fakeVerifier();
-    resolveScan(staleVerifier);
-    await scan;
-
-    expect(staleVerifier.cancel).toHaveBeenCalledOnce();
-    expect(staleVerifier.verify).not.toHaveBeenCalled();
-    expect(svc.active()).toMatchObject({
-      stage: 'ready',
-      otherDeviceId: 'REPLACEMENT',
-    });
+    expect(scan).toHaveBeenCalledWith(
+      context.alice,
+      expect.any(String),
+      'AP8HgA==',
+    );
+    expect(context.svc.active()?.stage).toBe('waiting');
   });
 
-  it('asks before reciprocating a scan and confirms through the SDK callback', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({ phase: VerificationPhase.Started });
-    const verifier = fakeVerifier();
-    req.attachVerifier(verifier);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
-    const qr = { confirm: vi.fn(), cancel: vi.fn() };
+  it('refuses an empty scan', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, READY_WITH_QR);
 
-    verifier.showReciprocateQr(qr);
-    expect(svc.active()?.stage).toBe('qr-confirm');
-
-    await firstValueFrom(svc.confirmQr());
-    expect(qr.confirm).toHaveBeenCalledOnce();
-    expect(svc.active()?.stage).toBe('waiting');
+    await expect(
+      firstValueFrom(context.svc.scanQr(new Uint8ClampedArray())),
+    ).rejects.toMatchObject({ kind: 'invalid-secret' });
   });
 
-  it('confirms the SAS via the verifier callbacks', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({ phase: VerificationPhase.Started });
-    const verifier = fakeVerifier();
-    req.attachVerifier(verifier);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+  it('asks before reciprocating a scan and confirms through the engine', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, { phase: 'started', qrScannedByOther: true });
+    expect(context.svc.active()?.stage).toBe('qr-confirm');
 
-    const sas = fakeSas();
-    verifier.showSas(sas);
-    expect(svc.active()?.sasConfirmed).toBe(false);
-    await firstValueFrom(svc.confirmSas());
+    await firstValueFrom(context.svc.confirmQr());
+    await settle();
 
-    expect(sas.confirm).toHaveBeenCalledOnce();
-    // Our MAC is out but the other side hasn't answered, so the phase is still Started:
+    expect(context.svc.active()?.stage).toBe('waiting');
+  });
+
+  it('confirms the SAS through the engine and waits for the other side', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, { phase: 'started' });
+    context.engine.showSas(context.alice);
+    await settle();
+    expect(context.svc.active()?.sasConfirmed).toBe(false);
+    const confirm = vi.spyOn(context.engine, 'confirmSas');
+
+    await firstValueFrom(context.svc.confirmSas());
+
+    expect(confirm).toHaveBeenCalledOnce();
+    // Our MAC is out but the other side hasn't answered, so the phase is still started:
     // the flag is what lets the UI show the wait instead of asking again.
-    expect(svc.active()?.stage).toBe('sas-shown');
-    expect(svc.active()?.sasConfirmed).toBe(true);
+    expect(context.svc.active()?.stage).toBe('sas-shown');
+    expect(context.svc.active()?.sasConfirmed).toBe(true);
   });
 
-  // The spinner has to answer the click, not the round-trip: `confirm()` only resolves
-  // once the MAC is queued, which on a slow link is exactly the gap we are covering.
+  // The spinner has to answer the click, not the round-trip.
   it('starts waiting as soon as the answer is given, not when it lands', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({ phase: VerificationPhase.Started });
-    const verifier = fakeVerifier();
-    req.attachVerifier(verifier);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, { phase: 'started' });
+    context.engine.showSas(context.alice);
+    await settle();
+    const sent = new Subject<EngineResult<null>>();
+    vi.spyOn(context.engine, 'confirmSas').mockReturnValue(sent);
 
-    const sas = fakeSas();
-    let queueTheMac!: () => void;
-    sas.confirm.mockReturnValue(
-      new Promise<void>((resolve) => (queueTheMac = resolve)),
-    );
-    verifier.showSas(sas);
+    const confirmed = firstValueFrom(context.svc.confirmSas());
+    expect(context.svc.active()?.sasConfirmed).toBe(true);
 
-    const confirmed = firstValueFrom(svc.confirmSas());
-    expect(svc.active()?.sasConfirmed).toBe(true);
-
-    queueTheMac();
+    sent.next({ ok: true, value: null });
     await confirmed;
-    expect(svc.active()?.sasConfirmed).toBe(true);
-  });
-
-  it('goes back to asking when the SAS is shown again', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({ phase: VerificationPhase.Started });
-    const verifier = fakeVerifier();
-    req.attachVerifier(verifier);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
-
-    verifier.showSas(fakeSas());
-    await firstValueFrom(svc.confirmSas());
-    expect(svc.active()?.sasConfirmed).toBe(true);
-
-    verifier.showSas(fakeSas());
-
-    expect(svc.active()?.sasConfirmed).toBe(false);
+    expect(context.svc.active()?.sasConfirmed).toBe(true);
   });
 
   // A stale wait carried into the next verification would show a spinner on a screen
   // that has not been answered yet — and hide the answer buttons with it.
   it('starts the next verification asking, not waiting', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({ phase: VerificationPhase.Started });
-    const verifier = fakeVerifier();
-    req.attachVerifier(verifier);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, { phase: 'started' });
+    context.engine.showSas(context.alice);
+    await settle();
+    await firstValueFrom(context.svc.confirmSas());
+    expect(context.svc.active()?.sasConfirmed).toBe(true);
 
-    verifier.showSas(fakeSas());
-    await firstValueFrom(svc.confirmSas());
-    expect(svc.active()?.sasConfirmed).toBe(true);
+    context.engine.updateVerification(context.alice, { phase: 'cancelled' });
+    await incoming(context);
 
-    // The first one ends, so the next incoming request is adopted in its place.
-    req.setPhase(VerificationPhase.Cancelled);
-    client.emit(
-      CryptoEvent.VerificationRequestReceived,
-      fakeRequest({ phase: VerificationPhase.Requested }),
-    );
-
-    expect(svc.active()?.stage).toBe('requested');
-    expect(svc.active()?.sasConfirmed).toBe(false);
+    expect(context.svc.active()?.stage).toBe('requested');
+    expect(context.svc.active()?.sasConfirmed).toBe(false);
   });
 
   it('drops back to asking when confirming the SAS fails', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({ phase: VerificationPhase.Started });
-    const verifier = fakeVerifier();
-    req.attachVerifier(verifier);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, { phase: 'started' });
+    context.engine.showSas(context.alice);
+    await settle();
+    vi.spyOn(context.engine, 'confirmSas').mockReturnValue(
+      of(failure('request-failed')),
+    );
 
-    const sas = fakeSas();
-    sas.confirm.mockRejectedValue(new Error('offline'));
-    verifier.showSas(sas);
-
-    await expect(firstValueFrom(svc.confirmSas())).rejects.toMatchObject({
+    await expect(
+      firstValueFrom(context.svc.confirmSas()),
+    ).rejects.toMatchObject({
       operation: 'confirm-verification',
       kind: 'server-failure',
       recovery: 'retry',
     });
-    expect(svc.active()?.sasConfirmed).toBe(false);
+    expect(context.svc.active()?.sasConfirmed).toBe(false);
   });
 
-  it('cancels with an Error and cancels the request', async () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({ phase: VerificationPhase.Started });
-    const verifier = fakeVerifier();
-    req.attachVerifier(verifier);
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+  it('cancels the current flow through the engine', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, { phase: 'started' });
+    const cancel = vi.spyOn(context.engine, 'cancelVerification');
 
-    await firstValueFrom(svc.cancel());
+    await firstValueFrom(context.svc.cancel());
+    await settle();
 
-    expect(verifier.cancel).toHaveBeenCalledWith(expect.any(Error));
-    expect(req.cancel).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(context.svc.active()?.stage).toBe('cancelled');
   });
 
-  it('maps a mismatched-SAS cancellation to a friendly reason', () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest({ cancellationCode: 'm.mismatched_sas' });
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+  it('cancels and mismatches nothing quietly when no verification is in progress', async () => {
+    const context = setup();
+    const cancel = vi.spyOn(context.engine, 'cancelVerification');
 
-    req.setPhase(VerificationPhase.Cancelled);
+    await firstValueFrom(context.svc.cancel(), { defaultValue: undefined });
+    await firstValueFrom(context.svc.mismatchSas(), {
+      defaultValue: undefined,
+    });
 
-    expect(svc.active()?.stage).toBe('cancelled');
-    expect(svc.active()?.cancelReason).toMatch(/did not match/i);
+    expect(cancel).not.toHaveBeenCalled();
   });
 
-  it('reflects the done stage and dismiss() clears it', () => {
-    const { svc, client } = setup();
-    svc.runProjection().subscribe();
-    const req = fakeRequest();
-    client.emit(CryptoEvent.VerificationRequestReceived, req);
+  it.each([
+    ['m.mismatched_sas', 'The emoji did not match — verification was stopped.'],
+    ['m.timeout', 'The verification timed out.'],
+    ['m.user', 'The verification was cancelled.'],
+  ])('maps a %s cancellation to a friendly reason', async (code, reason) => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context);
 
-    req.setPhase(VerificationPhase.Done);
-    expect(svc.active()?.stage).toBe('done');
+    context.engine.updateVerification(context.alice, {
+      phase: 'cancelled',
+      cancellation: { code },
+    });
+    await settle();
 
-    svc.dismiss();
-    expect(svc.active()).toBeNull();
+    expect(context.svc.active()).toMatchObject({
+      stage: 'cancelled',
+      cancelReason: reason,
+    });
+  });
+
+  it('reflects a mismatch report as a cancelled verification', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context, { phase: 'started' });
+    context.engine.showSas(context.alice);
+    await settle();
+
+    await firstValueFrom(context.svc.mismatchSas(), {
+      defaultValue: undefined,
+    });
+    await settle();
+
+    expect(context.svc.active()?.cancelReason).toMatch(/did not match/i);
+  });
+
+  it('reflects the done stage and dismiss() clears it until the next request', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context);
+
+    context.engine.updateVerification(context.alice, { phase: 'done' });
+    await settle();
+    expect(context.svc.active()?.stage).toBe('done');
+
+    context.svc.dismiss();
+    expect(context.svc.active()).toBeNull();
+    context.engine.updateVerification(context.alice, { otherDeviceId: 'X' });
+    await settle();
+    expect(context.svc.active()).toBeNull();
+
+    await incoming(context, { otherDeviceId: 'NEXT' });
+    expect(context.svc.active()?.otherDeviceId).toBe('NEXT');
   });
 
   it('errors when an action runs with no verification in progress', async () => {
@@ -817,42 +641,70 @@ describe('TrustVerificationService', () => {
     );
   });
 
-  it('rebinds the incoming-request listener onto the newly-active account on a switch', () => {
-    // Asserted by behaviour rather than by spying on on/off: after the switch, a request
-    // arriving on the OLD client must be ignored and one on the new client adopted.
-    const { svc, client, matrix } = setup();
-    activeUserId.set('@a:hs');
-    svc.runProjection().subscribe();
-    TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
+  it('accepts the current request through the engine', async () => {
+    const context = setup();
+    await run(context.svc);
+    await incoming(context);
 
-    const clientB = {
-      ...fakeEmitter(),
-      getCrypto: () => ({
-        getVerificationRequestsToDeviceInProgress: vi.fn(() => []),
-      }),
-      getUserId: () => '@b:hs',
-    };
-    ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
-    activeUserId.set('@b:hs');
-    TestBed.inject(ApplicationRef).tick();
+    await firstValueFrom(context.svc.accept());
+    await settle();
 
-    client.emit(
-      CryptoEvent.VerificationRequestReceived,
-      fakeRequest({
-        phase: VerificationPhase.Requested,
-        otherUserId: '@old:hs',
-      }),
+    expect(context.svc.active()?.stage).toBe('ready');
+  });
+
+  it('follows the newly active account on a switch', async () => {
+    const context = setup();
+    await run(context.svc);
+
+    context.session.set(sessionWith(BOB, [context.alice, BOB]));
+    await settle();
+
+    context.engine.receiveVerification(context.alice, {
+      otherUserId: '@old:hs',
+    });
+    await settle();
+    expect(context.svc.active()).toBeNull();
+
+    context.engine.receiveVerification(BOB, { otherUserId: '@new:hs' });
+    await settle();
+    expect(context.svc.active()?.otherUserId).toBe('@new:hs');
+  });
+
+  it('does not show a DM verification again after switching away and back', async () => {
+    const context = setup();
+    await run(context.svc);
+    context.engine.addUserIdentity('@carol:hs');
+    await firstValueFrom(
+      context.svc.startUserVerification('@carol:hs', of('!dm:hs')),
     );
-    expect(svc.active()).toBeNull(); // the old client no longer reaches us
+    await settle();
+    expect(context.svc.active()?.otherUserId).toBe('@carol:hs');
 
-    clientB.emit(
-      CryptoEvent.VerificationRequestReceived,
-      fakeRequest({
-        phase: VerificationPhase.Requested,
-        otherUserId: '@new:hs',
-      }),
-    );
-    expect(svc.active()?.otherUserId).toBe('@new:hs');
+    context.session.set(sessionWith(BOB, [context.alice, BOB]));
+    await settle();
+    context.session.set(sessionWith(context.alice, [context.alice, BOB]));
+    await settle();
+
+    expect(context.svc.active()).toBeNull();
+  });
+
+  it('shows an own-device request again after switching back only while it is in progress', async () => {
+    const context = setup();
+    await run(context.svc);
+    await outgoing(context, { phase: 'ready' });
+
+    context.session.set(sessionWith(BOB, [context.alice, BOB]));
+    await settle();
+    context.session.set(sessionWith(context.alice, [context.alice, BOB]));
+    await settle();
+    expect(context.svc.active()?.stage).toBe('ready');
+
+    context.session.set(sessionWith(BOB, [context.alice, BOB]));
+    await settle();
+    context.engine.updateVerification(context.alice, { phase: 'cancelled' });
+    context.session.set(sessionWith(context.alice, [context.alice, BOB]));
+    await settle();
+    expect(context.svc.active()).toBeNull();
   });
 
   describe('a request from another of the user’s own sessions', () => {
@@ -865,18 +717,20 @@ describe('TrustVerificationService', () => {
       isVerified: false,
     };
 
-    function receive(
+    async function receive(
       options: Parameters<typeof setup>[0],
-      request = fakeRequest({ otherDeviceId: 'PHONE' }),
+      request: Parameters<FakeTrustEngine['receiveVerification']>[1] = {
+        otherDeviceId: 'PHONE',
+      },
     ) {
-      const result = setup(options);
-      result.svc.runProjection().subscribe();
-      result.client.emit(CryptoEvent.VerificationRequestReceived, request);
-      return { ...result, request };
+      const context = setup(options);
+      await run(context.svc);
+      await incoming(context, request);
+      return context;
     }
 
-    it('describes the requester as a new session when this device is verified', () => {
-      const { svc } = receive({
+    it('describes the requester as a new session when this device is verified', async () => {
+      const { svc } = await receive({
         thisDeviceVerified: true,
         devices: of([newPhone]),
       });
@@ -889,9 +743,9 @@ describe('TrustVerificationService', () => {
       });
     });
 
-    it('presents the request at once and fills the details in when /devices answers', () => {
+    it('presents the request at once and fills the details in when /devices answers', async () => {
       const devices = new Subject<DeviceInfo[]>();
-      const { svc } = receive({ thisDeviceVerified: true, devices });
+      const { svc } = await receive({ thisDeviceVerified: true, devices });
 
       expect(svc.active()?.newSession).toEqual({
         deviceId: 'PHONE',
@@ -905,8 +759,8 @@ describe('TrustVerificationService', () => {
       expect(svc.active()?.newSession?.displayName).toBe('Pixel 9');
     });
 
-    it('keeps the device id and leaves the rest unknown when /devices fails', () => {
-      const { svc } = receive({
+    it('keeps the device id and leaves the rest unknown when /devices fails', async () => {
+      const { svc } = await receive({
         thisDeviceVerified: true,
         devices: throwError(() => new Error('devices unavailable')),
       });
@@ -919,37 +773,35 @@ describe('TrustVerificationService', () => {
       });
     });
 
-    it('removes control and format characters from what the session calls itself', () => {
-      const { svc } = receive({
+    it('removes control and format characters from what the session calls itself', async () => {
+      const { svc } = await receive({
         thisDeviceVerified: true,
-        devices: of([
-          { ...newPhone, displayName: ' Pixel\u202E 9\u200B\u0007 ' },
-        ]),
+        devices: of([{ ...newPhone, displayName: ' Pixel‮ 9​\u0007 ' }]),
       });
 
       expect(svc.active()?.newSession?.displayName).toBe('Pixel 9');
     });
 
-    it('treats a name made only of invisible characters as no name', () => {
-      const { svc } = receive({
+    it('treats a name made only of invisible characters as no name', async () => {
+      const { svc } = await receive({
         thisDeviceVerified: true,
-        devices: of([{ ...newPhone, displayName: '\u202E\u200B  ' }]),
+        devices: of([{ ...newPhone, displayName: '‮​  ' }]),
       });
 
       expect(svc.active()?.newSession?.displayName).toBeNull();
     });
 
-    it('removes control and format characters from the device id it shows', () => {
-      const { svc } = receive(
+    it('removes control and format characters from the device id it shows', async () => {
+      const { svc } = await receive(
         { thisDeviceVerified: true, devices: of([newPhone]) },
-        fakeRequest({ otherDeviceId: 'PH\u202EON\u200BE' }),
+        { otherDeviceId: 'PH‮ON​E' },
       );
 
       expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
     });
 
-    it('does not repeat the device id as its name when the session is unnamed', () => {
-      const { svc } = receive({
+    it('does not repeat the device id as its name when the session is unnamed', async () => {
+      const { svc } = await receive({
         thisDeviceVerified: true,
         devices: of([{ ...newPhone, displayName: 'PHONE' }]),
       });
@@ -957,14 +809,14 @@ describe('TrustVerificationService', () => {
       expect(svc.active()?.newSession?.displayName).toBeNull();
     });
 
-    it('does not repeat a device id with hidden characters as its name', () => {
-      const id = 'PH\u202EONE';
-      const { svc } = receive(
+    it('does not repeat a device id with hidden characters as its name', async () => {
+      const id = 'PH‮ONE';
+      const { svc } = await receive(
         {
           thisDeviceVerified: true,
           devices: of([{ ...newPhone, id, displayName: id }]),
         },
-        fakeRequest({ otherDeviceId: id }),
+        { otherDeviceId: id },
       );
 
       expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
@@ -972,14 +824,14 @@ describe('TrustVerificationService', () => {
       expect(svc.active()?.otherDeviceId).toBe('PHONE');
     });
 
-    it('treats an unknown trust state as the verified side', () => {
-      const { svc } = receive({ thisDeviceVerified: null });
+    it('treats an unknown trust state as the verified side', async () => {
+      const { svc } = await receive({ thisDeviceVerified: null });
 
       expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
     });
 
-    it('leaves the request unchanged when this device is the unverified one', () => {
-      const { svc } = receive({
+    it('leaves the request unchanged when this device is the unverified one', async () => {
+      const { svc } = await receive({
         thisDeviceVerified: false,
         devices: of([newPhone]),
       });
@@ -987,8 +839,8 @@ describe('TrustVerificationService', () => {
       expect(svc.active()?.newSession).toBeNull();
     });
 
-    it('only fills in details when the device list shows the requester as verified', () => {
-      const { svc } = receive({
+    it('only fills in details when the device list shows the requester as verified', async () => {
+      const { svc } = await receive({
         thisDeviceVerified: true,
         devices: of([{ ...newPhone, isVerified: true }]),
       });
@@ -1001,56 +853,53 @@ describe('TrustVerificationService', () => {
       });
     });
 
-    it('leaves a request this device started unchanged', () => {
-      const { svc } = receive(
+    it('leaves a request this device started unchanged', async () => {
+      const { svc } = await receive(
         { thisDeviceVerified: true },
-        fakeRequest({ initiatedByMe: true }),
+        { initiatedByMe: true },
       );
 
       expect(svc.active()?.newSession).toBeNull();
     });
 
-    it('leaves a cross-user request unchanged', () => {
-      const { svc } = receive(
+    it('leaves a cross-user request unchanged', async () => {
+      const { svc } = await receive(
         { thisDeviceVerified: true },
-        fakeRequest({ isSelfVerification: false, otherUserId: '@bob:hs' }),
+        { isSelfVerification: false, otherUserId: '@carol:hs' },
       );
 
       expect(svc.active()?.newSession).toBeNull();
     });
 
-    it('keeps describing the requester once it has been verified', () => {
-      const { svc, request } = receive({
+    it('keeps describing the requester once it has been verified', async () => {
+      const context = await receive({
         thisDeviceVerified: true,
         devices: of([newPhone]),
       });
 
-      request.setPhase(VerificationPhase.Done);
+      context.engine.updateVerification(context.alice, { phase: 'done' });
+      await settle();
 
-      expect(svc.active()).toMatchObject({
+      expect(context.svc.active()).toMatchObject({
         stage: 'done',
         newSession: { deviceId: 'PHONE', displayName: 'Pixel 9' },
       });
     });
 
-    it('does not let an earlier request’s /devices answer reach the next request', () => {
+    it('does not let an earlier request’s /devices answer reach the next request', async () => {
       const first = new Subject<DeviceInfo[]>();
       const second = new Subject<DeviceInfo[]>();
-      const { svc, client, list } = setup({ thisDeviceVerified: true });
-      list.mockReturnValueOnce(first).mockReturnValueOnce(second);
-      svc.runProjection().subscribe();
-      const firstRequest = fakeRequest({ otherDeviceId: 'PHONE' });
-      client.emit(CryptoEvent.VerificationRequestReceived, firstRequest);
-      firstRequest.setPhase(VerificationPhase.Cancelled);
-      client.emit(
-        CryptoEvent.VerificationRequestReceived,
-        fakeRequest({ otherDeviceId: 'TABLET' }),
-      );
-      expect(list).toHaveBeenCalledTimes(2);
+      const context = setup({ thisDeviceVerified: true });
+      context.list.mockReturnValueOnce(first).mockReturnValueOnce(second);
+      await run(context.svc);
+      await incoming(context, { otherDeviceId: 'PHONE' });
+      context.engine.updateVerification(context.alice, { phase: 'cancelled' });
+      await incoming(context, { otherDeviceId: 'TABLET' });
+      expect(context.list).toHaveBeenCalledTimes(2);
 
       first.next([newPhone]);
 
-      expect(svc.active()?.newSession).toEqual({
+      expect(context.svc.active()?.newSession).toEqual({
         deviceId: 'TABLET',
         displayName: null,
         lastSeenIp: null,
@@ -1059,80 +908,59 @@ describe('TrustVerificationService', () => {
 
       second.next([{ ...newPhone, id: 'TABLET', displayName: 'Tab' }]);
 
-      expect(svc.active()?.newSession?.displayName).toBe('Tab');
+      expect(context.svc.active()?.newSession?.displayName).toBe('Tab');
     });
 
-    it('drops a /devices answer that arrives after an account switch', () => {
+    it('drops a /devices answer that arrives after an account switch', async () => {
       const devices = new Subject<DeviceInfo[]>();
-      const { svc, client, matrix } = setup({
-        thisDeviceVerified: true,
-        devices,
-      });
-      activeUserId.set('@a:hs');
-      try {
-        svc.runProjection().subscribe();
-        TestBed.inject(ApplicationRef).tick();
-        client.emit(
-          CryptoEvent.VerificationRequestReceived,
-          fakeRequest({ otherDeviceId: 'PHONE' }),
-        );
-        expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
+      const context = await receive({ thisDeviceVerified: true, devices });
+      expect(context.svc.active()?.newSession?.deviceId).toBe('PHONE');
 
-        ngMocks.stubMember(matrix, 'instance', {
-          ...fakeEmitter(),
-          getCrypto: () => ({
-            getVerificationRequestsToDeviceInProgress: vi.fn(() => []),
-          }),
-          getUserId: () => '@b:hs',
-        } as unknown as MatrixClient);
-        activeUserId.set('@b:hs');
-        TestBed.inject(ApplicationRef).tick();
-        expect(svc.active()).toBeNull();
+      context.session.set(sessionWith(BOB, [context.alice, BOB]));
+      await settle();
+      expect(context.svc.active()).toBeNull();
 
-        devices.next([newPhone]);
+      devices.next([newPhone]);
 
-        expect(svc.active()).toBeNull();
-      } finally {
-        activeUserId.set(null);
-      }
+      expect(context.svc.active()).toBeNull();
     });
 
     describe('when this device’s trust state is not known yet', () => {
-      function receiveUnknown() {
-        const result = receive({ thisDeviceVerified: null });
-        expect(result.svc.active()?.newSession).not.toBeNull();
-        return result;
+      async function receiveUnknown() {
+        const context = await receive({ thisDeviceVerified: null });
+        expect(context.svc.active()?.newSession).not.toBeNull();
+        return context;
       }
-      const flush = () => TestBed.inject(ApplicationRef).tick();
 
-      it('decides the side again, once, when it resolves to unverified', () => {
-        const { svc, thisDeviceVerified } = receiveUnknown();
+      it('decides the side again, once, when it resolves to unverified', async () => {
+        const { svc, thisDeviceVerified } = await receiveUnknown();
 
         thisDeviceVerified.set(false);
-        flush();
+        TestBed.tick();
 
         expect(svc.active()?.newSession).toBeNull();
       });
 
-      it('keeps the decision when it resolves to verified, and does not decide again', () => {
-        const { svc, thisDeviceVerified } = receiveUnknown();
+      it('keeps the decision when it resolves to verified, and does not decide again', async () => {
+        const { svc, thisDeviceVerified } = await receiveUnknown();
 
         thisDeviceVerified.set(true);
-        flush();
+        TestBed.tick();
         thisDeviceVerified.set(false);
-        flush();
+        TestBed.tick();
 
         expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
       });
 
-      it('does not decide again once the request has moved on from requested', () => {
-        const { svc, thisDeviceVerified, request } = receiveUnknown();
-        request.setPhase(VerificationPhase.Ready);
+      it('does not decide again once the request has moved on from requested', async () => {
+        const context = await receiveUnknown();
+        context.engine.updateVerification(context.alice, { phase: 'ready' });
+        await settle();
 
-        thisDeviceVerified.set(false);
-        flush();
+        context.thisDeviceVerified.set(false);
+        TestBed.tick();
 
-        expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
+        expect(context.svc.active()?.newSession?.deviceId).toBe('PHONE');
       });
     });
   });

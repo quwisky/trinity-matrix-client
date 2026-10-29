@@ -32,7 +32,7 @@ Diagnostics contain stable codes and recovery information only. Never include ac
 
 The Trust data-access library owns encryption health, device lists, cross-signing repair, recovery reset, and verification commands. Feature pages present those states and actions. They do not keep a second trust model or call SDK crypto methods directly.
 
-Verification and recovery actions are finite Observables, while trust health is projected state. Preserve cancellation and account boundaries when a dialog or routed page closes.
+Verification and recovery actions are finite Observables, while trust health is projected state. Preserve cancellation and account boundaries when a dialog or routed page closes. `TrustVerificationService` follows `TrustEngine.verification`, one plain-data snapshot of the Account's current request, and keeps only presentation flags; a request that arrives while another is live is ignored. The QR payload crosses once, as base64 in the result of `showQr`, and is never part of a snapshot. Protocol timeouts arrive as the snapshot's cancellation code. The engine waits for a user's identity before it sends a DM request; the service keeps the 30 s limit on that wait. Once nothing watches an Account's verification, the engine forgets its request without cancelling it, and a later watch takes up only a to-device request still in progress.
 
 ## Setup never replaces an existing identity {#identity-preservation}
 

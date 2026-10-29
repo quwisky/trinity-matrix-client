@@ -83,6 +83,10 @@ export type EngineFailure = {
   | { readonly code: 'encryption-not-applied' }
   /** The account is live but its crypto has not started. */
   | { readonly code: 'crypto-not-ready' }
+  /** The verification flow is unknown, replaced or already over. */
+  | { readonly code: 'verification-gone' }
+  /** No QR code can be shown for this verification. */
+  | { readonly code: 'qr-unavailable' }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -147,6 +151,10 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return "Encryption is on, but this device couldn't apply it.";
     case 'crypto-not-ready':
       return 'Encryption is not ready for this account yet.';
+    case 'verification-gone':
+      return 'This verification is no longer in progress.';
+    case 'qr-unavailable':
+      return 'QR verification isn’t available for these sessions.';
   }
 }
 

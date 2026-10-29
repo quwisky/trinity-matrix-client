@@ -3,11 +3,14 @@ import { describe, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { defineTrustEngineContract } from '../../contract/trust-engine.contract';
 import { JsSdkTrustEngine } from './js-sdk-trust-engine';
+import type { MatrixClient } from 'matrix-js-sdk';
 import {
   baseUrl,
   cs,
   localpart,
+  publishIdentityElsewhere,
   register,
+  startSecondDevice,
   startSession,
   useSynapseSuite,
 } from './synapse.spec-harness';
@@ -30,6 +33,7 @@ describe.skipIf(!baseUrl)('JsSdkTrustEngine against Synapse', () => {
   defineTrustEngineContract(
     async () => {
       const session = await startSession(await register(localpart('alice')));
+      const devices: MatrixClient[] = [];
       return {
         engine: TestBed.inject(JsSdkTrustEngine),
         alice: session.userId,
@@ -57,7 +61,52 @@ describe.skipIf(!baseUrl)('JsSdkTrustEngine against Synapse', () => {
             { key: keyId },
           );
         },
-        dispose: () => session.dispose(),
+        secondDevice: async () => {
+          const { client, deviceId } = await startSecondDevice(session);
+          devices.push(client);
+          const crypto = client.getCrypto();
+          if (!crypto) throw new Error('No crypto on the second device');
+          return {
+            deviceId,
+            requestVerification: async () => {
+              // The second device must know the identity it asks to be verified against.
+              await crypto.userHasCrossSigningKeys(session.userId, true);
+              await crypto.requestOwnUserVerification();
+            },
+          };
+        },
+        directRoom: async () => {
+          const bob = await register(localpart('bob'));
+          await publishIdentityElsewhere(bob);
+          const { room_id: roomId } = (await cs(
+            session.accessToken,
+            'POST',
+            '/createRoom',
+            {
+              invite: [bob.userId],
+              is_direct: true,
+              preset: 'trusted_private_chat',
+              initial_state: [
+                {
+                  type: 'm.room.encryption',
+                  state_key: '',
+                  content: { algorithm: 'm.megolm.v1.aes-sha2' },
+                },
+              ],
+            },
+          )) as { room_id: string };
+          await cs(
+            bob.accessToken,
+            'POST',
+            `/join/${encodeURIComponent(roomId)}`,
+            {},
+          );
+          return { userId: bob.userId, roomId };
+        },
+        dispose: async () => {
+          for (const device of devices) device.stopClient();
+          await session.dispose();
+        },
       };
     },
     { settleTimeoutMs: 30_000, testTimeoutMs: 180_000 },
