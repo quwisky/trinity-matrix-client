@@ -17,10 +17,7 @@ export type {
   OidcAuthorizationRequest,
   OidcGrantContext,
 } from './lib/oidc-client.service';
-// Re-export the validated delegated-auth metadata so feature libs can type it without
-// importing matrix-js-sdk directly (components never do).
-// Aliased to a local name so an upstream rename only touches this line.
-export type { ValidatedAuthMetadata as AuthMetadata } from 'matrix-js-sdk';
+export type { AuthMetadata } from './lib/auth-metadata';
 export * from './lib/homeserver-discovery.port';
 export { OidcStateStore } from './lib/oidc-state.store';
 export type { OidcStateStash } from './lib/oidc-state.store';
