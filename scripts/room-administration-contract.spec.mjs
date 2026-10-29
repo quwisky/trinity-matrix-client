@@ -111,11 +111,10 @@ describe('Room Administration production boundary', () => {
       'libs/feature/rooms/src/lib/banned-members/banned-members.component.ts',
     );
 
-    expect(members).toContain('getJoinedMembers()');
-    expect(members).toContain('getMembersWithMembership(KnownMembership.Ban)');
+    expect(members).toContain('this.store.members(accountId, roomId)');
+    expect(members).toContain("this.list(target, 'ban'");
     expect(members).toContain('bannedFor(roomId: string | null)');
-    expect(members).toContain('RoomStateEvent.Members');
-    expect(members).toContain('projectFromClient({');
+    expect(members).toContain('projectActiveAccount<void>({');
     expect(moderation).not.toContain('removeMemberFromProjection');
     expect(moderation).not.toContain('bannedMembers(');
     expect(bannedMembers).toContain('this.members.bannedView(this.roomId())');

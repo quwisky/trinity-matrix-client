@@ -42,7 +42,6 @@
     "libs/data-access/room-administration/src/lib/room-aliases.service.ts",
     "libs/data-access/room-administration/src/lib/room-directory.service.ts",
     "libs/data-access/room-administration/src/lib/room-encryption.service.ts",
-    "libs/data-access/room-administration/src/lib/room-members.service.ts",
     "libs/data-access/room-administration/src/lib/room-moderation.service.ts",
     "libs/data-access/room-administration/src/lib/room-permissions.service.ts",
     "libs/data-access/room-administration/src/lib/room-settings.service.ts",

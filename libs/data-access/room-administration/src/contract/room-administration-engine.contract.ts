@@ -315,6 +315,43 @@ export function defineRoomAdministrationEngineContract(
     );
 
     it(
+      'members disambiguates look-alike, user-id-like and direction-marked names',
+      async () => {
+        const roomId = await sharedRoom();
+        await context.asBob.invite(roomId, carol);
+        await context.asCarol.join(roomId);
+        const members = watch(engine.members(alice, roomId));
+        const shows = (bobName: string, carolName: string) =>
+          members.until(
+            (m) =>
+              memberOf(m, bob)?.displayName === bobName &&
+              memberOf(m, carol)?.displayName === carolName,
+          );
+        try {
+          await members.until((m) => memberOf(m, carol)?.membership === 'join');
+          await context.asBob.setDisplayName(roomId, 'Twin');
+
+          // Equal once zero-width and spacing characters are removed.
+          await context.asCarol.setDisplayName(roomId, 'Tw\u200Bin ');
+          await shows(`Twin (${bob})`, `Tw\u200Bin  (${carol})`);
+
+          await context.asCarol.setDisplayName(roomId, '@admin:example.org');
+          await shows('Twin', `@admin:example.org (${carol})`);
+
+          // A right-to-left override is dropped from the name, which still names its user.
+          await context.asCarol.setDisplayName(roomId, '\u202Enimda');
+          await shows('Twin', `nimda (${carol})`);
+
+          await context.asCarol.setDisplayName(roomId, '\u200B');
+          await shows('Twin', carol);
+        } finally {
+          members.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'room never reports an encrypted room as unencrypted',
       async () => {
         const roomId = await sharedRoom({ encrypted: true });
