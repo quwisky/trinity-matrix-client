@@ -11,17 +11,17 @@ import {
   vi,
 } from 'vitest';
 import { FakeDiscoveryEngine } from '../contract/fake-discovery-engine';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { DISCOVERY_ENGINE } from './discovery-engine';
 import { UserDirectoryDiscoveryService } from './user-directory-discovery.service';
 
 describe('UserDirectoryDiscoveryService', () => {
-  const activeUserId = signal<string | null>('@me:hs');
+  const activeAccountId = signal<string | null>('@me:hs');
   let engine: FakeDiscoveryEngine;
   let search: MockInstance<FakeDiscoveryEngine['searchUserDirectory']>;
 
   beforeEach(() => {
-    activeUserId.set('@me:hs');
+    activeAccountId.set('@me:hs');
     engine = new FakeDiscoveryEngine();
     engine.accounts.add('@me:hs');
     engine.users.push(
@@ -33,7 +33,7 @@ describe('UserDirectoryDiscoveryService', () => {
       providers: [
         UserDirectoryDiscoveryService,
         { provide: DISCOVERY_ENGINE, useValue: engine },
-        MockProvider(MatrixClientService, { activeUserId }),
+        MockProvider(SessionStateService, { activeAccountId }),
       ],
     });
   });
@@ -65,7 +65,7 @@ describe('UserDirectoryDiscoveryService', () => {
   });
 
   it('errors with "Not signed in." when no account is active', async () => {
-    activeUserId.set(null);
+    activeAccountId.set(null);
 
     await expect(run('b')).rejects.toThrow('Not signed in.');
     expect(search).not.toHaveBeenCalled();

@@ -1,9 +1,13 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MockProvider } from 'ng-mocks';
 import { Subject, firstValueFrom, take } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  EMPTY_SESSION,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
 import { FakeHomeserverEngine } from '../contract/fake-homeserver-engine';
 import { HOMESERVER_ENGINE, type HomeserverProbe } from './homeserver-engine';
 import type { ServerSoftware } from './homeserver-info.model';
@@ -30,10 +34,24 @@ const synapse = (version: string): ServerSoftware => ({
   host: 'https://one.org',
 });
 
+const account = (
+  accountId: string,
+  generation: number,
+): SessionAccountStatus => ({
+  accountId,
+  deviceId: 'DEVICE',
+  generation,
+  syncState: 'syncing',
+  serverSynced: true,
+  roomsPrepared: true,
+  waitingCount: 0,
+  cryptoStoreEncrypted: true,
+});
+
 function setup(
   probes: Record<string, HomeserverProbe | null>,
-  /** Signed-in ids the engine knows nothing about — it answers null for these. */
-  idsWithoutSession: string[] = [],
+  /** Live ids the engine has no probe for — it answers null for these. */
+  idsWithoutProbe: string[] = [],
   engine:
     | FakeHomeserverEngine
     | { probe: FakeHomeserverEngine['probe'] } = new FakeHomeserverEngine(),
@@ -42,28 +60,32 @@ function setup(
   for (const [id, probe] of Object.entries(probes)) {
     fake?.set(id, probe);
   }
-  const ids = signal<readonly string[]>([
-    ...Object.keys(probes),
-    ...idsWithoutSession,
-  ]);
-  const generations = signal<ReadonlyMap<string, number>>(
-    new Map(Object.keys(probes).map((id) => [id, 1])),
+  const snapshot = signal<SessionSnapshot>(EMPTY_SESSION);
+  /** Sets the live accounts, each with its session generation. */
+  const live = (generations: Record<string, number>) =>
+    snapshot.set({
+      ...EMPTY_SESSION,
+      accounts: Object.entries(generations).map(([id, generation]) =>
+        account(id, generation),
+      ),
+    });
+  live(
+    Object.fromEntries(
+      [...Object.keys(probes), ...idsWithoutProbe].map((id) => [id, 1]),
+    ),
   );
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
       HomeserverInfoService,
       { provide: HOMESERVER_ENGINE, useValue: engine },
-      MockProvider(MatrixClientService, {
-        accountIds: ids.asReadonly(),
-        sessionGenerations: generations.asReadonly(),
-      }),
+      { provide: SESSION_SNAPSHOT, useValue: snapshot },
     ],
   });
   const svc = TestBed.inject(HomeserverInfoService);
   // The eviction pass wires itself from a constructor effect, which has not run yet.
   TestBed.tick();
-  return { svc, ids, generations, engine, fake };
+  return { svc, live, engine, fake };
 }
 
 /** Read an account's record the way the real consumers do: `infos().get(...)`. */
@@ -230,29 +252,39 @@ describe('HomeserverInfoService', () => {
     expect(infoFor(svc, '@pending:two.org')).toBeNull();
   });
 
+  it('asks nothing for a user id that is not signed in', async () => {
+    const { svc, fake } = setup({
+      '@me:one.org': probeOf('https://one.org', 'one.org'),
+    });
+
+    await firstValueFrom(svc.load('@gone:one.org'));
+
+    expect(fake?.calls).toEqual([]);
+    expect(infoFor(svc, '@gone:one.org')).toBeNull();
+  });
+
   it('drops an account that signs out', async () => {
-    const { svc, ids, generations } = setup({
+    const { svc, live } = setup({
       '@me:one.org': probeOf('https://one.org', 'one.org'),
     });
     await firstValueFrom(svc.load('@me:one.org'));
     expect(infoFor(svc, '@me:one.org')).not.toBeNull();
 
-    generations.set(new Map());
-    ids.set([]);
+    live({});
     TestBed.tick();
 
     expect(infoFor(svc, '@me:one.org')).toBeNull();
   });
 
   it('re-probes when the same user id gets a new session generation', async () => {
-    const { svc, generations, fake } = setup({
+    const { svc, live, fake } = setup({
       '@me:one.org': probeOf('https://old.example', 'one.org'),
     });
     await firstValueFrom(svc.load('@me:one.org'));
     expect(infoFor(svc, '@me:one.org')?.baseUrl).toBe('https://old.example');
 
     fake?.set('@me:one.org', probeOf('https://new.example', 'one.org'));
-    generations.set(new Map([['@me:one.org', 2]]));
+    live({ '@me:one.org': 2 });
     TestBed.tick();
 
     expect(infoFor(svc, '@me:one.org')).toBeNull(); // stale answer dropped, not kept
@@ -262,13 +294,12 @@ describe('HomeserverInfoService', () => {
 
   it('discards a probe that finished after its account was removed', async () => {
     const answer = new Subject<HomeserverProbe | null>();
-    const { svc, ids, generations } = setup({ '@me:one.org': null }, [], {
+    const { svc, live } = setup({ '@me:one.org': null }, [], {
       probe: () => answer.pipe(take(1)),
     });
 
     const pending = firstValueFrom(svc.load('@me:one.org'));
-    generations.set(new Map());
-    ids.set([]);
+    live({});
     TestBed.tick();
     answer.next(probeOf('https://one.org', 'one.org'));
     await pending;
@@ -278,12 +309,12 @@ describe('HomeserverInfoService', () => {
 
   it('discards a probe that resolved after the account got a new generation', async () => {
     const answer = new Subject<HomeserverProbe | null>();
-    const { svc, generations } = setup({ '@me:one.org': null }, [], {
+    const { svc, live } = setup({ '@me:one.org': null }, [], {
       probe: () => answer.pipe(take(1)),
     });
 
     const pending = firstValueFrom(svc.load('@me:one.org'));
-    generations.set(new Map([['@me:one.org', 2]]));
+    live({ '@me:one.org': 2 });
     TestBed.tick();
     answer.next(probeOf('https://old.example', 'one.org'));
     await pending;
