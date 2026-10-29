@@ -17,6 +17,7 @@ const ID = 'test.active-account';
 function status(accountId: string, generation = 1): SessionAccountStatus {
   return {
     accountId,
+    deviceId: 'DEVICE',
     generation,
     syncState: 'syncing',
     serverSynced: true,

@@ -18,7 +18,7 @@ import {
   switchMap,
   take,
 } from 'rxjs';
-import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   PreferenceStoreService,
   definePreference,
@@ -129,7 +129,7 @@ function accountContext(accountId: string): PreferenceContext {
 @Injectable({ providedIn: 'root' })
 export class TrustSlotForecastService {
   private readonly health = inject(TrustHealthService);
-  private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly session = inject(SessionStateService);
   private readonly preferences = inject(PreferenceStoreService);
   /** Account id → the prompt kind last read from storage or seen live. */
   private readonly stored = signal<ReadonlyMap<string, StoredForecast>>(
@@ -139,7 +139,7 @@ export class TrustSlotForecastService {
   private readonly expired = signal<ReadonlySet<string>>(new Set());
   private readonly reads = new Map<string, Observable<void>>();
   private readonly activeAccountId$ = toObservable(
-    this.cryptoPort.activeAccountId,
+    this.session.activeAccountId,
   );
   private readonly unavailable = computed(
     () => this.health.health().availability === 'unavailable',
@@ -150,7 +150,7 @@ export class TrustSlotForecastService {
    * unavailable, as at start-up; null otherwise, including for a stale snapshot.
    */
   readonly forecast = computed<SlotForecast | null>(() => {
-    const accountId = this.cryptoPort.activeAccountId();
+    const accountId = this.session.activeAccountId();
     if (!accountId) return null;
     // A stale snapshot means a read failed mid-session; the failure notice owns the slot then.
     if (this.health.health().availability !== 'unavailable') return null;
@@ -165,7 +165,7 @@ export class TrustSlotForecastService {
     // run that sees a new Account records nothing; the next status change records it.
     let seenAccountId: string | null | undefined;
     effect(() => {
-      const accountId = this.cryptoPort.activeAccountId();
+      const accountId = this.session.activeAccountId();
       const current = this.health.health().current;
       const switched =
         seenAccountId !== undefined && accountId !== seenAccountId;
@@ -176,7 +176,7 @@ export class TrustSlotForecastService {
     // A forecast must not reserve space for a status that never arrives. Each hold starts
     // afresh, so an Account that becomes active again forecasts again.
     effect((onCleanup) => {
-      const accountId = this.cryptoPort.activeAccountId();
+      const accountId = this.session.activeAccountId();
       if (!accountId || !this.unavailable()) return;
       untracked(() => this.clearExpired(accountId));
       const timer = setTimeout(
@@ -187,7 +187,7 @@ export class TrustSlotForecastService {
     });
     // An Account switch does not pass through the route guard: read its forecast here.
     effect(() => {
-      const accountId = this.cryptoPort.activeAccountId();
+      const accountId = this.session.activeAccountId();
       if (accountId) untracked(() => this.hydrate(accountId).subscribe());
     });
   }
@@ -198,7 +198,7 @@ export class TrustSlotForecastService {
    */
   hydrateActive(): Observable<void> {
     return defer(() => {
-      const accountId = this.cryptoPort.activeAccountId();
+      const accountId = this.session.activeAccountId();
       return accountId
         ? this.hydrate(accountId)
         : this.activeAccountId$.pipe(

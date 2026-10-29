@@ -106,6 +106,28 @@ export function defineSessionEngineContract(
     );
 
     it(
+      "reports each account's device id",
+      async () => {
+        const a = await context.newSession();
+        const b = await context.newSession();
+
+        await restore(a);
+        await restore(b, 'background');
+
+        expect(
+          (await snapshot()).accounts.map(({ accountId, deviceId }) => ({
+            accountId,
+            deviceId,
+          })),
+        ).toEqual([
+          { accountId: a.userId, deviceId: a.deviceId },
+          { accountId: b.userId, deviceId: b.deviceId },
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'restores in the background without changing the active account',
       async () => {
         const a = await context.newSession();

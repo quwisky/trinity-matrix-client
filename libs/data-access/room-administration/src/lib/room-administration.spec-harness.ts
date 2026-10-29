@@ -26,6 +26,7 @@ export function administrationSession(
       activeAccountId: active,
       accounts: accountIds.map((accountId) => ({
         accountId,
+        deviceId: 'DEVICE',
         generation,
         syncState: 'syncing',
         serverSynced: true,

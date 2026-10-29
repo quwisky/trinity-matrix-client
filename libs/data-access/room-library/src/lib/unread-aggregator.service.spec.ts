@@ -22,6 +22,7 @@ let roomSeq = 0;
 function account(accountId: string, generation = 1): SessionAccountStatus {
   return {
     accountId,
+    deviceId: 'DEVICE',
     generation,
     syncState: 'syncing',
     serverSynced: true,

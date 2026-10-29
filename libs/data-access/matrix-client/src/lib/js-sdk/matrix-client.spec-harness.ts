@@ -45,6 +45,7 @@ export function fakeClient(baseUrl = 'https://hs.example') {
   return {
     baseUrl,
     getHomeserverUrl: () => baseUrl,
+    getDeviceId: vi.fn().mockReturnValue('DEV'),
     on: vi.fn(),
     off: vi.fn(),
     initRustCrypto: vi.fn().mockResolvedValue(undefined),
