@@ -1,5 +1,6 @@
 import { CompletionContext } from '@codemirror/autocomplete';
 import { json } from '@codemirror/lang-json';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
 import {
   configJsonSchema,
@@ -77,7 +78,11 @@ const SCHEMA = configJsonSchema(ENTRIES);
 const complete = configCompletionSource(SCHEMA);
 
 function stateOf(doc: string): EditorState {
-  return EditorState.create({ doc, extensions: [json()] });
+  const state = EditorState.create({ doc, extensions: [json()] });
+  // Without a view no background parse finishes the tree the first, time-boxed parse left
+  // partial; finish it, and hand it to the state with an empty transaction.
+  ensureSyntaxTree(state, state.doc.length, Infinity);
+  return state.update({}).state;
 }
 
 /** The completion labels offered at `|` in the document, in the order they are offered. */
@@ -126,6 +131,15 @@ describe('config completion', () => {
     expect(labels).toContain('mode');
     // A different group's settings are not offered here: the path is what scopes the list.
     expect(labels).not.toContain('linkPreviews');
+  });
+
+  it('offers settings past the window the first parse covers', () => {
+    // The first parse stops at 3000 characters or 20 ms, whichever comes first; a loaded
+    // runner hits the time limit inside a short document the way this one hits the length.
+    const padding = `"note":"${'x'.repeat(4000)}",`;
+    const labels = labelsAt(`{${padding}"settings":{"theme":{"pa|":"x"}}}`);
+
+    expect(labels).toContain('palette');
   });
 
   it('does not offer a key the object already has', () => {
