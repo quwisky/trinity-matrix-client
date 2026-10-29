@@ -30,16 +30,21 @@ export interface TrustFacts {
   readonly crossSigning: CrossSigningFacts;
 }
 
-/** The account's identity as the server has it, read after re-querying the server. */
-export interface OwnIdentityCheck {
-  /** The account has an identity once the own keys are re-queried (js `userHasCrossSigningKeys(me, true)`). */
-  readonly identityKnown: boolean;
-  /** The published master key (`/keys/query`); null when the server publishes none. */
-  readonly publishedMasterKey: string | null;
-  /** The local master public key; null when this device has none or it does not match its private key. */
-  readonly localMasterKey: string | null;
-  readonly facts: TrustFacts;
-}
+/**
+ * The account's identity as the server has it, read after re-querying the server. When
+ * the re-query knows no identity, nothing else is read.
+ */
+export type OwnIdentityCheck =
+  | { readonly identityKnown: false }
+  | {
+      /** The account has an identity once the own keys are re-queried (js `userHasCrossSigningKeys(me, true)`). */
+      readonly identityKnown: true;
+      /** The published master key (`/keys/query`); null when the server publishes none. */
+      readonly publishedMasterKey: string | null;
+      /** The local master public key; null when this device has none or it does not match its private key. */
+      readonly localMasterKey: string | null;
+      readonly facts: TrustFacts;
+    };
 
 /** One signed-in device of the account, as the server lists it. */
 export interface OwnDevice {
@@ -110,6 +115,17 @@ export interface VerificationSnapshot {
 export type RecoverySecret =
   | { readonly kind: 'recovery-key'; readonly value: string }
   | { readonly kind: 'passphrase'; readonly value: string };
+
+/** How far a write of the secret-storage pointer got; see {@link TrustEngine.setDefaultKeyPointer}. */
+export interface PointerWrite {
+  /** The LOCAL pointer before the write; null when unset. `raw-retry` reads nothing and reports null. */
+  readonly previous: string | null;
+  /**
+   * The write is confirmed, or nothing needed writing. False when a `confirmed` write went
+   * out but was not confirmed within its budget: it may still have landed on the server.
+   */
+  readonly confirmed: boolean;
+}
 
 /**
  * One account's crypto, as plain data. The engine reports facts and runs protocol steps;
@@ -271,5 +287,55 @@ export interface TrustEngine {
     accountId: string,
     fileText: string,
     passphrase: string,
+  ): Observable<EngineResult<null>>;
+  /**
+   * First-device setup: a new recovery key, cross-signing (new keys when `newIdentity`, so
+   * an identity this device made but never published is replaced), secret storage and a
+   * new key backup, deleting every existing backup version first. Interactive: the
+   * cross-signing upload may raise password prompts. `recoveryKey` is returned once and
+   * never kept.
+   */
+  setUpRecovery(
+    accountId: string,
+    options: { readonly newIdentity: boolean },
+  ): Observable<InteractiveUpdate<{ readonly recoveryKey: string }>>;
+  /**
+   * Rotates the cross-signing identity and uploads it, touching neither secret storage nor
+   * the backup. Interactive; `replay` answers the first password challenge before anyone
+   * is asked, and a rejected replay is not one of the three attempts. The local keys may
+   * already be rotated when the upload is refused.
+   */
+  rotateCrossSigning(
+    accountId: string,
+    replay: string | null,
+  ): Observable<InteractiveUpdate<null>>;
+  /**
+   * Writes the account's secret-storage pointer (null parks it).
+   * - `confirmed`: reads the local pointer, writes nothing when it already equals `keyId`,
+   *   else writes and waits for the write to be confirmed. Resolves within its own budget
+   *   (Trust stops waiting after 20 s): an unconfirmed write is `confirmed: false`, not a
+   *   hang. It fails only when nothing was written; once a write was attempted it reports
+   *   `{previous, confirmed}`, so the caller can put `previous` back.
+   * - `raw-retry`: one bare write to the server, retried through dropped connections, with
+   *   no read before it (the local store can lag the server either way).
+   */
+  setDefaultKeyPointer(
+    accountId: string,
+    keyId: string | null,
+    mode: 'confirmed' | 'raw-retry',
+  ): Observable<EngineResult<PointerWrite>>;
+  /** Deletes the account's dehydrated device (MSC3814); fails when there is none. */
+  deleteDehydratedDevice(accountId: string): Observable<EngineResult<null>>;
+  /**
+   * A new secret-storage key holding the cross-signing keys, and a new key backup under
+   * it, after deleting EVERY existing backup version. `recoveryKey` is returned once.
+   */
+  createRecoveryAndBackup(
+    accountId: string,
+  ): Observable<EngineResult<{ readonly recoveryKey: string }>>;
+  /** Drops the description of secret-storage key `keyId`, unless it is still the local default. */
+  dropKeyDescription(
+    accountId: string,
+    keyId: string,
   ): Observable<EngineResult<null>>;
 }
