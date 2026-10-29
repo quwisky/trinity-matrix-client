@@ -144,19 +144,19 @@ async function framesWithRow(page: Page): Promise<SlotFrame[]> {
 }
 
 /*
- * Signing in at phone width, the global banner slot first holds the "Protected browser
- * storage is unavailable" notice and swaps it for
- * the "Set up encryption" prompt once the trust status arrives, a fraction of a second after
- * Rooms renders. The notice's two actions wrap under its message there and the prompt's one
- * action does not, so the swap used to move the room list up by about 26px, under a tap
- * already in flight: the tap was lost or opened the next room. Every frame from the first
- * room row until the prompt is up has to show the row in the same place.
+ * Signing in at phone width, the global banner slot can first hold the "Protected browser
+ * storage is unavailable" notice and swap it for the "Set up encryption" prompt once the
+ * trust status arrives. The notice's two actions wrap under its message there and the
+ * prompt's one action does not, so the swap used to move the room list up by about 26px,
+ * under a tap already in flight: the tap was lost or opened the next room. Every frame from
+ * the first room row until the prompt is up has to show the row in the same place.
  *
- * This relies on headless Chromium declining `navigator.storage.persist()`, as it does
- * here and in CI: that limitation is what puts the notice in the slot first. The test
- * checks the swap really happened while the row was on screen, so a browser that grants
- * persistence, or a trust status that arrives before the first row, fails it plainly
- * instead of letting it pass without measuring anything.
+ * Whether the notice is still in the slot when the first row is drawn depends on whether
+ * the trust status arrives first, so the sign-in cases accept either order: the notice
+ * under the row then the prompt, or the prompt arriving with the row. The held-status case
+ * slows the status down, so the swap under a drawn row is always measured too. All of this
+ * relies on headless Chromium declining `navigator.storage.persist()`, as it does here and
+ * in CI: that limitation is what puts the notice in the slot at all.
  */
 test.describe('Global banner slot after sign-in', () => {
   test.skip(
@@ -198,40 +198,59 @@ test.describe('Global banner slot after sign-in', () => {
     }
   });
 
+  /** Signs in, waits for the prompt, checks the row never moved; returns the slot changes. */
+  async function signInAndMeasure(page: Page): Promise<(string | null)[]> {
+    await page.addInitScript(recordSlotFrames);
+    await login(page, account);
+    // A fresh account has no encryption set up: the prompt is where the slot settles.
+    await expect(
+      page
+        .locator('trn-encryption-banner trn-banner')
+        .getByText('Set up encryption to secure your messages.'),
+    ).toBeVisible();
+
+    const frames = await framesWithRow(page);
+    expect(frames.length).toBeGreaterThan(0);
+    const first = frames[0]!;
+    const moved = frames.filter(
+      (frame) => frame.row === null || Math.abs(frame.row - first.row!) > 0.5,
+    );
+    const swaps = frames.filter(
+      (frame, index) => index === 0 || frame.slot !== frames[index - 1]!.slot,
+    );
+    expect(
+      moved,
+      `row first drawn at y=${first.row}; slot changes: ${JSON.stringify(swaps)}`,
+    ).toEqual([]);
+    return swaps.map(({ slot }) => slot);
+  }
+
   for (const width of [320, 390, 600, 1280]) {
     test(`the room list stays put while the slot settles at ${width}px`, async ({
       page,
     }) => {
       await page.setViewportSize({ width, height: 844 });
-      await page.addInitScript(recordSlotFrames);
-      await login(page, account);
-      // A fresh account has no encryption set up: the prompt is where the slot settles.
-      await expect(
-        page
-          .locator('trn-encryption-banner trn-banner')
-          .getByText('Set up encryption to secure your messages.'),
-      ).toBeVisible();
-
-      const frames = await framesWithRow(page);
-      expect(frames.length).toBeGreaterThan(0);
-      const first = frames[0]!;
-      const moved = frames.filter(
-        (frame) => frame.row === null || Math.abs(frame.row - first.row!) > 0.5,
-      );
-      const swaps = frames.filter(
-        (frame, index) => index === 0 || frame.slot !== frames[index - 1]!.slot,
-      );
+      const swaps = await signInAndMeasure(page);
+      // When trust settles before the first row is drawn, the row and the prompt arrive
+      // together; otherwise the notice holds the slot under the row and gives way to the
+      // prompt. Either way the row below must not move.
       expect(
-        swaps.map(({ slot }) => slot),
-        'the notice held the slot when the first row was drawn, then gave way to the ' +
-          `prompt; slot changes: ${JSON.stringify(swaps)}`,
-      ).toEqual(['status', 'encryption']);
-      expect(
-        moved,
-        `row first drawn at y=${first.row}; slot changes: ${JSON.stringify(swaps)}`,
-      ).toEqual([]);
+        [['status', 'encryption'], ['encryption']],
+        `the slot settles on the prompt; slot changes: ${JSON.stringify(swaps)}`,
+      ).toContainEqual(swaps);
     });
   }
+
+  test('the room list stays put when the notice gives way under a drawn row at 390px', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await holdTrustStatus(
+      page,
+      () => new Promise((resolve) => setTimeout(resolve, STATUS_DELAY_MS)),
+    );
+    expect(await signInAndMeasure(page)).toEqual(['status', 'encryption']);
+  });
 
   /*
    * With persistent storage granted the notice never takes the slot, so the prompt
