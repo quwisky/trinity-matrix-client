@@ -1,14 +1,18 @@
-import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
 import {
-  ClientEvent,
-  EventType,
-  RoomEvent,
-  SyncState,
-  type MatrixClient,
-  type MatrixEvent,
-} from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomEncryptionFlags } from '@trinity/util/matrix';
+  ErrorHandler,
+  Injectable,
+  Injector,
+  computed,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
+import {
+  SESSION_ENGINE,
+  type SessionAccessToken,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
+import { plainEqual } from '@trinity/util/matrix';
 import {
   PushHandoffBridge,
   type BackgroundWork,
@@ -18,10 +22,12 @@ import {
 import {
   Observable,
   Subject,
+  Subscription,
   catchError,
   concat,
   defaultIfEmpty,
   defer,
+  distinctUntilChanged,
   finalize,
   firstValueFrom,
   forkJoin,
@@ -33,12 +39,9 @@ import {
   switchMap,
   timeout,
 } from 'rxjs';
+import type { PushRoom } from './notification-engine';
+import { NOTIFICATION_ENGINE } from './notification-engine.token';
 import type { NotificationTextMode } from './notification-text.port';
-import {
-  LEGACY_NOTIFICATION_SOUND_EVENT,
-  NOTIFICATION_SOUND_EVENT,
-  enabledFlag,
-} from './js-sdk/legacy-account-data';
 
 /**
  * A token that rotated more recently than this is not refreshed again as the app goes to the
@@ -74,16 +77,23 @@ export const BACKGROUND_REFRESH_GRANT_TIMEOUT_MS = 8_000;
  */
 export const BACKGROUND_RUN_DEADLINE_MS = 25_000;
 
-/** One live account's listeners and what was last written for its rooms. */
+interface LiveAccount {
+  readonly accountId: string;
+  readonly generation: number;
+}
+
+/** One account session's subscriptions and what was last written for it. */
 interface HandoffBinding {
-  readonly client: MatrixClient;
+  readonly generation: number;
   /**
    * `encrypted\0direct\0name` last written per room, so a sync that changes nothing writes
    * nothing.
    */
   readonly written: Map<string, string>;
-  readonly encryption: RoomEncryptionFlags;
-  readonly detach: () => void;
+  /** The session's latest token, null until the first. */
+  token: SessionAccessToken | null;
+  sound: boolean;
+  readonly subscription: Subscription;
 }
 
 /**
@@ -99,15 +109,19 @@ interface HandoffBinding {
  */
 @Injectable({ providedIn: 'root' })
 export class PushHandoffService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly sessionEngine = inject(SESSION_ENGINE);
+  private readonly session = inject(SessionStateService);
+  private readonly engine = inject(NOTIFICATION_ENGINE);
   private readonly bridge = inject(PushHandoffBridge);
   private readonly injector = inject(Injector);
+  private readonly errors = inject(ErrorHandler);
   private readonly bindings = new Map<string, HandoffBinding>();
   /**
-   * Accounts whose sign-out began, with every client live for them then (mid-swap, the
-   * unbound one too): nothing writes those clients again. A new client is a new sign-in.
+   * Accounts whose sign-out began, with every session generation live for them then
+   * (mid-swap, the unbound one too): nothing writes those sessions again. A new generation
+   * is a new sign-in.
    */
-  private readonly retired = new Map<string, Set<MatrixClient>>();
+  private readonly retired = new Map<string, Set<number>>();
   /** Epoch ms. */
   private readonly rotatedAt = new Map<string, number>();
   private tail: Promise<void> = Promise.resolve();
@@ -117,6 +131,16 @@ export class PushHandoffService {
    */
   private notificationText: NotificationTextMode | null = null;
   private readonly mirrorLost = new Subject<void>();
+
+  /** Each live account with its session generation: a re-auth bumps it and rebinds. */
+  private readonly accounts = computed(
+    (): readonly LiveAccount[] =>
+      this.session.snapshot().accounts.map(({ accountId, generation }) => ({
+        accountId,
+        generation,
+      })),
+    { equal: plainEqual },
+  );
 
   /** Emits when the store was emptied and the mirror couldn't be written again. */
   readonly notificationTextLost: Observable<void> =
@@ -128,23 +152,13 @@ export class PushHandoffService {
       if (!this.bridge.available) return undefined;
       const accounts = effect(
         () => {
-          const ids = this.matrix.accountIds();
-          untracked(() => this.reconcile(ids));
+          const live = this.accounts();
+          untracked(() => this.reconcile(live));
         },
         { injector: this.injector },
       );
-      const rotations = this.matrix.accessTokenRotations.subscribe(
-        ({ userId, accessToken }) => {
-          const binding = this.bindings.get(userId);
-          if (binding && !this.isRetired(userId, binding.client)) {
-            this.rotatedAt.set(userId, Date.now());
-          }
-          this.writeAccount(userId, accessToken);
-        },
-      );
       return () => {
         accounts.destroy();
-        rotations.unsubscribe();
         for (const userId of [...this.bindings.keys()]) this.unbind(userId);
       };
     });
@@ -158,16 +172,17 @@ export class PushHandoffService {
   forget(userId?: string): Observable<void> {
     return defer(() => {
       if (!this.bridge.available) return of(void 0);
+      const live = this.session.snapshot().accounts;
       const ids = userId
         ? [userId]
-        : [...this.bindings.keys(), ...this.matrix.accountIds()];
+        : [...this.bindings.keys(), ...live.map((a) => a.accountId)];
       for (const id of ids) {
-        const clients = new Set<MatrixClient>();
-        const bound = this.bindings.get(id)?.client;
-        const current = this.matrix.clientFor(id);
-        if (bound) clients.add(bound);
-        if (current) clients.add(current);
-        if (clients.size > 0) this.retired.set(id, clients);
+        const generations = new Set<number>();
+        const bound = this.bindings.get(id)?.generation;
+        const current = live.find((a) => a.accountId === id)?.generation;
+        if (bound !== undefined) generations.add(bound);
+        if (current !== undefined) generations.add(current);
+        if (generations.size > 0) this.retired.set(id, generations);
         this.bindings.get(id)?.written.clear();
       }
       const emptied = this.schedule(() =>
@@ -223,13 +238,9 @@ export class PushHandoffService {
       if (!this.bridge.available) return of(void 0);
       const now = Date.now();
       const due = [...this.bindings].flatMap(([userId, binding]) => {
-        if (this.isRetired(userId, binding.client)) return [];
-        const token = binding.client.getAccessToken();
-        if (
-          !token ||
-          this.matrix.accessTokenExpiry(userId, token) === undefined ||
-          !this.matrix.canRefreshAccessToken(userId)
-        ) {
+        if (this.isRetired(userId, binding.generation)) return [];
+        const token = binding.token;
+        if (!token || token.expiresAt === null || !token.refreshable) {
           return [];
         }
         const rotated = this.rotatedAt.get(userId);
@@ -242,7 +253,7 @@ export class PushHandoffService {
       const refreshed = defer(() =>
         forkJoin(
           due.map((userId) =>
-            this.matrix
+            this.sessionEngine
               .refreshAccessToken(userId, {
                 timeoutMs: BACKGROUND_REFRESH_GRANT_TIMEOUT_MS,
               })
@@ -275,7 +286,8 @@ export class PushHandoffService {
     ).pipe(catchError(() => of(void 0)));
   }
 
-  private reconcile(ids: readonly string[]): void {
+  private reconcile(live: readonly LiveAccount[]): void {
+    const ids = live.map((a) => a.accountId);
     for (const userId of [...this.bindings.keys()]) {
       if (!ids.includes(userId)) this.unbind(userId);
     }
@@ -283,106 +295,103 @@ export class PushHandoffService {
     for (const userId of [...this.retired.keys()]) {
       if (!ids.includes(userId)) this.retired.delete(userId);
     }
-    for (const userId of ids) {
-      const client = this.matrix.clientFor(userId);
-      const bound = this.bindings.get(userId);
-      if (!client || bound?.client === client) continue;
-      // A re-authentication: same user, new client, never left the list.
-      if (bound) this.unbind(userId);
-      this.bind(userId, client);
+    for (const { accountId, generation } of live) {
+      const bound = this.bindings.get(accountId);
+      if (bound?.generation === generation) continue;
+      // A re-authentication: same user, new session, never left the list.
+      if (bound) this.unbind(accountId);
+      this.bind(accountId, generation);
     }
   }
 
-  private bind(userId: string, client: MatrixClient): void {
-    if (!this.isRetired(userId, client)) this.retired.delete(userId);
-    const onSync = (state: SyncState): void => {
-      if (state === SyncState.Prepared || state === SyncState.Syncing) {
-        this.writeRooms(userId);
-      }
-    };
-    const onName = (): void => this.writeRooms(userId);
-    const onAccountData = (event: MatrixEvent): void => {
-      const type = event.getType();
-      if (type === EventType.Direct) {
-        this.writeRooms(userId);
-      } else if (
-        type === NOTIFICATION_SOUND_EVENT ||
-        type === LEGACY_NOTIFICATION_SOUND_EVENT
-      ) {
-        this.writeAccount(userId);
-      }
-    };
-    client.on(ClientEvent.Sync, onSync);
-    client.on(RoomEvent.Name, onName);
-    client.on(ClientEvent.AccountData, onAccountData);
-    this.bindings.set(userId, {
-      client,
+  private bind(userId: string, generation: number): void {
+    if (!this.isRetired(userId, generation)) this.retired.delete(userId);
+    const binding: HandoffBinding = {
+      generation,
       written: new Map(),
-      encryption: new RoomEncryptionFlags(),
-      detach: () => {
-        client.off(ClientEvent.Sync, onSync);
-        client.off(RoomEvent.Name, onName);
-        client.off(ClientEvent.AccountData, onAccountData);
-      },
-    });
-    this.writeAccount(userId);
-    this.writeRooms(userId);
+      token: null,
+      sound: true,
+      subscription: new Subscription(),
+    };
+    this.bindings.set(userId, binding);
+    binding.subscription.add(
+      this.engine
+        .settings(userId)
+        .pipe(
+          map((settings) => settings.sound),
+          distinctUntilChanged(),
+        )
+        .subscribe({
+          next: (sound) => {
+            binding.sound = sound;
+            this.writeAccount(userId);
+          },
+          // A fault ends the stream until the next session generation rebinds.
+          error: (error: unknown) => this.errors.handleError(error),
+        }),
+    );
+    binding.subscription.add(
+      this.sessionEngine.accessToken(userId).subscribe({
+        next: (token) => {
+          const previous = binding.token;
+          binding.token = token;
+          if (
+            previous &&
+            token &&
+            token.accessToken !== previous.accessToken &&
+            !this.isRetired(userId, generation)
+          ) {
+            this.rotatedAt.set(userId, Date.now());
+          }
+          this.writeAccount(userId);
+        },
+        error: (error: unknown) => this.errors.handleError(error),
+      }),
+    );
+    binding.subscription.add(
+      this.engine.pushRooms(userId).subscribe({
+        next: (rooms) => this.writeRooms(userId, rooms),
+        error: (error: unknown) => this.errors.handleError(error),
+      }),
+    );
   }
 
   private unbind(userId: string): void {
-    this.bindings.get(userId)?.detach();
+    this.bindings.get(userId)?.subscription.unsubscribe();
     this.bindings.delete(userId);
     this.rotatedAt.delete(userId);
   }
 
-  /** `accessToken` is passed on rotation: the SDK adopts the new token after this runs. */
-  private writeAccount(userId: string, accessToken?: string): void {
+  private writeAccount(userId: string): void {
     const binding = this.bindings.get(userId);
-    if (!binding || this.isRetired(userId, binding.client)) return;
-    const token = accessToken ?? binding.client.getAccessToken();
-    if (!token) return;
-    const expiresAt = this.matrix.accessTokenExpiry(userId, token);
+    const token = binding?.token;
+    if (!binding || !token || this.isRetired(userId, binding.generation)) {
+      return;
+    }
     const account: PushHandoffAccount = {
       userId,
-      homeserverUrl: binding.client.getHomeserverUrl(),
-      accessToken: token,
-      // From the client: the settings store learns of the change a microtask after this event.
-      sound: enabledFlag(
-        binding.client as never,
-        NOTIFICATION_SOUND_EVENT,
-        LEGACY_NOTIFICATION_SOUND_EVENT,
-        true,
-      ),
-      ...(expiresAt === undefined ? {} : { accessTokenExpiresAt: expiresAt }),
+      homeserverUrl: token.homeserverUrl,
+      accessToken: token.accessToken,
+      sound: binding.sound,
+      ...(token.expiresAt === null
+        ? {}
+        : { accessTokenExpiresAt: token.expiresAt }),
     };
     void this.schedule(() => this.bridge.setAccount(account)).catch(
       () => undefined,
     );
   }
 
-  private writeRooms(userId: string): void {
+  private writeRooms(userId: string, rooms: readonly PushRoom[]): void {
     const binding = this.bindings.get(userId);
-    if (!binding || this.isRetired(userId, binding.client)) return;
-    const direct = directRoomIds(binding.client);
-    const { encryption } = binding;
+    if (!binding || this.isRetired(userId, binding.generation)) return;
     const changed: PushHandoffRoom[] = [];
-    for (const room of binding.client.getRooms()) {
-      if (room.getMyMembership() !== 'join') continue;
-      const answered = encryption.answered(room.roomId);
-      if (!answered) {
-        void encryption
-          .refresh(binding.client.getCrypto(), room.roomId)
-          .then(() => {
-            if (encryption.answered(room.roomId)) this.writeRooms(userId);
-          });
-      }
+    for (const room of rooms) {
       const entry = {
         roomId: room.roomId,
         name: room.name,
-        direct: direct.has(room.roomId),
-        // Until the crypto store answers, the room may be encrypted without saying so in its
-        // state; the renderers would show unencrypted text from it as a member's message.
-        encrypted: !answered || encryption.isEncrypted(room),
+        direct: room.direct,
+        encrypted: room.encrypted,
       };
       const key = `${entry.encrypted ? 1 : 0}\u0000${entry.direct ? 1 : 0}\u0000${entry.name}`;
       if (binding.written.get(entry.roomId) === key) continue;
@@ -398,8 +407,8 @@ export class PushHandoffService {
     );
   }
 
-  private isRetired(userId: string, client: MatrixClient): boolean {
-    return this.retired.get(userId)?.has(client) ?? false;
+  private isRetired(userId: string, generation: number): boolean {
+    return this.retired.get(userId)?.has(generation) ?? false;
   }
 
   /**
@@ -466,20 +475,4 @@ export class PushHandoffService {
 
 function canSaveTokens(granted: BackgroundWork): boolean {
   return granted.protectedDataAvailable && !granted.locking;
-}
-
-/** Room ids the `m.direct` account data lists as DMs. */
-function directRoomIds(client: MatrixClient): ReadonlySet<string> {
-  const map =
-    client
-      .getAccountData(EventType.Direct)
-      ?.getContent<Record<string, unknown>>() ?? {};
-  const ids = new Set<string>();
-  for (const roomIds of Object.values(map)) {
-    if (!Array.isArray(roomIds)) continue;
-    for (const roomId of roomIds) {
-      if (typeof roomId === 'string') ids.add(roomId);
-    }
-  }
-  return ids;
 }

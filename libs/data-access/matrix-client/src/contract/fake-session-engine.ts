@@ -139,6 +139,7 @@ export class FakeSessionEngine implements SessionEngine {
         cryptoStoreEncrypted: true,
       };
       this.setToken(accountId, {
+        homeserverUrl: session.baseUrl,
         accessToken: session.accessToken,
         expiresAt: session.oidc ? (session.accessTokenExpiresAt ?? null) : null,
         refreshable: !!session.oidc && !!session.refreshToken,

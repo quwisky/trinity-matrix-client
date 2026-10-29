@@ -1,9 +1,15 @@
 import { TestBed } from '@angular/core/testing';
-import { ClientEvent, MatrixError } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  EventType,
+  MatrixError,
+  RoomEvent,
+  SyncState,
+} from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
-import type { NotificationSettings } from '../notification-engine';
+import type { NotificationSettings, PushRoom } from '../notification-engine';
 import { JsSdkNotificationEngine } from './js-sdk-notification-engine';
 
 const ALICE = '@alice:hs';
@@ -47,6 +53,32 @@ function fakeClient(initial?: Rules) {
     addPushRule: vi.fn().mockResolvedValue({}),
     deletePushRule: vi.fn().mockResolvedValue({}),
     setPushRuleEnabled: vi.fn().mockResolvedValue({}),
+    getDeviceId: vi.fn((): string | null => 'DEV1'),
+    setPusher: vi.fn().mockResolvedValue({}),
+    removePusher: vi.fn().mockResolvedValue({}),
+    getPushers: vi.fn().mockResolvedValue({ pushers: [] }),
+    rooms: [] as {
+      roomId: string;
+      name: string;
+      membership: string;
+      /** Whether the room's state holds `m.room.encryption`. */
+      encryptionState?: boolean;
+    }[],
+    getRooms: () =>
+      client.rooms.map((room) => ({
+        roomId: room.roomId,
+        name: room.name,
+        getMyMembership: () => room.membership,
+        hasEncryptionStateEvent: () => room.encryptionState === true,
+      })),
+    /** Per room, the crypto store's answer; a room left out never answers. */
+    storeEncrypted: {} as Record<string, boolean>,
+    getCrypto: () => ({
+      isEncryptionEnabledInRoom: (roomId: string) =>
+        roomId in client.storeEncrypted
+          ? Promise.resolve(client.storeEncrypted[roomId])
+          : new Promise<boolean>(() => undefined),
+    }),
   };
   return client;
 }
@@ -645,6 +677,225 @@ describe('JsSdkNotificationEngine', () => {
         enabled: true,
       });
       expect(seen.at(-1)?.reactionNotifications).toBe(true);
+    });
+  });
+
+  describe('pushers', () => {
+    const PUSHER = {
+      appId: 'dev.trinityproject.trinity.ios',
+      pushkey: 'TOKEN',
+      appDisplayName: 'Trinity',
+      lang: 'en',
+      url: 'https://push.example/_matrix/push/v1/notify',
+      format: 'event_id_only' as const,
+      data: { trinity_user_id: ALICE, trinity_render: 'device' },
+    };
+
+    it('registers an http pusher that appends, named by the device, with every data key', async () => {
+      setup();
+
+      expect(await firstValueFrom(engine.setPusher(ALICE, PUSHER))).toEqual({
+        ok: true,
+        value: null,
+      });
+      expect(client.setPusher).toHaveBeenCalledWith({
+        app_id: 'dev.trinityproject.trinity.ios',
+        pushkey: 'TOKEN',
+        kind: 'http',
+        app_display_name: 'Trinity',
+        device_display_name: 'DEV1',
+        lang: 'en',
+        data: {
+          url: 'https://push.example/_matrix/push/v1/notify',
+          format: 'event_id_only',
+          trinity_user_id: ALICE,
+          trinity_render: 'device',
+        },
+        append: true,
+      });
+    });
+
+    it('names the pusher Trinity without a device id, and leaves out a null format', async () => {
+      setup();
+      client.getDeviceId.mockReturnValue(null);
+
+      await firstValueFrom(
+        engine.setPusher(ALICE, { ...PUSHER, format: null, data: {} }),
+      );
+
+      expect(client.setPusher).toHaveBeenCalledWith(
+        expect.objectContaining({
+          device_display_name: 'Trinity',
+          data: { url: PUSHER.url },
+        }),
+      );
+    });
+
+    it('removes a pusher and reads the pushers back by app id and pushkey', async () => {
+      setup();
+      client.getPushers.mockResolvedValue({
+        pushers: [{ app_id: 'a', pushkey: 'k', kind: 'http', data: {} }],
+      });
+
+      await firstValueFrom(engine.removePusher(ALICE, 'a', 'k'));
+
+      expect(client.removePusher).toHaveBeenCalledWith('k', 'a');
+      expect(await firstValueFrom(engine.pushers(ALICE))).toEqual({
+        ok: true,
+        value: [{ appId: 'a', pushkey: 'k' }],
+      });
+    });
+
+    it('reports a refused pusher as a failed request', async () => {
+      setup();
+      client.setPusher.mockRejectedValueOnce(
+        new MatrixError({ errcode: 'M_UNKNOWN', error: 'bad url' }, 400),
+      );
+
+      const result = await firstValueFrom(engine.setPusher(ALICE, PUSHER));
+
+      expect(result.ok || result.failure.code).toBe('request-failed');
+    });
+  });
+
+  describe('push rooms', () => {
+    const flush = () => new Promise((resolve) => setTimeout(resolve));
+
+    function watchRooms(): (readonly PushRoom[])[] {
+      const seen: (readonly PushRoom[])[] = [];
+      engine.pushRooms(ALICE).subscribe((rooms) => seen.push(rooms));
+      return seen;
+    }
+
+    it('lists joined rooms with names and DM flags, encrypted until the crypto store answers', async () => {
+      setup();
+      client.rooms = [
+        { roomId: '!plain:hs', name: 'Plain', membership: 'join' },
+        { roomId: '!dm:hs', name: 'Bob', membership: 'join' },
+        { roomId: '!stored:hs', name: 'Stored', membership: 'join' },
+        {
+          roomId: '!state:hs',
+          name: 'State',
+          membership: 'join',
+          encryptionState: true,
+        },
+        { roomId: '!silent:hs', name: 'Silent', membership: 'join' },
+        { roomId: '!inv:hs', name: 'Invite', membership: 'invite' },
+      ];
+      client.accountData[EventType.Direct] = { '@bob:hs': ['!dm:hs', 7] };
+      client.storeEncrypted = {
+        '!plain:hs': false,
+        '!dm:hs': false,
+        '!stored:hs': true,
+        '!state:hs': false,
+      };
+
+      const seen = watchRooms();
+      expect(seen).toEqual([
+        [
+          {
+            roomId: '!plain:hs',
+            name: 'Plain',
+            direct: false,
+            encrypted: true,
+          },
+          { roomId: '!dm:hs', name: 'Bob', direct: true, encrypted: true },
+          {
+            roomId: '!stored:hs',
+            name: 'Stored',
+            direct: false,
+            encrypted: true,
+          },
+          {
+            roomId: '!state:hs',
+            name: 'State',
+            direct: false,
+            encrypted: true,
+          },
+          {
+            roomId: '!silent:hs',
+            name: 'Silent',
+            direct: false,
+            encrypted: true,
+          },
+        ],
+      ]);
+      await flush();
+
+      expect(seen.at(-1)).toEqual([
+        { roomId: '!plain:hs', name: 'Plain', direct: false, encrypted: false },
+        { roomId: '!dm:hs', name: 'Bob', direct: true, encrypted: false },
+        {
+          roomId: '!stored:hs',
+          name: 'Stored',
+          direct: false,
+          encrypted: true,
+        },
+        { roomId: '!state:hs', name: 'State', direct: false, encrypted: true },
+        {
+          roomId: '!silent:hs',
+          name: 'Silent',
+          direct: false,
+          encrypted: true,
+        },
+      ]);
+    });
+
+    it('emits the whole list again on a sync, a rename and an m.direct change, and not on other events', async () => {
+      setup();
+      client.rooms = [{ roomId: '!a:hs', name: 'Team', membership: 'join' }];
+      client.storeEncrypted = { '!a:hs': false };
+      const seen = watchRooms();
+      await flush();
+      const before = seen.length;
+
+      client.emit(ClientEvent.Sync, SyncState.Syncing);
+      client.emit(ClientEvent.Sync, SyncState.Reconnecting);
+      client.rooms[0].name = 'Renamed';
+      client.emit(RoomEvent.Name);
+      client.accountData[EventType.Direct] = { '@bob:hs': ['!a:hs'] };
+      client.emit(ClientEvent.AccountData, { getType: () => EventType.Direct });
+      client.emit(ClientEvent.AccountData, { getType: () => 'm.other' });
+
+      expect(seen.slice(before)).toEqual([
+        [{ roomId: '!a:hs', name: 'Team', direct: false, encrypted: false }],
+        [{ roomId: '!a:hs', name: 'Renamed', direct: false, encrypted: false }],
+        [{ roomId: '!a:hs', name: 'Renamed', direct: true, encrypted: false }],
+      ]);
+    });
+
+    it('reports a room encrypted once its state turns encryption on', async () => {
+      setup();
+      client.rooms = [{ roomId: '!a:hs', name: 'Team', membership: 'join' }];
+      client.storeEncrypted = { '!a:hs': false };
+      const seen = watchRooms();
+      await flush();
+
+      client.rooms[0].encryptionState = true;
+      client.emit(ClientEvent.Sync, SyncState.Syncing);
+
+      expect(seen.at(-1)).toEqual([
+        { roomId: '!a:hs', name: 'Team', direct: false, encrypted: true },
+      ]);
+    });
+
+    it('emits an empty list for an account that is not live, and stops with its subscription', async () => {
+      setup();
+      client.rooms = [{ roomId: '!a:hs', name: 'Team', membership: 'join' }];
+      client.storeEncrypted = { '!a:hs': false };
+      const nobody: (readonly PushRoom[])[] = [];
+      engine.pushRooms('@nobody:hs').subscribe((rooms) => nobody.push(rooms));
+      expect(nobody).toEqual([[]]);
+
+      const seen: (readonly PushRoom[])[] = [];
+      const subscription = engine
+        .pushRooms(ALICE)
+        .subscribe((rooms) => seen.push(rooms));
+      subscription.unsubscribe();
+      await flush();
+      client.emit(ClientEvent.Sync, SyncState.Syncing);
+
+      expect(seen).toHaveLength(1);
     });
   });
 });

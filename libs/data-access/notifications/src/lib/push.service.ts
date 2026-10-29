@@ -10,11 +10,13 @@ import {
   mergeMap,
   of,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { engineFailureMessage } from '@trinity/util/matrix';
 import {
   NativePushRegistrationService,
   type NativePushRegistrationEvent,
 } from '@trinity/platform-native';
+import { NOTIFICATION_ENGINE } from './notification-engine.token';
 import { DEFAULT_APP_ID, PUSH_CONFIG } from './push-config';
 
 /** Semantic destination emitted by a native notification tap. */
@@ -36,8 +38,8 @@ const DEVICE_RENDER = 'device';
  * Outcome of the most recent pusher-registration round, for the settings UI.
  *
  * `applied` counts the accounts a pusher was registered for and stamps when; `error`
- * carries the homeserver's message from the first account that failed. A discriminated
- * union, so "succeeded and failed" is unrepresentable; don't split it into two signals.
+ * carries why the first account failed. A discriminated union, so "succeeded and failed" is
+ * unrepresentable; don't split it into two signals.
  *
  * `applied` means the homeservers accepted the pushers, not that a notification will
  * arrive: the gateway → FCM/APNs → device leg cannot be observed from the client, so the UI
@@ -70,30 +72,15 @@ export type PushRuntimeStatus =
         | 'push-pusher-verification-failed';
     };
 
-/**
- * Best human-readable message from a rejected pusher call: a `MatrixError`'s `data.error`,
- * then the Error message, then a generic line.
- */
-function pushErrorMessage(err: unknown): string {
-  if (err && typeof err === 'object') {
-    const data = (err as { data?: { error?: unknown } }).data;
-    if (data && typeof data.error === 'string' && data.error) {
-      return data.error;
-    }
-    const message = (err as { message?: unknown }).message;
-    if (typeof message === 'string' && message) {
-      return message;
-    }
-  }
-  return 'Could not reach the homeserver.';
-}
+/** Shown when a pusher call faulted rather than failing with a reason. */
+const PUSHER_FAULT = 'Could not reach the homeserver.';
 
 /** Shown when the OS/FCM/APNs side of registration fails, rather than the homeserver. */
 const DEVICE_REGISTRATION_FAILED =
   'The device could not register for push notifications.';
 
-/** Best text from a rejected `PushNotifications.register()`: a plugin/OS failure, so not
- * {@link pushErrorMessage}, whose fallback blames the homeserver. */
+/** Best text from a rejected `PushNotifications.register()`: a plugin/OS failure, not the
+ * homeserver's. */
 function deviceErrorMessage(err: unknown): string {
   const message =
     err && typeof err === 'object'
@@ -116,7 +103,8 @@ function deviceErrorMessage(err: unknown): string {
  */
 @Injectable({ providedIn: 'root' })
 export class PushService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(NOTIFICATION_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly nativePush = inject(NativePushRegistrationService);
   /** The build's gateway (`environment.push`); null builds without native push. */
   private readonly config = inject(PUSH_CONFIG, { optional: true });
@@ -154,7 +142,7 @@ export class PushService {
     'ready' | 'unsupported' | 'not-configured' | 'no-account' {
     if (!this.nativePush.supported()) return 'unsupported';
     if (!this.config) return 'not-configured';
-    if (!this.matrix.isInitialized) return 'no-account';
+    if (!this.signedIn()) return 'no-account';
     return 'ready';
   }
 
@@ -280,10 +268,7 @@ export class PushService {
       const pushkey = this.currentPushkey;
       const appId = this.pusherAppId();
       if (userId) {
-        const client = this.matrix.clientFor(userId);
-        if (pushkey && client) {
-          await client.removePusher(pushkey, appId).catch(() => undefined);
-        }
+        if (pushkey) await this.removePusher(userId, appId, pushkey);
         return;
       }
       this.currentPushkey = null;
@@ -295,22 +280,33 @@ export class PushService {
         code: 'push-registration-idle',
       });
       if (pushkey) {
-        for (const account of this.matrix.all()) {
-          await account.client
-            .removePusher(pushkey, appId)
-            .catch(() => undefined);
+        for (const accountId of this.session.accountIds()) {
+          await this.removePusher(accountId, appId, pushkey);
         }
       }
     });
+  }
+
+  /** Best effort: the account may be gone, or its homeserver unreachable. */
+  private async removePusher(
+    accountId: string,
+    appId: string,
+    pushkey: string,
+  ): Promise<void> {
+    await firstValueFrom(
+      this.engine.removePusher(accountId, appId, pushkey),
+    ).catch(() => undefined);
+  }
+
+  private signedIn(): boolean {
+    return this.session.active() !== null;
   }
 
   private canPush(): boolean {
     // Gate on the concrete mobile platforms: on web, and inside the Electron desktop shell
     // (where `getPlatform()` is also `'web'`), there is no push plugin.
     return (
-      this.config !== null &&
-      this.matrix.isInitialized &&
-      this.nativePush.supported()
+      this.config !== null && this.signedIn() && this.nativePush.supported()
     );
   }
 
@@ -368,8 +364,6 @@ export class PushService {
    * `event_id_only` keeps message content off the gateway; `trinity_user_id` tags the
    * pusher so the gateway can fan out to the right account and a tap can switch to it;
    * `trinity_render: "device"` makes the gateway send a push the device renders itself.
-   * Built as a value, not an inline literal: the Matrix spec allows extra `data` keys but
-   * the SDK types the field narrowly (`{ url, format, brand }`).
    */
   private async setPushers(pushkey: string): Promise<void> {
     const config = this.config;
@@ -382,31 +376,27 @@ export class PushService {
     let failure: string | null = null;
     let accounts = 0;
 
-    for (const account of this.matrix.all()) {
+    for (const accountId of this.session.accountIds()) {
       accounts++;
-      const data = {
-        url: config.gatewayUrl,
-        format: 'event_id_only',
-        [ACCOUNT_DATA_KEY]: account.userId,
-        [RENDER_DATA_KEY]: DEVICE_RENDER,
-      };
-      await account.client
-        .setPusher({
-          app_id: appId,
+      const result = await firstValueFrom(
+        this.engine.setPusher(accountId, {
+          appId,
           pushkey,
-          kind: 'http',
-          app_display_name: 'Trinity',
-          device_display_name: account.client.getDeviceId() ?? 'Trinity',
+          appDisplayName: 'Trinity',
           lang: 'en',
-          data,
-          // `append` governs pushers belonging to *other users*; the homeserver always
-          // replaces this user's own pusher for the same (app_id, pushkey). It must be true:
-          // every account shares one device token, so `false` makes each account in this
-          // loop delete the previous one's pusher when two accounts share a homeserver
-          // (Synapse).
-          append: true,
-        })
-        .catch((e) => (failure ??= pushErrorMessage(e)));
+          url: config.gatewayUrl,
+          format: 'event_id_only',
+          data: {
+            [ACCOUNT_DATA_KEY]: accountId,
+            [RENDER_DATA_KEY]: DEVICE_RENDER,
+          },
+        }),
+      ).catch(() => null);
+      if (!result?.ok) {
+        failure ??= result
+          ? engineFailureMessage(result.failure)
+          : PUSHER_FAULT;
+      }
     }
 
     if (failure === null) {
@@ -437,20 +427,19 @@ export class PushService {
    * readback GET itself fails, the registration stands.
    */
   private async verifyPushers(pushkey: string, appId: string): Promise<void> {
-    for (const account of this.matrix.all()) {
-      let pushers: readonly { app_id: string; pushkey: string }[];
-      try {
-        pushers = (await account.client.getPushers()).pushers;
-      } catch {
-        return; // Inconclusive — leave the applied state as it stands.
-      }
-      const present = pushers.some(
-        (p) => p.app_id === appId && p.pushkey === pushkey,
+    for (const accountId of this.session.accountIds()) {
+      const pushers = await firstValueFrom(
+        this.engine.pushers(accountId),
+      ).catch(() => null);
+      // Inconclusive — leave the applied state as it stands.
+      if (!pushers?.ok) return;
+      const present = pushers.value.some(
+        (p) => p.appId === appId && p.pushkey === pushkey,
       );
       if (!present) {
         this._registration.set({
           status: 'error',
-          message: `${account.userId} accepted the pusher but the homeserver did not keep it.`,
+          message: `${accountId} accepted the pusher but the homeserver did not keep it.`,
         });
         this._runtimeStatus.set({
           status: 'degraded',
@@ -481,7 +470,7 @@ export class PushService {
         : null;
 
     return {
-      ...(userId && this.matrix.accountIds().includes(userId)
+      ...(userId && this.session.accountIds().includes(userId)
         ? { accountId: userId }
         : {}),
       ...(roomId ? { roomId } : {}),

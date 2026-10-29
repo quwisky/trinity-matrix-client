@@ -81,6 +81,29 @@ export interface ReactionTarget {
   readonly liveReactionIds: readonly string[];
 }
 
+/** An HTTP pusher, as the account registers it with its homeserver. */
+export interface HttpPusher {
+  readonly appId: string;
+  readonly pushkey: string;
+  readonly appDisplayName: string;
+  readonly lang: string;
+  /** The push gateway's notify URL. */
+  readonly url: string;
+  /** `event_id_only` keeps message content off the gateway. */
+  readonly format: 'event_id_only' | null;
+  /** Further `data` keys the gateway forwards, beside `url` and `format`. */
+  readonly data: Readonly<Record<string, string>>;
+}
+
+/** A joined room as the closed-app push renderers need it. */
+export interface PushRoom {
+  readonly roomId: string;
+  readonly name: string;
+  readonly direct: boolean;
+  /** True until the crypto store has answered for the room: never under-reported. */
+  readonly encrypted: boolean;
+}
+
 /**
  * One account's push-rule settings. `settings` emits its snapshot on subscribe (the js-sdk
  * adapter synchronously), then a whole snapshot per change; an account without a live client
@@ -175,4 +198,38 @@ export interface NotificationEngine {
     targetEventId: string,
     reactionIds: readonly string[],
   ): Observable<EngineResult<ReactionTarget | null>>;
+
+  /**
+   * Registers `pusher` with kind `http`, `append: true` (accounts sharing the device's pushkey
+   * keep each other's pushers) and the device id as its display name. Rust:
+   * `Client::pusher().set` with `HttpPusherData { url, format, data }` (`data` flattened).
+   */
+  setPusher(
+    accountId: string,
+    pusher: HttpPusher,
+  ): Observable<EngineResult<null>>;
+
+  /** Rust: `Client::pusher().delete(PusherIds { pushkey, app_id })`. */
+  removePusher(
+    accountId: string,
+    appId: string,
+    pushkey: string,
+  ): Observable<EngineResult<null>>;
+
+  /** The account's pushers as the homeserver holds them. Rust: `get_pushers` through `Client::send`. */
+  pushers(
+    accountId: string,
+  ): Observable<
+    EngineResult<
+      readonly { readonly appId: string; readonly pushkey: string }[]
+    >
+  >;
+
+  /**
+   * The account's joined rooms on subscribe, then the whole list again after each sync, room
+   * name change, `m.direct` change or crypto-store answer, changed or not; empty without a live
+   * client. Rust: `Client::joined_rooms()` with `Room::display_name()`, `is_direct()` and
+   * `latest_encryption_state()`.
+   */
+  pushRooms(accountId: string): Observable<readonly PushRoom[]>;
 }
