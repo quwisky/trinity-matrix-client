@@ -1,69 +1,30 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MatrixError, Visibility } from 'matrix-js-sdk';
-import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
-import {
-  RoomActionPermissionError,
-  RoomActionPermissionsService,
-  type ActionAvailability,
-} from './room-action-permissions.service';
+import { type EngineFailure, engineFail } from '@trinity/util/matrix';
+import { firstValueFrom, of } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RoomActionPermissionError } from './room-action-permissions.service';
 import { RoomAdministrationError } from './room-administration-error';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
 import { RoomDirectoryService } from './room-directory.service';
 
-const TARGET = { accountId: '@me:hs.example', roomId: '!room:hs' } as const;
-const ALLOWED: ActionAvailability = { available: true, reason: null };
-
-function setup(
-  options: {
-    directory?: ActionAvailability;
-    signedIn?: boolean;
-    visibility?: () => Promise<{ visibility: Visibility }>;
-    set?: () => Promise<unknown>;
-  } = {},
-) {
-  const getRoomDirectoryVisibility = vi.fn(
-    options.visibility ??
-      (() => Promise.resolve({ visibility: Visibility.Public })),
-  );
-  const setRoomDirectoryVisibility = vi.fn(
-    options.set ?? (() => Promise.resolve({})),
-  );
-  const client = {
-    getDomain: () => 'hs.example',
-    getRoomDirectoryVisibility,
-    setRoomDirectoryVisibility,
-  };
-  const settingsFor = vi.fn(() => ({
-    directory: options.directory ?? ALLOWED,
-    imagePack: ALLOWED,
-    permissions: ALLOWED,
-  }));
-  TestBed.configureTestingModule({
-    providers: [
-      RoomDirectoryService,
-      MockProvider(MatrixClientService, {
-        clientFor: (accountId: string) =>
-          options.signedIn !== false && accountId === TARGET.accountId
-            ? (client as never)
-            : null,
-      }),
-      MockProvider(RoomActionPermissionsService, {
-        settingsFor: settingsFor as never,
-        assert: (availability: ActionAvailability) => {
-          if (!availability.available) {
-            throw new RoomActionPermissionError(availability);
-          }
-        },
-      }),
-    ],
-  });
+/** Alice at `alicePower` in bob's room; the directory listing needs 50. */
+async function setup({ alicePower = 100 }: { alicePower?: number } = {}) {
+  const session = administrationSession();
+  const { engine } = session;
+  const roomId = await roomWithAlice(engine);
+  await engine.asBob.setPowerLevel(roomId, engine.alice, alicePower);
+  TestBed.configureTestingModule({ providers: session.providers });
+  const state = TestBed.inject(RoomAdministrationProjectionState);
+  state.select(engine.alice, roomId);
+  state.update('permissions', 'available', 'retained');
   return {
+    ...session,
+    target: { accountId: engine.alice, roomId },
     service: TestBed.inject(RoomDirectoryService),
-    getRoomDirectoryVisibility,
-    setRoomDirectoryVisibility,
-    settingsFor,
   };
 }
 
@@ -73,34 +34,50 @@ const failure = (cause: Promise<unknown>) =>
     (error: unknown) => error,
   );
 
-describe('RoomDirectoryService', () => {
-  it("names the opening account's server", () => {
-    const { service } = setup();
+const refusal = (httpStatus: number, errcode: string): EngineFailure => ({
+  kind: httpStatus === 403 ? 'permission' : 'server',
+  code: 'request-failed',
+  diagnostic: {
+    kind: httpStatus === 403 ? 'permission' : 'server',
+    httpStatus,
+    errcode,
+  },
+});
 
-    expect(service.serverName(TARGET)).toBe('hs.example');
+afterEach(() => TestBed.resetTestingModule());
+
+describe('RoomDirectoryService', () => {
+  it("names the opening account's server", async () => {
+    const { service, target } = await setup();
+
+    expect(service.serverName(target)).toBe('example.org');
     expect(
-      service.serverName({ accountId: '@gone:hs', roomId: TARGET.roomId }),
+      service.serverName({ accountId: '@gone:hs', roomId: target.roomId }),
     ).toBeNull();
   });
 
   it('reads whether the room is listed, on subscribe', async () => {
-    const { service, getRoomDirectoryVisibility } = setup({
-      visibility: () => Promise.resolve({ visibility: Visibility.Private }),
-    });
+    const { service, engine, target } = await setup();
+    const directoryVisibility = vi.spyOn(engine, 'directoryVisibility');
 
-    const listed = service.listed(TARGET);
-    expect(getRoomDirectoryVisibility).not.toHaveBeenCalled();
+    const listed = service.listed(target);
+    expect(directoryVisibility).not.toHaveBeenCalled();
 
     await expect(firstValueFrom(listed)).resolves.toBe(false);
-    expect(getRoomDirectoryVisibility).toHaveBeenCalledWith(TARGET.roomId);
+    expect(directoryVisibility).toHaveBeenCalledWith(
+      engine.alice,
+      target.roomId,
+    );
   });
 
   it('reports a failed read as a typed error', async () => {
-    const { service } = setup({
-      visibility: () => Promise.reject(new Error('offline')),
-    });
+    const { service, engine } = await setup();
 
-    const error = await failure(firstValueFrom(service.listed(TARGET)));
+    const error = await failure(
+      firstValueFrom(
+        service.listed({ accountId: engine.alice, roomId: '!unknown:hs' }),
+      ),
+    );
 
     expect((error as RoomAdministrationError).outcome).toMatchObject({
       failure: 'server-rejected',
@@ -109,41 +86,51 @@ describe('RoomDirectoryService', () => {
   });
 
   it.each([
-    [true, Visibility.Public],
-    [false, Visibility.Private],
-  ])('sets listed=%s as %s for the opening account', async (listed, value) => {
-    const { service, setRoomDirectoryVisibility, settingsFor } = setup();
+    [true, 'public'],
+    [false, 'private'],
+  ] as const)(
+    'sets listed=%s as %s for the opening account',
+    async (listed, value) => {
+      const { service, engine, target } = await setup();
+      const setDirectoryVisibility = vi.spyOn(engine, 'setDirectoryVisibility');
 
-    await firstValueFrom(service.setListed(TARGET, listed), {
-      defaultValue: undefined,
-    });
+      await firstValueFrom(service.setListed(target, listed), {
+        defaultValue: undefined,
+      });
 
-    expect(settingsFor).toHaveBeenCalledWith(TARGET);
-    expect(setRoomDirectoryVisibility).toHaveBeenCalledExactlyOnceWith(
-      TARGET.roomId,
-      value,
-    );
-  });
+      expect(setDirectoryVisibility).toHaveBeenCalledExactlyOnceWith(
+        engine.alice,
+        target.roomId,
+        value,
+      );
+      await expect(firstValueFrom(service.listed(target))).resolves.toBe(
+        listed,
+      );
+    },
+  );
 
   it('refuses without permission and changes nothing', async () => {
-    const reason = "Your role cannot change this room's directory listing.";
-    const { service, setRoomDirectoryVisibility } = setup({
-      directory: { available: false, reason },
-    });
+    const { service, engine, target } = await setup({ alicePower: 0 });
+    const setDirectoryVisibility = vi.spyOn(engine, 'setDirectoryVisibility');
 
     const error = await failure(
-      firstValueFrom(service.setListed(TARGET, true)),
+      firstValueFrom(service.setListed(target, true)),
     );
 
     expect(error).toBeInstanceOf(RoomActionPermissionError);
-    expect(setRoomDirectoryVisibility).not.toHaveBeenCalled();
+    expect(setDirectoryVisibility).not.toHaveBeenCalled();
   });
 
   it('refuses when the opening account is gone', async () => {
-    const { service } = setup({ signedIn: false });
+    const { service, target } = await setup();
 
     const error = await failure(
-      firstValueFrom(service.setListed(TARGET, true)),
+      firstValueFrom(
+        service.setListed(
+          { accountId: '@gone:hs', roomId: target.roomId },
+          true,
+        ),
+      ),
     );
 
     expect((error as RoomAdministrationError).outcome.failure).toBe(
@@ -152,18 +139,13 @@ describe('RoomDirectoryService', () => {
   });
 
   it("explains a server that doesn't let this account publish", async () => {
-    const { service } = setup({
-      set: () =>
-        Promise.reject(
-          new MatrixError(
-            { errcode: 'M_FORBIDDEN', error: 'Not allowed to publish room' },
-            403,
-          ),
-        ),
-    });
+    const { service, engine, target } = await setup();
+    vi.spyOn(engine, 'setDirectoryVisibility').mockReturnValue(
+      of(engineFail(refusal(403, 'M_UNKNOWN'))),
+    );
 
     const error = await failure(
-      firstValueFrom(service.setListed(TARGET, true)),
+      firstValueFrom(service.setListed(target, true)),
     );
 
     expect(error).toBeInstanceOf(RoomAdministrationError);
@@ -176,15 +158,13 @@ describe('RoomDirectoryService', () => {
   });
 
   it('keeps any other rejection retryable', async () => {
-    const { service } = setup({
-      set: () =>
-        Promise.reject(
-          new MatrixError({ errcode: 'M_UNKNOWN', error: 'busy' }, 500),
-        ),
-    });
+    const { service, engine, target } = await setup();
+    vi.spyOn(engine, 'setDirectoryVisibility').mockReturnValue(
+      of(engineFail(refusal(500, 'M_UNKNOWN'))),
+    );
 
     const error = await failure(
-      firstValueFrom(service.setListed(TARGET, false)),
+      firstValueFrom(service.setListed(target, false)),
     );
 
     expect((error as RoomAdministrationError).outcome).toMatchObject({

@@ -99,3 +99,9 @@ function requiredToSend(
   if (Number.isSafeInteger(fallback)) return fallback as number;
   return state ? 50 : 0;
 }
+
+/** The server name of a user ID (`@local:server`), or null. */
+export function domainOf(userId: string): string | null {
+  const colon = userId.indexOf(':');
+  return colon >= 0 ? userId.slice(colon + 1) : null;
+}
