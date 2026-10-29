@@ -21,9 +21,12 @@ import {
   plainEqual,
 } from '@trinity/util/matrix';
 import type {
+  InteractiveUpdate,
+  OwnDevice,
   OwnIdentityCheck,
   TrustEngine,
   TrustFacts,
+  UserTrustFacts,
   VerificationSnapshot,
 } from '../lib/trust-engine';
 
@@ -62,6 +65,21 @@ const EMOJI = [
 ].map(([glyph, name]) => ({ glyph, name }));
 
 const ok = engineOk(null);
+const failure = (code: EngineFailure['code']): EngineFailure =>
+  ({
+    kind: 'unexpected',
+    code,
+    diagnostic: { kind: 'unexpected' },
+  }) as EngineFailure;
+
+/** Like the shared password-UIA budget: three rejected passwords end the command. */
+const PASSWORD_ATTEMPTS = 3;
+
+const UNVERIFIED: UserTrustFacts = {
+  verified: false,
+  wasVerified: false,
+  needsApproval: false,
+};
 
 const NOTHING_READY: TrustFacts = {
   crossSigningReady: false,
@@ -90,6 +108,15 @@ interface FakeAccount {
   readonly verification: BehaviorSubject<VerificationSnapshot | null>;
   /** Watching for incoming requests, as the js adapter does while subscribed. */
   listening: number;
+  readonly devices: BehaviorSubject<readonly OwnDevice[]>;
+  /** The device this engine runs as. */
+  readonly deviceId: string;
+  /** How the account sees each user it was asked about. */
+  readonly users: Map<string, BehaviorSubject<UserTrustFacts>>;
+  /** Users the account has seen an identity of; a later publish is a change. */
+  readonly identities: Set<string>;
+  /** The server asks for a non-password stage, as for an SSO-only account. */
+  providerAuthOnly: boolean;
 }
 
 const terminal = (snapshot: VerificationSnapshot | null) =>
@@ -101,14 +128,21 @@ export class FakeTrustEngine implements TrustEngine {
   /** Users whose identity this device knows, for DM verification requests. */
   private readonly identities = new Set<string>();
   private readonly changes = new Subject<void>();
+  private readonly prompts = new Map<
+    string,
+    { readonly accountId: string; answer(password: string | null): void }
+  >();
   private keys = 0;
   private flows = 0;
   /** The QR payload `showQr` returns; empty means none. */
   qrPayload = 'AP8HgA==';
   /** Every DM verification request sent, as `userId roomId`. */
   readonly sentDirectRequests: string[] = [];
+  private sequence = 0;
 
   readonly alice = '@alice:contract.invalid';
+  /** Every fake account's password. */
+  readonly password = 'fake-password';
 
   constructor() {
     this.addAccount(this.alice);
@@ -126,6 +160,65 @@ export class FakeTrustEngine implements TrustEngine {
       serverDefaultKeyId: null,
       verification: new BehaviorSubject<VerificationSnapshot | null>(null),
       listening: 0,
+      deviceId: 'FAKEDEVICE',
+      devices: new BehaviorSubject<readonly OwnDevice[]>([
+        {
+          deviceId: 'FAKEDEVICE',
+          displayName: null,
+          lastSeenTs: null,
+          lastSeenIp: null,
+          isCurrent: true,
+          verified: false,
+        },
+      ]),
+      users: new Map(),
+      identities: new Set(),
+      providerAuthOnly: false,
+    });
+  }
+
+  /** The device this engine runs as. */
+  deviceIdOf(accountId: string): string {
+    return this.require(accountId).deviceId;
+  }
+
+  /** The account signs in on another device; returns its id. */
+  addDevice(accountId: string, device: Partial<OwnDevice> = {}): string {
+    const account = this.require(accountId);
+    const added: OwnDevice = {
+      deviceId: `OTHER${++this.sequence}`,
+      displayName: null,
+      lastSeenTs: null,
+      lastSeenIp: null,
+      isCurrent: false,
+      verified: false,
+      ...device,
+    };
+    account.devices.next([...account.devices.value, added]);
+    return added.deviceId;
+  }
+
+  /** The server then asks for an identity-provider stage instead of a password. */
+  requireProviderAuth(accountId: string): void {
+    this.require(accountId).providerAuthOnly = true;
+  }
+
+  /** Another device of the account publishes an identity; this one learns its public keys. */
+  publishIdentityElsewhere(accountId: string): void {
+    const account = this.require(accountId);
+    account.publishedMasterKey = `master-key-${++this.keys}`;
+    account.localMasterKey = null;
+    this.setFacts(accountId, {
+      crossSigningReady: false,
+      crossSigning: {
+        publicKeysOnDevice: true,
+        privateKeysInSecretStorage: false,
+        privateKeysCachedLocally: {
+          masterKey: false,
+          selfSigningKey: false,
+          userSigningKey: false,
+        },
+      },
     });
   }
 
@@ -180,6 +273,32 @@ export class FakeTrustEngine implements TrustEngine {
   /** The SAS keys are exchanged: the emoji are shown. */
   showSas(accountId: string): void {
     this.updateVerification(accountId, { sas: { emoji: EMOJI } });
+  }
+
+  /**
+   * `userId` publishes an identity and the account sees it. The first one is pinned on
+   * sight; a later one needs approval.
+   */
+  publishUserIdentity(accountId: string, userId: string): void {
+    const account = this.require(accountId);
+    if (!account.identities.has(userId)) {
+      account.identities.add(userId);
+      return;
+    }
+    const user = this.userOf(account, userId);
+    user.next({ ...user.value, verified: false, needsApproval: true });
+  }
+
+  /** Replaces how the account sees `userId`, as a verification would. */
+  setUserTrust(
+    accountId: string,
+    userId: string,
+    trust: Partial<UserTrustFacts>,
+  ): void {
+    const account = this.require(accountId);
+    account.identities.add(userId);
+    const user = this.userOf(account, userId);
+    user.next({ ...user.value, ...trust });
   }
 
   /** Replaces some facts, as a crypto change would. */
@@ -242,9 +361,9 @@ export class FakeTrustEngine implements TrustEngine {
     accountId: string,
   ): Observable<EngineResult<OwnIdentityCheck>> {
     return this.read(accountId, (account, facts) => ({
-      // shortcut: follows publicKeysOnDevice; an identity published by another device
-      // is not modelled yet, and 6.2 must add it.
-      identityKnown: facts.crossSigning.publicKeysOnDevice,
+      identityKnown:
+        account.publishedMasterKey !== null ||
+        facts.crossSigning.publicKeysOnDevice,
       publishedMasterKey: account.publishedMasterKey,
       localMasterKey: account.localMasterKey,
       facts,
@@ -465,6 +584,203 @@ export class FakeTrustEngine implements TrustEngine {
       account.verification.next(updated);
       return of(ok);
     });
+  }
+
+  ownDevices(
+    accountId: string,
+  ): Observable<EngineResult<readonly OwnDevice[]>> {
+    return defer(() => {
+      const account = this.accounts.get(accountId);
+      if (!account) return concat(of(engineFail(NOT_LIVE)), NEVER);
+      return account.devices.pipe(map((devices) => engineOk(devices)));
+    });
+  }
+
+  renameDevice(
+    accountId: string,
+    deviceId: string,
+    name: string,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const account = this.accounts.get(accountId);
+      if (!account) return of(engineFail(NOT_LIVE));
+      account.devices.next(
+        account.devices.value.map((device) =>
+          device.deviceId === deviceId
+            ? { ...device, displayName: name || null }
+            : device,
+        ),
+      );
+      return of(engineOk(null));
+    });
+  }
+
+  deleteDevice(
+    accountId: string,
+    deviceId: string,
+  ): Observable<InteractiveUpdate<null>> {
+    return defer(() =>
+      deviceId === this.accounts.get(accountId)?.deviceId
+        ? of<InteractiveUpdate<null>>({
+            kind: 'done',
+            result: engineFail(failure('unsupported')),
+          })
+        : this.interactive(accountId, (account) => {
+            account.devices.next(
+              account.devices.value.filter(
+                (device) => device.deviceId !== deviceId,
+              ),
+            );
+            return engineOk(null);
+          }),
+    );
+  }
+
+  preAuthenticate(
+    accountId: string,
+  ): Observable<InteractiveUpdate<{ readonly password: string | null }>> {
+    return this.interactive(accountId, (_account, password) =>
+      engineOk({ password }),
+    );
+  }
+
+  answerPrompt(
+    accountId: string,
+    promptId: string,
+    password: string | null,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const prompt = this.prompts.get(promptId);
+      if (prompt?.accountId !== accountId) {
+        return of(engineFail(failure('prompt-gone')));
+      }
+      prompt.answer(password);
+      return of(engineOk(null));
+    });
+  }
+
+  userTrust(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<UserTrustFacts>> {
+    return defer(() => {
+      const account = this.accounts.get(accountId);
+      if (!account) return concat(of(engineFail(NOT_LIVE)), NEVER);
+      if (!account.facts.value.ok)
+        return concat(of(account.facts.value), NEVER);
+      return this.userOf(account, userId).pipe(
+        map((trust) => engineOk(trust)),
+        distinctUntilChanged<EngineResult<UserTrustFacts>>(plainEqual),
+      );
+    });
+  }
+
+  pinIdentity(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.identityChange(accountId, userId, { needsApproval: false });
+  }
+
+  withdrawVerification(
+    accountId: string,
+    userId: string,
+  ): Observable<EngineResult<null>> {
+    return this.identityChange(accountId, userId, { wasVerified: false });
+  }
+
+  /** Whether a password prompt is open. */
+  promptOpen(): boolean {
+    return this.prompts.size > 0;
+  }
+
+  /** How many subscriptions follow how the account sees users. */
+  userSubscriptions(accountId: string): number {
+    return [...this.require(accountId).users.values()].filter(
+      (user) => user.observed,
+    ).length;
+  }
+
+  private identityChange(
+    accountId: string,
+    userId: string,
+    change: Partial<UserTrustFacts>,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const account = this.accounts.get(accountId);
+      if (!account) return of(engineFail(NOT_LIVE));
+      if (!account.facts.value.ok) return of(account.facts.value);
+      // As the SDK does for a user whose identity it has never seen.
+      if (!account.identities.has(userId)) {
+        return of(engineFail(failure('request-failed')));
+      }
+      const user = this.userOf(account, userId);
+      user.next({ ...user.value, ...change });
+      return of(engineOk(null));
+    });
+  }
+
+  /**
+   * One password stage, as the shared UIA driver runs it: a prompt per attempt, a cancel
+   * on null or unsubscribe, `uia-attempts-exceeded` after three rejected passwords.
+   */
+  private interactive<T>(
+    accountId: string,
+    run: (account: FakeAccount, password: string) => EngineResult<T>,
+  ): Observable<InteractiveUpdate<T>> {
+    return new Observable<InteractiveUpdate<T>>((subscriber) => {
+      const done = (result: EngineResult<T>): void => {
+        subscriber.next({ kind: 'done', result });
+        subscriber.complete();
+      };
+      const account = this.accounts.get(accountId);
+      if (!account) {
+        done(engineFail(NOT_LIVE));
+        return undefined;
+      }
+      if (account.providerAuthOnly) {
+        done(engineFail(failure('uia-unsupported')));
+        return undefined;
+      }
+      let attempts = 0;
+      let promptId: string | null = null;
+      const ask = (rejected: boolean): void => {
+        const id = `fake-prompt-${++this.sequence}`;
+        promptId = id;
+        this.prompts.set(id, {
+          accountId,
+          answer: (password) => {
+            this.prompts.delete(id);
+            promptId = null;
+            if (password === null)
+              return done(engineFail(failure('uia-cancelled')));
+            attempts++;
+            if (password === this.password) return done(run(account, password));
+            if (attempts >= PASSWORD_ATTEMPTS) {
+              return done(engineFail(failure('uia-attempts-exceeded')));
+            }
+            ask(true);
+          },
+        });
+        subscriber.next({ kind: 'password-required', promptId: id, rejected });
+      };
+      ask(false);
+      return () => {
+        if (promptId) this.prompts.delete(promptId);
+      };
+    });
+  }
+
+  private userOf(
+    account: FakeAccount,
+    userId: string,
+  ): BehaviorSubject<UserTrustFacts> {
+    let user = account.users.get(userId);
+    if (!user) {
+      user = new BehaviorSubject(UNVERIFIED);
+      account.users.set(userId, user);
+    }
+    return user;
   }
 
   private read<T>(

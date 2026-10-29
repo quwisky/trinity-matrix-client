@@ -6,14 +6,27 @@ import {
   type WritableSignal,
 } from '@angular/core';
 import {
-  CryptoEvent,
-  type UserVerificationStatus,
-} from 'matrix-js-sdk/lib/crypto-api';
-import { defer, from, type Observable } from 'rxjs';
+  type Observable,
+  Subject,
+  defer,
+  from,
+  map,
+  merge,
+  mergeMap,
+  of,
+  scan,
+  startWith,
+  switchMap,
+  take,
+  tap,
+} from 'rxjs';
 import {
-  TrustCryptoPort,
-  type TrustMatrixClient,
+  SessionStateService,
+  projectActiveAccount,
 } from '@trinity/data-access/matrix-client';
+import { EngineRequestError, type EngineResult } from '@trinity/util/matrix';
+import type { UserTrustFacts } from './trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 import {
   TrustOperationError,
   recoverTrustOperation,
@@ -28,58 +41,58 @@ import {
 export type UserTrust =
   'verified' | 'unverified' | 'identity-changed' | 'verified-identity-changed';
 
-const toUserTrust = (
-  status: Pick<
-    UserVerificationStatus,
-    'isCrossSigningVerified' | 'wasCrossSigningVerified' | 'needsUserApproval'
-  >,
-): UserTrust =>
-  status.isCrossSigningVerified()
-    ? 'verified'
-    : status.wasCrossSigningVerified()
-      ? 'verified-identity-changed'
-      : status.needsUserApproval
-        ? 'identity-changed'
-        : 'unverified';
+/** null while the account has no crypto. */
+const toUserTrust = (result: EngineResult<UserTrustFacts>): UserTrust | null =>
+  !result.ok
+    ? null
+    : result.value.verified
+      ? 'verified'
+      : result.value.wasVerified
+        ? 'verified-identity-changed'
+        : result.value.needsApproval
+          ? 'identity-changed'
+          : 'unverified';
 
 /** Projects the active Account's verification view of other users; unknown while detached. */
 @Injectable({ providedIn: 'root' })
 export class TrustUsersService {
-  private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly engine = inject(TRUST_ENGINE);
+  private readonly session = inject(SessionStateService);
 
   /** One writable signal per tracked user id, updated in place as trust changes. */
   private readonly states = new Map<string, WritableSignal<UserTrust | null>>();
-  /** Per-user read generation, so an older read cannot overwrite a newer status. */
-  private readonly generations = new Map<string, number>();
-
-  private readonly onTrustChanged = (
-    userId: string,
-    status: UserVerificationStatus,
-  ): void => {
-    const state = this.states.get(userId);
-    if (!state) return;
-    this.nextGeneration(userId);
-    state.set(toUserTrust(status));
-  };
+  /** Users first asked about while the projection runs. */
+  private readonly added = new Subject<string>();
 
   /**
-   * The event is bound by hand because it carries the user and the new status. Reset keeps
-   * an Account switch or a released projection from exposing the previous Account's view.
+   * One engine subscription per tracked user, all released when the projection resets, so
+   * an Account switch or a released projection never exposes the previous Account's view.
    */
-  private readonly projection = this.cryptoPort.project({
+  private readonly projection = projectActiveAccount<
+    ReadonlyMap<string, UserTrust | null>
+  >({
     id: 'crypto.users',
-    bind: (client) =>
-      client.on(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged),
-    unbind: (client) =>
-      client.off(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged),
-    rebuild: (client) => {
-      for (const userId of this.states.keys()) void this.read(userId, client);
+    subscribe: (accountId) =>
+      merge(
+        defer(() => from([...this.states.keys()])),
+        this.added,
+      ).pipe(
+        mergeMap((userId) =>
+          this.engine
+            .userTrust(accountId, userId)
+            .pipe(map((result) => [userId, toUserTrust(result)] as const)),
+        ),
+        scan(
+          (all, [userId, trust]) => new Map(all).set(userId, trust),
+          new Map<string, UserTrust | null>(),
+        ),
+        startWith(new Map<string, UserTrust | null>()),
+      ),
+    rebuild: (all) => {
+      for (const [userId, trust] of all) this.states.get(userId)?.set(trust);
     },
     reset: () => {
-      for (const [userId, state] of this.states) {
-        this.nextGeneration(userId);
-        state.set(null);
-      }
+      for (const state of this.states.values()) state.set(null);
     },
   });
 
@@ -97,16 +110,15 @@ export class TrustUsersService {
     if (!state) {
       state = signal<UserTrust | null>(null);
       this.states.set(userId, state);
-      const client = this.projection.client();
-      if (client) void this.read(userId, client);
+      this.added.next(userId);
     }
     return state.asReadonly();
   }
 
   /** Accept a changed identity as this person's own (pin it). Cold; runs as the active Account. */
   acknowledgeIdentity(userId: string): Observable<void> {
-    return this.identityAction('acknowledge-identity', userId, (crypto) =>
-      crypto.pinCurrentUserIdentity(userId),
+    return this.identityAction('acknowledge-identity', userId, (accountId) =>
+      this.engine.pinIdentity(accountId, userId),
     );
   }
 
@@ -115,62 +127,46 @@ export class TrustUsersService {
    * unverified. Cold; runs as the active Account.
    */
   withdrawVerification(userId: string): Observable<void> {
-    return this.identityAction('withdraw-verification', userId, (crypto) =>
-      crypto.withdrawVerificationRequirement(userId),
+    return this.identityAction('withdraw-verification', userId, (accountId) =>
+      this.engine.withdrawVerification(accountId, userId),
     );
   }
 
-  /** Run one identity change, then re-read the user so their state updates without the event. */
+  /** Run one identity change, then re-read the user so their state updates before completing. */
   private identityAction(
     operation: TrustOperation,
     userId: string,
-    run: (
-      crypto: NonNullable<ReturnType<TrustMatrixClient['getCrypto']>>,
-    ) => Promise<void>,
+    run: (accountId: string) => Observable<EngineResult<null>>,
   ): Observable<void> {
-    return defer(() => {
-      const { client, crypto } = this.cryptoPort.active();
-      if (!crypto) {
-        throw new TrustOperationError(
-          operation,
-          'not-ready',
-          'retry',
-          'Encryption is still starting. Try again in a moment.',
-        );
-      }
-      // Settle the re-read before completing, so the caller's busy state outlasts it.
-      return from(
-        run(crypto).then(() =>
-          this.states.has(userId) ? this.read(userId, client) : undefined,
-        ),
+    const notReady = () =>
+      new TrustOperationError(
+        operation,
+        'not-ready',
+        'retry',
+        'Encryption is still starting. Try again in a moment.',
       );
-    }).pipe(recoverTrustOperation(operation));
-  }
-
-  private read(userId: string, client: TrustMatrixClient): Promise<void> {
-    const generation = this.nextGeneration(userId);
-    const state = this.states.get(userId);
-    const crypto = client.getCrypto();
-    if (!crypto) {
-      state?.set(null);
-      return Promise.resolve();
-    }
-    return crypto.getUserVerificationStatus(userId).then(
-      (status) => this.settle(userId, generation, toUserTrust(status)),
-      // The card reads trust decoratively; a failed read degrades to unverified.
-      () => this.settle(userId, generation, 'unverified'),
+    return defer(() => {
+      const accountId = this.session.activeAccountId();
+      if (!accountId) throw notReady();
+      return run(accountId).pipe(
+        switchMap((result) => {
+          if (!result.ok && result.failure.code === 'crypto-not-ready') {
+            throw notReady();
+          }
+          if (!result.ok) throw new EngineRequestError(result.failure);
+          const state = this.states.get(userId);
+          // Settle the re-read before completing, so the caller's busy state outlasts it.
+          return state && this.projection.accountId() === accountId
+            ? this.engine.userTrust(accountId, userId).pipe(
+                take(1),
+                tap((trust) => state.set(toUserTrust(trust))),
+              )
+            : of(null);
+        }),
+      );
+    }).pipe(
+      map(() => undefined),
+      recoverTrustOperation(operation),
     );
-  }
-
-  private settle(userId: string, generation: number, trust: UserTrust): void {
-    if (this.generations.get(userId) === generation) {
-      this.states.get(userId)?.set(trust);
-    }
-  }
-
-  private nextGeneration(userId: string): number {
-    const next = (this.generations.get(userId) ?? 0) + 1;
-    this.generations.set(userId, next);
-    return next;
   }
 }

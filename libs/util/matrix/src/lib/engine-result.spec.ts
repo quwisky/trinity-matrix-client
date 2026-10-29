@@ -165,6 +165,13 @@ describe('engineFailureMessage', () => {
     ['crypto-not-ready', 'Encryption is not ready for this account yet.'],
     ['verification-gone', 'This verification is no longer in progress.'],
     ['qr-unavailable', 'QR verification isn’t available for these sessions.'],
+    ['uia-cancelled', 'Password confirmation was cancelled.'],
+    [
+      'uia-unsupported',
+      'This account needs additional verification that Trinity can’t complete here.',
+    ],
+    ['uia-attempts-exceeded', 'Too many password attempts.'],
+    ['prompt-gone', 'This password prompt is no longer open.'],
   ] as const)('%s reads "%s"', (code, text) => {
     expect(
       engineFailureMessage({

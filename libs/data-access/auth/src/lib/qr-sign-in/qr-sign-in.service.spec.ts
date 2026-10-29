@@ -43,6 +43,7 @@ const secrets = { cross_signing: {} } as unknown as LinkedSecrets;
 const signedIn = { id: 'new-client' } as unknown as MatrixClient;
 const existingClient = {
   id: 'existing-client',
+  getUserId: () => '@me:hs',
   getAuthMetadata: vi.fn(async () => metadata),
 } as unknown as MatrixClient;
 
@@ -957,6 +958,7 @@ describe('QrSignInService.linkByScanning', () => {
 
   it('accepts an approval link on the device-authorization endpoint origin', async () => {
     const accountClient = {
+      getUserId: () => '@me:hs',
       getAuthMetadata: vi.fn(async () => ({
         issuer: 'https://id.example/',
         device_authorization_endpoint: 'https://auth/oauth2/device',
@@ -1136,6 +1138,25 @@ describe('QrSignInService.linkByScanning', () => {
     expect(flows[0].close).not.toHaveBeenCalled();
   });
 
+  it('refuses the link, without asking, when the client has no user id', async () => {
+    const { service, flows, identity } = setup();
+    const anonymous = {
+      ...existingClient,
+      getUserId: () => null,
+    } as unknown as MatrixClient;
+    const link = service.linkByScanning(anonymous, qrBytes);
+    const run = record(link.state$);
+    await settle();
+
+    link.confirmCheckCode(true);
+    await settle();
+
+    expect(identity.holdsPublishedIdentity).not.toHaveBeenCalled();
+    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
+    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+  });
+
   it('refuses, before any grant or secret, keys that are not the published identity', async () => {
     const { service, flows, identity } = setup();
     identity.holdsPublishedIdentity.mockReturnValue(of(false));
@@ -1146,9 +1167,7 @@ describe('QrSignInService.linkByScanning', () => {
     link.confirmCheckCode(true);
     await settle();
 
-    expect(identity.holdsPublishedIdentity).toHaveBeenCalledWith(
-      existingClient,
-    );
+    expect(identity.holdsPublishedIdentity).toHaveBeenCalledWith('@me:hs');
     expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
     expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
     expect(flows[0].shareSecrets).not.toHaveBeenCalled();
