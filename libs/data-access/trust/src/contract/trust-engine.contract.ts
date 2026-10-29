@@ -14,6 +14,8 @@ import {
   assertPlainData,
   decryptMegolmKeyFile,
 } from '@trinity/util/matrix';
+import { runRecoveryReset } from '../lib/recovery-reset';
+import { assertNoIdentityElsewhere } from '../lib/setup-guards';
 import type {
   InteractiveUpdate,
   TrustEngine,
@@ -280,6 +282,22 @@ export function defineTrustEngineContract(
         expect(await code(engine.importRoomKeys(NOBODY, 'file', 'pass'))).toBe(
           'account-not-live',
         );
+        for (const step of [
+          engine.setDefaultKeyPointer(NOBODY, null, 'confirmed'),
+          engine.deleteDehydratedDevice(NOBODY),
+          engine.createRecoveryAndBackup(NOBODY),
+          engine.dropKeyDescription(NOBODY, 'key'),
+        ] as Observable<EngineResult<unknown>>[]) {
+          expect(await code(step)).toBe('account-not-live');
+        }
+        for (const updates of [
+          engine.setUpRecovery(NOBODY, { newIdentity: false }),
+          engine.rotateCrossSigning(NOBODY, null),
+        ] as Observable<InteractiveUpdate<unknown>>[]) {
+          expect(resultCode((await interactive(updates, [])).result)).toBe(
+            'account-not-live',
+          );
+        }
       },
       testTimeoutMs,
     );
@@ -888,6 +906,243 @@ export function defineTrustEngineContract(
         ) as { session_id: string }[];
         expect(held.map((key) => key.session_id)).not.toContain(
           other.sessionId,
+        );
+      },
+      testTimeoutMs,
+    );
+
+    const ready = (r: EngineResult<TrustFacts>) => {
+      const facts = factsOf(r);
+      return (
+        !!facts?.crossSigningReady &&
+        facts.secretStorageReady &&
+        facts.keyBackupActive &&
+        facts.thisDeviceCrossSigned &&
+        facts.hasDefaultKey
+      );
+    };
+
+    /** `engine`, recording each member called, in order. */
+    function recording(): { engine: TrustEngine; calls: string[] } {
+      const calls: string[] = [];
+      const recorded = new Proxy(engine, {
+        get: (target, member, receiver) => {
+          const found = Reflect.get(target, member, receiver);
+          if (typeof found !== 'function') return found;
+          return (...args: unknown[]) => {
+            calls.push(String(member));
+            return found.apply(target, args);
+          };
+        },
+      });
+      return { engine: recorded, calls };
+    }
+
+    /** First-device setup with alice's password; resolves the recovery key it returned. */
+    async function setUpHere(): Promise<string> {
+      const { prompts, result } = await interactive(
+        engine.setUpRecovery(alice, { newIdentity: false }),
+        [context.password],
+      );
+      // A server may let the very first identity upload through without asking.
+      expect(prompts.filter((rejected) => rejected)).toEqual([]);
+      if (!result.ok) throw new Error(`Setup failed: ${result.failure.code}`);
+      return result.value.recoveryKey;
+    }
+
+    it(
+      'sets up recovery on a fresh account: verified, secret storage, backup on, and the key unlocks it',
+      async () => {
+        const facts = watch(engine.facts(alice));
+
+        const key = await setUpHere();
+
+        expect(key).toMatch(/^Es/);
+        await facts.until(ready);
+        expect(await value(engine.serverDefaultKeyId(alice))).toEqual(
+          expect.any(String),
+        );
+        const check = await knownIdentity();
+        expect(check.publishedMasterKey).toEqual(expect.any(String));
+        expect(check.localMasterKey).toBe(check.publishedMasterKey);
+        expect(await refusal(engine.recover(alice, recoveryKey(key)))).toBe(
+          'ok',
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'gives the setup guard what it needs to refuse an identity held elsewhere',
+      async () => {
+        await context.publishIdentityElsewhere();
+
+        const check = await value(engine.ownIdentityCheck(alice));
+
+        expect(() => assertNoIdentityElsewhere(check)).toThrow(
+          expect.objectContaining({ operation: 'setup', kind: 'stale-state' }),
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'parks the secret-storage pointer, and puts it back with an unread server write',
+      async () => {
+        const facts = watch(engine.facts(alice));
+        await context.setServerDefaultKey('contract-key');
+        await facts.until((r) => !!factsOf(r)?.hasDefaultKey);
+
+        expect(
+          await value(engine.setDefaultKeyPointer(alice, null, 'confirmed')),
+        ).toEqual({ previous: 'contract-key', confirmed: true });
+        expect(await value(engine.serverDefaultKeyId(alice))).toBeNull();
+        // Nothing left to park: nothing is written.
+        expect(
+          await value(engine.setDefaultKeyPointer(alice, null, 'confirmed')),
+        ).toEqual({ previous: null, confirmed: true });
+
+        expect(
+          await value(
+            engine.setDefaultKeyPointer(alice, 'contract-key', 'raw-retry'),
+          ),
+        ).toMatchObject({ confirmed: true });
+        expect(await value(engine.serverDefaultKeyId(alice))).toBe(
+          'contract-key',
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'rotates the identity, replaying a password without asking, and asking after a refused replay',
+      async () => {
+        await context.publishIdentity();
+        const before = await value(engine.publishedMasterKey(alice));
+
+        const replayed = await interactive(
+          engine.rotateCrossSigning(alice, context.password),
+          [],
+        );
+        expect(replayed.prompts).toEqual([]);
+        expect(replayed.result).toEqual({ ok: true, value: null });
+        const rotated = await value(engine.publishedMasterKey(alice));
+        expect(rotated).not.toBe(before);
+
+        const asked = await interactive(
+          engine.rotateCrossSigning(alice, 'not the password'),
+          [context.password],
+        );
+        expect(asked.prompts).toEqual([true]);
+        expect(asked.result).toEqual({ ok: true, value: null });
+        expect(await value(engine.publishedMasterKey(alice))).not.toBe(rotated);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'resets recovery after one password prompt: new identity, new secret storage, new key',
+      async () => {
+        const oldKey = await setUpHere();
+        const oldKeyId = await value(engine.serverDefaultKeyId(alice));
+        const oldMaster = await value(engine.publishedMasterKey(alice));
+        const facts = watch(engine.facts(alice));
+        const recorded = recording();
+        let asked = 0;
+
+        const key = await runRecoveryReset(
+          {
+            engine: recorded.engine,
+            accountId: alice,
+            refreshStatus: async () => undefined,
+          },
+          async () => {
+            asked++;
+            return context.password;
+          },
+        );
+
+        expect(asked).toBe(1);
+        // Asked by the pre-authentication, before anything was parked or rotated.
+        expect(recorded.calls.slice(0, 3)).toEqual([
+          'preAuthenticate',
+          'answerPrompt',
+          'setDefaultKeyPointer',
+        ]);
+        expect(key).toMatch(/^Es/);
+        expect(key).not.toBe(oldKey);
+        expect(await value(engine.serverDefaultKeyId(alice))).not.toBe(
+          oldKeyId,
+        );
+        expect(await value(engine.publishedMasterKey(alice))).not.toBe(
+          oldMaster,
+        );
+        await facts.until(ready);
+        expect(await refusal(engine.recover(alice, recoveryKey(key)))).toBe(
+          'ok',
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'writes nothing when a reset is cancelled at the password prompt',
+      async () => {
+        const key = await setUpHere();
+        const oldKeyId = await value(engine.serverDefaultKeyId(alice));
+        const oldMaster = await value(engine.publishedMasterKey(alice));
+        const recorded = recording();
+
+        await expect(
+          runRecoveryReset(
+            {
+              engine: recorded.engine,
+              accountId: alice,
+              refreshStatus: async () => undefined,
+            },
+            async () => null,
+          ),
+        ).rejects.toMatchObject({ failure: { code: 'uia-cancelled' } });
+
+        // Refused at the pre-authentication: no park, no restore, no rotation.
+        expect(recorded.calls).toEqual(['preAuthenticate', 'answerPrompt']);
+        expect(await value(engine.serverDefaultKeyId(alice))).toBe(oldKeyId);
+        expect(await value(engine.publishedMasterKey(alice))).toBe(oldMaster);
+        expect(await refusal(engine.recover(alice, recoveryKey(key)))).toBe(
+          'ok',
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'runs the destructive tail steps once each: dehydrated device, new storage and backup, old description',
+      async () => {
+        await setUpHere();
+        const oldKeyId = (await value(engine.serverDefaultKeyId(alice))) ?? '';
+        expect(
+          await value(engine.setDefaultKeyPointer(alice, null, 'confirmed')),
+        ).toMatchObject({ previous: oldKeyId, confirmed: true });
+        await interactive(
+          engine.rotateCrossSigning(alice, context.password),
+          [],
+        );
+
+        // Most servers have no dehydrated device to delete; either way, one result.
+        await once(engine.deleteDehydratedDevice(alice));
+        const { recoveryKey: key } = await value(
+          engine.createRecoveryAndBackup(alice),
+        );
+        expect(await code(engine.dropKeyDescription(alice, oldKeyId))).toBe(
+          'ok',
+        );
+
+        expect(await value(engine.serverDefaultKeyId(alice))).not.toBe(
+          oldKeyId,
+        );
+        await watch(engine.facts(alice)).until(ready);
+        expect(await refusal(engine.recover(alice, recoveryKey(key)))).toBe(
+          'ok',
         );
       },
       testTimeoutMs,
