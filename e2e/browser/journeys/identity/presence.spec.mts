@@ -76,7 +76,8 @@ async function openRoomWithMembers(
 
 /**
  * Register a reader + a DM partner, open a direct room between them (partner joins),
- * and record it in the reader's `m.direct` so the app treats it as a direct message.
+ * record it in the reader's `m.direct` so the app treats it as a direct message, and
+ * have the partner publish a presence the reader receives.
  */
 async function seedDirectMessage(
   request: APIRequestContext,
@@ -112,6 +113,11 @@ async function seedDirectMessage(
   await request.put(
     `${hs}/_matrix/client/v3/user/${encodeURIComponent(reader.userId)}/account_data/m.direct`,
     { headers: reader.headers, data: { [partner.userId]: [roomId] } },
+  );
+  // A partner the reader never received presence for is unknown and has no dot.
+  await request.put(
+    `${hs}/_matrix/client/v3/presence/${encodeURIComponent(partner.userId)}/status`,
+    { headers: partner.headers, data: { presence: 'online' } },
   );
 
   return {
