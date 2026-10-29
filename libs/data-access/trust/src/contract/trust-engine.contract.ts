@@ -9,7 +9,11 @@ import {
   toArray,
 } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { type EngineResult, assertPlainData } from '@trinity/util/matrix';
+import {
+  type EngineResult,
+  assertPlainData,
+  decryptMegolmKeyFile,
+} from '@trinity/util/matrix';
 import type {
   InteractiveUpdate,
   TrustEngine,
@@ -44,6 +48,25 @@ export interface TrustContractSetup {
   }>;
   /** Another user with a published identity, in an encrypted DM with alice. */
   directRoom(): Promise<{ readonly userId: string; readonly roomId: string }>;
+  /**
+   * Another device of alice's publishes an identity, secret storage and a key backup,
+   * from a random recovery key or from `passphrase`; resolves the recovery key.
+   */
+  setUpRecoveryElsewhere(passphrase?: string): Promise<string>;
+  /**
+   * Alice's device here rotates its identity for a reset whose upload is then cancelled,
+   * then re-reads the published identity, as an abandoned reset does.
+   */
+  strandUnpublishedIdentity(): Promise<void>;
+  /** Another session of alice's exports a room key it holds, with `passphrase`. */
+  exportFromAnotherSession(
+    passphrase: string,
+  ): Promise<{ readonly fileText: string; readonly sessionId: string }>;
+  /** A fresh session of alice's imports the key file; resolves the session ids it then holds. */
+  importInAnotherSession(
+    fileText: string,
+    passphrase: string,
+  ): Promise<readonly string[]>;
   dispose(): Promise<void>;
 }
 
@@ -55,6 +78,9 @@ export interface TrustContractTiming {
 }
 
 const NOBODY = '@nobody:invalid';
+
+/** A well-formed recovery key that unlocks nothing. */
+const WRONG_KEY = 'EsT3 4kza y1Xs efFA tKyi HVwT kdEP 4UEk rvNr dFvy 8nGq AkqP';
 
 const NOTHING_READY: TrustFacts = {
   crossSigningReady: false,
@@ -115,6 +141,16 @@ export function defineTrustEngineContract(
     async function code(source: Observable<EngineResult<unknown>>) {
       const result = await once(source);
       return result.ok ? 'ok' : result.failure.code;
+    }
+
+    /** `ok`, or why a recovery or key import was refused. */
+    async function refusal(source: Observable<EngineResult<unknown>>) {
+      const result = await once(source);
+      if (result.ok) return 'ok';
+      if (result.failure.code !== 'recovery-refused') {
+        throw new Error(`Not refused: ${result.failure.code}`);
+      }
+      return result.failure.params.reason;
     }
 
     /** Subscribes; every emission must be plain data. Resolves the first matching one. */
@@ -226,6 +262,17 @@ export function defineTrustEngineContract(
         );
         const deleted = await interactive(engine.deleteDevice(NOBODY, 'X'), []);
         expect(resultCode(deleted.result)).toBe('account-not-live');
+        expect(
+          await code(
+            engine.recover(NOBODY, { kind: 'recovery-key', value: WRONG_KEY }),
+          ),
+        ).toBe('account-not-live');
+        expect(await code(engine.exportRoomKeys(NOBODY, 'pass'))).toBe(
+          'account-not-live',
+        );
+        expect(await code(engine.importRoomKeys(NOBODY, 'file', 'pass'))).toBe(
+          'account-not-live',
+        );
       },
       testTimeoutMs,
     );
@@ -659,6 +706,186 @@ export function defineTrustEngineContract(
           await value(engine.withdrawVerification(alice, context.bob)),
         ).toBeNull();
         expect(bob.emissions().at(-1)).toEqual({ ok: true, value: unverified });
+      },
+      testTimeoutMs,
+    );
+
+    const recoveryKey = (text: string) =>
+      ({ kind: 'recovery-key', value: text }) as const;
+    const passphrase = (text: string) =>
+      ({ kind: 'passphrase', value: text }) as const;
+    const recovered = (r: EngineResult<TrustFacts>) =>
+      !!factsOf(r)?.thisDeviceCrossSigned && !!factsOf(r)?.keyBackupActive;
+
+    it(
+      'recovers with the recovery key: this device is verified and key backup is on',
+      async () => {
+        const key = await context.setUpRecoveryElsewhere();
+        const facts = watch(engine.facts(alice));
+
+        expect(await refusal(engine.recover(alice, recoveryKey(key)))).toBe(
+          'ok',
+        );
+
+        expect(factsOf(await facts.until(recovered))).toMatchObject({
+          crossSigningReady: true,
+          secretStorageReady: true,
+          hasDefaultKey: true,
+        });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'refuses a wrong recovery key and changes nothing',
+      async () => {
+        const key = await context.setUpRecoveryElsewhere();
+
+        expect(
+          await refusal(engine.recover(alice, recoveryKey(WRONG_KEY))),
+        ).toBe('incorrect');
+
+        const after = factsOf(
+          await watch(engine.facts(alice)).until(() => true),
+        );
+        expect(after).toMatchObject({
+          crossSigningReady: false,
+          keyBackupActive: false,
+          thisDeviceCrossSigned: false,
+        });
+        // The refused key left nothing behind that stops the right one.
+        expect(await refusal(engine.recover(alice, recoveryKey(key)))).toBe(
+          'ok',
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'tells a malformed recovery key from a wrong one',
+      async () => {
+        await context.setUpRecoveryElsewhere();
+
+        expect(
+          await refusal(
+            engine.recover(alice, recoveryKey('not a recovery key')),
+          ),
+        ).toBe('malformed-key');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'refuses recovery on an account without secret storage',
+      async () => {
+        expect(
+          await refusal(engine.recover(alice, recoveryKey(WRONG_KEY))),
+        ).toBe('not-configured');
+        expect(
+          await refusal(engine.recover(alice, passphrase('any passphrase'))),
+        ).toBe('not-configured');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'recovers with the recovery passphrase, refusing a wrong one',
+      async () => {
+        await context.setUpRecoveryElsewhere('contract passphrase');
+        const facts = watch(engine.facts(alice));
+
+        expect(
+          await refusal(engine.recover(alice, passphrase('wrong passphrase'))),
+        ).toBe('incorrect');
+        expect(
+          await refusal(
+            engine.recover(alice, passphrase('contract passphrase')),
+          ),
+        ).toBe('ok');
+
+        await facts.until(recovered);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'refuses a passphrase when secret storage was set up from a key',
+      async () => {
+        await context.setUpRecoveryElsewhere();
+
+        expect(
+          await refusal(engine.recover(alice, passphrase('any passphrase'))),
+        ).toBe('no-passphrase');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'recovers after a reset cancelled at the password prompt (outcome only; the stranded-key repair is in the adapter spec)',
+      async () => {
+        const key = await context.setUpRecoveryElsewhere();
+        await context.strandUnpublishedIdentity();
+        const facts = watch(engine.facts(alice));
+        // The js-sdk engine drops the unpublished keys when it re-reads the identity; an
+        // engine may also keep them (the stranded case its recovery must repair).
+        await facts.until((r) => factsOf(r)?.crossSigningReady === false);
+
+        expect(await refusal(engine.recover(alice, recoveryKey(key)))).toBe(
+          'ok',
+        );
+
+        await facts.until(recovered);
+        const check = await value(engine.ownIdentityCheck(alice));
+        expect(check.localMasterKey).toBe(check.publishedMasterKey);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'imports a key file from another session, and its own export carries the key on',
+      async () => {
+        const other = await context.exportFromAnotherSession('first pass');
+
+        expect(
+          await code(
+            engine.importRoomKeys(alice, other.fileText, 'first pass'),
+          ),
+        ).toBe('ok');
+        const fileText = await value(
+          engine.exportRoomKeys(alice, 'second pass'),
+        );
+
+        expect(fileText).toMatch(
+          /^-----BEGIN MEGOLM SESSION DATA-----\n[A-Za-z0-9+/=\n]+\n-----END MEGOLM SESSION DATA-----$/,
+        );
+        expect(
+          await context.importInAnotherSession(fileText, 'second pass'),
+        ).toContain(other.sessionId);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'refuses a wrong passphrase or a file that is not a key file, importing nothing',
+      async () => {
+        const other = await context.exportFromAnotherSession('right pass');
+
+        expect(
+          await refusal(
+            engine.importRoomKeys(alice, other.fileText, 'wrong pass'),
+          ),
+        ).toBe('incorrect');
+        expect(
+          await refusal(engine.importRoomKeys(alice, 'not a key file', 'pass')),
+        ).toBe('incorrect');
+
+        const fileText = await value(engine.exportRoomKeys(alice, 'pass'));
+        const held = JSON.parse(
+          await decryptMegolmKeyFile(fileText, 'pass'),
+        ) as { session_id: string }[];
+        expect(held.map((key) => key.session_id)).not.toContain(
+          other.sessionId,
+        );
       },
       testTimeoutMs,
     );

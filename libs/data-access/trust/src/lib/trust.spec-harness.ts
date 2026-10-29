@@ -17,7 +17,6 @@ import {
 import {
   JS_SDK_CLIENTS,
   MatrixClientService,
-  SecretStorageKeyHolder,
   SessionStateService,
 } from '@trinity/data-access/matrix-client';
 
@@ -220,7 +219,6 @@ export function setup(opts: CryptoOpts = {}) {
     },
   };
 
-  const holder = new SecretStorageKeyHolder();
   // Writable so tests can flip the active account and fire the reproject effect.
   const activeUserId = signal<string | null>(null);
   // Health reads the active account through the engine, over whichever client is stubbed.
@@ -244,7 +242,7 @@ export function setup(opts: CryptoOpts = {}) {
         provide: JS_SDK_CLIENTS,
         useFactory: () => {
           const matrix = TestBed.inject(MatrixClientService);
-          return { clientFor: () => matrix.instance };
+          return { clientFor: () => matrix.instance, holderFor: () => null };
         },
       },
       {
@@ -266,12 +264,9 @@ export function setup(opts: CryptoOpts = {}) {
     'instance',
     client as unknown as MatrixClientService['instance'],
   );
-  // TrustService caches the unlocked 4S key on the ACTIVE account's holder.
-  ngMocks.stubMember(matrix, 'activeHolder', () => holder);
 
   return {
     svc: TestBed.inject(TrustService),
-    keys: holder,
     crypto,
     secretStorage,
     client,

@@ -5,7 +5,6 @@ import type { Observable } from 'rxjs';
 import type { ProjectionReconcileContext } from '@trinity/runtime/projection';
 import { MatrixClientService } from './js-sdk/matrix-client.service';
 import { projectFromClient } from './project-from-client';
-import type { SecretStorageKeyHolder } from './secret-storage-key-holder';
 
 /** Crypto protocol operations owned by Trust; SDK/runtime lifecycle is intentionally absent. */
 export type TrustCryptoApi = Pick<
@@ -136,11 +135,6 @@ export class TrustCryptoPort {
           crypto: client.getCrypto() ?? null,
         }
       : null;
-  }
-
-  /** Capture the active Account's ephemeral 4S key holder only when recovery needs it. */
-  secretStorageKey(): SecretStorageKeyHolder | null {
-    return this.matrix.activeHolder();
   }
 
   /** Create an active-Account projection without exposing Matrix Runtime lifecycle. */

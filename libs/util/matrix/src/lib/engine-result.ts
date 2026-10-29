@@ -26,6 +26,21 @@ export type DiscoveryFailureReason =
   | 'missing-wellknown'
   | 'invalid-json';
 
+/**
+ * Why a recovery or key-file import was refused: no secret storage to recover from, text
+ * that is not a recovery key, secret storage not set up from a passphrase, or a key or
+ * passphrase that does not unlock.
+ */
+export type RecoveryRefusal =
+  'not-configured' | 'malformed-key' | 'no-passphrase' | 'incorrect';
+
+const RECOVERY_REFUSAL_MESSAGES: Readonly<Record<RecoveryRefusal, string>> = {
+  'not-configured': 'No recovery key is set up on this account.',
+  'malformed-key': 'That does not look like a valid recovery key.',
+  'no-passphrase': 'This account has no recovery passphrase.',
+  incorrect: 'That key or passphrase is incorrect.',
+};
+
 /** Why a persisted account could not start; mirrors the matrix-client startup outcomes. */
 export type AccountStartFailureReason =
   | 'reauthentication-required'
@@ -95,6 +110,11 @@ export type EngineFailure = {
   | { readonly code: 'uia-attempts-exceeded' }
   /** No open password prompt has this id: it was answered, cancelled or never raised. */
   | { readonly code: 'prompt-gone' }
+  /** A recovery or key-file import refused what it was given; nothing changed. */
+  | {
+      readonly code: 'recovery-refused';
+      readonly params: { readonly reason: RecoveryRefusal };
+    }
 );
 
 const DISCOVERY_REASON_MESSAGES: Readonly<
@@ -171,6 +191,8 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'Too many password attempts.';
     case 'prompt-gone':
       return 'This password prompt is no longer open.';
+    case 'recovery-refused':
+      return RECOVERY_REFUSAL_MESSAGES[failure.params.reason];
   }
 }
 

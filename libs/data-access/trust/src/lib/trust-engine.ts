@@ -106,6 +106,11 @@ export interface VerificationSnapshot {
   readonly cancellation: { readonly code: string } | null;
 }
 
+/** What unlocks the account's secret storage: its recovery key or recovery passphrase. */
+export type RecoverySecret =
+  | { readonly kind: 'recovery-key'; readonly value: string }
+  | { readonly kind: 'passphrase'; readonly value: string };
+
 /**
  * One account's crypto, as plain data. The engine reports facts and runs protocol steps;
  * Trust owns every status decision and message.
@@ -238,5 +243,33 @@ export interface TrustEngine {
   withdrawVerification(
     accountId: string,
     userId: string,
+  ): Observable<EngineResult<null>>;
+
+  /**
+   * Unlocks the account's secret storage with `secret` and trusts this device from it,
+   * then turns key backup on when it can; a backup that cannot be enabled does not fail
+   * the recovery. The unlocked key stays in the engine. A `recovery-refused` failure
+   * changes nothing.
+   */
+  recover(
+    accountId: string,
+    secret: RecoverySecret,
+  ): Observable<EngineResult<null>>;
+  /**
+   * This device's room keys as a key file encrypted with `passphrase`, in the Matrix
+   * key-export format other clients read. The keys never leave the engine unencrypted.
+   */
+  exportRoomKeys(
+    accountId: string,
+    passphrase: string,
+  ): Observable<EngineResult<string>>;
+  /**
+   * Imports the room keys of a key file. `recovery-refused` (`incorrect`), importing nothing, when the
+   * passphrase does not open it or it is not a key file.
+   */
+  importRoomKeys(
+    accountId: string,
+    fileText: string,
+    passphrase: string,
   ): Observable<EngineResult<null>>;
 }

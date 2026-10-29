@@ -2,7 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { createHmac } from 'node:crypto';
 import {
   DeviceId,
+  EncryptionSettings,
   OlmMachine,
+  RoomId,
   UserId,
   initAsync,
 } from '@matrix-org/matrix-sdk-crypto-wasm';
@@ -23,6 +25,10 @@ import {
   CryptoStoreKeyService,
   SessionStorageService,
 } from '@trinity/platform-native';
+import {
+  decryptMegolmKeyFile,
+  encryptMegolmKeyFile,
+} from '@trinity/util/matrix';
 
 // The gated Synapse specs run only when TRINITY_ENGINE_CONTRACT_HS is set.
 export const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'];
@@ -175,6 +181,119 @@ export async function startSecondDevice(user: {
   await client.startClient({ initialSyncLimit: 1 });
   await prepared;
   return { client, deviceId: session.device_id };
+}
+
+/**
+ * Another device of `user` publishes a new identity, secret storage and a key backup, from
+ * a random recovery key or from `passphrase`, then stops; resolves the recovery key.
+ */
+export async function setUpRecoveryFromAnotherDevice(
+  user: { readonly userId: string; readonly password: string },
+  passphrase?: string,
+): Promise<string> {
+  const device = await login(user);
+  let cached: { keyId: string; key: Uint8Array<ArrayBuffer> } | null = null;
+  const client = createClient({
+    baseUrl: baseUrl as string,
+    userId: user.userId,
+    deviceId: device.device_id,
+    accessToken: device.access_token,
+    cryptoCallbacks: {
+      getSecretStorageKey: async ({ keys }) =>
+        cached && cached.keyId in keys ? [cached.keyId, cached.key] : null,
+      cacheSecretStorageKey: (keyId, _info, key) => {
+        cached = { keyId, key };
+      },
+    },
+  });
+  await client.initRustCrypto({ useIndexedDB: false });
+  // Secret storage writes wait for their /sync echo.
+  const prepared = new Promise<void>((resolve) => {
+    const onSync = (state: SyncState) => {
+      if (state !== SyncState.Prepared) return;
+      client.off(ClientEvent.Sync, onSync);
+      resolve();
+    };
+    client.on(ClientEvent.Sync, onSync);
+  });
+  await client.startClient({ initialSyncLimit: 0 });
+  try {
+    await prepared;
+    const crypto = client.getCrypto();
+    if (!crypto) throw new Error('No crypto on the other device');
+    const recoveryKey =
+      await crypto.createRecoveryKeyFromPassphrase(passphrase);
+    await crypto.bootstrapCrossSigning({
+      setupNewCrossSigning: true,
+      authUploadDeviceSigningKeys: async (makeRequest) => {
+        await makeRequest({
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: user.userId },
+          password: user.password,
+        });
+      },
+    });
+    await crypto.bootstrapSecretStorage({
+      setupNewKeyBackup: true,
+      createSecretStorageKey: async () => recoveryKey,
+    });
+    if (!recoveryKey.encodedPrivateKey) throw new Error('No recovery key');
+    return recoveryKey.encodedPrivateKey;
+  } finally {
+    client.stopClient();
+  }
+}
+
+/** A key file of one room key a throwaway session of `userId` created. */
+export async function exportFromThrowawaySession(
+  userId: string,
+  passphrase: string,
+): Promise<{ readonly fileText: string; readonly sessionId: string }> {
+  await initAsync();
+  const machine = await OlmMachine.initialize(
+    new UserId(userId),
+    new DeviceId(localpart('session')),
+  );
+  try {
+    await machine.shareRoomKey(
+      new RoomId('!contract:localhost'),
+      [],
+      new EncryptionSettings(),
+    );
+    const json = await machine.exportRoomKeys(() => true);
+    const [key] = JSON.parse(json) as { session_id: string }[];
+    return {
+      fileText: await encryptMegolmKeyFile(json, passphrase),
+      sessionId: key.session_id,
+    };
+  } finally {
+    machine.close();
+  }
+}
+
+/** Imports a key file into a throwaway session of `userId`; resolves the session ids it holds. */
+export async function importInThrowawaySession(
+  userId: string,
+  fileText: string,
+  passphrase: string,
+): Promise<string[]> {
+  await initAsync();
+  const machine = await OlmMachine.initialize(
+    new UserId(userId),
+    new DeviceId(localpart('session')),
+  );
+  try {
+    await machine.importExportedRoomKeys(
+      await decryptMegolmKeyFile(fileText, passphrase),
+      () => undefined,
+    );
+    const held = JSON.parse(await machine.exportRoomKeys(() => true)) as {
+      session_id: string;
+    }[];
+    return held.map((key) => key.session_id);
+  } finally {
+    machine.close();
+  }
 }
 
 let sequence = 0;

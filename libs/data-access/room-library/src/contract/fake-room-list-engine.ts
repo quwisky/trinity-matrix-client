@@ -33,12 +33,17 @@ import { compareOrder, isValidOrder } from '../lib/space-child-order';
 
 type FailNextCode = Exclude<
   EngineFailureCode,
-  'discovery-failed' | 'account-start-failed'
+  'discovery-failed' | 'account-start-failed' | 'recovery-refused'
 >;
 type PerAccount<T> = Readonly<Record<string, Readonly<Record<string, T>>>>;
 
 function failure(code: FailNextCode): EngineFailure {
-  return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
+  // Cast: assigning a union-typed code is checked only up to 25 union members.
+  return {
+    kind: 'unexpected',
+    code,
+    diagnostic: { kind: 'unexpected' },
+  } as EngineFailure;
 }
 
 const REQUEST_FAILED = failure('request-failed');

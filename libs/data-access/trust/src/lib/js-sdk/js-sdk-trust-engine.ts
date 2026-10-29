@@ -8,9 +8,12 @@ import {
 import {
   type CryptoApi,
   CryptoEvent,
+  decodeRecoveryKey,
+  deriveRecoveryKeyFromPassphrase,
   type VerificationRequest,
   VerificationPhase,
 } from 'matrix-js-sdk/lib/crypto-api';
+import type { SecretStorageKeyDescription } from 'matrix-js-sdk/lib/secret-storage';
 import {
   NEVER,
   Observable,
@@ -32,16 +35,22 @@ import {
   switchMap,
   take,
 } from 'rxjs';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  type JsSdkClients,
+} from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
+  type RecoveryRefusal,
   UiaAttemptsExceededError,
   UiaCancelledError,
   UiaUnsupportedError,
   type UiaPasswordPrompt,
+  decryptMegolmKeyFile,
   describeMatrixRequestFailure,
   driveUia,
+  encryptMegolmKeyFile,
   engineFail,
   engineOk,
   plainEqual,
@@ -51,6 +60,7 @@ import type {
   InteractiveUpdate,
   OwnDevice,
   OwnIdentityCheck,
+  RecoverySecret,
   TrustEngine,
   TrustFacts,
   UserTrustFacts,
@@ -60,6 +70,10 @@ import {
   readPublishedMasterKey,
   readThisDeviceVerified,
 } from '../trust-snapshot';
+import {
+  hasStrandedCrossSigning,
+  repairStaleCrossSigning,
+} from './cross-signing-repair';
 import {
   ClientVerification,
   flowIdOf,
@@ -133,6 +147,14 @@ const PROMPT_GONE: EngineFailure = {
   code: 'prompt-gone',
   diagnostic: { kind: 'unexpected' },
 };
+
+/** Why a recovery or key import refused its input; no secret goes in it. */
+const refusal = (reason: RecoveryRefusal): EngineFailure => ({
+  kind: 'unexpected',
+  code: 'recovery-refused',
+  params: { reason },
+  diagnostic: { kind: 'unexpected' },
+});
 
 const UNVERIFIED: UserTrustFacts = {
   verified: false,
@@ -271,6 +293,98 @@ function changesOf(client: MatrixClient): Observable<void> {
       ),
     ),
   ).pipe(map(() => undefined));
+}
+
+/** The secret-storage key `secret` stands for, or why it stands for none. */
+async function secretStorageKeyOf(
+  secret: RecoverySecret,
+  keyInfo: SecretStorageKeyDescription,
+): Promise<Uint8Array<ArrayBuffer> | EngineFailure> {
+  if (secret.kind === 'recovery-key') {
+    try {
+      return decodeRecoveryKey(secret.value.trim());
+    } catch {
+      return refusal('malformed-key');
+    }
+  }
+  const info = keyInfo.passphrase;
+  if (!info) return refusal('no-passphrase');
+  return deriveRecoveryKeyFromPassphrase(
+    secret.value,
+    info.salt,
+    info.iterations,
+    info.bits,
+  );
+}
+
+/**
+ * Unlocks secret storage, caches the key for the SDK, imports cross-signing from it so this
+ * device becomes trusted, and enables key backup. History decrypts lazily from the backup,
+ * so the (potentially huge) bulk `restoreKeyBackup()` is skipped.
+ */
+async function recoverFrom(
+  client: MatrixClient,
+  crypto: CryptoApi,
+  holder: ReturnType<JsSdkClients['holderFor']>,
+  secret: RecoverySecret,
+): Promise<EngineResult<null>> {
+  const storage = client.secretStorage;
+  const keyId = await storage.getDefaultKeyId();
+  const stored = keyId ? await storage.getKey(keyId) : null;
+  if (!keyId || !stored) return engineFail(refusal('not-configured'));
+  const keyInfo = stored[1];
+  const privateKey = await secretStorageKeyOf(secret, keyInfo);
+  if (!(privateKey instanceof Uint8Array)) return engineFail(privateKey);
+  if (!(await storage.checkKey(privateKey, keyInfo))) {
+    privateKey.fill(0);
+    return engineFail(refusal('incorrect'));
+  }
+
+  holder?.set(keyId, privateKey);
+  // Pulls the cross-signing private keys out of 4S and trusts this device; no UIA,
+  // since the keys already exist server-side.
+  await crypto.bootstrapCrossSigning({});
+  // ...unless the olm machine already holds privates, in which case that call does
+  // nothing, including when they are ones a reset rotated and never published (see
+  // repairStaleCrossSigning). Unlocking 4S is when that is both detectable and fixable.
+  await repairStrandedIdentity(client, crypto);
+
+  // The device is already trusted, so a missing or stale backup key in 4S must not fail
+  // the recovery: backup can self-enable later.
+  try {
+    if (await crypto.getKeyBackupInfo()) {
+      await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+      await crypto.checkKeyBackupAndEnable();
+    }
+  } catch {
+    // best effort
+  }
+  return engineOk(null);
+}
+
+/**
+ * Evicts cross-signing privates stranded by an interrupted reset, when that is what this
+ * device holds (see {@link hasStrandedCrossSigning}).
+ *
+ * The repair can fail for reasons that say nothing about the user's key: the bundle
+ * methods are optional on `CryptoApi`, the bundle shape is probed at runtime, and the WASM
+ * crate refuses to export unless all three privates are present. `bootstrapCrossSigning`
+ * may already have trusted this device, so a failure is raised only when it is not.
+ */
+async function repairStrandedIdentity(
+  client: MatrixClient,
+  crypto: CryptoApi,
+): Promise<void> {
+  if (!(await hasStrandedCrossSigning(crypto))) return;
+  try {
+    await repairStaleCrossSigning(
+      crypto,
+      client.secretStorage,
+      client.getDeviceId(),
+    );
+  } catch (error) {
+    if (!(await readThisDeviceVerified(client, crypto))) throw error;
+  }
 }
 
 /** {@link TrustEngine} over the live matrix-js-sdk clients of {@link JS_SDK_CLIENTS}. */
@@ -714,6 +828,57 @@ export class JsSdkTrustEngine implements TrustEngine {
     return this.command(accountId, true, async (_client, crypto) => {
       await crypto.withdrawVerificationRequirement(userId);
       this.identitiesChanged.next(`${accountId}\n${userId}`);
+    });
+  }
+
+  recover(
+    accountId: string,
+    secret: RecoverySecret,
+  ): Observable<EngineResult<null>> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(NOT_LIVE));
+      const crypto = client.getCrypto();
+      if (!crypto) return of(engineFail(CRYPTO_NOT_READY));
+      const holder = this.clients.holderFor(accountId);
+      return from(recoverFrom(client, crypto, holder, secret)).pipe(
+        catchError((error: unknown) => of(engineFail(commandFailed(error)))),
+      );
+    });
+  }
+
+  exportRoomKeys(
+    accountId: string,
+    passphrase: string,
+  ): Observable<EngineResult<string>> {
+    return this.request(accountId, async (_client, crypto) =>
+      encryptMegolmKeyFile(await crypto.exportRoomKeysAsJson(), passphrase),
+    );
+  }
+
+  importRoomKeys(
+    accountId: string,
+    fileText: string,
+    passphrase: string,
+  ): Observable<EngineResult<null>> {
+    // The crypto is resolved on subscribe, before the long decrypt: the keys go to this
+    // account even if its client is replaced meanwhile.
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(engineFail(NOT_LIVE));
+      const crypto = client.getCrypto();
+      if (!crypto) return of(engineFail(CRYPTO_NOT_READY));
+      return from(
+        decryptMegolmKeyFile(fileText, passphrase).then(
+          async (json): Promise<EngineResult<null>> => {
+            await crypto.importRoomKeysAsJson(json);
+            return engineOk(null);
+          },
+          () => engineFail(refusal('incorrect')),
+        ),
+      ).pipe(
+        catchError((error: unknown) => of(engineFail(commandFailed(error)))),
+      );
     });
   }
 

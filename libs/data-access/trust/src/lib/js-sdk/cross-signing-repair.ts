@@ -1,5 +1,5 @@
+import type { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
 import type { ServerSideSecretStorage } from 'matrix-js-sdk/lib/secret-storage';
-import type { TrustCryptoApi } from '@trinity/data-access/matrix-client';
 
 /**
  * The cross-signing seeds, keyed by their field name in the SDK's secrets bundle and
@@ -27,7 +27,7 @@ type SeedField = keyof typeof CROSS_SIGNING_SEEDS;
  * olm machine already holds keys nobody published" from "the olm machine holds nothing yet".
  */
 export async function hasStrandedCrossSigning(
-  crypto: TrustCryptoApi,
+  crypto: CryptoApi,
 ): Promise<boolean> {
   const { privateKeysCachedLocally: cached, privateKeysInSecretStorage } =
     await crypto.getCrossSigningStatus();
@@ -61,7 +61,7 @@ export async function hasStrandedCrossSigning(
  * that reports success and stays broken.
  */
 export async function repairStaleCrossSigning(
-  crypto: TrustCryptoApi,
+  crypto: CryptoApi,
   storage: ServerSideSecretStorage,
   deviceId: string | null,
 ): Promise<void> {
