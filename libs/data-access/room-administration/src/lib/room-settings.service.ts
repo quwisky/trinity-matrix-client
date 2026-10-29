@@ -1,38 +1,27 @@
-import { Injectable, Injector, inject } from '@angular/core';
-import { toObservable } from '@angular/core/rxjs-interop';
 import {
-  EventType,
-  ClientEvent,
-  KnownMembership,
-  RoomStateEvent,
-  type MatrixClient,
-  type MatrixEvent,
-  type Room,
-  type RoomState,
-} from 'matrix-js-sdk';
-
+  Injectable,
+  Injector,
+  computed,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { MediaService } from '@trinity/data-access/media';
+import { EngineRequestError, unwrapEngineResult } from '@trinity/util/matrix';
+import { Observable, defer, distinctUntilChanged, map, switchMap } from 'rxjs';
+import { AdministeredRoomStore } from './administered-room.store';
 import { HistoryVisibility, JoinRule } from './room-access.models';
-import {
-  Observable,
-  defer,
-  from,
-  map,
-  merge,
-  of,
-  switchMap,
-  throwError,
-} from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { withoutImageMetadata } from '@trinity/data-access/media';
-import type {
-  RoomHistoryVisibilityEventContent,
-  RoomJoinRulesEventContent,
-} from 'matrix-js-sdk/lib/@types/state_events';
-import { isRoomEncrypted, liveRoomState } from '@trinity/util/matrix';
 import {
   RoomActionPermissionsService,
   type RoomSettingsPermissions,
 } from './room-action-permissions.service';
+import type {
+  AdministeredRoom,
+  JsonObject,
+  RawStateEvent,
+} from './room-administration-engine';
+import { ROOM_ADMINISTRATION_ENGINE } from './room-administration-engine.token';
 import {
   recoverRoomAdministrationRequest,
   roomAdministrationInvalidInput,
@@ -42,7 +31,6 @@ import {
   allowedSpaceIdsOf,
   invalidAllowedSpaceId,
   restrictedAllowEntriesForWrite,
-  type JoinRuleAllow,
 } from './room-access-policy';
 import { roomAdvancedInfo, type RoomAdvancedInfo } from './room-advanced-info';
 
@@ -83,7 +71,7 @@ export interface RoomSettingsTarget {
 export type RoomSettingsAvailability =
   'available' | 'account-unavailable' | 'room-unavailable';
 
-/** SDK-authoritative view for one exact Room settings target. */
+/** Authoritative view for one exact Room settings target. */
 export interface RoomSettingsSnapshot {
   readonly target: RoomSettingsTarget;
   readonly availability: RoomSettingsAvailability;
@@ -101,12 +89,7 @@ export interface RoomSettingsSnapshot {
 }
 
 /** One current state event, for the read-only room state viewer. */
-export interface RoomStateEntry {
-  readonly type: string;
-  readonly stateKey: string;
-  /** The event as stored (state events are not end-to-end encrypted). A shallow copy: treat it as read-only, nested content is shared with the SDK. */
-  readonly event: Readonly<Record<string, unknown>>;
-}
+export type RoomStateEntry = RawStateEvent;
 
 type RoomSettingsTargetInput = RoomSettingsTarget | string;
 
@@ -123,52 +106,45 @@ export function takesAllowList(rule: JoinRule): boolean {
   return rule === JoinRule.Restricted || rule === KNOCK_RESTRICTED;
 }
 
+/** Failures that mean "nothing to show" to the state viewer rather than an error. */
+const NO_STATE: ReadonlySet<string> = new Set([
+  'account-not-live',
+  'room-unavailable',
+]);
+
 /**
  * Writes a room's editable metadata — display name (`m.room.name`) and topic
  * (`m.room.topic`) — and reports which the current user may change, from the room's
- * power levels. Writes are cold Observables (fire on subscribe); the synced client
- * reflects the change through its state listeners, so no manual refresh is needed.
+ * power levels. Writes are cold Observables (fire on subscribe); the change arrives
+ * through {@link AdministeredRoomStore}, so no manual refresh is needed.
  */
 @Injectable({ providedIn: 'root' })
 export class RoomSettingsService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(ROOM_ADMINISTRATION_ENGINE);
+  private readonly store = inject(AdministeredRoomStore);
+  private readonly session = inject(SessionStateService);
   private readonly permissions = inject(RoomActionPermissionsService);
+  private readonly media = inject(MediaService);
   private readonly injector = inject(Injector);
-  /** Per client and room: the shared room-encrypted check's latest answer. */
-  private readonly encryptionAnswers = new WeakMap<
-    MatrixClient,
-    Map<string, boolean>
-  >();
 
   /** Rename the room (`m.room.name`). Cold — runs on subscribe. */
   setName(target: RoomSettingsTargetInput, name: string): Observable<void> {
-    return defer(() => {
-      const context = this.commandContext(target);
-      if (!context) {
-        return throwError(() => roomAdministrationNotSignedIn('set-name'));
-      }
-      this.permissions.assert(context.permissions.name);
-      return from(context.client.setRoomName(context.roomId, name.trim())).pipe(
-        map(() => void 0),
-        recoverRoomAdministrationRequest('set-name'),
-      );
-    });
+    return this.write(target, 'set-name', 'name', 'm.room.name', () => ({
+      name: name.trim(),
+    }));
   }
 
-  /** Set the room topic (`m.room.topic`); an empty string clears it. Cold. */
+  /**
+   * Set the room topic (`m.room.topic`); an empty string clears it. Cold. The content is
+   * js-sdk `setRoomTopic`'s: the plain topic plus its MSC3765 `m.topic` rendering.
+   */
   setTopic(target: RoomSettingsTargetInput, topic: string): Observable<void> {
-    return defer(() => {
-      const context = this.commandContext(target);
-      if (!context) {
-        return throwError(() => roomAdministrationNotSignedIn('set-topic'));
-      }
-      this.permissions.assert(context.permissions.topic);
-      return from(
-        context.client.setRoomTopic(context.roomId, topic.trim()),
-      ).pipe(
-        map(() => void 0),
-        recoverRoomAdministrationRequest('set-topic'),
-      );
+    return this.write(target, 'set-topic', 'topic', 'm.room.topic', () => {
+      const text = topic.trim();
+      return {
+        topic: text,
+        'm.topic': { 'm.text': [{ body: text, mimetype: 'text/plain' }] },
+      };
     });
   }
 
@@ -178,46 +154,39 @@ export class RoomSettingsService {
    */
   setAvatar(target: RoomSettingsTargetInput, file: File): Observable<void> {
     return defer(() => {
-      const context = this.commandContext(target);
-      if (!context) {
-        return throwError(() => roomAdministrationNotSignedIn('set-avatar'));
-      }
-      this.permissions.assert(context.permissions.avatar);
-      const { client, roomId } = context;
-      // A room photo is visible to everyone who can see the room, so it leaves without
-      // its location, camera and capture time, like any other photo.
-      return from(withoutImageMetadata(file)).pipe(
-        switchMap((upload) =>
-          client.uploadContent(upload, {
-            name: file.name,
-            type: file.type || 'application/octet-stream',
-          }),
-        ),
-        switchMap((res) =>
-          defer(() => {
-            if (this.clientFor(target) !== client) {
-              throw new Error(
-                'The originating account became unavailable before the photo uploaded.',
-              );
-            }
-            this.permissions.assert(this.permissionsFor(target).avatar);
-            return from(
-              client.sendStateEvent(
-                roomId,
-                EventType.RoomAvatar,
-                { url: res.content_uri },
-                '',
-              ),
-            );
-          }).pipe(
-            recoverRoomAdministrationRequest('set-avatar', {
-              completedStep: 'media-upload',
-            }),
+      const key = this.keyOf(target);
+      if (!key) throw roomAdministrationNotSignedIn('set-avatar');
+      this.permissions.assert(this.permissionsFor(target).avatar);
+      const generation = this.session.status(key.accountId)?.generation;
+      // Media strips a photo's location, camera and capture time before it goes up.
+      return this.media
+        .uploadMedia(file, false, undefined, undefined, key.accountId)
+        .pipe(
+          switchMap(({ mxc }) =>
+            defer(() => {
+              if (
+                !mxc ||
+                this.session.status(key.accountId)?.generation !== generation
+              ) {
+                throw new Error(
+                  'The originating account became unavailable before the photo uploaded.',
+                );
+              }
+              this.permissions.assert(this.permissionsFor(target).avatar);
+              return this.engine
+                .setState(key.accountId, key.roomId, 'm.room.avatar', '', {
+                  url: mxc,
+                })
+                .pipe(unwrapEngineResult());
+            }).pipe(
+              recoverRoomAdministrationRequest('set-avatar', {
+                completedStep: 'media-upload',
+              }),
+            ),
           ),
-        ),
-        map(() => void 0),
-        recoverRoomAdministrationRequest('upload-avatar'),
-      );
+          map(() => void 0),
+          recoverRoomAdministrationRequest('upload-avatar'),
+        );
     });
   }
 
@@ -230,61 +199,38 @@ export class RoomSettingsService {
     joinRule: JoinRule,
     allowedSpaceIds: readonly string[] = [],
   ): Observable<void> {
-    return defer(() => {
-      const context = this.commandContext(target);
-      if (!context) {
-        return throwError(() => roomAdministrationNotSignedIn('set-join-rule'));
-      }
-      this.permissions.assert(context.permissions.joinRule);
-      const { client, roomId } = context;
-      const restricted = takesAllowList(joinRule);
-      // A `restricted` rule with no `allow` entries can never be joined, even by members of
-      // the gating space, and only an admin could undo it. Refused here, the one place every
-      // join-rule write passes through.
-      if (restricted && allowedSpaceIds.length === 0) {
-        return throwError(() =>
-          roomAdministrationInvalidInput(
+    return this.write(
+      target,
+      'set-join-rule',
+      'joinRule',
+      'm.room.join_rules',
+      (room): JsonObject => {
+        const restricted = takesAllowList(joinRule);
+        // A `restricted` rule with no `allow` entries can never be joined, even by members
+        // of the gating space, and only an admin could undo it. Refused here, the one place
+        // every join-rule write passes through.
+        if (restricted && allowedSpaceIds.length === 0) {
+          throw roomAdministrationInvalidInput(
             'set-join-rule',
             'A restricted join rule needs at least one space to allow in.',
-          ),
-        );
-      }
-      const invalidAllowedSpace = invalidAllowedSpaceId(allowedSpaceIds);
-      if (restricted && invalidAllowedSpace) {
-        return throwError(() =>
-          roomAdministrationInvalidInput(
+          );
+        }
+        if (!restricted) return { join_rule: joinRule };
+        if (invalidAllowedSpaceId(allowedSpaceIds)) {
+          throw roomAdministrationInvalidInput(
             'set-join-rule',
             'Every allowed Space must have a valid Matrix Room ID.',
+          );
+        }
+        return {
+          join_rule: joinRule,
+          allow: restrictedAllowEntriesForWrite(
+            allowedSpaceIds,
+            room?.state.joinRules?.['allow'],
           ),
-        );
-      }
-      const content: { join_rule: JoinRule; allow?: JoinRuleAllow[] } = {
-        join_rule: joinRule,
-      };
-      if (restricted) {
-        const room = client.getRoom(roomId);
-        const currentAllow = room
-          ? liveRoomState(room)
-              ?.getStateEvents(EventType.RoomJoinRules, '')
-              ?.getContent()?.['allow']
-          : undefined;
-        content.allow = restrictedAllowEntriesForWrite(
-          allowedSpaceIds,
-          currentAllow,
-        );
-      }
-      return from(
-        client.sendStateEvent(
-          roomId,
-          EventType.RoomJoinRules,
-          content as RoomJoinRulesEventContent,
-          '',
-        ),
-      ).pipe(
-        map(() => void 0),
-        recoverRoomAdministrationRequest('set-join-rule'),
-      );
-    });
+        };
+      },
+    );
   }
 
   /**
@@ -293,27 +239,17 @@ export class RoomSettingsService {
    * so it silently stays as open as it was. False when the version is missing or unparseable.
    */
   supportsRestricted(target: RoomSettingsTargetInput): boolean {
-    return this.roomVersionAtLeast(target, 8);
+    return versionAtLeast(this.roomOf(target), 8);
   }
 
   /** Whether the room can carry a `knock` join rule (room version 7+). */
   supportsKnock(target: RoomSettingsTargetInput): boolean {
-    return this.roomVersionAtLeast(target, 7);
+    return versionAtLeast(this.roomOf(target), 7);
   }
 
   /** Whether the room can carry a `knock_restricted` join rule (room version 10+). */
   supportsKnockRestricted(target: RoomSettingsTargetInput): boolean {
-    return this.roomVersionAtLeast(target, 10);
-  }
-
-  private roomVersionAtLeast(
-    target: RoomSettingsTargetInput,
-    minimum: number,
-  ): boolean {
-    const room = this.roomFor(target);
-    if (!room) return false;
-    const version = Number.parseInt(room.getVersion() ?? '', 10);
-    return Number.isFinite(version) && version >= minimum;
+    return versionAtLeast(this.roomOf(target), 10);
   }
 
   /**
@@ -324,86 +260,28 @@ export class RoomSettingsService {
     target: RoomSettingsTargetInput,
     historyVisibility: HistoryVisibility,
   ): Observable<void> {
-    return defer(() => {
-      const context = this.commandContext(target);
-      if (!context) {
-        return throwError(() =>
-          roomAdministrationNotSignedIn('set-history-visibility'),
-        );
-      }
-      this.permissions.assert(context.permissions.history);
-      const { client, roomId } = context;
-      return from(
-        client.sendStateEvent(
-          roomId,
-          EventType.RoomHistoryVisibility,
-          {
-            history_visibility: historyVisibility,
-          } as RoomHistoryVisibilityEventContent,
-          '',
-        ),
-      ).pipe(
-        map(() => void 0),
-        recoverRoomAdministrationRequest('set-history-visibility'),
-      );
-    });
+    return this.write(
+      target,
+      'set-history-visibility',
+      'history',
+      'm.room.history_visibility',
+      () => ({ history_visibility: historyVisibility }),
+    );
   }
 
   /**
    * The room's current name, topic and avatar, straight from state, for seeding a settings
-   * dialog.
-   *
-   * Reads the raw `m.room.name` event, NOT `Room.name`: the SDK's is a computed display name
-   * that invents one from the member list for a nameless room, which would make the dialog's
-   * "did this field change?" compare against something nobody typed and write it back.
+   * dialog. The raw `m.room.name`, not a computed display name: that invents one from the
+   * member list for a nameless room, which would make the dialog's "did this field
+   * change?" compare against something nobody typed and write it back.
    */
   currentIdentity(target: RoomSettingsTargetInput): RoomIdentity {
-    const blank: RoomIdentity = { name: '', topic: '', avatarMxc: null };
-    const room = this.roomFor(target);
-    if (!room) return blank;
-    const state = liveRoomState(room);
-    const read = (type: EventType, key: string): unknown =>
-      state?.getStateEvents(type, '')?.getContent()?.[key];
-    const name = read(EventType.RoomName, 'name');
-    const topic = read(EventType.RoomTopic, 'topic');
-    const avatar = read(EventType.RoomAvatar, 'url');
-    return {
-      name: typeof name === 'string' ? name : '',
-      topic: typeof topic === 'string' ? topic : '',
-      avatarMxc: typeof avatar === 'string' && avatar ? avatar : null,
-    };
+    return identityOf(this.roomOf(target));
   }
 
   /** The room's current join rule + history visibility, falling back to the spec defaults. */
   currentAccess(target: RoomSettingsTargetInput): RoomAccess {
-    const fallback: RoomAccess = {
-      joinRule: DEFAULT_JOIN_RULE,
-      historyVisibility: DEFAULT_HISTORY_VISIBILITY,
-      allowedSpaceIds: [],
-    };
-    const room = this.roomFor(target);
-    if (!room) return fallback;
-    const state = liveRoomState(room);
-    const joinRule = state
-      ?.getStateEvents(EventType.RoomJoinRules, '')
-      ?.getContent()?.['join_rule'];
-    const historyVisibility = state
-      ?.getStateEvents(EventType.RoomHistoryVisibility, '')
-      ?.getContent()?.['history_visibility'];
-    const rule = (joinRule as JoinRule) ?? DEFAULT_JOIN_RULE;
-    // Only `restricted` and `knock_restricted` have an allow list; a leftover `allow` under another rule is
-    // inert and would make a dialog see (and write) an access change that isn't there.
-    const allow = takesAllowList(rule)
-      ? state?.getStateEvents(EventType.RoomJoinRules, '')?.getContent()?.[
-          'allow'
-        ]
-      : undefined;
-    return {
-      joinRule: rule,
-      historyVisibility:
-        (historyVisibility as HistoryVisibility) ?? DEFAULT_HISTORY_VISIBILITY,
-      allowedSpaceIds: allowedSpaceIdsOf(allow),
-    };
+    return accessOf(this.roomOf(target));
   }
 
   /** Which fields the current user's power level lets them edit in `roomId`. */
@@ -420,19 +298,11 @@ export class RoomSettingsService {
 
   /** Read the complete current view for one Account-and-Room target. */
   snapshot(target: RoomSettingsTarget): RoomSettingsSnapshot {
-    const client = this.matrix.clientFor(target.accountId);
-    const room = client?.getRoom(target.roomId) ?? null;
-    const joined = room?.getMyMembership() === KnownMembership.Join;
-    // Unknown (null) until the crypto store has answered, so Turn on is never offered for a
-    // room it may know is encrypted.
-    const encrypted =
-      client && room
-        ? room.hasEncryptionStateEvent() ||
-          (this.encryptionAnswersFor(client).get(room.roomId) ?? null)
-        : null;
-    const availability: RoomSettingsAvailability = !client
+    const live = this.session.status(target.accountId) !== null;
+    const room = live ? this.store.room(target.accountId, target.roomId) : null;
+    const availability: RoomSettingsAvailability = !live
       ? 'account-unavailable'
-      : !room || !joined
+      : room?.ownMembership !== 'join'
         ? 'room-unavailable'
         : 'available';
     return {
@@ -444,110 +314,85 @@ export class RoomSettingsService {
           : availability === 'room-unavailable'
             ? 'This room is no longer joined for this account. Your unfinished edits are still here.'
             : null,
-      openingAccountActive: this.matrix.activeUserId() === target.accountId,
-      identity: this.currentIdentity(target),
-      access: this.currentAccess(target),
+      openingAccountActive: this.session.activeAccountId() === target.accountId,
+      identity: identityOf(room),
+      access: accessOf(room),
       permissions: this.permissions.settingsFor(target),
-      encrypted,
-      supportsRestricted: this.supportsRestricted(target),
-      supportsKnock: this.supportsKnock(target),
-      supportsKnockRestricted: this.supportsKnockRestricted(target),
-      advanced: {
-        ...roomAdvancedInfo(
-          target.roomId,
-          room ? liveRoomState(room) : undefined,
-        ),
-        encrypted: encrypted === true,
-      },
+      // Unknown (null) until the crypto store has answered, so Turn on is never offered for
+      // a room it may know is encrypted.
+      encrypted:
+        room?.encryption === 'encrypted'
+          ? true
+          : room?.encryption === 'unencrypted'
+            ? false
+            : null,
+      supportsRestricted: versionAtLeast(room, 8),
+      supportsKnock: versionAtLeast(room, 7),
+      supportsKnockRestricted: versionAtLeast(room, 10),
+      advanced: roomAdvancedInfo(target.roomId, room),
     };
   }
 
-  private encryptionAnswersFor(client: MatrixClient): Map<string, boolean> {
-    let answers = this.encryptionAnswers.get(client);
-    if (!answers) {
-      answers = new Map();
-      this.encryptionAnswers.set(client, answers);
-    }
-    return answers;
-  }
-
   /**
-   * Every current state event of one exact target, read once for the state viewer. Unsorted:
-   * presentation order belongs to the viewer. Empty when the Account or Room is unavailable.
+   * Every current state event of one exact target, read once on subscribe for the state
+   * viewer. Unsorted: presentation order belongs to the viewer. Empty when the Account or
+   * Room is unavailable; a refused request errors.
    */
-  stateEvents(target: RoomSettingsTarget): readonly RoomStateEntry[] {
-    const room = this.roomFor(target);
-    const state = room ? liveRoomState(room) : undefined;
-    if (!state) return [];
-    return [...state.events].flatMap(([type, byKey]) =>
-      [...byKey].map(([stateKey, event]) => ({
-        type,
-        stateKey,
-        event: { ...event.event },
-      })),
+  stateEvents(
+    target: RoomSettingsTarget,
+  ): Observable<readonly RoomStateEntry[]> {
+    return defer(() =>
+      this.engine.stateEvents(target.accountId, target.roomId),
+    ).pipe(
+      map((result) => {
+        if (result.ok) return result.value;
+        if (NO_STATE.has(result.failure.code)) return [];
+        throw new EngineRequestError(result.failure);
+      }),
     );
   }
 
   /**
-   * Observe state for one immutable target. Subscription owns one filtered listener on that
-   * Account's client and follows Account removal/replacement without ever retargeting.
+   * Observe one exact target: its snapshot at once, then after each change of that
+   * Account's room or session. It never retargets to another Account.
    */
   observe(target: RoomSettingsTarget): Observable<RoomSettingsSnapshot> {
-    const accountIds = toObservable(this.matrix.accountIds, {
-      injector: this.injector,
-    });
-    const activeAccount = toObservable(this.matrix.activeUserId, {
-      injector: this.injector,
-    });
-    return merge(of(null), accountIds, activeAccount).pipe(
-      switchMap(() => this.observeCurrentClient(target)),
+    return new Observable<RoomSettingsSnapshot>((subscriber) => {
+      const current = computed(() => this.snapshot(target));
+      subscriber.next(untracked(current));
+      // Owned by this subscription: a root-injector effect would outlive it.
+      const watcher = effect(() => subscriber.next(current()), {
+        injector: this.injector,
+        manualCleanup: true,
+      });
+      return () => watcher.destroy();
+    }).pipe(distinctUntilChanged());
+  }
+
+  /** One cold state write after the signed-in and permission checks. */
+  private write(
+    target: RoomSettingsTargetInput,
+    operation: string,
+    field: keyof RoomSettingsPermissions,
+    type: string,
+    content: (room: AdministeredRoom | null) => JsonObject,
+  ): Observable<void> {
+    return defer(() => {
+      const key = this.keyOf(target);
+      if (!key) throw roomAdministrationNotSignedIn(operation);
+      this.permissions.assert(this.permissionsFor(target)[field]);
+      return this.engine.setState(
+        key.accountId,
+        key.roomId,
+        type,
+        '',
+        content(this.store.room(key.accountId, key.roomId)),
+      );
+    }).pipe(
+      unwrapEngineResult(),
+      map(() => void 0),
+      recoverRoomAdministrationRequest(operation),
     );
-  }
-
-  private observeCurrentClient(
-    target: RoomSettingsTarget,
-  ): Observable<RoomSettingsSnapshot> {
-    const client = this.matrix.clientFor(target.accountId);
-    if (!client) return of(this.snapshot(target));
-    return new Observable((subscriber) => {
-      const publish = (): void => subscriber.next(this.snapshot(target));
-      const onState = (event: MatrixEvent, state?: RoomState): void => {
-        if (
-          event.getRoomId() === target.roomId ||
-          state?.roomId === target.roomId
-        ) {
-          publish();
-        }
-      };
-      client.on(RoomStateEvent.Events, onState);
-      client.on(ClientEvent.Sync, publish);
-      publish();
-      const room = client.getRoom(target.roomId);
-      if (room) {
-        void isRoomEncrypted(room, client.getCrypto?.()).then((encrypted) => {
-          this.encryptionAnswersFor(client).set(target.roomId, encrypted);
-          if (!subscriber.closed) publish();
-        });
-      }
-      return () => {
-        client.off(RoomStateEvent.Events, onState);
-        client.off(ClientEvent.Sync, publish);
-      };
-    });
-  }
-
-  private commandContext(target: RoomSettingsTargetInput): {
-    readonly client: MatrixClient;
-    readonly roomId: string;
-    readonly permissions: RoomSettingsPermissions;
-  } | null {
-    const client = this.clientFor(target);
-    if (!client) return null;
-    return {
-      client,
-      roomId: typeof target === 'string' ? target : target.roomId,
-      permissions: this.permissionsFor(target),
-    };
   }
 
   private permissionsFor(
@@ -558,18 +403,62 @@ export class RoomSettingsService {
       : this.permissions.settingsFor(target);
   }
 
-  private roomFor(target: RoomSettingsTargetInput): Room | null {
-    const client = this.clientFor(target);
-    return (
-      client?.getRoom(typeof target === 'string' ? target : target.roomId) ??
-      null
-    );
+  private roomOf(target: RoomSettingsTargetInput): AdministeredRoom | null {
+    const key = this.keyOf(target);
+    return key ? this.store.room(key.accountId, key.roomId) : null;
   }
 
-  private clientFor(target: RoomSettingsTargetInput): MatrixClient | null {
-    if (typeof target !== 'string') {
-      return this.matrix.clientFor(target.accountId);
-    }
-    return this.matrix.isInitialized ? this.matrix.instance : null;
+  /** The exact target, or the active account's for a bare room ID; null when not live. */
+  private keyOf(target: RoomSettingsTargetInput): RoomSettingsTarget | null {
+    const key =
+      typeof target === 'string'
+        ? { accountId: this.session.activeAccountId(), roomId: target }
+        : target;
+    return key.accountId && this.session.status(key.accountId)
+      ? { accountId: key.accountId, roomId: key.roomId }
+      : null;
   }
+}
+
+function identityOf(room: AdministeredRoom | null): RoomIdentity {
+  const name = room?.state.name?.['name'];
+  const topic = room?.state.topic?.['topic'];
+  const avatar = room?.state.avatar?.['url'];
+  return {
+    name: typeof name === 'string' ? name : '',
+    topic: typeof topic === 'string' ? topic : '',
+    avatarMxc: typeof avatar === 'string' && avatar ? avatar : null,
+  };
+}
+
+function accessOf(room: AdministeredRoom | null): RoomAccess {
+  const joinRules = room?.state.joinRules;
+  const rule =
+    (joinRules?.['join_rule'] as JoinRule | undefined) ?? DEFAULT_JOIN_RULE;
+  const historyVisibility = room?.state.historyVisibility?.[
+    'history_visibility'
+  ] as HistoryVisibility | undefined;
+  return {
+    joinRule: rule,
+    historyVisibility: historyVisibility ?? DEFAULT_HISTORY_VISIBILITY,
+    // Only `restricted` and `knock_restricted` have an allow list; a leftover `allow` under
+    // another rule is inert and would make a dialog see (and write) an access change that
+    // isn't there.
+    allowedSpaceIds: allowedSpaceIdsOf(
+      takesAllowList(rule) ? joinRules?.['allow'] : undefined,
+    ),
+  };
+}
+
+/** Room version gates; a missing create version means version 1, as js-sdk reads it. */
+function versionAtLeast(
+  room: AdministeredRoom | null,
+  minimum: number,
+): boolean {
+  if (!room) return false;
+  const version = Number.parseInt(
+    String(room.state.create?.content['room_version'] ?? '1'),
+    10,
+  );
+  return Number.isFinite(version) && version >= minimum;
 }

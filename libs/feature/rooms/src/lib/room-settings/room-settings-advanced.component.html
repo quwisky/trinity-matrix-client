@@ -185,6 +185,8 @@
         variant="secondary"
         presentation="outline"
         size="sm"
+        [loading]="loadingState()"
+        [disabled]="loadingState()"
         (click)="viewState()"
         data-testid="room-advanced-view-state"
       >
