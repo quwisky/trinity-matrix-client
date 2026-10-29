@@ -34,7 +34,6 @@
     "libs/data-access/trust/src/lib/recovery-reset.ts",
     "libs/data-access/trust/src/lib/setup-guards.ts",
     "libs/data-access/trust/src/lib/trust-devices.service.ts",
-    "libs/data-access/trust/src/lib/trust-health.service.ts",
     "libs/data-access/trust/src/lib/trust-users.service.ts",
     "libs/data-access/trust/src/lib/trust-verification.service.ts",
     "libs/data-access/trust/src/lib/trust.service.ts",

@@ -1,31 +1,18 @@
-import { Injectable, Injector, inject, signal } from '@angular/core';
+import { Injectable, Injector, computed, inject, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import {
-  EMPTY,
   Observable,
-  asapScheduler,
-  catchError,
-  debounceTime,
-  defer,
   finalize,
-  from,
-  fromEventPattern,
   ignoreElements,
   map,
   merge,
-  of,
-  startWith,
   switchMap,
 } from 'rxjs';
-import {
-  TrustCryptoPort,
-  type TrustMatrixClient,
-} from '@trinity/data-access/matrix-client';
-import {
-  TRUST_HEALTH_EVENTS,
-  type TrustHealthSnapshot,
-} from './trust-health.service';
-import { readTrustSnapshot } from './trust-snapshot';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { plainEqual } from '@trinity/util/matrix';
+import type { TrustHealthSnapshot } from './trust-health.service';
+import { TRUST_ENGINE } from './trust-engine.token';
+import { deriveTrustSnapshot } from './trust-snapshot';
 
 /** How one signed-in Account's device on this installation stands, for Account lists. */
 export type AccountTrustSummary =
@@ -64,49 +51,49 @@ export function summarizeTrust(
 @Injectable({ providedIn: 'root' })
 export class TrustAccountStatusService {
   private readonly injector = inject(Injector);
-  private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly session = inject(SessionStateService);
+  private readonly engine = inject(TRUST_ENGINE);
   private readonly _summaries = signal<
     ReadonlyMap<string, AccountTrustSummary>
   >(new Map());
+  /** Live Accounts with their client generation, so a replaced client is followed. */
+  private readonly clients = computed(
+    () =>
+      this.session.snapshot().accounts.map(({ accountId, generation }) => ({
+        accountId,
+        generation,
+      })),
+    { equal: plainEqual },
+  );
 
   readonly summaries = this._summaries.asReadonly();
 
-  /** Owned by the Application Runtime session; releases every listener on unsubscribe. */
+  /** Owned by the Application Runtime session; releases every subscription on unsubscribe. */
   run(): Observable<never> {
-    return toObservable(this.cryptoPort.liveAccountIds, {
-      injector: this.injector,
-    }).pipe(
-      switchMap((ids) => {
-        this.retain(ids);
-        return merge(...ids.map((id) => this.watch(id)));
+    return toObservable(this.clients, { injector: this.injector }).pipe(
+      switchMap((clients) => {
+        this.retain(clients.map(({ accountId }) => accountId));
+        return merge(...clients.map(({ accountId }) => this.watch(accountId)));
       }),
       ignoreElements(),
       finalize(() => this._summaries.set(new Map())),
     );
   }
 
-  /**
-   * Re-read one Account after its crypto events. A burst within one microtask starts one
-   * read; a read that a newer one overtakes still runs, but its result is dropped.
-   */
+  /** One Account's summary after each change; a failed read or no crypto says `unknown`. */
   private watch(accountId: string): Observable<void> {
-    return defer(() => {
-      const context = this.cryptoPort.forAccount(accountId);
-      if (!context) return EMPTY;
-      const { client, crypto } = context;
-      return changesOf(client).pipe(
-        startWith(undefined),
-        debounceTime(0, asapScheduler),
-        switchMap(() =>
-          crypto
-            ? from(readTrustSnapshot(client, crypto)).pipe(
-                catchError(() => of(null)),
-              )
-            : of(null),
+    return this.engine
+      .facts(accountId)
+      .pipe(
+        map((result) =>
+          this.publish(
+            accountId,
+            summarizeTrust(
+              result.ok ? deriveTrustSnapshot(result.value) : null,
+            ),
+          ),
         ),
-        map((snapshot) => this.publish(accountId, summarizeTrust(snapshot))),
       );
-    });
   }
 
   private publish(accountId: string, summary: AccountTrustSummary): void {
@@ -123,16 +110,4 @@ export class TrustAccountStatusService {
     if ([...current.keys()].every((id) => keep.has(id))) return;
     this._summaries.set(new Map([...current].filter(([id]) => keep.has(id))));
   }
-}
-
-/** Any crypto or account-data change that can move this Account's summary. */
-function changesOf(client: TrustMatrixClient): Observable<void> {
-  return merge(
-    ...TRUST_HEALTH_EVENTS.map((event) =>
-      fromEventPattern<unknown>(
-        (handler) => client.on(event as never, handler as never),
-        (handler) => client.off(event as never, handler as never),
-      ),
-    ),
-  ).pipe(map(() => undefined));
 }

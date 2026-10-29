@@ -3,7 +3,7 @@
 // trust.service.spec.ts, trust-setup.spec.ts and trust-recovery-reset.spec.ts drive the
 // same service over the same fake crypto, secret storage and client, so they share one
 // copy of the doubles here instead of three that can drift.
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
@@ -15,8 +15,10 @@ import {
   type TrustProviderManagement,
 } from './trust-provider-recovery.port';
 import {
+  JS_SDK_CLIENTS,
   MatrixClientService,
   SecretStorageKeyHolder,
+  SessionStateService,
 } from '@trinity/data-access/matrix-client';
 
 /** A 401 UIA challenge carrying flows + session, as the SDK surfaces it. */
@@ -221,12 +223,30 @@ export function setup(opts: CryptoOpts = {}) {
   const holder = new SecretStorageKeyHolder();
   // Writable so tests can flip the active account and fire the reproject effect.
   const activeUserId = signal<string | null>(null);
+  // Health reads the active account through the engine, over whichever client is stubbed.
+  const activeAccountId = computed(() => activeUserId() ?? '@me:hs');
+  // Bumped by a test to model a new client for the same account (re-login).
+  const generation = signal(1);
   TestBed.configureTestingModule({
     providers: [
       TrustService,
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
       }),
+      MockProvider(SessionStateService, {
+        activeAccountId,
+        active: computed(() => ({
+          accountId: activeAccountId(),
+          generation: generation(),
+        })) as unknown as SessionStateService['active'],
+      }),
+      {
+        provide: JS_SDK_CLIENTS,
+        useFactory: () => {
+          const matrix = TestBed.inject(MatrixClientService);
+          return { clientFor: () => matrix.instance };
+        },
+      },
       {
         provide: TRUST_PROVIDER_RECOVERY,
         useValue: {
@@ -257,5 +277,6 @@ export function setup(opts: CryptoOpts = {}) {
     client,
     matrix,
     activeUserId,
+    generation,
   };
 }

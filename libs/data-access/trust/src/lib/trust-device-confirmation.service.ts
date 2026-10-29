@@ -14,7 +14,6 @@ import {
   concat,
   defer,
   filter,
-  from,
   ignoreElements,
   map,
   merge,
@@ -25,10 +24,7 @@ import {
   throwError,
   timeout,
 } from 'rxjs';
-import {
-  SessionStateService,
-  TrustCryptoPort,
-} from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   PreferenceStoreService,
   definePreference,
@@ -40,7 +36,9 @@ import {
   TrustHealthService,
   type TrustHealthSnapshot,
 } from './trust-health.service';
-import { readPublishedMasterKey, readTrustSnapshot } from './trust-snapshot';
+import type { TrustFacts } from './trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
+import { deriveTrustSnapshot } from './trust-snapshot';
 
 /** Whether the active Account's current device must be verified before the app opens. */
 export type DeviceConfirmationGate =
@@ -173,7 +171,7 @@ function accountContext(accountId: string): PreferenceContext {
 export class TrustDeviceConfirmationService {
   private readonly injector = inject(Injector);
   private readonly session = inject(SessionStateService);
-  private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly engine = inject(TRUST_ENGINE);
   private readonly preferences = inject(PreferenceStoreService);
   private readonly health = inject(TrustHealthService);
   private readonly policy = inject(DEVICE_CONFIRMATION_POLICY);
@@ -269,13 +267,10 @@ export class TrustDeviceConfirmationService {
   completeIfVerified(accountId: string): Observable<void> {
     return defer(() => {
       if (!this.records().has(accountId)) return of(undefined);
-      const context = this.cryptoPort.forAccount(accountId);
-      if (!context?.crypto) return of(undefined);
-      return from(readTrustSnapshot(context.client, context.crypto)).pipe(
-        switchMap((snapshot) =>
-          snapshot.thisDeviceVerified ? this.clear(accountId) : of(undefined),
+      return this.readFacts(accountId).pipe(
+        switchMap((facts) =>
+          facts?.thisDeviceCrossSigned ? this.clear(accountId) : of(undefined),
         ),
-        catchError(() => of(undefined)),
       );
     });
   }
@@ -291,22 +286,18 @@ export class TrustDeviceConfirmationService {
     return defer(() => {
       const accountId = this.session.activeAccountId();
       const deviceId = accountId ? this.records().get(accountId) : undefined;
-      const context = accountId ? this.cryptoPort.forAccount(accountId) : null;
-      if (
-        !accountId ||
-        !deviceId ||
-        !context?.crypto ||
-        this.deviceIdOf(accountId) !== deviceId
-      ) {
+      if (!accountId || !deviceId || this.deviceIdOf(accountId) !== deviceId) {
         return of(false);
       }
-      return from(readTrustSnapshot(context.client, context.crypto)).pipe(
+      return this.readFacts(accountId).pipe(
         map(
-          (snapshot) =>
-            gateFor(snapshot, this.serverIdentity().get(accountId)).kind ===
-            'required',
+          (facts) =>
+            !!facts &&
+            gateFor(
+              deriveTrustSnapshot(facts),
+              this.serverIdentity().get(accountId),
+            ).kind === 'required',
         ),
-        catchError(() => of(false)),
       );
     });
   }
@@ -381,19 +372,18 @@ export class TrustDeviceConfirmationService {
       }
       let check = this.serverChecks.get(accountId);
       if (!check) {
-        const context = this.cryptoPort.forAccount(accountId);
         // Accounts publishes a new device as soon as its record is saved, before its
         // session starts: ask once it is live (the next hydrate). A record left by an
         // earlier device of this Account is ignored by the gate.
-        if (!context || this.deviceIdOf(accountId) !== deviceId) {
-          return of(undefined);
-        }
-        const answer: Observable<ServerIdentity> = from(
-          readPublishedMasterKey(context.client),
-        ).pipe(
-          map((key): ServerIdentity => (key ? 'present' : 'absent')),
-          catchError(() => of<ServerIdentity>('unknown')),
-        );
+        if (this.deviceIdOf(accountId) !== deviceId) return of(undefined);
+        const answer: Observable<ServerIdentity> = this.engine
+          .publishedMasterKey(accountId)
+          .pipe(
+            map((result): ServerIdentity => {
+              if (!result.ok) return 'unknown';
+              return result.value ? 'present' : 'absent';
+            }),
+          );
         // An answer that lands after `require()` recorded a newer sign-in is stale.
         const isCurrent = () => this.serverChecks.get(accountId) === check;
         check = answer.pipe(
@@ -488,6 +478,15 @@ export class TrustDeviceConfirmationService {
   private markHydrated(accountId: string): void {
     if (this.hydrated().has(accountId)) return;
     this.hydrated.update((ids) => new Set(ids).add(accountId));
+  }
+
+  /** One fresh read of the Account's facts; null when it cannot be read. */
+  private readFacts(accountId: string): Observable<TrustFacts | null> {
+    return this.engine.facts(accountId).pipe(
+      take(1),
+      map((result) => (result.ok ? result.value : null)),
+      catchError(() => of(null)),
+    );
   }
 
   private deviceIdOf(accountId: string): string | null {
