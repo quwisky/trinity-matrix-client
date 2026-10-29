@@ -236,11 +236,11 @@ store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `remov
 `clear`, `clearRoom`, `setNotificationText`, `clearDelivered`). Per signed-in account it holds
 the homeserver URL, the access token (rewritten when the SDK refreshes it), the token's expiry when the account signed in through
 OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes;
-`MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
+`SessionEngine.accessToken` hands it over only with the token it belongs to) and
 the notification-sound choice, plus App lock's effective Notification text (`setNotificationText`;
 iOS app-group `push-handoff/settings.json`, Android `settings:notification-text`; missing reads as
 Show and unreadable as Always hide), room display names, DM flags and whether each room counts
-as encrypted (`RoomEncryptionFlags`; unknown until the crypto store answers, which counts as
+as encrypted (`NotificationEngine.pushRooms`; unknown until the crypto store answers, which counts as
 encrypted) written in one batch per sync or rename. It never holds refresh tokens, crypto keys or message history. An account's
 entry is removed as the first step of its sign-out, together with that account's delivered
 pushes, and the store is emptied, with
@@ -259,7 +259,7 @@ Android Keystore key and stored in the private preferences file `trinity_push_ha
 **Refresh before the background.** Each time the app goes to the background,
 `NotificationSessionService` asks `PushHandoffService.refreshBeforeBackground` to refresh
 every bound account whose token has an expiry and that holds a refresh token
-(`MatrixClientService.canRefreshAccessToken`), unless that token rotated within the last
+(`SessionAccessToken.refreshable`), unless that token rotated within the last
 minute, so the copy in the store lives one full lifetime from then. The refresh runs through
 the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
 `patches/matrix-js-sdk@43.0.0.patch`). It therefore joins a refresh already in flight,

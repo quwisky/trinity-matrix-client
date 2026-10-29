@@ -2,6 +2,7 @@ import {
   NEVER,
   type Observable,
   Subject,
+  concat,
   defer,
   distinctUntilChanged,
   filter,
@@ -19,11 +20,13 @@ import {
 } from '@trinity/util/matrix';
 import type {
   DefaultPushRule,
+  HttpPusher,
   IncomingNotification,
   KeywordRule,
   NotificationEngine,
   NotificationPreference,
   NotificationSettings,
+  PushRoom,
   PushRuleKind,
   ReactionTarget,
   RoomNotifyMode,
@@ -52,7 +55,7 @@ interface FakeEvent {
 }
 
 interface FakeRoom {
-  readonly name: string;
+  name: string;
   readonly encrypted: boolean;
   readonly events: Map<string, FakeEvent>;
 }
@@ -150,6 +153,11 @@ export class FakeNotificationEngine implements NotificationEngine {
   private readonly rooms = new Map<string, FakeRoom>();
   private readonly incoming = new Subject<IncomingNotification>();
   private readonly openFeeds = new Map<string, number>();
+  /** Each account's pushers, keyed as the homeserver keys them. */
+  private readonly pusherIds = new Map<
+    string,
+    { readonly appId: string; readonly pushkey: string }[]
+  >();
   private sequence = 0;
 
   readonly alice = '@alice:fake';
@@ -171,7 +179,18 @@ export class FakeNotificationEngine implements NotificationEngine {
       encrypted: options.encrypted ?? false,
       events: new Map(),
     });
+    this.changes.next();
     return roomId;
+  }
+
+  renameRoom(roomId: string, name: string): void {
+    this.room(roomId).name = name;
+    this.changes.next();
+  }
+
+  /** A sync: `pushRooms` emits its whole list again, changed or not. */
+  syncRooms(): void {
+    this.changes.next();
   }
 
   /** `sender` sends a text message, live; returns its event id. */
@@ -493,6 +512,87 @@ export class FakeNotificationEngine implements NotificationEngine {
             : null,
         ),
       );
+    });
+  }
+
+  setPusher(
+    accountId: string,
+    pusher: HttpPusher,
+  ): Observable<EngineResult<null>> {
+    return this.pusherCommand(accountId, (ids) => {
+      // As the homeserver: one pusher per app id and pushkey.
+      if (
+        !ids.some(
+          (id) => id.appId === pusher.appId && id.pushkey === pusher.pushkey,
+        )
+      ) {
+        ids.push({ appId: pusher.appId, pushkey: pusher.pushkey });
+      }
+      return null;
+    });
+  }
+
+  removePusher(
+    accountId: string,
+    appId: string,
+    pushkey: string,
+  ): Observable<EngineResult<null>> {
+    return this.pusherCommand(accountId, (ids) => {
+      const index = ids.findIndex(
+        (id) => id.appId === appId && id.pushkey === pushkey,
+      );
+      if (index >= 0) ids.splice(index, 1);
+      return null;
+    });
+  }
+
+  pushers(
+    accountId: string,
+  ): Observable<
+    EngineResult<
+      readonly { readonly appId: string; readonly pushkey: string }[]
+    >
+  > {
+    return this.pusherCommand(accountId, (ids) => ids.map((id) => ({ ...id })));
+  }
+
+  /** Every fake room; the crypto store answers at once, and only alice has `m.direct`. */
+  pushRooms(accountId: string): Observable<readonly PushRoom[]> {
+    return defer(() => {
+      if (!this.live.has(accountId)) return concat(of([]), NEVER);
+      return this.changes.pipe(
+        startWith(undefined),
+        map(() => {
+          const direct = new Set(
+            accountId === this.alice
+              ? Object.values(
+                  (this.accountData.get('m.direct') ?? {}) as Record<
+                    string,
+                    unknown
+                  >,
+                ).flatMap((ids) => (Array.isArray(ids) ? ids : []))
+              : [],
+          );
+          return [...this.rooms].map(([roomId, room]): PushRoom => ({
+            roomId,
+            name: room.name,
+            direct: direct.has(roomId),
+            encrypted: room.encrypted,
+          }));
+        }),
+      );
+    });
+  }
+
+  private pusherCommand<T>(
+    accountId: string,
+    run: (ids: { readonly appId: string; readonly pushkey: string }[]) => T,
+  ): Observable<EngineResult<T>> {
+    return defer(() => {
+      if (!this.live.has(accountId)) return of(engineFail(NOT_LIVE));
+      let ids = this.pusherIds.get(accountId);
+      if (!ids) this.pusherIds.set(accountId, (ids = []));
+      return of(engineOk(run(ids)));
     });
   }
 

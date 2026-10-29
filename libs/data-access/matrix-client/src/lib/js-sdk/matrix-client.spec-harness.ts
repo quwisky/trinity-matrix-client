@@ -44,6 +44,7 @@ export const OIDC_SESSION = {
 export function fakeClient(baseUrl = 'https://hs.example') {
   return {
     baseUrl,
+    getHomeserverUrl: () => baseUrl,
     on: vi.fn(),
     off: vi.fn(),
     initRustCrypto: vi.fn().mockResolvedValue(undefined),

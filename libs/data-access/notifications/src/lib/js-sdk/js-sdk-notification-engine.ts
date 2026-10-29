@@ -2,12 +2,16 @@ import { Injectable, inject } from '@angular/core';
 import {
   ClientEvent,
   ConditionKind,
+  EventType,
+  type IPusher,
   type IPushRule,
   type MatrixClient,
   type MatrixEvent,
   PushRuleActionName,
   type PushRuleAction,
   PushRuleKind as SdkPushRuleKind,
+  RoomEvent,
+  SyncState,
   TweakName,
 } from 'matrix-js-sdk';
 import {
@@ -30,14 +34,17 @@ import {
   engineFail,
   engineOk,
   plainEqual,
+  RoomEncryptionFlags,
 } from '@trinity/util/matrix';
 import type {
   DefaultPushRule,
+  HttpPusher,
   IncomingNotification,
   KeywordRule,
   NotificationEngine,
   NotificationPreference,
   NotificationSettings,
+  PushRoom,
   PushRuleKind,
   ReactionTarget,
   RoomNotifyMode,
@@ -306,6 +313,22 @@ function settingsOf(client: MatrixClient | null): NotificationSettings {
     roomModes: roomModesOf(client),
     ...preferencesOf(client),
   };
+}
+
+/** Room ids the `m.direct` account data lists as DMs. */
+function directRoomIds(client: MatrixClient): ReadonlySet<string> {
+  const map =
+    client
+      .getAccountData(EventType.Direct)
+      ?.getContent<Record<string, unknown>>() ?? {};
+  const ids = new Set<string>();
+  for (const roomIds of Object.values(map)) {
+    if (!Array.isArray(roomIds)) continue;
+    for (const roomId of roomIds) {
+      if (typeof roomId === 'string') ids.add(roomId);
+    }
+  }
+  return ids;
 }
 
 /** {@link NotificationEngine} over the live matrix-js-sdk clients of {@link JS_SDK_CLIENTS}. */
@@ -578,6 +601,115 @@ export class JsSdkNotificationEngine implements NotificationEngine {
         reactionIds,
       ),
     );
+  }
+
+  setPusher(
+    accountId: string,
+    pusher: HttpPusher,
+  ): Observable<EngineResult<null>> {
+    return this.request(accountId, async (client) => {
+      await client.setPusher({
+        app_id: pusher.appId,
+        pushkey: pusher.pushkey,
+        kind: 'http',
+        app_display_name: pusher.appDisplayName,
+        device_display_name: client.getDeviceId() ?? 'Trinity',
+        lang: pusher.lang,
+        // The spec allows extra `data` keys; the SDK types the field narrowly.
+        data: {
+          url: pusher.url,
+          ...(pusher.format ? { format: pusher.format } : {}),
+          ...pusher.data,
+        } as IPusher['data'],
+        // Every account shares the device's pushkey: `false` would make each co-hosted
+        // account's pusher replace the previous one's (Synapse).
+        append: true,
+      });
+      return null;
+    });
+  }
+
+  removePusher(
+    accountId: string,
+    appId: string,
+    pushkey: string,
+  ): Observable<EngineResult<null>> {
+    return this.request(accountId, async (client) => {
+      await client.removePusher(pushkey, appId);
+      return null;
+    });
+  }
+
+  pushers(
+    accountId: string,
+  ): Observable<
+    EngineResult<
+      readonly { readonly appId: string; readonly pushkey: string }[]
+    >
+  > {
+    return this.request(accountId, async (client) =>
+      (await client.getPushers()).pushers.map((pusher) => ({
+        appId: pusher.app_id,
+        pushkey: pusher.pushkey,
+      })),
+    );
+  }
+
+  pushRooms(accountId: string): Observable<readonly PushRoom[]> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return concat(of([]), NEVER);
+      return new Observable<readonly PushRoom[]>((subscriber) => {
+        const encryption = new RoomEncryptionFlags();
+        const publish = (): void => {
+          if (
+            subscriber.closed ||
+            this.clients.clientFor(accountId) !== client
+          ) {
+            return;
+          }
+          const direct = directRoomIds(client);
+          const rooms: PushRoom[] = [];
+          for (const room of client.getRooms()) {
+            if (room.getMyMembership() !== 'join') continue;
+            const answered = encryption.answered(room.roomId);
+            if (!answered) {
+              void encryption
+                .refresh(client.getCrypto(), room.roomId)
+                .then(() => {
+                  if (encryption.answered(room.roomId)) publish();
+                });
+            }
+            rooms.push({
+              roomId: room.roomId,
+              name: room.name,
+              direct: direct.has(room.roomId),
+              // Until the crypto store answers, the room may be encrypted without saying so in
+              // its state; the renderers would show unencrypted text from it as a member's.
+              encrypted: !answered || encryption.isEncrypted(room),
+            });
+          }
+          subscriber.next(rooms);
+        };
+        const onSync = (state: SyncState): void => {
+          if (state === SyncState.Prepared || state === SyncState.Syncing) {
+            publish();
+          }
+        };
+        const onAccountData = (event: MatrixEvent): void => {
+          if (event.getType() === EventType.Direct) publish();
+        };
+        client.on(ClientEvent.Sync, onSync);
+        client.on(RoomEvent.Name, publish);
+        client.on(ClientEvent.AccountData, onAccountData);
+        publish();
+        return () => {
+          client.off(ClientEvent.Sync, onSync);
+          client.off(RoomEvent.Name, publish);
+          client.off(ClientEvent.AccountData, onAccountData);
+        };
+      });
+    });
   }
 
   /**

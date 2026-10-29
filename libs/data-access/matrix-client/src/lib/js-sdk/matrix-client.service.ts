@@ -437,6 +437,7 @@ export class MatrixClientService {
     if (tracked?.client === client) {
       // The SDK adopts a refreshed token only after the rotation is published.
       return {
+        homeserverUrl: client.getHomeserverUrl(),
         accessToken: tracked.accessToken,
         expiresAt: tracked.expiresAt ?? null,
         refreshable: tracked.refreshable,
@@ -445,7 +446,12 @@ export class MatrixClientService {
     const accessToken = client.getAccessToken();
     return accessToken === null
       ? null
-      : { accessToken, expiresAt: null, refreshable: false };
+      : {
+          homeserverUrl: client.getHomeserverUrl(),
+          accessToken,
+          expiresAt: null,
+          refreshable: false,
+        };
   }
 
   /**

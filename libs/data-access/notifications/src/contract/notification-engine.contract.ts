@@ -14,9 +14,11 @@ import {
   recordFeed,
 } from '@trinity/util/matrix';
 import type {
+  HttpPusher,
   IncomingNotification,
   NotificationEngine,
   NotificationSettings,
+  PushRoom,
   PushRuleKind,
   RoomNotifyMode,
 } from '../lib/notification-engine';
@@ -74,12 +76,10 @@ export interface NotificationContractTiming {
   readonly testTimeoutMs: number;
 }
 
-interface Watch {
-  readonly emissions: NotificationSettings[];
-  latest(): NotificationSettings;
-  until(
-    predicate: (value: NotificationSettings) => boolean,
-  ): Promise<NotificationSettings>;
+interface Watch<T> {
+  readonly emissions: T[];
+  latest(): T;
+  until(predicate: (value: T) => boolean): Promise<T>;
 }
 
 const NOBODY = '@nobody:invalid';
@@ -120,6 +120,21 @@ const KEYWORD_ACTIONS = [
 
 function unique(): string {
   return `w${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const APP_ID = 'dev.trinityproject.trinity.contract';
+
+/** Synapse accepts only a gateway URL with this path. */
+function pusher(): HttpPusher {
+  return {
+    appId: APP_ID,
+    pushkey: unique(),
+    appDisplayName: 'Trinity',
+    lang: 'en',
+    url: 'https://push.contract.invalid/_matrix/push/v1/notify',
+    format: 'event_id_only',
+    data: { trinity_render: 'device' },
+  };
 }
 
 function uniqueRoom(): string {
@@ -193,9 +208,9 @@ export function defineNotificationEngineContract(
     }
 
     /** Subscribes; every emission must be plain data, and the first must arrive synchronously. */
-    function watch(source: Observable<NotificationSettings>): Watch {
-      const emissions: NotificationSettings[] = [];
-      const latest = new BehaviorSubject<NotificationSettings[]>(emissions);
+    function watch<T>(source: Observable<T>): Watch<T> {
+      const emissions: T[] = [];
+      const latest = new BehaviorSubject<T[]>(emissions);
       subscriptions.push(
         source.subscribe((value) => {
           expect(() => assertPlainData(value)).not.toThrow();
@@ -206,14 +221,14 @@ export function defineNotificationEngineContract(
       expect(emissions).toHaveLength(1);
       return {
         emissions,
-        latest: () => emissions.at(-1) as NotificationSettings,
+        latest: () => emissions.at(-1) as T,
         until: (predicate) =>
           firstValueFrom(
             latest.pipe(
-              filter((all) => predicate(all.at(-1) as NotificationSettings)),
+              filter((all) => predicate(all.at(-1) as T)),
               timeout(settleTimeoutMs),
             ),
-          ).then((all) => all.at(-1) as NotificationSettings),
+          ).then((all) => all.at(-1) as T),
       };
     }
 
@@ -517,7 +532,7 @@ export function defineNotificationEngineContract(
     );
 
     it(
-      'fails commands for an account that is not live and emits an unloaded snapshot',
+      'fails commands for an account that is not live and emits empty snapshots',
       async () => {
         const failure = async (
           source: Observable<EngineResult<null>>,
@@ -562,6 +577,74 @@ export function defineNotificationEngineContract(
         );
         expect(target.ok ? 'ok' : target.failure.code).toBe('account-not-live');
         recordFeed(engine.notifications(NOBODY)).unsubscribe();
+        expect(await failure(engine.setPusher(NOBODY, pusher()))).toBe(
+          'account-not-live',
+        );
+        expect(
+          await failure(engine.removePusher(NOBODY, APP_ID, unique())),
+        ).toBe('account-not-live');
+        const pushers = await once(engine.pushers(NOBODY));
+        expect(pushers.ok ? 'ok' : pushers.failure.code).toBe(
+          'account-not-live',
+        );
+        expect(watch(engine.pushRooms(NOBODY)).latest()).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'registers an http pusher once per app id and pushkey, lists it and removes it',
+      async () => {
+        const registered = pusher();
+        const ids = { appId: registered.appId, pushkey: registered.pushkey };
+        expect(await value(engine.pushers(alice))).toEqual([]);
+
+        await ok(engine.setPusher(alice, registered));
+        await ok(engine.setPusher(alice, registered));
+        expect(await value(engine.pushers(alice))).toEqual([ids]);
+
+        await ok(engine.removePusher(alice, ids.appId, ids.pushkey));
+        expect(await value(engine.pushers(alice))).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'lists joined rooms with their names and DM flags, reporting an encrypted room as encrypted',
+      async () => {
+        const rooms = watch(engine.pushRooms(alice));
+        const plainName = unique();
+        const secretName = unique();
+        const plain = await context.sharedRoom(plainName, false);
+        const secret = await context.sharedRoom(secretName, true);
+        await context.foreignAccountData('m.direct', {
+          [context.bob]: [plain],
+        });
+        const find = (list: readonly PushRoom[], roomId: string) =>
+          list.find((room) => room.roomId === roomId);
+
+        const latest = await rooms.until(
+          (list) =>
+            find(list, plain)?.direct === true &&
+            find(list, secret)?.name === secretName,
+        );
+
+        expect(find(latest, plain)).toMatchObject({
+          roomId: plain,
+          name: plainName,
+          direct: true,
+        });
+        // Synapse's stubbed crypto never answers, so the plain room's flag is not pinned here;
+        // the js-sdk adapter spec pins "encrypted until the crypto store answers".
+        expect(find(latest, secret)).toEqual({
+          roomId: secret,
+          name: secretName,
+          direct: false,
+          encrypted: true,
+        });
+        for (const list of rooms.emissions) {
+          expect(find(list, secret)?.encrypted ?? true).toBe(true);
+        }
       },
       testTimeoutMs,
     );
