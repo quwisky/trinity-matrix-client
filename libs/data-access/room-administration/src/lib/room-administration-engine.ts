@@ -71,6 +71,14 @@ export interface RoomMembers {
   readonly members: readonly RoomMemberInfo[];
 }
 
+/** One current state event, for the read-only state viewer. */
+export interface RawStateEvent {
+  readonly type: string;
+  readonly stateKey: string;
+  /** The whole event as JSON (state events are not end-to-end encrypted). */
+  readonly event: JsonObject;
+}
+
 /**
  * Room state, members and raw state writes for Room Administration. Subscriptions emit
  * their snapshot first (synchronously in the js-sdk engine), then a whole value per
@@ -92,4 +100,12 @@ export interface RoomAdministrationEngine {
     stateKey: string,
     content: JsonObject,
   ): Observable<EngineResult<null>>;
+  /**
+   * Every current state event of the room, unsorted. Fails `account-not-live`,
+   * `room-unavailable` when the account does not know the room, or `request-failed`.
+   */
+  stateEvents(
+    accountId: string,
+    roomId: string,
+  ): Observable<EngineResult<readonly RawStateEvent[]>>;
 }

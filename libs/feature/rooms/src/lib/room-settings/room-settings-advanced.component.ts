@@ -7,7 +7,9 @@ import {
   inject,
   input,
   output,
+  signal,
 } from '@angular/core';
+import { finalize } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import {
@@ -62,6 +64,7 @@ export class RoomSettingsAdvancedComponent implements OnInit {
     () => this.homeservers.infos().get(this.accountId())?.capabilities ?? null,
   );
   protected readonly fmt = inject(DateTimeFormatService);
+  protected readonly loadingState = signal(false);
 
   readonly accountId = input.required<string>();
   readonly info = input.required<RoomAdvancedInfo>();
@@ -108,14 +111,21 @@ export class RoomSettingsAdvancedComponent implements OnInit {
   }
 
   viewState(): void {
-    this.dialog.open(RoomStateViewerComponent, {
-      inputs: {
-        entries: this.settings.stateEvents({
-          accountId: this.accountId(),
-          roomId: this.info().roomId,
-        }),
-      },
-    });
+    this.loadingState.set(true);
+    this.settings
+      .stateEvents({ accountId: this.accountId(), roomId: this.info().roomId })
+      .pipe(
+        finalize(() => this.loadingState.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (entries) =>
+          this.dialog.open(RoomStateViewerComponent, { inputs: { entries } }),
+        error: () =>
+          this.toast.show('Could not load the room state.', {
+            variant: 'danger',
+          }),
+      });
   }
 
   openUpgrade(): void {

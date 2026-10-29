@@ -21,6 +21,7 @@ import {
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import { roomSnapshot } from './js-sdk/js-sdk-room-administration-engine';
 import { roomAdvancedInfo, type RoomAdvancedInfo } from './room-advanced-info';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import {
@@ -227,7 +228,7 @@ export class RoomUpgradeService {
       if (!room) {
         return throwError(() => roomAdministrationNotSignedIn('upgrade-room'));
       }
-      if (roomAdvancedInfo(roomId, liveRoomState(room)).successor) {
+      if (advancedInfo(client, room).successor) {
         return throwError(() =>
           roomAdministrationInvalidInput(
             'upgrade-room',
@@ -266,7 +267,7 @@ export class RoomUpgradeService {
 function readContext(client: MatrixClient, room: Room): UpgradeContext {
   const me = client.getUserId() ?? '';
   const state = liveRoomState(room);
-  const info = roomAdvancedInfo(room.roomId, state);
+  const info = advancedInfo(client, room);
   const joinRule = state?.getJoinRule() ?? JoinRule.Invite;
   return {
     currentVersion: info.version,
@@ -284,6 +285,14 @@ function readContext(client: MatrixClient, room: Room): UpgradeContext {
     spaces: linkedSpaces(client, room, me),
     ...carriedCreators(room, info, me),
   };
+}
+
+/** shortcut: reads the js-sdk engine's projection directly; RA5 moves the upgrade onto the engine. */
+function advancedInfo(client: MatrixClient, room: Room): RoomAdvancedInfo {
+  return roomAdvancedInfo(
+    room.roomId,
+    roomSnapshot(client, client.getUserId() ?? '', room, undefined),
+  );
 }
 
 /** Creators for a v12+ target; the source era decides who is still trusted to stay one. */
