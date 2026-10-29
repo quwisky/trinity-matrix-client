@@ -11,12 +11,14 @@ import {
   ConnectionError,
   HTTPError,
   MatrixError,
+  OAuthGrantType,
   createClient,
 } from 'matrix-js-sdk';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { NOT_SIGNED_IN } from '@trinity/util/matrix';
 import { AUTH_METADATA } from '../auth-metadata.fixture';
 import { JsSdkAuthEngine } from './js-sdk-auth-engine';
+import { JsSdkQrRendezvous, QrRendezvousFactory } from './qr-rendezvous';
 
 const BASE = 'https://hs';
 
@@ -29,6 +31,8 @@ describe('JsSdkAuthEngine', () => {
     whoami: vi.fn(),
     registerRequest: vi.fn(),
     requestRegisterEmailToken: vi.fn(),
+    doesServerSupportUnstableFeature: vi.fn(),
+    stopClient: vi.fn(),
   };
   const live = { setPassword: vi.fn() };
   let engine: JsSdkAuthEngine;
@@ -44,6 +48,8 @@ describe('JsSdkAuthEngine', () => {
             clientFor: (id: string) => (id === '@me:hs' ? live : null),
           },
         },
+        JsSdkQrRendezvous,
+        QrRendezvousFactory,
         JsSdkAuthEngine,
       ],
     }).get(JsSdkAuthEngine);
@@ -453,6 +459,69 @@ describe('JsSdkAuthEngine', () => {
       await expect(
         firstValueFrom(engine.changePassword('@other:hs', 'new-pw', null)),
       ).resolves.toEqual({ ok: false, failure: NOT_SIGNED_IN });
+    });
+  });
+
+  describe('whether a server supports QR sign-in', () => {
+    const deviceGrant = {
+      grant_types_supported: [OAuthGrantType.DeviceAuthorization],
+    };
+    const supports = () => firstValueFrom(engine.supportsQrRendezvous(BASE));
+
+    beforeEach(() => {
+      client.getAuthMetadata.mockResolvedValue(deviceGrant);
+      client.doesServerSupportUnstableFeature.mockResolvedValue(true);
+    });
+
+    it('is true with the device grant and the MSC4108 feature', async () => {
+      await expect(supports()).resolves.toEqual({ ok: true, value: true });
+      expect(createClient).toHaveBeenCalledWith({ baseUrl: BASE });
+      expect(client.doesServerSupportUnstableFeature).toHaveBeenCalledWith(
+        'org.matrix.msc4108',
+      );
+      expect(client.stopClient).toHaveBeenCalled();
+    });
+
+    it('is false without the device grant', async () => {
+      client.getAuthMetadata.mockResolvedValue({ grant_types_supported: [] });
+
+      await expect(supports()).resolves.toEqual({ ok: true, value: false });
+    });
+
+    it('is false without the MSC4108 feature', async () => {
+      client.doesServerSupportUnstableFeature.mockResolvedValue(false);
+
+      await expect(supports()).resolves.toEqual({ ok: true, value: false });
+    });
+
+    it.each([
+      ['a 404', () => new HTTPError('Not found', 404)],
+      [
+        'M_UNRECOGNIZED',
+        () => new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404),
+      ],
+      [
+        'invalid metadata',
+        () =>
+          new Error('Configured OAuth2 OP does not support required functions'),
+      ],
+    ])(
+      'is false when the server has no auth metadata (%s)',
+      async (_name, error) => {
+        client.getAuthMetadata.mockRejectedValue(error());
+
+        await expect(supports()).resolves.toEqual({ ok: true, value: false });
+        expect(client.stopClient).toHaveBeenCalled();
+      },
+    );
+
+    it('fails when the auth metadata cannot be fetched, and still stops the client', async () => {
+      client.getAuthMetadata.mockRejectedValue(
+        new TypeError('Failed to fetch'),
+      );
+
+      await expect(supports()).resolves.toMatchObject({ ok: false });
+      expect(client.stopClient).toHaveBeenCalled();
     });
   });
 });

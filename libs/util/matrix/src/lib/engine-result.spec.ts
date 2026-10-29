@@ -207,6 +207,7 @@ describe('engineFailureMessage', () => {
     ['crypto-not-ready', 'Encryption is not ready for this account yet.'],
     ['verification-gone', 'This verification is no longer in progress.'],
     ['qr-unavailable', 'QR verification isn’t available for these sessions.'],
+    ['qr-flow-gone', 'This QR sign-in is no longer in progress.'],
     ['uia-cancelled', 'Password confirmation was cancelled.'],
     [
       'uia-unsupported',
