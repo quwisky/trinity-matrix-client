@@ -225,7 +225,7 @@ describe('Trinity application provider composition', () => {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
           useValue: {
             accounts: () => of([]),
-            knownNames: () => [],
+            knownNames: () => of([]),
           },
         },
         {
