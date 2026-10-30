@@ -125,11 +125,9 @@ describe('JsSdkSessionEngine', () => {
 
     expect(snapshot.accounts.map((a) => a.accountId)).toEqual(svc.accountIds());
     expect(snapshot.activeAccountId).toBe(svc.activeUserId());
-    for (const account of snapshot.accounts) {
-      expect(account.generation).toBe(
-        svc.sessionGenerations().get(account.accountId),
-      );
-    }
+    expect(snapshot.accounts.map((a) => a.generation)).toEqual(
+      svc.all().map((a) => a.generation),
+    );
     expect(snapshot.accounts[0]).toEqual({
       accountId: SESSION.userId,
       deviceId: SESSION.deviceId,

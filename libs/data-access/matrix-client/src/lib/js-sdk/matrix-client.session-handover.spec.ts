@@ -133,7 +133,7 @@ describe('MatrixClientService session handover', () => {
 
     expect(client.syncApi.stop).toHaveBeenCalledOnce();
     expect(client.stopClient).not.toHaveBeenCalled();
-    expect(svc.isInitialized).toBe(true);
+    expect(svc.clientFor(SESSION.userId)).toBe(client);
   });
 
   it('does not resend a message that failed offline once sync is paused', async () => {
@@ -459,7 +459,7 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
     const { svc } = setup();
     started = svc;
     await firstValueFrom(svc.init(SESSION));
-    const client = svc.instance;
+    const client = svc.clientFor(SESSION.userId)!;
     const room = new actual.Room(ROOM_ID, client, '@me:hs', {});
     client.store.storeRoom(room);
     const root = new actual.MatrixEvent({

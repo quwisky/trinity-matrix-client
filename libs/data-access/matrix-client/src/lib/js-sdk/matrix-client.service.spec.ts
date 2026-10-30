@@ -28,6 +28,7 @@ import {
 } from '@trinity/platform-native';
 import { type ProjectionReadiness } from '@trinity/runtime/projection';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
+import { SessionStateService } from '../session-state.service';
 import { desktopBridgeFixture } from '@trinity/testing';
 import type { MatrixSession } from '@trinity/util/matrix';
 import {
@@ -76,6 +77,15 @@ vi.mock('./crypto-wasm-loader', async () => {
   return { preloadCryptoWasm: () => rxOf(undefined) };
 });
 
+/** The session state production reads, which the session engine derives from the registry. */
+const sessionState = () => TestBed.inject(SessionStateService);
+
+/** The live client of the account in view, or null. */
+function activeClient(svc: MatrixClientService) {
+  const id = svc.activeUserId();
+  return id === null ? null : svc.clientFor(id);
+}
+
 describe('MatrixClientService', () => {
   let clearHolder: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
@@ -118,8 +128,8 @@ describe('MatrixClientService', () => {
     expect(client.startClient).toHaveBeenCalledWith(
       expect.objectContaining({ lazyLoadMembers: true }),
     );
-    expect(svc.isInitialized).toBe(true);
-    expect(svc.instance).toBe(client);
+    expect(sessionState().active()).not.toBeNull();
+    expect(activeClient(svc)).toBe(client);
   });
 
   it('scopes the crypto store to the account via cryptoDatabasePrefix', async () => {
@@ -158,7 +168,7 @@ describe('MatrixClientService', () => {
         cryptoDatabasePrefix: 'trinity-crypto:@me:hs:DEV',
         storageKey: KEY,
       });
-      expect(svc.cryptoStoreEncrypted()).toBe(true);
+      expect(sessionState().cryptoStoreEncrypted()).toBe(true);
     });
 
     it('opens a store created before keys existed as it is, and says so', async () => {
@@ -174,7 +184,7 @@ describe('MatrixClientService', () => {
       expect(client.initRustCrypto).toHaveBeenCalledWith({
         cryptoDatabasePrefix: 'trinity-crypto:@me:hs:DEV',
       });
-      expect(svc.cryptoStoreEncrypted()).toBe(false);
+      expect(sessionState().cryptoStoreEncrypted()).toBe(false);
     });
 
     it('never opens a keyed store whose key is missing, and asks to sign in again', async () => {
@@ -256,14 +266,14 @@ describe('MatrixClientService', () => {
         kind: 'present',
         key: KEY,
       });
-      expect(svc.cryptoStoreEncrypted()).toBeNull();
+      expect(sessionState().cryptoStoreEncrypted()).toBeNull();
 
       await firstValueFrom(svc.add(KEYED));
       await firstValueFrom(svc.add(SESSION_B));
-      expect(svc.cryptoStoreEncrypted()).toBe(false);
+      expect(sessionState().cryptoStoreEncrypted()).toBe(false);
 
       svc.setActive(SESSION.userId);
-      expect(svc.cryptoStoreEncrypted()).toBe(true);
+      expect(sessionState().cryptoStoreEncrypted()).toBe(true);
     });
   });
 
@@ -358,31 +368,40 @@ describe('MatrixClientService', () => {
     expect(rotations).toEqual([{ userId: '@me:hs', accessToken: 'a2' }]);
   });
 
-  it('knows the expiry of the OAuth token a client starts with, and only for that token', async () => {
+  it('pairs the OAuth token a client starts with with its expiry', async () => {
     const { svc } = setup(fakeClient());
 
     await firstValueFrom(svc.init(OIDC_SESSION));
 
-    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
-    expect(svc.accessTokenExpiry('@me:hs', 'another')).toBeUndefined();
-    expect(svc.accessTokenExpiry('@you:other', 'tok')).toBeUndefined();
+    expect(svc.accessTokenState('@me:hs')).toEqual({
+      homeserverUrl: 'https://hs.example',
+      accessToken: 'tok',
+      expiresAt: 1234,
+      refreshable: true,
+    });
+    expect(svc.accessTokenState('@you:other')).toBeNull();
   });
 
   it('knows no expiry for a password session', async () => {
-    const { svc } = setup(fakeClient());
+    const client = { ...fakeClient(), getAccessToken: () => 'tok' };
+    const { svc } = setup(client);
 
     await firstValueFrom(svc.init(SESSION));
 
-    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+    expect(svc.accessTokenState('@me:hs')).toMatchObject({
+      accessToken: 'tok',
+      expiresAt: null,
+      refreshable: false,
+    });
   });
 
   it('moves the expiry to a refreshed token before publishing the rotation', async () => {
     const { svc, storage } = setup(fakeClient());
     const write = new Subject<void>();
     vi.mocked(storage.updateTokens).mockReturnValue(write);
-    const seen: (number | undefined)[] = [];
-    svc.accessTokenRotations.subscribe(({ userId, accessToken }) =>
-      seen.push(svc.accessTokenExpiry(userId, accessToken)),
+    const seen: unknown[] = [];
+    svc.accessTokenRotations.subscribe(({ userId }) =>
+      seen.push(svc.accessTokenState(userId)),
     );
     await firstValueFrom(svc.init(OIDC_SESSION));
     const opts = vi.mocked(createClient).mock.calls[0][0];
@@ -394,24 +413,35 @@ describe('MatrixClientService', () => {
     }) as unknown as Promise<void>;
     await Promise.resolve();
     // Not stored yet: the client still holds the old token.
-    expect(svc.accessTokenExpiry('@me:hs', 'a2')).toBeUndefined();
-    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
+    expect(svc.accessTokenState('@me:hs')).toMatchObject({
+      accessToken: 'tok',
+      expiresAt: 1234,
+    });
 
     write.next();
     write.complete();
     await pending;
 
-    expect(seen).toEqual([5_000]);
-    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+    expect(seen).toEqual([
+      expect.objectContaining({ accessToken: 'a2', expiresAt: 5_000 }),
+    ]);
   });
 
-  it('forgets the expiry when the account is removed', async () => {
-    const { svc } = setup(fakeClient());
+  it('forgets the OAuth tokens when the account is removed', async () => {
+    const readded = {
+      ...fakeClient(),
+      http: { refreshOAuthTokens: vi.fn().mockResolvedValue(true) },
+    };
+    const { svc } = setup(fakeClient(), readded);
     await firstValueFrom(svc.init(OIDC_SESSION));
 
     await firstValueFrom(svc.remove('@me:hs'));
+    await firstValueFrom(svc.add(SESSION));
 
-    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+    expect(readded.http.refreshOAuthTokens).not.toHaveBeenCalled();
   });
 
   it('refreshes nothing for an account that is not a live OAuth account', async () => {
@@ -429,8 +459,6 @@ describe('MatrixClientService', () => {
       firstValueFrom(svc.refreshAccessToken('@nobody:hs')),
     ).resolves.toBe(false);
     expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
-    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
-    expect(svc.canRefreshAccessToken('@nobody:hs')).toBe(false);
   });
 
   it('refreshes nothing for an OAuth sign-in that came without a refresh token', async () => {
@@ -446,18 +474,20 @@ describe('MatrixClientService', () => {
       firstValueFrom(svc.refreshAccessToken('@me:hs')),
     ).resolves.toBe(false);
     expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
-    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
+    expect(svc.accessTokenState('@me:hs')?.refreshable).toBe(false);
   });
 
   it('can refresh a live OAuth account with a refresh token until it is removed', async () => {
     const { svc } = setup(fakeClient());
     await firstValueFrom(svc.init(OIDC_SESSION));
 
-    expect(svc.canRefreshAccessToken('@me:hs')).toBe(true);
+    expect(svc.accessTokenState('@me:hs')?.refreshable).toBe(true);
 
     await firstValueFrom(svc.remove('@me:hs'));
 
-    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
   });
 
   describe('a refresh from a client the account no longer runs on', () => {
@@ -544,7 +574,10 @@ describe('MatrixClientService', () => {
 
       expect(storedAccessToken()).toBe('a-late');
       expect(rotations).toEqual([{ userId: '@me:hs', accessToken: 'a-late' }]);
-      expect(svc.accessTokenExpiry('@me:hs', 'a-late')).toBe(5_000);
+      expect(svc.accessTokenState('@me:hs')).toMatchObject({
+        accessToken: 'a-late',
+        expiresAt: 5_000,
+      });
     });
 
     it("leaves a same-account re-sign-in's tokens alone", async () => {
@@ -562,8 +595,10 @@ describe('MatrixClientService', () => {
 
       expect(storedAccessToken()).toBe('tok-new');
       expect(rotations).toEqual([]);
-      expect(svc.accessTokenExpiry('@me:hs', 'tok-new')).toBe(9_999);
-      expect(svc.accessTokenExpiry('@me:hs', 'a-late')).toBeUndefined();
+      expect(svc.accessTokenState('@me:hs')).toMatchObject({
+        accessToken: 'tok-new',
+        expiresAt: 9_999,
+      });
     });
 
     it("keeps a new sign-in's tokens when the old client refreshes during its save", async () => {
@@ -583,7 +618,10 @@ describe('MatrixClientService', () => {
       await firstValueFrom(svc.restorePersisted(stored, 'activate'));
 
       expect(storedAccessToken()).toBe('tok-new');
-      expect(svc.accessTokenExpiry('@me:hs', 'tok-new')).toBe(9_999);
+      expect(svc.accessTokenState('@me:hs')).toMatchObject({
+        accessToken: 'tok-new',
+        expiresAt: 9_999,
+      });
       // The old client was still live, so its rotation was published for it.
       expect(rotations).toEqual([{ userId: '@me:hs', accessToken: 'a-late' }]);
     });
@@ -608,8 +646,10 @@ describe('MatrixClientService', () => {
       await pending;
 
       expect(rotations).toEqual([]);
-      expect(svc.accessTokenExpiry('@me:hs', 'tok-new')).toBe(9_999);
-      expect(svc.accessTokenExpiry('@me:hs', 'a-late')).toBeUndefined();
+      expect(svc.accessTokenState('@me:hs')).toMatchObject({
+        accessToken: 'tok-new',
+        expiresAt: 9_999,
+      });
     });
 
     it.each([
@@ -644,7 +684,6 @@ describe('MatrixClientService', () => {
         // With refresh-token rotation these are the only valid next tokens.
         expect(storedAccessToken()).toBe('a-late');
         expect(rotations).toEqual([]);
-        expect(svc.accessTokenExpiry('@me:hs', 'a-late')).toBeUndefined();
       },
     );
 
@@ -680,8 +719,11 @@ describe('MatrixClientService', () => {
       await Promise.all([added, replaced]);
 
       expect(svc.clientFor('@me:hs')).toBe(starting);
-      expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
-      expect(svc.canRefreshAccessToken('@me:hs')).toBe(true);
+      expect(svc.accessTokenState('@me:hs')).toMatchObject({
+        accessToken: 'tok',
+        expiresAt: 1234,
+        refreshable: true,
+      });
     });
 
     it("persists a detached client's refresh without moving the live client's pair", async () => {
@@ -706,7 +748,10 @@ describe('MatrixClientService', () => {
         5_000,
       );
       expect(rotations).toEqual([]);
-      expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
+      expect(svc.accessTokenState('@me:hs')).toMatchObject({
+        accessToken: 'tok',
+        expiresAt: 1234,
+      });
     });
   });
 
@@ -800,7 +845,7 @@ describe('MatrixClientService', () => {
     // Rolled back: client stopped, 4S key cleared, nothing left half-initialized.
     expect(client.stopClient).toHaveBeenCalled();
     expect(clearHolder).toHaveBeenCalled();
-    expect(svc.isInitialized).toBe(false);
+    expect(sessionState().active()).toBeNull();
   });
 
   it('does not report an Account ready before its projection barrier acknowledges', async () => {
@@ -845,7 +890,7 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.init(SESSION));
 
     expect(a.stopClient).toHaveBeenCalled(); // old client torn down
-    expect(svc.instance).toBe(b);
+    expect(activeClient(svc)).toBe(b);
   });
 
   it('activates a fully started Account and can retire the other live runtimes', async () => {
@@ -883,7 +928,7 @@ describe('MatrixClientService', () => {
     expect(client.clearStores).not.toHaveBeenCalled();
   });
 
-  it('bridges sync state into the signal', async () => {
+  it('bridges sync state into the session state', async () => {
     const client = fakeClient();
     const { svc } = setup(client);
     await firstValueFrom(svc.init(SESSION));
@@ -893,7 +938,7 @@ describe('MatrixClientService', () => {
     expect(syncCall).toBeTruthy();
     syncCall![1]('SYNCING');
     await Promise.resolve();
-    expect(svc.syncState()).toBe('SYNCING');
+    expect(sessionState().syncState()).toBe('syncing');
   });
 
   describe('counting messages waiting to send', () => {
@@ -951,7 +996,7 @@ describe('MatrixClientService', () => {
 
       echoUpdated(client, waiting('one'));
 
-      expect(svc.waitingCount()).toBe(2);
+      expect(sessionState().waitingCount()).toBe(2);
     });
 
     it('counts a thread echo once', async () => {
@@ -962,7 +1007,7 @@ describe('MatrixClientService', () => {
 
       echoUpdated(client, reply);
 
-      expect(svc.waitingCount()).toBe(1);
+      expect(sessionState().waitingCount()).toBe(1);
     });
 
     it('drops when a message is sent or cancelled', async () => {
@@ -972,15 +1017,15 @@ describe('MatrixClientService', () => {
       const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
       echoUpdated(client, sent);
-      expect(svc.waitingCount()).toBe(2);
+      expect(sessionState().waitingCount()).toBe(2);
 
       sent.status = EventStatus.SENT;
       echoUpdated(client, sent, EventStatus.NOT_SENT);
-      expect(svc.waitingCount()).toBe(1);
+      expect(sessionState().waitingCount()).toBe(1);
 
       cancelled.status = EventStatus.CANCELLED;
       echoUpdated(client, cancelled, EventStatus.NOT_SENT);
-      expect(svc.waitingCount()).toBe(0);
+      expect(sessionState().waitingCount()).toBe(0);
     });
 
     it('follows the active account and stops listening when it is removed', async () => {
@@ -995,9 +1040,9 @@ describe('MatrixClientService', () => {
       echoUpdated(yours, waiting('y'));
 
       svc.setActive(SESSION.userId);
-      expect(svc.waitingCount()).toBe(1);
+      expect(sessionState().waitingCount()).toBe(1);
       svc.setActive(SESSION_B.userId);
-      expect(svc.waitingCount()).toBe(3);
+      expect(sessionState().waitingCount()).toBe(3);
 
       await firstValueFrom(svc.remove(SESSION_B.userId));
       expect(yours.off).toHaveBeenCalledWith(
@@ -1277,7 +1322,7 @@ describe('MatrixClientService', () => {
 
     expect(client.stopClient).toHaveBeenCalled();
     expect(client.clearStores).not.toHaveBeenCalled();
-    expect(svc.isInitialized).toBe(false);
+    expect(sessionState().active()).toBeNull();
   });
 
   it('reset() stops the client and wipes the stores + 4S key', async () => {
@@ -1291,7 +1336,7 @@ describe('MatrixClientService', () => {
     expect(client.stopClient).toHaveBeenCalled();
     expect(client.clearStores).toHaveBeenCalledOnce();
     expect(clearHolder).toHaveBeenCalled();
-    expect(svc.isInitialized).toBe(false);
+    expect(sessionState().active()).toBeNull();
   });
 
   it("wipes the account's OWN Rust crypto store (its cryptoDatabasePrefix), not the SDK default", async () => {
@@ -1348,7 +1393,7 @@ describe('MatrixClientService', () => {
     expect(storage.remove).not.toHaveBeenCalled(); // registry entry preserved
     expect(storage.invalidateToken).toHaveBeenCalledWith('@me:hs'); // dead token dropped
     expect(svc.softLoggedOut()).toContain('@me:hs');
-    expect(svc.isInitialized).toBe(false); // it was the only account
+    expect(sessionState().active()).toBeNull(); // it was the only account
   });
 
   it('soft-logout of the active account repoints active + storage to a survivor', async () => {
@@ -1365,7 +1410,7 @@ describe('MatrixClientService', () => {
     expect(svc.activeUserId()).toBe('@me:hs'); // A survives and becomes active
     expect(svc.softLoggedOut()).toContain('@you:other');
     expect(storage.setActive).toHaveBeenCalledWith('@me:hs'); // persisted active reconciled
-    expect(svc.isInitialized).toBe(true);
+    expect(sessionState().active()).not.toBeNull();
   });
 
   it('hard-logout wipes the account and drops its registry entry', async () => {
@@ -1396,7 +1441,7 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.init(SESSION));
 
     expect(svc.softLoggedOut()).not.toContain('@me:hs');
-    expect(svc.isInitialized).toBe(true);
+    expect(sessionState().active()).not.toBeNull();
   });
 
   describe('a held server logout', () => {
@@ -1508,7 +1553,7 @@ describe('MatrixClientService', () => {
 
       expect(client.stopClient).not.toHaveBeenCalled();
       expect(storage.remove).not.toHaveBeenCalled();
-      expect(svc.isInitialized).toBe(true);
+      expect(sessionState().active()).not.toBeNull();
     });
 
     it('takes the hard path again once released', async () => {
@@ -1632,7 +1677,7 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.init(SESSION));
 
     // Before any sync transition the app reads online (no startup offline flash).
-    expect(svc.connectivity()).toBe('online');
+    expect(sessionState().connectivity()).toBe('online');
 
     // Drive the Sync listener the service registered during init().
     const onSync = client.on.mock.calls.find(
@@ -1641,13 +1686,13 @@ describe('MatrixClientService', () => {
 
     onSync(SyncState.Error);
     await Promise.resolve();
-    expect(svc.connectivity()).toBe('offline');
+    expect(sessionState().connectivity()).toBe('offline');
     onSync(SyncState.Reconnecting);
     await Promise.resolve();
-    expect(svc.connectivity()).toBe('offline');
+    expect(sessionState().connectivity()).toBe('offline');
     onSync(SyncState.Syncing);
     await Promise.resolve();
-    expect(svc.connectivity()).toBe('online');
+    expect(sessionState().connectivity()).toBe('online');
   });
 
   it('logs in even when the sync-store startup fails (cache is best-effort)', async () => {
@@ -1657,7 +1702,7 @@ describe('MatrixClientService', () => {
     const { svc } = setup(client);
 
     await expect(firstValueFrom(svc.init(SESSION))).resolves.toBeUndefined();
-    expect(svc.isInitialized).toBe(true); // a broken cache must not block login
+    expect(sessionState().active()).not.toBeNull(); // a broken cache must not block login
     expect(client.startClient).toHaveBeenCalledOnce();
   });
 
@@ -1690,7 +1735,7 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.add(SESSION_B));
 
     expect(a.stopClient).not.toHaveBeenCalled(); // first account kept running
-    expect(svc.instance).toBe(b); // new account active
+    expect(activeClient(svc)).toBe(b); // new account active
     expect(svc.activeUserId()).toBe('@you:other');
     expect([...svc.accountIds()].sort()).toEqual(['@me:hs', '@you:other']);
     expect(svc.all().length).toBe(2);
@@ -1763,13 +1808,13 @@ describe('MatrixClientService', () => {
       const client = fakeClient();
       const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
-      expect(svc.serverSynced('@me:hs')).toBe(false);
+      expect(sessionState().status('@me:hs')?.serverSynced).toBe(false);
 
       syncWithDataOf(client)(SyncState.Prepared, null, { fromCache: true });
       await Promise.resolve();
 
-      expect(svc.syncState()).toBe(SyncState.Prepared);
-      expect(svc.serverSynced('@me:hs')).toBe(false);
+      expect(sessionState().syncState()).toBe('prepared');
+      expect(sessionState().status('@me:hs')?.serverSynced).toBe(false);
     });
 
     it.each([
@@ -1785,7 +1830,7 @@ describe('MatrixClientService', () => {
       sync(state, SyncState.Prepared, {});
       await Promise.resolve();
 
-      expect(svc.serverSynced('@me:hs')).toBe(true);
+      expect(sessionState().status('@me:hs')?.serverSynced).toBe(true);
     });
 
     it('keeps it through RECONNECTING, ERROR and STOPPED', async () => {
@@ -1804,7 +1849,7 @@ describe('MatrixClientService', () => {
       ]) {
         sync(state, null, {});
         await Promise.resolve();
-        expect(svc.serverSynced('@me:hs')).toBe(true);
+        expect(sessionState().status('@me:hs')?.serverSynced).toBe(true);
       }
     });
 
@@ -1820,7 +1865,7 @@ describe('MatrixClientService', () => {
       syncWithDataOf(b)(SyncState.Syncing, null, {});
       await Promise.resolve();
       const synced = TestBed.runInInjectionContext(() =>
-        computed(() => svc.serverSynced('@me:hs')),
+        computed(() => sessionState().status('@me:hs')?.serverSynced),
       );
       expect(synced()).toBe(true);
 
@@ -1831,8 +1876,8 @@ describe('MatrixClientService', () => {
       expect(synced()).toBe(true);
 
       await firstValueFrom(svc.remove('@you:other'));
-      expect(svc.serverSynced('@you:other')).toBe(false);
-      expect(svc.serverSynced('@nobody:hs')).toBe(false);
+      expect(sessionState().status('@you:other')).toBeNull();
+      expect(sessionState().status('@nobody:hs')).toBeNull();
     });
 
     it('reports rooms prepared once the cache replays, before any server sync', async () => {
@@ -1840,19 +1885,19 @@ describe('MatrixClientService', () => {
       const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
       const prepared = TestBed.runInInjectionContext(() =>
-        computed(() => svc.roomsPrepared('@me:hs')),
+        computed(() => sessionState().status('@me:hs')?.roomsPrepared),
       );
       expect(prepared()).toBe(false);
 
       syncWithDataOf(client)(SyncState.Prepared, null, { fromCache: true });
       await Promise.resolve();
       expect(prepared()).toBe(true);
-      expect(svc.serverSynced('@me:hs')).toBe(false);
+      expect(sessionState().status('@me:hs')?.serverSynced).toBe(false);
 
       syncWithDataOf(client)(SyncState.Error, SyncState.Prepared, {});
       await Promise.resolve();
       expect(prepared()).toBe(true);
-      expect(svc.roomsPrepared('@nobody:hs')).toBe(false);
+      expect(sessionState().status('@nobody:hs')).toBeNull();
     });
 
     it('reports rooms prepared after a first server sync without a cache', async () => {
@@ -1862,11 +1907,11 @@ describe('MatrixClientService', () => {
 
       syncWithDataOf(client)(SyncState.Error, null, {});
       await Promise.resolve();
-      expect(svc.roomsPrepared('@me:hs')).toBe(false);
+      expect(sessionState().status('@me:hs')?.roomsPrepared).toBe(false);
 
       syncWithDataOf(client)(SyncState.Prepared, SyncState.Error, {});
       await Promise.resolve();
-      expect(svc.roomsPrepared('@me:hs')).toBe(true);
+      expect(sessionState().status('@me:hs')?.roomsPrepared).toBe(true);
     });
 
     it('still uses one listener and the same retained bytes per live account', async () => {
@@ -1877,7 +1922,7 @@ describe('MatrixClientService', () => {
       syncWithDataOf(client)(SyncState.Prepared, null, {});
       await Promise.resolve();
 
-      expect(svc.serverSynced('@me:hs')).toBe(true);
+      expect(sessionState().status('@me:hs')?.serverSynced).toBe(true);
       expect(
         client.on.mock.calls.filter(([event]) => event === ClientEvent.Sync),
       ).toHaveLength(1);
@@ -1889,7 +1934,7 @@ describe('MatrixClientService', () => {
     });
   });
 
-  it('setActive() switches which client instance returns (no-op if unknown)', async () => {
+  it('setActive() switches the active client (no-op if unknown)', async () => {
     const a = fakeClient();
     const b = fakeClient();
     const { svc } = setup(a, b);
@@ -1897,7 +1942,7 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.add(SESSION_B)); // B active
 
     svc.setActive('@me:hs');
-    expect(svc.instance).toBe(a);
+    expect(activeClient(svc)).toBe(a);
     expect(svc.activeUserId()).toBe('@me:hs');
 
     svc.setActive('@nobody:hs'); // unknown → no change
@@ -1916,7 +1961,7 @@ describe('MatrixClientService', () => {
     expect(b.stopClient).toHaveBeenCalled();
     expect(b.clearStores).toHaveBeenCalledOnce(); // its stores wiped
     expect(a.clearStores).not.toHaveBeenCalled(); // the other account untouched
-    expect(svc.instance).toBe(a); // active repointed to the survivor
+    expect(activeClient(svc)).toBe(a); // active repointed to the survivor
     expect([...svc.accountIds()]).toEqual(['@me:hs']);
   });
 
@@ -1929,7 +1974,7 @@ describe('MatrixClientService', () => {
 
     expect(a1.stopClient).toHaveBeenCalled(); // old client torn down, not orphaned
     expect(a1.off).toHaveBeenCalled(); // its Sync listener detached
-    expect(svc.instance).toBe(a2);
+    expect(activeClient(svc)).toBe(a2);
     expect([...svc.accountIds()]).toEqual(['@me:hs']); // still a single account
     expect(svc.all().length).toBe(1);
   });
@@ -1943,21 +1988,21 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.add(SESSION)); // sign back in
 
     expect(a1.clearStores).toHaveBeenCalled(); // its stores were wiped
-    expect(svc.instance).toBe(a2);
-    expect(svc.isInitialized).toBe(true);
+    expect(activeClient(svc)).toBe(a2);
+    expect(sessionState().active()).not.toBeNull();
   });
 
-  it('sessionGenerations grows on re-add and drops the entry on removal', async () => {
+  it('gives a re-added account a later session generation', async () => {
     const { svc } = setup(fakeClient(), fakeClient());
     await firstValueFrom(svc.init(SESSION));
-    const first = svc.sessionGenerations().get('@me:hs');
+    const first = sessionState().status('@me:hs')?.generation;
     expect(typeof first).toBe('number');
 
     await firstValueFrom(svc.reset());
-    expect(svc.sessionGenerations().has('@me:hs')).toBe(false);
+    expect(sessionState().status('@me:hs')).toBeNull();
 
     await firstValueFrom(svc.add(SESSION));
-    expect(svc.sessionGenerations().get('@me:hs')).toBeGreaterThan(
+    expect(sessionState().status('@me:hs')?.generation).toBeGreaterThan(
       first as number,
     );
   });
@@ -2120,10 +2165,10 @@ describe('MatrixClientService', () => {
     syncOf(a)(SyncState.Syncing);
     syncOf(b)(SyncState.Error);
     await Promise.resolve();
-    expect(svc.connectivity()).toBe('offline'); // active B is erroring
+    expect(sessionState().connectivity()).toBe('offline'); // active B is erroring
 
     svc.setActive('@me:hs');
-    expect(svc.connectivity()).toBe('online'); // active A is syncing
+    expect(sessionState().connectivity()).toBe('online'); // active A is syncing
   });
 
   // --- per-account crypto isolation -----------------------------------------
@@ -2181,11 +2226,11 @@ describe('MatrixClientService', () => {
     resolveWipe();
     await readded;
     expect(createClient).toHaveBeenCalledTimes(2); // re-add proceeded after the wipe
-    expect(svc.instance).toBe(a2);
-    expect(svc.isInitialized).toBe(true);
+    expect(activeClient(svc)).toBe(a2);
+    expect(sessionState().active()).not.toBeNull();
   });
 
-  it('re-binds syncState to the fresh signal when the active account is re-added', async () => {
+  it('follows the fresh client when the active account is re-added', async () => {
     const a1 = fakeClient();
     const a2 = fakeClient();
     const { svc } = setup(a1, a2);
@@ -2193,16 +2238,16 @@ describe('MatrixClientService', () => {
 
     syncOf(a1)(SyncState.Syncing);
     await Promise.resolve();
-    expect(svc.syncState()).toBe('SYNCING');
+    expect(sessionState().syncState()).toBe('syncing');
 
     // Re-add the SAME active account: fresh client + fresh per-account syncState
     // signal, active id net-unchanged.
     await firstValueFrom(svc.add(SESSION));
-    expect(svc.syncState()).toBeNull(); // re-bound to a2's untransitioned signal
+    expect(sessionState().syncState()).toBe('starting'); // a2 has not transitioned yet
 
     syncOf(a2)(SyncState.Error); // only the NEW client's listener now feeds state
     await Promise.resolve();
-    expect(svc.connectivity()).toBe('offline');
+    expect(sessionState().connectivity()).toBe('offline');
   });
 
   it('ignores a duplicate server logout for an already-removed account', async () => {
@@ -2379,7 +2424,7 @@ describe('MatrixClientService', () => {
         expect.any(Function),
       );
       expect(clearHolder).toHaveBeenCalled();
-      expect(svc.isInitialized).toBe(false);
+      expect(sessionState().active()).toBeNull();
       expect([...svc.accountIds()]).toEqual([]);
     });
 
@@ -2397,7 +2442,7 @@ describe('MatrixClientService', () => {
       expect(createClient).toHaveBeenCalledOnce();
       expect(client.initRustCrypto).toHaveBeenCalledOnce();
       expect([...svc.accountIds()]).toEqual(['@me:hs']);
-      expect(svc.instance).toBe(client);
+      expect(activeClient(svc)).toBe(client);
       expect(client.stopClient).not.toHaveBeenCalled(); // both callers wanted it
     });
 
@@ -2417,7 +2462,7 @@ describe('MatrixClientService', () => {
       await firstValueFrom(svc.init(SESSION));
 
       expect(createClient).toHaveBeenCalledTimes(2);
-      expect(svc.instance).toBe(working);
+      expect(activeClient(svc)).toBe(working);
     });
   });
 
@@ -2506,7 +2551,7 @@ describe('MatrixClientService', () => {
       const { svc } = setup();
 
       await expect(firstValueFrom(svc.init(SESSION))).resolves.not.toThrow();
-      expect(svc.isInitialized).toBe(true);
+      expect(sessionState().active()).not.toBeNull();
     });
   });
 
@@ -2601,7 +2646,7 @@ describe('MatrixClientService', () => {
           firstValueFrom(svc.restorePersisted(SESSION, 'activate')),
         ).resolves.toEqual({ kind: 'ready' });
 
-        expect(svc.instance).toBe(client);
+        expect(activeClient(svc)).toBe(client);
         const diagnostics = logged.flatMap((spy) => spy.mock.calls);
         expect(diagnostics).not.toHaveLength(0);
         expect(JSON.stringify(diagnostics)).not.toContain('SECRET-KEY');

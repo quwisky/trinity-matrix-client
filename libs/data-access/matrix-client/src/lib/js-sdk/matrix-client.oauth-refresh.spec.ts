@@ -256,7 +256,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     vi.mocked(ctx.storage.invalidateToken).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.setActive).mockReturnValue(of(undefined));
     await firstValueFrom(ctx.svc.init(session));
-    return { ...ctx, client: ctx.svc.instance };
+    return { ...ctx, client: ctx.svc.clientFor(session.userId)! };
   }
 
   /** Still signed in, nothing wiped: the hard-logout path deletes the sync and crypto stores. */
@@ -1229,9 +1229,9 @@ describe('OAuth tokens through a real MatrixClient', () => {
     expect(net.grants).toHaveLength(1);
     const token = client.getAccessToken() ?? '';
     expect(token).toBe('at-2');
-    expect(svc.accessTokenExpiry('@me:hs', token)).toBeGreaterThanOrEqual(
-      before + 300_000,
-    );
+    const state = svc.accessTokenState('@me:hs');
+    expect(state?.accessToken).toBe(token);
+    expect(state?.expiresAt).toBeGreaterThanOrEqual(before + 300_000);
     expectStillSignedIn(svc, client);
   });
 
@@ -1276,24 +1276,15 @@ describe('OAuth tokens through a real MatrixClient', () => {
         client.getRefreshToken(),
         expect.any(Number),
       );
-      expect(
-        svc.accessTokenExpiry(userId, client.getAccessToken()!),
-      ).toBeGreaterThan(Date.now());
+      const token = svc.accessTokenState(userId);
+      expect(token?.accessToken).toBe(client.getAccessToken());
+      expect(token?.expiresAt).toBeGreaterThan(Date.now());
       expectStillSignedIn(svc, client, userId);
     }
     // Each expiry travels only with its own account's token.
-    expect(
-      svc.accessTokenExpiry(
-        '@me:hs',
-        svc.clientFor('@you:other')!.getAccessToken()!,
-      ),
-    ).toBeUndefined();
-    expect(
-      svc.accessTokenExpiry(
-        '@you:other',
-        svc.clientFor('@me:hs')!.getAccessToken()!,
-      ),
-    ).toBeUndefined();
+    expect(svc.accessTokenState('@me:hs')?.accessToken).not.toBe(
+      svc.accessTokenState('@you:other')?.accessToken,
+    );
     expect(net.grants.map((grant) => grant.get('client_id')).sort()).toEqual([
       'client-1',
       'client-2',
