@@ -13,7 +13,7 @@ use matrix_sdk_ui::{
 };
 use tokio::sync::watch;
 
-use super::SessionSyncStateDto;
+use super::{MatrixSessionDto, SessionSyncStateDto, restore::refreshable};
 use crate::accounts::Engine;
 
 pub struct AccountRuntime {
@@ -21,6 +21,13 @@ pub struct AccountRuntime {
     pub generation: u32,
     pub client: Client,
     pub(crate) sync_service: Arc<SyncService>,
+    /// The session's `baseUrl` as given: `Client::homeserver()` adds a trailing slash.
+    pub(crate) base_url: String,
+    pub(crate) refreshable: bool,
+    #[expect(dead_code, reason = "T5's tokens-rotated effect reads it")]
+    pub(crate) lineage: Option<String>,
+    /// The restored token with its expiry, which a token the SDK refreshed does not have (H8).
+    pub(crate) expiry: Option<(String, f64)>,
     /// Dropped with the runtime, which tells a teardown that no engine command holds it.
     alive: watch::Sender<()>,
     /// Keeps the room list's loading task, which `roomsPrepared` follows.
@@ -29,11 +36,11 @@ pub struct AccountRuntime {
 }
 
 impl AccountRuntime {
-    /// Builds the runtime and starts its status task, which writes into `engine`'s registry
-    /// while `generation` is the account's.
+    /// Builds the runtime of `s` and starts its status task, which writes into `engine`'s
+    /// registry while `generation` is the account's.
     pub(crate) fn new(
         engine: &Arc<Engine>,
-        account_id: String,
+        s: &MatrixSessionDto,
         generation: u32,
         client: Client,
         sync_service: Arc<SyncService>,
@@ -53,15 +60,20 @@ impl AccountRuntime {
         ));
         let status = Status::follow(
             Arc::downgrade(engine),
-            account_id.clone(),
+            s.user_id.clone(),
             generation,
             events,
         );
+        let expiry = s.oidc.as_ref().and(s.access_token_expires_at);
         Self {
-            account_id,
+            account_id: s.user_id.clone(),
             generation,
             client,
             sync_service,
+            base_url: s.base_url.clone(),
+            refreshable: refreshable(s),
+            lineage: s.lineage.clone(),
+            expiry: expiry.map(|at| (s.access_token.clone(), at)),
             alive: watch::Sender::new(()),
             _all_rooms: all_rooms,
             _status: AbortOnDrop::new(spawn(status)),

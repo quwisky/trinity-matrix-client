@@ -17,8 +17,8 @@ use crate::{
     barrier::{Barrier, Subscribers, Tracked},
     config::EngineConfig,
     engines::session::{
-        LiveAccountsDto, SessionAccountStatusDto, SessionSnapshotDto, SessionSyncStateDto,
-        restore::StartState,
+        LiveAccountsDto, SessionAccessTokenDto, SessionAccountStatusDto, SessionSnapshotDto,
+        SessionSyncStateDto, reads::live_token, restore::StartState,
     },
     failure::{EngineFailure, account_not_live},
 };
@@ -46,6 +46,18 @@ pub(crate) struct SessionState {
     /// The last snapshot published, so an unchanged one is not sent again.
     pub(crate) snapshot: SessionSnapshotDto,
     snapshots: Subscribers<SessionSnapshotDto>,
+    /// By account id, for each account an `accessToken` stream has asked for; it outlives the
+    /// account's runtimes.
+    tokens: HashMap<String, Tokens>,
+    /// Set by `pauseSync`, cleared by `stop`. Its reader is 2.3's resend gate (js `syncPaused`).
+    pub(crate) paused: bool,
+}
+
+/// One account's last token and its `accessToken` streams.
+#[derive(Default)]
+struct Tokens {
+    last: Option<SessionAccessTokenDto>,
+    streams: Subscribers<Option<SessionAccessTokenDto>>,
 }
 
 /// Pure registry data: no `Client`, so its transitions are unit-tested.
@@ -78,6 +90,8 @@ impl Engine {
                 registry,
                 runtimes: HashMap::new(),
                 snapshots: Subscribers::default(),
+                tokens: HashMap::new(),
+                paused: false,
             }),
             starting: Mutex::default(),
             teardowns: Mutex::default(),
@@ -97,6 +111,27 @@ impl Engine {
         let mut state = self.state.lock();
         let first = state.snapshot.clone();
         state.snapshots.subscribe(Some(first)).1
+    }
+
+    /// An `accessToken` stream, which starts with the account's current token.
+    pub(crate) fn subscribe_token(
+        &self,
+        account_id: &str,
+    ) -> Tracked<Option<SessionAccessTokenDto>> {
+        let state = &mut *self.state.lock();
+        let token = state.runtimes.get(account_id).and_then(|rt| live_token(rt));
+        let tokens = state.tokens.entry(account_id.to_owned()).or_default();
+        // Nobody waits: a refresh the SDK made since the last publish reaches the other streams.
+        let _ = tokens.publish(token);
+        tokens.streams.subscribe(Some(tokens.last.clone())).1
+    }
+
+    /// The live accounts' runtimes, in registry order.
+    pub(crate) fn live_runtimes(&self) -> Vec<Arc<AccountRuntime>> {
+        let state = self.state.lock();
+        let ids = state.snapshot.accounts.iter().map(|a| &a.account_id);
+        ids.filter_map(|id| state.runtimes.get(id).cloned())
+            .collect()
     }
 
     pub(crate) fn set_active(&self, account_id: &str) -> Barrier {
@@ -153,6 +188,7 @@ impl Engine {
         let (runtimes, barrier) = {
             let mut state = self.state.lock();
             state.registry.clear();
+            state.paused = false;
             let runtimes: Vec<_> = state.runtimes.drain().collect();
             (runtimes, state.publish_snapshot())
         };
@@ -281,15 +317,21 @@ fn delete_account_stores(config: &EngineConfig, account_id: &str) {
 }
 
 impl SessionState {
-    /// Sends the registry's snapshot to every `session()` stream when it changed.
+    /// Sends the registry's snapshot to every `session()` stream, and each account's token to
+    /// its `accessToken` streams, when changed.
     pub(crate) fn publish_snapshot(&mut self) -> Barrier {
+        let mut barrier = Barrier::default();
+        for (id, tokens) in &mut self.tokens {
+            let token = self.runtimes.get(id).and_then(|rt| live_token(rt));
+            barrier = barrier.join(tokens.publish(token));
+        }
         let snapshot = self.registry.snapshot();
         if snapshot == self.snapshot {
-            return Barrier::default();
+            return barrier;
         }
-        let barrier = self.snapshots.publish(&snapshot);
+        let published = self.snapshots.publish(&snapshot);
         self.snapshot = snapshot;
-        barrier
+        barrier.join(published)
     }
 
     /// Takes the account out of the registry and its soft logout, and hands back its runtime.
@@ -297,6 +339,18 @@ impl SessionState {
         self.registry.retire(account_id);
         self.registry.clear_soft_logged_out(account_id);
         self.runtimes.remove(account_id)
+    }
+}
+
+impl Tokens {
+    /// Sends `token` when it differs from the last one, so no stream sees a token twice in a row.
+    fn publish(&mut self, token: Option<SessionAccessTokenDto>) -> Barrier {
+        if token == self.last {
+            return Barrier::default();
+        }
+        let barrier = self.streams.publish(&token);
+        self.last = token;
+        barrier
     }
 }
 

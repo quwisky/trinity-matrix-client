@@ -91,6 +91,18 @@ methods! {
     "session.rollbackAccountStart" => session::rollback_account_start(account_id: String),
     "session.remove" => session::remove(account_id: String),
     "session.stop" => session::stop(),
+    "session.accessToken" => session::reads::access_token(account_id: String),
+    "session.liveCredentials" => session::reads::live_credentials(account_id: String),
+    "session.accountStatus" => session::reads::account_status(account_id: String),
+    "session.refreshAccessToken" => session::reads::refresh_access_token(
+        account_id: String,
+        options: session::RefreshOptionsDto,
+    ),
+    "session.roomKeysBackedUp" => session::reads::room_keys_backed_up(account_id: String),
+    "session.hasOutgoingWork" => session::reads::has_outgoing_work(),
+    "session.pendingTextMessages" => session::reads::pending_text_messages(),
+    "session.pauseSync" => session::reads::pause_sync(),
+    "session.knownNames" => session::reads::known_names(account_id: String),
 }
 
 /// Decodes positional args in order. Its `bad-args` faults name the position and the type

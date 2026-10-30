@@ -2,7 +2,14 @@ import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Observable, firstValueFrom, tap } from 'rxjs';
+import {
+  type Observable,
+  first,
+  firstValueFrom,
+  tap,
+  timeout,
+  toArray,
+} from 'rxjs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { StdioTransport, testhostBinaryAvailable } from '@trinity/testing';
 import { proxyEngine } from '@trinity/util/matrix';
@@ -14,6 +21,7 @@ import type { SessionEngine, SessionSnapshot } from '../session-engine';
 // unless TRINITY_ENGINE_CONTRACT_HS and TRINITY_ENGINE_TESTHOST are set.
 const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'] ?? '';
 const secret = process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
+const syncTimeoutMs = 90_000;
 const testTimeoutMs = 180_000;
 
 /** A fresh test host with its own stores and key. */
@@ -61,7 +69,7 @@ describe.skipIf(!baseUrl || !testhostBinaryAvailable())(
           dispose,
         };
       },
-      { syncTimeoutMs: 90_000, testTimeoutMs },
+      { syncTimeoutMs, testTimeoutMs },
     );
 
     it(
@@ -105,6 +113,38 @@ describe.skipIf(!baseUrl || !testhostBinaryAvailable())(
           subscription.unsubscribe();
           await firstValueFrom(host.engine.stop());
           await host.dispose();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reports false for a live account without a key backup',
+      async () => {
+        const { engine, dispose } = await startHost();
+        try {
+          const a = await synapse.newSession();
+          await expect(
+            firstValueFrom(engine.restorePersisted(a, 'activate')),
+          ).resolves.toEqual({ ok: true, value: null });
+          await firstValueFrom(
+            engine.session().pipe(
+              first((s) =>
+                s.accounts.some(
+                  (account) =>
+                    account.accountId === a.userId && account.serverSynced,
+                ),
+              ),
+              timeout(syncTimeoutMs),
+            ),
+          );
+
+          await expect(
+            firstValueFrom(engine.roomKeysBackedUp(a.userId).pipe(toArray())),
+          ).resolves.toEqual([false]);
+        } finally {
+          await firstValueFrom(engine.stop());
+          await dispose();
         }
       },
       testTimeoutMs,

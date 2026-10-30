@@ -330,7 +330,7 @@ impl Engine {
             let generation = state.registry.register(&s.user_id, &s.device_id);
             let runtime = AccountRuntime::new(
                 self,
-                s.user_id.clone(),
+                s,
                 generation,
                 client,
                 Arc::clone(&sync_service),
