@@ -104,6 +104,21 @@ async function login(userId: string): Promise<MatrixSession> {
   };
 }
 
+async function asUser(
+  session: MatrixSession,
+  method: 'POST' | 'PUT',
+  path: string,
+  body: unknown,
+): Promise<void> {
+  const res = await fetch(`${baseUrl}/_matrix/client/v3${path}`, {
+    method,
+    headers: { authorization: `Bearer ${session.accessToken}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok)
+    throw new Error(`Synapse ${method} ${path} failed: ${res.status}`);
+}
+
 async function whoamiAccepts(token: string): Promise<boolean> {
   const res = await fetch(`${baseUrl}/_matrix/client/v3/account/whoami`, {
     headers: { authorization: `Bearer ${token}` },
@@ -180,6 +195,19 @@ describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
         },
         passwordFor: (session) => passwords.get(session.userId) ?? '',
         signInAgain: (session) => login(session.userId),
+        createNamedRoom: async (session, names) => {
+          await asUser(
+            session,
+            'PUT',
+            `/profile/${encodeURIComponent(session.userId)}/displayname`,
+            { displayname: names.displayName },
+          );
+          await asUser(session, 'POST', '/createRoom', {
+            name: names.roomName,
+            topic: names.roomTopic,
+            preset: 'private_chat',
+          });
+        },
         dispose: async () => {
           TestBed.resetTestingModule();
         },

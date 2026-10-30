@@ -5,7 +5,7 @@ export * from './lib/coalesce';
 export * from './lib/project-from-client';
 export * from './lib/project-active-account';
 export * from './lib/identity-matrix.port';
-export * from './lib/known-names';
+export * from './lib/js-sdk/known-names';
 export * from './lib/session-engine';
 export * from './lib/session-engine.token';
 export * from './lib/server-logout-hold';
