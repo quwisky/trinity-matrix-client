@@ -45,12 +45,9 @@ vi.mock('matrix-js-sdk', async (importOriginal) => {
   };
 });
 
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
+vi.mock('./crypto-wasm-loader', async () => {
   const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
+  return { preloadCryptoWasm: () => rxOf(undefined) };
 });
 
 const KEYED = {

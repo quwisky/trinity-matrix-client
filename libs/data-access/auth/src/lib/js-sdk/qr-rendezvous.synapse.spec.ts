@@ -29,15 +29,6 @@ import {
 import { AUTH_METADATA } from '../auth-metadata.fixture';
 import { JsSdkQrRendezvous, QrRendezvousFactory } from './qr-rendezvous';
 
-// jsdom serves no crypto .wasm to the preload; initRustCrypto loads its own.
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
-  const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
-});
-
 // The secrets stage of a QR sign-in with real Rust crypto: the new device holds an existing
 // device's bundle at `done`, and the session engine's start of that user and device imports
 // it. The rendezvous itself needs MAS or Tuwunel's OAuth server, so a stand-in flow carries

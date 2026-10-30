@@ -52,12 +52,12 @@ import {
 import {
   MatrixSession,
   type OidcSessionBinding,
-  preloadCryptoWasm,
   rustCryptoStoreDbNames,
   syncStoreDbName,
   syncStoreIndexedDbName,
   verifiedEndpoints,
 } from '@trinity/util/matrix';
+import { preloadCryptoWasm } from './crypto-wasm-loader';
 import { importLinkedSecrets } from './linked-secrets';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';

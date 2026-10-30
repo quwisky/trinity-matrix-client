@@ -43,14 +43,10 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 
-// The WASM preload is a no-op in tests (no real crypto engine). preloadCryptoWasm
-// now lives in @trinity/util/matrix; partial-mock so its other exports stay real.
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
+// The WASM preload is a no-op in tests (no real crypto engine).
+vi.mock('./crypto-wasm-loader', async () => {
   const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
+  return { preloadCryptoWasm: () => rxOf(undefined) };
 });
 
 describe('MatrixClientService session handover', () => {

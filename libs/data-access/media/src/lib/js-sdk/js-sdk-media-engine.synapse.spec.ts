@@ -13,15 +13,6 @@ import {
   useSynapseSuite,
 } from './synapse.spec-harness';
 
-// jsdom serves no crypto .wasm and has no IndexedDB (the sync store falls back to memory).
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
-  const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
-});
-
 function filenameOf(disposition: string): string | null {
   const encoded = /filename\*=utf-8''([^;]+)/i.exec(disposition)?.[1];
   if (encoded) return decodeURIComponent(encoded);

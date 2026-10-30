@@ -7,6 +7,7 @@ export * from './lib/session-engine.token';
 export * from './lib/server-logout-hold';
 export * from './lib/js-sdk/server-support';
 export * from './lib/js-sdk/js-sdk-clients';
+export * from './lib/js-sdk/crypto-wasm-loader';
 export * from './lib/js-sdk/uia';
 export * from './lib/js-sdk/replacement';
 export * from './lib/js-sdk/room-state';
