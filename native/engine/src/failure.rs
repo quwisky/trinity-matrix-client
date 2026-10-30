@@ -17,6 +17,7 @@ use matrix_sdk::{
         },
         exports::http,
     },
+    timeout::ElapsedError,
 };
 use serde::{Serialize, Serializer, ser::SerializeStruct};
 use ts_rs::TS;
@@ -387,6 +388,7 @@ pub fn classify(err: &Error) -> (FailureKind, Diagnostic) {
             ))) => bare(FailureKind::Network),
             _ => bare(FailureKind::Unexpected),
         },
+        Error::UnknownError(e) if e.is::<ElapsedError>() => bare(FailureKind::Timeout),
         _ => bare(FailureKind::Unexpected),
     }
 }

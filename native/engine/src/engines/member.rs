@@ -1,9 +1,9 @@
 //! How an engine member runs on one account: commands, long-lived streams, and how they send.
 
-use std::sync::Arc;
+use std::{future::IntoFuture, sync::Arc, time::Duration};
 
 use futures_util::{StreamExt, stream};
-use matrix_sdk::{Client, Error, SendOutsideWasm};
+use matrix_sdk::{Client, Error, SendOutsideWasm, config::RequestConfig, timeout::timeout};
 use serde::Serialize;
 use serde_json::json;
 
@@ -74,15 +74,39 @@ where
     stream(items.take_until(retired).chain(stream::pending()))
 }
 
+/// One request, as js sends it: the SDK's default retries a 5xx or 429 for up to 15 minutes, and
+/// a retried deactivation that the server completed meets the dead token.
+pub fn sent_once() -> RequestConfig {
+    RequestConfig::new().disable_retry()
+}
+
+/// How long a join, invite or leave through its SDK wrapper may take, its retries included.
+pub const WRAPPER_LIMIT: Duration = Duration::from_secs(30);
+
+/// An SDK wrapper call, which retries under the client's default config, cut off after
+/// `WRAPPER_LIMIT` as an `ElapsedError`. Pass it to `Engine::ruled`, never the reverse, so the
+/// cut-off never shortens the rule: `engine.ruled(&rt, bounded(room.join())).await`.
+pub async fn bounded<T>(call: impl IntoFuture<Output = Result<T, Error>>) -> Result<T, Error> {
+    timeout(call.into_future(), WRAPPER_LIMIT)
+        .await
+        .unwrap_or_else(|elapsed| Err(Error::UnknownError(Box::new(elapsed))))
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{future::Ready, time::Duration};
+    use std::{
+        future::{Ready, pending, ready},
+        time::Duration,
+    };
 
     use futures_util::FutureExt;
     use matrix_sdk::{executor::spawn, timeout::timeout};
     use serde_json::Value;
     use tempfile::TempDir;
-    use tokio::sync::{mpsc, oneshot};
+    use tokio::{
+        sync::{mpsc, oneshot},
+        time::Instant,
+    };
 
     use super::*;
     use crate::{
@@ -113,6 +137,17 @@ mod tests {
     /// A body with one item that then stays open.
     fn one_then_open() -> impl futures_util::Stream<Item = Value> {
         stream::iter([json!(1)]).chain(stream::pending())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn bounded_passes_a_result_through_and_cuts_off_at_thirty_seconds() {
+        assert!(matches!(bounded(ready(Ok(1))).await, Ok(1)));
+        let start = Instant::now();
+        let err = bounded(pending::<Result<(), Error>>()).await.unwrap_err();
+        assert_eq!(start.elapsed(), WRAPPER_LIMIT);
+        let cut_off =
+            json!({"kind": "timeout", "code": "request-failed", "diagnostic": {"kind": "timeout"}});
+        assert_eq!(json!(request_failed(&err)), cut_off);
     }
 
     #[tokio::test]

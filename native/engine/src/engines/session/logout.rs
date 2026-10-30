@@ -15,7 +15,6 @@ use futures_util::{StreamExt, future::join_all, stream};
 use matrix_sdk::{
     Client, ClientBuildError, Error, HttpError, RefreshTokenError, SessionTokens,
     bytes::Bytes,
-    config::RequestConfig,
     executor::spawn,
     reqwest::Url,
     ruma::api::{
@@ -40,7 +39,7 @@ use crate::{
     accounts::{AccountRuntime, Engine, SessionState},
     barrier::{Barrier, DELIVERY_LIMIT, Subscribers, Tracked},
     dispatch::{Stream, detached, reply, stream},
-    engines::member::on_account,
+    engines::member::{on_account, sent_once},
     failure::{EngineResult, http_error_from_response, refresh_logs_out, request_failure},
     wire::{Fault, FaultKind},
 };
@@ -237,12 +236,6 @@ fn broadcast_first(err: &Error) -> bool {
         HttpError::RefreshToken(oauth @ RefreshTokenError::OAuth(_)) => refresh_logs_out(oauth),
         _ => false,
     }
-}
-
-/// One request, as js sends it: the SDK's default retries a 5xx or 429 for up to 15 minutes, and
-/// a retried deactivation that the server completed meets the dead token (S17).
-pub(crate) fn sent_once() -> RequestConfig {
-    RequestConfig::new().disable_retry()
 }
 
 /// An account's token for a raw request, which only this module can make, so every raw request
