@@ -411,9 +411,10 @@ to cut the same version twice.
    job publishes the release once every package is attached (see
    [Automatic publishing](#automatic-publishing)).
 4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job opens the back-merge PR. It
-   carries only the release metadata (changelog, manifests, user guide) to `main` as one
-   single-parent commit, which lands by a direct push once CI passes on it; no step is
-   needed unless the job fails (see [The back-merge](#the-back-merge)).
+   carries only the release metadata (changelog, manifests, user guide, and the
+   `last-release-sha` anchor of `main`'s prerelease line) to `main` as one single-parent
+   commit, which lands by a direct push once CI passes on it; no step is needed unless the
+   job fails (see [The back-merge](#the-back-merge)).
 
 The same run creates the label `backport release/X.Y.x` for the new line.
 
@@ -428,8 +429,10 @@ Prerequisites for a cut:
   commit of the version in `main`'s `.release-please-manifest.json`, which release-please
   finds by walking history. The back-merge sets that manifest to the line's cut prerelease
   (for example `0.5.0-next.6`), a commit on `main`'s own history, so the next line's notes
-  start exactly at the previous cut. The stable tag is not on `main`, so a stable version
-  there would stop the walk at the back-merge commit and open no release PR.
+  start exactly at the previous cut. The stable tag is not on `main`, so with a stable
+  version there release-please would walk past the cut to its 500-commit search depth. When
+  `main`'s prerelease manifest takes the stable version, the back-merge also anchors that
+  line at the cut (see [The back-merge](#the-back-merge)).
 
 The workflow refuses, and creates nothing, when `from` is not a published prerelease on
 `main`'s history, when `release/X.Y.x` already exists (land fixes on it; its next stable
@@ -595,10 +598,27 @@ line's cut prerelease, or keeps `main`'s value when that is already a higher `-n
 so a patch on an older line never moves `main`'s boundary back. A stable value there predates
 single-parent back-merges and is replaced by the cut.
 
+When `.release-please-manifest.next.json` ends at the stable version, the commit also sets
+`last-release-sha` in `release-please-config.next.json` to the commit of the line's cut
+prerelease. `main`'s prerelease line needs that anchor. release-please on `main` bumps from the
+manifest's version, which is right: after `0.6.0`, a `feat` gives `0.7.0-next.0` and a `fix`
+`0.6.1-next.0`. It collects commits back to that release's tag commit, but `vX.Y.Z` is tagged on
+`release/X.Y.x` and is not on `main`'s history. release-please never meets it and collects up
+to its `commit-search-depth` of 500 commits, so the release PR would list the whole cycle again,
+breaking changes included (the closed #1814 after v0.6.0). `last-release-sha` stops that walk at
+the cut, which is on `main`'s history, so the next prerelease lists only what `main` gained since
+the line was cut. The anchor needs no reset: once a prerelease's release PR merges on `main`,
+release-please meets that newer tag commit first and stops there, and the next stable
+back-merge moves the anchor to its own cut. Moving `bootstrap-sha` instead would not help:
+release-please reads it only when it finds no release for the manifest's version at all. While
+`main`'s own prerelease is higher than the stable version, its tag is on `main`'s history and
+the config stays as it is.
+
 When `main` already records a newer stable release than the tag (a higher `## [X.Y.Z]` in its
 `CHANGELOG.md` or a higher `version` in `apps/docs-users/release.json`), as when v0.5.4 ships
 after v0.6.0 was back-merged, the commit carries only the tag's changelog section.
-`release.json`, the user guide pages and both manifests stay as `main` has them.
+`release.json`, the user guide pages, both manifests and `release-please-config.next.json` stay
+as `main` has them.
 
 | Path                                             | Resolution                                                                                                                                 |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -606,6 +626,7 @@ after v0.6.0 was back-merged, the commit carries only the tag's changelog sectio
 | `apps/docs-users/release.json`, user guide pages | The release branch's side; untouched for an older line                                                                                     |
 | `.release-please-manifest.json`                  | The line's cut prerelease (`git describe --tags --abbrev=0 --match 'v*-next.*' vX.Y.Z`, without the `v`), or `main`'s higher `-next` value |
 | `.release-please-manifest.next.json`             | The higher version by semver precedence (`0.1.1` beats `0.1.1-next.3`), so `main` continues at the next patch's prereleases                |
+| `release-please-config.next.json`                | `last-release-sha` set to the cut prerelease's commit when the next manifest ends at the stable version; untouched otherwise               |
 
 `package.json`, `electron/package.json` and all other paths are never carried, so conflicts
 no longer arise. The job fails, with a clear error, only when no cut prerelease tag precedes
@@ -671,7 +692,10 @@ Never merge it with the button and never force-push.
 Two earlier two-parent back-merges (`cc78921b` from #1652 and `6d845c6e` from #1690) brought
 already-backported commits into `main` a second time. Their PR bodies carry a
 `BEGIN_COMMIT_OVERRIDE` block that hides those commits from future release notes. The
-`0.5.0-next.6` manifest on `main` is the one-time migration to the new boundary.
+`0.5.0-next.6` manifest on `main` is the one-time migration to the new boundary. Those
+two-parent merges also brought each stable tag into `main`'s history, so the prerelease line
+needed no anchor until v0.6.0's single-parent back-merge (`539ce8eb`), which predates it; its
+`last-release-sha`, `ef3dd1f5` (the cut `v0.6.0-next.6`), was set by hand.
 
 ### Migrating from develop
 

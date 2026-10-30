@@ -315,6 +315,29 @@ describe('land-back-merge', () => {
       expect(r.remoteMain()).toBe(sha);
     });
 
+    it("lands a back-merge that anchors main's prerelease line", () => {
+      r = repo();
+      r.git('switch', '-q', 'main');
+      r.commit(
+        '.release-please-manifest.next.json',
+        '{ ".": "0.1.0-next.1" }\n',
+      );
+      r.commit('release-please-config.next.json', '{}\n');
+      r.git('push', '-q', 'origin', 'main');
+      r.git('switch', '-q', 'release/0.1.x');
+      r.commit('.release-please-manifest.next.json', '{ ".": "0.1.3" }\n');
+      r.git('tag', 'v0.1.3');
+      r.git('push', '-q', 'origin', 'release/0.1.x', 'v0.1.3');
+      r.git('fetch', '-q', 'origin');
+      const sha = r.build('v0.1.3');
+      r.git('push', '-q', 'origin', 'back-merge/v0.1.3');
+      expect(r.git('diff', '--name-only', 'origin/main', sha)).toContain(
+        'release-please-config.next.json',
+      );
+      attempt({ branch: 'back-merge/v0.1.3', pulls: () => [pr(sha)] });
+      expect(r.remoteMain()).toBe(sha);
+    });
+
     it("refuses a metadata change that is not the tag's content", () => {
       r = repo();
       const main = r.remoteMain();
