@@ -2,7 +2,7 @@ import * as rendezvous from 'matrix-js-sdk/lib/rendezvous';
 import { describe, expect, it } from 'vitest';
 
 // The rendezvous module is experimental; this fails when an SDK upgrade renames what the
-// QR sign-in adapter uses.
+// QR rendezvous uses.
 describe('matrix-js-sdk rendezvous exports', () => {
   it.each([
     'MSC4108SignInWithQR',

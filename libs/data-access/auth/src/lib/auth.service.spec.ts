@@ -17,7 +17,6 @@ import {
   HTTPError,
   MatrixError,
   createClient,
-  type MatrixClient,
 } from 'matrix-js-sdk';
 import {
   AccountRuntimeService,
@@ -28,7 +27,6 @@ import {
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import { AuthService } from './auth.service';
-import { qrSignInFailureOf } from './qr-sign-in/qr-sign-in.model';
 import { deletionLink } from './account-server-api';
 import {
   ReauthAccountMismatchError,
@@ -995,88 +993,59 @@ describe('AuthService', () => {
     });
   });
 
-  describe('completing a QR sign-in on the new device', () => {
-    const tokens = {
-      access_token: 'qr-atok',
-      token_type: 'Bearer',
-      refresh_token: 'qr-rtok',
-      expires_in: 300,
-    };
-    const whoami = vi.fn();
-    const signedIn = { getUserId: () => '@me:hs' };
-    const pinned = {
+  describe('establishing a QR-linked device', () => {
+    const binding = {
       issuer: AUTH_METADATA.issuer,
       clientId: 'qr-client',
       tokenEndpoint: 'https://op.example/verified-token',
       revocationEndpoint: 'https://op.example/verified-revoke',
     };
+    const session = {
+      user_id: '@me:hs',
+      device_id: 'QRDEV',
+      access_token: 'qr-atok',
+      refresh_token: 'qr-rtok',
+      accessTokenExpiresAt: Date.now() + 300_000,
+      oidc: binding,
+    };
     beforeEach(() => {
-      whoami.mockReset().mockResolvedValue({
-        user_id: '@me:hs',
-        device_id: 'QRDEV',
-      });
-      createClientMock.mockReturnValue({ whoami } as never);
-      vi.mocked(TestBed.inject(MatrixClientService).clientFor).mockReturnValue(
-        signedIn as never,
-      );
       vi.mocked(TestBed.inject(OidcClientService).revokeTokens).mockReturnValue(
         of(undefined),
       );
-      vi.mocked(
-        TestBed.inject(OidcClientService).deviceGrantBinding,
-      ).mockReturnValue(of(pinned));
     });
-    const complete = () =>
-      firstValueFrom(
-        auth.completeDeviceGrant(
-          tokens,
-          'qr-client',
-          AUTH_METADATA,
-          'https://hs',
-        ),
-      );
+    const establish = () =>
+      firstValueFrom(auth.establishDeviceGrant('https://hs', session));
 
-    it('runs whoami, then establishes an OAuth session that has no redirect URI', async () => {
+    it('establishes an OAuth session that has no redirect URI, keeping other accounts', async () => {
       const issue = vi.spyOn(AuthenticatedAccountGrant, 'issue');
       const accounts = TestBed.inject(AccountRuntimeService);
 
-      expect(await complete()).toBe(signedIn);
+      await expect(establish()).resolves.toMatchObject({ kind: 'ready' });
 
-      expect(createClientMock).toHaveBeenCalledWith({
-        baseUrl: 'https://hs',
-        accessToken: 'qr-atok',
-      });
-      expect(whoami.mock.invocationCallOrder[0]).toBeLessThan(
-        vi.mocked(accounts.establishAuthenticatedAccount).mock
-          .invocationCallOrder[0],
-      );
-      const session = issue.mock.calls[0][0];
-      expect(session).toMatchObject({
+      expect(issue.mock.calls[0][0]).toMatchObject({
         baseUrl: 'https://hs',
         userId: '@me:hs',
         deviceId: 'QRDEV',
         accessToken: 'qr-atok',
         refreshToken: 'qr-rtok',
-        oidc: pinned,
+        accessTokenExpiresAt: session.accessTokenExpiresAt,
+        oidc: binding,
       });
-      expect(
-        TestBed.inject(OidcClientService).deviceGrantBinding,
-      ).toHaveBeenCalledWith(AUTH_METADATA, 'qr-client');
-      expect(session.oidc).not.toHaveProperty('redirectUri');
-      expect(session.accessTokenExpiresAt).toBeGreaterThan(Date.now());
-      // Other signed-in accounts on this device stay signed in.
+      expect(issue.mock.calls[0][0].oidc).not.toHaveProperty('redirectUri');
       expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ liveAccounts: 'keep' }),
       );
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).not.toHaveBeenCalled();
     });
 
     it('asks the keyring question as every sign-in does, and hands the tokens back on a no', async () => {
       const gate = TestBed.inject(UnprotectedStorageGate);
       vi.mocked(gate.allowed).mockReturnValue(of(false));
-      const oidc = TestBed.inject(OidcClientService);
 
-      await expect(complete()).rejects.toBeInstanceOf(
+      await expect(establish()).rejects.toBeInstanceOf(
         UnprotectedStorageDeclinedError,
       );
 
@@ -1084,181 +1053,12 @@ describe('AuthService', () => {
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
-      expect(oidc.revokeTokens).toHaveBeenCalledWith(
-        'https://hs',
-        expect.objectContaining({ clientId: 'qr-client' }),
-        { accessToken: 'qr-atok', refreshToken: 'qr-rtok' },
-      );
-    });
-
-    it('hands the tokens back and establishes nothing when whoami fails', async () => {
-      whoami.mockRejectedValue(new Error('offline'));
-
-      await expect(complete()).rejects.toThrow('offline');
-
-      expect(
-        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
-      ).not.toHaveBeenCalled();
-      expect(TestBed.inject(OidcClientService).revokeTokens).toHaveBeenCalled();
-    });
-
-    it('revokes the tokens when the sign-in is left while whoami is pending', async () => {
-      whoami.mockReturnValue(new Promise(() => undefined));
-      const oidc = TestBed.inject(OidcClientService);
-
-      const attempt = auth
-        .completeDeviceGrant(tokens, 'qr-client', AUTH_METADATA, 'https://hs')
-        .subscribe({ error: () => undefined });
-      await vi.waitFor(() => expect(whoami).toHaveBeenCalled());
-      attempt.unsubscribe();
-
-      expect(oidc.revokeTokens).toHaveBeenCalledWith(
-        'https://hs',
-        { issuer: AUTH_METADATA.issuer, clientId: 'qr-client' },
-        { accessToken: 'qr-atok', refreshToken: 'qr-rtok' },
-      );
-    });
-
-    it('leaves an account this device already stores as it was, and revokes the new tokens', async () => {
-      const storage = TestBed.inject(SessionStorageService);
-      vi.mocked(storage.record).mockReturnValue(
-        of({ baseUrl: 'https://hs', userId: '@me:hs', deviceId: 'OLD' }),
-      );
-
-      const error = await complete().catch((e: unknown) => e);
-
-      expect(qrSignInFailureOf(error)).toBe('already-signed-in');
-      expect(
-        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
-      ).not.toHaveBeenCalled();
-      expect(storage.save).not.toHaveBeenCalled();
       expect(
         TestBed.inject(OidcClientService).revokeTokens,
-      ).toHaveBeenCalledWith(
-        'https://hs',
-        expect.objectContaining({ clientId: 'qr-client' }),
-        { accessToken: 'qr-atok', refreshToken: 'qr-rtok' },
-      );
-    });
-
-    it('does not revoke the tokens once the sign-in succeeded', async () => {
-      await complete();
-
-      expect(
-        TestBed.inject(OidcClientService).revokeTokens,
-      ).not.toHaveBeenCalled();
-    });
-
-    it('fails when the account runtime does not start the account', async () => {
-      vi.mocked(
-        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
-      ).mockReturnValue(
-        of({
-          kind: 'failed',
-          failure: 'crypto-failure',
-          accountId: '@me:hs',
-          placement: 'active',
-        }),
-      );
-
-      await expect(complete()).rejects.toThrow();
-    });
-  });
-
-  describe('importing the secrets a QR link shared', () => {
-    const secrets = {
-      cross_signing: {
-        master_key: 'MASTER-SECRET',
-        self_signing_key: 'SELF-SECRET',
-        user_signing_key: 'USER-SECRET',
-      },
-      backup: {
-        algorithm: 'm.megolm_backup.v1.curve25519-aes-sha2',
-        key: 'BACKUP-SECRET',
-        backup_version: '1',
-      },
-    };
-    const crypto = {
-      importSecretsBundle: vi.fn(),
-      crossSignDevice: vi.fn(),
-      checkKeyBackupAndEnable: vi.fn(),
-      isCrossSigningReady: vi.fn(),
-      getDeviceVerificationStatus: vi.fn(),
-    };
-    const client = {
-      getCrypto: () => crypto,
-      getDeviceId: () => 'QRDEV',
-      getUserId: () => '@me:hs',
-    } as unknown as MatrixClient;
-    beforeEach(() => {
-      crypto.importSecretsBundle.mockReset().mockResolvedValue(undefined);
-      crypto.crossSignDevice.mockReset().mockResolvedValue(undefined);
-      crypto.checkKeyBackupAndEnable.mockReset().mockResolvedValue(null);
-      crypto.isCrossSigningReady.mockReset().mockResolvedValue(true);
-      crypto.getDeviceVerificationStatus
-        .mockReset()
-        .mockResolvedValue({ crossSigningVerified: true });
-    });
-    const importSecrets = () =>
-      firstValueFrom(auth.importLinkedSecrets(client, secrets as never));
-
-    it('imports the bundle, cross-signs this device and enables backup, in that order', async () => {
-      expect(await importSecrets()).toBe(true);
-
-      expect(crypto.importSecretsBundle).toHaveBeenCalledWith(secrets);
-      expect(crypto.crossSignDevice).toHaveBeenCalledWith('QRDEV');
-      const order = [
-        crypto.importSecretsBundle,
-        crypto.crossSignDevice,
-        crypto.checkKeyBackupAndEnable,
-      ].map((step) => step.mock.invocationCallOrder[0]);
-      expect(order).toEqual([...order].sort((a, b) => a - b));
-    });
-
-    it('reports an unverified device, cross-signs nothing and logs no secret when the import fails', async () => {
-      const logged = (['log', 'info', 'warn', 'error', 'debug'] as const).map(
-        (level) => vi.spyOn(console, level).mockImplementation(() => undefined),
-      );
-      crypto.importSecretsBundle.mockRejectedValue(
-        new Error('bad bundle MASTER-SECRET'),
-      );
-
-      expect(await importSecrets()).toBe(false);
-
-      expect(crypto.crossSignDevice).not.toHaveBeenCalled();
-      expect(JSON.stringify(logged.map((spy) => spy.mock.calls))).not.toMatch(
-        /SECRET/,
-      );
-    });
-
-    it('reports a verified device when only enabling backup fails', async () => {
-      crypto.checkKeyBackupAndEnable.mockRejectedValue(new Error('no backup'));
-
-      expect(await importSecrets()).toBe(true);
-    });
-
-    it('reports an unverified device when it is not cross-signing verified after the import', async () => {
-      crypto.getDeviceVerificationStatus.mockResolvedValue({
-        crossSigningVerified: false,
+      ).toHaveBeenCalledWith('https://hs', binding, {
+        accessToken: 'qr-atok',
+        refreshToken: 'qr-rtok',
       });
-
-      expect(await importSecrets()).toBe(false);
-      expect(crypto.getDeviceVerificationStatus).toHaveBeenCalledWith(
-        '@me:hs',
-        'QRDEV',
-      );
-    });
-
-    it('reports an unverified device when cross-signing is not ready after the import', async () => {
-      crypto.isCrossSigningReady.mockResolvedValue(false);
-
-      expect(await importSecrets()).toBe(false);
-    });
-
-    it('reports an unverified device when cross-signing fails', async () => {
-      crypto.crossSignDevice.mockRejectedValue(new Error('upload failed'));
-
-      expect(await importSecrets()).toBe(false);
     });
   });
 

@@ -1,4 +1,4 @@
-import { type Observable, defer, of } from 'rxjs';
+import { Observable, defer, of, type Subscriber } from 'rxjs';
 import {
   NOT_SIGNED_IN,
   engineFail,
@@ -13,6 +13,10 @@ import type {
   EmailTokenRequest,
   PasswordLogin,
   PasswordReset,
+  QrLinkAnswer,
+  QrLinkUpdate,
+  QrSignInAnswer,
+  QrSignInUpdate,
   RegisteredAccount,
   Registration,
   RegistrationAuth,
@@ -21,6 +25,7 @@ import type {
   TokenOwner,
 } from '../lib/auth-engine';
 import type { AuthMetadata } from '../lib/auth-metadata';
+import type { QrSignInFailure } from '../lib/qr-sign-in/qr-sign-in.model';
 
 interface FakeUser {
   password: string;
@@ -77,6 +82,58 @@ function confirmNewest(
   if (link) link.confirmed = true;
 }
 
+const QR_FLOW_GONE: EngineFailure = {
+  kind: 'unexpected',
+  code: 'qr-flow-gone',
+  diagnostic: { kind: 'unexpected' },
+};
+const STOPPED = Symbol('stopped');
+
+/** A QR flow the fake runs: it emits until it pauses for an answer, ends or is stopped. */
+class FakeQrRun<U extends { kind: string }> {
+  readonly id = crypto.randomUUID();
+  ended = false;
+  private waiting?: { pause: string; resolve: (value: never) => void };
+
+  constructor(
+    private readonly subscriber: Subscriber<U>,
+    private readonly stop: { after: string; reason?: QrSignInFailure } | null,
+  ) {}
+
+  emit(update: U): void {
+    if (this.ended) throw STOPPED;
+    this.subscriber.next(update);
+    if (this.stop?.after !== update.kind) return;
+    const { reason } = this.stop;
+    if (reason) this.end({ kind: 'failed', reason } as unknown as U);
+    throw STOPPED;
+  }
+
+  end(update: U): void {
+    if (this.ended) return;
+    this.ended = true;
+    this.subscriber.next(update);
+    this.subscriber.complete();
+  }
+
+  /** Emits `update`, then waits for the answer to `pause`. */
+  pause<T>(pause: string, update: U): Promise<T> {
+    const answer = new Promise<T>(
+      (resolve) => (this.waiting = { pause, resolve }),
+    );
+    this.emit(update);
+    return answer;
+  }
+
+  answer(pause: string, value: unknown): boolean {
+    const waiting = this.waiting;
+    if (this.ended || waiting?.pause !== pause) return false;
+    this.waiting = undefined;
+    (waiting.resolve as (value: unknown) => void)(value);
+    return true;
+  }
+}
+
 /** One in-memory homeserver: users by localpart, live accounts, login tokens and reset links. */
 export class FakeAuthEngine implements AuthEngine {
   readonly calls: string[] = [];
@@ -99,8 +156,24 @@ export class FakeAuthEngine implements AuthEngine {
   private readonly registrations = new Map<string, Set<string>>();
   /** A failure every command answers with instead, until cleared. */
   failure: EngineFailure | null = null;
+  /** Whether the server offers QR sign-in: OAuth 2.0 with the device grant, and MSC4108. */
+  qrRendezvous = false;
+  /** The other device a QR sign-in meets. */
+  readonly qrPeer = {
+    serverName: 'example.org' as string | null,
+    userId: '@alice:example.org',
+    deviceId: 'QRDEVICE',
+    /** Client ids the provider refuses for the device grant. */
+    refusedClients: new Set<string>(),
+    /** Whether the secrets it shares verify the new device. */
+    verifies: true,
+    verificationUri: 'https://auth.example.org/link',
+  };
+  /** Stops each QR flow after its update of this kind: failing with `reason`, else waiting. */
+  qrStop: { after: string; reason?: QrSignInFailure } | null = null;
   private devices = 0;
   private sessions = 0;
+  private readonly qrRuns = new Map<string, FakeQrRun<{ kind: string }>>();
 
   loginFlows(baseUrl: string): Observable<EngineResult<readonly string[]>> {
     return this.command(`loginFlows:${baseUrl}`, () => engineOk(this.flows));
@@ -341,6 +414,165 @@ export class FakeAuthEngine implements AuthEngine {
     );
   }
 
+  supportsQrRendezvous(baseUrl: string): Observable<EngineResult<boolean>> {
+    return this.command(`supportsQrRendezvous:${baseUrl}`, () =>
+      engineOk(this.qrRendezvous),
+    );
+  }
+
+  signInWithQr(
+    baseUrl: string,
+    request: {
+      readonly grantMetadata: AuthMetadata;
+      readonly clientId: string;
+    },
+  ): Observable<QrSignInUpdate> {
+    return this.qrFlow<QrSignInUpdate>(
+      `signInWithQr:${request.clientId}`,
+      async (run) => {
+        if (!this.qrRendezvous) {
+          run.end({ kind: 'failed', reason: 'unsupported' });
+          return;
+        }
+        run.emit({
+          kind: 'showing-code',
+          qr: btoa(`MATRIX${run.id}`),
+          expiresAt: Date.now() + 60_000,
+        });
+        await run.pause('server', {
+          kind: 'server-reported',
+          flowId: run.id,
+          serverName: this.qrPeer.serverName,
+        });
+        run.emit({ kind: 'confirm-check-code', code: '42' });
+        let clientId = request.clientId;
+        while (this.qrPeer.refusedClients.has(clientId)) {
+          clientId = await run.pause<string>('grant', {
+            kind: 'client-rejected',
+            flowId: run.id,
+          });
+        }
+        run.emit({ kind: 'waiting-for-approval', userCode: 'ABCD' });
+        run.emit({
+          kind: 'signing-in',
+          tokens: {
+            accessToken: `qr-token-${clientId}`,
+            refreshToken: `qr-refresh-${clientId}`,
+            accessTokenExpiresAt: Date.now() + 300_000,
+          },
+        });
+        const accountId = await run.pause<string>('established', {
+          kind: 'signed-in',
+          flowId: run.id,
+          userId: this.qrPeer.userId,
+          deviceId: this.qrPeer.deviceId,
+        });
+        run.end({
+          kind: 'done',
+          verified:
+            this.qrPeer.verifies &&
+            accountId === this.qrPeer.userId &&
+            this.accounts.has(accountId),
+        });
+      },
+    );
+  }
+
+  answerQrSignIn(
+    flowId: string,
+    answer: QrSignInAnswer,
+  ): Observable<EngineResult<null>> {
+    return answer.kind === 'retry-grant'
+      ? this.command(`answerQrSignIn:retry-grant:${answer.clientId}`, () =>
+          this.qrAnswer(flowId, 'grant', answer.clientId),
+        )
+      : this.command(`answerQrSignIn:${answer.kind}`, () =>
+          this.qrAnswer(flowId, 'server', undefined),
+        );
+  }
+
+  continueQrSignIn(
+    flowId: string,
+    accountId: string,
+  ): Observable<EngineResult<null>> {
+    return this.command(`continueQrSignIn:${accountId}`, () =>
+      this.qrAnswer(flowId, 'established', accountId),
+    );
+  }
+
+  /** Takes base64 whose bytes start with `MATRIX` as a sign-in code, as MSC4108 codes do. */
+  linkDeviceWithQr(accountId: string, qr: string): Observable<QrLinkUpdate> {
+    return this.qrFlow<QrLinkUpdate>(
+      `linkDeviceWithQr:${accountId}`,
+      async (run) => {
+        run.emit({ kind: 'connecting' });
+        if (!this.accounts.has(accountId)) {
+          run.end({ kind: 'failed', reason: 'unknown' });
+          return;
+        }
+        if (!isSignInCode(qr)) {
+          run.end({ kind: 'not-sign-in-code' });
+          return;
+        }
+        const { match, identityHeld } = await run.pause<QrLinkAnswer>(
+          'check-code',
+          { kind: 'confirm-check-code', flowId: run.id, code: '42' },
+        );
+        if (!match) {
+          run.end({ kind: 'failed', reason: 'insecure' });
+          return;
+        }
+        if (!identityHeld) {
+          run.end({ kind: 'failed', reason: 'unknown' });
+          return;
+        }
+        run.emit({
+          kind: 'approve-in-browser',
+          verificationUri: this.qrPeer.verificationUri,
+        });
+        run.emit({ kind: 'sharing-secrets' });
+        run.end({ kind: 'done' });
+      },
+    );
+  }
+
+  confirmQrLink(
+    flowId: string,
+    answer: QrLinkAnswer,
+  ): Observable<EngineResult<null>> {
+    return this.command(
+      `confirmQrLink:${answer.match}:${answer.identityHeld}`,
+      () => this.qrAnswer(flowId, 'check-code', answer),
+    );
+  }
+
+  private qrFlow<U extends { kind: string }>(
+    call: string,
+    body: (run: FakeQrRun<U>) => Promise<void>,
+  ): Observable<U> {
+    return new Observable<U>((subscriber) => {
+      this.calls.push(call);
+      const run = new FakeQrRun(subscriber, this.qrStop);
+      this.qrRuns.set(run.id, run);
+      body(run).catch(() => undefined);
+      return () => {
+        this.qrRuns.delete(run.id);
+        if (!run.ended) this.calls.push('qr-cancelled');
+        run.ended = true;
+      };
+    });
+  }
+
+  private qrAnswer(
+    flowId: string,
+    pause: string,
+    value: unknown,
+  ): EngineResult<null> {
+    return this.qrRuns.get(flowId)?.answer(pause, value)
+      ? engineOk(null)
+      : engineFail(QR_FLOW_GONE);
+  }
+
   private session(localpart: string, deviceId: string | null): SignedInSession {
     const accessToken = `token-${localpart}-${this.accessTokens.size + 1}`;
     const owner = {
@@ -370,5 +602,13 @@ export class FakeAuthEngine implements AuthEngine {
       this.calls.push(call);
       return of(this.failure ? engineFail(this.failure) : run());
     });
+  }
+}
+
+function isSignInCode(qr: string): boolean {
+  try {
+    return atob(qr).startsWith('MATRIX');
+  } catch {
+    return false;
   }
 }
