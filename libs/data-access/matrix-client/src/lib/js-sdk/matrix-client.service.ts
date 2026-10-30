@@ -67,8 +67,10 @@ import type {
   PersistedAccountActivation,
   ServerLogoutHoldUpdate,
   SessionAccessToken,
+  SessionStorageEffect,
 } from '../session-engine';
 import type { ServerLogoutHold } from '../server-logout-hold';
+import { SessionStorageWrites } from '../session-storage-writes';
 import {
   MatrixClientStartupError,
   classifyCryptoStartupFailure,
@@ -214,6 +216,7 @@ export interface AccessTokenRotation {
 @Injectable({ providedIn: 'root' })
 export class MatrixClientService {
   private readonly storage = inject(SessionStorageService);
+  private readonly writes = inject(SessionStorageWrites);
   private readonly storeKeys = inject(CryptoStoreKeyService);
   private readonly projections = inject(ProjectionRuntime);
   private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
@@ -276,6 +279,11 @@ export class MatrixClientService {
    */
   readonly accessTokenRotations: Observable<AccessTokenRotation> =
     this._accessTokenRotations.asObservable();
+
+  private readonly _storageEffects = new Subject<SessionStorageEffect>();
+  /** Server logouts for the caller to save, each once the active account has moved. */
+  readonly storageEffects: Observable<SessionStorageEffect> =
+    this._storageEffects.asObservable();
 
   /**
    * The access token Trinity last saw each OAuth account's client start with or persist,
@@ -1101,9 +1109,9 @@ export class MatrixClientService {
    * `POST /logout`. Without `oauthClientId` the SDK does not refresh at all, and the first
    * 401 becomes a hard logout that deletes the account's crypto store.
    *
-   * `onTokenRefresh` persists for THIS account only and returns the write: the SDK awaits
-   * it before adopting the new pair, so a failed write fails the refresh and the old
-   * tokens stay in memory.
+   * `onTokenRefresh` persists for THIS account only, through {@link SessionStorageWrites}, and
+   * returns the write: the SDK awaits it before adopting the new pair, so a failed write fails
+   * the refresh and the old tokens stay in memory.
    *
    * The write is a compare-and-swap on the sign-in the session came from (its
    * {@link MatrixSession.lineage}): storage applies it only while the account's record still
@@ -1131,13 +1139,14 @@ export class MatrixClientService {
             fetchFn: this.pinnedProviderFetch(session, session.oidc),
             onTokenRefresh: (tokens: AccessTokens): Promise<void> =>
               firstValueFrom(
-                this.storage.updateTokens(
-                  session.userId,
-                  session.lineage,
-                  tokens.accessToken,
-                  tokens.refreshToken,
-                  tokens.expiry?.getTime(),
-                ),
+                this.writes.apply({
+                  kind: 'tokens-rotated',
+                  accountId: session.userId,
+                  lineage: session.lineage ?? null,
+                  accessToken: tokens.accessToken,
+                  refreshToken: tokens.refreshToken ?? null,
+                  expiresAt: tokens.expiry?.getTime() ?? null,
+                }),
               ).then(() => {
                 if (owner.kind === 'detached') {
                   return;
@@ -1457,24 +1466,19 @@ export class MatrixClientService {
       return;
     }
     if (soft) {
-      // Keep the stores and registry entry for re-auth, but drop the dead token so a
-      // restart's restore skips it instead of resurrecting a failing ghost account.
+      // Keep the stores and registry entry for re-auth. The effect's writer drops the dead
+      // token, so a restart's restore skips it instead of resurrecting a failing ghost account.
       this.removeInternal(userId, false);
-      this.storage
-        .invalidateToken(userId)
-        .subscribe({ error: () => undefined });
       this.markSoftLoggedOut(userId);
     } else {
-      // The device is gone server-side: wipe locally and forget the account.
+      // The device is gone server-side: wipe locally; the effect's writer forgets the account.
       this.removeInternal(userId, true);
-      this.storage.remove(userId).subscribe({ error: () => undefined });
     }
-    // removeInternal repoints in memory by Map order, storage.remove by array order; without
-    // this a restart could restore a different account than the UI shows.
-    const active = this._activeUserId();
-    if (active) {
-      this.storage.setActive(active).subscribe({ error: () => undefined });
-    }
+    this._storageEffects.next({
+      kind: soft ? 'soft-logout' : 'hard-logout',
+      accountId: userId,
+      activeAccountId: this._activeUserId(),
+    });
   }
 
   /** Drop a user id from the soft-logged-out set (on re-auth or full removal). */

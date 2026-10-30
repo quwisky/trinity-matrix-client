@@ -4,6 +4,7 @@ export * from './lib/coalesce';
 export * from './lib/project-active-account';
 export * from './lib/session-engine';
 export * from './lib/session-engine.token';
+export * from './lib/session-storage-effects';
 export * from './lib/server-logout-hold';
 export * from './lib/js-sdk/server-support';
 export * from './lib/js-sdk/js-sdk-clients';
