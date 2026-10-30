@@ -4,7 +4,9 @@
 //! The carrier polls a stream again only after it has emitted the previous item, and drops it
 //! after its `complete`. So a [`Tracked`] stream counts an item as delivered on the next poll,
 //! and its close as delivered when it is dropped. Wrap it only in adapters that poll it once per
-//! item they yield, such as `map`: one that buffers would count items before they are emitted.
+//! item they yield and keep it until they complete, such as `map`: one that buffers counts items
+//! before they are emitted, and one that drops it early, such as `chain`, meets a close ticket
+//! before the carrier emits the `complete`.
 
 use std::{
     collections::HashMap,
@@ -43,6 +45,7 @@ impl<T> Default for Subscribers<T> {
 impl<T: Clone> Subscribers<T> {
     /// A new subscriber stream, which starts with `first` when there is one.
     pub fn subscribe(&mut self, first: Option<T>) -> (u64, Tracked<T>) {
+        self.entries.retain(|_, entry| !entry.tx.is_closed());
         let (tx, rx) = mpsc::unbounded_channel();
         let (delivered_tx, delivered) = watch::channel(0);
         let mut entry = Entry {
@@ -275,6 +278,21 @@ mod tests {
     async fn an_undelivered_barrier_gives_up_after_the_limit() {
         let mut subscribers = Subscribers::default();
         let (_, _never_polled) = subscribers.subscribe(None);
-        subscribers.publish(&1).delivered().await;
+        let mut barrier = Box::pin(subscribers.publish(&1).delivered());
+        let early = DELIVERY_LIMIT - Duration::from_millis(1);
+        assert!(
+            timeout(barrier.as_mut(), early).await.is_err(),
+            "still waiting"
+        );
+        barrier.await;
+    }
+
+    #[test]
+    fn subscribe_prunes_closed_subscribers() {
+        let mut subscribers = Subscribers::<u8>::default();
+        let (_, gone) = subscribers.subscribe(None);
+        drop(gone);
+        let (_, _kept) = subscribers.subscribe(None);
+        assert_eq!(subscribers.entries.len(), 1);
     }
 }

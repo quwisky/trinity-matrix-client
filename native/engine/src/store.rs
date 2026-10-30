@@ -1,9 +1,5 @@
 //! Where each account's SQLite stores live: `<dir>/<hashed user id>/<hashed device id>/` under
 //! both the data and the cache dir, so no id reaches a file name.
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the session engine uses it from T2 on")
-)]
 
 use std::{
     fs, io,

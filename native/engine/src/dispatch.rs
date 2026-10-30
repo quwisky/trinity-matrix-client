@@ -78,6 +78,10 @@ methods! {
     ),
     "homeserver.probe" => homeserver::probe(account_id: String),
     "session.session" => session::session(),
+    "session.restorePersisted" => session::restore_persisted(
+        session: session::MatrixSessionDto,
+        activation: session::PersistedAccountActivationDto,
+    ),
     "session.setActive" => session::set_active(account_id: String),
     "session.activateAccount" => session::activate_account(
         account_id: String,

@@ -11,11 +11,10 @@ use tokio::{
 };
 use tracing_subscriber::{EnvFilter, filter::LevelFilter};
 use trinity_engine::{
-    accounts::{Engine, StartAccount},
+    accounts::Engine,
     carrier::CarrierSession,
     config::EngineConfig,
     dispatch::{Args, Stream, stream},
-    failure::EngineResult,
     wire::Fault,
 };
 use zeroize::Zeroizing;
@@ -118,25 +117,12 @@ fn exit(message: &str) -> ! {
 /// The test host's own methods, served before the engine's.
 fn local(engine: &Arc<Engine>, method: &str, args: &[Value]) -> Option<Result<Stream, Fault>> {
     let serve: fn(Arc<Engine>, &mut Args<'_>) -> Result<Stream, Fault> = match method {
-        "testhost.startAccount" => start_account,
         "testhost.echo" => echo,
         "testhost.ticks" => ticks,
         _ => return None,
     };
     let args = &mut Args::new(method, args.to_vec());
     Some(serve(Arc::clone(engine), args).and_then(|stream| args.finish().map(|()| stream)))
-}
-
-/// Emits `{ ok: true, value: null }` once the account's room list has loaded, or the failure.
-fn start_account(engine: Arc<Engine>, args: &mut Args<'_>) -> Result<Stream, Fault> {
-    let start: StartAccount = args.decode()?;
-    Ok(stream(stream::once(async move {
-        let result = match engine.start_account(start).await {
-            Ok(()) => EngineResult::Ok(()),
-            Err(failure) => EngineResult::Err(failure),
-        };
-        Ok(json!(result))
-    })))
 }
 
 fn echo(_: Arc<Engine>, args: &mut Args<'_>) -> Result<Stream, Fault> {

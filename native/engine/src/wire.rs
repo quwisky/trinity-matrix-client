@@ -43,7 +43,7 @@ pub enum Frame {
 }
 
 /// A failure of the engine or the protocol, as opposed to an expected engine failure.
-#[derive(Debug, PartialEq, Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
 pub struct Fault {
@@ -52,7 +52,7 @@ pub struct Fault {
     pub diagnostic: String,
 }
 
-#[derive(Debug, PartialEq, Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export, export_to = DTO)]
 pub enum FaultKind {

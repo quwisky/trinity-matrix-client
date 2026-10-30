@@ -2,6 +2,7 @@
 //! accounts and their lifecycle.
 
 pub(crate) mod restore;
+pub mod runtime;
 
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ use serde_json::{Value, json};
 use ts_rs::TS;
 
 use crate::{
-    accounts::{Engine, stop_runtimes},
+    accounts::Engine,
     dispatch::{Stream, stream},
     failure::EngineResult,
 };
@@ -235,6 +236,17 @@ pub fn session(engine: Arc<Engine>) -> Stream {
     )
 }
 
+pub fn restore_persisted(
+    engine: Arc<Engine>,
+    session: MatrixSessionDto,
+    activation: PersistedAccountActivationDto,
+) -> Stream {
+    stream(stream::once(async move {
+        let result = engine.restore(session, activation).await?;
+        Ok(json!(result))
+    }))
+}
+
 pub fn set_active(engine: Arc<Engine>, account_id: String) -> Stream {
     done(async move { engine.set_active(&account_id).delivered().await })
 }
@@ -247,7 +259,11 @@ pub fn activate_account(
     stream(stream::once(async move {
         let result = match engine.activate_account(&account_id, live_accounts) {
             Ok((barrier, retired)) => {
-                stop_runtimes(retired).await;
+                let teardowns = retired.into_iter().map(|runtime| {
+                    let id = runtime.account_id.clone();
+                    engine.tear_down(&id, Some(runtime), false)
+                });
+                futures_util::future::join_all(teardowns).await;
                 barrier.delivered().await;
                 EngineResult::Ok(())
             }

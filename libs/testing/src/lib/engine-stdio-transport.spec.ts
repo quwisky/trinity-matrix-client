@@ -23,9 +23,9 @@ import {
 import { assertPlainData, EngineFaultError } from '@trinity/util/matrix';
 import {
   StdioTransport,
-  startTesthostAccount,
   testhostBinaryAvailable,
 } from './engine-stdio-transport';
+import { startRustAccount, startTesthostAccount } from './rust-account';
 
 /** Everything `stream` emits from now on. */
 function capture(stream: Readable): () => string {
@@ -128,19 +128,20 @@ describe.skipIf(!testhostBinaryAvailable())('StdioTransport', () => {
     });
     const stdout = capture(transport.child.stdout);
     const stderr = capture(transport.child.stderr);
-    const start = {
-      homeserverUrl: 'http://127.0.0.1:1',
+    const session = {
+      baseUrl: 'http://127.0.0.1:1',
       userId: '@a:b',
       deviceId: 'DEVICE',
       accessToken: 'token',
     };
 
+    // It replies offline: a start does not wait for a sync.
     const result = await lastValueFrom(
-      transport.open('testhost.startAccount', [start]),
+      transport.open('session.restorePersisted', [session, 'activate']),
     );
     await transport.dispose();
 
-    expect(result).toMatchObject({ ok: false, failure: { kind: 'network' } });
+    expect(result).toEqual({ ok: true, value: null });
     expect(stderr()).toContain('DEBUG');
     const lines = stdout().trimEnd().split('\n');
     expect(lines).toHaveLength(2);
@@ -175,12 +176,17 @@ describe('StdioTransport with a stand-in host', () => {
   beforeAll(() => {
     directory = mkdtempSync(join(tmpdir(), 'trinity-testhost-'));
     host = join(directory, 'host.sh');
-    // Answers every open with the line in $FRAME and exits on EOF.
+    // Answers a session.session open with $SNAPSHOT under its id, every other open with
+    // $FRAME, and exits on EOF.
     writeFileSync(
       host,
       String.raw`#!/bin/sh
 while IFS= read -r line; do
-  case "$line" in *'"t":"open"'*) printf '%s\n' "$FRAME" ;; esac
+  id=${'$'}{line#*'"id":'}; id=${'$'}{id%%,*}
+  case "$line" in
+    *'"method":"session.session"'*) printf '%s\n' "$SNAPSHOT" | sed "s/\"id\":0/\"id\":$id/" ;;
+    *'"t":"open"'*) printf '%s\n' "$FRAME" ;;
+  esac
 done
 `,
       { mode: 0o755 },
@@ -225,15 +231,30 @@ done
     );
   });
 
-  it('signs an account in, and fails when the host does not start it', async () => {
+  it('starts an account and waits for its sync, and fails when the host does not start it', async () => {
     vi.stubEnv('TRINITY_ENGINE_TESTHOST', host);
     const user = { userId: '@a:hs', deviceId: 'D', accessToken: 't' };
     vi.stubEnv('FRAME', '{"k":"next","id":1,"v":{"ok":true,"value":null}}');
+    const account = { accountId: '@a:hs', serverSynced: true };
+    const snapshot = (roomsPrepared: boolean) =>
+      JSON.stringify({ accounts: [{ ...account, roomsPrepared }] });
+    vi.stubEnv('SNAPSHOT', `{"k":"next","id":0,"v":${snapshot(true)}}`);
     transport = await startTesthostAccount('https://hs', user);
+
+    vi.stubEnv('SNAPSHOT', `{"k":"next","id":0,"v":${snapshot(false)}}`);
+    const unsynced = StdioTransport.start();
+    await expect(
+      startRustAccount(
+        unsynced,
+        { baseUrl: 'https://hs', ...user },
+        { timeoutMs: 200 },
+      ),
+    ).rejects.toThrow('Timeout');
+    await unsynced.dispose();
 
     vi.stubEnv('FRAME', '{"k":"next","id":1,"v":{"ok":false,"failure":{}}}');
     await expect(startTesthostAccount('https://hs', user)).rejects.toThrow(
-      'testhost.startAccount failed: {"ok":false,"failure":{}}',
+      'session.restorePersisted failed: {"ok":false,"failure":{}}',
     );
   });
 
