@@ -22,6 +22,7 @@ import {
   type VectorDiff,
   applyVectorDiffs,
   assertPlainData,
+  plainEqual,
 } from '@trinity/util/matrix';
 import type {
   CreateRoomRequest,
@@ -59,6 +60,9 @@ export interface RoomListContractSetup {
       localpart: string,
     ): Promise<{ readonly roomId: string; readonly alias: string }>;
     join(roomId: string): Promise<void>;
+    leave(roomId: string): Promise<void>;
+    /** A space whose initial state links `childId` with `via: [serverName]` and nothing else. */
+    createSpace(name: string, childId: string): Promise<string>;
     invite(
       roomId: string,
       userId: string,
@@ -883,6 +887,94 @@ export function defineRoomListEngineContract(
         await roomUntil(roomId, (r) => r.favourite);
 
         expect(seen).toBe(before);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'setSpaceChild and createRoom with a parent show in an open spaceChildLinks() before they reply',
+      async () => {
+        const spaceId = await createRoom({ kind: 'space' });
+        const childId = await createRoom();
+        await roomUntil(spaceId, (r) => r.isSpace);
+        const latest = track(engine.spaceChildLinks(alice, spaceId));
+        await latestUntil(latest, () => true);
+        const link = {
+          via: [context.serverName],
+          suggested: false,
+          order: 'a',
+        };
+
+        const linked = await atReply(
+          engine.setSpaceChild(alice, spaceId, childId, link),
+          latest,
+        );
+        const unlinked = await atReply(
+          engine.setSpaceChild(alice, spaceId, childId, null),
+          latest,
+        );
+        const created = await atReply(
+          engine.createRoom(alice, request({ parentSpaceId: spaceId })),
+          latest,
+        );
+
+        expect(linked.seen).toEqual([{ childId, ...link }]);
+        expect(unlinked.seen).toEqual([]);
+        expect(created.seen).toEqual([
+          {
+            childId: created.value.roomId,
+            via: [context.serverName],
+            suggested: true,
+            order: '',
+          },
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'roomsInCommon drops a room once bob leaves it',
+      async () => {
+        const roomId = await invitedByBob();
+        await context.asAlice.join(roomId);
+        const latest = track(engine.roomsInCommon(alice, bob));
+        await latestUntil(latest, (ids) => ids.includes(roomId));
+
+        await context.asBob.leave(roomId);
+
+        await latestUntil(latest, (ids) => !ids.includes(roomId));
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'spaceChildLinks is empty for a space alice does not know, then shows its links once she joins',
+      async () => {
+        const childId = await context.asBob.createRoom(`bob ${unique()}`);
+        const spaceId = await context.asBob.createSpace(
+          `bob ${unique()}`,
+          childId,
+        );
+        const latest = track(engine.spaceChildLinks(alice, spaceId));
+        await latestUntil(latest, () => true);
+        expect(latest.value).toEqual([]);
+
+        // A real server's invite carries no m.space.child in its stripped state, so the links
+        // arrive with the join; the fake shows them from the invite.
+        await context.asBob.invite(spaceId, alice);
+        await roomUntil(spaceId, (r) => r.membership === 'invite');
+        await context.asAlice.join(spaceId);
+
+        await latestUntil(latest, (links) =>
+          plainEqual(links, [
+            {
+              childId,
+              via: [context.serverName],
+              suggested: false,
+              order: '',
+            },
+          ]),
+        );
       },
       testTimeoutMs,
     );

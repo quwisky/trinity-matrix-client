@@ -136,6 +136,18 @@ export class FakeRoomListEngine implements RoomListEngine {
     },
     join: async (roomId: string): Promise<void> =>
       this.setJoined(roomId, this.bob, true),
+    leave: async (roomId: string): Promise<void> =>
+      this.setJoined(roomId, this.bob, false),
+    createSpace: async (name: string, childId: string): Promise<string> => {
+      const spaceId = this.newRoom(name, this.bob);
+      this.spaces.add(spaceId);
+      this.writeLink(spaceId, childId, {
+        via: [this.serverName],
+        suggested: false,
+        order: '',
+      });
+      return spaceId;
+    },
     invite: async (
       roomId: string,
       userId: string,

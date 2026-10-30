@@ -128,6 +128,35 @@ export async function roomListSynapseFixture(
           {},
         );
       },
+      leave: async (roomId) => {
+        await synapseRequest(
+          baseUrl,
+          bob.accessToken,
+          'POST',
+          `${room(roomId)}/leave`,
+          {},
+        );
+      },
+      createSpace: async (name, childId) =>
+        (
+          await synapseRequest<{ room_id: string }>(
+            baseUrl,
+            bob.accessToken,
+            'POST',
+            '/createRoom',
+            {
+              name,
+              creation_content: { type: 'm.space' },
+              initial_state: [
+                {
+                  type: 'm.space.child',
+                  state_key: childId,
+                  content: { via: [serverName] },
+                },
+              ],
+            },
+          )
+        ).room_id,
       // The invite endpoint takes no is_direct; the member event carries it.
       invite: async (roomId, userId, options) => {
         await synapseRequest(
