@@ -24,3 +24,16 @@ hex = "0.4"
 sha2 = "0.10"
 tempfile = { version = "3", default-features = false }
 zeroize = "1"
+
+# Curated: lints that catch real faults here without the documentation and pedantic groups.
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+allow_attributes_without_reason = "warn"
+as_conversions = "warn"
+dbg_macro = "warn"
+fn_params_excessive_bools = "warn"
+todo = "warn"
+unwrap_used = "warn"

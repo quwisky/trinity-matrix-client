@@ -1,9 +1,12 @@
 //! One live account: its client, its sync, and the tasks that report their status, follow its
 //! session and restart its sync.
-// Without `native` no start builds a runtime, so only the type is used.
-#![cfg_attr(not(feature = "native"), allow(dead_code))]
+#![cfg_attr(
+    not(feature = "native"),
+    allow(dead_code, reason = "without `native` no start builds a runtime")
+)]
 
 use std::{
+    fmt,
     pin::pin,
     sync::{
         Arc, Weak,
@@ -128,6 +131,16 @@ impl AccountRuntime {
     /// Retires the account's leases; `tear_down` calls it before anything else.
     pub(crate) fn set_retired(&self) {
         self.retired.send_replace(true);
+    }
+}
+
+// Only the account: `expiry` holds the restored token.
+impl fmt::Debug for AccountRuntime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AccountRuntime")
+            .field("account_id", &self.account_id)
+            .field("generation", &self.generation)
+            .finish_non_exhaustive()
     }
 }
 

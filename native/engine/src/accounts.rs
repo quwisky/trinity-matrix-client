@@ -1,6 +1,6 @@
 //! The engine and its signed-in accounts.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use futures_util::{FutureExt, future::Shared};
 use matrix_sdk::{
@@ -41,6 +41,15 @@ pub struct Engine {
     teardowns: Mutex<HashMap<String, Teardown>>,
     /// For the requests the engines send themselves rather than through the SDK.
     raw: reqwest::Client,
+}
+
+// Only the config: the session state holds every account's tokens.
+impl fmt::Debug for Engine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Engine")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
 }
 
 pub(crate) type Teardown = Shared<BoxFuture<'static, ()>>;
@@ -92,8 +101,10 @@ pub(crate) struct Registry {
     active: Option<String>,
     soft_logged_out: Vec<String>,
     /// Engine-wide, one more for each registered client; `stop` keeps it.
-    // Without `native` no start registers a client.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
     generation: u32,
 }
 
@@ -271,7 +282,10 @@ impl Engine {
     }
 
     /// Writes a runtime's status while `generation` is still the account's; `false` once not.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
     pub(crate) fn update_status(
         &self,
         account_id: &str,
@@ -421,7 +435,7 @@ impl Tokens {
 }
 
 impl Registry {
-    pub fn snapshot(&self) -> SessionSnapshotDto {
+    pub(crate) fn snapshot(&self) -> SessionSnapshotDto {
         SessionSnapshotDto {
             active_account_id: self.active.clone(),
             accounts: self.entries.clone(),
@@ -429,7 +443,7 @@ impl Registry {
         }
     }
 
-    pub fn is_live(&self, account_id: &str) -> bool {
+    pub(crate) fn is_live(&self, account_id: &str) -> bool {
         self.entries
             .iter()
             .any(|entry| entry.account_id == account_id)
@@ -437,8 +451,11 @@ impl Registry {
 
     /// Registers a new client for `account_id`: its entry moves to the end with the next
     /// generation, and the account is no longer soft-logged-out.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
-    pub fn register(&mut self, account_id: &str, device_id: &str) -> u32 {
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
+    pub(crate) fn register(&mut self, account_id: &str, device_id: &str) -> u32 {
         self.entries.retain(|entry| entry.account_id != account_id);
         self.generation += 1;
         self.entries.push(SessionAccountStatusDto {
@@ -458,7 +475,7 @@ impl Registry {
     }
 
     /// Drops the account's entry, repointing the active account to the first remaining one.
-    pub fn retire(&mut self, account_id: &str) -> bool {
+    pub(crate) fn retire(&mut self, account_id: &str) -> bool {
         if !self.is_live(account_id) {
             return false;
         }
@@ -470,7 +487,7 @@ impl Registry {
     }
 
     /// Makes a live account active; any other is ignored.
-    pub fn set_active(&mut self, account_id: &str) -> bool {
+    pub(crate) fn set_active(&mut self, account_id: &str) -> bool {
         let live = self.is_live(account_id);
         if live {
             self.active = Some(account_id.into());
@@ -478,30 +495,33 @@ impl Registry {
         live
     }
 
-    pub fn mark_soft_logged_out(&mut self, account_id: &str) {
+    pub(crate) fn mark_soft_logged_out(&mut self, account_id: &str) {
         if !self.is_soft_logged_out(account_id) {
             self.soft_logged_out.push(account_id.into());
         }
     }
 
-    pub fn is_soft_logged_out(&self, account_id: &str) -> bool {
+    pub(crate) fn is_soft_logged_out(&self, account_id: &str) -> bool {
         self.soft_logged_out.iter().any(|id| id == account_id)
     }
 
-    pub fn clear_soft_logged_out(&mut self, account_id: &str) {
+    pub(crate) fn clear_soft_logged_out(&mut self, account_id: &str) {
         self.soft_logged_out.retain(|id| id != account_id);
     }
 
     /// Forgets every account but keeps counting generations.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.entries.clear();
         self.active = None;
         self.soft_logged_out.clear();
     }
 
     /// Changes the status of the account's entry while it is still that generation's.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
-    pub fn update_status(
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
+    pub(crate) fn update_status(
         &mut self,
         account_id: &str,
         generation: u32,

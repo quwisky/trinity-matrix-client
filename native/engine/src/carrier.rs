@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashMap,
+    fmt,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::Arc,
 };
@@ -110,6 +111,14 @@ impl CarrierSession {
         for (_, (_, task)) in self.live.lock().drain() {
             task.abort();
         }
+    }
+}
+
+impl fmt::Debug for CarrierSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CarrierSession")
+            .field("serial", &self.serial)
+            .finish_non_exhaustive()
     }
 }
 

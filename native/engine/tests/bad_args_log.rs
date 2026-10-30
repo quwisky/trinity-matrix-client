@@ -30,7 +30,8 @@ struct Log(Arc<Mutex<Vec<u8>>>);
 
 impl io::Write for Log {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        let mut log = (self.0.lock()).map_err(|_| io::Error::other("the log lock is poisoned"))?;
+        log.extend_from_slice(buf);
         Ok(buf.len())
     }
 

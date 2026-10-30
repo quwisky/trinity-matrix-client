@@ -1,7 +1,13 @@
 //! Restoring a persisted session: its client's settings, the start that concurrent restores of
 //! one account join, and what a failed start means.
-// Without `native` there is no store to open, so the start and its settings go unused.
-#![cfg_attr(not(feature = "native"), allow(dead_code, unused_imports))]
+#![cfg_attr(
+    not(feature = "native"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "without `native` there is no store to open, so the start goes unused"
+    )
+)]
 
 use std::{
     mem,
@@ -479,7 +485,8 @@ fn start_fault(diagnostic: &str) -> Fault {
     Fault::new(FaultCode::StartFailed, diagnostic)
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(test)]
+#[cfg(feature = "native")]
 mod tests {
     use std::fs;
 

@@ -1,6 +1,6 @@
 //! Routes an `"engine.member"` call with positional args to the engine method that serves it.
 
-use std::any::type_name;
+use std::{any::type_name, fmt};
 
 use futures_util::stream;
 use matrix_sdk::{SendOutsideWasm, executor::spawn};
@@ -57,7 +57,7 @@ pub fn detached<T: Serialize + SendOutsideWasm + 'static>(
 /// takes the engine, then the decoded positional args, and returns a [`Stream`].
 macro_rules! methods {
     ($($name:literal => $($serve:ident)::+ ( $($arg:ident : $ty:ty),* $(,)? )),* $(,)?) => {
-        pub fn dispatch(
+        pub(crate) fn dispatch(
             engine: &std::sync::Arc<$crate::accounts::Engine>,
             method: &str,
             args: Vec<serde_json::Value>,
@@ -200,6 +200,16 @@ impl<'a> Args<'a> {
 
     fn bad(&self, detail: String) -> Fault {
         Fault::new(FaultCode::BadArgs, format!("{}: {detail}", self.method))
+    }
+}
+
+// The method and the position only: the values are args.
+impl fmt::Debug for Args<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Args")
+            .field("method", &self.method)
+            .field("position", &self.position)
+            .finish_non_exhaustive()
     }
 }
 

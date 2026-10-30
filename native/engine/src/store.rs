@@ -21,7 +21,7 @@ pub(crate) struct StorePaths {
 }
 
 impl StorePaths {
-    pub fn new(config: &EngineConfig, user_id: &str, device_id: &str) -> Self {
+    pub(crate) fn new(config: &EngineConfig, user_id: &str, device_id: &str) -> Self {
         let device = |root: &Path| root.join(hashed(user_id)).join(hashed(device_id));
         Self {
             data: device(&config.data_dir),

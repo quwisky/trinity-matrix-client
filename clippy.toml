@@ -1,3 +1,4 @@
+allow-unwrap-in-tests = true
 disallowed-methods = [
   { path = "matrix_sdk::encryption::recovery::Recovery::reset_identity", reason = "Never call it: it deletes the key backup and secret storage in its own order. Reset with reset_cross_signing and its CrossSigningResetHandle, ordered by TypeScript." },
   { path = "matrix_sdk::encryption::recovery::Recovery::recover_and_fix_backup", reason = "Never call it: it can create a new key backup. Call open_secret_store, then import_secrets." },
