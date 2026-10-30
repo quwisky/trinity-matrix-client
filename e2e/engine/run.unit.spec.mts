@@ -15,6 +15,7 @@ describe('buildContractCommand', () => {
     expect(command.runs.map(({ project }) => project)).toEqual([
       'data-access-homeserver',
       'data-access-discovery',
+      'data-access-matrix-client',
     ]);
     // A Rust contract is the js-sdk contract run on another engine.
     expect(LIBS).toEqual(expect.arrayContaining([...RUST_LIBS]));
