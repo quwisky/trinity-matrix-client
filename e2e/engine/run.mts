@@ -33,6 +33,7 @@ const LIBS = [
   'data-access-trust',
   'data-access-contact-addresses',
   'data-access-auth',
+  'data-access-identity',
 ] as const;
 
 export async function runEngineContract(
