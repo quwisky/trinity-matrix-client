@@ -40,3 +40,50 @@ export async function registerSynapseUser(
     password,
   };
 }
+
+/** Waits until a fresh Synapse has finished the background updates that drop users registered meanwhile. Node only, for tests. */
+export async function waitForSynapseBackgroundUpdates(
+  baseUrl: string,
+  secret: string,
+): Promise<void> {
+  const admin = await registerSynapseUser(
+    baseUrl,
+    secret,
+    `admin-${Date.now().toString(36)}`,
+    true,
+  );
+  for (let i = 0; i < 240; i++) {
+    const res = await fetch(
+      `${baseUrl}/_synapse/admin/v1/background_updates/status`,
+      { headers: { authorization: `Bearer ${admin.accessToken}` } },
+    );
+    if (!res.ok)
+      throw new Error(`Synapse background update status failed: ${res.status}`);
+    const { current_updates } = (await res.json()) as {
+      current_updates: Record<string, unknown>;
+    };
+    if (Object.keys(current_updates).length === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error('Synapse background updates did not finish');
+}
+
+/** A Client-Server API call (`/_matrix/client/v3` + `path`) as `accessToken`, over plain HTTP; throws on a non-2xx answer. */
+export async function synapseRequest<T>(
+  baseUrl: string,
+  accessToken: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(`${baseUrl}/_matrix/client/v3${path}`, {
+    method,
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': 'application/json',
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!res.ok) throw new Error(`${method} ${path} failed: ${res.status}`);
+  return (await res.json()) as T;
+}
