@@ -1014,7 +1014,7 @@ describe('AuthService', () => {
       );
     });
     const establish = () =>
-      firstValueFrom(auth.establishDeviceGrant('https://hs', session));
+      firstValueFrom(auth.establishDeviceGrant('https://hs', session, 'hs'));
 
     it('establishes an OAuth session that has no redirect URI, keeping other accounts', async () => {
       const issue = vi.spyOn(AuthenticatedAccountGrant, 'issue');
@@ -1050,6 +1050,44 @@ describe('AuthService', () => {
       );
 
       expect(gate.allowed).toHaveBeenCalled();
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).not.toHaveBeenCalled();
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).toHaveBeenCalledWith('https://hs', binding, {
+        accessToken: 'qr-atok',
+        refreshToken: 'qr-rtok',
+      });
+    });
+
+    it('accepts an account on the server entered, without asking its well-known', async () => {
+      const discovery = TestBed.inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
+
+      await expect(
+        firstValueFrom(
+          auth.establishDeviceGrant(
+            'https://hs',
+            { ...session, user_id: '@me:example.org' },
+            'example.org',
+          ),
+        ),
+      ).resolves.toMatchObject({ kind: 'ready' });
+
+      expect(discovery.lookUp).not.toHaveBeenCalled();
+    });
+
+    it('refuses an account on another server than the one entered, and hands the tokens back', async () => {
+      await expect(
+        firstValueFrom(
+          auth.establishDeviceGrant(
+            'https://hs',
+            { ...session, user_id: '@me:other.example' },
+            'example.org',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(UnacceptableAccountError);
+
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();

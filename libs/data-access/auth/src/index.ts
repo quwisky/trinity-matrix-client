@@ -40,6 +40,7 @@ export { QrSignInAvailability } from './lib/qr-sign-in/qr-sign-in-availability.s
 export { QrSignInService } from './lib/qr-sign-in/qr-sign-in.service';
 export type {
   ExistingDeviceLink,
+  NewDeviceQrSignIn,
   QrDeviceLinker,
 } from './lib/qr-sign-in/qr-sign-in.service';
 export {

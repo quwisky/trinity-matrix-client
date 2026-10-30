@@ -43,6 +43,7 @@ import {
 import {
   ReauthAccountMismatchError,
   accountEstablishment,
+  refusedBeforeSaving,
   verifyAccountServer,
   type AuthenticatedSessionResponse,
   type LoginMode,
@@ -243,13 +244,22 @@ export class AuthService {
 
   /**
    * Establish a QR-linked new device's OAuth session, keeping the other signed-in accounts.
-   * It passes the same checks as every sign-in, and hands the session back when refused.
+   * It passes the same checks as every sign-in, the account's server checked against
+   * `serverName`, the server entered, and hands the session back when refused.
    */
   establishDeviceGrant(
     homeserverUrl: string,
     response: AuthenticatedSessionResponse,
+    serverName: string,
   ): Observable<AccountEstablishmentOutcome> {
-    return this.establish(homeserverUrl, response, 'add');
+    return this.establish(
+      homeserverUrl,
+      response,
+      'add',
+      undefined,
+      undefined,
+      serverName,
+    );
   }
 
   /**
@@ -438,15 +448,7 @@ export class AuthService {
         ),
       ),
       tap((outcome) => {
-        // Refused before anything was saved: nothing will ever use this session.
-        if (
-          device.isNew &&
-          (outcome.kind === 'transition-in-progress' ||
-            (outcome.kind === 'failed' &&
-              (outcome.failure === 'homeserver-mismatch' ||
-                outcome.failure === 'account-already-stored' ||
-                outcome.failure === 'unprotected-storage-declined')))
-        ) {
+        if (device.isNew && refusedBeforeSaving(outcome)) {
           this.signOutNewDevice(baseUrl, response);
         }
       }),

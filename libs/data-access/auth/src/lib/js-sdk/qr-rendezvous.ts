@@ -6,7 +6,6 @@ import {
   type MatrixClient,
   type ValidatedAuthMetadata,
 } from 'matrix-js-sdk';
-import type { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
 import {
   ClientRendezvousFailureReason,
   MSC4108FailureReason,
@@ -21,16 +20,17 @@ import {
   engineFail,
   engineOk,
   preloadCryptoWasm,
+  verifiedEndpoints,
   type EngineResult,
 } from '@trinity/util/matrix';
 import { Observable, defer, firstValueFrom, of, type Subscriber } from 'rxjs';
 import type {
-  QrLinkAnswer,
   QrLinkUpdate,
   QrSignInAnswer,
   QrSignInUpdate,
 } from '../auth-engine';
 import type { AuthMetadata } from '../auth-metadata';
+import { revokeToken } from '../oauth-http';
 import {
   qrSignInFailureOf,
   type QrSignInFailure,
@@ -50,15 +50,10 @@ const QR_FLOW_GONE = engineFail({
 });
 
 export type QrRendezvousFlow = MSC4108SignInWithQR;
-type LinkedSecrets = Parameters<
-  NonNullable<CryptoApi['importSecretsBundle']>
->[0];
 /** What a paused flow waits for, keyed by the pause. */
 interface Answers {
-  server: void;
-  grant: string;
-  established: string;
-  'check-code': QrLinkAnswer;
+  code: string;
+  approve: null;
 }
 
 /** Builds the SDK's MSC4108 objects; specs replace it with fakes. */
@@ -155,57 +150,49 @@ export class JsSdkQrRendezvous {
           qr: toBase64(required(flow.code)),
           expiresAt: codeExpiry(expires),
         });
-        const reported = await run.step(flow.negotiateProtocols());
-        // The other device's account must be on the server entered before any grant is asked for.
-        await run.pause('server', {
-          kind: 'server-reported',
+        // The server the other device reports is not checked: TypeScript checks the account
+        // itself once `done` hands the session over.
+        await run.step(flow.negotiateProtocols());
+        const typed = await run.pause('code', {
+          kind: 'enter-check-code',
           flowId: run.id,
-          serverName: reported.serverName ?? null,
         });
-        run.emit({
-          kind: 'confirm-check-code',
-          code: required(flow.checkCode),
-        });
+        // Security: no grant is asked for until the person types the code the other device
+        // shows. A wrong code may mean someone else holds the channel, so it ends the flow.
+        if (!sameCheckCode(typed, required(flow.checkCode))) {
+          await flow
+            .cancel(ClientRendezvousFailureReason.InsecureChannelDetected)
+            .catch(() => undefined);
+          run.fail(ClientRendezvousFailureReason.InsecureChannelDetected, true);
+          return;
+        }
         const deviceId = newDeviceId();
         // Only the fields the SDK reads; TypeScript verified the endpoints.
         const metadata = request.grantMetadata as ValidatedAuthMetadata;
-        let clientId = request.clientId;
+        const { clientId } = request;
         let userCode: string | undefined;
-        for (;;) {
-          try {
-            ({ userCode } = await run.step(
-              flow.deviceAuthorizationGrant({ metadata, clientId, deviceId }),
-            ));
-            break;
-          } catch (error: unknown) {
-            if (!isClientRejection(error)) throw error;
-            // Refused before anything was sent to the other device, so the grant can be
-            // asked for again on the same flow, with the client TypeScript registers.
-            clientId = await run.pause('grant', {
-              kind: 'client-rejected',
-              flowId: run.id,
-            });
-          }
+        try {
+          ({ userCode } = await run.step(
+            flow.deviceAuthorizationGrant({ metadata, clientId, deviceId }),
+          ));
+        } catch (error: unknown) {
+          if (!isClientRejection(error)) throw error;
+          run.finish({ kind: 'client-rejected' });
+          return;
         }
         run.emit({
           kind: 'waiting-for-approval',
           userCode: required(userCode),
         });
         const tokens = required(
-          await run.step(flow.completeLoginOnNewDevice({ clientId })),
+          await flow.completeLoginOnNewDevice({ clientId }),
         );
         const issuedAt = Date.now();
-        run.emit({
-          kind: 'signing-in',
-          tokens: {
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token ?? null,
-            accessTokenExpiresAt:
-              tokens.expires_in === undefined
-                ? null
-                : issuedAt + tokens.expires_in * 1000,
-          },
-        });
+        // Security: until `done` hands the session over, ending the flow revokes them.
+        run.discardUnlessDelivered(() =>
+          revokeGrant(request.grantMetadata, clientId, tokens),
+        );
+        run.emit({ kind: 'signing-in' });
         const who = await run.step(
           createClient({
             baseUrl,
@@ -215,30 +202,29 @@ export class JsSdkQrRendezvous {
         if (!who.device_id) {
           throw new Error('The provider returned no device for this session.');
         }
-        // The device must exist before shareSecrets: the existing device sends the secrets
-        // only once it sees the new device on the server, and gives up after 10 s.
-        const accountId = await run.pause('established', {
-          kind: 'signed-in',
-          flowId: run.id,
-          userId: who.user_id,
-          deviceId: who.device_id,
-        });
-        // The account is stored and running, so a failed secrets stage leaves it signed in
-        // but unverified, for the app's usual verification prompt.
-        run.failAs = { kind: 'done', verified: false };
+        const done = {
+          kind: 'done',
+          session: {
+            homeserverUrl: baseUrl,
+            userId: who.user_id,
+            deviceId: who.device_id,
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token ?? null,
+            accessTokenExpiresAt:
+              tokens.expires_in === undefined
+                ? null
+                : issuedAt + tokens.expires_in * 1000,
+          },
+        } as const;
+        // The session exists, so a failed secrets stage still hands it over, unverified.
+        run.failAs = done;
+        // whoami created the device, which the existing device waits for before it sends.
         const { secrets } = await run.step(flow.shareSecrets());
-        // Security: import only into the session the grant confirmed, the same account on the
-        // same device, read now: it may have been replaced while the secrets were on their way.
-        const client =
-          accountId === who.user_id ? this.clients.clientFor(accountId) : null;
-        const confirmed =
-          client?.getUserId() === who.user_id &&
-          client.getDeviceId() === who.device_id;
-        const verified =
-          secrets && client && confirmed
-            ? await run.step(importLinkedSecrets(client, secrets))
-            : false;
-        run.finish({ kind: 'done', verified });
+        // Security: held for this user and device only; the start of that session takes them.
+        if (secrets) {
+          this.clients.holdLinkedSecrets(who.user_id, who.device_id, secrets);
+        }
+        run.finish(done);
       });
       return () => run.teardown();
     });
@@ -248,16 +234,7 @@ export class JsSdkQrRendezvous {
     flowId: string,
     answer: QrSignInAnswer,
   ): Observable<EngineResult<null>> {
-    return answer.kind === 'retry-grant'
-      ? this.answer(flowId, 'grant', answer.clientId)
-      : this.answer(flowId, 'server', undefined);
-  }
-
-  continueQrSignIn(
-    flowId: string,
-    accountId: string,
-  ): Observable<EngineResult<null>> {
-    return this.answer(flowId, 'established', accountId);
+    return this.answer(flowId, 'code', answer.checkCode);
   }
 
   linkDeviceWithQr(accountId: string, qr: string): Observable<QrLinkUpdate> {
@@ -282,47 +259,21 @@ export class JsSdkQrRendezvous {
         // Only the existing device can send a decline, and only over a connected channel.
         // The new device receives it as user_cancelled, which it reports as declined.
         run.declineOnCancel = true;
-        // Security: nothing beyond the protocol offer leaves this device until the user
-        // confirms that both devices show the same check code. A mismatch may mean a
-        // man-in-the-middle holds the channel, so it ends the link before any secret is sent.
-        const { match, identityHeld } = await run.pause('check-code', {
-          kind: 'confirm-check-code',
-          flowId: run.id,
-          code: required(flow.checkCode),
-        });
-        if (!match) {
-          await flow.declineLoginOnExistingDevice().catch(() => undefined);
-          await flow
-            .cancel(ClientRendezvousFailureReason.InsecureChannelDetected)
-            .catch(() => undefined);
-          run.fail(ClientRendezvousFailureReason.InsecureChannelDetected, true);
-          return;
-        }
-        // Security: share only the identity the server publishes. Checked before the grant, so
-        // a refusal leaves no approved device behind; it fails as `unknown` and, through
-        // teardown, declines and cancels on the new device.
-        if (!identityHeld) {
-          throw new Error(
-            'This device does not hold the published cross-signing identity.',
-          );
-        }
-        // From here a cancel must reach the session at once: shareSecrets sends the secrets
-        // unless the session is already cancelled, and a decline PUT first could let them out.
-        run.declineOnCancel = false;
+        run.emit({ kind: 'check-code', code: required(flow.checkCode) });
+        // Receives the new device's grant request; it sends only refusals.
         const { verificationUri } = await run.step(
           flow.deviceAuthorizationGrant(),
         );
-        // Security: the peer chooses this link, so open it only on the account's own server.
-        if (
-          !(await run.step(onAccountServer(client, required(verificationUri))))
-        ) {
-          run.fail(ClientRendezvousFailureReason.InsecureChannelDetected);
-          return;
-        }
-        run.emit({
-          kind: 'approve-in-browser',
+        // Security: nothing beyond the protocol offer leaves this device until TypeScript has
+        // checked the approval link and the identity and the person has continued.
+        await run.pause('approve', {
+          kind: 'approve',
+          flowId: run.id,
           verificationUri: required(verificationUri),
         });
+        // From here a cancel must reach the session at once: shareSecrets sends the secrets
+        // unless the session is already cancelled, and a decline PUT first could let them out.
+        run.declineOnCancel = false;
         run.emit({ kind: 'sharing-secrets' });
         await run.step(flow.shareSecrets());
         run.finish({ kind: 'done' });
@@ -331,11 +282,8 @@ export class JsSdkQrRendezvous {
     });
   }
 
-  confirmQrLink(
-    flowId: string,
-    answer: QrLinkAnswer,
-  ): Observable<EngineResult<null>> {
-    return this.answer(flowId, 'check-code', answer);
+  confirmQrLink(flowId: string): Observable<EngineResult<null>> {
+    return this.answer(flowId, 'approve', null);
   }
 
   private track<S extends { kind: string }>(run: FlowRun<S>): FlowRun<S> {
@@ -372,6 +320,7 @@ class FlowRun<S extends { kind: string }> {
   private channelEnded = false;
   private released = false;
   private waiting?: { pause: string; resolve: (value: never) => void };
+  private discard?: () => void;
 
   /** Send a decline before cancelling, so the other device learns the user stopped. */
   declineOnCancel = false;
@@ -414,6 +363,15 @@ class FlowRun<S extends { kind: string }> {
     return value;
   }
 
+  /** Runs `discard` if the flow ends without delivering its outcome, or now if it has ended. */
+  discardUnlessDelivered(discard: () => void): void {
+    if (this.ended) {
+      discard();
+      throw STOPPED;
+    }
+    this.discard = discard;
+  }
+
   /** Emits `state` and resolves with the first answer to `pause`; other answers are refused. */
   pause<K extends keyof Answers>(pause: K, state: S): Promise<Answers[K]> {
     const answer = new Promise<Answers[K]>(
@@ -437,6 +395,7 @@ class FlowRun<S extends { kind: string }> {
 
   finish(state: S): void {
     this.finished = true;
+    this.discard = undefined;
     this.emit(state);
     this.subscriber.complete();
   }
@@ -445,6 +404,7 @@ class FlowRun<S extends { kind: string }> {
     if (this.ended) return;
     this.channelEnded = channelEnded || error instanceof RendezvousError;
     if (this.failAs) {
+      this.discard = undefined;
       this.subscriber.next(this.failAs);
       this.subscriber.complete();
       return;
@@ -465,6 +425,8 @@ class FlowRun<S extends { kind: string }> {
   teardown(): void {
     this.ended = true;
     this.waiting = undefined;
+    this.discard?.();
+    this.discard = undefined;
     this.onTeardown?.();
     void this.release();
   }
@@ -485,32 +447,6 @@ class FlowRun<S extends { kind: string }> {
   }
 }
 
-/**
- * Imports the shared secrets, cross-signs this device and enables key backup. Resolves
- * whether the device ended cross-signed; errors are dropped unlogged, as they can quote the
- * secrets.
- */
-async function importLinkedSecrets(
-  client: MatrixClient,
-  secrets: LinkedSecrets,
-): Promise<boolean> {
-  try {
-    const crypto = client.getCrypto();
-    const deviceId = client.getDeviceId();
-    const userId = client.getUserId();
-    if (!crypto?.importSecretsBundle || !deviceId || !userId) return false;
-    await crypto.importSecretsBundle(secrets);
-    await crypto.crossSignDevice(deviceId);
-    // Best effort: backup does not decide whether the device is verified.
-    await crypto.checkKeyBackupAndEnable().catch(() => undefined);
-    if (!(await crypto.isCrossSigningReady())) return false;
-    const status = await crypto.getDeviceVerificationStatus(userId, deviceId);
-    return status?.crossSigningVerified === true;
-  } catch {
-    return false;
-  }
-}
-
 /** The SDK's error for an OAuth error answer from the device-authorization endpoint. */
 function isClientRejection(error: unknown): boolean {
   return (
@@ -519,27 +455,42 @@ function isClientRejection(error: unknown): boolean {
   );
 }
 
-/** Whether a peer-sent link opens on the account's OAuth issuer or device endpoint. */
-async function onAccountServer(
-  client: MatrixClient,
-  uri: string,
-): Promise<boolean> {
-  const metadata = await client.getAuthMetadata();
-  const origin = originOf(uri);
+/** Whether the two digits typed are the check code shown, which may lack its leading zero. */
+function sameCheckCode(typed: unknown, shown: string): boolean {
   return (
-    origin !== null &&
-    [metadata.issuer, metadata.device_authorization_endpoint].some(
-      (url) => url !== undefined && originOf(url) === origin,
-    )
+    typeof typed === 'string' &&
+    /^\d{2}$/.test(typed) &&
+    /^\d{1,2}$/.test(shown) &&
+    Number(typed) === Number(shown)
   );
 }
 
-function originOf(url: string): string | null {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
+/** Revokes a grant's tokens at the revocation endpoint the issuer confirms. Best effort. */
+function revokeGrant(
+  metadata: AuthMetadata,
+  clientId: string,
+  tokens: { access_token: string; refresh_token?: string },
+): void {
+  void verifiedEndpoints(metadata)
+    .then(({ revocationEndpoint }) => {
+      if (!revocationEndpoint) return;
+      return Promise.all([
+        revokeToken(
+          revocationEndpoint,
+          clientId,
+          tokens.access_token,
+          'access_token',
+        ),
+        tokens.refresh_token &&
+          revokeToken(
+            revocationEndpoint,
+            clientId,
+            tokens.refresh_token,
+            'refresh_token',
+          ),
+      ]);
+    })
+    .catch(() => undefined);
 }
 
 function codeExpiry(expires: string | null): number {

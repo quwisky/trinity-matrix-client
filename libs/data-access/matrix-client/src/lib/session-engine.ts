@@ -125,6 +125,10 @@ export interface SessionEngine {
   session(): Observable<SessionSnapshot>;
   /** The live client's token on subscribe and after each change, or null when none is live. */
   accessToken(accountId: string): Observable<SessionAccessToken | null>;
+  /**
+   * Starts a persisted account. It also adopts a pending QR session for the same user and
+   * device, and the secrets that session received.
+   */
   restorePersisted(
     session: MatrixSession,
     activation: PersistedAccountActivation,
@@ -167,7 +171,10 @@ export interface SessionEngine {
   ): Observable<EngineResult<null>>;
   /** Ends the live session at its homeserver, or at its provider for OAuth, and stops it. */
   logoutRemote(accountId: string): Observable<EngineResult<null>>;
-  /** Ends a session that is not live the same way, without starting it or saving a refresh. */
+  /**
+   * Ends a session that is not live the same way, without starting it or saving a refresh. It
+   * also ends and forgets a pending QR session for that user and device.
+   */
   logoutSession(session: MatrixSession): Observable<EngineResult<null>>;
   /**
    * The live client's tokens, or null when none is live. Only for credentials that must outlive

@@ -2513,4 +2513,105 @@ describe('MatrixClientService', () => {
       expect(svc.isInitialized).toBe(true);
     });
   });
+
+  describe('linked secrets', () => {
+    const BUNDLE = { cross_signing: { master_key: 'SECRET-KEY-MATERIAL' } };
+
+    function clientWithCrypto(calls: string[] = []) {
+      const crypto = {
+        importSecretsBundle: vi.fn(async () => {
+          calls.push('import');
+        }),
+        crossSignDevice: vi.fn().mockResolvedValue(undefined),
+        checkKeyBackupAndEnable: vi.fn().mockResolvedValue(null),
+        isCrossSigningReady: vi.fn().mockResolvedValue(true),
+        getDeviceVerificationStatus: vi
+          .fn()
+          .mockResolvedValue({ crossSigningVerified: true }),
+      };
+      const client = {
+        ...fakeClient(),
+        getUserId: vi.fn().mockReturnValue(SESSION.userId),
+        getCrypto: vi.fn().mockReturnValue(crypto),
+        startClient: vi.fn(async () => {
+          calls.push('startClient');
+        }),
+      };
+      return { client, crypto };
+    }
+
+    it('imports a held bundle after startClient for the same user and device', async () => {
+      const calls: string[] = [];
+      const { client, crypto } = clientWithCrypto(calls);
+      const { svc } = setup(client);
+      svc.holdLinkedSecrets(SESSION.userId, SESSION.deviceId, BUNDLE);
+
+      await firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+
+      expect(calls).toEqual(['startClient', 'import']);
+      expect(crypto.importSecretsBundle).toHaveBeenCalledWith(BUNDLE);
+      expect(crypto.crossSignDevice).toHaveBeenCalledWith(SESSION.deviceId);
+      expect(crypto.checkKeyBackupAndEnable).toHaveBeenCalledOnce();
+    });
+
+    it('never imports a bundle held for another device or user', async () => {
+      const { client, crypto } = clientWithCrypto();
+      const { svc } = setup(client);
+      svc.holdLinkedSecrets(SESSION.userId, 'OTHER-DEVICE', BUNDLE);
+      svc.holdLinkedSecrets('@other:hs', SESSION.deviceId, BUNDLE);
+
+      await firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+
+      expect(crypto.importSecretsBundle).not.toHaveBeenCalled();
+    });
+
+    it('takes a held bundle once', async () => {
+      const { client, crypto } = clientWithCrypto();
+      const { svc } = setup(client);
+      svc.holdLinkedSecrets(SESSION.userId, SESSION.deviceId, BUNDLE);
+
+      await firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+      await firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+
+      expect(crypto.importSecretsBundle).toHaveBeenCalledOnce();
+    });
+
+    it('imports nothing once the bundle is dropped', async () => {
+      const { client, crypto } = clientWithCrypto();
+      const { svc } = setup(client);
+      svc.holdLinkedSecrets(SESSION.userId, SESSION.deviceId, BUNDLE);
+
+      svc.dropLinkedSecrets(SESSION.userId, SESSION.deviceId);
+      await firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+
+      expect(crypto.importSecretsBundle).not.toHaveBeenCalled();
+    });
+
+    it("an import failure doesn't fail the start or log the bundle", async () => {
+      const { client, crypto } = clientWithCrypto();
+      crypto.importSecretsBundle.mockRejectedValue(
+        new Error(`rejected ${JSON.stringify(BUNDLE)}`),
+      );
+      const logged = [
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined),
+        vi.spyOn(console, 'error').mockImplementation(() => undefined),
+        vi.spyOn(console, 'log').mockImplementation(() => undefined),
+      ];
+      try {
+        const { svc } = setup(client);
+        svc.holdLinkedSecrets(SESSION.userId, SESSION.deviceId, BUNDLE);
+
+        await expect(
+          firstValueFrom(svc.restorePersisted(SESSION, 'activate')),
+        ).resolves.toEqual({ kind: 'ready' });
+
+        expect(svc.instance).toBe(client);
+        const diagnostics = logged.flatMap((spy) => spy.mock.calls);
+        expect(diagnostics).not.toHaveLength(0);
+        expect(JSON.stringify(diagnostics)).not.toContain('SECRET-KEY');
+      } finally {
+        for (const spy of logged) spy.mockRestore();
+      }
+    });
+  });
 });
