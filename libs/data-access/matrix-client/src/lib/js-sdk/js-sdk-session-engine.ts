@@ -37,6 +37,7 @@ import type {
   SessionCredentials,
   SessionEngine,
   SessionSnapshot,
+  SessionStorageEffect,
   SessionSyncState,
 } from '../session-engine';
 import type { ServerLogoutHold } from '../server-logout-hold';
@@ -66,7 +67,8 @@ const ACCOUNT_NOT_LIVE: EngineFailure = {
 /**
  * A failed request as a result: a UIA challenge, a missing endpoint (`M_UNRECOGNIZED`, or a
  * Matrix 404/405 that is not `M_NOT_FOUND`), a policy refusal (`M_FORBIDDEN`), or else
- * `request-failed`. Only the allowlisted diagnostic crosses.
+ * `request-failed`, marked `session-refresh` when a token refresh failed first. Only the
+ * allowlisted diagnostic crosses.
  */
 function requestFailure(error: unknown): EngineResult<never> {
   const { kind, diagnostic } = describeMatrixRequestFailure(error);
@@ -80,7 +82,14 @@ function requestFailure(error: unknown): EngineResult<never> {
     });
   }
   if (!(error instanceof MatrixError)) {
-    return engineFail({ kind, diagnostic, code: 'request-failed' });
+    return engineFail({
+      kind,
+      diagnostic,
+      code: 'request-failed',
+      ...(diagnostic.errorName === 'TokenRefreshError'
+        ? { params: { cause: 'session-refresh' as const } }
+        : {}),
+    });
   }
   const missing =
     error.errcode === 'M_UNRECOGNIZED' ||
@@ -168,6 +177,10 @@ export class JsSdkSessionEngine implements SessionEngine {
         this.snapshots$.pipe(map(() => this.snapshot())),
       ),
     ).pipe(distinctUntilChanged<SessionSnapshot>(plainEqual));
+  }
+
+  storageEffects(): Observable<SessionStorageEffect> {
+    return this.svc.storageEffects;
   }
 
   accessToken(accountId: string): Observable<SessionAccessToken | null> {

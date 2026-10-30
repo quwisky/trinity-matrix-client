@@ -9,6 +9,7 @@ import {
   HttpApiEvent,
   MatrixError,
   SyncState,
+  TokenRefreshError,
   createClient,
 } from 'matrix-js-sdk';
 import { firstValueFrom, of } from 'rxjs';
@@ -455,9 +456,8 @@ describe('JsSdkSessionEngine', () => {
 
     it('reports the dead token as it happens and replays it once released', async () => {
       const client = fakeClient();
-      const { engine, storage } = await live(client);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const { engine } = await live(client);
+      const effects = collect(engine.storageEffects());
       let completed = false;
       const updates: unknown[] = [];
       engine.holdServerLogout(SESSION.userId).subscribe({
@@ -475,14 +475,18 @@ describe('JsSdkSessionEngine', () => {
       await firstValueFrom(engine.releaseServerLogoutHold('1', false));
       expect(completed).toBe(true);
       expect(engine.snapshot().accounts).toEqual([]);
-      expect(storage.remove).toHaveBeenCalledWith(SESSION.userId);
+      expect(effects).toEqual([
+        {
+          kind: 'hard-logout',
+          accountId: SESSION.userId,
+          activeAccountId: null,
+        },
+      ]);
     });
 
     it('releases as not deleted on unsubscribe, and ends when the account leaves', async () => {
       const client = fakeClient();
-      const { engine, storage } = await live(client);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const { engine } = await live(client);
       const dropped = engine.holdServerLogout(SESSION.userId).subscribe();
       const kept = collect(engine.holdServerLogout(SESSION.userId));
       loggedOut(client);
@@ -563,6 +567,26 @@ describe('JsSdkSessionEngine', () => {
       );
 
       expect(!result.ok && result.failure.code).toBe(code);
+      expect(() => assertPlainData(result)).not.toThrow();
+    });
+
+    it('marks a request that failed on a token refresh with that cause', async () => {
+      const client = {
+        ...fakeClient(),
+        deactivateAccount: vi
+          .fn()
+          .mockRejectedValue(new TokenRefreshError(new Error('offline'))),
+      };
+      const { engine } = await live(client);
+
+      const result = await firstValueFrom(
+        engine.deactivateAccount(SESSION.userId, false, null),
+      );
+
+      expect(!result.ok && result.failure).toMatchObject({
+        code: 'request-failed',
+        params: { cause: 'session-refresh' },
+      });
       expect(() => assertPlainData(result)).not.toThrow();
     });
 

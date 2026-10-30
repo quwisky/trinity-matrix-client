@@ -31,6 +31,8 @@ import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { SessionStateService } from '../session-state.service';
 import { desktopBridgeFixture } from '@trinity/testing';
 import type { MatrixSession } from '@trinity/util/matrix';
+import type { SessionStorageEffect } from '../session-engine';
+import { SessionStorageEffects } from '../session-storage-effects';
 import {
   SESSION,
   SESSION_B,
@@ -1380,58 +1382,71 @@ describe('MatrixClientService', () => {
     )?.[1] as (err: unknown) => void;
   }
 
+  function recordEffects(svc: MatrixClientService): SessionStorageEffect[] {
+    const effects: SessionStorageEffect[] = [];
+    svc.storageEffects.subscribe((effect) => effects.push(effect));
+    return effects;
+  }
+
   it('soft-logout stops the account without wiping and marks it for re-auth', async () => {
     const client = fakeClient();
-    const { svc, storage } = setup(client);
-    vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
+    const { svc } = setup(client);
     await firstValueFrom(svc.init(SESSION));
+    const effects = recordEffects(svc);
 
     loggedOutHandler(client)({ data: { soft_logout: true } });
 
     expect(client.stopClient).toHaveBeenCalled();
     expect(client.clearStores).not.toHaveBeenCalled(); // stores preserved for re-auth
-    expect(storage.remove).not.toHaveBeenCalled(); // registry entry preserved
-    expect(storage.invalidateToken).toHaveBeenCalledWith('@me:hs'); // dead token dropped
+    expect(effects).toEqual([
+      { kind: 'soft-logout', accountId: '@me:hs', activeAccountId: null },
+    ]);
     expect(svc.softLoggedOut()).toContain('@me:hs');
     expect(sessionState().active()).toBeNull(); // it was the only account
   });
 
-  it('soft-logout of the active account repoints active + storage to a survivor', async () => {
+  it('soft-logout of the active account repoints active to a survivor and reports it', async () => {
     const a = fakeClient();
     const b = fakeClient();
-    const { svc, storage } = setup(a, b);
-    vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
-    vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+    const { svc } = setup(a, b);
     await firstValueFrom(svc.init(SESSION)); // A active
     await firstValueFrom(svc.add(SESSION_B)); // B added, now active
+    const effects = recordEffects(svc);
 
     loggedOutHandler(b)({ data: { soft_logout: true } });
 
     expect(svc.activeUserId()).toBe('@me:hs'); // A survives and becomes active
     expect(svc.softLoggedOut()).toContain('@you:other');
-    expect(storage.setActive).toHaveBeenCalledWith('@me:hs'); // persisted active reconciled
+    expect(effects).toEqual([
+      {
+        kind: 'soft-logout',
+        accountId: '@you:other',
+        activeAccountId: '@me:hs',
+      },
+    ]);
     expect(sessionState().active()).not.toBeNull();
   });
 
   it('hard-logout wipes the account and drops its registry entry', async () => {
     const client = fakeClient();
-    const { svc, storage } = setup(client);
-    vi.mocked(storage.remove).mockReturnValue(of(undefined));
+    const { svc } = setup(client);
     await firstValueFrom(svc.init(SESSION));
+    const effects = recordEffects(svc);
 
     loggedOutHandler(client)({ data: { soft_logout: false } });
 
     expect(client.stopClient).toHaveBeenCalled();
     expect(client.clearStores).toHaveBeenCalledOnce(); // wiped
-    expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+    expect(effects).toEqual([
+      { kind: 'hard-logout', accountId: '@me:hs', activeAccountId: null },
+    ]);
     expect(svc.softLoggedOut()).not.toContain('@me:hs');
   });
 
   it('re-authenticating a soft-logged-out account clears the flag', async () => {
     const a = fakeClient();
     const b = fakeClient();
-    const { svc, storage } = setup(a, b);
-    vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
+    const { svc } = setup(a, b);
     await firstValueFrom(svc.init(SESSION));
 
     loggedOutHandler(a)({ data: { soft_logout: true } });
@@ -1447,16 +1462,17 @@ describe('MatrixClientService', () => {
   describe('a held server logout', () => {
     it('stops the account without wiping or touching the registry, and reports it', async () => {
       const client = fakeClient();
-      const { svc, storage } = setup(client);
+      const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
       const onFact = vi.fn();
       const hold = svc.holdServerLogout('@me:hs', onFact);
+      const effects = recordEffects(svc);
 
       loggedOutHandler(client)({ data: { soft_logout: false } });
 
       expect(client.stopClient).toHaveBeenCalled();
       expect(client.clearStores).not.toHaveBeenCalled();
-      expect(storage.remove).not.toHaveBeenCalled();
+      expect(effects).toEqual([]);
       expect(hold.tokenDied()).toBe(true);
       expect(onFact).toHaveBeenCalledExactlyOnceWith('token-died');
       expect(svc.accountIds()).toEqual(['@me:hs']);
@@ -1464,25 +1480,28 @@ describe('MatrixClientService', () => {
 
     it('replays the recorded logout through the hard path when released as not deleted', async () => {
       const client = fakeClient();
-      const { svc, storage } = setup(client);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
       const hold = svc.holdServerLogout('@me:hs');
+      const effects = recordEffects(svc);
       loggedOutHandler(client)({ data: { soft_logout: false } });
 
       hold.release({ deleted: false });
 
       expect(client.clearStores).toHaveBeenCalledOnce();
-      expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+      expect(effects).toEqual([
+        { kind: 'hard-logout', accountId: '@me:hs', activeAccountId: null },
+      ]);
     });
 
     it('forgets the recorded logout once the account signs in again', async () => {
       const old = fakeClient();
       const signedIn = fakeClient();
-      const { svc, storage } = setup(old, signedIn);
+      const { svc } = setup(old, signedIn);
       await firstValueFrom(svc.init(SESSION));
       const onFact = vi.fn();
       const hold = svc.holdServerLogout('@me:hs', onFact);
+      const effects = recordEffects(svc);
       loggedOutHandler(old)({ data: { soft_logout: false } });
       await firstValueFrom(svc.add(SESSION));
 
@@ -1492,27 +1511,29 @@ describe('MatrixClientService', () => {
       expect(onFact.mock.calls).toEqual([['token-died'], ['token-renewed']]);
       expect(signedIn.stopClient).not.toHaveBeenCalled();
       expect(signedIn.clearStores).not.toHaveBeenCalled();
-      expect(storage.remove).not.toHaveBeenCalled();
+      expect(effects).toEqual([]);
       expect(svc.accountIds()).toEqual(['@me:hs']);
     });
 
     it('still holds and replays a logout of the account that signed in again', async () => {
       const old = fakeClient();
       const signedIn = fakeClient();
-      const { svc, storage } = setup(old, signedIn);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      const { svc } = setup(old, signedIn);
       await firstValueFrom(svc.init(SESSION));
       const hold = svc.holdServerLogout('@me:hs');
       loggedOutHandler(old)({ data: { soft_logout: false } });
       await firstValueFrom(svc.add(SESSION));
 
+      const effects = recordEffects(svc);
       loggedOutHandler(signedIn)({ data: { soft_logout: false } });
       expect(hold.tokenDied()).toBe(true);
-      expect(storage.remove).not.toHaveBeenCalled();
+      expect(effects).toEqual([]);
       hold.release({ deleted: false });
 
       expect(signedIn.clearStores).toHaveBeenCalledOnce();
-      expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+      expect(effects).toEqual([
+        { kind: 'hard-logout', accountId: '@me:hs', activeAccountId: null },
+      ]);
     });
 
     it('stops being held once released or once the account is removed another way', async () => {
@@ -1533,60 +1554,65 @@ describe('MatrixClientService', () => {
 
     it('leaves the account to the deletion cleanup when released as deleted', async () => {
       const client = fakeClient();
-      const { svc, storage } = setup(client);
+      const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
       const hold = svc.holdServerLogout('@me:hs');
+      const effects = recordEffects(svc);
       loggedOutHandler(client)({ data: { soft_logout: false } });
 
       hold.release({ deleted: true });
 
       expect(client.clearStores).not.toHaveBeenCalled();
-      expect(storage.remove).not.toHaveBeenCalled();
+      expect(effects).toEqual([]);
     });
 
     it('does nothing on release when the token never died', async () => {
       const client = fakeClient();
-      const { svc, storage } = setup(client);
+      const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
+      const effects = recordEffects(svc);
 
       svc.holdServerLogout('@me:hs').release({ deleted: false });
 
       expect(client.stopClient).not.toHaveBeenCalled();
-      expect(storage.remove).not.toHaveBeenCalled();
+      expect(effects).toEqual([]);
       expect(sessionState().active()).not.toBeNull();
     });
 
     it('takes the hard path again once released', async () => {
       const client = fakeClient();
-      const { svc, storage } = setup(client);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
       svc.holdServerLogout('@me:hs').release({ deleted: false });
+      const effects = recordEffects(svc);
 
       loggedOutHandler(client)({ data: { soft_logout: false } });
 
-      expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+      expect(effects).toEqual([
+        { kind: 'hard-logout', accountId: '@me:hs', activeAccountId: null },
+      ]);
     });
 
     it('leaves a soft logout to the ordinary soft path', async () => {
       const client = fakeClient();
-      const { svc, storage } = setup(client);
-      vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
+      const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
       const hold = svc.holdServerLogout('@me:hs');
+      const effects = recordEffects(svc);
 
       loggedOutHandler(client)({ data: { soft_logout: true } });
 
       expect(svc.softLoggedOut()).toContain('@me:hs');
       expect(hold.tokenDied()).toBe(false);
+      expect(effects).toEqual([
+        { kind: 'soft-logout', accountId: '@me:hs', activeAccountId: null },
+      ]);
     });
 
     it('reports a sign-in after a soft logout, but not a plain start', async () => {
       const a = fakeClient();
       const b = fakeClient();
-      const { svc, storage } = setup(a, b, fakeClient());
-      vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const { svc } = setup(a, b, fakeClient());
       await firstValueFrom(svc.init(SESSION));
       const onFact = vi.fn();
       svc.holdServerLogout('@me:hs', onFact);
@@ -1603,17 +1629,43 @@ describe('MatrixClientService', () => {
     it('holds only the named account', async () => {
       const a = fakeClient();
       const b = fakeClient();
-      const { svc, storage } = setup(a, b);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const { svc } = setup(a, b);
       await firstValueFrom(svc.init(SESSION));
       await firstValueFrom(svc.add(SESSION_B));
       svc.holdServerLogout('@me:hs');
+      const effects = recordEffects(svc);
 
       loggedOutHandler(b)({ data: { soft_logout: false } });
 
-      expect(storage.remove).toHaveBeenCalledWith('@you:other');
+      expect(effects).toEqual([
+        {
+          kind: 'hard-logout',
+          accountId: '@you:other',
+          activeAccountId: '@me:hs',
+        },
+      ]);
     });
+  });
+
+  it('saves each server logout once, through the session storage effects', async () => {
+    const a = fakeClient();
+    const b = fakeClient();
+    const { svc, storage } = setup(a, b);
+    vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
+    vi.mocked(storage.remove).mockReturnValue(of(undefined));
+    vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+    TestBed.inject(SessionStorageEffects);
+    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(svc.add(SESSION_B)); // B active
+
+    loggedOutHandler(b)({ data: { soft_logout: true } }); // A becomes active
+    loggedOutHandler(a)({ data: { soft_logout: false } }); // nobody is active
+
+    expect(storage.invalidateToken).toHaveBeenCalledExactlyOnceWith(
+      '@you:other',
+    );
+    expect(storage.setActive).toHaveBeenCalledExactlyOnceWith('@me:hs');
+    expect(storage.remove).toHaveBeenCalledExactlyOnceWith('@me:hs');
   });
 
   describe('accountStatus', () => {
@@ -2252,20 +2304,20 @@ describe('MatrixClientService', () => {
 
   it('ignores a duplicate server logout for an already-removed account', async () => {
     const client = fakeClient();
-    const { svc, storage } = setup(client);
+    const { svc } = setup(client);
     await firstValueFrom(svc.init(SESSION));
     const onLoggedOut = loggedOutHandler(client);
 
     await firstValueFrom(svc.remove('@me:hs')); // detaches listener, wipes once, drops entry
     expect(client.clearStores).toHaveBeenCalledOnce();
     expect(svc.activeUserId()).toBeNull();
+    const effects = recordEffects(svc);
 
     // A late / duplicate server-side logout for the same, now-gone account.
     expect(() => onLoggedOut({ data: { soft_logout: false } })).not.toThrow();
 
     expect(client.clearStores).toHaveBeenCalledOnce(); // not wiped a second time
-    expect(storage.remove).not.toHaveBeenCalled(); // registry untouched
-    expect(storage.invalidateToken).not.toHaveBeenCalled();
+    expect(effects).toEqual([]); // nothing for storage to save
     expect(svc.activeUserId()).toBeNull();
   });
 
