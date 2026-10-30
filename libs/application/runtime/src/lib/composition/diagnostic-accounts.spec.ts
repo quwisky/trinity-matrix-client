@@ -1,6 +1,13 @@
 import { signal } from '@angular/core';
 import type { HomeserverInfo } from '@trinity/data-access/homeserver';
-import { NEVER, firstValueFrom, of } from 'rxjs';
+import {
+  type AccountNameGroup,
+  EMPTY_SESSION,
+  type SessionAccountStatus,
+  type SessionEngine,
+} from '@trinity/data-access/matrix-client';
+import { type EngineFailure, engineFail, engineOk } from '@trinity/util/matrix';
+import { NEVER, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   diagnosticAccounts,
@@ -109,7 +116,7 @@ describe('diagnosticAccounts', () => {
 });
 
 describe('diagnosticKnownNames', () => {
-  const groups = {
+  const groups: Readonly<Record<string, readonly AccountNameGroup[]>> = {
     alice: [
       {
         roomNames: ['Garden Club'],
@@ -118,50 +125,81 @@ describe('diagnosticKnownNames', () => {
       },
     ],
     bob: [{ roomNames: ['Workshop'], roomTopics: [], displayNames: ['Wendy'] }],
-  } as const;
+  };
+  const NOT_LIVE: EngineFailure = {
+    kind: 'unexpected',
+    code: 'account-not-live',
+    diagnostic: { kind: 'unexpected' },
+  };
 
-  it('reads the names of every signed-in account, group by group', () => {
-    const clients = {
-      all: () => [{ client: 'alice' as const }, { client: 'bob' as const }],
+  /** An engine whose live accounts, in registry order, read `knownNames`. */
+  function engine(
+    accountIds: readonly string[],
+    knownNames: SessionEngine['knownNames'] = (accountId) =>
+      of(engineOk(groups[accountId])),
+  ) {
+    return {
+      session: vi.fn(() =>
+        of({
+          ...EMPTY_SESSION,
+          accounts: accountIds.map(
+            (accountId) => ({ accountId }) as SessionAccountStatus,
+          ),
+        }),
+      ),
+      knownNames: vi.fn(knownNames),
     };
+  }
 
-    expect([
-      ...diagnosticKnownNames(clients, (client) => groups[client]),
-    ]).toEqual([...groups.alice, ...groups.bob]);
+  it('reads the names of every live account, in registry order', async () => {
+    const names = await firstValueFrom(
+      diagnosticKnownNames(engine(['alice', 'bob'])),
+    );
+
+    expect([...names]).toEqual([...groups['alice'], ...groups['bob']]);
   });
 
-  it('reads the clients only when iterated, at export time', () => {
-    const all = vi.fn(() => [{ client: 'alice' as const }]);
-    const read = vi.fn((client: 'alice') => groups[client]);
+  it('reads the engine only when subscribed', () => {
+    const source = engine(['alice']);
 
-    const names = diagnosticKnownNames({ all }, read);
-    expect(all).not.toHaveBeenCalled();
+    diagnosticKnownNames(source);
 
-    expect([...names]).toHaveLength(1);
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(source.knownNames).not.toHaveBeenCalled();
   });
 
-  it('reads every other account when one fails, then reports the failure', () => {
-    const clients = {
-      all: () => [{ client: 'alice' as const }, { client: 'bob' as const }],
-    };
-    const read = function* (client: 'alice' | 'bob') {
-      yield* groups[client];
-      if (client === 'alice') {
-        throw new Error('client stopped');
-      }
-    };
-    const seen: unknown[] = [];
+  it('reads every other account when one fails, then reports the failure', async () => {
+    const source = engine(['alice', 'bob', 'carol'], (accountId) =>
+      accountId === 'alice'
+        ? of(engineFail(NOT_LIVE))
+        : accountId === 'carol'
+          ? throwError(() => new Error('client stopped'))
+          : of(engineOk(groups[accountId])),
+    );
+    const names = await firstValueFrom(diagnosticKnownNames(source));
 
-    expect(() => {
-      for (const group of diagnosticKnownNames(clients, read)) {
-        seen.push(group);
-      }
-    }).toThrow('could not be read');
-    expect(seen).toEqual([...groups.alice, ...groups.bob]);
+    // Each pass reads the same names and reports the same failure.
+    for (let pass = 0; pass < 2; pass++) {
+      const seen: unknown[] = [];
+      expect(() => {
+        for (const group of names) {
+          seen.push(group);
+        }
+      }).toThrow(
+        expect.objectContaining({
+          message: 'The names of some accounts could not be read.',
+          cause: NOT_LIVE,
+        }),
+      );
+      expect(seen).toEqual(groups['bob']);
+    }
   });
 
-  it('reads nothing when no account is signed in', () => {
-    expect([...diagnosticKnownNames({ all: () => [] }, vi.fn())]).toEqual([]);
+  it('reads nothing when no account is live', async () => {
+    const source = engine([]);
+
+    const names = await firstValueFrom(diagnosticKnownNames(source));
+
+    expect([...names]).toEqual([]);
+    expect(source.knownNames).not.toHaveBeenCalled();
   });
 });

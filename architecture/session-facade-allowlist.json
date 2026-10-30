@@ -1,7 +1,6 @@
 {
   "issue": "#1153",
   "files": [
-    "libs/application/runtime/src/lib/composition/diagnostic-log.providers.ts",
     "libs/data-access/matrix-client/src/lib/identity-matrix.port.ts",
     "libs/data-access/matrix-client/src/lib/project-from-client.ts",
     "libs/data-access/matrix-client/src/lib/reproject-on-switch.ts"

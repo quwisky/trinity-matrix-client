@@ -33,6 +33,12 @@ defineSessionEngineContract(
         deviceId: `${s.deviceId}-again`,
         accessToken: `${s.accessToken}-again`,
       }),
+      createNamedRoom: async (s, names) =>
+        engine.addKnownNames(s.userId, {
+          roomNames: [names.roomName],
+          roomTopics: [names.roomTopic],
+          displayNames: [names.displayName],
+        }),
       dispose: async () => undefined,
     };
   },

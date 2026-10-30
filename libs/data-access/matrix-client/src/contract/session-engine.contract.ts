@@ -8,8 +8,13 @@ import {
   toArray,
 } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { type MatrixSession, assertPlainData } from '@trinity/util/matrix';
 import {
+  type MatrixSession,
+  assertPlainData,
+  plainEqual,
+} from '@trinity/util/matrix';
+import {
+  type AccountNameGroup,
   EMPTY_SESSION,
   type ServerLogoutHoldUpdate,
   type SessionEngine,
@@ -30,6 +35,15 @@ export interface SessionContractSetup {
   passwordFor(session: MatrixSession): string;
   /** A new session for the same account on another device. */
   signInAgain(session: MatrixSession): Promise<MatrixSession>;
+  /** Outside the engine, the session's account takes a display name, then creates a room. */
+  createNamedRoom(
+    session: MatrixSession,
+    names: {
+      readonly displayName: string;
+      readonly roomName: string;
+      readonly roomTopic: string;
+    },
+  ): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -567,6 +581,38 @@ export function defineSessionEngineContract(
 
         await expect(context.tokenAccepted(s)).resolves.toBe(false);
         await expect(snapshot()).resolves.toEqual(EMPTY_SESSION);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "reads the names a live account's engine holds",
+      async () => {
+        const a = await context.newSession();
+        await restore(a);
+        const room: AccountNameGroup = {
+          roomNames: ['Garden Club'],
+          roomTopics: ['Roses and tulips'],
+          displayNames: ['Wren Quillfeather'],
+        };
+        await context.createNamedRoom(a, {
+          displayName: room.displayNames[0],
+          roomName: room.roomNames[0],
+          roomTopic: room.roomTopics[0],
+        });
+
+        const deadline = Date.now() + syncTimeoutMs;
+        let groups: readonly AccountNameGroup[] = [];
+        while (Date.now() <= deadline) {
+          const result = await once(engine.knownNames(a.userId));
+          groups = result.ok ? result.value : [];
+          if (groups.some((group) => plainEqual(group, room))) break;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        expect(groups).toContainEqual(room);
+
+        const missing = await once(engine.knownNames(NOBODY));
+        expect(!missing.ok && missing.failure.code).toBe('account-not-live');
       },
       testTimeoutMs,
     );
