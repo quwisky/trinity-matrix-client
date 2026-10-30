@@ -29,6 +29,9 @@ log.txt
 /out-tsc
 /bazel-out
 
+# Cargo build output (native/ Rust workspace)
+/target
+
 # Generated at build time from package.json + git (scripts/gen-build-info.mjs)
 /apps/trinity/src/app/build-info.ts
 

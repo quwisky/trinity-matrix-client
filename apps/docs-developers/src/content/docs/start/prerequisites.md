@@ -32,6 +32,7 @@ You also need Git and a modern browser. Treat the versions in the root `package.
 | Browser automation                | Playwright browser binaries                                               |
 | Homeserver-backed Matrix journeys | Docker available to the current user                                      |
 | Electron                          | The separate `electron/` dependency tree and host packaging prerequisites |
+| Rust engine (`native/**`)         | rustup; `rust-toolchain.toml` pins the toolchain                          |
 | Android                           | Android Studio, Android SDK, Java, and an emulator or device              |
 | iOS                               | macOS, Xcode, CocoaPods, and a simulator or device                        |
 

@@ -32,6 +32,7 @@ jobs:
       mas: ${{ steps.mas.outputs.run }}
       scrollbars: ${{ steps.scrollbars.outputs.run }}
       engine: ${{ steps.engine.outputs.run }}
+      rust: ${{ steps.rust.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -133,6 +134,37 @@ jobs:
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
             if grep -qE "$pattern" <<< "$changed" || grep -qE '^[+-].*(matrix-js-sdk|@matrix-org/matrix-sdk-crypto-wasm)' <<< "$manifests"; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      # Whether a pull request touches the Rust engine workspace (`rust` job): the crates and
+      # their toolchain and lint configuration, the contract files and generated types the Rust
+      # side shares with TypeScript, the stdio transport and the engine contract runner. Pushes
+      # answer false: the job exists to gate pull requests.
+      - id: rust
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          run=false
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            : "${BASE:?pull request has no base sha}"
+            paths=(
+              'native/engine'
+              'Cargo\.(toml|lock)$'
+              'rust-toolchain\.toml$'
+              'clippy\.toml$'
+              '\.cargo/'
+              'libs/data-access/[^/]+/src/contract/'
+              'libs/.*/rust-dto/'
+              'libs/.*\.rust\.spec\.ts$'
+              'libs/util/matrix/src/lib/engine-transport/'
+              'libs/testing/src/lib/engine-stdio-transport'
+              'e2e/engine/'
+            )
+            pattern="^($(IFS='|'; echo "${paths[*]}"))"
+            changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
+            if grep -qE "$pattern" <<< "$changed"; then
               run=true
             fi
           fi
@@ -696,11 +728,42 @@ jobs:
           surface: engine-contract
           report-path: dist/.playwright/trinity-e2e-engine/*/engine.js-sdk/**
 
+  # Format, lint and unit tests of the Rust engine workspace (native/), and a check that the
+  # TypeScript generated from its types is committed. Only for a pull request that changes
+  # what the `rust` step of `classify` lists.
+  rust:
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.rust == 'true' }}
+    name: Rust engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          rustup toolchain install
+          cargo --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # cargo test writes them again, so one it no longer writes shows as deleted below.
+      - name: Remove the generated TypeScript
+        run: find libs -path '*/rust-dto/*.ts' ! -name '*.spec.ts' -delete
+      - run: cargo test --workspace --locked
+      - name: Generated TypeScript is committed
+        run: |
+          status=$(git status --porcelain --untracked-files=all -- 'libs/**/rust-dto/**')
+          if [ -n "$status" ]; then
+            echo "$status"
+            exit 1
+          fi
+
   # Branch rules require the check "E2E (Playwright + homeserver)". The work behind it now
   # runs in several jobs, so this job reports under that name and succeeds only when every
   # one of them succeeded. A skipped job (for example after a renderer failure) fails it,
-  # except `mas-e2e`, `tuwunel-oauth-e2e`, `scrollbars-e2e` and `engine-contract`, which are
-  # skipped by design when a pull request leaves the paths they check alone.
+  # except `mas-e2e`, `tuwunel-oauth-e2e`, `scrollbars-e2e`, `engine-contract` and `rust`, which
+  # are skipped by design when a pull request leaves the paths they check alone.
   e2e-result:
     needs:
       [
@@ -712,6 +775,7 @@ jobs:
         tuwunel-oauth-e2e,
         scrollbars-e2e,
         engine-contract,
+        rust,
       ]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: E2E (Playwright + homeserver)
@@ -723,7 +787,7 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"'
-          echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success" or ((.key == "mas-e2e" or .key == "tuwunel-oauth-e2e" or .key == "scrollbars-e2e" or .key == "engine-contract") and .value.result == "skipped"))' > /dev/null
+          echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success" or ((.key == "mas-e2e" or .key == "tuwunel-oauth-e2e" or .key == "scrollbars-e2e" or .key == "engine-contract" or .key == "rust") and .value.result == "skipped"))' > /dev/null
 
   # WebdriverIO + Appium on the installed app: it boots an API 36 emulator because browser
   # E2E cannot substitute for native Back, process relaunch, Android TLS policy, or the

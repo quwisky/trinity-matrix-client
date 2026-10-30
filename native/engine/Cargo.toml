@@ -1,0 +1,8 @@
+[package]
+name = "trinity-engine"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+matrix-sdk.workspace = true
