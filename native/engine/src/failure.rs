@@ -915,7 +915,7 @@ mod tests {
         let failure = request_failed(&error().into());
         assert_eq!(failure.kind, FailureKind::Network);
         assert_eq!(refresh_cause(failure), Some(RefreshCause::SessionRefresh));
-        // As the js adapter's `requestFailure` marks a `TokenRefreshError` (S7).
+        // As the js adapter's `requestFailure` marks a `TokenRefreshError`.
         let sorted = request_failure(&error().into());
         assert_eq!(refresh_cause(sorted), Some(RefreshCause::SessionRefresh));
     }

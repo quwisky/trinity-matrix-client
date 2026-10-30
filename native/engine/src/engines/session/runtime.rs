@@ -44,7 +44,7 @@ pub struct AccountRuntime {
     pub(crate) refreshable: bool,
     /// Set once the engine signs the session out itself, so its own logout is no death.
     pub(crate) signed_out: AtomicBool,
-    /// The restored token with its expiry, which a token the SDK refreshed does not have (H8).
+    /// The restored token with its expiry, which a token the SDK refreshed does not have.
     pub(crate) expiry: Option<(String, f64)>,
     /// Dropped with the runtime and with every lease: a teardown waits until all are gone.
     alive: Arc<watch::Sender<()>>,
@@ -139,7 +139,7 @@ pub(crate) struct Lease {
 }
 
 /// Reports the SDK's `UnknownToken` to the token-death rule, without waiting for its delivery:
-/// a command that met the token awaits that itself (O8). The save callback owns refreshed
+/// a command that met the token awaits that itself. The save callback owns refreshed
 /// tokens, and a death a lag drops returns on the next request or restart.
 async fn follow_session(
     engine: Weak<Engine>,
@@ -162,7 +162,7 @@ async fn follow_session(
 }
 
 /// Restarts the sync after an error, backing off, unless its token died, the engine signed it
-/// out, `pauseSync` paused it or the account has a newer client (O6). The backoff never resets:
+/// out, `pauseSync` paused it or the account has a newer client. The backoff never resets:
 /// `start()` itself reports `Running`, and the count dies with the runtime.
 async fn restart_on_error(
     engine: Weak<Engine>,

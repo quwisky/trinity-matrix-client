@@ -245,7 +245,7 @@ fn broadcast_first(err: &Error) -> bool {
 }
 
 /// An account's token for a raw request, which only this module can make, so every raw request
-/// that carries a token meets the token-death rule (O8).
+/// that carries a token meets the token-death rule.
 // No `Debug`: it is the token.
 pub(crate) struct RawToken(String);
 
@@ -344,7 +344,8 @@ impl Engine {
             .await;
     }
 
-    /// The cross-slice rule: marks a dead token before the command replies.
+    /// The token-death rule for a command's request error: marks a dead token before the command
+    /// replies.
     pub(crate) fn on_request_error(
         self: &Arc<Self>,
         rt: &AccountRuntime,
@@ -365,7 +366,7 @@ impl Engine {
         barrier.delivered().await;
     }
 
-    /// A command's typed call through the account's client (O8): a refresh it made, and the rule
+    /// A command's typed call through the account's client: a refresh it made, and the rule
     /// for its error, reach the subscribers before it returns.
     pub(crate) async fn ruled<T, E: Into<Error>>(
         self: &Arc<Self>,
@@ -458,7 +459,7 @@ impl Engine {
         Err(err)
     }
 
-    /// The account's logout, sent once (S17). The SDK fetches an OAuth server's metadata with the
+    /// The account's logout, sent once. The SDK fetches an OAuth server's metadata with the
     /// client's own retrying config, so a client that never retries revokes an OAuth token.
     async fn logout_request(&self, rt: &AccountRuntime) -> Result<(), Error> {
         let Some(oauth) = rt.client.oauth().full_session() else {
@@ -530,7 +531,7 @@ async fn get(
 }
 
 /// [`get_with_refresh`] with a live account's client; a failure meets the token-death rule
-/// before it is returned (O8). Its own refresh never broadcasts, so no broadcast is awaited.
+/// before it is returned. Its own refresh never broadcasts, so no broadcast is awaited.
 pub(crate) async fn raw_get(
     engine: &Arc<Engine>,
     rt: &AccountRuntime,
@@ -569,7 +570,7 @@ pub(crate) fn save_tokens_callback(
         };
         let tokens = client.session_tokens().ok_or("no session")?;
         let mut state = engine.state.lock();
-        // Only a current client's token is published, and a refreshed one has no expiry (H8).
+        // Only a current client's token is published, and a refreshed one has no expiry.
         let published = state.publish_snapshot();
         let rotated = state
             .effects

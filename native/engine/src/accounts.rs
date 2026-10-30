@@ -62,13 +62,13 @@ pub(crate) struct SessionState {
     /// By account id, for each account an `accessToken` stream has asked for; it outlives the
     /// account's runtimes.
     tokens: HashMap<String, Tokens>,
-    /// Set by `pauseSync`, cleared by `stop`. The restart policy reads it, and 2.3's resend gate
-    /// will (js `syncPaused`).
+    /// Set by `pauseSync`, cleared by `stop`. The restart policy reads it, and the send queue's
+    /// resend gate will (js `syncPaused`).
     pub(crate) paused: bool,
     pub(crate) holds: Holds,
     pub(crate) effects: Subscribers<SessionStorageEffectDto>,
     /// By account id, what the token-death rule has published since the account's last start,
-    /// which a request that meets the dead token later still awaits (O8).
+    /// which a request that meets the dead token later still awaits.
     pub(crate) deaths: HashMap<String, Barrier>,
     /// Sent each time the rule runs, for a request waiting on the SDK's broadcast.
     pub(crate) deaths_seen: watch::Sender<()>,
@@ -448,7 +448,8 @@ impl Registry {
             sync_state: SessionSyncStateDto::Starting,
             server_synced: false,
             rooms_prepared: false,
-            waiting_count: 0, // shortcut: 2.3 owns send semantics (G14, R6), upgrade in 2.3
+            // shortcut: no send counts as waiting yet; upgrade when the engine owns sending.
+            waiting_count: 0,
             // Every Rust store opens with the store key.
             crypto_store_encrypted: true,
         });

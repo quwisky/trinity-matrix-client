@@ -226,8 +226,8 @@ pub(crate) fn member_names<'a>(
     names.map(Into::into).collect()
 }
 
-// shortcut: an `m.text` body only, without js's emote, spoiler and rich-reply handling; 2.3
-// owns the send queue and refines it (R7).
+// shortcut: an `m.text` body only, without js's emote, spoiler and rich-reply handling; upgrade
+// when the engine owns the send queue.
 pub(crate) fn pending_text(
     account_id: &str,
     room_id: &RoomId,
