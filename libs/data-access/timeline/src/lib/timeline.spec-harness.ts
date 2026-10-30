@@ -296,16 +296,11 @@ export function fakeRelations(
   return { getSortedAnnotationsByKey: () => annotations };
 }
 
-/** A room member as the room reports it. */
-export function fakeMember(userId: string, typing: boolean, name = userId) {
-  return { userId, typing, name, roomId: '!r:hs' };
-}
-
 export function fakeRoom(
   events: ReturnType<typeof fakeEvent>[],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
-  members: ReturnType<typeof fakeMember>[] = [],
+  members: readonly unknown[] = [],
   fullyReadEventId: string | null = null,
   receiptsByEvent: Record<string, string[]> = {},
   power: { mine?: number; redact?: number; send?: number } = {},
