@@ -5,6 +5,7 @@ import {
   createClient,
 } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
+import { TestBed } from '@angular/core/testing';
 import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -13,6 +14,7 @@ import {
 } from './matrix-client.service';
 import type { MatrixSession } from '@trinity/util/matrix';
 import { SESSION, OIDC_SESSION, setup } from './matrix-client.spec-harness';
+import { SessionStorageEffects } from '../session-storage-effects';
 
 // A controllable fake sync store (the real IndexedDBStore needs a browser IDB).
 const storeMock = vi.hoisted(() => ({ startup: vi.fn(), destroy: vi.fn() }));
@@ -255,6 +257,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     vi.mocked(ctx.storage.remove).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.invalidateToken).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.setActive).mockReturnValue(of(undefined));
+    TestBed.inject(SessionStorageEffects);
     await firstValueFrom(ctx.svc.init(session));
     return { ...ctx, client: ctx.svc.clientFor(session.userId)! };
   }

@@ -27,6 +27,7 @@ import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
 import {
   provideMatrixSdkLogging,
+  provideSessionStorageEffects,
   type MatrixSdkLogLevel,
 } from '@trinity/data-access/matrix-client';
 import {
@@ -126,6 +127,8 @@ export function provideTrinityApplication(
     ...trinityDiagnosticProviders({
       issueRepositoryUrl: options.issueRepositoryUrl,
     }),
+    // Before any account starts: storage effects are not replayed.
+    provideSessionStorageEffects(),
     provideZonelessChangeDetection(),
     provideHostCapabilities(),
     provideCapacitorPreferenceStorage(),

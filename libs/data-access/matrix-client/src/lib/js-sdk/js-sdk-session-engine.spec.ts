@@ -456,9 +456,8 @@ describe('JsSdkSessionEngine', () => {
 
     it('reports the dead token as it happens and replays it once released', async () => {
       const client = fakeClient();
-      const { engine, storage } = await live(client);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const { engine } = await live(client);
+      const effects = collect(engine.storageEffects());
       let completed = false;
       const updates: unknown[] = [];
       engine.holdServerLogout(SESSION.userId).subscribe({
@@ -476,14 +475,18 @@ describe('JsSdkSessionEngine', () => {
       await firstValueFrom(engine.releaseServerLogoutHold('1', false));
       expect(completed).toBe(true);
       expect(engine.snapshot().accounts).toEqual([]);
-      expect(storage.remove).toHaveBeenCalledWith(SESSION.userId);
+      expect(effects).toEqual([
+        {
+          kind: 'hard-logout',
+          accountId: SESSION.userId,
+          activeAccountId: null,
+        },
+      ]);
     });
 
     it('releases as not deleted on unsubscribe, and ends when the account leaves', async () => {
       const client = fakeClient();
-      const { engine, storage } = await live(client);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const { engine } = await live(client);
       const dropped = engine.holdServerLogout(SESSION.userId).subscribe();
       const kept = collect(engine.holdServerLogout(SESSION.userId));
       loggedOut(client);
