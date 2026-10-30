@@ -4,6 +4,10 @@ edition.workspace = true
 version.workspace = true
 publish.workspace = true
 
+[features]
+default = ["native"]
+native = ["matrix-sdk/sqlite", "matrix-sdk/bundled-sqlite", "matrix-sdk/rustls-aws-lc-rs"]
+
 [dependencies]
 futures-util.workspace = true
 matrix-sdk.workspace = true
