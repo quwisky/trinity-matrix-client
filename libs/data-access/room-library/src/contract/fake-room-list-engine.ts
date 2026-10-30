@@ -100,6 +100,9 @@ export class FakeRoomListEngine implements RoomListEngine {
   private readonly links = new Map<string, Map<string, SpaceChildLink>>();
   private readonly parents = new Map<string, readonly string[]>();
   private readonly linksChanged$ = new Subject<string>();
+  /** Who else is joined to each room, for `roomsInCommon`; each account's own list decides for it. */
+  private readonly joined = new Map<string, ReadonlySet<string>>();
+  private readonly joinedChanged$ = new Subject<void>();
   private nextRoom = 0;
   private nextFailure: FailNextCode | null = null;
 
@@ -111,15 +114,17 @@ export class FakeRoomListEngine implements RoomListEngine {
 
   /** Acts on the fake's state as `bob` would on a server. */
   readonly asBob = {
-    createRoom: async (name: string): Promise<string> => this.newRoom(name),
+    createRoom: async (name: string): Promise<string> =>
+      this.newRoom(name, this.bob),
     createPublicRoom: async (
       name: string,
       localpart: string,
     ): Promise<{ readonly roomId: string; readonly alias: string }> => {
-      const roomId = this.newRoom(name);
+      const roomId = this.newRoom(name, this.bob);
       return { roomId, alias: this.publishAlias(roomId, localpart) };
     },
-    join: async (): Promise<void> => undefined,
+    join: async (roomId: string): Promise<void> =>
+      this.setJoined(roomId, this.bob, true),
     invite: async (
       roomId: string,
       userId: string,
@@ -198,6 +203,15 @@ export class FakeRoomListEngine implements RoomListEngine {
     const alias = `#${localpart}:${this.serverName}`;
     this.aliases.set(alias, roomId);
     return alias;
+  }
+
+  /** Whether `userId` is joined to `roomId` on the server, as `roomsInCommon` reads it. */
+  setJoined(roomId: string, userId: string, joined: boolean): void {
+    const members = new Set(this.joined.get(roomId));
+    if (joined) members.add(userId);
+    else members.delete(userId);
+    this.joined.set(roomId, members);
+    this.joinedChanged$.next();
   }
 
   /** The spaces `setSpaceParent` or a create with a parent recorded for the room. */
@@ -298,7 +312,7 @@ export class FakeRoomListEngine implements RoomListEngine {
     request: CreateRoomRequest,
   ): Observable<EngineResult<{ readonly roomId: string }>> {
     return this.run(accountId, () => {
-      const roomId = this.newRoom(request.name);
+      const roomId = this.newRoom(request.name, accountId);
       if (request.kind === 'space') this.spaces.add(roomId);
       this.apply(accountId, [
         {
@@ -334,7 +348,7 @@ export class FakeRoomListEngine implements RoomListEngine {
         ?.find((r) => r.directUserId === userId && r.membership === 'join');
       if (joined) return engineOk({ roomId: joined.roomId });
       const name = this.displayName(userId);
-      const roomId = this.newRoom(name);
+      const roomId = this.newRoom(name, accountId);
       this.apply(accountId, [
         {
           op: 'pushBack',
@@ -500,6 +514,28 @@ export class FakeRoomListEngine implements RoomListEngine {
     });
   }
 
+  roomsInCommon(
+    accountId: string,
+    userId: string,
+  ): Observable<readonly string[]> {
+    return merge(
+      this.joinedChanged$,
+      this.changes$.pipe(filter((change) => change.accountId === accountId)),
+    ).pipe(
+      startWith(null),
+      map(() =>
+        (this.lists.get(accountId) ?? [])
+          .filter(
+            (r) =>
+              r.membership === 'join' &&
+              (this.joined.get(r.roomId)?.has(userId) ?? false),
+          )
+          .map((r) => r.roomId),
+      ),
+      distinctUntilChanged<readonly string[]>(plainEqual),
+    );
+  }
+
   /** A cold command: scripted failure first, then the live-account check, then `action`. */
   private run<T>(
     accountId: string,
@@ -600,10 +636,11 @@ export class FakeRoomListEngine implements RoomListEngine {
     this.changes$.next({ accountId, diffs });
   }
 
-  private newRoom(name: string): string {
+  private newRoom(name: string, creator: string): string {
     this.nextRoom += 1;
     const roomId = `!fake-${this.nextRoom}:${this.serverName}`;
     this.roomNames.set(roomId, name);
+    this.joined.set(roomId, new Set([creator]));
     return roomId;
   }
 
