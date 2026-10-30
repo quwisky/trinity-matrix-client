@@ -29,38 +29,33 @@ export interface IgnoredUserInfo {
 /**
  * Profiles, presence and the ignore list of an account. Commands emit once and complete;
  * without a live client they fail `account-not-live`, otherwise `request-failed` with the
- * failure's kind (`network` when the server was not reached). Subscriptions emit a whole
- * snapshot on subscribe and on each change, an empty one while the account is not live,
- * and do not follow a replaced client: subscribe again.
+ * failure's kind (`network` when the server was not reached). A subscription's first value
+ * is the whole snapshot, not necessarily synchronous, and each change brings another; the
+ * snapshot is empty while the account is not live. A subscription does not follow a
+ * replaced client: subscribe again.
  */
 export interface IdentityEngine {
-  /**
-   * The account's own profile as its client knows it.
-   * Rust: `Account::get_display_name`, `get_avatar_url`.
-   */
+  /** The account's own profile as its client knows it. */
   ownProfile(accountId: string): Observable<UserProfile>;
 
-  /**
-   * Any user's profile from the server; a user it does not know has an empty one.
-   * Rust: `Account::fetch_user_profile_of`.
-   */
+  /** Any user's profile from the server; a user it does not know has an empty one. */
   profile(
     accountId: string,
     userId: string,
   ): Observable<EngineResult<UserProfile>>;
 
-  /** Rust: `Account::set_display_name`. */
   setDisplayName(
     accountId: string,
     name: string,
   ): Observable<EngineResult<null>>;
 
-  /** Sets an already uploaded avatar. Rust: `Account::set_avatar_url`. */
+  /** Sets an already uploaded avatar. */
   setAvatar(accountId: string, mxc: string): Observable<EngineResult<null>>;
 
   /**
    * Every user whose presence the account has received, the account itself included once
-   * the server sent it; a user never heard from is absent, not offline.
+   * the server sent it; a user never heard from is absent, not offline. Rust: the account's
+   * own entry only.
    */
   presence(accountId: string): Observable<readonly PresenceInfo[]>;
 
@@ -86,7 +81,6 @@ export interface IdentityEngine {
    * Adds `userId` to the ignore list or removes it; ignoring an ignored user, or unignoring
    * one that is not, changes nothing. Writes on one account run one after another, so
    * quick changes never undo each other.
-   * Rust: `Account::ignore_user`, `unignore_user`.
    */
   setIgnored(
     accountId: string,
