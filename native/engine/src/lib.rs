@@ -1,6 +1,3 @@
-// Without `native` there is no store to start an account on, so what a start uses goes unused.
-#![cfg_attr(not(feature = "native"), allow(dead_code, unused_imports))]
-
 pub mod accounts;
 pub mod barrier;
 pub mod carrier;

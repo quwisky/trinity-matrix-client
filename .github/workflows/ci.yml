@@ -140,9 +140,10 @@ jobs:
           echo "run=$run" >> "$GITHUB_OUTPUT"
       # Whether a pull request touches the Rust engine workspace (`rust` and `engine-contract-rust`
       # jobs): the crates and their toolchain and lint configuration, the contract files and
-      # generated types the Rust side shares with TypeScript, the stdio transport, the Synapse
-      # registration helper, the shared Vitest config and setup, the engine contract runner and
-      # the e2e/support files on its import path, and the homeserver harness. Pushes answer false:
+      # generated types the Rust side shares with TypeScript, the js homeserver engine and probe
+      # the Rust homeserver spec imports, the stdio transport, the Synapse registration helper,
+      # the shared Vitest config and setup, the engine contract runner and the e2e/support files
+      # on its import path, and the homeserver harness. Pushes answer false:
       # the jobs exist to gate pull requests.
       - id: rust
         env:
@@ -158,6 +159,7 @@ jobs:
               'clippy\.toml$'
               '\.cargo/'
               'libs/data-access/[^/]+/src/contract/'
+              'libs/data-access/homeserver/src/lib/(probe-homeserver|js-sdk/js-sdk-homeserver-engine)\.ts$'
               'libs/.*/rust-dto/'
               'libs/.*\.rust\.spec\.ts$'
               'libs/util/matrix/src/lib/engine-transport/'
@@ -794,6 +796,8 @@ jobs:
           shared-key: trinity-engine
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The engine without `native`, as the wasm build will compile it.
+      - run: cargo clippy -p trinity-engine --no-default-features --locked -- -D warnings
       # cargo test writes them again, so one it no longer writes shows as deleted below.
       - name: Remove the generated TypeScript
         run: find libs -path '*/rust-dto/*.ts' ! -name '*.spec.ts' -delete

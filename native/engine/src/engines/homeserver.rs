@@ -4,14 +4,15 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use futures_util::{future::join3, stream};
-use matrix_sdk::{Client, reqwest::Url};
+use matrix_sdk::reqwest::Url;
 use serde::Serialize;
 use serde_json::{Value, json};
 use ts_rs::TS;
 
 use crate::{
-    accounts::Engine,
+    accounts::{AccountRuntime, Engine},
     dispatch::{Stream, stream},
+    engines::session::logout::raw_get,
 };
 
 const DTO: &str = "data-access/homeserver/src/lib/rust-dto/";
@@ -76,14 +77,19 @@ pub enum RoomVersionStabilityDto {
 pub fn probe(engine: Arc<Engine>, account_id: String) -> Stream {
     stream(stream::once(async move {
         let probe = match engine.account(&account_id) {
-            Some(account) => Some(probe_client(&engine, &account.client, &account_id).await),
+            Some(rt) => Some(probe_client(&engine, &rt, &account_id).await),
             None => None,
         };
         Ok(json!(probe))
     }))
 }
 
-async fn probe_client(engine: &Engine, client: &Client, account_id: &str) -> HomeserverProbeDto {
+async fn probe_client(
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
+    account_id: &str,
+) -> HomeserverProbeDto {
+    let client = &rt.client;
     let base_url = client
         .homeserver()
         .as_str()
@@ -96,12 +102,10 @@ async fn probe_client(engine: &Engine, client: &Client, account_id: &str) -> Hom
             .map_or(account_id, |(_, server)| server)
             .to_owned(),
     };
-    // Read per probe, not cached: the token rotates.
-    let token = client.access_token();
     let (software, versions, capabilities) = join3(
         probe_server_software(engine, &base_url, &server_name),
-        fetch_spec_versions(engine, &base_url, token.as_deref()),
-        fetch_capabilities(engine, &base_url, token.as_deref()),
+        fetch_spec_versions(engine, rt, &base_url),
+        fetch_capabilities(engine, rt, &base_url),
     )
     .await;
     let (spec_versions, unstable_features) = versions.unzip();
@@ -130,7 +134,7 @@ async fn probe_server_software(
     }
     let origin = federation_origin(server_name)?;
     let well_known = safe_url(&format!("{origin}/.well-known/matrix/server"))?;
-    let body = get_json(engine, well_known, None).await?;
+    let body = get_json(engine, well_known).await?;
     let federation = federation_origin(&read_string(&body, "m.server")?)?;
     if tried.as_ref() == Some(&federation) {
         return None;
@@ -149,38 +153,43 @@ async fn fetch_federation_version(
         .ok()
         .filter(is_https)?;
     let host = url.origin().ascii_serialization();
-    to_software(&get_json(engine, url, None).await?, source, host)
+    to_software(&get_json(engine, url).await?, source, host)
 }
 
 /// `fetchSpecVersions`: a raw request, since the SDK caches `server_versions()`.
 async fn fetch_spec_versions(
-    engine: &Engine,
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
     base_url: &str,
-    token: Option<&str>,
 ) -> Option<(Vec<String>, Vec<String>)> {
     let url = client_api_url(base_url, "/_matrix/client/versions")?;
-    let body = get_json(engine, url, token).await?;
+    let body = get_account_json(engine, rt, url).await?;
     let versions = read_string_array(&body, "versions")?;
     Some((versions, enabled_flags(&body)))
 }
 
 /// `fetchCapabilities`: raw, since the typed response reads an absent capability as its default.
 async fn fetch_capabilities(
-    engine: &Engine,
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
     base_url: &str,
-    token: Option<&str>,
 ) -> Option<HomeserverCapabilitiesDto> {
     let url = client_api_url(base_url, "/_matrix/client/v3/capabilities")?;
-    to_capabilities(&get_json(engine, url, Some(token?)).await?)
+    to_capabilities(&get_account_json(engine, rt, url).await?)
 }
 
-/// `getJson`: the JSON body of a 2xx answer, `None` on any failure, a redirect included. The
-/// token goes only to the account's own base URL.
-async fn get_json(engine: &Engine, url: Url, token: Option<&str>) -> Option<Value> {
-    let (status, body) = engine.raw_get(url, token, TIMEOUT).await.ok()?;
+/// `getJson`: the JSON body of a 2xx answer, `None` on any failure, a redirect included.
+async fn get_json(engine: &Engine, url: Url) -> Option<Value> {
+    let (status, body) = engine.raw_get(url, None, TIMEOUT).await.ok()?;
     if !status.is_success() {
         return None;
     }
+    serde_json::from_slice(&body).ok()
+}
+
+/// [`get_json`] with the account's token, which goes only to its own base URL.
+async fn get_account_json(engine: &Arc<Engine>, rt: &AccountRuntime, url: Url) -> Option<Value> {
+    let body = raw_get(engine, rt, url, TIMEOUT).await.ok()?;
     serde_json::from_slice(&body).ok()
 }
 
@@ -329,7 +338,7 @@ mod tests {
     async fn a_redirect_is_no_answer_and_is_not_followed() {
         let (url, target_hits) = redirecting_server();
         let engine = Engine::new(EngineConfig::default()).unwrap();
-        assert_eq!(get_json(&engine, url, None).await, None);
+        assert_eq!(get_json(&engine, url).await, None);
         assert_eq!(target_hits.load(Ordering::SeqCst), 0);
     }
 

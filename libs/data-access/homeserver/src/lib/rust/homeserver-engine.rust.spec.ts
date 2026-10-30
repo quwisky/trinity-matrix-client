@@ -1,8 +1,12 @@
 import { Injector } from '@angular/core';
 import { createClient } from 'matrix-js-sdk';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, tap } from 'rxjs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  type ServerLogoutHoldUpdate,
+  type SessionEngine,
+} from '@trinity/data-access/matrix-client';
 import {
   type StdioTransport,
   registerSynapseUser,
@@ -71,5 +75,42 @@ describe.skipIf(!baseUrl || !testhostBinaryAvailable())(
       expect(expected).not.toBeNull();
       expect(probe).toEqual(expected);
     });
+
+    it('reports a dead token to a hold before the probe answers', async () => {
+      const user = await registerSynapseUser(
+        baseUrl,
+        secret,
+        `hs-dead-${Date.now().toString(36)}`,
+      );
+      const host = await startTesthostAccount(baseUrl, user);
+      try {
+        const session = proxyEngine<SessionEngine>('session', host);
+        const updates: ServerLogoutHoldUpdate[] = [];
+        const held = session
+          .holdServerLogout(user.userId)
+          .subscribe((update) => updates.push(update));
+        while (updates.length === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        const revoked = await fetch(`${baseUrl}/_matrix/client/v3/logout`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${user.accessToken}` },
+        });
+        expect(revoked.ok).toBe(true);
+
+        let seen: string[] = [];
+        const probe = await firstValueFrom(
+          proxyEngine<HomeserverEngine>('homeserver', host)
+            .probe(user.userId)
+            .pipe(tap(() => (seen = updates.map((u) => u.kind)))),
+        );
+
+        expect(seen).toContain('token-died');
+        expect(probe?.capabilities).toBeNull();
+        held.unsubscribe();
+      } finally {
+        await host.dispose();
+      }
+    }, 60_000);
   },
 );

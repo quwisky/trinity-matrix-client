@@ -91,6 +91,34 @@ methods! {
     "session.rollbackAccountStart" => session::rollback_account_start(account_id: String),
     "session.remove" => session::remove(account_id: String),
     "session.stop" => session::stop(),
+    "session.accessToken" => session::reads::access_token(account_id: String),
+    "session.liveCredentials" => session::reads::live_credentials(account_id: String),
+    "session.accountStatus" => session::reads::account_status(account_id: String),
+    "session.refreshAccessToken" => session::reads::refresh_access_token(
+        account_id: String,
+        options: session::RefreshOptionsDto,
+    ),
+    "session.roomKeysBackedUp" => session::reads::room_keys_backed_up(account_id: String),
+    "session.hasOutgoingWork" => session::reads::has_outgoing_work(),
+    "session.pendingTextMessages" => session::reads::pending_text_messages(),
+    "session.pauseSync" => session::reads::pause_sync(),
+    "session.knownNames" => session::reads::known_names(account_id: String),
+    "session.holdServerLogout" => session::logout::hold_server_logout(account_id: String),
+    "session.releaseServerLogoutHold" => session::logout::release_server_logout_hold(
+        hold_id: String,
+        deleted: bool,
+    ),
+    "session.deactivateAccount" => session::logout::deactivate_account(
+        account_id: String,
+        erase: bool,
+        auth: Option<session::UiaAuthDto>,
+    ),
+    "session.storageEffects" => session::logout::storage_effects(),
+    "session.logoutRemote" => session::logout::logout_remote(account_id: String),
+    "session.signOutAll" => session::logout::sign_out_all(),
+    "session.logoutSession" => session::logout::logout_session(
+        session: session::MatrixSessionDto,
+    ),
 }
 
 /// Decodes positional args in order. Its `bad-args` faults name the position and the type

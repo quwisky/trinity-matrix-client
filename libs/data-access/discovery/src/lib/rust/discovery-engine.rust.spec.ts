@@ -1,4 +1,9 @@
-import { afterAll, describe } from 'vitest';
+import { firstValueFrom, tap } from 'rxjs';
+import { afterAll, describe, expect, it } from 'vitest';
+import type {
+  ServerLogoutHoldUpdate,
+  SessionEngine,
+} from '@trinity/data-access/matrix-client';
 import {
   type StdioTransport,
   startTesthostAccount,
@@ -37,5 +42,43 @@ describe.skipIf(!baseUrl || !testhostBinaryAvailable())(
         ...fixture,
       };
     });
+
+    it('reports a dead token to a hold before a room preview answers', async () => {
+      const { me, unjoinedRoom } = await discoverySynapseFixture(
+        baseUrl as string,
+        serverName,
+        secret,
+      );
+      const host = await startTesthostAccount(baseUrl as string, me);
+      try {
+        const session = proxyEngine<SessionEngine>('session', host);
+        const updates: ServerLogoutHoldUpdate[] = [];
+        const held = session
+          .holdServerLogout(me.userId)
+          .subscribe((update) => updates.push(update));
+        while (updates.length === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        const revoked = await fetch(`${baseUrl}/_matrix/client/v3/logout`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${me.accessToken}` },
+        });
+        expect(revoked.ok).toBe(true);
+
+        let seen: string[] = [];
+        // By id, so the raw room summary is the first request.
+        const preview = await firstValueFrom(
+          proxyEngine<DiscoveryEngine>('discovery', host)
+            .previewRoom(me.userId, unjoinedRoom.roomId, [])
+            .pipe(tap(() => (seen = updates.map((u) => u.kind)))),
+        );
+
+        expect(seen).toContain('token-died');
+        expect(preview.ok).toBe(false);
+        held.unsubscribe();
+      } finally {
+        await host.dispose();
+      }
+    }, 120_000);
   },
 );

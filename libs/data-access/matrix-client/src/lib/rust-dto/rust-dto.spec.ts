@@ -16,6 +16,7 @@ import type {
   SessionCredentials,
   SessionEngine,
   SessionSnapshot,
+  SessionStorageEffect,
   SessionSyncState,
 } from '../session-engine';
 import type { AccountNameGroupDto } from './AccountNameGroupDto';
@@ -31,6 +32,7 @@ import type { SessionAccessTokenDto } from './SessionAccessTokenDto';
 import type { SessionAccountStatusDto } from './SessionAccountStatusDto';
 import type { SessionCredentialsDto } from './SessionCredentialsDto';
 import type { SessionSnapshotDto } from './SessionSnapshotDto';
+import type { SessionStorageEffectDto } from './SessionStorageEffectDto';
 import type { SessionSyncStateDto } from './SessionSyncStateDto';
 import type { UiaAuthDto } from './UiaAuthDto';
 
@@ -58,6 +60,9 @@ describe('Rust engine DTOs', () => {
       DeepWritable<PendingTextMessage>
     >();
     expectTypeOf<AccountServerStatusDto>().toEqualTypeOf<AccountServerStatus>();
+    expectTypeOf<SessionStorageEffectDto>().toEqualTypeOf<
+      DeepWritable<SessionStorageEffect>
+    >();
   });
 
   it('send name groups as arrays, which the lazy TypeScript iterable accepts', () => {

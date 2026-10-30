@@ -11,13 +11,17 @@ use matrix_sdk::{
     reqwest::{self, StatusCode, Url},
     timeout::timeout,
 };
+use tokio::sync::watch;
 
 pub use crate::engines::session::runtime::AccountRuntime;
 use crate::{
     barrier::{Barrier, Subscribers, Tracked},
     config::EngineConfig,
     engines::session::{
-        LiveAccountsDto, SessionAccountStatusDto, SessionSnapshotDto, SessionSyncStateDto,
+        LiveAccountsDto, SessionAccessTokenDto, SessionAccountStatusDto, SessionSnapshotDto,
+        SessionStorageEffectDto, SessionSyncStateDto,
+        logout::{Holds, RawToken},
+        reads::live_token,
         restore::StartState,
     },
     failure::{EngineFailure, account_not_live},
@@ -46,6 +50,29 @@ pub(crate) struct SessionState {
     /// The last snapshot published, so an unchanged one is not sent again.
     pub(crate) snapshot: SessionSnapshotDto,
     snapshots: Subscribers<SessionSnapshotDto>,
+    /// By account id, for each account an `accessToken` stream has asked for; it outlives the
+    /// account's runtimes.
+    tokens: HashMap<String, Tokens>,
+    /// Set by `pauseSync`, cleared by `stop`. The restart policy reads it, and 2.3's resend gate
+    /// will (js `syncPaused`).
+    pub(crate) paused: bool,
+    pub(crate) holds: Holds,
+    pub(crate) effects: Subscribers<SessionStorageEffectDto>,
+    /// By account id, what the token-death rule has published since the account's last start,
+    /// which a request that meets the dead token later still awaits (O8).
+    pub(crate) deaths: HashMap<String, Barrier>,
+    /// Sent each time the rule runs, for a request waiting on the SDK's broadcast.
+    pub(crate) deaths_seen: watch::Sender<()>,
+    /// By account id, what its last token refresh published, which a reply after the refresh
+    /// awaits.
+    pub(crate) rotations: HashMap<String, Barrier>,
+}
+
+/// One account's last token and its `accessToken` streams.
+#[derive(Default)]
+struct Tokens {
+    last: Option<SessionAccessTokenDto>,
+    streams: Subscribers<Option<SessionAccessTokenDto>>,
 }
 
 /// Pure registry data: no `Client`, so its transitions are unit-tested.
@@ -56,6 +83,8 @@ pub(crate) struct Registry {
     active: Option<String>,
     soft_logged_out: Vec<String>,
     /// Engine-wide, one more for each registered client; `stop` keeps it.
+    // Without `native` no start registers a client.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     generation: u32,
 }
 
@@ -78,6 +107,13 @@ impl Engine {
                 registry,
                 runtimes: HashMap::new(),
                 snapshots: Subscribers::default(),
+                tokens: HashMap::new(),
+                paused: false,
+                holds: Holds::default(),
+                effects: Subscribers::default(),
+                deaths: HashMap::new(),
+                deaths_seen: watch::Sender::new(()),
+                rotations: HashMap::new(),
             }),
             starting: Mutex::default(),
             teardowns: Mutex::default(),
@@ -97,6 +133,27 @@ impl Engine {
         let mut state = self.state.lock();
         let first = state.snapshot.clone();
         state.snapshots.subscribe(Some(first)).1
+    }
+
+    /// An `accessToken` stream, which starts with the account's current token.
+    pub(crate) fn subscribe_token(
+        &self,
+        account_id: &str,
+    ) -> Tracked<Option<SessionAccessTokenDto>> {
+        let state = &mut *self.state.lock();
+        let token = state.runtimes.get(account_id).and_then(|rt| live_token(rt));
+        let tokens = state.tokens.entry(account_id.to_owned()).or_default();
+        // Nobody waits: a refresh the SDK made since the last publish reaches the other streams.
+        let _ = tokens.publish(token);
+        tokens.streams.subscribe(Some(tokens.last.clone())).1
+    }
+
+    /// The live accounts' runtimes, in registry order.
+    pub(crate) fn live_runtimes(&self) -> Vec<Arc<AccountRuntime>> {
+        let state = self.state.lock();
+        let ids = state.snapshot.accounts.iter().map(|a| &a.account_id);
+        ids.filter_map(|id| state.runtimes.get(id).cloned())
+            .collect()
     }
 
     pub(crate) fn set_active(&self, account_id: &str) -> Barrier {
@@ -136,49 +193,75 @@ impl Engine {
 
     /// Retires a started account but keeps its store.
     pub(crate) async fn rollback_account_start(&self, account_id: &str) {
-        let (runtime, barrier) = self.retire(account_id);
-        self.tear_down(account_id, runtime, false).await;
+        let (teardown, barrier) = self
+            .after_starts(Some(account_id), || {
+                let (runtime, barrier) = self.retire(account_id);
+                (self.tear_down(account_id, runtime, false), barrier)
+            })
+            .await;
+        teardown.await;
         barrier.delivered().await;
     }
 
-    /// Retires the account, live or not, and deletes its stores once its runtime is gone.
+    /// Retires the account, live or not, ends its holds, and deletes its stores once its
+    /// runtime is gone.
     pub(crate) async fn remove(&self, account_id: &str) {
-        let (runtime, barrier) = self.retire(account_id);
-        self.tear_down(account_id, runtime, true).await;
+        let (teardown, barrier) = self
+            .after_starts(Some(account_id), || {
+                let (runtime, barrier) = {
+                    let mut state = self.state.lock();
+                    let runtime = state.retire(account_id);
+                    state.deaths.remove(account_id);
+                    state.rotations.remove(account_id);
+                    let released = state.holds.release_account(account_id);
+                    (runtime, state.publish_snapshot().join(released))
+                };
+                (self.tear_down(account_id, runtime, true), barrier)
+            })
+            .await;
+        teardown.await;
         barrier.delivered().await;
     }
 
-    /// Stops every runtime and empties the registry; the stores stay.
+    /// Stops every runtime, ends every hold and empties the registry; the stores stay.
     pub(crate) async fn stop(&self) {
-        let (runtimes, barrier) = {
-            let mut state = self.state.lock();
-            state.registry.clear();
-            let runtimes: Vec<_> = state.runtimes.drain().collect();
-            (runtimes, state.publish_snapshot())
-        };
-        let teardowns = runtimes
-            .into_iter()
-            .map(|(id, runtime)| self.tear_down(&id, Some(runtime), false));
+        let (teardowns, barrier) = self
+            .after_starts(None, || {
+                let (runtimes, barrier) = {
+                    let mut state = self.state.lock();
+                    state.registry.clear();
+                    state.paused = false;
+                    state.deaths.clear();
+                    state.rotations.clear();
+                    let released = state.holds.release_all();
+                    let runtimes: Vec<_> = state.runtimes.drain().collect();
+                    (runtimes, state.publish_snapshot().join(released))
+                };
+                let teardowns = runtimes
+                    .into_iter()
+                    .map(|(id, runtime)| self.tear_down(&id, Some(runtime), false));
+                (teardowns.collect::<Vec<_>>(), barrier)
+            })
+            .await;
         futures_util::future::join_all(teardowns).await;
         barrier.delivered().await;
     }
 
     /// Undoes a start nobody took, unless the account has a newer client by now.
     pub(crate) fn rollback_if_current(&self, account_id: &str, generation: u32) {
-        let runtime = {
-            let mut state = self.state.lock();
-            let current = state.runtimes.get(account_id);
-            if !current.is_some_and(|runtime| runtime.generation == generation) {
-                return;
-            }
-            let runtime = state.retire(account_id);
-            let _ = state.publish_snapshot();
-            runtime
-        };
+        let mut state = self.state.lock();
+        let current = state.runtimes.get(account_id);
+        if !current.is_some_and(|runtime| runtime.generation == generation) {
+            return;
+        }
+        let runtime = state.retire(account_id);
+        let _ = state.publish_snapshot();
+        // Queued under the lock, so a start of the account that follows awaits it.
         drop(self.tear_down(account_id, runtime, false));
     }
 
     /// Writes a runtime's status while `generation` is still the account's; `false` once not.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub(crate) fn update_status(
         &self,
         account_id: &str,
@@ -252,15 +335,15 @@ impl Engine {
     }
 
     /// A GET that follows no redirect, so `token` reaches only `url`: its status and body.
-    pub async fn raw_get(
+    pub(crate) async fn raw_get(
         &self,
         url: Url,
-        token: Option<&str>,
+        token: Option<&RawToken>,
         timeout: Duration,
     ) -> Result<(StatusCode, Bytes), reqwest::Error> {
         let mut request = self.raw.get(url.clone()).timeout(timeout);
         if let Some(token) = token {
-            request = request.bearer_auth(token);
+            request = request.bearer_auth(token.as_str());
         }
         let response = request.send().await?;
         // On wasm, fetch has already followed any redirect: answer with a 3xx, as native does.
@@ -281,22 +364,40 @@ fn delete_account_stores(config: &EngineConfig, account_id: &str) {
 }
 
 impl SessionState {
-    /// Sends the registry's snapshot to every `session()` stream when it changed.
+    /// Sends the registry's snapshot to every `session()` stream, and each account's token to
+    /// its `accessToken` streams, when changed.
     pub(crate) fn publish_snapshot(&mut self) -> Barrier {
+        let mut barrier = Barrier::default();
+        for (id, tokens) in &mut self.tokens {
+            let token = self.runtimes.get(id).and_then(|rt| live_token(rt));
+            barrier = barrier.join(tokens.publish(token));
+        }
         let snapshot = self.registry.snapshot();
         if snapshot == self.snapshot {
-            return Barrier::default();
+            return barrier;
         }
-        let barrier = self.snapshots.publish(&snapshot);
+        let published = self.snapshots.publish(&snapshot);
         self.snapshot = snapshot;
-        barrier
+        barrier.join(published)
     }
 
     /// Takes the account out of the registry and its soft logout, and hands back its runtime.
-    fn retire(&mut self, account_id: &str) -> Option<Arc<AccountRuntime>> {
+    pub(crate) fn retire(&mut self, account_id: &str) -> Option<Arc<AccountRuntime>> {
         self.registry.retire(account_id);
         self.registry.clear_soft_logged_out(account_id);
         self.runtimes.remove(account_id)
+    }
+}
+
+impl Tokens {
+    /// Sends `token` when it differs from the last one, so no stream sees a token twice in a row.
+    fn publish(&mut self, token: Option<SessionAccessTokenDto>) -> Barrier {
+        if token == self.last {
+            return Barrier::default();
+        }
+        let barrier = self.streams.publish(&token);
+        self.last = token;
+        barrier
     }
 }
 
@@ -317,6 +418,7 @@ impl Registry {
 
     /// Registers a new client for `account_id`: its entry moves to the end with the next
     /// generation, and the account is no longer soft-logged-out.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub fn register(&mut self, account_id: &str, device_id: &str) -> u32 {
         self.entries.retain(|entry| entry.account_id != account_id);
         self.generation += 1;
@@ -357,9 +459,13 @@ impl Registry {
     }
 
     pub fn mark_soft_logged_out(&mut self, account_id: &str) {
-        if !self.soft_logged_out.iter().any(|id| id == account_id) {
+        if !self.is_soft_logged_out(account_id) {
             self.soft_logged_out.push(account_id.into());
         }
+    }
+
+    pub fn is_soft_logged_out(&self, account_id: &str) -> bool {
+        self.soft_logged_out.iter().any(|id| id == account_id)
     }
 
     pub fn clear_soft_logged_out(&mut self, account_id: &str) {
@@ -374,6 +480,7 @@ impl Registry {
     }
 
     /// Changes the status of the account's entry while it is still that generation's.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub fn update_status(
         &mut self,
         account_id: &str,

@@ -1,6 +1,8 @@
 //! `SessionEngine` (`libs/data-access/matrix-client/src/lib/session-engine.ts`): the signed-in
 //! accounts and their lifecycle.
 
+pub mod logout;
+pub mod reads;
 pub(crate) mod restore;
 pub mod runtime;
 
@@ -95,6 +97,33 @@ pub enum ServerLogoutHoldUpdateDto {
     TokenRenewed,
     SignedInAgain,
     Released,
+}
+
+/// `SessionStorageEffect`.
+// No `Debug`: it carries the tokens.
+#[derive(Clone, PartialEq, Serialize, TS)]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export, export_to = DTO)]
+pub enum SessionStorageEffectDto {
+    TokensRotated {
+        account_id: String,
+        lineage: Option<String>,
+        access_token: String,
+        refresh_token: Option<String>,
+        expires_at: Option<f64>,
+    },
+    SoftLogout {
+        account_id: String,
+        active_account_id: Option<String>,
+    },
+    HardLogout {
+        account_id: String,
+        active_account_id: Option<String>,
+    },
 }
 
 /// `PendingTextMessage`.
@@ -256,8 +285,8 @@ pub fn activate_account(
     account_id: String,
     live_accounts: LiveAccountsDto,
 ) -> Stream {
-    stream(stream::once(async move {
-        let result = match engine.activate_account(&account_id, live_accounts) {
+    reply(async move {
+        match engine.activate_account(&account_id, live_accounts) {
             Ok((barrier, retired)) => {
                 let teardowns = retired.into_iter().map(|runtime| {
                     let id = runtime.account_id.clone();
@@ -268,9 +297,8 @@ pub fn activate_account(
                 EngineResult::Ok(())
             }
             Err(failure) => EngineResult::Err(failure),
-        };
-        Ok(json!(result))
-    }))
+        }
+    })
 }
 
 pub fn require_reauthentication(engine: Arc<Engine>, account_id: String) -> Stream {
@@ -296,10 +324,15 @@ pub fn stop(engine: Arc<Engine>) -> Stream {
 
 /// A void command: `null` once `effect` has run and its changes have been delivered.
 fn done(effect: impl Future<Output = ()> + SendOutsideWasm + 'static) -> Stream {
-    stream(stream::once(async move {
+    reply(async move {
         effect.await;
-        Ok(Value::Null)
-    }))
+        Value::Null
+    })
+}
+
+/// A command that emits `value` once.
+fn reply<T: Serialize>(value: impl Future<Output = T> + SendOutsideWasm + 'static) -> Stream {
+    stream(stream::once(async move { Ok(json!(value.await)) }))
 }
 
 #[cfg(test)]
@@ -336,6 +369,36 @@ mod tests {
         assert_eq!(
             to_json(ServerLogoutHoldUpdateDto::TokenDied),
             json!({"kind": "token-died"})
+        );
+    }
+
+    #[test]
+    fn a_storage_effect_tags_itself_and_writes_every_field() {
+        let soft = SessionStorageEffectDto::SoftLogout {
+            account_id: "@a:b".into(),
+            active_account_id: None,
+        };
+        assert_eq!(
+            to_json(soft),
+            json!({"kind": "soft-logout", "accountId": "@a:b", "activeAccountId": null})
+        );
+        let rotated = SessionStorageEffectDto::TokensRotated {
+            account_id: "@a:b".into(),
+            lineage: Some("L".into()),
+            access_token: "t".into(),
+            refresh_token: Some("r".into()),
+            expires_at: None,
+        };
+        assert_eq!(
+            to_json(rotated),
+            json!({
+                "kind": "tokens-rotated",
+                "accountId": "@a:b",
+                "lineage": "L",
+                "accessToken": "t",
+                "refreshToken": "r",
+                "expiresAt": null,
+            })
         );
     }
 

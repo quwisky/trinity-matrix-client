@@ -5,9 +5,18 @@ use matrix_sdk::{
     Error, HttpError, RefreshTokenError, RumaApiError,
     authentication::oauth::{
         OAuthError,
-        error::{BasicErrorResponseType, RequestTokenError},
+        error::{
+            BasicErrorResponseType, OAuthDiscoveryError, OAuthTokenRevocationError,
+            RequestTokenError,
+        },
     },
-    ruma::api::error::{ErrorBody, ErrorKind, FromHttpResponseError, RetryAfter},
+    ruma::{
+        api::{
+            EndpointError,
+            error::{ErrorBody, ErrorKind, FromHttpResponseError, RetryAfter},
+        },
+        exports::http,
+    },
 };
 use serde::{Serialize, Serializer, ser::SerializeStruct};
 use ts_rs::TS;
@@ -339,6 +348,13 @@ pub fn request_failure(err: &Error) -> EngineFailure {
     }
 }
 
+/// The error the SDK makes of a non-2xx answer, for a request the engine sent itself.
+pub fn http_error_from_response(status: http::StatusCode, body: &[u8]) -> HttpError {
+    let mut response = http::Response::new(body);
+    *response.status_mut() = status;
+    FromHttpResponseError::Server(RumaApiError::from_http_response(response)).into()
+}
+
 /// The homeserver's error response, read through a cached error as [`classify_http`] does.
 fn server_error(err: &HttpError) -> Option<&RumaApiError> {
     match err {
@@ -364,6 +380,13 @@ pub fn request_failed(err: &Error) -> EngineFailure {
 pub fn classify(err: &Error) -> (FailureKind, Diagnostic) {
     match err {
         Error::Http(http) => classify_http(http),
+        Error::OAuth(oauth) => match oauth.as_ref() {
+            OAuthError::Discovery(OAuthDiscoveryError::Http(http)) => classify_http(http),
+            OAuthError::Logout(OAuthTokenRevocationError::Revoke(RequestTokenError::Request(
+                _,
+            ))) => bare(FailureKind::Network),
+            _ => bare(FailureKind::Unexpected),
+        },
         _ => bare(FailureKind::Unexpected),
     }
 }
@@ -407,16 +430,33 @@ fn bare(kind: FailureKind) -> (FailureKind, Diagnostic) {
     (kind, Diagnostic::new(kind))
 }
 
-/// Whether the SDK ends the session for this refresh failure, as `client/futures.rs` does by
-/// broadcasting `SessionChange::UnknownToken`.
-fn refresh_logs_out(err: &RefreshTokenError) -> bool {
+/// Whether the provider refused the refresh, which ends the session (js
+/// `TokenRefreshLogoutError`): OAuth's `invalid_grant`, a Matrix refresh answered
+/// `M_UNKNOWN_TOKEN`, or no refresh token. Any other failure is transient.
+pub(crate) fn refresh_logs_out(err: &RefreshTokenError) -> bool {
     match err {
         RefreshTokenError::OAuth(error) => matches!(
             error.as_ref(),
             OAuthError::RefreshToken(RequestTokenError::ServerResponse(response))
                 if *response.error() == BasicErrorResponseType::InvalidGrant
         ),
-        RefreshTokenError::RefreshTokenRequired | RefreshTokenError::MatrixAuth(_) => true,
+        RefreshTokenError::MatrixAuth(error) => {
+            matches!(
+                error.client_api_error_kind(),
+                Some(ErrorKind::UnknownToken(_))
+            )
+        }
+        RefreshTokenError::RefreshTokenRequired => true,
+    }
+}
+
+/// Whether `err` is a refresh the provider refused.
+pub(crate) fn refused_refresh(err: &Error) -> bool {
+    match err {
+        Error::Http(http) => {
+            matches!(http.as_ref(), HttpError::RefreshToken(e) if refresh_logs_out(e))
+        }
+        _ => false,
     }
 }
 
@@ -502,7 +542,10 @@ mod tests {
         Client, Error, HttpError, RefreshTokenError, RumaApiError,
         authentication::oauth::{
             OAuthError,
-            error::{BasicErrorResponseType, RequestTokenError, StandardErrorResponse},
+            error::{
+                BasicErrorResponseType, HttpClientError, OAuthDiscoveryError,
+                OAuthTokenRevocationError, RequestTokenError, StandardErrorResponse,
+            },
         },
         config::RequestConfig,
         ruma::{
@@ -812,6 +855,35 @@ mod tests {
         assert_eq!(classify_http(&error), bare(FailureKind::Timeout));
     }
 
+    #[tokio::test]
+    async fn an_oauth_metadata_or_revocation_failure_is_classified_by_its_request() {
+        let oauth = |error| Error::OAuth(Box::new(error));
+        let unavailable = || matrix_error(502, "M_UNKNOWN");
+        let metadata = oauth(OAuthError::Discovery(OAuthDiscoveryError::Http(
+            unavailable(),
+        )));
+        assert_eq!(classify(&metadata), classify_http(&unavailable()));
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let url = format!("http://127.0.0.1:{port}");
+        let HttpError::Reqwest(refused) = request_error(&url, Duration::from_secs(5)).await else {
+            panic!("not a reqwest error");
+        };
+        let refused = HttpClientError::Reqwest(Box::new(refused));
+        let revoke = OAuthTokenRevocationError::Revoke(RequestTokenError::Request(refused));
+        assert_eq!(
+            classify(&oauth(OAuthError::Logout(revoke))),
+            bare(FailureKind::Network)
+        );
+        assert_eq!(
+            classify(&oauth(OAuthError::NotAuthenticated)),
+            bare(FailureKind::Unexpected)
+        );
+    }
+
     #[test]
     fn a_refresh_failure_that_logs_out_is_authentication() {
         let rejected = Arc::new(matrix_error(401, "M_UNKNOWN_TOKEN"));
@@ -825,12 +897,44 @@ mod tests {
     }
 
     #[test]
+    fn a_matrix_refresh_the_server_did_not_refuse_is_transient() {
+        let unavailable = Arc::new(matrix_error(502, "M_UNKNOWN"));
+        let error = || refresh_error(RefreshTokenError::MatrixAuth(Arc::clone(&unavailable)));
+        assert_eq!(classify_http(&error()), bare(FailureKind::Network));
+        let failure = request_failure(&error().into());
+        assert_eq!(refresh_cause(failure), Some(RefreshCause::SessionRefresh));
+    }
+
+    #[test]
     fn any_other_refresh_failure_is_network_with_a_session_refresh_cause() {
-        let error = oauth_refresh_error(OAuthError::NotAuthenticated);
-        assert_eq!(classify_http(&error), bare(FailureKind::Network));
-        let failure = request_failed(&error.into());
+        let error = || oauth_refresh_error(OAuthError::NotAuthenticated);
+        assert_eq!(classify_http(&error()), bare(FailureKind::Network));
+        let failure = request_failed(&error().into());
         assert_eq!(failure.kind, FailureKind::Network);
         assert_eq!(refresh_cause(failure), Some(RefreshCause::SessionRefresh));
+        // As the js adapter's `requestFailure` marks a `TokenRefreshError` (S7).
+        let sorted = request_failure(&error().into());
+        assert_eq!(refresh_cause(sorted), Some(RefreshCause::SessionRefresh));
+    }
+
+    #[test]
+    fn http_error_from_response_keeps_the_unknown_token_kind() {
+        let body = json!({"errcode": "M_UNKNOWN_TOKEN", "error": "x", "soft_logout": true});
+        let error =
+            http_error_from_response(http::StatusCode::UNAUTHORIZED, body.to_string().as_bytes());
+        assert!(matches!(
+            error.client_api_error_kind(),
+            Some(ErrorKind::UnknownToken(data)) if data.soft_logout
+        ));
+        assert_eq!(
+            classify_http(&error),
+            with(
+                FailureKind::Authentication,
+                401,
+                Some("M_UNKNOWN_TOKEN"),
+                None
+            )
+        );
     }
 
     #[tokio::test]
