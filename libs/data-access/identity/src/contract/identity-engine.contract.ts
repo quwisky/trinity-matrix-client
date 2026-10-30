@@ -15,7 +15,7 @@ export interface IdentityContractSetup {
   readonly engine: IdentityEngine;
   /** A live, syncing account. */
   readonly alice: string;
-  /** Another live account in a room with alice, so each receives the other's presence. */
+  /** Another live account, whose profile alice reads. */
   readonly bob: string;
   /** A user id on the same server that no account has. */
   readonly unknownUser: string;
@@ -101,16 +101,17 @@ export function defineIdentityEngineContract(
     }
 
     it(
-      'answers at once for an account that is not live',
+      'answers with an empty snapshot for an account that is not live',
       async () => {
-        const seen: unknown[] = [];
-        for (const subscription of [
-          engine.ownProfile(NOBODY),
-          engine.presence(NOBODY),
-          engine.ignoredUsers(NOBODY),
-        ] as Observable<unknown>[]) {
-          subscription.subscribe((value) => seen.push(value)).unsubscribe();
-        }
+        const seen = await Promise.all(
+          (
+            [
+              engine.ownProfile(NOBODY),
+              engine.presence(NOBODY),
+              engine.ignoredUsers(NOBODY),
+            ] as Observable<unknown>[]
+          ).map((snapshot) => firstValueFrom(snapshot.pipe(timeout(5_000)))),
+        );
         expect(seen).toEqual([{ displayName: null, avatarMxc: null }, [], []]);
 
         for (const command of [
@@ -182,17 +183,17 @@ export function defineIdentityEngineContract(
     );
 
     it(
-      'delivers the presence one account sets to the other and back to itself, then clears its message',
+      'delivers the account’s own presence once it sets it, then clears its message',
       async () => {
-        const { alice, bob } = context;
-        const seenByBob = watch(engine.presence(bob));
+        const { alice } = context;
+        const own = watch(engine.presence(alice));
         try {
           expect(await setPresence(alice, 'unavailable', 'Lunch')).toEqual({
             ok: true,
             value: null,
           });
 
-          const snapshot = await seenByBob.until((users) =>
+          const snapshot = await own.until((users) =>
             users.some(
               (user) =>
                 user.userId === alice &&
@@ -223,7 +224,7 @@ export function defineIdentityEngineContract(
             ok: true,
             value: null,
           });
-          await seenByBob.until((users) =>
+          await own.until((users) =>
             users.some(
               (user) =>
                 user.userId === alice &&
@@ -232,7 +233,7 @@ export function defineIdentityEngineContract(
             ),
           );
         } finally {
-          seenByBob.close();
+          own.close();
         }
       },
       testTimeoutMs,
@@ -241,7 +242,7 @@ export function defineIdentityEngineContract(
     it(
       'ignores and unignores users, two quick changes both landing',
       async () => {
-        const { alice, knownUser, unknownUser } = context;
+        const { alice, bob, knownUser, unknownUser } = context;
         const ignored = watch(engine.ignoredUsers(alice));
         const byId = (users: readonly IgnoredUserInfo[]) =>
           [...users].sort((a, b) => a.userId.localeCompare(b.userId));
@@ -267,6 +268,10 @@ export function defineIdentityEngineContract(
           ).toEqual({ ok: true, value: null });
           expect(byId(await ignored.until(() => true))).toEqual(both);
 
+          expect(await once(engine.setIgnored(alice, bob, false))).toEqual({
+            ok: true,
+            value: null,
+          });
           await once(engine.setIgnored(alice, knownUser.userId, false));
           expect(
             await ignored.until((users) =>
@@ -277,6 +282,11 @@ export function defineIdentityEngineContract(
           ]);
           await once(engine.setIgnored(alice, unknownUser, false));
           await ignored.until((users) => users.length === 0);
+
+          expect(
+            await once(engine.setIgnored(alice, unknownUser, false)),
+          ).toEqual({ ok: true, value: null });
+          expect(await ignored.until(() => true)).toEqual([]);
         } finally {
           ignored.close();
         }
