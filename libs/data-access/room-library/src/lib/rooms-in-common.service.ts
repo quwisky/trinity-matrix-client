@@ -19,10 +19,8 @@ import {
   type RoomState,
 } from 'matrix-js-sdk';
 import type { Subscription } from 'rxjs';
-import {
-  MatrixClientService,
-  mutualRoomIds,
-} from '@trinity/data-access/matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { mutualRoomIds } from './js-sdk/mutual-rooms';
 import { roomAvatarMxc } from './js-sdk/room-avatar';
 import { RoomLibraryService } from './room-library.service';
 import { initialOf } from './room-projection';
