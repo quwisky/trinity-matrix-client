@@ -296,12 +296,15 @@ export class FakeSessionEngine implements SessionEngine {
   }
 
   accountStatus(accountId: string): Observable<AccountServerStatus> {
-    return this.run(
-      `accountStatus:${accountId}`,
-      () =>
-        this.serverStatuses.get(accountId) ??
-        (this.isLive(accountId) ? 'active' : 'unreachable'),
-    );
+    return this.run(`accountStatus:${accountId}`, () => {
+      const scripted = this.serverStatuses.get(accountId);
+      if (scripted) return scripted;
+      const whoami = this.request(accountId, () => engineOk(null));
+      if (whoami.ok) return 'active';
+      return whoami.failure.code === 'account-not-live'
+        ? 'unreachable'
+        : 'gone';
+    });
   }
 
   roomKeysBackedUp(accountId: string): Observable<boolean | null> {

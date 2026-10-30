@@ -1,5 +1,6 @@
 import {
   type Observable,
+  type Subscription,
   filter,
   firstValueFrom,
   take,
@@ -63,6 +64,7 @@ export function defineSessionEngineContract(
   describe('SessionEngine contract', () => {
     let context: SessionContractSetup;
     let engine: SessionEngine;
+    const recordings: Subscription[] = [];
 
     beforeEach(async () => {
       context = await setup();
@@ -70,6 +72,7 @@ export function defineSessionEngineContract(
     }, testTimeoutMs);
 
     afterEach(async () => {
+      for (const recording of recordings.splice(0)) recording.unsubscribe();
       try {
         await once(engine.stop());
       } finally {
@@ -112,6 +115,18 @@ export function defineSessionEngineContract(
         kinds: () => updates.map((u) => u.kind),
         unsubscribe: () => subscription.unsubscribe(),
       };
+    }
+
+    /** Subscribes until the test ends, collecting each plain-data value. */
+    function record<T>(source: Observable<T>): T[] {
+      const values: T[] = [];
+      recordings.push(
+        source.subscribe((value) => {
+          expect(() => assertPlainData(value)).not.toThrow();
+          values.push(value);
+        }),
+      );
+      return values;
     }
 
     async function until(predicate: () => boolean): Promise<void> {
@@ -364,6 +379,51 @@ export function defineSessionEngineContract(
     );
 
     it(
+      'emits the access token on subscribe and after each change',
+      async () => {
+        const a = await context.newSession();
+        const seen = record(engine.accessToken(a.userId));
+        await until(() => seen.length > 0);
+        expect(seen).toEqual([null]);
+
+        await restore(a);
+        await until(() => seen.at(-1)?.accessToken === a.accessToken);
+        expect(seen.at(-1)).toEqual({
+          homeserverUrl: a.baseUrl,
+          accessToken: a.accessToken,
+          expiresAt: null,
+          refreshable: false,
+        });
+
+        await once(engine.remove(a.userId));
+        await until(() => seen.at(-1) === null);
+
+        const again = await context.signInAgain(a);
+        await restore(again);
+        await until(() => seen.at(-1)?.accessToken === again.accessToken);
+        // A first sync must not emit the same token again.
+        await firstValueFrom(
+          engine.session().pipe(
+            filter((s) =>
+              s.accounts.some(
+                (x) =>
+                  x.accountId === a.userId && x.serverSynced && x.roomsPrepared,
+              ),
+            ),
+            timeout(syncTimeoutMs),
+          ),
+        );
+        expect(seen.map((t) => t?.accessToken ?? null)).toEqual([
+          null,
+          a.accessToken,
+          null,
+          again.accessToken,
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'has no outgoing work when idle',
       async () => {
         const s = await context.newSession();
@@ -494,6 +554,28 @@ export function defineSessionEngineContract(
 
         expect(held.completed()).toBe(true);
         expect((await snapshot()).accounts).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reports a revoked token as gone, telling holds first',
+      async () => {
+        const a = await context.newSession();
+        await restore(a);
+        const held = await hold(a.userId);
+        await context.revokeToken(a);
+
+        let seen: string[] = [];
+        const status = await once(
+          engine.accountStatus(a.userId).pipe(tap(() => (seen = held.kinds()))),
+        );
+
+        expect(status).toBe('gone');
+        expect(seen).toContain('token-died');
+        expect((await snapshot()).accounts.map((x) => x.accountId)).toEqual([
+          a.userId,
+        ]);
       },
       testTimeoutMs,
     );
