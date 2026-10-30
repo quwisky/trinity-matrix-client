@@ -16,12 +16,12 @@
       (cancelled)="close()"
     />
   }
-  @case ('confirm-check-code') {
+  @case ('check-code') {
     <h3 #stepHeading tabindex="-1" class="link-device__heading">
-      Check the code on your new device
+      Enter this code on your new device
     </h3>
     <p class="m-0 text-13 text-muted-foreground">
-      Does your new device show the same number?
+      Type this number on your new device:
     </p>
     <!-- Read digit by digit: "4 2", not "forty-two". -->
     <p class="link-device__check-code">
@@ -30,17 +30,29 @@
       }}</span>
       <span class="sr-only">{{ spokenCheckCode() }}</span>
     </p>
-    <div class="flex flex-wrap gap-2">
-      <button trnBtn type="button" (click)="confirmCheckCode(true)">
-        They match
+  }
+  @case ('approve') {
+    <h3 #stepHeading tabindex="-1" class="link-device__heading">
+      Check your new device
+    </h3>
+    <p class="m-0 text-13 text-muted-foreground">{{ approveHint }}</p>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <button
+        trnBtn
+        type="button"
+        data-testid="link-device-continue"
+        (click)="approve()"
+      >
+        Continue
       </button>
       <button
         trnBtn
         variant="secondary"
         type="button"
-        (click)="confirmCheckCode(false)"
+        data-testid="link-device-cancel"
+        (click)="close()"
       >
-        They don't match
+        Cancel
       </button>
     </div>
   }
@@ -125,7 +137,8 @@
   {{ announcement() }}
 </p>
 
-@if (current.kind !== 'scanning') {
+<!-- The approve step has its own Cancel beside Continue. -->
+@if (current.kind !== 'scanning' && current.kind !== 'approve') {
   <button
     trnBtn
     presentation="ghost"

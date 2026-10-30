@@ -2,20 +2,46 @@ import { TestBed } from '@angular/core/testing';
 import { createHmac } from 'node:crypto';
 import {
   ClientEvent,
+  MatrixClient,
   SyncState,
   createClient,
-  type MatrixClient,
 } from 'matrix-js-sdk';
-import { firstValueFrom, tap, toArray } from 'rxjs';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import { MockProvider } from 'ng-mocks';
+import { firstValueFrom, of, tap, toArray } from 'rxjs';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  MatrixClientService,
+  SESSION_ENGINE,
+} from '@trinity/data-access/matrix-client';
+import {
+  CryptoStoreKeyService,
+  SessionStorageService,
+} from '@trinity/platform-native';
 import { AUTH_METADATA } from '../auth-metadata.fixture';
 import { JsSdkQrRendezvous, QrRendezvousFactory } from './qr-rendezvous';
 
-// The secrets stage of a QR sign-in with real Rust crypto: an existing device's bundle is
-// imported into the new device's live session. The rendezvous itself needs MAS or Tuwunel's
-// OAuth server, so a stand-in flow carries the bundle. Skipped unless TRINITY_ENGINE_CONTRACT_HS
-// is set.
+// jsdom serves no crypto .wasm to the preload; initRustCrypto loads its own.
+vi.mock('@trinity/util/matrix', async (importOriginal) => {
+  const { of: rxOf } = await import('rxjs');
+  return {
+    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
+    preloadCryptoWasm: () => rxOf(undefined),
+  };
+});
+
+// The secrets stage of a QR sign-in with real Rust crypto: the new device holds an existing
+// device's bundle at `done`, and the session engine's start of that user and device imports
+// it. The rendezvous itself needs MAS or Tuwunel's OAuth server, so a stand-in flow carries
+// the bundle. Skipped unless TRINITY_ENGINE_CONTRACT_HS is set.
 const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'] as string;
 const secret = process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
 
@@ -35,8 +61,8 @@ async function register(localpart: string) {
   return { userId: user_id, password };
 }
 
-/** Signs `user` in on a new device: a client with in-memory Rust crypto, synced. */
-async function startDevice(user: { userId: string; password: string }) {
+/** A new device's session for `user`, with no client running on it yet. */
+async function login(user: { userId: string; password: string }) {
   const res = await fetch(`${baseUrl}/_matrix/client/v3/login`, {
     method: 'POST',
     body: JSON.stringify({
@@ -46,10 +72,12 @@ async function startDevice(user: { userId: string; password: string }) {
     }),
   });
   if (!res.ok) throw new Error(`Synapse login failed: ${res.status}`);
-  const session = (await res.json()) as {
-    device_id: string;
-    access_token: string;
-  };
+  return (await res.json()) as { device_id: string; access_token: string };
+}
+
+/** Signs `user` in on a device with in-memory Rust crypto and its own cross-signing. */
+async function startExistingDevice(user: { userId: string; password: string }) {
+  const session = await login(user);
   const client = createClient({
     baseUrl,
     userId: user.userId,
@@ -67,7 +95,19 @@ async function startDevice(user: { userId: string; password: string }) {
   });
   await client.startClient({ initialSyncLimit: 0 });
   await prepared;
-  return { client, accessToken: session.access_token };
+  const crypto = client.getCrypto();
+  if (!crypto?.exportSecretsBundle) throw new Error('No secrets export');
+  await crypto.bootstrapCrossSigning({
+    setupNewCrossSigning: true,
+    authUploadDeviceSigningKeys: async (makeRequest) => {
+      await makeRequest({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: user.userId },
+        password: user.password,
+      });
+    },
+  });
+  return { client, bundle: await crypto.exportSecretsBundle() };
 }
 
 describe.skipIf(!baseUrl)('JsSdkQrRendezvous against Synapse', () => {
@@ -92,37 +132,47 @@ describe.skipIf(!baseUrl)('JsSdkQrRendezvous against Synapse', () => {
       process.on('unhandledRejection', listener);
   });
 
-  it('imports the secrets another device shares into the new session, which ends verified', async () => {
-    const user = await register(`auth-qr-${Date.now().toString(36)}`);
-    const existing = await startDevice(user);
-    clients.push(existing.client);
-    const existingCrypto = existing.client.getCrypto();
-    if (!existingCrypto?.exportSecretsBundle) {
-      throw new Error('No secrets export');
-    }
-    await existingCrypto.bootstrapCrossSigning({
-      setupNewCrossSigning: true,
-      authUploadDeviceSigningKeys: async (makeRequest) => {
-        await makeRequest({
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user: user.userId },
-          password: user.password,
-        });
+  beforeEach(() => {
+    // jsdom has no IndexedDB, so the started session's crypto store lives in memory.
+    const init = MatrixClient.prototype.initRustCrypto;
+    vi.spyOn(MatrixClient.prototype, 'initRustCrypto').mockImplementation(
+      function (this: MatrixClient) {
+        return init.call(this, { useIndexedDB: false });
       },
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        MockProvider(SessionStorageService, {
+          record: () => of(null),
+          invalidateToken: () => of(void 0),
+          remove: () => of(void 0),
+          setActive: () => of(void 0),
+          updateTokens: () => of(void 0),
+        }),
+        MockProvider(CryptoStoreKeyService),
+      ],
     });
-    const bundle = await existingCrypto.exportSecretsBundle();
-    const fresh = await startDevice(user);
-    clients.push(fresh.client);
-    // Stands in for the rendezvous: the grant issues the new device's token, and the
-    // existing device shares its bundle once the new session is established.
+  });
+
+  afterEach(async () => {
+    await firstValueFrom(TestBed.inject(SESSION_ENGINE).stop());
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  /**
+   * Runs a QR sign-in whose grant issues `token`, with the other device sharing `bundle`, to
+   * its end. The stand-in shows check code 07, which the person types.
+   */
+  async function signIn(token: string, bundle: unknown) {
     const flow = {
       code: new Uint8Array([1]),
-      checkCode: '00',
+      checkCode: '07',
       generateCode: async () => undefined,
       negotiateProtocols: async () => ({ serverName: 'localhost' }),
       deviceAuthorizationGrant: async () => ({ userCode: 'CODE' }),
       completeLoginOnNewDevice: async () => ({
-        access_token: fresh.accessToken,
+        access_token: token,
         token_type: 'Bearer',
       }),
       shareSecrets: async () => ({ secrets: bundle }),
@@ -135,19 +185,10 @@ describe.skipIf(!baseUrl)('JsSdkQrRendezvous against Synapse', () => {
           provide: QrRendezvousFactory,
           useValue: { newDevice: async () => ({ flow, expires: null }) },
         },
-        {
-          provide: JS_SDK_CLIENTS,
-          useValue: {
-            clientFor: (id: string) =>
-              id === user.userId ? fresh.client : null,
-            holderFor: () => null,
-          },
-        },
       ],
     });
     const qr = TestBed.inject(JsSdkQrRendezvous);
-
-    const updates = await firstValueFrom(
+    return firstValueFrom(
       qr
         .signInWithQr(baseUrl, {
           grantMetadata: AUTH_METADATA,
@@ -155,25 +196,86 @@ describe.skipIf(!baseUrl)('JsSdkQrRendezvous against Synapse', () => {
         })
         .pipe(
           tap((update) => {
-            if (update.kind === 'server-reported') {
-              qr.answerQrSignIn(update.flowId, {
-                kind: 'server-accepted',
-              }).subscribe();
-            } else if (update.kind === 'signed-in') {
-              qr.continueQrSignIn(update.flowId, update.userId).subscribe();
+            if (update.kind === 'enter-check-code') {
+              qr.answerQrSignIn(update.flowId, { checkCode: '07' }).subscribe();
             }
           }),
           toArray(),
         ),
     );
+  }
 
-    expect(updates.find((u) => u.kind === 'signed-in')).toMatchObject({
-      userId: user.userId,
-      deviceId: fresh.client.getDeviceId(),
-    });
-    expect(updates.at(-1)).toEqual({ kind: 'done', verified: true });
-    expect(JSON.stringify(updates)).not.toContain(
-      JSON.stringify(bundle.cross_signing),
+  /** Starts the session as an added account does, then reads whether it is cross-signed. */
+  async function startAndCheck(session: {
+    userId: string;
+    deviceId: string;
+    accessToken: string;
+  }) {
+    await expect(
+      firstValueFrom(
+        TestBed.inject(SESSION_ENGINE).restorePersisted(
+          { baseUrl, ...session },
+          'background',
+        ),
+      ),
+    ).resolves.toEqual({ ok: true, value: null });
+    const client = TestBed.inject(MatrixClientService).clientFor(
+      session.userId,
     );
+    const status = await client
+      ?.getCrypto()
+      ?.getDeviceVerificationStatus(session.userId, session.deviceId);
+    return status?.crossSigningVerified === true;
+  }
+
+  it('hands over the session at done, and starting that user and device ends cross-signed', async () => {
+    const user = await register(`auth-qr-${Date.now().toString(36)}`);
+    const existing = await startExistingDevice(user);
+    clients.push(existing.client);
+    const fresh = await login(user);
+
+    const updates = await signIn(fresh.access_token, existing.bundle);
+
+    const done = updates.at(-1);
+    expect(done).toEqual({
+      kind: 'done',
+      session: {
+        homeserverUrl: baseUrl,
+        userId: user.userId,
+        deviceId: fresh.device_id,
+        accessToken: fresh.access_token,
+        refreshToken: null,
+        accessTokenExpiresAt: null,
+      },
+    });
+    expect(JSON.stringify(updates)).not.toContain(
+      JSON.stringify(existing.bundle.cross_signing),
+    );
+    await expect(
+      startAndCheck({
+        userId: user.userId,
+        deviceId: fresh.device_id,
+        accessToken: fresh.access_token,
+      }),
+    ).resolves.toBe(true);
+  }, 120_000);
+
+  it('leaves another device of the same account unverified', async () => {
+    const user = await register(`auth-qr-other-${Date.now().toString(36)}`);
+    const existing = await startExistingDevice(user);
+    clients.push(existing.client);
+    const fresh = await login(user);
+    const other = await login(user);
+
+    const updates = await signIn(fresh.access_token, existing.bundle);
+    expect(updates.at(-1)?.kind).toBe('done');
+
+    await expect(
+      startAndCheck({
+        userId: user.userId,
+        deviceId: other.device_id,
+        accessToken: other.access_token,
+      }),
+    ).resolves.toBe(false);
   }, 120_000);
 });

@@ -58,6 +58,7 @@ import {
   syncStoreIndexedDbName,
   verifiedEndpoints,
 } from '@trinity/util/matrix';
+import { importLinkedSecrets } from './linked-secrets';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';
 import {
@@ -110,6 +111,10 @@ function sameEndpoint(a: unknown, b: string): boolean {
   } catch {
     return false;
   }
+}
+
+function linkedSecretsKey(userId: string, deviceId: string): string {
+  return `${userId}|${deviceId}`;
 }
 
 /**
@@ -220,6 +225,11 @@ export class MatrixClientService {
 
   private readonly clients = new Map<string, AccountClient>();
   private readonly logoutHolds = new Map<string, LogoutHoldState>();
+  /**
+   * Secrets another device shared in a QR sign-in, kept until the start of that exact session
+   * imports them, keyed by user and device. Memory only: never persisted or logged.
+   */
+  private readonly linkedSecrets = new Map<string, unknown>();
   /** Set by a session handover's {@link pauseSync}: a reconnect then resends nothing. */
   private syncPaused = false;
 
@@ -542,6 +552,19 @@ export class MatrixClientService {
     });
   }
 
+  /**
+   * Keep a QR sign-in's shared secrets for the start of this user's device. That start imports
+   * them once, right after `startClient`; a start of any other user or device leaves them.
+   */
+  holdLinkedSecrets(userId: string, deviceId: string, bundle: unknown): void {
+    this.linkedSecrets.set(linkedSecretsKey(userId, deviceId), bundle);
+  }
+
+  /** Forget the secrets held for a user's device, if any. */
+  dropLinkedSecrets(userId: string, deviceId: string): void {
+    this.linkedSecrets.delete(linkedSecretsKey(userId, deviceId));
+  }
+
   /** Add another account (keeping the others syncing) and make it active. */
   add(session: MatrixSession): Observable<void> {
     return this.startForExistingCaller(session).pipe(
@@ -860,6 +883,22 @@ export class MatrixClientService {
     );
   }
 
+  /** Imports the secrets held for exactly this session's user and device, taking them once. */
+  private async importHeldSecrets(
+    client: MatrixClient,
+    session: MatrixSession,
+  ): Promise<void> {
+    const key = linkedSecretsKey(session.userId, session.deviceId);
+    const bundle = this.linkedSecrets.get(key);
+    if (bundle === undefined) return;
+    this.linkedSecrets.delete(key);
+    if (!(await importLinkedSecrets(client, bundle))) {
+      console.warn(
+        "Couldn't verify this device with the secrets the other device shared.",
+      );
+    }
+  }
+
   /**
    * One actual start attempt: awaits a pending wipe for the same account, then builds,
    * bootstraps and registers the client. {@link start} owns the joining and cancellation.
@@ -1085,6 +1124,7 @@ export class MatrixClientService {
                 ? throwError(() => new MatrixClientStartupError(failure, error))
                 : throwError(() => error);
             }),
+            switchMap(() => this.importHeldSecrets(created!, session)),
           ),
         ),
         map(() => {
