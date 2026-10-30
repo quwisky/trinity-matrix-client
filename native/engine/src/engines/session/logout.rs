@@ -34,6 +34,7 @@ use serde_json::{Value, json};
 use super::{
     MatrixSessionDto, ServerLogoutHoldUpdateDto, SessionStorageEffectDto, UiaAuthDto, done,
     restore::{auth_session, session_meta},
+    runtime::stop_sync,
 };
 use crate::{
     accounts::{AccountRuntime, Engine, SessionState},
@@ -50,6 +51,11 @@ type CallbackError = Box<dyn std::error::Error + Send + Sync>;
 
 /// A runtime the rule retired, and whether its stores go with it.
 type Retired = Option<(Arc<AccountRuntime>, bool)>;
+
+/// How long a sign-out's logout may take, cut off as an `ElapsedError`. Uncut it can take three
+/// 30 s requests (an OAuth one asks for the versions and the metadata, then revokes; a refreshable
+/// session refreshes and sends again), and a detached sign-out must end within `HOLDER_LIMIT`.
+const LOGOUT_LIMIT: Duration = Duration::from_secs(60);
 
 /// Every account's logout holds and their streams.
 #[derive(Default)]
@@ -266,7 +272,7 @@ impl SessionState {
             TokenDeath::MarkDied => {
                 if let Some(rt) = runtime {
                     let service = Arc::clone(&rt.sync_service);
-                    drop(spawn(async move { service.stop().await }));
+                    drop(spawn(async move { stop_sync(&service).await }));
                 }
                 (self.holds.mark_died(account_id), None)
             }
@@ -431,9 +437,19 @@ impl Engine {
     /// Logs the account out at its homeserver, its sync stopped first, so its own logout is no
     /// token death. A failed logout meets the rule: a dead token still logs the account out.
     pub(crate) async fn sign_out(self: &Arc<Self>, rt: &Arc<AccountRuntime>) -> Result<(), Error> {
+        self.sign_out_within(rt, LOGOUT_LIMIT).await
+    }
+
+    async fn sign_out_within(
+        self: &Arc<Self>,
+        rt: &Arc<AccountRuntime>,
+        limit: Duration,
+    ) -> Result<(), Error> {
         rt.signed_out.store(true, Ordering::Relaxed);
-        rt.sync_service.stop().await;
-        let Err(err) = self.logout_request(rt).await else {
+        stop_sync(&rt.sync_service).await;
+        let logout = timeout(self.logout_request(rt), limit).await;
+        let logout = logout.unwrap_or_else(|elapsed| Err(Error::UnknownError(elapsed.into())));
+        let Err(err) = logout else {
             return Ok(());
         };
         rt.signed_out.store(false, Ordering::Relaxed);
@@ -625,9 +641,9 @@ pub fn deactivate_account(
 }
 
 /// Logs a live account out at its homeserver; it stays live with its sync stopped. Detached, so a
-/// close never leaves it signed out without its logout. It ends within `HOLDER_LIMIT`: a stop, a
-/// logout of at most two 30 s requests (an OAuth one fetches the server's metadata first), then
-/// the rule's delivery waits of at most 10 s.
+/// close never leaves it signed out without its logout. It ends within `HOLDER_LIMIT` (120 s): a
+/// stop of at most 30 s, a logout cut off after `LOGOUT_LIMIT` (60 s), then the rule's delivery
+/// waits of at most 10 s, 100 s in all.
 pub fn logout_remote(engine: Arc<Engine>, account_id: String) -> Stream {
     detached(on_account(
         engine,
@@ -726,7 +742,7 @@ mod tests {
     use crate::{
         config::EngineConfig,
         engines::session::reads::account_status,
-        failure::{FailureCode, RefreshCause, http_error_from_response},
+        failure::{FailureCode, FailureKind, RefreshCause, http_error_from_response},
         testing::{
             WHOAMI, builder_on, default_client, engine_in, live, password, requests, scripted,
             session,
@@ -1279,6 +1295,26 @@ mod tests {
             let settled = timeout(settled, Duration::from_secs(5)).await;
             assert!(settled.is_ok(), "the close cut the sign-out short");
         }
+    }
+
+    /// A logout that never answers is cut off at its limit as a `timeout` failure, and the
+    /// account may sync again.
+    #[tokio::test]
+    async fn a_logout_that_never_answers_is_cut_off_as_a_timeout() {
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", silent.local_addr().unwrap());
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let client = builder_on(&base).build().await.unwrap();
+        let rt = live(&engine, &password(&base), client).await;
+        let signed_out = engine.sign_out_within(&rt, Duration::from_millis(300));
+        let outcome = timeout(signed_out, Duration::from_secs(5)).await;
+        let err = outcome.expect("the logout outlived its limit").unwrap_err();
+        assert_eq!(request_failure(&err).kind, FailureKind::Timeout);
+        assert!(
+            engine.may_sync("@a:b", rt.generation),
+            "the sign-out is cleared"
+        );
     }
 
     #[tokio::test]

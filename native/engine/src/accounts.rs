@@ -23,6 +23,7 @@ use crate::{
         logout::{Holds, RawToken},
         reads::live_token,
         restore::StartState,
+        runtime::stop_sync,
     },
     failure::{EngineFailure, account_not_live},
 };
@@ -276,11 +277,12 @@ impl Engine {
         current
     }
 
-    /// Stops a retired runtime and waits, up to `HOLDER_LIMIT` (120 s), until no engine command
-    /// or leased stream holds it, then deletes the account's stores when asked. It runs on its own
-    /// task, after the account's previous teardown, so a closed command cannot cut it short. A
-    /// start of the account awaits it, so two clients open one store only when a holder outlasts
-    /// the limit. A command that triggers a teardown never awaits it while holding the runtime.
+    /// Stops a retired runtime's sync, for up to `STOP_LIMIT` (30 s), then waits up to
+    /// `HOLDER_LIMIT` (120 s) until no engine command or leased stream holds it, then deletes the
+    /// account's stores when asked. It runs on its own task, after the account's previous
+    /// teardown, so a closed command cannot cut it short. A start of the account awaits it, so two
+    /// clients open one store only when a holder outlasts the limit. A command that triggers a
+    /// teardown never awaits it while holding the runtime.
     pub(crate) fn tear_down(
         &self,
         account_id: &str,
@@ -299,7 +301,7 @@ impl Engine {
                 previous.await;
             }
             if let Some(runtime) = runtime {
-                runtime.sync_service.stop().await;
+                stop_sync(&runtime.sync_service).await;
                 let mut dropped = runtime.dropped();
                 drop(runtime);
                 if timeout(dropped.changed(), HOLDER_LIMIT).await.is_err() {

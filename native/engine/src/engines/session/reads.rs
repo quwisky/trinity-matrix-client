@@ -18,15 +18,15 @@ use matrix_sdk::{
     store::SerializableEventContent,
     timeout::timeout,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::{
     AccountNameGroupDto, AccountServerStatusDto, PendingTextMessageDto, RefreshOptionsDto,
-    SessionAccessTokenDto, SessionCredentialsDto, done,
+    SessionAccessTokenDto, SessionCredentialsDto, runtime::stop_sync,
 };
 use crate::{
     accounts::{AccountRuntime, Engine},
-    dispatch::{Stream, reply, stream},
+    dispatch::{Stream, detached, reply, stream},
     engines::member::sent_once,
     failure::{EngineResult, account_not_live, refused_refresh},
     wire::{Fault, FaultKind},
@@ -135,8 +135,9 @@ pub fn pending_text_messages(engine: Arc<Engine>) -> Stream {
 }
 
 /// Stops every live account's sync, but not its crypto or its sends; `stop` ends the pause.
+/// Detached, so a close never leaves a sync running while paused; the stops run side by side.
 pub fn pause_sync(engine: Arc<Engine>) -> Stream {
-    done(async move {
+    detached(async move {
         let services = {
             let mut state = engine.state.lock();
             state.paused = true;
@@ -145,7 +146,8 @@ pub fn pause_sync(engine: Arc<Engine>) -> Stream {
                 .map(|rt| Arc::clone(&rt.sync_service))
                 .collect::<Vec<_>>()
         };
-        join_all(services.iter().map(|service| service.stop())).await;
+        join_all(services.iter().map(|service| stop_sync(service))).await;
+        Value::Null
     })
 }
 
@@ -323,6 +325,7 @@ async fn local_echoes(engine: &Engine) -> (Vec<Echo>, bool) {
 #[cfg(test)]
 mod tests {
     use futures_util::FutureExt;
+    use matrix_sdk::sleep::sleep;
     use matrix_sdk::{
         HttpError, RefreshTokenError, RumaApiError,
         ruma::{
@@ -332,10 +335,15 @@ mod tests {
             serde::Raw,
         },
     };
+    use matrix_sdk_ui::sync_service;
     use serde_json::{Value, value::to_raw_value};
 
     use super::*;
-    use crate::{config::EngineConfig, engines::session::MatrixSessionDto, testing::runtime_on};
+    use crate::{
+        config::EngineConfig,
+        engines::session::MatrixSessionDto,
+        testing::{builder_on, live, password, runtime_on},
+    };
 
     fn session(base_url: &str) -> MatrixSessionDto {
         serde_json::from_value(json!({
@@ -519,6 +527,33 @@ mod tests {
         }
         assert_eq!(refreshed(&engine, &password.user_id).await, [json!(false)]);
         assert!(homeserver.accept().is_err(), "no refresh was sent");
+    }
+
+    #[tokio::test]
+    async fn a_pause_closed_mid_flight_still_stops_the_sync() {
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", silent.local_addr().unwrap());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        let rt = live(
+            &engine,
+            &password(&base),
+            builder_on(&base).build().await.unwrap(),
+        )
+        .await;
+        rt.sync_service.start().await;
+        let mut closed = pause_sync(Arc::clone(&engine));
+        assert!(
+            closed.next().now_or_never().is_none(),
+            "the stop is in flight"
+        );
+        drop(closed);
+        let idle = async {
+            while !matches!(rt.sync_service.state().get(), sync_service::State::Idle) {
+                sleep(Duration::from_millis(10)).await;
+            }
+        };
+        let idle = timeout(idle, Duration::from_secs(5)).await;
+        assert!(idle.is_ok(), "the close cut the pause short");
     }
 
     #[test]

@@ -32,7 +32,7 @@ use matrix_sdk_ui::sync_service::SyncService;
 use super::{
     MatrixSessionDto, PersistedAccountActivationDto,
     logout::{reload_tokens, save_tokens_callback},
-    runtime::AccountRuntime,
+    runtime::{AccountRuntime, stop_sync},
 };
 #[cfg(feature = "native")]
 use crate::store::{StorePaths, prune_devices};
@@ -373,7 +373,7 @@ impl Engine {
         }
         // Retired or signed out meanwhile, so a stop may have come before this start.
         if !self.may_sync(&s.user_id, generation) {
-            sync_service.stop().await;
+            stop_sync(&sync_service).await;
         }
         if let Err(err) = prune_devices(&self.config, &s.user_id, &s.device_id) {
             tracing::warn!(kind = ?err.kind(), "pruning an account's other devices failed");
