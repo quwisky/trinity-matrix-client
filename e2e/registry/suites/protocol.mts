@@ -124,6 +124,26 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     ciTier: 'pull-request',
     sourceEntrypoints: ['e2e/engine/run.mts'],
   },
+  // Only the pull request `engine-contract-rust` job runs it, so neither the protocol runs nor the
+  // Synapse nightly need a Rust toolchain until piece 2 of #1153 lands on main.
+  {
+    id: 'engine.rust',
+    environment: 'protocol',
+    capabilities: ['discovery'],
+    contractTypes: ['protocol'],
+    prerequisites: ['network'],
+    availabilityPolicy: 'required',
+    cachePolicy: 'never',
+    serializationKeys: ['homeserver'],
+    timeoutClass: 'long',
+    ciJobOnly: true,
+    currentArtifactRoot: 'dist/.playwright/trinity-e2e-engine/<run-id>',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-engine/<run-id>',
+    targetProject: 'trinity-e2e-engine',
+    currentTarget: 'trinity-e2e-engine:contract:rust',
+    ciTier: 'pull-request',
+    sourceEntrypoints: ['e2e/engine/run.mts'],
+  },
   {
     ...standaloneProtocol,
     id: 'protocol.verify-sas-selfcheck',

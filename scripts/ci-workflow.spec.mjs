@@ -196,6 +196,7 @@ describe('split E2E jobs', () => {
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
       'engine-contract',
+      'engine-contract-rust',
       'rust',
     ]);
     for (const id of [
@@ -206,6 +207,7 @@ describe('split E2E jobs', () => {
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
       'engine-contract',
+      'engine-contract-rust',
       'rust',
     ]) {
       expect(jobs[id].name).not.toBe('E2E (Playwright + homeserver)');
@@ -383,6 +385,7 @@ describe('MAS sign-in journeys', () => {
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
       'engine-contract',
+      'engine-contract-rust',
       'rust',
     ];
 
@@ -663,7 +666,14 @@ describe('MAS sign-in journeys', () => {
         'libs/data-access/media/src/lib/media.rust.spec.ts',
         'libs/util/matrix/src/lib/engine-transport/engine-transport.ts',
         'libs/testing/src/lib/engine-stdio-transport.ts',
+        'libs/testing/src/lib/synapse-admin.ts',
+        'libs/testing/src/index.ts',
+        'vite.base.config.ts',
+        'test-setup.base.ts',
         'e2e/engine/run.mts',
+        'e2e/support/homeserver/synapse/adapter.mjs',
+        'e2e/support/invocation.mts',
+        'e2e/support/serve.mjs',
       ])('runs it when a pull request changes %s', (path) => {
         expect(detect({ [path]: 'changed\n' }, 'pull_request', 'rust')).toBe(
           'run=true',
@@ -674,6 +684,8 @@ describe('MAS sign-in journeys', () => {
         'libs/feature/rooms/src/index.ts',
         'libs/data-access/media/src/index.ts',
         'e2e/browser/support/mas.mts',
+        'e2e/support/invocation.mts.bak',
+        'libs/testing/src/lib/render.ts',
         'apps/trinity/Cargo.toml',
         'native/app-lock/pin-policy-cases.json',
         'native/push-render/push-render-cases.json',
@@ -716,6 +728,10 @@ describe('Rust engine job', () => {
     for (const step of remote) {
       expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
     }
+    expect(
+      job.steps.find((step) => step.uses?.startsWith('Swatinem/rust-cache@'))
+        .with,
+    ).toEqual({ 'shared-key': 'trinity-engine' });
     expect(job.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual([
       'rustup toolchain install\ncargo --version\n',
       'cargo fmt --all --check',
@@ -831,6 +847,51 @@ describe('Engine contract job', () => {
     expect(diagnosticsUpload(job).with).toEqual({
       surface: 'engine-contract',
       'report-path': 'dist/.playwright/trinity-e2e-engine/*/engine.js-sdk/**',
+    });
+  });
+});
+
+describe('Rust engine contract job', () => {
+  const jobs = workflow.jobs;
+  const job = jobs['engine-contract-rust'];
+
+  it('runs the Rust contract against Docker Synapse when the Rust classifier asks', () => {
+    expect([job.needs].flat()).toEqual(['classify']);
+    expect(job.if).toContain("needs.classify.outputs.rust == 'true'");
+    expect(job.env).toEqual({ TRINITY_E2E_HOMESERVER: 'synapse' });
+    expect(JSON.stringify(job)).not.toContain('TRINITY_E2E_HOMESERVER_RUNTIME');
+    expect(job['timeout-minutes']).toBeGreaterThan(0);
+    expect(job.steps[0].uses).toMatch(/^actions\/checkout@/);
+    const remote = job.steps.filter(
+      (candidate) => candidate.uses && !candidate.uses.startsWith('./'),
+    );
+    for (const step of remote) {
+      expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
+    }
+    const index = (predicate) => job.steps.findIndex(predicate);
+    const toolchain = index((step) =>
+      step.run?.startsWith('rustup toolchain install'),
+    );
+    const cache = index((step) =>
+      step.uses?.startsWith('Swatinem/rust-cache@'),
+    );
+    const setup = index((step) => step.uses === './.github/actions/setup');
+    const contract = index((step) => step.id === 'contract');
+    expect(toolchain).toBeGreaterThan(0);
+    expect(cache).toBeGreaterThan(toolchain);
+    // Only the `rust` job, which builds the test host too, saves the shared cache.
+    expect(job.steps[cache].with).toEqual({
+      'shared-key': 'trinity-engine',
+      'save-if': false,
+    });
+    expect(setup).toBeGreaterThan(cache);
+    expect(contract).toBeGreaterThan(setup);
+    expect(job.steps[contract].run).toContain(
+      '-- pnpm exec nx run trinity-e2e-engine:contract:rust\n',
+    );
+    expect(diagnosticsUpload(job).with).toEqual({
+      surface: 'engine-contract-rust',
+      'report-path': 'dist/.playwright/trinity-e2e-engine/*/engine.rust/**',
     });
   });
 });

@@ -14,7 +14,7 @@ export function defineHomeserverEngineContract(
     let context: Awaited<ReturnType<typeof setup>>;
     beforeAll(async () => {
       context = await setup();
-    });
+    }, 60_000);
 
     it('emits one plain probe of the account homeserver, then completes', async () => {
       const emitted = await firstValueFrom(

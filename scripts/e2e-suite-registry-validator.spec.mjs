@@ -131,6 +131,35 @@ describe('E2E suite registry', () => {
     );
   });
 
+  it('keeps a CI-job-only suite out of every package command', () => {
+    const snapshot = registrySnapshot();
+    expect(validateRegistry(snapshot)).toEqual([]);
+    snapshot.packageScripts
+      .find(({ name }) => name === 'e2e:protocol')
+      .suiteIds.push('engine.rust');
+    expect(validateRegistry(snapshot)).toContain(
+      'engine.rust runs only in CI but has a package command',
+    );
+  });
+
+  it('requires a CI-job-only suite to have a CI tier', () => {
+    const snapshot = registrySnapshot();
+    snapshot.suites.find(({ id }) => id === 'engine.rust').ciTier =
+      'local-only';
+    expect(validateRegistry(snapshot)).toContain(
+      'engine.rust runs only in CI but is classified local-only',
+    );
+  });
+
+  it('rejects a suite target whose configuration does not exist', () => {
+    const snapshot = registrySnapshot();
+    const engine = snapshot.suites.find(({ id }) => id === 'engine.rust');
+    engine.currentTarget = 'trinity-e2e-engine:contract:missing';
+    expect(validateWorkspace(workspaceRoot, snapshot)).toContain(
+      'engine.rust target does not exist: trinity-e2e-engine:contract:missing',
+    );
+  }, 120_000);
+
   // Resolves every owned Nx project on a cold hosted runner. The first public
   // run exceeded 30 seconds; this is a graph contract, not a performance budget.
   it('matches the current workspace entrypoints, targets, commands and CI', () => {

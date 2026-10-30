@@ -6,7 +6,10 @@ use matrix_sdk::SendOutsideWasm;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::wire::{Fault, FaultKind};
+use crate::{
+    engines::{discovery, homeserver},
+    wire::{Fault, FaultKind},
+};
 
 /// An engine method's output: a `BoxStream`, but a `LocalBoxStream` on wasm, where the SDK's
 /// futures and `Client` are not `Send`. [`stream`] is the one place that asks for `Send`, and only
@@ -46,7 +49,35 @@ macro_rules! methods {
     };
 }
 
-methods! {}
+methods! {
+    "discovery.discover" => discovery::discover(domain: String),
+    "discovery.searchPublicRooms" => discovery::search_public_rooms(
+        account_id: String,
+        query: discovery::PublicRoomsQueryDto,
+    ),
+    "discovery.joinRoom" => discovery::join_room(
+        account_id: String,
+        room_id_or_alias: String,
+        via: Vec<String>,
+    ),
+    "discovery.previewRoom" => discovery::preview_room(
+        account_id: String,
+        room_id_or_alias: String,
+        via: Vec<String>,
+    ),
+    "discovery.knockRoom" => discovery::knock_room(
+        account_id: String,
+        room_id_or_alias: String,
+        via: Vec<String>,
+        reason: Option<String>,
+    ),
+    "discovery.searchUserDirectory" => discovery::search_user_directory(
+        account_id: String,
+        term: String,
+        limit: u64,
+    ),
+    "homeserver.probe" => homeserver::probe(account_id: String),
+}
 
 /// Decodes positional args in order. Its `bad-args` faults name the position and the type
 /// classes but never quote a value: args carry access tokens and passwords.

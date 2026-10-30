@@ -62,6 +62,8 @@ TRINITY_E2E_HOMESERVER=synapse pnpm nx run trinity-e2e-engine:contract
 
 Each library's JSON and JUnit report, and the suite summary, go to `dist/.playwright/trinity-e2e-engine/<run-id>/engine.js-sdk/`.
 
+`trinity-e2e-engine:contract:rust` runs the same contracts against the [Rust engine](../../architecture/matrix-integration/#engine-interfaces) for the libraries in `RUST_LIBS`, after building the test host with `cargo`; its reports go to `engine.rust/`. Only a pull request's `Engine contract (Rust, Synapse)` job runs it, when the pull request changes what the `rust` job checks; `pnpm e2e:protocol` and the Synapse nightly leave it out, so protocol runs need no Rust toolchain.
+
 CI runs the contract against Docker Synapse, whose stack also serves Mailpit and Sydent, so a library whose contract needs mail or an identity server has them. It runs in two places. A pull request runs it in its `Engine contract (Synapse)` job when it changes `libs/data-access`, a library the engines build on (`libs/util/matrix`, `libs/runtime`, `libs/platform-native`, `libs/native`, `libs/testing`), the shared Vitest config or setup, the contract runner or its `e2e/support` imports, the homeserver harness, the `matrix-js-sdk` patch, or the `matrix-js-sdk` or crypto-wasm version; every other pull request skips that job. The `E2E (Synapse nightly)` workflow runs it against `main` in its own `Engine contract (Synapse)` job, so a protocol suite that fails earlier in `pnpm e2e:protocol`, which includes the contract too, cannot hide it.
 
 ## The new-device check in journeys {#new-device-check}

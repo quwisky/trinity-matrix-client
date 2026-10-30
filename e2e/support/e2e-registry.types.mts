@@ -67,7 +67,10 @@ export interface E2ESuiteDefinition {
   readonly cachePolicy: 'never';
   readonly serializationKeys: readonly string[];
   readonly timeoutClass: E2ETimeoutClass;
-  readonly canonicalScript: string;
+  /** Required unless {@link ciJobOnly}. */
+  readonly canonicalScript?: string;
+  /** Runs only from its CI entrypoint: no aggregate selects it and no package script lists it. */
+  readonly ciJobOnly?: true;
   readonly currentArtifactRoot: string;
   readonly targetArtifactRoot: string;
   readonly sourceEntrypoints: readonly string[];

@@ -1,7 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { Observable, type Subscriber } from 'rxjs';
+import { isDeepStrictEqual } from 'node:util';
+import { Observable, firstValueFrom, type Subscriber } from 'rxjs';
 import {
   EngineFaultError,
   type EngineTransport,
@@ -121,6 +122,38 @@ export class StdioTransport implements EngineTransport {
     for (const subscriber of open) {
       subscriber.error(this.dead);
     }
+  }
+}
+
+/**
+ * Starts the test host with `user` signed in on `baseUrl`, for a Rust contract spec to dispose.
+ * Node only, for tests.
+ */
+export async function startTesthostAccount(
+  baseUrl: string,
+  user: { userId: string; deviceId: string; accessToken: string },
+): Promise<StdioTransport> {
+  const transport = StdioTransport.start();
+  try {
+    const started = await firstValueFrom(
+      transport.open('testhost.startAccount', [
+        {
+          homeserverUrl: baseUrl,
+          userId: user.userId,
+          deviceId: user.deviceId,
+          accessToken: user.accessToken,
+        },
+      ]),
+    );
+    if (!isDeepStrictEqual(started, { ok: true, value: null })) {
+      throw new Error(
+        `testhost.startAccount failed: ${JSON.stringify(started)}`,
+      );
+    }
+    return transport;
+  } catch (error) {
+    await transport.dispose();
+    throw error;
   }
 }
 

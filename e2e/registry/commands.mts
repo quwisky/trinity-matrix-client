@@ -298,6 +298,11 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['engine.js-sdk'],
   },
   {
+    command: 'pnpm exec nx run trinity-e2e-engine:contract:rust',
+    tier: 'pull-request',
+    suiteIds: ['engine.rust'],
+  },
+  {
     command: 'pnpm exec nx run trinity-e2e-components:scrollbars',
     tier: 'pull-request',
     suiteIds: ['components.scrollbars'],
