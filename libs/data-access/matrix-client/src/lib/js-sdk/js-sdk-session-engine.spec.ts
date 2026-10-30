@@ -45,12 +45,9 @@ vi.mock('matrix-js-sdk', async (importOriginal) => {
   };
 });
 
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
+vi.mock('./crypto-wasm-loader', async () => {
   const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
+  return { preloadCryptoWasm: () => rxOf(undefined) };
 });
 
 const KEYED = {
@@ -128,11 +125,9 @@ describe('JsSdkSessionEngine', () => {
 
     expect(snapshot.accounts.map((a) => a.accountId)).toEqual(svc.accountIds());
     expect(snapshot.activeAccountId).toBe(svc.activeUserId());
-    for (const account of snapshot.accounts) {
-      expect(account.generation).toBe(
-        svc.sessionGenerations().get(account.accountId),
-      );
-    }
+    expect(snapshot.accounts.map((a) => a.generation)).toEqual(
+      svc.all().map((a) => a.generation),
+    );
     expect(snapshot.accounts[0]).toEqual({
       accountId: SESSION.userId,
       deviceId: SESSION.deviceId,

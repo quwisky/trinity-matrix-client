@@ -15,11 +15,13 @@ import {
   RendezvousError,
   type RendezvousFailureListener,
 } from 'matrix-js-sdk/lib/rendezvous';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  preloadCryptoWasm,
+} from '@trinity/data-access/matrix-client';
 import {
   engineFail,
   engineOk,
-  preloadCryptoWasm,
   verifiedEndpoints,
   type EngineResult,
 } from '@trinity/util/matrix';

@@ -19,7 +19,7 @@ const KIT_IMPORT_MESSAGE =
   'Feature, ui and app code reaches for @trinity/components/* (the public tier), not the vendored kit. The tier owns the vendor API so a swap touches one library instead of every call site — see the developer UI and theming guide. If the component you need has no wrapper yet, add one there rather than importing @trinity/helm/* here.';
 
 const SDK_IMPORT_MESSAGE =
-  'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
+  'Only libs/data-access/* may import matrix-js-sdk or its crypto WASM. Re-export what you need from the data-access lib that owns the domain.';
 
 const PLATFORM_VENDOR_IMPORTS = [
   '@capacitor/*',
@@ -218,8 +218,7 @@ export default defineConfig([
     // discipline alone — and three spec files had already drifted past it.
     //
     // The allowed importers are deliberately absent from `files` below rather than
-    // carved out here: `libs/data-access/**` owns all SDK access, and `libs/util/matrix`
-    // is the sanctioned exception because it models the SDK's own types
+    // carved out here: `libs/data-access/**` owns all SDK access
     // (developer dependency-boundaries guide). If a layer below genuinely needs an SDK symbol, the
     // fix is to re-export it from the lib that owns the domain — as
     // data-access/discovery does for JoinRule — not to widen this rule.
@@ -236,8 +235,8 @@ export default defineConfig([
       'libs/spartan/**/*.ts',
       // The public component tier, for the same reason libs/spartan is here: it is
       // presentational UI that must never reach the SDK. Absence from this list is how a
-      // library is PERMITTED to import matrix-js-sdk (that is how data-access and
-      // util/matrix are allowed), so a new UI lib that is merely forgotten lands in the
+      // library is PERMITTED to import matrix-js-sdk (that is how data-access is
+      // allowed), so a new UI lib that is merely forgotten lands in the
       // allowed bucket — silently, and with nothing else to catch it. That is no longer
       // "nothing": `lint-invariants.spec.mjs` now sweeps every library and fails on any one
       // not named here and not sanctioned, which is what caught `libs/util/ui` on the day it
@@ -253,10 +252,7 @@ export default defineConfig([
       'libs/application/**/*.ts',
       'libs/testing/**/*.ts',
       'libs/theme-foundation/**/*.ts',
-      // `libs/util/ui` and not `libs/util/**`: the sibling `libs/util/matrix` is the
-      // sanctioned exception that models the SDK's own types, so a directory-wide glob here
-      // would ban the one library that has to import it.
-      'libs/util/ui/**/*.ts',
+      'libs/util/**/*.ts',
     ],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
@@ -264,7 +260,11 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: ['matrix-js-sdk', 'matrix-js-sdk/*'],
+              group: [
+                'matrix-js-sdk',
+                'matrix-js-sdk/*',
+                '@matrix-org/matrix-sdk-crypto-wasm',
+              ],
               message: SDK_IMPORT_MESSAGE,
             },
           ],
@@ -278,7 +278,8 @@ export default defineConfig([
       'no-restricted-syntax': [
         'error',
         {
-          selector: 'ImportExpression[source.value=/^matrix-js-sdk/]',
+          selector:
+            'ImportExpression[source.value=/^(?:matrix-js-sdk|@matrix-org\\/matrix-sdk-crypto-wasm)/]',
           message: SDK_IMPORT_MESSAGE,
         },
       ],
@@ -306,7 +307,11 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: ['matrix-js-sdk', 'matrix-js-sdk/*'],
+              group: [
+                'matrix-js-sdk',
+                'matrix-js-sdk/*',
+                '@matrix-org/matrix-sdk-crypto-wasm',
+              ],
               message: SDK_IMPORT_MESSAGE,
             },
             {
@@ -327,7 +332,8 @@ export default defineConfig([
       'no-restricted-syntax': [
         'error',
         {
-          selector: 'ImportExpression[source.value=/^matrix-js-sdk/]',
+          selector:
+            'ImportExpression[source.value=/^(?:matrix-js-sdk|@matrix-org\\/matrix-sdk-crypto-wasm)/]',
           message: SDK_IMPORT_MESSAGE,
         },
       ],

@@ -5,7 +5,7 @@
 // engine (`onFakeEngine`), so they share one copy of the doubles here.
 import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MockProvider, ngMocks } from 'ng-mocks';
+import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { MatrixError } from 'matrix-js-sdk';
@@ -16,7 +16,6 @@ import {
 } from './trust-provider-recovery.port';
 import {
   JS_SDK_CLIENTS,
-  MatrixClientService,
   SESSION_SNAPSHOT,
   type SessionSnapshot,
   SessionStateService,
@@ -229,12 +228,11 @@ export function setup(opts: CryptoOpts = {}) {
   const activeAccountId = computed(() => activeUserId() ?? '@me:hs');
   // Bumped by a test to model a new client for the same account (re-login).
   const generation = signal(1);
+  // The account's live client; a test swaps it with `useClient`.
+  let live: unknown = client;
   TestBed.configureTestingModule({
     providers: [
       TrustService,
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
-      }),
       MockProvider(SessionStateService, {
         activeAccountId,
         active: computed(() => ({
@@ -244,10 +242,7 @@ export function setup(opts: CryptoOpts = {}) {
       }),
       {
         provide: JS_SDK_CLIENTS,
-        useFactory: () => {
-          const matrix = TestBed.inject(MatrixClientService);
-          return { clientFor: () => matrix.instance, holderFor: () => null };
-        },
+        useValue: { clientFor: () => live, holderFor: () => null },
       },
       {
         provide: TRUST_PROVIDER_RECOVERY,
@@ -261,20 +256,12 @@ export function setup(opts: CryptoOpts = {}) {
     ],
   });
 
-  const matrix = TestBed.inject(MatrixClientService);
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(
-    matrix,
-    'instance',
-    client as unknown as MatrixClientService['instance'],
-  );
-
   return {
     svc: TestBed.inject(TrustService),
     crypto,
     secretStorage,
     client,
-    matrix,
+    useClient: (next: unknown) => (live = next),
     activeUserId,
     generation,
   };

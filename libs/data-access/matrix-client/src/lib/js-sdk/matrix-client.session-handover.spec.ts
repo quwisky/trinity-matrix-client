@@ -43,14 +43,10 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 
-// The WASM preload is a no-op in tests (no real crypto engine). preloadCryptoWasm
-// now lives in @trinity/util/matrix; partial-mock so its other exports stay real.
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
+// The WASM preload is a no-op in tests (no real crypto engine).
+vi.mock('./crypto-wasm-loader', async () => {
   const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
+  return { preloadCryptoWasm: () => rxOf(undefined) };
 });
 
 describe('MatrixClientService session handover', () => {
@@ -137,7 +133,7 @@ describe('MatrixClientService session handover', () => {
 
     expect(client.syncApi.stop).toHaveBeenCalledOnce();
     expect(client.stopClient).not.toHaveBeenCalled();
-    expect(svc.isInitialized).toBe(true);
+    expect(svc.clientFor(SESSION.userId)).toBe(client);
   });
 
   it('does not resend a message that failed offline once sync is paused', async () => {
@@ -463,7 +459,7 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
     const { svc } = setup();
     started = svc;
     await firstValueFrom(svc.init(SESSION));
-    const client = svc.instance;
+    const client = svc.clientFor(SESSION.userId)!;
     const room = new actual.Room(ROOM_ID, client, '@me:hs', {});
     client.store.storeRoom(room);
     const root = new actual.MatrixEvent({
