@@ -12,7 +12,12 @@ describe('buildContractCommand', () => {
 
     expect(command.suiteId).toBe('engine.rust');
     expect(command.summaryFile).toContain('/run-1/engine.rust/');
-    expect(command.runs.map(({ project }) => project)).toEqual([...RUST_LIBS]);
+    expect(command.runs.map(({ project }) => project)).toEqual([
+      'data-access-homeserver',
+      'data-access-discovery',
+    ]);
+    // A Rust contract is the js-sdk contract run on another engine.
+    expect(LIBS).toEqual(expect.arrayContaining([...RUST_LIBS]));
     for (const { args } of command.runs) {
       // "trust" contains "rust": a bare `rust` filter would run data-access-trust specs.
       expect(args).toContain('.rust.spec');

@@ -7,7 +7,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::{
-    engines::homeserver,
+    engines::{discovery, homeserver},
     wire::{Fault, FaultKind},
 };
 
@@ -50,6 +50,32 @@ macro_rules! methods {
 }
 
 methods! {
+    "discovery.discover" => discovery::discover(domain: String),
+    "discovery.searchPublicRooms" => discovery::search_public_rooms(
+        account_id: String,
+        query: discovery::PublicRoomsQueryDto,
+    ),
+    "discovery.joinRoom" => discovery::join_room(
+        account_id: String,
+        room_id_or_alias: String,
+        via: Vec<String>,
+    ),
+    "discovery.previewRoom" => discovery::preview_room(
+        account_id: String,
+        room_id_or_alias: String,
+        via: Vec<String>,
+    ),
+    "discovery.knockRoom" => discovery::knock_room(
+        account_id: String,
+        room_id_or_alias: String,
+        via: Vec<String>,
+        reason: Option<String>,
+    ),
+    "discovery.searchUserDirectory" => discovery::search_user_directory(
+        account_id: String,
+        term: String,
+        limit: u64,
+    ),
     "homeserver.probe" => homeserver::probe(account_id: String),
 }
 

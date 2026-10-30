@@ -37,7 +37,10 @@ export const LIBS = [
   'data-access-identity',
 ] as const;
 /** The libraries whose contract also runs against the Rust engine, as `*.rust.spec.ts`. */
-export const RUST_LIBS = ['data-access-homeserver'] as const;
+export const RUST_LIBS = [
+  'data-access-homeserver',
+  'data-access-discovery',
+] as const;
 
 export type ContractEngine = 'js-sdk' | 'rust';
 
