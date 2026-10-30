@@ -55,8 +55,7 @@ interface Attachment<T> {
 }
 
 /**
- * The SDK-free counterpart of `projectFromClient`: the Active Account's lease in
- * {@link ProjectionRuntime} over an engine subscription. Coalesces bursts, resets and
+ * The Active Account's lease in {@link ProjectionRuntime} over an engine subscription. Coalesces bursts, resets and
  * re-subscribes on an account switch or a new session generation, and disconnects when the
  * last account signs out. Call from an injection context.
  */
