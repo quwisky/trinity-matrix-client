@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, defer, of, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   EngineRequestError,
   NOT_SIGNED_IN,
@@ -12,7 +12,7 @@ import { DISCOVERY_ENGINE, type UserDirectoryPage } from './discovery-engine';
 @Injectable({ providedIn: 'root' })
 export class UserDirectoryDiscoveryService {
   private readonly engine = inject(DISCOVERY_ENGINE);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
 
   search(term: string, limit = 30): Observable<UserDirectoryPage> {
     const trimmed = term.trim();
@@ -20,7 +20,7 @@ export class UserDirectoryDiscoveryService {
       return of({ users: [], limited: false });
     }
     return defer(() => {
-      const accountId = this.matrix.activeUserId();
+      const accountId = this.session.activeAccountId();
       if (!accountId) {
         return throwError(() => new EngineRequestError(NOT_SIGNED_IN));
       }
