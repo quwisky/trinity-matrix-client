@@ -369,6 +369,7 @@ export class FakeSessionEngine implements SessionEngine {
     return this.run(`logoutRemote:${accountId}`, () =>
       this.request(accountId, () => {
         this.revoke(accountId);
+        this.sync(accountId, { syncState: 'stopped' });
         return engineOk(null);
       }),
     );
