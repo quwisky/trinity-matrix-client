@@ -4,7 +4,7 @@ import {
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
-import { liveRoomState } from '@trinity/util/matrix';
+import { liveRoomState } from '@trinity/data-access/matrix-client';
 import { compareOrder, isValidOrder } from '../space-child-order';
 import type { HierarchyEntry, SpaceChildLink } from '../room-list-engine';
 

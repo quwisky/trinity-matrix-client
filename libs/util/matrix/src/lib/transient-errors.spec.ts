@@ -1,6 +1,10 @@
-import { ConnectionError, HTTPError, MatrixError } from 'matrix-js-sdk';
 import { defer, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  connectionError,
+  httpError,
+  matrixError,
+} from './sdk-error-shapes.spec-harness';
 import {
   isMatrixRequestAbortError,
   isTransientMatrixError,
@@ -20,28 +24,25 @@ describe('isMatrixRequestAbortError', () => {
 
 describe('isTransientMatrixError', () => {
   it('treats a ConnectionError as transient', () => {
-    expect(isTransientMatrixError(new ConnectionError('fetch failed'))).toBe(
-      true,
-    );
+    expect(isTransientMatrixError(connectionError('fetch failed'))).toBe(true);
   });
 
   it('treats a 5xx / 429 HTTP or Matrix error as transient', () => {
-    expect(isTransientMatrixError(new HTTPError('boom', 503))).toBe(true);
-    expect(isTransientMatrixError(new HTTPError('boom', 500))).toBe(true);
-    expect(
-      isTransientMatrixError(new MatrixError({ errcode: 'M_LIMIT' }, 429)),
-    ).toBe(true);
-    expect(
-      isTransientMatrixError(new MatrixError({ errcode: 'M_UNKNOWN' }, 502)),
-    ).toBe(true);
+    expect(isTransientMatrixError(httpError(503))).toBe(true);
+    expect(isTransientMatrixError(httpError(500))).toBe(true);
+    expect(isTransientMatrixError(matrixError('M_LIMIT', 429))).toBe(true);
+    expect(isTransientMatrixError(matrixError('M_UNKNOWN', 502))).toBe(true);
   });
 
   it('treats a 4xx (except 429) error as NON-transient', () => {
-    expect(isTransientMatrixError(new HTTPError('bad', 400))).toBe(false);
-    expect(
-      isTransientMatrixError(new MatrixError({ errcode: 'M_NOT_FOUND' }, 404)),
-    ).toBe(false);
-    expect(isTransientMatrixError(new HTTPError('forbidden', 403))).toBe(false);
+    expect(isTransientMatrixError(httpError(400))).toBe(false);
+    expect(isTransientMatrixError(matrixError('M_NOT_FOUND', 404))).toBe(false);
+    expect(isTransientMatrixError(httpError(403))).toBe(false);
+  });
+
+  it('reads the SDK classes by shape', () => {
+    expect(isTransientMatrixError({ name: 'ConnectionError' })).toBe(false);
+    expect(isTransientMatrixError({ httpStatus: 503 })).toBe(false);
   });
 
   it('treats a plain Error and undefined as NON-transient', () => {
@@ -62,9 +63,7 @@ describe('retryTransient', () => {
     let attempts = 0;
     const src = defer(() => {
       attempts++;
-      return attempts < 3
-        ? throwError(() => new HTTPError('503', 503))
-        : of('ok');
+      return attempts < 3 ? throwError(() => httpError(503)) : of('ok');
     }).pipe(retryTransient());
 
     const result = firstValueFrom(src);
@@ -76,7 +75,7 @@ describe('retryTransient', () => {
 
   it('rethrows a non-transient error immediately without retrying', async () => {
     let attempts = 0;
-    const err = new HTTPError('bad request', 400);
+    const err = httpError(400);
     const src = defer(() => {
       attempts++;
       return throwError(() => err);
@@ -89,7 +88,7 @@ describe('retryTransient', () => {
   it('gives up after 3 retries and rethrows the transient error', async () => {
     vi.useFakeTimers();
     let attempts = 0;
-    const err = new HTTPError('down', 503);
+    const err = httpError(503);
     const src = defer(() => {
       attempts++;
       return throwError(() => err);

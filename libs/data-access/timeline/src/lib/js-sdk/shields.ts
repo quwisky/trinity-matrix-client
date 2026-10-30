@@ -4,12 +4,12 @@ import {
   EventShieldReason,
   type EventEncryptionInfo,
 } from 'matrix-js-sdk/lib/crypto-api';
+import { plainEqual } from '@trinity/util/matrix';
 import {
   displayContent,
-  plainEqual,
   shieldSubject,
   unencryptedMarkFor,
-} from '@trinity/util/matrix';
+} from '@trinity/data-access/matrix-client';
 import { type MessageShield } from '../message-presentation';
 import { shieldText, unencryptedShield } from '../shield-presentation';
 import { type ShieldCode } from '../timeline-engine';

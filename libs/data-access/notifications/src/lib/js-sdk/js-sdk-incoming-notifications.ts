@@ -15,7 +15,7 @@ import {
   RoomEncryptionFlags,
   displayContent,
   validReplacement,
-} from '@trinity/util/matrix';
+} from '@trinity/data-access/matrix-client';
 import type {
   IncomingNotification,
   ReactionAnnotation,

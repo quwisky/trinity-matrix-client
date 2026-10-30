@@ -10,13 +10,13 @@ import {
   MSC1767_AUDIO,
   MSC3245_VOICE,
   asEncryptedFile,
-  displayContent,
   escapeHtml,
   locationMessageContent,
   parseGeoUri,
   stripReplyFallbackHtml,
   stripReplyFallbackText,
 } from '@trinity/util/matrix';
+import { displayContent } from '@trinity/data-access/matrix-client';
 import type { OutgoingText } from '../timeline-engine';
 
 /**

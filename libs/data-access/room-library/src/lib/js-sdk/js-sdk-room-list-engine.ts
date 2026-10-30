@@ -30,13 +30,16 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
 import {
+  JS_SDK_CLIENTS,
+  coalesce,
   RoomEncryptionFlags,
+  liveRoomState,
+} from '@trinity/data-access/matrix-client';
+import {
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
-  liveRoomState,
   plainEqual,
   type EngineFailure,
   type EngineResult,

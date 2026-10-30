@@ -28,18 +28,21 @@ import {
   tap,
   type Subscriber,
 } from 'rxjs';
-import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
 import {
+  JS_SDK_CLIENTS,
+  coalesce,
   RoomEncryptionFlags,
-  describeMatrixRequestFailure,
-  engineFail,
-  engineOk,
   isRoomEncrypted,
-  linkedUserIds,
   liveRoomState,
   messagePreview,
   unencryptedMarkFor,
   validReplacement,
+} from '@trinity/data-access/matrix-client';
+import {
+  describeMatrixRequestFailure,
+  engineFail,
+  engineOk,
+  linkedUserIds,
   type EngineFailure,
   type EngineResult,
 } from '@trinity/util/matrix';

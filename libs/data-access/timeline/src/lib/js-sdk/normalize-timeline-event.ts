@@ -6,13 +6,15 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import {
-  displayContent,
   initialOf,
   mentionNamesIn,
   normalizeMediaPayload,
   parseGeoUri,
-  validReplacement,
 } from '@trinity/util/matrix';
+import {
+  displayContent,
+  validReplacement,
+} from '@trinity/data-access/matrix-client';
 import {
   mapStatus,
   reactionsFor,

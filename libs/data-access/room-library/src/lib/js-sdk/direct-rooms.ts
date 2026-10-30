@@ -1,11 +1,36 @@
-import { EventType, Preset, RoomType, type MatrixClient } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import {
-  isValidUserId,
-  roomEncryptionInitialState,
-  visibilityOptions,
-} from '@trinity/util/matrix';
+  EventType,
+  Preset,
+  RoomType,
+  Visibility,
+  type ICreateRoomStateEvent,
+  type MatrixClient,
+} from 'matrix-js-sdk';
+import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
+import { isValidUserId, roomEncryptionContent } from '@trinity/util/matrix';
 import type { CreateRoomRequest } from '../room-list-engine';
+
+/**
+ * The `m.room.encryption` (Megolm) entry for a `createRoom` `initial_state`, so a room is
+ * encrypted from its very first event. Shared by every room/DM creation path.
+ */
+function roomEncryptionInitialState(): ICreateRoomStateEvent {
+  return {
+    type: EventType.RoomEncryption,
+    state_key: '',
+    content: roomEncryptionContent(),
+  };
+}
+
+/** Visibility/preset for a create call: public-discoverable vs invite-only (default). */
+function visibilityOptions(isPublic?: boolean): {
+  visibility: Visibility;
+  preset: Preset;
+} {
+  return isPublic
+    ? { visibility: Visibility.Public, preset: Preset.PublicChat }
+    : { visibility: Visibility.Private, preset: Preset.PrivateChat };
+}
 
 /** Creates an encrypted room or an unencrypted space, without linking it to a parent. */
 export function createRoomOrSpace(

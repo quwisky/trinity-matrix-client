@@ -25,16 +25,19 @@ import {
   map,
   of,
 } from 'rxjs';
-import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  coalesce,
+  applyRoomEncryption,
+  isRoomEncrypted,
+  liveRoomState,
+} from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
-  applyRoomEncryption,
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
-  isRoomEncrypted,
-  liveRoomState,
   plainEqual,
   roomEncryptionContent,
 } from '@trinity/util/matrix';

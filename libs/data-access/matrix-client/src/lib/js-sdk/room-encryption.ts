@@ -4,6 +4,7 @@ import {
   type IContent,
   type Room,
 } from 'matrix-js-sdk';
+import type { UnencryptedMark } from '@trinity/util/matrix';
 import { validReplacement } from './replacement';
 import { liveRoomState } from './room-state';
 
@@ -122,9 +123,6 @@ export function arrivedInClear(
     !e.status && !e.isState() && !e.isRedacted();
   return settled(event) && settled(subject) && !subject.isEncrypted();
 }
-
-/** How text that arrived unencrypted in an encrypted room is marked; see {@link unencryptedMarkFor}. */
-export type UnencryptedMark = 'unencrypted' | 'unencrypted-history';
 
 /**
  * A lookup that marks each message whose text arrived in the clear in an encrypted room,

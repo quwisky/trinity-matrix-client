@@ -1,5 +1,9 @@
 import type { MatrixEvent } from 'matrix-js-sdk';
-import { isEditOf, newContentOf, validReplacement } from '@trinity/util/matrix';
+import {
+  isEditOf,
+  newContentOf,
+  validReplacement,
+} from '@trinity/data-access/matrix-client';
 
 /** One version of a message: the event it came from, and its content, or null when undecryptable. */
 export interface EditRevisionSource {

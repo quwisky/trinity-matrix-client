@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
-import { assertPlainData, unencryptedMarkFor } from '@trinity/util/matrix';
+import { assertPlainData } from '@trinity/util/matrix';
+import { unencryptedMarkFor } from '@trinity/data-access/matrix-client';
 import { normalizeTimelineEvent } from './js-sdk/normalize-timeline-event';
 import { shownSubject } from './js-sdk/shields';
 import { toTimelineItem } from './js-sdk/timeline-item';

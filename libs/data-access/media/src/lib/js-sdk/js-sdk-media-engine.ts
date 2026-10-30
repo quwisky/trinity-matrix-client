@@ -24,6 +24,7 @@ import {
   JS_SDK_CLIENTS,
   serverAdvertises,
   type ServerSupportQuery,
+  isRoomEncrypted,
 } from '@trinity/data-access/matrix-client';
 import {
   type EncryptedFileInfo,
@@ -33,7 +34,6 @@ import {
   encryptAttachment,
   engineFail,
   engineOk,
-  isRoomEncrypted,
   mediaCaptionFields,
 } from '@trinity/util/matrix';
 import type {

@@ -1,8 +1,5 @@
-import { MsgType, RelationType, type MatrixEvent } from 'matrix-js-sdk';
 import { renderMarkdown, type RenderedMarkdown } from './markdown-render';
 import { escapeHtml } from './message-html';
-import { stripReplyFallbackText } from './message-view';
-import { displayContent } from './replacement';
 
 /**
  * Send-side content builders shared by the main timeline and the in-thread composer, so both
@@ -158,14 +155,14 @@ export function textMessageContent(
   );
   if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
-      msgtype: MsgType.Text,
+      msgtype: 'm.text',
       body: text,
       format: 'org.matrix.custom.html',
       formatted_body: applyMentionPills(md.html, mentions),
       ...notified,
     };
   }
-  return { msgtype: MsgType.Text, body: text, ...notified };
+  return { msgtype: 'm.text', body: text, ...notified };
 }
 
 /** The classic shrug the `/shrug` command appends. */
@@ -241,14 +238,14 @@ export function emoteMessageContent(
   );
   if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
-      msgtype: MsgType.Emote,
+      msgtype: 'm.emote',
       body: text,
       format: 'org.matrix.custom.html',
       formatted_body: applyMentionPills(md.html, mentions),
       ...notified,
     };
   }
-  return { msgtype: MsgType.Emote, body: text, ...notified };
+  return { msgtype: 'm.emote', body: text, ...notified };
 }
 
 /** `m.location` content for a shared point, with the `geo:` URI + MSC3488 fields. */
@@ -259,7 +256,7 @@ export function locationMessageContent(
 ) {
   const geoUri = `geo:${lat},${lng}`;
   return {
-    msgtype: MsgType.Location,
+    msgtype: 'm.location',
     body: label,
     geo_uri: geoUri,
     'org.matrix.msc3488.location': { uri: geoUri, description: label },
@@ -271,7 +268,7 @@ export function locationMessageContent(
 /** `m.text` spoiler content (`/spoiler`) — an `<span data-mx-spoiler>` formatted body. */
 function spoilerMessageContent(text: string) {
   return {
-    msgtype: MsgType.Text,
+    msgtype: 'm.text',
     body: text,
     format: 'org.matrix.custom.html',
     formatted_body: `<span data-mx-spoiler>${escapeInlineText(text)}</span>`,
@@ -306,14 +303,14 @@ export function slashCommandContent(
     // `m.mentions` marker as an ordinary message (else `/plain > @room …` re-pings the room).
     case 'shrug':
       return {
-        msgtype: MsgType.Text,
+        msgtype: 'm.text',
         body: arg ? `${arg} ${SHRUG}` : SHRUG,
         ...mentionsBlock([], mentionsRoom(arg)),
       };
     case 'plain':
       return arg
         ? {
-            msgtype: MsgType.Text,
+            msgtype: 'm.text',
             body: arg,
             ...mentionsBlock([], mentionsRoom(arg)),
           }
@@ -339,7 +336,7 @@ export function editMessageContent(
 ) {
   const rich = md.html !== '' && (md.formatted || mentions.length > 0);
   return {
-    msgtype: MsgType.Text,
+    msgtype: 'm.text',
     body: `* ${text}`,
     // The top-level body is `* <the whole new text>`, and legacy body-matching rules evaluate
     // it before `.m.rule.suppress_edits`. Without this block, fixing a typo in a quote
@@ -356,7 +353,7 @@ export function editMessageContent(
       : {}),
     'm.new_content': textMessageContent(text, md, mentions),
     'm.relates_to': {
-      rel_type: RelationType.Replace,
+      rel_type: 'm.replace',
       event_id: messageId,
     },
   };
@@ -391,30 +388,9 @@ export function outgoingReplyText(
 export function annotationContent(messageId: string, key: string) {
   return {
     'm.relates_to': {
-      rel_type: RelationType.Annotation,
+      rel_type: 'm.annotation',
       event_id: messageId,
       key,
     },
   };
-}
-
-/**
- * Short, single-line preview of a message event's text, for the thread indicator and the room
- * list's muted last-message line. Handles undecryptable and redacted events, strips any
- * reply-fallback quote, and returns '…' when nothing renders. `content` is what to preview,
- * by default the message's checked current content. Text that arrived unencrypted is shown as
- * is; callers mark it themselves.
- */
-export function messagePreview(
-  event: MatrixEvent,
-  content: Record<string, unknown> = displayContent(event),
-): string {
-  if (event.isDecryptionFailure()) {
-    return '⚠️ Unable to decrypt';
-  }
-  if (event.isRedacted()) {
-    return '(message deleted)';
-  }
-  const body = stripReplyFallbackText((content['body'] as string) ?? '');
-  return body.replace(/\s+/g, ' ').trim() || '…';
 }

@@ -1,4 +1,4 @@
-import { liveRoomState } from '@trinity/util/matrix';
+import { liveRoomState } from './js-sdk/room-state';
 import { EventType, type MatrixClient, type RoomState } from 'matrix-js-sdk';
 
 /** Names one source knows: the account itself, or one room. */
