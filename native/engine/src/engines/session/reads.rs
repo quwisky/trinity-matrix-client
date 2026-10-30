@@ -320,24 +320,21 @@ async fn local_echoes(engine: &Engine) -> (Vec<Echo>, bool) {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use futures_util::FutureExt;
     use matrix_sdk::{
-        HttpError, RefreshTokenError, RumaApiError, SessionMeta,
-        authentication::matrix::MatrixSession,
+        HttpError, RefreshTokenError, RumaApiError,
         ruma::{
-            UserId,
             api::{EndpointError, error::FromHttpResponseError},
             exports::http,
             room_id,
             serde::Raw,
         },
     };
-    use matrix_sdk_ui::sync_service::SyncService;
     use serde_json::{Value, value::to_raw_value};
 
     use super::*;
-    use crate::{config::EngineConfig, engines::session::MatrixSessionDto};
+    use crate::{config::EngineConfig, engines::session::MatrixSessionDto, testing::runtime_on};
 
     fn session(base_url: &str) -> MatrixSessionDto {
         serde_json::from_value(json!({
@@ -359,32 +356,6 @@ pub(crate) mod tests {
             .await
             .unwrap();
         runtime_on(engine, s, 1, client).await
-    }
-
-    /// A runtime of `generation` for `s` on `client`, never started. A client without a session
-    /// is restored with the session's tokens as a Matrix one.
-    pub(crate) async fn runtime_on(
-        engine: &Arc<Engine>,
-        s: &MatrixSessionDto,
-        generation: u32,
-        client: matrix_sdk::Client,
-    ) -> AccountRuntime {
-        let meta = SessionMeta {
-            user_id: UserId::parse(&s.user_id).unwrap(),
-            device_id: s.device_id.as_str().into(),
-        };
-        let tokens = SessionTokens {
-            access_token: s.access_token.clone(),
-            refresh_token: s.refresh_token.clone(),
-        };
-        if client.session_meta().is_none() {
-            let matrix = MatrixSession { meta, tokens };
-            client.restore_session(matrix).await.unwrap();
-        }
-        let sync = Arc::new(SyncService::builder(client.clone()).build().await.unwrap());
-        let all_rooms = sync.room_list_service().all_rooms().await.unwrap();
-        let changes = client.subscribe_to_session_changes();
-        AccountRuntime::new(engine, s, generation, client, sync, all_rooms, changes)
     }
 
     fn tokens(access_token: &str) -> SessionTokens {

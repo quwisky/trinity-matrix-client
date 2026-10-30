@@ -718,16 +718,11 @@ impl Drop for Hold {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::{BufRead, BufReader, Read, Write},
-        net::TcpListener,
-        sync::Mutex as StdMutex,
-        thread,
-    };
+    use std::sync::Mutex as StdMutex;
 
     use futures_util::{FutureExt, StreamExt};
     use matrix_sdk::{
-        ClientBuilder, SessionMeta, SessionTokens,
+        SessionMeta,
         authentication::{
             matrix::MatrixSession,
             oauth::{
@@ -735,8 +730,7 @@ mod tests {
                 error::{BasicErrorResponseType, RequestTokenError, StandardErrorResponse},
             },
         },
-        config::RequestConfig,
-        ruma::{api::MatrixVersion, exports::http::StatusCode, owned_user_id},
+        ruma::{exports::http::StatusCode, owned_user_id},
     };
     use serde_json::{Value, json};
     use tempfile::TempDir;
@@ -744,11 +738,12 @@ mod tests {
     use super::*;
     use crate::{
         config::EngineConfig,
-        engines::session::{
-            MatrixSessionDto,
-            reads::{account_status, tests::runtime_on},
-        },
+        engines::session::reads::account_status,
         failure::{FailureCode, RefreshCause, http_error_from_response},
+        testing::{
+            WHOAMI, builder_on, default_client, engine_in, live, password, requests, scripted,
+            session,
+        },
     };
 
     #[test]
@@ -890,71 +885,8 @@ mod tests {
         assert_eq!(to_json(json!({"session": "s"})), json!({"session": "s"}));
     }
 
-    type Seen = Arc<StdMutex<Vec<(String, Option<String>)>>>;
-
     const GET_X: &str = "GET /x";
     const REFRESH: &str = "POST /_matrix/client/v3/refresh";
-    const WHOAMI: &str = "GET /_matrix/client/v3/account/whoami";
-
-    /// A homeserver on loopback that answers the scripted requests in order, and records each
-    /// one's method and path and its `Authorization`. It names its versions for a client that
-    /// asks, and any other request, such as the client's own background ones, gets a 404.
-    fn scripted(answers: Vec<(&'static str, u16, Value)>) -> (String, Seen) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let seen = Seen::default();
-        let log = Arc::clone(&seen);
-        thread::spawn(move || {
-            let mut answers = answers.into_iter().peekable();
-            while let Some((expected, ..)) = answers.peek() {
-                let expected = *expected;
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                let target = line.split(' ').take(2).collect::<Vec<_>>().join(" ");
-                let (mut authorization, mut length) = (None, 0);
-                loop {
-                    line.clear();
-                    reader.read_line(&mut line).unwrap();
-                    let Some((name, value)) = line.trim_end().split_once(": ") else {
-                        break;
-                    };
-                    match name.to_ascii_lowercase().as_str() {
-                        "authorization" => authorization = Some(value.to_owned()),
-                        "content-length" => length = value.parse().unwrap(),
-                        _ => {}
-                    }
-                }
-                reader.read_exact(&mut vec![0; length]).unwrap();
-                let (status, body) = if target == expected {
-                    log.lock().unwrap().push((target, authorization));
-                    let (_, status, body) = answers.next().unwrap();
-                    (status, body)
-                } else if target == "GET /_matrix/client/versions" {
-                    (200, json!({"versions": ["v1.15"]}))
-                } else {
-                    (404, json!({"errcode": "M_NOT_FOUND", "error": "x"}))
-                };
-                let body = body.to_string();
-                let reply = format!(
-                    "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\n\
-                     content-length: {}\r\nconnection: close\r\n\r\n{body}",
-                    body.len()
-                );
-                stream.write_all(reply.as_bytes()).unwrap();
-            }
-        });
-        (base, seen)
-    }
-
-    /// A memory-store client that never asks for the versions and never retries.
-    fn builder_on(base: &str) -> ClientBuilder {
-        Client::builder()
-            .homeserver_url(base)
-            .server_versions([MatrixVersion::V1_13])
-            .request_config(RequestConfig::new().disable_retry())
-    }
 
     /// A client restored with `t1`/`r1`.
     async fn client_on(base: &str) -> Client {
@@ -972,10 +904,6 @@ mod tests {
             .await
             .unwrap();
         client
-    }
-
-    fn requests(seen: &Seen) -> Vec<(String, Option<String>)> {
-        seen.lock().unwrap().clone()
     }
 
     fn get(token: &str) -> (String, Option<String>) {
@@ -1038,46 +966,6 @@ mod tests {
         let err = fetched(&base, &client, false).await.unwrap_err();
         assert_eq!(unknown_token(&err), Some(false));
         assert_eq!(requests(&seen), [get("t1")]);
-    }
-
-    fn engine_in(root: &TempDir) -> Arc<Engine> {
-        Engine::new(EngineConfig {
-            data_dir: root.path().join("data"),
-            cache_dir: root.path().join("cache"),
-            ..EngineConfig::default()
-        })
-        .unwrap()
-    }
-
-    /// A session with `t1`/`r1` that may refresh: Matrix-native refresh needs no OAuth metadata.
-    fn session(user_id: &str, base_url: &str) -> MatrixSessionDto {
-        serde_json::from_value(json!({
-            "baseUrl": base_url,
-            "userId": user_id,
-            "deviceId": "DEV",
-            "accessToken": "t1",
-            "refreshToken": "r1",
-            "oidc": {"issuer": "https://id.example", "clientId": "client"},
-        }))
-        .unwrap()
-    }
-
-    /// Registers a never-started runtime of `s` on `client` as the account's live one.
-    async fn live(
-        engine: &Arc<Engine>,
-        s: &MatrixSessionDto,
-        client: Client,
-    ) -> Arc<AccountRuntime> {
-        let generation = engine
-            .state
-            .lock()
-            .registry
-            .register(&s.user_id, &s.device_id);
-        let rt = Arc::new(runtime_on(engine, s, generation, client).await);
-        let mut state = engine.state.lock();
-        state.runtimes.insert(s.user_id.clone(), Arc::clone(&rt));
-        let _ = state.publish_snapshot();
-        rt
     }
 
     /// Records every storage effect, polling as the carrier does.
@@ -1303,12 +1191,6 @@ mod tests {
         assert_eq!(reply.await.unwrap().unwrap(), json!("active"));
     }
 
-    fn password(base_url: &str) -> MatrixSessionDto {
-        let mut password = session("@a:b", base_url);
-        (password.oidc, password.refresh_token) = (None, None);
-        password
-    }
-
     /// As in js, one 5xx fails an account command: the SDK's default would send it again, and a
     /// deactivation the server completed would then meet the dead token. An OAuth logout fetches
     /// the server's metadata first.
@@ -1369,20 +1251,8 @@ mod tests {
             let (base, seen) = scripted(vec![(request, 502, unavailable), (request, 200, ok)]);
             let root = TempDir::new().unwrap();
             let engine = engine_in(&root);
-            // The SDK's default request config, as an account's client has.
-            let client = (engine.client_builder().homeserver_url(&base))
-                .server_versions([MatrixVersion::V1_13])
-                .build()
-                .await
-                .unwrap();
-            // An OAuth account's client is an OAuth one, as a start restores it.
             let account = account(&base);
-            let meta = session_meta("test", &account).unwrap();
-            client
-                .restore_session(auth_session(&account, meta))
-                .await
-                .unwrap();
-            drop(live(&engine, &account, client).await);
+            drop(live(&engine, &account, default_client(&engine, &account).await).await);
             let reply = command(Arc::clone(&engine), &base).next().await;
             let reply = reply.unwrap().unwrap();
             let kind = reply.pointer("/failure/kind").unwrap_or(&reply);

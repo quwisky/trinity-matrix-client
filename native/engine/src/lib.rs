@@ -7,12 +7,6 @@ pub mod engines;
 pub mod failure;
 #[cfg(feature = "native")]
 mod store;
-pub mod wire;
-
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn links_matrix_sdk() {
-        let _ = matrix_sdk::Client::builder();
-    }
-}
+pub(crate) mod testing;
+pub mod wire;

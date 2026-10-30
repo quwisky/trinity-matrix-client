@@ -299,47 +299,24 @@ fn read_string_array(value: &Value, key: &str) -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::{Read, Write},
-        net::TcpListener,
-        sync::atomic::{AtomicUsize, Ordering},
-        thread,
-    };
-
     use futures_util::StreamExt;
 
     use super::*;
-    use crate::{config::EngineConfig, dispatch::dispatch};
-
-    /// A loopback server answering `/redirect` with a 302 to `/target`, and the hits on `/target`.
-    fn redirecting_server() -> (Url, Arc<AtomicUsize>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/redirect", listener.local_addr().unwrap());
-        let hits = Arc::new(AtomicUsize::new(0));
-        let target_hits = Arc::clone(&hits);
-        thread::spawn(move || {
-            for stream in listener.incoming() {
-                let mut stream = stream.unwrap();
-                let mut head = [0; 1024];
-                let read = stream.read(&mut head).unwrap();
-                let response = if head[..read].starts_with(b"GET /target") {
-                    target_hits.fetch_add(1, Ordering::SeqCst);
-                    "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}"
-                } else {
-                    "HTTP/1.1 302 Found\r\nlocation: /target\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
-                };
-                stream.write_all(response.as_bytes()).unwrap();
-            }
-        });
-        (Url::parse(&url).unwrap(), hits)
-    }
+    use crate::{
+        config::EngineConfig,
+        dispatch::dispatch,
+        testing::{requests, scripted},
+    };
 
     #[tokio::test]
     async fn a_redirect_is_no_answer_and_is_not_followed() {
-        let (url, target_hits) = redirecting_server();
+        const REDIRECT: &str = "GET /redirect";
+        let target = ("GET /target", 200, json!({}));
+        let (base, seen) = scripted(vec![(REDIRECT, 302, json!("/target")), target]);
         let engine = Engine::new(EngineConfig::default()).unwrap();
+        let url = Url::parse(&format!("{base}/redirect")).unwrap();
         assert_eq!(get_json(&engine, url).await, None);
-        assert_eq!(target_hits.load(Ordering::SeqCst), 0);
+        assert_eq!(requests(&seen), [(REDIRECT.to_owned(), None)]);
     }
 
     #[tokio::test]
