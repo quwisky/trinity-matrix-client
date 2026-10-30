@@ -42,7 +42,10 @@ export interface RoomListContractSetup {
     spaceParents(roomId: string): Promise<readonly string[]>;
   };
   readonly asBob: {
-    createRoom(name: string): Promise<string>;
+    createRoom(
+      name: string,
+      options?: { readonly historyVisibility?: RoomInfo['historyVisibility'] },
+    ): Promise<string>;
     /** A public room with the alias `#localpart:serverName`. */
     createPublicRoom(
       name: string,
