@@ -23,7 +23,7 @@ import {
   type EngineFailure,
   type EngineResult,
   type PresenceState,
-  describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
   plainEqual,
@@ -43,18 +43,6 @@ const NOT_LIVE: EngineFailure = {
 };
 
 const NO_PROFILE: UserProfile = { displayName: null, avatarMxc: null };
-
-function requestFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
-}
 
 function isNotFound(error: unknown): boolean {
   const e = error as { httpStatus?: unknown; errcode?: unknown } | null;
@@ -290,7 +278,9 @@ export class JsSdkIdentityEngine implements IdentityEngine {
       if (!client) return of(engineFail(NOT_LIVE));
       return from(run(client)).pipe(
         map((value) => engineOk(value)),
-        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+        catchError((error: unknown) =>
+          of(engineFail(engineRequestFailure(error))),
+        ),
       );
     });
   }

@@ -15,6 +15,7 @@ import {
 import {
   NOT_SIGNED_IN,
   describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
   type EngineFailure,
@@ -62,20 +63,22 @@ export function lacksAuthMetadata(err: unknown): boolean {
 }
 
 function requestFailed(err: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(err);
   const challenge = uiaChallengeOf(err);
   if (challenge) {
+    const { kind, diagnostic } = describeMatrixRequestFailure(err);
     return { kind, code: 'uia-required', diagnostic, params: { challenge } };
   }
   const serverMessage =
     err instanceof MatrixError && err.errcode === 'M_WEAK_PASSWORD'
       ? err.data.error
       : undefined;
+  if (typeof serverMessage !== 'string') return engineRequestFailure(err);
+  const { kind, diagnostic } = describeMatrixRequestFailure(err);
   return {
     kind,
     code: 'request-failed',
     diagnostic,
-    ...(typeof serverMessage === 'string' ? { params: { serverMessage } } : {}),
+    params: { serverMessage },
   };
 }
 

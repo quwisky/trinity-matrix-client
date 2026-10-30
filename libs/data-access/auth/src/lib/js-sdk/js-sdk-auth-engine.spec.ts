@@ -12,6 +12,7 @@ import {
   HTTPError,
   MatrixError,
   OAuthGrantType,
+  TokenRefreshError,
   createClient,
 } from 'matrix-js-sdk';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
@@ -459,6 +460,22 @@ describe('JsSdkAuthEngine', () => {
       await expect(
         firstValueFrom(engine.changePassword('@other:hs', 'new-pw', null)),
       ).resolves.toEqual({ ok: false, failure: NOT_SIGNED_IN });
+    });
+
+    it('reports a failed token refresh as the session-refresh cause', async () => {
+      live.setPassword.mockRejectedValue(
+        new TokenRefreshError(new Error('offline')),
+      );
+
+      await expect(
+        firstValueFrom(engine.changePassword('@me:hs', 'new-pw', null)),
+      ).resolves.toMatchObject({
+        ok: false,
+        failure: {
+          code: 'request-failed',
+          params: { cause: 'session-refresh' },
+        },
+      });
     });
   });
 

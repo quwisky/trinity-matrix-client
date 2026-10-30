@@ -35,7 +35,7 @@ import {
 import {
   type EngineFailure,
   type EngineResult,
-  describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
   plainEqual,
@@ -72,18 +72,6 @@ function localFailure(
     | 'encryption-not-applied',
 ): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
-}
-
-function requestFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
 }
 
 /** {@link RoomAdministrationEngine} over the live matrix-js-sdk clients of {@link JS_SDK_CLIENTS}. */
@@ -201,7 +189,9 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
       ) => Promise<unknown>;
       return from(send(roomId, type, content, stateKey)).pipe(
         map(() => engineOk(null)),
-        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+        catchError((error: unknown) =>
+          of(engineFail(engineRequestFailure(error))),
+        ),
       );
     });
   }
@@ -452,7 +442,9 @@ export class JsSdkRoomAdministrationEngine implements RoomAdministrationEngine {
       if (!client) return of(engineFail(localFailure('account-not-live')));
       return from(send(client)).pipe(
         map((response) => engineOk(value(response))),
-        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+        catchError((error: unknown) =>
+          of(engineFail(engineRequestFailure(error))),
+        ),
       );
     });
   }
@@ -559,7 +551,7 @@ async function enableEncryption(
       content = plain(fresh);
     }
   } catch (error) {
-    return engineFail(requestFailed(error));
+    return engineFail(engineRequestFailure(error));
   }
   try {
     if (await applyRoomEncryption(crypto, room, content)) return engineOk(null);

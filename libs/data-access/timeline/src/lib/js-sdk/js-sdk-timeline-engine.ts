@@ -49,6 +49,7 @@ import {
   TYPING_TIMEOUT_MS,
   annotationContent,
   describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
   locationMessageContent,
@@ -143,16 +144,9 @@ function failureFrom(
   code: 'request-failed' | 'message-unavailable' | 'unsupported',
   error: unknown,
 ): EngineFailure {
+  if (code === 'request-failed') return engineRequestFailure(error);
   const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  if (code !== 'request-failed') return { kind, code, diagnostic };
-  return {
-    kind,
-    code,
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
+  return { kind, code, diagnostic };
 }
 
 function errcodeOf(error: unknown): string | undefined {

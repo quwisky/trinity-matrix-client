@@ -7,8 +7,7 @@ import {
   type EngineResult,
   NOT_SIGNED_IN,
   type DiscoveryFailureReason,
-  type EngineFailure,
-  describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
 } from '@trinity/util/matrix';
@@ -86,18 +85,6 @@ function discoveryReason(error: unknown): { reason?: DiscoveryFailureReason } {
   return reason ? { reason } : {};
 }
 
-function requestFailed(err: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(err);
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
-}
-
 @Injectable({ providedIn: 'root' })
 export class JsSdkDiscoveryEngine implements DiscoveryEngine {
   private readonly clients = inject(JS_SDK_CLIENTS);
@@ -134,7 +121,7 @@ export class JsSdkDiscoveryEngine implements DiscoveryEngine {
         );
         return engineOk({ domain, baseUrl });
       }),
-      catchError((err: unknown) => of(engineFail(requestFailed(err)))),
+      catchError((err: unknown) => of(engineFail(engineRequestFailure(err)))),
     );
   }
 
@@ -243,7 +230,7 @@ export class JsSdkDiscoveryEngine implements DiscoveryEngine {
       }
       return from(run(client)).pipe(
         map((value) => engineOk(value)),
-        catchError((err: unknown) => of(engineFail(requestFailed(err)))),
+        catchError((err: unknown) => of(engineFail(engineRequestFailure(err)))),
       );
     });
   }
