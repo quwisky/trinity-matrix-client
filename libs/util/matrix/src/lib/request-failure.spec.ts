@@ -7,6 +7,7 @@ import { TimeoutError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   describeMatrixRequestFailure,
+  engineRequestFailure,
   matrixRequestErrorHandling,
   matrixRequestFailureDiagnostic,
   reportMatrixRequestFailure,
@@ -250,6 +251,64 @@ describe('matrixRequestFailureDiagnostic', () => {
       kind: 'permission',
       httpStatus: 403,
       errcode: 'M_FORBIDDEN',
+    });
+  });
+});
+
+describe('engineRequestFailure', () => {
+  const tokenRefreshError = () =>
+    Object.defineProperty(new Error('refresh'), 'name', {
+      value: 'TokenRefreshError',
+    });
+
+  it.each([
+    {
+      label: 'no connection',
+      error: connectionError(),
+      expected: { kind: 'network', diagnostic: { kind: 'network' } },
+    },
+    {
+      label: 'a 5xx',
+      error: httpError(503),
+      expected: {
+        kind: 'server',
+        diagnostic: { kind: 'server', httpStatus: 503 },
+      },
+    },
+    {
+      label: 'a plain HTTP error',
+      error: matrixError('M_UNKNOWN', 400),
+      expected: {
+        kind: 'http',
+        diagnostic: { kind: 'http', httpStatus: 400, errcode: 'M_UNKNOWN' },
+      },
+    },
+    {
+      label: 'a timeout',
+      error: new TimeoutError(),
+      expected: { kind: 'timeout', diagnostic: { kind: 'timeout' } },
+    },
+    {
+      label: 'an unknown error',
+      error: new Error('secret body'),
+      expected: {
+        kind: 'unexpected',
+        diagnostic: { kind: 'unexpected', errorName: 'Error' },
+      },
+    },
+  ])('maps $label to request-failed with no params', ({ error, expected }) => {
+    expect(engineRequestFailure(error)).toEqual({
+      ...expected,
+      code: 'request-failed',
+    });
+  });
+
+  it('marks a failed token refresh as the session-refresh cause', () => {
+    expect(engineRequestFailure(tokenRefreshError())).toEqual({
+      kind: 'network',
+      code: 'request-failed',
+      diagnostic: { kind: 'network', errorName: 'TokenRefreshError' },
+      params: { cause: 'session-refresh' },
     });
   });
 });

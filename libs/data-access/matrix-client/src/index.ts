@@ -13,5 +13,5 @@ export * from './lib/js-sdk/uia';
 export * from './lib/js-sdk/replacement';
 export * from './lib/js-sdk/room-state';
 export * from './lib/js-sdk/room-encryption';
-export * from './lib/js-sdk/waiting-to-send';
+export { isWaitingToSend } from './lib/js-sdk/waiting-to-send';
 export * from './lib/session-state.service';

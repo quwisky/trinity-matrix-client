@@ -1327,13 +1327,13 @@ describe('MatrixClientService', () => {
     expect(sessionState().active()).toBeNull();
   });
 
-  it('reset() stops the client and wipes the stores + 4S key', async () => {
+  it('remove() stops the client and wipes the stores + 4S key', async () => {
     const client = fakeClient();
     const { svc } = setup(client);
     await firstValueFrom(svc.init(SESSION));
     clearHolder.mockClear();
 
-    await firstValueFrom(svc.reset());
+    await firstValueFrom(svc.remove(SESSION.userId));
 
     expect(client.stopClient).toHaveBeenCalled();
     expect(client.clearStores).toHaveBeenCalledOnce();
@@ -1348,7 +1348,7 @@ describe('MatrixClientService', () => {
       svc.init({ ...SESSION, cryptoPrefix: 'trinity-crypto:@me:hs' }),
     );
 
-    await firstValueFrom(svc.reset());
+    await firstValueFrom(svc.remove(SESSION.userId));
 
     // clearStores() must target THIS account's per-account prefix. Called with no
     // args, the SDK deletes only the default-prefix Rust crypto DB and orphans this
@@ -1366,7 +1366,7 @@ describe('MatrixClientService', () => {
     const { svc } = setup(client);
     await firstValueFrom(svc.init(SESSION)); // no cryptoPrefix → SDK default store
 
-    await firstValueFrom(svc.reset());
+    await firstValueFrom(svc.remove(SESSION.userId));
 
     // A legacy account really lives on the default prefix, so wiping must pass it
     // through unchanged (the SDK falls back to its default) — not invent a prefix.
@@ -2036,7 +2036,7 @@ describe('MatrixClientService', () => {
     const a2 = fakeClient();
     const { svc } = setup(a1, a2);
     await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.reset()); // sign out (background store wipe)
+    await firstValueFrom(svc.remove(SESSION.userId)); // sign out (background store wipe)
     await firstValueFrom(svc.add(SESSION)); // sign back in
 
     expect(a1.clearStores).toHaveBeenCalled(); // its stores were wiped
@@ -2050,7 +2050,7 @@ describe('MatrixClientService', () => {
     const first = sessionState().status('@me:hs')?.generation;
     expect(typeof first).toBe('number');
 
-    await firstValueFrom(svc.reset());
+    await firstValueFrom(svc.remove(SESSION.userId));
     expect(sessionState().status('@me:hs')).toBeNull();
 
     await firstValueFrom(svc.add(SESSION));
@@ -2262,12 +2262,12 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.init(SESSION));
     expect(createClient).toHaveBeenCalledOnce();
 
-    // Its store wipe never settles yet, so reset()'s background delete stays pending.
+    // Its store wipe never settles yet, so remove()'s background delete stays pending.
     let resolveWipe!: () => void;
     a1.clearStores.mockReturnValue(
       new Promise<void>((resolve) => (resolveWipe = resolve)),
     );
-    await firstValueFrom(svc.reset()); // sign out — wipe tracked, still pending
+    await firstValueFrom(svc.remove(SESSION.userId)); // sign out — wipe tracked, still pending
 
     // Re-add the same account: start() must await the pending wipe before opening a
     // second connection to the same per-account store.

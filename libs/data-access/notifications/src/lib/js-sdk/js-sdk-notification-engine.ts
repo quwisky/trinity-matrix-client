@@ -34,7 +34,7 @@ import {
 import {
   type EngineFailure,
   type EngineResult,
-  describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
   plainEqual,
@@ -122,19 +122,6 @@ const NOTIFY_ACTIONS: PushRuleAction[] = [
   PushRuleActionName.Notify,
   { set_tweak: TweakName.Sound, value: 'default' },
 ];
-
-/** `request-failed`, with a refresh failure marked as the session's. */
-function requestFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
-}
 
 function rulesOf(client: MatrixClient, kind: PushRuleKind): readonly unknown[] {
   const list: unknown = (
@@ -752,7 +739,9 @@ export class JsSdkNotificationEngine implements NotificationEngine {
       if (!client) return of(engineFail(NOT_LIVE));
       return from(run(client)).pipe(
         map((value) => engineOk(value)),
-        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+        catchError((error: unknown) =>
+          of(engineFail(engineRequestFailure(error))),
+        ),
       );
     });
   }

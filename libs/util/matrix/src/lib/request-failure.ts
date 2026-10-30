@@ -1,4 +1,8 @@
-import { EngineRequestError, engineFailureMessage } from './engine-result';
+import {
+  type EngineFailure,
+  EngineRequestError,
+  engineFailureMessage,
+} from './engine-result';
 import {
   isMatrixConnectionError,
   isMatrixHttpError,
@@ -268,6 +272,19 @@ export function describeMatrixRequestFailure(
       ? error.message
       : fallbackMessage;
   return failure('unexpected', message, error);
+}
+
+/** A failed request as an engine `request-failed`, marked `session-refresh` when a token refresh failed. */
+export function engineRequestFailure(error: unknown): EngineFailure {
+  const { kind, diagnostic } = describeMatrixRequestFailure(error);
+  return {
+    kind,
+    code: 'request-failed',
+    diagnostic,
+    ...(diagnostic.errorName === 'TokenRefreshError'
+      ? { params: { cause: 'session-refresh' as const } }
+      : {}),
+  };
 }
 
 /** Build an exact, allowlisted log payload without retaining the raw error object. */

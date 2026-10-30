@@ -325,7 +325,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
-  it('reports a failed OIDC revocation as provider residue and retries it with the stored session', async () => {
+  it('reports a failed OIDC revocation as provider residue and retries it with the stored session and live token', async () => {
     const { adapter, engine, storage, lifecycle, goLive } = setup('@oidc:hs');
     goLive(['@oidc:hs']);
     engine.logoutRemote.mockReturnValueOnce(LOGOUT_FAILED);
@@ -353,9 +353,13 @@ describe('MatrixAccountRuntimeAdapter', () => {
         ),
       ),
     ).resolves.toMatchObject({ kind: 'ready' });
-    // The client is gone by then: its stored session, refresh token included, is revoked.
+    // The client is gone by then: its stored session, refresh token included, is revoked
+    // with the access token the client held at removal.
     expect(engine.logoutRemote).toHaveBeenCalledOnce();
-    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith(OIDC_STORED);
+    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+      ...(OIDC_STORED as object),
+      accessToken: 'live-@oidc:hs-g1',
+    });
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
@@ -412,6 +416,33 @@ describe('MatrixAccountRuntimeAdapter', () => {
     });
   });
 
+  it('retries with the tokens the client held at removal, not the ones captured first', async () => {
+    const { adapter, engine, storage, goLive, refresh } = setup('@oidc:hs');
+    goLive(['@oidc:hs'], 1, 'refresh-1');
+    engine.logoutRemote.mockImplementationOnce(() => {
+      // The client refreshes its tokens before it is removed.
+      refresh('@oidc:hs', 'access-2', 'refresh-2');
+      return LOGOUT_FAILED;
+    });
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@oidc:hs'));
+    await firstValueFrom(
+      adapter.retrySignOutCleanup(
+        '@oidc:hs',
+        first.kind === 'partial-cleanup' ? first.issues : [],
+      ),
+    );
+
+    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+      ...(OIDC_STORED as object),
+      accessToken: 'access-2',
+      refreshToken: 'refresh-2',
+    });
+  });
+
   it('never logs out a newer sign-in of the account on retry', async () => {
     const { adapter, engine, storage, goLive } = setup('@pw:hs');
     goLive(['@pw:hs']);
@@ -437,12 +468,12 @@ describe('MatrixAccountRuntimeAdapter', () => {
     });
   });
 
-  it('keeps a failed live revocation as provider residue when the session read settles late', async () => {
+  it('keeps a failed live revocation as provider residue when the session read settles late, and retries it with the live tokens', async () => {
     vi.useFakeTimers();
     try {
       const { adapter, engine, storage, goLive } = setup('@oidc:hs');
       const sessionRead = new Subject<MatrixSession | null>();
-      goLive(['@oidc:hs']);
+      goLive(['@oidc:hs'], 1, 'live-refresh');
       engine.logoutRemote.mockReturnValue(LOGOUT_FAILED);
       vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
       vi.mocked(storage.load).mockReturnValue(sessionRead);
@@ -459,12 +490,28 @@ describe('MatrixAccountRuntimeAdapter', () => {
       sessionRead.complete();
       await vi.runAllTimersAsync();
 
-      expect(outcomes.at(-1)).toEqual({
+      const last = outcomes.at(-1);
+      expect(last).toEqual({
         kind: 'partial-cleanup',
         accountId: '@oidc:hs',
         activeAccountId: null,
         remainingAccountIds: [],
         issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
+      });
+
+      const retry = firstValueFrom(
+        adapter.retrySignOutCleanup(
+          '@oidc:hs',
+          last?.kind === 'partial-cleanup' ? last.issues : [],
+        ),
+      );
+      await vi.runAllTimersAsync();
+      await retry;
+      // The late read's stored tokens must not replace the ones taken at removal.
+      expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+        ...(OIDC_RECORD as object),
+        accessToken: 'live-@oidc:hs-g1',
+        refreshToken: 'live-refresh',
       });
     } finally {
       vi.useRealTimers();

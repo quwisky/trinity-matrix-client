@@ -15,7 +15,7 @@ import {
   type EngineFailure,
   type EngineResult,
   NOT_SIGNED_IN,
-  describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
 } from '@trinity/util/matrix';
@@ -38,18 +38,6 @@ function localFailure(
   code: 'forbidden' | 'conflict' | 'state-key-taken' | 'unsupported',
 ): EngineFailure {
   return { kind: 'unexpected', code, diagnostic: { kind: 'unexpected' } };
-}
-
-function requestFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
 }
 
 /** {@link RoomWidgetEngine} over the live matrix-js-sdk clients of {@link JS_SDK_CLIENTS}. */
@@ -173,7 +161,9 @@ export class JsSdkRoomWidgetEngine implements RoomWidgetEngine {
       const outcome = run(client, state);
       if (!('then' in outcome)) return of(engineFail(outcome));
       return from(outcome.then(() => engineOk(null))).pipe(
-        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+        catchError((error: unknown) =>
+          of(engineFail(engineRequestFailure(error))),
+        ),
       );
     });
   }

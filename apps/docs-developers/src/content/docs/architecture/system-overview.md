@@ -48,8 +48,8 @@ The desktop and mobile apps take no lock. Electron allows one instance (`app.req
 A typical room action moves through these boundaries:
 
 1. A feature component invokes a public data-access command.
-2. The data-access adapter calls `matrix-js-sdk` for the exact active account and room.
-3. SDK events invalidate or reconcile the owned projection.
+2. The data-access service calls its capability engine for the exact account and room; the engine's `matrix-js-sdk` adapter is the only code that calls the SDK.
+3. The engine reports the resulting change as plain data, which reconciles the owned projection.
 4. Read-only signals update the `OnPush` UI.
 5. Workspace remains responsible for the canonical destination and browser history.
 

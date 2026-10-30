@@ -38,6 +38,7 @@ import {
 } from '@trinity/data-access/matrix-client';
 import {
   describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
   plainEqual,
@@ -86,20 +87,8 @@ const ACCOUNT_NOT_LIVE: EngineFailure = {
   diagnostic: { kind: 'unexpected' },
 };
 
-function requestFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
-}
-
 function inviteFailed(error: unknown): EngineFailure {
-  if (!isInviteBlocked(error)) return requestFailed(error);
+  if (!isInviteBlocked(error)) return engineRequestFailure(error);
   const { kind, diagnostic } = describeMatrixRequestFailure(error);
   return { kind, code: 'invite-blocked', diagnostic };
 }
@@ -489,7 +478,7 @@ export class JsSdkRoomListEngine implements RoomListEngine {
   private command<T>(
     accountId: string,
     run: (client: MatrixClient) => Promise<T> | Observable<T>,
-    failed: (error: unknown) => EngineFailure = requestFailed,
+    failed: (error: unknown) => EngineFailure = engineRequestFailure,
   ): Observable<EngineResult<T>> {
     return defer(() => {
       const client = this.clients.clientFor(accountId);

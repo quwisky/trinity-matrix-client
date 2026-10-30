@@ -34,6 +34,7 @@ import {
   encryptAttachment,
   engineFail,
   engineOk,
+  engineRequestFailure,
   mediaCaptionFields,
 } from '@trinity/util/matrix';
 import type {
@@ -48,7 +49,7 @@ import type {
 } from '../media-engine';
 import { downscaleImage } from '../media-processing';
 import { type MediaResize, fetchMediaBytes } from './authed-media';
-import { requestFailed, tooLargeOrFailed } from './request-failure';
+import { tooLargeOrFailed } from './request-failure';
 
 /** Authenticated media arrived in spec v1.11; servers advertised MSC3916's stable flag before that. */
 const AUTHENTICATED_MEDIA = {
@@ -137,7 +138,7 @@ export class JsSdkMediaEngine implements MediaEngine {
             engineFail(
               error instanceof MediaUnavailableError
                 ? localFailure('media-unavailable')
-                : requestFailed(error),
+                : engineRequestFailure(error),
             ),
           ),
         ),
@@ -355,7 +356,7 @@ export class JsSdkMediaEngine implements MediaEngine {
               cached.pendingEvent = room.findEventById(localEventId) ?? null;
             }
             if (cached.pendingEvent) cached.pendingCaption = request.caption;
-            finish(engineFail(requestFailed(error)));
+            finish(engineFail(engineRequestFailure(error)));
           },
         });
       };

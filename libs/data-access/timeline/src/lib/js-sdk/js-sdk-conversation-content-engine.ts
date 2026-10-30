@@ -40,6 +40,7 @@ import {
 } from '@trinity/data-access/matrix-client';
 import {
   describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
   linkedUserIds,
@@ -87,16 +88,9 @@ function failureFrom(
   code: 'request-failed' | 'unsupported',
   error: unknown,
 ): EngineFailure {
+  if (code === 'request-failed') return engineRequestFailure(error);
   const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  if (code !== 'request-failed') return { kind, code, diagnostic };
-  return {
-    kind,
-    code,
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
+  return { kind, code, diagnostic };
 }
 
 /** The room's `pinned` list exactly as stored, non-string entries included. */

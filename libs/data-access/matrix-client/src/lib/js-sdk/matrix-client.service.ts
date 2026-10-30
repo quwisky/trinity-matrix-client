@@ -306,7 +306,7 @@ export class MatrixClientService {
   >();
 
   /**
-   * In-flight background store wipes started by {@link reset}/{@link remove}, keyed by
+   * In-flight background store wipes started by {@link remove}, keyed by
    * user id. Re-adding that account awaits its wipe first: the sync and Rust-crypto
    * IndexedDB names repeat across a same-account re-login, so opening either before the
    * pending delete finishes would block (or race) it.
@@ -533,7 +533,7 @@ export class MatrixClientService {
     );
   }
 
-  /** Keep legacy reauthentication surfaces coherent during the Account Runtime migration. */
+  /** Mark the account as needing a new sign-in; a successful start clears it. */
   requireReauthentication(userId: string): void {
     this.markSoftLoggedOut(userId);
   }
@@ -636,22 +636,6 @@ export class MatrixClientService {
         account.client.logout(true).catch(() => undefined),
       );
       return from(Promise.all(logouts).then(() => undefined));
-    });
-  }
-
-  /**
-   * Log the ACTIVE account out: stop it, DELETE its persistent stores (sync +
-   * crypto IndexedDB), and repoint the active account to another if any remain.
-   * Best-effort: a store-clear failure still tears the client down.
-   */
-  reset(): Observable<void> {
-    return defer(() => {
-      const account = this.active();
-      if (!account) {
-        return of(void 0);
-      }
-      this.removeInternal(account.userId, true);
-      return of(void 0);
     });
   }
 

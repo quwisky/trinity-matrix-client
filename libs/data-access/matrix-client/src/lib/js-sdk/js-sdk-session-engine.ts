@@ -21,6 +21,7 @@ import {
   type MatrixSession,
   type UiaAuth,
   describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
   plainEqual,
@@ -82,14 +83,7 @@ function requestFailure(error: unknown): EngineResult<never> {
     });
   }
   if (!(error instanceof MatrixError)) {
-    return engineFail({
-      kind,
-      diagnostic,
-      code: 'request-failed',
-      ...(diagnostic.errorName === 'TokenRefreshError'
-        ? { params: { cause: 'session-refresh' as const } }
-        : {}),
-    });
+    return engineFail(engineRequestFailure(error));
   }
   const missing =
     error.errcode === 'M_UNRECOGNIZED' ||

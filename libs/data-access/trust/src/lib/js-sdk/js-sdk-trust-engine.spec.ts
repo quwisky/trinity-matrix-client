@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
-import { MatrixError } from 'matrix-js-sdk';
+import { MatrixError, TokenRefreshError } from 'matrix-js-sdk';
 import { type Observable, firstValueFrom, lastValueFrom, tap } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
@@ -295,6 +295,23 @@ describe('JsSdkTrustEngine', () => {
         failure: { code: 'request-failed' },
       });
       subscription.unsubscribe();
+    });
+
+    it('reports a rename after a failed token refresh as the session-refresh cause', async () => {
+      const { engine, client } = setup();
+      client.setDeviceDetails.mockRejectedValueOnce(
+        new TokenRefreshError(new Error('offline')),
+      );
+
+      await expect(
+        firstValueFrom(engine.renameDevice(ME, 'LAPTOP', 'Work')),
+      ).resolves.toMatchObject({
+        ok: false,
+        failure: {
+          code: 'request-failed',
+          params: { cause: 'session-refresh' },
+        },
+      });
     });
 
     it('reads again after this engine renames or deletes a device', async () => {

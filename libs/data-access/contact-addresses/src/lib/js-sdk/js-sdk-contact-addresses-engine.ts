@@ -10,6 +10,7 @@ import {
   type EngineResult,
   type UiaAuth,
   describeMatrixRequestFailure,
+  engineRequestFailure,
   engineFail,
   engineOk,
 } from '@trinity/util/matrix';
@@ -26,19 +27,10 @@ const NOT_LIVE: EngineFailure = {
 };
 
 function requestFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
   const challenge = uiaChallengeOf(error);
-  if (challenge) {
-    return { kind, code: 'uia-required', diagnostic, params: { challenge } };
-  }
-  return {
-    kind,
-    code: 'request-failed',
-    diagnostic,
-    ...(diagnostic.errorName === 'TokenRefreshError'
-      ? { params: { cause: 'session-refresh' as const } }
-      : {}),
-  };
+  if (!challenge) return engineRequestFailure(error);
+  const { kind, diagnostic } = describeMatrixRequestFailure(error);
+  return { kind, code: 'uia-required', diagnostic, params: { challenge } };
 }
 
 // The SDK's account-data map is closed over spec events; `m.accepted_terms` is reached

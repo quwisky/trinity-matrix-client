@@ -31,14 +31,6 @@ export function uiaError(session: string): MatrixError {
   );
 }
 
-/** The 401 a password-less account gets: the server offers only an SSO stage. */
-export function ssoOnlyUiaError(): MatrixError {
-  return new MatrixError(
-    { flows: [{ stages: ['m.login.sso'] }], session: 's' },
-    401,
-  );
-}
-
 interface CryptoOpts {
   crossSigningReady?: boolean;
   secretStorageReady?: boolean;

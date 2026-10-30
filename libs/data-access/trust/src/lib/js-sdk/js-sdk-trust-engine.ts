@@ -52,6 +52,7 @@ import {
   type UiaPasswordPrompt,
   decryptMegolmKeyFile,
   describeMatrixRequestFailure,
+  engineRequestFailure,
   driveUia,
   encryptMegolmKeyFile,
   engineFail,
@@ -132,12 +133,6 @@ const toBase64 = (bytes: Uint8ClampedArray): string =>
 const fromBase64 = (base64: string): Uint8ClampedArray =>
   Uint8ClampedArray.from(atob(base64), (char) => char.charCodeAt(0));
 
-/** `request-failed` with privacy-safe metadata only: no message, body or secret. */
-function requestFailed(error: unknown): EngineFailure {
-  const { kind, diagnostic } = describeMatrixRequestFailure(error);
-  return { kind, code: 'request-failed', diagnostic };
-}
-
 /** A failure a step throws on purpose, as opposed to an SDK error. */
 function isFailure(error: unknown): error is EngineFailure {
   return [
@@ -174,7 +169,7 @@ const UNVERIFIED: UserTrustFacts = {
   needsApproval: false,
 };
 
-/** A command failure: the UIA outcomes and M_FORBIDDEN by code, else {@link requestFailed}. */
+/** A command failure: the UIA outcomes and M_FORBIDDEN by code, else {@link engineRequestFailure}. */
 function commandFailed(error: unknown): EngineFailure {
   const uia =
     error instanceof UiaCancelledError
@@ -193,7 +188,7 @@ function commandFailed(error: unknown): EngineFailure {
   const { kind, diagnostic } = describeMatrixRequestFailure(error);
   return diagnostic.errcode === 'M_FORBIDDEN'
     ? { kind, code: 'forbidden', diagnostic }
-    : { kind, code: 'request-failed', diagnostic };
+    : engineRequestFailure(error);
 }
 
 async function readDevices(client: MatrixClient): Promise<OwnDevice[]> {
@@ -485,7 +480,7 @@ export class JsSdkTrustEngine implements TrustEngine {
           from(readFacts(client, crypto)).pipe(
             map((facts) => engineOk(facts)),
             catchError((error: unknown) =>
-              of(engineFail(requestFailed(error))),
+              of(engineFail(engineRequestFailure(error))),
             ),
           ),
         ),
@@ -518,7 +513,9 @@ export class JsSdkTrustEngine implements TrustEngine {
       if (!client) return of(engineFail(NOT_LIVE));
       return from(readPublishedMasterKey(client)).pipe(
         map((key) => engineOk(key)),
-        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+        catchError((error: unknown) =>
+          of(engineFail(engineRequestFailure(error))),
+        ),
       );
     });
   }
@@ -544,7 +541,7 @@ export class JsSdkTrustEngine implements TrustEngine {
           of(
             error instanceof MatrixError && error.errcode === 'M_NOT_FOUND'
               ? engineOk(null)
-              : engineFail(requestFailed(error)),
+              : engineFail(engineRequestFailure(error)),
           ),
         ),
       );
@@ -620,7 +617,9 @@ export class JsSdkTrustEngine implements TrustEngine {
             ? this.sendUserVerification(client, crypto, userId, roomId, current)
             : of(engineFail(NOT_LIVE)),
         ),
-        catchError((error: unknown) => of(engineFail(requestFailed(error)))),
+        catchError((error: unknown) =>
+          of(engineFail(engineRequestFailure(error))),
+        ),
       );
     });
   }
@@ -741,7 +740,7 @@ export class JsSdkTrustEngine implements TrustEngine {
           subscriber.complete();
         },
         (error: unknown) => {
-          subscriber.next(engineFail(requestFailed(error)));
+          subscriber.next(engineFail(engineRequestFailure(error)));
           subscriber.complete();
         },
       );
@@ -785,7 +784,7 @@ export class JsSdkTrustEngine implements TrustEngine {
         () =>
           readDevices(client).then(
             (devices) => engineOk(devices),
-            (error: unknown) => engineFail(requestFailed(error)),
+            (error: unknown) => engineFail(engineRequestFailure(error)),
           ),
       );
     });
@@ -1166,7 +1165,9 @@ export class JsSdkTrustEngine implements TrustEngine {
       return from(run(client, crypto)).pipe(
         map((value) => engineOk(value)),
         catchError((error: unknown) =>
-          of(engineFail(isFailure(error) ? error : requestFailed(error))),
+          of(
+            engineFail(isFailure(error) ? error : engineRequestFailure(error)),
+          ),
         ),
       );
     });
