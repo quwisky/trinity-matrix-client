@@ -1,5 +1,7 @@
 //! Restoring a persisted session: its client's settings, the start that concurrent restores of
 //! one account join, and what a failed start means.
+// Without `native` there is no store to open, so the start and its settings go unused.
+#![cfg_attr(not(feature = "native"), allow(dead_code, unused_imports))]
 
 use std::{
     mem,

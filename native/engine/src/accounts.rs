@@ -83,6 +83,8 @@ pub(crate) struct Registry {
     active: Option<String>,
     soft_logged_out: Vec<String>,
     /// Engine-wide, one more for each registered client; `stop` keeps it.
+    // Without `native` no start registers a client.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     generation: u32,
 }
 
@@ -259,6 +261,7 @@ impl Engine {
     }
 
     /// Writes a runtime's status while `generation` is still the account's; `false` once not.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub(crate) fn update_status(
         &self,
         account_id: &str,
@@ -415,6 +418,7 @@ impl Registry {
 
     /// Registers a new client for `account_id`: its entry moves to the end with the next
     /// generation, and the account is no longer soft-logged-out.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub fn register(&mut self, account_id: &str, device_id: &str) -> u32 {
         self.entries.retain(|entry| entry.account_id != account_id);
         self.generation += 1;
@@ -476,6 +480,7 @@ impl Registry {
     }
 
     /// Changes the status of the account's entry while it is still that generation's.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub fn update_status(
         &mut self,
         account_id: &str,

@@ -81,11 +81,13 @@ as pull-request.
 
 A `rust` step of `classify` decides the same way whether the `rust` and `engine-contract-rust` jobs run on a pull request. It answers `true`
 when the diff touches `native/engine*`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `clippy.toml`, `.cargo/`, the data-access
-`src/contract/` files, any `rust-dto/` directory or `*.rust.spec.ts` under `libs/`, the engine transport in
+`src/contract/` files, `probe-homeserver.ts` and `js-sdk-homeserver-engine.ts` in `libs/data-access/homeserver`, any `rust-dto/`
+directory or `*.rust.spec.ts` under `libs/`, the engine transport in
 `libs/util/matrix` and `libs/testing`, the `libs/testing` index, `synapse-admin.ts` or `rust-account.ts`, the shared `vite.base.config.ts` or
 `test-setup.base.ts`, `e2e/engine/`, `e2e/support/homeserver/`, or the `e2e/support` files on the runner's import path listed
 above. Pushes answer `false`. The `rust` job runs `rustup toolchain install`, then
-`cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` and `cargo test --workspace --locked` behind a
+`cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, the same clippy for `trinity-engine` with
+`--no-default-features` and `cargo test --workspace --locked` behind a
 `Swatinem/rust-cache` cache with the shared key `trinity-engine`, which `engine-contract-rust` restores but never saves. It deletes the generated TypeScript under `libs/**/rust-dto/` before the tests write it again, and
 fails when `git status` then reports a modified, deleted or untracked file there. `engine-contract-rust` runs
 `trinity-e2e-engine:contract:rust` against Docker Synapse: it builds the stdio test host and runs the `*.rust.spec.ts`

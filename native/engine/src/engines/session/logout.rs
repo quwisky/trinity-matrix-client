@@ -46,6 +46,8 @@ use crate::{
     wire::{Fault, FaultKind},
 };
 
+// Without `native` no start sets the SDK's session callbacks or registers a client.
+#[cfg_attr(not(feature = "native"), allow(dead_code))]
 type CallbackError = Box<dyn std::error::Error + Send + Sync>;
 
 /// A runtime the rule retired, and whether its stores go with it.
@@ -105,6 +107,7 @@ impl Holds {
 
     /// A new client registered for the account: it forgets a recorded death, and tells a sign-in
     /// again after a soft logout.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub(crate) fn registered(&mut self, account_id: &str, signed_in_again: bool) -> Barrier {
         let Some(holds) = self.by_account.get_mut(account_id) else {
             return Barrier::default();
@@ -537,6 +540,7 @@ pub(crate) async fn raw_get(
 }
 
 /// The SDK's reload callback, which runs only under the cross-process lock, which is off.
+#[cfg_attr(not(feature = "native"), allow(dead_code))]
 pub(crate) fn reload_tokens(client: Client) -> Result<SessionTokens, CallbackError> {
     client.session_tokens().ok_or_else(|| "no session".into())
 }
@@ -544,6 +548,7 @@ pub(crate) fn reload_tokens(client: Client) -> Result<SessionTokens, CallbackErr
 /// The SDK's save callback, which runs once the client has adopted refreshed tokens, retired or
 /// not. It republishes the live tokens, and always reports the rotation for storage to save, as
 /// js persists for a retired client.
+#[cfg_attr(not(feature = "native"), allow(dead_code))]
 pub(crate) fn save_tokens_callback(
     engine: Weak<Engine>,
     account_id: String,

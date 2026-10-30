@@ -1,5 +1,7 @@
 //! One live account: its client, its sync, and the tasks that report their status, follow its
 //! session and restart its sync.
+// Without `native` no start builds a runtime, so only the type is used.
+#![cfg_attr(not(feature = "native"), allow(dead_code))]
 
 use std::{
     sync::{
