@@ -661,6 +661,7 @@ describe('MAS sign-in journeys', () => {
         'rust-toolchain.toml',
         'clippy.toml',
         'rustfmt.toml',
+        'deny.toml',
         '.cargo/config.toml',
         'libs/data-access/media/src/contract/media.contract.ts',
         'libs/data-access/homeserver/src/lib/probe-homeserver.ts',
@@ -761,6 +762,19 @@ describe('Rust engine job', () => {
     const install = index((step) => step.run?.startsWith('cargo install'));
     expect(cache).toBeGreaterThan(-1);
     expect(install).toBeGreaterThan(cache);
+  });
+
+  it('checks licences and advisories with a pinned cargo-deny action after cargo machete', () => {
+    const index = (predicate) => job.steps.findIndex(predicate);
+    const machete = index((step) => step.run === 'cargo machete');
+    const deny = index((step) =>
+      step.uses?.startsWith('EmbarkStudios/cargo-deny-action@'),
+    );
+    expect(machete).toBeGreaterThan(-1);
+    expect(deny).toBe(machete + 1);
+    expect(job.steps[deny].uses).toMatch(/@[0-9a-f]{40}$/);
+    // The defaults check the root manifest with `--all-features`; any input would change that.
+    expect(job.steps[deny].with).toBeUndefined();
   });
 
   it('runs the stdio transport spec against the test host it built', () => {
