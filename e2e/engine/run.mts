@@ -124,7 +124,6 @@ export async function runEngineContract(
       ...invocation.environment,
       TRINITY_ENGINE_CONTRACT_HS: homeserver.hs,
       TRINITY_ENGINE_CONTRACT_SERVER_NAME: SERVER_NAME,
-      TRINITY_ENGINE_CONTRACT_DOMAIN: new URL(homeserver.hs).host,
       TRINITY_ENGINE_CONTRACT_SHARED_SECRET: REGISTRATION_SHARED_SECRET,
       // The mail cases (password reset, registration by email, adding an address) read
       // Synapse's mail from Mailpit.
