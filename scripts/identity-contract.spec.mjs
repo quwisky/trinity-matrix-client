@@ -31,8 +31,13 @@ describe('Identity production boundary', () => {
   });
 
   it('depends on a lifecycle-free Matrix Identity port', () => {
+    // The engine's js-sdk adapter is the one place that reaches the SDK (engine-boundary.spec).
     const identity = productionSources
-      .filter((file) => file.startsWith('libs/data-access/identity/'))
+      .filter(
+        (file) =>
+          file.startsWith('libs/data-access/identity/') &&
+          !file.includes('/js-sdk/'),
+      )
       .map(source)
       .join('\n');
     const port = source(
