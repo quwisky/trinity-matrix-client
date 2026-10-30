@@ -31,3 +31,4 @@ export * from './lib/room-url';
 export * from './lib/oidc-issuer-discovery';
 export * from './lib/engine-result';
 export * from './lib/vector-diff';
+export * from './lib/deep-writable';

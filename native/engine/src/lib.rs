@@ -1,3 +1,6 @@
+pub mod failure;
+pub mod wire;
+
 #[cfg(test)]
 mod tests {
     #[test]
