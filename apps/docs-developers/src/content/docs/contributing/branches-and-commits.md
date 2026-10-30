@@ -35,6 +35,8 @@ git commit -m "docs(developers): clarify Matrix test ownership"
 
 Use a body when the motivation or behavior change is not self-evident. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer. Do not add tool attribution or generated-by footers.
 
+The `pre-commit` hook formats and lints the staged files, but Git skips it for commits made by `git rebase --continue`, cherry-picks and `--no-verify`. A `pre-push` hook (`scripts/pre-push-check.mjs`) therefore runs Prettier, ESLint and Stylelint in check mode on the committed files your push adds to the checked-out branch, so commit or stash your edits first. When a check fails it prints the `lint-staged` command that fixes the files; skip the check with `git push --no-verify` and let CI judge.
+
 ## Release lines {#release-lines}
 
 `main` is the integration branch: pull requests target it and prereleases are cut from it. A stable line lives on a `release/X.Y.x` branch, cut by a maintainer from a tested prerelease. Release branches accept only fixes, through pull requests; open the same fix against `main` too, or let the automatic back-merge pull request carry it. release-please keeps a release pull request open on each branch: merging it on `main` cuts an `X.Y.Z-next.N` prerelease, and merging it on `release/X.Y.x` cuts a stable patch release and updates `CHANGELOG.md`. `feat`, `fix`, `perf`, `revert` and `deps` subjects become the release notes, so write them for users.
