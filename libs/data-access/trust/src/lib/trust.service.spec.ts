@@ -1,11 +1,9 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientEvent, MatrixError } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { TrustService } from './trust.service';
 import { onFakeEngine, setup } from './trust.spec-harness';
@@ -273,7 +271,7 @@ describe('TrustService', () => {
     });
 
     it('rewires onto a new client after re-login and recomputes status', async () => {
-      const { svc, client, matrix, generation } = setup({
+      const { svc, client, useClient, generation } = setup({
         defaultKeyId: null,
       }); // A: needs-setup
       svc.runProjection().subscribe();
@@ -306,11 +304,7 @@ describe('TrustService', () => {
         on: vi.fn(),
         off: vi.fn(),
       };
-      ngMocks.stubMember(
-        matrix,
-        'instance',
-        clientB as unknown as MatrixClientService['instance'],
-      );
+      useClient(clientB);
 
       // The session registers the new client under a new generation.
       generation.set(2);
@@ -324,7 +318,7 @@ describe('TrustService', () => {
 
     it('re-projects onto the newly-active account on a switch with no manual connect', async () => {
       // Account A is a first device with no secret storage → needs-setup.
-      const { svc, client, matrix, activeUserId } = setup({
+      const { svc, client, useClient, activeUserId } = setup({
         defaultKeyId: null,
       });
       activeUserId.set('@a:hs');
@@ -361,11 +355,7 @@ describe('TrustService', () => {
         on: vi.fn(),
         off: vi.fn(),
       };
-      ngMocks.stubMember(
-        matrix,
-        'instance',
-        clientB as unknown as MatrixClientService['instance'],
-      );
+      useClient(clientB);
 
       // Switch accounts: NO svc.connect() call — the reproject effect re-runs it.
       activeUserId.set('@b:hs');

@@ -3,11 +3,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
-const allowlistPath = 'architecture/session-facade-allowlist.json';
-const namedImport = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"][^'"]+['"]/g;
 const jsSdkFolder = 'libs/data-access/matrix-client/src/lib/js-sdk/';
 
-/** Whether a production source file imports `MatrixClientService`, the session facade. */
+/** Whether a production source file names `MatrixClientService`, the session facade, outside a comment. */
 export function usesSessionFacade(file, source) {
   if (
     !file.endsWith('.ts') ||
@@ -18,44 +16,19 @@ export function usesSessionFacade(file, source) {
     return false;
   }
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
-  return [...code.matchAll(namedImport)].some(([, specifiers]) =>
-    specifiers.split(',').some(
-      (specifier) =>
-        specifier
-          .trim()
-          .replace(/^type\s+/, '')
-          .split(/\s+/)[0] === 'MatrixClientService',
-    ),
-  );
+  return /\bMatrixClientService\b/.test(code);
 }
 
-/**
- * Freeze the callers of the MatrixClientService facade (#1153), separately from the SDK-reach
- * ratchet. The allowlist holds the files that still import it; it may only shrink.
- */
+/** Only matrix-client's `js-sdk/` folder imports the MatrixClientService facade (#1153). */
 describe('Session facade callers', () => {
-  const { files: allowlist } = JSON.parse(
-    readFileSync(join(workspaceRoot, allowlistPath), 'utf8'),
-  );
-  const callers = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-    cwd: workspaceRoot,
-    exclude: (name) => name === 'node_modules',
-  })
-    .filter((file) =>
+  it('has no facade callers outside the js-sdk folder', () => {
+    const callers = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
+      cwd: workspaceRoot,
+      exclude: (name) => name === 'node_modules',
+    }).filter((file) =>
       usesSessionFacade(file, readFileSync(join(workspaceRoot, file), 'utf8')),
-    )
-    .sort();
-
-  it('adds no new facade callers', () => {
-    expect(callers.filter((file) => !allowlist.includes(file))).toEqual([]);
-  });
-
-  it('drops callers that no longer use the facade', () => {
-    expect(allowlist.filter((file) => !callers.includes(file))).toEqual([]);
-  });
-
-  it('keeps the allowlist sorted and unique', () => {
-    expect(allowlist).toEqual([...new Set(allowlist)].sort());
+    );
+    expect(callers).toEqual([]);
   });
 });
 
@@ -78,6 +51,16 @@ describe('usesSessionFacade', () => {
     expect(
       usesSessionFacade(file, "import type { MatrixClientService } from 'x';"),
     ).toBe(true);
+  });
+
+  it('matches a namespace import, a re-export and a dynamic import', () => {
+    for (const source of [
+      "import * as mc from '@trinity/data-access/matrix-client';\ninject(mc.MatrixClientService);",
+      "export { MatrixClientService } from '@trinity/data-access/matrix-client';",
+      "const { MatrixClientService } = await import('@trinity/data-access/matrix-client');",
+    ]) {
+      expect(usesSessionFacade(file, source), source).toBe(true);
+    }
   });
 
   it('ignores a comment that only names the class', () => {
