@@ -4,6 +4,67 @@ All notable changes to this project are documented here. release-please writes e
 entry from Conventional Commit subjects when a stable release is cut, and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.0](https://github.com/quwisky/trinity-matrix-client/compare/v0.5.0-next.6...v0.6.0) (2026-10-30)
+
+
+### Added
+
+* **accounts:** let people find you by your email ([#1712](https://github.com/quwisky/trinity-matrix-client/issues/1712)) ([2fc404a](https://github.com/quwisky/trinity-matrix-client/commit/2fc404a7dbb9acf7325313ab1b3d5c017e3d599d))
+* **accounts:** manage email addresses in Settings ([#1707](https://github.com/quwisky/trinity-matrix-client/issues/1707)) ([9bbc7d1](https://github.com/quwisky/trinity-matrix-client/commit/9bbc7d1afaac508bdca5bd38561190fc497a397c))
+* **auth:** reset a forgotten password by email ([#1709](https://github.com/quwisky/trinity-matrix-client/issues/1709)) ([e9ae64d](https://github.com/quwisky/trinity-matrix-client/commit/e9ae64d160b5f75334efce5ae428f2781b5d3d0c))
+* **media:** personal image pack data for "Your emoji" ([#1656](https://github.com/quwisky/trinity-matrix-client/issues/1656)) ([f190542](https://github.com/quwisky/trinity-matrix-client/commit/f1905428e28745fc7faaaaa4212e578e85f06de5))
+* **media:** read, write and edit a room's own image pack ([#1697](https://github.com/quwisky/trinity-matrix-client/issues/1697)) ([26fc826](https://github.com/quwisky/trinity-matrix-client/commit/26fc826242cab1beafec6f08e60721429699e0e9))
+* **rooms:** add and send your emoji from messages and the picker ([#1658](https://github.com/quwisky/trinity-matrix-client/issues/1658)) ([ffd7fec](https://github.com/quwisky/trinity-matrix-client/commit/ffd7fec2ed1697f215906efec448e99581c32f04))
+* **rooms:** edit a room's emoji in room settings ([#1698](https://github.com/quwisky/trinity-matrix-client/issues/1698)) ([4cb676b](https://github.com/quwisky/trinity-matrix-client/commit/4cb676b6b0749a11c4bfea33d495fd30ee88fb57))
+* **rooms:** edit what each role may do in rooms and spaces ([#1720](https://github.com/quwisky/trinity-matrix-client/issues/1720)) ([d73626a](https://github.com/quwisky/trinity-matrix-client/commit/d73626a0d1d66c5f63c154f4f40ef40b574c9dba))
+* **rooms:** let admins approve requests to join and revoke invites ([#1725](https://github.com/quwisky/trinity-matrix-client/issues/1725)) ([47e4dcb](https://github.com/quwisky/trinity-matrix-client/commit/47e4dcb8aaf75572e3f01f0f5e5fb45d4a910aad))
+* **rooms:** let you respond when someone in a room changes identity ([#1724](https://github.com/quwisky/trinity-matrix-client/issues/1724)) ([538af71](https://github.com/quwisky/trinity-matrix-client/commit/538af71028a6616921faa691cc49491bc9e507b0))
+* **rooms:** say whether someone you invite can read a room's earlier messages ([#1723](https://github.com/quwisky/trinity-matrix-client/issues/1723)) ([99eaf13](https://github.com/quwisky/trinity-matrix-client/commit/99eaf13ccd2ca8a59cc2ce56c1e3819a4b0039f4))
+* **settings:** manage your emoji in Settings ([#1657](https://github.com/quwisky/trinity-matrix-client/issues/1657)) ([167b11c](https://github.com/quwisky/trinity-matrix-client/commit/167b11cecd55b66d4d46ab4b1ddb4cfa59784146))
+* **storage:** warn before the device runs out of space for Trinity's data ([#1734](https://github.com/quwisky/trinity-matrix-client/issues/1734)) ([42c4c58](https://github.com/quwisky/trinity-matrix-client/commit/42c4c589f7fa57f8cf3fabbd0de19a30f07ea8b2))
+* **timeline:** send messages written offline once the connection returns ([#1695](https://github.com/quwisky/trinity-matrix-client/issues/1695)) ([fe0d238](https://github.com/quwisky/trinity-matrix-client/commit/fe0d238ea278d821d3964267bfe3e117fb53360c))
+
+
+### Fixed
+
+* **auth:** don't fail sign-in when MAS registers the app twice at once, and fix the QR flakes on MAS ([#1718](https://github.com/quwisky/trinity-matrix-client/issues/1718)) ([d13d798](https://github.com/quwisky/trinity-matrix-client/commit/d13d7988fd57cd6b02a2dd2ffed33255dcbf7905))
+* **container:** check static caching by rule instead of a file list ([#1651](https://github.com/quwisky/trinity-matrix-client/issues/1651)) ([261bb3d](https://github.com/quwisky/trinity-matrix-client/commit/261bb3dfda359df1ae4e2d7b3f6a21d699c0f0c6))
+* **crypto:** share keys that are only in backup when inviting to a room ([#1733](https://github.com/quwisky/trinity-matrix-client/issues/1733)) ([7ef8b12](https://github.com/quwisky/trinity-matrix-client/commit/7ef8b12001d5346a8e435f5382bcb8b4b9c6cf29))
+* **deps:** update electron to 44.9.3 and require node 24.22.1 ([#1687](https://github.com/quwisky/trinity-matrix-client/issues/1687)) ([26f7ff9](https://github.com/quwisky/trinity-matrix-client/commit/26f7ff9030e28719693aa2996fef1e959054801c))
+* **deps:** update electron to 45.0.0 ([#1688](https://github.com/quwisky/trinity-matrix-client/issues/1688)) ([2892959](https://github.com/quwisky/trinity-matrix-client/commit/28929599f03dc77394e6ef82a2c36f2664845a80))
+* **platform-native:** follow the iOS keyboard when the app shrinks ([#1662](https://github.com/quwisky/trinity-matrix-client/issues/1662)) ([b723fbf](https://github.com/quwisky/trinity-matrix-client/commit/b723fbf742df361e6c313e2bf564b779eba0f3f2))
+* **rooms:** inset side-panel headers only as phone drawers ([2c772d2](https://github.com/quwisky/trinity-matrix-client/commit/2c772d214575187b5a7fedb526bdd58991f9f541))
+* **rooms:** keep the phone keyboard down when the emoji picker opens ([#1660](https://github.com/quwisky/trinity-matrix-client/issues/1660)) ([7e87e6b](https://github.com/quwisky/trinity-matrix-client/commit/7e87e6ba8b2a9fd6e0d74d6d55bf2c63cd5ce442))
+* **rooms:** let the phone drawers own their status-bar inset ([c7e7903](https://github.com/quwisky/trinity-matrix-client/commit/c7e7903fe640bf0c1b4fb2dba3501537c90ea0fb))
+* **rooms:** mark a merged room's preview by the account that encrypts it ([#1678](https://github.com/quwisky/trinity-matrix-client/issues/1678)) ([2d7da7d](https://github.com/quwisky/trinity-matrix-client/commit/2d7da7d3bb42771de13326342b0fc09055e68807))
+* **rooms:** show a shared room as the active account sees it ([#1680](https://github.com/quwisky/trinity-matrix-client/issues/1680)) ([7ba5c58](https://github.com/quwisky/trinity-matrix-client/commit/7ba5c58664d7d51757e8ee9e71849bda247037f9)), refs [#1679](https://github.com/quwisky/trinity-matrix-client/issues/1679)
+* **rooms:** show unencrypted messages' text in the room list preview ([#1670](https://github.com/quwisky/trinity-matrix-client/issues/1670)) ([973b426](https://github.com/quwisky/trinity-matrix-client/commit/973b426b0a8d82aef325835460d62c19dc431c46))
+* **rooms:** show unencrypted reply quotes' text with the mark ([#1676](https://github.com/quwisky/trinity-matrix-client/issues/1676)) ([cad3956](https://github.com/quwisky/trinity-matrix-client/commit/cad395699ee78c431f2ee29a97b3d025fbdbeba3))
+* **storage:** stop warning about protected storage on iOS ([#1730](https://github.com/quwisky/trinity-matrix-client/issues/1730)) ([4451b65](https://github.com/quwisky/trinity-matrix-client/commit/4451b657b7bb511504f95a54263ab221e8b0b550))
+* **ui:** keep the status banner below the iOS status bar ([c290f35](https://github.com/quwisky/trinity-matrix-client/commit/c290f357306ac8461be3bf39871308cfc1abf239))
+* **ui:** let Escape reach a dialog while a dropdown inside it is closing ([#1729](https://github.com/quwisky/trinity-matrix-client/issues/1729)) ([8383da0](https://github.com/quwisky/trinity-matrix-client/commit/8383da0f8a01945be08a094ba736dbe6ba9146e6)), refs [#1726](https://github.com/quwisky/trinity-matrix-client/issues/1726)
+* **ui:** stop routed page headers padding the iOS status bar twice ([95fdaaa](https://github.com/quwisky/trinity-matrix-client/commit/95fdaaa9590b0ad0663e5e6dc95322743a8def2d))
+
+
+### Dependencies
+
+* update angular ([#1699](https://github.com/quwisky/trinity-matrix-client/issues/1699)) ([9e4bdac](https://github.com/quwisky/trinity-matrix-client/commit/9e4bdac147e64abf59b55a3055b2ebcf4e43c968))
+* update angular ([#1714](https://github.com/quwisky/trinity-matrix-client/issues/1714)) ([8fea4f5](https://github.com/quwisky/trinity-matrix-client/commit/8fea4f5b5d593a111d7f7278329330c484b17473))
+* update astro monorepo ([#1704](https://github.com/quwisky/trinity-matrix-client/issues/1704)) ([d9721b6](https://github.com/quwisky/trinity-matrix-client/commit/d9721b6d09964a7cb5c545a843d56120e1f547cc))
+* update dependency @astrojs/starlight to v0.42.7 ([#1736](https://github.com/quwisky/trinity-matrix-client/issues/1736)) ([4c5f868](https://github.com/quwisky/trinity-matrix-client/commit/4c5f868ea7c4db63b2239bb57300b329158d606c))
+* update dependency @lezer/common to v1.5.4 ([#1715](https://github.com/quwisky/trinity-matrix-client/issues/1715)) ([1be30b5](https://github.com/quwisky/trinity-matrix-client/commit/1be30b5914b32e322b9b161a555f356fdde4b3cd))
+* update dependency katex to v0.19.1 ([#1737](https://github.com/quwisky/trinity-matrix-client/issues/1737)) ([c2f221f](https://github.com/quwisky/trinity-matrix-client/commit/c2f221f87ff52ab9ff948118789ea34f18dd13b3))
+* update dependency marked to v18.1.2 ([#1796](https://github.com/quwisky/trinity-matrix-client/issues/1796)) ([9727a32](https://github.com/quwisky/trinity-matrix-client/commit/9727a32e9ebee301012c4ef2b02244b3a63f15d1))
+* update dependency ng-packagr to v22.2.5 ([#1738](https://github.com/quwisky/trinity-matrix-client/issues/1738)) ([3bee4e4](https://github.com/quwisky/trinity-matrix-client/commit/3bee4e4a06b603e40eef1ee2406777425c57c22d))
+* update dependency postcss to v8.5.32 ([#1797](https://github.com/quwisky/trinity-matrix-client/issues/1797)) ([ecb704b](https://github.com/quwisky/trinity-matrix-client/commit/ecb704b5f1d72fcfd27966deebb2346f052cf211))
+* update dependency vite to v8.3.5 ([#1705](https://github.com/quwisky/trinity-matrix-client/issues/1705)) ([d554f23](https://github.com/quwisky/trinity-matrix-client/commit/d554f23c4adf82733c73db8dd8accaa8b80add8f))
+* update dependency vitest to v5.0.5 ([#1700](https://github.com/quwisky/trinity-matrix-client/issues/1700)) ([257734b](https://github.com/quwisky/trinity-matrix-client/commit/257734b0c8011903873bfffbcf9bcb89a189949c))
+* update nx to 24.0.1 ([#1732](https://github.com/quwisky/trinity-matrix-client/issues/1732)) ([e2fcd9b](https://github.com/quwisky/trinity-matrix-client/commit/e2fcd9b99f6273d0b7ab5f2dd4e88355000b0c3f))
+* update nx to v24.0.2 ([#1798](https://github.com/quwisky/trinity-matrix-client/issues/1798)) ([5e84b37](https://github.com/quwisky/trinity-matrix-client/commit/5e84b379614e5c7e2d5e59048ae922cb16571267))
+* update spartan-ng to 1.8.2 ([#1731](https://github.com/quwisky/trinity-matrix-client/issues/1731)) ([5648938](https://github.com/quwisky/trinity-matrix-client/commit/56489381b6df1b5833d3395e1233f12cd81786e4))
+* update storybook monorepo to v10.6.3 ([#1701](https://github.com/quwisky/trinity-matrix-client/issues/1701)) ([cd403ab](https://github.com/quwisky/trinity-matrix-client/commit/cd403ab5c455308358ccb97575806d71cc97ba4a))
+* update storybook monorepo to v10.6.4 ([#1799](https://github.com/quwisky/trinity-matrix-client/issues/1799)) ([71bf13c](https://github.com/quwisky/trinity-matrix-client/commit/71bf13c11e7a70608d6995bb42926afec44bb989))
+
 ## [0.5.2](https://github.com/quwisky/trinity-matrix-client/compare/v0.5.1...v0.5.2) (2026-10-23)
 
 
