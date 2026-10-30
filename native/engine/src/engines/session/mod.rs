@@ -3,8 +3,19 @@
 
 pub(crate) mod restore;
 
+use std::sync::Arc;
+
+use futures_util::{StreamExt, stream};
+use matrix_sdk::SendOutsideWasm;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use ts_rs::TS;
+
+use crate::{
+    accounts::{Engine, stop_runtimes},
+    dispatch::{Stream, stream},
+    failure::EngineResult,
+};
 
 const DTO: &str = "data-access/matrix-client/src/lib/rust-dto/";
 
@@ -215,10 +226,68 @@ pub enum UserIdentifierType {
     User,
 }
 
+/// The current snapshot, then each change.
+pub fn session(engine: Arc<Engine>) -> Stream {
+    stream(
+        engine
+            .subscribe_session()
+            .map(|snapshot| Ok(json!(snapshot))),
+    )
+}
+
+pub fn set_active(engine: Arc<Engine>, account_id: String) -> Stream {
+    done(async move { engine.set_active(&account_id).delivered().await })
+}
+
+pub fn activate_account(
+    engine: Arc<Engine>,
+    account_id: String,
+    live_accounts: LiveAccountsDto,
+) -> Stream {
+    stream(stream::once(async move {
+        let result = match engine.activate_account(&account_id, live_accounts) {
+            Ok((barrier, retired)) => {
+                stop_runtimes(retired).await;
+                barrier.delivered().await;
+                EngineResult::Ok(())
+            }
+            Err(failure) => EngineResult::Err(failure),
+        };
+        Ok(json!(result))
+    }))
+}
+
+pub fn require_reauthentication(engine: Arc<Engine>, account_id: String) -> Stream {
+    done(async move {
+        engine
+            .require_reauthentication(&account_id)
+            .delivered()
+            .await
+    })
+}
+
+pub fn rollback_account_start(engine: Arc<Engine>, account_id: String) -> Stream {
+    done(async move { engine.rollback_account_start(&account_id).await })
+}
+
+pub fn remove(engine: Arc<Engine>, account_id: String) -> Stream {
+    done(async move { engine.remove(&account_id).await })
+}
+
+pub fn stop(engine: Arc<Engine>) -> Stream {
+    done(async move { engine.stop().await })
+}
+
+/// A void command: `null` once `effect` has run and its changes have been delivered.
+fn done(effect: impl Future<Output = ()> + SendOutsideWasm + 'static) -> Stream {
+    stream(stream::once(async move {
+        effect.await;
+        Ok(Value::Null)
+    }))
+}
+
 #[cfg(test)]
 mod tests {
-    use serde_json::{Value, json};
-
     use super::*;
 
     fn to_json(value: impl Serialize) -> Value {

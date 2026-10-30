@@ -7,7 +7,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::{
-    engines::{discovery, homeserver},
+    engines::{discovery, homeserver, session},
     wire::{Fault, FaultKind},
 };
 
@@ -77,6 +77,16 @@ methods! {
         limit: u64,
     ),
     "homeserver.probe" => homeserver::probe(account_id: String),
+    "session.session" => session::session(),
+    "session.setActive" => session::set_active(account_id: String),
+    "session.activateAccount" => session::activate_account(
+        account_id: String,
+        live_accounts: session::LiveAccountsDto,
+    ),
+    "session.requireReauthentication" => session::require_reauthentication(account_id: String),
+    "session.rollbackAccountStart" => session::rollback_account_start(account_id: String),
+    "session.remove" => session::remove(account_id: String),
+    "session.stop" => session::stop(),
 }
 
 /// Decodes positional args in order. Its `bad-args` faults name the position and the type
