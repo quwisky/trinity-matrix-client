@@ -2,5 +2,6 @@ disallowed-methods = [
   { path = "matrix_sdk::encryption::recovery::Recovery::reset_identity", reason = "Never call it (piece 2 spec §4, V1): reset with reset_cross_signing and its CrossSigningResetHandle, ordered by TypeScript." },
   { path = "matrix_sdk::encryption::recovery::Recovery::recover_and_fix_backup", reason = "Never call it (piece 2 spec §4, V6/V7): open_secret_store, then import_secrets." },
   { path = "matrix_sdk::Account::change_password", reason = "Never call it (piece 2 spec §4, V23): send the raw change_password::v3 request with logout_devices: false." },
+  { path = "std::time::SystemTime::now", reason = "It panics on wasm: take now from ruma's MilliSecondsSinceUnixEpoch::now()." },
   { path = "matrix_sdk::encryption::dehydrated_devices::DehydratedDevices::delete", reason = "Never call it (piece 2 spec §4, V10): send the raw request, which fails when there is no device." },
 ]

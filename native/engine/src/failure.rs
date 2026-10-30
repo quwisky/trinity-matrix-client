@@ -11,6 +11,7 @@ use matrix_sdk::{
         },
     },
     ruma::{
+        MilliSecondsSinceUnixEpoch,
         api::{
             EndpointError,
             error::{ErrorBody, ErrorKind, FromHttpResponseError, RetryAfter},
@@ -23,7 +24,7 @@ use serde::{Serialize, Serializer, ser::SerializeStruct};
 use ts_rs::TS;
 
 const DTO: &str = "util/matrix/src/lib/rust-dto/";
-const MAX_RETRY_AFTER_MS: u128 = 24 * 60 * 60 * 1000;
+const MAX_RETRY_AFTER_MS: u32 = 24 * 60 * 60 * 1000;
 
 /// `MatrixRequestFailureKind`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
@@ -519,10 +520,13 @@ fn classify_response(
 fn retry_after_ms(retry_after: &RetryAfter) -> Option<u32> {
     let delay = match retry_after {
         RetryAfter::Delay(delay) => *delay,
-        RetryAfter::DateTime(at) => at.duration_since(std::time::SystemTime::now()).ok()?,
+        RetryAfter::DateTime(at) => {
+            let now = MilliSecondsSinceUnixEpoch::now().to_system_time()?;
+            at.duration_since(now).ok()?
+        }
     };
-    let ms = delay.as_millis();
-    (ms <= MAX_RETRY_AFTER_MS).then_some(ms as u32)
+    let ms = u32::try_from(delay.as_millis()).ok()?;
+    (ms <= MAX_RETRY_AFTER_MS).then_some(ms)
 }
 
 /// `safeErrcode`: an errcode is written to logs, so it must look like one.
@@ -535,10 +539,7 @@ fn safe_errcode(code: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        sync::Arc,
-        time::{Duration, SystemTime},
-    };
+    use std::{sync::Arc, time::Duration};
 
     use matrix_sdk::{
         Client, Error, HttpError, RefreshTokenError, RumaApiError,
@@ -1000,13 +1001,16 @@ mod tests {
             classify_http(&limited(in_body, None)).1.retry_after_ms,
             Some(1500)
         );
-        let soon = RetryAfter::DateTime(SystemTime::now() + Duration::from_secs(60));
+        let now = MilliSecondsSinceUnixEpoch::now().to_system_time().unwrap();
+        let soon = RetryAfter::DateTime(now + Duration::from_secs(60));
         let date = http::HeaderValue::try_from(&soon).unwrap();
         let delay = classify_http(&limited(errcode.clone(), Some(date.to_str().unwrap())))
             .1
             .retry_after_ms
             .unwrap();
         assert!((58_000..=60_000).contains(&delay), "{delay}");
+        let past = RetryAfter::DateTime(now - Duration::from_secs(60));
+        assert_eq!(retry_after_ms(&past), None, "a date gone by is no delay");
         // More than a day is not a delay worth reporting.
         assert_eq!(
             classify_http(&limited(errcode, Some("90000"))),
