@@ -592,6 +592,34 @@ describe('JsSdkSessionEngine', () => {
       });
       expect(detached.logout).toHaveBeenCalledWith(true);
     });
+
+    it('logoutSession drops a held bundle', async () => {
+      const importSecretsBundle = vi.fn().mockResolvedValue(undefined);
+      const client = {
+        ...fakeClient(),
+        getUserId: vi.fn(() => SESSION.userId),
+        getCrypto: vi.fn(() => ({
+          importSecretsBundle,
+          crossSignDevice: vi.fn().mockResolvedValue(undefined),
+          checkKeyBackupAndEnable: vi.fn().mockResolvedValue(null),
+          isCrossSigningReady: vi.fn().mockResolvedValue(true),
+          getDeviceVerificationStatus: vi
+            .fn()
+            .mockResolvedValue({ crossSigningVerified: true }),
+        })),
+      };
+      const { svc } = setup(client);
+      const engine = TestBed.inject(JsSdkSessionEngine);
+      vi.spyOn(svc, 'detachedClient').mockReturnValue({
+        logout: vi.fn(async () => ({})),
+      } as never);
+      svc.holdLinkedSecrets(SESSION.userId, SESSION.deviceId, { held: true });
+
+      await firstValueFrom(engine.logoutSession(SESSION));
+      await firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+
+      expect(importSecretsBundle).not.toHaveBeenCalled();
+    });
   });
 
   it('reads the live tokens once, the refresh token included', async () => {

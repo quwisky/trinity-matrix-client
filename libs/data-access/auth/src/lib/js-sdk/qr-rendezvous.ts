@@ -6,7 +6,6 @@ import {
   type MatrixClient,
   type ValidatedAuthMetadata,
 } from 'matrix-js-sdk';
-import type { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
 import {
   ClientRendezvousFailureReason,
   MSC4108FailureReason,
@@ -16,7 +15,10 @@ import {
   RendezvousError,
   type RendezvousFailureListener,
 } from 'matrix-js-sdk/lib/rendezvous';
-import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  importLinkedSecrets,
+} from '@trinity/data-access/matrix-client';
 import {
   engineFail,
   engineOk,
@@ -50,9 +52,6 @@ const QR_FLOW_GONE = engineFail({
 });
 
 export type QrRendezvousFlow = MSC4108SignInWithQR;
-type LinkedSecrets = Parameters<
-  NonNullable<CryptoApi['importSecretsBundle']>
->[0];
 /** What a paused flow waits for, keyed by the pause. */
 interface Answers {
   server: void;
@@ -482,32 +481,6 @@ class FlowRun<S extends { kind: string }> {
         .catch(() => undefined);
     }
     if (this.closesSession) await flow.close().catch(() => undefined);
-  }
-}
-
-/**
- * Imports the shared secrets, cross-signs this device and enables key backup. Resolves
- * whether the device ended cross-signed; errors are dropped unlogged, as they can quote the
- * secrets.
- */
-async function importLinkedSecrets(
-  client: MatrixClient,
-  secrets: LinkedSecrets,
-): Promise<boolean> {
-  try {
-    const crypto = client.getCrypto();
-    const deviceId = client.getDeviceId();
-    const userId = client.getUserId();
-    if (!crypto?.importSecretsBundle || !deviceId || !userId) return false;
-    await crypto.importSecretsBundle(secrets);
-    await crypto.crossSignDevice(deviceId);
-    // Best effort: backup does not decide whether the device is verified.
-    await crypto.checkKeyBackupAndEnable().catch(() => undefined);
-    if (!(await crypto.isCrossSigningReady())) return false;
-    const status = await crypto.getDeviceVerificationStatus(userId, deviceId);
-    return status?.crossSigningVerified === true;
-  } catch {
-    return false;
   }
 }
 
