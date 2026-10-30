@@ -135,6 +135,18 @@ describe('engineFailureMessage', () => {
     ).toBe(text);
   });
 
+  it('words a rejected OAuth client as one to sign in with again', () => {
+    expect(
+      engineFailureMessage({
+        kind: 'http',
+        code: 'oauth-client-rejected',
+        diagnostic: { kind: 'http', httpStatus: 401 },
+      }),
+    ).toBe(
+      'The sign-in provider no longer recognises this app. Try signing in again.',
+    );
+  });
+
   it('words a UIA challenge like the request failure it stands for', () => {
     expect(
       engineFailureMessage({

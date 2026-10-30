@@ -18,23 +18,15 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 
-// Stub ONLY the client factory (the homeserver round-trips: auth-metadata discovery and
-// whoami). `OAuth2` deliberately stays real: since matrix-js-sdk 42 it drives the whole
-// OAuth exchange itself over global `fetch`, so stubbing `fetch` instead lets these specs
-// exercise the actual protocol — the PKCE challenge, the wire parameters and the
-// response_mode — rather than our own idea of it.
-vi.mock('matrix-js-sdk', async (importActual) => {
-  const actual = await importActual<typeof import('matrix-js-sdk')>();
-  return { ...actual, createClient: vi.fn() };
-});
-
-import {
-  createClient,
-  encodeUnpaddedBase64Url,
-  isValidAuthMetadata,
-} from 'matrix-js-sdk';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
-import { OIDC_PROVIDER_MISMATCH } from '@trinity/util/matrix';
+import {
+  EngineRequestError,
+  OIDC_PROVIDER_MISMATCH,
+  type EngineFailure,
+} from '@trinity/util/matrix';
+import { FakeAuthEngine } from '../contract/fake-auth-engine';
+import { AUTH_ENGINE } from './auth-engine.token';
+import type { AuthMetadata } from './auth-metadata';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import {
   OidcClientService,
@@ -42,7 +34,9 @@ import {
   type OidcGrantContext,
 } from './oidc-client.service';
 
-const createClientMock = vi.mocked(createClient);
+// The homeserver round-trips (auth metadata and whoami) go through a fake engine. The
+// provider round-trips are plain `fetch`, stubbed below, so these specs exercise the actual
+// protocol: the PKCE challenge, the wire parameters and the response_mode.
 
 /** The account's own homeserver — discovery goes through its auth metadata. */
 const HOMESERVER = 'https://hs.example';
@@ -87,29 +81,42 @@ const PINNED_BINDING = {
   revocationEndpoint: AUTH_METADATA.revocation_endpoint,
 };
 
+const UNAVAILABLE: EngineFailure = {
+  kind: 'server',
+  code: 'request-failed',
+  diagnostic: { kind: 'server', httpStatus: 503 },
+};
+
+let engine: FakeAuthEngine;
+
 /**
- * Stub the SDK client factory. `getAuthMetadata()` is how both `completeGrant` and
- * `revokeTokens` discover the provider (pass an Error to make discovery reject);
- * `whoami()` is how `completeGrant` resolves the account identity.
+ * Set up the homeserver. Its auth metadata is how both `completeGrant` and `revokeTokens`
+ * discover the provider (an Error makes every homeserver request fail); `whoami` names
+ * the owner of the token the provider stub mints, `access-tok` (an Error leaves that
+ * token unknown to the homeserver).
  */
-function stubClient({
+function stubHomeserver({
   metadata = AUTH_METADATA as unknown,
   whoami,
 }: {
   metadata?: unknown;
   whoami?: { user_id: string; device_id?: string } | Error;
 } = {}): void {
-  createClientMock.mockReturnValue({
-    getAuthMetadata:
-      metadata instanceof Error
-        ? vi.fn().mockRejectedValue(metadata)
-        : vi.fn().mockResolvedValue(metadata),
-    whoami:
-      whoami instanceof Error
-        ? vi.fn().mockRejectedValue(whoami)
-        : vi.fn().mockResolvedValue(whoami),
-  } as never);
+  if (metadata instanceof Error) {
+    engine.failure = UNAVAILABLE;
+  } else {
+    engine.metadata = metadata as AuthMetadata;
+  }
+  if (whoami && !(whoami instanceof Error)) {
+    engine.accessTokens.set('access-tok', {
+      userId: whoami.user_id,
+      deviceId: whoami.device_id ?? null,
+    });
+  }
 }
+
+/** The homeserver requests made, as `<command>:<homeserver>`. */
+const homeserverCalls = () => engine.calls;
 
 /** The three provider endpoints the real `OAuth2` POSTs to, keyed by role. */
 const ENDPOINTS = {
@@ -180,7 +187,10 @@ async function challengeFor(codeVerifier: string): Promise<string> {
     'SHA-256',
     new TextEncoder().encode(codeVerifier),
   );
-  return encodeUnpaddedBase64Url(new Uint8Array(digest));
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/u, '');
 }
 
 describe('OidcClientService', () => {
@@ -192,7 +202,13 @@ describe('OidcClientService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prefs.clear();
-    TestBed.configureTestingModule({ providers: [OidcClientService] });
+    engine = new FakeAuthEngine();
+    TestBed.configureTestingModule({
+      providers: [
+        OidcClientService,
+        { provide: AUTH_ENGINE, useValue: engine },
+      ],
+    });
     svc = TestBed.inject(OidcClientService);
   });
 
@@ -200,19 +216,8 @@ describe('OidcClientService', () => {
     vi.stubGlobal('fetch', realFetch);
   });
 
-  it('uses a fixture the SDK itself accepts as valid auth metadata', () => {
-    // The single highest-value assertion in the matrix-js-sdk 42 migration. Every
-    // metadata object reaching this service in production comes from
-    // `MatrixClient.getAuthMetadata()`, which runs this exact guard and throws on
-    // failure — so if a future release tightens the contract (42 already added
-    // revocation_endpoint, registration_endpoint and the response_modes/grant_types
-    // requirements), this fails here instead of every spec below passing against a
-    // config the app could never be handed.
-    expect(isValidAuthMetadata(AUTH_METADATA)).toBe(true);
-  });
-
   describe('buildAuthorizationRequest', () => {
-    it('refuses metadata the SDK would not accept, before any request', async () => {
+    it('refuses metadata the Matrix spec would not accept, before any request', async () => {
       const fetchMock = stubFetch({});
       const { code_challenge_methods_supported: _, ...partial } = AUTH_METADATA;
 
@@ -446,18 +451,17 @@ describe('OidcClientService', () => {
     };
 
     it('replays the stashed verifier, resolves identity via whoami, and builds the binding', async () => {
-      stubClient({ whoami: WHOAMI });
+      stubHomeserver({ whoami: WHOAMI });
       const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
 
       const result = await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
 
-      // Discovery and whoami both go through the account's OWN homeserver; whoami is
-      // authenticated with the token that was just minted.
-      expect(createClientMock).toHaveBeenCalledWith({ baseUrl: HOMESERVER });
-      expect(createClientMock).toHaveBeenCalledWith({
-        baseUrl: HOMESERVER,
-        accessToken: 'access-tok',
-      });
+      // Discovery and whoami both go through the account's OWN homeserver; whoami
+      // answers for the token that was just minted (the fake knows no other).
+      expect(homeserverCalls()).toEqual([
+        `authMetadata:${HOMESERVER}`,
+        `whoami:${HOMESERVER}`,
+      ]);
       // The token POST carries the PKCE verifier out of the stash — nothing else has a
       // copy since v42 dropped oidc-client-ts, so this is what makes a callback in a
       // different browsing context (native / Electron) completable at all.
@@ -485,7 +489,7 @@ describe('OidcClientService', () => {
     });
 
     it('rejects when the provider returns no device for the session', async () => {
-      stubClient({ whoami: { user_id: '@me:hs' } }); // no device_id
+      stubHomeserver({ whoami: { user_id: '@me:hs' } }); // no device_id
       stubFetch({
         token: () => jsonResponse(TOKEN),
         revocation: () => jsonResponse({}),
@@ -502,7 +506,7 @@ describe('OidcClientService', () => {
       // and under MSC3861 the OAuth session IS the Matrix device: dropping them leaves a
       // ghost device the user can only remove from the provider's own account page, plus
       // a long-lived refresh token nothing will ever use. Every retry adds another.
-      stubClient({ whoami: new Error('homeserver unavailable') });
+      stubHomeserver({ whoami: new Error('homeserver unavailable') });
       const fetchMock = stubFetch({
         token: () => jsonResponse(TOKEN),
         revocation: () => jsonResponse({}),
@@ -511,7 +515,7 @@ describe('OidcClientService', () => {
       // The user still gets the real failure, not a revocation error.
       await expect(
         firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
-      ).rejects.toThrow(/homeserver unavailable/);
+      ).rejects.toThrow(EngineRequestError);
 
       const bodies = fetchMock.mock.calls
         .filter(([url]) => url === AUTH_METADATA.revocation_endpoint)
@@ -524,11 +528,10 @@ describe('OidcClientService', () => {
 
     it('reports the failure without waiting for the revocation to settle', async () => {
       // The revocation POSTs go to the PROVIDER, a different host from the homeserver
-      // that just failed, through `OAuth2.fetch` — which passes no AbortSignal and no
-      // timeout. Gating the error on them would leave the callback page on its spinner,
+      // that just failed, with no AbortSignal and no timeout. Gating the error on them would leave the callback page on its spinner,
       // whose only exit ("Back to sign in") lives in the error branch, for a full TCP
       // connect timeout — or forever against a host that black-holes the connection.
-      stubClient({ whoami: new Error('homeserver unavailable') });
+      stubHomeserver({ whoami: new Error('homeserver unavailable') });
       const fetchMock = stubFetch({
         token: () => jsonResponse(TOKEN),
         revocation: () => new Promise(() => undefined), // never settles
@@ -536,7 +539,7 @@ describe('OidcClientService', () => {
 
       await expect(
         firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
-      ).rejects.toThrow(/homeserver unavailable/);
+      ).rejects.toThrow(EngineRequestError);
 
       // Still fired, just not awaited.
       expect(
@@ -547,10 +550,9 @@ describe('OidcClientService', () => {
     });
 
     it('still surfaces the original failure when the revocation also fails', async () => {
-      // Best-effort, and it genuinely does fail against a compliant provider: RFC 7009
-      // mandates an empty 200 body, which the SDK's shared `res.json()` chokes on. A
-      // revocation error must never displace the error the user needs to see.
-      stubClient({ whoami: new Error('homeserver unavailable') });
+      // Best-effort: a revocation error must never displace the error the user needs to
+      // see.
+      stubHomeserver({ whoami: new Error('homeserver unavailable') });
       const fetchMock = stubFetch({
         token: () => jsonResponse(TOKEN),
         revocation: () => {
@@ -560,7 +562,7 @@ describe('OidcClientService', () => {
 
       await expect(
         firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
-      ).rejects.toThrow(/homeserver unavailable/);
+      ).rejects.toThrow(EngineRequestError);
       // Assert the revocation was actually attempted, or this passes just as happily
       // against no revocation at all — which is the thing the sibling test exists for.
       expect(
@@ -576,7 +578,7 @@ describe('OidcClientService', () => {
       // the delay below separates the two bounds: only a timestamp taken before the
       // POST satisfies the upper one.
       let tokenRequestAt = 0;
-      stubClient({ whoami: WHOAMI });
+      stubHomeserver({ whoami: WHOAMI });
       stubFetch({
         token: async () => {
           tokenRequestAt = Date.now();
@@ -597,7 +599,7 @@ describe('OidcClientService', () => {
     });
 
     it('omits refreshToken and expiry when the provider returns neither', async () => {
-      stubClient({ whoami: WHOAMI });
+      stubHomeserver({ whoami: WHOAMI });
       stubFetch({
         token: () =>
           jsonResponse({ token_type: 'Bearer', access_token: 'access-tok' }),
@@ -616,7 +618,7 @@ describe('OidcClientService', () => {
 
     describe('the callback iss (RFC 9207)', () => {
       it('proceeds when iss names the provider the sign-in started with', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
 
         const result = await firstValueFrom(
@@ -628,7 +630,7 @@ describe('OidcClientService', () => {
       });
 
       it('refuses an iss from another provider without sending the code', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
 
         await expect(
@@ -645,7 +647,7 @@ describe('OidcClientService', () => {
       it('compares iss as an exact string, not as an equivalent URL', async () => {
         // RFC 9207 section 2.4: simple string comparison. A trailing slash is a
         // different issuer.
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
 
         await expect(
@@ -660,7 +662,7 @@ describe('OidcClientService', () => {
       });
 
       it('refuses a missing iss when the provider says it always sends one', async () => {
-        stubClient({
+        stubHomeserver({
           metadata: {
             ...AUTH_METADATA,
             authorization_response_iss_parameter_supported: true,
@@ -676,7 +678,7 @@ describe('OidcClientService', () => {
       });
 
       it('proceeds without iss when the provider does not say it sends one', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
 
         await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
@@ -688,7 +690,7 @@ describe('OidcClientService', () => {
     it('refuses when the homeserver now names another issuer, without sending the code', async () => {
       // The metadata is fetched again at the callback. If it no longer names the issuer
       // the sign-in started with, its token endpoint is not that provider's.
-      stubClient({
+      stubHomeserver({
         metadata: {
           ...AUTH_METADATA,
           issuer: 'https://other-provider.example',
@@ -701,6 +703,41 @@ describe('OidcClientService', () => {
         firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
       ).rejects.toThrow(PROVIDER_ERROR);
       expect(tokenPosts(fetchMock)).toHaveLength(0);
+    });
+
+    it.each([
+      ['answers without auth metadata', null],
+      [
+        'answers metadata the Matrix spec would not accept',
+        { ...AUTH_METADATA, code_challenge_methods_supported: ['plain'] },
+      ],
+    ])(
+      'refuses when the homeserver now %s, without sending the code',
+      async (_, metadata) => {
+        stubHomeserver({ metadata, whoami: WHOAMI });
+        const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      },
+    );
+
+    it('fails oauth-client-rejected when the provider no longer knows the client', async () => {
+      stubHomeserver({ whoami: WHOAMI });
+      stubFetch({
+        token: () => jsonResponse({ error: 'invalid_client' }, 401),
+      });
+
+      const error = await firstValueFrom(
+        svc.completeGrant('CODE', CONTEXT),
+      ).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(EngineRequestError);
+      expect((error as EngineRequestError).failure.code).toBe(
+        'oauth-client-rejected',
+      );
     });
 
     describe('the endpoints checked before the redirect', () => {
@@ -717,7 +754,7 @@ describe('OidcClientService', () => {
       ])(
         'refuses when the homeserver now names another %s, without sending the code',
         async (_, change) => {
-          stubClient({
+          stubHomeserver({
             whoami: WHOAMI,
             metadata: { ...AUTH_METADATA, ...change },
           });
@@ -736,7 +773,7 @@ describe('OidcClientService', () => {
       );
 
       it("pins the saved endpoints when the issuer's own document cannot be fetched", async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -757,7 +794,7 @@ describe('OidcClientService', () => {
       describe("on another origin than the issuer's, when the issuer publishes no document", () => {
         it('refuses a token endpoint without sending the code', async () => {
           const elsewhere = 'https://hs.example/token';
-          stubClient({
+          stubHomeserver({
             whoami: WHOAMI,
             metadata: { ...AUTH_METADATA, token_endpoint: elsewhere },
           });
@@ -781,7 +818,7 @@ describe('OidcClientService', () => {
 
         it('pins no revocation endpoint', async () => {
           const elsewhere = 'https://hs.example/revoke';
-          stubClient({
+          stubHomeserver({
             whoami: WHOAMI,
             metadata: { ...AUTH_METADATA, revocation_endpoint: elsewhere },
           });
@@ -807,7 +844,7 @@ describe('OidcClientService', () => {
           tokenEndpoint: 'https://OP.example:443/oauth2/token',
           revocationEndpoint: 'https://OP.example:443/oauth2/revoke',
         };
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           {},
           { [saved.tokenEndpoint]: () => jsonResponse(TOKEN) },
@@ -828,7 +865,7 @@ describe('OidcClientService', () => {
 
     describe("the issuer's own discovery document", () => {
       it('proceeds when it agrees with the homeserver', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           { [RFC8414_DISCOVERY]: () => jsonResponse(AUTH_METADATA) },
@@ -844,7 +881,7 @@ describe('OidcClientService', () => {
       });
 
       it('refuses when it names another token endpoint, without sending the code', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -863,7 +900,7 @@ describe('OidcClientService', () => {
       });
 
       it('refuses when it names another authorization endpoint', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -882,7 +919,7 @@ describe('OidcClientService', () => {
       });
 
       it('refuses when it names another revocation endpoint', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -901,7 +938,7 @@ describe('OidcClientService', () => {
       });
 
       it('refuses when it names the issuer but no token endpoint', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const { token_endpoint: _omitted, ...withoutToken } = AUTH_METADATA;
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
@@ -917,7 +954,7 @@ describe('OidcClientService', () => {
       it('accepts endpoints written with the default port or in another case', async () => {
         // Compared as parsed URLs: scheme and host are case-insensitive and :443 is the
         // https default, so these name the same endpoints as the homeserver's metadata.
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -939,7 +976,7 @@ describe('OidcClientService', () => {
       });
 
       it('still refuses an endpoint that differs by a trailing slash', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -958,7 +995,7 @@ describe('OidcClientService', () => {
       });
 
       it('refuses an endpoint that is not a URL', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -974,7 +1011,7 @@ describe('OidcClientService', () => {
       });
 
       it('does not require a revocation endpoint the issuer does not publish', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const { revocation_endpoint: _omitted, ...withoutRevocation } =
           AUTH_METADATA;
         const fetchMock = stubFetch(
@@ -990,7 +1027,7 @@ describe('OidcClientService', () => {
 
       it("pins no revocation endpoint it omits that is on another origin than the issuer's", async () => {
         const elsewhere = 'https://hs.example/revoke';
-        stubClient({
+        stubHomeserver({
           whoami: WHOAMI,
           metadata: { ...AUTH_METADATA, revocation_endpoint: elsewhere },
         });
@@ -1021,7 +1058,7 @@ describe('OidcClientService', () => {
           token_endpoint: 'https://login.example/token',
           revocation_endpoint: 'https://login.example/revoke',
         };
-        stubClient({ whoami: WHOAMI, metadata: elsewhere });
+        stubHomeserver({ whoami: WHOAMI, metadata: elsewhere });
         const fetchMock = stubFetch(
           {},
           {
@@ -1052,7 +1089,7 @@ describe('OidcClientService', () => {
       });
 
       it('falls back to the OpenID Connect document when RFC 8414 has none', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -1075,7 +1112,10 @@ describe('OidcClientService', () => {
         // RFC 8414 section 3.1 inserts the well-known segment between host and path,
         // dropping a terminating "/"; OpenID Connect Discovery appends it to the issuer.
         const issuer = 'https://op.example/tenant/';
-        stubClient({ metadata: { ...AUTH_METADATA, issuer }, whoami: WHOAMI });
+        stubHomeserver({
+          metadata: { ...AUTH_METADATA, issuer },
+          whoami: WHOAMI,
+        });
         const elsewhere = () =>
           jsonResponse({
             ...AUTH_METADATA,
@@ -1110,7 +1150,7 @@ describe('OidcClientService', () => {
       });
 
       it('ignores a document that names another issuer (RFC 8414 section 3.3)', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -1131,7 +1171,7 @@ describe('OidcClientService', () => {
       it('falls through to the iss and issuer checks when it is unreachable', async () => {
         // Matrix does not require the issuer to publish its own discovery document; the
         // homeserver's metadata is the source the spec names.
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch(
           { token: () => jsonResponse(TOKEN) },
           {
@@ -1153,7 +1193,7 @@ describe('OidcClientService', () => {
       });
 
       it('still checks iss when it is unreachable', async () => {
-        stubClient({ whoami: WHOAMI });
+        stubHomeserver({ whoami: WHOAMI });
         const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
 
         await expect(
@@ -1178,7 +1218,7 @@ describe('OidcClientService', () => {
       // catch. Pinned here because the sibling test stubs a JSON body, which hides this
       // entirely, and because a future refactor must not start reading the resolution as
       // proof the revocation succeeded.
-      stubClient();
+      stubHomeserver();
       const fetchMock = stubFetch({
         revocation: () => ({
           status: 200,
@@ -1203,7 +1243,7 @@ describe('OidcClientService', () => {
     });
 
     it('POSTs a revocation for each token to the discovered endpoint', async () => {
-      stubClient();
+      stubHomeserver();
       const fetchMock = stubFetch({ revocation: () => jsonResponse({}) });
 
       await firstValueFrom(
@@ -1214,7 +1254,7 @@ describe('OidcClientService', () => {
       );
 
       // Discovery goes through the account's OWN homeserver auth metadata.
-      expect(createClientMock).toHaveBeenCalledWith({ baseUrl: HOMESERVER });
+      expect(homeserverCalls()).toEqual([`authMetadata:${HOMESERVER}`]);
       expect(revocationPosts(fetchMock)).toHaveLength(2);
       const bodies = revocationPosts(fetchMock).map(([, init]) =>
         formBody(init),
@@ -1239,7 +1279,7 @@ describe('OidcClientService', () => {
     });
 
     it('revokes at the endpoint pinned at sign-in without asking the homeserver', async () => {
-      stubClient({
+      stubHomeserver({
         metadata: {
           ...AUTH_METADATA,
           revocation_endpoint: 'https://hs.example/revoke',
@@ -1254,7 +1294,7 @@ describe('OidcClientService', () => {
         }),
       );
 
-      expect(createClientMock).not.toHaveBeenCalled();
+      expect(homeserverCalls()).toEqual([]);
       expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
         AUTH_METADATA.revocation_endpoint,
         AUTH_METADATA.revocation_endpoint,
@@ -1262,7 +1302,7 @@ describe('OidcClientService', () => {
     });
 
     it('does not revoke for an unpinned binding when the homeserver names another issuer', async () => {
-      stubClient({
+      stubHomeserver({
         metadata: {
           ...AUTH_METADATA,
           issuer: 'https://hs.example/',
@@ -1290,7 +1330,7 @@ describe('OidcClientService', () => {
     });
 
     it("does not revoke for an unpinned binding when the issuer's own document names another endpoint", async () => {
-      stubClient();
+      stubHomeserver();
       const fetchMock = stubFetch(
         { revocation: () => jsonResponse({}) },
         {
@@ -1328,7 +1368,7 @@ describe('OidcClientService', () => {
           },
         ],
       ])('is not posted to %s', async (_, document) => {
-        stubClient({
+        stubHomeserver({
           metadata: { ...AUTH_METADATA, revocation_endpoint: elsewhere },
         });
         const fetchMock = stubFetch(
@@ -1368,7 +1408,7 @@ describe('OidcClientService', () => {
           },
         ],
       ])('does not revoke while the issuer %s', async (_, document) => {
-        stubClient();
+        stubHomeserver();
         const fetchMock = stubFetch(
           { revocation: () => jsonResponse({}) },
           { [RFC8414_DISCOVERY]: document, [OIDC_DISCOVERY]: document },
@@ -1384,7 +1424,7 @@ describe('OidcClientService', () => {
       });
 
       it('revokes at the endpoint its document confirms', async () => {
-        stubClient();
+        stubHomeserver();
         const fetchMock = stubFetch(
           { revocation: () => jsonResponse({}) },
           { [RFC8414_DISCOVERY]: () => jsonResponse(AUTH_METADATA) },
@@ -1401,7 +1441,7 @@ describe('OidcClientService', () => {
     });
 
     it('resolves void when discovery fails, without POSTing (never blocks logout)', async () => {
-      stubClient({ metadata: new Error('metadata unavailable') });
+      stubHomeserver({ metadata: new Error('metadata unavailable') });
       const fetchMock = stubFetch({});
 
       await expect(
@@ -1413,7 +1453,7 @@ describe('OidcClientService', () => {
     });
 
     it('revokes only the token provided (single-token) with its type hint', async () => {
-      stubClient();
+      stubHomeserver();
       const fetchMock = stubFetch({ revocation: () => jsonResponse({}) });
 
       await firstValueFrom(
@@ -1427,7 +1467,7 @@ describe('OidcClientService', () => {
     });
 
     it('resolves void when a revocation POST rejects (best-effort)', async () => {
-      stubClient();
+      stubHomeserver();
       stubFetch({
         revocation: () => {
           throw new Error('down');
@@ -1449,7 +1489,7 @@ describe('OidcClientService', () => {
       // an HTTPError itself. It is also what replaces the old "no revocation_endpoint,
       // give up quietly" test — that branch is gone, because the endpoint is required
       // on ValidatedAuthMetadata and getAuthMetadata() rejects metadata without it.
-      stubClient();
+      stubHomeserver();
       stubFetch({
         revocation: () => jsonResponse({ error: 'invalid_token' }, 400),
       });
@@ -1470,11 +1510,21 @@ describe('OidcClientService', () => {
       await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
       await firstValueFrom(
-        svc.forgetClientId(HOMESERVER, AUTH_METADATA.issuer),
+        svc.forgetClientId(HOMESERVER, AUTH_METADATA.issuer, CLIENT_ID),
       );
       await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps a client id registered since the rejected one (compare-and-delete)', async () => {
+      prefs.set(CLIENT_ID_KEY, 'client-registered-since');
+
+      await firstValueFrom(
+        svc.forgetClientId(HOMESERVER, AUTH_METADATA.issuer, CLIENT_ID),
+      );
+
+      expect(prefs.get(CLIENT_ID_KEY)).toBe('client-registered-since');
     });
 
     it("keeps another homeserver's client id for the same issuer", async () => {
@@ -1484,7 +1534,11 @@ describe('OidcClientService', () => {
       await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
       await firstValueFrom(
-        svc.forgetClientId('https://other-hs.example', AUTH_METADATA.issuer),
+        svc.forgetClientId(
+          'https://other-hs.example',
+          AUTH_METADATA.issuer,
+          CLIENT_ID,
+        ),
       );
       await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
