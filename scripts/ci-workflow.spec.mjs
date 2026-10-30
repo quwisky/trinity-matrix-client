@@ -518,7 +518,7 @@ describe('MAS sign-in journeys', () => {
       'e2e/browser/support/qr-existing-device.mts',
       'e2e/support/qr-camera.mts',
       'e2e/support/homeserver/tuwunel-oauth/tuwunel.toml',
-      'libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.adapter.ts',
+      'libs/data-access/auth/src/lib/js-sdk/qr-rendezvous.ts',
       'libs/feature/settings/src/lib/devices/link-device/link-device.component.ts',
       'libs/data-access/trust/src/lib/trust-devices.service.ts',
       'libs/feature/settings/src/lib/devices/devices-section.component.html',

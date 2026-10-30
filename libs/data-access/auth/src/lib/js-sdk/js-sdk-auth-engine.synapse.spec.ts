@@ -5,6 +5,7 @@ import { describe } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { defineAuthEngineContract } from '../../contract/auth-engine.contract';
 import { JsSdkAuthEngine } from './js-sdk-auth-engine';
+import { JsSdkQrRendezvous, QrRendezvousFactory } from './qr-rendezvous';
 
 // Runs the engine contract against a live Synapse; skipped unless TRINITY_ENGINE_CONTRACT_HS is
 // set. The reset and email registration cases also need the harness's Mailpit.
@@ -137,6 +138,8 @@ describe.skipIf(!baseUrl)('JsSdkAuthEngine against Synapse', () => {
               clientFor: (id: string) => (id === live.userId ? client : null),
             },
           },
+          JsSdkQrRendezvous,
+          QrRendezvousFactory,
           JsSdkAuthEngine,
         ],
       }).get(JsSdkAuthEngine);

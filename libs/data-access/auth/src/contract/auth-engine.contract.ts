@@ -7,6 +7,7 @@ import {
   type EngineResult,
 } from '@trinity/util/matrix';
 import type { AuthEngine } from '../lib/auth-engine';
+import type { AuthMetadata } from '../lib/auth-metadata';
 
 export interface AuthContractAccount {
   readonly localpart: string;
@@ -35,6 +36,15 @@ export interface AuthContractSetup {
 
 const NOBODY = '@nobody:invalid';
 const DISPLAY_NAME = 'Trinity contract';
+const GRANT_METADATA: AuthMetadata = {
+  issuer: 'https://auth.invalid/',
+  authorization_endpoint: 'https://auth.invalid/authorize',
+  token_endpoint: 'https://auth.invalid/token',
+  revocation_endpoint: 'https://auth.invalid/revoke',
+  registration_endpoint: 'https://auth.invalid/register',
+  device_authorization_endpoint: 'https://auth.invalid/device',
+  grant_types_supported: ['urn:ietf:params:oauth:grant-type:device_code'],
+};
 
 export function defineAuthEngineContract(
   setup: () => Promise<AuthContractSetup>,
@@ -405,6 +415,78 @@ export function defineAuthEngineContract(
           );
         },
       );
+    });
+
+    describe('QR sign-in on a server without it', () => {
+      async function updates<T>(source: Observable<T>): Promise<T[]> {
+        const emitted = await firstValueFrom(source.pipe(toArray()));
+        emitted.forEach((update) =>
+          expect(() => assertPlainData(update)).not.toThrow(),
+        );
+        return emitted;
+      }
+
+      it('says the server cannot run it', async () => {
+        await expect(
+          once(context.engine.supportsQrRendezvous(context.baseUrl)),
+        ).resolves.toEqual({ ok: true, value: false });
+      });
+
+      it('ends showing a code at once, as unsupported', async () => {
+        await expect(
+          updates(
+            context.engine.signInWithQr(context.baseUrl, {
+              grantMetadata: GRANT_METADATA,
+              clientId: 'contract-client',
+            }),
+          ),
+        ).resolves.toEqual([{ kind: 'failed', reason: 'unsupported' }]);
+      });
+
+      it('reads a scanned code that is not a sign-in code as such', async () => {
+        await expect(
+          updates(
+            context.engine.linkDeviceWithQr(
+              context.live.userId,
+              btoa('not a sign-in code'),
+            ),
+          ),
+        ).resolves.toEqual([
+          { kind: 'connecting' },
+          { kind: 'not-sign-in-code' },
+        ]);
+      });
+
+      it('refuses answers for a flow that is not running', async () => {
+        const gone = {
+          ok: false,
+          failure: expect.objectContaining({ code: 'qr-flow-gone' }),
+        };
+
+        await expect(
+          once(
+            context.engine.answerQrSignIn('no-such-flow', {
+              kind: 'server-accepted',
+            }),
+          ),
+        ).resolves.toEqual(gone);
+        await expect(
+          once(
+            context.engine.continueQrSignIn(
+              'no-such-flow',
+              context.live.userId,
+            ),
+          ),
+        ).resolves.toEqual(gone);
+        await expect(
+          once(
+            context.engine.confirmQrLink('no-such-flow', {
+              match: true,
+              identityHeld: true,
+            }),
+          ),
+        ).resolves.toEqual(gone);
+      });
     });
 
     describe('resetting a forgotten password', () => {
