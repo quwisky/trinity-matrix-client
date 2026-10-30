@@ -25,7 +25,7 @@ use ts_rs::TS;
 use crate::{
     accounts::{AccountRuntime, Engine},
     dispatch::{Stream, stream},
-    engines::session::logout::raw_get,
+    engines::{member::bounded, session::logout::raw_get},
     failure::{
         Diagnostic, DiscoveryFailureReason, EngineFailure, EngineResult, FailureCode, FailureKind,
         not_signed_in, request_failed,
@@ -181,7 +181,7 @@ pub fn search_public_rooms(
             request.filter.room_types = vec![RoomTypeFilter::Space];
         }
         let rooms = rt.client.public_rooms_filtered(request);
-        let response = engine.ruled(&rt, rooms).await?;
+        let response = engine.ruled(&rt, bounded(rooms)).await?;
         Ok(PublicRoomsPageDto {
             rooms: response
                 .chunk
@@ -204,7 +204,7 @@ pub fn join_room(
         let target = <&RoomOrAliasId>::try_from(room_id_or_alias.as_str())?;
         let via = server_names(&via);
         let join = rt.client.join_room_by_id_or_alias(target, &via);
-        let room = engine.ruled(&rt, join).await?;
+        let room = engine.ruled(&rt, bounded(join)).await?;
         Ok(json!({ "roomId": room.room_id() }))
     })
 }
@@ -232,7 +232,7 @@ pub fn knock_room(
     request(engine, account_id, move |engine, rt| async move {
         let target = OwnedRoomOrAliasId::try_from(room_id_or_alias)?;
         let knock = rt.client.knock(target, reason, server_names(&via));
-        let room = engine.ruled(&rt, knock).await?;
+        let room = engine.ruled(&rt, bounded(knock)).await?;
         Ok(json!({ "roomId": room.room_id() }))
     })
 }
@@ -245,7 +245,7 @@ pub fn search_user_directory(
 ) -> Stream {
     request(engine, account_id, move |engine, rt| async move {
         let search = rt.client.search_users(&term, limit);
-        let response = engine.ruled(&rt, search).await?;
+        let response = engine.ruled(&rt, bounded(search)).await?;
         let users = response
             .results
             .into_iter()
@@ -266,8 +266,8 @@ pub fn search_user_directory(
 }
 
 /// The adapter's `request`: the account is looked up when the stream is polled, and a failed
-/// request is a `request-failed` value. Each request in `run` meets the token-death rule once:
-/// a typed call through [`Engine::ruled`], a raw one through `raw_get` (O8).
+/// request is a `request-failed` value. Each request in `run` meets the token-death rule once: a
+/// typed call through [`Engine::ruled`], cut off by `bounded`, and a raw one through `raw_get`.
 fn request<T: Serialize, Fut>(
     engine: Arc<Engine>,
     account_id: String,
@@ -404,7 +404,7 @@ async fn preview_room_link(
     {
         let encrypted = if local_membership == RoomLinkMembershipDto::Join {
             // `isRoomEncrypted` fails safe to encrypted.
-            room.latest_encryption_state()
+            bounded(room.latest_encryption_state())
                 .await
                 .map_or(true, |state| state.is_encrypted())
         } else {
@@ -417,7 +417,8 @@ async fn preview_room_link(
     let mut servers = normalize_via_servers(via.iter().map(String::as_str));
     if requested.starts_with('#') {
         let alias = <&RoomAliasId>::try_from(requested)?;
-        let directory = engine.ruled(rt, client.resolve_room_alias(alias)).await?;
+        let resolve = client.resolve_room_alias(alias);
+        let directory = engine.ruled(rt, bounded(resolve)).await?;
         room_id = directory.room_id.to_string();
         let resolved = directory.servers.iter().map(|server| server.as_str());
         servers = normalize_via_servers(servers.iter().map(String::as_str).chain(resolved));

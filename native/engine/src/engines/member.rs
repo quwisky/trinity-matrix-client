@@ -80,16 +80,20 @@ pub fn sent_once() -> RequestConfig {
     RequestConfig::new().disable_retry()
 }
 
-/// How long a join, invite or leave through its SDK wrapper may take, its retries included.
+/// How long an SDK wrapper call may take, its retries included: a join, invite or leave, and
+/// each of discovery's typed calls.
 pub const WRAPPER_LIMIT: Duration = Duration::from_secs(30);
 
 /// An SDK wrapper call, which retries under the client's default config, cut off after
 /// `WRAPPER_LIMIT` as an `ElapsedError`. Pass it to `Engine::ruled`, never the reverse, so the
 /// cut-off never shortens the rule: `engine.ruled(&rt, bounded(room.join())).await`.
-pub async fn bounded<T>(call: impl IntoFuture<Output = Result<T, Error>>) -> Result<T, Error> {
-    timeout(call.into_future(), WRAPPER_LIMIT)
-        .await
-        .unwrap_or_else(|elapsed| Err(Error::UnknownError(Box::new(elapsed))))
+pub async fn bounded<T, E: Into<Error>>(
+    call: impl IntoFuture<Output = Result<T, E>>,
+) -> Result<T, Error> {
+    let answer = timeout(call.into_future(), WRAPPER_LIMIT).await;
+    answer
+        .map_err(|elapsed| Error::UnknownError(Box::new(elapsed)))?
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -141,7 +145,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn bounded_passes_a_result_through_and_cuts_off_at_thirty_seconds() {
-        assert!(matches!(bounded(ready(Ok(1))).await, Ok(1)));
+        assert!(matches!(bounded(ready(Ok::<_, Error>(1))).await, Ok(1)));
         let start = Instant::now();
         let err = bounded(pending::<Result<(), Error>>()).await.unwrap_err();
         assert_eq!(start.elapsed(), WRAPPER_LIMIT);
