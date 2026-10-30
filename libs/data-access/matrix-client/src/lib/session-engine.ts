@@ -31,7 +31,7 @@ export interface SessionAccountStatus {
   readonly accountId: string;
   /** This device's id; null while the client has none. */
   readonly deviceId: string | null;
-  /** Grows each time a new client is registered for the account. */
+  /** An engine-wide count that grows by one for each client registered, for any account. */
   readonly generation: number;
   readonly syncState: SessionSyncState;
   /** Whether the live client has completed a sync with its homeserver, not only its cache. */

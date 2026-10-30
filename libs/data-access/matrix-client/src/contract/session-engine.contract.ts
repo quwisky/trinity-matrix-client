@@ -201,6 +201,50 @@ export function defineSessionEngineContract(
     );
 
     it(
+      'registers each new client with a larger generation',
+      async () => {
+        const a = await context.newSession();
+        await restore(a);
+        const g1 = (await snapshot()).accounts[0].generation;
+
+        await restore(a);
+
+        const after = await snapshot();
+        expect(after.accounts.map((x) => x.accountId)).toEqual([a.userId]);
+        expect(after.accounts[0].generation).toBeGreaterThan(g1);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'joins concurrent restores of one account',
+      async () => {
+        const a = await context.newSession();
+        const c = await context.newSession();
+        await restore(c, 'background');
+        const gc = (await snapshot()).accounts[0].generation;
+
+        await expect(
+          Promise.all([
+            once(engine.restorePersisted(a, 'activate')),
+            once(engine.restorePersisted(a, 'activate')),
+          ]),
+        ).resolves.toEqual([
+          { ok: true, value: null },
+          { ok: true, value: null },
+        ]);
+
+        const after = await snapshot();
+        expect(after.accounts.map((x) => x.accountId)).toEqual([
+          c.userId,
+          a.userId,
+        ]);
+        expect(after.accounts[1].generation).toBe(gc + 1);
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'switches between live accounts and ignores unknown ones',
       async () => {
         const a = await context.newSession();
@@ -368,6 +412,26 @@ export function defineSessionEngineContract(
         const after = await snapshot();
         expect(after.softLoggedOut).toEqual([s.userId]);
         expect(after.accounts.map((x) => x.accountId)).toEqual([s.userId]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'flags an account that is not live and forgets it on remove',
+      async () => {
+        const a = await context.newSession();
+        const b = await context.newSession();
+        await restore(a);
+
+        await once(engine.requireReauthentication(b.userId));
+        const flagged = await snapshot();
+        expect(flagged.softLoggedOut).toEqual([b.userId]);
+        expect(flagged.accounts.map((x) => x.accountId)).toEqual([a.userId]);
+
+        await once(engine.remove(b.userId));
+        const removed = await snapshot();
+        expect(removed.softLoggedOut).toEqual([]);
+        expect(removed.accounts.map((x) => x.accountId)).toEqual([a.userId]);
       },
       testTimeoutMs,
     );
