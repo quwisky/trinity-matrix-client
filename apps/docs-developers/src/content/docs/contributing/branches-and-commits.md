@@ -35,6 +35,8 @@ git commit -m "docs(developers): clarify Matrix test ownership"
 
 Use a body when the motivation or behavior change is not self-evident. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer. Do not add tool attribution or generated-by footers.
 
+The `pre-commit` hook also formats staged Rust files under `native/` with rustfmt (`scripts/rustfmt-staged.mjs`, from `.lintstagedrc.json`). It finds rustfmt through `rustup which rustfmt`, then `PATH`, then Homebrew's keg-only rustup, and runs `rustfmt --edition 2024`, with the style edition from `rustfmt.toml`. When it finds none, it prints one line and lets the commit through; CI's `cargo fmt --all --check` still judges the files.
+
 ## Release lines {#release-lines}
 
 `main` is the integration branch: pull requests target it and prereleases are cut from it. A stable line lives on a `release/X.Y.x` branch, cut by a maintainer from a tested prerelease. Release branches accept only fixes, through pull requests; open the same fix against `main` too, or let the automatic back-merge pull request carry it. release-please keeps a release pull request open on each branch: merging it on `main` cuts an `X.Y.Z-next.N` prerelease, and merging it on `release/X.Y.x` cuts a stable patch release and updates `CHANGELOG.md`. `feat`, `fix`, `perf`, `revert` and `deps` subjects become the release notes, so write them for users.

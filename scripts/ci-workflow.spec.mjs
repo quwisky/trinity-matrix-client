@@ -660,6 +660,7 @@ describe('MAS sign-in journeys', () => {
         'Cargo.lock',
         'rust-toolchain.toml',
         'clippy.toml',
+        'rustfmt.toml',
         '.cargo/config.toml',
         'libs/data-access/media/src/contract/media.contract.ts',
         'libs/data-access/homeserver/src/lib/probe-homeserver.ts',

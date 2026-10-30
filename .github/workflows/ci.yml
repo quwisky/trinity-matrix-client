@@ -157,6 +157,7 @@ jobs:
               'Cargo\.(toml|lock)$'
               'rust-toolchain\.toml$'
               'clippy\.toml$'
+              'rustfmt\.toml$'
               '\.cargo/'
               'libs/data-access/[^/]+/src/contract/'
               'libs/data-access/homeserver/src/lib/(probe-homeserver|js-sdk/js-sdk-homeserver-engine)\.ts$'
