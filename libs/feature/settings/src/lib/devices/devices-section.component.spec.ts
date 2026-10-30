@@ -78,7 +78,7 @@ describe('DevicesSectionComponent', () => {
         state$: new Observable<ExistingDeviceState>(() => () => {
           flowClosed = true;
         }),
-        confirmCheckCode: vi.fn(),
+        approve: vi.fn(),
       })),
     };
     linkerForActiveAccount = vi.fn(() => linker);

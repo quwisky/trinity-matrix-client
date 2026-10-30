@@ -27,7 +27,6 @@ import type {
   EmailTokenRequest,
   PasswordLogin,
   PasswordReset,
-  QrLinkAnswer,
   QrLinkUpdate,
   QrSignInAnswer,
   QrSignInUpdate,
@@ -382,22 +381,12 @@ export class JsSdkAuthEngine implements AuthEngine {
     return this.qr.answerQrSignIn(flowId, answer);
   }
 
-  continueQrSignIn(
-    flowId: string,
-    accountId: string,
-  ): Observable<EngineResult<null>> {
-    return this.qr.continueQrSignIn(flowId, accountId);
-  }
-
   linkDeviceWithQr(accountId: string, qr: string): Observable<QrLinkUpdate> {
     return this.qr.linkDeviceWithQr(accountId, qr);
   }
 
-  confirmQrLink(
-    flowId: string,
-    answer: QrLinkAnswer,
-  ): Observable<EngineResult<null>> {
-    return this.qr.confirmQrLink(flowId, answer);
+  confirmQrLink(flowId: string): Observable<EngineResult<null>> {
+    return this.qr.confirmQrLink(flowId);
   }
 
   private login(

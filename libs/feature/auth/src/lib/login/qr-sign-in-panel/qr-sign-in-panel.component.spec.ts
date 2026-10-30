@@ -13,21 +13,27 @@ import { QrSignInPanelComponent } from './qr-sign-in-panel.component';
 /** A fake sign-in whose every subscription is one flow the test drives. */
 function fakeSignIn() {
   const flows: { states: Subject<NewDeviceState>; closed: boolean }[] = [];
+  const enterCheckCode = vi.fn();
   const service = {
-    signInByShowingCode: vi.fn(
-      () =>
-        new Observable<NewDeviceState>((subscriber) => {
-          const flow = { states: new Subject<NewDeviceState>(), closed: false };
-          flows.push(flow);
-          const inner = flow.states.subscribe(subscriber);
-          return () => {
-            flow.closed = true;
-            inner.unsubscribe();
-          };
-        }),
-    ),
+    signInByShowingCode: vi.fn(() => ({
+      state$: new Observable<NewDeviceState>((subscriber) => {
+        const flow = { states: new Subject<NewDeviceState>(), closed: false };
+        flows.push(flow);
+        const inner = flow.states.subscribe(subscriber);
+        return () => {
+          flow.closed = true;
+          inner.unsubscribe();
+        };
+      }),
+      enterCheckCode,
+    })),
   };
-  return { service, flows, current: () => flows[flows.length - 1]! };
+  return {
+    service,
+    flows,
+    enterCheckCode,
+    current: () => flows[flows.length - 1]!,
+  };
 }
 
 async function renderPanel() {
@@ -81,38 +87,159 @@ describe('QrSignInPanelComponent', () => {
     );
   });
 
-  it('announces the check code digit by digit in a live region that already exists', async () => {
-    const { emit } = await renderPanel();
-    const region = screen.getByTestId('qr-sign-in-announcement');
-    expect(region.getAttribute('aria-live')).toBe('polite');
-    await waitFor(() =>
-      expect(region.textContent?.trim()).toBe('Creating a code…'),
-    );
+  describe('the code step', () => {
+    const typeCode = async (
+      fixture: { detectChanges(): void; whenStable(): Promise<unknown> },
+      code: string,
+    ) => {
+      fireEvent.input(screen.getByTestId('qr-check-code-input'), {
+        target: { value: code },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+    };
 
-    await emit({ kind: 'confirm-check-code', code: '07' });
+    it('shows the code step and announces it', async () => {
+      const { emit } = await renderPanel();
+      const region = screen.getByTestId('qr-sign-in-announcement');
+      expect(region.getAttribute('aria-live')).toBe('polite');
+      await waitFor(() =>
+        expect(region.textContent?.trim()).toBe('Creating a code…'),
+      );
 
-    // The same node, so the change is announced rather than a new region's content.
-    expect(screen.getByTestId('qr-sign-in-announcement')).toBe(region);
-    await waitFor(() =>
-      expect(region.textContent?.trim()).toBe('Check code: 0 7'),
-    );
-    const digits = screen.getByTestId('qr-sign-in-check-code');
-    expect(digits.textContent?.trim()).toBe('07');
-    expect(digits.getAttribute('aria-hidden')).toBe('true');
-    expect(digits.parentElement?.textContent).toContain('0 7');
+      await emit({ kind: 'enter-check-code' });
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'Enter the code from your other device',
+        }),
+      ).toBeTruthy();
+      const field = screen.getByRole('textbox', { name: 'Code' });
+      expect(field).toBe(screen.getByTestId('qr-check-code-input'));
+      expect(field.getAttribute('inputmode')).toBe('numeric');
+      expect(field.getAttribute('aria-describedby')).toBe('qr-check-code-hint');
+      expect(
+        document.getElementById('qr-check-code-hint')?.textContent?.trim(),
+      ).toBe('Your other device shows a two-digit number.');
+      // The same node, so the change is announced rather than a new region's content.
+      expect(screen.getByTestId('qr-sign-in-announcement')).toBe(region);
+      await waitFor(() =>
+        expect(region.textContent?.trim()).toBe(
+          'Enter the code your other device shows.',
+        ),
+      );
+    });
+
+    it('keeps a leading zero', async () => {
+      const { emit, enterCheckCode, fixture } = await renderPanel();
+      await emit({ kind: 'enter-check-code' });
+
+      await typeCode(fixture, '07');
+
+      expect(enterCheckCode).toHaveBeenCalledOnce();
+      expect(enterCheckCode).toHaveBeenCalledWith('07');
+    });
+
+    it('refuses one digit with the schema error', async () => {
+      const { emit, enterCheckCode, fixture } = await renderPanel();
+      await emit({ kind: 'enter-check-code' });
+
+      await typeCode(fixture, '7');
+
+      expect(enterCheckCode).not.toHaveBeenCalled();
+      const field = screen.getByTestId('qr-check-code-input');
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+      expect(field.getAttribute('aria-describedby')).toBe(
+        'qr-check-code-error',
+      );
+      expect(
+        document.getElementById('qr-check-code-error')?.textContent?.trim(),
+      ).toBe('Enter the two digits.');
+      expect(document.activeElement).toBe(field);
+    });
+
+    it('moves focus to the field when the step opens', async () => {
+      const { emit } = await renderPanel();
+
+      await emit({ kind: 'enter-check-code' });
+
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByTestId('qr-check-code-input'),
+        ),
+      );
+    });
+
+    it('shows the wrong-code alert once a code was entered', async () => {
+      const { emit, fixture } = await renderPanel();
+      await emit({ kind: 'enter-check-code' });
+      await typeCode(fixture, '24');
+
+      await emit({ kind: 'failed', reason: 'insecure' });
+
+      expect(screen.getByRole('alert').textContent?.trim()).toBe(
+        "That isn't the code your other device shows, so nothing was shared. Show a new code and try again.",
+      );
+      expect(
+        screen.getByRole('button', { name: 'Show a new code' }),
+      ).toBeTruthy();
+    });
+
+    it('blames no code for an insecure connection before one is entered in this flow', async () => {
+      const { emit, fixture } = await renderPanel();
+      await emit({ kind: 'enter-check-code' });
+      await typeCode(fixture, '24');
+      await emit({ kind: 'failed', reason: 'insecure' });
+      fireEvent.click(screen.getByRole('button', { name: 'Show a new code' }));
+      fixture.detectChanges();
+
+      await emit({ kind: 'failed', reason: 'insecure' });
+
+      expect(screen.getByRole('alert').textContent?.trim()).toBe(
+        "The connection between the devices wasn't secure, so nothing was shared.",
+      );
+    });
+
+    it('starts empty again with a new code', async () => {
+      const { emit, fixture } = await renderPanel();
+      await emit({ kind: 'enter-check-code' });
+      fireEvent.input(screen.getByTestId('qr-check-code-input'), {
+        target: { value: '24' },
+      });
+      await emit({ kind: 'failed', reason: 'insecure' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Show a new code' }));
+      fixture.detectChanges();
+      await emit({ kind: 'enter-check-code' });
+
+      expect(
+        (screen.getByTestId('qr-check-code-input') as HTMLInputElement).value,
+      ).toBe('');
+    });
   });
 
-  it('keeps the check code beside the user code while it waits for approval', async () => {
+  it('shows the user code while it waits for approval', async () => {
     const { emit } = await renderPanel();
 
-    await emit({ kind: 'confirm-check-code', code: '42' });
     await emit({ kind: 'waiting-for-approval', userCode: 'ABCD-1234' });
 
-    expect(
-      screen.getByTestId('qr-sign-in-check-code').textContent?.trim(),
-    ).toBe('42');
     expect(screen.getByTestId('qr-sign-in-user-code').textContent).toContain(
       'ABCD-1234',
+    );
+    expect(screen.getByTestId('qr-sign-in-user-code').textContent).toContain(
+      'Approve the sign-in on your other device.',
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Waiting for approval' }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('qr-check-code-input')).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('qr-sign-in-announcement').textContent?.trim(),
+      ).toBe(
+        'Waiting for approval. Approve the sign-in on your other device. If it asks for a code, enter ABCD-1234.',
+      ),
     );
   });
 
@@ -145,10 +272,10 @@ describe('QrSignInPanelComponent', () => {
       ),
     );
 
-    await emit({ kind: 'confirm-check-code', code: '42' });
+    await emit({ kind: 'waiting-for-approval', userCode: 'ABCD' });
     await waitFor(() =>
       expect(document.activeElement?.textContent).toContain(
-        'Check the code on your other device',
+        'Waiting for approval',
       ),
     );
   });
@@ -156,7 +283,11 @@ describe('QrSignInPanelComponent', () => {
   const FAILURES: [QrSignInFailure, string, boolean][] = [
     ['expired', 'The code expired.', true],
     ['declined', 'Sign-in was cancelled on the other device.', true],
-    ['insecure', "The codes didn't match, so nothing was shared.", true],
+    [
+      'insecure',
+      "The connection between the devices wasn't secure, so nothing was shared.",
+      true,
+    ],
     ['unsupported', "Your server doesn't support QR sign-in.", false],
     [
       'already-signed-in',
@@ -165,7 +296,7 @@ describe('QrSignInPanelComponent', () => {
     ],
     [
       'other-server',
-      'That device is signed in on a different server, so nothing was shared.',
+      "That account is on a different server from the one you chose, so Trinity signed it out again. Sign in through that account's server.",
       false,
     ],
     ['network', 'Lost connection. Check your network and try again.', true],
@@ -224,7 +355,7 @@ describe('QrSignInPanelComponent', () => {
   it('offers another way to sign in at every step', async () => {
     const { emit, back, current } = await renderPanel();
 
-    await emit({ kind: 'confirm-check-code', code: '42' });
+    await emit({ kind: 'enter-check-code' });
     fireEvent.click(
       screen.getByRole('button', { name: 'Sign in another way' }),
     );
@@ -257,14 +388,11 @@ describe('QrSignInPanelComponent', () => {
     expect(current().closed).toBe(true);
   });
 
-  it.each([true, false])(
-    'reports a finished sign-in (verified: %s)',
-    async (verified) => {
-      const { emit, signedIn } = await renderPanel();
+  it('reports a finished sign-in', async () => {
+    const { emit, signedIn } = await renderPanel();
 
-      await emit({ kind: 'done', verified });
+    await emit({ kind: 'done' });
 
-      expect(signedIn).toHaveBeenCalledWith({ verified });
-    },
-  );
+    expect(signedIn).toHaveBeenCalledOnce();
+  });
 });

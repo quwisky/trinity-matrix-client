@@ -21,7 +21,7 @@ function fakeLinking() {
   const flows: {
     states: Subject<ExistingDeviceState>;
     closed: boolean;
-    confirmCheckCode: ReturnType<typeof vi.fn>;
+    approve: ReturnType<typeof vi.fn>;
   }[] = [];
   const linker = {
     accountId: '@me:hs',
@@ -29,7 +29,7 @@ function fakeLinking() {
       const flow = {
         states: new Subject<ExistingDeviceState>(),
         closed: false,
-        confirmCheckCode: vi.fn(),
+        approve: vi.fn(),
       };
       flows.push(flow);
       return {
@@ -40,7 +40,7 @@ function fakeLinking() {
             inner.unsubscribe();
           };
         }),
-        confirmCheckCode: flow.confirmCheckCode,
+        approve: flow.approve,
       };
     }),
   };
@@ -91,41 +91,90 @@ describe('LinkDeviceComponent', () => {
     expect([...bytes]).toEqual([9, 8, 7]);
   });
 
-  it('asks whether the check codes match and reports the answer', async () => {
-    const { scan, emit, current } = await renderLink();
-    await scan();
-    await emit({ kind: 'confirm-check-code', code: '42' });
-
-    const digits = screen.getByTestId('link-device-check-code');
-    expect(digits.textContent?.trim()).toBe('42');
-    expect(digits.getAttribute('aria-hidden')).toBe('true');
-    expect(digits.parentElement?.textContent).toContain('4 2');
-
-    fireEvent.click(screen.getByRole('button', { name: "They don't match" }));
-    expect(current().confirmCheckCode).toHaveBeenLastCalledWith(false);
-    fireEvent.click(screen.getByRole('button', { name: 'They match' }));
-    expect(current().confirmCheckCode).toHaveBeenLastCalledWith(true);
-  });
-
-  it('announces each step politely in one region that starts empty', async () => {
+  it('shows the code and announces it digit by digit', async () => {
     const { scan, emit } = await renderLink();
     const region = screen.getByTestId('link-device-announcement');
     expect(region.getAttribute('aria-live')).toBe('polite');
     expect(region.textContent?.trim()).toBe('');
 
     await scan();
-    await emit({ kind: 'confirm-check-code', code: '07' });
+    await emit({ kind: 'check-code', code: '07' });
 
+    expect(
+      screen.getByRole('heading', {
+        name: 'Enter this code on your new device',
+      }),
+    ).toBeTruthy();
+    const digits = screen.getByTestId('link-device-check-code');
+    expect(digits.textContent?.trim()).toBe('07');
+    expect(digits.getAttribute('aria-hidden')).toBe('true');
+    expect(digits.parentElement?.textContent).toContain('0 7');
+    expect(
+      screen.getByText('Type this number on your new device:'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /match/ })).toBeNull();
     expect(screen.getByTestId('link-device-announcement')).toBe(region);
     await waitFor(() =>
-      expect(region.textContent?.trim()).toBe('Check code: 0 7'),
+      expect(region.textContent?.trim()).toBe(
+        'Code to enter on your new device: 0 7',
+      ),
+    );
+  });
+
+  it('Continue calls approve once', async () => {
+    const { scan, emit, current } = await renderLink();
+    await scan();
+    await emit({ kind: 'check-code', code: '42' });
+    await emit({ kind: 'approve', verificationUri: APPROVAL });
+
+    expect(
+      screen.getByText(
+        "Your new device should now say it's waiting for approval. Continue only if it does.",
+        { selector: 'p:not([role=status])' },
+      ),
+    ).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('link-device-continue'));
+
+    expect(current().approve).toHaveBeenCalledOnce();
+    expect(current().closed).toBe(false);
+  });
+
+  it('Cancel ends the link', async () => {
+    const { scan, emit, current, closed } = await renderLink();
+    await scan();
+    await emit({ kind: 'approve', verificationUri: APPROVAL });
+
+    fireEvent.click(screen.getByTestId('link-device-cancel'));
+
+    expect(current().approve).not.toHaveBeenCalled();
+    expect(current().closed).toBe(true);
+    expect(closed).toHaveBeenCalledOnce();
+  });
+
+  it('focus moves to the approve step', async () => {
+    const { scan, emit } = await renderLink();
+    await scan();
+    await emit({ kind: 'check-code', code: '42' });
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain(
+        'Enter this code on your new device',
+      ),
+    );
+
+    await emit({ kind: 'approve', verificationUri: APPROVAL });
+
+    await waitFor(() =>
+      expect(document.activeElement?.textContent?.trim()).toBe(
+        'Check your new device',
+      ),
     );
   });
 
   it('opens the approval page only when asked, and keeps it while secrets are shared', async () => {
     const { scan, emit, open } = await renderLink();
     await scan();
-    await emit({ kind: 'confirm-check-code', code: '42' });
+    await emit({ kind: 'approve', verificationUri: APPROVAL });
     await emit({ kind: 'approve-in-browser', verificationUri: APPROVAL });
     await emit({ kind: 'sharing-secrets' });
 
@@ -171,7 +220,10 @@ describe('LinkDeviceComponent', () => {
   const FAILURES: [QrSignInFailure, string][] = [
     ['expired', 'The code expired.'],
     ['declined', 'Sign-in was cancelled on the other device.'],
-    ['insecure', "The codes didn't match, so nothing was shared."],
+    [
+      'insecure',
+      "This request didn't come from your account's server, so nothing was shared.",
+    ],
     ['unsupported', "Your server doesn't support QR sign-in."],
     ['already-signed-in', 'That device is already signed in.'],
     ['network', 'Lost connection. Check your network and try again.'],
@@ -225,11 +277,11 @@ describe('LinkDeviceComponent', () => {
     );
 
     await scan();
-    await emit({ kind: 'confirm-check-code', code: '42' });
+    await emit({ kind: 'check-code', code: '42' });
 
     await waitFor(() =>
       expect(document.activeElement?.textContent).toContain(
-        'Check the code on your new device',
+        'Enter this code on your new device',
       ),
     );
   });
@@ -237,7 +289,7 @@ describe('LinkDeviceComponent', () => {
   it('cancels the link and closes from the cancel button', async () => {
     const { scan, emit, current, closed } = await renderLink();
     await scan();
-    await emit({ kind: 'confirm-check-code', code: '42' });
+    await emit({ kind: 'check-code', code: '42' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 

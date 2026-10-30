@@ -325,13 +325,14 @@ export class JsSdkSessionEngine implements SessionEngine {
 
   logoutSession(session: MatrixSession): Observable<EngineResult<null>> {
     // A refresh on a device being signed out must never overwrite the stored tokens.
-    return defer(() =>
-      settle(() =>
+    return defer(() => {
+      this.svc.dropLinkedSecrets(session.userId, session.deviceId);
+      return settle(() =>
         this.svc
           .detachedClient(session, { persistRefreshedTokens: false })
           .logout(true),
-      ),
-    );
+      );
+    });
   }
 
   liveCredentials(accountId: string): Observable<SessionCredentials | null> {
