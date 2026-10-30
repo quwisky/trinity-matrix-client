@@ -12,6 +12,7 @@ import {
   pipe,
   switchMap,
   take,
+  takeWhile,
   tap,
   throwIfEmpty,
   type MonoTypeOperatorFunction,
@@ -56,10 +57,11 @@ export interface NewDeviceQrSignIn {
   enterCheckCode(code: string): void;
 }
 
-/** The existing device's side of a link, with the check-code answer as its input. */
+/** The existing device's side of a link, with the person's Continue as its input. */
 export interface ExistingDeviceLink {
   readonly state$: Observable<ExistingDeviceState>;
-  confirmCheckCode(match: boolean): void;
+  /** Continues the link at the `approve` step; ignored at any other step. */
+  approve(): void;
 }
 
 /** Links devices as the one account it was created for. */
@@ -268,61 +270,113 @@ export class QrSignInService {
     return { accountId, link: (qrBytes) => this.link(accountId, qrBytes) };
   }
 
-  /** `state$` is cold: each subscription is one link, and `confirmCheckCode` answers it. */
+  /**
+   * `state$` is cold: each subscription is one link. At the engine's `approve` pause the link
+   * goes on only once the approval link is on the account's own server, this device holds the
+   * published identity, and the person continues with `approve`.
+   */
   private link(accountId: string, qrBytes: Uint8Array): ExistingDeviceLink {
-    let current: ((match: boolean) => void) | undefined;
+    let current: (() => void) | undefined;
     const state$ = new Observable<ExistingDeviceState>((subscriber) => {
       const work = new Subscription();
-      let waiting: string | null = null;
-      const answer = (match: boolean) => {
-        const flowId = waiting;
-        waiting = null;
-        if (flowId === null) return;
-        // Security: share only the identity the server publishes, read before the grant.
-        const identityHeld = match
-          ? this.identity.holdsPublishedIdentity(accountId).pipe(
-              take(1),
-              defaultIfEmpty(false),
-              catchError(() => of(false)),
-            )
-          : of(false);
+      let paused: { flowId: string; verificationUri: string } | null = null;
+      const approve = () => {
+        const pause = paused;
+        paused = null;
+        if (!pause) return;
+        // Before the confirm, so the engine's next update can never overtake it.
+        subscriber.next({
+          kind: 'approve-in-browser',
+          verificationUri: pause.verificationUri,
+        });
         work.add(
-          identityHeld
-            .pipe(
-              switchMap((held) =>
-                this.engine.confirmQrLink(flowId, {
-                  match,
-                  identityHeld: held,
-                }),
-              ),
-            )
-            .subscribe(),
+          this.engine.confirmQrLink(pause.flowId).subscribe((result) => {
+            if (!result.ok) {
+              subscriber.next({ kind: 'failed', reason: 'unknown' });
+              subscriber.complete();
+            }
+          }),
         );
       };
-      current = answer;
+      current = approve;
       work.add(
-        this.engine.linkDeviceWithQr(accountId, toBase64(qrBytes)).subscribe({
-          next: (update) => {
-            if (update.kind === 'confirm-check-code') {
-              waiting = update.flowId;
-              subscriber.next({
-                kind: 'confirm-check-code',
-                code: update.code,
-              });
-            } else {
-              subscriber.next(update);
-            }
-          },
-          error: (error: unknown) => subscriber.error(error),
-          complete: () => subscriber.complete(),
-        }),
+        this.engine
+          .linkDeviceWithQr(accountId, toBase64(qrBytes))
+          .pipe(
+            switchMap((update): Observable<ExistingDeviceState> => {
+              paused = null;
+              if (update.kind !== 'approve') return of(update);
+              const { flowId, verificationUri } = update;
+              return this.approvalRefusal(accountId, verificationUri).pipe(
+                map((reason): ExistingDeviceState => {
+                  if (reason) return { kind: 'failed', reason };
+                  paused = { flowId, verificationUri };
+                  return { kind: 'approve', verificationUri };
+                }),
+              );
+            }),
+            catchError((error: unknown) =>
+              of<ExistingDeviceState>({
+                kind: 'failed',
+                reason: qrSignInFailureOf(error),
+              }),
+            ),
+            // Leaving the engine's flow before confirming declines and cancels it.
+            takeWhile((state) => state.kind !== 'failed', true),
+          )
+          .subscribe({
+            next: (state) => subscriber.next(state),
+            complete: () => subscriber.complete(),
+          }),
       );
       return () => {
-        if (current === answer) current = undefined;
+        if (current === approve) current = undefined;
         work.unsubscribe();
       };
     });
-    return { state$, confirmCheckCode: (match) => current?.(match) };
+    return { state$, approve: () => current?.() };
+  }
+
+  /** Why the link must not go on at `approve`, or null when it may. */
+  private approvalRefusal(
+    accountId: string,
+    verificationUri: string,
+  ): Observable<QrSignInFailure | null> {
+    return this.onAccountServer(accountId, verificationUri).pipe(
+      switchMap((onServer) =>
+        onServer
+          ? // Security: share only the identity the server publishes.
+            this.identity.holdsPublishedIdentity(accountId).pipe(
+              take(1),
+              defaultIfEmpty(false),
+              catchError(() => of(false)),
+              map((held) => (held ? null : 'unknown')),
+            )
+          : of('insecure' as const),
+      ),
+    );
+  }
+
+  /** Security: the peer chooses the approval link, so it may open only on the account's server. */
+  private onAccountServer(accountId: string, uri: string): Observable<boolean> {
+    return this.storage.record(accountId).pipe(
+      oneValue(),
+      switchMap((stored) => {
+        if (!stored) throw new Error('The linking account is not stored.');
+        return this.engine.authMetadata(stored.baseUrl);
+      }),
+      unwrapEngineResult(),
+      oneValue(),
+      map((metadata) => {
+        const origin = originOf(uri);
+        return (
+          origin !== null &&
+          [metadata?.issuer, metadata?.device_authorization_endpoint].some(
+            (url) => url !== undefined && originOf(url) === origin,
+          )
+        );
+      }),
+    );
   }
 }
 
@@ -340,6 +394,14 @@ function newDeviceFailure(error: unknown): QrSignInFailure {
     error.reason !== 'malformed'
     ? 'other-server'
     : qrSignInFailureOf(error);
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 
 const toBase64 = (bytes: Uint8Array): string =>

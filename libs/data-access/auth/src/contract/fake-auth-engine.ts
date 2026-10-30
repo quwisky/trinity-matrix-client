@@ -13,7 +13,6 @@ import type {
   EmailTokenRequest,
   PasswordLogin,
   PasswordReset,
-  QrLinkAnswer,
   QrLinkUpdate,
   QrSignInAnswer,
   QrSignInUpdate,
@@ -164,7 +163,7 @@ export class FakeAuthEngine implements AuthEngine {
     homeserverUrl: null as string | null,
     userId: '@alice:example.org',
     deviceId: 'QRDEVICE',
-    /** The check code it shows; the new device must type these two digits. */
+    /** The check code shown; the new device must type these two digits. */
     checkCode: '42',
     /** Client ids the provider refuses for the device grant. */
     refusedClients: new Set<string>(),
@@ -493,20 +492,10 @@ export class FakeAuthEngine implements AuthEngine {
           run.end({ kind: 'not-sign-in-code' });
           return;
         }
-        const { match, identityHeld } = await run.pause<QrLinkAnswer>(
-          'check-code',
-          { kind: 'confirm-check-code', flowId: run.id, code: '42' },
-        );
-        if (!match) {
-          run.end({ kind: 'failed', reason: 'insecure' });
-          return;
-        }
-        if (!identityHeld) {
-          run.end({ kind: 'failed', reason: 'unknown' });
-          return;
-        }
-        run.emit({
-          kind: 'approve-in-browser',
+        run.emit({ kind: 'check-code', code: this.qrPeer.checkCode });
+        await run.pause('approve', {
+          kind: 'approve',
+          flowId: run.id,
           verificationUri: this.qrPeer.verificationUri,
         });
         run.emit({ kind: 'sharing-secrets' });
@@ -515,13 +504,9 @@ export class FakeAuthEngine implements AuthEngine {
     );
   }
 
-  confirmQrLink(
-    flowId: string,
-    answer: QrLinkAnswer,
-  ): Observable<EngineResult<null>> {
-    return this.command(
-      `confirmQrLink:${answer.match}:${answer.identityHeld}`,
-      () => this.qrAnswer(flowId, 'check-code', answer),
+  confirmQrLink(flowId: string): Observable<EngineResult<null>> {
+    return this.command('confirmQrLink', () =>
+      this.qrAnswer(flowId, 'approve', null),
     );
   }
 

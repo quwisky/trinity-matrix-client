@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import {
   EMPTY,
   Observable,
+  Subject,
   from,
   of,
   tap,
@@ -660,122 +661,196 @@ describe('QrSignInService.signInByShowingCode', () => {
 });
 
 describe('QrSignInService.linkerForActiveAccount', () => {
+  const APPROVAL = 'https://op.example/link?code=ABCD';
+  const LINKING_RECORD = {
+    userId: LINKING_ACCOUNT,
+    deviceId: 'LINKER',
+    baseUrl: 'https://linker.example',
+  };
+  const confirms = (engine: FakeAuthEngine) =>
+    engine.calls.filter((call) => call.startsWith('confirmQrLink'));
+
   function linking(code = SIGN_IN_CODE) {
     const ctx = setup();
+    ctx.engine.qrPeer.verificationUri = APPROVAL;
+    ctx.storage.record.mockReturnValue(of(LINKING_RECORD));
     const linker = ctx.service.linkerForActiveAccount();
     if (!linker) throw new Error('no linker');
     const link = linker.link(code);
     return { ...ctx, linker, link };
   }
 
-  it('runs connecting → confirm-check-code → approve-in-browser → sharing-secrets → done', async () => {
-    const { engine, identity, link } = linking();
+  it('shows the code, checks the approval link and the identity, and confirms only on Continue', async () => {
+    const { engine, identity, storage, link } = linking();
     const start = vi.spyOn(engine, 'linkDeviceWithQr');
     const run = record(link.state$);
     await settle();
-    expect(run.kinds()).toEqual(['connecting', 'confirm-check-code']);
-
-    link.confirmCheckCode(true);
-    await settle();
     expect(run.states).toEqual<ExistingDeviceState[]>([
       { kind: 'connecting' },
-      { kind: 'confirm-check-code', code: '42' },
-      {
-        kind: 'approve-in-browser',
-        verificationUri: 'https://auth.example.org/link',
-      },
+      { kind: 'check-code', code: '42' },
+      { kind: 'approve', verificationUri: APPROVAL },
+    ]);
+    expect(storage.record).toHaveBeenCalledWith(LINKING_ACCOUNT);
+    expect(engine.calls).toContain('authMetadata:https://linker.example');
+    expect(identity.holdsPublishedIdentity).toHaveBeenCalledWith(
+      LINKING_ACCOUNT,
+    );
+    expect(confirms(engine)).toEqual([]);
+
+    link.approve();
+    await settle();
+    expect(run.states.slice(3)).toEqual<ExistingDeviceState[]>([
+      { kind: 'approve-in-browser', verificationUri: APPROVAL },
       { kind: 'sharing-secrets' },
       { kind: 'done' },
     ]);
     expect(run.completed()).toBe(true);
     expect(start).toHaveBeenCalledWith(LINKING_ACCOUNT, btoa('MATRIX-code'));
-    expect(identity.holdsPublishedIdentity).toHaveBeenCalledWith(
-      LINKING_ACCOUNT,
-    );
-    expect(engine.calls).toContain('confirmQrLink:true:true');
+    expect(confirms(engine)).toEqual(['confirmQrLink']);
   });
 
-  it('ends the link as insecure on a mismatch, without asking about the identity', async () => {
-    const { engine, identity, link } = linking();
+  it.each([
+    ['another origin', 'https://other.example/link?code=ABCD'],
+    ['a look-alike host', 'https://op.example.other.example/link'],
+    ['an http downgrade', 'http://op.example/link'],
+    ['an unparseable link', 'not a url'],
+  ])(
+    'ends insecure, never confirming or showing the link, on %s',
+    async (_name, verificationUri) => {
+      const { engine, identity, link } = linking();
+      engine.qrPeer.verificationUri = verificationUri;
+      const run = record(link.state$);
+      await settle();
+      link.approve();
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
+      expect(run.completed()).toBe(true);
+      expect(JSON.stringify(run.states)).not.toContain(verificationUri);
+      expect(identity.holdsPublishedIdentity).not.toHaveBeenCalled();
+      expect(confirms(engine)).toEqual([]);
+      // Leaving the engine's flow declines and cancels it on the new device.
+      expect(engine.calls.at(-1)).toBe('qr-cancelled');
+    },
+  );
+
+  it('accepts an approval link on the device-authorization origin', async () => {
+    const { engine, link } = linking();
+    engine.metadata = {
+      ...AUTH_METADATA,
+      issuer: 'https://id.example/',
+      device_authorization_endpoint: 'https://device.example/oauth2/device',
+    };
+    engine.qrPeer.verificationUri = 'https://device.example/link';
     const run = record(link.state$);
     await settle();
 
-    link.confirmCheckCode(false);
+    expect(run.states.at(-1)).toEqual({
+      kind: 'approve',
+      verificationUri: 'https://device.example/link',
+    });
+  });
+
+  it('ends insecure when the account server publishes no OAuth metadata', async () => {
+    const { engine, link } = linking();
+    engine.metadata = null;
+    const run = record(link.state$);
     await settle();
 
     expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
-    expect(identity.holdsPublishedIdentity).not.toHaveBeenCalled();
-    expect(engine.calls).toContain('confirmQrLink:false:false');
+    expect(confirms(engine)).toEqual([]);
   });
 
   it.each([
     ['keys that are not the published identity', () => of(false)],
     ['an identity check that fails', () => throwError(() => new Error('x'))],
     ['an identity check that answers nothing', () => EMPTY],
-  ])('refuses the link for %s', async (_name, check) => {
+  ])('ends unknown, never confirming, for %s', async (_name, check) => {
     const { engine, identity, link } = linking();
     identity.holdsPublishedIdentity.mockImplementation(check);
     const run = record(link.state$);
     await settle();
-
-    link.confirmCheckCode(true);
+    link.approve();
     await settle();
 
     expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
-    expect(engine.calls).toContain('confirmQrLink:true:false');
-    expect(run.kinds()).not.toContain('approve-in-browser');
+    expect(run.kinds()).not.toContain('approve');
+    expect(confirms(engine)).toEqual([]);
+    expect(engine.calls.at(-1)).toBe('qr-cancelled');
   });
 
-  it('ignores a confirmation that arrives before the check code is shown', async () => {
+  it('ignores Continue before the approve step and while its checks run', async () => {
+    const { engine, identity, link } = linking();
+    const held = new Subject<boolean>();
+    identity.holdsPublishedIdentity.mockReturnValue(held);
+    link.approve();
+    const run = record(link.state$);
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('check-code');
+
+    link.approve();
+    held.next(true);
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('approve');
+    expect(confirms(engine)).toEqual([]);
+
+    link.approve();
+    await settle();
+    expect(confirms(engine)).toEqual(['confirmQrLink']);
+  });
+
+  it('confirms once however often the person continues', async () => {
     const { engine, link } = linking();
-    link.confirmCheckCode(true);
     const run = record(link.state$);
     await settle();
 
-    expect(run.states.at(-1)?.kind).toBe('confirm-check-code');
-    expect(engine.calls.some((call) => call.startsWith('confirmQrLink'))).toBe(
-      false,
-    );
-  });
-
-  it('ignores a confirmation sent while connecting', async () => {
-    const ctx = setup();
-    ctx.engine.qrStop = { after: 'connecting' };
-    const link = ctx.service.linkerForActiveAccount()!.link(SIGN_IN_CODE);
-    record(link.state$);
+    link.approve();
+    link.approve();
     await settle();
 
-    link.confirmCheckCode(true);
-    await settle();
-
-    expect(ctx.identity.holdsPublishedIdentity).not.toHaveBeenCalled();
+    expect(run.states.at(-1)?.kind).toBe('done');
+    expect(confirms(engine)).toEqual(['confirmQrLink']);
     expect(
-      ctx.engine.calls.some((call) => call.startsWith('confirmQrLink')),
-    ).toBe(false);
+      run.kinds().filter((kind) => kind === 'approve-in-browser'),
+    ).toHaveLength(1);
   });
 
-  it.each([
-    [true, false, 'done'],
-    [false, true, 'failed'],
-  ])(
-    'counts only the first answer (%s, then %s)',
-    async (first, second, end) => {
-      const { engine, link } = linking();
-      const run = record(link.state$);
-      await settle();
+  it('shows the approval page on Continue, before the engine answers the confirm', async () => {
+    const { engine, link } = linking();
+    vi.spyOn(engine, 'confirmQrLink').mockReturnValue(new Subject());
+    const run = record(link.state$);
+    await settle();
 
-      link.confirmCheckCode(first);
-      link.confirmCheckCode(second);
-      await settle();
+    link.approve();
 
-      expect(run.states.at(-1)?.kind).toBe(end);
-      expect(
-        engine.calls.filter((call) => call.startsWith('confirmQrLink')),
-      ).toHaveLength(1);
-    },
-  );
+    expect(run.states.at(-1)).toEqual({
+      kind: 'approve-in-browser',
+      verificationUri: APPROVAL,
+    });
+  });
 
-  it('gives a confirmation only to the current subscription', async () => {
+  it('ends unknown and cancels the engine flow when the confirm fails', async () => {
+    const { engine, link } = linking();
+    const run = record(link.state$);
+    await settle();
+
+    engine.failure = {
+      kind: 'unexpected',
+      code: 'qr-flow-gone',
+      diagnostic: { kind: 'unexpected' },
+    };
+    link.approve();
+    await settle();
+
+    expect(run.states.slice(3)).toEqual<ExistingDeviceState[]>([
+      { kind: 'approve-in-browser', verificationUri: APPROVAL },
+      { kind: 'failed', reason: 'unknown' },
+    ]);
+    expect(run.completed()).toBe(true);
+    expect(engine.calls.at(-1)).toBe('qr-cancelled');
+  });
+
+  it('gives Continue only to the current subscription', async () => {
     const { link } = linking();
     const stale = record(link.state$);
     await settle();
@@ -783,7 +858,7 @@ describe('QrSignInService.linkerForActiveAccount', () => {
     const current = record(link.state$);
     await settle();
 
-    link.confirmCheckCode(true);
+    link.approve();
     await settle();
 
     expect(current.states.at(-1)?.kind).toBe('done');
@@ -799,14 +874,16 @@ describe('QrSignInService.linkerForActiveAccount', () => {
     expect(run.completed()).toBe(true);
   });
 
-  it('cancels the engine flow when unsubscribed', async () => {
+  it('cancels the engine flow when unsubscribed at the approve step', async () => {
     const { engine, link } = linking();
     const run = record(link.state$);
     await settle();
+    expect(run.states.at(-1)?.kind).toBe('approve');
 
     run.subscription.unsubscribe();
 
     expect(engine.calls.at(-1)).toBe('qr-cancelled');
+    expect(confirms(engine)).toEqual([]);
   });
 
   it('links as the account that was active when the linker was made', async () => {

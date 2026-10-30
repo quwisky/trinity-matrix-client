@@ -469,12 +469,7 @@ export function defineAuthEngineContract(
           ),
         ).resolves.toEqual(gone);
         await expect(
-          once(
-            context.engine.confirmQrLink('no-such-flow', {
-              match: true,
-              identityHeld: true,
-            }),
-          ),
+          once(context.engine.confirmQrLink('no-such-flow')),
         ).resolves.toEqual(gone);
       });
     });

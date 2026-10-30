@@ -37,7 +37,9 @@ export type NewDeviceState =
 export type ExistingDeviceState =
   | { kind: 'connecting' }
   | { kind: 'not-sign-in-code' }
-  | { kind: 'confirm-check-code'; code: string }
+  | { kind: 'check-code'; code: string }
+  // The link and the identity passed their checks; the person continues or cancels.
+  | { kind: 'approve'; verificationUri: string }
   // No user code: the existing device only receives the verification URI.
   | { kind: 'approve-in-browser'; verificationUri: string }
   | { kind: 'sharing-secrets' }

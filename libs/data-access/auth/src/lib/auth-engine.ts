@@ -50,27 +50,24 @@ export interface QrSignInAnswer {
   readonly checkCode: string;
 }
 
-/** The existing device's side of a QR sign-in, which links the device whose code it scanned. */
+/**
+ * The existing device's side of a QR sign-in, which links the device whose code it scanned.
+ * `approve` is the one pause; nothing beyond the protocol offer is sent before `confirmQrLink`.
+ */
 export type QrLinkUpdate =
   | { readonly kind: 'connecting' }
   | { readonly kind: 'not-sign-in-code' }
-  /** Answer with `confirmQrLink`; nothing beyond the protocol offer is sent before it. */
+  /** For the person to type on the new device; nothing to answer. */
+  | { readonly kind: 'check-code'; readonly code: string }
+  /** The new device asked for a grant. The URI is as the peer sent it: unchecked. */
   | {
-      readonly kind: 'confirm-check-code';
+      readonly kind: 'approve';
       readonly flowId: string;
-      readonly code: string;
+      readonly verificationUri: string;
     }
-  | { readonly kind: 'approve-in-browser'; readonly verificationUri: string }
   | { readonly kind: 'sharing-secrets' }
   | { readonly kind: 'done' }
   | { readonly kind: 'failed'; readonly reason: QrSignInFailure };
-
-export interface QrLinkAnswer {
-  /** Whether the person saw the same check code on both devices. */
-  readonly match: boolean;
-  /** Whether this device holds the cross-signing identity the server publishes. */
-  readonly identityHeld: boolean;
-}
 
 export interface PasswordLogin {
   readonly localpart: string;
@@ -220,16 +217,15 @@ export interface AuthEngine {
     answer: QrSignInAnswer,
   ): Observable<EngineResult<null>>;
   /**
-   * Links the device whose code `accountId`'s device scanned; unsubscribing cancels it. The
-   * engine refuses an MSC4388 code (`not-sign-in-code`), opens the approval link only on the
-   * account's own issuer or device-authorization origin (else `failed insecure`), stops
-   * sending a decline once the identity check passed, so a cancel reaches the session first,
-   * and leaves the rendezvous session for the new device to delete.
+   * Links the device whose code `accountId`'s device scanned. The engine refuses an MSC4388
+   * code (`not-sign-in-code`) and leaves the rendezvous session for the new device to
+   * delete. Unsubscribing before `confirmQrLink` declines and cancels on the new device;
+   * after it, it cancels at once, so the cancel reaches the session before the secrets.
    */
   linkDeviceWithQr(accountId: string, qr: string): Observable<QrLinkUpdate>;
-  /** A mismatch ends the link as insecure; an identity not held ends it before any grant. */
-  confirmQrLink(
-    flowId: string,
-    answer: QrLinkAnswer,
-  ): Observable<EngineResult<null>>;
+  /**
+   * Continues past `approve`: the engine accepts the grant and shares the secrets once the new
+   * device is signed in. A flow not paused there fails `qr-flow-gone`.
+   */
+  confirmQrLink(flowId: string): Observable<EngineResult<null>>;
 }

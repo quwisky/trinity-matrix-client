@@ -25,7 +25,6 @@ import {
 } from '@trinity/util/matrix';
 import { Observable, defer, firstValueFrom, of, type Subscriber } from 'rxjs';
 import type {
-  QrLinkAnswer,
   QrLinkUpdate,
   QrSignInAnswer,
   QrSignInUpdate,
@@ -54,7 +53,7 @@ export type QrRendezvousFlow = MSC4108SignInWithQR;
 /** What a paused flow waits for, keyed by the pause. */
 interface Answers {
   code: string;
-  'check-code': QrLinkAnswer;
+  approve: null;
 }
 
 /** Builds the SDK's MSC4108 objects; specs replace it with fakes. */
@@ -260,47 +259,21 @@ export class JsSdkQrRendezvous {
         // Only the existing device can send a decline, and only over a connected channel.
         // The new device receives it as user_cancelled, which it reports as declined.
         run.declineOnCancel = true;
-        // Security: nothing beyond the protocol offer leaves this device until the user
-        // confirms that both devices show the same check code. A mismatch may mean a
-        // man-in-the-middle holds the channel, so it ends the link before any secret is sent.
-        const { match, identityHeld } = await run.pause('check-code', {
-          kind: 'confirm-check-code',
-          flowId: run.id,
-          code: required(flow.checkCode),
-        });
-        if (!match) {
-          await flow.declineLoginOnExistingDevice().catch(() => undefined);
-          await flow
-            .cancel(ClientRendezvousFailureReason.InsecureChannelDetected)
-            .catch(() => undefined);
-          run.fail(ClientRendezvousFailureReason.InsecureChannelDetected, true);
-          return;
-        }
-        // Security: share only the identity the server publishes. Checked before the grant, so
-        // a refusal leaves no approved device behind; it fails as `unknown` and, through
-        // teardown, declines and cancels on the new device.
-        if (!identityHeld) {
-          throw new Error(
-            'This device does not hold the published cross-signing identity.',
-          );
-        }
-        // From here a cancel must reach the session at once: shareSecrets sends the secrets
-        // unless the session is already cancelled, and a decline PUT first could let them out.
-        run.declineOnCancel = false;
+        run.emit({ kind: 'check-code', code: required(flow.checkCode) });
+        // Receives the new device's grant request; it sends only refusals.
         const { verificationUri } = await run.step(
           flow.deviceAuthorizationGrant(),
         );
-        // Security: the peer chooses this link, so open it only on the account's own server.
-        if (
-          !(await run.step(onAccountServer(client, required(verificationUri))))
-        ) {
-          run.fail(ClientRendezvousFailureReason.InsecureChannelDetected);
-          return;
-        }
-        run.emit({
-          kind: 'approve-in-browser',
+        // Security: nothing beyond the protocol offer leaves this device until TypeScript has
+        // checked the approval link and the identity and the person has continued.
+        await run.pause('approve', {
+          kind: 'approve',
+          flowId: run.id,
           verificationUri: required(verificationUri),
         });
+        // From here a cancel must reach the session at once: shareSecrets sends the secrets
+        // unless the session is already cancelled, and a decline PUT first could let them out.
+        run.declineOnCancel = false;
         run.emit({ kind: 'sharing-secrets' });
         await run.step(flow.shareSecrets());
         run.finish({ kind: 'done' });
@@ -309,11 +282,8 @@ export class JsSdkQrRendezvous {
     });
   }
 
-  confirmQrLink(
-    flowId: string,
-    answer: QrLinkAnswer,
-  ): Observable<EngineResult<null>> {
-    return this.answer(flowId, 'check-code', answer);
+  confirmQrLink(flowId: string): Observable<EngineResult<null>> {
+    return this.answer(flowId, 'approve', null);
   }
 
   private track<S extends { kind: string }>(run: FlowRun<S>): FlowRun<S> {
@@ -521,29 +491,6 @@ function revokeGrant(
       ]);
     })
     .catch(() => undefined);
-}
-
-/** Whether a peer-sent link opens on the account's OAuth issuer or device endpoint. */
-async function onAccountServer(
-  client: MatrixClient,
-  uri: string,
-): Promise<boolean> {
-  const metadata = await client.getAuthMetadata();
-  const origin = originOf(uri);
-  return (
-    origin !== null &&
-    [metadata.issuer, metadata.device_authorization_endpoint].some(
-      (url) => url !== undefined && originOf(url) === origin,
-    )
-  );
-}
-
-function originOf(url: string): string | null {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
 }
 
 function codeExpiry(expires: string | null): number {

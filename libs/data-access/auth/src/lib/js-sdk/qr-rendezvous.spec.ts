@@ -68,7 +68,6 @@ const secrets = { cross_signing: { master_key: 'MASTER-SECRET' } };
 const existingClient = {
   id: 'existing-client',
   getUserId: () => '@me:hs',
-  getAuthMetadata: vi.fn(async () => ({ issuer: 'https://auth/' })),
 } as unknown as MatrixClient;
 
 /** A fake MSC4108SignInWithQR whose steps resolve unless told to hang or fail. */
@@ -225,16 +224,15 @@ function signIn(qr: JsSdkQrRendezvous, code: string | null = '42') {
   );
 }
 
-/** Starts a link and remembers the paused flow, so the test can answer it. */
+/** Starts a link and remembers the paused flow, so the test can confirm it. */
 function link(qr: JsSdkQrRendezvous, code = 'CQ==', accountId = '@me:hs') {
   let flowId = '';
   const run = record(qr.linkDeviceWithQr(accountId, code), (update) => {
-    if (update.kind === 'confirm-check-code') flowId = update.flowId;
+    if (update.kind === 'approve') flowId = update.flowId;
   });
   return {
     ...run,
-    confirm: (match: boolean, identityHeld = true) =>
-      firstValueFrom(qr.confirmQrLink(flowId, { match, identityHeld })),
+    confirm: (id = flowId) => firstValueFrom(qr.confirmQrLink(id)),
   };
 }
 
@@ -861,24 +859,24 @@ describe('QrRendezvousFactory.existingDevice', () => {
 });
 
 describe('JsSdkQrRendezvous.linkDeviceWithQr', () => {
-  it('connects, pauses at the check code, then approves and shares the secrets', async () => {
+  it('shows the check code, pauses at approve after the grant, then shares the secrets once confirmed', async () => {
     const { qr, flows, factory } = setup();
     const run = link(qr);
     await settle();
-    expect(run.kinds()).toEqual(['connecting', 'confirm-check-code']);
-
-    await expect(run.confirm(true)).resolves.toEqual({ ok: true, value: null });
-    await settle();
     expect(run.states).toEqual<QrLinkUpdate[]>([
       { kind: 'connecting' },
-      { kind: 'confirm-check-code', flowId: expect.any(String), code: '42' },
+      { kind: 'check-code', code: '42' },
       {
-        kind: 'approve-in-browser',
+        kind: 'approve',
+        flowId: expect.any(String),
         verificationUri: 'https://auth/link?code=ABCD',
       },
-      { kind: 'sharing-secrets' },
-      { kind: 'done' },
     ]);
+    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+
+    await expect(run.confirm()).resolves.toEqual({ ok: true, value: null });
+    await settle();
+    expect(run.kinds().slice(3)).toEqual(['sharing-secrets', 'done']);
     run.states.forEach((update) => assertPlainData(update));
     expect(run.completed()).toBe(true);
     expect(factory.existingDevice).toHaveBeenCalledWith(
@@ -892,99 +890,34 @@ describe('JsSdkQrRendezvous.linkDeviceWithQr', () => {
     expect(flows[0].close).not.toHaveBeenCalled();
   });
 
-  it('never shares secrets before the check code is confirmed', async () => {
-    const { qr, flows } = setup();
+  it('shows the check code without pausing for an answer', async () => {
+    const { qr, flows } = setup((flow) =>
+      flow.hang.add('deviceAuthorizationGrant'),
+    );
     const run = link(qr);
     await settle();
-    await settle();
-    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
 
-    await run.confirm(true);
-    await settle();
-    expect(flows[0].shareSecrets).toHaveBeenCalled();
+    expect(run.states.at(-1)).toEqual({ kind: 'check-code', code: '42' });
+    expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalled();
   });
 
-  it('cancels as insecure when the check codes differ, and does nothing else', async () => {
+  it('sends nothing beyond the protocol offer before confirmQrLink', async () => {
     const { qr, flows } = setup();
     const run = link(qr);
     await settle();
-
-    await run.confirm(false, false);
     await settle();
-    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
-    expect(run.completed()).toBe(true);
-    // The decline goes first, so the new device learns why the link ended.
+
+    expect(run.states.at(-1)?.kind).toBe('approve');
     expect(flows[0].calls).toEqual([
       'negotiateProtocols',
-      'decline',
-      'cancel:insecure_channel_detected',
+      'deviceAuthorizationGrant',
     ]);
-    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
     expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-  });
+    expect(flows[0].declineLoginOnExistingDevice).not.toHaveBeenCalled();
 
-  it('refuses, before any grant or secret, a device that does not hold the published identity', async () => {
-    const { qr, flows } = setup();
-    const run = link(qr);
+    await run.confirm();
     await settle();
-
-    await run.confirm(true, false);
-    await settle();
-
-    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
-    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-    // The new device is told the link ended.
-    expect(flows[0].calls.slice(-2)).toEqual([
-      'decline',
-      'cancel:user_cancelled',
-    ]);
-  });
-
-  it.each([
-    ['another origin', 'https://other.example/link?code=ABCD'],
-    ['a look-alike host', 'https://auth.other.example/link'],
-    ['an unparseable link', 'not a url'],
-  ])(
-    'fails insecure and never shows an approval link on %s',
-    async (_name, verificationUri) => {
-      const { qr, flows } = setup((flow) =>
-        flow.deviceAuthorizationGrant.mockResolvedValue({
-          verificationUri,
-        } as never),
-      );
-      const run = link(qr);
-      await settle();
-
-      await run.confirm(true);
-      await settle();
-
-      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
-      expect(run.kinds()).not.toContain('approve-in-browser');
-      expect(JSON.stringify(run.states)).not.toContain(verificationUri);
-      expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-      expect(flows[0].calls.at(-1)).toBe('cancel:user_cancelled');
-    },
-  );
-
-  it('accepts an approval link on the device-authorization endpoint origin', async () => {
-    const { qr, clients } = setup();
-    clients.set('@other:hs', {
-      getUserId: () => '@other:hs',
-      getAuthMetadata: vi.fn(async () => ({
-        issuer: 'https://id.example/',
-        device_authorization_endpoint: 'https://auth/oauth2/device',
-      })),
-    });
-    const run = link(qr, 'CQ==', '@other:hs');
-    await settle();
-
-    await run.confirm(true);
-    await settle();
-
-    expect(run.kinds()).toContain('approve-in-browser');
-    expect(run.states.at(-1)).toEqual({ kind: 'done' });
+    expect(flows[0].shareSecrets).toHaveBeenCalledOnce();
   });
 
   it('emits not-sign-in-code for a code that is not a sign-in code', async () => {
@@ -1007,17 +940,23 @@ describe('JsSdkQrRendezvous.linkDeviceWithQr', () => {
     expect(factory.existingDevice).not.toHaveBeenCalled();
   });
 
-  it.each<[QrLinkUpdate['kind'], Step | null, string[]]>([
+  it.each<[QrLinkUpdate['kind'], Step | null, boolean, string[]]>([
     // Not connected yet, so there is no channel to send a decline over.
-    ['connecting', 'negotiateProtocols', ['cancel:user_cancelled']],
-    ['confirm-check-code', null, ['decline', 'cancel:user_cancelled']],
+    ['connecting', 'negotiateProtocols', false, ['cancel:user_cancelled']],
+    [
+      'check-code',
+      'deviceAuthorizationGrant',
+      false,
+      ['decline', 'cancel:user_cancelled'],
+    ],
+    ['approve', null, false, ['decline', 'cancel:user_cancelled']],
     // Secrets may be in flight, so the cancel goes first and alone.
-    ['sharing-secrets', 'shareSecrets', ['cancel:user_cancelled']],
-  ])('unsubscribing at %s cancels', async (kind, hung, tail) => {
+    ['sharing-secrets', 'shareSecrets', true, ['cancel:user_cancelled']],
+  ])('unsubscribing at %s cancels', async (kind, hung, confirm, tail) => {
     const { qr, flows } = setup((flow) => hung && flow.hang.add(hung));
     const run = link(qr);
     await settle();
-    if (hung) await run.confirm(true);
+    if (confirm) await run.confirm();
     await settle();
     expect(run.states.at(-1)?.kind).toBe(kind);
 
@@ -1030,6 +969,7 @@ describe('JsSdkQrRendezvous.linkDeviceWithQr', () => {
     expect(flows[0].declineLoginOnExistingDevice).toHaveBeenCalledTimes(
       tail.includes('decline') ? 1 : 0,
     );
+    expect(flows[0].shareSecrets).toHaveBeenCalledTimes(confirm ? 1 : 0);
   });
 
   it('cancels at once while secrets are being shared, even if a decline would hang', async () => {
@@ -1041,7 +981,7 @@ describe('JsSdkQrRendezvous.linkDeviceWithQr', () => {
     });
     const run = link(qr);
     await settle();
-    await run.confirm(true);
+    await run.confirm();
     await settle();
     expect(flows[0].shareSecrets).toHaveBeenCalled();
 
@@ -1066,29 +1006,33 @@ describe('JsSdkQrRendezvous.linkDeviceWithQr', () => {
     expect(flows[0].calls).toEqual(['cancel:user_cancelled']);
   });
 
-  it('waits at the check code once connected, asking for no grant', async () => {
-    const { qr, flows } = setup((flow) => flow.hang.add('negotiateProtocols'));
-    const run = link(qr);
-    await settle();
-    // The flow id first leaves the engine with the check code, so nothing can answer earlier.
-    flows[0].release('negotiateProtocols');
-    await settle();
-    expect(run.states.at(-1)?.kind).toBe('confirm-check-code');
-    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-  });
-
-  it('counts only the first answer', async () => {
-    const { qr } = setup();
+  it('counts only the first confirmation', async () => {
+    const { qr, flows } = setup();
     const run = link(qr);
     await settle();
 
-    await expect(run.confirm(true)).resolves.toEqual({ ok: true, value: null });
-    await expect(run.confirm(false)).resolves.toEqual({
+    await expect(run.confirm()).resolves.toEqual({ ok: true, value: null });
+    await expect(run.confirm()).resolves.toEqual({
       ok: false,
       failure: expect.objectContaining({ code: 'qr-flow-gone' }),
     });
     await settle();
     expect(run.states.at(-1)?.kind).toBe('done');
+    expect(flows[0].shareSecrets).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a confirmation for another flow, and keeps waiting', async () => {
+    const { qr, flows } = setup();
+    const run = link(qr);
+    await settle();
+
+    await expect(run.confirm('no-such-flow')).resolves.toEqual({
+      ok: false,
+      failure: expect.objectContaining({ code: 'qr-flow-gone' }),
+    });
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('approve');
+    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
   });
 
   it.each(sdkReasons)('maps an SDK rejection with %s', async (reason) => {
@@ -1097,7 +1041,7 @@ describe('JsSdkQrRendezvous.linkDeviceWithQr', () => {
     );
     const run = link(qr);
     await settle();
-    await run.confirm(true);
+    await run.confirm();
     await settle();
     expect(run.states.at(-1)).toEqual({
       kind: 'failed',
@@ -1117,7 +1061,7 @@ describe('JsSdkQrRendezvous.linkDeviceWithQr', () => {
     );
     const run = link(qr);
     await settle();
-    await run.confirm(true);
+    await run.confirm();
     await settle();
     expect(run.states.at(-1)?.kind).toBe('failed');
     expect(flows[0].close).not.toHaveBeenCalled();
