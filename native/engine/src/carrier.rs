@@ -430,6 +430,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn release_completes_the_hold_stream_before_its_reply() {
+        let (mut session, mut frames) = session();
+        // Holds work for an account that is not live.
+        session.handle(open(1, "session.holdServerLogout", vec![json!("@x:y")]));
+        session.handle(open(
+            2,
+            "session.releaseServerLogoutHold",
+            vec![json!("1"), json!(true)],
+        ));
+        let mut received = Vec::new();
+        for _ in 0..4 {
+            received.push(next_frame(&mut frames).await);
+        }
+        assert_eq!(
+            received,
+            [
+                Frame::Next {
+                    id: 1,
+                    v: json!({"kind": "held", "holdId": "1", "tokenDied": false})
+                },
+                Frame::Complete { id: 1 },
+                Frame::Next {
+                    id: 2,
+                    v: json!(null)
+                },
+                Frame::Complete { id: 2 },
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn dropping_the_session_aborts_its_streams() {
         let (mut session, mut frames) = session();
         session.handle(open(14, "test.ticks", vec![]));

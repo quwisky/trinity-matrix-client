@@ -11,6 +11,7 @@ use matrix_sdk::{
     reqwest::{self, StatusCode, Url},
     timeout::timeout,
 };
+use tokio::sync::watch;
 
 pub use crate::engines::session::runtime::AccountRuntime;
 use crate::{
@@ -18,7 +19,10 @@ use crate::{
     config::EngineConfig,
     engines::session::{
         LiveAccountsDto, SessionAccessTokenDto, SessionAccountStatusDto, SessionSnapshotDto,
-        SessionSyncStateDto, reads::live_token, restore::StartState,
+        SessionStorageEffectDto, SessionSyncStateDto,
+        logout::{Holds, RawToken},
+        reads::live_token,
+        restore::StartState,
     },
     failure::{EngineFailure, account_not_live},
 };
@@ -49,8 +53,19 @@ pub(crate) struct SessionState {
     /// By account id, for each account an `accessToken` stream has asked for; it outlives the
     /// account's runtimes.
     tokens: HashMap<String, Tokens>,
-    /// Set by `pauseSync`, cleared by `stop`. Its reader is 2.3's resend gate (js `syncPaused`).
+    /// Set by `pauseSync`, cleared by `stop`. The restart policy reads it, and 2.3's resend gate
+    /// will (js `syncPaused`).
     pub(crate) paused: bool,
+    pub(crate) holds: Holds,
+    pub(crate) effects: Subscribers<SessionStorageEffectDto>,
+    /// By account id, what the token-death rule has published since the account's last start,
+    /// which a request that meets the dead token later still awaits (O8).
+    pub(crate) deaths: HashMap<String, Barrier>,
+    /// Sent each time the rule runs, for a request waiting on the SDK's broadcast.
+    pub(crate) deaths_seen: watch::Sender<()>,
+    /// By account id, what its last token refresh published, which a reply after the refresh
+    /// awaits.
+    pub(crate) rotations: HashMap<String, Barrier>,
 }
 
 /// One account's last token and its `accessToken` streams.
@@ -92,6 +107,11 @@ impl Engine {
                 snapshots: Subscribers::default(),
                 tokens: HashMap::new(),
                 paused: false,
+                holds: Holds::default(),
+                effects: Subscribers::default(),
+                deaths: HashMap::new(),
+                deaths_seen: watch::Sender::new(()),
+                rotations: HashMap::new(),
             }),
             starting: Mutex::default(),
             teardowns: Mutex::default(),
@@ -176,21 +196,32 @@ impl Engine {
         barrier.delivered().await;
     }
 
-    /// Retires the account, live or not, and deletes its stores once its runtime is gone.
+    /// Retires the account, live or not, ends its holds, and deletes its stores once its
+    /// runtime is gone.
     pub(crate) async fn remove(&self, account_id: &str) {
-        let (runtime, barrier) = self.retire(account_id);
+        let (runtime, barrier) = {
+            let mut state = self.state.lock();
+            let runtime = state.retire(account_id);
+            state.deaths.remove(account_id);
+            state.rotations.remove(account_id);
+            let released = state.holds.release_account(account_id);
+            (runtime, state.publish_snapshot().join(released))
+        };
         self.tear_down(account_id, runtime, true).await;
         barrier.delivered().await;
     }
 
-    /// Stops every runtime and empties the registry; the stores stay.
+    /// Stops every runtime, ends every hold and empties the registry; the stores stay.
     pub(crate) async fn stop(&self) {
         let (runtimes, barrier) = {
             let mut state = self.state.lock();
             state.registry.clear();
             state.paused = false;
+            state.deaths.clear();
+            state.rotations.clear();
+            let released = state.holds.release_all();
             let runtimes: Vec<_> = state.runtimes.drain().collect();
-            (runtimes, state.publish_snapshot())
+            (runtimes, state.publish_snapshot().join(released))
         };
         let teardowns = runtimes
             .into_iter()
@@ -288,15 +319,15 @@ impl Engine {
     }
 
     /// A GET that follows no redirect, so `token` reaches only `url`: its status and body.
-    pub async fn raw_get(
+    pub(crate) async fn raw_get(
         &self,
         url: Url,
-        token: Option<&str>,
+        token: Option<&RawToken>,
         timeout: Duration,
     ) -> Result<(StatusCode, Bytes), reqwest::Error> {
         let mut request = self.raw.get(url.clone()).timeout(timeout);
         if let Some(token) = token {
-            request = request.bearer_auth(token);
+            request = request.bearer_auth(token.as_str());
         }
         let response = request.send().await?;
         // On wasm, fetch has already followed any redirect: answer with a 3xx, as native does.
@@ -335,7 +366,7 @@ impl SessionState {
     }
 
     /// Takes the account out of the registry and its soft logout, and hands back its runtime.
-    fn retire(&mut self, account_id: &str) -> Option<Arc<AccountRuntime>> {
+    pub(crate) fn retire(&mut self, account_id: &str) -> Option<Arc<AccountRuntime>> {
         self.registry.retire(account_id);
         self.registry.clear_soft_logged_out(account_id);
         self.runtimes.remove(account_id)
@@ -411,9 +442,13 @@ impl Registry {
     }
 
     pub fn mark_soft_logged_out(&mut self, account_id: &str) {
-        if !self.soft_logged_out.iter().any(|id| id == account_id) {
+        if !self.is_soft_logged_out(account_id) {
             self.soft_logged_out.push(account_id.into());
         }
+    }
+
+    pub fn is_soft_logged_out(&self, account_id: &str) -> bool {
+        self.soft_logged_out.iter().any(|id| id == account_id)
     }
 
     pub fn clear_soft_logged_out(&mut self, account_id: &str) {

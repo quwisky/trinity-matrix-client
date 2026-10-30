@@ -11,12 +11,10 @@ use matrix_sdk::{
     ruma::{
         OwnedRoomOrAliasId, OwnedServerName, RoomAliasId, RoomId, RoomOrAliasId, ServerName,
         api::{
-            EndpointError,
             client::directory::get_public_rooms_filtered,
             error::{ErrorKind, FromHttpResponseError},
         },
         directory::{PublicRoomsChunk, RoomTypeFilter},
-        exports::http,
         room::RoomType,
     },
 };
@@ -25,8 +23,9 @@ use serde_json::{Value, json};
 use ts_rs::TS;
 
 use crate::{
-    accounts::Engine,
+    accounts::{AccountRuntime, Engine},
     dispatch::{Stream, stream},
+    engines::session::logout::raw_get,
     failure::{
         Diagnostic, DiscoveryFailureReason, EngineFailure, EngineResult, FailureCode, FailureKind,
         not_signed_in, request_failed,
@@ -170,7 +169,7 @@ pub fn search_public_rooms(
     account_id: String,
     query: PublicRoomsQueryDto,
 ) -> Stream {
-    request(engine, account_id, move |client| async move {
+    request(engine, account_id, move |engine, rt| async move {
         let mut request = get_public_rooms_filtered::v3::Request::new();
         request.limit = Some(query.limit.into());
         request.since = query.since.filter(|since| !since.is_empty());
@@ -181,7 +180,8 @@ pub fn search_public_rooms(
         if query.spaces == Some(true) {
             request.filter.room_types = vec![RoomTypeFilter::Space];
         }
-        let response = client.public_rooms_filtered(request).await?;
+        let rooms = rt.client.public_rooms_filtered(request);
+        let response = engine.ruled(&rt, rooms).await?;
         Ok(PublicRoomsPageDto {
             rooms: response
                 .chunk
@@ -200,11 +200,11 @@ pub fn join_room(
     room_id_or_alias: String,
     via: Vec<String>,
 ) -> Stream {
-    request(engine, account_id, move |client| async move {
+    request(engine, account_id, move |engine, rt| async move {
         let target = <&RoomOrAliasId>::try_from(room_id_or_alias.as_str())?;
-        let room = client
-            .join_room_by_id_or_alias(target, &server_names(&via))
-            .await?;
+        let via = server_names(&via);
+        let join = rt.client.join_room_by_id_or_alias(target, &via);
+        let room = engine.ruled(&rt, join).await?;
         Ok(json!({ "roomId": room.room_id() }))
     })
 }
@@ -217,9 +217,8 @@ pub fn preview_room(
     room_id_or_alias: String,
     via: Vec<String>,
 ) -> Stream {
-    let raw = Arc::clone(&engine);
-    request(engine, account_id, move |client| async move {
-        preview_room_link(&raw, &client, &room_id_or_alias, via).await
+    request(engine, account_id, move |engine, rt| async move {
+        preview_room_link(&engine, &rt, &room_id_or_alias, via).await
     })
 }
 
@@ -230,9 +229,10 @@ pub fn knock_room(
     via: Vec<String>,
     reason: Option<String>,
 ) -> Stream {
-    request(engine, account_id, move |client| async move {
+    request(engine, account_id, move |engine, rt| async move {
         let target = OwnedRoomOrAliasId::try_from(room_id_or_alias)?;
-        let room = client.knock(target, reason, server_names(&via)).await?;
+        let knock = rt.client.knock(target, reason, server_names(&via));
+        let room = engine.ruled(&rt, knock).await?;
         Ok(json!({ "roomId": room.room_id() }))
     })
 }
@@ -243,8 +243,9 @@ pub fn search_user_directory(
     term: String,
     limit: u64,
 ) -> Stream {
-    request(engine, account_id, move |client| async move {
-        let response = client.search_users(&term, limit).await?;
+    request(engine, account_id, move |engine, rt| async move {
+        let search = rt.client.search_users(&term, limit);
+        let response = engine.ruled(&rt, search).await?;
         let users = response
             .results
             .into_iter()
@@ -265,11 +266,12 @@ pub fn search_user_directory(
 }
 
 /// The adapter's `request`: the account is looked up when the stream is polled, and a failed
-/// request is a `request-failed` value.
+/// request is a `request-failed` value. Each request in `run` meets the token-death rule once:
+/// a typed call through [`Engine::ruled`], a raw one through `raw_get` (O8).
 fn request<T: Serialize, Fut>(
     engine: Arc<Engine>,
     account_id: String,
-    run: impl FnOnce(Client) -> Fut + SendOutsideWasm + 'static,
+    run: impl FnOnce(Arc<Engine>, Arc<AccountRuntime>) -> Fut + SendOutsideWasm + 'static,
 ) -> Stream
 where
     Fut: Future<Output = Result<T, Error>> + SendOutsideWasm,
@@ -277,7 +279,7 @@ where
     stream(stream::once(async move {
         let result = match engine.account(&account_id) {
             None => EngineResult::Err(not_signed_in()),
-            Some(account) => match run(account.client.clone()).await {
+            Some(rt) => match run(engine, rt).await {
                 Ok(value) => EngineResult::Ok(value),
                 Err(error) => EngineResult::Err(request_failed(&error)),
             },
@@ -382,11 +384,12 @@ fn server_names(via: &[String]) -> Vec<OwnedServerName> {
 
 /// `previewRoomLink`.
 async fn preview_room_link(
-    engine: &Engine,
-    client: &Client,
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
     requested: &str,
     via: Vec<String>,
 ) -> Result<RoomLinkPreviewDataDto, Error> {
+    let client = &rt.client;
     let local = local_room(client, requested);
     let local_membership = local
         .as_ref()
@@ -413,14 +416,13 @@ async fn preview_room_link(
     let mut room_id = requested.to_owned();
     let mut servers = normalize_via_servers(via.iter().map(String::as_str));
     if requested.starts_with('#') {
-        let directory = client
-            .resolve_room_alias(<&RoomAliasId>::try_from(requested)?)
-            .await?;
+        let alias = <&RoomAliasId>::try_from(requested)?;
+        let directory = engine.ruled(rt, client.resolve_room_alias(alias)).await?;
         room_id = directory.room_id.to_string();
         let resolved = directory.servers.iter().map(|server| server.as_str());
         servers = normalize_via_servers(servers.iter().map(String::as_str).chain(resolved));
     }
-    let summary = room_summary(engine, client, &room_id, &servers).await?;
+    let summary = room_summary(engine, rt, &room_id, &servers).await?;
     Ok(from_remote(
         client,
         &summary,
@@ -549,17 +551,17 @@ fn joined(client: &Client, room_id: &str) -> bool {
 
 /// `roomSummary`: the stable endpoint, then MSC3266's for a server that does not recognise it.
 async fn room_summary(
-    engine: &Engine,
-    client: &Client,
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
     room_id: &str,
     via: &[String],
 ) -> Result<Value, Error> {
-    match get_client_json(engine, client, &["v1", "room_summary", room_id], via).await {
+    match get_client_json(engine, rt, &["v1", "room_summary", room_id], via).await {
         Err(Error::Http(error))
             if error.client_api_error_kind() == Some(&ErrorKind::Unrecognized) =>
         {
             let unstable = ["unstable", "im.nheko.summary", "summary", room_id];
-            get_client_json(engine, client, &unstable, via).await
+            get_client_json(engine, rt, &unstable, via).await
         }
         result => result,
     }
@@ -568,12 +570,12 @@ async fn room_summary(
 /// An authenticated client API GET, as `client.http.authedRequest` sends it: the JSON body of
 /// a 2xx answer, or the error the SDK would have made of the answer.
 async fn get_client_json(
-    engine: &Engine,
-    client: &Client,
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
     path: &[&str],
     via: &[String],
 ) -> Result<Value, Error> {
-    let mut url = client.homeserver();
+    let mut url = rt.client.homeserver();
     url.path_segments_mut()
         // Only a homeserver URL that cannot be a base has no path, and no request reaches it.
         .map_err(|()| Error::InsufficientData)?
@@ -584,17 +586,7 @@ async fn get_client_json(
         url.query_pairs_mut()
             .extend_pairs(via.iter().map(|server| ("via", server)));
     }
-    let token = client.access_token();
-    let (status, body) = engine
-        .raw_get(url, token.as_deref(), SUMMARY_TIMEOUT)
-        .await
-        .map_err(HttpError::Reqwest)?;
-    if !status.is_success() {
-        let mut response = http::Response::new(body.as_ref());
-        *response.status_mut() = status;
-        let error = FromHttpResponseError::Server(RumaApiError::from_http_response(response));
-        return Err(HttpError::from(error).into());
-    }
+    let body = raw_get(engine, rt, url, SUMMARY_TIMEOUT).await?;
     serde_json::from_slice(&body)
         .map_err(|error| HttpError::from(FromHttpResponseError::<RumaApiError>::from(error)).into())
 }
@@ -686,6 +678,7 @@ fn join_rule_of(value: Option<&str>) -> RoomLinkJoinRuleDto {
 #[cfg(test)]
 mod tests {
     use futures_util::StreamExt;
+    use matrix_sdk::ruma::{api::EndpointError, exports::http};
 
     use super::*;
     use crate::{config::EngineConfig, dispatch::dispatch};

@@ -1,6 +1,7 @@
 //! `SessionEngine` (`libs/data-access/matrix-client/src/lib/session-engine.ts`): the signed-in
 //! accounts and their lifecycle.
 
+pub mod logout;
 pub mod reads;
 pub(crate) mod restore;
 pub mod runtime;
@@ -96,6 +97,33 @@ pub enum ServerLogoutHoldUpdateDto {
     TokenRenewed,
     SignedInAgain,
     Released,
+}
+
+/// `SessionStorageEffect`.
+// No `Debug`: it carries the tokens.
+#[derive(Clone, PartialEq, Serialize, TS)]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export, export_to = DTO)]
+pub enum SessionStorageEffectDto {
+    TokensRotated {
+        account_id: String,
+        lineage: Option<String>,
+        access_token: String,
+        refresh_token: Option<String>,
+        expires_at: Option<f64>,
+    },
+    SoftLogout {
+        account_id: String,
+        active_account_id: Option<String>,
+    },
+    HardLogout {
+        account_id: String,
+        active_account_id: Option<String>,
+    },
 }
 
 /// `PendingTextMessage`.
@@ -341,6 +369,36 @@ mod tests {
         assert_eq!(
             to_json(ServerLogoutHoldUpdateDto::TokenDied),
             json!({"kind": "token-died"})
+        );
+    }
+
+    #[test]
+    fn a_storage_effect_tags_itself_and_writes_every_field() {
+        let soft = SessionStorageEffectDto::SoftLogout {
+            account_id: "@a:b".into(),
+            active_account_id: None,
+        };
+        assert_eq!(
+            to_json(soft),
+            json!({"kind": "soft-logout", "accountId": "@a:b", "activeAccountId": null})
+        );
+        let rotated = SessionStorageEffectDto::TokensRotated {
+            account_id: "@a:b".into(),
+            lineage: Some("L".into()),
+            access_token: "t".into(),
+            refresh_token: Some("r".into()),
+            expires_at: None,
+        };
+        assert_eq!(
+            to_json(rotated),
+            json!({
+                "kind": "tokens-rotated",
+                "accountId": "@a:b",
+                "lineage": "L",
+                "accessToken": "t",
+                "refreshToken": "r",
+                "expiresAt": null,
+            })
         );
     }
 

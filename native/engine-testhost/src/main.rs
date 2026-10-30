@@ -119,6 +119,7 @@ fn local(engine: &Arc<Engine>, method: &str, args: &[Value]) -> Option<Result<St
     let serve: fn(Arc<Engine>, &mut Args<'_>) -> Result<Stream, Fault> = match method {
         "testhost.echo" => echo,
         "testhost.ticks" => ticks,
+        "testhost.serverLogout" => server_logout,
         _ => return None,
     };
     let args = &mut Args::new(method, args.to_vec());
@@ -136,6 +137,17 @@ fn ticks(_: Arc<Engine>, args: &mut Args<'_>) -> Result<Stream, Fault> {
     Ok(stream(stream::iter(0u64..).then(move |n| async move {
         tokio::time::sleep(period).await;
         Ok(json!(n))
+    })))
+}
+
+/// Logs the account out as its homeserver would, through the token-death rule, as the SDK's
+/// broadcast would; `null` once its effects are delivered.
+fn server_logout(engine: Arc<Engine>, args: &mut Args<'_>) -> Result<Stream, Fault> {
+    let account_id: String = args.decode()?;
+    let soft: bool = args.decode()?;
+    Ok(stream(stream::once(async move {
+        engine.simulate_server_logout(&account_id, soft).await;
+        Ok(Value::Null)
     })))
 }
 

@@ -4,11 +4,11 @@ use std::{future::IntoFuture, sync::Arc, time::Duration};
 
 use futures_util::{StreamExt, future::join_all};
 use matrix_sdk::{
-    HttpError, RoomMemberships, SessionTokens,
+    Error, RoomMemberships, SessionTokens,
     room::RoomMember,
     ruma::{
         OwnedRoomId, RoomId, TransactionId,
-        api::error::ErrorKind,
+        api::{client::account::whoami, error::ErrorKind},
         events::{
             AnyMessageLikeEventContent,
             room::message::{MessageType, Relation},
@@ -22,12 +22,12 @@ use serde_json::json;
 
 use super::{
     AccountNameGroupDto, AccountServerStatusDto, PendingTextMessageDto, RefreshOptionsDto,
-    SessionAccessTokenDto, SessionCredentialsDto, done, reply,
+    SessionAccessTokenDto, SessionCredentialsDto, done, logout::sent_once, reply,
 };
 use crate::{
     accounts::{AccountRuntime, Engine},
     dispatch::{Stream, stream},
-    failure::{EngineResult, account_not_live},
+    failure::{EngineResult, account_not_live, refused_refresh},
     wire::{Fault, FaultKind},
 };
 
@@ -55,10 +55,10 @@ pub fn account_status(engine: Arc<Engine>, account_id: String) -> Stream {
         let Some(rt) = engine.account(&account_id) else {
             return AccountServerStatusDto::Unreachable;
         };
-        match rt.client.whoami().await {
+        let request = whoami::v3::Request::new();
+        let whoami = rt.client.send(request).with_request_config(sent_once());
+        match engine.ruled(&rt, whoami).await {
             Ok(_) => AccountServerStatusDto::Active,
-            // shortcut: a dead token is not yet marked before this reply; T5 awaits
-            // `engine.after_request_error(&rt, &err)` here first (O8).
             Err(err) => status_of(&err),
         }
     })
@@ -85,7 +85,10 @@ pub fn refresh_access_token(
         drop(rt);
         if refreshed {
             let published = engine.state.lock().publish_snapshot();
-            published.delivered().await;
+            published
+                .join(engine.rotation_of(&account_id))
+                .delivered()
+                .await;
         }
         refreshed
     })
@@ -262,11 +265,13 @@ fn name_of(member: &RoomMember) -> (&str, Option<&str>) {
     (member.user_id().as_str(), member.display_name())
 }
 
-fn status_of(err: &HttpError) -> AccountServerStatusDto {
+/// As js: a refused refresh rethrows the dead token's answer, which is `gone`.
+fn status_of(err: &Error) -> AccountServerStatusDto {
     match err.client_api_error_kind() {
         Some(ErrorKind::UnknownToken(_) | ErrorKind::UserDeactivated) => {
             AccountServerStatusDto::Gone
         }
+        _ if refused_refresh(err) => AccountServerStatusDto::Gone,
         _ => AccountServerStatusDto::Unreachable,
     }
 }
@@ -315,10 +320,10 @@ async fn local_echoes(engine: &Engine) -> (Vec<Echo>, bool) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use futures_util::FutureExt;
     use matrix_sdk::{
-        RumaApiError, SessionMeta,
+        HttpError, RefreshTokenError, RumaApiError, SessionMeta,
         authentication::matrix::MatrixSession,
         ruma::{
             UserId,
@@ -353,6 +358,17 @@ mod tests {
             .build()
             .await
             .unwrap();
+        runtime_on(engine, s, 1, client).await
+    }
+
+    /// A runtime of `generation` for `s` on `client`, restored with the session's tokens and
+    /// never started.
+    pub(crate) async fn runtime_on(
+        engine: &Arc<Engine>,
+        s: &MatrixSessionDto,
+        generation: u32,
+        client: matrix_sdk::Client,
+    ) -> AccountRuntime {
         let meta = SessionMeta {
             user_id: UserId::parse(&s.user_id).unwrap(),
             device_id: s.device_id.as_str().into(),
@@ -367,7 +383,8 @@ mod tests {
             .unwrap();
         let sync = Arc::new(SyncService::builder(client.clone()).build().await.unwrap());
         let all_rooms = sync.room_list_service().all_rooms().await.unwrap();
-        AccountRuntime::new(engine, s, 1, client, sync, all_rooms)
+        let changes = client.subscribe_to_session_changes();
+        AccountRuntime::new(engine, s, generation, client, sync, all_rooms, changes)
     }
 
     fn tokens(access_token: &str) -> SessionTokens {
@@ -493,10 +510,17 @@ mod tests {
     #[test]
     fn status_of_reads_gone_from_the_errcode() {
         use AccountServerStatusDto::*;
-        assert_eq!(status_of(&error(401, "M_UNKNOWN_TOKEN")), Gone);
-        assert_eq!(status_of(&error(403, "M_USER_DEACTIVATED")), Gone);
-        assert_eq!(status_of(&error(403, "M_FORBIDDEN")), Unreachable);
-        assert_eq!(status_of(&error(502, "M_UNKNOWN")), Unreachable);
+        assert_eq!(status_of(&error(401, "M_UNKNOWN_TOKEN").into()), Gone);
+        assert_eq!(status_of(&error(403, "M_USER_DEACTIVATED").into()), Gone);
+        assert_eq!(status_of(&error(403, "M_FORBIDDEN").into()), Unreachable);
+        assert_eq!(status_of(&error(502, "M_UNKNOWN").into()), Unreachable);
+        // As js: a refused refresh rethrows the dead token's error, a transient one does not.
+        let refresh = |answer| {
+            let failed = RefreshTokenError::MatrixAuth(Arc::new(answer));
+            Error::from(HttpError::RefreshToken(failed))
+        };
+        assert_eq!(status_of(&refresh(error(401, "M_UNKNOWN_TOKEN"))), Gone);
+        assert_eq!(status_of(&refresh(error(502, "M_UNKNOWN"))), Unreachable);
     }
 
     async fn refreshed(engine: &Arc<Engine>, account_id: &str) -> Vec<Value> {

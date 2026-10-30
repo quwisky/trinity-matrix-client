@@ -23,7 +23,11 @@ use matrix_sdk_base::crypto::{CollectStrategy, DecryptionSettings, TrustRequirem
 use matrix_sdk_sqlite::OpenStoreError;
 use matrix_sdk_ui::sync_service::SyncService;
 
-use super::{MatrixSessionDto, PersistedAccountActivationDto, runtime::AccountRuntime};
+use super::{
+    MatrixSessionDto, PersistedAccountActivationDto,
+    logout::{reload_tokens, save_tokens_callback},
+    runtime::AccountRuntime,
+};
 #[cfg(feature = "native")]
 use crate::store::{StorePaths, prune_devices};
 use crate::{
@@ -302,6 +306,15 @@ impl Engine {
                 return Err(StartError::Failure(failure));
             }
         };
+        let save = save_tokens_callback(Arc::downgrade(self), s.user_id.clone(), s.lineage.clone());
+        if client
+            .set_session_callbacks(Box::new(reload_tokens), Box::new(save))
+            .is_err()
+        {
+            let diagnostic = "the session callbacks were already set".into();
+            return Err(StartError::Fault(internal(diagnostic)));
+        }
+        let changes = client.subscribe_to_session_changes();
         let tokens = SessionTokens {
             access_token: s.access_token.clone(),
             refresh_token: s.refresh_token.clone(),
@@ -327,6 +340,7 @@ impl Engine {
             (sync_service.room_list_service().all_rooms().await).map_err(|_| crypto_failure())?;
         let (generation, registered) = {
             let mut state = self.state.lock();
+            let signed_in_again = state.registry.is_soft_logged_out(&s.user_id);
             let generation = state.registry.register(&s.user_id, &s.device_id);
             let runtime = AccountRuntime::new(
                 self,
@@ -335,9 +349,12 @@ impl Engine {
                 client,
                 Arc::clone(&sync_service),
                 all_rooms,
+                changes,
             );
             state.runtimes.insert(s.user_id.clone(), Arc::new(runtime));
-            (generation, state.publish_snapshot())
+            state.deaths.remove(&s.user_id);
+            let notices = state.holds.registered(&s.user_id, signed_in_again);
+            (generation, state.publish_snapshot().join(notices))
         };
         *barrier = mem::take(barrier).join(registered);
         sync_service.start().await;
@@ -351,7 +368,7 @@ impl Engine {
         Ok(generation)
     }
 
-    fn is_current(&self, account_id: &str, generation: u32) -> bool {
+    pub(super) fn is_current(&self, account_id: &str, generation: u32) -> bool {
         let state = self.state.lock();
         let runtime = state.runtimes.get(account_id);
         runtime.is_some_and(|runtime| runtime.generation == generation)

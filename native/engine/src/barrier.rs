@@ -141,7 +141,7 @@ impl<T> Stream for Tracked<T> {
 /// What a command waits for before its reply: each ticket is a stream and the count of its items
 /// that must be emitted first, or `u64::MAX` for its close.
 #[must_use]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Barrier(Vec<(watch::Receiver<u64>, u64)>);
 
 impl Barrier {

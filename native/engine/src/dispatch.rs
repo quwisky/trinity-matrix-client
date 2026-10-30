@@ -103,6 +103,17 @@ methods! {
     "session.pendingTextMessages" => session::reads::pending_text_messages(),
     "session.pauseSync" => session::reads::pause_sync(),
     "session.knownNames" => session::reads::known_names(account_id: String),
+    "session.holdServerLogout" => session::logout::hold_server_logout(account_id: String),
+    "session.releaseServerLogoutHold" => session::logout::release_server_logout_hold(
+        hold_id: String,
+        deleted: bool,
+    ),
+    "session.deactivateAccount" => session::logout::deactivate_account(
+        account_id: String,
+        erase: bool,
+        auth: Option<session::UiaAuthDto>,
+    ),
+    "session.storageEffects" => session::logout::storage_effects(),
 }
 
 /// Decodes positional args in order. Its `bad-args` faults name the position and the type
