@@ -24,7 +24,7 @@ use ts_rs::TS;
 
 use crate::{
     accounts::{AccountRuntime, Engine},
-    dispatch::{Stream, stream},
+    dispatch::{Stream, item, stream},
     engines::{member::bounded, session::logout::raw_get},
     failure::{
         Diagnostic, DiscoveryFailureReason, EngineFailure, EngineResult, FailureCode, FailureKind,
@@ -160,7 +160,7 @@ pub fn discover(engine: Arc<Engine>, domain: String) -> Stream {
                 code: FailureCode::DiscoveryFailed { domain, reason },
             }),
         };
-        Ok(json!(result))
+        item(result)
     }))
 }
 
@@ -284,7 +284,7 @@ where
                 Err(error) => EngineResult::Err(request_failed(&error)),
             },
         };
-        Ok(json!(result))
+        item(result)
     }))
 }
 

@@ -29,7 +29,7 @@ use matrix_sdk::{
     },
     timeout::timeout,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::{
     MatrixSessionDto, ServerLogoutHoldUpdateDto, SessionStorageEffectDto, UiaAuthDto, done,
@@ -39,10 +39,10 @@ use super::{
 use crate::{
     accounts::{AccountRuntime, Engine, SessionState, Stores},
     barrier::{Barrier, DELIVERY_LIMIT, Subscribers, Tracked},
-    dispatch::{Stream, detached, reply, stream},
+    dispatch::{Stream, detached, item, reply, stream},
     engines::member::{on_account, sent_once},
     failure::{EngineResult, http_error_from_response, refresh_logs_out, request_failure},
-    wire::{Fault, FaultKind},
+    wire::{Fault, FaultCode},
 };
 
 // Without `native` no start sets the SDK's session callbacks or registers a client.
@@ -615,7 +615,7 @@ pub fn hold_server_logout(engine: Arc<Engine>, account_id: String) -> Stream {
         hold_id,
         engine: Arc::downgrade(&engine),
     };
-    stream(hold.map(|update| Ok(json!(update))))
+    stream(hold.map(item))
 }
 
 pub fn release_server_logout_hold(engine: Arc<Engine>, hold_id: String, deleted: bool) -> Stream {
@@ -673,26 +673,27 @@ pub fn logout_session(engine: Arc<Engine>, session: MatrixSessionDto) -> Stream 
     stream(stream::once(async move {
         let meta = session_meta("session.logoutSession", &session)?;
         let built = engine.logout_client(&session.base_url).await;
-        let client = built.map_err(|_| Fault {
-            kind: FaultKind::Internal,
-            code: "client-build-failed".into(),
-            diagnostic: "the logout client did not build".into(),
+        let client = built.map_err(|_| {
+            Fault::new(
+                FaultCode::ClientBuildFailed,
+                "the logout client did not build",
+            )
         })?;
         let logged_out = async {
             client.restore_session(auth_session(&session, meta)).await?;
             client.logout().await
         };
-        Ok(json!(match logged_out.await {
+        item(match logged_out.await {
             Ok(()) => EngineResult::Ok(()),
             Err(err) => EngineResult::Err(request_failure(&err)),
-        }))
+        })
     }))
 }
 
 /// The storage writes the caller owes the engine, from subscribe on, with no replay.
 pub fn storage_effects(engine: Arc<Engine>) -> Stream {
     let (_, effects) = engine.state.lock().effects.subscribe(None);
-    stream(effects.map(|effect| Ok(json!(effect))))
+    stream(effects.map(item))
 }
 
 /// A hold's stream. Dropped, as when the carrier closes it, it releases the hold as not
@@ -1135,7 +1136,7 @@ mod tests {
         let mut s = session("not-a-user-id", "http://127.0.0.1:1");
         s.access_token = "secret-token".into();
         let fault = logout_session(engine, s).next().await.unwrap().unwrap_err();
-        assert_eq!(fault.code, "bad-args");
+        assert_eq!(fault.code, FaultCode::BadArgs);
         assert!(!fault.diagnostic.contains("secret-token") && !fault.diagnostic.contains("not-a"));
     }
 

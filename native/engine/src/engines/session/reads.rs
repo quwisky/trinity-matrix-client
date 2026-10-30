@@ -18,7 +18,7 @@ use matrix_sdk::{
     store::SerializableEventContent,
     timeout::timeout,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::{
     AccountNameGroupDto, AccountServerStatusDto, PendingTextMessageDto, RefreshOptionsDto,
@@ -26,10 +26,10 @@ use super::{
 };
 use crate::{
     accounts::{AccountRuntime, Engine},
-    dispatch::{Stream, detached, reply, stream},
+    dispatch::{Stream, detached, item, reply, stream},
     engines::member::sent_once,
     failure::{EngineResult, account_not_live, refused_refresh},
-    wire::{Fault, FaultKind},
+    wire::{Fault, FaultCode},
 };
 
 /// How long `roomKeysBackedUp` waits for waiting room keys to upload.
@@ -38,7 +38,7 @@ const STEADY_STATE_LIMIT: Duration = Duration::from_secs(10);
 /// The account's token now, then each change; null while it has no live client.
 pub fn access_token(engine: Arc<Engine>, account_id: String) -> Stream {
     let tokens = engine.subscribe_token(&account_id);
-    stream(tokens.map(|token| Ok(json!(token))))
+    stream(tokens.map(item))
 }
 
 pub fn live_credentials(engine: Arc<Engine>, account_id: String) -> Stream {
@@ -155,7 +155,7 @@ pub fn pause_sync(engine: Arc<Engine>) -> Stream {
 pub fn known_names(engine: Arc<Engine>, account_id: String) -> Stream {
     stream(futures_util::stream::once(async move {
         let Some(rt) = engine.account(&account_id) else {
-            return Ok(json!(EngineResult::<()>::Err(account_not_live())));
+            return item(EngineResult::<()>::Err(account_not_live()));
         };
         let memberships = RoomMemberships::JOIN
             | RoomMemberships::INVITE
@@ -190,7 +190,7 @@ pub fn known_names(engine: Arc<Engine>, account_id: String) -> Stream {
             display_names: own,
         };
         let groups = std::iter::once(own).chain(rooms).collect::<Vec<_>>();
-        Ok(json!(EngineResult::Ok(groups)))
+        item(EngineResult::Ok(groups))
     }))
 }
 
@@ -256,12 +256,7 @@ pub(crate) fn pending_text(
 }
 
 fn store_failed() -> Fault {
-    let diagnostic = "reading a room's members failed".into();
-    Fault {
-        kind: FaultKind::Internal,
-        code: "store-failed".into(),
-        diagnostic,
-    }
+    Fault::new(FaultCode::StoreFailed, "reading a room's members failed")
 }
 
 fn name_of(member: &RoomMember) -> (&str, Option<&str>) {
@@ -336,7 +331,7 @@ mod tests {
         },
     };
     use matrix_sdk_ui::sync_service;
-    use serde_json::{Value, value::to_raw_value};
+    use serde_json::{Value, json, value::to_raw_value};
 
     use super::*;
     use crate::{

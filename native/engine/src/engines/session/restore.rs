@@ -39,12 +39,11 @@ use crate::store::{StorePaths, prune_devices};
 use crate::{
     accounts::{Engine, Stores},
     barrier::Barrier,
-    dispatch::protocol,
     failure::{
         AccountStartFailureReason, Diagnostic, EngineFailure, EngineResult, FailureCode,
         FailureKind, account_start_failed, classify_http,
     },
-    wire::{Fault, FaultKind},
+    wire::{Fault, FaultCode},
 };
 
 /// A start of one account, which every restore of it joins while the start runs.
@@ -103,7 +102,12 @@ pub(crate) fn refreshable(s: &MatrixSessionDto) -> bool {
 /// The session's user and device, once its user id and base URL parse. A fault names the field,
 /// never its value: the session carries tokens.
 pub(crate) fn session_meta(method: &str, s: &MatrixSessionDto) -> Result<SessionMeta, Fault> {
-    let malformed = |field: &str| protocol("bad-args", format!("{method}: {field} is malformed"));
+    let malformed = |field: &str| {
+        Fault::new(
+            FaultCode::BadArgs,
+            format!("{method}: {field} is malformed"),
+        )
+    };
     let meta = SessionMeta {
         user_id: UserId::parse(&s.user_id).map_err(|_| malformed("userId"))?,
         device_id: s.device_id.as_str().into(),
@@ -301,8 +305,11 @@ impl Engine {
         _: &mut Barrier,
     ) -> StartOutcome {
         // shortcut: no store backend without `native`; the wasm build adds one
-        let diagnostic = "no store backend in this build".into();
-        Err(StartError::Fault(protocol("unsupported", diagnostic)))
+        let diagnostic = "no store backend in this build";
+        Err(StartError::Fault(Fault::new(
+            FaultCode::Unsupported,
+            diagnostic,
+        )))
     }
 
     #[cfg(feature = "native")]
@@ -318,8 +325,8 @@ impl Engine {
             Ok(client) => client,
             Err(err) => {
                 let Some(failure) = start_failure(&err) else {
-                    let diagnostic = "the client did not build".into();
-                    return Err(StartError::Fault(internal(diagnostic)));
+                    let diagnostic = "the client did not build";
+                    return Err(StartError::Fault(start_fault(diagnostic)));
                 };
                 let lost = AccountStartFailureReason::CryptoStoreKeyLost;
                 if failure.code == (FailureCode::AccountStartFailed { reason: lost }) {
@@ -334,8 +341,8 @@ impl Engine {
             .set_session_callbacks(Box::new(reload_tokens), Box::new(save))
             .is_err()
         {
-            let diagnostic = "the session callbacks were already set".into();
-            return Err(StartError::Fault(internal(diagnostic)));
+            let diagnostic = "the session callbacks were already set";
+            return Err(StartError::Fault(start_fault(diagnostic)));
         }
         let changes = client.subscribe_to_session_changes();
         (client.restore_session(auth_session(s, meta)).await)
@@ -464,15 +471,11 @@ fn failed_at(step: &'static str) -> StartError {
 }
 
 fn panicked() -> StartError {
-    StartError::Fault(internal("restorePersisted panicked".into()))
+    StartError::Fault(start_fault("restorePersisted panicked"))
 }
 
-fn internal(diagnostic: String) -> Fault {
-    Fault {
-        kind: FaultKind::Internal,
-        code: "start-failed".into(),
-        diagnostic,
-    }
+fn start_fault(diagnostic: &str) -> Fault {
+    Fault::new(FaultCode::StartFailed, diagnostic)
 }
 
 #[cfg(all(test, feature = "native"))]

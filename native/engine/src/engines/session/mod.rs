@@ -11,12 +11,12 @@ use std::sync::Arc;
 use futures_util::{StreamExt, stream};
 use matrix_sdk::SendOutsideWasm;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use ts_rs::TS;
 
 use crate::{
     accounts::{Engine, Stores},
-    dispatch::{Stream, reply, stream},
+    dispatch::{Stream, item, reply, stream},
     failure::EngineResult,
 };
 
@@ -258,11 +258,7 @@ pub enum UserIdentifierType {
 
 /// The current snapshot, then each change.
 pub fn session(engine: Arc<Engine>) -> Stream {
-    stream(
-        engine
-            .subscribe_session()
-            .map(|snapshot| Ok(json!(snapshot))),
-    )
+    stream(engine.subscribe_session().map(item))
 }
 
 pub fn restore_persisted(
@@ -271,8 +267,7 @@ pub fn restore_persisted(
     activation: PersistedAccountActivationDto,
 ) -> Stream {
     stream(stream::once(async move {
-        let result = engine.restore(session, activation).await?;
-        Ok(json!(result))
+        item(engine.restore(session, activation).await?)
     }))
 }
 
@@ -332,6 +327,8 @@ fn done(effect: impl Future<Output = ()> + SendOutsideWasm + 'static) -> Stream 
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     fn to_json(value: impl Serialize) -> Value {

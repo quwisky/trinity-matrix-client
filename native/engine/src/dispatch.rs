@@ -5,11 +5,11 @@ use std::any::type_name;
 use futures_util::stream;
 use matrix_sdk::{SendOutsideWasm, executor::spawn};
 use serde::{Serialize, de::DeserializeOwned};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::{
     engines::{discovery, homeserver, session},
-    wire::{Fault, FaultKind},
+    wire::{Fault, FaultCode},
 };
 
 /// An engine method's output: a `BoxStream`, but a `LocalBoxStream` on wasm, where the SDK's
@@ -25,9 +25,16 @@ pub fn stream(
     matrix_sdk::stream::StreamExt::boxed(s)
 }
 
+/// `value` as a stream item. A value that is no JSON, such as a map with non-string keys, is a
+/// fault rather than a panic.
+pub(crate) fn item(value: impl Serialize) -> Result<Value, Fault> {
+    serde_json::to_value(value)
+        .map_err(|_| Fault::new(FaultCode::SerializeFailed, "a value did not serialize"))
+}
+
 /// A command: emits `value` once, then completes; a close drops the work.
 pub fn reply<T: Serialize>(value: impl Future<Output = T> + SendOutsideWasm + 'static) -> Stream {
-    stream(stream::once(async move { Ok(json!(value.await)) }))
+    stream(stream::once(async move { item(value.await) }))
 }
 
 /// A command whose work outlives a close or an `attach`: `value` runs on its own task, spawned at
@@ -40,12 +47,9 @@ pub fn detached<T: Serialize + SendOutsideWasm + 'static>(
     // A dropped `JoinHandle` lets its task run on, natively and on wasm.
     let task = spawn(value);
     stream(stream::once(async move {
-        let value = task.await.map_err(|_| Fault {
-            kind: FaultKind::Internal,
-            code: "panic".into(),
-            diagnostic: "a detached command panicked".into(),
-        })?;
-        Ok(json!(value))
+        let value = (task.await)
+            .map_err(|_| Fault::new(FaultCode::Panic, "a detached command panicked"))?;
+        item(value)
     }))
 }
 
@@ -67,7 +71,10 @@ macro_rules! methods {
                 })*
                 _ => {
                     let _ = (engine, args);
-                    Err($crate::dispatch::protocol("unknown-method", format!("no method {method}")))
+                    Err($crate::wire::Fault::new(
+                        $crate::wire::FaultCode::UnknownMethod,
+                        format!("no method {method}"),
+                    ))
                 }
             }
         }
@@ -192,7 +199,7 @@ impl<'a> Args<'a> {
     }
 
     fn bad(&self, detail: String) -> Fault {
-        protocol("bad-args", format!("{}: {detail}", self.method))
+        Fault::new(FaultCode::BadArgs, format!("{}: {detail}", self.method))
     }
 }
 
@@ -207,14 +214,6 @@ fn type_class(value: &Value) -> &'static str {
     }
 }
 
-pub fn protocol(code: &str, diagnostic: String) -> Fault {
-    Fault {
-        kind: FaultKind::Protocol,
-        code: code.into(),
-        diagnostic,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};
@@ -225,7 +224,7 @@ mod tests {
     use tokio::sync::oneshot;
 
     use super::*;
-    use crate::{accounts::Engine, config::EngineConfig};
+    use crate::{accounts::Engine, config::EngineConfig, wire::FaultKind};
 
     fn pair(_: Arc<Engine>, text: String, count: u32) -> Stream {
         stream(stream::once(ready(Ok(json!([text, count])))))
@@ -244,7 +243,7 @@ mod tests {
         }
     }
 
-    fn code(result: Result<Stream, Fault>) -> String {
+    fn code(result: Result<Stream, Fault>) -> FaultCode {
         let fault = result.err().expect("a fault");
         assert_eq!(fault.kind, FaultKind::Protocol);
         fault.code
@@ -268,7 +267,7 @@ mod tests {
         ] {
             assert_eq!(
                 code(table::dispatch(&engine, "test.pair", args)),
-                "bad-args"
+                FaultCode::BadArgs
             );
         }
     }
@@ -279,7 +278,7 @@ mod tests {
         assert!(table::dispatch(&engine, "test.none", vec![]).is_ok());
         assert_eq!(
             code(table::dispatch(&engine, "test.none", vec![json!(1)])),
-            "bad-args"
+            FaultCode::BadArgs
         );
     }
 
@@ -323,8 +322,8 @@ mod tests {
         let mut s = detached::<u32>(async { panic!("payload-secret") });
         let fault = s.next().await.unwrap().unwrap_err();
         assert_eq!(
-            (fault.kind, fault.code.as_str()),
-            (FaultKind::Internal, "panic")
+            (fault.kind, fault.code),
+            (FaultKind::Internal, FaultCode::Panic)
         );
         assert!(
             !fault.diagnostic.contains("payload-secret"),
@@ -338,11 +337,11 @@ mod tests {
         let engine = Engine::new(EngineConfig::default()).unwrap();
         assert_eq!(
             code(dispatch(&engine, "nope.nothing", vec![])),
-            "unknown-method"
+            FaultCode::UnknownMethod
         );
         assert_eq!(
             code(table::dispatch(&engine, "nope.nothing", vec![])),
-            "unknown-method"
+            FaultCode::UnknownMethod
         );
     }
 }

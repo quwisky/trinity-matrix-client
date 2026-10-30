@@ -14,7 +14,7 @@ use trinity_engine::{
     carrier::CarrierSession,
     config::EngineConfig,
     dispatch::{Args, Stream, stream},
-    wire::{Fault, Frame, Inbound},
+    wire::{Fault, FaultCode, Frame, Inbound},
 };
 
 fn echo(_: &Arc<Engine>, method: &str, args: &[Value]) -> Option<Result<Stream, Fault>> {
@@ -60,7 +60,7 @@ fn bad_args_never_echo_a_value() {
     let Ok(Frame::Error { e, .. }) = frames.try_recv() else {
         panic!("no error frame");
     };
-    assert_eq!(e.code, "bad-args");
+    assert_eq!(e.code, FaultCode::BadArgs);
     assert_eq!(e.diagnostic, "test.echo: arg 0: expected u32, found string");
     let log = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
     assert!(log.contains("bad-args"), "{log}");

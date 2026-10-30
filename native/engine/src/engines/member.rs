@@ -5,11 +5,10 @@ use std::{future::IntoFuture, sync::Arc, time::Duration};
 use futures_util::{StreamExt, stream};
 use matrix_sdk::{Client, Error, SendOutsideWasm, config::RequestConfig, timeout::timeout};
 use serde::Serialize;
-use serde_json::json;
 
 use crate::{
     accounts::{AccountRuntime, Engine},
-    dispatch::{Stream, stream},
+    dispatch::{Stream, item, stream},
     failure::{EngineFailure, EngineResult, account_not_live},
 };
 
@@ -58,7 +57,7 @@ where
     S: futures_util::Stream<Item = T> + SendOutsideWasm + 'static,
 {
     let Some(rt) = engine.account(&account_id) else {
-        return stream(stream::once(async move { Ok(json!(empty)) }).chain(stream::pending()));
+        return stream(stream::once(async move { item(empty) }).chain(stream::pending()));
     };
     let lease = rt.lease();
     let items = body(&rt, lease.client.clone());
@@ -69,7 +68,7 @@ where
     };
     let items = items.map(move |v| {
         let _ = &lease;
-        Ok(json!(v))
+        item(v)
     });
     stream(items.take_until(retired).chain(stream::pending()))
 }
@@ -105,7 +104,7 @@ mod tests {
 
     use futures_util::FutureExt;
     use matrix_sdk::{executor::spawn, timeout::timeout};
-    use serde_json::Value;
+    use serde_json::{Value, json};
     use tempfile::TempDir;
     use tokio::{
         sync::{mpsc, oneshot},

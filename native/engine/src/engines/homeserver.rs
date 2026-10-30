@@ -6,12 +6,12 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use futures_util::{future::join, stream};
 use matrix_sdk::reqwest::Url;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use ts_rs::TS;
 
 use crate::{
     accounts::{AccountRuntime, Engine},
-    dispatch::{Stream, stream},
+    dispatch::{Stream, item, stream},
     engines::session::logout::raw_get,
 };
 
@@ -80,7 +80,7 @@ pub fn probe(engine: Arc<Engine>, account_id: String) -> Stream {
             Some(rt) => Some(probe_client(&engine, rt, &account_id).await),
             None => None,
         };
-        Ok(json!(probe))
+        item(probe)
     }))
 }
 
@@ -308,6 +308,7 @@ fn read_string_array(value: &Value, key: &str) -> Option<Vec<String>> {
 mod tests {
     use futures_util::{FutureExt, StreamExt};
     use matrix_sdk::{sleep::sleep, timeout::timeout};
+    use serde_json::json;
     use tempfile::TempDir;
 
     use super::*;
