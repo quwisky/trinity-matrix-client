@@ -9,7 +9,14 @@ import {
   timeout,
   toArray,
 } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from 'vitest';
 import {
   type EngineResult,
   type VectorDiff,
@@ -139,20 +146,52 @@ export function defineRoomListEngineContract(
       return rooms.find((r) => r.roomId === roomId) as RoomInfo;
     }
 
+    function request(
+      patch: Partial<CreateRoomRequest> = {},
+    ): CreateRoomRequest {
+      return {
+        name: `contract ${unique()}`,
+        topic: null,
+        isPublic: false,
+        kind: 'room',
+        parentSpaceId: null,
+        ...patch,
+      };
+    }
+
     async function createRoom(
       patch: Partial<CreateRoomRequest> = {},
     ): Promise<string> {
-      const { roomId } = await ok(
-        engine.createRoom(alice, {
-          name: `contract ${unique()}`,
-          topic: null,
-          isPublic: false,
-          kind: 'room',
-          parentSpaceId: null,
-          ...patch,
-        }),
-      );
+      const { roomId } = await ok(engine.createRoom(alice, request(patch)));
       return roomId;
+    }
+
+    /** Alice's open subscription to `source`: its latest value, closed when the test finishes. */
+    function track<T>(source: Observable<T>): BehaviorSubject<T | null> {
+      const latest = new BehaviorSubject<T | null>(null);
+      const open = source
+        .pipe(
+          tap((value) => expect(() => assertPlainData(value)).not.toThrow()),
+        )
+        .subscribe((value) => latest.next(value));
+      onTestFinished(() => open.unsubscribe());
+      return latest;
+    }
+
+    /** The command's value, with what `latest` held at the moment it replied. */
+    async function atReply<T, S>(
+      command: Observable<EngineResult<T>>,
+      latest: { readonly value: S },
+    ): Promise<{ readonly value: T; readonly seen: S }> {
+      let seen = latest.value;
+      const value = await ok<T>(
+        command.pipe(
+          tap(() => {
+            seen = latest.value;
+          }),
+        ),
+      );
+      return { value, seen };
     }
 
     /** The space's links as an open subscription sees them right now. */
@@ -161,6 +200,19 @@ export function defineRoomListEngineContract(
         engine.spaceChildLinks(alice, spaceId).pipe(
           tap((links) => expect(() => assertPlainData(links)).not.toThrow()),
           take(1),
+          timeout(settleTimeoutMs),
+        ),
+      );
+    }
+
+    /** Waits until an open subscription's latest value satisfies the predicate. */
+    function latestUntil<T>(
+      latest: BehaviorSubject<T | null>,
+      predicate: (value: T) => boolean,
+    ): Promise<T> {
+      return firstValueFrom(
+        latest.pipe(
+          filter((value): value is T => value !== null && predicate(value)),
           timeout(settleTimeoutMs),
         ),
       );
@@ -412,13 +464,7 @@ export function defineRoomListEngineContract(
           engine.setMarkedUnread(NOBODY, '!r:invalid', true),
           engine.markRead(NOBODY, '!r:invalid', 'private'),
           engine.leave(NOBODY, '!r:invalid'),
-          engine.createRoom(NOBODY, {
-            name: 'x',
-            topic: null,
-            isPublic: false,
-            kind: 'room',
-            parentSpaceId: null,
-          }),
+          engine.createRoom(NOBODY, request()),
           engine.createDirectMessage(NOBODY, bob),
           engine.resolveAlias(NOBODY, '#x:invalid'),
           engine.invite(NOBODY, '!r:invalid', bob),
@@ -453,32 +499,14 @@ export function defineRoomListEngineContract(
         const roomId = await context.asBob.createRoom(`bob ${unique()}`);
         await context.asBob.invite(roomId, alice);
         await roomUntil(roomId, (r) => r.membership === 'invite');
-        const latest = new BehaviorSubject<readonly string[] | null>(null);
-        const open = engine
-          .roomsInCommon(alice, bob)
-          .pipe(tap((ids) => expect(() => assertPlainData(ids)).not.toThrow()))
-          .subscribe((ids) => latest.next(ids));
-        try {
-          await firstValueFrom(
-            latest.pipe(
-              filter((ids) => ids !== null),
-              timeout(settleTimeoutMs),
-            ),
-          );
-          expect(latest.value).toEqual([]);
+        const latest = track(engine.roomsInCommon(alice, bob));
+        await latestUntil(latest, () => true);
+        expect(latest.value).toEqual([]);
 
-          await context.asAlice.join(roomId);
+        await context.asAlice.join(roomId);
 
-          await firstValueFrom(
-            latest.pipe(
-              filter((ids) => ids?.includes(roomId) ?? false),
-              timeout(settleTimeoutMs),
-            ),
-          );
-          expect(latest.value).toEqual([roomId]);
-        } finally {
-          open.unsubscribe();
-        }
+        await latestUntil(latest, (ids) => ids.includes(roomId));
+        expect(latest.value).toEqual([roomId]);
       },
       testTimeoutMs,
     );
@@ -648,26 +676,74 @@ export function defineRoomListEngineContract(
           ).resolves.toEqual({ supported: false, blocked: false });
           return;
         }
-        const latest = new BehaviorSubject<InviteBlocking | null>(null);
-        const open = engine.inviteBlocking(alice).subscribe(latest);
-        try {
-          await firstValueFrom(
-            latest.pipe(
-              filter((state) => !!state?.supported),
-              timeout(settleTimeoutMs),
-            ),
-          );
-          expect(latest.value).toEqual({ supported: true, blocked: false });
+        const latest = track(engine.inviteBlocking(alice));
+        await latestUntil(latest, (state) => state.supported);
+        expect(latest.value).toEqual({ supported: true, blocked: false });
 
-          await ok(engine.setInviteBlocking(alice, true));
-          expect(latest.value).toEqual({ supported: true, blocked: true });
-          await blockingUntil((state) => state.blocked);
+        const on = await atReply(engine.setInviteBlocking(alice, true), latest);
+        expect(on.seen).toEqual({ supported: true, blocked: true });
+        await blockingUntil((state) => state.blocked);
 
-          await ok(engine.setInviteBlocking(alice, false));
-          expect(latest.value).toEqual({ supported: true, blocked: false });
-        } finally {
-          open.unsubscribe();
-        }
+        const off = await atReply(
+          engine.setInviteBlocking(alice, false),
+          latest,
+        );
+        expect(off.seen).toEqual({ supported: true, blocked: false });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "shows each command's effect in an open rooms() subscription before it replies",
+      async () => {
+        const latest = track(folded());
+        const row = (rooms: readonly RoomInfo[], roomId: string) =>
+          rooms.find((r) => r.roomId === roomId);
+        const shows = async <T>(
+          step: string,
+          command: Observable<EngineResult<T>>,
+          effect: (rooms: readonly RoomInfo[], value: T) => boolean,
+        ): Promise<T> => {
+          const { value, seen } = await atReply(command, latest);
+          expect(effect(seen ?? [], value), step).toBe(true);
+          return value;
+        };
+        await latestUntil(latest, () => true);
+
+        const { roomId: created } = await shows(
+          'createRoom',
+          engine.createRoom(alice, request()),
+          (rooms, { roomId }) => row(rooms, roomId)?.membership === 'join',
+        );
+        await shows(
+          'setTag on',
+          engine.setTag(alice, created, 'favourite', true),
+          (rooms) => row(rooms, created)?.favourite === true,
+        );
+        await shows(
+          'setTag off',
+          engine.setTag(alice, created, 'favourite', false),
+          (rooms) => row(rooms, created)?.favourite === false,
+        );
+        await shows(
+          'createDirectMessage',
+          engine.createDirectMessage(alice, bob),
+          (rooms, { roomId }) => row(rooms, roomId) !== undefined,
+        );
+        const publicRoom = await context.asBob.createPublicRoom(
+          `bob ${unique()}`,
+          `contract-${unique()}`,
+        );
+        await shows(
+          'join',
+          engine.join(alice, publicRoom.roomId, [context.serverName]),
+          (rooms) => row(rooms, publicRoom.roomId)?.membership === 'join',
+        );
+        await shows(
+          'leave',
+          engine.leave(alice, created),
+          (rooms) => row(rooms, created) === undefined,
+        );
       },
       testTimeoutMs,
     );

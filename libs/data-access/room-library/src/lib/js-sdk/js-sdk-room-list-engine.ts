@@ -77,7 +77,7 @@ import {
 
 const LISTED = new Set(['join', 'invite', 'knock']);
 
-/** How long a create or leave waits for `/sync` to show its effect before replying anyway. */
+/** How long a settling command waits for `/sync` to show its effect before replying anyway. */
 const SETTLE_TIMEOUT_MS = 15_000;
 
 const ACCOUNT_NOT_LIVE: EngineFailure = {
@@ -144,6 +144,7 @@ function settled(
     client.on(ClientEvent.Room, check);
     client.on(RoomEvent.MyMembership, check);
     client.on(RoomStateEvent.Events, check);
+    client.on(RoomEvent.Tags, check);
     client.on(ClientEvent.Sync, onSync);
     check();
     return () => {
@@ -151,6 +152,7 @@ function settled(
       client.off(ClientEvent.Room, check);
       client.off(RoomEvent.MyMembership, check);
       client.off(RoomStateEvent.Events, check);
+      client.off(RoomEvent.Tags, check);
       client.off(ClientEvent.Sync, onSync);
     };
   });
@@ -161,6 +163,12 @@ const joined = (room: Room | null): boolean =>
 
 const listed = (room: Room | null): boolean =>
   !!room && LISTED.has(room.getMyMembership());
+
+/** A room the client does not hold has nothing to wait for. */
+const tagged =
+  (name: string, on: boolean) =>
+  (room: Room | null): boolean =>
+    !room || (room.tags?.[name] !== undefined) === on;
 
 /** Whether the room's live state holds the state event `eventId`. */
 const holds =
@@ -235,13 +243,17 @@ export class JsSdkRoomListEngine implements RoomListEngine {
     on: boolean,
   ): Observable<EngineResult<null>> {
     const name = tag === 'favourite' ? 'm.favourite' : 'm.lowpriority';
-    return this.command(accountId, async (client) => {
-      await (on
-        ? client.setRoomTag(roomId, name, {})
-        : client.deleteRoomTag(roomId, name));
-      this.written$.next(client);
-      return null;
-    });
+    // The SDK does not echo a tag locally, so the reply waits for `/sync` to show it.
+    return this.command(accountId, (client) =>
+      from(
+        on
+          ? client.setRoomTag(roomId, name, {})
+          : client.deleteRoomTag(roomId, name),
+      ).pipe(
+        switchMap(() => this.settle(client, roomId, tagged(name, on))),
+        map(() => null),
+      ),
+    );
   }
 
   setMarkedUnread(

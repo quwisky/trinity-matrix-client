@@ -399,24 +399,6 @@ describe('JsSdkRoomListEngine', () => {
     });
   });
 
-  it('setTag re-emits after the write', async () => {
-    // Encrypted by state, so no crypto-store answer re-emits on its own.
-    const { client, engine } = setup([fakeRoom('!a:hs', { encrypted: true })]);
-    const { batches } = record(engine.rooms(ME));
-
-    const result = await firstValueFrom(
-      engine.setTag(ME, '!a:hs', 'lowPriority', true),
-    );
-
-    expect(result).toEqual({ ok: true, value: null });
-    expect(client.setRoomTag).toHaveBeenCalledWith(
-      '!a:hs',
-      'm.lowpriority',
-      {},
-    );
-    expect(batches).toHaveLength(2);
-  });
-
   it.each(['M_INVITE_BLOCKED', 'ORG.MATRIX.MSC4155.INVITE_BLOCKED'])(
     'invite maps the MSC4155 errcode %s to invite-blocked',
     async (errcode) => {
@@ -520,7 +502,7 @@ describe('JsSdkRoomListEngine', () => {
     ]);
   });
 
-  describe('settling a create or leave', () => {
+  describe('settling a command', () => {
     afterEach(() => vi.useRealTimers());
 
     /** Subscribes and lets the HTTP call resolve, leaving the command waiting on /sync. */
@@ -692,6 +674,71 @@ describe('JsSdkRoomListEngine', () => {
       client.emit(RoomEvent.MyMembership, client.rooms[0], 'leave');
 
       expect(seen).toEqual([[]]);
+    });
+
+    it('setTag replies once rooms() shows the tag', async () => {
+      // Encrypted by state, so no crypto-store answer re-emits on its own.
+      const { client, engine } = setup([
+        fakeRoom('!a:hs', { encrypted: true }),
+      ]);
+      const { batches } = record(engine.rooms(ME));
+      const seen: boolean[][] = [];
+      await pending(
+        engine
+          .setTag(ME, '!a:hs', 'lowPriority', true)
+          .pipe(
+            tap(() =>
+              seen.push(resetValues(batches.at(-1)).map((r) => r.lowPriority)),
+            ),
+          ),
+      );
+      expect(client.setRoomTag).toHaveBeenCalledWith(
+        '!a:hs',
+        'm.lowpriority',
+        {},
+      );
+      expect(seen).toEqual([]);
+
+      client.rooms[0].tags = { 'm.lowpriority': {} };
+      client.emit(RoomEvent.Tags, {}, client.rooms[0]);
+
+      expect(seen).toEqual([[true]]);
+    });
+
+    it('setTag off replies once rooms() has dropped the tag', async () => {
+      // Encrypted by state, so no crypto-store answer re-emits on its own.
+      const { client, engine } = setup([
+        fakeRoom('!a:hs', { encrypted: true, favourite: true }),
+      ]);
+      const { batches } = record(engine.rooms(ME));
+      const seen: boolean[][] = [];
+      await pending(
+        engine
+          .setTag(ME, '!a:hs', 'favourite', false)
+          .pipe(
+            tap(() =>
+              seen.push(resetValues(batches.at(-1)).map((r) => r.favourite)),
+            ),
+          ),
+      );
+      expect(client.deleteRoomTag).toHaveBeenCalledWith('!a:hs', 'm.favourite');
+      expect(seen).toEqual([]);
+
+      client.rooms[0].tags = {};
+      client.emit(RoomEvent.Tags, {}, client.rooms[0]);
+
+      expect(seen).toEqual([[false]]);
+    });
+
+    it('setTag on a room the client does not hold replies at once', async () => {
+      const { client, engine } = setup();
+
+      const { replies } = await pending(
+        engine.setTag(ME, '!gone:hs', 'favourite', true),
+      );
+
+      expect(replies).toEqual([{ ok: true, value: null }]);
+      expect(client.totalListeners()).toBe(0);
     });
 
     it('createDirectMessage reuses an invited DM without waiting', async () => {
