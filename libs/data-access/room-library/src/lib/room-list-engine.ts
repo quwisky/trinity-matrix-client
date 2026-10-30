@@ -180,4 +180,15 @@ export interface RoomListEngine {
     accountId: string,
     blocked: boolean,
   ): Observable<EngineResult<null>>;
+  /**
+   * The joined rooms the account shares with `userId`. Membership the account can see decides;
+   * a room whose roster it has not loaded counts when the server's MSC2666 answer lists it.
+   * First emits once that answer arrives or is given up on (10 s after the latest request; a
+   * membership change before then asks again), then on each membership change of `userId` or of
+   * the account. Empty for an account that is not live.
+   */
+  roomsInCommon(
+    accountId: string,
+    userId: string,
+  ): Observable<readonly string[]>;
 }
