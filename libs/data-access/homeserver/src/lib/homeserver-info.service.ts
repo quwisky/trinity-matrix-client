@@ -77,8 +77,7 @@ export class HomeserverInfoService {
    * A probe is only written to {@link cache} once the engine's probe resolves, so without
    * this every caller arriving meanwhile starts its own: each block loads on init, and the
    * account menu re-triggers a lookup on every toggle. Sharing the in-flight observable also
-   * stops an older, slower response landing on top of a newer one. Same shape as
-   * `MatrixClientService.starting`.
+   * stops an older, slower response landing on top of a newer one.
    */
   private readonly inFlight = new Map<string, Observable<void>>();
 

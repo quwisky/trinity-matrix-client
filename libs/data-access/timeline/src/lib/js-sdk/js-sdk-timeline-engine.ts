@@ -329,7 +329,7 @@ interface Feed {
 @Injectable({ providedIn: 'root' })
 export class JsSdkTimelineEngine implements TimelineEngine {
   private readonly clients = inject(JS_SDK_CLIENTS);
-  // Resolved on use: the media service needs the session's MatrixClientService.
+  // Resolved on use: only `sendVoice` needs MediaService.
   private readonly injector = inject(Injector);
   private readonly feeds = new Set<Feed>();
   private readonly retention = new JsSdkTimelineRetention({
