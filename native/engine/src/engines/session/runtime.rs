@@ -41,8 +41,10 @@ pub struct AccountRuntime {
     pub(crate) signed_out: AtomicBool,
     /// The restored token with its expiry, which a token the SDK refreshed does not have (H8).
     pub(crate) expiry: Option<(String, f64)>,
-    /// Dropped with the runtime, which tells a teardown that no engine command holds it.
-    alive: watch::Sender<()>,
+    /// Dropped with the runtime and with every lease: a teardown waits until all are gone.
+    alive: Arc<watch::Sender<()>>,
+    /// Set once, by `tear_down`, before anything else; every leased stream ends on it.
+    retired: watch::Sender<bool>,
     /// Keeps the room list's loading task, which `roomsPrepared` follows.
     _all_rooms: RoomList,
     _tasks: [AbortOnDrop<()>; 3],
@@ -87,7 +89,8 @@ impl AccountRuntime {
             refreshable: refreshable(s),
             signed_out: AtomicBool::new(false),
             expiry: expiry.map(|at| (s.access_token.clone(), at)),
-            alive: watch::Sender::new(()),
+            alive: Arc::new(watch::Sender::new(())),
+            retired: watch::Sender::new(false),
             _all_rooms: all_rooms,
             _tasks: [
                 AbortOnDrop::new(spawn(status)),
@@ -97,10 +100,37 @@ impl AccountRuntime {
         }
     }
 
-    /// Ends, with an error, once the runtime is dropped.
+    /// Ends, with an error, once the runtime and every lease are dropped.
     pub(crate) fn dropped(&self) -> watch::Receiver<()> {
         self.alive.subscribe()
     }
+
+    /// A teardown waits until every lease is dropped, as for the runtime, so a holder drops its
+    /// lease once its `retired` turns `true`.
+    pub(crate) fn lease(&self) -> Lease {
+        Lease {
+            client: self.client.clone(),
+            retired: self.retired(),
+            _alive: Arc::clone(&self.alive),
+        }
+    }
+
+    /// Turns `true` once the account retires; unlike a lease, a teardown does not wait for it.
+    pub(crate) fn retired(&self) -> watch::Receiver<bool> {
+        self.retired.subscribe()
+    }
+
+    /// Retires the account's leases; `tear_down` calls it before anything else.
+    pub(crate) fn set_retired(&self) {
+        self.retired.send_replace(true);
+    }
+}
+
+/// What a long-lived account stream holds instead of the runtime.
+pub(crate) struct Lease {
+    pub(crate) client: Client,
+    pub(crate) retired: watch::Receiver<bool>,
+    _alive: Arc<watch::Sender<()>>,
 }
 
 /// Reports the SDK's `UnknownToken` to the token-death rule, without waiting for its delivery:

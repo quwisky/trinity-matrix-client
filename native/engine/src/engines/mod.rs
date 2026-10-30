@@ -2,4 +2,5 @@
 
 pub mod discovery;
 pub mod homeserver;
+pub mod member;
 pub mod session;

@@ -27,8 +27,9 @@ use crate::{
     failure::{EngineFailure, account_not_live},
 };
 
-/// How long a teardown waits for the engine commands still holding a retired runtime.
-const TEARDOWN_LIMIT: Duration = Duration::from_secs(30);
+/// How long a teardown waits for the engine commands and leased streams still holding a retired
+/// runtime.
+const HOLDER_LIMIT: Duration = Duration::from_secs(120);
 
 pub struct Engine {
     pub(crate) config: EngineConfig,
@@ -122,8 +123,9 @@ impl Engine {
     }
 
     /// The account's live runtime. Hold it for one request only: never across a lifecycle call
-    /// (remove, restart, rollback) and never in a long-lived stream, since its teardown waits
-    /// until every holder has let go.
+    /// (remove, restart, rollback) and never in a long-lived stream, which runs on
+    /// [`account_stream`](crate::engines::member::account_stream), since its teardown waits until
+    /// every holder has let go.
     pub fn account(&self, account_id: &str) -> Option<Arc<AccountRuntime>> {
         self.state.lock().runtimes.get(account_id).cloned()
     }
@@ -274,17 +276,21 @@ impl Engine {
         current
     }
 
-    /// Stops a retired runtime and waits, up to `TEARDOWN_LIMIT`, until no engine command holds
-    /// it, then deletes the account's stores when asked. It runs on its own task, after the
-    /// account's previous teardown, so a closed command cannot cut it short. A start of the
-    /// account awaits it, so two clients open one store only when a holder outlasts the limit
-    /// (R1). A command that triggers a teardown never awaits it while holding the runtime.
+    /// Stops a retired runtime and waits, up to `HOLDER_LIMIT` (120 s), until no engine command
+    /// or leased stream holds it, then deletes the account's stores when asked. It runs on its own
+    /// task, after the account's previous teardown, so a closed command cannot cut it short. A
+    /// start of the account awaits it, so two clients open one store only when a holder outlasts
+    /// the limit. A command that triggers a teardown never awaits it while holding the runtime.
     pub(crate) fn tear_down(
         &self,
         account_id: &str,
         runtime: Option<Arc<AccountRuntime>>,
         delete_stores: bool,
     ) -> Teardown {
+        // Before the queue, so its streams end without waiting out the previous teardown.
+        if let Some(runtime) = &runtime {
+            runtime.set_retired();
+        }
         let mut teardowns = self.teardowns.lock();
         let previous = teardowns.remove(account_id);
         let (config, id) = (self.config.clone(), account_id.to_owned());
@@ -296,11 +302,11 @@ impl Engine {
                 runtime.sync_service.stop().await;
                 let mut dropped = runtime.dropped();
                 drop(runtime);
-                if timeout(dropped.changed(), TEARDOWN_LIMIT).await.is_err() {
-                    // shortcut: a client still held after 30 s outlives its teardown, so a restart
-                    // opens a second client on the store and a remove deletes the stores under
-                    // it (an unlink on Unix, a logged failure on Windows); upgrade when
-                    // matrix-sdk gains a client shutdown.
+                if timeout(dropped.changed(), HOLDER_LIMIT).await.is_err() {
+                    // shortcut: a client still held after 120 s, as by a detached multi-step
+                    // body, outlives its teardown, so a restart opens a second client on the
+                    // store and a remove deletes the stores under it (an unlink on Unix, a logged
+                    // failure on Windows); upgrade when matrix-sdk gains a client shutdown.
                     tracing::warn!("a retired account is still in use");
                 }
             }
