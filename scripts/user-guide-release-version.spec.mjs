@@ -79,7 +79,13 @@ describe('user guide release version', () => {
       if (line.includes('x-release-please-end')) inBlock = false;
       const versions = line.match(semver) ?? [];
       const marked = inBlock || line.includes('x-release-please-version');
-      if (versions.length > (marked ? 1 : 0))
+      // Another product's version stays as written, so it must sit outside a version block.
+      const other = line.includes('<!-- not-trinity-version -->');
+      if (
+        other
+          ? marked || versions.length === 0
+          : versions.length > (marked ? 1 : 0)
+      )
         unmarked.push(`${index + 1}: ${line}`);
     }
     expect(unmarked).toEqual([]);

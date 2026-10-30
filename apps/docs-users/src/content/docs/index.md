@@ -80,7 +80,7 @@ On Debian and Ubuntu, the prerelease's `.deb` installs as a separate package,
 `trinity-next`.
 
 Older prereleases installed as "Trinity": you can tell one by its name, Trinity, with a
-version ending in `-next.` and a number (for example `0.6.0`). With Homebrew,
+version ending in `-next.` and a number (for example `-next.3`). With Homebrew,
 `brew upgrade` replaces that app with Trinity Next. If you installed it by hand and don't
 use stable Trinity, remove it. Removing the app doesn't delete its data: that stays in
 Trinity's data folder, and a stable Trinity installed later would use it.
@@ -111,6 +111,8 @@ The web app needs a secure connection: HTTPS, or `localhost`. Opened over plain 
 address, it shows "Trinity needs a secure connection" and doesn't start.
 
 The desktop app always runs in one window, so this doesn't apply to it.
+
+<!-- x-release-please-end -->
 
 ## Sign in with a QR code {#qr-sign-in}
 
@@ -167,7 +169,7 @@ the new device opens your rooms.
 - Only the new device shows a code. A signed-in device can't show one for a new device to
   scan.
 - Element Web can't scan a code, so it can't link a new Trinity device. Trinity can link a new
-  Element Web device (tested with Element Web 0.6.0 on Synapse with MAS); Element Web then
+  Element Web device (tested with Element Web 1.12.32 on Synapse with MAS); Element Web then <!-- not-trinity-version -->
   asks you to type the two-digit number instead of showing it.
 - Only the web app in a desktop browser has been tested. Signing in or scanning on a phone
   (Android or iOS) or in the desktop app hasn't been tested yet, and no Matrix app other than
@@ -304,8 +306,6 @@ provider, you manage your addresses at the provider, and the group says so.
 ## Get help {#get-help}
 
 Report problems on [GitHub Issues](https://github.com/quwisky/trinity-matrix-client/issues).
-
-<!-- x-release-please-end -->
 
 ## Server requirements {#server-requirements}
 

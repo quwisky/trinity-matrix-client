@@ -786,8 +786,10 @@ The stable release PR also bumps the user guide: `version` in
 `apps/docs-users/release.json` and every version string on its pages. Mark a version on
 a page with `x-release-please-version` on its line, or wrap the body in
 `x-release-please-start-version` / `x-release-please-end` comments; the updater replaces
-only the first version on each line. `scripts/user-guide-release-version.spec.mjs`
-rejects unmarked versions. Prereleases leave the user guide alone. The developer
+only the first version on each line. Another product's version (an Element Web release, say)
+goes outside those blocks with `<!-- not-trinity-version -->` on its line, so the updater
+leaves it alone. `scripts/user-guide-release-version.spec.mjs` rejects unmarked versions and
+that marker inside a version block. Prereleases leave the user guide alone. The developer
 guide always deploys from `main`. Between merging the back-merge PR and publishing the release,
 `docs-pages.yml` builds the user guide from the newest commit whose version is
 published, and publishing the release re-runs the workflow on `main` to switch it.
