@@ -191,57 +191,70 @@ impl Engine {
 
     /// Retires a started account but keeps its store.
     pub(crate) async fn rollback_account_start(&self, account_id: &str) {
-        let (runtime, barrier) = self.retire(account_id);
-        self.tear_down(account_id, runtime, false).await;
+        let (teardown, barrier) = self
+            .after_starts(Some(account_id), || {
+                let (runtime, barrier) = self.retire(account_id);
+                (self.tear_down(account_id, runtime, false), barrier)
+            })
+            .await;
+        teardown.await;
         barrier.delivered().await;
     }
 
     /// Retires the account, live or not, ends its holds, and deletes its stores once its
     /// runtime is gone.
     pub(crate) async fn remove(&self, account_id: &str) {
-        let (runtime, barrier) = {
-            let mut state = self.state.lock();
-            let runtime = state.retire(account_id);
-            state.deaths.remove(account_id);
-            state.rotations.remove(account_id);
-            let released = state.holds.release_account(account_id);
-            (runtime, state.publish_snapshot().join(released))
-        };
-        self.tear_down(account_id, runtime, true).await;
+        let (teardown, barrier) = self
+            .after_starts(Some(account_id), || {
+                let (runtime, barrier) = {
+                    let mut state = self.state.lock();
+                    let runtime = state.retire(account_id);
+                    state.deaths.remove(account_id);
+                    state.rotations.remove(account_id);
+                    let released = state.holds.release_account(account_id);
+                    (runtime, state.publish_snapshot().join(released))
+                };
+                (self.tear_down(account_id, runtime, true), barrier)
+            })
+            .await;
+        teardown.await;
         barrier.delivered().await;
     }
 
     /// Stops every runtime, ends every hold and empties the registry; the stores stay.
     pub(crate) async fn stop(&self) {
-        let (runtimes, barrier) = {
-            let mut state = self.state.lock();
-            state.registry.clear();
-            state.paused = false;
-            state.deaths.clear();
-            state.rotations.clear();
-            let released = state.holds.release_all();
-            let runtimes: Vec<_> = state.runtimes.drain().collect();
-            (runtimes, state.publish_snapshot().join(released))
-        };
-        let teardowns = runtimes
-            .into_iter()
-            .map(|(id, runtime)| self.tear_down(&id, Some(runtime), false));
+        let (teardowns, barrier) = self
+            .after_starts(None, || {
+                let (runtimes, barrier) = {
+                    let mut state = self.state.lock();
+                    state.registry.clear();
+                    state.paused = false;
+                    state.deaths.clear();
+                    state.rotations.clear();
+                    let released = state.holds.release_all();
+                    let runtimes: Vec<_> = state.runtimes.drain().collect();
+                    (runtimes, state.publish_snapshot().join(released))
+                };
+                let teardowns = runtimes
+                    .into_iter()
+                    .map(|(id, runtime)| self.tear_down(&id, Some(runtime), false));
+                (teardowns.collect::<Vec<_>>(), barrier)
+            })
+            .await;
         futures_util::future::join_all(teardowns).await;
         barrier.delivered().await;
     }
 
     /// Undoes a start nobody took, unless the account has a newer client by now.
     pub(crate) fn rollback_if_current(&self, account_id: &str, generation: u32) {
-        let runtime = {
-            let mut state = self.state.lock();
-            let current = state.runtimes.get(account_id);
-            if !current.is_some_and(|runtime| runtime.generation == generation) {
-                return;
-            }
-            let runtime = state.retire(account_id);
-            let _ = state.publish_snapshot();
-            runtime
-        };
+        let mut state = self.state.lock();
+        let current = state.runtimes.get(account_id);
+        if !current.is_some_and(|runtime| runtime.generation == generation) {
+            return;
+        }
+        let runtime = state.retire(account_id);
+        let _ = state.publish_snapshot();
+        // Queued under the lock, so a start of the account that follows awaits it.
         drop(self.tear_down(account_id, runtime, false));
     }
 

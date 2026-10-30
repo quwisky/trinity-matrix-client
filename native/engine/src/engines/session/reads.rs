@@ -361,8 +361,8 @@ pub(crate) mod tests {
         runtime_on(engine, s, 1, client).await
     }
 
-    /// A runtime of `generation` for `s` on `client`, restored with the session's tokens and
-    /// never started.
+    /// A runtime of `generation` for `s` on `client`, never started. A client without a session
+    /// is restored with the session's tokens as a Matrix one.
     pub(crate) async fn runtime_on(
         engine: &Arc<Engine>,
         s: &MatrixSessionDto,
@@ -377,10 +377,10 @@ pub(crate) mod tests {
             access_token: s.access_token.clone(),
             refresh_token: s.refresh_token.clone(),
         };
-        client
-            .restore_session(MatrixSession { meta, tokens })
-            .await
-            .unwrap();
+        if client.session_meta().is_none() {
+            let matrix = MatrixSession { meta, tokens };
+            client.restore_session(matrix).await.unwrap();
+        }
         let sync = Arc::new(SyncService::builder(client.clone()).build().await.unwrap());
         let all_rooms = sync.room_list_service().all_rooms().await.unwrap();
         let changes = client.subscribe_to_session_changes();

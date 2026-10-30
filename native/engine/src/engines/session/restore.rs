@@ -1,11 +1,15 @@
 //! Restoring a persisted session: its client's settings, the start that concurrent restores of
 //! one account join, and what a failed start means.
 
-use std::{mem, panic::AssertUnwindSafe, sync::Arc};
+use std::{
+    mem,
+    panic::AssertUnwindSafe,
+    sync::{Arc, atomic::Ordering},
+};
 
 use futures_util::{FutureExt, future::Shared};
 use matrix_sdk::{
-    BoxFuture, ClientBuildError, SessionMeta, SessionTokens,
+    AuthSession, BoxFuture, ClientBuildError, SessionMeta, SessionTokens,
     authentication::{
         matrix::MatrixSession,
         oauth::{ClientId, OAuthSession, UserSession},
@@ -94,6 +98,34 @@ pub(crate) fn refreshable(s: &MatrixSessionDto) -> bool {
             .is_some_and(|token| !token.is_empty())
 }
 
+/// The session's user and device, once its user id and base URL parse. A fault names the field,
+/// never its value: the session carries tokens.
+pub(crate) fn session_meta(method: &str, s: &MatrixSessionDto) -> Result<SessionMeta, Fault> {
+    let malformed = |field: &str| protocol("bad-args", format!("{method}: {field} is malformed"));
+    let meta = SessionMeta {
+        user_id: UserId::parse(&s.user_id).map_err(|_| malformed("userId"))?,
+        device_id: s.device_id.as_str().into(),
+    };
+    Url::parse(&s.base_url).map_err(|_| malformed("baseUrl"))?;
+    Ok(meta)
+}
+
+/// The session `restore_session` takes for `s`: OAuth when it has a client id.
+pub(crate) fn auth_session(s: &MatrixSessionDto, meta: SessionMeta) -> AuthSession {
+    let tokens = SessionTokens {
+        access_token: s.access_token.clone(),
+        refresh_token: s.refresh_token.clone(),
+    };
+    match &s.oidc {
+        Some(oidc) => {
+            let client_id = ClientId::new(oidc.client_id.clone());
+            let user = UserSession { meta, tokens };
+            AuthSession::OAuth(Box::new(OAuthSession { client_id, user }))
+        }
+        None => AuthSession::Matrix(MatrixSession { meta, tokens }),
+    }
+}
+
 /// Every account and store setting, on top of the engine's transport-only builder.
 #[cfg(feature = "native")]
 pub(crate) fn account_builder(
@@ -159,17 +191,7 @@ impl Engine {
         s: MatrixSessionDto,
         activation: PersistedAccountActivationDto,
     ) -> Result<EngineResult<()>, Fault> {
-        let malformed = |field: &str| {
-            protocol(
-                "bad-args",
-                format!("session.restorePersisted: {field} is malformed"),
-            )
-        };
-        let meta = SessionMeta {
-            user_id: UserId::parse(&s.user_id).map_err(|_| malformed("userId"))?,
-            device_id: s.device_id.as_str().into(),
-        };
-        Url::parse(&s.base_url).map_err(|_| malformed("baseUrl"))?;
+        let meta = session_meta("session.restorePersisted", &s)?;
         let account_id = s.user_id.clone();
         let (start, outcome) = self.join_start(s, meta);
         let mut waiter = Waiter {
@@ -315,21 +337,7 @@ impl Engine {
             return Err(StartError::Fault(internal(diagnostic)));
         }
         let changes = client.subscribe_to_session_changes();
-        let tokens = SessionTokens {
-            access_token: s.access_token.clone(),
-            refresh_token: s.refresh_token.clone(),
-        };
-        let restored = match &s.oidc {
-            Some(oidc) => {
-                let client_id = ClientId::new(oidc.client_id.clone());
-                let user = UserSession { meta, tokens };
-                client
-                    .restore_session(OAuthSession { client_id, user })
-                    .await
-            }
-            None => client.restore_session(MatrixSession { meta, tokens }).await,
-        };
-        restored.map_err(|_| crypto_failure())?;
+        (client.restore_session(auth_session(s, meta)).await).map_err(|_| crypto_failure())?;
         let sync_service = SyncService::builder(client.clone())
             .with_offline_mode()
             .build()
@@ -357,9 +365,12 @@ impl Engine {
             (generation, state.publish_snapshot().join(notices))
         };
         *barrier = mem::take(barrier).join(registered);
-        sync_service.start().await;
-        // Retired meanwhile, so its teardown may have stopped the service before this start.
-        if !self.is_current(&s.user_id, generation) {
+        // A logout since the registration revoked the token the sync would start with.
+        if self.may_sync(&s.user_id, generation) {
+            sync_service.start().await;
+        }
+        // Retired or signed out meanwhile, so a stop may have come before this start.
+        if !self.may_sync(&s.user_id, generation) {
             sync_service.stop().await;
         }
         if let Err(err) = prune_devices(&self.config, &s.user_id, &s.device_id) {
@@ -368,10 +379,40 @@ impl Engine {
         Ok(generation)
     }
 
-    pub(super) fn is_current(&self, account_id: &str, generation: u32) -> bool {
+    /// Waits until no start of the account, or of any account for `None`, is in flight, then runs
+    /// `act` while holding the start table. A start that begins after `act` awaits the teardown
+    /// `act` queued, so a start never outlives a remove, stop or rollback that arrived during it.
+    pub(crate) async fn after_starts<T>(
+        &self,
+        account_id: Option<&str>,
+        act: impl FnOnce() -> T,
+    ) -> T {
+        loop {
+            let outcomes = {
+                let mut starting = self.starting.lock();
+                // An outcome that is in has settled, even one whose task ended before
+                // `finish_start` forgot it, so the loop never spins on it.
+                starting.retain(|_, s| s.lock().outcome.peek().is_none());
+                let matching = starting
+                    .iter()
+                    .filter(|(id, _)| account_id.is_none_or(|wanted| wanted == id.as_str()));
+                let outcomes: Vec<_> = matching.map(|(_, s)| s.lock().outcome.clone()).collect();
+                if outcomes.is_empty() {
+                    return act();
+                }
+                outcomes
+            };
+            futures_util::future::join_all(outcomes).await;
+        }
+    }
+
+    /// Whether the client of `generation` is the account's and not signed out.
+    pub(super) fn may_sync(&self, account_id: &str, generation: u32) -> bool {
         let state = self.state.lock();
         let runtime = state.runtimes.get(account_id);
-        runtime.is_some_and(|runtime| runtime.generation == generation)
+        runtime.is_some_and(|runtime| {
+            runtime.generation == generation && !runtime.signed_out.load(Ordering::Relaxed)
+        })
     }
 }
 
@@ -911,6 +952,35 @@ mod tests {
         assert!(engine.account("@a:b").is_some());
     }
 
+    /// Runs `lifecycle` while a restore of `@a:b` is in flight: the restore still succeeds, and
+    /// the account does not come back live after `lifecycle`.
+    async fn raced(engine: &Arc<Engine>, lifecycle: impl Future<Output = ()>) {
+        let (restored, ()) = join(engine.restore(offline("@a:b"), ACTIVATE), lifecycle).await;
+        assert!(matches!(restored, Ok(EngineResult::Ok(()))));
+        assert!(engine.account("@a:b").is_none());
+        let after = snapshot(engine);
+        assert!(after.accounts.is_empty() && after.active_account_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_remove_during_a_restore_leaves_the_account_and_its_stores_gone() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_on(root.path(), 1);
+        raced(&engine, engine.remove("@a:b")).await;
+        let stores = StorePaths::new(&engine.config, "@a:b", "DEV");
+        assert!(!stores.data.exists() && !stores.cache.exists());
+    }
+
+    #[tokio::test]
+    async fn a_stop_or_rollback_during_a_restore_leaves_the_account_stopped() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_on(root.path(), 1);
+        raced(&engine, engine.stop()).await;
+        raced(&engine, engine.rollback_account_start("@a:b")).await;
+        let stores = StorePaths::new(&engine.config, "@a:b", "DEV");
+        assert!(stores.data.exists(), "a rollback keeps the stores");
+    }
+
     #[tokio::test]
     async fn removing_or_rolling_back_the_active_account_repoints_it() {
         let root = TempDir::new().unwrap();
@@ -925,5 +995,42 @@ mod tests {
         engine.rollback_account_start("@c:d").await;
         assert_eq!(snapshot(&engine).active_account_id.as_deref(), Some("@a:b"));
         assert_eq!(ids(&engine), ["@a:b"]);
+    }
+
+    #[tokio::test]
+    async fn a_start_after_a_lifecycle_call_awaits_the_teardown_it_queued() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_on(root.path(), 1);
+        restored(&engine, "@a:b", ACTIVATE).await;
+        let held = engine.account("@a:b").unwrap();
+        let mut removing = Box::pin(engine.remove("@a:b"));
+        assert!(
+            removing.as_mut().now_or_never().is_none(),
+            "acted, tearing down"
+        );
+        let mut restore = Box::pin(engine.restore(offline("@a:b"), ACTIVATE));
+        let early = timeout(restore.as_mut(), Duration::from_millis(300)).await;
+        assert!(early.is_err(), "the start waits for the remove's teardown");
+        drop(held);
+        let ((), restored) = join(removing, restore).await;
+        assert!(matches!(restored, Ok(EngineResult::Ok(()))));
+        assert_eq!(engine.account("@a:b").unwrap().generation, 2);
+        assert!(StorePaths::new(&engine.config, "@a:b", "DEV").data.exists());
+    }
+
+    #[tokio::test]
+    async fn a_start_whose_task_ended_without_forgetting_it_holds_up_no_lifecycle_call() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_on(root.path(), 1);
+        // As a start task that ended with a `JoinError`, before `finish_start`.
+        let ended: BoxFuture<'static, StartOutcome> = Box::pin(async { Err(panicked()) });
+        let mut start = state(None, 0, false);
+        start.outcome = ended.shared();
+        assert!(start.outcome.clone().now_or_never().is_some());
+        let start = Arc::new(Mutex::new(start));
+        engine.starting.lock().insert("@a:b".into(), start);
+        let removed = timeout(engine.remove("@a:b"), Duration::from_secs(5)).await;
+        assert!(removed.is_ok());
+        assert!(engine.starting.lock().is_empty());
     }
 }

@@ -11,9 +11,9 @@ use std::{
     time::Duration,
 };
 
-use futures_util::StreamExt;
+use futures_util::{StreamExt, future::join_all, stream};
 use matrix_sdk::{
-    Client, Error, HttpError, RefreshTokenError, SessionTokens,
+    Client, ClientBuildError, Error, HttpError, RefreshTokenError, SessionTokens,
     bytes::Bytes,
     config::RequestConfig,
     executor::spawn,
@@ -21,6 +21,7 @@ use matrix_sdk::{
     ruma::api::{
         client::{
             account::deactivate,
+            session::logout,
             uiaa::{
                 AuthData, FallbackAcknowledgement, MatrixUserIdentifier, Password, UserIdentifier,
             },
@@ -31,7 +32,10 @@ use matrix_sdk::{
 };
 use serde_json::json;
 
-use super::{ServerLogoutHoldUpdateDto, SessionStorageEffectDto, UiaAuthDto, done, reply};
+use super::{
+    MatrixSessionDto, ServerLogoutHoldUpdateDto, SessionStorageEffectDto, UiaAuthDto, done, reply,
+    restore::{auth_session, session_meta},
+};
 use crate::{
     accounts::{AccountRuntime, Engine, SessionState},
     barrier::{Barrier, DELIVERY_LIMIT, Subscribers, Tracked},
@@ -39,6 +43,7 @@ use crate::{
     failure::{
         EngineResult, account_not_live, http_error_from_response, refresh_logs_out, request_failure,
     },
+    wire::{Fault, FaultKind},
 };
 
 type CallbackError = Box<dyn std::error::Error + Send + Sync>;
@@ -428,6 +433,41 @@ impl Engine {
         state.rotations.get(account_id).cloned().unwrap_or_default()
     }
 
+    /// Logs the account out at its homeserver, its sync stopped first, so its own logout is no
+    /// token death. A failed logout meets the rule: a dead token still logs the account out.
+    pub(crate) async fn sign_out(self: &Arc<Self>, rt: &Arc<AccountRuntime>) -> Result<(), Error> {
+        rt.signed_out.store(true, Ordering::Relaxed);
+        rt.sync_service.stop().await;
+        let Err(err) = self.logout_request(rt).await else {
+            return Ok(());
+        };
+        rt.signed_out.store(false, Ordering::Relaxed);
+        self.after_request_error(rt, &err).await;
+        Err(err)
+    }
+
+    /// The account's logout, sent once (S17). The SDK fetches an OAuth server's metadata with the
+    /// client's own retrying config, so a client that never retries revokes an OAuth token.
+    async fn logout_request(&self, rt: &AccountRuntime) -> Result<(), Error> {
+        let Some(oauth) = rt.client.oauth().full_session() else {
+            let request = rt.client.send(logout::v3::Request::new());
+            request.with_request_config(sent_once()).await?;
+            return Ok(());
+        };
+        let client = (self.logout_client(&rt.base_url).await)
+            .map_err(|err| Error::UnknownError(err.into()))?;
+        client.restore_session(oauth).await?;
+        client.logout().await
+    }
+
+    /// A client for one logout: it keeps no store, never refreshes and never retries.
+    async fn logout_client(&self, base_url: &str) -> Result<Client, ClientBuildError> {
+        (self.client_builder().homeserver_url(base_url))
+            .request_config(sent_once())
+            .build()
+            .await
+    }
+
     fn tear_down_retired(&self, account_id: &str, retired: Retired) {
         if let Some((runtime, delete_stores)) = retired {
             drop(self.tear_down(account_id, Some(runtime), delete_stores));
@@ -576,9 +616,7 @@ pub fn deactivate_account(
 ) -> Stream {
     reply(async move {
         let Some(rt) = engine.account(&account_id) else {
-            // The sync may have met a dead token first: its logout reaches the caller first.
-            engine.deaths_of(&account_id).delivered().await;
-            return EngineResult::Err(account_not_live());
+            return not_live(&engine, &account_id).await;
         };
         let mut request = deactivate::v3::Request::new();
         (request.auth, request.erase) = (auth.map(uia_auth_data), erase);
@@ -588,6 +626,59 @@ pub fn deactivate_account(
             Err(err) => EngineResult::Err(request_failure(&err)),
         }
     })
+}
+
+/// Logs a live account out at its homeserver; it stays live with its sync stopped.
+pub fn logout_remote(engine: Arc<Engine>, account_id: String) -> Stream {
+    reply(async move {
+        let Some(rt) = engine.account(&account_id) else {
+            return not_live(&engine, &account_id).await;
+        };
+        match engine.sign_out(&rt).await {
+            Ok(()) => EngineResult::Ok(()),
+            Err(err) => EngineResult::Err(request_failure(&err)),
+        }
+    })
+}
+
+/// Logs every live account out at its homeserver, ignoring failures.
+pub fn sign_out_all(engine: Arc<Engine>) -> Stream {
+    done(async move {
+        let engine = &engine;
+        // Each runtime moves into its own sign-out, so it is let go of as that one ends.
+        let sign_outs = (engine.live_runtimes().into_iter())
+            .map(|rt| async move { drop(engine.sign_out(&rt).await) });
+        join_all(sign_outs).await;
+    })
+}
+
+/// Logs out a session that is not live, through a client that keeps no store and never
+/// refreshes, so no live account and no stored token changes.
+pub fn logout_session(engine: Arc<Engine>, session: MatrixSessionDto) -> Stream {
+    stream(stream::once(async move {
+        let meta = session_meta("session.logoutSession", &session)?;
+        let built = engine.logout_client(&session.base_url).await;
+        let client = built.map_err(|_| Fault {
+            kind: FaultKind::Internal,
+            code: "client-build-failed".into(),
+            diagnostic: "the logout client did not build".into(),
+        })?;
+        let logged_out = async {
+            client.restore_session(auth_session(&session, meta)).await?;
+            client.logout().await
+        };
+        Ok(json!(match logged_out.await {
+            Ok(()) => EngineResult::Ok(()),
+            Err(err) => EngineResult::Err(request_failure(&err)),
+        }))
+    }))
+}
+
+/// `account-not-live`. The sync may have met a dead token first: its logout reaches the caller
+/// first.
+async fn not_live(engine: &Engine, account_id: &str) -> EngineResult<()> {
+    engine.deaths_of(account_id).delivered().await;
+    EngineResult::Err(account_not_live())
 }
 
 /// The storage writes the caller owes the engine, from subscribe on, with no replay.
@@ -801,8 +892,8 @@ mod tests {
     const WHOAMI: &str = "GET /_matrix/client/v3/account/whoami";
 
     /// A homeserver on loopback that answers the scripted requests in order, and records each
-    /// one's method and path and its `Authorization`. Any other request, such as the client's
-    /// own background ones, gets a 404.
+    /// one's method and path and its `Authorization`. It names its versions for a client that
+    /// asks, and any other request, such as the client's own background ones, gets a 404.
     fn scripted(answers: Vec<(&'static str, u16, Value)>) -> (String, Seen) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -835,6 +926,8 @@ mod tests {
                     log.lock().unwrap().push((target, authorization));
                     let (_, status, body) = answers.next().unwrap();
                     (status, body)
+                } else if target == "GET /_matrix/client/versions" {
+                    (200, json!({"versions": ["v1.15"]}))
                 } else {
                     (404, json!({"errcode": "M_NOT_FOUND", "error": "x"}))
                 };
@@ -1099,6 +1192,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn logout_session_fails_network_for_an_unreachable_homeserver() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let mut password = session("@a:b", "http://127.0.0.1:1");
+        (password.oidc, password.refresh_token) = (None, None);
+        let mut reply = logout_session(Arc::clone(&engine), password);
+        let reply = reply.next().await.unwrap().unwrap();
+        assert_eq!(reply["ok"], json!(false));
+        assert_eq!(reply["failure"]["kind"], json!("network"));
+        assert!(engine.state.lock().snapshot.accounts.is_empty());
+        assert!(!root.path().join("data").exists(), "no store");
+    }
+
+    #[tokio::test]
+    async fn its_own_logout_keeps_the_account_but_a_dead_token_logs_it_out() {
+        const LOGOUT: &str = "POST /_matrix/client/v3/logout";
+        let (base, _) = scripted(vec![(LOGOUT, 200, json!({})), (LOGOUT, 401, unknown(None))]);
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let effects = record(&engine);
+        let mut password = session("@a:b", &base);
+        (password.oidc, password.refresh_token) = (None, None);
+        let rt = live(&engine, &password, builder_on(&base).build().await.unwrap()).await;
+        let logout = || logout_remote(Arc::clone(&engine), "@a:b".into());
+
+        let first = logout().next().await.unwrap().unwrap();
+        assert_eq!(first, json!({"ok": true, "value": null}));
+        assert!(engine.account("@a:b").is_some() && rt.signed_out.load(Ordering::Relaxed));
+        drop(rt);
+        assert!(effects.lock().unwrap().is_empty());
+
+        let second = logout().next().await.unwrap().unwrap();
+        assert_eq!(second["failure"]["code"], json!("request-failed"));
+        assert_eq!(
+            *effects.lock().unwrap(),
+            [json!({"kind": "hard-logout", "accountId": "@a:b", "activeAccountId": null})]
+        );
+        assert!(engine.account("@a:b").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_malformed_session_to_log_out_is_a_fault_that_quotes_no_value() {
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        let mut s = session("not-a-user-id", "http://127.0.0.1:1");
+        s.access_token = "secret-token".into();
+        let fault = logout_session(engine, s).next().await.unwrap().unwrap_err();
+        assert_eq!(fault.code, "bad-args");
+        assert!(!fault.diagnostic.contains("secret-token") && !fault.diagnostic.contains("not-a"));
+    }
+
+    #[tokio::test]
     async fn the_save_callback_emits_tokens_rotated_with_the_lineage() {
         let engine = Engine::new(EngineConfig::default()).unwrap();
         let mut effects = storage_effects(Arc::clone(&engine));
@@ -1154,41 +1298,88 @@ mod tests {
         assert_eq!(reply.await.unwrap().unwrap(), json!("active"));
     }
 
+    fn password(base_url: &str) -> MatrixSessionDto {
+        let mut password = session("@a:b", base_url);
+        (password.oidc, password.refresh_token) = (None, None);
+        password
+    }
+
     /// As in js, one 5xx fails an account command: the SDK's default would send it again, and a
-    /// deactivation the server completed would then meet the dead token.
+    /// deactivation the server completed would then meet the dead token. An OAuth logout fetches
+    /// the server's metadata first.
     #[tokio::test]
     async fn an_account_command_fails_on_a_5xx_without_a_retry() {
         const DEACTIVATE: &str = "POST /_matrix/client/v3/account/deactivate";
-        type Command = fn(Arc<Engine>) -> Stream;
-        let commands: [(_, _, Command, _); 2] = [
+        const LOGOUT: &str = "POST /_matrix/client/v3/logout";
+        const METADATA: &str = "GET /_matrix/client/v1/auth_metadata";
+        type Account = fn(&str) -> MatrixSessionDto;
+        type Command = fn(Arc<Engine>, &str) -> Stream;
+        let oauth: Account = |base| session("@a:b", base);
+        let commands: [(_, _, Account, Command, _); 6] = [
             (
                 WHOAMI,
                 json!({"user_id": "@a:b"}),
-                |engine| account_status(engine, "@a:b".into()),
+                password,
+                |engine, _| account_status(engine, "@a:b".into()),
                 "unreachable",
             ),
             (
                 DEACTIVATE,
                 json!({"id_server_unbind_result": "success"}),
-                |engine| deactivate_account(engine, "@a:b".into(), false, None),
+                password,
+                |engine, _| deactivate_account(engine, "@a:b".into(), false, None),
+                "server",
+            ),
+            (
+                LOGOUT,
+                json!({}),
+                password,
+                |engine, _| logout_remote(engine, "@a:b".into()),
+                "server",
+            ),
+            (
+                METADATA,
+                json!({}),
+                oauth,
+                |engine, _| logout_remote(engine, "@a:b".into()),
+                "server",
+            ),
+            (
+                LOGOUT,
+                json!({}),
+                password,
+                |engine, base| logout_session(engine, password(base)),
+                "server",
+            ),
+            (
+                METADATA,
+                json!({}),
+                password,
+                |engine, base| logout_session(engine, session("@a:b", base)),
                 "server",
             ),
         ];
-        for (request, ok, command, failure) in commands {
+        for (request, ok, account, command, failure) in commands {
             let unavailable = json!({"errcode": "M_UNKNOWN", "error": "x"});
             let (base, seen) = scripted(vec![(request, 502, unavailable), (request, 200, ok)]);
             let root = TempDir::new().unwrap();
             let engine = engine_in(&root);
-            let mut password = session("@a:b", &base);
-            (password.oidc, password.refresh_token) = (None, None);
             // The SDK's default request config, as an account's client has.
             let client = (engine.client_builder().homeserver_url(&base))
                 .server_versions([MatrixVersion::V1_13])
                 .build()
                 .await
                 .unwrap();
-            drop(live(&engine, &password, client).await);
-            let reply = command(Arc::clone(&engine)).next().await.unwrap().unwrap();
+            // An OAuth account's client is an OAuth one, as a start restores it.
+            let account = account(&base);
+            let meta = session_meta("test", &account).unwrap();
+            client
+                .restore_session(auth_session(&account, meta))
+                .await
+                .unwrap();
+            drop(live(&engine, &account, client).await);
+            let reply = command(Arc::clone(&engine), &base).next().await;
+            let reply = reply.unwrap().unwrap();
             let kind = reply.pointer("/failure/kind").unwrap_or(&reply);
             assert_eq!(
                 (requests(&seen).len(), kind),
@@ -1196,5 +1387,26 @@ mod tests {
                 "{request}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_dead_token_after_its_own_logout_is_ignored() {
+        const LOGOUT: &str = "POST /_matrix/client/v3/logout";
+        let (base, _) = scripted(vec![(LOGOUT, 200, json!({})), (WHOAMI, 401, unknown(None))]);
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let effects = record(&engine);
+        let client = builder_on(&base).build().await.unwrap();
+        drop(live(&engine, &password(&base), client).await);
+        let logout = logout_remote(Arc::clone(&engine), "@a:b".into())
+            .next()
+            .await;
+        assert_eq!(logout.unwrap().unwrap(), json!({"ok": true, "value": null}));
+        let status = account_status(Arc::clone(&engine), "@a:b".into())
+            .next()
+            .await;
+        assert_eq!(status.unwrap().unwrap(), json!("gone"));
+        assert!(engine.account("@a:b").is_some());
+        assert!(effects.lock().unwrap().is_empty());
     }
 }

@@ -35,7 +35,7 @@ pub struct AccountRuntime {
     /// The session's `baseUrl` as given: `Client::homeserver()` adds a trailing slash.
     pub(crate) base_url: String,
     pub(crate) refreshable: bool,
-    /// Set while the engine signs the session out itself (T6), so its own logout is no death.
+    /// Set once the engine signs the session out itself, so its own logout is no death.
     pub(crate) signed_out: AtomicBool,
     /// The restored token with its expiry, which a token the SDK refreshed does not have (H8).
     pub(crate) expiry: Option<(String, f64)>,
@@ -148,10 +148,10 @@ async fn restart_on_error(
             continue;
         }
         service.start().await;
-        // Retired meanwhile, so its teardown may have stopped the service before this start.
+        // Retired or signed out meanwhile, so a stop may have come before this start.
         if !engine
             .upgrade()
-            .is_some_and(|e| e.is_current(&account_id, generation))
+            .is_some_and(|e| e.may_sync(&account_id, generation))
         {
             service.stop().await;
         }

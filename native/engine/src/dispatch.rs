@@ -114,6 +114,11 @@ methods! {
         auth: Option<session::UiaAuthDto>,
     ),
     "session.storageEffects" => session::logout::storage_effects(),
+    "session.logoutRemote" => session::logout::logout_remote(account_id: String),
+    "session.signOutAll" => session::logout::sign_out_all(),
+    "session.logoutSession" => session::logout::logout_session(
+        session: session::MatrixSessionDto,
+    ),
 }
 
 /// Decodes positional args in order. Its `bad-args` faults name the position and the type

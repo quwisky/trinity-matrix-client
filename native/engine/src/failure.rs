@@ -5,7 +5,10 @@ use matrix_sdk::{
     Error, HttpError, RefreshTokenError, RumaApiError,
     authentication::oauth::{
         OAuthError,
-        error::{BasicErrorResponseType, RequestTokenError},
+        error::{
+            BasicErrorResponseType, OAuthDiscoveryError, OAuthTokenRevocationError,
+            RequestTokenError,
+        },
     },
     ruma::{
         api::{
@@ -377,6 +380,13 @@ pub fn request_failed(err: &Error) -> EngineFailure {
 pub fn classify(err: &Error) -> (FailureKind, Diagnostic) {
     match err {
         Error::Http(http) => classify_http(http),
+        Error::OAuth(oauth) => match oauth.as_ref() {
+            OAuthError::Discovery(OAuthDiscoveryError::Http(http)) => classify_http(http),
+            OAuthError::Logout(OAuthTokenRevocationError::Revoke(RequestTokenError::Request(
+                _,
+            ))) => bare(FailureKind::Network),
+            _ => bare(FailureKind::Unexpected),
+        },
         _ => bare(FailureKind::Unexpected),
     }
 }
@@ -532,7 +542,10 @@ mod tests {
         Client, Error, HttpError, RefreshTokenError, RumaApiError,
         authentication::oauth::{
             OAuthError,
-            error::{BasicErrorResponseType, RequestTokenError, StandardErrorResponse},
+            error::{
+                BasicErrorResponseType, HttpClientError, OAuthDiscoveryError,
+                OAuthTokenRevocationError, RequestTokenError, StandardErrorResponse,
+            },
         },
         config::RequestConfig,
         ruma::{
@@ -840,6 +853,35 @@ mod tests {
         let url = format!("http://{}", silent.local_addr().unwrap());
         let error = request_error(&url, Duration::from_millis(200)).await;
         assert_eq!(classify_http(&error), bare(FailureKind::Timeout));
+    }
+
+    #[tokio::test]
+    async fn an_oauth_metadata_or_revocation_failure_is_classified_by_its_request() {
+        let oauth = |error| Error::OAuth(Box::new(error));
+        let unavailable = || matrix_error(502, "M_UNKNOWN");
+        let metadata = oauth(OAuthError::Discovery(OAuthDiscoveryError::Http(
+            unavailable(),
+        )));
+        assert_eq!(classify(&metadata), classify_http(&unavailable()));
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let url = format!("http://127.0.0.1:{port}");
+        let HttpError::Reqwest(refused) = request_error(&url, Duration::from_secs(5)).await else {
+            panic!("not a reqwest error");
+        };
+        let refused = HttpClientError::Reqwest(Box::new(refused));
+        let revoke = OAuthTokenRevocationError::Revoke(RequestTokenError::Request(refused));
+        assert_eq!(
+            classify(&oauth(OAuthError::Logout(revoke))),
+            bare(FailureKind::Network)
+        );
+        assert_eq!(
+            classify(&oauth(OAuthError::NotAuthenticated)),
+            bare(FailureKind::Unexpected)
+        );
     }
 
     #[test]
