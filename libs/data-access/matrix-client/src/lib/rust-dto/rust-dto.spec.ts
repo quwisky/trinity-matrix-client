@@ -5,8 +5,8 @@ import type {
   OidcSessionBinding,
   UiaAuth,
 } from '@trinity/util/matrix';
-import type { AccountNameGroup } from '../known-names';
 import type {
+  AccountNameGroup,
   AccountServerStatus,
   PendingTextMessage,
   PersistedAccountActivation,

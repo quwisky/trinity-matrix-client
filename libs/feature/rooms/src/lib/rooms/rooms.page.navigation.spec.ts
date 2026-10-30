@@ -777,8 +777,6 @@ describe('RoomsPage account switcher summary', () => {
         MockProvider(TimelineActionsService),
         sessionStateProvider({ accountIds: ['@me:hs', '@alt:hs'] }),
         MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
           activeUserId: signal<string | null>('@me:hs').asReadonly(),
           accountIds: signal<readonly string[]>([
             '@me:hs',

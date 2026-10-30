@@ -1,10 +1,11 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, defer, from, map } from 'rxjs';
+import { Injectable, computed, inject, signal, untracked } from '@angular/core';
+import { Observable, defer, map } from 'rxjs';
 import {
-  IDENTITY_MATRIX_EVENTS,
-  IdentityMatrixPort,
-  type IdentityMatrixClient,
+  projectActiveAccount,
+  SessionStateService,
 } from '@trinity/data-access/matrix-client';
+import { unwrapEngineResult } from '@trinity/util/matrix';
+import { IDENTITY_ENGINE } from './identity-engine.token';
 import {
   identityNotReady,
   recoverIdentityOperation,
@@ -27,8 +28,8 @@ const NONE: readonly IgnoredUser[] = [];
  */
 @Injectable({ providedIn: 'root' })
 export class IgnoredUsersService {
-  private readonly matrix = inject(IdentityMatrixPort);
-  private writes: Promise<void> = Promise.resolve();
+  private readonly engine = inject(IDENTITY_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly _ignoredUsers = signal<readonly IgnoredUser[]>(NONE, {
     equal: sameUsers,
   });
@@ -42,14 +43,10 @@ export class IgnoredUsersService {
     },
   );
 
-  private readonly projection = this.matrix.project({
+  private readonly projection = projectActiveAccount<readonly IgnoredUser[]>({
     id: 'identity.ignored-users',
-    events: [
-      IDENTITY_MATRIX_EVENTS.accountData,
-      IDENTITY_MATRIX_EVENTS.displayName,
-      IDENTITY_MATRIX_EVENTS.avatarUrl,
-    ],
-    rebuild: (client) => this._ignoredUsers.set(readIgnored(client)),
+    subscribe: (accountId) => this.engine.ignoredUsers(accountId),
+    rebuild: (users) => this._ignoredUsers.set(users),
     reset: () => this._ignoredUsers.set(NONE),
   });
 
@@ -81,37 +78,17 @@ export class IgnoredUsersService {
       ? 'ignore-user'
       : 'unignore-user';
     return defer(() => {
-      if (!this.matrix.isAvailable()) {
+      const accountId = untracked(this.session.activeAccountId);
+      if (!accountId) {
         throw identityNotReady(operation);
       }
-      const client = this.matrix.active().client;
-      // The list is read-modify-write and setIgnoredUsers resolves only after the server
-      // echoes it, so each write waits for the previous one or two quick changes undo each other.
-      const run = this.writes.then(() => {
-        const current = client.getIgnoredUsers();
-        const next = ignored
-          ? [...new Set([...current, userId])]
-          : current.filter((id) => id !== userId);
-        return client.setIgnoredUsers(next);
-      });
-      this.writes = run.then(
-        () => undefined,
-        () => undefined,
-      );
-      return from(run).pipe(map(() => void 0));
-    }).pipe(recoverIdentityOperation(operation));
+      return this.engine.setIgnored(accountId, userId, ignored);
+    }).pipe(
+      unwrapEngineResult(),
+      map(() => void 0),
+      recoverIdentityOperation(operation),
+    );
   }
-}
-
-function readIgnored(client: IdentityMatrixClient): readonly IgnoredUser[] {
-  return client.getIgnoredUsers().map((userId) => {
-    const known = client.getUser(userId);
-    return {
-      userId,
-      displayName: known?.displayName || null,
-      avatarMxc: known?.avatarUrl || null,
-    };
-  });
 }
 
 function sameUsers(

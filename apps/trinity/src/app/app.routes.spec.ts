@@ -92,7 +92,7 @@ describe('app routes', () => {
 /**
  * The route table is the app's only authentication boundary — `authGuard` is what
  * restores a persisted session or sends a signed-out visitor to /login. A route added
- * without it renders a page that reads `matrix.instance` with no client behind it, and
+ * without it renders a page that expects a live account with no client behind it, and
  * nothing else in the workspace would notice: the page's own spec provides a mocked
  * client, and the E2E suite always logs in first.
  */

@@ -44,11 +44,14 @@ import { HostFileExportService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
 import {
   MATRIX_SDK_LOG_SINK,
+  SESSION_ENGINE,
+  type SessionEngine,
+  type SessionStorageEffect,
   configureMatrixSdkLogging,
   matrixSdkLogLevel,
 } from '@trinity/data-access/matrix-client';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
-import { NEVER, firstValueFrom, of } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
 import {
@@ -197,6 +200,55 @@ describe('Trinity application provider composition', () => {
     }
   });
 
+  it("saves the session engine's storage effects from startup", () => {
+    const effects = new Subject<SessionStorageEffect>();
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl: null,
+          buildInfo: {} as BuildInfo,
+          releaseNotes: [],
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => NEVER,
+            whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
+          },
+        }),
+        {
+          provide: SESSION_ENGINE,
+          useValue: { storageEffects: () => effects } satisfies Pick<
+            SessionEngine,
+            'storageEffects'
+          >,
+        },
+        MockProvider(SessionStorageService, {
+          remove: vi.fn(() => of(undefined)),
+        }),
+      ],
+    });
+
+    try {
+      TestBed.inject(EnvironmentInjector);
+      effects.next({
+        kind: 'hard-logout',
+        accountId: '@me:hs',
+        activeAccountId: null,
+      });
+
+      expect(TestBed.inject(SessionStorageService).remove).toHaveBeenCalledWith(
+        '@me:hs',
+      );
+    } finally {
+      configureMatrixSdkLogging('debug');
+    }
+  });
+
   it('starts the diagnostic log at startup and wires the SDK sink into it', async () => {
     TestBed.configureTestingModule({
       providers: [
@@ -225,7 +277,7 @@ describe('Trinity application provider composition', () => {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
           useValue: {
             accounts: () => of([]),
-            knownNames: () => [],
+            knownNames: () => of([]),
           },
         },
         {

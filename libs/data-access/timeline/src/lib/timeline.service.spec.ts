@@ -273,7 +273,9 @@ describe('TimelineService', () => {
     expect(svc.canSendMessages()).toBe(true);
 
     power.send = 50;
-    const room = TestBed.inject(MatrixClientService).instance as unknown as {
+    const room = TestBed.inject(MatrixClientService).clientFor(
+      ROOM_KEY.accountId,
+    ) as unknown as {
       getRoom: () => { handlers: Map<string, (event: unknown) => void> };
     };
     room.getRoom().handlers.get(RoomStateEvent.Events)?.({
@@ -289,7 +291,9 @@ describe('TimelineService', () => {
     const svc = setup([], [], {}, false, power);
     expect(svc.canSendMessages()).toBe(false);
 
-    const room = TestBed.inject(MatrixClientService).instance as unknown as {
+    const room = TestBed.inject(MatrixClientService).clientFor(
+      ROOM_KEY.accountId,
+    ) as unknown as {
       getRoom: () => { handlers: Map<string, (event: unknown) => void> };
     };
     // matrix-js-sdk emits RoomState.events before it updates member.powerLevel.
@@ -1074,7 +1078,6 @@ describe('TimelineService', () => {
       providers: [
         TimelineService,
         MockProvider(MatrixClientService, {
-          instance: activeClient as never,
           clientFor: ((accountId: string) =>
             accountId === '@me:hs' ? keyedClient : activeClient) as never,
         }),

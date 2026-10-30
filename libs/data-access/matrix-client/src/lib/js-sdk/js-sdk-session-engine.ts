@@ -27,6 +27,7 @@ import {
 } from '@trinity/util/matrix';
 import { MatrixClientStartupError } from '../account-start-failure';
 import type {
+  AccountNameGroup,
   AccountServerStatus,
   PendingTextMessage,
   PersistedAccountActivation,
@@ -36,9 +37,11 @@ import type {
   SessionCredentials,
   SessionEngine,
   SessionSnapshot,
+  SessionStorageEffect,
   SessionSyncState,
 } from '../session-engine';
 import type { ServerLogoutHold } from '../server-logout-hold';
+import { accountKnownNames } from './known-names';
 import { MatrixClientService } from './matrix-client.service';
 import { uiaChallengeOf } from './uia';
 
@@ -64,7 +67,8 @@ const ACCOUNT_NOT_LIVE: EngineFailure = {
 /**
  * A failed request as a result: a UIA challenge, a missing endpoint (`M_UNRECOGNIZED`, or a
  * Matrix 404/405 that is not `M_NOT_FOUND`), a policy refusal (`M_FORBIDDEN`), or else
- * `request-failed`. Only the allowlisted diagnostic crosses.
+ * `request-failed`, marked `session-refresh` when a token refresh failed first. Only the
+ * allowlisted diagnostic crosses.
  */
 function requestFailure(error: unknown): EngineResult<never> {
   const { kind, diagnostic } = describeMatrixRequestFailure(error);
@@ -78,7 +82,14 @@ function requestFailure(error: unknown): EngineResult<never> {
     });
   }
   if (!(error instanceof MatrixError)) {
-    return engineFail({ kind, diagnostic, code: 'request-failed' });
+    return engineFail({
+      kind,
+      diagnostic,
+      code: 'request-failed',
+      ...(diagnostic.errorName === 'TokenRefreshError'
+        ? { params: { cause: 'session-refresh' as const } }
+        : {}),
+    });
   }
   const missing =
     error.errcode === 'M_UNRECOGNIZED' ||
@@ -118,8 +129,8 @@ export class JsSdkSessionEngine implements SessionEngine {
 
   private readonly accounts = computed(
     (): readonly SessionAccountStatus[] => {
+      // A new array on every registration, so a same-id re-add is seen too.
       const ids = this.svc.accountIds();
-      const generations = this.svc.sessionGenerations();
       const clients = new Map(this.svc.all().map((a) => [a.userId, a]));
       return ids.flatMap((accountId) => {
         const account = clients.get(accountId);
@@ -128,7 +139,7 @@ export class JsSdkSessionEngine implements SessionEngine {
               {
                 accountId,
                 deviceId: account.client.getDeviceId(),
-                generation: generations.get(accountId) ?? 0,
+                generation: account.generation,
                 syncState: toSessionSyncState(account.syncState()),
                 serverSynced: account.serverSynced(),
                 roomsPrepared: account.roomsPrepared(),
@@ -166,6 +177,10 @@ export class JsSdkSessionEngine implements SessionEngine {
         this.snapshots$.pipe(map(() => this.snapshot())),
       ),
     ).pipe(distinctUntilChanged<SessionSnapshot>(plainEqual));
+  }
+
+  storageEffects(): Observable<SessionStorageEffect> {
+    return this.svc.storageEffects;
   }
 
   accessToken(accountId: string): Observable<SessionAccessToken | null> {
@@ -325,13 +340,14 @@ export class JsSdkSessionEngine implements SessionEngine {
 
   logoutSession(session: MatrixSession): Observable<EngineResult<null>> {
     // A refresh on a device being signed out must never overwrite the stored tokens.
-    return defer(() =>
-      settle(() =>
+    return defer(() => {
+      this.svc.dropLinkedSecrets(session.userId, session.deviceId);
+      return settle(() =>
         this.svc
           .detachedClient(session, { persistRefreshedTokens: false })
           .logout(true),
-      ),
-    );
+      );
+    });
   }
 
   liveCredentials(accountId: string): Observable<SessionCredentials | null> {
@@ -345,6 +361,19 @@ export class JsSdkSessionEngine implements SessionEngine {
               refreshToken: client.getRefreshToken(),
             }
           : null,
+      );
+    });
+  }
+
+  knownNames(
+    accountId: string,
+  ): Observable<EngineResult<readonly AccountNameGroup[]>> {
+    return defer(() => {
+      const client = this.svc.clientFor(accountId);
+      return of(
+        client
+          ? engineOk(accountKnownNames(client))
+          : engineFail(ACCOUNT_NOT_LIVE),
       );
     });
   }

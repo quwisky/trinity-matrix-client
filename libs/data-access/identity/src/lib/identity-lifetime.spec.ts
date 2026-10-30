@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { IdentityMatrixPort } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type CapabilityHealthFact,
@@ -44,7 +44,7 @@ describe('IdentityLifetime', () => {
     events = [];
     TestBed.configureTestingModule({
       providers: [
-        MockProvider(IdentityMatrixPort, { activeAccountId }),
+        MockProvider(SessionStateService, { activeAccountId }),
         MockProvider(IdentityPresenceService, {
           runProjection: () =>
             new Observable<void>((subscriber) => {

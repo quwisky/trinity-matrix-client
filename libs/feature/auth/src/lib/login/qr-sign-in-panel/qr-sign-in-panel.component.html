@@ -37,7 +37,7 @@
       Couldn't sign in
     </h2>
     <p class="qr-sign-in__error text-danger" role="alert">
-      {{ failureMessages[current.reason] }}
+      {{ failureMessage() }}
     </p>
     @if (!finalFailures.has(current.reason)) {
       <button
@@ -61,33 +61,65 @@
       <p class="text-muted-foreground">Creating a code…</p>
     </div>
   }
-  @default {
-    <!-- The check code and the wait for approval: one step, so focus stays put. -->
+  @case ('enter-check-code') {
     <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">
-      Check the code on your other device
+      Enter the code from your other device
     </h2>
-    <div>
-      <p class="qr-sign-in__hint text-muted-foreground">
-        Make sure your other device shows the same number:
-      </p>
-      <!-- Read digit by digit: "4 2", not "forty-two". -->
-      <p class="qr-sign-in__check-code">
-        <span aria-hidden="true" data-testid="qr-sign-in-check-code">{{
-          checkCode()
-        }}</span>
-        <span class="sr-only">{{ spokenCheckCode() }}</span>
-      </p>
-      @if (current.kind === 'waiting-for-approval') {
-        <p
-          class="qr-sign-in__hint text-muted-foreground"
-          data-testid="qr-sign-in-user-code"
-        >
-          Then approve the sign-in there. If it asks for a code, enter
-          <strong class="qr-sign-in__user-code">{{ current.userCode }}</strong
-          >.
-        </p>
-      }
-    </div>
+    <!-- `[formRoot]` sets novalidate and prevents the native submit. -->
+    <form [formRoot]="codeForm" (submit)="enterCode()">
+      @let codeError = shownError(codeForm.code);
+      <trn-field [invalid]="!!codeError">
+        <trn-field-label controlId="qr-check-code" [invalid]="!!codeError">
+          Code
+        </trn-field-label>
+        <input
+          #codeInput
+          trnInput
+          id="qr-check-code"
+          inputmode="numeric"
+          autocomplete="off"
+          [formField]="codeForm.code"
+          [aria-describedby]="
+            codeError ? 'qr-check-code-error' : 'qr-check-code-hint'
+          "
+          data-testid="qr-check-code-input"
+        />
+        @if (codeError) {
+          <p id="qr-check-code-error" class="qr-sign-in__error text-danger">
+            {{ codeError.message }}
+          </p>
+        } @else {
+          <p
+            id="qr-check-code-hint"
+            class="qr-sign-in__hint text-muted-foreground"
+          >
+            Your other device shows a two-digit number.
+          </p>
+        }
+      </trn-field>
+      <button
+        trnBtn
+        size="lg"
+        class="qr-sign-in__action w-full"
+        type="submit"
+        data-testid="qr-check-code-continue"
+      >
+        Continue
+      </button>
+    </form>
+  }
+  @case ('waiting-for-approval') {
+    <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">
+      Waiting for approval
+    </h2>
+    <p
+      class="qr-sign-in__hint text-muted-foreground"
+      data-testid="qr-sign-in-user-code"
+    >
+      {{ approveHint }} If it asks for a code, enter
+      <strong class="qr-sign-in__user-code">{{ current.userCode }}</strong
+      >.
+    </p>
   }
 }
 

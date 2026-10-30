@@ -13,12 +13,9 @@ import { JsSdkSessionEngine } from './js-sdk-session-engine';
 import { MatrixClientService } from './matrix-client.service';
 
 // jsdom serves no crypto .wasm and has no IndexedDB (the sync store falls back to memory).
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
+vi.mock('./crypto-wasm-loader', async () => {
   const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
+  return { preloadCryptoWasm: () => rxOf(undefined) };
 });
 
 // Runs the session engine contract against a live Synapse; skipped unless TRINITY_ENGINE_CONTRACT_HS is set.
@@ -87,6 +84,7 @@ describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
         revokeToken: synapse.revokeToken,
         passwordFor: synapse.passwordFor,
         signInAgain: synapse.signInAgain,
+        createNamedRoom: synapse.createNamedRoom,
         dispose: async () => {
           TestBed.resetTestingModule();
         },

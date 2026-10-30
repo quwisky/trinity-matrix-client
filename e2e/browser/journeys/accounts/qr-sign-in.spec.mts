@@ -60,6 +60,15 @@ if (session.kind === 'tuwunel-oauth' && session.hs) {
   });
 }
 
+// What the new device says when the typed code is wrong (the panel's own override).
+const WRONG_CODE_MESSAGE =
+  "That isn't the code your other device shows, so nothing was shared. Show a new code and try again.";
+
+/** Two digits that differ from `code`. */
+function otherCode(code: string): string {
+  return String((Number(code) + 1) % 100).padStart(2, '0');
+}
+
 /** Open the login page's QR panel for `hs` and return the code it shows. */
 async function showCode(page: Page, hs: string): Promise<Locator> {
   await webNavigate(page, '/login');
@@ -106,8 +115,9 @@ async function approve(
 }
 
 /**
- * Sign `page` in by showing a code to the Node device, which scans it, matches the check code,
- * approves in `provider` and shares its secrets. Returns the new device's ID.
+ * Sign `page` in by showing a code to the Node device, which scans it. The person types the
+ * Node device's check code into `page`, approves in `provider`, and the Node device shares its
+ * secrets. Returns the new device's ID.
  */
 async function linkFromNode(
   page: Page,
@@ -123,11 +133,8 @@ async function linkFromNode(
   const flow = await device.scan(
     await readQrBytes(await showCode(page, account.hs)),
   );
-  // The person compares the two check codes before anything is shared.
-  await expect(page.getByTestId('qr-sign-in-check-code')).toHaveText(
-    flow.checkCode!,
-    { timeout: 30_000 },
-  );
+  // The new device asks for no grant until the person types the code the other device shows.
+  await enterCheckCode(page, flow.checkCode!);
   const { verificationUri } = await flow.deviceAuthorizationGrant();
   const userCode = await userCodeOn(page);
   const shared = flow.shareSecrets();
@@ -151,20 +158,21 @@ async function openLinkDevice(page: Page): Promise<void> {
   await page.getByTestId('link-device').click({ timeout: 30_000 });
 }
 
-/** Scan the new device's code with the existing one; both then show the same check code. */
-async function scanToCheckCode(
-  existing: Page,
-  code: Locator,
-  newDevice: Page,
-): Promise<void> {
+/** Scan the new device's code with the existing one, which then shows the check code to type. */
+async function scanToCheckCode(existing: Page, code: Locator): Promise<string> {
   await showOnCamera(existing, (await code.getAttribute('src'))!);
   await openLinkDevice(existing);
   const shown = existing.getByTestId('link-device-check-code');
   await expect(shown).toHaveText(/^\d{2}$/, { timeout: 60_000 });
-  await expect(newDevice.getByTestId('qr-sign-in-check-code')).toHaveText(
-    (await shown.textContent())!,
-    { timeout: 30_000 },
-  );
+  return (await shown.textContent())!.trim();
+}
+
+/** Type `code` into the new device's code step and continue. */
+async function enterCheckCode(newDevice: Page, code: string): Promise<void> {
+  const field = newDevice.getByTestId('qr-check-code-input');
+  await expect(field).toBeVisible({ timeout: 30_000 });
+  await field.fill(code);
+  await newDevice.getByTestId('qr-check-code-continue').click();
 }
 
 async function evidence(page: Page, name: string): Promise<void> {
@@ -298,15 +306,21 @@ for (const server of servers) {
 
       const newDevice = await secondaryApp.launch();
       const code = await showCode(newDevice, account.hs);
-      await scanToCheckCode(page, code, newDevice);
+      const shown = await scanToCheckCode(page, code);
       await evidence(page, 'existing-device-check-code');
-      await evidence(newDevice, 'new-device-check-code');
-      await page.getByRole('button', { name: 'They match' }).click();
+      await enterCheckCode(newDevice, shown);
+      // The existing device offers Continue once the new device is waiting for approval.
+      const userCode = await userCodeOn(newDevice);
+      await evidence(newDevice, 'new-device-waiting-for-approval');
+      await expect(page.getByTestId('link-device-continue')).toBeVisible({
+        timeout: 30_000,
+      });
+      await evidence(page, 'existing-device-approve-gate');
+      await page.getByTestId('link-device-continue').click();
 
       await expect(page.getByTestId('link-device-approval-link')).not.toBeEmpty(
         { timeout: 30_000 },
       );
-      const userCode = await userCodeOn(newDevice);
       await evidence(page, 'existing-device-approve');
       const [provider] = await Promise.all([
         page.context().waitForEvent('page'),
@@ -342,7 +356,7 @@ for (const server of servers) {
       await evidence(newDevice, 'new-device-reads-history');
     });
 
-    test('stops on both devices when the check codes differ', async ({
+    test('stops when the wrong code is typed', async ({
       page,
       request,
       authPlatform,
@@ -357,31 +371,26 @@ for (const server of servers) {
         'qr-mismatch',
       );
       const newDevice = await secondaryApp.launch();
-      await scanToCheckCode(
+      const shown = await scanToCheckCode(
         page,
         await showCode(newDevice, account.hs),
-        newDevice,
       );
-      await page.getByRole('button', { name: "They don't match" }).click();
+      await enterCheckCode(newDevice, otherCode(shown));
 
-      await expect(page.getByRole('alert')).toHaveText(
-        QR_SIGN_IN_FAILURE_MESSAGES.insecure,
-        { timeout: 30_000 },
-      );
-      await evidence(page, 'existing-device-mismatch');
-      // MSC4108 has no "insecure" message, so the existing device declines and ends the
-      // session. The SDK sends that decline with a stale ETag, which the server refuses, so
-      // the new device usually sees only the session end (accepted in Task 3).
-      const either = [
-        QR_SIGN_IN_FAILURE_MESSAGES.declined,
-        QR_SIGN_IN_FAILURE_MESSAGES.unknown,
-      ].map((message) => message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
       await expect(newDevice.getByRole('alert')).toHaveText(
-        new RegExp(`^\\s*(${either.join('|')})\\s*$`),
+        WRONG_CODE_MESSAGE,
         { timeout: 30_000 },
       );
-      await evidence(newDevice, 'new-device-mismatch');
+      await evidence(newDevice, 'new-device-wrong-code');
       expect(new URL(newDevice.url()).pathname).toBe('/login');
+      // The new device ends the session without asking for a grant. The existing device is
+      // waiting for that request, so it finds the session gone; the SDK words that as
+      // "unknown", but this journey asks only that it stops with an error.
+      await expect(
+        page.getByRole('heading', { name: "Couldn't link the device" }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole('alert')).toBeVisible();
+      await evidence(page, 'existing-device-wrong-code');
     });
 
     test('replaces an expired code with one that works', async ({
@@ -410,7 +419,7 @@ for (const server of servers) {
       await newDevice.getByTestId('qr-sign-in-retry').click();
       await expect(code).toBeVisible({ timeout: 30_000 });
       expect(await code.getAttribute('src')).not.toBe(expired);
-      await scanToCheckCode(page, code, newDevice);
+      await enterCheckCode(newDevice, await scanToCheckCode(page, code));
     });
   });
 }

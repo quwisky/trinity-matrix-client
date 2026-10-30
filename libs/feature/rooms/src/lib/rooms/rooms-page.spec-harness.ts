@@ -527,8 +527,6 @@ export function matrixClientProvider(
   } = {},
 ): Provider {
   return MockProvider(MatrixClientService, {
-    isInitialized: true,
-    instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
     activeUserId:
       options.activeUserId ?? signal<string | null>('@me:hs').asReadonly(),
     accountIds: signal<readonly string[]>(
@@ -558,6 +556,8 @@ export function sessionStateProvider(
     softLoggedOut: signal<readonly string[]>([]).asReadonly(),
     // Read by the room administration store the moderation service injects.
     snapshot: signal(EMPTY_SESSION).asReadonly(),
+    // Read by the identity presence projection; nothing here runs it.
+    active: signal(null).asReadonly(),
   });
 }
 

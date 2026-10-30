@@ -31,7 +31,7 @@ export interface SessionAccountStatus {
   readonly accountId: string;
   /** This device's id; null while the client has none. */
   readonly deviceId: string | null;
-  /** Grows each time a new client is registered for the account. */
+  /** An engine-wide count that grows by one for each client registered, for any account. */
   readonly generation: number;
   readonly syncState: SessionSyncState;
   /** Whether the live client has completed a sync with its homeserver, not only its cache. */
@@ -58,7 +58,10 @@ export const EMPTY_SESSION: SessionSnapshot = {
 };
 
 export interface SessionAccessToken {
-  /** The homeserver the token is for. Rust: `Client::homeserver()`. */
+  /**
+   * The homeserver the token is for: the session's `baseUrl` exactly as given. Rust: not
+   * `Client::homeserver()`, whose URL gains a trailing `/`.
+   */
   readonly homeserverUrl: string;
   readonly accessToken: string;
   /** Epoch ms; null when the server gave no lifetime, and for password and SSO tokens. */
@@ -90,6 +93,39 @@ export type ServerLogoutHoldUpdate =
   /** The account left this device and took its holds with it; the stream completes. */
   | { readonly kind: 'released' };
 
+/**
+ * What the caller saves for the engine, as it happens. Every refresh the engine adopts is reported,
+ * whoever asked for it, and so is every logout the server caused. A command's own intended outcome
+ * (`remove`, a successful `logoutRemote` or `deactivateAccount`, `requireReauthentication`) is the
+ * caller's to save.
+ */
+export type SessionStorageEffect =
+  | {
+      /** The engine adopted refreshed tokens it has not saved itself. */
+      readonly kind: 'tokens-rotated';
+      readonly accountId: string;
+      /** The stored sign-in the client started from: storage writes only while it still holds it. */
+      readonly lineage: string | null;
+      readonly accessToken: string;
+      /** Null when the provider rotated none: storage keeps the one it has. */
+      readonly refreshToken: string | null;
+      readonly expiresAt: number | null;
+    }
+  /** The server ended the session and kept the device: forget the token, keep the record. */
+  | {
+      readonly kind: 'soft-logout';
+      readonly accountId: string;
+      /** The active account after the logout; storage repoints to it. */
+      readonly activeAccountId: string | null;
+    }
+  /** The server deleted the device and the engine wiped the account: delete its record. */
+  | {
+      readonly kind: 'hard-logout';
+      readonly accountId: string;
+      /** The active account after the logout; storage repoints to it. */
+      readonly activeAccountId: string | null;
+    };
+
 /** A text message a live client has not got onto the homeserver. */
 export interface PendingTextMessage {
   readonly accountId: string;
@@ -100,6 +136,13 @@ export interface PendingTextMessage {
   readonly text: string;
   /** Names the echo's waiting-to-send record in the draft store, which this text supersedes. */
   readonly txnId?: string;
+}
+
+/** Names one source knows: the account itself, or one room. */
+export interface AccountNameGroup {
+  readonly roomNames: readonly string[];
+  readonly roomTopics: readonly string[];
+  readonly displayNames: readonly string[];
 }
 
 /** `offline` once sync is erroring or reconnecting, else `online`, so a fresh start never flashes offline. */
@@ -125,6 +168,17 @@ export interface SessionEngine {
   session(): Observable<SessionSnapshot>;
   /** The live client's token on subscribe and after each change, or null when none is live. */
   accessToken(accountId: string): Observable<SessionAccessToken | null>;
+  /**
+   * Storage writes the caller owes the engine (see {@link SessionStorageEffect}), from subscribe on, with
+   * no replay. Each reaches the subscriber before the result of any engine request that met its cause; a
+   * hard logout met while held is reported only when its last hold is released as not deleted;
+   * `remove` and `stop` end holds without reporting a recorded death. The stream never errors.
+   */
+  storageEffects(): Observable<SessionStorageEffect>;
+  /**
+   * Starts a persisted account. It also adopts a pending QR session for the same user and
+   * device, and the secrets that session received.
+   */
   restorePersisted(
     session: MatrixSession,
     activation: PersistedAccountActivation,
@@ -167,11 +221,21 @@ export interface SessionEngine {
   ): Observable<EngineResult<null>>;
   /** Ends the live session at its homeserver, or at its provider for OAuth, and stops it. */
   logoutRemote(accountId: string): Observable<EngineResult<null>>;
-  /** Ends a session that is not live the same way, without starting it or saving a refresh. */
+  /**
+   * Ends a session that is not live the same way, without starting it or saving a refresh. It
+   * also ends and forgets a pending QR session for that user and device.
+   */
   logoutSession(session: MatrixSession): Observable<EngineResult<null>>;
   /**
    * The live client's tokens, or null when none is live. Only for credentials that must outlive
    * the client; never logged or put in a failure.
    */
   liveCredentials(accountId: string): Observable<SessionCredentials | null>;
+  /**
+   * The account's own display name, then each room's name, topic and members' display names
+   * (joined, invited, left and banned), from what the engine already holds; nothing is fetched.
+   */
+  knownNames(
+    accountId: string,
+  ): Observable<EngineResult<readonly AccountNameGroup[]>>;
 }

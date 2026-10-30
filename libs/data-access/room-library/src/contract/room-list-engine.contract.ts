@@ -435,6 +435,63 @@ export function defineRoomListEngineContract(
             engine.inviteBlocking(NOBODY).pipe(timeout(settleTimeoutMs)),
           ),
         ).resolves.toEqual({ supported: false, blocked: false });
+        await expect(
+          firstValueFrom(
+            engine.roomsInCommon(NOBODY, bob).pipe(timeout(settleTimeoutMs)),
+          ),
+        ).resolves.toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'roomsInCommon adds a room once alice joins bob in it',
+      async () => {
+        const roomId = await context.asBob.createRoom(`bob ${unique()}`);
+        await context.asBob.invite(roomId, alice);
+        await roomUntil(roomId, (r) => r.membership === 'invite');
+        const latest = new BehaviorSubject<readonly string[] | null>(null);
+        const open = engine
+          .roomsInCommon(alice, bob)
+          .pipe(tap((ids) => expect(() => assertPlainData(ids)).not.toThrow()))
+          .subscribe((ids) => latest.next(ids));
+        try {
+          await firstValueFrom(
+            latest.pipe(
+              filter((ids) => ids !== null),
+              timeout(settleTimeoutMs),
+            ),
+          );
+          expect(latest.value).toEqual([]);
+
+          await context.asAlice.join(roomId);
+
+          await firstValueFrom(
+            latest.pipe(
+              filter((ids) => ids?.includes(roomId) ?? false),
+              timeout(settleTimeoutMs),
+            ),
+          );
+          expect(latest.value).toEqual([roomId]);
+        } finally {
+          open.unsubscribe();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'roomsInCommon leaves out rooms only one of them has joined',
+      async () => {
+        await createRoom();
+        await context.asBob.createRoom(`bob ${unique()}`);
+
+        const shared = await firstValueFrom(
+          engine.roomsInCommon(alice, bob).pipe(timeout(settleTimeoutMs)),
+        );
+
+        expect(() => assertPlainData(shared)).not.toThrow();
+        expect(shared).toEqual([]);
       },
       testTimeoutMs,
     );

@@ -14,8 +14,7 @@ import {
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import {
   MATRIX_SDK_LOG_SINK,
-  MatrixClientService,
-  accountKnownNames,
+  SESSION_ENGINE,
   type MatrixSdkLogSink,
 } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
@@ -55,10 +54,10 @@ export function trinityDiagnosticProviders(
       useFactory: (): DiagnosticAccountSource => {
         const sessions = inject(SessionStorageService);
         const homeservers = inject(HomeserverInfoService);
-        const clients = inject(MatrixClientService);
+        const engine = inject(SESSION_ENGINE);
         return {
           accounts: () => diagnosticAccounts(sessions, homeservers),
-          knownNames: () => diagnosticKnownNames(clients, accountKnownNames),
+          knownNames: () => diagnosticKnownNames(engine),
         };
       },
     },

@@ -3,10 +3,12 @@ import type {
   DiagnosticNameGroup,
 } from '@trinity/data-access/diagnostic-log';
 import type { HomeserverInfoService } from '@trinity/data-access/homeserver';
+import type { SessionEngine } from '@trinity/data-access/matrix-client';
 import type { SessionStorageService } from '@trinity/platform-native';
 import {
   EMPTY,
   catchError,
+  defaultIfEmpty,
   endWith,
   forkJoin,
   ignoreElements,
@@ -71,22 +73,47 @@ export function diagnosticAccounts(
 }
 
 /**
- * The names a diagnostic file must replace, a group per room, from every signed-in account's
- * client, read only as the export iterates them and kept nowhere. An account whose client
- * fails part-way is left there and the other accounts are still read; then the failure is
- * thrown, so the export can say that some names were not replaced. IDs are redacted
- * regardless.
+ * The names a diagnostic file must replace, a group per room, from every live account's
+ * engine in registry order. An account that fails is left out and the others are still read;
+ * then iterating the groups throws, so the export can say that some names were not replaced.
+ * IDs are redacted regardless.
  */
-export function* diagnosticKnownNames<Client>(
-  clients: { all(): readonly { readonly client: Client }[] },
-  read: (client: Client) => Iterable<DiagnosticNameGroup>,
+export function diagnosticKnownNames(
+  engine: Pick<SessionEngine, 'session' | 'knownNames'>,
+): Observable<Iterable<DiagnosticNameGroup>> {
+  return engine.session().pipe(
+    take(1),
+    switchMap(({ accounts }) =>
+      forkJoin(
+        accounts.map(({ accountId }) =>
+          engine
+            .knownNames(accountId)
+            .pipe(
+              catchError((error: unknown) =>
+                of({ ok: false, failure: error } as const),
+              ),
+            ),
+        ),
+      ).pipe(defaultIfEmpty([])),
+    ),
+    map((results) => ({
+      [Symbol.iterator]: () => namesThenFailure(results),
+    })),
+  );
+}
+
+function* namesThenFailure(
+  results: readonly (
+    | { readonly ok: true; readonly value: readonly DiagnosticNameGroup[] }
+    | { readonly ok: false; readonly failure: unknown }
+  )[],
 ): Generator<DiagnosticNameGroup, void> {
   let failed: unknown = null;
-  for (const { client } of clients.all()) {
-    try {
-      yield* read(client);
-    } catch (error) {
-      failed ??= error;
+  for (const result of results) {
+    if (result.ok) {
+      yield* result.value;
+    } else {
+      failed ??= result.failure;
     }
   }
   if (failed !== null) {

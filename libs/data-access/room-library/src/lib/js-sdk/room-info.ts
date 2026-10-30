@@ -216,15 +216,6 @@ export function toRoomInfo(
   });
 }
 
-/**
- * A Space this Account holds: it has joined it. A Space it left, or was removed from, stays
- * in the SDK store with that membership, and an accepted invitation keeps `invite` until the
- * join syncs; neither counts.
- */
-export function isJoinedSpace(room: Room): boolean {
-  return room.isSpaceRoom() && room.getMyMembership() === 'join';
-}
-
 const INVITE_BLOCKED_ERRCODES = new Set([
   'M_INVITE_BLOCKED',
   'ORG.MATRIX.MSC4155.INVITE_BLOCKED',
