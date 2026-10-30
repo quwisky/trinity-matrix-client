@@ -25,7 +25,6 @@ import {
   NEW_DEVICE_SIGN_IN,
   OidcClientService,
   QR_LINK_IDENTITY_CHECK,
-  QR_SIGN_IN_COMPLETION,
   type AuthenticationHomeserverDiscovery,
 } from '@trinity/data-access/auth';
 import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
@@ -272,7 +271,6 @@ export function applicationCapabilityProviders(
       },
     },
     { provide: NEW_DEVICE_SIGN_IN, useExisting: NewDeviceSignInPresenter },
-    { provide: QR_SIGN_IN_COMPLETION, useExisting: AuthService },
     { provide: QR_LINK_IDENTITY_CHECK, useExisting: TrustDevicesService },
     {
       provide: UNPROTECTED_STORAGE_CONSENT,

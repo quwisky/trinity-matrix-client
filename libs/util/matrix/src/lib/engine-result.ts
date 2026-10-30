@@ -125,6 +125,8 @@ export type EngineFailure = {
   | { readonly code: 'verification-gone' }
   /** No QR code can be shown for this verification. */
   | { readonly code: 'qr-unavailable' }
+  /** The QR sign-in is over, or not waiting for this answer. */
+  | { readonly code: 'qr-flow-gone' }
   /** The server wants user-interactive authentication first; the challenge says which stages. */
   | {
       readonly code: 'uia-required';
@@ -218,6 +220,8 @@ export function engineFailureMessage(failure: EngineFailure): string {
       return 'This verification is no longer in progress.';
     case 'qr-unavailable':
       return 'QR verification isn’t available for these sessions.';
+    case 'qr-flow-gone':
+      return 'This QR sign-in is no longer in progress.';
     case 'uia-cancelled':
       return 'Password confirmation was cancelled.';
     case 'uia-unsupported':

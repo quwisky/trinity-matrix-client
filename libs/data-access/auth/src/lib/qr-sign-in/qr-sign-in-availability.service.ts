@@ -3,17 +3,17 @@ import {
   Observable,
   catchError,
   defer,
-  from,
   of,
   shareReplay,
   throwError,
 } from 'rxjs';
-import { QrSignInAdapter } from './qr-sign-in.adapter';
+import { unwrapEngineResult } from '@trinity/util/matrix';
+import { AUTH_ENGINE } from '../auth-engine.token';
 
 /** Whether a homeserver can take part in QR sign-in (device-code grant plus MSC4108). */
 @Injectable({ providedIn: 'root' })
 export class QrSignInAvailability {
-  private readonly adapter = inject(QrSignInAdapter);
+  private readonly engine = inject(AUTH_ENGINE);
   private readonly probes = new Map<string, Observable<boolean>>();
 
   /**
@@ -24,7 +24,8 @@ export class QrSignInAvailability {
     return defer(() => {
       let probe = this.probes.get(homeserverUrl);
       if (!probe) {
-        probe = from(this.adapter.isAvailable(homeserverUrl)).pipe(
+        probe = this.engine.supportsQrRendezvous(homeserverUrl).pipe(
+          unwrapEngineResult(),
           catchError((error: unknown) => {
             this.probes.delete(homeserverUrl);
             return throwError(() => error);

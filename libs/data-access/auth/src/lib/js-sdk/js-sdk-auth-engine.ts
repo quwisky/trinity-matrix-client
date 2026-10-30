@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import {
   HTTPError,
   MatrixError,
+  OAuthGrantType,
   createClient,
   type AuthDict,
   type LoginRequest,
@@ -26,6 +27,10 @@ import type {
   EmailTokenRequest,
   PasswordLogin,
   PasswordReset,
+  QrLinkAnswer,
+  QrLinkUpdate,
+  QrSignInAnswer,
+  QrSignInUpdate,
   RegisteredAccount,
   Registration,
   RegistrationAuth,
@@ -34,6 +39,11 @@ import type {
   TokenOwner,
 } from '../auth-engine';
 import type { AuthMetadata } from '../auth-metadata';
+import { JsSdkQrRendezvous } from './qr-rendezvous';
+
+// The message of the SDK's OAuth2Error.OpSupport, thrown for metadata that fails validation.
+const INVALID_AUTH_METADATA =
+  'Configured OAuth2 OP does not support required functions';
 
 /**
  * The server answered without offering OAuth 2.0 metadata: `M_UNRECOGNIZED`, or a client
@@ -142,6 +152,7 @@ function request<T>(
 @Injectable({ providedIn: 'root' })
 export class JsSdkAuthEngine implements AuthEngine {
   private readonly clients = inject(JS_SDK_CLIENTS);
+  private readonly qr = inject(JsSdkQrRendezvous);
 
   loginFlows(baseUrl: string): Observable<EngineResult<readonly string[]>> {
     return request(async () =>
@@ -321,6 +332,72 @@ export class JsSdkAuthEngine implements AuthEngine {
         return null;
       });
     });
+  }
+
+  /**
+   * The SDK's isSignInWithQRAvailable checks, except that an unreachable server fails instead
+   * of answering false. A server with no usable auth metadata (404, M_UNRECOGNIZED, invalid
+   * metadata) answers false.
+   */
+  supportsQrRendezvous(baseUrl: string): Observable<EngineResult<boolean>> {
+    return request(async () => {
+      const client = createClient({ baseUrl });
+      try {
+        const metadata = await client
+          .getAuthMetadata()
+          .catch((error: unknown) => {
+            if (
+              lacksAuthMetadata(error) ||
+              (error instanceof Error &&
+                error.message === INVALID_AUTH_METADATA)
+            ) {
+              return null;
+            }
+            throw error;
+          });
+        return (
+          !!metadata &&
+          metadata.grant_types_supported.includes(
+            OAuthGrantType.DeviceAuthorization,
+          ) &&
+          (await client.doesServerSupportUnstableFeature('org.matrix.msc4108'))
+        );
+      } finally {
+        client.stopClient();
+      }
+    });
+  }
+
+  signInWithQr(
+    baseUrl: string,
+    grant: { readonly grantMetadata: AuthMetadata; readonly clientId: string },
+  ): Observable<QrSignInUpdate> {
+    return this.qr.signInWithQr(baseUrl, grant);
+  }
+
+  answerQrSignIn(
+    flowId: string,
+    answer: QrSignInAnswer,
+  ): Observable<EngineResult<null>> {
+    return this.qr.answerQrSignIn(flowId, answer);
+  }
+
+  continueQrSignIn(
+    flowId: string,
+    accountId: string,
+  ): Observable<EngineResult<null>> {
+    return this.qr.continueQrSignIn(flowId, accountId);
+  }
+
+  linkDeviceWithQr(accountId: string, qr: string): Observable<QrLinkUpdate> {
+    return this.qr.linkDeviceWithQr(accountId, qr);
+  }
+
+  confirmQrLink(
+    flowId: string,
+    answer: QrLinkAnswer,
+  ): Observable<EngineResult<null>> {
+    return this.qr.confirmQrLink(flowId, answer);
   }
 
   private login(
