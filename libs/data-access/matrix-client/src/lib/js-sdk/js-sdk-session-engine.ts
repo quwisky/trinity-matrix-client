@@ -27,6 +27,7 @@ import {
 } from '@trinity/util/matrix';
 import { MatrixClientStartupError } from '../account-start-failure';
 import type {
+  AccountNameGroup,
   AccountServerStatus,
   PendingTextMessage,
   PersistedAccountActivation,
@@ -39,6 +40,7 @@ import type {
   SessionSyncState,
 } from '../session-engine';
 import type { ServerLogoutHold } from '../server-logout-hold';
+import { accountKnownNames } from './known-names';
 import { MatrixClientService } from './matrix-client.service';
 import { uiaChallengeOf } from './uia';
 
@@ -346,6 +348,19 @@ export class JsSdkSessionEngine implements SessionEngine {
               refreshToken: client.getRefreshToken(),
             }
           : null,
+      );
+    });
+  }
+
+  knownNames(
+    accountId: string,
+  ): Observable<EngineResult<readonly AccountNameGroup[]>> {
+    return defer(() => {
+      const client = this.svc.clientFor(accountId);
+      return of(
+        client
+          ? engineOk(accountKnownNames(client))
+          : engineFail(ACCOUNT_NOT_LIVE),
       );
     });
   }

@@ -18,6 +18,7 @@ import {
   plainEqual,
 } from '@trinity/util/matrix';
 import {
+  type AccountNameGroup,
   type AccountServerStatus,
   EMPTY_SESSION,
   type PendingTextMessage,
@@ -73,6 +74,7 @@ export class FakeSessionEngine implements SessionEngine {
   private readonly backedUp = new Map<string, boolean | null>();
   private readonly refreshTokens = new Map<string, string>();
   private readonly holds = new Map<string, FakeHold>();
+  private readonly names = new Map<string, readonly AccountNameGroup[]>();
   /** Accounts whose token died while held, kept live until the hold ends. */
   private readonly diedWhileHeld = new Set<string>();
   /** Held accounts a holder released as deleted, which keeps a recorded death from wiping. */
@@ -126,6 +128,11 @@ export class FakeSessionEngine implements SessionEngine {
 
   setBackedUp(accountId: string, value: boolean | null): void {
     this.backedUp.set(accountId, value);
+  }
+
+  /** What the account's engine holds, kept across restarts as a server would. */
+  addKnownNames(accountId: string, group: AccountNameGroup): void {
+    this.names.set(accountId, [...(this.names.get(accountId) ?? []), group]);
   }
 
   setOutgoing(work: boolean, texts: readonly PendingTextMessage[]): void {
@@ -414,6 +421,16 @@ export class FakeSessionEngine implements SessionEngine {
           }
         : null;
     });
+  }
+
+  knownNames(
+    accountId: string,
+  ): Observable<EngineResult<readonly AccountNameGroup[]>> {
+    return this.run(`knownNames:${accountId}`, () =>
+      this.isLive(accountId)
+        ? engineOk(this.names.get(accountId) ?? [])
+        : engineFail(NOT_LIVE),
+    );
   }
 
   private revoke(accountId: string): void {

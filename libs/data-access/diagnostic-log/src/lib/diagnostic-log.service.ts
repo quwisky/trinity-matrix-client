@@ -244,7 +244,7 @@ export class DiagnosticLogService {
       build: this.build,
       platform: () => describePlatform(readPlatformFacts()),
       accounts: readAccounts(this.accountSource),
-      knownNames: () => readKnownNames(this.accountSource),
+      knownNames: readKnownNames(this.accountSource),
       snapshot: defer(() => from(this.settled)).pipe(
         switchMap(() =>
           this._keepLog()

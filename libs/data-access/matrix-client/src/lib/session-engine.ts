@@ -102,6 +102,13 @@ export interface PendingTextMessage {
   readonly txnId?: string;
 }
 
+/** Names one source knows: the account itself, or one room. */
+export interface AccountNameGroup {
+  readonly roomNames: readonly string[];
+  readonly roomTopics: readonly string[];
+  readonly displayNames: readonly string[];
+}
+
 /** `offline` once sync is erroring or reconnecting, else `online`, so a fresh start never flashes offline. */
 export function connectivityOf(
   state: SessionSyncState | null,
@@ -181,4 +188,11 @@ export interface SessionEngine {
    * the client; never logged or put in a failure.
    */
   liveCredentials(accountId: string): Observable<SessionCredentials | null>;
+  /**
+   * The account's own display name, then each room's name, topic and members' display names
+   * (joined, invited, left and banned), from what the engine already holds; nothing is fetched.
+   */
+  knownNames(
+    accountId: string,
+  ): Observable<EngineResult<readonly AccountNameGroup[]>>;
 }
