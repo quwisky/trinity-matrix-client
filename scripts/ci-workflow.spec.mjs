@@ -710,7 +710,10 @@ describe('Rust engine job', () => {
     expect(job['timeout-minutes']).toBeGreaterThan(0);
     expect(job.steps[0].uses).toMatch(/^actions\/checkout@/);
     expect(job.steps[0].with).toEqual({ 'persist-credentials': false });
-    for (const step of job.steps.filter((candidate) => candidate.uses)) {
+    const remote = job.steps.filter(
+      (candidate) => candidate.uses && !candidate.uses.startsWith('./'),
+    );
+    for (const step of remote) {
       expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
     }
     expect(job.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual([
@@ -720,7 +723,19 @@ describe('Rust engine job', () => {
       "find libs -path '*/rust-dto/*.ts' ! -name '*.spec.ts' -delete",
       'cargo test --workspace --locked',
       dtoCheck.run,
+      'cargo build -p trinity-engine-testhost --locked',
+      'TRINITY_ENGINE_TESTHOST="$PWD/target/debug/trinity-engine-testhost" pnpm exec nx test testing --skip-nx-cache',
     ]);
+  });
+
+  it('runs the stdio transport spec against the test host it built', () => {
+    const index = (predicate) => job.steps.findIndex(predicate);
+    const build = index((step) => step.run?.startsWith('cargo build'));
+    const setup = index((step) => step.uses === './.github/actions/setup');
+    const spec = index((step) => step.run?.includes('nx test testing'));
+    expect(build).toBeGreaterThan(-1);
+    expect(setup).toBeGreaterThan(build);
+    expect(spec).toBeGreaterThan(setup);
   });
 
   describe('generated TypeScript check', () => {

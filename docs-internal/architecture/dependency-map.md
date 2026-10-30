@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **82 Nx projects** and **320 dependencies**. No project cycles detected.
+This snapshot contains **82 Nx projects** and **321 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -187,7 +187,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `sonner`                            | `libs/spartan/sonner`                    | role:design-system; capability:design-system    |                   2 |
 | `spartan-tests`                     | `libs/spartan/tests`                     | role:design-system; capability:design-system    |                   4 |
 | `spinner`                           | `libs/spartan/spinner`                   | role:design-system; capability:design-system    |                   1 |
-| `testing`                           | `libs/testing`                           | unmanaged tooling/test                          |                   0 |
+| `testing`                           | `libs/testing`                           | unmanaged tooling/test                          |                   1 |
 | `theme-foundation`                  | `libs/theme-foundation`                  | role:kernel; capability:design-system           |                   0 |
 | `tooltip`                           | `libs/spartan/tooltip`                   | role:design-system; capability:design-system    |                   1 |
 | `trinity`                           | `apps/trinity`                           | role:app; capability:composition                |                   9 |

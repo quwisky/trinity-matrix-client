@@ -5,5 +5,21 @@
   "sourceRoot": "libs/testing/src",
   "prefix": "trn",
   "tags": ["type:util", "scope:shared"],
-  "targets": {}
+  "targets": {
+    "test": {
+      "//": "The default inputs, plus what the stdio transport spec runs against: the test host binary it names in TRINITY_ENGINE_TESTHOST and the Rust sources and toolchain that binary is built from. Without them a run that skipped every spec for lack of the binary replays as a pass once it is there.",
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/vite.base.config.ts",
+        "{workspaceRoot}/test-setup.base.ts",
+        { "env": "TRINITY_ENGINE_TESTHOST" },
+        "{workspaceRoot}/native/**/*",
+        "{workspaceRoot}/Cargo.toml",
+        "{workspaceRoot}/Cargo.lock",
+        "{workspaceRoot}/rust-toolchain.toml"
+      ]
+    },
+    "typecheck": {}
+  }
 }

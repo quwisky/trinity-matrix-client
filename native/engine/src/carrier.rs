@@ -92,7 +92,8 @@ impl CarrierSession {
                     Ok(Some(Ok(v))) => (Frame::Next { id, v }, false),
                     Ok(Some(Err(fault))) => (error_frame(id, fault), true),
                     Ok(None) => (Frame::Complete { id }, true),
-                    // The payload stays out: a panic message can quote any value.
+                    // The payload stays out of the frame, and the test host's panic hook keeps it
+                    // out of its log: a panic message can quote any value.
                     Err(_) => (error_frame(id, panicked(&method)), true),
                 };
                 if !emit(&live, &out, id, serial, frame, last) || last {

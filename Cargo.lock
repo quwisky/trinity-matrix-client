@@ -3787,6 +3787,14 @@ dependencies = [
 [[package]]
 name = "trinity-engine-testhost"
 version = "0.0.0"
+dependencies = [
+ "futures-util",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "trinity-engine",
+]
 
 [[package]]
 name = "try-lock"

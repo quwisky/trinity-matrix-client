@@ -728,9 +728,11 @@ jobs:
           surface: engine-contract
           report-path: dist/.playwright/trinity-e2e-engine/*/engine.js-sdk/**
 
-  # Format, lint and unit tests of the Rust engine workspace (native/), and a check that the
-  # TypeScript generated from its types is committed. Only for a pull request that changes
-  # what the `rust` step of `classify` lists.
+  # Format, lint and unit tests of the Rust engine workspace (native/), a check that the
+  # TypeScript generated from its types is committed, and the stdio transport spec of `testing`
+  # against the test host built here. Only for a pull request that changes what the `rust` step
+  # of `classify` lists. Reproduce the spec with `cargo build -p trinity-engine-testhost`, then
+  # `TRINITY_ENGINE_TESTHOST="$PWD/target/debug/trinity-engine-testhost" pnpm nx test testing`.
   rust:
     needs: classify
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.rust == 'true' }}
@@ -758,6 +760,10 @@ jobs:
             echo "$status"
             exit 1
           fi
+      # The stdio transport spec skips without the test host, so this is the job that runs it.
+      - run: cargo build -p trinity-engine-testhost --locked
+      - uses: ./.github/actions/setup
+      - run: TRINITY_ENGINE_TESTHOST="$PWD/target/debug/trinity-engine-testhost" pnpm exec nx test testing --skip-nx-cache
 
   # Branch rules require the check "E2E (Playwright + homeserver)". The work behind it now
   # runs in several jobs, so this job reports under that name and succeeds only when every
