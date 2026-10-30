@@ -382,6 +382,7 @@ impl Engine {
         if !self.may_sync(&s.user_id, generation) {
             stop_sync(&sync_service).await;
         }
+        // shortcut: blocks the executor, as `delete_account_stores` does; upgrade with it.
         if let Err(err) = prune_devices(&self.config, &s.user_id, &s.device_id) {
             tracing::warn!(kind = ?err.kind(), "pruning an account's other devices failed");
         }

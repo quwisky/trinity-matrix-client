@@ -369,6 +369,10 @@ impl Engine {
     }
 }
 
+// shortcut: the delete runs on the executor and can stall it for seconds over a large media
+// cache, plus up to half a second of retries while store files come back. In a multi-thread host,
+// SDK tasks that outlive a teardown can keep a store busy past the last retry, which leaves its
+// files behind with a warning; upgrade when matrix-sdk gains a client shutdown.
 fn delete_account_stores(config: &EngineConfig, account_id: &str) {
     #[cfg(feature = "native")]
     if let Err(err) = crate::store::delete_account(config, account_id) {
