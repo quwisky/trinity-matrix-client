@@ -1,6 +1,6 @@
-import type { ValidatedAuthMetadata } from 'matrix-js-sdk';
 import {
   OIDC_PROVIDER_MISMATCH,
+  type OidcProviderMetadata,
   verifiedDeviceGrantMetadata,
   verifiedEndpoints,
 } from './oidc-issuer-discovery';
@@ -13,7 +13,7 @@ const METADATA = {
   response_types_supported: ['code'],
   grant_types_supported: ['authorization_code', 'refresh_token'],
   code_challenge_methods_supported: ['S256'],
-} as unknown as ValidatedAuthMetadata;
+} as unknown as OidcProviderMetadata;
 
 const RFC8414_DISCOVERY =
   'https://op.example/.well-known/oauth-authorization-server';
@@ -112,7 +112,7 @@ describe('verifiedDeviceGrantMetadata', () => {
   const DEVICE = {
     ...METADATA,
     device_authorization_endpoint: 'https://op.example/device',
-  } as ValidatedAuthMetadata;
+  } as OidcProviderMetadata;
 
   afterEach(() => {
     vi.unstubAllGlobals();

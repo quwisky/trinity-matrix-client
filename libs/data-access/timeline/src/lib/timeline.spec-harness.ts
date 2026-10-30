@@ -135,39 +135,15 @@ export function liveSession(accountIds: readonly string[]) {
  * Wrap a fake matrix-js-sdk client as a MatrixClientService mock (and so JS_SDK_CLIENTS),
  * with its account live in the session.
  */
-export function matrixProvider(client: unknown, isInitialized = true) {
+export function matrixProvider(client: unknown) {
   const userId =
     (client as { getUserId?: () => string | null }).getUserId?.() ?? null;
   return [
     MockProvider(MatrixClientService, {
-      isInitialized,
-      instance: client,
       clientFor: (accountId: string) => (userId === accountId ? client : null),
     } as Partial<MatrixClientService>),
     ...liveSession(userId ? [userId] : []).providers,
   ];
-}
-
-/**
- * A MatrixClientService mock whose `instance` follows a mutable holder — mirroring
- * the real getter, which resolves the *active* account on every access. Lets a test
- * switch accounts and observe when the service actually reads the client.
- */
-export function switchableMatrixProvider(active: {
-  client: unknown;
-  isInitialized?: boolean;
-}) {
-  return {
-    provide: MatrixClientService,
-    useValue: {
-      get isInitialized() {
-        return active.isInitialized ?? true;
-      },
-      get instance() {
-        return active.client;
-      },
-    } as unknown as MatrixClientService,
-  };
 }
 
 /** Appended to the body of an edit {@link fakeEvent} fills in. */

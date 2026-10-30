@@ -120,8 +120,8 @@ export class JsSdkSessionEngine implements SessionEngine {
 
   private readonly accounts = computed(
     (): readonly SessionAccountStatus[] => {
+      // A new array on every registration, so a same-id re-add is seen too.
       const ids = this.svc.accountIds();
-      const generations = this.svc.sessionGenerations();
       const clients = new Map(this.svc.all().map((a) => [a.userId, a]));
       return ids.flatMap((accountId) => {
         const account = clients.get(accountId);
@@ -130,7 +130,7 @@ export class JsSdkSessionEngine implements SessionEngine {
               {
                 accountId,
                 deviceId: account.client.getDeviceId(),
-                generation: generations.get(accountId) ?? 0,
+                generation: account.generation,
                 syncState: toSessionSyncState(account.syncState()),
                 serverSynced: account.serverSynced(),
                 roomsPrepared: account.roomsPrepared(),

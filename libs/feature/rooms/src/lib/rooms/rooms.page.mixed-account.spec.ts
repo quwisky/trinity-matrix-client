@@ -200,8 +200,6 @@ describe('RoomsPage mixed-account view', () => {
           accountIds,
         }),
         MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
           activeUserId: activeUserId.asReadonly(),
           accountIds: signal<readonly string[]>(accountIds).asReadonly(),
           clientFor: (id: string) =>

@@ -527,8 +527,6 @@ export function matrixClientProvider(
   } = {},
 ): Provider {
   return MockProvider(MatrixClientService, {
-    isInitialized: true,
-    instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
     activeUserId:
       options.activeUserId ?? signal<string | null>('@me:hs').asReadonly(),
     accountIds: signal<readonly string[]>(

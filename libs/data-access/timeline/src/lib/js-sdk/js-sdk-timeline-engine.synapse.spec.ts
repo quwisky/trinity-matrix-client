@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, vi } from 'vitest';
+import { describe } from 'vitest';
 import { defineTimelineEngineContract } from '../../contract/timeline-engine.contract';
 import { JsSdkTimelineEngine } from './js-sdk-timeline-engine';
 import {
@@ -13,15 +13,6 @@ import {
   stubUnencryptedRooms,
   useSynapseSuite,
 } from './synapse.spec-harness';
-
-// jsdom serves no crypto .wasm and has no IndexedDB (the sync store falls back to memory).
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
-  const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
-});
 
 // Runs the timeline engine contract against a live Synapse; skipped unless TRINITY_ENGINE_CONTRACT_HS is set.
 const SETTLE_TIMEOUT_MS = 30_000;

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, vi } from 'vitest';
+import { describe } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { defineTrustEngineContract } from '../../contract/trust-engine.contract';
 import { JsSdkTrustEngine } from './js-sdk-trust-engine';
@@ -18,16 +18,6 @@ import {
   startSession,
   useSynapseSuite,
 } from './synapse.spec-harness';
-
-// Real Rust crypto: the WASM loads from the package's Node entry, not a served asset.
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
-  const { from: rxFrom, map: rxMap } = await import('rxjs');
-  const { initAsync } = await import('@matrix-org/matrix-sdk-crypto-wasm');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxFrom(initAsync()).pipe(rxMap(() => undefined)),
-  };
-});
 
 // Runs the trust contract against a live Synapse; skipped unless
 // TRINITY_ENGINE_CONTRACT_HS is set.
