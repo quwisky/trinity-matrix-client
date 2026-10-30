@@ -1,10 +1,9 @@
 import { type RoomLinkPreview } from '@trinity/data-access/discovery';
-import { render, screen, within } from '@trinity/testing';
+import { render, screen, within, matrixError } from '@trinity/testing';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { AVATAR_RESOLVER } from '@trinity/components/generic-content';
 import { InvitesService } from '@trinity/data-access/room-library';
 import { RoomLinkService } from '@trinity/data-access/discovery';
-import { MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { type Observable, of, Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -210,9 +209,7 @@ describe('RoomLinkPreviewComponent', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const join = vi
       .fn()
-      .mockReturnValueOnce(
-        throwError(() => new MatrixError({ errcode: 'M_UNKNOWN' }, 503)),
-      )
+      .mockReturnValueOnce(throwError(() => matrixError('M_UNKNOWN', 503)))
       .mockReturnValueOnce(of('!joined:hs'));
     const { container, close, fixture } = await build({ join });
     const primary = container.querySelector<HTMLButtonElement>(
@@ -240,7 +237,7 @@ describe('RoomLinkPreviewComponent', () => {
     const { container, load, fixture } = await build({
       previewRequest: request,
     });
-    request.error(new MatrixError({ errcode: 'M_UNKNOWN' }, 503));
+    request.error(matrixError('M_UNKNOWN', 503));
     await fixture.whenStable();
 
     expect(container.textContent).toContain('Homeserver unavailable');

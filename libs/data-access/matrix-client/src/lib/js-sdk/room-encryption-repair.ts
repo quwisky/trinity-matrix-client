@@ -5,7 +5,7 @@ import {
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
-import { applyRoomEncryption } from '@trinity/util/matrix';
+import { applyRoomEncryption } from './room-encryption';
 
 /**
  * Returns the client's sync handler for this repair. Once per joined room per session, as sync

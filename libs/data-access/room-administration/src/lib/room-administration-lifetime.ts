@@ -13,7 +13,11 @@ import {
   type CapabilityRecoveryOutcome,
   type ProjectionObservation,
 } from '@trinity/runtime/projection';
-import { isTransientMatrixError } from '@trinity/util/matrix';
+import {
+  EngineRequestError,
+  isTransientMatrixError,
+  retryableFailure,
+} from '@trinity/util/matrix';
 import {
   Observable,
   Subject,
@@ -51,6 +55,14 @@ const PROJECTIONS = [
     operations: ['members', 'bans'] as const,
   },
 ] as const;
+
+/** A failure a later attempt may not repeat: a transient SDK error, or a retryable engine one. */
+function isTransientFailure(error: unknown): boolean {
+  return (
+    isTransientMatrixError(error) ||
+    (error instanceof EngineRequestError && retryableFailure(error.failure))
+  );
+}
 
 type RoomAdministrationProjection = (typeof PROJECTIONS)[number];
 type RoomAdministrationProjectionId = RoomAdministrationProjection['id'];
@@ -203,7 +215,7 @@ export class RoomAdministrationLifetime {
         states.clear();
       };
       const projectionError = (error: unknown): void => {
-        if (isTransientMatrixError(error)) ownershipReleased();
+        if (isTransientFailure(error)) ownershipReleased();
         else subscriber.error(error);
       };
       const attach = (): void => {

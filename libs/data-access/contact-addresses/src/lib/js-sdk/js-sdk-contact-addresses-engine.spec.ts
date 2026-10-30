@@ -1,6 +1,6 @@
 import { Injector } from '@angular/core';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
-import { MatrixError } from '@trinity/util/matrix';
+import { MatrixError } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { JsSdkContactAddressesEngine } from './js-sdk-contact-addresses-engine';

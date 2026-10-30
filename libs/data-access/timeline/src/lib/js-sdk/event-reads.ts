@@ -8,15 +8,17 @@ import {
 } from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
-  displayContent,
   initialOf,
-  isWaitingToSend,
   linkedUserIds,
-  shieldSubject,
   stripReplyFallbackText,
-  unencryptedMarkFor,
   type ReplyPreview,
 } from '@trinity/util/matrix';
+import {
+  displayContent,
+  isWaitingToSend,
+  shieldSubject,
+  unencryptedMarkFor,
+} from '@trinity/data-access/matrix-client';
 import type {
   ReactionDetail,
   ReactionView,

@@ -1,10 +1,10 @@
 import { EventType, type MatrixClient, type Room } from 'matrix-js-sdk';
 import { ClientPrefix, Method } from 'matrix-js-sdk/lib/http-api';
+import { normalizeViaServers } from '@trinity/util/matrix';
 import {
   isRoomEncrypted,
   liveRoomState,
-  normalizeViaServers,
-} from '@trinity/util/matrix';
+} from '@trinity/data-access/matrix-client';
 import type {
   RoomLinkJoinRule,
   RoomLinkMembership,

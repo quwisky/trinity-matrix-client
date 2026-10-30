@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SessionStateService } from '@trinity/data-access/matrix-client';
-import { MatrixError } from '@trinity/util/matrix';
+import { MatrixError } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { FakeDiscoveryEngine } from '../contract/fake-discovery-engine';

@@ -9,10 +9,10 @@ import {
   arrivedInClear,
   liveRoomState,
   messagePreview,
-  roomAvatarMxc,
   unencryptedMarkFor,
   type RoomEncryptionFlags,
-} from '@trinity/util/matrix';
+} from '@trinity/data-access/matrix-client';
+import { roomAvatarMxc } from './room-avatar';
 import type { RoomInfo, RoomMembership } from '../room-list-engine';
 
 /**

@@ -23,7 +23,7 @@ import {
   MatrixClientService,
   mutualRoomIds,
 } from '@trinity/data-access/matrix-client';
-import { roomAvatarMxc } from '@trinity/util/matrix';
+import { roomAvatarMxc } from './js-sdk/room-avatar';
 import { RoomLibraryService } from './room-library.service';
 import { initialOf } from './room-projection';
 import { directMapOf, isJoinedSpace } from './js-sdk/room-info';

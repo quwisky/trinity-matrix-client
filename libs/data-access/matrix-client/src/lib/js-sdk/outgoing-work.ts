@@ -1,8 +1,5 @@
-import {
-  isTemporarySendError,
-  isWaitingToSend,
-  stripReplyFallbackText,
-} from '@trinity/util/matrix';
+import { stripReplyFallbackText } from '@trinity/util/matrix';
+import { isTemporarySendError, isWaitingToSend } from './waiting-to-send';
 import {
   EventStatus,
   EventType,

@@ -4,11 +4,11 @@ import {
   type Room,
   type Thread,
 } from 'matrix-js-sdk';
+import { initialOf } from '@trinity/util/matrix';
 import {
-  initialOf,
   messagePreview,
   unencryptedMarkFor,
-} from '@trinity/util/matrix';
+} from '@trinity/data-access/matrix-client';
 import { shownContent, shownSubject } from './shields';
 import type { ThreadParticipant } from '../conversation-threads';
 import type { Profile, ThreadSummaryInfo } from '../timeline-engine';

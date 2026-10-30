@@ -2,7 +2,7 @@ import { Injector } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
-import { MatrixError } from '@trinity/util/matrix';
+import { MatrixError } from 'matrix-js-sdk';
 import { JsSdkDiscoveryEngine } from './js-sdk-discovery-engine';
 
 const ME = '@me:hs';
