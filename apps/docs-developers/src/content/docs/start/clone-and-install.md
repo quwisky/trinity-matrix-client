@@ -40,4 +40,15 @@ pnpm electron:install
 
 Do not add `electron/` to the pnpm workspace. Its package manifest and lockfile belong to the desktop host.
 
+## Install the Rust toolchain only when needed {#rust-toolchain}
+
+Only work under `native/**`, the Rust engine workspace, needs Rust. Install [rustup](https://rustup.rs/); `rust-toolchain.toml` pins the compiler version and the `rustfmt` and `clippy` components, and `rustup toolchain install` installs that toolchain under `~/.rustup`, not in the checkout. Homebrew's rustup is keg-only, so `$(brew --prefix rustup)/bin` must be on your `PATH`.
+
+```bash
+rustup toolchain install
+pnpm nx run native-engine:cargo-test
+```
+
+The first test run compiles the Matrix SDK and takes several minutes. `native-engine:cargo-lint` runs `cargo fmt --check` and `cargo clippy`, and `native-engine:cargo-build` builds every crate.
+
 Continue with [Run Trinity](../run-trinity/).

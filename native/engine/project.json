@@ -1,0 +1,30 @@
+{
+  "name": "native-engine",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "native/engine/src",
+  "tags": ["type:tool", "scope:shared"],
+  "targets": {
+    "cargo-build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo build --workspace",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "cargo-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo test --workspace",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "cargo-lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

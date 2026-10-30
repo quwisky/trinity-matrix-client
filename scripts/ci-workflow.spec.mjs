@@ -196,6 +196,7 @@ describe('split E2E jobs', () => {
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
       'engine-contract',
+      'rust',
     ]);
     for (const id of [
       'e2e',
@@ -205,6 +206,7 @@ describe('split E2E jobs', () => {
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
       'engine-contract',
+      'rust',
     ]) {
       expect(jobs[id].name).not.toBe('E2E (Playwright + homeserver)');
     }
@@ -381,6 +383,7 @@ describe('MAS sign-in journeys', () => {
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
       'engine-contract',
+      'rust',
     ];
 
     it.each(pathFiltered)('passes when only %s was skipped', (id) => {
@@ -644,6 +647,166 @@ describe('MAS sign-in journeys', () => {
           ),
         ).toBe('run=false');
       });
+    });
+
+    describe('for the Rust engine workspace', () => {
+      it.each([
+        'native/engine/src/lib.rs',
+        'native/engine-testhost/src/main.rs',
+        'Cargo.toml',
+        'Cargo.lock',
+        'rust-toolchain.toml',
+        'clippy.toml',
+        '.cargo/config.toml',
+        'libs/data-access/media/src/contract/media.contract.ts',
+        'libs/util/matrix/src/lib/rust-dto/Frame.ts',
+        'libs/data-access/media/src/lib/media.rust.spec.ts',
+        'libs/util/matrix/src/lib/engine-transport/engine-transport.ts',
+        'libs/testing/src/lib/engine-stdio-transport.ts',
+        'e2e/engine/run.mts',
+      ])('runs it when a pull request changes %s', (path) => {
+        expect(detect({ [path]: 'changed\n' }, 'pull_request', 'rust')).toBe(
+          'run=true',
+        );
+      });
+
+      it.each([
+        'libs/feature/rooms/src/index.ts',
+        'libs/data-access/media/src/index.ts',
+        'e2e/browser/support/mas.mts',
+        'apps/trinity/Cargo.toml',
+        'native/app-lock/pin-policy-cases.json',
+        'native/push-render/push-render-cases.json',
+      ])('skips it when a pull request changes only %s', (path) => {
+        expect(detect({ [path]: 'changed\n' }, 'pull_request', 'rust')).toBe(
+          'run=false',
+        );
+      });
+
+      it('fails without a base and leaves pushes alone', () => {
+        expect(runStep('pull_request', '', 'rust').result.status).not.toBe(0);
+        expect(
+          detect({ 'native/engine/src/lib.rs': 'x\n' }, 'push', 'rust'),
+        ).toBe('run=false');
+      });
+    });
+  });
+});
+
+describe('Rust engine job', () => {
+  const jobs = workflow.jobs;
+  const job = jobs.rust;
+  const dtoCheck = job.steps.find(
+    (step) => step.name === 'Generated TypeScript is committed',
+  );
+  const dtoRemoval = job.steps.find(
+    (step) => step.name === 'Remove the generated TypeScript',
+  );
+
+  it('checks the workspace when the classifier asks, with pinned actions', () => {
+    expect([job.needs].flat()).toEqual(['classify']);
+    expect(jobs.classify.outputs.rust).toBe('${{ steps.rust.outputs.run }}');
+    expect(job.if).toContain("needs.classify.outputs.rust == 'true'");
+    expect(job['timeout-minutes']).toBeGreaterThan(0);
+    expect(job.steps[0].uses).toMatch(/^actions\/checkout@/);
+    expect(job.steps[0].with).toEqual({ 'persist-credentials': false });
+    const remote = job.steps.filter(
+      (candidate) => candidate.uses && !candidate.uses.startsWith('./'),
+    );
+    for (const step of remote) {
+      expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
+    }
+    expect(job.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual([
+      'rustup toolchain install\ncargo --version\n',
+      'cargo fmt --all --check',
+      'cargo clippy --workspace --all-targets --locked -- -D warnings',
+      "find libs -path '*/rust-dto/*.ts' ! -name '*.spec.ts' -delete",
+      'cargo test --workspace --locked',
+      dtoCheck.run,
+      'cargo build -p trinity-engine-testhost --locked',
+      'TRINITY_ENGINE_TESTHOST="$PWD/target/debug/trinity-engine-testhost" pnpm exec nx test testing --skip-nx-cache',
+    ]);
+  });
+
+  it('runs the stdio transport spec against the test host it built', () => {
+    const index = (predicate) => job.steps.findIndex(predicate);
+    const build = index((step) => step.run?.startsWith('cargo build'));
+    const setup = index((step) => step.uses === './.github/actions/setup');
+    const spec = index((step) => step.run?.includes('nx test testing'));
+    expect(build).toBeGreaterThan(-1);
+    expect(setup).toBeGreaterThan(build);
+    expect(spec).toBeGreaterThan(setup);
+  });
+
+  describe('generated TypeScript check', () => {
+    let repo;
+    const git = (...args) =>
+      execFileSync('git', ['-C', repo, ...args], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          GIT_CONFIG_GLOBAL: '/dev/null',
+          GIT_CONFIG_SYSTEM: '/dev/null',
+          GIT_AUTHOR_NAME: 'test',
+          GIT_AUTHOR_EMAIL: 'test@example.invalid',
+          GIT_COMMITTER_NAME: 'test',
+          GIT_COMMITTER_EMAIL: 'test@example.invalid',
+        },
+      });
+    const write = (path, content) => {
+      mkdirSync(dirname(join(repo, path)), { recursive: true });
+      writeFileSync(join(repo, path), content);
+    };
+    const run = (script) =>
+      spawnSync('bash', ['-e', '-c', script], { cwd: repo, encoding: 'utf8' });
+    const check = () => run(dtoCheck.run);
+    /** What CI does before the check: remove the generated files, then write them again. */
+    const regenerate = (...paths) => {
+      expect(run(dtoRemoval.run).status).toBe(0);
+      for (const path of paths) write(path, 'export {};\n');
+    };
+
+    beforeEach(() => {
+      repo = mkdtempSync(join(tmpdir(), 'trinity-rust-dto-'));
+      git('init', '-q', '-b', 'main');
+      write('libs/util/matrix/src/lib/rust-dto/Frame.ts', 'export {};\n');
+      write(
+        'libs/util/matrix/src/lib/rust-dto/rust-dto.spec.ts',
+        'export {};\n',
+      );
+      write('libs/util/matrix/src/lib/other.ts', 'export {};\n');
+      git('add', '-A');
+      git('commit', '-q', '-m', 'base');
+    });
+    afterEach(() => rmSync(repo, { recursive: true, force: true }));
+
+    it('passes while the generated files match the commit', () => {
+      write('libs/util/matrix/src/lib/other.ts', 'changed\n');
+      regenerate('libs/util/matrix/src/lib/rust-dto/Frame.ts');
+      expect(check().status).toBe(0);
+    });
+
+    it('fails and prints the status for a committed file no longer generated', () => {
+      write('libs/util/matrix/src/lib/rust-dto/Renamed.ts', 'export {};\n');
+      git('add', '-A');
+      git('commit', '-q', '-m', 'rename Frame without removing its file');
+      regenerate('libs/util/matrix/src/lib/rust-dto/Renamed.ts');
+      const { status, stdout } = check();
+      expect(status).toBe(1);
+      expect(stdout).toContain(' D libs/util/matrix/src/lib/rust-dto/Frame.ts');
+    });
+
+    it.each([
+      ['a stale generated file', 'libs/util/matrix/src/lib/rust-dto/Frame.ts'],
+      [
+        'a generated file never committed',
+        'libs/data-access/x/rust-dto/New.ts',
+      ],
+    ])('fails and prints the status for %s', (_name, path) => {
+      write(path, 'changed\n');
+      const { status, stdout } = check();
+      expect(status).toBe(1);
+      expect(stdout).toContain(path);
     });
   });
 });

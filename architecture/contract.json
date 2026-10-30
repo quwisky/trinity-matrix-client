@@ -64,6 +64,10 @@
       "reason": "Public documentation applications are outside the shipped application dependency model."
     },
     {
+      "project": "native-engine",
+      "reason": "The Rust engine workspace holds no TypeScript, so the role and capability graph does not model it."
+    },
+    {
       "project": "scripts",
       "reason": "Repository tooling is outside the shipped application dependency model."
     },

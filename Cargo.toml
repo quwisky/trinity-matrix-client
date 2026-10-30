@@ -1,0 +1,24 @@
+[workspace]
+resolver = "3"
+members = ["native/engine", "native/engine-testhost"]
+
+[workspace.package]
+edition = "2024"
+version = "0.0.0"
+publish = false
+
+[workspace.dependencies]
+matrix-sdk = { version = "=0.19.1", default-features = false, features = [
+  "e2e-encryption",
+  "sqlite",
+  "bundled-sqlite",
+  "rustls-aws-lc-rs",
+] }
+matrix-sdk-ui = { version = "=0.19.1", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ts-rs = "12"
+tokio = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+futures-util = "0.3"
