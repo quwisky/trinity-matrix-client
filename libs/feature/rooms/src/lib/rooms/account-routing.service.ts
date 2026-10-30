@@ -14,7 +14,7 @@ import {
   type WorkspaceRoomNavigationOrigin,
 } from '@trinity/application/workspace';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ROOM_READINESS_TIMEOUT_MS,
   RoomReadinessService,
@@ -59,7 +59,7 @@ export class AccountRoutingService {
   private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly roomReadiness = inject(RoomReadinessService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly injector = inject(Injector);
   private readonly conversations = inject(ConversationRuntime);
   private readonly destroyRef = inject(DestroyRef);
@@ -68,8 +68,7 @@ export class AccountRoutingService {
    * sync it restores from its cache, whose timelines a gappy live sync later replaces.
    */
   private readonly firstSyncDone = computed(
-    // String compare: components and features never import the SDK's SyncState enum.
-    () => String(this.matrix.syncState() ?? '') === 'SYNCING',
+    () => this.matrix.syncState() === 'syncing',
   );
   // Watchers are created once for the service's lifetime. A `toObservable` made per wait
   // would stay alive after its wait was cancelled, until the page is destroyed.

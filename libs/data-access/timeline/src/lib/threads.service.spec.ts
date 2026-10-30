@@ -3,15 +3,16 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import {
+  ClientEvent,
   ConnectionError,
   EventStatus,
+  MatrixClient,
   MatrixError,
   MatrixEvent,
   MatrixEventEvent,
   RoomEvent,
   RoomStateEvent,
   ThreadEvent,
-  type MatrixClient,
 } from 'matrix-js-sdk';
 import {
   CryptoEvent,
@@ -28,7 +29,7 @@ import {
   vi,
 } from 'vitest';
 import { ThreadsService } from './threads.service';
-import { resolvedShields } from './shields';
+import { resolvedShields } from './js-sdk/shields';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
@@ -36,12 +37,18 @@ import {
   MediaService,
   type UploadedMedia,
 } from '@trinity/data-access/media';
-import { switchableMatrixProvider } from './timeline.spec-harness';
+import {
+  liveSession,
+  matrixProvider,
+  privacyProvider,
+} from './timeline.spec-harness';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import type { ConversationMessageOutcome } from './conversation-messages';
 import { fakeEmitter } from '@trinity/testing';
 import { DraftStoreService } from '@trinity/platform-native';
 import { threadDraftKey } from './conversation-draft-key';
+
+const KEY = { accountId: '@me:hs', roomId: '!r:hs' };
 
 const MEMBERS: Record<string, string> = {
   '@me:hs': 'Me',
@@ -167,7 +174,7 @@ function fakeMediaService() {
   return {
     uploadMedia: () =>
       of<UploadedMedia>({
-        msgtype: 'm.image' as UploadedMedia['msgtype'],
+        msgtype: 'm.image',
         body: 'pic.png',
         mxc: 'mxc://hs/up',
         file: null,
@@ -186,6 +193,8 @@ function setup(
   roomEncrypted = false,
   storeEncrypted = false,
   encryptionTs?: number,
+  /** Use the real message adapter, whose row cancel releases a held draft. */
+  realAdapter = false,
 ) {
   const all = [
     ...extraEvents,
@@ -252,6 +261,7 @@ function setup(
           : undefined,
     },
     hasEncryptionStateEvent: () => roomEncrypted,
+    loadMembersIfNeeded: () => Promise.resolve(true),
     ...fakeEmitter(),
   };
   const client = {
@@ -289,7 +299,7 @@ function setup(
       _txnId?: string,
     ): Promise<unknown> => {
       sent.push(['message', threadId, content]);
-      return Promise.resolve({});
+      return Promise.resolve({ event_id: `$sent${sent.length}` });
     },
     redactEvent: (_rid: string, threadId: string, eventId: string) => {
       sent.push(['redact', threadId, eventId]);
@@ -316,7 +326,7 @@ function setup(
             isEncryptionEnabledInRoom: () => Promise.resolve(storeEncrypted),
           }),
         }
-      : {}),
+      : { getCrypto: () => undefined }),
     ...fakeEmitter(),
   };
   const acknowledge = vi.fn(() =>
@@ -325,31 +335,29 @@ function setup(
       operation: 'receipt',
     }),
   );
-  const drafts = { holdWaiting: vi.fn(), releaseWaiting: vi.fn() };
+  const drafts = {
+    holdWaiting: vi.fn<(key: string, txnId: string, body: string) => void>(),
+    releaseWaiting: vi.fn<(key: string, txnId: string) => void>(),
+  };
   TestBed.configureTestingModule({
     providers: [
       ThreadsService,
       { provide: DraftStoreService, useValue: drafts },
-      // `isInitialized` and `instance` are getters on the real service; MockProvider
-      // overrides them so the service reads our SDK-shaped fakes.
-      MockProvider(MatrixClientService, {
-        isInitialized: true,
-        instance: client as unknown as MatrixClient,
-      }),
+      // The fake client reaches the service through the real engine and stores.
+      matrixProvider(client),
       MockProvider(MediaService, {
         uploadMedia: fakeMediaService().uploadMedia,
       }),
       MockProvider(ImagePackEditorService, {
         emoticons: signal(new Map([['wave', 'mxc://hs/wave']])),
       }),
-      { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: { acknowledge } },
+      realAdapter
+        ? privacyProvider(true)
+        : { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: { acknowledge } },
     ],
   });
   const svc = TestBed.inject(ThreadsService);
-  svc.attach(
-    { accountId: '@me:hs', roomId: '!r:hs' },
-    client as unknown as MatrixClient,
-  );
+  svc.attach(KEY);
   return { svc, room, client, sent, acknowledge, drafts };
 }
 
@@ -573,7 +581,7 @@ describe('ThreadsService', () => {
       body: 'a reply',
       ts: 1000,
     });
-    const { svc, room, client } = setup([
+    const { svc, room } = setup([
       fakeThread({
         id: '$root',
         rootEvent: root,
@@ -594,10 +602,7 @@ describe('ThreadsService', () => {
             getMxcAvatarUrl: () => null,
           }) as unknown as typeof room.getMember;
     svc.close();
-    svc.attach(
-      { accountId: '@me:hs', roomId: '!r:hs' },
-      client as unknown as MatrixClient,
-    );
+    svc.attach(KEY);
 
     const before = svc.summaries()['$root'];
     const bobBefore = before.participants.find((p) => p.id === '@b:hs');
@@ -724,7 +729,7 @@ describe('ThreadsService', () => {
     expect(after[1]).toBe(before[1]);
   });
 
-  it('refreshes an in-thread reply preview when the quoted sender loads late', () => {
+  it('refreshes an in-thread reply preview when the quoted sender loads late', async () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
     const reply = fakeEvent({
       id: '$r1',
@@ -760,6 +765,7 @@ describe('ThreadsService', () => {
       {},
       { roomId: '!r:hs', userId: '@a:hs' },
     );
+    await Promise.resolve(); // the re-projection is coalesced into a microtask
 
     const after = svc.threadMessages().find((m) => m.id === '$r1');
     expect(after?.replyTo?.senderName).toBe('Alice');
@@ -845,6 +851,7 @@ describe('ThreadsService', () => {
     });
     thread.events.push(reply);
     thread.emit(ThreadEvent.NewReply);
+    await Promise.resolve(); // the re-projection is coalesced into a microtask
     expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r1']);
   });
 
@@ -877,9 +884,10 @@ describe('ThreadsService', () => {
     svc.attachThreadRoot('$gone');
 
     // The send surfaces the fetch error instead of emitting a homeless echo.
-    await expect(firstValueFrom(svc.sendToThread('hi'))).rejects.toThrow(
-      'not found',
-    );
+    await expect(firstValueFrom(svc.sendToThread('hi'))).rejects.toMatchObject({
+      name: 'EngineRequestError',
+      failure: { code: 'request-failed' },
+    });
     expect(room.getThread('$gone')).toBeNull();
     expect(sent).toEqual([]);
   });
@@ -1281,9 +1289,24 @@ describe('ThreadsService', () => {
     expect(failedView?.body).toContain('Unable to decrypt');
   });
 
+  it('closing the thread closes its store', () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const { svc, room } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root] }),
+    ]);
+    svc.attachThreadRoot('$root');
+    // Only an open thread's feed follows its echoes; the summaries do not.
+    expect(room.listenerCount(RoomEvent.LocalEchoUpdated)).toBe(1);
+
+    svc.closeThread();
+
+    expect(room.listenerCount(RoomEvent.LocalEchoUpdated)).toBe(0);
+    expect(svc.threadMessages()).toEqual([]);
+  });
+
   it('clears state on close / closeThread', () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
-    const { svc, client } = setup([
+    const { svc } = setup([
       fakeThread({ id: '$root', rootEvent: root, events: [root] }),
     ]);
 
@@ -1291,10 +1314,7 @@ describe('ThreadsService', () => {
     svc.close();
     expect(svc.summaries()).toEqual({});
 
-    svc.attach(
-      { accountId: '@me:hs', roomId: '!r:hs' },
-      client as unknown as MatrixClient,
-    );
+    svc.attach(KEY);
     svc.attachThreadRoot('$root');
     expect(svc.threadMessages()).toHaveLength(1);
     svc.closeThread();
@@ -1311,10 +1331,11 @@ describe('ThreadsService', () => {
     const off = vi.spyOn(client, 'off');
 
     svc.attachThreadRoot('$root');
-    // Only the final four calls belong to the exact thread child under test.
-    const attached = on.mock.calls.slice(-4);
+    // Only the final five calls belong to the exact thread child under test.
+    const attached = on.mock.calls.slice(-5);
     expect(attached.map(([event]) => event)).toEqual([
       MatrixEventEvent.Decrypted,
+      MatrixEventEvent.Replaced,
       CryptoEvent.UserTrustStatusChanged,
       CryptoEvent.DevicesUpdated,
       CryptoEvent.KeysChanged,
@@ -1326,7 +1347,11 @@ describe('ThreadsService', () => {
     for (const [event, handler] of attached) {
       expect(off).toHaveBeenCalledWith(event, handler);
     }
-    expect(off).toHaveBeenCalledTimes(attached.length);
+    // The room was there to subscribe to, so no wait for it is left either.
+    const detached = off.mock.calls.filter(
+      ([event]) => event !== ClientEvent.Room,
+    );
+    expect(detached).toHaveLength(attached.length);
   });
 
   it('detaches thread listeners from the account it opened on, not the active one', () => {
@@ -1352,22 +1377,32 @@ describe('ThreadsService', () => {
       getUsersReadUpTo: (): string[] => [],
       relations: { getChildEventsForEvent: () => undefined },
       hasEncryptionStateEvent: () => false,
+      getLiveTimeline: () => ({
+        getEvents: () => [],
+        getState: () => undefined,
+      }),
+      loadMembersIfNeeded: () => Promise.resolve(true),
       ...fakeEmitter(),
     };
     const makeClient = () => ({
       getRoom: () => room,
       getUserId: () => '@me:hs',
+      getCrypto: () => undefined,
       sendReadReceipt: () => Promise.resolve({}),
       ...fakeEmitter(),
     });
     const clientA = makeClient();
     const clientB = makeClient();
     const active = { client: clientA as unknown };
+    const session = liveSession(['@me:hs']);
 
     TestBed.configureTestingModule({
       providers: [
         ThreadsService,
-        switchableMatrixProvider(active),
+        MockProvider(MatrixClientService, {
+          clientFor: () => active.client as never,
+        }),
+        ...session.providers,
         MockProvider(MediaService, {
           uploadMedia: fakeMediaService().uploadMedia,
         }),
@@ -1385,20 +1420,18 @@ describe('ThreadsService', () => {
     });
     const svc = TestBed.inject(ThreadsService);
 
-    svc.attach(
-      { accountId: '@me:hs', roomId: '!r:hs' },
-      clientA as unknown as MatrixClient,
-    );
+    svc.attach(KEY);
     svc.attachThreadRoot('$a');
     expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(2);
 
-    active.client = clientB; // the user switches accounts
-    svc.attach(
-      { accountId: '@me:hs', roomId: '!r:hs' },
-      clientB as unknown as MatrixClient,
-    ); // closes the first Account's exact child on the way in
-    svc.attachThreadRoot('$b');
+    // The account restarts on a new client while the Conversation stays visible.
+    active.client = clientB;
+    session.publish(['@me:hs'], 2);
+    svc.attach(KEY); // still attached: a no-op
+    svc.attachThreadRoot('$b'); // closes the first client's thread on the way in
 
+    // The summaries feed moved to the live client with the thread.
+    expect(clientB.listenerCount(MatrixEventEvent.Decrypted)).toBe(2);
     expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(0);
     expect(clientA.listenerCount(CryptoEvent.UserTrustStatusChanged)).toBe(0);
     expect(clientA.listenerCount(CryptoEvent.DevicesUpdated)).toBe(0);
@@ -1406,7 +1439,7 @@ describe('ThreadsService', () => {
   });
 
   describe('in-thread composing', () => {
-    function openedThread() {
+    function openedThread(realAdapter = false) {
       const root = fakeEvent({
         id: '$root',
         sender: '@a:hs',
@@ -1417,6 +1450,13 @@ describe('ThreadsService', () => {
         [fakeThread({ id: '$root', rootEvent: root, events: [root, reply] })],
         [],
         {},
+        [],
+        true,
+        undefined,
+        false,
+        false,
+        undefined,
+        realAdapter,
       );
       out.svc.attachThreadRoot('$root');
       return out;
@@ -1441,14 +1481,19 @@ describe('ThreadsService', () => {
 
     /** The SDK marks the reply's echo NOT_SENT with `error`, then rejects the send. */
     function failingSend(out: ReturnType<typeof openedThread>, error: Error) {
-      const echo = new MatrixEvent({
-        type: 'm.room.message',
-        content: { msgtype: 'm.text', body: 'offline reply' },
-      });
-      echo.setTxnId('txn-1');
-      out.room.getEventForTxnId = (txnId) =>
-        txnId === 'txn-1' ? echo : undefined;
-      out.client.sendMessage = () => {
+      const echoes = new Map<string, MatrixEvent>();
+      out.room.getEventForTxnId = (txnId) => echoes.get(txnId);
+      out.client.sendMessage = (_rid, _threadId, _content, txnId = '') => {
+        // As the SDK names a local echo.
+        const echo = new MatrixEvent({
+          event_id: `~!r:hs:${txnId}`,
+          type: 'm.room.message',
+          sender: '@me:hs',
+          room_id: '!r:hs',
+          content: { msgtype: 'm.text', body: 'offline reply' },
+        });
+        echo.setTxnId(txnId);
+        echoes.set(txnId, echo);
         echo.error = error as never;
         echo.setStatus(EventStatus.NOT_SENT);
         return Promise.reject(error);
@@ -1469,8 +1514,39 @@ describe('ThreadsService', () => {
       expect(out.drafts.holdWaiting).toHaveBeenCalledTimes(2);
       expect(out.drafts.holdWaiting).toHaveBeenCalledWith(
         threadDraftKey('$root'),
-        'txn-1',
+        expect.stringMatching(/^trinity-/),
         'offline reply',
+      );
+    });
+
+    it('releases the held text under the same thread key when its row is cancelled', async () => {
+      const out = openedThread(true);
+      failingSend(out, new ConnectionError('offline'));
+      (
+        out.client as unknown as {
+          cancelPendingEvent: (event: MatrixEvent) => void;
+        }
+      ).cancelPendingEvent = (event) => event.setStatus(EventStatus.CANCELLED);
+
+      await firstValueFrom(out.svc.replyInThread('$r1', 'offline reply'));
+      const [[heldKey, transactionId]] = out.drafts.holdWaiting.mock.calls;
+      const row = out.svc
+        .threadMessages()
+        .find((m) => m.id === `~!r:hs:${transactionId}`);
+      expect(row?.status).toBe('waiting');
+
+      await firstValueFrom(
+        TestBed.inject(CONVERSATION_MESSAGE_ADAPTER).cancel({
+          key: KEY,
+          threadRootId: '$root',
+          messageId: row?.id ?? '',
+        }),
+      );
+
+      expect(heldKey).toBe(threadDraftKey('$root'));
+      expect(out.drafts.releaseWaiting).toHaveBeenCalledWith(
+        heldKey,
+        transactionId,
       );
     });
 
@@ -1481,7 +1557,7 @@ describe('ThreadsService', () => {
 
       await expect(
         firstValueFrom(out.svc.sendToThread('offline reply')),
-      ).rejects.toBe(refused);
+      ).rejects.toThrow('The thread reply was not sent.');
       expect(out.drafts.holdWaiting).not.toHaveBeenCalled();
     });
 
@@ -1569,6 +1645,29 @@ describe('ThreadsService', () => {
       expect(content['formatted_body']).toContain('</mx-reply>replying');
     });
 
+    it('sends an in-thread reply as m.thread with is_falling_back: false', async () => {
+      const { svc, sent, client } = openedThread();
+
+      await firstValueFrom(svc.replyInThread('$r1', 'replying'));
+
+      // The request body, completed by the real SDK step a thread send runs through.
+      const content = structuredClone(sent[0][2]) as Record<string, unknown>;
+      const sdk = MatrixClient.prototype as unknown as {
+        addThreadRelationIfNeeded(
+          c: unknown,
+          thread: string,
+          room: string,
+        ): void;
+      };
+      sdk.addThreadRelationIfNeeded.call(client, content, '$root', '!r:hs');
+      expect(content['m.relates_to']).toEqual({
+        rel_type: 'm.thread',
+        event_id: '$root',
+        is_falling_back: false,
+        'm.in_reply_to': { event_id: '$r1' },
+      });
+    });
+
     it('resolves the thread context on subscribe, not when called', async () => {
       // The in-thread actions are cold, so the thread (and the account behind it)
       // must be resolved at subscribe. Capturing the context eagerly means a send
@@ -1582,7 +1681,7 @@ describe('ThreadsService', () => {
       expect(sent).toHaveLength(0);
     });
 
-    it('reflects an optimistic echo and re-maps its send status on update', () => {
+    it('reflects an optimistic echo and re-maps its send status on update', async () => {
       const root = fakeEvent({
         id: '$root',
         sender: '@a:hs',
@@ -1606,6 +1705,7 @@ describe('ThreadsService', () => {
       });
       thread.events.push(echo);
       thread.emit(ThreadEvent.NewReply);
+      await Promise.resolve(); // the re-projection is coalesced into a microtask
       let echoView = svc.threadMessages().find((m) => m.id === '$echo');
       expect(echoView?.status).toBe('sending');
 
@@ -1613,6 +1713,7 @@ describe('ThreadsService', () => {
       // re-maps the resolved event, just like the main timeline.
       echo.status = 'sent';
       room.emit(RoomEvent.LocalEchoUpdated);
+      await Promise.resolve();
       echoView = svc.threadMessages().find((m) => m.id === '$echo');
       expect(echoView?.status).toBeNull();
     });
@@ -1977,7 +2078,7 @@ describe('ThreadsService', () => {
         body: 'reply',
         ts: 1000,
       });
-      const { svc, room, client } = setup([
+      const { svc, room } = setup([
         fakeThread({
           id: '$root',
           rootEvent: root,
@@ -1993,10 +2094,7 @@ describe('ThreadsService', () => {
       ).getThreadUnreadNotificationCount = (_id, type) =>
         type === 'highlight' ? 1 : 3;
       svc.close();
-      svc.attach(
-        { accountId: '@me:hs', roomId: '!r:hs' },
-        client as unknown as MatrixClient,
-      );
+      svc.attach(KEY);
 
       const summary = svc.summaries()['$root'];
       expect(summary.unreadCount).toBe(3);
@@ -2066,6 +2164,18 @@ describe('ThreadsService', () => {
       });
     });
 
+    it('sends no receipt for a thread whose only event is its root', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const { svc, acknowledge } = setup([
+        fakeThread({ id: '$root', rootEvent: root, events: [root] }),
+      ]);
+
+      svc.attachThreadRoot('$root');
+
+      expect(svc.threadMessages()).toHaveLength(1);
+      expect(acknowledge).not.toHaveBeenCalled();
+    });
+
     it('holds the thread receipt while App lock covers the app and sends it after unlock', () => {
       const attentive = signal(false);
       TestBed.configureTestingModule({
@@ -2100,7 +2210,7 @@ describe('ThreadsService', () => {
       });
     });
 
-    it('waits for both focus and unlock: unlocked in the background, then focus returns', () => {
+    it('waits for both focus and unlock: unlocked in the background, then focus returns', async () => {
       vi.spyOn(document, 'hasFocus').mockReturnValue(false); // locked, window unfocused
       const attentive = signal(false);
       TestBed.configureTestingModule({
@@ -2132,6 +2242,8 @@ describe('ThreadsService', () => {
       thread.events.push(
         fakeEvent({ id: '$r2', sender: '@b:hs', body: 'another' }),
       );
+      thread.emit(ThreadEvent.NewReply);
+      await Promise.resolve();
       attentive.set(true);
       TestBed.tick();
       expect(acknowledge).not.toHaveBeenCalled();
@@ -2188,7 +2300,7 @@ describe('ThreadsService', () => {
       expect(acknowledge).not.toHaveBeenCalled();
     });
 
-    it('sends the held thread receipt once, for the latest reply, when focus returns (#1356)', () => {
+    it('sends the held thread receipt once, for the latest reply, when focus returns (#1356)', async () => {
       vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'reply' });
@@ -2199,10 +2311,12 @@ describe('ThreadsService', () => {
       });
       const { svc, acknowledge } = setup([thread]);
       svc.attachThreadRoot('$root');
-      // A newer reply lands while unfocused, with no refresh before focus returns.
+      // A newer reply lands while unfocused.
       thread.events.push(
         fakeEvent({ id: '$r2', sender: '@b:hs', body: 'another' }),
       );
+      thread.emit(ThreadEvent.NewReply);
+      await Promise.resolve();
 
       vi.spyOn(document, 'hasFocus').mockReturnValue(true); // the person returns
       window.dispatchEvent(new Event('focus'));

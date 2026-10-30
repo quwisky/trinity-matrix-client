@@ -6,7 +6,6 @@ export type {
 export type { TimelineLoadState } from './lib/conversation-timeline-readiness';
 export { READY_LOAD_STATE } from './lib/conversation-timeline-readiness';
 export { ConversationRuntime } from './lib/conversation-runtime.service';
-export { LiveTimelineTrimmer } from './lib/live-timeline-trimmer.service';
 export {
   conversationDraftKey,
   threadDraftKey,
@@ -59,7 +58,9 @@ export * from './lib/url-preview.service';
 export * from './lib/edit-history.service';
 export * from './lib/conversation-search.service';
 export * from './lib/message-presentation';
-export { unencryptedShield } from './lib/shields';
+export { unencryptedShield } from './lib/shield-presentation';
+export * from './lib/timeline-engine';
+export * from './lib/conversation-typing.port';
 export * from './lib/privacy-preferences';
 export * from './lib/appearance-preferences';
 export * from './lib/composer-expression-tab.preference';

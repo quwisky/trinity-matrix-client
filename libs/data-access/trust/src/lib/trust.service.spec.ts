@@ -1,44 +1,12 @@
-import { webcrypto } from 'node:crypto';
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientEvent, MatrixError } from 'matrix-js-sdk';
-import {
-  CryptoEvent,
-  deriveRecoveryKeyFromPassphrase,
-  encodeRecoveryKey,
-  type BootstrapCrossSigningOpts,
-} from 'matrix-js-sdk/lib/crypto-api';
-import {
-  MatrixClientService,
-  SecretStorageKeyHolder,
-} from '@trinity/data-access/matrix-client';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
-import { secretsBundle, setup, uiaError } from './trust.spec-harness';
-
-// PBKDF2 (WebCrypto subtle) isn't available in the test environment, so stub the
-// passphrase derivation while keeping the real encode/decode + CryptoEvent.
-vi.mock('matrix-js-sdk/lib/crypto-api', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('matrix-js-sdk/lib/crypto-api')>();
-  return {
-    ...actual,
-    deriveRecoveryKeyFromPassphrase: vi.fn(async () => new Uint8Array(32)),
-  };
-});
-
-// A valid recovery key (round-trips through decodeRecoveryKey to 32 bytes).
-const VALID_KEY = encodeRecoveryKey(new Uint8Array(32)) as string;
+import { TrustService } from './trust.service';
+import { onFakeEngine, setup } from './trust.spec-harness';
 
 describe('TrustService', () => {
   beforeEach(() => TestBed.resetTestingModule());
@@ -169,294 +137,6 @@ describe('TrustService', () => {
         current: null,
         stale: null,
       });
-    });
-  });
-
-  describe('recoverWithKey', () => {
-    it('verifies, caches the key, imports cross-signing and enables backup', async () => {
-      const { svc, keys, crypto, secretStorage } = setup({
-        defaultKeyId: 'k',
-        checkKey: true,
-        crossSigningReady: true,
-        secretStorageReady: true,
-      });
-
-      await firstValueFrom(svc.recoverWithKey(VALID_KEY));
-
-      expect(secretStorage.checkKey).toHaveBeenCalledOnce();
-      expect(keys.hasKey).toBe(true);
-      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith({});
-      expect(
-        crypto.loadSessionBackupPrivateKeyFromSecretStorage,
-      ).toHaveBeenCalledOnce();
-      expect(crypto.checkKeyBackupAndEnable).toHaveBeenCalledOnce();
-    });
-
-    it('caches the key onto the holder captured at recovery start, not a mid-flight one', async () => {
-      const { svc, matrix, secretStorage } = setup({
-        defaultKeyId: 'k',
-        checkKey: true,
-        crossSigningReady: true,
-        secretStorageReady: true,
-      });
-
-      // Simulate an account switch mid-recovery: activeHolder() yields account A's
-      // holder on its first read (start of recover), then account B's on any later one.
-      const holderA = new SecretStorageKeyHolder();
-      const holderB = new SecretStorageKeyHolder();
-      let holderReads = 0;
-      ngMocks.stubMember(matrix, 'activeHolder', () =>
-        holderReads++ === 0 ? holderA : holderB,
-      );
-
-      await firstValueFrom(svc.recoverWithKey(VALID_KEY));
-
-      expect(secretStorage.checkKey).toHaveBeenCalledOnce();
-      // The unlocked key must land on the account active when recovery began...
-      expect(holderA.hasKey).toBe(true);
-      // ...and never leak onto whatever account became active mid-flight.
-      expect(holderB.hasKey).toBe(false);
-    });
-
-    it('rejects an incorrect recovery key without caching it', async () => {
-      const { svc, keys, crypto } = setup({
-        defaultKeyId: 'k',
-        checkKey: false,
-      });
-
-      await expect(
-        firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-      ).rejects.toThrow(/incorrect/i);
-      expect(keys.hasKey).toBe(false);
-      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
-    });
-
-    it('rejects a malformed recovery key', async () => {
-      const { svc } = setup({ defaultKeyId: 'k' });
-      await expect(
-        firstValueFrom(svc.recoverWithKey('not a key')),
-      ).rejects.toThrow(/valid recovery key/i);
-    });
-
-    it('errors when no recovery key is set up on the account', async () => {
-      const { svc } = setup({ defaultKeyId: null });
-      await expect(
-        firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-      ).rejects.toThrow(/no recovery key/i);
-    });
-
-    // An interrupted reset leaves the olm machine holding cross-signing privates it
-    // rotated but never published. bootstrapCrossSigning({}) then sees privates already
-    // in place and logs "doing nothing" — so unlocking 4S never replaced them, and the
-    // device stayed at needs-recovery no matter how many times the user tried.
-    describe('cross-signing keys stranded by an interrupted reset', () => {
-      const SEEDS = {
-        'm.cross_signing.master': 'real-master',
-        'm.cross_signing.self_signing': 'real-self',
-        'm.cross_signing.user_signing': 'real-user',
-      };
-
-      it('re-imports the real keys from 4S and cross-signs this device', async () => {
-        const { svc, crypto } = setup({
-          defaultKeyId: 'k',
-          checkKey: true,
-          crossSigningReady: false, // still not trusted after the bootstrap
-          privatesCachedLocally: true, // ...because it holds the rotated privates
-          storedSecrets: SEEDS,
-        });
-
-        await firstValueFrom(svc.recoverWithKey(VALID_KEY));
-
-        expect(crypto.importSecretsBundle).toHaveBeenCalledWith({
-          // the three seeds replaced with 4S's, everything else left as exported
-          cross_signing: {
-            master_key: 'real-master',
-            self_signing_key: 'real-self',
-            user_signing_key: 'real-user',
-          },
-          backup: secretsBundle().backup,
-        });
-        expect(crypto.crossSignDevice).toHaveBeenCalledWith('DEV');
-      });
-
-      it('leaves a healthy device alone', async () => {
-        const { svc, crypto } = setup({
-          defaultKeyId: 'k',
-          checkKey: true,
-          crossSigningReady: true,
-          storedSecrets: SEEDS,
-        });
-
-        await firstValueFrom(svc.recoverWithKey(VALID_KEY));
-
-        expect(crypto.importSecretsBundle).not.toHaveBeenCalled();
-        expect(crypto.crossSignDevice).not.toHaveBeenCalled();
-      });
-
-      it('does nothing when 4S holds no cross-signing keys to re-seat', async () => {
-        const { svc, crypto } = setup({
-          defaultKeyId: 'k',
-          checkKey: true,
-          crossSigningReady: false,
-          privatesCachedLocally: true,
-          storedSecrets: { 'm.cross_signing.master': 'real-master' }, // partial
-        });
-
-        await expect(
-          firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-        ).resolves.toBeUndefined();
-        expect(crypto.importSecretsBundle).not.toHaveBeenCalled();
-      });
-
-      it('leaves an ordinary untrusted device to the SDK, holding no privates to evict', async () => {
-        // isCrossSigningReady() is `identity.isVerified() && (cached || in 4S)`, so it is
-        // false for EVERY unverified device — including one that has simply never
-        // imported anything, where there is nothing stale and the SDK's own bootstrap is
-        // what should run. Only a device already holding privates is stranded.
-        const { svc, crypto } = setup({
-          defaultKeyId: 'k',
-          checkKey: true,
-          crossSigningReady: false,
-          privatesCachedLocally: false,
-          storedSecrets: SEEDS,
-        });
-
-        await firstValueFrom(svc.recoverWithKey(VALID_KEY));
-
-        expect(crypto.exportSecretsBundle).not.toHaveBeenCalled();
-        expect(crypto.importSecretsBundle).not.toHaveBeenCalled();
-      });
-
-      it('keeps a recovery that worked when the repair itself cannot run', async () => {
-        // exportSecretsBundle fails unless all three privates are available, and both
-        // bundle methods are optional on CryptoApi. None of that says the user's key was
-        // wrong — and bootstrapCrossSigning may already have trusted this device.
-        const { svc, crypto } = setup({
-          defaultKeyId: 'k',
-          checkKey: true,
-          crossSigningReady: false,
-          privatesCachedLocally: true,
-          deviceVerified: true, // the bootstrap trusted it after all
-          storedSecrets: SEEDS,
-        });
-        crypto.exportSecretsBundle.mockRejectedValue(
-          new Error('The secrets bundle could not be exported'),
-        );
-
-        await expect(
-          firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-        ).resolves.toBeUndefined();
-        expect(svc.thisDeviceVerified()).toBe(true);
-      });
-
-      it('fails loudly if the SDK exports a bundle it does not recognise', async () => {
-        // The field names come from the WASM crate's serde output, which no TypeScript
-        // type pins down. Guessing past a change there would report success and leave
-        // the device exactly as broken as before.
-        const { svc, crypto } = setup({
-          defaultKeyId: 'k',
-          checkKey: true,
-          crossSigningReady: false,
-          privatesCachedLocally: true,
-          storedSecrets: SEEDS,
-        });
-        crypto.exportSecretsBundle.mockResolvedValue({
-          crossSigning: { masterKey: 'renamed-upstream' },
-        });
-
-        await expect(
-          firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-        ).rejects.toMatchObject({
-          operation: 'recover',
-          kind: 'server-failure',
-          recovery: 'retry',
-        });
-        expect(crypto.importSecretsBundle).not.toHaveBeenCalled();
-      });
-
-      it('fails loudly if the SDK cannot import a secrets bundle at all', async () => {
-        // Still untrusted afterwards, so the diagnostic is the useful thing to show.
-        const { svc, crypto } = setup({
-          defaultKeyId: 'k',
-          checkKey: true,
-          crossSigningReady: false,
-          privatesCachedLocally: true,
-          storedSecrets: SEEDS,
-        });
-        crypto.importSecretsBundle = undefined as never;
-
-        await expect(
-          firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-        ).rejects.toMatchObject({
-          operation: 'recover',
-          kind: 'server-failure',
-          recovery: 'retry',
-        });
-      });
-    });
-
-    it('skips backup steps when no backup exists', async () => {
-      const { svc, crypto } = setup({
-        defaultKeyId: 'k',
-        checkKey: true,
-        backupInfo: null,
-      });
-
-      await firstValueFrom(svc.recoverWithKey(VALID_KEY));
-
-      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith({});
-      expect(
-        crypto.loadSessionBackupPrivateKeyFromSecretStorage,
-      ).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('recoverWithPassphrase', () => {
-    it('derives the key from the passphrase and recovers', async () => {
-      const { svc, keys, crypto } = setup({
-        defaultKeyId: 'k',
-        checkKey: true,
-        keyInfo: {
-          passphrase: { algorithm: 'm.pbkdf2', salt: 'salty', iterations: 1 },
-        },
-      });
-
-      await firstValueFrom(svc.recoverWithPassphrase('hunter2'));
-
-      expect(keys.hasKey).toBe(true);
-      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith({});
-      // Derives from the passphrase using the salt/iterations from the key info.
-      expect(vi.mocked(deriveRecoveryKeyFromPassphrase)).toHaveBeenCalledWith(
-        'hunter2',
-        'salty',
-        1,
-        undefined,
-      );
-    });
-
-    it('errors when the account has no recovery passphrase', async () => {
-      const { svc } = setup({ defaultKeyId: 'k', checkKey: true, keyInfo: {} });
-      await expect(
-        firstValueFrom(svc.recoverWithPassphrase('hunter2')),
-      ).rejects.toThrow(/no recovery passphrase/i);
-    });
-
-    it('still completes recovery when enabling key backup fails', async () => {
-      const { svc, keys, crypto } = setup({
-        defaultKeyId: 'k',
-        checkKey: true,
-      });
-      crypto.loadSessionBackupPrivateKeyFromSecretStorage.mockRejectedValue(
-        new Error('stale backup key in 4S'),
-      );
-
-      // The device is trusted by bootstrapCrossSigning; a backup failure must not
-      // reject the whole recovery.
-      await expect(
-        firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-      ).resolves.toBeUndefined();
-      expect(keys.hasKey).toBe(true);
-      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith({});
     });
   });
 
@@ -591,7 +271,9 @@ describe('TrustService', () => {
     });
 
     it('rewires onto a new client after re-login and recomputes status', async () => {
-      const { svc, client, matrix } = setup({ defaultKeyId: null }); // A: needs-setup
+      const { svc, client, useClient, generation } = setup({
+        defaultKeyId: null,
+      }); // A: needs-setup
       svc.runProjection().subscribe();
       await firstValueFrom(svc.refresh());
       expect(svc.status()).toBe('needs-setup');
@@ -604,6 +286,15 @@ describe('TrustService', () => {
         getDeviceVerificationStatus: vi
           .fn()
           .mockResolvedValue({ crossSigningVerified: false }),
+        getCrossSigningStatus: vi.fn().mockResolvedValue({
+          publicKeysOnDevice: false,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: false,
+            selfSigningKey: false,
+            userSigningKey: false,
+          },
+        }),
       };
       const clientB = {
         getCrypto: () => cryptoB,
@@ -613,13 +304,11 @@ describe('TrustService', () => {
         on: vi.fn(),
         off: vi.fn(),
       };
-      ngMocks.stubMember(
-        matrix,
-        'instance',
-        clientB as unknown as MatrixClientService['instance'],
-      );
+      useClient(clientB);
 
-      svc.runProjection().subscribe();
+      // The session registers the new client under a new generation.
+      generation.set(2);
+      TestBed.inject(ApplicationRef).tick();
       await firstValueFrom(svc.refresh());
 
       expect(client.off).toHaveBeenCalled(); // old listeners detached
@@ -629,7 +318,7 @@ describe('TrustService', () => {
 
     it('re-projects onto the newly-active account on a switch with no manual connect', async () => {
       // Account A is a first device with no secret storage → needs-setup.
-      const { svc, client, matrix, activeUserId } = setup({
+      const { svc, client, useClient, activeUserId } = setup({
         defaultKeyId: null,
       });
       activeUserId.set('@a:hs');
@@ -648,6 +337,15 @@ describe('TrustService', () => {
         getDeviceVerificationStatus: vi
           .fn()
           .mockResolvedValue({ crossSigningVerified: false }),
+        getCrossSigningStatus: vi.fn().mockResolvedValue({
+          publicKeysOnDevice: false,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: false,
+            selfSigningKey: false,
+            userSigningKey: false,
+          },
+        }),
       };
       const clientB = {
         getCrypto: () => cryptoB,
@@ -657,11 +355,7 @@ describe('TrustService', () => {
         on: vi.fn(),
         off: vi.fn(),
       };
-      ngMocks.stubMember(
-        matrix,
-        'instance',
-        clientB as unknown as MatrixClientService['instance'],
-      );
+      useClient(clientB);
 
       // Switch accounts: NO svc.connect() call — the reproject effect re-runs it.
       activeUserId.set('@b:hs');
@@ -675,152 +369,252 @@ describe('TrustService', () => {
     });
   });
 
-  describe('passwordUia (device-signing upload auth)', () => {
-    // Capture the authUploadDeviceSigningKeys callback setUp hands to bootstrapCrossSigning.
-    async function captureUia(promptPassword: () => Promise<string | null>) {
-      const { svc, crypto } = setup({ defaultKeyId: 'k' });
-      let uia!: (mr: (a: unknown) => Promise<unknown>) => Promise<unknown>;
-      crypto.bootstrapCrossSigning.mockImplementation(
-        async (opts: BootstrapCrossSigningOpts) => {
-          uia = opts.authUploadDeviceSigningKeys as typeof uia;
-        },
-      );
-      await firstValueFrom(svc.setUp(promptPassword));
-      return uia;
-    }
+  describe('setup on the engine', () => {
+    it('sets up a fresh account: one prompt, then this device is verified with backup on', async () => {
+      const { svc, engine } = onFakeEngine();
+      const prompt = vi.fn(async () => engine.password);
 
-    it('does not prompt when the upload needs no auth', async () => {
-      const prompt = vi.fn();
-      const uia = await captureUia(prompt);
-      const makeRequest = vi.fn().mockResolvedValue(undefined);
+      const shown = await firstValueFrom(svc.setUp(prompt));
 
-      await uia(makeRequest);
-
-      expect(makeRequest).toHaveBeenCalledTimes(1);
-      expect(makeRequest).toHaveBeenCalledWith(null);
-      expect(prompt).not.toHaveBeenCalled();
-    });
-
-    it('submits the password against the returned UIA session', async () => {
-      const prompt = vi.fn().mockResolvedValue('s3cret');
-      const uia = await captureUia(prompt);
-      const makeRequest = vi
-        .fn()
-        .mockRejectedValueOnce(uiaError('sess1'))
-        .mockResolvedValueOnce(undefined);
-
-      await uia(makeRequest);
-
+      expect(shown).toMatch(/^Es/);
       expect(prompt).toHaveBeenCalledOnce();
-      expect(makeRequest).toHaveBeenCalledTimes(2);
-      expect(makeRequest.mock.calls[1][0]).toMatchObject({
-        type: 'm.login.password',
-        password: 's3cret',
-        session: 'sess1',
+      expect(svc.status()).toBe('ready');
+      expect(svc.thisDeviceVerified()).toBe(true);
+      expect(svc.keyBackupActive()).toBe(true);
+    });
+
+    it('refuses, before asking, an account whose identity another device holds', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.publishIdentityElsewhere(alice);
+      const prompt = vi.fn(async () => engine.password);
+
+      await expect(firstValueFrom(svc.setUp(prompt))).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'stale-state',
+        recovery: 'verify-another-device',
       });
-    });
-
-    it('re-prompts after a rejected password, then succeeds', async () => {
-      const prompt = vi
-        .fn()
-        .mockResolvedValueOnce('wrong')
-        .mockResolvedValueOnce('right');
-      const uia = await captureUia(prompt);
-      const makeRequest = vi
-        .fn()
-        .mockRejectedValueOnce(uiaError('s1')) // probe
-        .mockRejectedValueOnce(uiaError('s2')) // wrong password
-        .mockResolvedValueOnce(undefined); // right password
-
-      await uia(makeRequest);
-
-      expect(prompt).toHaveBeenCalledTimes(2);
-      expect(makeRequest).toHaveBeenCalledTimes(3);
-      expect(makeRequest.mock.calls[2][0]).toMatchObject({
-        password: 'right',
-        session: 's2',
-      });
-    });
-
-    it('throws when the user cancels the password prompt', async () => {
-      const prompt = vi.fn().mockResolvedValue(null);
-      const uia = await captureUia(prompt);
-      const makeRequest = vi.fn().mockRejectedValueOnce(uiaError('s1'));
-
-      await expect(uia(makeRequest)).rejects.toThrow(/cancel/i);
-    });
-
-    it('rethrows a non-UIA error from the probe without prompting', async () => {
-      const prompt = vi.fn();
-      const uia = await captureUia(prompt);
-      const makeRequest = vi
-        .fn()
-        .mockRejectedValue(
-          new MatrixError({ errcode: 'M_LIMIT_EXCEEDED' }, 429),
-        );
-
-      await expect(uia(makeRequest)).rejects.toBeInstanceOf(MatrixError);
       expect(prompt).not.toHaveBeenCalled();
+      expect(engine.steps.map((step) => step.name)).toEqual([
+        'ownIdentityCheck',
+      ]);
+    });
+
+    it('refuses an account the server says already has recovery', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.setServerDefaultKey(alice, 'still-valid');
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => engine.password)),
+      ).rejects.toThrow(/already has a recovery key/i);
+    });
+
+    it('replaces an identity this device made but never published', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.strandUnpublishedIdentity(alice);
+      engine.setFacts(alice, { crossSigningReady: true });
+
+      await firstValueFrom(svc.setUp(async () => engine.password));
+
+      expect(engine.steps.map((step) => step.name)).toContain(
+        'setUpRecovery(true)',
+      );
+    });
+
+    it('ends as provider-action-required for an account without a password', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.requireProviderAuth(alice);
+      const prompt = vi.fn(async () => engine.password);
+
+      await expect(firstValueFrom(svc.setUp(prompt))).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'provider-action-required',
+        recovery: 'open-provider',
+      });
+      expect(prompt).not.toHaveBeenCalled();
+    });
+
+    it('is cancelled when the password prompt is', async () => {
+      const { svc } = onFakeEngine();
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => null)),
+      ).rejects.toMatchObject({ operation: 'setup', kind: 'cancelled' });
+    });
+
+    it('is not ready without an active account or its crypto', async () => {
+      const signedOut = onFakeEngine(null);
+      await expect(
+        firstValueFrom(signedOut.svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({ operation: 'setup', kind: 'not-ready' });
+      TestBed.resetTestingModule();
+
+      const nocrypto = '@nocrypto:contract.invalid';
+      const { svc, engine } = onFakeEngine(nocrypto);
+      engine.addAccount(nocrypto, { crypto: false });
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({ operation: 'setup', kind: 'not-ready' });
     });
   });
 
-  describe('room-key export / import', () => {
-    // The megolm file crypto uses WebCrypto subtle, absent in jsdom.
-    beforeAll(() => vi.stubGlobal('crypto', webcrypto));
-    afterAll(() => vi.unstubAllGlobals());
+  describe('recovery on the engine', () => {
+    it('recovers with the key and re-reads the health', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      const key = engine.setUpRecoveryElsewhere(alice);
 
-    it('exports the SDK keys as an encrypted megolm file', async () => {
-      const { svc, crypto } = setup({
-        exportedKeys: JSON.stringify([{ room_id: '!r:hs', session_id: 's' }]),
+      await firstValueFrom(svc.recoverWithKey(` ${key} `), {
+        defaultValue: undefined,
       });
 
-      const armored = await firstValueFrom(svc.exportRoomKeys('pw'));
-
-      expect(crypto.exportRoomKeysAsJson).toHaveBeenCalled();
-      expect(armored).toContain('-----BEGIN MEGOLM SESSION DATA-----');
-      expect(armored).not.toContain('!r:hs'); // encrypted, not plaintext
+      expect(svc.health().current).toMatchObject({
+        status: 'ready',
+        thisDeviceVerified: true,
+        keyBackupActive: true,
+      });
     });
 
-    it('re-imports an exported file into the SDK (round-trip)', async () => {
-      const keys = JSON.stringify([{ room_id: '!r:hs', session_id: 's' }]);
-      const { svc, crypto } = setup({ exportedKeys: keys });
+    it('recovers with the passphrase', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.setUpRecoveryElsewhere(alice, 'hunter2');
 
-      const armored = await firstValueFrom(svc.exportRoomKeys('pw'));
-      await firstValueFrom(svc.importRoomKeys(armored, 'pw'));
+      await firstValueFrom(svc.recoverWithPassphrase('hunter2'), {
+        defaultValue: undefined,
+      });
 
-      expect(crypto.importRoomKeysAsJson).toHaveBeenCalledWith(keys);
+      expect(svc.thisDeviceVerified()).toBe(true);
     });
 
-    it('rejects an import with the wrong passphrase and imports nothing', async () => {
-      const { svc, crypto } = setup();
-      const armored = await firstValueFrom(svc.exportRoomKeys('right'));
+    it.each([
+      [
+        'a wrong key',
+        (svc: TrustService) =>
+          svc.recoverWithKey(
+            'EsT3 4kza y1Xs efFA tKyi HVwT kdEP 4UEk rvNr dFvy 8nGq AkqP',
+          ),
+        'invalid-secret',
+        'reenter-secret',
+        'That recovery key is incorrect.',
+      ],
+      [
+        'a wrong passphrase',
+        (svc: TrustService) => svc.recoverWithPassphrase('wrong'),
+        'invalid-secret',
+        'reenter-secret',
+        'That recovery key is incorrect.',
+      ],
+      [
+        'a malformed key',
+        (svc: TrustService) => svc.recoverWithKey('not a key'),
+        'invalid-secret',
+        'reenter-secret',
+        'That does not look like a valid recovery key.',
+      ],
+    ] as const)(
+      'refuses %s with its text',
+      async (_label, recover, kind, recovery, message) => {
+        const { svc, engine, alice } = onFakeEngine();
+        engine.setUpRecoveryElsewhere(alice, 'hunter2');
+
+        await expect(firstValueFrom(recover(svc))).rejects.toMatchObject({
+          operation: 'recover',
+          kind,
+          recovery,
+          message,
+        });
+        expect(svc.thisDeviceVerified()).not.toBe(true);
+      },
+    );
+
+    it('refuses a passphrase for secret storage set up from a key', async () => {
+      const { svc, engine, alice } = onFakeEngine();
+      engine.setUpRecoveryElsewhere(alice);
 
       await expect(
-        firstValueFrom(svc.importRoomKeys(armored, 'wrong')),
+        firstValueFrom(svc.recoverWithPassphrase('hunter2')),
+      ).rejects.toMatchObject({
+        kind: 'unsupported',
+        recovery: 'reenter-secret',
+        message:
+          'This account has no recovery passphrase — enter the recovery key instead.',
+      });
+    });
+
+    it('says when the account has no recovery to unlock', async () => {
+      const { svc } = onFakeEngine();
+
+      await expect(
+        firstValueFrom(svc.recoverWithKey('not a key')),
+      ).rejects.toMatchObject({
+        kind: 'recovery-not-configured',
+        recovery: 'verify-another-device',
+        message: 'No recovery key is set up on this account.',
+      });
+    });
+
+    it('is not ready without an active account or its crypto', async () => {
+      const notReady = {
+        kind: 'not-ready',
+        recovery: 'retry',
+        message: 'Trust is not ready for this account yet.',
+      };
+      const signedOut = onFakeEngine(null);
+      await expect(
+        firstValueFrom(signedOut.svc.exportRoomKeys('pw')),
+      ).rejects.toMatchObject({ operation: 'export-keys', ...notReady });
+      TestBed.resetTestingModule();
+
+      const { svc, engine } = onFakeEngine('@nocrypto:contract.invalid');
+      engine.addAccount('@nocrypto:contract.invalid', { crypto: false });
+      await expect(
+        firstValueFrom(svc.recoverWithKey('not a key')),
+      ).rejects.toMatchObject({ operation: 'recover', ...notReady });
+    });
+  });
+
+  it('shows a refused signature upload during recovery as a permission refusal', async () => {
+    const { svc, crypto } = setup({ defaultKeyId: 'k', checkKey: true });
+    crypto.bootstrapCrossSigning.mockRejectedValue(
+      new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
+    );
+
+    await expect(
+      firstValueFrom(
+        svc.recoverWithKey(
+          'EsT3 4kza y1Xs efFA tKyi HVwT kdEP 4UEk rvNr dFvy 8nGq AkqP',
+        ),
+      ),
+    ).rejects.toMatchObject({
+      operation: 'recover',
+      kind: 'permission-denied',
+      recovery: 'retry',
+      message: 'The homeserver refused this Trust change.',
+    });
+  });
+
+  describe('room keys on the engine', () => {
+    it('exports a key file and imports it back', async () => {
+      const { svc } = onFakeEngine();
+
+      const fileText = await firstValueFrom(svc.exportRoomKeys('pw'));
+
+      expect(fileText).toContain('-----BEGIN MEGOLM SESSION DATA-----');
+      await expect(
+        firstValueFrom(svc.importRoomKeys(fileText, 'pw')),
+      ).resolves.toBeUndefined();
+    });
+
+    it('refuses an import with the wrong passphrase', async () => {
+      const { svc } = onFakeEngine();
+      const fileText = await firstValueFrom(svc.exportRoomKeys('right'));
+
+      await expect(
+        firstValueFrom(svc.importRoomKeys(fileText, 'wrong')),
       ).rejects.toMatchObject({
         operation: 'import-keys',
         kind: 'invalid-secret',
         recovery: 'reenter-secret',
+        message: 'The key export or its passphrase could not be verified.',
       });
-      expect(crypto.importRoomKeysAsJson).not.toHaveBeenCalled();
-    });
-
-    it('imports into the account the file was decrypted for, not whichever is active now', async () => {
-      // Decrypting the file is a long await; a switch across it must not push one
-      // account's room keys into another account's olm machine.
-      const { svc, crypto, client, matrix } = setup();
-      const armored = await firstValueFrom(svc.exportRoomKeys('pw'));
-      const otherCrypto = { importRoomKeysAsJson: vi.fn() };
-
-      const pending = firstValueFrom(svc.importRoomKeys(armored, 'pw'));
-      ngMocks.stubMember(matrix, 'instance', {
-        ...client,
-        getCrypto: () => otherCrypto,
-      } as unknown as MatrixClientService['instance']);
-      await pending;
-
-      expect(crypto.importRoomKeysAsJson).toHaveBeenCalledWith('[]');
-      expect(otherCrypto.importRoomKeysAsJson).not.toHaveBeenCalled();
     });
   });
 });

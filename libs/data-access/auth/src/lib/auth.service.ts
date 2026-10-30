@@ -1,18 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  createClient,
-  type AuthDict,
-  type DeviceAccessTokenResponse,
-  type MatrixClient,
-  type ValidatedAuthMetadata,
-} from 'matrix-js-sdk';
-import {
   Observable,
   catchError,
   defaultIfEmpty,
   defer,
   finalize,
-  from,
   map,
   of,
   switchMap,
@@ -20,7 +12,7 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SESSION_ENGINE } from '@trinity/data-access/matrix-client';
 import {
   AccountRuntimeService,
   UnprotectedStorageGate,
@@ -32,11 +24,15 @@ import {
   sameHomeserver,
 } from '@trinity/platform-native';
 import {
+  EngineRequestError,
   UiaCancelledError,
-  runPasswordUia,
-  type OidcSessionBinding,
-  type PasswordPrompt,
+  driveUia,
+  engineUia,
+  unwrapEngineResult,
 } from '@trinity/util/matrix';
+import { AUTH_ENGINE } from './auth-engine.token';
+import type { SignedInSession } from './auth-engine';
+import type { AuthMetadata } from './auth-metadata';
 import {
   OidcClientService,
   type OidcAuthorizationParams,
@@ -47,6 +43,7 @@ import {
 import {
   ReauthAccountMismatchError,
   accountEstablishment,
+  refusedBeforeSaving,
   verifyAccountServer,
   type AuthenticatedSessionResponse,
   type LoginMode,
@@ -58,15 +55,10 @@ import {
   UnprotectedStorageDeclinedError,
 } from './new-device-sign-in.port';
 import {
-  serverApi,
+  accountServerApi,
   type AccountManagement,
   type AccountServerApi,
 } from './account-server-api';
-import type {
-  LinkedSecrets,
-  QrSignInCompletion,
-} from './qr-sign-in/qr-sign-in-completion.port';
-import { QrAccountAlreadyStoredError } from './qr-sign-in/qr-sign-in.model';
 
 export type { LoginMode } from './account-establishment';
 export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
@@ -84,8 +76,9 @@ interface NewDeviceCheck {
 }
 
 @Injectable({ providedIn: 'root' })
-export class AuthService implements QrSignInCompletion {
-  private readonly matrix = inject(MatrixClientService);
+export class AuthService {
+  private readonly engine = inject(AUTH_ENGINE);
+  private readonly sessionEngine = inject(SESSION_ENGINE);
   private readonly storage = inject(SessionStorageService);
   private readonly oidc = inject(OidcClientService);
   private readonly accounts = inject(AccountRuntimeService);
@@ -96,21 +89,21 @@ export class AuthService implements QrSignInCompletion {
 
   /** Which login flows the homeserver supports (e.g. 'm.login.password', 'm.login.sso'). */
   getSupportedFlows(baseUrl: string): Observable<string[]> {
-    return defer(() => from(createClient({ baseUrl }).loginFlows())).pipe(
-      map((res) => res.flows.map((f) => f.type)),
+    return this.engine.loginFlows(baseUrl).pipe(
+      unwrapEngineResult(),
+      map((flows) => [...flows]),
     );
   }
 
   /**
    * Discover a homeserver's delegated OIDC (MSC2965) provider config, or `null` when it
-   * doesn't delegate authentication. `getAuthMetadata()` throws on a non-OIDC homeserver,
-   * mapped to `null` so the login page can probe in parallel with {@link getSupportedFlows}
-   * without slowing or breaking a legacy homeserver.
+   * doesn't delegate authentication. Any failure also maps to `null`, so the login page can
+   * probe in parallel with {@link getSupportedFlows} without slowing or breaking a legacy
+   * homeserver.
    */
-  getDelegatedAuthConfig(
-    baseUrl: string,
-  ): Observable<ValidatedAuthMetadata | null> {
-    return defer(() => from(createClient({ baseUrl }).getAuthMetadata())).pipe(
+  getDelegatedAuthConfig(baseUrl: string): Observable<AuthMetadata | null> {
+    return this.engine.authMetadata(baseUrl).pipe(
+      map((answer) => (answer.ok ? answer.value : null)),
       catchError(() => of(null)),
     );
   }
@@ -133,20 +126,18 @@ export class AuthService implements QrSignInCompletion {
     serverName?: string,
   ): Observable<AccountEstablishmentOutcome> {
     return defer(() =>
-      from(
-        createClient({ baseUrl }).loginRequest({
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user: this.localpart(user) },
-          password,
-          initial_device_display_name: this.handoff.deviceDisplayName(),
-          ...(deviceId ? { device_id: deviceId } : {}),
-        }),
-      ),
+      this.engine.loginWithPassword(baseUrl, {
+        localpart: this.localpart(user),
+        password,
+        deviceDisplayName: this.handoff.deviceDisplayName(),
+        deviceId: deviceId ?? null,
+      }),
     ).pipe(
-      switchMap((res) =>
+      unwrapEngineResult(),
+      switchMap((session) =>
         this.establish(
           baseUrl,
-          res,
+          sessionResponse(session),
           mode,
           expectedUserId,
           deviceId,
@@ -157,8 +148,10 @@ export class AuthService implements QrSignInCompletion {
   }
 
   /** Build the SSO redirect URL the browser/WebView should navigate to. */
-  getSsoUrl(baseUrl: string, redirectUrl: string): string {
-    return createClient({ baseUrl }).getSsoLoginUrl(redirectUrl, 'sso');
+  getSsoUrl(baseUrl: string, redirectUrl: string): Observable<string> {
+    return this.engine
+      .ssoLoginUrl(baseUrl, redirectUrl)
+      .pipe(unwrapEngineResult());
   }
 
   /**
@@ -173,17 +166,21 @@ export class AuthService implements QrSignInCompletion {
     expectedUserId?: string,
   ): Observable<AccountEstablishmentOutcome> {
     return defer(() =>
-      from(
-        createClient({ baseUrl }).loginRequest({
-          type: 'm.login.token',
-          token: loginToken,
-          initial_device_display_name: this.handoff.deviceDisplayName(),
-          ...(deviceId ? { device_id: deviceId } : {}),
-        }),
-      ),
+      this.engine.loginWithToken(baseUrl, {
+        token: loginToken,
+        deviceDisplayName: this.handoff.deviceDisplayName(),
+        deviceId: deviceId ?? null,
+      }),
     ).pipe(
-      switchMap((res) =>
-        this.establish(baseUrl, res, mode, expectedUserId, deviceId),
+      unwrapEngineResult(),
+      switchMap((session) =>
+        this.establish(
+          baseUrl,
+          sessionResponse(session),
+          mode,
+          expectedUserId,
+          deviceId,
+        ),
       ),
     );
   }
@@ -199,12 +196,16 @@ export class AuthService implements QrSignInCompletion {
   }
 
   /**
-   * Forget the cached dynamic-registration client id for a homeserver's issuer so the
+   * Forget the rejected dynamic-registration client id for a homeserver's issuer so the
    * next login re-registers — called when the provider rejects the id (`invalid_client`),
    * which would otherwise wedge login until app storage is wiped.
    */
-  forgetOidcClientId(baseUrl: string, issuer: string): Observable<void> {
-    return this.oidc.forgetClientId(baseUrl, issuer);
+  forgetOidcClientId(
+    baseUrl: string,
+    issuer: string,
+    rejectedClientId: string,
+  ): Observable<void> {
+    return this.oidc.forgetClientId(baseUrl, issuer, rejectedClientId);
   }
 
   /**
@@ -241,133 +242,24 @@ export class AuthService implements QrSignInCompletion {
     );
   }
 
-  /** The OAuth client id QR sign-in uses for the device grant. */
-  deviceGrantClientId(
-    metadata: ValidatedAuthMetadata,
-    homeserverUrl: string,
-  ): Observable<string> {
-    return this.oidc.deviceGrantClientId(metadata, homeserverUrl);
-  }
-
-  /** The metadata QR sign-in runs the device grant on, with its endpoints verified. */
-  deviceGrantMetadata(
-    metadata: ValidatedAuthMetadata,
-  ): Observable<ValidatedAuthMetadata> {
-    return this.oidc.deviceGrantMetadata(metadata);
-  }
-
-  /** Forget the device-grant client id after the provider rejected it. */
-  forgetDeviceGrantClientId(
-    metadata: ValidatedAuthMetadata,
-    homeserverUrl: string,
-  ): Observable<void> {
-    return this.oidc.forgetDeviceGrantClientId(metadata, homeserverUrl);
-  }
-
   /**
-   * Sign in a QR-linked new device with its device-grant tokens, keeping other signed-in
-   * accounts. Emits the started client only after `whoami` has succeeded with the new
-   * token, so the device exists on the server before the existing device shares secrets.
-   * An account this device already stores is refused and left as it was. Until `establish`
-   * takes the tokens over, any failure or unsubscribe revokes them.
+   * Establish a QR-linked new device's OAuth session, keeping the other signed-in accounts.
+   * It passes the same checks as every sign-in, the account's server checked against
+   * `serverName`, the server entered, and hands the session back when refused.
    */
-  completeDeviceGrant(
-    tokens: DeviceAccessTokenResponse,
-    clientId: string,
-    metadata: ValidatedAuthMetadata,
+  establishDeviceGrant(
     homeserverUrl: string,
-  ): Observable<MatrixClient> {
-    return defer(() => {
-      const issuedBy = Date.now();
-      let binding: OidcSessionBinding = { issuer: metadata.issuer, clientId };
-      let owned = false;
-      return from(
-        createClient({
-          baseUrl: homeserverUrl,
-          accessToken: tokens.access_token,
-        }).whoami(),
-      ).pipe(
-        switchMap((who) => {
-          const deviceId = who.device_id;
-          if (!deviceId) {
-            throw new Error(
-              'The provider returned no device for this session.',
-            );
-          }
-          return this.storage.record(who.user_id).pipe(
-            take(1),
-            switchMap((stored) => {
-              if (stored) throw new QrAccountAlreadyStoredError();
-              return this.oidc.deviceGrantBinding(metadata, clientId);
-            }),
-            map((pinned) => {
-              binding = pinned;
-              return { userId: who.user_id, deviceId };
-            }),
-          );
-        }),
-        switchMap(({ userId, deviceId }) => {
-          owned = true;
-          return this.establish(
-            homeserverUrl,
-            {
-              user_id: userId,
-              device_id: deviceId,
-              access_token: tokens.access_token,
-              refresh_token: tokens.refresh_token,
-              ...(tokens.expires_in !== undefined
-                ? { accessTokenExpiresAt: issuedBy + tokens.expires_in * 1000 }
-                : {}),
-              oidc: binding,
-            },
-            'add',
-          );
-        }),
-        map((outcome) => {
-          const client =
-            outcome.kind === 'ready'
-              ? this.matrix.clientFor(outcome.accountId)
-              : null;
-          if (!client) {
-            throw new Error(`The QR sign-in did not start (${outcome.kind}).`);
-          }
-          return client;
-        }),
-        finalize(() => {
-          if (owned) return;
-          this.oidc
-            .revokeTokens(homeserverUrl, binding, {
-              accessToken: tokens.access_token,
-              refreshToken: tokens.refresh_token,
-            })
-            .subscribe({ error: () => undefined });
-        }),
-      );
-    });
-  }
-
-  /**
-   * Import the secrets a QR link shared, cross-sign this device and enable key backup.
-   * Emits whether the device ended cross-signed; `false` leaves it to the usual check.
-   * Errors are dropped unlogged: they can quote the secrets.
-   */
-  importLinkedSecrets(
-    client: MatrixClient,
-    secrets: LinkedSecrets,
-  ): Observable<boolean> {
-    return defer(async () => {
-      const crypto = client.getCrypto();
-      const deviceId = client.getDeviceId();
-      const userId = client.getUserId();
-      if (!crypto?.importSecretsBundle || !deviceId || !userId) return false;
-      await crypto.importSecretsBundle(secrets);
-      await crypto.crossSignDevice(deviceId);
-      // Best effort: backup does not decide whether the device is verified.
-      await crypto.checkKeyBackupAndEnable().catch(() => undefined);
-      if (!(await crypto.isCrossSigningReady())) return false;
-      const status = await crypto.getDeviceVerificationStatus(userId, deviceId);
-      return status?.crossSigningVerified === true;
-    }).pipe(catchError(() => of(false)));
+    response: AuthenticatedSessionResponse,
+    serverName: string,
+  ): Observable<AccountEstablishmentOutcome> {
+    return this.establish(
+      homeserverUrl,
+      response,
+      'add',
+      undefined,
+      undefined,
+      serverName,
+    );
   }
 
   /**
@@ -409,7 +301,9 @@ export class AuthService implements QrSignInCompletion {
    */
   getAccountManagement(): Observable<AccountManagement | null> {
     return this.storage.load().pipe(
-      switchMap((session) => (session ? serverApi(session.baseUrl) : of(null))),
+      switchMap((session) =>
+        session ? this.serverApi(session.baseUrl) : of(null),
+      ),
       map((api) => (api?.kind === 'oauth' ? api.management : null)),
     );
   }
@@ -420,68 +314,65 @@ export class AuthService implements QrSignInCompletion {
    * compatibility layer has no `oidc` binding, yet its server serves no legacy account API.
    */
   accountManagementFor(accountId: string): Observable<AccountServerApi> {
-    return defer(() => {
-      const baseUrl = this.matrix.clientFor(accountId)?.baseUrl;
-      return baseUrl
-        ? of(baseUrl)
-        : this.storage.record(accountId).pipe(map((r) => r?.baseUrl ?? null));
-    }).pipe(
+    return this.sessionEngine.accessToken(accountId).pipe(
+      take(1),
+      switchMap((live) =>
+        live
+          ? of(live.homeserverUrl)
+          : this.storage.record(accountId).pipe(map((r) => r?.baseUrl ?? null)),
+      ),
       switchMap((baseUrl) =>
-        baseUrl ? serverApi(baseUrl) : of({ kind: 'legacy' } as const),
+        baseUrl ? this.serverApi(baseUrl) : of({ kind: 'legacy' } as const),
       ),
     );
   }
 
+  private serverApi(baseUrl: string): Observable<AccountServerApi> {
+    return this.engine.authMetadata(baseUrl).pipe(map(accountServerApi));
+  }
+
   /**
-   * Change the active account's password. Cold — runs on subscribe. The homeserver
-   * requires a user-interactive-auth (UIA) password stage, which we satisfy with the
-   * supplied `currentPassword` via {@link runPasswordUia}; a rejected password surfaces
-   * as a clear "incorrect password" error rather than a raw UIA failure. Other sessions
-   * are kept signed in (`logoutDevices: false`).
+   * Change `accountId`'s password. Cold — runs on subscribe. The homeserver requires a
+   * user-interactive-auth (UIA) password stage, which we satisfy with the supplied
+   * `currentPassword` via {@link driveUia}; a rejected password surfaces as a clear
+   * "incorrect password" error rather than a raw UIA failure, and a weak new password as
+   * the server's reason. Other sessions are kept signed in.
    */
   changePassword(
+    accountId: string,
     currentPassword: string,
     newPassword: string,
   ): Observable<void> {
-    return defer(() => {
-      if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
-      }
-      const client = this.matrix.instance;
-      let provided = false;
-      const promptPassword: PasswordPrompt = () => {
-        // A second prompt means the server rejected the first — bail rather than loop.
-        if (provided) {
-          return Promise.resolve(null);
+    return defer(() =>
+      driveUia(
+        engineUia((auth) =>
+          this.engine.changePassword(accountId, newPassword, auth),
+        ),
+        {
+          password: {
+            user: accountId,
+            // A second prompt means the server rejected the first — bail rather than loop.
+            prompt: ({ rejected }) =>
+              Promise.resolve(rejected ? null : currentPassword),
+          },
+        },
+      ),
+    ).pipe(
+      map(() => void 0),
+      catchError((err: unknown) => {
+        if (err instanceof UiaCancelledError) {
+          return throwError(
+            () => new Error('Your current password is incorrect.'),
+          );
         }
-        provided = true;
-        return Promise.resolve(currentPassword);
-      };
-      return from(
-        runPasswordUia(
-          // The probe sends no `auth` at all: an empty dict is malformed UIA data that
-          // ruma-based servers reject with M_BAD_JSON instead of the 401 challenge. The
-          // SDK types the dict as required but serialises an undefined one away.
-          (auth) =>
-            client.setPassword(
-              auth ?? (undefined as unknown as AuthDict),
-              newPassword,
-              false,
-            ),
-          promptPassword,
-          client.getUserId() ?? '',
-        ),
-      ).pipe(
-        map(() => void 0),
-        catchError((err) =>
-          throwError(() =>
-            err instanceof UiaCancelledError
-              ? new Error('Your current password is incorrect.')
-              : err,
-          ),
-        ),
-      );
-    });
+        const reason =
+          err instanceof EngineRequestError &&
+          err.failure.code === 'request-failed'
+            ? err.failure.params?.serverMessage
+            : undefined;
+        return throwError(() => (reason ? new Error(reason) : err));
+      }),
+    );
   }
 
   /**
@@ -557,15 +448,7 @@ export class AuthService implements QrSignInCompletion {
         ),
       ),
       tap((outcome) => {
-        // Refused before anything was saved: nothing will ever use this session.
-        if (
-          device.isNew &&
-          (outcome.kind === 'transition-in-progress' ||
-            (outcome.kind === 'failed' &&
-              (outcome.failure === 'homeserver-mismatch' ||
-                outcome.failure === 'account-already-stored' ||
-                outcome.failure === 'unprotected-storage-declined')))
-        ) {
+        if (device.isNew && refusedBeforeSaving(outcome)) {
           this.signOutNewDevice(baseUrl, response);
         }
       }),
@@ -619,7 +502,7 @@ export class AuthService implements QrSignInCompletion {
         record.deviceId === response.device_id ||
         !sameHomeserver(record.baseUrl, baseUrl)
           ? of(true)
-          : this.matrix.roomKeysBackedUp(userId).pipe(
+          : this.sessionEngine.roomKeysBackedUp(userId).pipe(
               switchMap((backedUp) =>
                 backedUp
                   ? of(true)
@@ -664,14 +547,12 @@ export class AuthService implements QrSignInCompletion {
           accessToken: response.access_token,
           refreshToken: response.refresh_token,
         })
-      : defer(() =>
-          from(
-            createClient({
-              baseUrl,
-              accessToken: response.access_token,
-            }).logout(true),
-          ),
-        );
+      : this.sessionEngine.logoutSession({
+          baseUrl,
+          userId: response.user_id,
+          deviceId: response.device_id,
+          accessToken: response.access_token,
+        });
     signOut.subscribe({ error: () => undefined });
   }
 
@@ -681,4 +562,18 @@ export class AuthService implements QrSignInCompletion {
     const colon = trimmed.indexOf(':');
     return colon >= 0 ? trimmed.slice(0, colon) : trimmed;
   }
+}
+
+/** The session as account establishment reads it. */
+function sessionResponse(
+  session: SignedInSession,
+): AuthenticatedSessionResponse {
+  return {
+    user_id: session.userId,
+    device_id: session.deviceId,
+    access_token: session.accessToken,
+    ...(session.refreshToken !== null
+      ? { refresh_token: session.refreshToken }
+      : {}),
+  };
 }

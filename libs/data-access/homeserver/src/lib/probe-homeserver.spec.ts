@@ -474,7 +474,7 @@ describe('fetchSpecVersions', () => {
 
   it('never puts the access token on a plain-http connection', async () => {
     // This is the reason the https check exists at all. The app's own CSP
-    // (`connect-src 'self' https: wss:`) already blocks it on the web, but the check makes
+    // (`connect-src 'self' https: wss: blob:`) already blocks it on the web, but the check makes
     // sending the account's bearer token in the clear impossible rather than merely
     // unlikely — on a platform whose CSP is enforced differently, or in a test harness.
     const fetchMock = stubFetch({});

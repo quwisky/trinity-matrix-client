@@ -17,6 +17,7 @@ import {
   SsoStateStore,
   type OidcGrantContext,
 } from '@trinity/data-access/auth';
+import { EngineRequestError } from '@trinity/util/matrix';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { accountEstablishmentError } from '../account-establishment-outcome';
 
@@ -169,8 +170,8 @@ export class SsoCallbackPage implements OnInit {
       );
       return;
     }
-    // Every field is needed to rebuild the OAuth2 client; matrix-js-sdk keeps no sign-in
-    // state of its own, so the stash is the only source.
+    // Every field is needed to redeem the code; nothing else keeps sign-in state, so the
+    // stash is the only source.
     if (
       !code ||
       !stash.baseUrl ||
@@ -216,11 +217,18 @@ export class SsoCallbackPage implements OnInit {
           void this.router.navigateByUrl('/rooms', { replaceUrl: true });
         },
         error: (err) => {
-          // A provider that pruned our dynamic registration fails with invalid_client
-          // forever; forget the cached client id so the next attempt re-registers.
-          if (/invalid_client/i.test(this.messageOf(err))) {
+          // A provider that pruned our dynamic registration rejects the client forever;
+          // forget the cached client id so the next attempt re-registers.
+          if (
+            err instanceof EngineRequestError &&
+            err.failure.code === 'oauth-client-rejected'
+          ) {
             this.auth
-              .forgetOidcClientId(context.baseUrl, context.issuer)
+              .forgetOidcClientId(
+                context.baseUrl,
+                context.issuer,
+                context.clientId,
+              )
               .pipe(takeUntilDestroyed(this.destroyRef))
               .subscribe({ error: () => undefined });
           }

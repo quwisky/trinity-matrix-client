@@ -1,6 +1,6 @@
 import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import type { MatrixSession } from '@trinity/util/matrix';
+import { engineFail, type MatrixSession } from '@trinity/util/matrix';
 import type { AccountSignOutOutcome } from './account-runtime.models';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import {
@@ -9,14 +9,21 @@ import {
   setup,
 } from './matrix-account-runtime.spec-harness';
 
+const LOGOUT_FAILED = of(
+  engineFail({
+    kind: 'network',
+    code: 'request-failed',
+    diagnostic: { kind: 'network' },
+  }),
+);
+
 describe('MatrixAccountRuntimeAdapter', () => {
   describe('removing a deleted account', () => {
     function deletedAccount(
       accountIds: readonly string[],
       test = setup(accountIds[0]),
     ) {
-      const client = { logout: vi.fn(() => Promise.resolve()) };
-      vi.mocked(test.matrix.clientFor).mockReturnValue(client as never);
+      test.goLive(accountIds);
       vi.mocked(test.storage.list).mockReturnValue(
         of(
           accountIds.map((userId, index) => ({
@@ -26,14 +33,10 @@ describe('MatrixAccountRuntimeAdapter', () => {
           })),
         ),
       );
-      vi.mocked(test.matrix.remove).mockImplementation(() => {
-        test.active.set(accountIds[1] ?? null);
-        return of(void 0);
-      });
       vi.mocked(test.storage.remove).mockReturnValue(of(void 0));
       vi.mocked(test.storage.setActive).mockReturnValue(of(void 0));
       vi.mocked(test.storage.clear).mockReturnValue(of(void 0));
-      return { ...test, client };
+      return test;
     }
 
     it('removes it locally without contacting its homeserver', async () => {
@@ -47,13 +50,14 @@ describe('MatrixAccountRuntimeAdapter', () => {
         activeAccountId: '@survivor:hs',
         remainingAccountIds: ['@survivor:hs'],
       });
-      expect(test.client.logout).not.toHaveBeenCalled();
+      expect(test.engine.logoutRemote).not.toHaveBeenCalled();
+      expect(test.engine.logoutSession).not.toHaveBeenCalled();
       expect(test.lifecycle.unregisterNotifications).not.toHaveBeenCalled();
       expect(test.lifecycle.revokeProviderSession).not.toHaveBeenCalled();
       expect(test.lifecycle.forgetPushHandoff).toHaveBeenCalledWith(
         '@deleted:hs',
       );
-      expect(test.matrix.remove).toHaveBeenCalledWith('@deleted:hs');
+      expect(test.engine.remove).toHaveBeenCalledWith('@deleted:hs');
       expect(test.storage.remove).toHaveBeenCalledWith('@deleted:hs');
       expect(test.storage.setActive).toHaveBeenCalledWith('@survivor:hs');
     });
@@ -80,15 +84,13 @@ describe('MatrixAccountRuntimeAdapter', () => {
         remainingAccountIds: [],
       });
       expect(test.lifecycle.unregisterNotifications).toHaveBeenCalledWith();
-      expect(
-        vi.mocked(test.matrix.remove).mock.invocationCallOrder[0],
-      ).toBeLessThan(
+      expect(test.engine.remove.mock.invocationCallOrder[0]).toBeLessThan(
         vi.mocked(test.lifecycle.unregisterNotifications).mock
           .invocationCallOrder[0],
       );
       expect(test.lifecycle.releaseSharedCaches).toHaveBeenCalledOnce();
       expect(test.storage.clear).toHaveBeenCalledOnce();
-      expect(test.client.logout).not.toHaveBeenCalled();
+      expect(test.engine.logoutRemote).not.toHaveBeenCalled();
     });
 
     it('reports preferences it could not forget as partial cleanup', async () => {
@@ -117,15 +119,14 @@ describe('MatrixAccountRuntimeAdapter', () => {
         failure: 'account-unavailable',
         recovery: 'retry-sign-out',
       });
-      expect(test.matrix.remove).not.toHaveBeenCalled();
+      expect(test.engine.remove).not.toHaveBeenCalled();
     });
   });
 
   it('signs out one explicit Account while keeping the surviving Account active', async () => {
-    const { adapter, matrix, storage, lifecycle, active } =
+    const { adapter, engine, storage, lifecycle, goLive } =
       setup('@outgoing:hs');
-    const client = { logout: vi.fn(() => Promise.resolve()) };
-    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+    goLive(['@outgoing:hs', '@survivor:hs']);
     vi.mocked(storage.list).mockReturnValue(
       of([
         { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
@@ -135,10 +136,6 @@ describe('MatrixAccountRuntimeAdapter', () => {
     vi.mocked(storage.load).mockReturnValue(
       of({ userId: '@outgoing:hs', baseUrl: 'https://hs' } as never),
     );
-    vi.mocked(matrix.remove).mockImplementation(() => {
-      active.set('@survivor:hs');
-      return of(void 0);
-    });
     vi.mocked(storage.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.setActive).mockReturnValue(of(void 0));
 
@@ -153,27 +150,22 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith(
       '@outgoing:hs',
     );
-    expect(matrix.remove).toHaveBeenCalledWith('@outgoing:hs');
+    expect(engine.logoutRemote).toHaveBeenCalledExactlyOnceWith('@outgoing:hs');
+    expect(engine.remove).toHaveBeenCalledWith('@outgoing:hs');
     expect(storage.remove).toHaveBeenCalledWith('@outgoing:hs');
     expect(storage.setActive).toHaveBeenCalledWith('@survivor:hs');
     expect(lifecycle.clearDrafts).toHaveBeenCalledOnce();
   });
 
   it('fully clears local Account state when signing out the last Account', async () => {
-    const { adapter, matrix, storage, lifecycle, active } = setup('@last:hs');
-    vi.mocked(matrix.clientFor).mockReturnValue({
-      logout: vi.fn(() => Promise.resolve()),
-    } as never);
+    const { adapter, engine, storage, lifecycle, goLive } = setup('@last:hs');
+    goLive(['@last:hs']);
     vi.mocked(storage.list).mockReturnValue(
       of([{ userId: '@last:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
     );
     vi.mocked(storage.load).mockReturnValue(
       of({ userId: '@last:hs', baseUrl: 'https://hs' } as never),
     );
-    vi.mocked(matrix.remove).mockImplementation(() => {
-      active.set(null);
-      return of(void 0);
-    });
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     await expect(
@@ -185,16 +177,14 @@ describe('MatrixAccountRuntimeAdapter', () => {
       remainingAccountIds: [],
     });
     expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
-    expect(matrix.remove).toHaveBeenCalledWith('@last:hs');
+    expect(engine.remove).toHaveBeenCalledWith('@last:hs');
     expect(lifecycle.releaseSharedCaches).toHaveBeenCalledOnce();
     expect(storage.clear).toHaveBeenCalledOnce();
   });
 
   it('forgets the push handoff before sign-out reads the session or contacts the homeserver', async () => {
-    const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
-    vi.mocked(matrix.clientFor).mockReturnValue({
-      logout: vi.fn(() => Promise.resolve()),
-    } as never);
+    const { adapter, storage, lifecycle, goLive } = setup('@outgoing:hs');
+    goLive(['@outgoing:hs', '@survivor:hs']);
     vi.mocked(storage.list).mockReturnValue(
       of([
         { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
@@ -202,7 +192,6 @@ describe('MatrixAccountRuntimeAdapter', () => {
       ]),
     );
     vi.mocked(storage.load).mockReturnValue(of(null));
-    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.setActive).mockReturnValue(of(void 0));
 
@@ -220,10 +209,8 @@ describe('MatrixAccountRuntimeAdapter', () => {
   });
 
   it('retries a refused push handoff removal with the notification cleanup', async () => {
-    const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
-    vi.mocked(matrix.clientFor).mockReturnValue({
-      logout: vi.fn(() => Promise.resolve()),
-    } as never);
+    const { adapter, storage, lifecycle, goLive } = setup('@outgoing:hs');
+    goLive(['@outgoing:hs', '@survivor:hs']);
     vi.mocked(storage.list).mockReturnValue(
       of([
         { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
@@ -231,7 +218,6 @@ describe('MatrixAccountRuntimeAdapter', () => {
       ]),
     );
     vi.mocked(storage.load).mockReturnValue(of(null));
-    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.setActive).mockReturnValue(of(void 0));
     vi.mocked(lifecycle.forgetPushHandoff)
@@ -259,10 +245,8 @@ describe('MatrixAccountRuntimeAdapter', () => {
   });
 
   it('still tears the pusher down on retry when the push handoff refuses again', async () => {
-    const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
-    vi.mocked(matrix.clientFor).mockReturnValue({
-      logout: vi.fn(() => Promise.resolve()),
-    } as never);
+    const { adapter, storage, lifecycle, goLive } = setup('@outgoing:hs');
+    goLive(['@outgoing:hs', '@survivor:hs']);
     vi.mocked(storage.list).mockReturnValue(
       of([
         { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
@@ -270,7 +254,6 @@ describe('MatrixAccountRuntimeAdapter', () => {
       ]),
     );
     vi.mocked(storage.load).mockReturnValue(of(null));
-    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.setActive).mockReturnValue(of(void 0));
     vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
@@ -302,39 +285,32 @@ describe('MatrixAccountRuntimeAdapter', () => {
   });
 
   it('revokes an OIDC account once, through its live client', async () => {
-    const { adapter, matrix, storage, lifecycle, active } = setup('@oidc:hs');
-    const client = { logout: vi.fn(() => Promise.resolve()) };
-    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+    const { adapter, engine, storage, lifecycle, goLive } = setup('@oidc:hs');
+    goLive(['@oidc:hs']);
     vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
     vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
-    vi.mocked(matrix.remove).mockImplementation(() => {
-      active.set(null);
-      return of(void 0);
-    });
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     await expect(
       firstValueFrom(adapter.signOutAccount('@oidc:hs')),
     ).resolves.toMatchObject({ kind: 'ready' });
-    // matrix-js-sdk 43's logout() revokes at the provider itself; a second, Trinity-owned
+    // The live client's logout revokes at the provider itself; a second, Trinity-owned
     // revocation would revoke every token twice.
-    expect(client.logout).toHaveBeenCalledOnce();
-    expect(client.logout).toHaveBeenCalledWith(true);
+    expect(engine.logoutRemote).toHaveBeenCalledExactlyOnceWith('@oidc:hs');
+    expect(engine.logoutRemote.mock.invocationCallOrder[0]).toBeLessThan(
+      engine.remove.mock.invocationCallOrder[0],
+    );
+    expect(engine.logoutSession).not.toHaveBeenCalled();
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
   it('revokes through the live client even when the stored OIDC session cannot be read', async () => {
-    const { adapter, matrix, storage, lifecycle, active } = setup('@oidc:hs');
-    const client = { logout: vi.fn(() => Promise.resolve()) };
-    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+    const { adapter, engine, storage, lifecycle, goLive } = setup('@oidc:hs');
+    goLive(['@oidc:hs']);
     vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
     vi.mocked(storage.load).mockReturnValue(
       throwError(() => new Error('secure read failed')),
     );
-    vi.mocked(matrix.remove).mockImplementation(() => {
-      active.set(null);
-      return of(void 0);
-    });
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     await expect(
@@ -345,25 +321,16 @@ describe('MatrixAccountRuntimeAdapter', () => {
       activeAccountId: null,
       remainingAccountIds: [],
     });
-    expect(client.logout).toHaveBeenCalledOnce();
+    expect(engine.logoutRemote).toHaveBeenCalledOnce();
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
-  it('reports a failed OIDC revocation as provider residue and retries it through the client', async () => {
-    const { adapter, matrix, storage, lifecycle, active } = setup('@oidc:hs');
-    const client = {
-      logout: vi
-        .fn()
-        .mockRejectedValueOnce(new Error('provider unreachable'))
-        .mockResolvedValue(undefined),
-    };
-    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+  it('reports a failed OIDC revocation as provider residue and retries it with the stored session and live token', async () => {
+    const { adapter, engine, storage, lifecycle, goLive } = setup('@oidc:hs');
+    goLive(['@oidc:hs']);
+    engine.logoutRemote.mockReturnValueOnce(LOGOUT_FAILED);
     vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
     vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
-    vi.mocked(matrix.remove).mockImplementation(() => {
-      active.set(null);
-      return of(void 0);
-    });
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     const first = await firstValueFrom(adapter.signOutAccount('@oidc:hs'));
@@ -375,7 +342,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
     });
     // Local removal did not wait on the provider.
-    expect(matrix.remove).toHaveBeenCalledWith('@oidc:hs');
+    expect(engine.remove).toHaveBeenCalledWith('@oidc:hs');
     expect(storage.clear).toHaveBeenCalledOnce();
 
     await expect(
@@ -386,24 +353,130 @@ describe('MatrixAccountRuntimeAdapter', () => {
         ),
       ),
     ).resolves.toMatchObject({ kind: 'ready' });
-    expect(client.logout).toHaveBeenCalledTimes(2);
+    // The client is gone by then: its stored session, refresh token included, is revoked
+    // with the access token the client held at removal.
+    expect(engine.logoutRemote).toHaveBeenCalledOnce();
+    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+      ...(OIDC_STORED as object),
+      accessToken: 'live-@oidc:hs-g1',
+    });
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
-  it('keeps a failed live revocation as provider residue when the session read settles late', async () => {
+  it('retries a password logout with the token captured while the account was live', async () => {
+    const { adapter, engine, storage, goLive } = setup('@pw:hs');
+    goLive(['@pw:hs']);
+    engine.logoutRemote.mockReturnValueOnce(LOGOUT_FAILED);
+    const record = { userId: '@pw:hs', baseUrl: 'https://hs', deviceId: 'A' };
+    vi.mocked(storage.list).mockReturnValue(of([record]));
+    vi.mocked(storage.load).mockReturnValue(
+      throwError(() => new Error('secure read failed')),
+    );
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@pw:hs'));
+    const issues = first.kind === 'partial-cleanup' ? first.issues : [];
+    expect(issues).toContainEqual({
+      scope: 'matrix-session',
+      recovery: 'retry-sign-out',
+    });
+    await expect(
+      firstValueFrom(adapter.retrySignOutCleanup('@pw:hs', issues)),
+    ).resolves.toMatchObject({ kind: 'ready' });
+
+    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+      ...record,
+      accessToken: 'live-@pw:hs-g1',
+    });
+  });
+
+  it('retries an OAuth revocation with the refresh token captured while live', async () => {
+    const { adapter, engine, storage, goLive } = setup('@oidc:hs');
+    goLive(['@oidc:hs'], 1, 'live-refresh');
+    engine.logoutRemote.mockReturnValueOnce(LOGOUT_FAILED);
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(
+      throwError(() => new Error('secure read failed')),
+    );
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@oidc:hs'));
+    const issues = first.kind === 'partial-cleanup' ? first.issues : [];
+    expect(issues).toContainEqual({
+      scope: 'provider-session',
+      recovery: 'retry-sign-out',
+    });
+    await firstValueFrom(adapter.retrySignOutCleanup('@oidc:hs', issues));
+
+    // Revoking the refresh token ends the provider session even once the access token expired.
+    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+      ...(OIDC_RECORD as object),
+      accessToken: 'live-@oidc:hs-g1',
+      refreshToken: 'live-refresh',
+    });
+  });
+
+  it('retries with the tokens the client held at removal, not the ones captured first', async () => {
+    const { adapter, engine, storage, goLive, refresh } = setup('@oidc:hs');
+    goLive(['@oidc:hs'], 1, 'refresh-1');
+    engine.logoutRemote.mockImplementationOnce(() => {
+      // The client refreshes its tokens before it is removed.
+      refresh('@oidc:hs', 'access-2', 'refresh-2');
+      return LOGOUT_FAILED;
+    });
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@oidc:hs'));
+    await firstValueFrom(
+      adapter.retrySignOutCleanup(
+        '@oidc:hs',
+        first.kind === 'partial-cleanup' ? first.issues : [],
+      ),
+    );
+
+    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+      ...(OIDC_STORED as object),
+      accessToken: 'access-2',
+      refreshToken: 'refresh-2',
+    });
+  });
+
+  it('never logs out a newer sign-in of the account on retry', async () => {
+    const { adapter, engine, storage, goLive } = setup('@pw:hs');
+    goLive(['@pw:hs']);
+    engine.logoutRemote.mockReturnValueOnce(LOGOUT_FAILED);
+    const record = { userId: '@pw:hs', baseUrl: 'https://hs', deviceId: 'A' };
+    vi.mocked(storage.list).mockReturnValue(of([record]));
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+    const first = await firstValueFrom(adapter.signOutAccount('@pw:hs'));
+    goLive(['@pw:hs'], 2);
+
+    await firstValueFrom(
+      adapter.retrySignOutCleanup(
+        '@pw:hs',
+        first.kind === 'partial-cleanup' ? first.issues : [],
+      ),
+    );
+
+    expect(engine.logoutRemote).toHaveBeenCalledOnce();
+    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+      ...record,
+      accessToken: 'live-@pw:hs-g1',
+    });
+  });
+
+  it('keeps a failed live revocation as provider residue when the session read settles late, and retries it with the live tokens', async () => {
     vi.useFakeTimers();
     try {
-      const { adapter, matrix, storage, active } = setup('@oidc:hs');
+      const { adapter, engine, storage, goLive } = setup('@oidc:hs');
       const sessionRead = new Subject<MatrixSession | null>();
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        logout: vi.fn(() => Promise.reject(new Error('provider unreachable'))),
-      } as never);
+      goLive(['@oidc:hs'], 1, 'live-refresh');
+      engine.logoutRemote.mockReturnValue(LOGOUT_FAILED);
       vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
       vi.mocked(storage.load).mockReturnValue(sessionRead);
-      vi.mocked(matrix.remove).mockImplementation(() => {
-        active.set(null);
-        return of(void 0);
-      });
       vi.mocked(storage.clear).mockReturnValue(of(void 0));
       const outcomes: AccountSignOutOutcome[] = [];
 
@@ -417,49 +490,74 @@ describe('MatrixAccountRuntimeAdapter', () => {
       sessionRead.complete();
       await vi.runAllTimersAsync();
 
-      expect(outcomes.at(-1)).toEqual({
+      const last = outcomes.at(-1);
+      expect(last).toEqual({
         kind: 'partial-cleanup',
         accountId: '@oidc:hs',
         activeAccountId: null,
         remainingAccountIds: [],
         issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
       });
+
+      const retry = firstValueFrom(
+        adapter.retrySignOutCleanup(
+          '@oidc:hs',
+          last?.kind === 'partial-cleanup' ? last.issues : [],
+        ),
+      );
+      await vi.runAllTimersAsync();
+      await retry;
+      // The late read's stored tokens must not replace the ones taken at removal.
+      expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith({
+        ...(OIDC_RECORD as object),
+        accessToken: 'live-@oidc:hs-g1',
+        refreshToken: 'live-refresh',
+      });
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('revokes an OIDC account without a live client through a detached client', async () => {
-    const { adapter, matrix, storage, lifecycle } = setup(null);
-    const detached = { logout: vi.fn(() => Promise.resolve()) };
-    vi.mocked(matrix.clientFor).mockReturnValue(null);
-    vi.mocked(matrix.detachedClient).mockReturnValue(detached as never);
+  it('revokes an OIDC account without a live client through its stored session', async () => {
+    const { adapter, engine, storage, lifecycle } = setup(null);
     vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
     vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
-    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     await expect(
       firstValueFrom(adapter.signOutAccount('@oidc:hs')),
     ).resolves.toMatchObject({ kind: 'ready' });
-    expect(matrix.detachedClient).toHaveBeenCalledWith(OIDC_STORED);
-    expect(detached.logout).toHaveBeenCalledOnce();
+    expect(engine.logoutSession).toHaveBeenCalledExactlyOnceWith(OIDC_STORED);
+    expect(engine.logoutRemote).not.toHaveBeenCalled();
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
-  it('retries a failed detached revocation through a new detached client', async () => {
-    const { adapter, matrix, storage, lifecycle } = setup(null);
-    const detached = {
-      logout: vi
-        .fn()
-        .mockRejectedValueOnce(new Error('provider unreachable'))
-        .mockResolvedValue(undefined),
-    };
-    vi.mocked(matrix.clientFor).mockReturnValue(null);
-    vi.mocked(matrix.detachedClient).mockReturnValue(detached as never);
+  it('skips the remote step for a password account without a live client', async () => {
+    const { adapter, engine, storage } = setup(null);
+    vi.mocked(storage.list).mockReturnValue(
+      of([{ userId: '@pw:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+    );
+    vi.mocked(storage.load).mockReturnValue(
+      of({
+        userId: '@pw:hs',
+        baseUrl: 'https://hs',
+        accessToken: 't',
+      } as never),
+    );
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@pw:hs')),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(engine.logoutRemote).not.toHaveBeenCalled();
+    expect(engine.logoutSession).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed stored-session revocation', async () => {
+    const { adapter, engine, storage, lifecycle } = setup(null);
+    engine.logoutSession.mockReturnValueOnce(LOGOUT_FAILED);
     vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
     vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
-    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     const first = await firstValueFrom(adapter.signOutAccount('@oidc:hs'));
@@ -476,21 +574,18 @@ describe('MatrixAccountRuntimeAdapter', () => {
         ),
       ),
     ).resolves.toMatchObject({ kind: 'ready' });
-    expect(matrix.detachedClient).toHaveBeenCalledTimes(2);
-    expect(matrix.detachedClient).toHaveBeenLastCalledWith(OIDC_STORED);
-    expect(detached.logout).toHaveBeenCalledTimes(2);
+    expect(engine.logoutSession).toHaveBeenCalledTimes(2);
+    expect(engine.logoutSession).toHaveBeenLastCalledWith(OIDC_STORED);
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
   it('does not resolve provider residue on retry when there is nothing to revoke with', async () => {
     vi.useFakeTimers();
     try {
-      const { adapter, matrix, storage } = setup(null);
+      const { adapter, engine, storage } = setup(null);
       const sessionRead = new Subject<MatrixSession | null>();
-      vi.mocked(matrix.clientFor).mockReturnValue(null);
       vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
       vi.mocked(storage.load).mockReturnValue(sessionRead);
-      vi.mocked(matrix.remove).mockReturnValue(of(void 0));
       vi.mocked(storage.clear).mockReturnValue(of(void 0));
       const outcomes: AccountSignOutOutcome[] = [];
 
@@ -522,20 +617,18 @@ describe('MatrixAccountRuntimeAdapter', () => {
         kind: 'partial-cleanup',
         issues: [{ scope: 'provider-session' }],
       });
-      expect(matrix.detachedClient).not.toHaveBeenCalled();
+      expect(engine.logoutSession).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('does not claim provider cleanup without a live client when the OIDC session cannot be read', async () => {
-    const { adapter, matrix, storage } = setup(null);
-    vi.mocked(matrix.clientFor).mockReturnValue(null);
+    const { adapter, engine, storage } = setup(null);
     vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
     vi.mocked(storage.load).mockReturnValue(
       throwError(() => new Error('secure read failed')),
     );
-    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     await expect(
@@ -547,24 +640,19 @@ describe('MatrixAccountRuntimeAdapter', () => {
       remainingAccountIds: [],
       issues: [{ scope: 'provider-session', recovery: 'restart-application' }],
     });
-    expect(matrix.detachedClient).not.toHaveBeenCalled();
+    expect(engine.logoutSession).not.toHaveBeenCalled();
   });
 
   it('reports a failed homeserver logout of a password account as matrix-session residue', async () => {
-    const { adapter, matrix, storage, active } = setup('@pw:hs');
-    vi.mocked(matrix.clientFor).mockReturnValue({
-      logout: vi.fn(() => Promise.reject(new Error('homeserver down'))),
-    } as never);
+    const { adapter, engine, storage, goLive } = setup('@pw:hs');
+    goLive(['@pw:hs']);
+    engine.logoutRemote.mockReturnValue(LOGOUT_FAILED);
     vi.mocked(storage.list).mockReturnValue(
       of([{ userId: '@pw:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
     );
     vi.mocked(storage.load).mockReturnValue(
       of({ userId: '@pw:hs', baseUrl: 'https://hs' } as never),
     );
-    vi.mocked(matrix.remove).mockImplementation(() => {
-      active.set(null);
-      return of(void 0);
-    });
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     await expect(
@@ -576,13 +664,11 @@ describe('MatrixAccountRuntimeAdapter', () => {
   });
 
   it('wipes the explicit last Account even when it has no live client', async () => {
-    const { adapter, matrix, storage } = setup(null);
-    vi.mocked(matrix.clientFor).mockReturnValue(null);
+    const { adapter, engine, storage } = setup(null);
     vi.mocked(storage.list).mockReturnValue(
       of([{ userId: '@stale:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
     );
     vi.mocked(storage.load).mockReturnValue(of(null));
-    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.clear).mockReturnValue(of(void 0));
 
     await expect(
@@ -593,16 +679,13 @@ describe('MatrixAccountRuntimeAdapter', () => {
       activeAccountId: null,
       remainingAccountIds: [],
     });
-    expect(matrix.remove).toHaveBeenCalledWith('@stale:hs');
-    expect(matrix.reset).not.toHaveBeenCalled();
+    expect(engine.remove).toHaveBeenCalledWith('@stale:hs');
+    expect(engine.stop).not.toHaveBeenCalled();
   });
 
   it('keeps a surviving Account active when outgoing crypto cleanup fails', async () => {
-    const { adapter, matrix, storage } = setup('@outgoing:hs');
-    vi.mocked(matrix.clientFor).mockImplementation(
-      (accountId) =>
-        ({ logout: vi.fn(() => Promise.resolve()), accountId }) as never,
-    );
+    const { adapter, engine, storage, goLive } = setup('@outgoing:hs');
+    goLive(['@outgoing:hs', '@survivor:hs']);
     vi.mocked(storage.list).mockReturnValue(
       of([
         { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
@@ -610,7 +693,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       ]),
     );
     vi.mocked(storage.load).mockReturnValue(of(null));
-    vi.mocked(matrix.remove).mockReturnValue(
+    engine.remove.mockReturnValue(
       throwError(() => new Error('crypto store remained open')),
     );
     vi.mocked(storage.remove).mockReturnValue(of(void 0));
@@ -625,18 +708,17 @@ describe('MatrixAccountRuntimeAdapter', () => {
       remainingAccountIds: ['@survivor:hs'],
       issues: [{ scope: 'crypto-and-cache', recovery: 'restart-application' }],
     });
-    expect(matrix.setActive).toHaveBeenCalledWith('@survivor:hs');
+    expect(engine.setActive).toHaveBeenCalledWith('@survivor:hs');
     expect(storage.setActive).toHaveBeenCalledWith('@survivor:hs');
   });
 
   it('continues Account registry cleanup while Matrix removal remains owned', async () => {
     vi.useFakeTimers();
     try {
-      const { adapter, matrix, storage } = setup('@outgoing:hs');
-      const removal = new Subject<void>();
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        logout: vi.fn(() => Promise.resolve()),
-      } as never);
+      const { adapter, engine, storage, goLive, active } =
+        setup('@outgoing:hs');
+      const removal = new Subject<null>();
+      goLive(['@outgoing:hs', '@survivor:hs']);
       vi.mocked(storage.list).mockReturnValue(
         of([
           { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
@@ -644,7 +726,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
         ]),
       );
       vi.mocked(storage.load).mockReturnValue(of(null));
-      vi.mocked(matrix.remove).mockReturnValue(removal);
+      engine.remove.mockReturnValue(removal);
       vi.mocked(storage.remove).mockReturnValue(of(void 0));
       vi.mocked(storage.setActive).mockReturnValue(of(void 0));
       const outcomes = [] as AccountSignOutOutcome[];
@@ -670,7 +752,8 @@ describe('MatrixAccountRuntimeAdapter', () => {
       expect(storage.remove).toHaveBeenCalledWith('@outgoing:hs');
       expect(removal.observed).toBe(true);
 
-      removal.next();
+      active.set('@survivor:hs');
+      removal.next(null);
       removal.complete();
       await vi.runAllTimersAsync();
       expect(outcomes.at(-1)).toEqual({
@@ -685,9 +768,9 @@ describe('MatrixAccountRuntimeAdapter', () => {
   });
 
   it('retries only settled safe Account-removal residue', async () => {
-    const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
-    const client = { logout: vi.fn(() => Promise.resolve()) };
-    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+    const { adapter, engine, storage, lifecycle, goLive } =
+      setup('@outgoing:hs');
+    goLive(['@outgoing:hs', '@survivor:hs']);
     vi.mocked(storage.list).mockReturnValue(
       of([
         { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
@@ -695,7 +778,6 @@ describe('MatrixAccountRuntimeAdapter', () => {
       ]),
     );
     vi.mocked(storage.load).mockReturnValue(of(null));
-    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.remove).mockReturnValue(of(void 0));
     vi.mocked(storage.setActive).mockReturnValue(of(void 0));
     vi.mocked(lifecycle.unregisterNotifications)
@@ -717,8 +799,9 @@ describe('MatrixAccountRuntimeAdapter', () => {
       ),
     ).resolves.toMatchObject({ kind: 'ready' });
     expect(lifecycle.unregisterNotifications).toHaveBeenCalledTimes(2);
-    expect(client.logout).toHaveBeenCalledOnce();
-    expect(matrix.remove).toHaveBeenCalledOnce();
+    expect(engine.logoutRemote).toHaveBeenCalledOnce();
+    expect(engine.logoutSession).not.toHaveBeenCalled();
+    expect(engine.remove).toHaveBeenCalledOnce();
     expect(storage.remove).toHaveBeenCalledOnce();
   });
 });

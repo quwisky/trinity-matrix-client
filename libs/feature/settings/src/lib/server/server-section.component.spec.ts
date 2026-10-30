@@ -7,7 +7,7 @@ import {
   HomeserverInfoService,
   type HomeserverInfo,
 } from '@trinity/data-access/homeserver';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
@@ -25,7 +25,7 @@ function setup(
         provide: BUILD_INFO,
         useValue: { version: '9.9.9', commit: 'abc1234', builtAt: '' },
       },
-      MockProvider(MatrixClientService, { accountIds: ids.asReadonly() }),
+      MockProvider(SessionStateService, { accountIds: ids.asReadonly() }),
       MockProvider(HomeserverInfoService, {
         infos: infos.asReadonly(),
         load: () => of(undefined),

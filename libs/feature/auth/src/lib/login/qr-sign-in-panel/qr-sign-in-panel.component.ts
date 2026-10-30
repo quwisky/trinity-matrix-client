@@ -16,16 +16,31 @@ import {
   type OnInit,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  FormField,
+  FormRoot,
+  form,
+  maxLength,
+  pattern,
+  required,
+  submit,
+} from '@angular/forms/signals';
 import type { Subscription } from 'rxjs';
 import {
   QR_SIGN_IN_FAILURE_MESSAGES,
   QrSignInService,
+  type NewDeviceQrSignIn,
   type NewDeviceState,
   type QrSignInFailure,
 } from '@trinity/data-access/auth';
 import { QrCodeService } from '@trinity/platform-native';
-import { TrnButton } from '@trinity/components/controls';
+import {
+  TrnButton,
+  TrnFieldImports,
+  TrnInput,
+} from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import { shownError } from '@trinity/util/ui';
 
 /** Failures a new code cannot fix; "Sign in another way" is their next action. */
 const FINAL_FAILURES: ReadonlySet<QrSignInFailure> = new Set([
@@ -34,13 +49,26 @@ const FINAL_FAILURES: ReadonlySet<QrSignInFailure> = new Set([
   'other-server',
 ]);
 
+const TWO_DIGITS = 'Enter the two digits.';
+const APPROVE_HINT = 'Approve the sign-in on your other device.';
+const WRONG_CODE =
+  "That isn't the code your other device shows, so nothing was shared. Show a new code and try again.";
+
 /** The new device's side of a QR sign-in: shows the code, then follows the other device. */
 @Component({
   selector: 'trn-qr-sign-in-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'qr-sign-in-panel.component.html',
   styleUrl: 'qr-sign-in-panel.component.scss',
-  imports: [DatePipe, TrnButton, TrnSpinnerComponent],
+  imports: [
+    DatePipe,
+    FormField,
+    FormRoot,
+    TrnButton,
+    TrnFieldImports,
+    TrnInput,
+    TrnSpinnerComponent,
+  ],
   host: { '(keydown.escape)': 'onEscape($event)' },
 })
 export class QrSignInPanelComponent implements OnInit {
@@ -50,30 +78,35 @@ export class QrSignInPanelComponent implements OnInit {
   private readonly injector = inject(Injector);
   private readonly stepHeading =
     viewChild<ElementRef<HTMLElement>>('stepHeading');
+  private readonly codeInput =
+    viewChild<ElementRef<HTMLInputElement>>('codeInput');
+  private readonly codeModel = signal({ code: '' });
+  /** Whether a code was typed in this flow, the only way it can be the wrong one. */
+  private readonly codeEntered = signal(false);
+  private signIn: NewDeviceQrSignIn | null = null;
   private flow: Subscription | null = null;
   /** Counts flows, so a QR code rendered for an abandoned flow is dropped. */
   private attempt = 0;
 
+  protected readonly shownError = shownError;
+  protected readonly codeForm = form(this.codeModel, (path) => {
+    required(path.code, { message: TWO_DIGITS });
+    pattern(path.code, /^\d{2}$/, { message: TWO_DIGITS });
+    // Also the field's `maxlength`: Signal Forms owns that attribute.
+    maxLength(path.code, 2, { message: TWO_DIGITS });
+  });
+
   readonly homeserverUrl = input.required<string>();
-  /** The server entered; the other device must be signed in on it. */
+  /** The server entered; the account the other device signs in must belong to it. */
   readonly serverName = input.required<string>();
-  readonly signedIn = output<{ verified: boolean }>();
+
+  readonly signedIn = output<void>();
   readonly back = output<void>();
 
   readonly state = signal<NewDeviceState>({ kind: 'creating' });
   readonly qrUrl = signal<string | null>(null);
-  /** Kept through `waiting-for-approval`, which carries no check code of its own. */
-  readonly checkCode = signal<string | null>(null);
-  /** The heading on screen; the check code and the wait for approval share one. */
-  readonly step = computed(() => {
-    const kind = this.state().kind;
-    return kind === 'confirm-check-code' || kind === 'waiting-for-approval'
-      ? 'check'
-      : kind;
-  });
-  readonly spokenCheckCode = computed(() =>
-    (this.checkCode() ?? '').split('').join(' '),
-  );
+  /** The step on screen; a new state of the same step keeps focus where it is. */
+  readonly step = computed(() => this.state().kind);
   /** What the live region says; written after each render, never on insertion. */
   readonly announcement = signal('');
   readonly failureMessages = {
@@ -81,14 +114,27 @@ export class QrSignInPanelComponent implements OnInit {
     // Here it is this device that already holds the account.
     'already-signed-in': 'This account is already signed in on this device.',
   };
+  readonly failureMessage = computed(() => {
+    const state = this.state();
+    if (state.kind !== 'failed') return '';
+    return state.reason === 'insecure' && this.codeEntered()
+      ? WRONG_CODE
+      : this.failureMessages[state.reason];
+  });
+  readonly approveHint = APPROVE_HINT;
   readonly finalFailures = FINAL_FAILURES;
 
   constructor() {
     effect(() => {
-      this.step();
-      afterNextRender(() => this.stepHeading()?.nativeElement.focus(), {
-        injector: this.injector,
-      });
+      const step = this.step();
+      afterNextRender(
+        () =>
+          (step === 'enter-check-code'
+            ? this.codeInput()
+            : this.stepHeading()
+          )?.nativeElement.focus(),
+        { injector: this.injector },
+      );
     });
     effect(() => {
       const text = this.announcementFor(this.state());
@@ -108,14 +154,29 @@ export class QrSignInPanelComponent implements OnInit {
     this.attempt++;
     this.state.set({ kind: 'creating' });
     this.qrUrl.set(null);
-    this.checkCode.set(null);
-    this.flow = this.qrSignIn
-      .signInByShowingCode(this.homeserverUrl(), this.serverName())
+    this.codeForm().reset({ code: '' });
+    this.codeEntered.set(false);
+    const signIn = this.qrSignIn.signInByShowingCode(
+      this.homeserverUrl(),
+      this.serverName(),
+    );
+    this.signIn = signIn;
+    this.flow = signIn.state$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (state) => this.apply(state),
         error: () => this.state.set({ kind: 'failed', reason: 'unknown' }),
       });
+  }
+
+  protected enterCode(): void {
+    void submit(this.codeForm, async () => {
+      this.codeEntered.set(true);
+      this.signIn?.enterCheckCode(this.codeModel().code);
+    });
+    if (this.codeForm.code().invalid()) {
+      this.codeInput()?.nativeElement.focus();
+    }
   }
 
   /** Escape belongs to this panel, so nothing around it acts on it too. */
@@ -137,10 +198,10 @@ export class QrSignInPanelComponent implements OnInit {
         return 'Creating a code…';
       case 'showing-code':
         return 'Your sign-in code is ready to scan.';
-      case 'confirm-check-code':
-        return `Check code: ${this.spokenCheckCode()}`;
+      case 'enter-check-code':
+        return 'Enter the code your other device shows.';
       case 'waiting-for-approval':
-        return `Check code: ${this.spokenCheckCode()}. Then approve the sign-in on your other device.`;
+        return `Waiting for approval. ${APPROVE_HINT} If it asks for a code, enter ${state.userCode}.`;
       case 'signing-in':
         return 'Signing in…';
       case 'done':
@@ -166,10 +227,8 @@ export class QrSignInPanelComponent implements OnInit {
             this.state.set({ kind: 'failed', reason: 'unknown' });
           }
         });
-    } else if (state.kind === 'confirm-check-code') {
-      this.checkCode.set(state.code);
     } else if (state.kind === 'done') {
-      this.signedIn.emit({ verified: state.verified });
+      this.signedIn.emit();
     }
   }
 }

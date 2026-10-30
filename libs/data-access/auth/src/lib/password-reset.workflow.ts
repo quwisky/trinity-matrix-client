@@ -1,7 +1,7 @@
-import { Injectable } from '@angular/core';
-import { MatrixError, createClient } from 'matrix-js-sdk';
-import { describeMatrixRequestFailure } from '@trinity/util/matrix';
-import { Observable, catchError, defer, from, map, of } from 'rxjs';
+import { Injectable, inject } from '@angular/core';
+import type { EngineFailure } from '@trinity/util/matrix';
+import { Observable, catchError, defer, map, of } from 'rxjs';
+import { AUTH_ENGINE } from './auth-engine.token';
 
 export interface PendingReset {
   readonly baseUrl: string;
@@ -37,17 +37,18 @@ type Phase = 'send' | 'reset';
 /** Resets a forgotten password by email, with no signed-in account. */
 @Injectable({ providedIn: 'root' })
 export class PasswordResetWorkflow {
+  private readonly engine = inject(AUTH_ENGINE);
+
   sendLink(baseUrl: string, email: string): Observable<ResetLinkResult> {
-    return defer(() => {
-      const clientSecret = createClient({ baseUrl }).generateClientSecret();
-      return this.requestLink({
+    return defer(() =>
+      this.requestLink({
         baseUrl,
         email: email.trim(),
         sid: '',
-        clientSecret,
+        clientSecret: newClientSecret(),
         sendAttempt: 1,
-      });
-    }).pipe(catchError((err: unknown) => of(refusalOf(err, 'send'))));
+      }),
+    ).pipe(catchError(() => of(refused('failed'))));
   }
 
   resend(pending: PendingReset): Observable<ResetLinkResult> {
@@ -61,43 +62,45 @@ export class PasswordResetWorkflow {
     newPassword: string,
     logoutDevices: boolean,
   ): Observable<ResetResult> {
-    return defer(() => {
-      const creds = { sid: pending.sid, client_secret: pending.clientSecret };
-      return from(
-        createClient({ baseUrl: pending.baseUrl }).setPassword(
-          {
-            type: 'm.login.email.identity',
-            threepid_creds: creds,
-            // Older homeservers still read the unstable camelCase key.
-            threepidCreds: creds,
-          },
-          newPassword,
-          logoutDevices,
-        ),
-      );
-    }).pipe(
-      map((): ResetResult => ({ kind: 'reset' })),
-      catchError((err: unknown) => of(refusalOf(err, 'reset'))),
+    return defer(() =>
+      this.engine.resetPassword(pending.baseUrl, {
+        sid: pending.sid,
+        clientSecret: pending.clientSecret,
+        newPassword,
+        logoutDevices,
+      }),
+    ).pipe(
+      map((result): ResetResult =>
+        result.ok ? { kind: 'reset' } : refusalOf(result.failure, 'reset'),
+      ),
+      catchError(() => of(refused('failed'))),
     );
   }
 
   private requestLink(pending: PendingReset): Observable<ResetLinkResult> {
-    return defer(() =>
-      from(
-        createClient({ baseUrl: pending.baseUrl }).requestPasswordEmailToken(
-          pending.email,
-          pending.clientSecret,
-          pending.sendAttempt,
+    return this.engine
+      .requestPasswordResetToken(pending.baseUrl, {
+        email: pending.email,
+        clientSecret: pending.clientSecret,
+        sendAttempt: pending.sendAttempt,
+      })
+      .pipe(
+        map((result): ResetLinkResult =>
+          result.ok
+            ? { kind: 'sent', pending: { ...pending, sid: result.value.sid } }
+            : refusalOf(result.failure, 'send'),
         ),
-      ),
-    ).pipe(
-      map(({ sid }): ResetLinkResult => ({
-        kind: 'sent',
-        pending: { ...pending, sid },
-      })),
-      catchError((err: unknown) => of(refusalOf(err, 'send'))),
-    );
+        catchError(() => of(refused('failed'))),
+      );
   }
+}
+
+/** 24 random bytes as base64url: 32 characters, as much entropy as js-sdk's secret or more. */
+export function newClientSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_');
 }
 
 const REFUSAL_BY_ERRCODE: Readonly<Record<string, ResetRefusal>> = {
@@ -113,26 +116,24 @@ function refused(
   return { kind: 'refused', refusal, ...extra };
 }
 
-function refusalOf(err: unknown, phase: Phase): ResetRefused {
-  const failure = describeMatrixRequestFailure(err);
+function refusalOf(failure: EngineFailure, phase: Phase): ResetRefused {
+  const { errcode, errorName, httpStatus, retryAfterMs } = failure.diagnostic;
   // fetch rejects with a bare TypeError when the homeserver cannot be reached.
   if (
     failure.kind === 'network' ||
     failure.kind === 'timeout' ||
-    err instanceof TypeError
+    errorName === 'TypeError'
   ) {
     return refused('unreachable');
   }
   if (failure.kind === 'rate-limit') {
-    const { retryAfterMs } = failure.diagnostic;
     return refused(
       'rate-limited',
       retryAfterMs !== undefined ? { retryAfterMs } : {},
     );
   }
-  const errcode = failure.diagnostic.errcode;
-  // A UIA challenge carries no errcode: the email link is not confirmed yet.
-  if (failure.diagnostic.httpStatus === 401 && !errcode) {
+  // A UIA challenge: the email link is not confirmed yet.
+  if (failure.code === 'uia-required' || (httpStatus === 401 && !errcode)) {
     return refused('not-confirmed');
   }
   if (
@@ -143,12 +144,13 @@ function refusalOf(err: unknown, phase: Phase): ResetRefused {
   }
   if (errcode && Object.hasOwn(REFUSAL_BY_ERRCODE, errcode)) {
     const refusal = REFUSAL_BY_ERRCODE[errcode];
-    const reason = err instanceof MatrixError ? err.data?.error : undefined;
+    const reason =
+      failure.code === 'request-failed'
+        ? failure.params?.serverMessage
+        : undefined;
     return refused(
       refusal,
-      refusal === 'weak-password' && typeof reason === 'string'
-        ? { reason }
-        : {},
+      refusal === 'weak-password' && reason !== undefined ? { reason } : {},
     );
   }
   return refused('failed');

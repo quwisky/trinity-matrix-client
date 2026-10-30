@@ -1,4 +1,3 @@
-import { type MatrixClient, type Room } from 'matrix-js-sdk';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_ROOM_SORT,
@@ -6,7 +5,6 @@ import {
   comparatorFor,
   compareRoomSummaries,
   isRoomSortMode,
-  spaceChildIdsOf,
   spaceRankOf,
 } from './room-projection';
 import { type RoomSummary } from './room-library.service';
@@ -85,76 +83,12 @@ describe('spaceRankOf', () => {
   });
 
   it('keeps the first occurrence of a repeated id', () => {
-    // Neither producer repeats a child today — `spaceChildIdsOf` reads one state event per
-    // child and the selected projector dedupes as it concatenates — so this pins the contract
+    // Neither producer repeats a child today — the selected projector dedupes as it
+    // concatenates — so this pins the contract
     // of an exported pure function rather than a scenario the app reaches.
     expect([...spaceRankOf(['!a:hs', '!b:hs', '!a:hs'])]).toEqual([
       ['!a:hs', 0],
       ['!b:hs', 1],
-    ]);
-  });
-});
-
-describe('spaceChildIdsOf', () => {
-  interface ChildLink {
-    id: string;
-    name: string;
-    order?: string;
-  }
-
-  /** A space whose live state holds one `m.space.child` per link, and its joined children. */
-  function spaceOf(links: readonly ChildLink[]): {
-    client: MatrixClient;
-    space: Room;
-  } {
-    const space = {
-      getLiveTimeline: () => ({
-        getState: () => ({
-          getStateEvents: (type: string) =>
-            type === 'm.space.child'
-              ? links.map((link) => ({
-                  getStateKey: () => link.id,
-                  getContent: () => ({
-                    via: ['hs'],
-                    ...(link.order === undefined ? {} : { order: link.order }),
-                  }),
-                }))
-              : [],
-        }),
-      }),
-    } as unknown as Room;
-    const byId = new Map(links.map((link) => [link.id, link]));
-    const client = {
-      getRoom: (id: string) => {
-        const link = byId.get(id);
-        return link ? { name: link.name, getMyMembership: () => 'join' } : null;
-      },
-    } as unknown as MatrixClient;
-    return { client, space };
-  }
-
-  it('orders order keys by code point, not by locale collation', () => {
-    // MSC1772 mandates Unicode code point order, where 'B' (66) precedes 'a' (97).
-    // `localeCompare` case-folds and puts 'a' first, which is the arrangement no other
-    // Matrix client agrees with. Names run the other way so only the order field can
-    // produce this result.
-    const { client, space } = spaceOf([
-      { id: '!upper:hs', name: 'zulu', order: 'B' },
-      { id: '!lower:hs', name: 'alpha', order: 'a' },
-    ]);
-    expect(spaceChildIdsOf(client, space)).toEqual(['!upper:hs', '!lower:hs']);
-  });
-
-  it('sorts a child with no order key after the children that have one', () => {
-    // The spec sorts children with a valid order ahead of those without, but
-    // `''.localeCompare('z')` is -1, which floats the unordered child to the top.
-    const { client, space } = spaceOf([
-      { id: '!unordered:hs', name: 'alpha' },
-      { id: '!ordered:hs', name: 'zulu', order: 'z' },
-    ]);
-    expect(spaceChildIdsOf(client, space)).toEqual([
-      '!ordered:hs',
-      '!unordered:hs',
     ]);
   });
 });

@@ -1,9 +1,11 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MatrixError } from '@trinity/util/matrix';
-import { MockProvider } from 'ng-mocks';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
+import { MatrixError } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { FakeDiscoveryEngine } from '../contract/fake-discovery-engine';
+import { DISCOVERY_ENGINE, type RoomLinkPreviewData } from './discovery-engine';
 import {
   describeRoomLinkPreviewFailure,
   roomLinkAction,
@@ -11,113 +13,41 @@ import {
   type RoomLinkPreview,
 } from './room-link.service';
 
-function state(joinRule = 'invite', topic = 'Local topic') {
+const ME = '@me:hs';
+
+function data(
+  overrides: Partial<RoomLinkPreviewData> = {},
+): RoomLinkPreviewData {
   return {
-    getStateEvents: (type: string) => ({
-      getContent: () =>
-        type === 'm.room.join_rules' ? { join_rule: joinRule } : { topic },
-    }),
+    roomId: '!remote:remote',
+    canonicalAddress: '#remote:remote',
+    name: 'Remote room',
+    topic: 'Remote topic',
+    avatarMxc: 'mxc://remote/avatar',
+    memberCount: 42,
+    encrypted: true,
+    joinRule: 'public',
+    membership: 'leave',
+    isSpace: false,
+    via: [],
+    restrictedEligible: false,
+    ...overrides,
   };
 }
 
-function localRoom(options: {
-  id?: string;
-  membership?: string;
-  alias?: string | null;
-  altAliases?: string[];
-  joinRule?: string;
-  stateEncrypted?: boolean;
-}) {
-  return {
-    roomId: options.id ?? '!local:hs',
-    name: 'Local room',
-    getMyMembership: () => options.membership ?? 'join',
-    getCanonicalAlias: () => options.alias ?? '#local:hs',
-    getAltAliases: () => options.altAliases ?? [],
-    getMxcAvatarUrl: () => 'mxc://hs/local',
-    getJoinedMemberCount: () => 7,
-    hasEncryptionStateEvent: () => options.stateEncrypted ?? true,
-    isSpaceRoom: () => false,
-    getLiveTimeline: () => ({
-      getState: () => state(options.joinRule),
-    }),
-  };
-}
-
-function setup(options: {
-  rooms?: ReturnType<typeof localRoom>[];
-  summary?: Record<string, unknown>;
-  stableError?: unknown;
-  alias?: { room_id: string; servers: string[] };
-  storeEncrypted?: boolean;
-  storeFails?: boolean;
-}) {
-  const rooms = options.rooms ?? [];
-  const summary =
-    options.summary ??
-    ({
-      room_id: '!remote:remote',
-      name: 'Remote room',
-      topic: 'Remote topic',
-      avatar_url: 'mxc://remote/avatar',
-      num_joined_members: 42,
-      join_rule: 'public',
-      membership: 'leave',
-      canonical_alias: '#remote:remote',
-      encryption: 'm.megolm.v1.aes-sha2',
-      world_readable: false,
-      guest_can_join: false,
-    } satisfies Record<string, unknown>);
-  const authedRequest = options.stableError
-    ? vi.fn().mockRejectedValue(options.stableError)
-    : vi.fn().mockResolvedValue(summary);
-  const getRoomSummary = vi.fn().mockResolvedValue(summary);
-  const getRoomIdForAlias = vi.fn().mockResolvedValue(
-    options.alias ?? {
-      room_id: String(summary['room_id'] ?? '!remote:remote'),
-      servers: ['remote'],
-    },
-  );
-  const joinRoom = vi.fn().mockResolvedValue({ roomId: '!remote:remote' });
-  const knockRoom = vi.fn().mockResolvedValue({ room_id: '!remote:remote' });
-  const client = {
-    getUserId: () => '@me:hs',
-    getRoom: (id: string) => rooms.find((room) => room.roomId === id) ?? null,
-    getRooms: () => rooms,
-    getRoomIdForAlias,
-    getRoomSummary,
-    http: { authedRequest },
-    getCrypto: () => ({
-      isEncryptionEnabledInRoom: () =>
-        options.storeFails
-          ? Promise.reject(new Error('store unavailable'))
-          : Promise.resolve(options.storeEncrypted ?? false),
-    }),
-    joinRoom,
-    knockRoom,
-  };
-  const clientFor = vi.fn((accountId: string) =>
-    accountId === '@me:hs' ? (client as never) : null,
-  );
+function setup(previews: RoomLinkPreviewData[] = [data()]) {
+  const engine = new FakeDiscoveryEngine();
+  engine.accounts.add(ME);
+  engine.previews.push(...previews);
+  const active = signal<string | null>(ME);
   TestBed.configureTestingModule({
     providers: [
       RoomLinkService,
-      MockProvider(MatrixClientService, {
-        isInitialized: true,
-        instance: client as never,
-        clientFor,
-      }),
+      { provide: DISCOVERY_ENGINE, useValue: engine },
+      { provide: SessionStateService, useValue: { activeAccountId: active } },
     ],
   });
-  return {
-    service: TestBed.inject(RoomLinkService),
-    getRoomSummary,
-    getRoomIdForAlias,
-    authedRequest,
-    joinRoom,
-    knockRoom,
-    clientFor,
-  };
+  return { service: TestBed.inject(RoomLinkService), engine, active };
 }
 
 function preview(overrides: Partial<RoomLinkPreview> = {}): RoomLinkPreview {
@@ -166,107 +96,10 @@ describe('roomLinkAction', () => {
 });
 
 describe('RoomLinkService', () => {
-  it('projects a joined room locally without contacting the summary endpoint', async () => {
-    const room = localRoom({ membership: 'join', joinRule: 'invite' });
-    const { service, getRoomSummary, authedRequest } = setup({ rooms: [room] });
+  it('builds the preview from the engine with the active account', async () => {
+    const { service, engine } = setup();
 
-    const preview = await firstValueFrom(
-      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }),
-    );
-
-    expect(preview).toMatchObject({
-      roomId: '!local:hs',
-      name: 'Local room',
-      topic: 'Local topic',
-      canonicalAddress: '#local:hs',
-      memberCount: 7,
-      encrypted: true,
-      joinRule: 'invite',
-      membership: 'join',
-      action: 'open',
-    });
-    expect(getRoomSummary).not.toHaveBeenCalled();
-    expect(authedRequest).not.toHaveBeenCalled();
-  });
-
-  it('says a joined room is encrypted when only its crypto store knows it', async () => {
-    const room = localRoom({ membership: 'join', stateEncrypted: false });
-    const { service } = setup({ rooms: [room], storeEncrypted: true });
-
-    const preview = await firstValueFrom(
-      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }),
-    );
-
-    expect(preview.encrypted).toBe(true);
-  });
-
-  it('says a joined room is encrypted when its crypto store fails to answer', async () => {
-    const room = localRoom({ membership: 'join', stateEncrypted: false });
-    const { service } = setup({ rooms: [room], storeFails: true });
-
-    const preview = await firstValueFrom(
-      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }),
-    );
-
-    expect(preview.encrypted).toBe(true);
-  });
-
-  it('says a joined room is not encrypted when its state and crypto store agree', async () => {
-    const room = localRoom({ membership: 'join', stateEncrypted: false });
-    const { service } = setup({ rooms: [room] });
-
-    const preview = await firstValueFrom(
-      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }),
-    );
-
-    expect(preview.encrypted).toBe(false);
-  });
-
-  it('previews with the named account rather than the active one', async () => {
-    const room = localRoom({ membership: 'invite' });
-    const { service, clientFor } = setup({ rooms: [room] });
-
-    const preview = await firstValueFrom(
-      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }, '@me:hs'),
-    );
-    expect(clientFor).toHaveBeenCalledWith('@me:hs');
-    expect(preview).toMatchObject({ accountId: '@me:hs', action: 'accept' });
-
-    await expect(
-      firstValueFrom(
-        service.preview(
-          { kind: 'room', roomIdOrAlias: room.roomId },
-          '@gone:hs',
-        ),
-      ),
-    ).rejects.toThrow('Account unavailable.');
-  });
-
-  it('finds a local invite by alias and maps it to Accept', async () => {
-    const room = localRoom({
-      membership: 'invite',
-      alias: '#invited:hs',
-    });
-    const { service, getRoomSummary, authedRequest } = setup({ rooms: [room] });
-
-    const preview = await firstValueFrom(
-      service.preview({ kind: 'room', roomIdOrAlias: '#invited:hs' }),
-    );
-
-    expect(preview).toMatchObject({
-      roomId: '!local:hs',
-      requestedAddress: '#invited:hs',
-      membership: 'invite',
-      action: 'accept',
-    });
-    expect(getRoomSummary).not.toHaveBeenCalled();
-    expect(authedRequest).not.toHaveBeenCalled();
-  });
-
-  it('resolves an unknown federated room with via hints and maps every field', async () => {
-    const { service, getRoomSummary, authedRequest } = setup({});
-
-    const preview = await firstValueFrom(
+    const result = await firstValueFrom(
       service.preview({
         kind: 'room',
         roomIdOrAlias: '!remote:remote',
@@ -274,16 +107,9 @@ describe('RoomLinkService', () => {
       }),
     );
 
-    expect(authedRequest).toHaveBeenCalledWith(
-      'GET',
-      '/room_summary/!remote%3Aremote',
-      { via: ['remote.example'] },
-      undefined,
-      { prefix: '/_matrix/client/v1' },
-    );
-    expect(getRoomSummary).not.toHaveBeenCalled();
-    expect(preview).toEqual({
-      accountId: '@me:hs',
+    expect(engine.calls).toEqual([`previewRoom:${ME}:!remote:remote`]);
+    expect(result).toEqual({
+      accountId: ME,
       roomId: '!remote:remote',
       requestedAddress: null,
       canonicalAddress: '#remote:remote',
@@ -298,178 +124,92 @@ describe('RoomLinkService', () => {
       action: 'join',
       isSpace: false,
       via: ['remote.example'],
+    } satisfies RoomLinkPreview);
+  });
+
+  it('keeps the requested alias and the resolved via', async () => {
+    const { service } = setup();
+
+    await expect(
+      firstValueFrom(
+        service.preview({ kind: 'room', roomIdOrAlias: '#remote:remote' }),
+      ),
+    ).resolves.toMatchObject({
+      requestedAddress: '#remote:remote',
+      via: ['remote'],
     });
   });
 
-  it('degrades missing optional remote fields without claiming the requested alias is canonical', async () => {
-    const { service } = setup({
-      summary: {
-        room_id: '!plain:hs',
-        num_joined_members: 0,
-        world_readable: false,
-        guest_can_join: false,
-      },
-    });
-
-    const preview = await firstValueFrom(
-      service.preview({ kind: 'room', roomIdOrAlias: '#maybe:hs' }),
-    );
-
-    expect(preview).toMatchObject({
-      roomId: '!plain:hs',
-      requestedAddress: '#maybe:hs',
-      canonicalAddress: null,
-      name: '!plain:hs',
-      topic: null,
-      avatarMxc: null,
-      memberCount: 0,
-      encrypted: null,
-      joinRule: 'public',
-      membership: 'unknown',
-      action: 'join',
-    });
-  });
-
-  it('falls back to the legacy SDK summary only when stable v1 is unrecognized', async () => {
-    const { service, getRoomSummary } = setup({
-      stableError: new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404),
-    });
-
-    await firstValueFrom(
-      service.preview({
-        kind: 'room',
-        roomIdOrAlias: '!remote:remote',
-        via: ['remote.example'],
+  it('offers actions from membership, join rule and restricted eligibility', async () => {
+    const { service } = setup([
+      data({ roomId: '!in:hs', membership: 'join', joinRule: 'invite' }),
+      data({ roomId: '!invited:hs', membership: 'invite' }),
+      data({
+        roomId: '!r:hs',
+        joinRule: 'restricted',
+        restrictedEligible: true,
       }),
-    );
-
-    expect(getRoomSummary).toHaveBeenCalledWith('!remote:remote', [
-      'remote.example',
+      data({ roomId: '!k:hs', joinRule: 'knock_restricted' }),
     ]);
+    const action = async (roomIdOrAlias: string) =>
+      (await firstValueFrom(service.preview({ kind: 'room', roomIdOrAlias })))
+        .action;
+
+    expect(await action('!in:hs')).toBe('open');
+    expect(await action('!invited:hs')).toBe('accept');
+    expect(await action('!r:hs')).toBe('join');
+    expect(await action('!k:hs')).toBe('knock');
   });
 
-  it('resolves aliases and carries only valid directory servers into summary and join', async () => {
-    const { service, getRoomIdForAlias, authedRequest, joinRoom } = setup({
-      alias: {
-        room_id: '!resolved:remote',
-        servers: ['remote.example', 'bad/path', 'hint.example'],
-      },
-      summary: {
-        room_id: '!resolved:remote',
-        name: 'Resolved alias',
-        num_joined_members: 3,
-      },
-    });
+  it('previews with the named account rather than the active one', async () => {
+    const { service, engine, active } = setup();
+    active.set('@other:hs');
 
-    const result = await firstValueFrom(
-      service.preview({
-        kind: 'room',
-        roomIdOrAlias: '#linked:remote',
-        via: ['link.example'],
-      }),
-    );
-    expect(getRoomIdForAlias).toHaveBeenCalledWith('#linked:remote');
-    expect(authedRequest).toHaveBeenCalledWith(
-      'GET',
-      '/room_summary/!resolved%3Aremote',
-      { via: ['link.example', 'remote.example', 'hint.example'] },
-      undefined,
-      { prefix: '/_matrix/client/v1' },
-    );
-    expect(result).toMatchObject({
-      roomId: '!resolved:remote',
-      requestedAddress: '#linked:remote',
-      via: ['link.example', 'remote.example', 'hint.example'],
-      joinRule: 'public',
-      action: 'join',
-    });
-
-    await firstValueFrom(service.join(result));
-    expect(joinRoom).toHaveBeenCalledWith('!resolved:remote', {
-      viaServers: ['link.example', 'remote.example', 'hint.example'],
-    });
+    await expect(
+      firstValueFrom(
+        service.preview({ kind: 'room', roomIdOrAlias: '!remote:remote' }, ME),
+      ),
+    ).resolves.toMatchObject({ accountId: ME });
+    expect(engine.calls).toEqual([`previewRoom:${ME}:!remote:remote`]);
   });
 
-  it('maps stable restricted and knock-restricted summaries to eligible actions', async () => {
-    const allowed = localRoom({ id: '!space:hs', membership: 'join' });
-    const eligible = setup({
-      rooms: [allowed],
-      summary: {
-        room_id: '!restricted:hs',
-        join_rule: 'restricted',
-        allowed_room_ids: ['!space:hs'],
-      },
-    });
-    await expect(
-      firstValueFrom(
-        eligible.service.preview({
-          kind: 'room',
-          roomIdOrAlias: '!restricted:hs',
-        }),
-      ),
-    ).resolves.toMatchObject({ joinRule: 'restricted', action: 'join' });
+  it('fails as not signed in without an active account', async () => {
+    const { service, active } = setup();
+    active.set(null);
 
-    TestBed.resetTestingModule();
-    const ineligible = setup({
-      summary: {
-        room_id: '!restricted:hs',
-        join_rule: 'restricted',
-        allowed_room_ids: ['!space:hs'],
-      },
-    });
     await expect(
       firstValueFrom(
-        ineligible.service.preview({
-          kind: 'room',
-          roomIdOrAlias: '!restricted:hs',
-        }),
+        service.preview({ kind: 'room', roomIdOrAlias: '!remote:remote' }),
       ),
-    ).resolves.toMatchObject({ action: 'none' });
+    ).rejects.toThrow('Not signed in.');
+  });
 
-    TestBed.resetTestingModule();
-    const eligibleKnockRestricted = setup({
-      rooms: [allowed],
-      summary: {
-        room_id: '!eligible-knock:hs',
-        join_rule: 'knock_restricted',
-        allowed_room_ids: ['!space:hs'],
-      },
-    });
-    await expect(
-      firstValueFrom(
-        eligibleKnockRestricted.service.preview({
-          kind: 'room',
-          roomIdOrAlias: '!eligible-knock:hs',
-        }),
-      ),
-    ).resolves.toMatchObject({
-      joinRule: 'knock_restricted',
-      action: 'join',
-    });
+  it('maps an engine failure to the room-specific copy', async () => {
+    const { service } = setup([]);
 
-    TestBed.resetTestingModule();
-    const knocking = setup({
-      summary: {
-        room_id: '!knock:hs',
-        join_rule: 'knock_restricted',
-        allowed_room_ids: ['!space:hs'],
-      },
-    });
-    await expect(
-      firstValueFrom(
-        knocking.service.preview({
-          kind: 'room',
-          roomIdOrAlias: '!knock:hs',
-        }),
-      ),
-    ).resolves.toMatchObject({
-      joinRule: 'knock_restricted',
-      action: 'knock',
+    const error = await firstValueFrom(
+      service.preview({ kind: 'room', roomIdOrAlias: '!gone:hs' }),
+    ).catch((e: unknown) => e);
+
+    expect(describeRoomLinkPreviewFailure(error)).toMatchObject({
+      title: 'Room not found',
+      retryable: false,
     });
   });
 
   it('keeps join and knock cold and forwards via only on subscription', async () => {
-    const { service, joinRoom, knockRoom, clientFor } = setup({});
+    const { service, engine } = setup([
+      data({ roomId: '!remote:remote', joinRule: 'knock' }),
+    ]);
+    engine.rooms.push({
+      roomId: '!remote:remote',
+      name: 'Remote room',
+      topic: null,
+      alias: null,
+      avatarMxc: null,
+      memberCount: 1,
+      isSpace: false,
+    });
     const linkedRoom = preview({
       roomId: '!remote:remote',
       via: ['a.example', 'b.example'],
@@ -477,20 +217,14 @@ describe('RoomLinkService', () => {
 
     const join = service.join(linkedRoom);
     const knock = service.knock(linkedRoom);
-    expect(joinRoom).not.toHaveBeenCalled();
-    expect(knockRoom).not.toHaveBeenCalled();
-    expect(clientFor).not.toHaveBeenCalled();
+    expect(engine.calls).toEqual([]);
 
-    await firstValueFrom(join);
-    await firstValueFrom(knock);
-    expect(clientFor).toHaveBeenNthCalledWith(1, '@me:hs');
-    expect(clientFor).toHaveBeenNthCalledWith(2, '@me:hs');
-    expect(joinRoom).toHaveBeenCalledWith('!remote:remote', {
-      viaServers: ['a.example', 'b.example'],
-    });
-    expect(knockRoom).toHaveBeenCalledWith('!remote:remote', {
-      viaServers: ['a.example', 'b.example'],
-    });
+    await expect(firstValueFrom(join)).resolves.toBe('!remote:remote');
+    await expect(firstValueFrom(knock)).resolves.toBeUndefined();
+    expect(engine.calls).toEqual([
+      `joinRoom:${ME}:!remote:remote:a.example,b.example`,
+      `knockRoom:${ME}:!remote:remote:a.example,b.example:`,
+    ]);
   });
 });
 

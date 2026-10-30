@@ -1,58 +1,65 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { QrSignInAdapter } from './qr-sign-in.adapter';
+import { FakeAuthEngine } from '../../contract/fake-auth-engine';
+import { AUTH_ENGINE } from '../auth-engine.token';
 import { QrSignInAvailability } from './qr-sign-in-availability.service';
 
-function setup(isAvailable: (url: string) => Promise<boolean>) {
-  const adapter = { isAvailable: vi.fn(isAvailable) };
+function setup() {
+  const engine = new FakeAuthEngine();
+  const probe = vi.spyOn(engine, 'supportsQrRendezvous');
   TestBed.configureTestingModule({
-    providers: [{ provide: QrSignInAdapter, useValue: adapter }],
+    providers: [{ provide: AUTH_ENGINE, useValue: engine }],
   });
-  return { adapter, service: TestBed.inject(QrSignInAvailability) };
+  return { engine, probe, service: TestBed.inject(QrSignInAvailability) };
 }
 
 describe('QrSignInAvailability', () => {
-  it('reports what the adapter says', async () => {
-    const { service } = setup(async (url) => url === 'https://yes');
+  it('reports what the engine says', async () => {
+    const { engine, service } = setup();
+    engine.qrRendezvous = true;
     expect(await firstValueFrom(service.supports('https://yes'))).toBe(true);
+    engine.qrRendezvous = false;
     expect(await firstValueFrom(service.supports('https://no'))).toBe(false);
   });
 
   it('is cold', () => {
-    const { adapter, service } = setup(async () => true);
+    const { probe, service } = setup();
     service.supports('https://a');
-    expect(adapter.isAvailable).not.toHaveBeenCalled();
+    expect(probe).not.toHaveBeenCalled();
   });
 
   it('caches an answer per URL', async () => {
-    const { adapter, service } = setup(async () => true);
+    const { probe, service } = setup();
     await firstValueFrom(service.supports('https://a'));
     await firstValueFrom(service.supports('https://a'));
-    expect(adapter.isAvailable).toHaveBeenCalledTimes(1);
+    expect(probe).toHaveBeenCalledTimes(1);
     await firstValueFrom(service.supports('https://b'));
-    expect(adapter.isAvailable).toHaveBeenCalledTimes(2);
+    expect(probe).toHaveBeenCalledTimes(2);
   });
 
   it('shares one probe between concurrent subscribers', async () => {
-    const { adapter, service } = setup(async () => true);
+    const { engine, probe, service } = setup();
+    engine.qrRendezvous = true;
     const answers = await Promise.all([
       firstValueFrom(service.supports('https://a')),
       firstValueFrom(service.supports('https://a')),
     ]);
     expect(answers).toEqual([true, true]);
-    expect(adapter.isAvailable).toHaveBeenCalledTimes(1);
+    expect(probe).toHaveBeenCalledTimes(1);
   });
 
-  it('answers false on error and retries next time', async () => {
-    let fail = true;
-    const { adapter, service } = setup(async () => {
-      if (fail) throw new Error('offline');
-      return true;
-    });
+  it('answers false when the server cannot be asked, and asks again next time', async () => {
+    const { engine, probe, service } = setup();
+    engine.qrRendezvous = true;
+    engine.failure = {
+      kind: 'network',
+      code: 'request-failed',
+      diagnostic: { kind: 'network' },
+    };
     expect(await firstValueFrom(service.supports('https://a'))).toBe(false);
-    fail = false;
+    engine.failure = null;
     expect(await firstValueFrom(service.supports('https://a'))).toBe(true);
-    expect(adapter.isAvailable).toHaveBeenCalledTimes(2);
+    expect(probe).toHaveBeenCalledTimes(2);
   });
 });

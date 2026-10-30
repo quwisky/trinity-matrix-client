@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceStorageAdapter,
@@ -95,7 +95,9 @@ function setup(store: Store = new Map()) {
   TestBed.configureTestingModule({
     providers: [
       TrustSlotForecastService,
-      MockProvider(TrustCryptoPort, { activeAccountId: active.asReadonly() }),
+      MockProvider(SessionStateService, {
+        activeAccountId: active.asReadonly(),
+      }),
       MockProvider(TrustHealthService, {
         health: health.asReadonly(),
         recoverySetupElsewhere,

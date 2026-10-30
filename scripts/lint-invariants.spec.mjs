@@ -265,6 +265,7 @@ const OUTSIDE_THE_VENDOR_BANS = [
   'e2e/components/project.json',
   'e2e/docs/project.json',
   'e2e/electron/project.json',
+  'e2e/engine/project.json',
   'e2e/mobile/project.json',
   'e2e/project.json',
   'e2e/protocol/project.json',
@@ -374,6 +375,7 @@ describe('UI vendor boundary', () => {
       'e2e/browser/project.json',
       'e2e/components/project.json',
       'e2e/electron/project.json',
+      'e2e/engine/project.json',
       'e2e/mobile/project.json',
       'e2e/project.json',
       'e2e/protocol/project.json',
@@ -646,9 +648,8 @@ describe('UI vendor boundary', () => {
     // measured it. The vendor bans got a tagging sweep for precisely this reason; this is the
     // same sweep for the rule AGENTS.md calls the core architectural one.
     //
-    // The two allowed roots are the sanctioned exceptions: `libs/data-access/*` owns all SDK
-    // access, and `libs/util/matrix` models the SDK's own types.
-    const ALLOWED_THE_SDK = ['libs/data-access', 'libs/util/matrix'];
+    // `libs/data-access/*` owns all SDK access, so it is the one allowed root.
+    const ALLOWED_THE_SDK = ['libs/data-access'];
     const projects = globSync('libs/**/project.json', { cwd: workspaceRoot });
     expect(projects.length).toBeGreaterThan(0);
 

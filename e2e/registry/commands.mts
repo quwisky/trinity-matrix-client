@@ -120,6 +120,7 @@ export const E2E_PACKAGE_SCRIPTS = [
       'protocol.emoji',
       'protocol.verify-sas-selfcheck',
       'protocol.login-smoke',
+      'engine.js-sdk',
     ],
   },
   {
@@ -290,6 +291,11 @@ export const E2E_CI_ENTRYPOINTS = [
     command: 'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:mobile',
     tier: 'pull-request',
     suiteIds: ['mobile.android'],
+  },
+  {
+    command: 'pnpm exec nx run trinity-e2e-engine:contract',
+    tier: 'pull-request',
+    suiteIds: ['engine.js-sdk'],
   },
   {
     command: 'pnpm exec nx run trinity-e2e-components:scrollbars',

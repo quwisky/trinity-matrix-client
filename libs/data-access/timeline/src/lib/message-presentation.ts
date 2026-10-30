@@ -178,6 +178,15 @@ export interface MessageView {
   readonly systemCategory?: SystemLineCategory | null;
   /** Why it could not be decrypted, and whether this device can fix it; null otherwise. */
   readonly undecryptable?: UndecryptableView | null;
+  /** A sticker's image as an emoji pack takes it; absent on every other row. */
+  readonly stickerImage?: StickerImage | null;
+}
+
+/** A sticker's `url`, `info` and `body`, so it can be added to an emoji pack. */
+export interface StickerImage {
+  readonly url: string;
+  readonly info?: Readonly<Record<string, unknown>>;
+  readonly body?: string;
 }
 
 /** Whether the presented message can be edited as text. */
@@ -190,6 +199,11 @@ export function isEditableMessage(message: MessageView): boolean {
       message.kind === 'emote' ||
       message.kind === 'notice')
   );
+}
+
+/** Whether a row can cancel the message: an echo that has not been sent (waiting or failed). */
+export function isCancellableMessage(message: MessageView): boolean {
+  return message.status === 'waiting' || message.status === 'failed';
 }
 
 /** Whether the presented body is meaningful input for the quote composer. */
@@ -339,6 +353,8 @@ export interface NormalizedMediaEvent extends NormalizedCommon {
   readonly addressesViewer: boolean;
   /** Display names of the users the formatted body links to, for its mention pills. */
   readonly mentionNames: Readonly<Record<string, string>>;
+  /** For a sticker, its image as an emoji pack takes it. */
+  readonly stickerImage?: StickerImage;
 }
 
 export interface NormalizedLocationEvent extends NormalizedCommon {
@@ -660,6 +676,7 @@ export function presentNormalizedTimelineEvent(
       previewEncrypted: true,
       summary: null,
       systemCategory: null,
+      ...(event.stickerImage ? { stickerImage: event.stickerImage } : {}),
     });
   }
 

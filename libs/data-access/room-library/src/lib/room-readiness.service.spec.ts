@@ -1,13 +1,22 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import {
-  ClientEvent,
-  RoomEvent,
-  SyncState,
-  type MatrixClient,
-} from 'matrix-js-sdk';
+import { signal } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+  type SessionSyncState,
+} from '@trinity/data-access/matrix-client';
+import {
+  FakeRoomListEngine,
+  fakeRoom,
+} from '../contract/fake-room-list-engine';
+import type { RoomMembership } from './room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 import {
   ROOM_READINESS_TIMEOUT_MS,
   RoomReadinessError,
@@ -19,106 +28,114 @@ afterEach(() => {
   TestBed.resetTestingModule();
 });
 
-describe('RoomReadinessService', () => {
-  /** A stored Room with the Account's membership in it, as the SDK keeps it. */
-  const stored = (membership: string) => ({
-    getMyMembership: () => membership,
-  });
+function account(
+  accountId: string,
+  syncState: SessionSyncState = 'syncing',
+): SessionAccountStatus {
+  return {
+    accountId,
+    deviceId: 'DEVICE',
+    generation: 1,
+    syncState,
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
+  };
+}
 
-  function setup(initial: 'none' | 'join' | 'leave' | 'invite' = 'none') {
-    let room: object | null = initial === 'none' ? null : stored(initial);
-    const on = vi.fn();
-    const off = vi.fn();
-    const client = {
-      getRoom: vi.fn(() => room),
-      on,
-      off,
-    } as unknown as MatrixClient;
+describe('RoomReadinessService', () => {
+  /** The owner's room list, holding `!r:hs` with `initial` membership, or not at all. */
+  function setup(initial: 'none' | RoomMembership = 'none') {
+    const fake = new FakeRoomListEngine();
+    const owner = fake.alice;
+    const stored = (membership: RoomMembership) =>
+      fakeRoom('!r:hs', { membership });
+    fake.seed(owner, initial === 'none' ? [] : [stored(initial)]);
+    const session = signal<SessionSnapshot>({
+      ...EMPTY_SESSION,
+      activeAccountId: owner,
+      accounts: [account(owner)],
+    });
     TestBed.configureTestingModule({
       providers: [
-        RoomReadinessService,
+        { provide: ROOM_LIST_ENGINE, useValue: fake },
+        { provide: SESSION_SNAPSHOT, useValue: session },
         {
-          provide: MatrixClientService,
-          useValue: {
-            clientFor: (accountId: string) =>
-              accountId === '@owner:hs' ? client : null,
-          },
+          provide: SESSION_ENGINE,
+          useFactory: () => ({ session: () => toObservable(session) }),
         },
       ],
     });
     return {
       service: TestBed.inject(RoomReadinessService),
-      client,
-      on,
-      off,
-      publishRoom: () => {
-        room = stored('join');
-        const handler = handlerFor(on, ClientEvent.Room);
-        handler?.();
-        return handler;
-      },
-      /** The join syncs into a Room the store already held. */
-      syncJoin: () => {
-        room = stored('join');
-        const handler = handlerFor(on, RoomEvent.MyMembership);
-        handler?.();
-        return handler;
-      },
-      stopSync: () => {
-        const handler = handlerFor(on, ClientEvent.Sync) as
-          ((state: SyncState) => void) | undefined;
-        handler?.(SyncState.Stopped);
-        return handler;
-      },
+      owner,
+      session,
+      /** `/sync` publishes the joined Room, new or already stored. */
+      syncJoin: () => fake.seed(owner, [stored('join')]),
+      stopSync: () =>
+        session.update((s) => ({
+          ...s,
+          accounts: [account(owner, 'stopped')],
+        })),
     };
   }
 
-  it('is cold and resolves when the exact Account client publishes the Room', async () => {
-    const { service, on, off, publishRoom } = setup();
-    const readiness = service.waitForRoom('@owner:hs', '!new:hs');
+  /** Subscribes and tracks the outcome, with effects flushed. */
+  function watch(service: RoomReadinessService, accountId: string) {
+    const outcome: { resolved: boolean; error: unknown } = {
+      resolved: false,
+      error: null,
+    };
+    const subscription = service.waitForRoom(accountId, '!r:hs').subscribe({
+      complete: () => (outcome.resolved = true),
+      error: (error: unknown) => (outcome.error = error),
+    });
+    TestBed.tick();
+    return { outcome, subscription };
+  }
 
-    expect(on).not.toHaveBeenCalled();
-    const result = firstValueFrom(readiness);
-    expect(on).toHaveBeenCalledWith(ClientEvent.Room, expect.any(Function));
-    expect(on).toHaveBeenCalledWith(ClientEvent.Sync, expect.any(Function));
-    const handler = publishRoom();
+  it('is cold and resolves when the exact Account publishes the Room', () => {
+    const { service, owner, session, syncJoin } = setup();
+    session.update((s) => ({ ...s, accounts: [] }));
+    const readiness = service.waitForRoom(owner, '!r:hs');
+    session.update((s) => ({ ...s, accounts: [account(owner)] }));
 
-    await expect(result).resolves.toBeUndefined();
-    expect(off).toHaveBeenCalledWith(ClientEvent.Room, handler);
-    expect(off).toHaveBeenCalledWith(ClientEvent.Sync, expect.any(Function));
+    let resolved = false;
+    const subscription = readiness.subscribe({
+      complete: () => (resolved = true),
+    });
+    TestBed.tick();
+    expect(resolved).toBe(false);
+    syncJoin();
+    TestBed.tick();
+
+    expect(resolved).toBe(true);
+    expect(subscription.closed).toBe(true);
   });
 
-  it('resolves immediately when the Room is already in the SDK graph', async () => {
-    const { service, on } = setup('join');
+  it('resolves immediately when the Room is already joined', async () => {
+    const { service, owner } = setup('join');
 
     await expect(
-      firstValueFrom(service.waitForRoom('@owner:hs', '!ready:hs')),
+      firstValueFrom(service.waitForRoom(owner, '!r:hs')),
     ).resolves.toBeUndefined();
-    expect(on).not.toHaveBeenCalled();
   });
 
-  // Re-joining a left Room, or accepting an invitation, keeps the earlier membership in the
-  // SDK store until `/sync` brings the join; Workspace only keeps a space that is joined.
-  it.each(['leave', 'invite'] as const)(
-    'waits for the join to sync when the Room is still stored as %s',
-    async (membership) => {
-      const { service, on, off, syncJoin } = setup(membership);
-      let resolved = false;
-      const result = firstValueFrom(
-        service.waitForRoom('@owner:hs', '!again:hs'),
-      ).then(() => (resolved = true));
+  // Re-joining a left Room, or accepting an invitation, keeps the earlier membership until
+  // `/sync` brings the join; Workspace only keeps a space that is joined.
+  it.each(['invite', 'knock'] as const)(
+    'waits for the join to sync when the Room is still listed as %s',
+    (membership) => {
+      const { service, owner, syncJoin } = setup(membership);
+      const { outcome, subscription } = watch(service, owner);
 
-      await Promise.resolve();
-      expect(resolved).toBe(false);
-      expect(on).toHaveBeenCalledWith(
-        RoomEvent.MyMembership,
-        expect.any(Function),
-      );
-      const handler = syncJoin();
+      expect(outcome.resolved).toBe(false);
+      syncJoin();
+      TestBed.tick();
 
-      await result;
-      expect(resolved).toBe(true);
-      expect(off).toHaveBeenCalledWith(RoomEvent.MyMembership, handler);
+      expect(outcome.resolved).toBe(true);
+      expect(subscription.closed).toBe(true);
     },
   );
 
@@ -126,48 +143,46 @@ describe('RoomReadinessService', () => {
     const { service } = setup();
 
     await expect(
-      firstValueFrom(service.waitForRoom('@gone:hs', '!new:hs')),
+      firstValueFrom(service.waitForRoom('@gone:hs', '!r:hs')),
     ).rejects.toMatchObject({
       name: 'RoomReadinessError',
       failure: 'account-unavailable',
     });
   });
 
-  it('fails with typed metadata and tears down when sync stops', async () => {
-    const { service, off, stopSync } = setup();
-    const result = firstValueFrom(service.waitForRoom('@owner:hs', '!new:hs'));
+  it('fails with typed metadata and tears down when sync stops', () => {
+    const { service, owner, stopSync } = setup();
+    const { outcome, subscription } = watch(service, owner);
 
-    const syncHandler = stopSync();
+    stopSync();
+    TestBed.tick();
 
-    await expect(result).rejects.toEqual(
-      new RoomReadinessError('sync-stopped'),
-    );
-    expect(off).toHaveBeenCalledWith(ClientEvent.Room, expect.any(Function));
-    expect(off).toHaveBeenCalledWith(ClientEvent.Sync, syncHandler);
+    expect(outcome.error).toEqual(new RoomReadinessError('sync-stopped'));
+    expect(subscription.closed).toBe(true);
+  });
+
+  it('readiness rejects when the account is removed', () => {
+    const { service, owner, session } = setup();
+    const { outcome, subscription } = watch(service, owner);
+
+    session.update((s) => ({ ...s, activeAccountId: null, accounts: [] }));
+    TestBed.tick();
+
+    expect(outcome.error).toEqual(new RoomReadinessError('sync-stopped'));
+    expect(subscription.closed).toBe(true);
   });
 
   it('times out with typed metadata and tears down when the Room never arrives', async () => {
     vi.useFakeTimers();
-    const { service, off } = setup();
-    const result = expect(
-      firstValueFrom(service.waitForRoom('@owner:hs', '!never:hs')),
-    ).rejects.toMatchObject({
-      name: 'RoomReadinessError',
-      failure: 'timed-out',
-    });
+    const { service, owner } = setup();
+    const { outcome, subscription } = watch(service, owner);
 
     await vi.advanceTimersByTimeAsync(ROOM_READINESS_TIMEOUT_MS);
 
-    await result;
-    expect(off).toHaveBeenCalledWith(ClientEvent.Room, expect.any(Function));
-    expect(off).toHaveBeenCalledWith(ClientEvent.Sync, expect.any(Function));
+    expect(outcome.error).toMatchObject({
+      name: 'RoomReadinessError',
+      failure: 'timed-out',
+    });
+    expect(subscription.closed).toBe(true);
   });
 });
-
-function handlerFor(
-  on: ReturnType<typeof vi.fn>,
-  event: ClientEvent | RoomEvent,
-) {
-  return on.mock.calls.find(([boundEvent]) => boundEvent === event)?.[1] as
-    ((...args: never[]) => void) | undefined;
-}

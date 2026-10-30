@@ -17,10 +17,7 @@ export type {
   OidcAuthorizationRequest,
   OidcGrantContext,
 } from './lib/oidc-client.service';
-// Re-export the validated delegated-auth metadata so feature libs can type it without
-// importing matrix-js-sdk directly (components never do).
-// Aliased to a local name so an upstream rename only touches this line.
-export type { ValidatedAuthMetadata as AuthMetadata } from 'matrix-js-sdk';
+export type { AuthMetadata } from './lib/auth-metadata';
 export * from './lib/homeserver-discovery.port';
 export { OidcStateStore } from './lib/oidc-state.store';
 export type { OidcStateStash } from './lib/oidc-state.store';
@@ -41,15 +38,15 @@ export {
 } from './lib/qr-sign-in/qr-sign-in.model';
 export { QrSignInAvailability } from './lib/qr-sign-in/qr-sign-in-availability.service';
 export { QrSignInService } from './lib/qr-sign-in/qr-sign-in.service';
-export type { ExistingDeviceLink } from './lib/qr-sign-in/qr-sign-in.adapter';
-export type { QrDeviceLinker } from './lib/qr-sign-in/qr-sign-in.service';
+export type {
+  ExistingDeviceLink,
+  NewDeviceQrSignIn,
+  QrDeviceLinker,
+} from './lib/qr-sign-in/qr-sign-in.service';
 export {
   QR_LINK_IDENTITY_CHECK,
-  QR_SIGN_IN_COMPLETION,
-  type LinkedSecrets,
   type QrLinkIdentityCheck,
-  type QrSignInCompletion,
-} from './lib/qr-sign-in/qr-sign-in-completion.port';
+} from './lib/qr-sign-in/qr-link-identity-check.port';
 export { PasswordResetWorkflow } from './lib/password-reset.workflow';
 export type {
   PendingReset,

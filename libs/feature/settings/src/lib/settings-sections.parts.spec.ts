@@ -19,7 +19,7 @@ import {
   TrnSettingsParts,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { AppLockService } from '@trinity/data-access/app-lock';
 import { AuthService, QrSignInService } from '@trinity/data-access/auth';
 import {
@@ -108,7 +108,7 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(IdentityPresenceService, {
         myPresence: signal('online' as const).asReadonly(),
         myStatusMessage: signal('').asReadonly(),
-        loadOwnPresence: () => undefined,
+        loadOwnPresence: () => of(undefined),
       }),
     ],
   }),
@@ -129,8 +129,8 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(AuthService, {
         accountManagementFor: () => of({ kind: 'legacy' } as const),
       }),
-      MockProvider(MatrixClientService, {
-        activeUserId: signal('@me:hs').asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: signal('@me:hs').asReadonly(),
       }),
       MockProvider(TrnToastService),
       MockProvider(ExternalBrowserService),
@@ -214,16 +214,12 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(PushRulesService, { toggles: [] }),
       MockProvider(NotificationSoundService, {
         enabled: signal(true).asReadonly(),
-        connect: () => undefined,
-        disconnect: () => undefined,
       }),
       MockProvider(ReactionNotificationSettingsService, {
         enabled: signal(false).asReadonly(),
-        connect: () => undefined,
-        disconnect: () => undefined,
       }),
-      MockProvider(MatrixClientService, {
-        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: signal<string | null>('@me:hs').asReadonly(),
       }),
       MockProvider(KeywordRulesService, {
         keywords: () => [],
@@ -249,8 +245,8 @@ const SETUPS: Record<string, () => Setup> = {
         ignoredUsers: signal([]).asReadonly(),
         runProjection: () => NEVER,
       }),
-      MockProvider(MatrixClientService, {
-        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: signal<string | null>('@me:hs').asReadonly(),
         accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
       }),
       MockProvider(TrnToastService),
@@ -262,7 +258,7 @@ const SETUPS: Record<string, () => Setup> = {
         provide: BUILD_INFO,
         useValue: { version: '9.9.9', commit: 'abc1234', builtAt: '' },
       },
-      MockProvider(MatrixClientService, {
+      MockProvider(SessionStateService, {
         accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
       }),
       MockProvider(HomeserverInfoService, {

@@ -5,6 +5,8 @@ import {
   defer,
   of,
   take,
+  throwIfEmpty,
+  timeout,
   type Observable,
 } from 'rxjs';
 import { buildLabel } from './build-label';
@@ -21,8 +23,8 @@ export interface DiagnosticAccount {
 
 /**
  * Names one source knows, usually one room's: its name and topic and its members' display
- * names, read lazily so a large room is read a few names at a time. The export reads them
- * once, while it builds the file, and keeps only those that occur in the log. Never stored.
+ * names. The app returns them all once, after the log is read; the export indexes those that
+ * occur in the log while it builds the file. Never stored.
  */
 export interface DiagnosticNameGroup {
   readonly roomNames: readonly string[];
@@ -85,16 +87,32 @@ export function readAccounts(
   );
 }
 
+/** How long the export waits for the names before it reports them as not replaced. */
+export const KNOWN_NAMES_TIMEOUT_MS = 10_000;
+
 /**
- * The names to replace in the file, read from the app's source only when iterated: none
- * when there is no source. The redactor keeps what it read if the source fails part-way.
+ * The names to replace in the file, read once, or none when there is no source. Cold; never
+ * errors: a source that fails, completes empty or exceeds the timeout gives groups that throw
+ * when read, so the export notes the gap.
  */
 export function readKnownNames(
   source: DiagnosticAccountSource | null,
-): Iterable<DiagnosticNameGroup> {
-  return {
-    [Symbol.iterator]: () => (source?.knownNames() ?? [])[Symbol.iterator](),
-  };
+): Observable<Iterable<DiagnosticNameGroup>> {
+  if (!source) {
+    return of([]);
+  }
+  return defer(() => source.knownNames()).pipe(
+    timeout({ first: KNOWN_NAMES_TIMEOUT_MS }),
+    take(1),
+    throwIfEmpty(),
+    catchError((error: unknown) =>
+      of<Iterable<DiagnosticNameGroup>>({
+        [Symbol.iterator]: () => {
+          throw error;
+        },
+      }),
+    ),
+  );
 }
 
 function pad(value: number): string {

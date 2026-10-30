@@ -1,35 +1,22 @@
 import {
   DestroyRef,
   Injectable,
+  computed,
   effect,
   inject,
   untracked,
 } from '@angular/core';
-import {
-  ClientEvent,
-  EventType,
-  MatrixEventEvent,
-  RoomEvent,
-  SyncState,
-  type IRoomTimelineData,
-  type MatrixClient,
-  type MatrixEvent,
-  type Room,
-} from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { injectHostAppName } from '@trinity/runtime/host';
-import { RoomEncryptionFlags } from '@trinity/util/matrix';
-import {
-  LEGACY_NOTIFICATION_SOUND_EVENT,
-  NOTIFICATION_SOUND_EVENT,
-  NotificationSoundService,
-} from './notification-sound.service';
-import { copyLegacyAccountData } from './legacy-account-data';
+import { plainEqual } from '@trinity/util/matrix';
+import { NotificationSoundService } from './notification-sound.service';
 import { Observable, Subscriber, Subscription, take, timeout } from 'rxjs';
-import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
+import type { IncomingNotification } from './notification-engine';
+import { NOTIFICATION_ENGINE } from './notification-engine.token';
 import type { NotificationRuntimeEvent } from './notification-intent';
 import { NotificationPolicy } from './notification-policy';
 import { NotificationPresenterService } from './notification-presenter.service';
+import { NotificationSettingsStore } from './notification-settings.store';
 import { NOTIFICATION_TEXT } from './notification-text.port';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
 import { PushService } from './push.service';
@@ -39,79 +26,44 @@ import type {
 } from '@trinity/runtime/projection';
 import { NotificationPresentationHealthTracker } from './notification-presentation-health';
 import { ReactionNotificationBatch } from './reaction-notification-batch';
-import {
-  LEGACY_REACTION_NOTIFICATION_EVENT,
-  REACTION_NOTIFICATION_EVENT,
-  ReactionNotificationSettingsService,
-} from './reaction-notification-settings.service';
+import { ReactionNotificationSettingsService } from './reaction-notification-settings.service';
 import { RoomNotificationsService } from './room-notifications.service';
 import type {
   NotificationIntent,
   ReactionNotificationEvent,
 } from './notification-intent';
 
-/** One account's client plus its bound timeline / decrypted listeners. */
+interface LiveAccount {
+  readonly accountId: string;
+  readonly generation: number;
+}
+
+/** One account session's notification feed and reaction work. */
 interface AccountNotifier {
   readonly userId: string;
-  readonly client: MatrixClient;
-  readonly onTimeline: (
-    event: MatrixEvent,
-    room: Room | undefined,
-    toStartOfTimeline?: boolean,
-    removed?: boolean,
-    data?: IRoomTimelineData,
-  ) => void;
-  readonly onDecrypted: (event: MatrixEvent) => void;
-  readonly onSync: (state: SyncState) => void;
+  readonly generation: number;
+  readonly feed: Subscription;
   readonly reactions: ReactionNotificationBatch;
-}
-
-/** One account's account-data listener that copies retired names to current ones. */
-interface LegacyAccountDataCopy {
-  readonly client: MatrixClient;
-  readonly onAccountData: () => void;
-}
-
-/**
- * Copy each retired account-data event to its current name when only the old one exists.
- * Runs inside the SDK's emit loop, so a throw must never escape.
- */
-function copyRetiredAccountData(client: MatrixClient): void {
-  try {
-    copyLegacyAccountData(
-      client as never,
-      NOTIFICATION_SOUND_EVENT,
-      LEGACY_NOTIFICATION_SOUND_EVENT,
-    );
-    copyLegacyAccountData(
-      client as never,
-      REACTION_NOTIFICATION_EVENT,
-      LEGACY_REACTION_NOTIFICATION_EVENT,
-    );
-  } catch {
-    /* the old value stays readable; the next account-data event retries */
-  }
 }
 
 /**
  * Surfaces incoming messages as OS notifications for every signed-in account at once,
- * so listeners, push scoring and dedupe are keyed by account. That is also why this is
- * not a `projectFromClient` projection, which models one active client.
+ * so feeds and dedupe are keyed by account. That is also why this is not an
+ * active-account projection.
  *
  * On desktop the main process presents them: Electron renderer `Notification`s are
  * unreliably surfaced and attributed by the OS, notably on macOS.
  *
- * Only live events after the account's first sync notify, from someone else, when the
- * user isn't viewing that room, and when push rules say `notify`. Opted-in reactions use
- * client-side ownership checks instead, but keep the master rule and room mutes.
- *
- * In E2EE rooms the timeline emit carries ciphertext, so the preview would be generic and
- * push rules would miss mentions. Those events wait for `MatrixEventEvent.Decrypted` and
- * are rescored with `getPushActionsForEvent(event, true)`.
+ * The engine's `notifications` feed brings live messages the push rules notify (decrypted,
+ * however late) and reaction annotations; this decides who sees them. Messages notify when the
+ * user isn't viewing that room. Opted-in reactions use client-side ownership checks instead, but
+ * keep the master rule and room mutes.
  */
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(NOTIFICATION_ENGINE);
+  private readonly session = inject(SessionStateService);
+  private readonly settings = inject(NotificationSettingsStore);
   private readonly sound = inject(NotificationSoundService);
   private readonly reactionSettings = inject(
     ReactionNotificationSettingsService,
@@ -132,30 +84,31 @@ export class NotificationService {
 
   private readonly notifiers = new Map<string, AccountNotifier>();
 
-  /** Bound for every account whatever the notification permission or host support. */
-  private readonly legacyCopies = new Map<string, LegacyAccountDataCopy>();
-
   private connection: Subscription | null = null;
   private presentationConnection = new Subscription();
   private runtimeSubscriber: Subscriber<NotificationRuntimeEvent> | null = null;
   private readonly health = new NotificationPresentationHealthTracker();
 
-  /** Live events only, so scrollback that later decrypts never notifies. */
-  private readonly pendingDecryption = new Set<string>();
-
   private readonly notified = new Set<string>();
+
+  /** Each live account with its session generation: a re-auth bumps it and re-subscribes. */
+  private readonly accounts = computed(
+    (): readonly LiveAccount[] =>
+      this.session.snapshot().accounts.map(({ accountId, generation }) => ({
+        accountId,
+        generation,
+      })),
+    { equal: plainEqual },
+  );
 
   private static readonly NOTIFIED_CAP = 500;
 
-  /** Permanent UTDs stay pending for a later retry, so the set needs a cap. */
-  private static readonly PENDING_DECRYPTION_CAP = 500;
-
   constructor() {
     effect(() => {
-      const accountIds = this.matrix.accountIds();
+      const accounts = this.accounts();
       // Reconciliation can emit a warning whose subscriber reads runtime state; tracking
       // those reads turns a rejected permission into a self-sustaining warning loop.
-      untracked(() => this.reconcile(accountIds));
+      untracked(() => this.reconcile(accounts));
     });
     this.destroyRef.onDestroy(() => this.stop());
   }
@@ -176,7 +129,7 @@ export class NotificationService {
       this.runtimeSubscriber = subscriber;
       this.enabled = true;
       this.health.start((event) => subscriber.next(event));
-      this.reconcile(this.matrix.accountIds());
+      this.reconcile(this.accounts());
       return () => this.stop(connection);
     });
   }
@@ -196,23 +149,18 @@ export class NotificationService {
       this.detach(notifier);
     }
     this.notifiers.clear();
-    this.reconcileLegacyCopies([]);
-    this.pendingDecryption.clear();
     this.notified.clear();
   }
 
-  private reconcile(ids: readonly string[]): void {
+  private reconcile(accounts: readonly LiveAccount[]): void {
     if (!this.enabled) {
       return;
     }
-    // Before the presentation gate: the copy must not wait on notification permission.
-    this.reconcileLegacyCopies(ids);
-    if (ids.length === 0) {
+    if (accounts.length === 0) {
       // Stay dormant rather than complete: the signed-out screen never asks for Web
       // permission, and a later login attaches without a page restarting a root capability.
       for (const notifier of this.notifiers.values()) this.detach(notifier);
       this.notifiers.clear();
-      this.pendingDecryption.clear();
       this.notified.clear();
       this.releasePresentation();
       this.health.publish(
@@ -227,7 +175,7 @@ export class NotificationService {
       this.preparePresentation();
       return;
     }
-    const live = new Set(ids);
+    const live = new Set(accounts.map(({ accountId }) => accountId));
     for (const [userId, notifier] of this.notifiers) {
       if (!live.has(userId)) {
         this.detach(notifier);
@@ -235,44 +183,18 @@ export class NotificationService {
         this.forgetAccount(userId);
       }
     }
-    for (const userId of ids) {
-      const client = this.matrix.clientFor(userId);
+    for (const { accountId: userId, generation } of accounts) {
       const held = this.notifiers.get(userId);
       if (held) {
-        // Re-adding a signed-in account re-creates its client; keeping the old one strands
-        // the listener on a stopped client.
-        if (held.client === client) {
+        // A re-auth replaces the account's session under the same id; keeping the old feed
+        // strands it on a stopped client.
+        if (held.generation === generation) {
           continue;
         }
         this.detach(held);
         this.notifiers.delete(userId);
       }
-      if (!client) {
-        continue; // not fully started yet; a later accountIds tick re-checks it
-      }
-      const notifier = this.buildNotifier(userId, client);
-      this.attach(notifier);
-      this.notifiers.set(userId, notifier);
-    }
-  }
-
-  private reconcileLegacyCopies(ids: readonly string[]): void {
-    const live = new Set(ids);
-    for (const [userId, copy] of this.legacyCopies) {
-      if (live.has(userId) && this.matrix.clientFor(userId) === copy.client) {
-        continue;
-      }
-      copy.client.off(ClientEvent.AccountData, copy.onAccountData);
-      this.legacyCopies.delete(userId);
-    }
-    for (const userId of ids) {
-      const client = this.matrix.clientFor(userId);
-      if (!client || this.legacyCopies.has(userId)) continue;
-      const onAccountData = (): void => copyRetiredAccountData(client);
-      client.on(ClientEvent.AccountData, onAccountData);
-      this.legacyCopies.set(userId, { client, onAccountData });
-      // Account data may already be in the store (a restored session).
-      onAccountData();
+      this.notifiers.set(userId, this.attach(userId, generation));
     }
   }
 
@@ -356,7 +278,7 @@ export class NotificationService {
                       'acknowledged',
                       true,
                     );
-                    this.reconcile(this.matrix.accountIds());
+                    this.reconcile(this.accounts());
                   },
                   error: () => {
                     this.presentationPreparing = false;
@@ -383,127 +305,33 @@ export class NotificationService {
     );
   }
 
-  private buildNotifier(userId: string, client: MatrixClient): AccountNotifier {
-    const currentSyncState = client.getSyncState();
-    let firstSyncCompleted =
-      currentSyncState === SyncState.Prepared ||
-      currentSyncState === SyncState.Syncing;
-    // A room counts as encrypted by its state OR by the crypto store. The store's answer is
-    // async, so ask it once per room up front; a room first seen later is covered next sync.
-    const encryption = new RoomEncryptionFlags();
+  private attach(userId: string, generation: number): AccountNotifier {
     const reactions = new ReactionNotificationBatch({
       accountId: userId,
-      client,
-      allowed: (room, senderId) =>
-        this.reactionAllowed(userId, client, room, senderId),
-      present: (event) => this.presentReaction(userId, client, event),
-      roomEncrypted: (room) => encryption.isEncrypted(room),
+      allowed: (roomId, senderId) =>
+        this.reactionAllowed(userId, generation, roomId, senderId),
+      lookup: (roomId, targetEventId, reactionIds) =>
+        this.engine.reactionTarget(userId, roomId, targetEventId, reactionIds),
+      present: (event) => this.presentReaction(userId, generation, event),
     });
-    const warmEncryption = (): void => {
-      const crypto = client.getCrypto();
-      for (const room of client.getRooms()) {
-        void encryption.refresh(crypto, room.roomId);
+    const feed = this.engine.notifications(userId).subscribe((item) => {
+      try {
+        if (item.kind === 'reaction-annotation') reactions.add(item);
+        else this.notify(item);
+      } catch {
+        /* a notification failure is non-fatal */
       }
-    };
-    if (firstSyncCompleted) {
-      warmEncryption();
-    }
-    return {
-      userId,
-      client,
-      reactions,
-      onSync: (state): void => {
-        if (state === SyncState.Prepared || state === SyncState.Syncing) {
-          firstSyncCompleted = true;
-          warmEncryption();
-        }
-      },
-      onTimeline: (event, room, _toStart, _removed, data): void => {
-        // This runs inside the SDK's sync emit loop — a throw must never disrupt it.
-        try {
-          if (data?.liveEvent !== true) {
-            return;
-          }
-          if (!firstSyncCompleted) {
-            // matrix-js-sdk labels the first /sync batch as live while it is still
-            // applying stored room state and history. PREPARED is emitted afterwards.
-            return;
-          }
-          if (this.isReaction(event) && room) {
-            reactions.add(event, room);
-            return;
-          }
-          if (this.isAwaitingDecryption(event)) {
-            const id = event.getId();
-            if (id) {
-              this.pendingDecryption.add(this.key(userId, id));
-              this.evictOldest(
-                this.pendingDecryption,
-                NotificationService.PENDING_DECRYPTION_CAP,
-              );
-            }
-            return;
-          }
-          this.maybeNotify(userId, client, event, room, encryption);
-        } catch {
-          /* a notification failure is non-fatal */
-        }
-      },
-      onDecrypted: (event): void => {
-        // Also runs inside the SDK's emit loop — never let a throw escape.
-        try {
-          const id = event.getId();
-          if (!id) {
-            return;
-          }
-          const key = this.key(userId, id);
-          if (!this.pendingDecryption.has(key)) {
-            return;
-          }
-          if (event.isDecryptionFailure()) {
-            return; // keep it pending for a later retry
-          }
-          this.pendingDecryption.delete(key);
-          const room = client.getRoom(event.getRoomId() ?? '') ?? undefined;
-          if (this.isReaction(event) && room) {
-            reactions.add(event, room);
-            return;
-          }
-          this.maybeNotify(
-            userId,
-            client,
-            event,
-            room,
-            encryption,
-            /* force */ true,
-          );
-        } catch {
-          /* a notification failure is non-fatal */
-        }
-      },
-    };
-  }
-
-  private attach(notifier: AccountNotifier): void {
-    notifier.client.on(ClientEvent.Sync, notifier.onSync);
-    notifier.client.on(RoomEvent.Timeline, notifier.onTimeline);
-    notifier.client.on(MatrixEventEvent.Decrypted, notifier.onDecrypted);
+    });
+    return { userId, generation, feed, reactions };
   }
 
   private detach(notifier: AccountNotifier): void {
     notifier.reactions.dispose();
-    notifier.client.off(ClientEvent.Sync, notifier.onSync);
-    notifier.client.off(RoomEvent.Timeline, notifier.onTimeline);
-    notifier.client.off(MatrixEventEvent.Decrypted, notifier.onDecrypted);
+    notifier.feed.unsubscribe();
   }
 
   private forgetAccount(userId: string): void {
     const prefix = `${userId} `;
-    for (const key of this.pendingDecryption) {
-      if (key.startsWith(prefix)) {
-        this.pendingDecryption.delete(key);
-      }
-    }
     for (const key of this.notified) {
       if (key.startsWith(prefix)) {
         this.notified.delete(key);
@@ -511,38 +339,14 @@ export class NotificationService {
     }
   }
 
-  private isAwaitingDecryption(event: MatrixEvent): boolean {
-    return event.isEncrypted?.() === true && event.getClearContent?.() == null;
-  }
-
-  private maybeNotify(
-    userId: string,
-    client: MatrixClient,
-    event: MatrixEvent,
-    room: Room | undefined,
-    encryption: RoomEncryptionFlags,
-    forceRecalculate = false,
+  private notify(
+    event: Exclude<IncomingNotification, { kind: 'reaction-annotation' }>,
   ): void {
-    if (!room) {
-      return;
-    }
-    // `forceRecalculate` makes the rules score the cleartext, not a cached ciphertext result.
-    const normalized = normalizeNotificationEvent(
-      userId,
-      event,
-      room,
-      encryption.isEncrypted(room),
-    );
-    const key = this.key(userId, normalized.eventId);
+    const key = this.key(event.accountId, event.eventId);
     const decision = this.policy.decide({
-      event: normalized,
-      viewerId: client.getUserId() ?? userId,
-      rules: {
-        notify:
-          client.getPushActionsForEvent(event, forceRecalculate)?.notify ===
-          true,
-        silent: !this.sound.isOn(userId),
-      },
+      event,
+      viewerId: event.accountId,
+      rules: { notify: true, silent: !this.sound.isOn(event.accountId) },
       visibility: this.visibility.snapshot(),
       backgroundDelivery: this.push.backgroundDelivery(),
       duplicate: this.notified.has(key),
@@ -557,15 +361,17 @@ export class NotificationService {
 
   private presentReaction(
     userId: string,
-    client: MatrixClient,
+    generation: number,
     event: ReactionNotificationEvent,
   ): void {
-    if (!this.reactionAllowed(userId, client, event.roomId, event.senderId)) {
+    if (
+      !this.reactionAllowed(userId, generation, event.roomId, event.senderId)
+    ) {
       return;
     }
     const decision = this.policy.decide({
       event,
-      viewerId: client.getUserId() ?? userId,
+      viewerId: userId,
       rules: { notify: true, silent: !this.sound.isOn(userId) },
       visibility: this.visibility.snapshot(),
       backgroundDelivery: this.push.backgroundDelivery(),
@@ -599,40 +405,25 @@ export class NotificationService {
     this.connection?.add(subscription);
   }
 
-  private isReaction(event: MatrixEvent): boolean {
-    return event.getType?.() === EventType.Reaction;
-  }
-
   private reactionAllowed(
     userId: string,
-    client: MatrixClient,
-    room: Room | string | undefined,
+    generation: number,
+    roomId: string,
     senderId: string,
   ): boolean {
     return (
       this.enabled &&
       this.presentationReady &&
-      this.matrix.clientFor(userId) === client &&
+      this.session.status(userId)?.generation === generation &&
+      senderId !== userId &&
       this.reactionSettings.isOn(userId) &&
-      this.reactionAllowedForRoom(client, senderId) &&
-      (!room ||
-        this.roomNotifications.modeFor(
-          typeof room === 'string' ? room : room.roomId,
-          userId,
-        ) !== 'mute')
+      !this.settings
+        .settings(userId)
+        .defaultRules.some(
+          (rule) => rule.ruleId === '.m.rule.master' && rule.enabled,
+        ) &&
+      this.roomNotifications.modeFor(roomId, userId) !== 'mute'
     );
-  }
-
-  private reactionAllowedForRoom(
-    client: MatrixClient,
-    senderId: string,
-  ): boolean {
-    if (senderId === client.getUserId()) return false;
-    if (client.isUserIgnored?.(senderId) === true) return false;
-    const master = client.pushRules?.global?.override?.find(
-      (rule) => rule.rule_id === '.m.rule.master',
-    );
-    return master?.enabled !== true;
   }
 
   recoverPresentation(

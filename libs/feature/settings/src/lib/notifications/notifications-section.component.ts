@@ -2,7 +2,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  OnDestroy,
   OnInit,
   effect,
   inject,
@@ -10,7 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnSwitchComponent } from '@trinity/components/controls';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   NotificationSoundService,
   PushRulesService,
@@ -42,11 +41,11 @@ import { Subject, takeUntil } from 'rxjs';
     KeywordRulesBlockComponent,
   ],
 })
-export class NotificationsSectionComponent implements OnInit, OnDestroy {
+export class NotificationsSectionComponent implements OnInit {
   private readonly push = inject(PushRulesService);
   private readonly sound = inject(NotificationSoundService);
   private readonly reactions = inject(ReactionNotificationSettingsService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -70,7 +69,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      const accountId = this.matrix.activeUserId();
+      const accountId = this.matrix.activeAccountId();
       if (
         this.reactionAccountId !== undefined &&
         this.reactionAccountId !== accountId
@@ -97,15 +96,6 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
       seeded.set(toggle.id, this.push.isOn(toggle));
     }
     this.state.set(seeded);
-    // Tracks account data, so a value that arrives after this page has rendered (a cold
-    // load, or a change made on another device) still shows.
-    this.sound.connect();
-    this.reactions.connect();
-  }
-
-  ngOnDestroy(): void {
-    this.sound.disconnect();
-    this.reactions.disconnect();
   }
 
   /**
@@ -160,7 +150,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     }
     this.setState(this.reactionsKey, on);
     this.setPending(this.reactionsKey, true);
-    const accountId = this.matrix.activeUserId();
+    const accountId = this.matrix.activeAccountId();
     this.reactions
       .setOn(on)
       .pipe(
@@ -187,7 +177,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
 
   /** The switch effect runs later than the signal changes, so also compare the account. */
   private isCurrentReactionWrite(accountId: string | null): boolean {
-    return this.matrix.activeUserId() === accountId;
+    return this.matrix.activeAccountId() === accountId;
   }
 
   checked(toggle: PushRuleToggle): boolean {

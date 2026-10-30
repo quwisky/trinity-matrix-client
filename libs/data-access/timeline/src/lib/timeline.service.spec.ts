@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
+import { Observable, firstValueFrom, of } from 'rxjs';
 import {
   ConnectionError,
   MatrixError,
@@ -12,9 +12,11 @@ import {
 } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MockProvider } from 'ng-mocks';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { EngineRequestError } from '@trinity/util/matrix';
 import { TimelineService } from './timeline.service';
-import { eventRevision } from './event-revision';
+import { eventRevision } from './js-sdk/event-revision';
 import {
   clientFor,
   fakeClient,
@@ -28,14 +30,22 @@ import {
   mediaProvider,
   openTimeline,
   privacyProvider,
+  liveSession,
   setup,
-  switchableMatrixProvider,
+  ROOM_KEY,
 } from './timeline.spec-harness';
-import { resolvedShields } from './shields';
+import { resolvedShields } from './js-sdk/shields';
+import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
+import { type TimelineStore, TimelineStores } from './timeline-store';
+import {
+  FakeTimelineEngine,
+  fakeEventItem,
+} from '../contract/fake-timeline-engine';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
 // (and its race with gappy syncs) is covered against the SDK in live-scrollback.spec.
-vi.mock('./live-scrollback', () => ({
+vi.mock('./js-sdk/live-scrollback', () => ({
   scrollbackLive: async (
     client: { scrollback: (room: unknown, limit: number) => Promise<unknown> },
     room: unknown,
@@ -263,7 +273,9 @@ describe('TimelineService', () => {
     expect(svc.canSendMessages()).toBe(true);
 
     power.send = 50;
-    const room = TestBed.inject(MatrixClientService).instance as unknown as {
+    const room = TestBed.inject(MatrixClientService).clientFor(
+      ROOM_KEY.accountId,
+    ) as unknown as {
       getRoom: () => { handlers: Map<string, (event: unknown) => void> };
     };
     room.getRoom().handlers.get(RoomStateEvent.Events)?.({
@@ -279,7 +291,9 @@ describe('TimelineService', () => {
     const svc = setup([], [], {}, false, power);
     expect(svc.canSendMessages()).toBe(false);
 
-    const room = TestBed.inject(MatrixClientService).instance as unknown as {
+    const room = TestBed.inject(MatrixClientService).clientFor(
+      ROOM_KEY.accountId,
+    ) as unknown as {
       getRoom: () => { handlers: Map<string, (event: unknown) => void> };
     };
     // matrix-js-sdk emits RoomState.events before it updates member.powerLevel.
@@ -419,6 +433,7 @@ describe('TimelineService', () => {
             ? { name: aliceName, getMxcAvatarUrl: () => null }
             : null,
       relations: { getChildEventsForEvent: () => undefined },
+      getAccountData: () => undefined,
       hasEncryptionStateEvent: () => false,
       on: (ev: string, cb: (...a: unknown[]) => void) => {
         if (ev === RoomStateEvent.Members) {
@@ -431,6 +446,7 @@ describe('TimelineService', () => {
       baseUrl: 'https://hs',
       getRoom: () => room,
       getUserId: () => '@me:hs',
+      getCrypto: () => undefined,
       on: () => {},
       off: () => {},
       sendReadReceipt: () => Promise.resolve({}),
@@ -440,7 +456,7 @@ describe('TimelineService', () => {
       providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     const pill = () => svc.messages().find((m) => m.id === '$m')?.html;
 
     expect(pill()).toContain('>@a:hs</a>');
@@ -601,7 +617,155 @@ describe('TimelineService', () => {
     expect(svc.messages()[0].reactions[0].reactors).toEqual(['Alice']);
   });
 
-  it('reports every reactor per key on demand, and nothing for an unknown event', () => {
+  describe('over the engine', () => {
+    /** A TimelineService over a fake engine, its room seeded with `items`. */
+    function overFake(
+      items: Parameters<FakeTimelineEngine['seed']>[2],
+      fake = new FakeTimelineEngine(),
+    ) {
+      const roomId = '!fake:hs';
+      fake.seed(fake.alice, roomId, items);
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          { provide: TIMELINE_ENGINE, useValue: fake },
+          {
+            provide: CONVERSATION_MESSAGE_ADAPTER,
+            useValue: { acknowledge: () => of({ kind: 'applied' }) },
+          },
+          ...liveSession([fake.alice]).providers,
+          mediaProvider(),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open({ accountId: fake.alice, roomId });
+      return { svc, fake };
+    }
+
+    it('eventSource emits the effective event', async () => {
+      const fake = new FakeTimelineEngine();
+      const { svc } = overFake([fakeEventItem('$1', fake.bob)]);
+
+      expect(await firstValueFrom(svc.eventSource('$1'))).toMatchObject({
+        event_id: '$1',
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body: '$1' },
+      });
+      expect(await firstValueFrom(svc.eventSource('$nope'))).toBeNull();
+    });
+
+    it('reactionDetails resolves names through profiles', async () => {
+      const fake = new FakeTimelineEngine();
+      const { svc } = overFake([
+        fakeEventItem('$1', fake.bob, {
+          reactions: [
+            {
+              key: '👍',
+              count: 2,
+              reactedByMe: true,
+              senders: [fake.alice, fake.bob],
+            },
+          ],
+          profiles: {
+            [fake.alice]: {
+              displayName: 'Alice',
+              displayNameAmbiguous: false,
+              avatarMxc: 'mxc://hs/alice',
+            },
+            [fake.bob]: {
+              displayName: 'Bob',
+              displayNameAmbiguous: true,
+              avatarMxc: null,
+            },
+          },
+        }),
+      ]);
+
+      expect(await firstValueFrom(svc.reactionDetails('$1'))).toEqual([
+        {
+          key: '👍',
+          reacted: true,
+          reactors: [
+            {
+              userId: fake.alice,
+              name: 'Alice',
+              initial: 'A',
+              avatarMxc: 'mxc://hs/alice',
+            },
+            {
+              userId: fake.bob,
+              name: `Bob (${fake.bob})`,
+              initial: 'B',
+              avatarMxc: null,
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('closes its store when it opens another room, so reopening grows nothing', () => {
+      const fake = new FakeTimelineEngine();
+      let open = 0;
+      const timeline = fake.timeline.bind(fake);
+      fake.timeline = (...args) =>
+        new Observable((subscriber) => {
+          open += 1;
+          const subscription = timeline(...args).subscribe(subscriber);
+          return () => {
+            open -= 1;
+            subscription.unsubscribe();
+          };
+        });
+      const { svc } = overFake([], fake);
+      expect(open).toBe(1);
+
+      for (const roomId of ['!a:hs', '!b:hs', '!fake:hs']) {
+        svc.open({ accountId: fake.alice, roomId });
+        expect(open).toBe(1);
+      }
+      svc.close();
+      expect(open).toBe(0);
+    });
+  });
+
+  it('loadOlder prepends rows and clears loadingOlder in one turn', async () => {
+    const older = fakeEvent({ id: '$0', sender: '@a:hs', body: 'older' });
+    const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'newer' })];
+    const base = fakeRoom(events);
+    let token: string | null = 'tok';
+    const room = {
+      ...base,
+      getLiveTimeline: () => ({
+        ...base.getLiveTimeline(),
+        getPaginationToken: () => token,
+      }),
+    };
+    const client = clientFor(room, {
+      scrollback: async () => {
+        events.unshift(older);
+        token = null;
+        room.handlers.get(RoomEvent.Timeline)?.(older, room, true);
+        return room;
+      },
+    });
+    const opened = vi.spyOn(TimelineStores.prototype, 'open');
+    const svc = openTimeline(client);
+    const store = opened.mock.results[0].value as TimelineStore;
+    const seen: [string[], boolean][] = [];
+    store.updates.subscribe(() =>
+      seen.push([svc.messages().map((m) => m.id), svc.loadingOlder()]),
+    );
+
+    await firstValueFrom(svc.loadOlder());
+
+    // Never the new rows with the loading strip, nor the strip gone before the rows.
+    expect(seen).toEqual([
+      [['$1'], true],
+      [['$0', '$1'], false],
+    ]);
+  });
+
+  it('reports every reactor per key on demand, and nothing for an unknown event', async () => {
     const svc = setup(
       [fakeEvent({ id: '$1', sender: '@me:hs', body: 'hi' })],
       [],
@@ -612,7 +776,7 @@ describe('TimelineService', () => {
       },
     );
 
-    const [details] = svc.reactionDetails('$1');
+    const [details] = await firstValueFrom(svc.reactionDetails('$1'));
 
     expect(details.key).toBe('👍');
     expect(details.reacted).toBe(true);
@@ -621,7 +785,7 @@ describe('TimelineService', () => {
       { userId: '@me:hs', name: 'Me', initial: 'M', avatarMxc: null },
       { userId: '@a:hs', name: 'Alice', initial: 'A', avatarMxc: null },
     ]);
-    expect(svc.reactionDetails('$nope')).toEqual([]);
+    expect(await firstValueFrom(svc.reactionDetails('$nope'))).toEqual([]);
   });
 
   it('does not re-project when an unreferenced member changes', async () => {
@@ -740,7 +904,10 @@ describe('TimelineService', () => {
     });
     const svc = openTimeline(client);
 
-    await expect(firstValueFrom(svc.loadOlder())).rejects.toThrow('network');
+    // The engine reports the failed page as a value; loadOlder errors with it.
+    await expect(firstValueFrom(svc.loadOlder())).rejects.toBeInstanceOf(
+      EngineRequestError,
+    );
     expect(svc.loadingOlder()).toBe(false); // finalize cleared it; not stuck
   });
 
@@ -852,16 +1019,16 @@ describe('TimelineService', () => {
   });
 
   it('detaches client listeners from the account it opened on, not the active one', async () => {
-    // `MatrixClientService.instance` follows the ACTIVE account. open() attaches its
-    // client-level listeners (Decrypted/Typing/Crypto) to whichever client was active
-    // then; if close() re-reads `instance` after an account switch it detaches from the
-    // NEW client and leaks every listener on the old one — which is still syncing.
-    const makeClient = () => {
+    // open() attaches the client-level listeners (Decrypted/Crypto) to its own account's
+    // client; close() must detach from that one, not the active one, or every listener
+    // on the old, still-syncing client leaks.
+    const makeClient = (userId: string) => {
       const handlers: Record<string, unknown[]> = {};
       return {
         baseUrl: 'https://hs',
         getRoom: () => room,
-        getUserId: () => '@me:hs',
+        getUserId: () => userId,
+        getCrypto: () => undefined,
         on: (ev: string, h: unknown) => void (handlers[ev] ??= []).push(h),
         off: (ev: string, h: unknown) => {
           handlers[ev] = (handlers[ev] ?? []).filter((x) => x !== h);
@@ -874,19 +1041,26 @@ describe('TimelineService', () => {
     const room = fakeRoom([
       fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' }),
     ]);
-    const clientA = makeClient();
-    const clientB = makeClient();
-    const active = { client: clientA as unknown };
+    const clientA = makeClient('@me:hs');
+    const clientB = makeClient('@b:hs');
 
     TestBed.configureTestingModule({
-      providers: [TimelineService, switchableMatrixProvider(active)],
+      providers: [
+        TimelineService,
+        MockProvider(MatrixClientService, {
+          clientFor: ((accountId: string) =>
+            accountId === '@me:hs' ? clientA : clientB) as never,
+        }),
+        ...liveSession(['@me:hs', '@b:hs']).providers,
+        mediaProvider(),
+      ],
     });
     const svc = TestBed.inject(TimelineService);
 
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     expect(clientA.listenerCount()).toBeGreaterThan(0); // attached to A
 
-    active.client = clientB; // the user switches accounts
+    // The user switches accounts.
     svc.close();
 
     expect(clientA.listenerCount()).toBe(0); // A's listeners must be gone
@@ -897,19 +1071,25 @@ describe('TimelineService', () => {
       fakeEvent({ id: '$keyed', sender: '@alice:hs', body: 'keyed' }),
     ]);
     const keyedClient = fakeClient(room, []);
-    const activeClient = fakeClient(fakeRoom([]), []);
+    const activeClient = clientFor(fakeRoom([]), {
+      getUserId: () => '@active:hs',
+    });
     TestBed.configureTestingModule({
       providers: [
         TimelineService,
-        matrixProvider(activeClient),
+        MockProvider(MatrixClientService, {
+          clientFor: ((accountId: string) =>
+            accountId === '@me:hs' ? keyedClient : activeClient) as never,
+        }),
+        ...liveSession(['@me:hs', '@active:hs']).providers,
         mediaProvider(),
       ],
     });
     const svc = TestBed.inject(TimelineService);
 
-    svc.open('!r:hs', keyedClient as never);
+    svc.open(ROOM_KEY);
 
-    expect(svc.openContext()?.client).toBe(keyedClient);
+    expect(svc.openRoomId).toBe('!r:hs');
     expect(svc.messages().map((message) => message.id)).toEqual(['$keyed']);
   });
 
@@ -1003,7 +1183,7 @@ describe('TimelineService', () => {
         providers: [TimelineService, matrixProvider(client), mediaProvider()],
       });
       const svc = TestBed.inject(TimelineService);
-      svc.open('!r:hs');
+      svc.open(ROOM_KEY);
       return svc;
     }
 
@@ -1107,6 +1287,7 @@ describe('TimelineService', () => {
         }),
         getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
         relations: { getChildEventsForEvent: () => undefined },
+        getAccountData: () => undefined,
         hasEncryptionStateEvent: () => encrypted,
         on: () => {},
         off: () => {},
@@ -1115,6 +1296,7 @@ describe('TimelineService', () => {
         baseUrl: 'https://hs',
         getRoom: () => room,
         getUserId: () => '@me:hs',
+        getCrypto: () => undefined,
         on: () => {},
         off: () => {},
         sendReadReceipt: () => Promise.resolve({}),
@@ -1129,7 +1311,7 @@ describe('TimelineService', () => {
         providers: [TimelineService, matrixProvider(urlRoomClient(encrypted))],
       });
       const svc = TestBed.inject(TimelineService);
-      svc.open('!r:hs');
+      svc.open(ROOM_KEY);
       return svc;
     }
 
@@ -1174,6 +1356,7 @@ describe('TimelineService', () => {
         }),
         getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
         relations: { getChildEventsForEvent: () => undefined },
+        getAccountData: () => undefined,
         on: () => {},
         off: () => {},
       };
@@ -1181,6 +1364,7 @@ describe('TimelineService', () => {
         baseUrl: 'https://hs',
         getRoom: () => room,
         getUserId: () => '@me:hs',
+        getCrypto: () => undefined,
         on: () => {},
         off: () => {},
         sendReadReceipt: () => Promise.resolve({}),
@@ -1198,7 +1382,7 @@ describe('TimelineService', () => {
         ],
       });
       const svc = TestBed.inject(TimelineService);
-      svc.open('!r:hs');
+      svc.open(ROOM_KEY);
       return svc;
     }
 
@@ -1227,7 +1411,7 @@ describe('TimelineService', () => {
         providers: [TimelineService, matrixProvider(client), mediaProvider()],
       });
       const svc = TestBed.inject(TimelineService);
-      svc.open('!r:hs');
+      svc.open(ROOM_KEY);
       return { svc, client, event };
     }
 

@@ -16,3 +16,5 @@ export * from './lib/room-encryption.service';
 export * from './lib/room-directory.service';
 export * from './lib/room-permission-rows';
 export * from './lib/room-permissions.service';
+export * from './lib/room-access.models';
+export * from './lib/room-administration-engine';

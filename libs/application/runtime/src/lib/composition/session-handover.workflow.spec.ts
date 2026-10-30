@@ -2,8 +2,9 @@ import { ErrorHandler, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
-  MatrixClientService,
+  SESSION_ENGINE,
   type PendingTextMessage,
+  type SessionEngine,
 } from '@trinity/data-access/matrix-client';
 import {
   AccountRuntimeService,
@@ -56,29 +57,50 @@ function setup(
   const lifecycleBusy = signal(options.lifecycleBusy ?? false);
   const lifecycle = signal<AccountLifecycleState>({ phase: 'idle' });
   const requests = new Subject<void>();
+  const failing = (message: string) => throwError(() => new Error(message));
   const matrix = {
-    pauseSync: vi.fn(() => {
-      steps.push('pause-sync');
-      if (options.pauseFails) throw new Error('the sync loop would not stop');
-    }),
-    hasOutgoingWork: vi.fn(options.outgoing ?? (() => false)),
-    pendingTextMessages: vi.fn(() => {
-      steps.push('read-unsent');
-      if (options.readFails) throw new Error('a room could not be read');
-      return options.unsent?.() ?? [];
-    }),
+    pauseSync: vi.fn(() =>
+      defer(() => {
+        steps.push('pause-sync');
+        return options.pauseFails
+          ? failing('the sync loop would not stop')
+          : of(null);
+      }),
+    ),
+    hasOutgoingWork: vi.fn(() =>
+      defer(() => {
+        try {
+          return of((options.outgoing ?? (() => false))());
+        } catch (error: unknown) {
+          return throwError(() => error);
+        }
+      }),
+    ),
+    pendingTextMessages: vi.fn(() =>
+      defer(() => {
+        steps.push('read-unsent');
+        return options.readFails
+          ? failing('a room could not be read')
+          : of(options.unsent?.() ?? []);
+      }),
+    ),
     stop: vi.fn(() =>
       defer(() => {
         steps.push('stop');
-        return options.stopFails
-          ? throwError(() => new Error('stop failed'))
-          : of(undefined);
+        return options.stopFails ? failing('stop failed') : of(null);
       }),
     ),
-    reset: vi.fn(),
     remove: vi.fn(),
     signOutAll: vi.fn(),
-  };
+  } satisfies Pick<
+    SessionEngine,
+    | 'pauseSync'
+    | 'hasOutgoingWork'
+    | 'pendingTextMessages'
+    | 'stop'
+    | 'remove'
+    | 'signOutAll'
+  >;
   const closeAll = vi.fn(() => {
     steps.push('close-dialogs');
     if (options.closeFails) throw new Error('a dialog would not close');
@@ -102,7 +124,7 @@ function setup(
       MockProvider(SessionLockService, {
         handoverRequests: requests.asObservable(),
       }),
-      MockProvider(MatrixClientService, matrix),
+      { provide: SESSION_ENGINE, useValue: matrix },
       MockProvider(TrnSurfaceService, { closeAll }),
       MockProvider(AppRestartService, { reload, restart }),
       MockProvider(UnsentDraftsWriter, { writeBack }),
@@ -148,7 +170,6 @@ describe('SessionHandoverWorkflow', () => {
     expect(steps).toEqual(['pause-sync']);
     await vi.advanceTimersByTimeAsync(100);
     expect(steps).toEqual(HANDED_OVER);
-    expect(matrix.reset).not.toHaveBeenCalled();
     expect(matrix.remove).not.toHaveBeenCalled();
     expect(matrix.signOutAll).not.toHaveBeenCalled();
     // A reload keeps the route; a restart at `/` would lose the room this tab showed.
@@ -171,6 +192,27 @@ describe('SessionHandoverWorkflow', () => {
     await vi.advanceTimersByTimeAsync(200);
 
     expect(steps).toEqual(HANDED_OVER);
+    lifetime.unsubscribe();
+  });
+
+  it('polls outgoing work between pausing and reading the unsent text', async () => {
+    const { steps, requests, matrix, lifetime } = setup();
+    matrix.hasOutgoingWork.mockImplementation(() =>
+      defer(() => {
+        steps.push('has-outgoing-work');
+        return of(false);
+      }),
+    );
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(steps.slice(0, 4)).toEqual([
+      'pause-sync',
+      'has-outgoing-work',
+      'read-unsent',
+      'stop',
+    ]);
     lifetime.unsubscribe();
   });
 

@@ -1,9 +1,18 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ClientEvent, MatrixError, type Method } from 'matrix-js-sdk';
-import { firstValueFrom, lastValueFrom, of } from 'rxjs';
+import { SESSION_SNAPSHOT } from '@trinity/data-access/matrix-client';
+import { EngineRequestError, engineFail } from '@trinity/util/matrix';
+import {
+  firstValueFrom,
+  from,
+  lastValueFrom,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FakeExpressionEngine } from '../contract/fake-expression-engine';
+import { EXPRESSION_ENGINE } from './expression-engine.token';
 import {
   ImagePackEditError,
   ImagePackEditorService,
@@ -15,6 +24,7 @@ import {
   PERSONAL_IMAGE_PACK_EVENT_TYPE,
 } from './image-pack.model';
 import { MediaService } from './media.service';
+import { sessionWith } from './media.spec-harness';
 
 vi.mock('./image-pack-image', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./image-pack-image')>()),
@@ -26,78 +36,70 @@ type Content = Record<string, unknown>;
 const STABLE = PERSONAL_IMAGE_PACK_EVENT_TYPE;
 const LEGACY = LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE;
 const UPLOAD_INFO = { mimetype: 'image/png', size: 4, w: 64, h: 64 };
+const BOB = '@bob:fake';
+const FAILED = {
+  kind: 'network',
+  code: 'request-failed',
+  diagnostic: { kind: 'network' },
+} as const;
 
-function accountEvent(type: string, content: unknown) {
-  return { getType: () => type, getContent: () => content };
-}
-
-function fakeClient(userId: string, local: Record<string, Content>) {
-  const store: Record<string, Content> = structuredClone(local);
-  const server: Record<string, Content> = structuredClone(local);
-  const listeners = new Set<(event: unknown) => void>();
-  // Like the SDK's raw write: the local store only changes when sync echoes it.
-  const write = vi.fn(async (type: string, content: Content) => {
-    server[type] = structuredClone(content);
-  });
-  const client = {
-    getUserId: () => userId,
-    getAccountData: (type: string) =>
-      store[type] ? accountEvent(type, store[type]) : undefined,
-    setAccountDataRaw: write,
-    http: {
-      authedRequest: vi.fn(async (_method: Method, path: string) => {
-        const type = decodeURIComponent(path.split('/').at(-1) ?? '');
-        if (!server[type]) {
-          throw new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
-        }
-        return structuredClone(server[type]);
-      }),
-    },
-    on: vi.fn((name: string, listener: (event: unknown) => void) => {
-      if (name === ClientEvent.AccountData) listeners.add(listener);
-    }),
-    off: vi.fn((_name: string, listener: (event: unknown) => void) =>
-      listeners.delete(listener),
-    ),
-  };
-  /** A sync event; `stale` leaves the server copy alone, as a response computed earlier does. */
-  const sync = (type: string, content: Content, { stale = false } = {}) => {
-    store[type] = content;
-    if (!stale) server[type] = content;
-    for (const listener of listeners) listener(accountEvent(type, content));
-  };
-  return { client, write, sync };
-}
-
-function setup(local: Record<string, Content> = {}) {
-  const activeUserId = signal<string | null>('@alice:hs');
-  const { client, write, sync } = fakeClient('@alice:hs', local);
-  const matrix: {
-    isInitialized: boolean;
-    instance: unknown;
-    activeUserId: unknown;
-  } = {
-    isInitialized: true,
-    instance: client,
-    activeUserId: activeUserId.asReadonly(),
-  };
+function setup(
+  local: Record<string, Content> = {},
+  { active = '@alice:fake' as string | null } = {},
+) {
+  const engine = new FakeExpressionEngine();
+  const alice = engine.alice;
+  // Bound before the spy: another device's writes are not this service's.
+  const remote = engine.setAccountData.bind(engine);
+  for (const [type, content] of Object.entries(local)) {
+    remote(alice, type, content).subscribe();
+  }
+  const write = vi.spyOn(engine, 'setAccountData');
+  const session = signal(sessionWith(active, [alice, BOB]));
   let uploads = 0;
   const media = {
-    uploadMedia: vi.fn(() => {
+    uploadMedia: vi.fn((..._args: unknown[]) => {
       uploads += 1;
       return of({ mxc: `mxc://hs/up${uploads}`, info: UPLOAD_INFO });
     }),
-    uploadLimit: vi.fn(() => of<number | null>(null)),
+    uploadLimit: vi.fn((_accountId?: string) => of<number | null>(null)),
   };
   TestBed.configureTestingModule({
     providers: [
-      { provide: MatrixClientService, useValue: matrix },
+      { provide: EXPRESSION_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
       { provide: MediaService, useValue: media },
     ],
   });
   const service = TestBed.inject(ImagePackEditorService);
-  const written = () => write.mock.calls.at(-1)?.[1];
-  return { service, client, matrix, activeUserId, media, write, written, sync };
+  const written = () => write.mock.calls.at(-1)?.[2];
+  /** Another device's write, synced back. */
+  const sync = (type: string, content: Content) =>
+    remote(alice, type, content).subscribe();
+  /** A local copy behind the server's, as a stale sync echo leaves it. */
+  const stale = (snapshot: Content) =>
+    vi
+      .spyOn(engine, 'accountData')
+      .mockReturnValue(of({ [STABLE]: null, [LEGACY]: null, ...snapshot }));
+  return {
+    service,
+    engine,
+    alice,
+    session,
+    media,
+    remote,
+    write,
+    written,
+    sync,
+    stale,
+  };
+}
+
+/** Lets effects run and a scheduled reconcile publish. */
+async function settle(): Promise<void> {
+  TestBed.tick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  TestBed.tick();
 }
 
 const existing = (url: string) => ({ kind: 'existing', url }) as const;
@@ -129,7 +131,7 @@ describe('ImagePackEditorService', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   it('add uploads, then writes the entry with the requested usage', async () => {
-    const { service, media, write } = setup();
+    const { service, alice, media, write } = setup();
     const file = png();
 
     const entry = await firstValueFrom(
@@ -140,7 +142,9 @@ describe('ImagePackEditorService', () => {
     expect(media.uploadMedia.mock.calls[0]).toEqual(
       expect.arrayContaining([file, false]),
     );
-    expect(write).toHaveBeenCalledWith(STABLE, {
+    expect(media.uploadMedia.mock.calls[0][4]).toBe(alice);
+    expect(media.uploadLimit).toHaveBeenCalledWith(alice);
+    expect(write).toHaveBeenCalledWith(alice, STABLE, {
       pack: { display_name: 'Your emoji' },
       images: {
         wave: { url: 'mxc://hs/up1', info: UPLOAD_INFO, usage: ['sticker'] },
@@ -268,7 +272,7 @@ describe('ImagePackEditorService', () => {
   });
 
   it('a stale echo after the last write does not drop it', async () => {
-    const { service, written, sync } = setup();
+    const { service, written, stale } = setup();
     await firstValueFrom(
       service.add(existing('mxc://hs/a'), 'a', ['emoticon']),
     );
@@ -276,7 +280,7 @@ describe('ImagePackEditorService', () => {
       service.add(existing('mxc://hs/b'), 'b', ['emoticon']),
     );
 
-    sync(STABLE, { images: { a: { url: 'mxc://hs/a' } } }, { stale: true });
+    stale({ [STABLE]: { images: { a: { url: 'mxc://hs/a' } } } });
     await firstValueFrom(
       service.add(existing('mxc://hs/c'), 'c', ['emoticon']),
     );
@@ -289,14 +293,14 @@ describe('ImagePackEditorService', () => {
   });
 
   it('a stale legacy echo does not drop the first write of a legacy-only pack', async () => {
-    const { service, written, sync } = setup({
+    const { service, written, stale } = setup({
       [LEGACY]: { images: { old: { url: 'mxc://hs/old' } } },
     });
     await firstValueFrom(
       service.add(existing('mxc://hs/a'), 'a', ['emoticon']),
     );
 
-    sync(LEGACY, { images: { old: { url: 'mxc://hs/old' } } }, { stale: true });
+    stale({ [LEGACY]: { images: { old: { url: 'mxc://hs/old' } } } });
     await firstValueFrom(
       service.add(existing('mxc://hs/b'), 'b', ['emoticon']),
     );
@@ -330,11 +334,11 @@ describe('ImagePackEditorService', () => {
   it('a retry after a failed write reuses the uploaded mxc', async () => {
     const { service, media, write, written } = setup();
     const file = png();
-    write.mockRejectedValueOnce(new Error('offline'));
+    write.mockReturnValueOnce(of(engineFail(FAILED)));
 
     await expect(
       firstValueFrom(service.add({ kind: 'file', file }, 'wave', ['emoticon'])),
-    ).rejects.toThrow('offline');
+    ).rejects.toBeInstanceOf(EngineRequestError);
     await firstValueFrom(
       service.add({ kind: 'file', file }, 'wave', ['emoticon']),
     );
@@ -404,7 +408,7 @@ describe('ImagePackEditorService', () => {
         broken: { url: 42 },
       },
     };
-    const { service, write } = setup({
+    const { service, alice, write } = setup({
       [LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE]: legacy,
     });
 
@@ -415,7 +419,7 @@ describe('ImagePackEditorService', () => {
     );
 
     expect(write).toHaveBeenCalledTimes(1);
-    expect(write).toHaveBeenCalledWith(STABLE, {
+    expect(write).toHaveBeenCalledWith(alice, STABLE, {
       pack: legacy.pack,
       images: {
         ...legacy.images,
@@ -425,13 +429,13 @@ describe('ImagePackEditorService', () => {
   });
 
   it('personal follows the pack and the active account, and is null signed out', async () => {
-    const { service, matrix, activeUserId, sync } = setup({
+    const { service, session, alice, sync } = setup({
       [STABLE]: { images: { a: { url: 'mxc://hs/a' } } },
     });
     expect(service.personal()).toBeNull();
 
     const lifetime = service.run().subscribe();
-    TestBed.tick();
+    await settle();
     expect(service.personal()?.map((entry) => entry.shortcode)).toEqual(['a']);
 
     sync(STABLE, { images: { b: { url: 'mxc://hs/b' } } });
@@ -441,23 +445,42 @@ describe('ImagePackEditorService', () => {
       ]),
     );
 
-    matrix.instance = fakeClient('@bob:hs', {
-      [STABLE]: { images: { bobs: { url: 'mxc://hs/bob' } } },
-    }).client;
-    activeUserId.set('@bob:hs');
-    TestBed.tick();
-    expect(service.personal()?.map((entry) => entry.shortcode)).toEqual([
-      'bobs',
-    ]);
+    // The fake has no pack for bob.
+    session.set(sessionWith(BOB, [alice, BOB]));
+    await settle();
+    expect(service.personal()).toEqual([]);
 
-    matrix.isInitialized = false;
-    activeUserId.set(null);
-    TestBed.tick();
+    session.set(sessionWith(null, []));
+    await settle();
     expect(service.personal()).toBeNull();
     lifetime.unsubscribe();
   });
 
-  it('emoticons maps only emoticon-usage shortcodes to their mxc', () => {
+  it('an account switch during a write never shows the previous account’s pack', async () => {
+    const { service, session, alice, remote, write } = setup();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    write.mockImplementationOnce((accountId, type, content) =>
+      from(gate).pipe(switchMap(() => remote(accountId, type, content))),
+    );
+    const lifetime = service.run().subscribe();
+    await settle();
+
+    const adding = firstValueFrom(
+      service.add(existing('mxc://hs/a'), 'a', ['emoticon']),
+    );
+    await vi.waitFor(() => expect(write).toHaveBeenCalled());
+    session.set(sessionWith(BOB, [alice, BOB]));
+    await settle();
+    release();
+    await adding;
+
+    expect(write.mock.calls[0][0]).toBe(alice);
+    expect(service.personal()).toEqual([]);
+    lifetime.unsubscribe();
+  });
+
+  it('emoticons maps only emoticon-usage shortcodes to their mxc', async () => {
     const { service } = setup({
       [STABLE]: {
         images: {
@@ -468,7 +491,7 @@ describe('ImagePackEditorService', () => {
       },
     });
     const lifetime = service.run().subscribe();
-    TestBed.tick();
+    await settle();
 
     expect([...service.emoticons()]).toEqual([
       ['wave', 'mxc://hs/wave'],
@@ -478,14 +501,45 @@ describe('ImagePackEditorService', () => {
   });
 
   it('fails with not-signed-in without an account', async () => {
-    const { service, matrix } = setup();
-    matrix.isInitialized = false;
+    const { service } = setup({}, { active: null });
 
     const error = await codeOf(
       lastValueFrom(service.remove('a'), { defaultValue: undefined }),
     );
 
     expect(error.code).toBe('not-signed-in');
+  });
+
+  it('fails with not-signed-in while the active account has no running client', async () => {
+    const { service, media } = setup({}, { active: BOB });
+    media.uploadMedia.mockReturnValueOnce(
+      throwError(
+        () =>
+          new EngineRequestError({
+            kind: 'unexpected',
+            code: 'account-not-live',
+            diagnostic: { kind: 'unexpected' },
+          }),
+      ),
+    );
+
+    const removing = await codeOf(
+      lastValueFrom(service.remove('a'), { defaultValue: undefined }),
+    );
+    const adding = await codeOf(
+      firstValueFrom(service.add(existing('mxc://hs/a'), 'a', ['emoticon'])),
+    );
+    const uploading = await codeOf(
+      firstValueFrom(
+        service.add({ kind: 'file', file: png() }, 'b', ['emoticon']),
+      ),
+    );
+
+    expect([removing.code, adding.code, uploading.code]).toEqual([
+      'not-signed-in',
+      'not-signed-in',
+      'not-signed-in',
+    ]);
   });
 
   it('sanitizes a file name into a shortcode', () => {
@@ -495,72 +549,35 @@ describe('ImagePackEditorService', () => {
 });
 
 describe('ImagePackEditorService room packs', () => {
-  const roomId = '!party:hs';
-  const ref = { kind: 'room', accountId: '@bob:hs', roomId } as const;
   const legacy = {
     pack: { display_name: 'Old pack' },
     images: { old: { url: 'mxc://hs/old' } },
   };
 
+  /** A room pack on alice while bob is the active account. */
   function roomSetup(
     state: Record<string, Content> = {},
-    { signedIn = true } = {},
+    { writable = true } = {},
   ) {
-    const local: Record<string, Content> = structuredClone(state);
-    const listeners = new Set<(event: unknown) => void>();
-    const roomState = {
-      getStateEvents: (type: string, key: string) =>
-        key === '' && local[type] ? { getContent: () => local[type] } : null,
-      maySendStateEvent: () => true,
-    };
-    const bob = {
-      getUserId: () => '@bob:hs',
-      getRoom: (id: string) =>
-        id === roomId
-          ? {
-              roomId,
-              name: 'Party room',
-              getLiveTimeline: () => ({ getState: () => roomState }),
-            }
-          : null,
-      getStateEvent: vi.fn(async (_room: string, type: string) => {
-        if (!state[type]) {
-          throw new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
-        }
-        return structuredClone(state[type]);
-      }),
-      sendStateEvent: vi.fn(
-        async (_room: string, type: string, content: Content, _key: string) => {
-          state[type] = structuredClone(content);
-        },
-      ),
-      on: vi.fn((_name: string, listener: (event: unknown) => void) =>
-        listeners.add(listener),
-      ),
-      off: vi.fn((_name: string, listener: (event: unknown) => void) =>
-        listeners.delete(listener),
-      ),
-    };
-    const sync = (type: string, content: Content) => {
-      local[type] = content;
-      for (const listener of listeners) {
-        listener({
-          getType: () => type,
-          getRoomId: () => roomId,
-          getStateKey: () => '',
-        });
-      }
-    };
-    const env = setup();
-    Object.assign(env.matrix, {
-      clientFor: (userId: string) =>
-        signedIn && userId === '@bob:hs' ? bob : null,
+    const env = setup({}, { active: BOB });
+    const roomId = env.engine.addRoom({
+      name: 'Party room',
+      writable,
+      state: Object.entries(state).map(([type, content]) => ({
+        type,
+        state_key: '',
+        content,
+      })),
     });
-    return { ...env, bob, sync };
+    const ref = { kind: 'room', accountId: env.alice, roomId } as const;
+    const sendState = vi.spyOn(env.engine, 'setRoomState');
+    const sync = (type: string, content: Content) =>
+      env.engine.setRoomState(env.alice, roomId, type, '', content).subscribe();
+    return { ...env, roomId, ref, sendState, sync };
   }
 
   it('the first add keeps a legacy-only pack and writes the stable type on that account', async () => {
-    const { service, bob, media, write } = roomSetup({
+    const { service, alice, roomId, ref, sendState, media, write } = roomSetup({
       'im.ponies.room_emotes': legacy,
     });
 
@@ -568,9 +585,14 @@ describe('ImagePackEditorService room packs', () => {
       service.add({ kind: 'file', file: png() }, 'wave', ['emoticon'], ref),
     );
 
-    expect(bob.sendStateEvent).toHaveBeenCalledOnce();
-    const [room, type, content, key] = bob.sendStateEvent.mock.calls[0];
-    expect([room, type, key]).toEqual([roomId, 'm.room.image_pack', '']);
+    expect(sendState).toHaveBeenCalledOnce();
+    const [account, room, type, key, content] = sendState.mock.calls[0];
+    expect([account, room, type, key]).toEqual([
+      alice,
+      roomId,
+      'm.room.image_pack',
+      '',
+    ]);
     expect(content).toEqual({
       pack: { display_name: 'Old pack' },
       images: {
@@ -578,22 +600,22 @@ describe('ImagePackEditorService room packs', () => {
         wave: { url: 'mxc://hs/up1', info: UPLOAD_INFO, usage: ['emoticon'] },
       },
     });
-    expect((media.uploadMedia.mock.calls[0] as unknown[])[4]).toBe(bob);
+    expect(media.uploadMedia.mock.calls[0][4]).toBe(alice);
     expect(write).not.toHaveBeenCalled();
   });
 
   it('names a new room pack after the room', async () => {
-    const { service, bob } = roomSetup();
+    const { service, ref, sendState } = roomSetup();
     await firstValueFrom(
       service.add(existing('mxc://hs/a'), 'a', ['sticker'], ref),
     );
-    expect(bob.sendStateEvent.mock.calls[0][2]).toMatchObject({
+    expect(sendState.mock.calls[0][4]).toMatchObject({
       pack: { display_name: 'Party room' },
     });
   });
 
   it('rename, setUsage and remove write the room pack', async () => {
-    const { service, bob } = roomSetup({
+    const { service, ref, sendState } = roomSetup({
       'm.room.image_pack': {
         pack: {},
         images: { a: { url: 'mxc://hs/a' }, b: { url: 'mxc://hs/b' } },
@@ -602,16 +624,22 @@ describe('ImagePackEditorService room packs', () => {
     await firstValueFrom(service.rename('a', 'c', ref));
     await firstValueFrom(service.setUsage('b', ['sticker'], ref));
     await firstValueFrom(service.remove('c', ref));
-    expect(bob.sendStateEvent.mock.calls.at(-1)?.[2]).toEqual({
+    expect(sendState.mock.calls.at(-1)?.[4]).toEqual({
       pack: { display_name: 'Party room' },
       images: { b: { url: 'mxc://hs/b', usage: ['sticker'] } },
     });
   });
 
   it('a pack the server finds too large is full', async () => {
-    const { service, bob } = roomSetup();
-    bob.sendStateEvent.mockRejectedValueOnce(
-      new MatrixError({ errcode: 'M_TOO_LARGE' }, 413),
+    const { service, ref, sendState } = roomSetup();
+    sendState.mockReturnValueOnce(
+      of(
+        engineFail({
+          kind: 'http',
+          code: 'too-large',
+          diagnostic: { kind: 'http', httpStatus: 413, errcode: 'M_TOO_LARGE' },
+        }),
+      ),
     );
     const error = await codeOf(
       firstValueFrom(
@@ -622,10 +650,7 @@ describe('ImagePackEditorService room packs', () => {
   });
 
   it('a write the server forbids is not allowed', async () => {
-    const { service, bob } = roomSetup();
-    bob.sendStateEvent.mockRejectedValueOnce(
-      new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
-    );
+    const { service, ref } = roomSetup({}, { writable: false });
     const error = await codeOf(
       firstValueFrom(
         service.add(existing('mxc://hs/a'), 'a', ['sticker'], ref),
@@ -634,14 +659,26 @@ describe('ImagePackEditorService room packs', () => {
     expect(error.code).toBe('not-allowed');
   });
 
-  it('fails with not-signed-in when the account is gone', async () => {
-    const { service } = roomSetup({}, { signedIn: false });
-    const error = await codeOf(firstValueFrom(service.remove('a', ref)));
-    expect(error.code).toBe('not-signed-in');
+  it('fails with not-signed-in when the account is gone or has no running client', async () => {
+    const { service, session, ref } = roomSetup();
+    const gone = await codeOf(
+      firstValueFrom(service.remove('a', { ...ref, accountId: '@gone:fake' })),
+    );
+    // Bob is signed in, but the fake runs no client for him.
+    const notLive = await codeOf(
+      firstValueFrom(service.remove('a', { ...ref, accountId: BOB })),
+    );
+    session.set(sessionWith(BOB, [BOB]));
+    const signedOut = await codeOf(firstValueFrom(service.remove('a', ref)));
+    expect([gone.code, notLive.code, signedOut.code]).toEqual([
+      'not-signed-in',
+      'not-signed-in',
+      'not-signed-in',
+    ]);
   });
 
   it('entries$ follows the room pack', async () => {
-    const { service, sync } = roomSetup({
+    const { service, ref, sync } = roomSetup({
       'm.room.image_pack': { pack: {}, images: { a: { url: 'mxc://hs/a' } } },
     });
     const seen: string[][] = [];

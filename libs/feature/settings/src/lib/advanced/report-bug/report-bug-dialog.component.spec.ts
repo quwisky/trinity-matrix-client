@@ -617,7 +617,7 @@ describe('ReportBugDialogComponent', () => {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
           useValue: {
             accounts: () => of([]),
-            knownNames: () => [],
+            knownNames: () => of([]),
           },
         },
         { provide: TrnDialogRef, useValue: { close: vi.fn() } },

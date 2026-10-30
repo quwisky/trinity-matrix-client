@@ -10,6 +10,7 @@ import {
   type SsoStateStash,
 } from '@trinity/data-access/auth';
 import { MockProvider } from 'ng-mocks';
+import { EngineRequestError } from '@trinity/util/matrix';
 import { from, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { SsoCallbackPage } from './sso-callback.page';
@@ -264,6 +265,42 @@ describe('SsoCallbackPage', () => {
       expect(cmp.error()).toBe('token expired');
       expect(navigateByUrl).not.toHaveBeenCalled();
     });
+
+    it.each([
+      [
+        'invalid-token',
+        'This sign-in link has expired or was already used. Sign in again.',
+      ],
+      ['deactivated', 'This account has been deleted.'],
+    ] as const)(
+      'words a login token the server refused as %s',
+      async (reason, text) => {
+        const { cmp, navigateByUrl } = await renderPage({
+          auth: {
+            completeSsoLogin: vi.fn(() =>
+              throwError(
+                () =>
+                  new EngineRequestError({
+                    kind: 'permission',
+                    code: 'login-refused',
+                    diagnostic: {
+                      kind: 'permission',
+                      httpStatus: 403,
+                      errcode: 'M_FORBIDDEN',
+                    },
+                    params: { reason },
+                  }),
+              ),
+            ),
+          } as unknown as Partial<AuthService>,
+          params: { loginToken: 'TOKEN', sso_state: 'NONCE' },
+          ssoStash: { state: 'NONCE', baseUrl: 'https://hs.example' },
+        });
+
+        expect(cmp.error()).toBe(text);
+        expect(navigateByUrl).not.toHaveBeenCalled();
+      },
+    );
 
     it('names the stored account and its server when the sign-in is refused', async () => {
       const { cmp, navigateByUrl } = await renderPage({
@@ -614,9 +651,44 @@ describe('SsoCallbackPage', () => {
       expect(cmp.error()).toMatch(/missing/i);
     });
 
-    it('forgets the cached client id on invalid_client, then surfaces the error', async () => {
+    it('forgets the cached client id when the provider rejects the client, then surfaces the error', async () => {
       const forgetOidcClientId = vi.fn(() => of(undefined));
       const { cmp, oidcClear } = await renderPage({
+        auth: {
+          completeOidcLogin: vi.fn(() =>
+            throwError(
+              () =>
+                new EngineRequestError({
+                  kind: 'http',
+                  code: 'oauth-client-rejected',
+                  diagnostic: { kind: 'http', httpStatus: 401 },
+                }),
+            ),
+          ),
+          forgetOidcClientId,
+        } as unknown as Partial<AuthService>,
+        params: { code: 'CODE', state: 'STATE1' },
+        oidcStash: OIDC_STASH,
+      });
+
+      // Keyed on the homeserver as well: another homeserver naming the same issuer keeps
+      // its own registration.
+      // Only the rejected id is forgotten: one registered since by another sign-in stays.
+      expect(forgetOidcClientId).toHaveBeenCalledWith(
+        'https://hs.example',
+        'https://op.example',
+        'CLIENT1',
+      );
+      expect(cmp.error()).toBe(
+        'The sign-in provider no longer recognises this app. Try signing in again.',
+      );
+      // The spent verifier is scrubbed even on failure: the stash was consumed up front.
+      expect(oidcClear).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the cached client id for a failure that only mentions invalid_client', async () => {
+      const forgetOidcClientId = vi.fn(() => of(undefined));
+      const { cmp } = await renderPage({
         auth: {
           completeOidcLogin: vi.fn(() =>
             throwError(() => new Error('invalid_client: unknown client')),
@@ -627,15 +699,8 @@ describe('SsoCallbackPage', () => {
         oidcStash: OIDC_STASH,
       });
 
-      // Keyed on the homeserver as well: another homeserver naming the same issuer keeps
-      // its own registration.
-      expect(forgetOidcClientId).toHaveBeenCalledWith(
-        'https://hs.example',
-        'https://op.example',
-      );
-      expect(cmp.error()).toMatch(/invalid_client/i);
-      // The spent verifier is scrubbed even on failure: the stash was consumed up front.
-      expect(oidcClear).toHaveBeenCalledTimes(1);
+      expect(forgetOidcClientId).not.toHaveBeenCalled();
+      expect(cmp.error()).toBe('invalid_client: unknown client');
     });
   });
 });

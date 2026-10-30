@@ -6,14 +6,18 @@ import {
   type Signal,
   untracked,
 } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type CapabilityContext,
   type CapabilityRecoveryOutcome,
   type ProjectionObservation,
 } from '@trinity/runtime/projection';
-import { isTransientMatrixError } from '@trinity/util/matrix';
+import {
+  EngineRequestError,
+  isTransientMatrixError,
+  retryableFailure,
+} from '@trinity/util/matrix';
 import {
   Observable,
   Subject,
@@ -52,6 +56,14 @@ const PROJECTIONS = [
   },
 ] as const;
 
+/** A failure a later attempt may not repeat: a transient SDK error, or a retryable engine one. */
+function isTransientFailure(error: unknown): boolean {
+  return (
+    isTransientMatrixError(error) ||
+    (error instanceof EngineRequestError && retryableFailure(error.failure))
+  );
+}
+
 type RoomAdministrationProjection = (typeof PROJECTIONS)[number];
 type RoomAdministrationProjectionId = RoomAdministrationProjection['id'];
 
@@ -60,7 +72,7 @@ type RoomAdministrationProjectionId = RoomAdministrationProjection['id'];
 export class RoomAdministrationLifetime {
   private readonly injector = inject(Injector);
   private readonly runtime = inject(ProjectionRuntime);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
   private readonly permissions = inject(RoomActionPermissionsService);
   private readonly members = inject(RoomMembersService);
   private readonly presentation = inject(RoomAdministrationProjectionState);
@@ -203,7 +215,7 @@ export class RoomAdministrationLifetime {
         states.clear();
       };
       const projectionError = (error: unknown): void => {
-        if (isTransientMatrixError(error)) ownershipReleased();
+        if (isTransientFailure(error)) ownershipReleased();
         else subscriber.error(error);
       };
       const attach = (): void => {
@@ -257,7 +269,7 @@ export class RoomAdministrationLifetime {
       };
       const apply = (): void => {
         if (applying) return;
-        const nextAccount = this.matrix.activeUserId();
+        const nextAccount = this.session.activeAccountId();
         const nextRoom = roomId();
         const nextRequired = !!nextAccount && !!nextRoom && demanded();
         if (
@@ -315,7 +327,7 @@ export class RoomAdministrationLifetime {
         required &&
         demanded() &&
         accountId !== null &&
-        accountId === this.matrix.activeUserId() &&
+        accountId === this.session.activeAccountId() &&
         selectedRoomId !== null &&
         selectedRoomId === roomId();
       this.retry = (operation) => {
@@ -345,7 +357,7 @@ export class RoomAdministrationLifetime {
       apply();
       const changes = effect(
         () => {
-          this.matrix.activeUserId();
+          this.session.activeAccountId();
           demanded();
           roomId();
           untracked(apply);

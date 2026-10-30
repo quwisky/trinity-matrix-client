@@ -1,16 +1,16 @@
-import type { ValidatedAuthMetadata } from 'matrix-js-sdk';
+import type { AuthMetadata } from './auth-metadata';
 
 /**
  * A complete, realistic delegated-auth metadata document, shaped after what a
  * Matrix Authentication Service deployment serves at `/_matrix/client/v1/auth_metadata`.
  *
  * Deliberately COMPLETE rather than a `{ issuer } as unknown as …` stub. In production
- * this object only ever reaches us through `MatrixClient.getAuthMetadata()`, which runs
- * the SDK's own `isValidAuthMetadata` guard and THROWS on anything short of it — so a
+ * this object only reaches us through the engine's `authMetadata`, which refuses anything
+ * short of the Matrix spec's requirements, and `OidcClientService` checks it again — so a
  * partial fixture would let a spec pass against a config the app could never actually
- * receive. `oidc-client.service.spec.ts` pins that with an explicit
- * `isValidAuthMetadata(AUTH_METADATA)` assertion, which is what makes drift between this
- * fixture and the SDK's contract fail loudly on the next upgrade.
+ * receive. `oauth-http.spec.ts` checks it against both Trinity's `isValidAuthMetadata` and
+ * matrix-js-sdk's, which is what makes drift fail loudly on the next upgrade. The type
+ * checks only the fields Trinity reads; the rest are there for that check.
  *
  * Lives in its own module (not in a spec) so several specs can share it without
  * importing one spec file into another, which would re-register its suites.
@@ -39,4 +39,4 @@ export const AUTH_METADATA = {
   ],
   code_challenge_methods_supported: ['S256'],
   prompt_values_supported: ['create'],
-} satisfies ValidatedAuthMetadata;
+} satisfies AuthMetadata & Record<string, unknown>;

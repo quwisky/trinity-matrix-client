@@ -16,7 +16,7 @@ const session = homeserverSession();
 const SEED = 60;
 /**
  * The app's `initialSyncLimit` (`startClient` in
- * `libs/data-access/matrix-client/src/lib/matrix-client.service.ts`): the timeline page the
+ * `libs/data-access/matrix-client/src/lib/js-sdk/matrix-client.service.ts`): the timeline page the
  * first /sync delivers.
  */
 const INITIAL_SYNC_PAGE = 20;

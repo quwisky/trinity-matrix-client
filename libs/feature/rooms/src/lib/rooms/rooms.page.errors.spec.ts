@@ -13,6 +13,7 @@ import {
   RoomsTimelineStub,
   UNREAD_AGGREGATOR_PROVIDER,
   matrixClientProvider,
+  sessionStateProvider,
   invitesProvider,
   selectedRoomLibraryProvider,
   setRouteRoom,
@@ -22,10 +23,7 @@ import {
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MediaPipeline } from '@trinity/data-access/media';
-import {
-  RoomNotificationUpdateError,
-  RoomNotificationsService,
-} from '@trinity/data-access/notifications';
+import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import {
   RoomLibraryService,
   SpacesService,
@@ -159,7 +157,7 @@ describe('RoomsPage action error feedback', () => {
           ).asReadonly(),
           mixing: signal(false),
         }),
-        MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
+        MockProvider(SpaceChildrenService, { addExistingRoom }),
         MockProvider(RoomActionPermissionsService, {
           room: () => {
             const curate = canCurate();
@@ -180,6 +178,7 @@ describe('RoomsPage action error feedback', () => {
         }),
         MockProvider(MediaPipeline),
         matrixClientProvider(),
+        sessionStateProvider(),
         UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
@@ -245,27 +244,7 @@ describe('RoomsPage action error feedback', () => {
     });
 
     expect(toastShow).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ variant: 'danger' }),
-    );
-  });
-
-  it('explains when a failed notification update was restored', () => {
-    const shell = build();
-    setNotifyMode.mockReturnValue(
-      throwError(
-        () => new RoomNotificationUpdateError(new Error('offline'), true),
-      ),
-    );
-
-    shell.readState.onSetNotifyMode({
-      roomId: '!r:hs',
-      mode: 'mute',
-      accountIds: ['@me:hs'],
-    });
-
-    expect(toastShow).toHaveBeenCalledWith(
-      expect.stringContaining('previous setting was restored'),
+      expect.stringContaining('Reopen the menu to confirm the server setting'),
       expect.objectContaining({ variant: 'danger' }),
     );
   });

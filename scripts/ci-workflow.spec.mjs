@@ -195,6 +195,7 @@ describe('split E2E jobs', () => {
       'mas-e2e',
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
+      'engine-contract',
     ]);
     for (const id of [
       'e2e',
@@ -203,6 +204,7 @@ describe('split E2E jobs', () => {
       'mas-e2e',
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
+      'engine-contract',
     ]) {
       expect(jobs[id].name).not.toBe('E2E (Playwright + homeserver)');
     }
@@ -374,7 +376,12 @@ describe('MAS sign-in journeys', () => {
     });
 
     // Each is skipped by design when a pull request leaves the paths it checks alone.
-    const pathFiltered = ['mas-e2e', 'tuwunel-oauth-e2e', 'scrollbars-e2e'];
+    const pathFiltered = [
+      'mas-e2e',
+      'tuwunel-oauth-e2e',
+      'scrollbars-e2e',
+      'engine-contract',
+    ];
 
     it.each(pathFiltered)('passes when only %s was skipped', (id) => {
       expect(run({ [id]: 'skipped' }).status).toBe(0);
@@ -405,8 +412,8 @@ describe('MAS sign-in journeys', () => {
   });
 
   describe('change detection', () => {
-    const script = () =>
-      jobs.classify.steps.find((candidate) => candidate.id === 'mas').run;
+    const script = (step) =>
+      jobs.classify.steps.find((candidate) => candidate.id === step).run;
     const files = {
       'package.json':
         '{\n  "dependencies": {\n    "@matrix-org/matrix-sdk-crypto-wasm": "^18.4.0",\n    "matrix-js-sdk": "^43.0.0",\n    "rxjs": "^7.8.0"\n  }\n}\n',
@@ -440,11 +447,11 @@ describe('MAS sign-in journeys', () => {
         writeFileSync(join(repo, path), content);
       }
     };
-    /** Runs the classifier's `mas` step in the repo; `output` is what it wrote to GITHUB_OUTPUT. */
-    const runStep = (event, baseSha) => {
+    /** Runs a classifier step in the repo; `output` is what it wrote to GITHUB_OUTPUT. */
+    const runStep = (event, baseSha, step = 'mas') => {
       const output = join(repo, '.output');
       writeFileSync(output, '');
-      const result = spawnSync('bash', ['-e', '-c', script()], {
+      const result = spawnSync('bash', ['-e', '-c', script(step)], {
         cwd: repo,
         env: {
           ...process.env,
@@ -457,14 +464,15 @@ describe('MAS sign-in journeys', () => {
       });
       return { result, output: readFileSync(output, 'utf8').trim() };
     };
-    /** The `run` output of the classifier's `mas` step for a change on top of the base. */
-    const detect = (changes, event = 'pull_request') => {
+    /** The `run` output of a classifier step for a change on top of the base. */
+    const detect = (changes, event = 'pull_request', step = 'mas') => {
       write(changes);
       sh('add', '-A');
       sh('commit', '-m', 'change');
       const { result, output } = runStep(
         event,
         event === 'pull_request' ? base : '',
+        step,
       );
       expect(result.status, result.stderr).toBe(0);
       return output;
@@ -489,7 +497,7 @@ describe('MAS sign-in journeys', () => {
 
     it.each([
       'libs/data-access/auth/src/lib/auth.service.ts',
-      'libs/data-access/matrix-client/src/lib/matrix-client.service.ts',
+      'libs/data-access/matrix-client/src/lib/js-sdk/matrix-client.service.ts',
       'libs/data-access/accounts/src/lib/account-session.ts',
       'libs/feature/auth/src/lib/sso-callback/sso-callback.page.ts',
       'libs/platform-native/src/lib/session-storage.service.ts',
@@ -510,7 +518,7 @@ describe('MAS sign-in journeys', () => {
       'e2e/browser/support/qr-existing-device.mts',
       'e2e/support/qr-camera.mts',
       'e2e/support/homeserver/tuwunel-oauth/tuwunel.toml',
-      'libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.adapter.ts',
+      'libs/data-access/auth/src/lib/js-sdk/qr-rendezvous.ts',
       'libs/feature/settings/src/lib/devices/link-device/link-device.component.ts',
       'libs/data-access/trust/src/lib/trust-devices.service.ts',
       'libs/feature/settings/src/lib/devices/devices-section.component.html',
@@ -577,6 +585,89 @@ describe('MAS sign-in journeys', () => {
       expect(
         detect({ 'libs/data-access/auth/src/index.ts': 'changed\n' }, 'push'),
       ).toBe('run=false');
+    });
+
+    describe('for the engine contract', () => {
+      it.each([
+        'libs/data-access/media/src/index.ts',
+        'libs/util/matrix/src/lib/message-view.ts',
+        'e2e/engine/run.mts',
+        'e2e/support/homeserver/synapse/adapter.mjs',
+        'e2e/support/invocation.mts',
+        'e2e/support/session.mts',
+        'libs/runtime/projection/src/index.ts',
+        'libs/native/capacitor-push/src/index.ts',
+        'vite.base.config.ts',
+        'patches/matrix-js-sdk@43.0.1.patch',
+      ])('runs it when a pull request changes %s', (path) => {
+        expect(detect({ [path]: 'changed\n' }, 'pull_request', 'engine')).toBe(
+          'run=true',
+        );
+      });
+
+      it.each([
+        'libs/feature/rooms/src/index.ts',
+        'e2e/browser/support/mas.mts',
+        'e2e/support/invocation.mts.bak',
+        'apps/trinity/src/main.ts',
+      ])('skips it when a pull request changes only %s', (path) => {
+        expect(detect({ [path]: 'changed\n' }, 'pull_request', 'engine')).toBe(
+          'run=false',
+        );
+      });
+
+      it('runs it on a matrix-js-sdk bump, not on another dependency', () => {
+        expect(
+          detect(
+            replaceIn('package.json', '"^43.0.0"', '"^43.1.0"'),
+            'pull_request',
+            'engine',
+          ),
+        ).toBe('run=true');
+        sh('reset', '-q', '--hard', base);
+        expect(
+          detect(
+            replaceIn('package.json', '"^7.8.0"', '"^7.9.0"'),
+            'pull_request',
+            'engine',
+          ),
+        ).toBe('run=false');
+      });
+
+      it('fails without a base and leaves pushes to the nightly run', () => {
+        expect(runStep('pull_request', '', 'engine').result.status).not.toBe(0);
+        expect(
+          detect(
+            { 'libs/data-access/media/src/index.ts': 'changed\n' },
+            'push',
+            'engine',
+          ),
+        ).toBe('run=false');
+      });
+    });
+  });
+});
+
+describe('Engine contract job', () => {
+  const jobs = workflow.jobs;
+  const job = jobs['engine-contract'];
+
+  it('runs the registered contract against Docker Synapse when the classifier asks', () => {
+    expect([job.needs].flat()).toEqual(['classify']);
+    expect(jobs.classify.outputs.engine).toBe(
+      '${{ steps.engine.outputs.run }}',
+    );
+    expect(job.if).toContain("needs.classify.outputs.engine == 'true'");
+    expect(job.env).toEqual({ TRINITY_E2E_HOMESERVER: 'synapse' });
+    expect(JSON.stringify(job)).not.toContain('TRINITY_E2E_HOMESERVER_RUNTIME');
+    const step = job.steps.find((candidate) => candidate.id === 'contract');
+    expect(step.run).toContain(
+      '-- pnpm exec nx run trinity-e2e-engine:contract\n',
+    );
+    expect(job['timeout-minutes']).toBeGreaterThan(0);
+    expect(diagnosticsUpload(job).with).toEqual({
+      surface: 'engine-contract',
+      'report-path': 'dist/.playwright/trinity-e2e-engine/*/engine.js-sdk/**',
     });
   });
 });

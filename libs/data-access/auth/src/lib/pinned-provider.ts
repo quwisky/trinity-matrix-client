@@ -1,5 +1,5 @@
 import { isSameUrl, type OidcSessionBinding } from '@trinity/util/matrix';
-import type { ValidatedAuthMetadata } from 'matrix-js-sdk';
+import type { AuthMetadata } from './auth-metadata';
 
 /**
  * Whether the metadata names the provider an account signed in with: the same issuer,
@@ -9,10 +9,10 @@ import type { ValidatedAuthMetadata } from 'matrix-js-sdk';
  */
 export function matchesPinnedProvider(
   metadata: Pick<
-    ValidatedAuthMetadata,
+    AuthMetadata,
     'issuer' | 'authorization_endpoint' | 'token_endpoint'
   > &
-    Partial<Pick<ValidatedAuthMetadata, 'revocation_endpoint'>>,
+    Partial<Pick<AuthMetadata, 'revocation_endpoint'>>,
   binding: OidcSessionBinding,
 ): boolean {
   const signInHost = hostOf(metadata.authorization_endpoint);

@@ -17,7 +17,6 @@ import {
   HTTPError,
   MatrixError,
   createClient,
-  type MatrixClient,
 } from 'matrix-js-sdk';
 import {
   AccountRuntimeService,
@@ -28,7 +27,6 @@ import {
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import { AuthService } from './auth.service';
-import { qrSignInFailureOf } from './qr-sign-in/qr-sign-in.model';
 import { deletionLink } from './account-server-api';
 import {
   ReauthAccountMismatchError,
@@ -44,8 +42,13 @@ import {
   OidcClientService,
   type OidcGrantContext,
 } from './oidc-client.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SESSION_ENGINE,
+  type SessionEngine,
+} from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
+import { EngineRequestError, engineOk } from '@trinity/util/matrix';
 const createClientMock = vi.mocked(createClient);
 
 /** A user-interactive-auth 401 offering the password stage for `session`. */
@@ -55,6 +58,9 @@ function uia(session: string): MatrixError {
     401,
   );
 }
+
+/** The session engine's detached logout, through which a created session is handed back. */
+const loggedOut = () => vi.mocked(TestBed.inject(SESSION_ENGINE).logoutSession);
 
 describe('AuthService', () => {
   let auth: AuthService;
@@ -75,6 +81,17 @@ describe('AuthService', () => {
         MockProvider(MatrixClientService),
         MockProvider(SessionStorageService),
         MockProvider(OidcClientService),
+        {
+          provide: SESSION_ENGINE,
+          useValue: {
+            accessToken: vi.fn(() => of(null)),
+            roomKeysBackedUp: vi.fn(() => of(null)),
+            logoutSession: vi.fn(() => of(engineOk(null))),
+          } satisfies Pick<
+            SessionEngine,
+            'accessToken' | 'roomKeysBackedUp' | 'logoutSession'
+          >,
+        },
         {
           provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
           useValue: {
@@ -128,13 +145,13 @@ describe('AuthService', () => {
     );
   });
 
-  it('builds the SSO login URL via the SDK', () => {
+  it('builds the SSO login URL via the SDK', async () => {
     const getSsoLoginUrl = vi.fn(() => 'https://hs/_matrix/sso?redirect=cb');
     createClientMock.mockReturnValue({ getSsoLoginUrl } as never);
 
-    expect(auth.getSsoUrl('https://hs', 'cb')).toBe(
-      'https://hs/_matrix/sso?redirect=cb',
-    );
+    await expect(
+      firstValueFrom(auth.getSsoUrl('https://hs', 'cb')),
+    ).resolves.toBe('https://hs/_matrix/sso?redirect=cb');
     expect(getSsoLoginUrl).toHaveBeenCalledWith('cb', 'sso');
   });
 
@@ -245,11 +262,22 @@ describe('AuthService', () => {
   });
 
   describe('accountManagementFor', () => {
+    /** The account is live on `homeserverUrl`. */
+    function liveOn(homeserverUrl: string) {
+      const sessions = TestBed.inject(SESSION_ENGINE);
+      vi.mocked(sessions.accessToken).mockReturnValue(
+        of({
+          homeserverUrl,
+          accessToken: 'tok',
+          expiresAt: null,
+          refreshable: false,
+        }),
+      );
+      return sessions;
+    }
+
     it("asks the named account's own server", async () => {
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        baseUrl: 'https://alice.hs',
-      } as never);
+      const sessions = liveOn('https://alice.hs');
       createClientMock.mockReturnValue({
         getAuthMetadata: vi.fn().mockResolvedValue({
           account_management_uri: 'https://auth.alice.hs/account/',
@@ -266,7 +294,7 @@ describe('AuthService', () => {
           actionsSupported: [],
         },
       });
-      expect(matrix.clientFor).toHaveBeenCalledWith('@alice:alice.hs');
+      expect(sessions.accessToken).toHaveBeenCalledWith('@alice:alice.hs');
       expect(createClientMock).toHaveBeenCalledWith({
         baseUrl: 'https://alice.hs',
       });
@@ -294,10 +322,7 @@ describe('AuthService', () => {
     });
 
     it('reports an OAuth server that publishes no account page', async () => {
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        baseUrl: 'https://hs',
-      } as never);
+      liveOn('https://hs');
       createClientMock.mockReturnValue({
         getAuthMetadata: vi.fn().mockResolvedValue({ issuer: 'https://op/' }),
       } as never);
@@ -312,10 +337,7 @@ describe('AuthService', () => {
       ['a 403 from a proxy', new HTTPError('Forbidden', 403)],
       ['a 501', new MatrixError({}, 501)],
     ])('reads %s as a server without OAuth', async (_label, error) => {
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        baseUrl: 'https://hs',
-      } as never);
+      liveOn('https://hs');
       createClientMock.mockReturnValue({
         getAuthMetadata: vi.fn().mockRejectedValue(error),
       } as never);
@@ -332,10 +354,7 @@ describe('AuthService', () => {
       ['a server error', new MatrixError({ errcode: 'M_UNKNOWN' }, 502)],
       ['metadata that is not valid', new Error('OP does not support')],
     ])('does not guess when it gets %s', async (_label, error) => {
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.clientFor).mockReturnValue({
-        baseUrl: 'https://hs',
-      } as never);
+      liveOn('https://hs');
       createClientMock.mockReturnValue({
         getAuthMetadata: vi.fn().mockRejectedValue(error),
       } as never);
@@ -491,7 +510,7 @@ describe('AuthService', () => {
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
       // It asked for a specific device, so the session is not signed out: that device id
       // may name a device the user keeps.
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it("signs out the other user's new session when a re-auth on a new device returns them", async () => {
@@ -509,11 +528,31 @@ describe('AuthService', () => {
           ),
         ),
       ).rejects.toBeInstanceOf(ReauthAccountMismatchError);
-      expect(createClientMock).toHaveBeenLastCalledWith({
+      expect(loggedOut()).toHaveBeenCalledWith({
         baseUrl: 'https://hs',
+        userId: '@bob:hs',
+        deviceId: 'DEV',
         accessToken: 'tok',
       });
-      expect(logout).toHaveBeenCalledWith(true);
+    });
+
+    it('swallows a hand-back that fails, keeping the refusal', async () => {
+      answer('@bob:hs');
+      loggedOut().mockReturnValue(throwError(() => new Error('logout down')));
+
+      await expect(
+        firstValueFrom(
+          auth.loginWithPassword(
+            'https://hs',
+            '@alice:hs',
+            'pw',
+            'add',
+            undefined,
+            '@alice:hs',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(ReauthAccountMismatchError);
+      expect(loggedOut()).toHaveBeenCalledOnce();
     });
 
     it('refuses a legacy SSO login that returns a different user and persists nothing', async () => {
@@ -635,7 +674,7 @@ describe('AuthService', () => {
         await expect(attempt).rejects.toBeInstanceOf(UnacceptableAccountError);
         await expect(attempt).rejects.toThrow(userId);
         expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
-        expect(logout).toHaveBeenCalledWith(true);
+        expect(loggedOut()).toHaveBeenCalled();
       },
     );
 
@@ -774,7 +813,7 @@ describe('AuthService', () => {
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('keeps a re-authenticated device signed in when its account is refused', async () => {
@@ -792,7 +831,7 @@ describe('AuthService', () => {
           ),
         ),
       ).rejects.toBeInstanceOf(UnacceptableAccountError);
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('refuses an OAuth grant for an account on another server and revokes it', async () => {
@@ -954,88 +993,59 @@ describe('AuthService', () => {
     });
   });
 
-  describe('completing a QR sign-in on the new device', () => {
-    const tokens = {
-      access_token: 'qr-atok',
-      token_type: 'Bearer',
-      refresh_token: 'qr-rtok',
-      expires_in: 300,
-    };
-    const whoami = vi.fn();
-    const signedIn = { getUserId: () => '@me:hs' };
-    const pinned = {
+  describe('establishing a QR-linked device', () => {
+    const binding = {
       issuer: AUTH_METADATA.issuer,
       clientId: 'qr-client',
       tokenEndpoint: 'https://op.example/verified-token',
       revocationEndpoint: 'https://op.example/verified-revoke',
     };
+    const session = {
+      user_id: '@me:hs',
+      device_id: 'QRDEV',
+      access_token: 'qr-atok',
+      refresh_token: 'qr-rtok',
+      accessTokenExpiresAt: Date.now() + 300_000,
+      oidc: binding,
+    };
     beforeEach(() => {
-      whoami.mockReset().mockResolvedValue({
-        user_id: '@me:hs',
-        device_id: 'QRDEV',
-      });
-      createClientMock.mockReturnValue({ whoami } as never);
-      vi.mocked(TestBed.inject(MatrixClientService).clientFor).mockReturnValue(
-        signedIn as never,
-      );
       vi.mocked(TestBed.inject(OidcClientService).revokeTokens).mockReturnValue(
         of(undefined),
       );
-      vi.mocked(
-        TestBed.inject(OidcClientService).deviceGrantBinding,
-      ).mockReturnValue(of(pinned));
     });
-    const complete = () =>
-      firstValueFrom(
-        auth.completeDeviceGrant(
-          tokens,
-          'qr-client',
-          AUTH_METADATA,
-          'https://hs',
-        ),
-      );
+    const establish = () =>
+      firstValueFrom(auth.establishDeviceGrant('https://hs', session, 'hs'));
 
-    it('runs whoami, then establishes an OAuth session that has no redirect URI', async () => {
+    it('establishes an OAuth session that has no redirect URI, keeping other accounts', async () => {
       const issue = vi.spyOn(AuthenticatedAccountGrant, 'issue');
       const accounts = TestBed.inject(AccountRuntimeService);
 
-      expect(await complete()).toBe(signedIn);
+      await expect(establish()).resolves.toMatchObject({ kind: 'ready' });
 
-      expect(createClientMock).toHaveBeenCalledWith({
-        baseUrl: 'https://hs',
-        accessToken: 'qr-atok',
-      });
-      expect(whoami.mock.invocationCallOrder[0]).toBeLessThan(
-        vi.mocked(accounts.establishAuthenticatedAccount).mock
-          .invocationCallOrder[0],
-      );
-      const session = issue.mock.calls[0][0];
-      expect(session).toMatchObject({
+      expect(issue.mock.calls[0][0]).toMatchObject({
         baseUrl: 'https://hs',
         userId: '@me:hs',
         deviceId: 'QRDEV',
         accessToken: 'qr-atok',
         refreshToken: 'qr-rtok',
-        oidc: pinned,
+        accessTokenExpiresAt: session.accessTokenExpiresAt,
+        oidc: binding,
       });
-      expect(
-        TestBed.inject(OidcClientService).deviceGrantBinding,
-      ).toHaveBeenCalledWith(AUTH_METADATA, 'qr-client');
-      expect(session.oidc).not.toHaveProperty('redirectUri');
-      expect(session.accessTokenExpiresAt).toBeGreaterThan(Date.now());
-      // Other signed-in accounts on this device stay signed in.
+      expect(issue.mock.calls[0][0].oidc).not.toHaveProperty('redirectUri');
       expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ liveAccounts: 'keep' }),
       );
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).not.toHaveBeenCalled();
     });
 
     it('asks the keyring question as every sign-in does, and hands the tokens back on a no', async () => {
       const gate = TestBed.inject(UnprotectedStorageGate);
       vi.mocked(gate.allowed).mockReturnValue(of(false));
-      const oidc = TestBed.inject(OidcClientService);
 
-      await expect(complete()).rejects.toBeInstanceOf(
+      await expect(establish()).rejects.toBeInstanceOf(
         UnprotectedStorageDeclinedError,
       );
 
@@ -1043,181 +1053,50 @@ describe('AuthService', () => {
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
-      expect(oidc.revokeTokens).toHaveBeenCalledWith(
-        'https://hs',
-        expect.objectContaining({ clientId: 'qr-client' }),
-        { accessToken: 'qr-atok', refreshToken: 'qr-rtok' },
-      );
-    });
-
-    it('hands the tokens back and establishes nothing when whoami fails', async () => {
-      whoami.mockRejectedValue(new Error('offline'));
-
-      await expect(complete()).rejects.toThrow('offline');
-
-      expect(
-        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
-      ).not.toHaveBeenCalled();
-      expect(TestBed.inject(OidcClientService).revokeTokens).toHaveBeenCalled();
-    });
-
-    it('revokes the tokens when the sign-in is left while whoami is pending', async () => {
-      whoami.mockReturnValue(new Promise(() => undefined));
-      const oidc = TestBed.inject(OidcClientService);
-
-      const attempt = auth
-        .completeDeviceGrant(tokens, 'qr-client', AUTH_METADATA, 'https://hs')
-        .subscribe({ error: () => undefined });
-      await vi.waitFor(() => expect(whoami).toHaveBeenCalled());
-      attempt.unsubscribe();
-
-      expect(oidc.revokeTokens).toHaveBeenCalledWith(
-        'https://hs',
-        { issuer: AUTH_METADATA.issuer, clientId: 'qr-client' },
-        { accessToken: 'qr-atok', refreshToken: 'qr-rtok' },
-      );
-    });
-
-    it('leaves an account this device already stores as it was, and revokes the new tokens', async () => {
-      const storage = TestBed.inject(SessionStorageService);
-      vi.mocked(storage.record).mockReturnValue(
-        of({ baseUrl: 'https://hs', userId: '@me:hs', deviceId: 'OLD' }),
-      );
-
-      const error = await complete().catch((e: unknown) => e);
-
-      expect(qrSignInFailureOf(error)).toBe('already-signed-in');
-      expect(
-        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
-      ).not.toHaveBeenCalled();
-      expect(storage.save).not.toHaveBeenCalled();
       expect(
         TestBed.inject(OidcClientService).revokeTokens,
-      ).toHaveBeenCalledWith(
-        'https://hs',
-        expect.objectContaining({ clientId: 'qr-client' }),
-        { accessToken: 'qr-atok', refreshToken: 'qr-rtok' },
-      );
-    });
-
-    it('does not revoke the tokens once the sign-in succeeded', async () => {
-      await complete();
-
-      expect(
-        TestBed.inject(OidcClientService).revokeTokens,
-      ).not.toHaveBeenCalled();
-    });
-
-    it('fails when the account runtime does not start the account', async () => {
-      vi.mocked(
-        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
-      ).mockReturnValue(
-        of({
-          kind: 'failed',
-          failure: 'crypto-failure',
-          accountId: '@me:hs',
-          placement: 'active',
-        }),
-      );
-
-      await expect(complete()).rejects.toThrow();
-    });
-  });
-
-  describe('importing the secrets a QR link shared', () => {
-    const secrets = {
-      cross_signing: {
-        master_key: 'MASTER-SECRET',
-        self_signing_key: 'SELF-SECRET',
-        user_signing_key: 'USER-SECRET',
-      },
-      backup: {
-        algorithm: 'm.megolm_backup.v1.curve25519-aes-sha2',
-        key: 'BACKUP-SECRET',
-        backup_version: '1',
-      },
-    };
-    const crypto = {
-      importSecretsBundle: vi.fn(),
-      crossSignDevice: vi.fn(),
-      checkKeyBackupAndEnable: vi.fn(),
-      isCrossSigningReady: vi.fn(),
-      getDeviceVerificationStatus: vi.fn(),
-    };
-    const client = {
-      getCrypto: () => crypto,
-      getDeviceId: () => 'QRDEV',
-      getUserId: () => '@me:hs',
-    } as unknown as MatrixClient;
-    beforeEach(() => {
-      crypto.importSecretsBundle.mockReset().mockResolvedValue(undefined);
-      crypto.crossSignDevice.mockReset().mockResolvedValue(undefined);
-      crypto.checkKeyBackupAndEnable.mockReset().mockResolvedValue(null);
-      crypto.isCrossSigningReady.mockReset().mockResolvedValue(true);
-      crypto.getDeviceVerificationStatus
-        .mockReset()
-        .mockResolvedValue({ crossSigningVerified: true });
-    });
-    const importSecrets = () =>
-      firstValueFrom(auth.importLinkedSecrets(client, secrets as never));
-
-    it('imports the bundle, cross-signs this device and enables backup, in that order', async () => {
-      expect(await importSecrets()).toBe(true);
-
-      expect(crypto.importSecretsBundle).toHaveBeenCalledWith(secrets);
-      expect(crypto.crossSignDevice).toHaveBeenCalledWith('QRDEV');
-      const order = [
-        crypto.importSecretsBundle,
-        crypto.crossSignDevice,
-        crypto.checkKeyBackupAndEnable,
-      ].map((step) => step.mock.invocationCallOrder[0]);
-      expect(order).toEqual([...order].sort((a, b) => a - b));
-    });
-
-    it('reports an unverified device, cross-signs nothing and logs no secret when the import fails', async () => {
-      const logged = (['log', 'info', 'warn', 'error', 'debug'] as const).map(
-        (level) => vi.spyOn(console, level).mockImplementation(() => undefined),
-      );
-      crypto.importSecretsBundle.mockRejectedValue(
-        new Error('bad bundle MASTER-SECRET'),
-      );
-
-      expect(await importSecrets()).toBe(false);
-
-      expect(crypto.crossSignDevice).not.toHaveBeenCalled();
-      expect(JSON.stringify(logged.map((spy) => spy.mock.calls))).not.toMatch(
-        /SECRET/,
-      );
-    });
-
-    it('reports a verified device when only enabling backup fails', async () => {
-      crypto.checkKeyBackupAndEnable.mockRejectedValue(new Error('no backup'));
-
-      expect(await importSecrets()).toBe(true);
-    });
-
-    it('reports an unverified device when it is not cross-signing verified after the import', async () => {
-      crypto.getDeviceVerificationStatus.mockResolvedValue({
-        crossSigningVerified: false,
+      ).toHaveBeenCalledWith('https://hs', binding, {
+        accessToken: 'qr-atok',
+        refreshToken: 'qr-rtok',
       });
-
-      expect(await importSecrets()).toBe(false);
-      expect(crypto.getDeviceVerificationStatus).toHaveBeenCalledWith(
-        '@me:hs',
-        'QRDEV',
-      );
     });
 
-    it('reports an unverified device when cross-signing is not ready after the import', async () => {
-      crypto.isCrossSigningReady.mockResolvedValue(false);
+    it('accepts an account on the server entered, without asking its well-known', async () => {
+      const discovery = TestBed.inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
 
-      expect(await importSecrets()).toBe(false);
+      await expect(
+        firstValueFrom(
+          auth.establishDeviceGrant(
+            'https://hs',
+            { ...session, user_id: '@me:example.org' },
+            'example.org',
+          ),
+        ),
+      ).resolves.toMatchObject({ kind: 'ready' });
+
+      expect(discovery.lookUp).not.toHaveBeenCalled();
     });
 
-    it('reports an unverified device when cross-signing fails', async () => {
-      crypto.crossSignDevice.mockRejectedValue(new Error('upload failed'));
+    it('refuses an account on another server than the one entered, and hands the tokens back', async () => {
+      await expect(
+        firstValueFrom(
+          auth.establishDeviceGrant(
+            'https://hs',
+            { ...session, user_id: '@me:other.example' },
+            'example.org',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(UnacceptableAccountError);
 
-      expect(await importSecrets()).toBe(false);
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).not.toHaveBeenCalled();
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).toHaveBeenCalledWith('https://hs', binding, {
+        accessToken: 'qr-atok',
+        refreshToken: 'qr-rtok',
+      });
     });
   });
 
@@ -1225,11 +1104,14 @@ describe('AuthService', () => {
     const oidc = TestBed.inject(OidcClientService);
     vi.mocked(oidc.forgetClientId).mockReturnValue(of(undefined));
 
-    await firstValueFrom(auth.forgetOidcClientId('https://hs', 'https://op'));
+    await firstValueFrom(
+      auth.forgetOidcClientId('https://hs', 'https://op', 'client-1'),
+    );
 
     expect(oidc.forgetClientId).toHaveBeenCalledWith(
       'https://hs',
       'https://op',
+      'client-1',
     );
   });
 
@@ -1265,32 +1147,25 @@ describe('AuthService', () => {
   });
 
   describe('changePassword', () => {
-    // isInitialized/instance are getters ng-mocks leaves undefined; define them per
-    // test so changePassword sees a live client (or, for the guard test, no session).
-    function useClient(client: {
-      setPassword: unknown;
-      getUserId: unknown;
-    }): void {
-      const matrix = TestBed.inject(MatrixClientService);
-      Object.defineProperty(matrix, 'isInitialized', {
-        get: () => true,
-        configurable: true,
-      });
-      Object.defineProperty(matrix, 'instance', {
-        get: () => client,
-        configurable: true,
-      });
+    /** `@me:hs` is live on `client`; any other account has no client. */
+    function useClient(client: { setPassword: unknown }): void {
+      vi.mocked(
+        TestBed.inject(MatrixClientService).clientFor,
+      ).mockImplementation((id) =>
+        id === '@me:hs' ? (client as never) : null,
+      );
     }
 
     it('sets the new password when the server needs no interactive auth', async () => {
       const client = {
         setPassword: vi.fn().mockResolvedValue(undefined),
-        getUserId: vi.fn(() => '@me:hs'),
       };
       useClient(client);
 
       await expect(
-        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+        firstValueFrom(
+          auth.changePassword('@me:hs', 'old-pw', 'new-secret-pw'),
+        ),
       ).resolves.toBeUndefined();
 
       // First attempt carries no auth at all — an empty `auth: {}` is a malformed UIA
@@ -1309,12 +1184,13 @@ describe('AuthService', () => {
           .fn()
           .mockRejectedValueOnce(uia('sess-1'))
           .mockResolvedValueOnce(undefined),
-        getUserId: vi.fn(() => '@me:hs'),
       };
       useClient(client);
 
       await expect(
-        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+        firstValueFrom(
+          auth.changePassword('@me:hs', 'old-pw', 'new-secret-pw'),
+        ),
       ).resolves.toBeUndefined();
 
       expect(client.setPassword).toHaveBeenCalledTimes(2);
@@ -1334,18 +1210,38 @@ describe('AuthService', () => {
           .fn()
           .mockRejectedValueOnce(uia('sess-1'))
           .mockRejectedValueOnce(uia('sess-2')),
-        getUserId: vi.fn(() => '@me:hs'),
       };
       useClient(client);
 
       await expect(
-        firstValueFrom(auth.changePassword('wrong-pw', 'new-secret-pw')),
+        firstValueFrom(
+          auth.changePassword('@me:hs', 'wrong-pw', 'new-secret-pw'),
+        ),
       ).rejects.toThrow('Your current password is incorrect.');
+    });
+
+    it("words a new password the server finds too weak with the server's reason", async () => {
+      useClient({
+        setPassword: vi
+          .fn()
+          .mockRejectedValue(
+            new MatrixError(
+              { errcode: 'M_WEAK_PASSWORD', error: 'Password is too short' },
+              400,
+            ),
+          ),
+      });
+
+      await expect(
+        firstValueFrom(auth.changePassword('@me:hs', 'old-pw', 'short')),
+      ).rejects.toThrow(/^Password is too short$/);
     });
 
     it('errors without touching the client when not signed in', async () => {
       await expect(
-        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+        firstValueFrom(
+          auth.changePassword('@me:hs', 'old-pw', 'new-secret-pw'),
+        ),
       ).rejects.toThrow('Not signed in.');
     });
   });
@@ -1376,7 +1272,7 @@ describe('AuthService', () => {
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('signs the new session out when the question goes away unanswered', async () => {
@@ -1392,7 +1288,7 @@ describe('AuthService', () => {
       );
       attempt.unsubscribe();
 
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('signs the new session out when the stored answer cannot be read', async () => {
@@ -1401,7 +1297,7 @@ describe('AuthService', () => {
       await expect(
         firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
       ).rejects.toThrow('preferences unavailable');
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('keeps the stored device signed in when a re-auth on it is declined', async () => {
@@ -1422,7 +1318,7 @@ describe('AuthService', () => {
           ),
         ),
       ).rejects.toBeInstanceOf(UnprotectedStorageDeclinedError);
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
   });
 
@@ -1489,11 +1385,12 @@ describe('AuthService', () => {
       );
 
       expect(result.kind).toBe(outcome.kind);
-      expect(createClientMock).toHaveBeenLastCalledWith({
+      expect(loggedOut()).toHaveBeenCalledWith({
         baseUrl: 'https://hs',
+        userId: expect.any(String),
+        deviceId: expect.any(String),
         accessToken: 'new-tok',
       });
-      expect(logout).toHaveBeenCalledWith(true);
     });
 
     it('keeps a re-authenticated device signed in when the runtime is busy', async () => {
@@ -1514,7 +1411,7 @@ describe('AuthService', () => {
       );
 
       expect(result.kind).toBe('transition-in-progress');
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('keeps an OIDC re-authenticated device when the runtime is busy', async () => {
@@ -1571,7 +1468,7 @@ describe('AuthService', () => {
           ),
         ),
       ).rejects.toThrow('registry unreadable');
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('still signs out a refused sign-in that got a new device for a stored account', async () => {
@@ -1587,11 +1484,12 @@ describe('AuthService', () => {
         auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
       );
 
-      expect(createClientMock).toHaveBeenLastCalledWith({
+      expect(loggedOut()).toHaveBeenCalledWith({
         baseUrl: 'https://hs',
+        userId: expect.any(String),
+        deviceId: expect.any(String),
         accessToken: 'new-tok',
       });
-      expect(logout).toHaveBeenCalledWith(true);
     });
 
     it('keeps a new session that was saved, whatever went wrong after', async () => {
@@ -1601,7 +1499,7 @@ describe('AuthService', () => {
         auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
       );
 
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('revokes a refused OIDC session at its provider', async () => {
@@ -1676,20 +1574,20 @@ describe('AuthService', () => {
           cryptoPrefix: `trinity-crypto:@me:hs:${storedDevice}`,
         }),
       );
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.roomKeysBackedUp).mockReturnValue(of(backedUp));
+      const sessions = TestBed.inject(SESSION_ENGINE);
+      vi.mocked(sessions.roomKeysBackedUp).mockReturnValue(of(backedUp));
       const confirm = vi
         .spyOn(TestBed.inject(NEW_DEVICE_SIGN_IN), 'confirm')
         .mockReturnValue(of(choice));
       return {
         confirm,
-        matrix,
+        sessions,
         accounts: TestBed.inject(AccountRuntimeService),
       };
     }
 
     it('asks before the stored device is replaced, and Cancel keeps it', async () => {
-      const { confirm, matrix, accounts } = arrange({
+      const { confirm, sessions, accounts } = arrange({
         backedUp: false,
         choice: false,
       });
@@ -1698,7 +1596,7 @@ describe('AuthService', () => {
         firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
       ).rejects.toBeInstanceOf(NewDeviceSignInCancelledError);
 
-      expect(matrix.roomKeysBackedUp).toHaveBeenCalledWith('@me:hs');
+      expect(sessions.roomKeysBackedUp).toHaveBeenCalledWith('@me:hs');
       expect(confirm).toHaveBeenCalledWith({
         userId: '@me:hs',
         roomKeysBackedUp: false,
@@ -1706,11 +1604,12 @@ describe('AuthService', () => {
       // Nothing was persisted, so the stored record and its crypto store are untouched.
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
       // The device this sign-in created is signed out again.
-      expect(createClientMock).toHaveBeenLastCalledWith({
+      expect(loggedOut()).toHaveBeenCalledWith({
         baseUrl: 'https://hs',
+        userId: expect.any(String),
+        deviceId: expect.any(String),
         accessToken: 'new-tok',
       });
-      expect(logout).toHaveBeenCalledWith(true);
     });
 
     it('replaces the stored device only after the user agrees', async () => {
@@ -1725,11 +1624,11 @@ describe('AuthService', () => {
         vi.mocked(accounts.establishAuthenticatedAccount).mock
           .invocationCallOrder[0],
       );
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('does not ask about a stored account saved through another server', async () => {
-      const { confirm, matrix, accounts } = arrange({
+      const { confirm, sessions, accounts } = arrange({
         backedUp: false,
         choice: false,
       });
@@ -1740,7 +1639,7 @@ describe('AuthService', () => {
 
       // Saving refuses this sign-in and keeps the stored device, so there is nothing to
       // warn about: the refusal names the server the account is saved through.
-      expect(matrix.roomKeysBackedUp).not.toHaveBeenCalled();
+      expect(sessions.roomKeysBackedUp).not.toHaveBeenCalled();
       expect(confirm).not.toHaveBeenCalled();
       expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledOnce();
     });
@@ -1838,7 +1737,7 @@ describe('AuthService', () => {
 
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
       // The sign-in did not go ahead, so the device it created is signed out again.
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('signs the new device out when the sign-in is abandoned mid-dialog', async () => {
@@ -1849,11 +1748,11 @@ describe('AuthService', () => {
         .loginWithPassword('https://hs', '@me:hs', 'pw')
         .subscribe();
       await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
       signIn.unsubscribe(); // e.g. the login page is closed while the warning is open
 
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
   });
 
@@ -1870,7 +1769,7 @@ describe('AuthService', () => {
       createClientMock.mockReturnValue({ loginRequest } as never);
       await expect(
         firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
-      ).rejects.toThrow('stop');
+      ).rejects.toBeInstanceOf(EngineRequestError);
       expect(names(loginRequest)).toEqual(['Trinity']);
     });
 
@@ -1883,10 +1782,10 @@ describe('AuthService', () => {
       createClientMock.mockReturnValue({ loginRequest } as never);
       await expect(
         firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
-      ).rejects.toThrow('stop');
+      ).rejects.toBeInstanceOf(EngineRequestError);
       await expect(
         firstValueFrom(auth.completeSsoLogin('https://hs', 'login-token')),
-      ).rejects.toThrow('stop');
+      ).rejects.toBeInstanceOf(EngineRequestError);
       expect(names(loginRequest)).toEqual(['Trinity Next', 'Trinity Next']);
     });
   });

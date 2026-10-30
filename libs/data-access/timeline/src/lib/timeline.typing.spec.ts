@@ -1,20 +1,27 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TimelineService } from './timeline.service';
 import { TYPING_REFRESH_MS, TYPING_TIMEOUT_MS } from '@trinity/util/matrix';
 import {
+  CONVERSATION_TYPING,
+  type ConversationTypist,
+} from './conversation-typing.port';
+import {
+  ROOM_KEY,
   fakeClient,
-  fakeMember,
   fakeRoom,
+  liveSession,
   matrixProvider,
   mediaProvider,
   privacyProvider,
-  switchableMatrixProvider,
 } from './timeline.spec-harness';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
 // (and its race with gappy syncs) is covered against the SDK in live-scrollback.spec.
-vi.mock('./live-scrollback', () => ({
+vi.mock('./js-sdk/live-scrollback', () => ({
   scrollbackLive: async (
     client: { scrollback: (room: unknown, limit: number) => Promise<unknown> },
     room: unknown,
@@ -36,18 +43,70 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('typing', () => {
-  /** Open a room with the given members and return handles for typing assertions. */
-  function setupTyping(members: ReturnType<typeof fakeMember>[] = []) {
+  /** Open a room whose other typists, by account and room, are `typists`. */
+  function setupTyping(
+    typists: Record<string, Record<string, ConversationTypist[]>> = {},
+  ) {
     const sent: unknown[][] = [];
-    const room = fakeRoom([], {}, false, members);
+    const room = fakeRoom([]);
     const client = fakeClient(room, sent);
     TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client), mediaProvider()],
+      providers: [
+        TimelineService,
+        matrixProvider(client),
+        mediaProvider(),
+        {
+          provide: CONVERSATION_TYPING,
+          useValue: {
+            typing: (accountId: string, roomId: string) =>
+              signal(typists[accountId]?.[roomId] ?? []).asReadonly(),
+          },
+        },
+      ],
     });
     const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    svc.open(ROOM_KEY);
     return { svc, client, sent };
   }
+
+  /** Two signed-in accounts in the same room, each with its own client. */
+  function setupAccounts() {
+    const outgoingSent: unknown[][] = [];
+    const incomingSent: unknown[][] = [];
+    const room = fakeRoom([]);
+    const outgoing = {
+      ...fakeClient(room, outgoingSent),
+      getUserId: () => '@out:hs',
+    };
+    const incoming = {
+      ...fakeClient(room, incomingSent),
+      getUserId: () => '@in:hs',
+    };
+    const session = liveSession(['@out:hs', '@in:hs']);
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        MockProvider(MatrixClientService, {
+          clientFor: ((accountId: string) =>
+            accountId === '@out:hs'
+              ? outgoing
+              : accountId === '@in:hs'
+                ? incoming
+                : null) as never,
+        }),
+        ...session.providers,
+        mediaProvider(),
+      ],
+    });
+    return {
+      svc: TestBed.inject(TimelineService),
+      session,
+      outgoingSent,
+      incomingSent,
+    };
+  }
+  const OUT = { accountId: '@out:hs', roomId: '!r:hs' };
+  const IN = { accountId: '@in:hs', roomId: '!r:hs' };
 
   /** Only the typing calls the client recorded, in order. */
   const typingCalls = (sent: unknown[][]) =>
@@ -113,7 +172,7 @@ describe('typing', () => {
     svc.setTyping(true);
     svc.close();
 
-    svc.open('!other:hs');
+    svc.open({ ...ROOM_KEY, roomId: '!other:hs' });
     svc.setTyping(true);
 
     expect(typingCalls(sent)).toEqual([
@@ -170,24 +229,11 @@ describe('typing', () => {
   });
 
   it('sends the closing typing-stop to the account that was typing', () => {
-    const outgoingSent: unknown[][] = [];
-    const incomingSent: unknown[][] = [];
-    const room = fakeRoom([], {}, false, []);
-    const outgoing = fakeClient(room, outgoingSent);
-    const incoming = fakeClient(room, incomingSent);
-    const active = { client: outgoing as unknown };
-    TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        switchableMatrixProvider(active),
-        mediaProvider(),
-      ],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const { svc, outgoingSent, incomingSent } = setupAccounts();
+    svc.open(OUT);
     svc.setTyping(true);
 
-    active.client = incoming; // the switch lands before the deferred close
+    // The switch to the other account lands before the deferred close.
     svc.close();
 
     expect(typingCalls(outgoingSent)).toContainEqual(['typing', false, 0]);
@@ -196,32 +242,14 @@ describe('typing', () => {
 
   it('clears local typing ownership when the final account signs out', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_000);
-    const outgoingSent: unknown[][] = [];
-    const incomingSent: unknown[][] = [];
-    const room = fakeRoom([], {}, false, []);
-    const outgoing = fakeClient(room, outgoingSent);
-    const incoming = fakeClient(room, incomingSent);
-    const active = {
-      client: outgoing as unknown,
-      isInitialized: true,
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        switchableMatrixProvider(active),
-        mediaProvider(),
-      ],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const { svc, session, outgoingSent, incomingSent } = setupAccounts();
+    svc.open(OUT);
     svc.setTyping(true, 'thread');
 
-    active.isInitialized = false;
+    session.publish(['@in:hs']);
     svc.close();
 
-    active.client = incoming;
-    active.isInitialized = true;
-    svc.open('!r:hs');
+    svc.open(IN);
     svc.setTyping(true, 'room');
     svc.setTyping(false, 'room');
 
@@ -234,28 +262,42 @@ describe('typing', () => {
     ]);
   });
 
-  it('projects other typing members into typingNames, excluding self', () => {
-    const { svc, client } = setupTyping([
-      fakeMember('@alice:hs', true, 'Alice'),
-      fakeMember('@me:hs', true, 'Me'), // the local user never lists themselves
-      fakeMember('@bob:hs', false, 'Bob'), // present but not typing
-    ]);
+  it('stop typing after sign-out sends nothing', () => {
+    const { svc, session, outgoingSent } = setupAccounts();
+    svc.open(OUT);
+    svc.setTyping(true);
 
-    // Fire the RoomMember.typing listener the service registered in open().
-    client.handlers.get('RoomMember.typing')?.(
-      {},
-      fakeMember('@alice:hs', true, 'Alice'),
-    );
+    session.publish([]);
+    svc.setVisible(false);
+    svc.close();
+
+    expect(typingCalls(outgoingSent)).toEqual([
+      ['typing', true, TYPING_TIMEOUT_MS],
+    ]);
+  });
+
+  it('projects other typing members into typingNames, excluding self', () => {
+    // The port already leaves the account itself out (see the application binding).
+    const { svc } = setupTyping({
+      '@me:hs': { '!r:hs': [{ userId: '@alice:hs', displayName: 'Alice' }] },
+      '@other:hs': { '!r:hs': [{ userId: '@bob:hs', displayName: 'Bob' }] },
+    });
 
     expect(svc.typingNames()).toEqual(['Alice']);
   });
 
   it('ignores typing changes from other rooms', () => {
-    const { svc, client } = setupTyping([fakeMember('@alice:hs', true)]);
-    client.handlers.get('RoomMember.typing')?.(
-      {},
-      { userId: '@x:hs', typing: true, name: 'X', roomId: '!other:hs' },
-    );
+    const { svc } = setupTyping({
+      '@me:hs': { '!other:hs': [{ userId: '@x:hs', displayName: 'X' }] },
+    });
+    expect(svc.typingNames()).toEqual([]);
+  });
+
+  it('names nobody typing while the Conversation is hidden', () => {
+    const { svc } = setupTyping({
+      '@me:hs': { '!r:hs': [{ userId: '@alice:hs', displayName: 'Alice' }] },
+    });
+    svc.setVisible(false);
     expect(svc.typingNames()).toEqual([]);
   });
 });

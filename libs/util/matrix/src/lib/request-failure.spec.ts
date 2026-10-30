@@ -1,17 +1,27 @@
+import {
+  connectionError,
+  httpError,
+  matrixError,
+} from './sdk-error-shapes.spec-harness';
 import { TimeoutError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { ConnectionError, HTTPError, MatrixError } from './transient-errors';
 import {
   describeMatrixRequestFailure,
+  engineRequestFailure,
   matrixRequestErrorHandling,
   matrixRequestFailureDiagnostic,
   reportMatrixRequestFailure,
 } from './request-failure';
 
+/** An `M_LIMIT_EXCEEDED` answer whose body asks for `retryAfterMs`. */
+function rateLimited(retryAfterMs: number) {
+  return matrixError('M_LIMIT_EXCEEDED', 429, { retry_after_ms: retryAfterMs });
+}
+
 describe('describeMatrixRequestFailure', () => {
   it.each([
     {
-      error: new ConnectionError('fetch failed'),
+      error: connectionError(),
       kind: 'network',
       message: 'Check your connection and try again.',
     },
@@ -26,17 +36,17 @@ describe('describeMatrixRequestFailure', () => {
       message: 'The request timed out. Try again.',
     },
     {
-      error: new MatrixError({ errcode: 'M_UNKNOWN_TOKEN' }, 401),
+      error: matrixError('M_UNKNOWN_TOKEN', 401),
       kind: 'authentication',
       message: 'Your session has expired. Sign in again.',
     },
     {
-      error: new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
+      error: matrixError('M_FORBIDDEN', 403),
       kind: 'permission',
       message: 'You do not have permission to do that.',
     },
     {
-      error: new HTTPError('unavailable', 503),
+      error: httpError(503),
       kind: 'server',
       message: 'The homeserver is unavailable. Try again.',
     },
@@ -51,12 +61,7 @@ describe('describeMatrixRequestFailure', () => {
   );
 
   it('includes a safe server-provided retry delay for rate limits', () => {
-    const failure = describeMatrixRequestFailure(
-      new MatrixError(
-        { errcode: 'M_LIMIT_EXCEEDED', retry_after_ms: 2_100 },
-        429,
-      ),
-    );
+    const failure = describeMatrixRequestFailure(rateLimited(2_100));
 
     expect(failure).toMatchObject({
       kind: 'rate-limit',
@@ -68,13 +73,42 @@ describe('describeMatrixRequestFailure', () => {
   it('does not mistake a generic HTTP 401 UIA challenge for session expiry', () => {
     expect(
       describeMatrixRequestFailure(
-        new HTTPError('interactive authentication required', 401),
+        httpError(401, 'interactive authentication required'),
         'Complete authentication and try again.',
       ),
     ).toMatchObject({
       kind: 'http',
       message: 'Complete authentication and try again.',
     });
+  });
+
+  it('reads the SDK classes by shape', () => {
+    // A MatrixError built without a status still owns `httpStatus`.
+    expect(describeMatrixRequestFailure(matrixError('M_UNKNOWN'))).toEqual({
+      kind: 'http',
+      message: 'Something went wrong. Try again.',
+      diagnostic: { kind: 'http', errcode: 'M_UNKNOWN' },
+    });
+    expect(
+      describeMatrixRequestFailure(connectionError('request timed out')).kind,
+    ).toBe('timeout');
+    expect(describeMatrixRequestFailure(httpError(429))).toMatchObject({
+      kind: 'rate-limit',
+      diagnostic: { httpStatus: 429 },
+    });
+    expect(
+      describeMatrixRequestFailure(httpError(429, 'slow down', '2')).message,
+    ).toBe('Too many requests. Try again in 2 seconds.');
+    // Without the SDK's rate-limit hooks, the status decides.
+    expect(
+      describeMatrixRequestFailure(
+        Object.assign(new Error('x'), { httpStatus: 429 }),
+      ).kind,
+    ).toBe('http');
+    expect(
+      describeMatrixRequestFailure({ httpStatus: 503, errcode: 'M_UNKNOWN' })
+        .kind,
+    ).toBe('unexpected');
   });
 
   it('preserves plain domain error messages', () => {
@@ -136,15 +170,10 @@ describe('describeMatrixRequestFailure', () => {
 
 describe('matrixRequestFailureDiagnostic', () => {
   it('returns only allowlisted diagnostic fields', () => {
-    const error = new MatrixError(
-      {
-        errcode: 'M_UNKNOWN',
-        error: 'secret response text',
-        access_token: 'secret token',
-      },
-      503,
-      'https://hs.example/path?access_token=secret',
-    );
+    const error = matrixError('M_UNKNOWN', 503, {
+      error: 'secret response text',
+      access_token: 'secret token',
+    });
 
     const diagnostic = matrixRequestFailureDiagnostic(
       'background Matrix request',
@@ -162,20 +191,9 @@ describe('matrixRequestFailureDiagnostic', () => {
   });
 
   it('omits malformed diagnostic values and unrealistic retry delays', () => {
-    const malformed = new MatrixError(
-      {
-        errcode: { secret: 'response text' } as unknown as string,
-        error: 'secret response text',
-      },
-      503,
-    );
-    const rateLimited = new MatrixError(
-      {
-        errcode: 'M_LIMIT_EXCEEDED',
-        retry_after_ms: Number.MAX_SAFE_INTEGER,
-      },
-      429,
-    );
+    const malformed = Object.assign(httpError(503), {
+      errcode: { secret: 'response text' },
+    });
 
     expect(matrixRequestFailureDiagnostic('load directory', malformed)).toEqual(
       {
@@ -184,7 +202,9 @@ describe('matrixRequestFailureDiagnostic', () => {
         httpStatus: 503,
       },
     );
-    expect(describeMatrixRequestFailure(rateLimited)).toMatchObject({
+    expect(
+      describeMatrixRequestFailure(rateLimited(Number.MAX_SAFE_INTEGER)),
+    ).toMatchObject({
       kind: 'rate-limit',
       message: 'Too many requests. Try again shortly.',
       diagnostic: {
@@ -197,11 +217,9 @@ describe('matrixRequestFailureDiagnostic', () => {
 
   it('reports the operation and sanitized metadata instead of the raw error', () => {
     const logger = vi.fn();
-    const error = new MatrixError(
-      { errcode: 'M_UNKNOWN', error: 'secret response text' },
-      503,
-      'https://hs.example/path?access_token=secret',
-    );
+    const error = matrixError('M_UNKNOWN', 503, {
+      error: 'secret response text',
+    });
 
     reportMatrixRequestFailure('load room directory', error, logger);
 
@@ -221,7 +239,7 @@ describe('matrixRequestFailureDiagnostic', () => {
       'Could not invite this user. Try again.',
       logger,
     );
-    const error = new MatrixError({ errcode: 'M_FORBIDDEN' }, 403);
+    const error = matrixError('M_FORBIDDEN', 403);
 
     expect(handling.formatError(error)).toBe(
       'You do not have permission to do that.',
@@ -233,6 +251,64 @@ describe('matrixRequestFailureDiagnostic', () => {
       kind: 'permission',
       httpStatus: 403,
       errcode: 'M_FORBIDDEN',
+    });
+  });
+});
+
+describe('engineRequestFailure', () => {
+  const tokenRefreshError = () =>
+    Object.defineProperty(new Error('refresh'), 'name', {
+      value: 'TokenRefreshError',
+    });
+
+  it.each([
+    {
+      label: 'no connection',
+      error: connectionError(),
+      expected: { kind: 'network', diagnostic: { kind: 'network' } },
+    },
+    {
+      label: 'a 5xx',
+      error: httpError(503),
+      expected: {
+        kind: 'server',
+        diagnostic: { kind: 'server', httpStatus: 503 },
+      },
+    },
+    {
+      label: 'a plain HTTP error',
+      error: matrixError('M_UNKNOWN', 400),
+      expected: {
+        kind: 'http',
+        diagnostic: { kind: 'http', httpStatus: 400, errcode: 'M_UNKNOWN' },
+      },
+    },
+    {
+      label: 'a timeout',
+      error: new TimeoutError(),
+      expected: { kind: 'timeout', diagnostic: { kind: 'timeout' } },
+    },
+    {
+      label: 'an unknown error',
+      error: new Error('secret body'),
+      expected: {
+        kind: 'unexpected',
+        diagnostic: { kind: 'unexpected', errorName: 'Error' },
+      },
+    },
+  ])('maps $label to request-failed with no params', ({ error, expected }) => {
+    expect(engineRequestFailure(error)).toEqual({
+      ...expected,
+      code: 'request-failed',
+    });
+  });
+
+  it('marks a failed token refresh as the session-refresh cause', () => {
+    expect(engineRequestFailure(tokenRefreshError())).toEqual({
+      kind: 'network',
+      code: 'request-failed',
+      diagnostic: { kind: 'network', errorName: 'TokenRefreshError' },
+      params: { cause: 'session-refresh' },
     });
   });
 });

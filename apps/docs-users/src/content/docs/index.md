@@ -134,21 +134,33 @@ other sign-in options at any step.
 **On the signed-in device.** Open Settings › Devices and choose **Link a new device**, then
 scan the code on the new device with your camera.
 
-**Compare the codes.** Both devices then show the same two-digit number. If they match, choose
-**They match** on the signed-in device; if not, choose **They don't match**, and nothing is
-shared. Trinity then asks you to approve the new device: choose **Open approval page**, and
-approve it on your server's page in the browser. If that page asks for a code, enter the one
-the new device shows. The signed-in device then shares your keys, says "Device linked", and
-the new device opens your rooms.
+**Enter the code.** The signed-in device then shows a two-digit number. Type it on the new
+device and choose **Continue**; if it isn't the number the signed-in device shows, nothing is
+shared. The new device then says it's waiting for approval, and the signed-in device asks you
+to check that. Choose **Continue** there only if the new device says so. Trinity then asks you
+to approve the new device: choose **Open approval page**, and approve it on your server's page
+in the browser. If that page asks for a code, enter the one the new device shows. The signed-in
+device then shares your keys and says "Device linked". The new device checks that the account
+is on your server, and opens your rooms.
 
 **If it doesn't work.**
 
 - **"The code expired."** The code wasn't scanned in time. On the new device, choose
   **Show a new code** and scan again.
-- **"The codes didn't match, so nothing was shared."** Shown on the signed-in device: you chose
-  **They don't match**, the devices couldn't agree on a secure connection, or the approval page
-  the new device asked for isn't on your server. No keys were shared. Start again from the new device; if the numbers differ again, someone else may have
-  scanned or shown the code, so don't continue.
+- **"That isn't the code your other device shows, so nothing was shared."** Shown on the new
+  device: the number you typed isn't the one the signed-in device shows. Choose **Show a new
+  code** and start again. If it fails again with the right number, someone else may have scanned
+  or shown the code, so don't continue.
+- **"The connection between the devices wasn't secure, so nothing was shared."** Shown on the
+  new device before you typed a code: the devices couldn't agree on a secure connection. Choose
+  **Show a new code** and start again; if this happens again, don't continue.
+- **"This request didn't come from your account's server, so nothing was shared."** Shown on the
+  signed-in device: the approval page the new device asked for isn't on your server, or the
+  devices couldn't agree on a secure connection. No keys were shared. Start again from the new
+  device; if this happens again, don't continue.
+- **"That account is on a different server from the one you chose, so Trinity signed it out
+  again."** Shown on the new device after you approved: the account belongs to another server
+  than the one you entered. Sign in through that account's own server.
 - **"Sign-in was cancelled on the other device."** The other device left the screen or
   cancelled.
 - **"That device is already signed in."** on the signed-in device, or **"This account is
@@ -162,13 +174,14 @@ the new device opens your rooms.
 
 **Known limits.**
 
-- When the codes don't match, the new device may show only "Something went wrong. Try again or
-  sign in another way." instead of saying why.
-- Only the new device shows a code. A signed-in device can't show one for a new device to
+- When you type a wrong code, the signed-in device may show only "Something went wrong. Try
+  again or sign in another way." instead of saying why.
+- If the new device refuses the account (another server, or already signed in there), the
+  signed-in device may still say "Device linked".
+- Only the new device shows a QR code. A signed-in device can't show one for a new device to
   scan.
 - Element Web can't scan a code, so it can't link a new Trinity device. Trinity can link a new
-  Element Web device (tested with Element Web 0.6.0 on Synapse with MAS); Element Web then
-  asks you to type the two-digit number instead of showing it.
+  Element Web device (tested with Element Web 0.6.0 on Synapse with MAS).
 - Only the web app in a desktop browser has been tested. Signing in or scanning on a phone
   (Android or iOS) or in the desktop app hasn't been tested yet, and no Matrix app other than
   Element Web has been tried.

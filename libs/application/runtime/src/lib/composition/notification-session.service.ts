@@ -4,6 +4,7 @@ import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   NativePushLifetime,
   NotificationService,
+  NotificationSettingsStore,
   PushHandoffService,
   type NativePushActivation,
   type NativePushLifetimeEvent,
@@ -50,6 +51,7 @@ const TEXT_PRIVACY: Readonly<Record<NotificationTextMode, number>> = {
 @Injectable({ providedIn: 'root' })
 export class NotificationSessionService {
   private readonly notifications = inject(NotificationService);
+  private readonly settings = inject(NotificationSettingsStore);
   private readonly push = inject(NativePushLifetime);
   private readonly handoff = inject(PushHandoffService);
   private readonly conversations = inject(ConversationRuntime);
@@ -69,6 +71,7 @@ export class NotificationSessionService {
       this.notifications
         .run()
         .pipe(concatMap((event) => this.handleNotification(event))),
+      this.settings.run(),
       this.push.run().pipe(concatMap((event) => this.handlePush(event))),
       this.handoff.run(),
       this.refreshTokensOnBackground(),

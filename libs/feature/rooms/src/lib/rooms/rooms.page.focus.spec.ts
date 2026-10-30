@@ -13,7 +13,10 @@ import {
   TrustService,
 } from '@trinity/data-access/trust';
 import { InvitesService } from '@trinity/data-access/room-library';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  SESSION_ENGINE,
+} from '@trinity/data-access/matrix-client';
 import {
   IgnoredUsersService,
   IdentityPresenceService,
@@ -75,6 +78,8 @@ import {
   UNREAD_AGGREGATOR_PROVIDER,
   invitesProvider,
   matrixClientProvider,
+  sessionStateProvider,
+  IMAGE_PACKS_PROVIDER,
   setRouteRoom,
   shellFrom,
 } from './rooms-page.spec-harness';
@@ -168,6 +173,8 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
     providers: [
       ROUTE_PROVIDER,
       SYSTEM_STATUS_PROVIDER,
+      // The timeline stores the text sender opens only listen for session changes.
+      { provide: SESSION_ENGINE, useValue: { session: () => NEVER } },
       MockProvider(Router),
       MockProvider(MessageGestureSettingsService, {
         messageSwipe: signal('off'),
@@ -216,6 +223,8 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),
       }),
+      sessionStateProvider(),
+      IMAGE_PACKS_PROVIDER,
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
         presenceFor: () => signal('offline'),
@@ -437,6 +446,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline, { releaseAll }),
         matrixClientProvider(),
+        sessionStateProvider(),
         UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),

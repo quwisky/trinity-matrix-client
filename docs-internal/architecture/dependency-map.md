@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **80 Nx projects** and **314 dependencies**. No project cycles detected.
+This snapshot contains **81 Nx projects** and **320 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -149,14 +149,14 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-homeserver`            | `libs/data-access/homeserver`            | role:capability; capability:discovery           |                   2 |
 | `data-access-identity`              | `libs/data-access/identity`              | role:capability; capability:identity            |                   4 |
 | `data-access-matrix-client`         | `libs/data-access/matrix-client`         | role:adapter; capability:matrix-runtime         |                   4 |
-| `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   2 |
+| `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   3 |
 | `data-access-notifications`         | `libs/data-access/notifications`         | role:capability; capability:notifications       |                   7 |
-| `data-access-room-administration`   | `libs/data-access/room-administration`   | role:capability; capability:room-administration |                   4 |
+| `data-access-room-administration`   | `libs/data-access/room-administration`   | role:capability; capability:room-administration |                   6 |
 | `data-access-room-library`          | `libs/data-access/room-library`          | role:capability; capability:room-library        |                   6 |
-| `data-access-timeline`              | `libs/data-access/timeline`              | role:capability; capability:conversations       |                   7 |
-| `data-access-trust`                 | `libs/data-access/trust`                 | role:capability; capability:trust               |                   5 |
+| `data-access-timeline`              | `libs/data-access/timeline`              | role:capability; capability:conversations       |                   6 |
+| `data-access-trust`                 | `libs/data-access/trust`                 | role:capability; capability:trust               |                   6 |
 | `data-access-whats-new`             | `libs/data-access/whats-new`             | role:capability; capability:whats-new           |                   1 |
-| `data-access-widgets`               | `libs/data-access/widgets`               | role:capability; capability:conversations       |                   3 |
+| `data-access-widgets`               | `libs/data-access/widgets`               | role:capability; capability:conversations       |                   4 |
 | `docs-developers`                   | `apps/docs-developers`                   | unmanaged tooling/test                          |                   1 |
 | `docs-e2e`                          | `e2e/docs`                               | unmanaged tooling/test                          |                   0 |
 | `docs-site`                         | `tools/docs`                             | unmanaged tooling/test                          |                   0 |
@@ -196,6 +196,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `trinity-e2e-browser`               | `e2e/browser`                            | unmanaged tooling/test                          |                   6 |
 | `trinity-e2e-components`            | `e2e/components`                         | unmanaged tooling/test                          |                   7 |
 | `trinity-e2e-electron`              | `e2e/electron`                           | unmanaged tooling/test                          |                   3 |
+| `trinity-e2e-engine`                | `e2e/engine`                             | unmanaged tooling/test                          |                   2 |
 | `trinity-e2e-mobile`                | `e2e/mobile`                             | unmanaged tooling/test                          |                   4 |
 | `trinity-e2e-protocol`              | `e2e/protocol`                           | unmanaged tooling/test                          |                   4 |
 | `trinity-e2e-support`               | `e2e/support`                            | unmanaged tooling/test                          |                   0 |

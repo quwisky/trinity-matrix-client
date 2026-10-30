@@ -1,194 +1,100 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import type { MatrixClient, ValidatedAuthMetadata } from 'matrix-js-sdk';
-import { verifiedDeviceGrantMetadata } from '@trinity/util/matrix';
 import {
-  ClientRendezvousFailureReason,
-  MSC4108FailureReason,
-  RendezvousError,
-} from 'matrix-js-sdk/lib/rendezvous';
-import { Observable, from, of, throwError, type Subscription } from 'rxjs';
+  EMPTY,
+  Observable,
+  Subject,
+  from,
+  of,
+  tap,
+  throwError,
+  type Subscription,
+} from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  QrRendezvousFactory,
-  type QrRendezvousFlow,
-} from './qr-sign-in.adapter';
-import {
-  QR_LINK_IDENTITY_CHECK,
-  QR_SIGN_IN_COMPLETION,
-  type LinkedSecrets,
-} from './qr-sign-in-completion.port';
-import {
-  qrSignInFailureOf,
-  type ExistingDeviceState,
-  type NewDeviceState,
-} from './qr-sign-in.model';
+  SESSION_ENGINE,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
+import { SessionStorageService } from '@trinity/platform-native';
+import { engineOk, verifiedDeviceGrantMetadata } from '@trinity/util/matrix';
+import { FakeAuthEngine } from '../../contract/fake-auth-engine';
+import { UnacceptableAccountError } from '../account-establishment';
+import { AUTH_ENGINE } from '../auth-engine.token';
+import { AUTH_METADATA } from '../auth-metadata.fixture';
+import { AuthService } from '../auth.service';
+import { OidcClientService } from '../oidc-client.service';
+import { QR_LINK_IDENTITY_CHECK } from './qr-link-identity-check.port';
+import type { ExistingDeviceState, NewDeviceState } from './qr-sign-in.model';
 import { QrSignInService } from './qr-sign-in.service';
-import {
-  AUTHENTICATION_HOMESERVER_DISCOVERY,
-  type AuthenticationHomeserver,
-} from '../homeserver-discovery.port';
 
-type Step =
-  | 'generateCode'
-  | 'negotiateProtocols'
-  | 'deviceAuthorizationGrant'
-  | 'completeLoginOnNewDevice'
-  | 'shareSecrets';
+const NEW_ACCOUNT = '@alice:example.org';
+const LINKING_ACCOUNT = '@me:example.org';
+const PINNED = {
+  issuer: AUTH_METADATA.issuer,
+  tokenEndpoint: 'https://op.example/verified-token',
+  revocationEndpoint: 'https://op.example/verified-revoke',
+};
+const SIGN_IN_CODE = new TextEncoder().encode('MATRIX-code');
 
-const metadata = { issuer: 'https://auth/' } as never;
-const tokens = { access_token: 'at', token_type: 'Bearer' };
-const secrets = { cross_signing: {} } as unknown as LinkedSecrets;
-const signedIn = { id: 'new-client' } as unknown as MatrixClient;
-const existingClient = {
-  id: 'existing-client',
-  getAuthMetadata: vi.fn(async () => metadata),
-} as unknown as MatrixClient;
-
-/** A fake MSC4108SignInWithQR whose steps resolve unless told to hang or fail. */
-class FakeFlow {
-  readonly calls: string[] = [];
-  readonly hang = new Set<Step>();
-  readonly failures = new Map<Step, unknown>();
-  readonly code = new Uint8Array([1, 2, 3]);
-  readonly checkCode = '42';
-
-  constructor(
-    private readonly onFailure: (reason: string) => void,
-    private readonly isNewDevice: boolean,
-  ) {}
-
-  generateCode = vi.fn(() => this.step('generateCode', undefined));
-  negotiateProtocols = vi.fn(() =>
-    this.step('negotiateProtocols', { serverName: 'hs' }),
-  );
-  deviceAuthorizationGrant = vi.fn(() =>
-    this.step(
-      'deviceAuthorizationGrant',
-      this.isNewDevice
-        ? { verificationUri: 'https://auth/link', userCode: 'ABCD' }
-        : { verificationUri: 'https://auth/link?code=ABCD' },
-    ),
-  );
-  completeLoginOnNewDevice = vi.fn(() =>
-    this.step('completeLoginOnNewDevice', tokens),
-  );
-  shareSecrets = vi.fn(() => this.step('shareSecrets', { secrets }));
-  // Like the SDK's channel, a cancel reports its reason through onFailure.
-  cancel = vi.fn(async (reason: string) => {
-    this.calls.push(`cancel:${reason}`);
-    this.onFailure(reason);
-  });
-  close = vi.fn(async () => {
-    this.calls.push('close');
-  });
-  declineLoginOnExistingDevice = vi.fn(async () => {
-    this.calls.push('decline');
-  });
-
-  private readonly held = new Map<Step, () => void>();
-
-  /** Fails the session from outside a step, as the SDK's expiry timer does. */
-  failSession(reason: string): void {
-    this.onFailure(reason);
-  }
-
-  /** Lets a hung step resolve. */
-  release(name: Step): void {
-    this.held.get(name)?.();
-  }
-
-  private step<T>(name: Step, value: T): Promise<T> {
-    this.calls.push(name);
-    if (this.hang.has(name)) {
-      return new Promise<T>((resolve) =>
-        this.held.set(name, () => resolve(value)),
-      );
-    }
-    if (this.failures.has(name)) {
-      return Promise.reject(this.failures.get(name));
-    }
-    return Promise.resolve(value);
-  }
-}
-
-function setup(configure: (flow: FakeFlow) => void = () => undefined) {
-  const flows: FakeFlow[] = [];
-  const order: string[] = [];
-  const build = (onFailure: (reason: string) => void, isNewDevice: boolean) => {
-    const flow = new FakeFlow(onFailure, isNewDevice);
-    configure(flow);
-    flows.push(flow);
-    return flow as unknown as QrRendezvousFlow;
-  };
-  const factory = {
-    newDevice: vi.fn(
-      async (_url: string, onFailure: (reason: string) => void) => ({
-        flow: build(onFailure, true),
-        metadata,
-        expires: null as string | null,
-      }),
-    ),
-    existingDevice: vi.fn(
-      async (
-        _client: MatrixClient,
-        bytes: Uint8Array,
-        onFailure: (reason: string) => void,
-      ) => (bytes.length ? build(onFailure, false) : null),
-    ),
-  };
-  const completion = {
+function setup() {
+  const engine = new FakeAuthEngine();
+  engine.qrRendezvous = true;
+  engine.metadata = AUTH_METADATA;
+  engine.accounts.add(NEW_ACCOUNT);
+  engine.accounts.add(LINKING_ACCOUNT);
+  const oidc = {
+    deviceGrantMetadata: vi.fn((m: unknown): Observable<unknown> => of(m)),
     deviceGrantClientId: vi.fn(() => of('client-id')),
-    deviceGrantMetadata: vi.fn(
-      (m: ValidatedAuthMetadata): Observable<ValidatedAuthMetadata> => of(m),
-    ),
     forgetDeviceGrantClientId: vi.fn(() => of(undefined)),
-    completeDeviceGrant: vi.fn(() => {
-      order.push('completeDeviceGrant');
-      return of(signedIn);
-    }),
-    importLinkedSecrets: vi.fn(() => of(true)),
+    deviceGrantBinding: vi.fn(
+      (_m: unknown, clientId: string): Observable<unknown> =>
+        of({ ...PINNED, clientId }),
+    ),
+    revokeTokens: vi.fn(() => of(undefined)),
   };
-  const identity = { holdsPublishedIdentity: vi.fn(() => of(true)) };
-  const discovery = {
-    lookUp: vi.fn((): Observable<AuthenticationHomeserver> =>
-      throwError(() => new Error('No homeserver found')),
+  const auth = {
+    establishDeviceGrant: vi.fn((): Observable<unknown> =>
+      of({ kind: 'ready', accountId: NEW_ACCOUNT, placement: 'background' }),
     ),
   };
-  const activeUserId = signal<string | null>('@me:hs');
-  const clients = new Map<string, MatrixClient>([['@me:hs', existingClient]]);
-  const matrix = {
-    activeUserId: activeUserId.asReadonly(),
-    clientFor: vi.fn((id: string) => clients.get(id) ?? null),
+  const storage = { record: vi.fn((): Observable<unknown> => of(null)) };
+  const identity = { holdsPublishedIdentity: vi.fn(() => of(true)) };
+  const sessionEngine = {
+    logoutSession: vi.fn(() => of(engineOk(null))),
   };
+  const activeAccountId = signal<string | null>(LINKING_ACCOUNT);
   TestBed.configureTestingModule({
     providers: [
-      { provide: QrRendezvousFactory, useValue: factory },
-      { provide: QR_SIGN_IN_COMPLETION, useValue: completion },
+      { provide: AUTH_ENGINE, useValue: engine },
+      { provide: AuthService, useValue: auth },
+      { provide: OidcClientService, useValue: oidc },
+      { provide: SessionStorageService, useValue: storage },
+      { provide: SESSION_ENGINE, useValue: sessionEngine },
+      {
+        provide: SessionStateService,
+        useValue: {
+          activeAccountId: activeAccountId.asReadonly(),
+          accountIds: computed(() => [...engine.accounts]),
+        },
+      },
       { provide: QR_LINK_IDENTITY_CHECK, useValue: identity },
-      { provide: MatrixClientService, useValue: matrix },
-      { provide: AUTHENTICATION_HOMESERVER_DISCOVERY, useValue: discovery },
     ],
   });
   return {
-    flows,
-    order,
-    factory,
-    completion,
+    engine,
+    oidc,
+    auth,
+    storage,
     identity,
-    discovery,
-    activeUserId,
-    clients,
+    sessionEngine,
+    activeAccountId,
     service: TestBed.inject(QrSignInService),
   };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve));
 
-function record<T extends { kind: string }>(
-  state$: import('rxjs').Observable<T>,
-) {
+function record<T extends { kind: string }>(state$: Observable<T>) {
   const states: T[] = [];
   let completed = false;
   const subscription: Subscription = state$.subscribe({
@@ -203,148 +109,469 @@ function record<T extends { kind: string }>(
   };
 }
 
-const sdkReasons = [
-  ...Object.values(MSC4108FailureReason),
-  ...Object.values(ClientRendezvousFailureReason),
-];
+/** Shows a code and types `code` at the code step, as the panel does; `null` types nothing. */
+function showCode(
+  service: QrSignInService,
+  code: string | null = '42',
+  homeserverUrl = 'https://hs',
+  serverName = 'hs',
+) {
+  const signIn = service.signInByShowingCode(homeserverUrl, serverName);
+  const run = record(
+    signIn.state$.pipe(
+      tap((state) => {
+        if (state.kind === 'enter-check-code' && code !== null) {
+          signIn.enterCheckCode(code);
+        }
+      }),
+    ),
+  );
+  return { ...run, signIn };
+}
+
+/** The session the fake's other device signs in, as the logout receives it. */
+const signedOut = (baseUrl = 'https://hs', clientId = 'client-id') => ({
+  baseUrl,
+  userId: NEW_ACCOUNT,
+  deviceId: 'QRDEVICE',
+  accessToken: `qr-token-${clientId}`,
+  refreshToken: `qr-refresh-${clientId}`,
+  oidc: { ...PINNED, clientId },
+});
 
 describe('QrSignInService.signInByShowingCode', () => {
-  it('runs creating → showing-code → confirm-check-code → waiting-for-approval → signing-in → done', async () => {
-    vi.spyOn(Date, 'now').mockReturnValue(1_000);
-    const { service, flows, completion, order } = setup();
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
+  it('runs creating → showing-code → enter-check-code → waiting-for-approval → signing-in → done', async () => {
+    const { service, engine, oidc, auth, sessionEngine } = setup();
+    const start = vi.spyOn(engine, 'signInWithQr');
+    const run = showCode(service);
     await settle();
 
     expect(run.states).toEqual<NewDeviceState[]>([
       { kind: 'creating' },
       {
         kind: 'showing-code',
-        qr: new Uint8Array([1, 2, 3]),
-        expiresAt: 61_000,
+        qr: expect.any(Uint8Array),
+        expiresAt: expect.any(Number),
       },
-      { kind: 'confirm-check-code', code: '42' },
+      { kind: 'enter-check-code' },
       { kind: 'waiting-for-approval', userCode: 'ABCD' },
       { kind: 'signing-in' },
-      { kind: 'done', verified: true },
+      { kind: 'done' },
     ]);
     expect(run.completed()).toBe(true);
-    const flow = flows[0];
-    expect(flow.deviceAuthorizationGrant).toHaveBeenCalledWith({
-      metadata,
-      clientId: 'client-id',
-      deviceId: expect.stringMatching(/^[A-Za-z0-9]{10}$/),
-    });
-    expect(flow.completeLoginOnNewDevice).toHaveBeenCalledWith({
-      clientId: 'client-id',
-    });
-    expect(completion.deviceGrantClientId).toHaveBeenCalledWith(
-      metadata,
+    const shown = run.states[1] as { qr: Uint8Array };
+    expect(new TextDecoder().decode(shown.qr)).toMatch(/^MATRIX/);
+    expect(oidc.deviceGrantMetadata).toHaveBeenCalledWith(AUTH_METADATA);
+    expect(oidc.deviceGrantClientId).toHaveBeenCalledWith(
+      AUTH_METADATA,
       'https://hs',
     );
-    // A normal sign-in asks the device-authorization endpoint once and keeps its client.
-    expect(flow.deviceAuthorizationGrant).toHaveBeenCalledTimes(1);
-    expect(completion.forgetDeviceGrantClientId).not.toHaveBeenCalled();
-    expect(completion.completeDeviceGrant).toHaveBeenCalledWith(
-      tokens,
+    expect(start).toHaveBeenCalledWith('https://hs', {
+      grantMetadata: AUTH_METADATA,
+      clientId: 'client-id',
+    });
+    // A normal sign-in keeps its client.
+    expect(oidc.forgetDeviceGrantClientId).not.toHaveBeenCalled();
+    expect(oidc.deviceGrantBinding).toHaveBeenCalledWith(
+      AUTH_METADATA,
       'client-id',
-      metadata,
+    );
+    // The server entered goes along, so the account's server is checked against it.
+    expect(auth.establishDeviceGrant).toHaveBeenCalledWith(
       'https://hs',
+      {
+        user_id: NEW_ACCOUNT,
+        device_id: 'QRDEVICE',
+        access_token: 'qr-token-client-id',
+        refresh_token: 'qr-refresh-client-id',
+        accessTokenExpiresAt: expect.any(Number),
+        oidc: { ...PINNED, clientId: 'client-id' },
+      },
+      'hs',
     );
-    expect(completion.importLinkedSecrets).toHaveBeenCalledWith(
-      signedIn,
-      secrets,
+    expect(engine.calls).toEqual([
+      'authMetadata:https://hs',
+      'signInWithQr:client-id',
+      'answerQrSignIn:42',
+    ]);
+    expect(sessionEngine.logoutSession).not.toHaveBeenCalled();
+    expect(oidc.revokeTokens).not.toHaveBeenCalled();
+  });
+
+  describe('the code typed', () => {
+    it('reaches the engine as typed', async () => {
+      const { service, engine } = setup();
+      const run = showCode(service, null);
+      await settle();
+      expect(run.kinds().at(-1)).toBe('enter-check-code');
+
+      run.signIn.enterCheckCode('07');
+      await settle();
+
+      expect(engine.calls).toContain('answerQrSignIn:07');
+      // The fake's other device shows 42.
+      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
+    });
+
+    it('ignores a code typed before the code step', async () => {
+      const { service, engine } = setup();
+      engine.qrStop = { after: 'showing-code' };
+      const run = showCode(service, null);
+      await settle();
+
+      run.signIn.enterCheckCode('42');
+      await settle();
+
+      expect(engine.calls.some((call) => call.startsWith('answer'))).toBe(
+        false,
+      );
+    });
+
+    it('sends only the first code', async () => {
+      const { service, engine } = setup();
+      const run = showCode(service, null);
+      await settle();
+
+      run.signIn.enterCheckCode('42');
+      run.signIn.enterCheckCode('24');
+      await settle();
+
+      expect(
+        engine.calls.filter((call) => call.startsWith('answerQrSignIn')),
+      ).toEqual(['answerQrSignIn:42']);
+      expect(run.states.at(-1)).toEqual({ kind: 'done' });
+    });
+
+    it('gives a code only to the current subscription', async () => {
+      const { service, engine } = setup();
+      const signIn = service.signInByShowingCode('https://hs', 'hs');
+      const stale = record(signIn.state$);
+      await settle();
+      stale.subscription.unsubscribe();
+      const current = record(signIn.state$);
+      await settle();
+
+      signIn.enterCheckCode('42');
+      await settle();
+
+      expect(current.states.at(-1)).toEqual({ kind: 'done' });
+      expect(
+        engine.calls.filter((call) => call.startsWith('answerQrSignIn')),
+      ).toHaveLength(1);
+    });
+  });
+
+  describe('the session the engine hands over', () => {
+    it('is adopted and not signed out once the account is ready', async () => {
+      const { service, sessionEngine } = setup();
+      const run = showCode(service);
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'done' });
+      expect(sessionEngine.logoutSession).not.toHaveBeenCalled();
+    });
+
+    it('is refused as other-server and signed out once when it is on another homeserver', async () => {
+      const { service, engine, auth, storage, sessionEngine } = setup();
+      engine.qrPeer.homeserverUrl = 'https://other.example';
+      const run = showCode(service);
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({
+        kind: 'failed',
+        reason: 'other-server',
+      });
+      expect(storage.record).not.toHaveBeenCalled();
+      expect(auth.establishDeviceGrant).not.toHaveBeenCalled();
+      expect(sessionEngine.logoutSession).toHaveBeenCalledOnce();
+      expect(sessionEngine.logoutSession).toHaveBeenCalledWith(
+        signedOut('https://other.example'),
+      );
+    });
+
+    it('leaves an account this device already stores as it was, and signs the session out once', async () => {
+      const { service, storage, auth, sessionEngine } = setup();
+      storage.record.mockReturnValue(
+        of({ baseUrl: 'https://hs', userId: NEW_ACCOUNT, deviceId: 'OLD' }),
+      );
+      const run = showCode(service);
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({
+        kind: 'failed',
+        reason: 'already-signed-in',
+      });
+      expect(storage.record).toHaveBeenCalledWith(NEW_ACCOUNT);
+      expect(auth.establishDeviceGrant).not.toHaveBeenCalled();
+      expect(sessionEngine.logoutSession).toHaveBeenCalledOnce();
+      expect(sessionEngine.logoutSession).toHaveBeenCalledWith(signedOut());
+    });
+
+    it.each([
+      [
+        'a failure reading the stored record',
+        () => throwError(() => new Error('x')),
+      ],
+      ['a stored-record check that answers nothing', () => EMPTY],
+    ])('signs the session out once on %s', async (_name, record) => {
+      const { service, storage, auth, sessionEngine } = setup();
+      storage.record.mockReturnValue(record());
+      const run = showCode(service);
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+      expect(auth.establishDeviceGrant).not.toHaveBeenCalled();
+      expect(sessionEngine.logoutSession).toHaveBeenCalledOnce();
+    });
+
+    it('signs the session out once when the sign-in is left before it is handed to establishing', async () => {
+      const { service, storage, auth, sessionEngine } = setup();
+      storage.record.mockReturnValue(new Observable(() => undefined));
+      const run = showCode(service);
+      await settle();
+      expect(run.kinds().at(-1)).toBe('signing-in');
+
+      run.subscription.unsubscribe();
+      await settle();
+
+      expect(auth.establishDeviceGrant).not.toHaveBeenCalled();
+      expect(sessionEngine.logoutSession).toHaveBeenCalledOnce();
+      expect(sessionEngine.logoutSession).toHaveBeenCalledWith(signedOut());
+    });
+
+    describe('once it is handed to establishing', () => {
+      it.each([
+        ['other-server', 'other-server'],
+        ['unconfirmed', 'other-server'],
+        ['malformed', 'unknown'],
+      ] as const)(
+        'signs the session out once when the account check refuses it (%s), before anything is stored',
+        async (reason, shown) => {
+          const { service, auth, sessionEngine } = setup();
+          auth.establishDeviceGrant.mockReturnValue(
+            throwError(() => new UnacceptableAccountError(reason, NEW_ACCOUNT)),
+          );
+          const run = showCode(service);
+          await settle();
+
+          expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: shown });
+          // The engine drops what it holds for this user and device only on logoutSession.
+          expect(sessionEngine.logoutSession).toHaveBeenCalledOnce();
+          expect(sessionEngine.logoutSession).toHaveBeenCalledWith(signedOut());
+        },
+      );
+
+      it.each([
+        { kind: 'failed', failure: 'unprotected-storage-declined' },
+        {
+          kind: 'failed',
+          failure: 'homeserver-mismatch',
+          storedBaseUrl: 'https://other.example',
+        },
+        { kind: 'failed', failure: 'account-already-stored' },
+        { kind: 'transition-in-progress' },
+      ])(
+        'signs the session out once when establishing refuses it before anything is stored ($kind $failure)',
+        async (outcome) => {
+          const { service, auth, sessionEngine } = setup();
+          auth.establishDeviceGrant.mockReturnValue(
+            of({ ...outcome, accountId: NEW_ACCOUNT, placement: 'background' }),
+          );
+          const run = showCode(service);
+          await settle();
+
+          expect(run.states.at(-1)).toEqual({
+            kind: 'failed',
+            reason: 'unknown',
+          });
+          expect(sessionEngine.logoutSession).toHaveBeenCalledOnce();
+          expect(sessionEngine.logoutSession).toHaveBeenCalledWith(signedOut());
+        },
+      );
+
+      it('signs nothing out when the sign-in is left while establishing runs', async () => {
+        const { service, auth, sessionEngine } = setup();
+        const left = vi.fn();
+        auth.establishDeviceGrant.mockReturnValue(new Observable(() => left));
+        const run = showCode(service);
+        await settle();
+        expect(run.kinds().at(-1)).toBe('signing-in');
+
+        run.subscription.unsubscribe();
+        await settle();
+
+        expect(left).toHaveBeenCalled();
+        expect(sessionEngine.logoutSession).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        [
+          'an account that does not start',
+          () =>
+            of({
+              kind: 'failed',
+              failure: 'crypto-failure',
+              accountId: NEW_ACCOUNT,
+              placement: 'active',
+            }),
+        ],
+        ['an error', () => throwError(() => new Error('boom'))],
+        ['nothing', () => EMPTY],
+      ])(
+        'fails unknown and signs nothing out when establishing returns %s',
+        async (_name, outcome) => {
+          const { service, auth, sessionEngine } = setup();
+          auth.establishDeviceGrant.mockReturnValue(outcome());
+          const run = showCode(service);
+          await settle();
+
+          expect(run.states.at(-1)).toEqual({
+            kind: 'failed',
+            reason: 'unknown',
+          });
+          expect(sessionEngine.logoutSession).not.toHaveBeenCalled();
+        },
+      );
+    });
+
+    it.each([
+      ['a wrong code', null, '24'],
+      ['an engine failure after the tokens', 'signing-in', '42'],
+    ])(
+      'signs nothing out on %s, before any session is handed over',
+      async (_name, stopAfter, code) => {
+        const { service, engine, sessionEngine } = setup();
+        if (stopAfter) engine.qrStop = { after: stopAfter, reason: 'network' };
+        const run = showCode(service, code);
+        await settle();
+
+        expect(run.kinds().at(-1)).toBe('failed');
+        expect(sessionEngine.logoutSession).not.toHaveBeenCalled();
+      },
     );
-    // The existing device sends secrets only once the new device exists on the server.
-    expect(order).toEqual(['completeDeviceGrant']);
-    expect(
-      completion.completeDeviceGrant.mock.invocationCallOrder[0],
-    ).toBeLessThan(flow.shareSecrets.mock.invocationCallOrder[0]);
-    expect(flow.cancel).not.toHaveBeenCalled();
-    expect(flow.close).toHaveBeenCalled();
-    vi.restoreAllMocks();
+  });
+
+  it('passes on how the engine ended the sign-in', async () => {
+    const { service, engine } = setup();
+    engine.qrStop = { after: 'showing-code', reason: 'expired' };
+    const run = showCode(service);
+    await settle();
+
+    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'expired' });
+    expect(run.completed()).toBe(true);
+  });
+
+  it('fails without showing a code on a server with no OAuth metadata', async () => {
+    const { service, engine } = setup();
+    engine.metadata = null;
+    const run = showCode(service);
+    await settle();
+
+    expect(run.states).toEqual([
+      { kind: 'creating' },
+      { kind: 'failed', reason: 'unknown' },
+    ]);
+    expect(engine.calls).not.toContain('signInWithQr:client-id');
+  });
+
+  it.each([
+    ['verifying the device endpoints', 'deviceGrantMetadata'],
+    ['registering the client', 'deviceGrantClientId'],
+    ['pinning the endpoints', 'deviceGrantBinding'],
+  ] as const)(
+    'fails at once, showing no code, when %s returns nothing',
+    async (_name, step) => {
+      const { service, oidc, engine } = setup();
+      oidc[step].mockReturnValue(EMPTY as never);
+      const run = showCode(service);
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+      expect(run.completed()).toBe(true);
+      expect(engine.calls).not.toContain('signInWithQr:client-id');
+    },
+  );
+
+  it('is cold', async () => {
+    const { service, engine } = setup();
+    service.signInByShowingCode('https://hs', 'hs');
+    await settle();
+    expect(engine.calls).toEqual([]);
+  });
+
+  it('cancels the engine flow when unsubscribed', async () => {
+    const { service, engine } = setup();
+    engine.qrStop = { after: 'showing-code' };
+    const run = showCode(service);
+    await settle();
+
+    run.subscription.unsubscribe();
+    expect(engine.calls.at(-1)).toBe('qr-cancelled');
   });
 
   describe('a client id the provider rejects', () => {
-    // What the SDK throws when the device endpoint answers with an OAuth error.
-    const rejected = () => new Error('Invalid device authorization response');
-
-    it('forgets the cached id, registers once more and retries the grant on the same flow', async () => {
-      const { service, flows, completion } = setup((flow) =>
-        flow.deviceAuthorizationGrant.mockRejectedValueOnce(rejected()),
-      );
-      completion.deviceGrantClientId
+    it('forgets the cached id, registers once more and starts over with a new code', async () => {
+      const { service, engine, oidc } = setup();
+      engine.qrPeer.refusedClients.add('stale-id');
+      oidc.deviceGrantClientId
         .mockReturnValueOnce(of('stale-id'))
         .mockReturnValueOnce(of('fresh-id'));
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
+      const run = showCode(service);
       await settle();
 
-      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
-      expect(completion.forgetDeviceGrantClientId).toHaveBeenCalledWith(
-        metadata,
+      expect(run.states.at(-1)).toEqual({ kind: 'done' });
+      expect(oidc.forgetDeviceGrantClientId).toHaveBeenCalledWith(
+        AUTH_METADATA,
         'https://hs',
       );
-      const grants = flows[0].deviceAuthorizationGrant.mock
-        .calls as unknown[][];
       expect(
-        grants.map((call) => (call[0] as { clientId: string }).clientId),
-      ).toEqual(['stale-id', 'fresh-id']);
-      expect(flows[0].completeLoginOnNewDevice).toHaveBeenCalledWith({
-        clientId: 'fresh-id',
-      });
-      expect(flows).toHaveLength(1);
+        engine.calls.filter((call) => call.startsWith('signInWithQr')),
+      ).toEqual(['signInWithQr:stale-id', 'signInWithQr:fresh-id']);
+      expect(run.kinds().filter((kind) => kind === 'showing-code')).toEqual([
+        'showing-code',
+        'showing-code',
+      ]);
+      expect(oidc.deviceGrantBinding).toHaveBeenCalledWith(
+        AUTH_METADATA,
+        'fresh-id',
+      );
     });
 
     it('ends unsupported when the new id is rejected too', async () => {
-      const { service, flows, completion } = setup((flow) =>
-        flow.failures.set('deviceAuthorizationGrant', rejected()),
-      );
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
+      const { service, engine, oidc } = setup();
+      engine.qrPeer.refusedClients.add('client-id');
+      const run = showCode(service);
       await settle();
 
       expect(run.states.at(-1)).toEqual({
         kind: 'failed',
         reason: 'unsupported',
       });
-      expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledTimes(2);
-      expect(completion.forgetDeviceGrantClientId).toHaveBeenCalledTimes(1);
+      expect(oidc.forgetDeviceGrantClientId).toHaveBeenCalledTimes(1);
+      expect(
+        engine.calls.filter((call) => call.startsWith('signInWithQr')),
+      ).toHaveLength(2);
     });
 
-    it('does not register again, nor report unsupported, when the channel closes', async () => {
-      const { service, flows, completion } = setup((flow) =>
-        flow.failures.set(
-          'deviceAuthorizationGrant',
-          new Error('Channel closed'),
-        ),
-      );
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
-      await settle();
-
-      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
-      expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledTimes(1);
-      expect(completion.forgetDeviceGrantClientId).not.toHaveBeenCalled();
-    });
-
-    it('does not register again when the network fails', async () => {
-      const { service, flows, completion } = setup((flow) =>
-        flow.failures.set(
-          'deviceAuthorizationGrant',
-          new TypeError('Failed to fetch'),
-        ),
-      );
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
+    it('reports a network failure while registering again', async () => {
+      const { service, engine, oidc } = setup();
+      engine.qrPeer.refusedClients.add('client-id');
+      oidc.deviceGrantClientId
+        .mockReturnValueOnce(of('client-id'))
+        .mockReturnValueOnce(
+          throwError(() => new TypeError('Failed to fetch')),
+        );
+      const run = showCode(service);
       await settle();
 
       expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'network' });
-      expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledTimes(1);
-      expect(completion.forgetDeviceGrantClientId).not.toHaveBeenCalled();
-      expect(completion.deviceGrantClientId).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('the device sign-in endpoints', () => {
     const DEVICE_METADATA = {
+      ...AUTH_METADATA,
       issuer: 'https://op.example/',
-      authorization_endpoint: 'https://op.example/authorize',
       token_endpoint: 'https://op.example/token',
       revocation_endpoint: 'https://op.example/revoke',
       device_authorization_endpoint: 'https://op.example/device',
@@ -358,7 +585,7 @@ describe('QrSignInService.signInByShowingCode', () => {
 
     /** Sign in against `served` metadata, checked against the issuer's `document` (null: none). */
     async function signInWith(
-      served: Record<string, unknown>,
+      served: typeof DEVICE_METADATA,
       document: Record<string, unknown> | null,
     ) {
       vi.stubGlobal(
@@ -370,19 +597,16 @@ describe('QrSignInService.signInByShowingCode', () => {
         ),
       );
       const ctx = setup();
-      const opened = ctx.factory.newDevice.getMockImplementation()!;
-      ctx.factory.newDevice.mockImplementation(async (url, onFailure) => ({
-        ...(await opened(url, onFailure)),
-        metadata: served as never,
-      }));
-      ctx.completion.deviceGrantMetadata.mockImplementation((m) =>
-        from(verifiedDeviceGrantMetadata(m)),
+      ctx.engine.metadata = served;
+      const start = vi.spyOn(ctx.engine, 'signInWithQr');
+      ctx.oidc.deviceGrantMetadata.mockImplementation((m) =>
+        from(verifiedDeviceGrantMetadata(m as typeof DEVICE_METADATA)),
       );
-      const run = record(ctx.service.signInByShowingCode('https://hs', 'hs'));
+      const run = showCode(ctx.service);
       await vi.waitFor(() =>
         expect(['done', 'failed']).toContain(run.states.at(-1)?.kind),
       );
-      return { ...ctx, run };
+      return { ...ctx, run, start };
     }
 
     it.each([
@@ -405,15 +629,14 @@ describe('QrSignInService.signInByShowingCode', () => {
         },
       ],
     ])('starts no device sign-in for %s', async (_name, change, document) => {
-      const { run, flows, completion } = await signInWith(
+      const { run, start, auth } = await signInWith(
         { ...DEVICE_METADATA, ...change },
         document,
       );
 
       expect(run.states.at(-1)?.kind).toBe('failed');
-      expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-      expect(flows[0].completeLoginOnNewDevice).not.toHaveBeenCalled();
-      expect(completion.completeDeviceGrant).not.toHaveBeenCalled();
+      expect(start).not.toHaveBeenCalled();
+      expect(auth.establishDeviceGrant).not.toHaveBeenCalled();
     });
 
     it('signs in at the endpoints the issuer confirms', async () => {
@@ -422,763 +645,269 @@ describe('QrSignInService.signInByShowingCode', () => {
         token_endpoint: 'https://login.example/token',
         device_authorization_endpoint: 'https://login.example/device',
       };
-      const { run, flows, completion } = await signInWith(elsewhere, elsewhere);
+      const { run, start, oidc } = await signInWith(elsewhere, elsewhere);
 
-      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
-      expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledWith(
-        expect.objectContaining({ metadata: elsewhere }),
-      );
-      expect(completion.completeDeviceGrant).toHaveBeenCalledWith(
-        tokens,
-        'client-id',
-        elsewhere,
+      expect(run.states.at(-1)).toEqual({ kind: 'done' });
+      expect(start).toHaveBeenCalledWith(
         'https://hs',
+        expect.objectContaining({ grantMetadata: elsewhere }),
+      );
+      expect(oidc.deviceGrantBinding).toHaveBeenCalledWith(
+        elsewhere,
+        'client-id',
       );
     });
-  });
-
-  describe('the server the other device reports', () => {
-    function reporting(serverName: string | undefined) {
-      return setup((flow) =>
-        flow.negotiateProtocols.mockResolvedValue({ serverName } as never),
-      );
-    }
-
-    it.each([
-      ['another server', 'other.example'],
-      ['no server', undefined],
-    ])(
-      'refuses %s before any grant or account sign-in',
-      async (_name, serverName) => {
-        const { service, flows, completion } = reporting(serverName);
-        const run = record(service.signInByShowingCode('https://hs', 'hs'));
-        await settle();
-
-        expect(run.states.at(-1)).toEqual({
-          kind: 'failed',
-          reason: 'other-server',
-        });
-        expect(run.kinds()).not.toContain('confirm-check-code');
-        expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-        expect(flows[0].completeLoginOnNewDevice).not.toHaveBeenCalled();
-        expect(completion.completeDeviceGrant).not.toHaveBeenCalled();
-        expect(flows[0].calls.slice(-2)).toEqual([
-          'cancel:user_cancelled',
-          'close',
-        ]);
-      },
-    );
-
-    it.each(['HS', 'hs.', 'Hs.'])(
-      'accepts %s for the server name hs',
-      async (serverName) => {
-        const { service, discovery } = reporting(serverName);
-        const run = record(service.signInByShowingCode('https://hs', 'hs'));
-        await settle();
-
-        expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
-        expect(discovery.lookUp).not.toHaveBeenCalled();
-      },
-    );
-
-    // The homeserver was entered by URL, which discovery reports as `//host`.
-    it.each([
-      ['an exact host', 'hs.example', 'https://hs.example'],
-      ['a host and the same port', 'localhost:8450', 'https://localhost:8450'],
-      ['a host without a port', 'localhost', 'https://localhost:8448'],
-      ['a host in another case', 'HS.Example.', 'https://hs.example'],
-      ['a host on another port', 'localhost:9999', 'https://localhost:8448'],
-      ['a parent domain', 'example.org', 'https://matrix.example.org'],
-    ])(
-      'accepts %s of the homeserver entered',
-      async (_name, serverName, homeserverUrl) => {
-        const { service, discovery } = reporting(serverName);
-        const entered = `//${new URL(homeserverUrl).host}`;
-        const run = record(service.signInByShowingCode(homeserverUrl, entered));
-        await settle();
-
-        expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
-        expect(discovery.lookUp).not.toHaveBeenCalled();
-      },
-    );
-
-    it.each([
-      ['another host', 'other.example', 'https://hs.example'],
-      ['a subdomain', 'other.hs.example', 'https://hs.example'],
-      ['an unrelated server', 'matrix.org', 'https://other.example'],
-    ])(
-      'refuses %s of the homeserver entered',
-      async (_name, serverName, homeserverUrl) => {
-        const { service, flows } = reporting(serverName);
-        const entered = `//${new URL(homeserverUrl).host}`;
-        const run = record(service.signInByShowingCode(homeserverUrl, entered));
-        await settle();
-
-        expect(run.states.at(-1)).toEqual({
-          kind: 'failed',
-          reason: 'other-server',
-        });
-        expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-      },
-    );
-
-    it('accepts a server name whose subdomain is the homeserver name entered', async () => {
-      const { service, discovery } = reporting('example.org');
-      const run = record(
-        service.signInByShowingCode(
-          'https://matrix.example.org',
-          'matrix.example.org',
-        ),
-      );
-      await settle();
-
-      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
-      expect(discovery.lookUp).not.toHaveBeenCalled();
-    });
-
-    it.each(['example.com', 'example.com:8448'])(
-      'accepts %s when its well-known names the homeserver entered',
-      async (serverName) => {
-        const { service, discovery } = reporting(serverName);
-        discovery.lookUp.mockReturnValue(
-          of({ domain: serverName, baseUrl: 'https://matrix.example.org' }),
-        );
-        const run = record(
-          service.signInByShowingCode(
-            'https://matrix.example.org',
-            '//matrix.example.org',
-          ),
-        );
-        await settle();
-
-        // The user ID form keeps a port, which a bare server name would lose.
-        expect(discovery.lookUp).toHaveBeenCalledWith(`@_:${serverName}`);
-        expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
-      },
-    );
-
-    it('refuses a server whose well-known names another homeserver', async () => {
-      const { service, flows, discovery } = reporting('example.org');
-      discovery.lookUp.mockReturnValue(
-        of({ domain: 'example.org', baseUrl: 'https://matrix.example.org' }),
-      );
-      const run = record(service.signInByShowingCode('https://hs', '//hs'));
-      await settle();
-
-      expect(run.states.at(-1)).toEqual({
-        kind: 'failed',
-        reason: 'other-server',
-      });
-      expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('leaving while signing in', () => {
-    /** A seam call that never answers and records when it is unsubscribed. */
-    function pending() {
-      const left = vi.fn();
-      return {
-        left,
-        source: new Observable<never>(() => left),
-      };
-    }
-
-    it('stops completing the device grant', async () => {
-      const call = pending();
-      const { service, completion } = setup();
-      completion.completeDeviceGrant.mockReturnValue(call.source as never);
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
-      await settle();
-      expect(run.kinds().at(-1)).toBe('signing-in');
-
-      run.subscription.unsubscribe();
-      await settle();
-
-      expect(call.left).toHaveBeenCalled();
-      expect(run.kinds()).not.toContain('done');
-    });
-
-    it('stops importing the secrets', async () => {
-      const call = pending();
-      const { service, completion } = setup();
-      completion.importLinkedSecrets.mockReturnValue(call.source as never);
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
-      await settle();
-      expect(completion.importLinkedSecrets).toHaveBeenCalled();
-
-      run.subscription.unsubscribe();
-      await settle();
-
-      expect(call.left).toHaveBeenCalled();
-      expect(run.kinds()).not.toContain('done');
-    });
-  });
-
-  it('shows the expiry the server sent for the session', async () => {
-    const now = Date.parse('2026-10-19T12:00:00Z');
-    vi.spyOn(Date, 'now').mockReturnValue(now);
-    const { service, factory } = setup((flow) =>
-      flow.hang.add('negotiateProtocols'),
-    );
-    const created = factory.newDevice.getMockImplementation()!;
-    factory.newDevice.mockImplementation(async (url, onFailure) => ({
-      ...(await created(url, onFailure)),
-      expires: new Date(now + 10 * 60_000).toUTCString(),
-    }));
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-
-    expect(run.states.at(-1)).toEqual(
-      expect.objectContaining({
-        kind: 'showing-code',
-        expiresAt: now + 10 * 60_000,
-      }),
-    );
-    vi.restoreAllMocks();
-  });
-
-  it('falls back to a one-minute expiry when the Expires header cannot be read', async () => {
-    vi.spyOn(Date, 'now').mockReturnValue(1_000);
-    const { service, factory } = setup((flow) =>
-      flow.hang.add('negotiateProtocols'),
-    );
-    const created = factory.newDevice.getMockImplementation()!;
-    factory.newDevice.mockImplementation(async (url, onFailure) => ({
-      ...(await created(url, onFailure)),
-      expires: 'not a date',
-    }));
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-
-    expect(run.states.at(-1)).toEqual(
-      expect.objectContaining({ kind: 'showing-code', expiresAt: 61_000 }),
-    );
-    vi.restoreAllMocks();
-  });
-
-  describe('a failure after the account is signed in', () => {
-    it('ends done but unverified when sharing the secrets fails', async () => {
-      const { service, flows } = setup((flow) =>
-        flow.failures.set(
-          'shareSecrets',
-          new RendezvousError('failed', MSC4108FailureReason.UserCancelled),
-        ),
-      );
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
-      await settle();
-
-      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
-      expect(run.kinds()).not.toContain('failed');
-      expect(run.completed()).toBe(true);
-      expect(flows[0].cancel).not.toHaveBeenCalled();
-    });
-
-    it('ends done but unverified when the other device cancels while secrets are shared', async () => {
-      const { service, flows } = setup((flow) => flow.hang.add('shareSecrets'));
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
-      await settle();
-
-      flows[0].failSession(MSC4108FailureReason.UserCancelled);
-      await settle();
-
-      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
-      expect(run.kinds()).not.toContain('failed');
-    });
-
-    it('ends done but unverified when importing the secrets fails', async () => {
-      const { service, completion } = setup();
-      completion.importLinkedSecrets.mockReturnValue(
-        throwError(() => new Error('import failed')),
-      );
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
-      await settle();
-
-      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
-      expect(run.kinds()).not.toContain('failed');
-    });
-
-    it('still fails when the account could not be signed in', async () => {
-      const { service, completion } = setup();
-      completion.completeDeviceGrant.mockReturnValue(
-        throwError(() => new Error('store failed')),
-      );
-      const run = record(service.signInByShowingCode('https://hs', 'hs'));
-      await settle();
-
-      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
-    });
-  });
-
-  it('ends unverified when no secrets arrive', async () => {
-    const { service, completion } = setup((flow) =>
-      flow.shareSecrets.mockResolvedValue({} as never),
-    );
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
-    expect(completion.importLinkedSecrets).not.toHaveBeenCalled();
-  });
-
-  it('is cold', async () => {
-    const { service, factory } = setup();
-    service.signInByShowingCode('https://hs', 'hs');
-    await settle();
-    expect(factory.newDevice).not.toHaveBeenCalled();
-  });
-
-  it.each<[NewDeviceState['kind'], Step]>([
-    ['creating', 'generateCode'],
-    ['showing-code', 'negotiateProtocols'],
-    ['confirm-check-code', 'deviceAuthorizationGrant'],
-    ['waiting-for-approval', 'completeLoginOnNewDevice'],
-    ['signing-in', 'shareSecrets'],
-  ])('unsubscribing at %s cancels and closes', async (kind, hung) => {
-    const { service, flows } = setup((flow) => flow.hang.add(hung));
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(run.states.at(-1)?.kind).toBe(kind);
-
-    run.subscription.unsubscribe();
-    await settle();
-    expect(flows[0].calls.slice(-2)).toEqual([
-      'cancel:user_cancelled',
-      'close',
-    ]);
-  });
-
-  it('cancels a flow that is still being created when unsubscribed', async () => {
-    const { service, factory, flows } = setup();
-    let release!: () => void;
-    const created = factory.newDevice.getMockImplementation()!;
-    factory.newDevice.mockImplementation(async (url, onFailure) => {
-      await new Promise<void>((resolve) => (release = resolve));
-      return created(url, onFailure);
-    });
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    run.subscription.unsubscribe();
-    release();
-    await settle();
-    expect(flows[0].calls).toEqual(['cancel:user_cancelled', 'close']);
-  });
-
-  it.each(sdkReasons)('maps an SDK rejection with %s', async (reason) => {
-    const { service } = setup((flow) =>
-      flow.failures.set(
-        'negotiateProtocols',
-        new RendezvousError('failed', reason),
-      ),
-    );
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(run.states.at(-1)).toEqual({
-      kind: 'failed',
-      reason: qrSignInFailureOf(reason),
-    });
-    expect(run.completed()).toBe(true);
-  });
-
-  it('reports a network failure', async () => {
-    const { service } = setup((flow) =>
-      flow.failures.set('generateCode', new TypeError('Failed to fetch')),
-    );
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'network' });
-  });
-
-  it('fails expired when the session expires, and a new subscription shows a new code', async () => {
-    const { service, flows, factory } = setup((flow) =>
-      flow.hang.add('negotiateProtocols'),
-    );
-    const first = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(first.states.at(-1)?.kind).toBe('showing-code');
-
-    flows[0].failSession(ClientRendezvousFailureReason.Expired);
-    await settle();
-    expect(first.states.at(-1)).toEqual({ kind: 'failed', reason: 'expired' });
-    expect(first.completed()).toBe(true);
-
-    const second = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(factory.newDevice).toHaveBeenCalledTimes(2);
-    expect(flows[1].generateCode).toHaveBeenCalled();
-    expect(second.states.at(-1)?.kind).toBe('showing-code');
-  });
-
-  it('ends declined when the existing device declines', async () => {
-    // The SDK throws this when it receives the existing device's m.login.failure.
-    const { service } = setup((flow) =>
-      flow.failures.set(
-        'completeLoginOnNewDevice',
-        new RendezvousError('Failed', MSC4108FailureReason.UserCancelled),
-      ),
-    );
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'declined' });
-  });
-
-  it('reports a server without a rendezvous endpoint as unsupported', async () => {
-    const { service, factory } = setup();
-    factory.newDevice.mockRejectedValue(new Error('Invalid rendezvous URI'));
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(run.states.at(-1)).toEqual({
-      kind: 'failed',
-      reason: 'unsupported',
-    });
-  });
-
-  it('fails when the session reports a 404 while opening', async () => {
-    // The SDK's send resolves on a 404 and reports it only through onFailure.
-    const { service, factory, flows } = setup();
-    const created = factory.newDevice.getMockImplementation()!;
-    factory.newDevice.mockImplementation(async (url, onFailure) => {
-      const result = await created(url, onFailure);
-      onFailure(ClientRendezvousFailureReason.Unknown);
-      return result;
-    });
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    expect(run.kinds()).toEqual(['creating', 'failed']);
-    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
-    expect(flows[0].calls).toEqual(['close']);
-  });
-
-  it('reports the first failure only', async () => {
-    const { service, flows } = setup((flow) =>
-      flow.hang.add('negotiateProtocols'),
-    );
-    const run = record(service.signInByShowingCode('https://hs', 'hs'));
-    await settle();
-    flows[0].failSession(ClientRendezvousFailureReason.Expired);
-    flows[0].failSession(ClientRendezvousFailureReason.Unknown);
-    await settle();
-    expect(run.kinds().filter((kind) => kind === 'failed')).toHaveLength(1);
   });
 });
 
-describe('QrSignInService.linkByScanning', () => {
-  const qrBytes = new Uint8Array([9]);
+describe('QrSignInService.linkerForActiveAccount', () => {
+  const APPROVAL = 'https://op.example/link?code=ABCD';
+  const LINKING_RECORD = {
+    userId: LINKING_ACCOUNT,
+    deviceId: 'LINKER',
+    baseUrl: 'https://linker.example',
+  };
+  const confirms = (engine: FakeAuthEngine) =>
+    engine.calls.filter((call) => call.startsWith('confirmQrLink'));
 
-  it('runs connecting → confirm-check-code → approve-in-browser → sharing-secrets → done', async () => {
-    const { service, flows, factory } = setup();
-    const link = service.linkByScanning(existingClient, qrBytes);
+  function linking(code = SIGN_IN_CODE) {
+    const ctx = setup();
+    ctx.engine.qrPeer.verificationUri = APPROVAL;
+    ctx.storage.record.mockReturnValue(of(LINKING_RECORD));
+    const linker = ctx.service.linkerForActiveAccount();
+    if (!linker) throw new Error('no linker');
+    const link = linker.link(code);
+    return { ...ctx, linker, link };
+  }
+
+  it('shows the code, checks the approval link and the identity, and confirms only on Continue', async () => {
+    const { engine, identity, storage, link } = linking();
+    const start = vi.spyOn(engine, 'linkDeviceWithQr');
     const run = record(link.state$);
-    await settle();
-    expect(run.kinds()).toEqual(['connecting', 'confirm-check-code']);
-
-    link.confirmCheckCode(true);
     await settle();
     expect(run.states).toEqual<ExistingDeviceState[]>([
       { kind: 'connecting' },
-      { kind: 'confirm-check-code', code: '42' },
-      {
-        kind: 'approve-in-browser',
-        verificationUri: 'https://auth/link?code=ABCD',
-      },
+      { kind: 'check-code', code: '42' },
+      { kind: 'approve', verificationUri: APPROVAL },
+    ]);
+    expect(storage.record).toHaveBeenCalledWith(LINKING_ACCOUNT);
+    expect(engine.calls).toContain('authMetadata:https://linker.example');
+    expect(identity.holdsPublishedIdentity).toHaveBeenCalledWith(
+      LINKING_ACCOUNT,
+    );
+    expect(confirms(engine)).toEqual([]);
+
+    link.approve();
+    await settle();
+    expect(run.states.slice(3)).toEqual<ExistingDeviceState[]>([
+      { kind: 'approve-in-browser', verificationUri: APPROVAL },
       { kind: 'sharing-secrets' },
       { kind: 'done' },
     ]);
     expect(run.completed()).toBe(true);
-    expect(factory.existingDevice).toHaveBeenCalledWith(
-      existingClient,
-      qrBytes,
-      expect.any(Function),
-    );
-    expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledWith();
-    expect(flows[0].cancel).not.toHaveBeenCalled();
-    // The new device reads the secrets after this, so the session stays for it to delete.
-    expect(flows[0].close).not.toHaveBeenCalled();
-  });
-
-  it('never shares secrets before the check code is confirmed', async () => {
-    const { service, flows } = setup();
-    const link = service.linkByScanning(existingClient, qrBytes);
-    record(link.state$);
-    await settle();
-    await settle();
-    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-
-    link.confirmCheckCode(true);
-    await settle();
-    expect(flows[0].shareSecrets).toHaveBeenCalled();
-  });
-
-  it('cancels as insecure when the check codes differ, and does nothing else', async () => {
-    const { service, flows } = setup();
-    const link = service.linkByScanning(existingClient, qrBytes);
-    const run = record(link.state$);
-    await settle();
-
-    link.confirmCheckCode(false);
-    await settle();
-    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
-    expect(run.completed()).toBe(true);
-    // The decline goes first, so the new device learns why the link ended.
-    expect(flows[0].calls).toEqual([
-      'negotiateProtocols',
-      'decline',
-      'cancel:insecure_channel_detected',
-    ]);
-    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledWith(LINKING_ACCOUNT, btoa('MATRIX-code'));
+    expect(confirms(engine)).toEqual(['confirmQrLink']);
   });
 
   it.each([
     ['another origin', 'https://other.example/link?code=ABCD'],
-    ['a look-alike host', 'https://auth.other.example/link'],
+    ['a look-alike host', 'https://op.example.other.example/link'],
+    ['an http downgrade', 'http://op.example/link'],
     ['an unparseable link', 'not a url'],
   ])(
-    'fails insecure and never shows an approval link on %s',
+    'ends insecure, never confirming or showing the link, on %s',
     async (_name, verificationUri) => {
-      const { service, flows } = setup((flow) =>
-        flow.deviceAuthorizationGrant.mockResolvedValue({
-          verificationUri,
-        } as never),
-      );
-      const link = service.linkByScanning(existingClient, qrBytes);
+      const { engine, identity, link } = linking();
+      engine.qrPeer.verificationUri = verificationUri;
       const run = record(link.state$);
       await settle();
-
-      link.confirmCheckCode(true);
+      link.approve();
       await settle();
 
       expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
-      expect(run.kinds()).not.toContain('approve-in-browser');
+      expect(run.completed()).toBe(true);
       expect(JSON.stringify(run.states)).not.toContain(verificationUri);
-      expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-      expect(flows[0].calls.at(-1)).toBe('cancel:user_cancelled');
+      expect(identity.holdsPublishedIdentity).not.toHaveBeenCalled();
+      expect(confirms(engine)).toEqual([]);
+      // Leaving the engine's flow declines and cancels it on the new device.
+      expect(engine.calls.at(-1)).toBe('qr-cancelled');
     },
   );
 
-  it('accepts an approval link on the device-authorization endpoint origin', async () => {
-    const accountClient = {
-      getAuthMetadata: vi.fn(async () => ({
-        issuer: 'https://id.example/',
-        device_authorization_endpoint: 'https://auth/oauth2/device',
-      })),
-    } as unknown as MatrixClient;
-    const { service } = setup();
-    const link = service.linkByScanning(accountClient, qrBytes);
+  it('accepts an approval link on the device-authorization origin', async () => {
+    const { engine, link } = linking();
+    engine.metadata = {
+      ...AUTH_METADATA,
+      issuer: 'https://id.example/',
+      device_authorization_endpoint: 'https://device.example/oauth2/device',
+    };
+    engine.qrPeer.verificationUri = 'https://device.example/link';
     const run = record(link.state$);
     await settle();
 
-    link.confirmCheckCode(true);
-    await settle();
-
-    expect(run.kinds()).toContain('approve-in-browser');
-    expect(run.states.at(-1)).toEqual({ kind: 'done' });
-  });
-
-  it('ignores a confirmation that arrives before the check code is shown', async () => {
-    const { service, flows } = setup();
-    const link = service.linkByScanning(existingClient, qrBytes);
-    link.confirmCheckCode(true);
-    const run = record(link.state$);
-    await settle();
-    expect(run.states.at(-1)?.kind).toBe('confirm-check-code');
-    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-  });
-
-  it('emits not-sign-in-code for bytes that are not a sign-in code', async () => {
-    const { service, flows } = setup();
-    const run = record(
-      service.linkByScanning(existingClient, new Uint8Array()).state$,
-    );
-    await settle();
-    expect(run.kinds()).toEqual(['connecting', 'not-sign-in-code']);
-    expect(run.completed()).toBe(true);
-    expect(flows).toHaveLength(0);
-  });
-
-  it.each<[ExistingDeviceState['kind'], Step | null, string[]]>([
-    // Not connected yet, so there is no channel to send a decline over.
-    ['connecting', 'negotiateProtocols', ['cancel:user_cancelled']],
-    ['confirm-check-code', null, ['decline', 'cancel:user_cancelled']],
-    // Secrets may be in flight, so the cancel goes first and alone.
-    ['sharing-secrets', 'shareSecrets', ['cancel:user_cancelled']],
-  ])('unsubscribing at %s cancels', async (kind, hung, tail) => {
-    const { service, flows } = setup((flow) => hung && flow.hang.add(hung));
-    const link = service.linkByScanning(existingClient, qrBytes);
-    const run = record(link.state$);
-    await settle();
-    if (hung) link.confirmCheckCode(true);
-    await settle();
-    expect(run.states.at(-1)?.kind).toBe(kind);
-
-    run.subscription.unsubscribe();
-    if (kind === 'sharing-secrets') {
-      expect(flows[0].cancel).toHaveBeenCalledWith('user_cancelled');
-    }
-    await settle();
-    expect(flows[0].calls.slice(-tail.length)).toEqual(tail);
-    expect(flows[0].declineLoginOnExistingDevice).toHaveBeenCalledTimes(
-      tail.includes('decline') ? 1 : 0,
-    );
-  });
-
-  it('cancels at once while secrets are being shared, even if a decline would hang', async () => {
-    const { service, flows } = setup((flow) => {
-      flow.hang.add('shareSecrets');
-      flow.declineLoginOnExistingDevice.mockReturnValue(
-        new Promise<void>(() => undefined),
-      );
+    expect(run.states.at(-1)).toEqual({
+      kind: 'approve',
+      verificationUri: 'https://device.example/link',
     });
-    const link = service.linkByScanning(existingClient, qrBytes);
-    const run = record(link.state$);
-    await settle();
-    link.confirmCheckCode(true);
-    await settle();
-    expect(flows[0].shareSecrets).toHaveBeenCalled();
-
-    run.subscription.unsubscribe();
-    expect(flows[0].cancel).toHaveBeenCalledWith('user_cancelled');
-    expect(flows[0].declineLoginOnExistingDevice).not.toHaveBeenCalled();
   });
 
-  it('cancels a flow that is still being created when unsubscribed', async () => {
-    const { service, factory, flows } = setup();
-    let release!: () => void;
-    const created = factory.existingDevice.getMockImplementation()!;
-    factory.existingDevice.mockImplementation(async (...args) => {
-      await new Promise<void>((resolve) => (release = resolve));
-      return created(...args);
-    });
-    const run = record(service.linkByScanning(existingClient, qrBytes).state$);
+  it('ends insecure when the account server publishes no OAuth metadata', async () => {
+    const { engine, link } = linking();
+    engine.metadata = null;
+    const run = record(link.state$);
     await settle();
-    run.subscription.unsubscribe();
-    release();
-    await settle();
-    expect(flows[0].calls).toEqual(['cancel:user_cancelled']);
+
+    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
+    expect(confirms(engine)).toEqual([]);
   });
 
   it.each([
-    [true, false, 'done'],
-    [false, true, 'failed'],
-  ])(
-    'counts only the first answer (%s, then %s)',
-    async (first, second, end) => {
-      const { service } = setup();
-      const link = service.linkByScanning(existingClient, qrBytes);
-      const run = record(link.state$);
-      await settle();
-      link.confirmCheckCode(first);
-      link.confirmCheckCode(second);
-      await settle();
-      expect(run.states.at(-1)?.kind).toBe(end);
-    },
-  );
-
-  it('ignores a confirmation sent while connecting', async () => {
-    const { service, flows } = setup((flow) =>
-      flow.hang.add('negotiateProtocols'),
-    );
-    const link = service.linkByScanning(existingClient, qrBytes);
+    ['keys that are not the published identity', () => of(false)],
+    ['an identity check that fails', () => throwError(() => new Error('x'))],
+    ['an identity check that answers nothing', () => EMPTY],
+  ])('ends unknown, never confirming, for %s', async (_name, check) => {
+    const { engine, identity, link } = linking();
+    identity.holdsPublishedIdentity.mockImplementation(check);
     const run = record(link.state$);
     await settle();
-    link.confirmCheckCode(true);
-    flows[0].release('negotiateProtocols');
+    link.approve();
     await settle();
-    expect(run.states.at(-1)?.kind).toBe('confirm-check-code');
-    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+
+    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+    expect(run.kinds()).not.toContain('approve');
+    expect(confirms(engine)).toEqual([]);
+    expect(engine.calls.at(-1)).toBe('qr-cancelled');
   });
 
-  it('gives a confirmation only to the current subscription', async () => {
-    const { service, flows } = setup();
-    const link = service.linkByScanning(existingClient, qrBytes);
+  it('ignores Continue before the approve step and while its checks run', async () => {
+    const { engine, identity, link } = linking();
+    const held = new Subject<boolean>();
+    identity.holdsPublishedIdentity.mockReturnValue(held);
+    link.approve();
+    const run = record(link.state$);
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('check-code');
+
+    link.approve();
+    held.next(true);
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('approve');
+    expect(confirms(engine)).toEqual([]);
+
+    link.approve();
+    await settle();
+    expect(confirms(engine)).toEqual(['confirmQrLink']);
+  });
+
+  it('confirms once however often the person continues', async () => {
+    const { engine, link } = linking();
+    const run = record(link.state$);
+    await settle();
+
+    link.approve();
+    link.approve();
+    await settle();
+
+    expect(run.states.at(-1)?.kind).toBe('done');
+    expect(confirms(engine)).toEqual(['confirmQrLink']);
+    expect(
+      run.kinds().filter((kind) => kind === 'approve-in-browser'),
+    ).toHaveLength(1);
+  });
+
+  it('shows the approval page on Continue, before the engine answers the confirm', async () => {
+    const { engine, link } = linking();
+    vi.spyOn(engine, 'confirmQrLink').mockReturnValue(new Subject());
+    const run = record(link.state$);
+    await settle();
+
+    link.approve();
+
+    expect(run.states.at(-1)).toEqual({
+      kind: 'approve-in-browser',
+      verificationUri: APPROVAL,
+    });
+  });
+
+  it('ends unknown and cancels the engine flow when the confirm fails', async () => {
+    const { engine, link } = linking();
+    const run = record(link.state$);
+    await settle();
+
+    engine.failure = {
+      kind: 'unexpected',
+      code: 'qr-flow-gone',
+      diagnostic: { kind: 'unexpected' },
+    };
+    link.approve();
+    await settle();
+
+    expect(run.states.slice(3)).toEqual<ExistingDeviceState[]>([
+      { kind: 'approve-in-browser', verificationUri: APPROVAL },
+      { kind: 'failed', reason: 'unknown' },
+    ]);
+    expect(run.completed()).toBe(true);
+    expect(engine.calls.at(-1)).toBe('qr-cancelled');
+  });
+
+  it('gives Continue only to the current subscription', async () => {
+    const { link } = linking();
     const stale = record(link.state$);
     await settle();
     stale.subscription.unsubscribe();
     const current = record(link.state$);
     await settle();
 
-    link.confirmCheckCode(true);
+    link.approve();
     await settle();
-    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+
     expect(current.states.at(-1)?.kind).toBe('done');
+    expect(stale.kinds()).not.toContain('done');
   });
 
-  it.each(sdkReasons)('maps an SDK rejection with %s', async (reason) => {
-    const { service } = setup((flow) =>
-      flow.failures.set('shareSecrets', new RendezvousError('failed', reason)),
-    );
-    const link = service.linkByScanning(existingClient, qrBytes);
-    const run = record(link.state$);
-    await settle();
-    link.confirmCheckCode(true);
-    await settle();
-    expect(run.states.at(-1)).toEqual({
-      kind: 'failed',
-      reason: qrSignInFailureOf(reason),
-    });
-  });
-  it('leaves the session to the new device when sharing the secrets fails', async () => {
-    const { service, flows } = setup((flow) =>
-      flow.failures.set(
-        'shareSecrets',
-        new RendezvousError(
-          'failed',
-          MSC4108FailureReason.UnexpectedMessageReceived,
-        ),
-      ),
-    );
-    const link = service.linkByScanning(existingClient, qrBytes);
-    const run = record(link.state$);
-    await settle();
-    link.confirmCheckCode(true);
-    await settle();
-    expect(run.states.at(-1)?.kind).toBe('failed');
-    expect(flows[0].close).not.toHaveBeenCalled();
-  });
-
-  it('refuses, before any grant or secret, keys that are not the published identity', async () => {
-    const { service, flows, identity } = setup();
-    identity.holdsPublishedIdentity.mockReturnValue(of(false));
-    const link = service.linkByScanning(existingClient, qrBytes);
+  it('emits not-sign-in-code for bytes that are not a sign-in code', async () => {
+    const { link } = linking(new Uint8Array());
     const run = record(link.state$);
     await settle();
 
-    link.confirmCheckCode(true);
-    await settle();
+    expect(run.kinds()).toEqual(['connecting', 'not-sign-in-code']);
+    expect(run.completed()).toBe(true);
+  });
 
-    expect(identity.holdsPublishedIdentity).toHaveBeenCalledWith(
-      existingClient,
-    );
-    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
-    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
-    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-    // The new device is told the link ended.
-    expect(flows[0].calls.slice(-2)).toEqual([
-      'decline',
-      'cancel:user_cancelled',
-    ]);
+  it('cancels the engine flow when unsubscribed at the approve step', async () => {
+    const { engine, link } = linking();
+    const run = record(link.state$);
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('approve');
+
+    run.subscription.unsubscribe();
+
+    expect(engine.calls.at(-1)).toBe('qr-cancelled');
+    expect(confirms(engine)).toEqual([]);
   });
 
   it('links as the account that was active when the linker was made', async () => {
-    const { service, factory, activeUserId, clients } = setup();
-    const linker = service.linkerForActiveAccount();
-    expect(linker?.accountId).toBe('@me:hs');
+    const { engine, activeAccountId, linker } = linking();
+    const start = vi.spyOn(engine, 'linkDeviceWithQr');
+    expect(linker.accountId).toBe(LINKING_ACCOUNT);
 
-    clients.set('@other:hs', { id: 'other' } as unknown as MatrixClient);
-    activeUserId.set('@other:hs');
-    record(linker!.link(qrBytes).state$);
+    activeAccountId.set('@other:example.org');
+    record(linker.link(SIGN_IN_CODE).state$);
     await settle();
 
-    expect(factory.existingDevice).toHaveBeenCalledWith(
-      existingClient,
-      qrBytes,
-      expect.any(Function),
-    );
+    expect(start).toHaveBeenCalledWith(LINKING_ACCOUNT, expect.any(String));
   });
 
-  it('has no linker without a live active account', () => {
-    const { service, activeUserId } = setup();
-    activeUserId.set(null);
+  it('has no linker without an active account', () => {
+    const { service, activeAccountId } = setup();
+    activeAccountId.set(null);
+
+    expect(service.linkerForActiveAccount()).toBeNull();
+  });
+
+  it('has no linker when the active account is not live', () => {
+    const { service, activeAccountId } = setup();
+    activeAccountId.set('@gone:example.org');
 
     expect(service.linkerForActiveAccount()).toBeNull();
   });

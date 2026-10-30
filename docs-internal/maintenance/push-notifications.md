@@ -17,25 +17,43 @@ APNs delivery, and a local alert does not require mobile-push infrastructure.
 
 ## Change Matrix push rules
 
-Room modes map to Matrix rules in [`RoomNotificationsService`](../../libs/data-access/notifications/src/lib/room-notifications.service.ts).
-`all` has no enabled room-specific mute rule; `mentions` leaves highlight rules
-available; `mute` uses an override rule so it wins before highlights. Existing
-standard rules are disabled rather than deleted, and legacy action shapes remain
-readable for interoperability.
+Room modes map to Matrix rules in [`RoomNotificationsService`](../../libs/data-access/notifications/src/lib/room-notifications.service.ts)
+through the notification engine, with matrix-rust-sdk `set_room_notification_mode`
+semantics. Each level writes one rule keyed by the room and deletes every other rule
+of the account's that is keyed by or matches the room, custom rules from other
+clients included, and enables a disabled rule it overwrites:
 
-A rule write is a compensating transaction. It refreshes the server rules before
-snapshotting affected rules, serializes writes that replace the shared rules
-cache, verifies the requested postcondition, and restores exact prior bodies and
-enabled states after a partial failure. Restoration does not overwrite a newer
-remote edit; an unconfirmed restoration remains visible as an error. A merged
-room row applies the operation to its contributing accounts and reports a mixed
-result when their modes differ.
+- `mentions` writes a room rule without actions, which leaves highlight rules
+  available.
+- `mute` writes an override rule without actions for the room, so it wins before
+  highlights.
+- `all` writes a room rule with `notify` and `sound: default` (Rust `AllMessages`),
+  also on a room that had no rule: choosing All messages on such a room, clicking the
+  already-checked All messages item, or unmuting through Mute → All messages all write
+  it. From then on that room notifies, with a sound, for every message whatever the
+  account-level toggles say, and the sound tweak raises the push priority of its
+  unencrypted events (see `notification-sound.service.ts`).
+
+Reading follows Rust `get_user_defined_room_notification_mode`, counting enabled
+rules only. Any enabled override without `notify` that has a `room_id` condition for
+the room reads as `mute`, whatever its id or other conditions (for example another
+client's room-and-sender rule), and choosing any level deletes it. An enabled room
+rule without `notify` reads as `mentions`; a notifying room rule, or no rule, reads
+as `all`. Legacy no-notify action shapes remain readable.
+
+Writes for one account are serialized: each re-reads the server rules after the
+previous write and its re-read, so back-to-back choices end in the last one alone. A
+write writes the mode's rule before deleting the others, so a failed first request
+changes nothing. There is no rollback: after a later failure the menu shows what the
+server holds. A merged room row writes each contributing account on its own and
+reports a mixed result when their modes differ.
 
 Account toggles map to predefined rule aliases, because homeservers can expose
-both legacy and current intentional-mention rules. Keyword rules address their
-rule ID, preserve server-defined rules, and reject `*` and `?`: those characters
-would create a cross-client wildcard notification rule rather than a literal
-keyword.
+both legacy and current intentional-mention rules. Keywords are keyed by the
+word, as in matrix-rust-sdk: each plays the default sound and highlights, and
+removing one deletes every rule for the word. They preserve server-defined rules
+and reject `*` and `?`: those characters would create a cross-client wildcard
+notification rule rather than a literal keyword.
 
 ## Deliver and activate local notifications
 
@@ -69,18 +87,19 @@ parameter, or shell store.
 
 `ReactionNotificationSettingsService` stores the opt-in as
 `dev.trinityproject.trinity.reaction_notifications` account data (`{ enabled: boolean }`, default `false`).
-Accounts that still hold the retired `eu.qwky.trinity.reaction_notifications` event are read from it, and `NotificationService` copies it to the new name once for every signed-in account.
+Accounts that still hold the retired `eu.qwky.trinity.reaction_notifications` event are read from it, and the notification engine copies it to the new name once while the warm settings store follows the account (every signed-in account).
 It does not alter server push rules or pusher registration. Each account's notification lifetime
-owns a `ReactionNotificationBatch` for live `m.reaction` annotation events. The original message
-must belong to that account; own reactions, ignored senders, redactions, history and backfill are
-excluded. The master disable and room mute are checked again before delivery; mentions-only room
+owns a `ReactionNotificationBatch` for the reaction annotations of the engine's `notifications`
+feed. The original message must belong to that account; own reactions, ignored senders,
+redactions, history and backfill are excluded. The master disable and room mute are checked again before delivery; mentions-only room
 mode still permits opted-in reaction alerts. Existing sound and visibility policy applies.
 
 Batches are keyed by room and original message within the owning account. A two-second quiet
 window has a ten-second maximum burst duration. Each batch counts distinct people and reaction
 keys, with at most 100 pending batches, 100 reactions per batch and 500 deduplicated event IDs.
-Missing targets are fetched through the exact owning client and decrypted before previewing;
-lookup has a ten-second deadline and unavailable targets are suppressed. Detaching an account or
+The engine's `reactionTarget` checks the target once per batch, fetching a missing one through
+the owning account's client and decrypting it before previewing, and drops reactions redacted
+since; the lookup has a ten-second deadline and unavailable targets are suppressed. Detaching an account or
 presentation owner releases timers and subscriptions so late lookup results cannot present.
 
 The presentation tag distinguishes reactions from messages and includes the original target.
@@ -217,11 +236,11 @@ store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `remov
 `clear`, `clearRoom`, `setNotificationText`, `clearDelivered`). Per signed-in account it holds
 the homeserver URL, the access token (rewritten when the SDK refreshes it), the token's expiry when the account signed in through
 OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes;
-`MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
+`SessionEngine.accessToken` hands it over only with the token it belongs to) and
 the notification-sound choice, plus App lock's effective Notification text (`setNotificationText`;
 iOS app-group `push-handoff/settings.json`, Android `settings:notification-text`; missing reads as
 Show and unreadable as Always hide), room display names, DM flags and whether each room counts
-as encrypted (`RoomEncryptionFlags`; unknown until the crypto store answers, which counts as
+as encrypted (`NotificationEngine.pushRooms`; unknown until the crypto store answers, which counts as
 encrypted) written in one batch per sync or rename. It never holds refresh tokens, crypto keys or message history. An account's
 entry is removed as the first step of its sign-out, together with that account's delivered
 pushes, and the store is emptied, with
@@ -240,7 +259,7 @@ Android Keystore key and stored in the private preferences file `trinity_push_ha
 **Refresh before the background.** Each time the app goes to the background,
 `NotificationSessionService` asks `PushHandoffService.refreshBeforeBackground` to refresh
 every bound account whose token has an expiry and that holds a refresh token
-(`MatrixClientService.canRefreshAccessToken`), unless that token rotated within the last
+(`SessionAccessToken.refreshable`), unless that token rotated within the last
 minute, so the copy in the store lives one full lifetime from then. The refresh runs through
 the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
 `patches/matrix-js-sdk@43.0.0.patch`). It therefore joins a refresh already in flight,

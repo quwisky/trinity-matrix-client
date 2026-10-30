@@ -1,7 +1,16 @@
 import { TestBed } from '@angular/core/testing';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { ErrorHandler, signal } from '@angular/core';
-import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  NEVER,
+  Subject,
+  finalize,
+  firstValueFrom,
+  of,
+  tap,
+  throwError,
+} from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DraftStoreService,
   PrivacySettingsService,
@@ -36,26 +45,36 @@ import { TimelineService } from './timeline.service';
 import { ThreadsService as RealThreadsService } from './threads.service';
 import { ConversationPinsController as RealPins } from './conversation-pins.controller';
 import { ConversationSearchController } from './conversation-search.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MessageView } from './message-presentation';
 import type { ThreadsService } from './threads.service';
 import type { ConversationPinsController } from './conversation-pins.controller';
-import {
-  Direction,
-  MatrixEvent,
-  Room,
-  createClient,
-  type MatrixClient,
-} from 'matrix-js-sdk';
-import { TRIM_KEEP, noteSyncPosition } from './live-timeline-trim';
+import type { TrimGuard } from './js-sdk/live-timeline-trim';
+import type { RetentionHint } from './timeline-engine';
+import { liveSession } from './timeline.spec-harness';
+import { FakeTimelineEngine } from '../contract/fake-timeline-engine';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
+
+vi.mock('@angular/core/rxjs-interop', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@angular/core/rxjs-interop')>();
+  return { ...actual, toObservable: vi.fn(actual.toObservable) };
+});
 
 const ALICE = '@alice:example.org';
 const BOB = '@bob:example.org';
 
+// A real Conversation's timeline follows the session through its store.
+beforeEach(() => {
+  TestBed.configureTestingModule({
+    providers: liveSession([ALICE]).providers,
+  });
+});
+
 interface TestConversationTimelineController extends ConversationTimelineController {
   readonly visible: ReturnType<typeof signal<boolean>>;
+  readonly liveTrimGuard: ReturnType<typeof signal<TrimGuard | null>>;
   readonly released: ReturnType<typeof signal<boolean>>;
-  /** Whether the SDK history was released, and if so whether after the listeners were. */
+  /** Whether a null hint released the room, and if so whether after its listeners were. */
   readonly history: ReturnType<
     typeof signal<'kept' | 'released' | 'released-while-attached'>
   >;
@@ -81,8 +100,8 @@ function timeline(
     jumpToDate: () => of({ kind: 'no-event' }),
     loadEvent: () => of(true),
     setTyping: vi.fn(),
-    rawEvent: () => null,
-    reactionDetails: () => [],
+    eventSource: () => of(null),
+    reactionDetails: () => of([]),
     loadState: signal<TimelineLoadState>({ kind: 'ready' }).asReadonly(),
     retryLoad: vi.fn(),
     setLiveView: vi.fn(),
@@ -101,7 +120,7 @@ function setup(
     | { readonly kind: 'queued' }
   >();
   const sender: ConversationTextSender = senderOverride ?? {
-    send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
+    send: vi.fn(() => ({ outcome: sends, cancel: () => of(false) })),
   };
   const mediaEvents = new Subject<MediaTransferEvent>();
   const keepPhotoMetadata = signal(false);
@@ -169,11 +188,7 @@ function setup(
           }
         },
         release: () => released.set(true),
-        releaseHistory: vi.fn(() =>
-          history.set(released() ? 'released' : 'released-while-attached'),
-        ),
-        trimWhileHidden: vi.fn(),
-        refill: vi.fn(() => of(undefined)),
+        liveTrimGuard: signal<TrimGuard | null>(null),
         resources: () => ({ listenerCount: 11, retainedBytes: 64 }),
         visible,
         released,
@@ -185,10 +200,24 @@ function setup(
       return controller;
     }),
   };
+  const engine = {
+    setRetention: vi.fn(
+      (_accountId: string, roomId: string, hint: RetentionHint | null) => {
+        const released = controllers.get(roomId)?.at(-1);
+        if (!hint && released) {
+          released.history.set(
+            released.released() ? 'released' : 'released-while-attached',
+          );
+        }
+        return of(null);
+      },
+    ),
+  };
   const errors = { handleError: vi.fn() };
   TestBed.configureTestingModule({
     providers: [
       ConversationRuntime,
+      { provide: TIMELINE_ENGINE, useValue: engine },
       { provide: ErrorHandler, useValue: errors },
       { provide: CONVERSATION_TIMELINE_FACTORY, useValue: factory },
       { provide: CONVERSATION_TEXT_SENDER, useValue: sender },
@@ -215,6 +244,7 @@ function setup(
     runtime: TestBed.inject(ConversationRuntime),
     drafts: TestBed.inject(DraftStoreService),
     factory,
+    engine,
     controller,
     sender,
     sends,
@@ -333,182 +363,39 @@ describe('ConversationRuntime', () => {
     expect(runtime.timeline.loadState()).toEqual({ kind: 'ready' });
   });
 
-  describe("releasing a retired room's history", () => {
-    async function realFactory(liveClient: () => MatrixClient | null) {
-      const client = createClient({
-        baseUrl: 'https://hs',
-        userId: ALICE,
-        fetchFn: () => Promise.reject(new Error('no network in unit tests')),
-      });
-      const room = new Room('!a:example.org', client, ALICE);
-      client.store.storeRoom(room);
-      const message = (n: number) =>
-        new MatrixEvent({
-          event_id: `$${n}`,
-          room_id: room.roomId,
-          type: 'm.room.message',
-          sender: BOB,
-          origin_server_ts: n,
-          content: { msgtype: 'm.text', body: `${n}` },
-        });
-      room.getLiveTimeline().setPaginationToken('b1', Direction.Backward);
-      await room.addLiveEvents(
-        Array.from({ length: 100 }, (_, i) => message(i + 1)),
-        { addToState: false },
-      );
-      noteSyncPosition(room, 'b101');
-      await room.addLiveEvents(
-        Array.from({ length: 100 }, (_, i) => message(i + 101)),
-        { addToState: false },
-      );
-      vi.spyOn(TimelineService.prototype, 'open').mockImplementation(
-        () => undefined,
-      );
-      vi.spyOn(
-        ConversationTimelineReadiness.prototype,
-        'start',
-      ).mockImplementation(() => undefined);
-      vi.spyOn(RealThreadsService.prototype, 'attach').mockImplementation(
-        () => undefined,
-      );
-      vi.spyOn(RealPins.prototype, 'attach').mockImplementation(
-        () => undefined,
-      );
-      vi.spyOn(
-        ConversationSearchController.prototype,
-        'attach',
-      ).mockImplementation(() => undefined);
-      TestBed.configureTestingModule({
-        providers: [
-          {
-            provide: MatrixClientService,
-            useValue: {
-              clientFor: (accountId: string) =>
-                accountId === ALICE ? (liveClient() ?? client) : null,
-            },
-          },
-          { provide: MediaPipeline, useValue: {} },
-          { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
-        ],
-      });
-      const controller = TestBed.inject(CONVERSATION_TIMELINE_FACTORY).create({
-        accountId: ALICE,
-        roomId: room.roomId,
-      });
-      const loaded = () => room.getLiveTimeline().getEvents().length;
-      return { client, room, controller, loaded };
-    }
-
-    it('trims the room back to its latest events once the handle is released', async () => {
-      const { controller, loaded } = await realFactory(() => null);
-
-      controller.releaseHistory();
-      expect(loaded()).toBe(200);
-
-      controller.release();
-      controller.releaseHistory();
-
-      expect(loaded()).toBe(100);
-      expect(loaded()).toBeGreaterThanOrEqual(TRIM_KEEP);
+  it('creates a handle for a live account without its client, and refuses any other', () => {
+    vi.spyOn(TimelineService.prototype, 'open').mockImplementation(
+      () => undefined,
+    );
+    vi.spyOn(
+      ConversationTimelineReadiness.prototype,
+      'start',
+    ).mockImplementation(() => undefined);
+    vi.spyOn(RealThreadsService.prototype, 'attach').mockImplementation(
+      () => undefined,
+    );
+    vi.spyOn(RealPins.prototype, 'attach').mockImplementation(() => undefined);
+    vi.spyOn(
+      ConversationSearchController.prototype,
+      'attach',
+    ).mockImplementation(() => undefined);
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: MediaPipeline, useValue: {} },
+        { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
+      ],
     });
+    const factory = TestBed.inject(CONVERSATION_TIMELINE_FACTORY);
 
-    it('trims a focused room while hidden only as far as its live view allows', async () => {
-      const { room, controller, loaded } = await realFactory(() => null);
-      await room.addLiveEvents(
-        Array.from(
-          { length: 10 },
-          (_, i) =>
-            new MatrixEvent({
-              event_id: `$${i + 201}`,
-              room_id: room.roomId,
-              type: 'm.room.message',
-              sender: BOB,
-              origin_server_ts: i + 201,
-              content: { msgtype: 'm.text', body: `${i + 201}` },
-            }),
-        ),
-        { addToState: false },
-      );
-      const guard = vi.spyOn(TimelineService.prototype, 'liveTrimGuard');
-
-      // Scrolled back: no guard, nothing trimmed.
-      guard.mockReturnValue(null);
-      controller.trimWhileHidden({});
-      expect(loaded()).toBe(210);
-
-      // A reply target before the only cut keeps everything.
-      guard.mockReturnValue({ marked: [], kept: ['$180'] });
-      controller.trimWhileHidden({ kept: ['$50'] });
-      expect(loaded()).toBe(210);
-
-      controller.trimWhileHidden({});
-      expect(loaded()).toBe(110);
-      expect(room.findEventById('$180')).toBeDefined();
+    const controller = factory.create({
+      accountId: ALICE,
+      roomId: '!a:example.org',
     });
-
-    it('keeps the messages the rows on screen quote', async () => {
-      const { client, room, controller, loaded } = await realFactory(
-        () => null,
-      );
-      const event = (n: number) =>
-        new MatrixEvent({
-          event_id: `$${n}`,
-          room_id: room.roomId,
-          type: 'm.room.message',
-          sender: BOB,
-          origin_server_ts: n,
-          content: {
-            msgtype: 'm.text',
-            body: `${n}`,
-            ...(n === 325
-              ? { 'm.relates_to': { 'm.in_reply_to': { event_id: '$150' } } }
-              : {}),
-          },
-        });
-      const receive = (from: number, to: number) =>
-        room.addLiveEvents(
-          Array.from({ length: to - from + 1 }, (_, i) => event(from + i)),
-          { addToState: false },
-        );
-      await receive(201, 260);
-      noteSyncPosition(room, 'b261');
-      await receive(261, 330);
-      vi.mocked(TimelineService.prototype.open).mockRestore();
-      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-      const timeline = controller.timeline as unknown as TimelineService;
-      timeline.open(room.roomId, client);
-      timeline.setLiveView('$320');
-
-      controller.trimWhileHidden({});
-
-      // Without the quote, the cut after $260 would take $150 and empty $325's preview.
-      expect(room.findEventById('$150')).toBeDefined();
-      expect(loaded()).toBe(230);
-    });
-
-    it('leaves a focused room at or under the high-water mark alone', async () => {
-      const { controller, loaded } = await realFactory(() => null);
-      vi.spyOn(TimelineService.prototype, 'liveTrimGuard').mockReturnValue({
-        marked: [],
-        kept: [],
-      });
-
-      controller.trimWhileHidden({});
-
-      expect(loaded()).toBe(200);
-    });
-
-    it("leaves the history of a client that is no longer the Account's live one", async () => {
-      const replacement = createClient({ baseUrl: 'https://hs' });
-      let live: MatrixClient | null = null;
-      const { controller, loaded } = await realFactory(() => live);
-      live = replacement;
-
-      controller.release();
-      controller.releaseHistory();
-
-      expect(loaded()).toBe(200);
-    });
+    expect(controller.liveTrimGuard()).toBeNull();
+    controller.release();
+    expect(() =>
+      factory.create({ accountId: BOB, roomId: '!a:example.org' }),
+    ).toThrow('Conversation account is not live.');
   });
 
   it('shows the timeline before readiness resumes paging', () => {
@@ -541,7 +428,6 @@ describe('ConversationRuntime', () => {
     ).mockImplementation(() => undefined);
     TestBed.configureTestingModule({
       providers: [
-        { provide: MatrixClientService, useValue: { clientFor: () => ({}) } },
         { provide: MediaPipeline, useValue: {} },
         { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
       ],
@@ -560,6 +446,38 @@ describe('ConversationRuntime', () => {
       'timeline:true',
       'readiness:true',
     ]);
+  });
+
+  it("closes the timeline's store when a later part of the handle fails to attach", () => {
+    const fake = new FakeTimelineEngine();
+    let open = 0;
+    const timeline = fake.timeline.bind(fake);
+    fake.timeline = (...args) =>
+      timeline(...args).pipe(
+        tap({ subscribe: () => (open += 1) }),
+        finalize(() => (open -= 1)),
+      );
+    vi.spyOn(
+      ConversationTimelineReadiness.prototype,
+      'start',
+    ).mockImplementation(() => undefined);
+    vi.spyOn(RealThreadsService.prototype, 'attach').mockImplementation(() => {
+      throw new Error('attach failed');
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        ...liveSession([fake.alice]).providers,
+        { provide: TIMELINE_ENGINE, useValue: fake },
+        { provide: MediaPipeline, useValue: { present: () => ({}) } },
+        { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
+      ],
+    });
+    const factory = TestBed.inject(CONVERSATION_TIMELINE_FACTORY);
+
+    expect(() =>
+      factory.create({ accountId: fake.alice, roomId: '!a:example.org' }),
+    ).toThrow('attach failed');
+    expect(open).toBe(0);
   });
 
   it('blurs visibility while retaining a warm conversation', () => {
@@ -629,15 +547,11 @@ describe('ConversationRuntime', () => {
   });
 
   it('retires a handle even when releasing its history fails, and reports the failure', () => {
-    const { runtime, controller, errors } = setup();
+    const { runtime, controller, engine, errors } = setup();
     const a = runtime.focus({ accountId: ALICE, roomId: '!a:example.org' });
     runtime.focus({ accountId: ALICE, roomId: '!b:example.org' });
     const failure = new Error('trim failed');
-    vi.mocked(controller('!a:example.org').releaseHistory).mockImplementation(
-      () => {
-        throw failure;
-      },
-    );
+    engine.setRetention.mockImplementation(() => throwError(() => failure));
 
     runtime.retireRetained();
 
@@ -646,61 +560,152 @@ describe('ConversationRuntime', () => {
     expect(errors.handleError).toHaveBeenCalledWith(failure);
   });
 
-  it('pages a rewound room back in through the handle that holds it, and only that one', async () => {
-    const { runtime, controller } = setup();
+  it('releasing a handle sends a null hint once its timeline is closed', () => {
+    const { runtime, controller, engine } = setup(0);
     runtime.focus({ accountId: ALICE, roomId: '!a:example.org' });
 
-    await firstValueFrom(runtime.refillHeld(ALICE, '!a:example.org', 40), {
-      defaultValue: undefined,
-    });
-    await firstValueFrom(runtime.refillHeld(BOB, '!a:example.org', 40), {
-      defaultValue: undefined,
-    });
+    runtime.focus({ accountId: ALICE, roomId: '!b:example.org' });
 
-    expect(controller('!a:example.org').refill).toHaveBeenCalledExactlyOnceWith(
-      40,
+    expect(engine.setRetention).toHaveBeenCalledExactlyOnceWith(
+      ALICE,
+      '!a:example.org',
+      null,
     );
+    expect(controller('!a:example.org').history()).toBe('released');
   });
 
-  describe('while the window is hidden', () => {
+  describe('retention hints', () => {
     const A = { accountId: ALICE, roomId: '!a:example.org' };
     const B = { accountId: ALICE, roomId: '!b:example.org' };
+    const hints = (
+      engine: ReturnType<typeof setup>['engine'],
+      roomId: string,
+    ) =>
+      engine.setRetention.mock.calls
+        .filter(([, room]) => room === roomId)
+        .map(([, , hint]) => hint);
 
-    it('trims the focused room only while the window is hidden', () => {
-      const { runtime, controller } = setup();
-      runtime.focus(B);
+    it('runRetention creates one windowHidden observer however often it is subscribed', () => {
+      const { runtime, engine } = setup();
       runtime.focus(A);
-      const trim = vi.mocked(controller(A.roomId).trimWhileHidden);
+      const observers = vi.mocked(toObservable).mock.calls.length;
+      const runs = [1, 2, 3].map(() => runtime.runRetention().subscribe());
+      expect(vi.mocked(toObservable).mock.calls).toHaveLength(observers);
+      runs.slice(0, 2).forEach((run) => run.unsubscribe());
+      TestBed.tick();
+      expect(hints(engine, A.roomId)).toHaveLength(1);
 
-      runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).not.toHaveBeenCalled();
-
-      expect(runtime.windowHidden()).toBe(false);
       const hidden = runtime.trimFocusedWhileHidden().subscribe();
-      expect(runtime.windowHidden()).toBe(true);
-      runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).toHaveBeenCalledExactlyOnceWith({ kept: [], marked: [] });
+      TestBed.tick();
 
-      // A retained room, or the same room on another Account, waits for its handle to retire.
-      runtime.trimHeld(ALICE, B.roomId);
-      runtime.trimHeld(BOB, A.roomId);
-      expect(controller(B.roomId).trimWhileHidden).not.toHaveBeenCalled();
-
+      // The two runs that ended still observe nothing; the one left sends the change.
+      expect(hints(engine, A.roomId)).toEqual([
+        expect.objectContaining({ windowHidden: false }),
+        expect.objectContaining({ windowHidden: true }),
+      ]);
       hidden.unsubscribe();
-      expect(runtime.windowHidden()).toBe(false);
-      runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).toHaveBeenCalledOnce();
+      runs[2].unsubscribe();
     });
 
-    it("keeps the event the composer replies to or edits, and the open thread's root below the ceiling", () => {
-      const { runtime, controller } = setup(2, undefined, [message('$target')]);
-      const handle = runtime.focus(A);
-      const trim = vi.mocked(controller(A.roomId).trimWhileHidden);
+    it('sends each held room a hint: the focused one shown, a retained one not', () => {
+      const { runtime, engine } = setup();
+      runtime.focus(B);
+      runtime.focus(A);
+      const run = runtime.runRetention().subscribe();
+      TestBed.tick();
+
+      expect(hints(engine, A.roomId)).toEqual([
+        {
+          shown: true,
+          followingLive: false,
+          windowHidden: false,
+          kept: [],
+          marked: [],
+        },
+      ]);
+      expect(hints(engine, B.roomId)).toEqual([
+        {
+          shown: false,
+          followingLive: false,
+          windowHidden: false,
+          kept: [],
+          marked: [],
+        },
+      ]);
+
+      // Nothing changed: nothing is sent again.
+      TestBed.tick();
+      expect(engine.setRetention).toHaveBeenCalledTimes(2);
+      run.unsubscribe();
+    });
+
+    it('reports a failed hint and keeps sending the others', () => {
+      const { runtime, engine, errors } = setup();
+      const failure = new Error('hint failed');
+      engine.setRetention.mockImplementationOnce(() =>
+        throwError(() => failure),
+      );
+      runtime.focus(B);
+      runtime.focus(A);
+      const completed = vi.fn();
+      const run = runtime
+        .runRetention()
+        .subscribe({ error: completed, complete: completed });
+      TestBed.tick();
+
+      expect(errors.handleError).toHaveBeenCalledWith(failure);
+      expect(engine.setRetention).toHaveBeenCalledTimes(2);
+      expect(completed).not.toHaveBeenCalled();
+      run.unsubscribe();
+    });
+
+    it('follows live only while the view allows a trim, keeping what the view shows', () => {
+      const { runtime, engine, controller } = setup();
+      runtime.focus(A);
+      const run = runtime.runRetention().subscribe();
       const hidden = runtime.trimFocusedWhileHidden().subscribe();
+      TestBed.tick();
+      expect(hints(engine, A.roomId).at(-1)).toMatchObject({
+        windowHidden: true,
+        followingLive: false,
+      });
+
+      controller(A.roomId).liveTrimGuard.set({
+        kept: ['$shown'],
+        marked: ['$anchor', '$quoted'],
+      });
+      TestBed.tick();
+      expect(hints(engine, A.roomId).at(-1)).toEqual({
+        shown: true,
+        followingLive: true,
+        windowHidden: true,
+        kept: ['$shown'],
+        marked: ['$anchor', '$quoted'],
+      });
+
+      // Scrolled back: never trimmed.
+      controller(A.roomId).liveTrimGuard.set(null);
+      TestBed.tick();
+      expect(hints(engine, A.roomId).at(-1)).toMatchObject({
+        followingLive: false,
+      });
+      hidden.unsubscribe();
+      run.unsubscribe();
+    });
+
+    it("keeps the event the composer replies to or edits, and the open thread's root", () => {
+      const { runtime, engine, controller } = setup(2, undefined, [
+        message('$target'),
+      ]);
+      const handle = runtime.focus(A);
+      const run = runtime.runRetention().subscribe();
 
       handle.messages.beginReply('$target');
-      runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).toHaveBeenLastCalledWith({ kept: ['$target'], marked: [] });
+      TestBed.tick();
+      expect(hints(engine, A.roomId).at(-1)).toMatchObject({
+        kept: ['$target'],
+        marked: [],
+      });
 
       handle.messages.beginEdit('$target', 'changed');
       (
@@ -708,42 +713,30 @@ describe('ConversationRuntime', () => {
           typeof signal<string | null>
         >
       ).set('$root');
-      runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).toHaveBeenLastCalledWith({
+      TestBed.tick();
+      expect(hints(engine, A.roomId).at(-1)).toMatchObject({
         kept: ['$target'],
         marked: ['$root'],
       });
-      hidden.unsubscribe();
+      run.unsubscribe();
     });
 
-    it('leaves a failed trim to the trimmer to report, and keeps the room', () => {
-      const { runtime, controller, errors } = setup();
+    it('sends a new handle for a released room its own hint', () => {
+      const { runtime, engine } = setup(0);
+      const run = runtime.runRetention().subscribe();
       runtime.focus(A);
-      const failure = new Error('trim failed');
-      vi.mocked(controller(A.roomId).trimWhileHidden).mockImplementation(() => {
-        throw failure;
-      });
-      const hidden = runtime.trimFocusedWhileHidden().subscribe();
+      TestBed.tick();
+      runtime.focus(B);
+      runtime.focus(A);
+      TestBed.tick();
 
-      expect(() => runtime.trimHeld(ALICE, A.roomId)).toThrow(failure);
-      expect(errors.handleError).not.toHaveBeenCalled();
-      expect(runtime.focused()?.key).toEqual(A);
-      hidden.unsubscribe();
+      expect(hints(engine, A.roomId)).toEqual([
+        expect.objectContaining({ shown: true }),
+        null,
+        expect.objectContaining({ shown: true }),
+      ]);
+      run.unsubscribe();
     });
-  });
-
-  it('says which rooms hold a live Conversation handle', () => {
-    const { runtime } = setup(1);
-    runtime.focus({ accountId: ALICE, roomId: '!a:example.org' });
-    runtime.focus({ accountId: ALICE, roomId: '!b:example.org' });
-
-    expect(runtime.holds(ALICE, '!a:example.org')).toBe(true);
-    expect(runtime.holds(ALICE, '!b:example.org')).toBe(true);
-    expect(runtime.holds(BOB, '!a:example.org')).toBe(false);
-
-    runtime.focus({ accountId: ALICE, roomId: '!c:example.org' });
-
-    expect(runtime.holds(ALICE, '!a:example.org')).toBe(false);
   });
 
   it('never reactivates an evicted handle when the same key is opened again', () => {
@@ -1128,7 +1121,7 @@ describe('ConversationRuntime', () => {
   });
 
   it('cancels the finite command without losing the draft or leaving send state behind', () => {
-    const cancelled = vi.fn(() => true);
+    const cancelled = vi.fn(() => of(true));
     const sender: ConversationTextSender = {
       send: vi.fn(() => ({ outcome: NEVER, cancel: cancelled })),
     };
@@ -1149,7 +1142,7 @@ describe('ConversationRuntime', () => {
 
   it('does not falsely restore a draft when SDK cancellation is indeterminate', () => {
     const sender: ConversationTextSender = {
-      send: vi.fn(() => ({ outcome: NEVER, cancel: () => false })),
+      send: vi.fn(() => ({ outcome: NEVER, cancel: () => of(false) })),
     };
     const { runtime } = setup(0, sender);
     const original = runtime.focus({
@@ -1258,7 +1251,9 @@ describe('ConversationRuntime', () => {
   });
 
   it('routes a thread cancel to the adapter with the thread root', async () => {
-    const { runtime, messageAdapter } = setup();
+    const { runtime, messageAdapter } = setup(2, undefined, [
+      message('$reply', { status: 'failed' }),
+    ]);
     const conversation = runtime.focus({
       accountId: ALICE,
       roomId: '!room:example.org',
@@ -1272,6 +1267,38 @@ describe('ConversationRuntime', () => {
       key: conversation.key,
       threadRootId: '$root',
       messageId: '$reply',
+    });
+  });
+
+  it('cancels only a thread row that is waiting or failed, leaving the room to its store', async () => {
+    const { runtime, messageAdapter } = setup(2, undefined, [
+      message('$waiting', { status: 'waiting' }),
+      message('$sending', { status: 'sending' }),
+      message('$sent'),
+    ]);
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const thread = conversation.threads.forRoot('$root')!;
+
+    for (const id of ['$sending', '$sent']) {
+      await expect(firstValueFrom(thread.cancel(id))).resolves.toMatchObject({
+        failure: 'event-not-retryable',
+      });
+    }
+    await expect(
+      firstValueFrom(thread.cancel('$missing')),
+    ).resolves.toMatchObject({ failure: 'message-unavailable' });
+    expect(messageAdapter.cancel).not.toHaveBeenCalled();
+
+    // The room's rows may be trimmed from what it presents: its adapter reads the store.
+    await expect(
+      firstValueFrom(conversation.messages.cancel('$trimmed')),
+    ).resolves.toEqual({ kind: 'applied', operation: 'cancel' });
+    expect(messageAdapter.cancel).toHaveBeenCalledWith({
+      key: { accountId: ALICE, roomId: '!room:example.org' },
+      messageId: '$trimmed',
     });
   });
 

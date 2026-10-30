@@ -12,7 +12,7 @@ import {
   take,
   timeout,
 } from 'rxjs';
-import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type CapabilityContext,
@@ -35,7 +35,7 @@ export type TrustLifetimeEvent =
 export class TrustLifetime {
   private readonly injector = inject(Injector);
   private readonly runtime = inject(ProjectionRuntime);
-  private readonly crypto = inject(TrustCryptoPort);
+  private readonly session = inject(SessionStateService);
   private readonly health = inject(TrustService);
   private readonly verification = inject(TrustVerificationService);
   private readonly changes = new Subject<TrustCapabilityHealth>();
@@ -183,7 +183,7 @@ export class TrustLifetime {
       };
       const apply = (): void => {
         if (applying) return;
-        const nextAccount = this.crypto.activeAccountId();
+        const nextAccount = this.session.activeAccountId();
         if (nextAccount === accountId && this.current) return;
         applying = true;
         try {
@@ -221,7 +221,7 @@ export class TrustLifetime {
       };
 
       this.accountCurrent = () =>
-        accountId !== null && accountId === this.crypto.activeAccountId();
+        accountId !== null && accountId === this.session.activeAccountId();
       this.retry = () => {
         if (!this.current || !this.accountCurrent?.()) return;
         const retained = this.current.ownership === 'retained';
@@ -243,7 +243,7 @@ export class TrustLifetime {
       apply();
       const accountChanges = effect(
         () => {
-          this.crypto.activeAccountId();
+          this.session.activeAccountId();
           untracked(apply);
         },
         { injector: this.injector },

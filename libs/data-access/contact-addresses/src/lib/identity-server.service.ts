@@ -1,21 +1,36 @@
 import { Injectable, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
-  MatrixError,
+  type EngineFailure,
+  EngineRequestError,
+  type EngineResult,
+  type MatrixRequestFailureMetadata,
   describeMatrixRequestFailure,
+  unwrapEngineResult,
 } from '@trinity/util/matrix';
-import { SERVICE_TYPES } from 'matrix-js-sdk';
 import {
   Observable,
   catchError,
   concatMap,
   defer,
+  firstValueFrom,
+  forkJoin,
   from,
   last,
+  map,
   of,
   switchMap,
   takeWhile,
 } from 'rxjs';
+import { CONTACT_ADDRESSES_ENGINE } from './contact-addresses-engine.token';
+import {
+  agreeToTerms,
+  getTerms,
+  hashedLookup,
+  newClientSecret,
+  registerWithIdentityServer,
+  requestEmailToken,
+} from './identity-server-http';
 import type {
   IdentityPolicy,
   IdentityServerChoice,
@@ -27,11 +42,11 @@ import type {
   TermsCheck,
 } from './identity-server.models';
 
-type Client = NonNullable<ReturnType<MatrixClientService['clientFor']>>;
-
-interface AcceptedTerms {
-  readonly accepted?: readonly string[];
-}
+const NOT_LIVE: EngineFailure = {
+  kind: 'unexpected',
+  code: 'account-not-live',
+  diagnostic: { kind: 'unexpected' },
+};
 
 interface OfferedPolicy {
   readonly policy: IdentityPolicy;
@@ -41,31 +56,33 @@ interface OfferedPolicy {
 /** Which identity server an account uses, and the access it needs to talk to it. */
 @Injectable({ providedIn: 'root' })
 export class IdentityServerService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(CONTACT_ADDRESSES_ENGINE);
+  private readonly session = inject(SessionStateService);
   // Memory only: an identity access token is never persisted or logged.
   private readonly tokens = new Map<string, string>();
-  // The identity server URL is per-client state, so one account's identity calls run in turn.
+  // One account's identity calls run in turn, so calls queued behind a registration reuse its token.
   private readonly queues = new Map<string, Promise<unknown>>();
 
   choice(
     accountId: string,
   ): Observable<IdentityServerChoice | IdentityServerRefused> {
-    return this.withClient(accountId, async (client) => {
-      const stored = await client.getAccountDataFromServer('m.identity_server');
-      if (stored) {
-        return stored.base_url
-          ? ({ kind: 'set', url: stored.base_url, source: 'account' } as const)
-          : ({ kind: 'off' } as const);
-      }
-      const wellKnown =
-        client.getClientWellKnown()?.['m.identity_server']?.base_url;
-      return wellKnown && isHttps(wellKnown)
-        ? ({ kind: 'set', url: wellKnown, source: 'well-known' } as const)
-        : ({ kind: 'none' } as const);
-    });
+    return this.engine.identityServerSetting(accountId).pipe(
+      unwrapEngineResult(),
+      map(({ account, wellKnown }): IdentityServerChoice => {
+        if (account) {
+          return account.baseUrl
+            ? { kind: 'set', url: account.baseUrl, source: 'account' }
+            : { kind: 'off' };
+        }
+        return wellKnown && isHttps(wellKnown)
+          ? { kind: 'set', url: wellKnown, source: 'well-known' }
+          : { kind: 'none' };
+      }),
+      catchError((err: unknown) => of(refusalOf(err))),
+    );
   }
 
-  /** Whether `url` is an https identity server, without touching any client state. */
+  /** Whether `url` is an https identity server, without touching any account. */
   check(
     url: string,
   ): Observable<
@@ -99,7 +116,7 @@ export class IdentityServerService {
     return defer(() => {
       const base = normalizeUrl(url);
       if (!isHttps(base)) return of(refused('not-https'));
-      const client = this.client(accountId);
+      this.requireLive(accountId);
       return from(probe(base)).pipe(
         switchMap((answer) => {
           if (answer !== 'ok') {
@@ -111,9 +128,10 @@ export class IdentityServerService {
               ),
             );
           }
-          return from(
-            client.setAccountData('m.identity_server', { base_url: base }),
-          ).pipe(switchMap(() => of({ kind: 'saved', url: base } as const)));
+          return this.engine.setIdentityServer(accountId, base).pipe(
+            unwrapEngineResult(),
+            map(() => ({ kind: 'saved', url: base }) as const),
+          );
         }),
       );
     }).pipe(catchError((err: unknown) => of(refusalOf(err))));
@@ -122,26 +140,32 @@ export class IdentityServerService {
   turnOff(
     accountId: string,
   ): Observable<{ readonly kind: 'saved' } | IdentityServerRefused> {
-    return this.withClient(accountId, async (client) => {
-      await client.setAccountData('m.identity_server', { base_url: null });
-      return { kind: 'saved' } as const;
-    });
+    return this.engine.setIdentityServer(accountId, null).pipe(
+      unwrapEngineResult(),
+      map(() => ({ kind: 'saved' }) as const),
+      catchError((err: unknown) => of(refusalOf(err))),
+    );
   }
 
   terms(accountId: string, url: string): Observable<TermsCheck> {
     const base = normalizeUrl(url);
-    return this.withClient(accountId, async (client): Promise<TermsCheck> => {
-      const [terms, accepted] = await Promise.all([
-        client.getTerms(SERVICE_TYPES.IS, base),
-        acceptedUrls(client),
+    return defer(() => {
+      this.requireLive(accountId);
+      return forkJoin([
+        getTerms(base),
+        this.engine.acceptedTerms(accountId).pipe(unwrapEngineResult()),
       ]);
-      const missing = offeredPolicies(terms.policies)
-        .filter(({ urls }) => !urls.some((u) => accepted.includes(u)))
-        .map(({ policy }) => policy);
-      return missing.length
-        ? { kind: 'needs-consent', policies: missing }
-        : { kind: 'accepted' };
-    });
+    }).pipe(
+      map(([policies, accepted]): TermsCheck => {
+        const missing = offeredPolicies(policies)
+          .filter(({ urls }) => !urls.some((u) => accepted.includes(u)))
+          .map(({ policy }) => policy);
+        return missing.length
+          ? { kind: 'needs-consent', policies: missing }
+          : { kind: 'accepted' };
+      }),
+      catchError((err: unknown) => of(refusalOf(err))),
+    );
   }
 
   acceptTerms(
@@ -149,20 +173,19 @@ export class IdentityServerService {
     url: string,
     policies: readonly IdentityPolicy[],
   ): Observable<{ readonly kind: 'accepted' } | IdentityServerRefused> {
-    const base = normalizeUrl(url);
     const urls = policies.map((policy) => policy.url);
-    return this.withToken(accountId, base, (token) =>
-      this.client(accountId).agreeToTerms(SERVICE_TYPES.IS, base, token, urls),
+    return this.withToken(accountId, url, (token, base) =>
+      agreeToTerms(base, token, urls),
     ).pipe(
-      switchMap(() =>
-        this.withClient(accountId, async (client) => {
-          const accepted = await acceptedUrls(client);
-          await setAcceptedTerms(client, {
-            accepted: [...new Set([...accepted, ...urls])],
-          });
-          return { kind: 'accepted' } as const;
-        }),
+      switchMap(() => this.engine.acceptedTerms(accountId)),
+      unwrapEngineResult(),
+      switchMap((accepted) =>
+        this.engine.setAcceptedTerms(accountId, [
+          ...new Set([...accepted, ...urls]),
+        ]),
       ),
+      unwrapEngineResult(),
+      map(() => ({ kind: 'accepted' }) as const),
       catchError((err: unknown) => of(refusalOf(err))),
     );
   }
@@ -179,21 +202,13 @@ export class IdentityServerService {
     if (emails.length === 0) {
       return of({ kind: 'loaded', published: new Set<string>() } as const);
     }
-    return this.withToken(accountId, url, async (token) => {
-      const client = this.client(accountId);
-      // Without sha256 the SDK falls back to sending the addresses in plain text.
-      const { algorithms } = await client.getIdentityHashDetails(token);
-      if (!algorithms.includes('sha256')) return refused('failed');
-      const found = await client.identityHashedLookup(
-        emails.map((email) => [email, 'email']),
-        token,
-      );
-      const self = client.getUserId();
+    return this.withToken(accountId, url, async (token, base) => {
+      const found = await hashedLookup(base, token, emails);
       return {
         kind: 'loaded',
         published: new Set(
           found
-            .filter(({ mxid }) => mxid === self)
+            .filter(({ mxid }) => mxid === accountId)
             .map(({ address }) => address),
         ),
       } as const;
@@ -219,7 +234,7 @@ export class IdentityServerService {
         url: normalizeUrl(url),
         email,
         sid: '',
-        clientSecret: this.client(accountId).generateClientSecret(),
+        clientSecret: newClientSecret(),
         sendAttempt: 1,
       }),
     ).pipe(catchError((err: unknown) => of(refusalOf(err))));
@@ -233,15 +248,21 @@ export class IdentityServerService {
   }
 
   publish(pending: PendingPublish): Observable<PublishResult> {
-    return this.withToken(pending.accountId, pending.url, async (token) => {
-      await this.client(pending.accountId).bindThreePid({
-        sid: pending.sid,
-        client_secret: pending.clientSecret,
-        id_server: new URL(normalizeUrl(pending.url)).host,
-        id_access_token: token,
-      });
-      return { kind: 'published' } as const;
-    }).pipe(
+    return this.withToken(
+      pending.accountId,
+      pending.url,
+      async (token, base) => {
+        await unwrap(
+          this.engine.bindThreePid(pending.accountId, {
+            sid: pending.sid,
+            clientSecret: pending.clientSecret,
+            idServer: new URL(base).host,
+            idAccessToken: token,
+          }),
+        );
+        return { kind: 'published' } as const;
+      },
+    ).pipe(
       catchError((err: unknown) =>
         of(
           isNotValidated(err)
@@ -257,14 +278,20 @@ export class IdentityServerService {
     url: string,
     email: string,
   ): Observable<{ readonly kind: 'unpublished' } | IdentityServerRefused> {
-    return this.withClient(accountId, (client) =>
-      this.inTurn(accountId, async () => {
-        // unbindThreePid reads the identity server from the client, not from an argument.
-        client.setIdentityServerUrl(normalizeUrl(url));
-        // 'no-support' counts as unpublished so such a server cannot block changing servers; the UI re-reads findable.
-        await client.unbindThreePid('email', email);
-        return { kind: 'unpublished' } as const;
-      }),
+    return defer(() =>
+      this.inTurn(accountId, () =>
+        unwrap(
+          this.engine.unbindThreePid(accountId, {
+            medium: 'email',
+            address: email,
+            idServer: normalizeUrl(url).replace(/^https?:\/\//, ''),
+          }),
+        ),
+      ),
+    ).pipe(
+      // 'no-support' counts as unpublished so such a server cannot block changing servers; the UI re-reads findable.
+      map(() => ({ kind: 'unpublished' }) as const),
+      catchError((err: unknown) => of(refusalOf(err))),
     );
   }
 
@@ -281,50 +308,53 @@ export class IdentityServerService {
   }
 
   private requestLink(pending: PendingPublish): Observable<PublishLinkResult> {
-    return this.withToken(pending.accountId, pending.url, async (token) => {
-      const { sid } = await this.client(pending.accountId).requestEmailToken(
-        pending.email,
-        pending.clientSecret,
-        pending.sendAttempt,
-        undefined,
-        token,
-      );
-      return { kind: 'sent', pending: { ...pending, sid } } as const;
-    });
+    return this.withToken(
+      pending.accountId,
+      pending.url,
+      async (token, base) => {
+        const sid = await requestEmailToken(base, token, pending);
+        return { kind: 'sent', pending: { ...pending, sid } } as const;
+      },
+    );
   }
 
   /** Runs `call` with an identity access token, registering once and renewing it after a 401. */
   private withToken<T>(
     accountId: string,
     url: string,
-    call: (token: string) => Promise<T>,
+    call: (token: string, base: string) => Promise<T>,
   ): Observable<T> {
     return defer(() => {
-      const client = this.client(accountId);
+      this.requireLive(accountId);
       const base = normalizeUrl(url);
       const key = `${accountId}\n${base}`;
-      // shortcut: concurrent first calls each register (both tokens stay valid); dedupe if it shows up as load.
       const fresh = async (): Promise<string> => {
-        client.setIdentityServerUrl(base);
-        const { access_token } = await client.registerWithIdentityServer(
-          await client.getOpenIdToken(),
+        const token = await registerWithIdentityServer(
+          base,
+          await unwrap(this.engine.openIdToken(accountId)),
         );
-        this.tokens.set(key, access_token);
-        return access_token;
+        this.tokens.set(key, token);
+        return token;
       };
       return from(
         this.inTurn(accountId, async () => {
-          client.setIdentityServerUrl(base);
+          // Again here: the account may have gone while this call waited its turn.
+          this.requireLive(accountId);
           try {
-            return await call(this.tokens.get(key) ?? (await fresh()));
+            return await call(this.tokens.get(key) ?? (await fresh()), base);
           } catch (err) {
             if (!isUnauthorized(err)) throw err;
             this.tokens.delete(key);
-            return call(await fresh());
+            return call(await fresh(), base);
           }
         }),
       );
     });
+  }
+
+  /** Throws before any identity-server call for an account without a live client. */
+  private requireLive(accountId: string): void {
+    if (!this.session.status(accountId)) throw new EngineRequestError(NOT_LIVE);
   }
 
   /** Runs `run` once the account's earlier identity calls have settled. */
@@ -339,24 +369,11 @@ export class IdentityServerService {
     );
     return next;
   }
-
-  private client(accountId: string): Client {
-    const client = this.matrix.clientFor(accountId);
-    if (!client) throw new AccountUnavailableError();
-    return client;
-  }
-
-  private withClient<T>(
-    accountId: string,
-    run: (client: Client) => Promise<T>,
-  ): Observable<T | IdentityServerRefused> {
-    return defer(() => from(run(this.client(accountId)))).pipe(
-      catchError((err: unknown) => of(refusalOf(err))),
-    );
-  }
 }
 
-class AccountUnavailableError extends Error {}
+function unwrap<T>(source: Observable<EngineResult<T>>): Promise<T> {
+  return firstValueFrom(source.pipe(unwrapEngineResult()));
+}
 
 function isHttps(value: string): boolean {
   try {
@@ -366,23 +383,23 @@ function isHttps(value: string): boolean {
   }
 }
 
+function answerOf(err: unknown): MatrixRequestFailureMetadata | undefined {
+  return err instanceof EngineRequestError ? err.failure.diagnostic : undefined;
+}
+
 function isUnauthorized(err: unknown): boolean {
-  return (
-    err instanceof MatrixError &&
-    (err.httpStatus === 401 || err.errcode === 'M_UNAUTHORIZED')
-  );
+  const answer = answerOf(err);
+  return answer?.httpStatus === 401 || answer?.errcode === 'M_UNAUTHORIZED';
 }
 
 // Synapse 1.161 + Sydent 2.6.1 answer a bind before the link is opened with 400 M_SESSION_NOT_VALIDATED.
 function isNotValidated(err: unknown): boolean {
-  return (
-    err instanceof MatrixError && err.errcode === 'M_SESSION_NOT_VALIDATED'
-  );
+  return answerOf(err)?.errcode === 'M_SESSION_NOT_VALIDATED';
 }
 
 // Sydent also asks again after changing its policies, when addresses may still be bound.
 function isTermsNotSigned(err: unknown): boolean {
-  return err instanceof MatrixError && err.errcode === 'M_TERMS_NOT_SIGNED';
+  return answerOf(err)?.errcode === 'M_TERMS_NOT_SIGNED';
 }
 
 function normalizeUrl(url: string): string {
@@ -401,33 +418,10 @@ async function probe(base: string): Promise<'ok' | 'no' | 'unreachable'> {
   }
 }
 
-// The SDK's account-data map is closed over spec events; `m.accepted_terms` is
-// reached through a narrow string-keyed view.
-async function acceptedUrls(client: Client): Promise<string[]> {
-  const read = client.getAccountDataFromServer.bind(client) as (
-    type: string,
-  ) => Promise<unknown>;
-  const data = (await read('m.accepted_terms')) as AcceptedTerms | null;
-  return Array.isArray(data?.accepted)
-    ? data.accepted.filter((u): u is string => typeof u === 'string')
-    : [];
-}
-
-async function setAcceptedTerms(
-  client: Client,
-  content: AcceptedTerms,
-): Promise<void> {
-  const write = client.setAccountData.bind(client) as (
-    type: string,
-    content: unknown,
-  ) => Promise<unknown>;
-  await write('m.accepted_terms', content);
-}
-
 // Consent is recorded as URLs only, so a version bump served at the same URL is not
 // asked again (protocol limit); a new version at a new URL is.
 function offeredPolicies(
-  policies: Readonly<Record<string, Record<string, unknown>>>,
+  policies: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
 ): OfferedPolicy[] {
   return Object.entries(policies).flatMap(([id, policy]) => {
     const version = policy['version'];
@@ -458,7 +452,10 @@ function refused(reason: IdentityServerRefusal): IdentityServerRefused {
 }
 
 function refusalOf(err: unknown): IdentityServerRefused {
-  if (err instanceof AccountUnavailableError) {
+  if (
+    err instanceof EngineRequestError &&
+    err.failure.code === 'account-not-live'
+  ) {
     return refused('account-unavailable');
   }
   const failure = describeMatrixRequestFailure(err);

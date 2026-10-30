@@ -4,6 +4,7 @@ import {
   RoomsTimelineStub,
   UNREAD_AGGREGATOR_PROVIDER,
   matrixClientProvider,
+  sessionStateProvider,
   invitesProvider,
   selectedRoomLibraryProvider,
   setRouteRoom,
@@ -32,7 +33,6 @@ import {
   InviteBlockedError,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
-import { type SyncState } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
@@ -52,7 +52,7 @@ import {
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { defer, finalize, map, of, Subject, tap, throwError } from 'rxjs';
-import { MatrixError } from '@trinity/util/matrix';
+import { matrixError } from '@trinity/testing';
 import {
   SessionLockService,
   type SessionLockState,
@@ -152,7 +152,11 @@ describe('RoomsPage space actions', () => {
         matrixClientProvider({
           activeUserId: activeAccountId.asReadonly(),
           accountIds,
-          syncState: 'SYNCING' as SyncState,
+        }),
+        sessionStateProvider({
+          activeAccountId: activeAccountId.asReadonly(),
+          accountIds,
+          syncState: 'syncing',
         }),
         UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
@@ -652,7 +656,8 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline),
-        matrixClientProvider({ syncState: 'SYNCING' as SyncState }),
+        matrixClientProvider(),
+        sessionStateProvider({ syncState: 'syncing' }),
         UNREAD_AGGREGATOR_PROVIDER,
         MockProvider(TrnSurfaceService, {
           open: surfaceOpen,
@@ -1403,9 +1408,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     pick.mockReturnValue(of('@bob:remote.example'));
     inviteUser
-      .mockReturnValueOnce(
-        throwError(() => new MatrixError({ errcode: 'M_FORBIDDEN' }, 403)),
-      )
+      .mockReturnValueOnce(throwError(() => matrixError('M_FORBIDDEN', 403)))
       .mockReturnValueOnce(of(undefined));
 
     shell.rooms.onInviteToRoom();
@@ -1486,12 +1489,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     pending.set([pendingInvite({ roomId: '!i:remote.example' })]);
     acceptInvite
       .mockReturnValueOnce(
-        throwError(
-          () =>
-            new MatrixError(
-              { errcode: 'M_UNKNOWN', error: 'upstream unavailable' },
-              502,
-            ),
+        throwError(() =>
+          matrixError('M_UNKNOWN', 502, { error: 'upstream unavailable' }),
         ),
       )
       .mockReturnValueOnce(of(undefined));
@@ -1690,7 +1689,8 @@ describe('RoomsPage space hierarchy actions', () => {
         }),
         MockProvider(SpaceContentsService, { unlink: removeRoomFromSpace }),
         MockProvider(TimelineActionsService),
-        matrixClientProvider({ syncState: 'SYNCING' as SyncState }),
+        matrixClientProvider(),
+        sessionStateProvider({ syncState: 'syncing' }),
         UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),

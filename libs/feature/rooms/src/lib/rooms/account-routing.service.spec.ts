@@ -2,8 +2,8 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import {
-  MatrixClientService,
-  type SyncState,
+  SessionStateService,
+  type SessionSyncState,
 } from '@trinity/data-access/matrix-client';
 import {
   RoomReadinessService,
@@ -34,7 +34,7 @@ import { ShellStatusService } from './shell-status.service';
 describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   const joined = { id: '!r:hs', accountId: '@me:hs' };
   const view = signal({ rooms: [] } as unknown as SelectedRoomLibraryView);
-  const syncState = signal<SyncState | null>(null);
+  const syncState = signal<SessionSyncState | null>(null);
   let navigate: Mock;
   let listsShowing: Mock;
   let showError: Mock;
@@ -88,13 +88,13 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
         }),
         MockProvider(SelectedRoomLibraryService, { view }),
         MockProvider(RoomReadinessService, { waitForRoom }),
-        MockProvider(MatrixClientService, { syncState }),
+        MockProvider(SessionStateService, { syncState }),
       ],
     });
     return TestBed.inject(AccountRoutingService);
   }
 
-  function sync(rooms: unknown[], state: SyncState | null): void {
+  function sync(rooms: unknown[], state: SessionSyncState | null): void {
     view.set({ rooms } as unknown as SelectedRoomLibraryView);
     syncState.set(state);
     TestBed.tick();
@@ -119,8 +119,8 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     expect(showError).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
 
-    sync([joined], 'PREPARED' as SyncState);
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'prepared');
+    sync([joined], 'syncing');
 
     expect(showError).not.toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledTimes(1);
@@ -137,9 +137,9 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     const routing = build();
 
     routing.openLinkedRoom('!other:hs', '$e', 'deep-link');
-    sync([joined], 'PREPARED' as SyncState); // the cached sync: the room may be newly joined
+    sync([joined], 'prepared'); // the cached sync: the room may be newly joined
     expect(showError).not.toHaveBeenCalled();
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
 
     expect(showError).toHaveBeenCalledExactlyOnceWith(
       "You're not in that room.",
@@ -149,7 +149,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   it('opens immediately when the first sync is already done', () => {
     const routing = build();
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
 
     routing.openLinkedRoom(joined.id, '$e');
 
@@ -171,7 +171,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   it('pages the event in before revealing it, since a cold start loads only the newest messages', () => {
     const routing = build();
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     const loaded = new Subject<boolean>();
     loadEvent.mockReturnValue(loaded);
 
@@ -188,7 +188,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   it('says so when the linked event cannot be loaded', () => {
     const routing = build();
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     loadEvent.mockReturnValue(of(false));
 
     routing.openLinkedRoom(joined.id, '$gone', 'deep-link');
@@ -202,14 +202,14 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   it('pages the event in only after a live sync, since a gappy one replaces the cached timeline', () => {
     const routing = build();
     // The SDK reports PREPARED for the sync it restores from its cache, before any request.
-    sync([joined], 'PREPARED' as SyncState);
+    sync([joined], 'prepared');
 
     routing.openLinkedRoom(joined.id, '$old', 'deep-link');
     TestBed.tick();
     expect(navigate).toHaveBeenCalledTimes(1);
     expect(loadEvent).not.toHaveBeenCalled();
 
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$old');
     expect(transition).toHaveBeenCalledExactlyOnceWith({
       kind: 'reveal-message',
@@ -219,7 +219,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   it('waits for the room to be the focused conversation before paging its history', () => {
     const routing = build();
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     focus('!previous:hs'); // navigation is ready, but the old room still holds the focus
 
     routing.openLinkedRoom(joined.id, '$old', 'deep-link');
@@ -237,7 +237,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   it('pages in and reveals a ?event= target once the linked room is ready', () => {
     build();
-    sync([], 'PREPARED' as SyncState); // the room has not synced yet
+    sync([], 'prepared'); // the room has not synced yet
     const loaded = new Subject<boolean>();
     loadEvent.mockReturnValue(loaded);
     focus(null);
@@ -246,7 +246,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     TestBed.tick();
     expect(loadEvent).not.toHaveBeenCalled();
 
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     focus(joined.id);
     TestBed.tick();
     expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$old');
@@ -265,7 +265,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     TestBed.tick();
 
     eventTarget.set(null); // the user navigated elsewhere
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     focus(joined.id);
     TestBed.tick();
 
@@ -276,7 +276,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   it('reveals an event already in the loaded timeline without waiting for a live sync', () => {
     build();
-    sync([joined], 'RECONNECTING' as SyncState);
+    sync([joined], 'reconnecting');
     loaded.set([{ id: '$here' }]);
 
     eventTarget.set({ eventId: '$here' });
@@ -292,7 +292,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   it('waits silently while the linked room is unavailable, then reveals the event once it opens', () => {
     build();
-    sync([], 'SYNCING' as SyncState);
+    sync([], 'syncing');
     loadState.set({ kind: 'error' });
 
     eventTarget.set({ eventId: '$old' });
@@ -319,7 +319,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     vi.advanceTimersByTime(20_000); // a slow first sync
     expect(showError).not.toHaveBeenCalled();
 
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     loadState.set({ kind: 'ready' });
     TestBed.tick();
     expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$old');
@@ -329,7 +329,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   it('still says so when the event does not load within the timeout once the room is ready', () => {
     vi.useFakeTimers();
     build();
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     loadEvent.mockReturnValue(new Subject<boolean>());
     eventTarget.set({ eventId: '$old' });
     TestBed.tick();
@@ -343,7 +343,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   it('drops a linked-message reveal when the user navigates to another room first', () => {
     vi.useFakeTimers();
     const routing = build();
-    sync([joined], 'PREPARED' as SyncState); // cache only: the reveal waits
+    sync([joined], 'prepared'); // cache only: the reveal waits
 
     routing.openLinkedRoom(joined.id, '$old', 'deep-link');
     TestBed.tick();
@@ -354,7 +354,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     vi.advanceTimersByTime(20_000);
     activeRoomId.set(joined.id);
     focus(joined.id);
-    sync([joined], 'SYNCING' as SyncState);
+    sync([joined], 'syncing');
     expect(loadEvent).not.toHaveBeenCalled();
     expect(showError).not.toHaveBeenCalled();
   });

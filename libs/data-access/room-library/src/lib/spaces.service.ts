@@ -1,56 +1,50 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
 import {
-  ClientEvent,
-  EventType,
-  RoomEvent,
-  RoomStateEvent,
-  RoomType,
-  type HierarchyRoom,
-  type MatrixClient,
-  type MatrixEvent,
-  type Room,
-} from 'matrix-js-sdk';
+  DestroyRef,
+  Injectable,
+  Injector,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import {
+  NEVER,
   Observable,
   Subject,
+  concat,
   defer,
-  filter,
   finalize,
-  from,
   map,
   of,
   switchMap,
-  take,
   takeUntil,
   tap,
   throwError,
 } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  MatrixClientService,
-  projectFromClient,
+  SESSION_ENGINE,
+  SessionStateService,
 } from '@trinity/data-access/matrix-client';
-import {
-  roomEncryptionInitialState,
-  visibilityOptions,
-} from '@trinity/util/matrix';
-import { isJoinedSpace, spaceChildIdsOf } from './room-projection';
+import { plainEqual } from '@trinity/util/matrix';
 import { compareOrder } from './space-child-order';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
 } from './room-library-governance-policy';
-
-/** Children fetched per `getRoomHierarchy` page. */
-const HIERARCHY_LIMIT = 100;
+import type { CreateRoomRequest, HierarchyEntry } from './room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
+import { RoomListStore } from './room-list-store';
+import { initialOf } from './room-projection';
+import { SpaceLinkFeeds, joinedChildIds, linkKey } from './space-link-feeds';
+import { unwrapOwned } from './unwrap-owned';
 
 /**
- * Safety cap on `next_batch` pages followed, so a pathological or looping hierarchy can't fan
- * out unbounded requests. 5 pages ≈ 500 children, well beyond what the rail shows usefully.
+ * Safety cap on hierarchy pages followed, so a pathological hierarchy can't fan out unbounded
+ * requests. 5 pages ≈ 500 children, well beyond what the rail shows usefully.
  */
 const HIERARCHY_MAX_PAGES = 5;
-
-/** State-event type that links a child room into a Space (`m.space.child`). */
-const SPACE_CHILD_EVENT = 'm.space.child';
 
 /** Fields a {@link SpacesService.createSpace} call accepts. */
 export interface CreateSpaceOptions {
@@ -122,36 +116,94 @@ export interface SpaceChildRoom {
 type SpaceChildBase = Omit<SpaceChildRoom, 'joined'>;
 
 /**
- * Read model over the synced `MatrixClient` for Matrix **Spaces** (the server rail): the joined
- * spaces and, per space, the ordered ids of its joined child rooms.
+ * Read model over the active Account's room list for Matrix **Spaces** (the server rail): the
+ * joined spaces and, per space, the ordered ids of its joined child rooms, from
+ * {@link RoomListStore} and each space's child links.
  *
- * {@link openSpace} also fetches a space's *full* child set on demand (`getRoomHierarchy`,
- * MSC2946) so the UI can list, and {@link joinRoom}, children not yet joined. The hierarchy is
- * a network read, so unlike the sync-driven joined model it is patched into signals from the
- * fetch result, with the per-child `joined` flag recomputed live against the synced client.
+ * {@link openSpace} also fetches a space's *full* child set on demand (`/hierarchy`, MSC2946)
+ * so the UI can list, and {@link joinRoom}, children not yet joined. The hierarchy is a network
+ * read, so it is patched into signals from the fetch result, with the per-child `joined` flag
+ * recomputed live against the room list.
  *
- * Membership results from the writes land in the joined read model through the sync listeners.
+ * Membership results from the writes land in the joined read model through the room list.
  */
 @Injectable({ providedIn: 'root' })
 export class SpacesService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(ROOM_LIST_ENGINE);
+  private readonly store = inject(RoomListStore);
+  private readonly session = inject(SessionStateService);
   private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
+  private readonly injector = inject(Injector);
 
-  private readonly _spaces = signal<SpaceSummary[]>([]);
+  private readonly links = new SpaceLinkFeeds(this.engine);
+
+  /** The active Account's room list, or null while no Account is active and live. */
+  private readonly activeList = computed(() => {
+    const accountId = this.session.activeAccountId();
+    const generation = accountId
+      ? this.session.status(accountId)?.generation
+      : undefined;
+    return accountId && generation !== undefined
+      ? { accountId, generation, rows: this.store.rooms(accountId)() }
+      : null;
+  });
+
   /** The user's joined spaces, sorted by name; live as the client syncs. */
-  readonly spaces = this._spaces.asReadonly();
+  readonly spaces = computed<SpaceSummary[]>(
+    () => {
+      const list = this.activeList();
+      if (!list) return [];
+      const { accountId, generation, rows } = list;
+      const joined = new Map(
+        rows.filter((r) => r.membership === 'join').map((r) => [r.roomId, r]),
+      );
+      const open = new Set<string>();
+      const spaces = [...joined.values()]
+        .filter((r) => r.isSpace)
+        .map((space): SpaceSummary => {
+          open.add(linkKey(accountId, generation, space.roomId));
+          return {
+            id: space.roomId,
+            accountId,
+            name: space.displayName,
+            initial: initialOf(space.displayName),
+            avatarMxc: space.avatarMxc,
+            childRoomIds: joinedChildIds(
+              this.links.linksOf(accountId, generation, space.roomId),
+              joined,
+            ),
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      // A space that left the list closes here; an Account that left closes on the session.
+      untracked(() => this.links.close((feed) => !open.has(feed.key)));
+      return spaces;
+    },
+    { equal: plainEqual },
+  );
 
   /**
-   * Every room this account has joined, as of the last refresh. The hierarchy projection
-   * derives each child's `joined` flag from it live (a not-joined child flips as its
-   * membership syncs back) without re-fetching the hierarchy.
+   * Every room the active Account has joined. The hierarchy projection derives each child's
+   * `joined` flag from it live (a not-joined child flips as its membership syncs back)
+   * without re-fetching the hierarchy.
    */
-  private readonly _joinedRoomIds = signal<ReadonlySet<string>>(new Set(), {
-    equal: sameIds,
-  });
+  private readonly joinedRoomIds = computed<ReadonlySet<string>>(
+    () =>
+      new Set(
+        (this.activeList()?.rows ?? [])
+          .filter((r) => r.membership === 'join')
+          .map((r) => r.roomId),
+      ),
+    { equal: sameIds },
+  );
 
   /** Which space's hierarchy is currently loaded ({@link openSpace}); null on Home. */
   private readonly _openSpaceId = signal<string | null>(null);
+  /**
+   * The active Account a space was opened as; undefined while none is open, null while it
+   * waits for a first Account to become active.
+   */
+  private openedAs: string | null | undefined;
   /** Projected children of the open space, minus the live `joined` flag. */
   private readonly _childrenBase = signal<SpaceChildBase[]>([]);
   private readonly _childrenLoading = signal(false);
@@ -167,20 +219,15 @@ export class SpacesService {
 
   /** Cancels the previous cold hierarchy command when selection or Account changes. */
   private readonly hierarchyCancelled = new Subject<void>();
-  /** Each rebuild of the joined model, for a hierarchy waiting for its space to be joined. */
-  private readonly refreshed = new Subject<void>();
   /** How many {@link leaveSpace} requests are in flight, per Account-and-space pair. */
   private readonly _leaving = signal<ReadonlyMap<string, number>>(new Map());
 
   /**
    * The open space's full child set, with each child's `joined` flag derived live
-   * against the synced client (so a join/leave is reflected without a re-fetch).
+   * against the room list (so a join/leave is reflected without a re-fetch).
    */
   readonly openSpaceChildren = computed<SpaceChildRoom[]>(() => {
-    // Reading the set rather than the client keeps the derivation inside signals: during an
-    // account switch `matrix.instance` can already be the NEXT account's client while
-    // `_childrenBase` still holds the previous account's hierarchy.
-    const joined = this._joinedRoomIds();
+    const joined = this.joinedRoomIds();
     return this._childrenBase().map((base) => ({
       ...base,
       joined: joined.has(base.roomId),
@@ -204,53 +251,49 @@ export class SpacesService {
     this.openSpaceChildren().filter((c) => c.isSpace),
   );
 
-  /**
-   * Scoped to `m.space.child`: every state event flows through here, so filter to child links
-   * rather than refreshing on unrelated state (avatars, topics, other rooms' membership).
-   */
-  private readonly onStateEvent = (event: MatrixEvent): void => {
-    if (event.getType() === SPACE_CHILD_EVENT) {
-      // Via the projection's scheduler so it coalesces with the sync burst that
-      // typically accompanies it.
-      this.projection.schedule();
-    }
-  };
+  constructor() {
+    // An Account switch ends the open space: its hierarchy was read as the previous Account.
+    // The first Account to become active takes over a space opened before any was.
+    effect(() => {
+      const active = this.session.activeAccountId();
+      untracked(() => {
+        if (this.openedAs === null) this.openedAs = active;
+        else if (this.openedAs !== undefined && this.openedAs !== active) {
+          this.resetHierarchy();
+        }
+      });
+    });
+    // Closes the links of an Account that stopped being active or live even when nothing
+    // reads `spaces` any more.
+    inject(SESSION_ENGINE)
+      .session()
+      .pipe(takeUntilDestroyed())
+      .subscribe(() =>
+        untracked(() => {
+          const active = this.session.activeAccountId();
+          this.links.close(
+            (feed) =>
+              feed.accountId !== active ||
+              this.session.status(feed.accountId)?.generation !==
+                feed.generation,
+          );
+        }),
+      );
+    inject(DestroyRef).onDestroy(() => this.links.close(() => true));
+  }
 
   /**
-   * Listens to the same events as {@link RoomLibraryService} via the shared
-   * {@link projectFromClient}.
+   * Retained by the Room Library session lifetime. The store keeps each live Account's room
+   * list itself, so this only acknowledges at once.
    */
-  private readonly projection = projectFromClient({
-    id: 'rooms.spaces',
-    matrix: this.matrix,
-    events: [
-      ClientEvent.Sync,
-      ClientEvent.Room,
-      // A space (or child) being (re)named affects sort order and labels.
-      RoomEvent.Name,
-      // Joining/leaving a space or a child room changes what is shown.
-      RoomEvent.MyMembership,
-    ],
-    rebuild: () => this.refresh(),
-    // `m.space.child` add/remove/reorder arrives as a room state event the handler must
-    // inspect to tell it from other state changes, so it is bound by hand, not listed above.
-    bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
-    unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
-    reset: () => {
-      this._spaces.set([]);
-      this._joinedRoomIds.set(new Set());
-      this.resetHierarchy();
-    },
-  });
-
-  /** Cold active-Account projection retained by the Room Library session lifetime. */
   runProjection(): Observable<void> {
-    return this.projection.run();
+    return concat(of(undefined), NEVER);
   }
 
   /** Cancel any in-flight hierarchy fetch and clear the open-space child model. */
   private resetHierarchy(): void {
     this.hierarchyCancelled.next();
+    this.openedAs = undefined;
     this._openSpaceId.set(null);
     this._childrenBase.set([]);
     this._childrenLoading.set(false);
@@ -291,7 +334,7 @@ export class SpacesService {
 
   /**
    * Load `spaceId`'s full child set (rooms and sub-spaces, joined or not) into
-   * {@link openSpaceChildren} via `getRoomHierarchy`, replacing any previously open space;
+   * {@link openSpaceChildren} via `/hierarchy`, replacing any previously open space;
    * `null` (Home) clears it. A prior in-flight fetch is cancelled. Errors land in
    * {@link childrenError} and also reach the subscriber; progress in {@link childrenLoading}.
    * Cold.
@@ -310,23 +353,23 @@ export class SpacesService {
       this._childrenBase.set([]);
       this._childrenError.set(null);
       this._childrenLoading.set(false);
-      if (!spaceId) return of(void 0);
+      if (!spaceId) {
+        this.openedAs = undefined;
+        return of(void 0);
+      }
+      const accountId = this.session.activeAccountId();
+      this.openedAs = accountId;
       // The hierarchy is read as the active Account, so it waits until that Account has
       // joined the space. A restored space can be named before the Account's first sync
       // brings it. In the mixed view the active Account can be showing a space only another
       // Account holds: its own `/hierarchy` read would fail for a private space, and joining
       // a child from here would join as the wrong Account, so it lists the joined children
       // alone. A left space never fetches.
-      const joined = this.activeHolds(spaceId)
-        ? of(void 0)
-        : this.refreshed.pipe(
-            filter(() => this.activeHolds(spaceId)),
-            take(1),
-          );
-      return joined.pipe(
-        switchMap(() => {
+      return this.held(accountId, spaceId).pipe(
+        switchMap((holder) => {
+          this.openedAs = holder;
           this._childrenLoading.set(true);
-          return this.fetchHierarchy(spaceId);
+          return this.fetchHierarchy(holder, spaceId);
         }),
         takeUntil(this.hierarchyCancelled),
         tap({
@@ -355,41 +398,34 @@ export class SpacesService {
 
   /**
    * Create a new Space (a room with `type: m.space`), resolving its room id. The rail pill
-   * appears once the client syncs the new room. Cold.
+   * appears once the room list lists the new room. Cold.
    */
   createSpace(
     accountId: string,
     options: CreateSpaceOptions,
   ): Observable<string> {
-    return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) return throwError(() => new Error('Account unavailable.'));
-      return from(
-        client.createRoom({
-          // `creation_content.type` marks the room as a Space; the SDK types
-          // `creation_content` loosely (`object`), so the field is set here.
-          creation_content: { type: RoomType.Space },
-          name: options.name.trim(),
-          ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-          ...visibilityOptions(options.isPublic),
-        }),
-      ).pipe(map((res) => res.room_id));
-    });
+    return defer(() =>
+      this.engine
+        .createRoom(accountId, createRequest(options, 'space', null))
+        .pipe(
+          unwrapOwned('Account unavailable.'),
+          map((created) => created.roomId),
+        ),
+    );
   }
 
   /**
-   * Create a normal room encrypted from the first event (Megolm `m.room.encryption` in
-   * `initial_state`) and link it into `spaceId`, resolving the new room id. Linked both ways:
-   * `m.space.child` on the space and a canonical `m.space.parent` on the child, both carrying
-   * our homeserver in `via` so a remote server can route to the room. Cold.
+   * Create a normal room encrypted from the first event and link it into `spaceId`, resolving
+   * the new room id. Linked both ways: `m.space.child` on the space and a canonical
+   * `m.space.parent` on the child, both carrying our homeserver in `via` so a remote server
+   * can route to the room. Cold.
    */
   createRoomInSpace(
     spaceId: string,
     options: CreateRoomInSpaceOptions,
   ): Observable<string> {
     return defer(() => {
-      const client = this.matrix.instance;
-      const accountId = client.getUserId();
+      const accountId = this.session.activeAccountId();
       if (!accountId) {
         return throwError(() => new Error('Not signed in.'));
       }
@@ -399,55 +435,28 @@ export class SpacesService {
           'curate-space',
         ),
       );
-      const via = serverNameOf(client.getUserId());
-      return from(
-        client.createRoom({
-          name: options.name.trim(),
-          ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-          ...visibilityOptions(options.isPublic),
-          // E2EE-first: enable Megolm before the first message so the room is never
-          // briefly unencrypted.
-          initial_state: [roomEncryptionInitialState()],
-        }),
-      ).pipe(
-        switchMap((res) => {
-          const childId = res.room_id;
-          return from(
-            client.sendStateEvent(
-              spaceId,
-              EventType.SpaceChild,
-              { via: [via], suggested: true },
-              childId,
-            ),
-          ).pipe(
-            switchMap(() =>
-              from(
-                client.sendStateEvent(
-                  childId,
-                  EventType.SpaceParent,
-                  { via: [via], canonical: true },
-                  spaceId,
-                ),
-              ),
-            ),
-            map(() => childId),
-          );
-        }),
-      );
+      return this.engine
+        .createRoom(accountId, createRequest(options, 'room', spaceId))
+        .pipe(
+          unwrapOwned(),
+          map((created) => created.roomId),
+        );
     });
   }
 
   /**
    * Leave a space room. Only the space is left; its child rooms stay joined. The rail drops
-   * the pill once the membership change syncs back.
+   * the pill once the room list does.
    */
   leaveSpace(accountId: string, spaceId: string): Observable<void> {
     return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) return throwError(() => new Error('Account unavailable.'));
+      if (!this.session.accountIds().includes(accountId)) {
+        return throwError(() => new Error('Account unavailable.'));
+      }
       const key = leavingKey(accountId, spaceId);
       this.countLeave(key, 1);
-      return from(client.leave(spaceId)).pipe(
+      return this.engine.leave(accountId, spaceId).pipe(
+        unwrapOwned('Account unavailable.'),
         map(() => void 0),
         finalize(() => this.countLeave(key, -1)),
       );
@@ -476,24 +485,20 @@ export class SpacesService {
 
   /**
    * Join a child room/space, routing through its `via` servers when known (a remote room may
-   * not resolve on our homeserver alone). The result reaches the read model through sync and
-   * flips {@link SpaceChildRoom.joined} live. Cold.
+   * not resolve on our homeserver alone). The result reaches the room list and flips
+   * {@link SpaceChildRoom.joined} live. Cold.
    */
   joinRoom(
     accountId: string,
     roomId: string,
     via?: string[],
   ): Observable<void> {
-    return defer(() => {
-      const client = this.matrix.clientFor(accountId);
-      if (!client) return throwError(() => new Error('Account unavailable.'));
-      return from(
-        client.joinRoom(
-          roomId,
-          via && via.length > 0 ? { viaServers: via } : undefined,
-        ),
-      ).pipe(map(() => void 0));
-    });
+    return defer(() =>
+      this.engine.join(accountId, roomId, via ?? []).pipe(
+        unwrapOwned('Account unavailable.'),
+        map(() => void 0),
+      ),
+    );
   }
 
   /**
@@ -504,8 +509,7 @@ export class SpacesService {
    */
   removeRoomFromSpace(spaceId: string, childId: string): Observable<void> {
     return defer(() => {
-      const client = this.matrix.instance;
-      const accountId = client.getUserId();
+      const accountId = this.session.activeAccountId();
       if (!accountId) {
         return throwError(() => new Error('Not signed in.'));
       }
@@ -515,158 +519,111 @@ export class SpacesService {
           'curate-space',
         ),
       );
-      return from(
-        client.sendStateEvent(spaceId, EventType.SpaceChild, {}, childId),
-      ).pipe(map(() => void 0));
-    });
-  }
-
-  /** Whether the active Account holds a space (see {@link isJoinedSpace}). */
-  private activeHolds(spaceId: string): boolean {
-    if (!this.matrix.isInitialized) return false;
-    const space = this.matrix.instance.getRoom(spaceId);
-    return !!space && isJoinedSpace(space);
-  }
-
-  /**
-   * Fetch a space's direct children (`maxDepth: 1`, `suggestedOnly: false`) and project them,
-   * excluding the space root itself. Cold.
-   */
-  private fetchHierarchy(spaceId: string): Observable<SpaceChildBase[]> {
-    return defer(() => {
-      const client = this.matrix.instance;
-      const accountId = client.getUserId();
-      if (!accountId) throw new Error('Account unavailable.');
-      return from(this.fetchHierarchyRooms(client, spaceId)).pipe(
-        map((rooms) => this.projectHierarchy(accountId, spaceId, rooms)),
+      return this.engine.setSpaceChild(accountId, spaceId, childId, null).pipe(
+        unwrapOwned(),
+        map(() => void 0),
       );
     });
   }
 
   /**
-   * Accumulate a space's children across `getRoomHierarchy` pages via `next_batch`, up to
-   * {@link HIERARCHY_MAX_PAGES} so a huge or looping hierarchy can't fan out unbounded. A single
-   * page would silently drop the overflow of spaces with more than {@link HIERARCHY_LIMIT}
-   * children.
+   * Emits the Account, then completes, once `accountId` holds `spaceId` as a joined space;
+   * with no Account, whichever Account is active then.
    */
-  private async fetchHierarchyRooms(
-    client: MatrixClient,
-    spaceId: string,
-  ): Promise<HierarchyRoom[]> {
-    const rooms: HierarchyRoom[] = [];
-    let fromToken: string | undefined;
-    for (let page = 0; page < HIERARCHY_MAX_PAGES; page++) {
-      const res = await client.getRoomHierarchy(
-        spaceId,
-        HIERARCHY_LIMIT,
-        1,
-        false,
-        fromToken,
+  private held(accountId: string | null, spaceId: string): Observable<string> {
+    const holder = (): string | null => {
+      const id = accountId ?? this.session.activeAccountId();
+      const space = id ? this.store.room(id, spaceId) : null;
+      return space?.isSpace && space.membership === 'join' ? id : null;
+    };
+    const now = untracked(holder);
+    if (now) return of(now);
+    return new Observable<string>((subscriber) => {
+      // An effect re-reads the room list on every run, so no change between runs is missed.
+      const watch = effect(
+        () => {
+          const id = holder();
+          if (!id) return;
+          untracked(() => {
+            subscriber.next(id);
+            subscriber.complete();
+          });
+        },
+        { injector: this.injector },
       );
-      rooms.push(...res.rooms);
-      if (!res.next_batch) {
-        break; // no more pages — full hierarchy fetched
-      }
-      fromToken = res.next_batch;
-    }
-    return rooms;
+      return () => watch.destroy();
+    });
   }
 
-  /**
-   * Project a `getRoomHierarchy` response into ordered child view models. The link metadata
-   * (`via`, `suggested`, `order`) lives in the *space root's* `children_state`, not on the child
-   * summary, so it is read from the root entry and joined onto each non-root room. Ordered like
-   * the joined children: child link `order`, then name.
-   */
-  private projectHierarchy(
+  /** A space's direct children, projected and excluding the space root itself. Cold. */
+  private fetchHierarchy(
     accountId: string,
     spaceId: string,
-    rooms: HierarchyRoom[],
-  ): SpaceChildBase[] {
-    const root = rooms.find((r) => r.room_id === spaceId);
-    const links = new Map<
-      string,
-      { via: string[]; suggested: boolean; order: string }
-    >();
-    for (const rel of root?.children_state ?? []) {
-      if (!rel.state_key) {
-        continue;
-      }
-      const via = Array.isArray(rel.content.via)
-        ? rel.content.via.filter((v): v is string => typeof v === 'string')
-        : [];
-      links.set(rel.state_key, {
-        via,
-        suggested: rel.content.suggested === true,
-        order: typeof rel.content.order === 'string' ? rel.content.order : '',
-      });
-    }
-
-    return rooms
-      .filter((r) => r.room_id !== spaceId)
-      .map((r) => {
-        const link = links.get(r.room_id);
-        const name = r.name || r.canonical_alias || r.room_id;
-        const base: SpaceChildBase = {
-          accountId,
-          roomId: r.room_id,
-          name,
-          initial: initialOf(name),
-          ...(r.topic ? { topic: r.topic } : {}),
-          avatarMxc: r.avatar_url ?? null,
-          memberCount: r.num_joined_members ?? 0,
-          joinRule: r.join_rule ? String(r.join_rule) : '',
-          suggested: link?.suggested ?? false,
-          isSpace: r.room_type === RoomType.Space,
-          via: link?.via ?? [],
-        };
-        return { base, order: link?.order ?? '' };
-      })
-      .sort(
-        (a, b) =>
-          compareOrder(a.order, b.order) ||
-          a.base.name.localeCompare(b.base.name),
-      )
-      .map((entry) => entry.base);
+  ): Observable<SpaceChildBase[]> {
+    return this.engine
+      .spaceHierarchy(accountId, spaceId, { maxPages: HIERARCHY_MAX_PAGES })
+      .pipe(
+        unwrapOwned('Account unavailable.'),
+        map((entries) => projectHierarchy(accountId, spaceId, entries)),
+      );
   }
+}
 
-  private refresh(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    const rooms = client.getRooms();
-    this._spaces.set(
-      rooms
-        .filter((r) => r.isSpaceRoom() && r.getMyMembership() === 'join')
-        .map((r) => this.toSpace(client, r))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    );
-    // Every joined room, spaces included (a child of the open space may be either):
-    // `openSpaceChildren` derives its `joined` flag from this. Structural equality stops an
-    // ordinary sync that changed no membership here, rather than re-deriving the downstream
-    // computeds.
-    this._joinedRoomIds.set(
-      new Set(
-        rooms
-          .filter((r) => r.getMyMembership() === 'join')
-          .map((r) => r.roomId),
-      ),
-    );
-    this.refreshed.next();
-  }
+function createRequest(
+  options: CreateSpaceOptions | CreateRoomInSpaceOptions,
+  kind: CreateRoomRequest['kind'],
+  parentSpaceId: string | null,
+): CreateRoomRequest {
+  return {
+    name: options.name.trim(),
+    topic: options.topic?.trim() || null,
+    isPublic: options.isPublic === true,
+    kind,
+    parentSpaceId,
+  };
+}
 
-  private toSpace(client: MatrixClient, room: Room): SpaceSummary {
-    const name = room.name || room.roomId;
-    return {
-      id: room.roomId,
-      accountId: this.matrix.activeUserId() ?? client.getUserId?.() ?? '',
-      name,
-      initial: initialOf(name),
-      avatarMxc: room.getMxcAvatarUrl(),
-      childRoomIds: spaceChildIdsOf(client, room),
-    };
-  }
+/**
+ * Project a `/hierarchy` response into ordered child view models. The link metadata (`via`,
+ * `suggested`, `order`) lives in the *space root's* children state, not on the child summary,
+ * so it is read from the root entry and joined onto each non-root room. Ordered like the
+ * joined children: child link `order`, then name.
+ */
+function projectHierarchy(
+  accountId: string,
+  spaceId: string,
+  entries: readonly HierarchyEntry[],
+): SpaceChildBase[] {
+  const root = entries.find((e) => e.roomId === spaceId);
+  const links = new Map(
+    (root?.childrenState ?? []).map((link) => [link.childId, link]),
+  );
+  return entries
+    .filter((e) => e.roomId !== spaceId)
+    .map((e) => {
+      const link = links.get(e.roomId);
+      const name = e.name || e.canonicalAlias || e.roomId;
+      const base: SpaceChildBase = {
+        accountId,
+        roomId: e.roomId,
+        name,
+        initial: initialOf(name),
+        ...(e.topic ? { topic: e.topic } : {}),
+        avatarMxc: e.avatarMxc,
+        memberCount: e.joinedMemberCount,
+        joinRule: e.joinRule ?? '',
+        suggested: link?.suggested ?? false,
+        isSpace: e.isSpace,
+        via: [...(link?.via ?? [])],
+      };
+      return { base, order: link?.order ?? '' };
+    })
+    .sort(
+      (a, b) =>
+        compareOrder(a.order, b.order) ||
+        a.base.name.localeCompare(b.base.name),
+    )
+    .map((entry) => entry.base);
 }
 
 /** One Account's leave of one space, as a single set key. */
@@ -675,8 +632,8 @@ function leavingKey(accountId: string, spaceId: string): string {
 }
 
 /**
- * Whether two id sets hold the same ids, so a sync that changed no membership does not
- * re-derive the hierarchy projection and everything downstream of it.
+ * Whether two id sets hold the same ids, so a room list change that altered no membership
+ * does not re-derive the hierarchy projection and everything downstream of it.
  */
 function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   if (a.size !== b.size) {
@@ -688,20 +645,4 @@ function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
     }
   }
   return true;
-}
-
-/** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallbacks. */
-function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
-}
-
-/**
- * Our homeserver name from the user id (`@user:server.tld` → `server.tld`), for the `via` of
- * `m.space.child`/`m.space.parent` links. Empty when there is no server part; the homeserver
- * still accepts the link, just without routing help.
- */
-function serverNameOf(userId: string | null): string {
-  const colon = userId?.indexOf(':') ?? -1;
-  return colon >= 0 ? userId!.slice(colon + 1) : '';
 }

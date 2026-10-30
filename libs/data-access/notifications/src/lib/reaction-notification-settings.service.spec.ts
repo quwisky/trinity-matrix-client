@@ -1,187 +1,65 @@
 import { TestBed } from '@angular/core/testing';
-import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import {
-  LEGACY_REACTION_NOTIFICATION_EVENT,
-  REACTION_NOTIFICATION_EVENT,
-  ReactionNotificationSettingsService,
-} from './reaction-notification-settings.service';
+import { setupLiveNotificationSettings } from '../contract/live-notification-settings';
+import { ReactionNotificationSettingsService } from './reaction-notification-settings.service';
 
-function setup(
-  options: {
-    stored?: unknown;
-    initialized?: boolean;
-    perAccount?: Record<string, unknown>;
-    /** Answer `getAccountData` per event type instead of with `stored` for every type. */
-    byType?: Record<string, unknown>;
-  } = {},
-) {
-  TestBed.resetTestingModule();
-  const writes: Array<{ type: string; content: unknown; resolve: () => void }> =
-    [];
-  const client = {
-    getAccountData: vi.fn((type: string) => {
-      if (options.byType) {
-        return type in options.byType
-          ? { getContent: () => options.byType?.[type] }
-          : undefined;
-      }
-      return options.stored === undefined
-        ? undefined
-        : { getContent: () => options.stored };
-    }),
-    setAccountData: vi.fn((type: string, content: unknown) => {
-      let resolve!: () => void;
-      const promise = new Promise<void>((done) => (resolve = done));
-      writes.push({ type, content, resolve });
-      return promise;
-    }),
-    on: vi.fn(),
-    off: vi.fn(),
-  };
-  let activeClient = client;
-  TestBed.configureTestingModule({
-    providers: [
-      ReactionNotificationSettingsService,
-      MockProvider(MatrixClientService, {
-        isInitialized: options.initialized ?? true,
-        get instance() {
-          return activeClient as never;
-        },
-        clientFor: ((accountId: string) => {
-          const stored = options.perAccount?.[accountId];
-          return stored === undefined
-            ? null
-            : ({
-                getAccountData: () => ({ getContent: () => stored }),
-              } as never);
-        }) as never,
-      }),
-    ],
-  });
+const REACTIONS = 'dev.trinityproject.trinity.reaction_notifications';
+const ALICE = '@alice:fake'; // the fake engine's one account with settings
+const BOB = '@bob:fake';
+
+function setup(options: { active?: string | null; live?: string[] } = {}) {
+  const { engine, alice } = setupLiveNotificationSettings(options);
   return {
-    service: TestBed.inject(ReactionNotificationSettingsService),
-    client,
-    writes,
-    switchClient: (next: typeof client) => (activeClient = next),
+    svc: TestBed.inject(ReactionNotificationSettingsService),
+    engine,
+    alice,
+    setPreference: vi.spyOn(engine, 'setPreference'),
   };
 }
 
 describe('ReactionNotificationSettingsService', () => {
-  it('defaults absent and malformed account data to off', () => {
-    for (const stored of [
-      undefined,
-      {},
-      { enabled: 'yes' },
-      { enabled: null },
-      null,
-    ]) {
-      expect(setup({ stored }).service.isOn()).toBe(false);
-    }
+  it('is off by default', () => {
+    const { svc } = setup();
+    expect(svc.isOn()).toBe(false);
+    expect(svc.enabled()).toBe(false);
   });
 
-  it('reads the active account preference', () => {
-    expect(setup({ stored: { enabled: true } }).service.isOn()).toBe(true);
+  it('reads the active account and follows a change made elsewhere', () => {
+    const { svc, engine } = setup();
+    engine.writeAccountData(REACTIONS, { enabled: true });
+
+    expect(svc.isOn()).toBe(true);
+    expect(svc.enabled()).toBe(true);
   });
 
   it('reads the owning account when an account id is supplied', () => {
-    const { service } = setup({
-      stored: { enabled: true },
-      perAccount: { '@quiet:hs': { enabled: false } },
-    });
-    expect(service.isOn('@quiet:hs')).toBe(false);
-    expect(service.isOn('@missing:hs')).toBe(false);
+    const { svc, engine } = setup({ active: BOB, live: [ALICE, BOB] });
+    engine.writeAccountData(REACTIONS, { enabled: true });
+
+    expect(svc.isOn(ALICE)).toBe(true);
+    expect(svc.enabled()).toBe(false);
   });
 
-  it('does not write until the returned observable is subscribed', () => {
-    const { service, client } = setup();
-    const write$ = service.setOn(true);
-    expect(client.setAccountData).not.toHaveBeenCalled();
-    write$.subscribe();
-    expect(client.setAccountData).toHaveBeenCalledWith(
-      REACTION_NOTIFICATION_EVENT,
-      {
-        enabled: true,
-      },
+  it('writes the active account’s choice, cold', async () => {
+    const { svc, alice, setPreference } = setup();
+    const write = svc.setOn(true);
+    expect(setPreference).not.toHaveBeenCalled();
+
+    await firstValueFrom(write);
+
+    expect(setPreference).toHaveBeenCalledWith(
+      alice,
+      'reactionNotifications',
+      true,
     );
+    expect(svc.enabled()).toBe(true);
   });
 
   it('rejects writes while signed out', async () => {
-    await expect(
-      firstValueFrom(setup({ initialized: false }).service.setOn(true)),
-    ).rejects.toThrow();
-  });
-
-  it('updates the signal from account-data events while connected', () => {
-    const { service, client } = setup({ stored: { enabled: false } });
-    service.connect();
-    const callback = client.on.mock.calls[0]?.[1] as (() => void) | undefined;
-    expect(callback).toBeTypeOf('function');
-    (client.getAccountData as ReturnType<typeof vi.fn>).mockReturnValue({
-      getContent: () => ({ enabled: true }),
-    });
-    callback?.();
-    expect(service.enabled()).toBe(true);
-  });
-
-  it('removes the account-data listener when disconnected', () => {
-    const { service, client } = setup();
-    service.connect();
-    service.disconnect();
-    expect(client.off).toHaveBeenCalledWith(...client.on.mock.calls[0]);
-  });
-
-  it('does not let a late write completion change a switched account projection', async () => {
-    const first = setup({ stored: { enabled: false } });
-    const active = first.service;
-    const firstWrite = active.setOn(true);
-    firstWrite.subscribe();
-    expect(first.writes).toHaveLength(1);
-    const second = {
-      getAccountData: vi.fn(() => ({ getContent: () => ({ enabled: false }) })),
-      setAccountData: vi.fn().mockResolvedValue(undefined),
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    first.switchClient(second);
-    active.connect();
-    first.writes[0].resolve();
-    await vi.waitFor(() => expect(active.enabled()).toBe(false));
-  });
-
-  it('reads the retired event while only it exists, without copying it', () => {
-    // The copy belongs to NotificationService, which runs it for every account.
-    const { service, client } = setup({
-      byType: { [LEGACY_REACTION_NOTIFICATION_EVENT]: { enabled: true } },
-    });
-    service.connect();
-    expect(service.isOn()).toBe(true);
-    expect(client.setAccountData).not.toHaveBeenCalled();
-  });
-
-  it('prefers the new event over the retired one', () => {
-    const { service, client } = setup({
-      byType: {
-        [REACTION_NOTIFICATION_EVENT]: { enabled: false },
-        [LEGACY_REACTION_NOTIFICATION_EVENT]: { enabled: true },
-      },
-    });
-    service.connect();
-    expect(service.isOn()).toBe(false);
-    expect(client.setAccountData).not.toHaveBeenCalled();
-  });
-
-  it('writes only the new event', async () => {
-    const { service, client, writes } = setup({ stored: { enabled: false } });
-    const done = firstValueFrom(service.setOn(true));
-    writes[0].resolve();
-    await done;
-    expect(client.setAccountData).toHaveBeenCalledTimes(1);
-    expect(client.setAccountData).toHaveBeenCalledWith(
-      REACTION_NOTIFICATION_EVENT,
-      { enabled: true },
+    const { svc } = setup({ active: null });
+    await expect(firstValueFrom(svc.setOn(true))).rejects.toThrow(
+      'Not signed in.',
     );
   });
 });

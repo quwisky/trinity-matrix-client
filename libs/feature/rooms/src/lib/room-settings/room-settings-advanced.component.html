@@ -162,6 +162,7 @@
               size="sm"
               [trnActionAllowed]="upgradeBlockedReason() === null"
               [trnActionDisabledReason]="upgradeBlockedReason()"
+              [loading]="loadingPlan()"
               (click)="openUpgrade()"
               data-testid="room-advanced-upgrade"
             >
@@ -185,6 +186,8 @@
         variant="secondary"
         presentation="outline"
         size="sm"
+        [loading]="loadingState()"
+        [disabled]="loadingState()"
         (click)="viewState()"
         data-testid="room-advanced-view-state"
       >

@@ -1,15 +1,5 @@
-import {
-  EventType,
-  MsgType,
-  RelationType,
-  type MatrixClient,
-  type MatrixEvent,
-  type Room,
-} from 'matrix-js-sdk';
 import { renderMarkdown, type RenderedMarkdown } from './markdown-render';
 import { escapeHtml } from './message-html';
-import { stripReplyFallbackText } from './message-view';
-import { displayContent } from './replacement';
 
 /**
  * Send-side content builders shared by the main timeline and the in-thread composer, so both
@@ -165,14 +155,14 @@ export function textMessageContent(
   );
   if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
-      msgtype: MsgType.Text,
+      msgtype: 'm.text',
       body: text,
       format: 'org.matrix.custom.html',
       formatted_body: applyMentionPills(md.html, mentions),
       ...notified,
     };
   }
-  return { msgtype: MsgType.Text, body: text, ...notified };
+  return { msgtype: 'm.text', body: text, ...notified };
 }
 
 /** The classic shrug the `/shrug` command appends. */
@@ -248,14 +238,14 @@ export function emoteMessageContent(
   );
   if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
-      msgtype: MsgType.Emote,
+      msgtype: 'm.emote',
       body: text,
       format: 'org.matrix.custom.html',
       formatted_body: applyMentionPills(md.html, mentions),
       ...notified,
     };
   }
-  return { msgtype: MsgType.Emote, body: text, ...notified };
+  return { msgtype: 'm.emote', body: text, ...notified };
 }
 
 /** `m.location` content for a shared point, with the `geo:` URI + MSC3488 fields. */
@@ -266,7 +256,7 @@ export function locationMessageContent(
 ) {
   const geoUri = `geo:${lat},${lng}`;
   return {
-    msgtype: MsgType.Location,
+    msgtype: 'm.location',
     body: label,
     geo_uri: geoUri,
     'org.matrix.msc3488.location': { uri: geoUri, description: label },
@@ -278,7 +268,7 @@ export function locationMessageContent(
 /** `m.text` spoiler content (`/spoiler`) — an `<span data-mx-spoiler>` formatted body. */
 function spoilerMessageContent(text: string) {
   return {
-    msgtype: MsgType.Text,
+    msgtype: 'm.text',
     body: text,
     format: 'org.matrix.custom.html',
     formatted_body: `<span data-mx-spoiler>${escapeInlineText(text)}</span>`,
@@ -313,14 +303,14 @@ export function slashCommandContent(
     // `m.mentions` marker as an ordinary message (else `/plain > @room …` re-pings the room).
     case 'shrug':
       return {
-        msgtype: MsgType.Text,
+        msgtype: 'm.text',
         body: arg ? `${arg} ${SHRUG}` : SHRUG,
         ...mentionsBlock([], mentionsRoom(arg)),
       };
     case 'plain':
       return arg
         ? {
-            msgtype: MsgType.Text,
+            msgtype: 'm.text',
             body: arg,
             ...mentionsBlock([], mentionsRoom(arg)),
           }
@@ -346,7 +336,7 @@ export function editMessageContent(
 ) {
   const rich = md.html !== '' && (md.formatted || mentions.length > 0);
   return {
-    msgtype: MsgType.Text,
+    msgtype: 'm.text',
     body: `* ${text}`,
     // The top-level body is `* <the whole new text>`, and legacy body-matching rules evaluate
     // it before `.m.rule.suppress_edits`. Without this block, fixing a typo in a quote
@@ -363,80 +353,34 @@ export function editMessageContent(
       : {}),
     'm.new_content': textMessageContent(text, md, mentions),
     'm.relates_to': {
-      rel_type: RelationType.Replace,
+      rel_type: 'm.replace',
       event_id: messageId,
     },
   };
 }
 
 /**
- * Rich-reply content (`m.in_reply_to`): a plain `> …` quote in `body` and an `<mx-reply>`
- * block in `formatted_body`. With a `threadId` the SDK layers the `m.thread` relation on top
- * with `is_falling_back: false`.
- *
- * `target` defaults to the room's copy of `messageId`; pass one fetched from the server when
- * the room no longer holds it. With no target the reply keeps its relation but carries no
- * quote: the fallback is optional, and an empty `> <>` one is worse. `contentOf` picks what
- * of the target to quote; a timeline passes what the target's own row shows.
+ * The reply's own words for a rich reply: `formattedBody` is always set, because a reply
+ * always carries `format: org.matrix.custom.html`. The quote of the target and its author's
+ * mention are added where the target is known.
  */
-export function replyMessageContent(
-  room: Room,
-  messageId: string,
+export function outgoingReplyText(
   text: string,
   md: RenderedMarkdown,
   mentions: Mention[] = [],
-  target: MatrixEvent | undefined = room.findEventById(messageId),
-  contentOf: (event: MatrixEvent) => Record<string, unknown> = displayContent,
 ) {
-  const replyHtml = applyMentionPills(
-    md.formatted ? md.html : escapeInlineText(text),
-    mentions,
-  );
-  const sender = target?.getSender() ?? '';
-  // A target that failed to decrypt still names its author, who is pinged, but its body is
-  // the SDK's "Unable to decrypt" placeholder, which is not worth quoting.
-  const quote =
-    target && sender && !target.isDecryptionFailure()
-      ? replyFallback(room, messageId, sender, target, contentOf)
-      : null;
   return {
-    msgtype: MsgType.Text,
-    body: quote ? `${quote.body}${text}` : text,
-    format: 'org.matrix.custom.html',
-    formatted_body: `${quote?.html ?? ''}${replyHtml}`,
-    'm.relates_to': { 'm.in_reply_to': { event_id: messageId } },
-    // A reply pings the author plus anyone @-mentioned in the reply. `text` is the reply's own
-    // words, not `body`, whose quoted fallback would re-ping the quoted message's @room.
-    ...mentionsBlock(
-      [sender, ...mentions.map((m) => m.userId)],
-      mentionsRoom(text),
+    msgtype: 'text' as const,
+    body: text,
+    formattedBody: applyMentionPills(
+      md.formatted ? md.html : escapeInlineText(text),
+      mentions,
     ),
-  };
-}
-
-/** The `> <sender> …` body quote and `<mx-reply>` block a reply carries for `target`. */
-function replyFallback(
-  room: Room,
-  messageId: string,
-  sender: string,
-  target: MatrixEvent,
-  contentOf: (event: MatrixEvent) => Record<string, unknown>,
-): { body: string; html: string } {
-  const origBody = stripReplyFallbackText(
-    (contentOf(target)['body'] as string) ?? '',
-  );
-  const firstLine = origBody.split('\n')[0] ?? '';
-  // Escape the ids interpolated into href attributes: a hostile sender/room id must not break
-  // out of the attribute and inject markup.
-  const roomLink = `https://matrix.to/#/${escapeHtml(room.roomId)}/${escapeHtml(messageId)}`;
-  const userLink = `https://matrix.to/#/${escapeHtml(sender)}`;
-  return {
-    body: `> <${sender}> ${firstLine}\n\n`,
-    html:
-      `<mx-reply><blockquote>` +
-      `<a href="${roomLink}">In reply to</a> ` +
-      `<a href="${userLink}">${escapeHtml(sender)}</a><br>` +
-      `${escapeHtml(firstLine)}</blockquote></mx-reply>`,
+    // The reply's own words, not a quoted fallback, which would re-ping the quote's @room.
+    mentions: {
+      userIds: mentions.map((m) => m.userId),
+      room: mentionsRoom(text),
+    },
   };
 }
 
@@ -444,58 +388,9 @@ function replyFallback(
 export function annotationContent(messageId: string, key: string) {
   return {
     'm.relates_to': {
-      rel_type: RelationType.Annotation,
+      rel_type: 'm.annotation',
       event_id: messageId,
       key,
     },
   };
-}
-
-/**
- * The ids of the current user's own live reaction events for a key on a message. Usually one,
- * but two devices can each send one, and un-reacting must remove them all.
- */
-export function myReactionIds(
-  client: MatrixClient,
-  room: Room,
-  messageId: string,
-  key: string,
-): string[] {
-  const annotations = room.relations
-    .getChildEventsForEvent(
-      messageId,
-      RelationType.Annotation,
-      EventType.Reaction,
-    )
-    ?.getSortedAnnotationsByKey();
-  const match = annotations?.find(([k]) => k === key);
-  if (!match) {
-    return [];
-  }
-  const myId = client.getUserId();
-  return [...match[1]].flatMap((e) => {
-    const id = e.getId();
-    return id && !e.isRedacted() && e.getSender() === myId ? [id] : [];
-  });
-}
-
-/**
- * Short, single-line preview of a message event's text, for the thread indicator and the room
- * list's muted last-message line. Handles undecryptable and redacted events, strips any
- * reply-fallback quote, and returns '…' when nothing renders. `content` is what to preview,
- * by default the message's checked current content. Text that arrived unencrypted is shown as
- * is; callers mark it themselves.
- */
-export function messagePreview(
-  event: MatrixEvent,
-  content: Record<string, unknown> = displayContent(event),
-): string {
-  if (event.isDecryptionFailure()) {
-    return '⚠️ Unable to decrypt';
-  }
-  if (event.isRedacted()) {
-    return '(message deleted)';
-  }
-  const body = stripReplyFallbackText((content['body'] as string) ?? '');
-  return body.replace(/\s+/g, ' ').trim() || '…';
 }

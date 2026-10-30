@@ -3,16 +3,27 @@
 // TimelineService (the open-room projection) and TimelineActionsService (the write
 // surface) are two services over the SAME fake room + client, so their specs need the
 // same doubles. This holds them so neither file owns a private copy that can drift.
+//
+// The fake client reaches TimelineService through the real js-sdk timeline engine and
+// TimelineStores: MatrixClientService doubles as JS_SDK_CLIENTS, and the session is stubbed
+// with the client's account live.
 import { signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { TimelineActionsService } from './timeline-actions.service';
 import { ConversationActionContextService } from './conversation-action-context.service';
 import { CONVERSATION_MESSAGE_POLICY } from './conversation-message-adapter.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import type { ConversationKey } from './conversation-messages';
+import {
+  EMPTY_SESSION,
+  MatrixClientService,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import {
   PrivacySettingsService,
@@ -59,7 +70,7 @@ export function mediaProvider() {
       of<UploadedMedia>(
         encrypt
           ? {
-              msgtype: 'm.image' as UploadedMedia['msgtype'],
+              msgtype: 'm.image',
               body: 'pic.png',
               mxc: null,
               file: {
@@ -72,7 +83,7 @@ export function mediaProvider() {
               info: { mimetype: 'image/png', size: 4 },
             }
           : {
-              msgtype: 'm.image' as UploadedMedia['msgtype'],
+              msgtype: 'm.image',
               body: 'pic.png',
               mxc: 'mxc://hs/up',
               file: null,
@@ -82,39 +93,57 @@ export function mediaProvider() {
   });
 }
 
-/** Wrap a fake matrix-js-sdk client as a MatrixClientService mock. */
-export function matrixProvider(client: unknown, isInitialized = true) {
-  return MockProvider(MatrixClientService, {
-    isInitialized,
-    instance: client,
-    clientFor: (accountId: string) =>
-      (client as { getUserId?: () => string | null }).getUserId?.() ===
-      accountId
-        ? client
-        : null,
-  } as Partial<MatrixClientService>);
+/** The account every fake client signs in as, and the room the harness opens. */
+export const ROOM_KEY: ConversationKey = {
+  accountId: '@me:hs',
+  roomId: '!r:hs',
+};
+
+/**
+ * A session with `accountIds` live, for the timeline stores to follow. `publish` replaces
+ * the live accounts, as a sign-out or a restart does.
+ */
+export function liveSession(accountIds: readonly string[]) {
+  const live = (ids: readonly string[], generation = 1): SessionSnapshot => ({
+    ...EMPTY_SESSION,
+    accounts: ids.map((accountId) => ({
+      accountId,
+      deviceId: 'DEVICE',
+      generation,
+      syncState: 'syncing' as const,
+      serverSynced: true,
+      roomsPrepared: true,
+      waitingCount: 0,
+      cryptoStoreEncrypted: true,
+    })),
+  });
+  const snapshot = signal(live(accountIds));
+  const session$ = new Subject<SessionSnapshot>();
+  return {
+    providers: [
+      { provide: SESSION_SNAPSHOT, useValue: snapshot.asReadonly() },
+      { provide: SESSION_ENGINE, useValue: { session: () => session$ } },
+    ] satisfies Provider[],
+    publish(ids: readonly string[], generation = 1): void {
+      snapshot.set(live(ids, generation));
+      session$.next(snapshot());
+    },
+  };
 }
 
 /**
- * A MatrixClientService mock whose `instance` follows a mutable holder — mirroring
- * the real getter, which resolves the *active* account on every access. Lets a test
- * switch accounts and observe when the service actually reads the client.
+ * Wrap a fake matrix-js-sdk client as a MatrixClientService mock (and so JS_SDK_CLIENTS),
+ * with its account live in the session.
  */
-export function switchableMatrixProvider(active: {
-  client: unknown;
-  isInitialized?: boolean;
-}) {
-  return {
-    provide: MatrixClientService,
-    useValue: {
-      get isInitialized() {
-        return active.isInitialized ?? true;
-      },
-      get instance() {
-        return active.client;
-      },
-    } as unknown as MatrixClientService,
-  };
+export function matrixProvider(client: unknown) {
+  const userId =
+    (client as { getUserId?: () => string | null }).getUserId?.() ?? null;
+  return [
+    MockProvider(MatrixClientService, {
+      clientFor: (accountId: string) => (userId === accountId ? client : null),
+    } as Partial<MatrixClientService>),
+    ...liveSession(userId ? [userId] : []).providers,
+  ];
 }
 
 /** Appended to the body of an edit {@link fakeEvent} fills in. */
@@ -267,16 +296,11 @@ export function fakeRelations(
   return { getSortedAnnotationsByKey: () => annotations };
 }
 
-/** A room member as {@link TimelineService.refreshTyping} reads it. */
-export function fakeMember(userId: string, typing: boolean, name = userId) {
-  return { userId, typing, name, roomId: '!r:hs' };
-}
-
 export function fakeRoom(
   events: ReturnType<typeof fakeEvent>[],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
-  members: ReturnType<typeof fakeMember>[] = [],
+  members: readonly unknown[] = [],
   fullyReadEventId: string | null = null,
   receiptsByEvent: Record<string, string[]> = {},
   power: { mine?: number; redact?: number; send?: number } = {},
@@ -337,6 +361,9 @@ export function fakeClient(
   // Captured event listeners keyed by event name, so a test can fire e.g. the
   // RoomMember.typing handler the service registers in open().
   const handlers = new Map<string, (...args: unknown[]) => void>();
+  let txn = 0;
+  const threaded = ([first]: unknown[]) =>
+    first === null || (typeof first === 'string' && first.startsWith('$'));
   return {
     baseUrl: 'https://hs',
     getRoom: () => room,
@@ -353,6 +380,7 @@ export function fakeClient(
       sent.push(['typing', isTyping, timeoutMs]);
       return Promise.resolve({});
     },
+    getCrypto: () => undefined,
     sendReadReceipt: () => Promise.resolve({}),
     setRoomReadMarkers: vi.fn(() => Promise.resolve({})),
     scrollback: () => Promise.resolve(room),
@@ -364,17 +392,20 @@ export function fakeClient(
       sent.push(['html', body, html]);
       return Promise.resolve({});
     },
-    sendMessage: (_rid: string, content: unknown) => {
-      sent.push(['message', content]);
-      return Promise.resolve({});
+    makeTxnId: () => `txn${++txn}`,
+    // Both SDK overloads: without a thread id, and the engine's with one (null or `$…`).
+    sendMessage: (_rid: string, ...args: unknown[]) => {
+      sent.push(['message', threaded(args) ? args[1] : args[0]]);
+      return Promise.resolve({ event_id: `$sent${sent.length}` });
     },
     redactEvent: (_rid: string, eventId: string) => {
       sent.push(['redact', eventId]);
       return Promise.resolve({});
     },
-    sendEvent: (_rid: string, type: string, content: unknown) => {
+    sendEvent: (_rid: string, ...args: unknown[]) => {
+      const [type, content] = threaded(args) ? args.slice(1) : args;
       sent.push(['event', type, content]);
-      return Promise.resolve({});
+      return Promise.resolve({ event_id: `$sent${sent.length}` });
     },
   };
 }
@@ -405,14 +436,13 @@ export function setup(
     ],
   });
   const svc = TestBed.inject(TimelineService);
-  svc.open('!r:hs');
+  svc.open(ROOM_KEY);
   return svc;
 }
 
 /**
- * The action surface over the same open room `setup` builds. Both services are real:
- * the actions resolve the open room through {@link TimelineService.openContext}, so a
- * mocked projection would test nothing.
+ * The action surface over the same open room `setup` builds, bound to its client and room
+ * the way the Conversation's factory binds it.
  */
 export function setupActions(
   events: ReturnType<typeof fakeEvent>[],
@@ -431,11 +461,8 @@ export function setupActions(
       mediaProvider(),
     ],
   });
-  const timeline = TestBed.inject(TimelineService);
-  timeline.open('!r:hs');
-  TestBed.inject(ConversationActionContextService).bind(() =>
-    timeline.openContext(),
-  );
+  TestBed.inject(TimelineService).open(ROOM_KEY);
+  TestBed.inject(ConversationActionContextService).bind(() => ROOM_KEY);
   return TestBed.inject(TimelineActionsService);
 }
 
@@ -445,7 +472,7 @@ export function openTimeline(client: unknown, extraProviders: Provider[] = []) {
     providers: [TimelineService, matrixProvider(client), ...extraProviders],
   });
   const svc = TestBed.inject(TimelineService);
-  svc.open('!r:hs');
+  svc.open(ROOM_KEY);
   return svc;
 }
 

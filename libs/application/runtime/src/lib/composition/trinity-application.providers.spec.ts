@@ -1,5 +1,6 @@
 import { APPEARANCE_PREFERENCE_DESCRIPTORS } from '@trinity/application/appearance';
 import {
+  CONVERSATION_TYPING,
   ConversationRuntime,
   PRIVACY_PREFERENCE_DESCRIPTORS,
 } from '@trinity/data-access/timeline';
@@ -8,7 +9,10 @@ import {
   type AppLockStatus,
 } from '@trinity/data-access/app-lock';
 import { NOTIFICATION_VISIBILITY } from '@trinity/data-access/notifications';
-import { RAIL_UNREAD_CHATS_PREFERENCE } from '@trinity/data-access/room-library';
+import {
+  RAIL_UNREAD_CHATS_PREFERENCE,
+  RoomListStore,
+} from '@trinity/data-access/room-library';
 import {
   AppConfigService,
   ACCOUNT_REMOVAL_LAUNCHER,
@@ -40,11 +44,14 @@ import { HostFileExportService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
 import {
   MATRIX_SDK_LOG_SINK,
+  SESSION_ENGINE,
+  type SessionEngine,
+  type SessionStorageEffect,
   configureMatrixSdkLogging,
   matrixSdkLogLevel,
 } from '@trinity/data-access/matrix-client';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
-import { NEVER, firstValueFrom, of } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
 import {
@@ -52,9 +59,7 @@ import {
   TrustDevicesService,
 } from '@trinity/data-access/trust';
 import {
-  AuthService,
   QR_LINK_IDENTITY_CHECK,
-  QR_SIGN_IN_COMPLETION,
   QrSignInAvailability,
 } from '@trinity/data-access/auth';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
@@ -195,6 +200,55 @@ describe('Trinity application provider composition', () => {
     }
   });
 
+  it("saves the session engine's storage effects from startup", () => {
+    const effects = new Subject<SessionStorageEffect>();
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl: null,
+          buildInfo: {} as BuildInfo,
+          releaseNotes: [],
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => NEVER,
+            whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
+          },
+        }),
+        {
+          provide: SESSION_ENGINE,
+          useValue: { storageEffects: () => effects } satisfies Pick<
+            SessionEngine,
+            'storageEffects'
+          >,
+        },
+        MockProvider(SessionStorageService, {
+          remove: vi.fn(() => of(undefined)),
+        }),
+      ],
+    });
+
+    try {
+      TestBed.inject(EnvironmentInjector);
+      effects.next({
+        kind: 'hard-logout',
+        accountId: '@me:hs',
+        activeAccountId: null,
+      });
+
+      expect(TestBed.inject(SessionStorageService).remove).toHaveBeenCalledWith(
+        '@me:hs',
+      );
+    } finally {
+      configureMatrixSdkLogging('debug');
+    }
+  });
+
   it('starts the diagnostic log at startup and wires the SDK sink into it', async () => {
     TestBed.configureTestingModule({
       providers: [
@@ -223,7 +277,7 @@ describe('Trinity application provider composition', () => {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
           useValue: {
             accounts: () => of([]),
-            knownNames: () => [],
+            knownNames: () => of([]),
           },
         },
         {
@@ -257,6 +311,61 @@ describe('Trinity application provider composition', () => {
       TestBed.resetTestingModule();
       configureMatrixSdkLogging('debug');
     }
+  });
+
+  it('CONVERSATION_TYPING names other typists in the room, never the account itself', () => {
+    const me = { userId: '@me:hs', displayName: 'Me' };
+    const bob = { userId: '@bob:hs', displayName: 'Bob' };
+    TestBed.configureTestingModule({
+      providers: [
+        ...applicationCapabilityProviders({
+          buildInfo: {} as BuildInfo,
+          releaseNotes: [],
+          pushConfig: null,
+        }),
+        MockProvider(RoomListStore, {
+          typing: ((accountId: string) =>
+            signal(
+              accountId === '@me:hs'
+                ? { '!r:hs': [me, bob], '!other:hs': [bob] }
+                : { '!quiet:hs': [bob] },
+            ).asReadonly()) as never,
+        }),
+      ],
+    });
+    const port = TestBed.inject(CONVERSATION_TYPING);
+
+    expect(port.typing('@me:hs', '!r:hs')()).toEqual([bob]);
+    expect(port.typing('@me:hs', '!quiet:hs')()).toEqual([]);
+  });
+
+  it('CONVERSATION_TYPING keeps the same list while only other rooms change', () => {
+    const bob = { userId: '@bob:hs', displayName: 'Bob' };
+    const typing = signal<
+      Record<string, { userId: string; displayName: string }[]>
+    >({
+      '!r:hs': [bob],
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        ...applicationCapabilityProviders({
+          buildInfo: {} as BuildInfo,
+          releaseNotes: [],
+          pushConfig: null,
+        }),
+        MockProvider(RoomListStore, {
+          typing: (() => typing.asReadonly()) as never,
+        }),
+      ],
+    });
+    const names = TestBed.inject(CONVERSATION_TYPING).typing('@me:hs', '!r:hs');
+    const first = names();
+
+    typing.set({ '!r:hs': [{ ...bob }], '!other:hs': [bob] });
+    expect(names()).toBe(first);
+
+    typing.set({ '!r:hs': [{ ...bob, displayName: 'Robert' }] });
+    expect(names()).toEqual([{ ...bob, displayName: 'Robert' }]);
   });
 
   it('tells notifications nobody is looking while App lock covers the app', () => {
@@ -422,7 +531,7 @@ describe('Trinity application provider composition', () => {
     }
   });
 
-  it('finishes a QR sign-in through the shared sign-in path', () => {
+  it('checks the published identity through trust before a QR link', () => {
     TestBed.configureTestingModule({
       providers: [
         provideTrinityApplication({
@@ -445,9 +554,6 @@ describe('Trinity application provider composition', () => {
     });
 
     try {
-      expect(TestBed.inject(QR_SIGN_IN_COMPLETION)).toBe(
-        TestBed.inject(AuthService),
-      );
       expect(TestBed.inject(QR_LINK_IDENTITY_CHECK)).toBe(
         TestBed.inject(TrustDevicesService),
       );

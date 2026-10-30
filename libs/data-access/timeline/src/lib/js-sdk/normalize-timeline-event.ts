@@ -1,0 +1,645 @@
+import {
+  EventType,
+  MsgType,
+  type MatrixClient,
+  type MatrixEvent,
+  type Room,
+} from 'matrix-js-sdk';
+import {
+  initialOf,
+  mentionNamesIn,
+  normalizeMediaPayload,
+  parseGeoUri,
+} from '@trinity/util/matrix';
+import {
+  displayContent,
+  validReplacement,
+} from '@trinity/data-access/matrix-client';
+import {
+  mapStatus,
+  reactionsFor,
+  readReceiptsFor,
+  replyPreview,
+} from './event-reads';
+import { buildPollView, isPollStart } from './poll-reads';
+import type {
+  MessageShield,
+  NormalizedMediaEvent,
+  NormalizedSystemChange,
+  NormalizedTimelineEvent,
+  ReactionView,
+  ReceiptView,
+  ReplyPreview,
+  UndecryptableReason,
+} from '../message-presentation';
+import { shownContent, shownSubject, showsEdit } from './shields';
+import { unencryptedShield } from '../shield-presentation';
+import { undecryptableReasonOf } from './undecryptable-reason';
+
+const SYSTEM_EVENT_TYPES = new Set<string>([
+  EventType.RoomMember,
+  EventType.RoomName,
+  EventType.RoomTopic,
+  EventType.RoomAvatar,
+  EventType.RoomCanonicalAlias,
+  EventType.RoomJoinRules,
+  EventType.RoomHistoryVisibility,
+  EventType.RoomGuestAccess,
+  EventType.RoomEncryption,
+  EventType.RoomCreate,
+]);
+
+/** Whether a raw event is a supported, non-redacted Matrix system event. */
+export function isPresentableSystemEvent(event: MatrixEvent): boolean {
+  return read(
+    () =>
+      event.isState() &&
+      !event.isRedacted() &&
+      SYSTEM_EVENT_TYPES.has(event.getType()),
+    false,
+  );
+}
+
+function read<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+function record(value: unknown): Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null
+    ? (value as Readonly<Record<string, unknown>>)
+    : {};
+}
+
+function string(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function mentionsViewer(
+  content: Readonly<Record<string, unknown>>,
+  viewerId: string,
+): boolean {
+  if (viewerId === '') return false;
+  const mentions = record(content['m.mentions']);
+  const userIds = mentions['user_ids'];
+  return (
+    Array.isArray(userIds) &&
+    userIds.some((value) => typeof value === 'string' && value === viewerId)
+  );
+}
+
+function mentionNames(
+  room: Room,
+  formattedBody: string | null,
+): Readonly<Record<string, string>> {
+  return Object.freeze(
+    mentionNamesIn(formattedBody, (userId) =>
+      string(read<unknown>(() => room.getMember(userId)?.name, null)),
+    ),
+  );
+}
+
+function validMxc(value: string | null): value is string {
+  return value !== null && /^mxc:\/\/[^/\s]+\/[^\s]+$/.test(value);
+}
+
+function normalizeMedia(
+  common: ReturnType<typeof normalizeCommon>,
+  content: Readonly<Record<string, unknown>>,
+  msgtype: string,
+  event: MatrixEvent,
+  room: Room,
+  viewerId: string,
+): NormalizedMediaEvent | null {
+  const source = normalizeMediaPayload(
+    content as Record<string, unknown>,
+    msgtype,
+  );
+  if (!source) return null;
+  const body = typeof content['body'] === 'string' ? content['body'] : '';
+  const captioned =
+    typeof content['filename'] === 'string' &&
+    body !== '' &&
+    body !== source.filename;
+  const formattedCaption =
+    captioned &&
+    content['format'] === 'org.matrix.custom.html' &&
+    typeof content['formatted_body'] === 'string'
+      ? content['formatted_body']
+      : null;
+  return Object.freeze({
+    ...common,
+    type: 'media',
+    messageKind: source.kind,
+    media: Object.freeze(source),
+    body: source.filename,
+    caption: captioned ? body : null,
+    formattedCaption,
+    replyFallback: read(() => Boolean(event.replyEventId), false),
+    addressesViewer: mentionsViewer(content, viewerId),
+    mentionNames: mentionNames(room, formattedCaption),
+  });
+}
+
+function normalizeSticker(
+  common: ReturnType<typeof normalizeCommon>,
+  content: Readonly<Record<string, unknown>>,
+): NormalizedMediaEvent | null {
+  const rawInfo = record(content['info']);
+  const source = normalizeMediaPayload(
+    {
+      ...content,
+      info: {
+        ...rawInfo,
+        mimetype: string(rawInfo['mimetype']) ?? 'image/png',
+      },
+    },
+    MsgType.Image,
+  );
+  if (!source || !validMxc(source.mxc)) return null;
+  const body = string(content['body']) ?? source.filename;
+  const url = string(content['url']);
+  const { info, body: rawBody } = content;
+  return Object.freeze({
+    ...common,
+    type: 'media',
+    messageKind: 'sticker',
+    media: Object.freeze(source),
+    body,
+    caption: null,
+    formattedCaption: null,
+    replyFallback: false,
+    addressesViewer: false,
+    mentionNames: Object.freeze({}),
+    ...(url
+      ? {
+          stickerImage: Object.freeze({
+            url,
+            ...(info && typeof info === 'object' && !Array.isArray(info)
+              ? { info: info as Readonly<Record<string, unknown>> }
+              : {}),
+            ...(typeof rawBody === 'string' ? { body: rawBody } : {}),
+          }),
+        }
+      : {}),
+  });
+}
+
+function normalizeReactions(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): readonly ReactionView[] {
+  return Object.freeze(
+    read(
+      () =>
+        reactionsFor(client, room, event).map((reaction) =>
+          Object.freeze({
+            key: reaction.key,
+            count: reaction.count,
+            reacted: reaction.reacted,
+            reactors: Object.freeze([...reaction.reactors]),
+          }),
+        ),
+      [],
+    ),
+  );
+}
+
+function normalizeReceipts(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): readonly ReceiptView[] {
+  return Object.freeze(
+    read(
+      () =>
+        readReceiptsFor(client, room, event).map((receipt) =>
+          Object.freeze({ ...receipt }),
+        ),
+      [],
+    ),
+  );
+}
+
+function normalizeReply(
+  room: Room,
+  event: MatrixEvent,
+  roomEncrypted: boolean,
+): ReplyPreview | null {
+  // The event's own relation: an edit cannot change it, and in an encrypted room it sits
+  // outside the ciphertext.
+  const relation = record(read(() => event.getRelation(), null));
+  // Thread fallbacks support clients without threads; they are not explicit replies.
+  if (
+    relation['rel_type'] === 'm.thread' &&
+    relation['is_falling_back'] === true
+  ) {
+    return null;
+  }
+  const eventId = read(() => event.replyEventId, undefined);
+  if (!eventId) return null;
+  const preview = read(
+    () =>
+      replyPreview(room, eventId, roomEncrypted, shownContent, shownSubject),
+    null,
+  );
+  if (!preview) return null;
+  const { mark, ...quote } = preview;
+  return Object.freeze({ ...quote, shield: unencryptedShield(mark) });
+}
+
+/** How a row is projected: its shield, and whether its valid edit is shown yet. */
+interface Projection {
+  readonly shield: MessageShield | null;
+  readonly roomEncrypted: boolean;
+  readonly applyEdit: boolean;
+}
+
+function normalizeCommon(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+  { shield, roomEncrypted, applyEdit }: Projection,
+) {
+  const senderId = string(read<unknown>(() => event.getSender(), null)) ?? '';
+  const member = read(() => room.getMember(senderId), null);
+  const memberName = read<unknown>(() => member?.name, null);
+  const senderName =
+    (typeof memberName === 'string' && memberName !== ''
+      ? memberName
+      : senderId) || 'Unknown';
+  const avatar = read<unknown>(() => member?.getMxcAvatarUrl() ?? null, null);
+  const avatarMxc = typeof avatar === 'string' ? avatar : null;
+  return {
+    id: string(read<unknown>(() => event.getId(), null)) ?? '',
+    senderId,
+    senderName,
+    senderInitial: initialOf(senderName),
+    senderAvatarMxc: avatarMxc,
+    timestamp: finiteNumber(read<unknown>(() => event.getTs(), 0)),
+    isOwn: read(() => senderId === client.getUserId(), false),
+    edited: read(
+      () => applyEdit && validReplacement(event) !== undefined,
+      false,
+    ),
+    reactions: normalizeReactions(client, room, event),
+    replyTo: normalizeReply(room, event, roomEncrypted),
+    status: read(() => mapStatus(event), null),
+    readReceipts: normalizeReceipts(client, room, event),
+    shield: shield ? Object.freeze({ ...shield }) : null,
+  } as const;
+}
+
+function unsupported(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+  projection: Projection,
+  fallback:
+    'unsupported-message' | 'undecryptable-message' | 'redacted-message',
+  decryptionFailed: boolean,
+  body = '',
+  undecryptableReason: UndecryptableReason | null = null,
+): NormalizedTimelineEvent {
+  return Object.freeze({
+    ...normalizeCommon(client, room, event, projection),
+    type: 'unsupported',
+    fallback,
+    decryptionFailed,
+    body,
+    replyFallback: read(() => Boolean(event.replyEventId), false),
+    undecryptableReason,
+  });
+}
+
+function actorName(event: MatrixEvent, room: Room): string {
+  const sender = string(read<unknown>(() => event.getSender(), null)) ?? '';
+  const memberName = string(
+    read<unknown>(() => room.getMember(sender)?.name, null),
+  );
+  return (memberName ?? sender) || 'Someone';
+}
+
+function nameFor(
+  room: Room,
+  userId: string,
+  displayName: string | null,
+): string {
+  const memberName = string(
+    read<unknown>(() => room.getMember(userId)?.name, null),
+  );
+  return (displayName ?? memberName ?? userId) || 'Someone';
+}
+
+function normalizeSystemChange(
+  event: MatrixEvent,
+  room: Room,
+  type: string,
+  content: Readonly<Record<string, unknown>>,
+  previous: Readonly<Record<string, unknown>>,
+): NormalizedSystemChange | null {
+  const actor = actorName(event, room);
+  switch (type) {
+    case EventType.RoomMember: {
+      const targetId =
+        string(read<unknown>(() => event.getStateKey(), null)) ?? '';
+      const displayName = string(content['displayname']);
+      return {
+        kind: 'membership',
+        membership: string(content['membership']),
+        previousMembership: string(previous['membership']),
+        actorName: actor,
+        actorIsTarget: read(() => event.getSender() === targetId, false),
+        targetId,
+        targetName: nameFor(room, targetId, displayName),
+        previousDisplayName: string(previous['displayname']),
+        displayName,
+        avatarChanged: previous['avatar_url'] !== content['avatar_url'],
+        reason: string(content['reason']),
+      };
+    }
+    case EventType.RoomName:
+      return {
+        kind: 'room-name',
+        actorName: actor,
+        previousName: string(previous['name']),
+        name: string(content['name']),
+      };
+    case EventType.RoomTopic:
+      return {
+        kind: 'room-topic',
+        actorName: actor,
+        previousTopic: string(previous['topic']),
+        topic: string(content['topic']),
+      };
+    case EventType.RoomAvatar:
+      return {
+        kind: 'room-avatar',
+        actorName: actor,
+        previousUrl: string(previous['url']),
+        url: string(content['url']),
+      };
+    case EventType.RoomCanonicalAlias:
+      return {
+        kind: 'canonical-alias',
+        actorName: actor,
+        previousAlias: string(previous['alias']),
+        alias: string(content['alias']),
+      };
+    case EventType.RoomJoinRules:
+      return {
+        kind: 'join-rules',
+        actorName: actor,
+        previousRule: string(previous['join_rule']),
+        rule: string(content['join_rule']),
+      };
+    case EventType.RoomHistoryVisibility:
+      return {
+        kind: 'history-visibility',
+        actorName: actor,
+        previousVisibility: string(previous['history_visibility']),
+        visibility: string(content['history_visibility']),
+      };
+    case EventType.RoomGuestAccess:
+      return {
+        kind: 'guest-access',
+        actorName: actor,
+        previousAccess: string(previous['guest_access']),
+        access: string(content['guest_access']),
+      };
+    case EventType.RoomEncryption:
+      return { kind: 'encryption', actorName: actor };
+    case EventType.RoomCreate:
+      return { kind: 'create', actorName: actor };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Matrix-facing adapter for Message Presentation. Every displayable message kind is
+ * normalized into frozen SDK-free data before it reaches feature code. `roomEncrypted`
+ * (see `RoomEncryptionFlags`) keeps unencrypted text out of reply quotes and poll tallies.
+ */
+export function normalizeTimelineEvent(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+  shield: MessageShield | null,
+  roomEncrypted: boolean,
+): NormalizedTimelineEvent | null {
+  // An encrypted edit shows only once its own shield has resolved (see showsEdit).
+  const applyEdit = read(() => showsEdit(event), false);
+  const projection: Projection = { shield, roomEncrypted, applyEdit };
+  const shownContent = (): Record<string, unknown> =>
+    applyEdit ? displayContent(event) : event.getOriginalContent();
+  const type = read(() => event.getType(), '');
+  // Redaction first: the SDK keeps the failure reason on an event it redacts after a
+  // failed decryption, and a removed message has nothing left to read or fix.
+  if (read(() => event.isRedacted(), false)) {
+    return unsupported(
+      client,
+      room,
+      event,
+      projection,
+      'redacted-message',
+      false,
+    );
+  }
+  if (read(() => event.isDecryptionFailure(), false)) {
+    return unsupported(
+      client,
+      room,
+      event,
+      projection,
+      'undecryptable-message',
+      true,
+      '',
+      undecryptableReasonOf(read(() => event.decryptionFailureReason, null)),
+    );
+  }
+
+  if (read(() => isPollStart(event), false)) {
+    const poll = read(
+      () => buildPollView(client, room, event, roomEncrypted, shownContent()),
+      null,
+    );
+    return poll
+      ? Object.freeze({
+          ...normalizeCommon(client, room, event, projection),
+          type: 'poll',
+          poll: Object.freeze({
+            ...poll,
+            options: Object.freeze(
+              poll.options.map((option) => Object.freeze({ ...option })),
+            ),
+          }),
+        })
+      : unsupported(
+          client,
+          room,
+          event,
+          projection,
+          'unsupported-message',
+          false,
+        );
+  }
+
+  if (SYSTEM_EVENT_TYPES.has(type)) {
+    if (!read(() => event.isState(), false)) return null;
+    try {
+      const content = record(event.getContent());
+      const previous = record(event.getPrevContent());
+      const change = normalizeSystemChange(
+        event,
+        room,
+        type,
+        content,
+        previous,
+      );
+      return change
+        ? Object.freeze({
+            ...normalizeCommon(client, room, event, projection),
+            type: 'system',
+            change: Object.freeze(change),
+          })
+        : null;
+    } catch {
+      return unsupported(
+        client,
+        room,
+        event,
+        projection,
+        'unsupported-message',
+        false,
+      );
+    }
+  }
+
+  if (type !== EventType.RoomMessage && type !== EventType.Sticker) return null;
+  try {
+    const content = record(shownContent());
+    const common = normalizeCommon(client, room, event, projection);
+    if (type === EventType.Sticker) {
+      return (
+        normalizeSticker(common, content) ??
+        unsupported(
+          client,
+          room,
+          event,
+          projection,
+          'unsupported-message',
+          false,
+          string(content['body']) ?? '[sticker]',
+        )
+      );
+    }
+    const msgtype = content['msgtype'];
+    const viewerId =
+      string(read<unknown>(() => client.getUserId(), null)) ?? '';
+    if (msgtype === MsgType.Location) {
+      const geo = parseGeoUri(content['geo_uri']);
+      if (!geo) {
+        return unsupported(
+          client,
+          room,
+          event,
+          projection,
+          'unsupported-message',
+          false,
+          string(content['body']) ?? '[location]',
+        );
+      }
+      const body = string(content['body']) ?? 'Shared location';
+      return Object.freeze({
+        ...common,
+        type: 'location',
+        body,
+        location: Object.freeze({ ...geo, label: body }),
+      });
+    }
+    if (
+      msgtype === MsgType.Image ||
+      msgtype === MsgType.File ||
+      msgtype === MsgType.Audio ||
+      msgtype === MsgType.Video
+    ) {
+      return (
+        normalizeMedia(common, content, msgtype, event, room, viewerId) ??
+        unsupported(
+          client,
+          room,
+          event,
+          projection,
+          'unsupported-message',
+          false,
+          string(content['body']) ?? `[${String(msgtype).replace(/^m\./, '')}]`,
+        )
+      );
+    }
+    if (
+      msgtype !== MsgType.Text &&
+      msgtype !== MsgType.Emote &&
+      msgtype !== MsgType.Notice
+    ) {
+      return unsupported(
+        client,
+        room,
+        event,
+        projection,
+        'unsupported-message',
+        false,
+        typeof content['body'] === 'string' ? content['body'] : '',
+      );
+    }
+    if (typeof content['body'] !== 'string') {
+      return unsupported(
+        client,
+        room,
+        event,
+        projection,
+        'unsupported-message',
+        false,
+      );
+    }
+    const formattedBody =
+      content['format'] === 'org.matrix.custom.html' &&
+      typeof content['formatted_body'] === 'string'
+        ? content['formatted_body']
+        : null;
+    return Object.freeze({
+      ...common,
+      type: 'text',
+      messageKind:
+        msgtype === MsgType.Emote
+          ? 'emote'
+          : msgtype === MsgType.Notice
+            ? 'notice'
+            : 'text',
+      body: content['body'],
+      formattedBody,
+      replyFallback: read(() => Boolean(event.replyEventId), false),
+      addressesViewer: mentionsViewer(content, viewerId),
+      mentionNames: mentionNames(room, formattedBody),
+      roomEncrypted: read(() => room.hasEncryptionStateEvent?.() ?? true, true),
+      roomId: room.roomId,
+    });
+  } catch {
+    return unsupported(
+      client,
+      room,
+      event,
+      projection,
+      'unsupported-message',
+      false,
+    );
+  }
+}

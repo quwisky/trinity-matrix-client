@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { render, screen } from '@trinity/testing';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ImagePackEditError,
   ImagePackEditorService,
@@ -32,6 +32,7 @@ async function build(
   extra: Record<string, unknown> = {},
 ) {
   const addSpy = vi.fn(add);
+  const resolveMedia = vi.fn(() => NEVER);
   const close = vi.fn();
   const activeUserId = signal<string | null>('@me:hs');
   const rendered = await render(AddToPackDialogComponent, {
@@ -39,9 +40,9 @@ async function build(
     providers: [
       MockProvider(ImagePackEditorService, { add: addSpy }),
       MockProvider(TrnDialogRef, { close }),
-      MockProvider(MatrixClientService, { activeUserId }),
+      MockProvider(SessionStateService, { activeAccountId: activeUserId }),
       MockProvider(MediaService, {
-        resolveMedia: () => NEVER,
+        resolveMedia,
         pin: vi.fn(),
         unpin: vi.fn(),
       }),
@@ -57,6 +58,7 @@ async function build(
   return {
     ...rendered,
     add: addSpy,
+    resolveMedia,
     close,
     activeUserId,
     byTestId,
@@ -156,6 +158,37 @@ describe('AddToPackDialogComponent', () => {
     view.activeUserId.set('@other:hs');
     view.settle();
     expect(view.close).not.toHaveBeenCalled();
+  });
+
+  it("previews an existing image on its pack's account, not the one that becomes active", async () => {
+    const ref = { kind: 'room', accountId: '@bob:hs', roomId: '!r:hs' };
+    const view = await build(
+      () => of(ENTRY),
+      { kind: 'existing', url: 'mxc://hs/fox' },
+      { ref },
+    );
+    expect(view.resolveMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ mxc: 'mxc://hs/fox' }),
+      'thumbnail',
+      '@bob:hs',
+    );
+
+    view.activeUserId.set('@other:hs');
+    view.settle();
+
+    expect(view.resolveMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('previews an existing image for the personal pack on the account it opened on', async () => {
+    const view = await build(() => of(ENTRY), {
+      kind: 'existing',
+      url: 'mxc://hs/fox',
+    });
+    expect(view.resolveMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ mxc: 'mxc://hs/fox' }),
+      'thumbnail',
+      '@me:hs',
+    );
   });
 
   it('cannot be dismissed while an add runs', async () => {

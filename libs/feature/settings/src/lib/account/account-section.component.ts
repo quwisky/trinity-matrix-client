@@ -28,7 +28,7 @@ import {
 } from '@trinity/components/controls';
 import { runWithBusy } from '@trinity/util/ui';
 import { AuthService } from '@trinity/data-access/auth';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { EmailAddressesGroupComponent } from './email-addresses/email-addresses-group.component';
 import { DeleteAccountGroupComponent } from './delete-account/delete-account-group.component';
@@ -120,7 +120,7 @@ export class AccountSectionComponent {
   protected readonly announcement = signal('');
 
   /** The account this section shows. */
-  readonly accountId = inject(MatrixClientService).activeUserId;
+  readonly accountId = inject(SessionStateService).activeAccountId;
 
   /** The server's account API; null until it has answered. */
   readonly serverApi = toSignal(
@@ -217,11 +217,15 @@ export class AccountSectionComponent {
       this.error.set(this.firstError() ?? INCOMPLETE);
       return;
     }
-    runWithBusy(this.auth.changePassword(currentPassword, newPassword), {
-      busy: this.saving,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    }).subscribe(() => {
+    const accountId = this.accountId();
+    if (!accountId) {
+      this.error.set('Not signed in.');
+      return;
+    }
+    runWithBusy(
+      this.auth.changePassword(accountId, currentPassword, newPassword),
+      { busy: this.saving, error: this.error, destroyRef: this.destroyRef },
+    ).subscribe(() => {
       // reset(value), not a bare model set: it clears touched/dirty across the tree too, so
       // three required fields aren't left empty-and-touched, a primed error state.
       this.form().reset({ ...EMPTY_PASSWORDS });

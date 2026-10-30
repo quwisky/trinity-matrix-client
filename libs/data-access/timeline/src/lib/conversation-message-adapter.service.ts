@@ -1,22 +1,12 @@
-import { Injectable, InjectionToken, inject } from '@angular/core';
-import { EventStatus, EventType, ReceiptType, type Room } from 'matrix-js-sdk';
+import { Injectable, InjectionToken, inject, untracked } from '@angular/core';
+import { defer, map, of, tap, type Observable } from 'rxjs';
 import {
-  catchError,
-  defer,
-  forkJoin,
-  from,
-  map,
-  of,
-  type Observable,
-} from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { PrivacySettingsService } from '@trinity/platform-native';
-import {
-  annotationContent,
-  isTransientMatrixError,
-  myReactionIds,
-} from '@trinity/util/matrix';
+  DraftStoreService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
+import { type EngineResult, retryableFailure } from '@trinity/util/matrix';
 import type {
+  ConversationKey,
   ConversationMessageActionRequest,
   ConversationMessageAdapter,
   ConversationMessageOperation,
@@ -24,6 +14,21 @@ import type {
   ConversationMessagePolicy,
   ConversationReactionRequest,
 } from './conversation-messages';
+import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
+import type {
+  EventTimelineItem,
+  TimelineFocus,
+  TimelineItemKey,
+} from './timeline-engine';
+import { TIMELINE_ENGINE } from './timeline-engine.token';
+import { TimelineStores } from './timeline-store';
+
+const LIVE = { kind: 'live' } as const;
+
+type Failure = Extract<
+  ConversationMessageOutcome,
+  { kind: 'rejected' }
+>['failure'];
 
 const unavailablePolicy: ConversationMessagePolicy = {
   canRedactOthers: () => false,
@@ -40,53 +45,81 @@ export const CONVERSATION_MESSAGE_POLICY =
     { providedIn: 'root', factory: () => unavailablePolicy },
   );
 
+/** The transaction id of the local echo a row shows as `~<roomId>:<transactionId>`, else null. */
+function echoTransactionId(
+  request: ConversationMessageActionRequest,
+): string | null {
+  const prefix = `~${request.key.roomId}:`;
+  return request.messageId.startsWith(prefix)
+    ? request.messageId.slice(prefix.length)
+    : null;
+}
+
+function itemKey(request: ConversationMessageActionRequest): TimelineItemKey {
+  const transactionId = echoTransactionId(request);
+  return transactionId === null
+    ? { eventId: request.messageId, transactionId: null }
+    : { eventId: null, transactionId };
+}
+
+function threadOf(request: ConversationMessageActionRequest) {
+  return { threadRootId: request.threadRootId ?? null };
+}
+
+function rejected(
+  operation: ConversationMessageOperation,
+  failure: Failure,
+): ConversationMessageOutcome {
+  return { kind: 'rejected', operation, failure, retryable: false };
+}
+
+function outcome(
+  operation: ConversationMessageOperation,
+  result: EngineResult<null>,
+): ConversationMessageOutcome {
+  if (result.ok) return { kind: 'applied', operation };
+  switch (result.failure.code) {
+    case 'not-signed-in':
+    case 'account-not-live':
+      return rejected(operation, 'conversation-unavailable');
+    case 'message-unavailable':
+      return rejected(operation, 'message-unavailable');
+    case 'not-cancellable':
+      return rejected(operation, 'event-not-retryable');
+    default:
+      return {
+        kind: 'rejected',
+        operation,
+        failure: 'request-rejected',
+        retryable: retryableFailure(result.failure),
+      };
+  }
+}
+
 @Injectable({ providedIn: 'root' })
-class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
-  private readonly matrix = inject(MatrixClientService);
+class EngineConversationMessageAdapter implements ConversationMessageAdapter {
+  private readonly engine = inject(TIMELINE_ENGINE);
   private readonly privacy = inject(PrivacySettingsService);
+  private readonly drafts = inject(DraftStoreService);
+  private readonly stores = inject(TimelineStores);
   private readonly policy = inject(CONVERSATION_MESSAGE_POLICY);
 
   toggleReaction(
     request: ConversationReactionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {
-      const context = this.context(request);
       const reaction = request.reaction.trim();
-      if (!reaction) return of(this.rejected('reaction', 'invalid-reaction'));
-      if (!context) {
-        return of(this.rejected('reaction', 'conversation-unavailable'));
-      }
-      const { client, room } = context;
-      if (!this.event(room, request.messageId, request.threadRootId)) {
-        return of(this.rejected('reaction', 'message-unavailable'));
-      }
-      const mine = myReactionIds(client, room, request.messageId, reaction);
-      const action = mine.length
-        ? Promise.all(
-            mine.map((id) =>
-              request.threadRootId
-                ? client.redactEvent(room.roomId, request.threadRootId, id)
-                : client.redactEvent(room.roomId, id),
-            ),
-          )
-        : request.threadRootId
-          ? client.sendEvent(
-              room.roomId,
-              request.threadRootId,
-              EventType.Reaction,
-              annotationContent(request.messageId, reaction) as never,
-            )
-          : client.sendEvent(
-              room.roomId,
-              EventType.Reaction,
-              annotationContent(request.messageId, reaction) as never,
-            );
-      return from(action).pipe(
-        map(() => this.applied('reaction')),
-        catchError((error: unknown) =>
-          of(this.requestRejected('reaction', error)),
-        ),
-      );
+      if (!reaction) return of(rejected('reaction', 'invalid-reaction'));
+      const { accountId, roomId } = request.key;
+      return this.engine
+        .toggleReaction(
+          accountId,
+          roomId,
+          itemKey(request),
+          reaction,
+          threadOf(request),
+        )
+        .pipe(map((result) => outcome('reaction', result)));
     });
   }
 
@@ -94,27 +127,24 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {
-      const decision = this.policy.authorizeRedaction(request);
+      const item = this.eventOf(request);
+      if (!item) return of(rejected('redaction', 'message-unavailable'));
+      // As js-sdk's maySendRedactionForEvent: only a sent, unredacted event.
+      if (item.sendState !== null || item.content.kind === 'redacted') {
+        return of(rejected('redaction', 'not-allowed'));
+      }
+      const decision = this.policy.authorizeRedaction({
+        key: request.key,
+        messageId: request.messageId,
+        senderId: item.sender,
+      });
       if (decision.kind === 'rejected') {
-        return of(this.rejected('redaction', decision.failure));
+        return of(rejected('redaction', decision.failure));
       }
-      const context = this.context(request);
-      if (!context) {
-        return of(this.rejected('redaction', 'conversation-unavailable'));
-      }
-      const action = request.threadRootId
-        ? context.client.redactEvent(
-            context.room.roomId,
-            request.threadRootId,
-            request.messageId,
-          )
-        : context.client.redactEvent(context.room.roomId, request.messageId);
-      return from(action).pipe(
-        map(() => this.applied('redaction')),
-        catchError((error: unknown) =>
-          of(this.requestRejected('redaction', error)),
-        ),
-      );
+      const { accountId, roomId } = request.key;
+      return this.engine
+        .redact(accountId, roomId, itemKey(request), threadOf(request))
+        .pipe(map((result) => outcome('redaction', result)));
     });
   }
 
@@ -122,149 +152,103 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {
-      const context = this.context(request);
-      if (!context) {
-        return of(this.rejected('retry', 'conversation-unavailable'));
+      const transactionId = echoTransactionId(request);
+      // A row with an event id has been sent.
+      if (transactionId === null) {
+        return of(rejected('retry', 'event-not-retryable'));
       }
-      const event = this.event(
-        context.room,
-        request.messageId,
-        request.threadRootId,
-      );
-      if (!event) return of(this.rejected('retry', 'message-unavailable'));
-      if (
-        event.status !== EventStatus.NOT_SENT &&
-        event.status !== EventStatus.QUEUED &&
-        event.status !== EventStatus.ENCRYPTING
-      ) {
-        return of(this.rejected('retry', 'event-not-retryable'));
-      }
-      return from(context.client.resendEvent(event, context.room)).pipe(
-        map(() => this.applied('retry')),
-        catchError((error: unknown) =>
-          of(this.requestRejected('retry', error)),
-        ),
-      );
+      const { accountId, roomId } = request.key;
+      return this.engine
+        .retrySend(accountId, roomId, transactionId)
+        .pipe(map((result) => outcome('retry', result)));
     });
   }
 
+  /**
+   * Only a waiting or failed echo, as the engine cancels any unsent one. A thread's caller
+   * checks its own rows; the room's are read from its store, past the window it presents.
+   */
   cancel(
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {
-      const context = this.context(request);
-      if (!context) {
-        return of(this.rejected('cancel', 'conversation-unavailable'));
+      const transactionId = echoTransactionId(request);
+      if (transactionId === null) {
+        return of(rejected('cancel', 'event-not-retryable'));
       }
-      const event = this.event(
-        context.room,
-        request.messageId,
-        request.threadRootId,
+      if (!request.threadRootId) {
+        const failure = this.uncancellable(request.key, transactionId);
+        if (failure) return of(rejected('cancel', failure));
+      }
+      const { accountId, roomId } = request.key;
+      return this.engine.cancelSend(accountId, roomId, transactionId).pipe(
+        // CANCELLED stops the reconnect resend; the text held for a reload goes with it.
+        tap((result) => {
+          if (!result.ok) return;
+          this.drafts.releaseWaiting(
+            request.threadRootId
+              ? threadDraftKey(request.threadRootId)
+              : conversationDraftKey(request.key),
+            transactionId,
+          );
+        }),
+        map((result) => outcome('cancel', result)),
       );
-      if (!event) return of(this.rejected('cancel', 'message-unavailable'));
-      if (event.status !== EventStatus.NOT_SENT) {
-        return of(this.rejected('cancel', 'event-not-retryable'));
-      }
-      // CANCELLED is what releases the waiting draft record and stops the reconnect resend.
-      context.client.cancelPendingEvent(event);
-      return of(this.applied('cancel'));
     });
+  }
+
+  /** The row the request names, from the items its conversation holds. */
+  private eventOf(
+    request: ConversationMessageActionRequest,
+  ): EventTimelineItem | null {
+    const { eventId, transactionId } = itemKey(request);
+    const focus: TimelineFocus = request.threadRootId
+      ? { kind: 'thread', rootEventId: request.threadRootId }
+      : LIVE;
+    const { store, release } = this.stores.hold(request.key, focus);
+    const item = untracked(store.items).find(
+      (candidate) =>
+        candidate.kind === 'event' &&
+        (eventId === null
+          ? candidate.transactionId === transactionId
+          : candidate.eventId === eventId),
+    );
+    release();
+    return item?.kind === 'event' ? item : null;
+  }
+
+  private uncancellable(
+    key: ConversationKey,
+    transactionId: string,
+  ): Failure | null {
+    const { store, release } = this.stores.hold(key, LIVE);
+    const item = untracked(store.items).find(
+      (candidate) =>
+        candidate.kind === 'event' && candidate.transactionId === transactionId,
+    );
+    release();
+    if (item?.kind !== 'event') return 'message-unavailable';
+    const state = item.sendState?.kind;
+    return state === 'waiting' || state === 'failed'
+      ? null
+      : 'event-not-retryable';
   }
 
   acknowledge(
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {
-      const context = this.context(request);
-      if (!context) {
-        return of(this.rejected('receipt', 'conversation-unavailable'));
-      }
-      const event = this.event(
-        context.room,
-        request.messageId,
-        request.threadRootId,
-      );
-      if (!event || event.status) {
-        return of(this.rejected('receipt', 'message-unavailable'));
-      }
-      const receiptType = this.privacy.sendReadReceipts()
-        ? ReceiptType.Read
-        : ReceiptType.ReadPrivate;
-      const operations: Observable<unknown>[] = [];
-      if (typeof context.client.sendReadReceipt === 'function') {
-        operations.push(
-          defer(() => from(context.client.sendReadReceipt(event, receiptType))),
-        );
-      }
-      if (
-        !request.threadRootId &&
-        typeof context.client.setRoomReadMarkers === 'function'
-      ) {
-        operations.push(
-          defer(() =>
-            from(
-              context.client.setRoomReadMarkers(
-                context.room.roomId,
-                request.messageId,
-              ),
-            ),
-          ),
-        );
-      }
-      return (operations.length ? forkJoin(operations) : of([])).pipe(
-        map(() => this.applied('receipt')),
-        catchError((error: unknown) =>
-          of(this.requestRejected('receipt', error)),
-        ),
-      );
+      const { accountId, roomId } = request.key;
+      const threadRootId = request.threadRootId ?? null;
+      return this.engine
+        .sendReceipt(accountId, roomId, request.messageId, {
+          threadRootId,
+          visibility: this.privacy.sendReadReceipts() ? 'public' : 'private',
+          // A thread has no read marker of its own.
+          fullyRead: threadRootId === null,
+        })
+        .pipe(map((result) => outcome('receipt', result)));
     });
-  }
-
-  private context(request: ConversationMessageActionRequest) {
-    const client = this.matrix.clientFor(request.key.accountId);
-    const room = client?.getRoom(request.key.roomId) ?? null;
-    return client && room ? { client, room } : null;
-  }
-
-  private event(room: Room, messageId: string, threadRootId?: string) {
-    return (
-      room.findEventById?.(messageId) ??
-      room
-        .getThread?.(threadRootId ?? '')
-        ?.events.find((event) => event.getId() === messageId) ??
-      room
-        .getLiveTimeline()
-        .getEvents()
-        .find((event) => event.getId() === messageId)
-    );
-  }
-
-  private applied(
-    operation: ConversationMessageOperation,
-  ): ConversationMessageOutcome {
-    return { kind: 'applied', operation };
-  }
-
-  private rejected(
-    operation: ConversationMessageOperation,
-    failure: Extract<
-      ConversationMessageOutcome,
-      { kind: 'rejected' }
-    >['failure'],
-  ): ConversationMessageOutcome {
-    return { kind: 'rejected', operation, failure, retryable: false };
-  }
-
-  private requestRejected(
-    operation: ConversationMessageOperation,
-    error: unknown,
-  ): ConversationMessageOutcome {
-    return {
-      kind: 'rejected',
-      operation,
-      failure: 'request-rejected',
-      retryable: isTransientMatrixError(error),
-    };
   }
 }
 
@@ -273,6 +257,6 @@ export const CONVERSATION_MESSAGE_ADAPTER =
     'conversation-runtime.message-adapter',
     {
       providedIn: 'root',
-      factory: () => inject(MatrixConversationMessageAdapter),
+      factory: () => inject(EngineConversationMessageAdapter),
     },
   );

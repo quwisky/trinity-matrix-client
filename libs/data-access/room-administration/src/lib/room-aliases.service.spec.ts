@@ -1,203 +1,223 @@
 import { TestBed } from '@angular/core/testing';
-import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RoomActionPermissionError } from './room-action-permissions.service';
+import { RoomAdministrationError } from './room-administration-error';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
 import { RoomAliasesService } from './room-aliases.service';
 
-const TARGET = { accountId: '@me:hs', roomId: '!r:hs' } as const;
+const PRIMARY = '#primary:example.org';
+const ALTERNATIVE = '#alternative:elsewhere';
 
-function setup(
-  opts: {
-    aliases?: string[];
-    canonical?: string;
-    canonicalContent?: Record<string, unknown>;
-    maySend?: boolean;
-    noRoom?: boolean;
-    me?: string;
-  } = {},
-) {
-  const createAlias = vi.fn().mockResolvedValue({});
-  const deleteAlias = vi.fn().mockResolvedValue({});
-  const sendStateEvent = vi.fn().mockResolvedValue({});
-  const getLocalAliases = vi
-    .fn()
-    .mockResolvedValue({ aliases: opts.aliases ?? [] });
-  const room = opts.noRoom
-    ? null
-    : {
-        // The service reads room state via the live timeline (liveRoomState()),
-        // which is what the SDK's deprecated `currentState` aliased.
-        getLiveTimeline: () => ({
-          getState: () => ({
-            maySendStateEvent: () => opts.maySend ?? true,
-            getStateEvents: (_type: string, _key: string) =>
-              opts.canonicalContent !== undefined ||
-              opts.canonical !== undefined
-                ? {
-                    getContent: () =>
-                      opts.canonicalContent ?? { alias: opts.canonical },
-                  }
-                : null,
-          }),
-        }),
-      };
-  const instance = {
-    createAlias,
-    deleteAlias,
-    sendStateEvent,
-    getLocalAliases,
-    getRoom: () => room,
-    getUserId: () => opts.me ?? '@me:hs.example',
+/** Alice at `alicePower` in bob's room, optionally with a canonical alias bob set. */
+async function setup({
+  alicePower = 100,
+  canonical,
+}: {
+  alicePower?: number;
+  canonical?: Record<string, string | string[]>;
+} = {}) {
+  const session = administrationSession();
+  const { engine } = session;
+  const roomId = await roomWithAlice(engine);
+  await engine.asBob.setPowerLevel(roomId, engine.alice, alicePower);
+  if (canonical) {
+    await engine.asBob.setState(roomId, 'm.room.canonical_alias', canonical);
+  }
+  TestBed.configureTestingModule({ providers: session.providers });
+  const state = TestBed.inject(RoomAdministrationProjectionState);
+  state.select(engine.alice, roomId);
+  state.update('permissions', 'available', 'retained');
+  const target = { accountId: engine.alice, roomId };
+  const aliases = async () => {
+    const result = await firstValueFrom(
+      engine.localAliases(engine.alice, roomId),
+    );
+    return result.ok ? result.value : null;
   };
-  const clientFor = vi.fn((accountId: string) =>
-    accountId === TARGET.accountId ? instance : null,
-  );
-  const settingsFor = vi.fn(() => {
-    const permission = {
-      available: opts.maySend ?? true,
-      reason: opts.maySend === false ? 'Not allowed.' : null,
-    };
-    return {
-      name: permission,
-      topic: permission,
-      avatar: permission,
-      joinRule: permission,
-      history: permission,
-      aliases: permission,
-      upgrade: permission,
-      encryption: permission,
-      directory: permission,
-      imagePack: permission,
-      permissions: permission,
-    };
-  });
-  TestBed.configureTestingModule({
-    providers: [
-      RoomAliasesService,
-      MockProvider(MatrixClientService, {
-        clientFor: clientFor as never,
-      }),
-      MockProvider(RoomActionPermissionsService, {
-        settingsFor,
-        assert: (permission: { available: boolean }) => {
-          if (!permission.available) throw new Error('Not allowed.');
-        },
-      }),
-    ],
-  });
   return {
+    ...session,
+    target,
+    aliases,
     svc: TestBed.inject(RoomAliasesService),
-    createAlias,
-    deleteAlias,
-    sendStateEvent,
-    getLocalAliases,
-    clientFor,
-    settingsFor,
   };
 }
 
+const failure = (action: Promise<unknown>) =>
+  action.then(
+    () => null,
+    (error: unknown) => error,
+  );
+
+afterEach(() => TestBed.resetTestingModule());
+
 describe('RoomAliasesService', () => {
-  it('serverName is the domain of the signed-in user id', () => {
-    expect(setup({ me: '@me:matrix.org' }).svc.serverName(TARGET)).toBe(
-      'matrix.org',
-    );
+  it('serverName is the domain of a signed-in account', async () => {
+    const { svc, target } = await setup();
+
+    expect(svc.serverName(target)).toBe('example.org');
+    expect(
+      svc.serverName({ accountId: '@gone:hs', roomId: target.roomId }),
+    ).toBeNull();
   });
 
   it('localAliases is cold and returns the directory aliases', async () => {
-    const { svc, getLocalAliases, clientFor } = setup({
-      aliases: ['#a:hs', '#b:hs'],
-    });
+    const { svc, engine, target } = await setup();
+    await firstValueFrom(
+      engine.publishAlias(engine.alice, target.roomId, '#a:example.org'),
+    );
+    const localAliases = vi.spyOn(engine, 'localAliases');
 
-    const action = svc.localAliases(TARGET);
-    expect(getLocalAliases).not.toHaveBeenCalled(); // cold
+    const action = svc.localAliases(target);
+    expect(localAliases).not.toHaveBeenCalled();
 
-    expect(await firstValueFrom(action)).toEqual(['#a:hs', '#b:hs']);
-    expect(clientFor).toHaveBeenCalledWith(TARGET.accountId);
-    expect(getLocalAliases).toHaveBeenCalledWith('!r:hs');
+    expect(await firstValueFrom(action)).toEqual(['#a:example.org']);
+    expect(localAliases).toHaveBeenCalledWith(engine.alice, target.roomId);
   });
 
-  it('addAlias is cold and creates the alias on subscribe', async () => {
-    const { svc, createAlias } = setup();
+  it('localAliases refuses an account that is not signed in', async () => {
+    const { svc, target } = await setup();
 
-    const action = svc.addAlias(TARGET, '#new:hs');
-    expect(createAlias).not.toHaveBeenCalled(); // cold
+    const error = await failure(
+      firstValueFrom(
+        svc.localAliases({ accountId: '@gone:hs', roomId: target.roomId }),
+      ),
+    );
 
-    await firstValueFrom(action);
-    expect(createAlias).toHaveBeenCalledWith('#new:hs', '!r:hs');
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'not-signed-in',
+      operation: 'load-aliases',
+    });
+  });
+
+  it('addAlias is cold and publishes the alias on subscribe', async () => {
+    const { svc, target, aliases } = await setup();
+
+    const action = svc.addAlias(target, '#new:example.org');
+    expect(await aliases()).toEqual([]);
+
+    await firstValueFrom(action, { defaultValue: undefined });
+    expect(await aliases()).toEqual(['#new:example.org']);
   });
 
   it('removeAlias is cold and deletes the alias on subscribe', async () => {
-    const { svc, deleteAlias } = setup();
+    const { svc, target, aliases } = await setup();
+    await firstValueFrom(svc.addAlias(target, '#old:example.org'));
 
-    await firstValueFrom(svc.removeAlias(TARGET, '#old:hs'));
-    expect(deleteAlias).toHaveBeenCalledWith('#old:hs');
+    const action = svc.removeAlias(target, '#old:example.org');
+    expect(await aliases()).toEqual(['#old:example.org']);
+
+    await firstValueFrom(action, { defaultValue: undefined });
+    expect(await aliases()).toEqual([]);
   });
 
   it('clears a primary address before removing it from the directory', async () => {
-    const { svc, sendStateEvent, deleteAlias } = setup({
-      canonicalContent: {
-        alias: '#primary:hs',
-        alt_aliases: ['#alternative:elsewhere'],
-      },
+    const { svc, engine, target } = await setup({
+      canonical: { alias: PRIMARY, alt_aliases: [ALTERNATIVE] },
     });
+    await firstValueFrom(svc.addAlias(target, PRIMARY));
+    const setState = vi.spyOn(engine, 'setState');
+    const removeAlias = vi.spyOn(engine, 'removeAlias');
 
-    await firstValueFrom(svc.removeAlias(TARGET, '#primary:hs'));
+    await firstValueFrom(svc.removeAlias(target, PRIMARY));
 
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      TARGET.roomId,
+    expect(setState).toHaveBeenCalledExactlyOnceWith(
+      engine.alice,
+      target.roomId,
       'm.room.canonical_alias',
-      { alt_aliases: ['#alternative:elsewhere'] },
       '',
+      { alt_aliases: [ALTERNATIVE] },
     );
-    expect(sendStateEvent.mock.invocationCallOrder[0]).toBeLessThan(
-      deleteAlias.mock.invocationCallOrder[0],
+    expect(setState.mock.invocationCallOrder[0]).toBeLessThan(
+      removeAlias.mock.invocationCallOrder[0],
     );
+    expect(svc.currentCanonical(target)).toBeNull();
+  });
+
+  it('reports the cleared primary address when the removal then fails', async () => {
+    const { svc, target } = await setup({ canonical: { alias: PRIMARY } });
+
+    // Never published, so the directory has nothing to remove.
+    const error = await failure(
+      firstValueFrom(svc.removeAlias(target, PRIMARY)),
+    );
+
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'partial-update',
+      recovery: 'review-room-state',
+      operation: 'remove-alias',
+      completedStep: 'canonical-address-cleared',
+    });
+  });
+
+  it('stops after clearing the primary address when the session changed', async () => {
+    const { svc, engine, signIn, target } = await setup({
+      canonical: { alias: PRIMARY },
+    });
+    await firstValueFrom(svc.addAlias(target, PRIMARY));
+    const setState = engine.setState.bind(engine);
+    vi.spyOn(engine, 'setState').mockImplementation((...args) => {
+      signIn([engine.alice], { generation: 2 });
+      return setState(...args);
+    });
+    const removeAlias = vi.spyOn(engine, 'removeAlias');
+
+    const error = await failure(
+      firstValueFrom(svc.removeAlias(target, PRIMARY)),
+    );
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'not-signed-in',
+    );
+    expect(removeAlias).not.toHaveBeenCalled();
   });
 
   it('rechecks live permission before mutating an alias', async () => {
-    const { svc, createAlias, settingsFor } = setup({ maySend: false });
+    const { svc, target, aliases } = await setup({ alicePower: 0 });
 
-    await expect(
-      firstValueFrom(svc.addAlias(TARGET, '#new:hs')),
-    ).rejects.toThrow('Not allowed');
-    expect(createAlias).not.toHaveBeenCalled();
-    expect(settingsFor).toHaveBeenCalledWith(TARGET);
+    const error = await failure(
+      firstValueFrom(svc.addAlias(target, '#new:example.org')),
+    );
+
+    expect(error).toBeInstanceOf(RoomActionPermissionError);
+    expect(await aliases()).toEqual([]);
   });
 
-  it('setCanonicalAlias writes m.room.canonical_alias', async () => {
-    const { svc, sendStateEvent } = setup({
-      canonicalContent: {
-        alias: '#old:hs',
-        alt_aliases: ['#alternative:elsewhere'],
-      },
+  it('setCanonicalAlias writes m.room.canonical_alias, keeping other keys', async () => {
+    const { svc, engine, target } = await setup({
+      canonical: { alias: '#old:example.org', alt_aliases: [ALTERNATIVE] },
     });
+    const setState = vi.spyOn(engine, 'setState');
 
-    await firstValueFrom(svc.setCanonicalAlias(TARGET, '#main:hs'));
-    expect(sendStateEvent).toHaveBeenCalledWith(
-      '!r:hs',
+    await firstValueFrom(svc.setCanonicalAlias(target, '#main:example.org'));
+
+    expect(setState).toHaveBeenCalledExactlyOnceWith(
+      engine.alice,
+      target.roomId,
       'm.room.canonical_alias',
-      { alias: '#main:hs', alt_aliases: ['#alternative:elsewhere'] },
       '',
+      { alias: '#main:example.org', alt_aliases: [ALTERNATIVE] },
     );
+    expect(svc.currentCanonical(target)).toBe('#main:example.org');
   });
 
-  it('currentCanonical reads the canonical alias from state', () => {
-    expect(setup({ canonical: '#main:hs' }).svc.currentCanonical(TARGET)).toBe(
-      '#main:hs',
-    );
+  it('currentCanonical reads the canonical alias from state, or null', async () => {
+    const set = await setup({ canonical: { alias: '#main:hs' } });
+    expect(set.svc.currentCanonical(set.target)).toBe('#main:hs');
+    TestBed.resetTestingModule();
+    const unset = await setup();
+    expect(unset.svc.currentCanonical(unset.target)).toBeNull();
   });
 
-  it('currentCanonical is null when no canonical alias is set', () => {
-    expect(setup().svc.currentCanonical(TARGET)).toBeNull();
-  });
-
-  it('canManageAliases follows the canonical-alias send permission', () => {
-    expect(setup({ maySend: true }).svc.canManageAliases(TARGET)).toBe(true);
-  });
-
-  it('canManageAliases is false without the permission', () => {
-    expect(setup({ maySend: false }).svc.canManageAliases(TARGET)).toBe(false);
+  it('canManageAliases follows the canonical-alias send permission', async () => {
+    const allowed = await setup();
+    expect(allowed.svc.canManageAliases(allowed.target)).toBe(true);
+    TestBed.resetTestingModule();
+    const denied = await setup({ alicePower: 0 });
+    expect(denied.svc.canManageAliases(denied.target)).toBe(false);
   });
 });

@@ -12,3 +12,5 @@ export {
   ImagePackImageError,
   type ImagePackImageErrorCode,
 } from './lib/image-pack-image';
+export * from './lib/media-engine';
+export * from './lib/expression-engine';

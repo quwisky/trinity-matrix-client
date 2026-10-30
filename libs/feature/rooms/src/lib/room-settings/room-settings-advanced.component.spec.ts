@@ -21,7 +21,7 @@ import {
 } from '@trinity/data-access/room-administration';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of, type Observable } from 'rxjs';
+import { Subject, of, throwError, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomStateViewerComponent } from '../room-state-viewer/room-state-viewer.component';
 import {
@@ -88,6 +88,7 @@ const RESULT: RoomUpgradeResult = {
 interface UpgradeSetup {
   readonly upgrade?: ActionAvailability;
   readonly result?: Observable<RoomUpgradeResult | null>;
+  readonly plan?: Observable<RoomUpgradePlan | null>;
 }
 
 const homeserver = (
@@ -115,8 +116,10 @@ async function build(
   const open = vi.fn();
   const openAndWait = vi.fn(() => upgradeSetup.result ?? of(null));
   const show = vi.fn();
-  const stateEvents = vi.fn(() => STATE);
-  const plan = vi.fn(() => PLAN);
+  const stateEvents = vi.fn((): Observable<readonly RoomStateEntry[]> =>
+    of(STATE),
+  );
+  const plan = vi.fn(() => upgradeSetup.plan ?? of(PLAN));
   const openRoom = vi.fn();
   const result = await render(RoomSettingsAdvancedComponent, {
     inputs: {
@@ -342,6 +345,39 @@ describe('RoomSettingsAdvancedComponent', () => {
       inputs: { entries: STATE },
     });
   });
+
+  it('shows View room state as loading until the state arrives', async () => {
+    const { getByRole, open, stateEvents, fixture } = await build();
+    const pending = new Subject<readonly RoomStateEntry[]>();
+    stateEvents.mockReturnValue(pending);
+    const button = getByRole('button', { name: 'View room state' });
+
+    fireEvent.click(button);
+    fixture.detectChanges();
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button).toBeDisabled();
+    expect(open).not.toHaveBeenCalled();
+
+    pending.next(STATE);
+    pending.complete();
+    fixture.detectChanges();
+    expect(open).toHaveBeenCalledOnce();
+    expect(button.getAttribute('aria-busy')).toBeNull();
+    expect(button).not.toBeDisabled();
+  });
+
+  it('toasts when the room state cannot be read', async () => {
+    const { getByRole, open, show, stateEvents } = await build();
+    stateEvents.mockReturnValue(throwError(() => new Error('offline')));
+
+    fireEvent.click(getByRole('button', { name: 'View room state' }));
+
+    expect(open).not.toHaveBeenCalled();
+    expect(show).toHaveBeenCalledWith(
+      expect.stringContaining('room state'),
+      expect.objectContaining({ variant: 'danger' }),
+    );
+  });
 });
 
 describe('RoomSettingsAdvancedComponent upgrade', () => {
@@ -426,6 +462,39 @@ describe('RoomSettingsAdvancedComponent upgrade', () => {
     });
     expect(options.dismissGuard({ busy: () => true })).toBe(false);
     expect(options.dismissGuard({ busy: () => false })).toBe(true);
+  });
+
+  it('shows Upgrade room loading until the plan arrives, opening it once', async () => {
+    const planned = new Subject<RoomUpgradePlan | null>();
+    const { upgradeButton, plan, openAndWait, fixture } = await build(
+      LIVE,
+      NEWER,
+      { upgrade: ALLOWED, plan: planned },
+    );
+
+    fireEvent.click(upgradeButton()!);
+    fireEvent.click(upgradeButton()!);
+    fixture.detectChanges();
+
+    expect(upgradeButton()?.getAttribute('aria-busy')).toBe('true');
+    expect(plan).toHaveBeenCalledTimes(1);
+    expect(openAndWait).not.toHaveBeenCalled();
+    planned.next(PLAN);
+    planned.complete();
+    expect(openAndWait).toHaveBeenCalledTimes(1);
+    fixture.detectChanges();
+    expect(upgradeButton()?.getAttribute('aria-busy')).toBeNull();
+  });
+
+  it('opens nothing when the room cannot be planned', async () => {
+    const { upgradeButton, openAndWait } = await build(LIVE, NEWER, {
+      upgrade: ALLOWED,
+      plan: of(null),
+    });
+
+    fireEvent.click(upgradeButton()!);
+
+    expect(openAndWait).not.toHaveBeenCalled();
   });
 
   it('asks to open the new room after the upgrade', async () => {

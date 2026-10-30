@@ -3,14 +3,19 @@ import {
   type PublicRoomSummary,
 } from '@trinity/data-access/discovery';
 import { TestBed } from '@angular/core/testing';
-import { render, screen, within } from '@trinity/testing';
+import {
+  render,
+  screen,
+  within,
+  connectionError,
+  matrixError,
+} from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { EMPTY, of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { ConnectionError, MatrixError } from '@trinity/util/matrix';
 import { RoomDirectoryComponent } from './room-directory.component';
 
 function room(over: Partial<PublicRoomSummary> = {}): PublicRoomSummary {
@@ -246,12 +251,8 @@ describe('RoomDirectoryComponent', () => {
   it('releases a failed HTTP join and shows actionable retry guidance', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const join = vi.fn(() =>
-      throwError(
-        () =>
-          new MatrixError(
-            { errcode: 'M_UNKNOWN', error: 'upstream unavailable' },
-            503,
-          ),
+      throwError(() =>
+        matrixError('M_UNKNOWN', 503, { error: 'upstream unavailable' }),
       ),
     );
     const { cmp, toastShow } = await build({ join });
@@ -293,9 +294,7 @@ describe('RoomDirectoryComponent', () => {
 
   it('turns a connection failure into actionable retry guidance', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const search = vi.fn(() =>
-      throwError(() => new ConnectionError('fetch failed')),
-    );
+    const search = vi.fn(() => throwError(() => connectionError()));
     const { cmp } = await build({ search });
 
     expect(cmp.error()).toBe('Check your connection and try again.');

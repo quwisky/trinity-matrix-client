@@ -1,263 +1,179 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
-import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  TrustCryptoPort,
-  type ActiveTrustCrypto,
+  SESSION_SNAPSHOT,
+  type SessionSnapshot,
 } from '@trinity/data-access/matrix-client';
+import { FakeTrustEngine } from '../contract/fake-trust-engine';
 import type { TrustHealthSnapshot } from './trust-health.service';
+import { TRUST_ENGINE } from './trust-engine.token';
 import {
   TrustAccountStatusService,
   summarizeTrust,
 } from './trust-account-status.service';
 
-interface AccountState {
-  defaultKeyId: string | null;
-  verified: boolean;
-}
+const A = '@a:hs';
+const B = '@b:hs';
+const C = '@c:hs';
 
-function fakeAccount(state: AccountState, withCrypto = true) {
-  const listeners = new Map<string, Set<() => void>>();
-  const crypto = {
-    isCrossSigningReady: vi.fn(async () => state.verified),
-    isSecretStorageReady: vi.fn(async () => state.defaultKeyId !== null),
-    getActiveSessionBackupVersion: vi.fn(async () => null),
-    getDeviceVerificationStatus: vi.fn(async () => ({
-      crossSigningVerified: state.verified,
-    })),
-    getCrossSigningStatus: vi.fn(async () => ({
-      publicKeysOnDevice: false,
-      privateKeysInSecretStorage: false,
-      privateKeysCachedLocally: {
-        masterKey: false,
-        selfSigningKey: false,
-        userSigningKey: false,
-      },
-    })),
-  };
-  const client = {
-    getDeviceId: () => 'DEVICE',
-    getUserId: () => '@me:hs',
-    secretStorage: { getDefaultKeyId: vi.fn(async () => state.defaultKeyId) },
-    on: vi.fn((event: string, fn: () => void) => {
-      listeners.set(event, (listeners.get(event) ?? new Set()).add(fn));
-    }),
-    off: vi.fn((event: string, fn: () => void) => {
-      listeners.get(event)?.delete(fn);
-    }),
-  };
-  const context: ActiveTrustCrypto = {
-    client: client as never,
-    crypto: withCrypto ? (crypto as never) : null,
-  };
+function sessionWith(
+  accounts: readonly string[],
+  generation = 1,
+): SessionSnapshot {
   return {
-    context,
-    state,
-    crypto,
-    emit: (event: string) => {
-      for (const fn of listeners.get(event) ?? []) fn();
-    },
-    listenerCount: () =>
-      [...listeners.values()].reduce((sum, set) => sum + set.size, 0),
+    activeAccountId: accounts[0] ?? null,
+    accounts: accounts.map((accountId) => ({
+      accountId,
+      deviceId: 'DEVICE',
+      generation,
+      syncState: 'syncing',
+      serverSynced: true,
+      roomsPrepared: true,
+      waitingCount: 0,
+      cryptoStoreEncrypted: true,
+    })),
+    softLoggedOut: [],
   };
 }
 
-type FakeAccount = ReturnType<typeof fakeAccount>;
+/** An account whose device is verified, unverified with recovery, or without any identity. */
+function addAccount(
+  engine: FakeTrustEngine,
+  accountId: string,
+  state: 'verified' | 'unverified' | 'not-set-up' | 'no-crypto',
+): void {
+  engine.addAccount(accountId, { crypto: state !== 'no-crypto' });
+  if (state === 'verified') {
+    engine.setFacts(accountId, { thisDeviceCrossSigned: true });
+  } else if (state === 'unverified') {
+    engine.setFacts(accountId, { hasDefaultKey: true });
+  }
+}
 
-function setup(accounts: Record<string, FakeAccount>) {
-  const liveAccountIds = signal<readonly string[]>(Object.keys(accounts));
+function setup(accounts: Record<string, Parameters<typeof addAccount>[2]>) {
+  const engine = new FakeTrustEngine();
+  for (const [id, state] of Object.entries(accounts)) {
+    addAccount(engine, id, state);
+  }
+  const facts = vi.spyOn(engine, 'facts');
+  const session = signal(sessionWith(Object.keys(accounts)));
   TestBed.configureTestingModule({
     providers: [
-      TrustAccountStatusService,
-      MockProvider(TrustCryptoPort, {
-        liveAccountIds: liveAccountIds.asReadonly(),
-        forAccount: (id: string) => accounts[id]?.context ?? null,
-      }),
+      { provide: TRUST_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
     ],
   });
   const service = TestBed.inject(TrustAccountStatusService);
   const subscription = service.run().subscribe();
   TestBed.tick();
-  return { service, liveAccountIds, subscription };
+  return { service, engine, facts, session, subscription };
 }
 
 afterEach(() => TestBed.resetTestingModule());
 
 describe('TrustAccountStatusService', () => {
-  it('summarises every live account, not only the active one', async () => {
+  it('summarises every live account, not only the active one', () => {
     const { service, subscription } = setup({
-      '@a:hs': fakeAccount({ defaultKeyId: 'k', verified: true }),
-      '@b:hs': fakeAccount({ defaultKeyId: 'k', verified: false }),
-      '@c:hs': fakeAccount({ defaultKeyId: null, verified: false }),
+      [A]: 'verified',
+      [B]: 'unverified',
+      [C]: 'not-set-up',
     });
 
-    await vi.waitFor(() =>
-      expect(service.summaries()).toEqual(
-        new Map([
-          ['@a:hs', 'verified'],
-          ['@b:hs', 'unverified'],
-          ['@c:hs', 'not-set-up'],
-        ]),
-      ),
+    expect(service.summaries()).toEqual(
+      new Map([
+        [A, 'verified'],
+        [B, 'unverified'],
+        [C, 'not-set-up'],
+      ]),
     );
     subscription.unsubscribe();
   });
 
-  it('recomputes an account when its crypto state changes', async () => {
-    const b = fakeAccount({ defaultKeyId: 'k', verified: false });
-    const { service, subscription } = setup({ '@b:hs': b });
-    await vi.waitFor(() =>
-      expect(service.summaries().get('@b:hs')).toBe('unverified'),
-    );
+  it('recomputes an account when its facts change', () => {
+    const { service, engine, subscription } = setup({ [B]: 'unverified' });
+    expect(service.summaries().get(B)).toBe('unverified');
 
-    b.state.verified = true;
-    b.emit(CryptoEvent.UserTrustStatusChanged);
+    engine.setFacts(B, { thisDeviceCrossSigned: true });
 
-    await vi.waitFor(() =>
-      expect(service.summaries().get('@b:hs')).toBe('verified'),
-    );
+    expect(service.summaries().get(B)).toBe('verified');
     subscription.unsubscribe();
   });
 
-  it('reads an account once for a burst of crypto events', async () => {
-    const b = fakeAccount({ defaultKeyId: 'k', verified: false });
-    const { service, subscription } = setup({ '@b:hs': b });
-    await vi.waitFor(() =>
-      expect(service.summaries().get('@b:hs')).toBe('unverified'),
-    );
-    expect(b.crypto.isCrossSigningReady).toHaveBeenCalledOnce();
-
-    for (let event = 0; event < 5; event++) {
-      b.emit(CryptoEvent.UserTrustStatusChanged);
-    }
-
-    await vi.waitFor(() =>
-      expect(b.crypto.isCrossSigningReady).toHaveBeenCalledTimes(2),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    expect(b.crypto.isCrossSigningReady).toHaveBeenCalledTimes(2);
-    subscription.unsubscribe();
-  });
-
-  it('summarises an account added to a running list and keeps the others', async () => {
-    const accounts: Record<string, FakeAccount> = {
-      '@a:hs': fakeAccount({ defaultKeyId: 'k', verified: true }),
-    };
-    const { service, liveAccountIds, subscription } = setup(accounts);
-    await vi.waitFor(() =>
-      expect(service.summaries()).toEqual(new Map([['@a:hs', 'verified']])),
-    );
-
-    accounts['@b:hs'] = fakeAccount({ defaultKeyId: 'k', verified: false });
-    liveAccountIds.set(['@a:hs', '@b:hs']);
-    TestBed.tick();
-
-    await vi.waitFor(() =>
-      expect(service.summaries()).toEqual(
-        new Map([
-          ['@a:hs', 'verified'],
-          ['@b:hs', 'unverified'],
-        ]),
-      ),
-    );
-    subscription.unsubscribe();
-  });
-
-  it('keeps the newest read when an older one resolves later', async () => {
-    const b = fakeAccount({ defaultKeyId: 'k', verified: false });
-    let releaseFirst!: () => void;
-    b.crypto.getDeviceVerificationStatus.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          releaseFirst = () => resolve({ crossSigningVerified: false });
-        }),
-    );
-    const { service, subscription } = setup({ '@b:hs': b });
-    // The first read is now waiting on its last answer, with an unverified view.
-    await vi.waitFor(() =>
-      expect(b.crypto.getDeviceVerificationStatus).toHaveBeenCalledOnce(),
-    );
-
-    b.state.verified = true;
-    b.emit(CryptoEvent.UserTrustStatusChanged);
-    await vi.waitFor(() =>
-      expect(service.summaries().get('@b:hs')).toBe('verified'),
-    );
-
-    releaseFirst();
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    expect(service.summaries().get('@b:hs')).toBe('verified');
-    subscription.unsubscribe();
-  });
-
-  it('forgets an account that signs out and releases its listeners', async () => {
-    const b = fakeAccount({ defaultKeyId: 'k', verified: false });
-    const { service, liveAccountIds, subscription } = setup({
-      '@a:hs': fakeAccount({ defaultKeyId: null, verified: false }),
-      '@b:hs': b,
+  it('summarises an account added to a running list and keeps the others', () => {
+    const { service, engine, session, subscription } = setup({
+      [A]: 'verified',
     });
-    await vi.waitFor(() => expect(service.summaries().size).toBe(2));
+    expect(service.summaries()).toEqual(new Map([[A, 'verified']]));
 
-    liveAccountIds.set(['@a:hs']);
+    addAccount(engine, B, 'unverified');
+    session.set(sessionWith([A, B]));
     TestBed.tick();
 
-    await vi.waitFor(() =>
-      expect([...service.summaries().keys()]).toEqual(['@a:hs']),
+    expect(service.summaries()).toEqual(
+      new Map([
+        [A, 'verified'],
+        [B, 'unverified'],
+      ]),
     );
-    expect(b.listenerCount()).toBe(0);
     subscription.unsubscribe();
   });
 
-  it('re-reads an account whose client is replaced', async () => {
-    const before = fakeAccount({ defaultKeyId: 'k', verified: false });
-    const accounts: Record<string, FakeAccount> = { '@b:hs': before };
-    const { service, liveAccountIds, subscription } = setup(accounts);
-    await vi.waitFor(() =>
-      expect(service.summaries().get('@b:hs')).toBe('unverified'),
-    );
-
-    accounts['@b:hs'] = fakeAccount({ defaultKeyId: 'k', verified: true });
-    // Matrix Runtime publishes a new array when it replaces a client (#1233).
-    liveAccountIds.set(['@b:hs']);
-    TestBed.tick();
-
-    await vi.waitFor(() =>
-      expect(service.summaries().get('@b:hs')).toBe('verified'),
-    );
-    expect(before.listenerCount()).toBe(0);
-    subscription.unsubscribe();
-  });
-
-  it('reports unknown while an account has no crypto yet, or its read fails', async () => {
-    const failing = fakeAccount({ defaultKeyId: 'k', verified: false });
-    failing.crypto.isCrossSigningReady.mockRejectedValue(new Error('locked'));
-    const { service, subscription } = setup({
-      '@a:hs': fakeAccount({ defaultKeyId: null, verified: false }, false),
-      '@b:hs': failing,
+  it('forgets an account that signs out and releases its subscription', () => {
+    const { service, engine, session, subscription } = setup({
+      [A]: 'not-set-up',
+      [B]: 'unverified',
     });
+    expect(service.summaries().size).toBe(2);
 
-    await vi.waitFor(() =>
-      expect(service.summaries()).toEqual(
-        new Map([
-          ['@a:hs', 'unknown'],
-          ['@b:hs', 'unknown'],
-        ]),
-      ),
+    session.set(sessionWith([A]));
+    TestBed.tick();
+
+    expect([...service.summaries().keys()]).toEqual([A]);
+    expect(engine.watched(B)).toBe(false);
+    subscription.unsubscribe();
+  });
+
+  // The session replaces a client under the same id with a new generation (#1233).
+  it('subscribes again when an account gets a new client', () => {
+    const { service, engine, facts, session, subscription } = setup({
+      [B]: 'unverified',
+    });
+    const reads = facts.mock.calls.filter(([id]) => id === B).length;
+
+    session.set(sessionWith([B], 2));
+    TestBed.tick();
+
+    expect(facts.mock.calls.filter(([id]) => id === B).length).toBe(reads + 1);
+    engine.setFacts(B, { thisDeviceCrossSigned: true });
+    expect(service.summaries().get(B)).toBe('verified');
+    subscription.unsubscribe();
+  });
+
+  it('reports unknown while an account has no crypto yet, or its read fails', () => {
+    const { service, engine, subscription } = setup({
+      [A]: 'no-crypto',
+      [B]: 'unverified',
+    });
+    engine.failRead(B);
+
+    expect(service.summaries()).toEqual(
+      new Map([
+        [A, 'unknown'],
+        [B, 'unknown'],
+      ]),
     );
     subscription.unsubscribe();
   });
 
-  it('releases every listener and forgets every account when the session ends', async () => {
-    const a = fakeAccount({ defaultKeyId: 'k', verified: true });
-    const { service, subscription } = setup({ '@a:hs': a });
-    await vi.waitFor(() => expect(service.summaries().size).toBe(1));
+  it('releases every subscription and forgets every account when the session ends', () => {
+    const { service, engine, subscription } = setup({ [A]: 'verified' });
+    expect(service.summaries().size).toBe(1);
 
     subscription.unsubscribe();
 
     expect(service.summaries().size).toBe(0);
-    expect(a.listenerCount()).toBe(0);
+    expect(engine.watched(A)).toBe(false);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import {
@@ -50,6 +51,8 @@ const MAX_STATUS_LENGTH = 60;
 export class PresenceSectionComponent {
   private readonly presence = inject(IdentityPresenceService);
   private readonly destroyRef = inject(DestroyRef);
+  /** False until the server's state has arrived, so Save never compares against defaults. */
+  private readonly loaded = signal(false);
 
   /** The same states, in the shape the radio group takes. */
   readonly presenceOptions: readonly TrnRadioOption<PresenceState>[] =
@@ -70,15 +73,22 @@ export class PresenceSectionComponent {
   /** Whether the draft differs from what's published (enables Save). */
   readonly dirty = computed(
     () =>
-      this.stateDraft() !== this.presence.myPresence() ||
-      this.statusDraft().trim() !== this.presence.myStatusMessage(),
+      this.loaded() &&
+      (this.stateDraft() !== this.presence.myPresence() ||
+        this.statusDraft().trim() !== this.presence.myStatusMessage()),
   );
 
   constructor() {
-    // Seed the form from the signed-in user's current server state.
-    this.presence.loadOwnPresence();
-    this.stateDraft.set(this.presence.myPresence());
-    this.statusDraft.set(this.presence.myStatusMessage());
+    // Seed the form from the signed-in user's current server state once it arrives.
+    const seed = (): void => {
+      this.stateDraft.set(this.presence.myPresence());
+      this.statusDraft.set(this.presence.myStatusMessage());
+      this.loaded.set(true);
+    };
+    this.presence
+      .loadOwnPresence()
+      .pipe(takeUntilDestroyed())
+      .subscribe({ complete: seed, error: seed });
   }
 
   onStateChange(value: string): void {

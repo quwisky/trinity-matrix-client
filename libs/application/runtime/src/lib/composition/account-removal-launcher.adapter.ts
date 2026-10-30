@@ -14,7 +14,7 @@ import {
   roomKeysAtRiskHeader,
   type AccountSignOutOutcome,
 } from '@trinity/data-access/accounts';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SESSION_ENGINE } from '@trinity/data-access/matrix-client';
 import type {
   AccountRemovalLauncher,
   AccountRemovalOutcome,
@@ -41,7 +41,7 @@ const FAILED: AccountRemovalOutcome = Object.freeze({ kind: 'failed' });
 @Injectable({ providedIn: 'root' })
 export class AccountRemovalLauncherAdapter implements AccountRemovalLauncher {
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly engine = inject(SESSION_ENGINE);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly router = inject(Router);
@@ -84,7 +84,7 @@ export class AccountRemovalLauncherAdapter implements AccountRemovalLauncher {
    * cannot be read, nothing can export either, so only warn.
    */
   private confirmRoomKeysLoss(accountId: string): Observable<TrnAlertChoice> {
-    return this.matrix.roomKeysBackedUp(accountId).pipe(
+    return this.engine.roomKeysBackedUp(accountId).pipe(
       switchMap((backedUp): Observable<TrnAlertChoice> => {
         if (backedUp) {
           return of('confirm');

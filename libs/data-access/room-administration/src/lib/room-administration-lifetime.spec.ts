@@ -1,10 +1,12 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type ProjectionObservation,
 } from '@trinity/runtime/projection';
+import { httpError } from '@trinity/testing';
+import { EngineRequestError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import {
   BehaviorSubject,
@@ -56,8 +58,8 @@ describe('RoomAdministrationLifetime', () => {
       providers: [
         RoomAdministrationLifetime,
         RoomAdministrationProjectionState,
-        MockProvider(MatrixClientService, {
-          activeUserId: activeAccountId.asReadonly(),
+        MockProvider(SessionStateService, {
+          activeAccountId: activeAccountId.asReadonly(),
         }),
         MockProvider(RoomActionPermissionsService, {
           runProjection: () =>
@@ -200,6 +202,50 @@ describe('RoomAdministrationLifetime', () => {
     lifetime.unsubscribe();
     expect(permissionsDisconnect).toHaveBeenCalledTimes(2);
     expect(membersDisconnect).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [
+      'an engine failure worth retrying',
+      new EngineRequestError({
+        kind: 'network',
+        code: 'request-failed',
+        diagnostic: { kind: 'network' },
+      }),
+    ],
+    ['a transient SDK error', httpError(503)],
+  ])('releases ownership on %s', (_label, error) => {
+    const events: RoomAdministrationLifetimeEvent[] = [];
+    const failed = vi.fn();
+    const lifetime = TestBed.inject(RoomAdministrationLifetime)
+      .run(demand.asReadonly(), roomId.asReadonly())
+      .subscribe({ next: (event) => events.push(event), error: failed });
+
+    permissionsOwner?.error(error);
+
+    expect(failed).not.toHaveBeenCalled();
+    expect(latest(events, 'permissions')).toMatchObject({
+      condition: 'degraded',
+      ownership: 'released',
+      code: 'room-administration-ownership-released',
+    });
+    lifetime.unsubscribe();
+  });
+
+  it('fails on an engine failure that retrying cannot fix', () => {
+    const error = new EngineRequestError({
+      kind: 'permission',
+      code: 'forbidden',
+      diagnostic: { kind: 'permission' },
+    });
+    const failed = vi.fn();
+    TestBed.inject(RoomAdministrationLifetime)
+      .run(demand.asReadonly(), roomId.asReadonly())
+      .subscribe({ error: failed });
+
+    permissionsOwner?.error(error);
+
+    expect(failed).toHaveBeenCalledWith(error);
   });
 
   it('does not label reset data stale after leaving and re-entering a Room', () => {

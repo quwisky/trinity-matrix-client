@@ -33,8 +33,11 @@ import {
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
 import {
+  EMPTY_SESSION,
   MatrixClientService,
-  type SyncState,
+  SESSION_ENGINE,
+  SessionStateService,
+  type SessionSyncState,
 } from '@trinity/data-access/matrix-client';
 import {
   InvitesService,
@@ -62,8 +65,12 @@ import {
 } from '@trinity/application/workspace';
 
 import { MockProvider } from 'ng-mocks';
+import {
+  ImagePackEditorService,
+  ImagePackService,
+} from '@trinity/data-access/media';
 import { ACCOUNT_REMOVAL_LAUNCHER } from '@trinity/platform-native';
-import { BehaviorSubject, Subject, of, switchMap } from 'rxjs';
+import { BehaviorSubject, NEVER, Subject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
@@ -207,6 +214,18 @@ export const ACCOUNT_REMOVAL_LAUNCHER_STUB: Provider = {
  * a component's `providers:` array are invisible to `TestBed.inject(RoomsPage)`, so each
  * one has to be supplied to the TestBed by hand, in every block.
  */
+/** No pack is offered or edited; the pack projections have their own specs. */
+export const IMAGE_PACKS_PROVIDER: Provider = [
+  MockProvider(ImagePackService, {
+    packsFor: () => signal([]).asReadonly(),
+  }),
+  MockProvider(ImagePackEditorService, {
+    personal: signal(null).asReadonly(),
+    emoticons: signal(new Map<string, string>()).asReadonly(),
+    run: () => NEVER,
+  }),
+];
+
 export const SHARED_MOCKS: Provider[] = [
   ACCOUNT_REMOVAL_LAUNCHER_STUB,
   SYSTEM_STATUS_PROVIDER,
@@ -228,6 +247,9 @@ export const SHARED_MOCKS: Provider[] = [
   SessionActionsService,
   WorkspaceNavigationService,
   ConversationTimelineStub,
+  // The session is the mocked SessionStateService; the room list store only listens for changes.
+  { provide: SESSION_ENGINE, useValue: { session: () => NEVER } },
+  IMAGE_PACKS_PROVIDER,
   // App lock is off; a spec that locks it overrides this.
   MockProvider(AppLockService, {
     enabled: signal(false).asReadonly(),
@@ -357,8 +379,8 @@ export const SHARED_MOCKS: Provider[] = [
   {
     provide: AccountRuntimeService,
     useFactory: () => {
-      const matrix = inject(MatrixClientService);
-      const activeAccountId = signal(matrix.activeUserId());
+      const session = inject(SessionStateService);
+      const activeAccountId = signal(session.activeAccountId());
       return {
         activeAccountId: activeAccountId.asReadonly(),
         switchActiveAccount: vi.fn(
@@ -496,29 +518,46 @@ export function invitesProvider(over: Partial<InvitesService> = {}) {
 
 /**
  * Default MatrixClientService mock: one initialised Account, `@me:hs`, whose clients are
- * {@link clientStub}s. `syncState` is only provided when a block asks for it.
+ * {@link clientStub}s.
  */
 export function matrixClientProvider(
   options: {
     readonly activeUserId?: Signal<string | null>;
     readonly accountIds?: readonly string[];
-    readonly syncState?: SyncState;
   } = {},
 ): Provider {
   return MockProvider(MatrixClientService, {
-    isInitialized: true,
-    ...(options.syncState
-      ? {
-          syncState: signal<SyncState | null>(options.syncState).asReadonly(),
-        }
-      : {}),
-    instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
     activeUserId:
       options.activeUserId ?? signal<string | null>('@me:hs').asReadonly(),
     accountIds: signal<readonly string[]>(
       options.accountIds ?? ['@me:hs'],
     ).asReadonly(),
     clientFor: () => clientStub(),
+  });
+}
+
+/** Default SessionStateService mock: one signed-in Account, `@me:hs`, with no sync state. */
+export function sessionStateProvider(
+  options: {
+    readonly activeAccountId?: Signal<string | null>;
+    readonly accountIds?: readonly string[];
+    readonly syncState?: SessionSyncState;
+  } = {},
+): Provider {
+  return MockProvider(SessionStateService, {
+    activeAccountId:
+      options.activeAccountId ?? signal<string | null>('@me:hs').asReadonly(),
+    accountIds: signal<readonly string[]>(
+      options.accountIds ?? ['@me:hs'],
+    ).asReadonly(),
+    syncState: signal<SessionSyncState | null>(
+      options.syncState ?? null,
+    ).asReadonly(),
+    softLoggedOut: signal<readonly string[]>([]).asReadonly(),
+    // Read by the room administration store the moderation service injects.
+    snapshot: signal(EMPTY_SESSION).asReadonly(),
+    // Read by the identity presence projection; nothing here runs it.
+    active: signal(null).asReadonly(),
   });
 }
 
@@ -544,13 +583,13 @@ export function selectedRoomLibraryProvider(
   return {
     provide: SelectedRoomLibraryService,
     useFactory: () => {
-      const matrix = inject(MatrixClientService);
+      const session = inject(SessionStateService);
       const rooms = inject(RoomLibraryService);
       const spaces = inject(SpacesService);
       const invites = inject(InvitesService);
       return {
         view: computed(() => {
-          const activeAccountId = matrix.activeUserId();
+          const activeAccountId = session.activeAccountId();
           return {
             accountIds: new Set(activeAccountId ? [activeAccountId] : []),
             mode: 'active' as const,

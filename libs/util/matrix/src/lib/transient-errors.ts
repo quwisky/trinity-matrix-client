@@ -1,9 +1,8 @@
-import { ConnectionError, HTTPError, MatrixError } from 'matrix-js-sdk';
 import { type MonoTypeOperatorFunction, retry, throwError, timer } from 'rxjs';
-
-// Re-exported because nothing outside data-access may import matrix-js-sdk, and callers
-// testing or narrowing against the predicate below need these constructors.
-export { ConnectionError, HTTPError, MatrixError } from 'matrix-js-sdk';
+import {
+  isMatrixConnectionError,
+  isMatrixHttpError,
+} from './matrix-error-shape';
 
 /** How many times a transient failure is retried before giving up. */
 const MAX_RETRIES = 3;
@@ -38,10 +37,10 @@ export function isMatrixRequestAbortError(err: unknown): boolean {
  * transient and must surface as usual.
  */
 export function isTransientMatrixError(err: unknown): boolean {
-  if (err instanceof ConnectionError) {
+  if (isMatrixConnectionError(err)) {
     return true;
   }
-  if (err instanceof MatrixError || err instanceof HTTPError) {
+  if (isMatrixHttpError(err)) {
     return isTransientStatus(err.httpStatus);
   }
   return false;
@@ -53,17 +52,18 @@ function backoffMs(attempt: number): number {
 }
 
 /**
- * RxJS operator that retries the source up to {@link MAX_RETRIES} times on a
- * {@link isTransientMatrixError transient} failure, backing off exponentially. Other errors
+ * RxJS operator that retries the source up to {@link MAX_RETRIES} times on a failure
+ * `isTransient` accepts (by default a {@link isTransientMatrixError transient} one), backing
+ * off exponentially. Other errors
  * are rethrown immediately; once retries are exhausted the last error is rethrown so a
  * downstream `catchError` can fall back.
  */
-export function retryTransient<T>(): MonoTypeOperatorFunction<T> {
+export function retryTransient<T>(
+  isTransient: (err: unknown) => boolean = isTransientMatrixError,
+): MonoTypeOperatorFunction<T> {
   return retry<T>({
     count: MAX_RETRIES,
     delay: (err, attempt) =>
-      isTransientMatrixError(err)
-        ? timer(backoffMs(attempt))
-        : throwError(() => err),
+      isTransient(err) ? timer(backoffMs(attempt)) : throwError(() => err),
   });
 }

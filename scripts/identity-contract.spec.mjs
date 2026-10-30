@@ -30,32 +30,34 @@ describe('Identity production boundary', () => {
     );
   });
 
-  it('depends on a lifecycle-free Matrix Identity port', () => {
+  it('reaches Matrix only through the identity engine', () => {
+    // The engine's js-sdk adapter is the one place that reaches the SDK (engine-boundary.spec).
+    const services = productionSources.filter(
+      (file) =>
+        file.startsWith('libs/data-access/identity/src/lib/') &&
+        !file.includes('/js-sdk/') &&
+        file.endsWith('.service.ts'),
+    );
     const identity = productionSources
-      .filter((file) => file.startsWith('libs/data-access/identity/'))
+      .filter(
+        (file) =>
+          file.startsWith('libs/data-access/identity/') &&
+          !file.includes('/js-sdk/'),
+      )
       .map(source)
       .join('\n');
-    const port = source(
-      'libs/data-access/matrix-client/src/lib/identity-matrix.port.ts',
+    const engine = source(
+      'libs/data-access/identity/src/lib/identity-engine.ts',
     );
-    const activeView = port.match(
-      /export interface ActiveIdentityMatrix \{(?<body>[\s\S]*?)\n\}/,
-    )?.groups?.body;
-    const projectionConfig = port.match(
-      /export interface IdentityProjectionConfig \{(?<body>[\s\S]*?)\n\}/,
-    )?.groups?.body;
 
-    expect(identity).toContain('IdentityMatrixPort');
+    expect(services.length).toBeGreaterThan(0);
+    for (const file of services) {
+      expect(source(file)).toContain('inject(IDENTITY_ENGINE)');
+    }
     expect(identity).not.toContain('MatrixClientService');
+    expect(identity).not.toContain('JS_SDK_CLIENTS');
     expect(identity).not.toMatch(/from ['"]matrix-js-sdk/);
-    expect(port).not.toMatch(
-      /\b(?:addAccount|removeAccount|switchAccount|startClient|stopClient|initRustCrypto)\b\s*\(/,
-    );
-    expect(activeView).toBeDefined();
-    expect(activeView).not.toMatch(/\bMatrixClient\b/);
-    expect(projectionConfig).toBeDefined();
-    expect(projectionConfig).not.toMatch(/\bMatrixClient\b/);
-    expect(projectionConfig).not.toContain('ProjectFromClientConfig');
+    expect(engine).not.toMatch(/\bMatrixClient\b|\bUser\b/);
   });
 
   it('keeps stable Identity presentation independent of Room membership', () => {
@@ -64,8 +66,8 @@ describe('Identity production boundary', () => {
     );
     const roomLibrary = [
       'libs/data-access/room-library/src/lib/room-library.service.ts',
-      'libs/data-access/room-library/src/lib/room-typing.ts',
-      'libs/data-access/room-library/src/lib/direct-rooms.ts',
+      'libs/data-access/room-library/src/lib/js-sdk/room-typing.ts',
+      'libs/data-access/room-library/src/lib/js-sdk/direct-rooms.ts',
     ]
       .map(source)
       .join('\n');
@@ -104,7 +106,7 @@ describe('Identity production boundary', () => {
     expect(profile).toContain('this.avatars.upload(');
     expect(profile).not.toContain('uploadContent');
     expect(media).toContain('upload(file: File, accountId: string)');
-    expect(media).toContain('client.uploadContent(');
+    expect(media).toContain('this.engine.upload(accountId,');
     expect(identity).toContain('return defer(() =>');
     expect(identity).toContain("'offline'");
     expect(identity).toContain("'unavailable'");

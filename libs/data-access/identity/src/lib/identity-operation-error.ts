@@ -1,4 +1,5 @@
 import { catchError, throwError, type MonoTypeOperatorFunction } from 'rxjs';
+import { EngineRequestError } from '@trinity/util/matrix';
 
 export type IdentityRecovery = 'none' | 'retry';
 
@@ -41,7 +42,15 @@ export function identityOperationFailure(
       cause.message,
     );
   }
-  if (cause instanceof TypeError) {
+  const failure = cause instanceof EngineRequestError ? cause.failure : null;
+  if (failure?.code === 'account-not-live') {
+    return identityNotReady(operation);
+  }
+  // A failed token refresh also reports `network`, but the device may well be online.
+  const refreshFailed =
+    failure?.code === 'request-failed' &&
+    failure.params?.cause === 'session-refresh';
+  if (failure?.kind === 'network' && !refreshFailed) {
     return new IdentityOperationError(
       operation,
       'offline',
@@ -49,10 +58,7 @@ export function identityOperationFailure(
       'Identity information is unavailable while this device is offline.',
     );
   }
-  const errorCode =
-    typeof cause === 'object' && cause !== null && 'errcode' in cause
-      ? (cause as { readonly errcode?: unknown }).errcode
-      : null;
+  const errorCode = failure?.diagnostic.errcode;
   if (
     errorCode === 'M_UNRECOGNIZED' ||
     errorCode === 'M_UNSUPPORTED_ROOM_VERSION'

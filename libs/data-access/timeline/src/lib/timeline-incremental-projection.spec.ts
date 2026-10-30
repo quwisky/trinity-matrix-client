@@ -24,9 +24,9 @@ import {
   pollStartContent,
 } from '@trinity/util/matrix';
 import { TimelineService } from './timeline.service';
-import { revisionOf } from './event-revision';
-import { shieldSubject } from './shields';
-import { trimLiveTimeline } from './live-timeline-trim';
+import { revisionOf } from './js-sdk/event-revision';
+import { shieldSubject } from './js-sdk/shields';
+import { trimLiveTimeline } from './js-sdk/live-timeline-trim';
 import type { MessageView } from './message-presentation';
 import {
   matrixProvider,
@@ -203,7 +203,7 @@ async function openConversation(
     ],
   });
   const svc = TestBed.inject(TimelineService);
-  svc.open(ROOM, client);
+  svc.open({ accountId: ME, roomId: ROOM });
 
   const row = (eventId: string): MessageView | undefined =>
     svc.messages().find((m) => m.id === eventId);

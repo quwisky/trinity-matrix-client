@@ -31,7 +31,7 @@ import {
   provideHostCapabilities,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { fireEvent, render } from '@trinity/testing';
+import { fireEvent, render, connectionError } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
   EMPTY,
@@ -50,7 +50,17 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isNativeAndroid: () => platform.android,
 }));
-import { ConnectionError, MatrixError } from '@trinity/util/matrix';
+import { EngineRequestError, type LoginRefusal } from '@trinity/util/matrix';
+
+/** A sign-in the homeserver refused, as the auth engine reports it. */
+function loginRefused(reason: LoginRefusal): EngineRequestError {
+  return new EngineRequestError({
+    kind: 'permission',
+    code: 'login-refused',
+    diagnostic: { kind: 'permission', httpStatus: 403 },
+    params: { reason },
+  });
+}
 
 const READY_OUTCOME = {
   kind: 'ready',
@@ -202,7 +212,10 @@ async function renderLogin(
         supports: vi.fn(() => of(opts.qrSupported ?? false)),
       }),
       MockProvider(QrSignInService, {
-        signInByShowingCode: vi.fn(() => opts.qrFlow ?? NEVER),
+        signInByShowingCode: vi.fn(() => ({
+          state$: opts.qrFlow ?? NEVER,
+          enterCheckCode: vi.fn(),
+        })),
       }),
       MockProvider(QrCodeService),
       ...(opts.bugReport
@@ -551,9 +564,7 @@ describe('LoginPage', () => {
 
   it('says the homeserver is unreachable when discovery hits a network error', async () => {
     const { cmp } = await renderLogin({
-      discoverHomeserver: vi.fn(() =>
-        throwError(() => new ConnectionError('fetch failed')),
-      ),
+      discoverHomeserver: vi.fn(() => throwError(() => connectionError())),
     } as unknown as Partial<AuthService>);
 
     cmp.discover();
@@ -750,13 +761,7 @@ describe('LoginPage', () => {
   it('says a deleted account has been deleted rather than calling the password wrong', async () => {
     const { cmp, fixture } = await renderLogin({
       loginWithPassword: vi.fn(() =>
-        throwError(
-          () =>
-            new MatrixError(
-              { errcode: 'M_USER_DEACTIVATED', error: 'deactivated' },
-              403,
-            ),
-        ),
+        throwError(() => loginRefused('deactivated')),
       ),
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
@@ -941,14 +946,7 @@ describe('LoginPage', () => {
   it('reads a wrong password in plain language, linked to the password field', async () => {
     const { cmp, router, fixture } = await renderLogin({
       loginWithPassword: vi.fn(() =>
-        throwError(
-          () =>
-            new MatrixError(
-              { errcode: 'M_FORBIDDEN', error: 'Invalid username or password' },
-              403,
-              'https://hs.example/_matrix/client/v3/login',
-            ),
-        ),
+        throwError(() => loginRefused('invalid-credentials')),
       ),
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
@@ -971,7 +969,14 @@ describe('LoginPage', () => {
   it('says the homeserver is unreachable when password sign-in hits a network error', async () => {
     const { cmp } = await renderLogin({
       loginWithPassword: vi.fn(() =>
-        throwError(() => new ConnectionError('fetch failed')),
+        throwError(
+          () =>
+            new EngineRequestError({
+              kind: 'network',
+              code: 'request-failed',
+              diagnostic: { kind: 'network' },
+            }),
+        ),
       ),
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
@@ -985,7 +990,12 @@ describe('LoginPage', () => {
     const { cmp } = await renderLogin({
       loginWithPassword: vi.fn(() =>
         throwError(
-          () => new Error('MatrixError: [500] boom (https://hs/login)'),
+          () =>
+            new EngineRequestError({
+              kind: 'unexpected',
+              code: 'request-failed',
+              diagnostic: { kind: 'unexpected', errorName: 'Error' },
+            }),
         ),
       ),
     } as unknown as Partial<AuthService>);
@@ -1911,24 +1921,21 @@ describe('LoginPage', () => {
       expect(document.activeElement).toBe(qrButton(root));
     });
 
-    it.each([true, false])(
-      'opens the rooms after a QR sign-in like any other (verified: %s)',
-      async (verified) => {
-        const { cmp, fixture, router } = await renderLogin(oidcServer, {
-          qrSupported: true,
-          qrFlow: of({ kind: 'done', verified } as const),
-        });
-        cmp.discover();
-        fixture.detectChanges();
+    it('opens the rooms after a QR sign-in like any other', async () => {
+      const { cmp, fixture, router } = await renderLogin(oidcServer, {
+        qrSupported: true,
+        qrFlow: of({ kind: 'done' } as const),
+      });
+      cmp.discover();
+      fixture.detectChanges();
 
-        fireEvent.click(qrButton(fixture.nativeElement as HTMLElement)!);
-        fixture.detectChanges();
+      fireEvent.click(qrButton(fixture.nativeElement as HTMLElement)!);
+      fixture.detectChanges();
 
-        expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
-          replaceUrl: true,
-        });
-      },
-    );
+      expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
+        replaceUrl: true,
+      });
+    });
 
     it('does not offer QR sign-in while re-authenticating an account', async () => {
       const { fixture } = await renderLogin(oidcServer, {

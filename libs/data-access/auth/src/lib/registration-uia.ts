@@ -1,19 +1,23 @@
 import {
-  AuthType,
-  MatrixError,
-  type IAuthData,
-  type RegisterResponse,
-  type UIAFlow,
-} from 'matrix-js-sdk';
+  EngineRequestError,
+  type EngineFailure,
+  type UiaChallenge,
+} from '@trinity/util/matrix';
 import { isValidDeviceId, userIdServerName } from './account-establishment';
+import type { RegisteredAccount } from './auth-engine';
 
-export const EMAIL_STAGE = AuthType.Email;
-export const NATIVE_REGISTRATION_STAGES = new Set<string>([
-  AuthType.Dummy,
-  AuthType.Terms,
-  AuthType.Email,
-  AuthType.RegistrationToken,
-  AuthType.UnstableRegistrationToken,
+export const DUMMY_STAGE = 'm.login.dummy';
+export const TERMS_STAGE = 'm.login.terms';
+export const EMAIL_STAGE = 'm.login.email.identity';
+export const REGISTRATION_TOKEN_STAGES = new Set<string>([
+  'm.login.registration_token',
+  'org.matrix.msc3231.login.registration_token',
+]);
+const NATIVE_REGISTRATION_STAGES = new Set<string>([
+  DUMMY_STAGE,
+  TERMS_STAGE,
+  EMAIL_STAGE,
+  ...REGISTRATION_TOKEN_STAGES,
 ]);
 const REGISTRATION_PROBE_PREFIX = 'trinity';
 
@@ -44,9 +48,9 @@ export type RegistrationStage =
       retryable: boolean;
     };
 
-export interface RegistrationUiaData extends IAuthData {
-  session: string;
-  flows: UIAFlow[];
+/** A registration challenge that names its session and at least one flow of stages. */
+export interface RegistrationChallenge extends UiaChallenge {
+  readonly session: string;
 }
 
 export interface ExpectedRegistrationIdentity {
@@ -73,19 +77,31 @@ export function registrationLocalpart(username: string): string {
   return colon >= 0 ? trimmed.slice(0, colon) : trimmed;
 }
 
+/** The server text on a refused step, from either failure that can carry it. */
+export function serverMessageOf(failure: EngineFailure): string | undefined {
+  return failure.code === 'request-failed' || failure.code === 'uia-required'
+    ? failure.params?.serverMessage
+    : undefined;
+}
+
 export function registrationErrorMessage(error: unknown): string {
-  if (error instanceof MatrixError) {
-    return error.error || 'The homeserver rejected this registration step.';
+  if (error instanceof EngineRequestError) {
+    const { failure } = error;
+    return (
+      serverMessageOf(failure) ??
+      (failure.diagnostic.errcode
+        ? 'The homeserver rejected this registration step.'
+        : error.message)
+    );
   }
   return error instanceof Error ? error.message : 'Registration failed.';
 }
 
-/** Parse and defensively clone a registration UIA challenge. */
+/** Check and defensively clone the challenge that opens a registration. */
 export function readRegistrationUiaChallenge(
-  error: unknown,
-): RegistrationUiaData | null {
-  if (!(error instanceof MatrixError) || error.httpStatus !== 401) return null;
-  const { session, flows } = error.data;
+  challenge: UiaChallenge,
+): RegistrationChallenge {
+  const { session, flows } = challenge;
   if (
     typeof session !== 'string' ||
     session.length === 0 ||
@@ -104,14 +120,16 @@ export function readRegistrationUiaChallenge(
     );
   }
   return {
-    ...error.data,
+    ...challenge,
     session,
     flows: flows.map((flow) => ({ stages: [...flow.stages] })),
   };
 }
 
 /** Prefer flows fully handled in-app, then the shortest remaining hosted fallback. */
-export function chooseRegistrationFlow(flows: UIAFlow[]): UIAFlow {
+export function chooseRegistrationFlow(
+  flows: UiaChallenge['flows'],
+): readonly string[] {
   return [...flows].sort((left, right) => {
     const unsupportedDifference =
       left.stages.filter((stage) => !NATIVE_REGISTRATION_STAGES.has(stage))
@@ -119,14 +137,17 @@ export function chooseRegistrationFlow(flows: UIAFlow[]): UIAFlow {
       right.stages.filter((stage) => !NATIVE_REGISTRATION_STAGES.has(stage))
         .length;
     return unsupportedDifference || left.stages.length - right.stages.length;
-  })[0];
+  })[0].stages;
 }
 
 /** Reduce untrusted homeserver policy metadata to safe, plain-text external links. */
 export function readRegistrationPolicies(
-  params: Record<string, unknown> | undefined,
+  params: unknown,
 ): RegistrationPolicy[] {
-  const policies = params?.['policies'];
+  const policies =
+    params && typeof params === 'object' && 'policies' in params
+      ? params.policies
+      : undefined;
   if (!policies || typeof policies !== 'object' || Array.isArray(policies)) {
     return [];
   }
@@ -168,28 +189,28 @@ export function readRegistrationPolicies(
 
 /** Validate the auto-login fields and translate the relative token lifetime. */
 export function authenticatedRegistrationResponse(
-  response: RegisterResponse,
+  response: RegisteredAccount,
   expected: ExpectedRegistrationIdentity,
 ) {
   if (
-    !nonEmptyString(response.user_id) ||
-    !nonEmptyString(response.access_token) ||
-    !nonEmptyString(response.device_id) ||
-    !isValidDeviceId(response.device_id) ||
-    (response.refresh_token !== undefined &&
-      !nonEmptyString(response.refresh_token)) ||
-    (response.expires_in_ms !== undefined &&
-      (!Number.isFinite(response.expires_in_ms) || response.expires_in_ms < 0))
+    !nonEmptyString(response.userId) ||
+    !nonEmptyString(response.accessToken) ||
+    !nonEmptyString(response.deviceId) ||
+    !isValidDeviceId(response.deviceId) ||
+    (response.refreshToken !== null &&
+      !nonEmptyString(response.refreshToken)) ||
+    (response.expiresInMs !== null &&
+      (!Number.isFinite(response.expiresInMs) || response.expiresInMs < 0))
   ) {
     throw new RegistrationSessionError(
       'The homeserver created the account but did not return a login session.',
       false,
     );
   }
-  const mxid = /^@([^:]+):(.+)$/.exec(response.user_id);
+  const mxid = /^@([^:]+):(.+)$/.exec(response.userId);
   if (
     !mxid ||
-    userIdServerName(response.user_id) === null ||
+    userIdServerName(response.userId) === null ||
     mxid[1].toLocaleLowerCase() !== expected.localpart.toLocaleLowerCase() ||
     mxid[2].toLocaleLowerCase() !== expected.serverName.toLocaleLowerCase()
   ) {
@@ -199,14 +220,12 @@ export function authenticatedRegistrationResponse(
     );
   }
   return {
-    user_id: response.user_id,
-    access_token: response.access_token,
-    device_id: response.device_id,
-    ...(response.refresh_token
-      ? { refresh_token: response.refresh_token }
-      : {}),
-    ...(response.expires_in_ms !== undefined
-      ? { accessTokenExpiresAt: Date.now() + response.expires_in_ms }
+    user_id: response.userId,
+    access_token: response.accessToken,
+    device_id: response.deviceId,
+    ...(response.refreshToken ? { refresh_token: response.refreshToken } : {}),
+    ...(response.expiresInMs !== null
+      ? { accessTokenExpiresAt: Date.now() + response.expiresInMs }
       : {}),
   };
 }

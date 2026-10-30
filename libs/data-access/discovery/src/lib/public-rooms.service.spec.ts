@@ -1,139 +1,158 @@
 import { TestBed } from '@angular/core/testing';
-import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { firstValueFrom, of } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FakeDiscoveryEngine } from '../contract/fake-discovery-engine';
+import {
+  describeMatrixRequestFailure,
+  engineFail,
+  engineOk,
+} from '@trinity/util/matrix';
+import { DISCOVERY_ENGINE } from './discovery-engine';
 import { PublicRoomsService } from './public-rooms.service';
 
-function setup(
-  response: {
-    chunk?: unknown[];
-    next_batch?: string;
-    total_room_count_estimate?: number;
-  } = {},
-) {
-  const publicRooms = vi.fn().mockResolvedValue({
-    chunk: response.chunk ?? [],
-    next_batch: response.next_batch,
-    total_room_count_estimate: response.total_room_count_estimate,
-  });
-  const joinRoom = vi.fn().mockResolvedValue({ roomId: '!joined:hs' });
-  const instance = { publicRooms, joinRoom };
-  TestBed.configureTestingModule({
-    providers: [
-      PublicRoomsService,
-      MockProvider(MatrixClientService, {
-        clientFor: (accountId: string) =>
-          accountId === '@me:hs' ? (instance as never) : null,
-      }),
-    ],
-  });
-  return { svc: TestBed.inject(PublicRoomsService), publicRooms, joinRoom };
-}
-
-const CHUNK_ROOM = {
-  room_id: '!r:hs',
+const ROOM = {
+  roomId: '!r:hs',
   name: 'General',
   topic: 'Chat',
-  canonical_alias: '#general:hs',
-  avatar_url: 'mxc://hs/a',
-  num_joined_members: 42,
+  alias: '#general:hs',
+  avatarMxc: 'mxc://hs/a',
+  memberCount: 42,
+  isSpace: false,
 };
 
 describe('PublicRoomsService', () => {
-  it('search is cold and maps the directory chunk to summaries', async () => {
-    const { svc, publicRooms } = setup({
-      chunk: [CHUNK_ROOM],
-      next_batch: 'tok',
-      total_room_count_estimate: 100,
+  let engine: FakeDiscoveryEngine;
+  let svc: PublicRoomsService;
+
+  beforeEach(() => {
+    engine = new FakeDiscoveryEngine();
+    engine.accounts.add('@me:hs');
+    engine.rooms.push(ROOM, {
+      ...ROOM,
+      roomId: '!s:hs',
+      name: 'Dev space',
+      alias: '#dev:hs',
+      isSpace: true,
     });
-
-    const action = svc.search('@me:hs');
-    expect(publicRooms).not.toHaveBeenCalled(); // cold
-
-    expect(await firstValueFrom(action)).toEqual({
-      rooms: [
-        {
-          roomId: '!r:hs',
-          name: 'General',
-          topic: 'Chat',
-          alias: '#general:hs',
-          avatarMxc: 'mxc://hs/a',
-          memberCount: 42,
-          isSpace: false,
-        },
-      ],
-      nextBatch: 'tok',
-      total: 100,
-    });
-  });
-
-  it('falls back to the alias then the room id for the name, and nulls a missing topic', async () => {
-    const { svc } = setup({
-      chunk: [
-        { room_id: '!a:hs', canonical_alias: '#a:hs', num_joined_members: 1 },
-        { room_id: '!b:hs', num_joined_members: 0 },
+    TestBed.configureTestingModule({
+      providers: [
+        PublicRoomsService,
+        { provide: DISCOVERY_ENGINE, useValue: engine },
       ],
     });
-
-    const page = await firstValueFrom(svc.search('@me:hs'));
-    expect(page.rooms.map((r) => r.name)).toEqual(['#a:hs', '!b:hs']);
-    expect(page.rooms[0].topic).toBeNull();
-    expect(page.rooms[1].alias).toBeNull();
-    expect(page.nextBatch).toBeNull();
+    svc = TestBed.inject(PublicRoomsService);
   });
 
-  it('passes a search term as a generic filter', async () => {
-    const { svc, publicRooms } = setup();
+  it('search is cold and returns the engine page', async () => {
+    const action = svc.search('@me:hs', { term: 'gen' });
+    expect(engine.calls).toEqual([]);
 
-    await firstValueFrom(svc.search('@me:hs', { term: '  chess  ' }));
+    const page = await firstValueFrom(action);
 
-    expect(publicRooms).toHaveBeenCalledWith(
-      expect.objectContaining({ filter: { generic_search_term: 'chess' } }),
+    expect(page.rooms.map((r) => r.roomId)).toEqual(['!r:hs']);
+    expect(engine.calls).toEqual(['searchPublicRooms:@me:hs']);
+  });
+
+  it('passes the term, token, Spaces flag and page size to the engine', async () => {
+    const searchPublicRooms = vi
+      .spyOn(engine, 'searchPublicRooms')
+      .mockReturnValue(
+        of(engineOk({ rooms: [], nextBatch: null, total: null })),
+      );
+
+    await firstValueFrom(
+      svc.search('@me:hs', { term: 'dev', since: 'p2', spaces: true }),
     );
-  });
+    await firstValueFrom(svc.search('@me:hs'));
 
-  it('omits the filter for an empty term and threads the pagination token', async () => {
-    const { svc, publicRooms } = setup();
-
-    await firstValueFrom(svc.search('@me:hs', { term: '   ', since: 'page2' }));
-
-    const opts = publicRooms.mock.calls[0][0];
-    expect(opts.filter).toBeUndefined();
-    expect(opts.since).toBe('page2');
-  });
-
-  it('restricts to Spaces and flags each summary as a space', async () => {
-    const { svc, publicRooms } = setup({
-      chunk: [{ ...CHUNK_ROOM, room_type: 'm.space' }],
-    });
-
-    const page = await firstValueFrom(svc.search('@me:hs', { spaces: true }));
-
-    expect(publicRooms).toHaveBeenCalledWith(
-      expect.objectContaining({ filter: { room_types: ['m.space'] } }),
-    );
-    expect(page.rooms[0].isSpace).toBe(true);
-  });
-
-  it('combines a search term with the Spaces filter', async () => {
-    const { svc, publicRooms } = setup();
-
-    await firstValueFrom(svc.search('@me:hs', { term: 'dev', spaces: true }));
-
-    expect(publicRooms).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filter: { generic_search_term: 'dev', room_types: ['m.space'] },
-      }),
-    );
+    expect(searchPublicRooms.mock.calls).toEqual([
+      ['@me:hs', { term: 'dev', since: 'p2', spaces: true, limit: 30 }],
+      ['@me:hs', { limit: 30 }],
+    ]);
   });
 
   it('join resolves the joined room id', async () => {
-    const { svc, joinRoom } = setup();
-
     expect(await firstValueFrom(svc.join('@me:hs', '#general:hs'))).toBe(
-      '!joined:hs',
+      '!r:hs',
     );
-    expect(joinRoom).toHaveBeenCalledWith('#general:hs');
+  });
+
+  it('errors a signed-out search and join with "Not signed in."', async () => {
+    await expect(firstValueFrom(svc.search('@x:hs'))).rejects.toThrow(
+      'Not signed in.',
+    );
+    await expect(firstValueFrom(svc.join('@x:hs', '#a:hs'))).rejects.toThrow(
+      'Not signed in.',
+    );
+  });
+
+  it('errors a refused join as a permission failure', async () => {
+    vi.spyOn(engine, 'joinRoom').mockReturnValue(
+      of(
+        engineFail({
+          kind: 'permission',
+          code: 'request-failed',
+          diagnostic: { kind: 'permission', httpStatus: 403 },
+        }),
+      ),
+    );
+
+    const error = await firstValueFrom(svc.join('@me:hs', '#general:hs')).catch(
+      (e: unknown) => e,
+    );
+
+    expect(describeMatrixRequestFailure(error)).toMatchObject({
+      kind: 'permission',
+      message: 'You do not have permission to do that.',
+    });
+  });
+
+  it('describes a missing room with the caller fallback and its 404', async () => {
+    const error = await firstValueFrom(svc.join('@me:hs', '#missing:hs')).catch(
+      (e: unknown) => e,
+    );
+
+    expect(
+      describeMatrixRequestFailure(error, 'Could not join X. Try again.'),
+    ).toEqual({
+      kind: 'http',
+      message: 'Could not join X. Try again.',
+      diagnostic: { kind: 'http', httpStatus: 404 },
+    });
+  });
+
+  it('describes a directory-search 4xx with the caller fallback', async () => {
+    vi.spyOn(engine, 'searchPublicRooms').mockReturnValue(
+      of(
+        engineFail({
+          kind: 'http',
+          code: 'request-failed',
+          diagnostic: { kind: 'http', httpStatus: 400 },
+        }),
+      ),
+    );
+    const error = await firstValueFrom(svc.search('@me:hs')).catch(
+      (e: unknown) => e,
+    );
+
+    expect(describeMatrixRequestFailure(error, 'Search failed.')).toMatchObject(
+      {
+        kind: 'http',
+        message: 'Search failed.',
+        diagnostic: { httpStatus: 400 },
+      },
+    );
+  });
+
+  it('keeps the signed-out message and still takes the caller fallback', async () => {
+    const error = await firstValueFrom(svc.join('@x:hs', '#a:hs')).catch(
+      (e: unknown) => e,
+    );
+
+    expect((error as Error).message).toBe('Not signed in.');
+    expect(
+      describeMatrixRequestFailure(error, 'Could not join X. Try again.')
+        .message,
+    ).toBe('Could not join X. Try again.');
   });
 });

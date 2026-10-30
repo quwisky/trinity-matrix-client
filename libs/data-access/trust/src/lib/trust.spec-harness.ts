@@ -1,11 +1,11 @@
 // Shared TestBed scaffolding for the TrustService specs.
 //
-// trust.service.spec.ts, trust-setup.spec.ts and trust-recovery-reset.spec.ts drive the
-// same service over the same fake crypto, secret storage and client, so they share one
-// copy of the doubles here instead of three that can drift.
-import { signal } from '@angular/core';
+// trust.service.spec.ts and trust-setup.spec.ts drive the service over the real js-sdk
+// engine on the same fake crypto, secret storage and client (`setup`), and over the fake
+// engine (`onFakeEngine`), so they share one copy of the doubles here.
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MockProvider, ngMocks } from 'ng-mocks';
+import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { MatrixError } from 'matrix-js-sdk';
@@ -15,22 +15,18 @@ import {
   type TrustProviderManagement,
 } from './trust-provider-recovery.port';
 import {
-  MatrixClientService,
-  SecretStorageKeyHolder,
+  JS_SDK_CLIENTS,
+  SESSION_SNAPSHOT,
+  type SessionSnapshot,
+  SessionStateService,
 } from '@trinity/data-access/matrix-client';
+import { FakeTrustEngine } from '../contract/fake-trust-engine';
+import { TRUST_ENGINE } from './trust-engine.token';
 
 /** A 401 UIA challenge carrying flows + session, as the SDK surfaces it. */
 export function uiaError(session: string): MatrixError {
   return new MatrixError(
     { flows: [{ stages: ['m.login.password'] }], session },
-    401,
-  );
-}
-
-/** The 401 a password-less account gets: the server offers only an SSO stage. */
-export function ssoOnlyUiaError(): MatrixError {
-  return new MatrixError(
-    { flows: [{ stages: ['m.login.sso'] }], session: 's' },
     401,
   );
 }
@@ -218,15 +214,28 @@ export function setup(opts: CryptoOpts = {}) {
     },
   };
 
-  const holder = new SecretStorageKeyHolder();
   // Writable so tests can flip the active account and fire the reproject effect.
   const activeUserId = signal<string | null>(null);
+  // Health reads the active account through the engine, over whichever client is stubbed.
+  const activeAccountId = computed(() => activeUserId() ?? '@me:hs');
+  // Bumped by a test to model a new client for the same account (re-login).
+  const generation = signal(1);
+  // The account's live client; a test swaps it with `useClient`.
+  let live: unknown = client;
   TestBed.configureTestingModule({
     providers: [
       TrustService,
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId,
+        active: computed(() => ({
+          accountId: activeAccountId(),
+          generation: generation(),
+        })) as unknown as SessionStateService['active'],
       }),
+      {
+        provide: JS_SDK_CLIENTS,
+        useValue: { clientFor: () => live, holderFor: () => null },
+      },
       {
         provide: TRUST_PROVIDER_RECOVERY,
         useValue: {
@@ -239,23 +248,50 @@ export function setup(opts: CryptoOpts = {}) {
     ],
   });
 
-  const matrix = TestBed.inject(MatrixClientService);
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(
-    matrix,
-    'instance',
-    client as unknown as MatrixClientService['instance'],
-  );
-  // TrustService caches the unlocked 4S key on the ACTIVE account's holder.
-  ngMocks.stubMember(matrix, 'activeHolder', () => holder);
-
   return {
     svc: TestBed.inject(TrustService),
-    keys: holder,
     crypto,
     secretStorage,
     client,
-    matrix,
+    useClient: (next: unknown) => (live = next),
     activeUserId,
+    generation,
+  };
+}
+
+/** TrustService over the fake engine, with `active` the session's active account. */
+export function onFakeEngine(
+  active: string | null = '@alice:contract.invalid',
+) {
+  const engine = new FakeTrustEngine();
+  const session = signal<SessionSnapshot>({
+    activeAccountId: active,
+    accounts: [engine.alice].map((accountId) => ({
+      accountId,
+      deviceId: engine.deviceIdOf(accountId),
+      generation: 1,
+      syncState: 'syncing' as const,
+      serverSynced: true,
+      roomsPrepared: true,
+      waitingCount: 0,
+      cryptoStoreEncrypted: true,
+    })),
+    softLoggedOut: [],
+  });
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: TRUST_ENGINE, useValue: engine },
+      { provide: SESSION_SNAPSHOT, useValue: session },
+      {
+        provide: TRUST_PROVIDER_RECOVERY,
+        useValue: { accountManagement: () => of(null) },
+      },
+    ],
+  });
+  return {
+    svc: TestBed.inject(TrustService),
+    engine,
+    alice: engine.alice,
+    session,
   };
 }

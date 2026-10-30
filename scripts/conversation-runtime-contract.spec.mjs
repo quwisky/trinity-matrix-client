@@ -92,13 +92,15 @@ describe('Conversation Runtime production boundary', () => {
     expect(navigation).not.toMatch(/\bworkspace\s*\.\s*open\s*\(/s);
   });
 
-  it('binds each child to the client for its immutable Account key', () => {
+  it('binds each child to its immutable Account key while that Account is live', () => {
     const factory = source(timelineFactoryImplementation);
     const readiness = source(readinessImplementation);
 
-    expect(factory).toContain('this.matrix.clientFor(key.accountId)');
-    expect(factory).toContain('readiness.start(key.roomId, client, timeline);');
-    expect(readiness).toContain('timeline.open(this.roomId, client)');
+    expect(factory).toContain('this.session.status(key.accountId)');
+    expect(factory).not.toContain('MatrixClientService');
+    expect(factory).toContain('timeline.open(key);');
+    expect(factory).toContain('readiness.start(key, timeline);');
+    expect(readiness).toContain('this.session.status(this.key.accountId)');
   });
 
   it('binds message search to the same exact Conversation child', () => {
@@ -110,11 +112,9 @@ describe('Conversation Runtime production boundary', () => {
       .map(source)
       .join('\n');
 
-    expect(factory).toContain('search.attach(key, client);');
+    expect(factory).toContain('search.attach(key);');
     expect(runtime).toContain('readonly search: ConversationSearch;');
-    expect(search).toContain(
-      'attach(key: ConversationKey, client: MatrixClient)',
-    );
+    expect(search).toContain('attach(key: ConversationKey)');
     expect(search).not.toContain('MatrixClientService');
     expect(search).not.toContain('.instance');
     expect(roomFeature).not.toContain('ConversationSearchController');
@@ -140,9 +140,9 @@ describe('Conversation Runtime production boundary', () => {
     expect(composeContract).not.toMatch(/\bbegin(?:Reply|Edit)\s*\(/);
     expect(entrypoint).not.toContain('CONVERSATION_MESSAGE_ADAPTER');
     expect(entrypoint).not.toContain('ConversationMessageAdapter');
-    expect(adapter).toContain('this.matrix.clientFor(request.key.accountId)');
-    expect(adapter).toContain('myReactionIds(');
-    expect(adapter).toContain('this.policy.authorizeRedaction(request)');
+    expect(adapter).toMatch(/this\.engine\s*\.toggleReaction\(/);
+    expect(adapter).not.toMatch(/from ['"]matrix-js-sdk(?:\/|['"])/);
+    expect(adapter).toContain('this.policy.authorizeRedaction({');
     expect(adapter).not.toMatch(/\b(?:signal|Subject|BehaviorSubject)\s*[<(]/);
     expect(timeline).not.toContain('.sendReadReceipt(');
     expect(timeline).not.toContain('.setRoomReadMarkers(');
@@ -164,8 +164,8 @@ describe('Conversation Runtime production boundary', () => {
 
     expect(composition).toContain('provide: CONVERSATION_MESSAGE_POLICY');
     expect(composition).toContain('inject(RoomMessageGovernanceService)');
-    expect(governance).toContain('maySendRedactionForEvent');
-    expect(governance).toContain('this.matrix.clientFor(key.accountId)');
+    expect(governance).toContain('mayRedactEvent(');
+    expect(governance).toContain('this.store.room(request.accountId');
   });
 
   it('owns keyed thread and pin children without legacy public facades', () => {

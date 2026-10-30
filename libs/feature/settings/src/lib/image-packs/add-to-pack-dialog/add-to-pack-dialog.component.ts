@@ -30,7 +30,7 @@ import {
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ImagePackEditError,
   ImagePackEditorService,
@@ -169,11 +169,11 @@ export function addFailure(
 export class AddToPackDialogComponent {
   private readonly editor = inject(ImagePackEditorService);
   private readonly media = inject(MediaService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(SessionStateService);
   private readonly dialogRef =
     inject<TrnDialogRef<PackEntry | null>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly account = this.matrix.activeUserId();
+  private readonly account = this.matrix.activeAccountId();
   private running: Subscription | null = null;
 
   protected readonly useAsOptions: readonly TrnRadioOption<UseAs>[] = [
@@ -221,7 +221,7 @@ export class AddToPackDialogComponent {
       // A room ref pins its own account, so only the personal pack follows the active one.
       if (
         this.ref().kind === 'personal' &&
-        this.matrix.activeUserId() !== this.account
+        this.matrix.activeAccountId() !== this.account
       ) {
         this.close(null);
       }
@@ -234,11 +234,16 @@ export class AddToPackDialogComponent {
         onCleanup(() => URL.revokeObjectURL(url));
         return;
       }
+      const ref = this.ref();
+      // The pack's account, which a switch never changes: a personal dialog closes instead.
+      const accountId =
+        ref.kind === 'room' ? ref.accountId : (this.account ?? undefined);
       let pinned: string | null = null;
       const subscription = this.media
         .resolveMedia(
           packImagePayload(source.url, source.info, source.body),
           'thumbnail',
+          accountId,
         )
         .subscribe({
           next: (url) => {

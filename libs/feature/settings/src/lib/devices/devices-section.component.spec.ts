@@ -11,7 +11,7 @@ import {
   type ExistingDeviceState,
   type QrDeviceLinker,
 } from '@trinity/data-access/auth';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ExternalBrowserService,
   QrCodeService,
@@ -78,7 +78,7 @@ describe('DevicesSectionComponent', () => {
         state$: new Observable<ExistingDeviceState>(() => () => {
           flowClosed = true;
         }),
-        confirmCheckCode: vi.fn(),
+        approve: vi.fn(),
       })),
     };
     linkerForActiveAccount = vi.fn(() => linker);
@@ -116,8 +116,8 @@ describe('DevicesSectionComponent', () => {
       }),
       MockProvider(WorkspaceApplicationSurfaceService, { open }),
       MockProvider(QrSignInService, { linkerForActiveAccount }),
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
+      MockProvider(SessionStateService, {
+        activeAccountId: activeUserId.asReadonly(),
       }),
       MockProvider(ExternalBrowserService),
       MockProvider(QrCodeService, {

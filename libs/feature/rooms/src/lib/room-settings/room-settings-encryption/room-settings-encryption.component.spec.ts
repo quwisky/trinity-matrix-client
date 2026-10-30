@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { render, screen } from '@trinity/testing';
+import { render, screen, matrixError } from '@trinity/testing';
 import {
   TrnAlertService,
   type ConfirmOptions,
@@ -11,7 +11,6 @@ import {
   type ActionAvailability,
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
-import { MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -424,10 +423,9 @@ describe('RoomSettingsEncryptionComponent', () => {
                       operation: 'turn-on-encryption',
                     },
                     'MatrixError: [500] upstream with a body',
-                    new MatrixError(
-                      { errcode: 'M_UNKNOWN', error: 'upstream with a body' },
-                      500,
-                    ),
+                    matrixError('M_UNKNOWN', 500, {
+                      error: 'upstream with a body',
+                    }),
                   ),
               )
             : of(undefined),

@@ -1,4 +1,5 @@
 import {
+  computed,
   type EnvironmentProviders,
   inject,
   type Provider,
@@ -24,7 +25,6 @@ import {
   NEW_DEVICE_SIGN_IN,
   OidcClientService,
   QR_LINK_IDENTITY_CHECK,
-  QR_SIGN_IN_COMPLETION,
   type AuthenticationHomeserverDiscovery,
 } from '@trinity/data-access/auth';
 import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
@@ -47,6 +47,7 @@ import {
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   ROOM_LIST_STYLE,
+  RoomListStore,
   type RoomLibraryGovernancePolicy,
   provideRoomLibraryConfigEntries,
   provideRoomLibraryPreferences,
@@ -55,9 +56,11 @@ import {
   CONVERSATION_MESSAGE_POLICY,
   CONVERSATION_PIN_POLICY,
   CONVERSATION_PRIVACY_PREFERENCES,
+  CONVERSATION_TYPING,
   ConversationRuntime,
   type ConversationMessagePolicy,
   type ConversationPinPolicy,
+  type ConversationTypingPort,
   provideConversationPrivacyPreferences,
 } from '@trinity/data-access/timeline';
 import {
@@ -164,8 +167,8 @@ export function applicationCapabilityProviders(
         return {
           canRedactOthers: (key) => governance.canRedactOthers(key),
           canSendMessages: (key) => governance.canSendMessages(key),
-          authorizeRedaction: ({ key, messageId }) =>
-            governance.authorizeRedaction({ ...key, messageId }),
+          authorizeRedaction: ({ key, senderId }) =>
+            governance.authorizeRedaction({ ...key, senderId }),
         };
       },
     },
@@ -175,8 +178,34 @@ export function applicationCapabilityProviders(
         const governance = inject(RoomPinGovernanceService);
         return {
           canMutate: (key) => governance.canMutate(key),
-          authorize: (key, operation, eventId) =>
-            governance.authorize(key, operation, eventId),
+          authorize: ({ key }) => governance.authorize(key),
+        };
+      },
+    },
+    {
+      provide: CONVERSATION_TYPING,
+      useFactory: (): ConversationTypingPort => {
+        const rooms = inject(RoomListStore);
+        return {
+          typing: (accountId, roomId) => {
+            const typing = rooms.typing(accountId);
+            return computed(
+              () =>
+                (typing()[roomId] ?? []).filter(
+                  (typist) => typist.userId !== accountId,
+                ),
+              // Typing in another room re-emits the map; this room's list must not re-render.
+              {
+                equal: (a, b) =>
+                  a.length === b.length &&
+                  a.every(
+                    (typist, i) =>
+                      typist.userId === b[i].userId &&
+                      typist.displayName === b[i].displayName,
+                  ),
+              },
+            );
+          },
         };
       },
     },
@@ -242,7 +271,6 @@ export function applicationCapabilityProviders(
       },
     },
     { provide: NEW_DEVICE_SIGN_IN, useExisting: NewDeviceSignInPresenter },
-    { provide: QR_SIGN_IN_COMPLETION, useExisting: AuthService },
     { provide: QR_LINK_IDENTITY_CHECK, useExisting: TrustDevicesService },
     {
       provide: UNPROTECTED_STORAGE_CONSENT,

@@ -1,509 +1,278 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { NEVER, Subject, finalize, firstValueFrom, tap } from 'rxjs';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  EMPTY_SESSION,
+  SESSION_ENGINE,
+  SESSION_SNAPSHOT,
+  type SessionAccountStatus,
+  type SessionSnapshot,
+} from '@trinity/data-access/matrix-client';
+import {
+  FakeRoomListEngine,
+  fakeRoom,
+} from '../contract/fake-room-list-engine';
+import { ROOM_LIST_ENGINE } from './room-list-engine.token';
 import { RoomsInCommonService } from './rooms-in-common.service';
-import { RoomLibraryService, type RoomSummary } from './room-library.service';
 
-const ME = '@me:hs';
-const OTHER_ACCOUNT = '@alt:hs';
-const PERSON = '@bob:hs';
-const UNSTABLE_FLAG = 'uk.half-shot.msc2666.query_mutual_rooms';
-const STABLE_PATH = '/_matrix/client/v1/mutual_rooms';
-const UNSTABLE_PATH =
-  '/_matrix/client/unstable/uk.half-shot.msc2666/user/mutual_rooms';
+const OTHER_ACCOUNT = '@alt:example.org';
 
-type Handler = (...args: unknown[]) => void;
-type Page = { joined: string[]; next_batch?: string };
-
-function fakeRoom(opts: {
-  roomId: string;
-  name: string;
-  members?: Record<string, string>;
-  space?: boolean;
-  membership?: string;
-}) {
-  const members = opts.members ?? {};
+function account(
+  accountId: string,
+  patch: Partial<SessionAccountStatus> = {},
+): SessionAccountStatus {
   return {
-    roomId: opts.roomId,
-    name: opts.name,
-    members,
-    isSpaceRoom: () => opts.space ?? false,
-    getMyMembership: () => opts.membership ?? 'join',
-    getMember: (userId: string) =>
-      members[userId] ? { userId, membership: members[userId] } : null,
-    getMxcAvatarUrl: () => null,
-    getJoinedMemberCount: () =>
-      Object.values(members).filter((m) => m === 'join').length,
+    accountId,
+    deviceId: 'DEVICE',
+    generation: 1,
+    syncState: 'syncing',
+    serverSynced: true,
+    roomsPrepared: true,
+    waitingCount: 0,
+    cryptoStoreEncrypted: true,
+    ...patch,
   };
 }
-
-function fakeClient(
-  rooms: ReturnType<typeof fakeRoom>[],
-  opts: {
-    direct?: Record<string, string[]>;
-    versions?: string[];
-    features?: Record<string, boolean>;
-    pages?: Page[] | Error;
-    /** `/versions` never answers. */
-    hang?: boolean;
-  } = {},
-) {
-  const handlers = new Map<string, Set<Handler>>();
-  const pages = opts.pages;
-  const authedRequest = vi.fn(async (): Promise<Page> => {
-    if (pages instanceof Error) throw pages;
-    return pages?.[authedRequest.mock.calls.length - 1] ?? { joined: [] };
-  });
-  return {
-    getRooms: () => rooms,
-    getAccountData: (type: string) =>
-      type === 'm.direct' ? { getContent: () => opts.direct ?? {} } : undefined,
-    getVersions: () =>
-      opts.hang
-        ? new Promise<never>(() => undefined)
-        : Promise.resolve({
-            versions: opts.versions ?? ['v1.11'],
-            unstable_features: opts.features ?? {},
-          }),
-    http: { authedRequest },
-    on: (event: string, handler: Handler) => {
-      const set = handlers.get(event) ?? new Set<Handler>();
-      set.add(handler);
-      handlers.set(event, set);
-    },
-    off: (event: string, handler: Handler) =>
-      handlers.get(event)?.delete(handler),
-    emit: (event: string, ...args: unknown[]) =>
-      handlers.get(event)?.forEach((handler) => handler(...args)),
-  };
-}
-
-function setup(clients: Record<string, ReturnType<typeof fakeClient>>) {
-  const activeUserId = signal<string | null>(ME);
-  const prepared = signal<ReadonlySet<string>>(new Set(Object.keys(clients)));
-  const accountIds = signal<readonly string[]>(Object.keys(clients));
-  const rooms = signal<RoomSummary[]>([]);
-  TestBed.configureTestingModule({
-    providers: [
-      {
-        provide: MatrixClientService,
-        useValue: {
-          activeUserId,
-          accountIds,
-          roomsPrepared: (id: string) => prepared().has(id),
-          clientFor: (id: string) => clients[id] ?? null,
-        },
-      },
-      { provide: RoomLibraryService, useValue: { rooms } },
-    ],
-  });
-  const svc = TestBed.inject(RoomsInCommonService);
-  return { svc, activeUserId, prepared, accountIds };
-}
-
-/** Let the `/versions` probe and any mutual-rooms request settle. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const ids = (list: readonly { id: string }[] | null) =>
   list?.map((room) => room.id) ?? null;
 
-afterEach(() => vi.useRealTimers());
-
 describe('RoomsInCommonService', () => {
-  it('lists joined rooms where the person is also joined, excluding the current room', async () => {
-    const client = fakeClient([
-      fakeRoom({ roomId: '!a', name: 'A', members: { [PERSON]: 'join' } }),
-      fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } }),
-      fakeRoom({ roomId: '!c', name: 'C' }),
-    ]);
-    const { svc } = setup({ [ME]: client });
-    const common = svc.roomsInCommon(PERSON, '!a');
-    await settle();
+  let fake: FakeRoomListEngine;
+  let snapshot: ReturnType<typeof signal<SessionSnapshot>>;
+  let svc: RoomsInCommonService;
+  let me: string;
+  let person: string;
+  /** Open `roomsInCommon` subscriptions on the engine. */
+  let open: number;
 
-    expect(common()).toEqual([
+  const goLive = (
+    accounts: SessionAccountStatus[],
+    activeAccountId: string | null = me,
+  ) => snapshot.set({ ...EMPTY_SESSION, activeAccountId, accounts });
+
+  /** Seeds `rooms` for the account, each joined by the person too. */
+  const shared = (
+    accountId: string,
+    ...rooms: ReturnType<typeof fakeRoom>[]
+  ) => {
+    fake.seed(accountId, rooms);
+    for (const room of rooms) fake.setJoined(room.roomId, person, true);
+  };
+
+  beforeEach(() => {
+    fake = new FakeRoomListEngine();
+    me = fake.alice;
+    person = fake.bob;
+    open = 0;
+    const roomsInCommon = fake.roomsInCommon.bind(fake);
+    fake.roomsInCommon = (accountId, userId) =>
+      roomsInCommon(accountId, userId).pipe(
+        tap({ subscribe: () => (open += 1) }),
+        finalize(() => (open -= 1)),
+      );
+    snapshot = signal(EMPTY_SESSION);
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: ROOM_LIST_ENGINE, useValue: fake },
+        { provide: SESSION_SNAPSHOT, useValue: snapshot },
+        { provide: SESSION_ENGINE, useValue: { session: () => NEVER } },
+      ],
+    });
+    svc = TestBed.inject(RoomsInCommonService);
+    goLive([account(me)]);
+  });
+
+  it('lists joined rooms where the person is also joined, excluding the current room', () => {
+    fake.seed(me, [
+      fakeRoom('!a', { displayName: 'A' }),
+      fakeRoom('!b', { displayName: 'B', joinedMemberCount: 2 }),
+      fakeRoom('!c', { displayName: 'C' }),
+    ]);
+    fake.setJoined('!a', person, true);
+    fake.setJoined('!b', person, true);
+
+    expect(svc.roomsInCommon(person, '!a')()).toEqual([
       {
         id: '!b',
-        accountId: ME,
+        accountId: me,
         name: 'B',
         initial: 'B',
         avatarMxc: null,
         kind: 'room',
-        memberCount: 1,
+        memberCount: 2,
       },
     ]);
   });
 
-  it('ignores rooms where the person is invited or has left', async () => {
-    const client = fakeClient([
-      fakeRoom({ roomId: '!a', name: 'A', members: { [PERSON]: 'invite' } }),
-      fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'leave' } }),
-      fakeRoom({
-        roomId: '!c',
-        name: 'C',
-        members: { [PERSON]: 'join' },
-        membership: 'leave',
-      }),
-    ]);
-    const { svc } = setup({ [ME]: client });
-    const common = svc.roomsInCommon(PERSON, '!x');
-    await settle();
-
-    expect(common()).toEqual([]);
-  });
-
-  it('marks direct rooms and spaces', async () => {
-    const client = fakeClient(
-      [
-        fakeRoom({ roomId: '!dm', name: 'Bob', members: { [PERSON]: 'join' } }),
-        fakeRoom({
-          roomId: '!space',
-          name: 'Space',
-          members: { [PERSON]: 'join' },
-          space: true,
-        }),
-        fakeRoom({
-          roomId: '!room',
-          name: 'Room',
-          members: { [PERSON]: 'join' },
-        }),
-      ],
-      { direct: { [PERSON]: ['!dm'] } },
+  it('leaves out rooms this account has not joined', () => {
+    shared(
+      me,
+      fakeRoom('!a', { membership: 'invite' }),
+      fakeRoom('!b', { membership: 'knock' }),
     );
-    const { svc } = setup({ [ME]: client });
-    const common = svc.roomsInCommon(PERSON, '!x');
-    await settle();
 
-    expect(common()?.map((room) => [room.id, room.kind])).toEqual([
-      ['!dm', 'direct'],
-      ['!room', 'room'],
-      ['!space', 'space'],
+    expect(svc.roomsInCommon(person, '!x')()).toEqual([]);
+  });
+
+  it('marks direct rooms and spaces, with their avatars', () => {
+    shared(
+      me,
+      fakeRoom('!dm', {
+        displayName: 'Bob',
+        directUserId: person,
+        avatarMxc: 'mxc://hs/bob',
+      }),
+      fakeRoom('!space', { displayName: 'Space', isSpace: true }),
+      fakeRoom('!room', { displayName: 'Room' }),
+    );
+
+    expect(
+      svc
+        .roomsInCommon(person, '!x')()
+        ?.map((room) => [room.id, room.kind, room.avatarMxc]),
+    ).toEqual([
+      ['!dm', 'direct', 'mxc://hs/bob'],
+      ['!room', 'room', null],
+      ['!space', 'space', null],
     ]);
   });
 
-  it('updates when the person leaves a shared room', async () => {
-    const shared = fakeRoom({
-      roomId: '!b',
-      name: 'B',
-      members: { [PERSON]: 'join' },
-    });
-    const client = fakeClient([shared]);
-    const { svc } = setup({ [ME]: client });
-    const common = svc.roomsInCommon(PERSON, '!a');
-    await settle();
+  it('updates when the person leaves a shared room', () => {
+    shared(me, fakeRoom('!b'));
+    const common = svc.roomsInCommon(person, '!a');
     expect(ids(common())).toEqual(['!b']);
-    TestBed.tick();
 
-    shared.members[PERSON] = 'leave';
-    client.emit(RoomStateEvent.Members, {}, {}, { userId: PERSON });
+    fake.setJoined('!b', person, false);
 
     expect(common()).toEqual([]);
   });
 
   it('updates when this account leaves a shared room', async () => {
-    let membership = 'join';
-    const shared = {
-      ...fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } }),
-      getMyMembership: () => membership,
-    };
-    const client = fakeClient([shared]);
-    const { svc } = setup({ [ME]: client });
-    const common = svc.roomsInCommon(PERSON, '!a');
-    await settle();
+    shared(me, fakeRoom('!b'));
+    const common = svc.roomsInCommon(person, '!a');
     expect(ids(common())).toEqual(['!b']);
-    TestBed.tick();
 
-    membership = 'leave';
-    client.emit(RoomEvent.MyMembership, shared, 'leave');
+    await firstValueFrom(fake.leave(me, '!b'));
 
     expect(common()).toEqual([]);
   });
 
-  it('follows a room rename', async () => {
-    const shared = fakeRoom({
-      roomId: '!b',
-      name: 'B',
-      members: { [PERSON]: 'join' },
-    });
-    const client = fakeClient([shared]);
-    const { svc } = setup({ [ME]: client });
-    const common = svc.roomsInCommon(PERSON, '!a');
-    await settle();
-    TestBed.tick();
+  it('follows a room rename', () => {
+    shared(me, fakeRoom('!b', { displayName: 'B' }));
+    const common = svc.roomsInCommon(person, '!a');
+    expect(common()?.[0].name).toBe('B');
 
-    shared.name = 'Renamed';
-    client.emit(RoomEvent.Name, shared);
+    fake.seed(me, [fakeRoom('!b', { displayName: 'Renamed' })]);
 
-    expect(common()?.[0].name).toBe('Renamed');
+    expect(common()?.[0]).toMatchObject({ name: 'Renamed', initial: 'R' });
   });
 
-  it('is null before the room list is ready and after an account switch', async () => {
-    const shared = () =>
-      fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } });
-    const { svc, prepared, activeUserId } = setup({
-      [ME]: fakeClient([shared()]),
-      [OTHER_ACCOUNT]: fakeClient([shared()]),
-    });
-    prepared.set(new Set([OTHER_ACCOUNT]));
-    const common = svc.roomsInCommon(PERSON, '!a');
-    await settle();
+  it('is null before the rooms are prepared and after an account switch', () => {
+    goLive([account(me, { roomsPrepared: false }), account(OTHER_ACCOUNT)]);
+    shared(me, fakeRoom('!b'));
+    const common = svc.roomsInCommon(person, '!a');
 
     expect(common()).toBeNull();
-    prepared.set(new Set([ME, OTHER_ACCOUNT]));
+    goLive([account(me), account(OTHER_ACCOUNT)]);
     expect(ids(common())).toEqual(['!b']);
 
-    activeUserId.set(OTHER_ACCOUNT);
+    goLive([account(me), account(OTHER_ACCOUNT)], OTHER_ACCOUNT);
     expect(common()).toBeNull();
   });
 
-  it('is null until the first answer arrives', () => {
-    const client = fakeClient([
-      fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } }),
-    ]);
-    const { svc } = setup({ [ME]: client });
+  it('is null until the engine first answers', () => {
+    shared(me, fakeRoom('!b'));
+    const answer = new Subject<readonly string[]>();
+    fake.roomsInCommon = () => answer;
+    const common = svc.roomsInCommon(person, '!a');
 
-    expect(svc.roomsInCommon(PERSON, '!a')()).toBeNull();
+    expect(common()).toBeNull();
+    answer.next(['!b']);
+    expect(ids(common())).toEqual(['!b']);
   });
 
-  it('reads the named account rather than the active one', async () => {
-    const active = fakeClient([
-      fakeRoom({ roomId: '!a', name: 'A', members: { [PERSON]: 'join' } }),
-    ]);
-    const other = fakeClient([
-      fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } }),
-    ]);
-    const { svc } = setup({ [ME]: active, [OTHER_ACCOUNT]: other });
-    const common = svc.roomsInCommon(PERSON, '!x', OTHER_ACCOUNT);
-    await settle();
+  it('reads the named account rather than the active one', () => {
+    goLive([account(me), account(OTHER_ACCOUNT)]);
+    shared(me, fakeRoom('!a'));
+    shared(OTHER_ACCOUNT, fakeRoom('!b'));
 
-    expect(common()?.map((room) => [room.id, room.accountId])).toEqual([
-      ['!b', OTHER_ACCOUNT],
-    ]);
+    expect(
+      svc
+        .roomsInCommon(person, '!x', OTHER_ACCOUNT)()
+        ?.map((room) => [room.id, room.accountId]),
+    ).toEqual([['!b', OTHER_ACCOUNT]]);
   });
 
-  it('orders by name, case-insensitively', async () => {
-    const client = fakeClient([
-      fakeRoom({
-        roomId: '!c',
-        name: 'charlie',
-        members: { [PERSON]: 'join' },
-      }),
-      fakeRoom({ roomId: '!a', name: 'Alpha', members: { [PERSON]: 'join' } }),
-      fakeRoom({ roomId: '!b', name: 'bravo', members: { [PERSON]: 'join' } }),
-    ]);
-    const { svc } = setup({ [ME]: client });
-    const common = svc.roomsInCommon(PERSON, '!x');
-    await settle();
+  it('is null for an account that is not live', () => {
+    expect(svc.roomsInCommon(person, '!x', OTHER_ACCOUNT)()).toBeNull();
+    goLive([], null);
+    expect(svc.roomsInCommon(person, '!x')()).toBeNull();
+    expect(open).toBe(0);
+  });
 
-    expect(ids(common())).toEqual(['!a', '!b', '!c']);
+  it('orders by name, case-insensitively', () => {
+    shared(
+      me,
+      fakeRoom('!c', { displayName: 'charlie' }),
+      fakeRoom('!a', { displayName: 'Alpha' }),
+      fakeRoom('!b', { displayName: 'bravo' }),
+    );
+
+    expect(ids(svc.roomsInCommon(person, '!x')())).toEqual(['!a', '!b', '!c']);
   });
 
   it('caches the signal per user, excluded room and account', () => {
-    const { svc } = setup({
-      [ME]: fakeClient([]),
-      [OTHER_ACCOUNT]: fakeClient([]),
-    });
+    goLive([account(me), account(OTHER_ACCOUNT)]);
 
-    expect(svc.roomsInCommon(PERSON, '!a')).toBe(
-      svc.roomsInCommon(PERSON, '!a'),
+    expect(svc.roomsInCommon(person, '!a')).toBe(
+      svc.roomsInCommon(person, '!a'),
     );
-    expect(svc.roomsInCommon(PERSON, '!a')).not.toBe(
-      svc.roomsInCommon(PERSON, '!a', OTHER_ACCOUNT),
+    expect(svc.roomsInCommon(person, '!a')).not.toBe(
+      svc.roomsInCommon(person, '!a', OTHER_ACCOUNT),
     );
+    expect(open).toBe(2);
   });
 
-  it('forgets cached views when the signed-in accounts change', () => {
-    const { svc, accountIds } = setup({ [ME]: fakeClient([]) });
-    const before = svc.roomsInCommon(PERSON, '!a');
+  it('ticks accountIds and opens a fresh view when an account restarts', () => {
+    const before = svc.roomsInCommon(person, '!a');
+    const accountIds = svc.accountIds();
+    TestBed.tick();
+    expect(open).toBe(1);
+
+    goLive([account(me, { syncState: 'catchup' })]);
+    TestBed.tick();
+    expect(svc.accountIds()).toBe(accountIds);
+    expect(svc.roomsInCommon(person, '!a')).toBe(before);
+
+    goLive([account(me, { generation: 2 })]);
+    expect(svc.accountIds()).not.toBe(accountIds);
+    expect(svc.accountIds()).toEqual([me]);
+    expect(svc.roomsInCommon(person, '!a')).not.toBe(before);
     TestBed.tick();
 
-    accountIds.set([ME]);
-    TestBed.tick();
-
-    expect(svc.roomsInCommon(PERSON, '!a')).not.toBe(before);
+    expect(open).toBe(1);
   });
 
-  describe('server mutual rooms (MSC2666)', () => {
-    it("uses the server's mutual rooms when advertised", async () => {
-      const client = fakeClient(
-        [
-          // Lazy-loaded rosters: the client does not know the person here.
-          fakeRoom({ roomId: '!a', name: 'A' }),
-          fakeRoom({ roomId: '!b', name: 'B' }),
-          // The client has seen the person leave; local membership wins.
-          fakeRoom({ roomId: '!c', name: 'C', members: { [PERSON]: 'leave' } }),
-        ],
-        {
-          features: { [UNSTABLE_FLAG]: true },
-          pages: [{ joined: ['!a', '!c'] }],
-        },
-      );
-      const { svc } = setup({ [ME]: client });
-      const common = svc.roomsInCommon(PERSON, '!x');
-      await settle();
+  it('releases the views of an account that leaves', () => {
+    goLive([account(me), account(OTHER_ACCOUNT)]);
+    svc.roomsInCommon(person, '!a', OTHER_ACCOUNT);
+    svc.roomsInCommon(person, '!a');
+    TestBed.tick();
+    expect(open).toBe(2);
 
-      expect(ids(common())).toEqual(['!a']);
-      expect(client.http.authedRequest).toHaveBeenCalledWith(
-        'GET',
-        UNSTABLE_PATH,
-        { user_id: PERSON },
-        undefined,
-        { prefix: '' },
-      );
-    });
+    goLive([account(me)]);
+    TestBed.tick();
 
-    it('follows next_batch', async () => {
-      const client = fakeClient(
-        [
-          fakeRoom({ roomId: '!a', name: 'A' }),
-          fakeRoom({ roomId: '!b', name: 'B' }),
-        ],
-        {
-          versions: ['v1.19'],
-          pages: [{ joined: ['!a'], next_batch: 't1' }, { joined: ['!b'] }],
-        },
-      );
-      const { svc } = setup({ [ME]: client });
-      const common = svc.roomsInCommon(PERSON, '!x');
-      await settle();
+    expect(open).toBe(1);
+  });
 
-      expect(ids(common())).toEqual(['!a', '!b']);
-      expect(client.http.authedRequest.mock.calls).toEqual([
-        ['GET', STABLE_PATH, { user_id: PERSON }, undefined, { prefix: '' }],
-        [
-          'GET',
-          STABLE_PATH,
-          { user_id: PERSON, from: 't1' },
-          undefined,
-          { prefix: '' },
-        ],
-      ]);
-    });
+  it('evicts the oldest views beyond the cap', () => {
+    const oldest = svc.roomsInCommon('@u0:hs', '!x');
+    for (let i = 1; i <= 20; i++) svc.roomsInCommon(`@u${i}:hs`, '!x');
 
-    it('falls back to the local list when not advertised', async () => {
-      const client = fakeClient([
-        fakeRoom({ roomId: '!a', name: 'A' }),
-        fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } }),
-      ]);
-      const { svc } = setup({ [ME]: client });
-      const common = svc.roomsInCommon(PERSON, '!x');
-      await settle();
-
-      expect(ids(common())).toEqual(['!b']);
-      expect(client.http.authedRequest).not.toHaveBeenCalled();
-    });
-
-    it('falls back when the request fails', async () => {
-      const client = fakeClient(
-        [
-          fakeRoom({ roomId: '!a', name: 'A' }),
-          fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } }),
-        ],
-        { features: { [UNSTABLE_FLAG]: true }, pages: new Error('404') },
-      );
-      const { svc } = setup({ [ME]: client });
-      const common = svc.roomsInCommon(PERSON, '!x');
-      await settle();
-
-      expect(ids(common())).toEqual(['!b']);
-    });
-
-    it('drops server room ids the client does not have', async () => {
-      const client = fakeClient([fakeRoom({ roomId: '!a', name: 'A' })], {
-        features: { [UNSTABLE_FLAG]: true },
-        pages: [{ joined: ['!a', '!unknown'] }],
-      });
-      const { svc } = setup({ [ME]: client });
-      const common = svc.roomsInCommon(PERSON, '!x');
-      await settle();
-
-      expect(ids(common())).toEqual(['!a']);
-    });
-
-    it("refetches a second after the person's membership changes", async () => {
-      vi.useFakeTimers();
-      const client = fakeClient(
-        [
-          fakeRoom({ roomId: '!a', name: 'A' }),
-          fakeRoom({ roomId: '!b', name: 'B' }),
-        ],
-        {
-          features: { [UNSTABLE_FLAG]: true },
-          pages: [{ joined: ['!a'] }, { joined: ['!a', '!b'] }],
-        },
-      );
-      const { svc } = setup({ [ME]: client });
-      const common = svc.roomsInCommon(PERSON, '!x');
-      await vi.advanceTimersByTimeAsync(0);
-      expect(ids(common())).toEqual(['!a']);
-      TestBed.tick();
-
-      client.emit(RoomStateEvent.Members, {}, {}, { userId: PERSON });
-      client.emit(RoomStateEvent.Members, {}, {}, { userId: PERSON });
-      await vi.advanceTimersByTimeAsync(999);
-      expect(client.http.authedRequest).toHaveBeenCalledTimes(1);
-      await vi.advanceTimersByTimeAsync(1);
-
-      expect(client.http.authedRequest).toHaveBeenCalledTimes(2);
-      expect(ids(common())).toEqual(['!a', '!b']);
-    });
-
-    it('falls back to the local list when the server does not answer in time', async () => {
-      vi.useFakeTimers();
-      const client = fakeClient(
-        [
-          fakeRoom({ roomId: '!a', name: 'A' }),
-          fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } }),
-        ],
-        { hang: true },
-      );
-      const { svc } = setup({ [ME]: client });
-      const common = svc.roomsInCommon(PERSON, '!x');
-      await vi.advanceTimersByTimeAsync(9_999);
-      expect(common()).toBeNull();
-
-      await vi.advanceTimersByTimeAsync(1);
-
-      expect(ids(common())).toEqual(['!b']);
-    });
-
-    it('an own membership change refetches only views of that account', async () => {
-      vi.useFakeTimers();
-      const advertised = { features: { [UNSTABLE_FLAG]: true } };
-      const mine = fakeClient([], advertised);
-      const other = fakeClient([], advertised);
-      const { svc } = setup({ [ME]: mine, [OTHER_ACCOUNT]: other });
-      svc.roomsInCommon(PERSON, '!x');
-      svc.roomsInCommon(PERSON, '!x', OTHER_ACCOUNT);
-      await vi.advanceTimersByTimeAsync(0);
-      TestBed.tick();
-      expect(mine.http.authedRequest).toHaveBeenCalledTimes(1);
-      expect(other.http.authedRequest).toHaveBeenCalledTimes(1);
-
-      mine.emit(RoomEvent.MyMembership, {}, 'join');
-      await vi.advanceTimersByTimeAsync(1000);
-
-      expect(mine.http.authedRequest).toHaveBeenCalledTimes(2);
-      expect(other.http.authedRequest).toHaveBeenCalledTimes(1);
-    });
-
-    it('evicts the oldest views beyond the cap', async () => {
-      vi.useFakeTimers();
-      const client = fakeClient([], { features: { [UNSTABLE_FLAG]: true } });
-      const { svc } = setup({ [ME]: client });
-      const oldest = svc.roomsInCommon('@u0:hs', '!x');
-      for (let i = 1; i <= 20; i++) svc.roomsInCommon(`@u${i}:hs`, '!x');
-      await vi.advanceTimersByTimeAsync(0);
-      TestBed.tick();
-      // Eviction cancelled the oldest view's request before `/versions` answered.
-      expect(client.http.authedRequest).toHaveBeenCalledTimes(20);
-
-      client.emit(RoomStateEvent.Members, {}, {}, { userId: '@u0:hs' });
-      await vi.advanceTimersByTimeAsync(1000);
-
-      expect(client.http.authedRequest).toHaveBeenCalledTimes(20);
-      expect(svc.roomsInCommon('@u0:hs', '!x')).not.toBe(oldest);
-    });
+    expect(open).toBe(20);
+    expect(svc.roomsInCommon('@u0:hs', '!x')).not.toBe(oldest);
   });
 });

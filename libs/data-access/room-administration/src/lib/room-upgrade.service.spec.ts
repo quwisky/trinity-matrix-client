@@ -1,24 +1,28 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MatrixEvent, type IEvent } from 'matrix-js-sdk';
-import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
 import {
-  RoomActionPermissionError,
-  RoomActionPermissionsService,
-  type ActionAvailability,
-} from './room-action-permissions.service';
+  type EngineFailure,
+  type EngineResult,
+  engineFail,
+  engineOk,
+} from '@trinity/util/matrix';
+import { Subject, firstValueFrom, of } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { FakeRoomAdministrationEngine } from '../contract/fake-room-administration-engine';
+import type { JsonObject, RoomMembers } from './room-administration-engine';
 import { RoomAdministrationError } from './room-administration-error';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import {
+  administrationSession,
+  roomWithAlice,
+} from './room-administration.spec-harness';
 import {
   RoomUpgradeService,
   roomUpgradeTargets,
   type RoomUpgradeCapabilities,
+  type RoomUpgradeOptions,
 } from './room-upgrade.service';
 
-const ME = '@me:hs';
-const OLD = '!old:hs';
-const NEW = '!new:hs';
+const SERVER = 'example.org';
 
 const CAPS: RoomUpgradeCapabilities = {
   defaultRoomVersion: '10',
@@ -31,142 +35,77 @@ const CAPS: RoomUpgradeCapabilities = {
   },
 };
 
-interface FakeRoomOptions {
-  readonly events?: readonly Partial<IEvent>[];
-  /** `[userId, membership, powerLevel?]` triples. */
-  readonly members?: readonly (readonly [string, string, number?])[];
-  readonly space?: boolean;
-  /** What `maySendStateEvent` answers for me. */
-  readonly mayEdit?: boolean;
-  readonly myMembership?: string;
-  readonly name?: string;
-  /** False: the live timeline has no state at all. */
-  readonly loaded?: boolean;
-}
-
-function fakeRoom(roomId: string, o: FakeRoomOptions = {}) {
-  const events = (o.events ?? []).map(
-    (raw) =>
-      new MatrixEvent({
-        state_key: '',
-        sender: ME,
-        room_id: roomId,
-        origin_server_ts: 1,
-        ...raw,
-      }),
-  );
-  const state = {
-    getStateEvents: (type: string, stateKey?: string) =>
-      stateKey === undefined
-        ? events.filter((e) => e.getType() === type)
-        : (events.find(
-            (e) => e.getType() === type && e.getStateKey() === stateKey,
-          ) ?? null),
-    getJoinRule: () =>
-      events.find((e) => e.getType() === 'm.room.join_rules')?.getContent()[
-        'join_rule'
-      ] ?? 'invite',
-    maySendStateEvent: () => o.mayEdit ?? true,
-    getMember: () => null,
-  };
-  const members = (o.members ?? []).map(([userId, membership, power]) => ({
-    userId,
-    membership,
-    name: userId,
-    powerLevel: power ?? 0,
-  }));
-  return {
-    roomId,
-    name: o.name ?? roomId,
-    isSpaceRoom: () => o.space ?? false,
-    getMyMembership: () => o.myMembership ?? 'join',
-    getMembers: () => members,
-    getMember: (userId: string) =>
-      members.find((m) => m.userId === userId) ?? null,
-    loadMembersIfNeeded: () => Promise.resolve(true),
-    getLiveTimeline: () => ({
-      getState: () => (o.loaded === false ? undefined : state),
-    }),
-  };
-}
-
-type FakeRoom = ReturnType<typeof fakeRoom>;
-
-const create = (
-  version: string,
-  extra: Record<string, unknown> = {},
-  sender = ME,
-): Partial<IEvent> => ({
-  type: 'm.room.create',
-  sender,
-  content: { room_version: version, ...extra },
-});
-const joinRule = (rule: string): Partial<IEvent> => ({
-  type: 'm.room.join_rules',
-  content: { join_rule: rule },
-});
-const child = (
-  childId: string,
-  content: Record<string, unknown>,
-): Partial<IEvent> => ({
-  type: 'm.space.child',
-  state_key: childId,
-  content,
-});
-const parent = (spaceId: string): Partial<IEvent> => ({
-  type: 'm.space.parent',
-  state_key: spaceId,
-  content: { via: ['hs'] },
-});
-
-function setup(
-  rooms: readonly FakeRoom[],
-  opts: { upgrade?: ActionAvailability } = {},
-) {
-  const upgradeRoom = vi.fn().mockResolvedValue({ replacement_room: NEW });
-  const invite = vi.fn().mockResolvedValue({});
-  const sendStateEvent = vi.fn().mockResolvedValue({ event_id: '$e' });
-  const leave = vi.fn().mockResolvedValue({});
-  const client = {
-    upgradeRoom,
-    invite,
-    sendStateEvent,
-    leave,
-    getUserId: () => ME,
-    getDomain: () => 'hs',
-    getRoom: (roomId: string) => rooms.find((r) => r.roomId === roomId) ?? null,
-    getRooms: () => rooms,
-  };
-  const settingsFor = vi.fn(() => ({
-    upgrade: opts.upgrade ?? { available: true, reason: null },
-  }));
-  TestBed.configureTestingModule({
-    providers: [
-      RoomUpgradeService,
-      MockProvider(MatrixClientService, {
-        clientFor: (accountId: string) =>
-          accountId === ME ? (client as never) : null,
-      }),
-      MockProvider(RoomActionPermissionsService, {
-        settingsFor: settingsFor as never,
-        assert: (availability: ActionAvailability) => {
-          if (!availability.available) {
-            throw new RoomActionPermissionError(availability);
-          }
-        },
-      }),
-    ],
+/**
+ * Alice (at `alicePower`) in a room bob created, with carol invited unless `carol` is
+ * false; the permissions projection is coherent.
+ */
+async function setup({
+  alicePower = 100,
+  roomVersion = '10',
+  additionalCreators,
+  carol = true,
+}: {
+  alicePower?: number;
+  roomVersion?: string;
+  additionalCreators?: readonly string[];
+  carol?: boolean;
+} = {}) {
+  const session = administrationSession();
+  const { engine } = session;
+  const roomId = await roomWithAlice(engine, {
+    roomVersion,
+    additionalCreators,
   });
+  await engine.asBob.setPowerLevel(roomId, engine.alice, alicePower);
+  if (carol) await engine.asBob.invite(roomId, engine.carol);
+  TestBed.configureTestingModule({ providers: session.providers });
+  const state = TestBed.inject(RoomAdministrationProjectionState);
+  state.select(engine.alice, roomId);
+  state.update('permissions', 'available', 'retained');
   return {
+    ...session,
+    roomId,
     svc: TestBed.inject(RoomUpgradeService),
-    client,
-    upgradeRoom,
-    invite,
-    sendStateEvent,
-    leave,
-    settingsFor,
+    upgradeRoom: vi.spyOn(engine, 'upgradeRoom'),
+    invite: vi.spyOn(engine, 'invite'),
+    setState: vi.spyOn(engine, 'setState'),
   };
 }
+
+/** A space bob created and alice joined at `alicePower`, linking `child` with `content`. */
+async function space(
+  engine: FakeRoomAdministrationEngine,
+  name: string,
+  child?: { readonly roomId: string; readonly content: JsonObject },
+  alicePower = 50,
+): Promise<string> {
+  const spaceId = await roomWithAlice(engine, { space: true });
+  await engine.asBob.setState(spaceId, 'm.room.name', { name });
+  if (child) {
+    await engine.asBob.setState(
+      spaceId,
+      'm.space.child',
+      child.content,
+      child.roomId,
+    );
+  }
+  await engine.asBob.setPowerLevel(spaceId, engine.alice, alicePower);
+  return spaceId;
+}
+
+const fail = (
+  kind: EngineFailure['kind'],
+  httpStatus?: number,
+): EngineResult<never> =>
+  engineFail({
+    kind,
+    code: 'request-failed',
+    diagnostic: { kind, ...(httpStatus ? { httpStatus } : {}) },
+  });
+
+const FORBIDDEN_TEXT = 'You do not have permission to do that.';
+
+afterEach(() => TestBed.resetTestingModule());
 
 describe('roomUpgradeTargets', () => {
   it('offers stable whole-number versions newer than the room, ascending', () => {
@@ -223,32 +162,74 @@ describe('roomUpgradeTargets', () => {
 });
 
 describe('RoomUpgradeService.plan', () => {
-  it('reads the version, targets, private default and members', () => {
-    const { svc } = setup([
-      fakeRoom(OLD, {
-        events: [create('10'), joinRule('invite')],
-        members: [
-          [ME, 'join'],
-          ['@bob:hs', 'join'],
-          ['@carol:hs', 'invite'],
-          ['@dan:hs', 'leave'],
-          ['@eve:hs', 'ban'],
-        ],
-      }),
-    ]);
+  const planOf = (svc: RoomUpgradeService, accountId: string, roomId: string) =>
+    firstValueFrom(svc.plan(accountId, roomId, CAPS));
 
-    expect(svc.plan(ME, OLD, CAPS)).toEqual({
+  it('is cold, then reads the version, targets, private default and members', async () => {
+    const { svc, engine, roomId } = await setup();
+    const members = vi.spyOn(engine, 'members');
+
+    const plan = svc.plan(engine.alice, roomId, CAPS);
+    expect(members).not.toHaveBeenCalled();
+
+    expect(await firstValueFrom(plan)).toEqual({
       currentVersion: '10',
       targets: [
         { version: '11', isDefault: false },
         { version: '12', isDefault: false },
       ],
       invitePrivateDefault: true,
-      members: ['@bob:hs', '@carol:hs'],
+      members: [engine.bob, engine.carol],
       spaces: [],
-      additionalCreators: [],
-      additionalCreatorNames: [],
+      // Bob created it and is still joined at alice's power.
+      additionalCreators: [engine.bob],
+      additionalCreatorNames: [engine.bob],
     });
+  });
+
+  it.each(['leave', 'ban'])(
+    'leaves out a member whose membership is %s',
+    async (membership) => {
+      const { svc, engine, roomId } = await setup();
+      await engine.asBob.setState(
+        roomId,
+        'm.room.member',
+        { membership },
+        engine.carol,
+      );
+
+      expect((await planOf(svc, engine.alice, roomId))?.members).toEqual([
+        engine.bob,
+      ]);
+    },
+  );
+
+  it('waits for lazily loaded members before planning', async () => {
+    const { svc, engine, roomId } = await setup({ carol: false });
+    const members = new Subject<RoomMembers | null>();
+    vi.spyOn(engine, 'members').mockReturnValue(members);
+    const member = (userId: string) => ({
+      userId,
+      displayName: userId,
+      avatarMxc: null,
+      membership: 'join' as const,
+      reason: null,
+      power: 0,
+    });
+    let planned: string[] | undefined;
+    svc.plan(engine.alice, roomId, CAPS).subscribe((plan) => {
+      planned = [...(plan?.members ?? [])];
+    });
+
+    members.next({ roomId, complete: false, members: [member(engine.alice)] });
+    expect(planned).toBeUndefined();
+    members.next({
+      roomId,
+      complete: true,
+      members: [member(engine.alice), member(engine.carol)],
+    });
+
+    expect(planned).toEqual([engine.carol]);
   });
 
   it.each([
@@ -256,112 +237,122 @@ describe('RoomUpgradeService.plan', () => {
     ['knock', true],
     ['public', false],
     ['restricted', false],
-  ])('defaults the invite for join rule %s to %s', (rule, expected) => {
-    const { svc } = setup([
-      fakeRoom(OLD, { events: [create('10'), joinRule(rule)] }),
-    ]);
+  ])('defaults the invite for join rule %s to %s', async (rule, expected) => {
+    const { svc, engine, roomId } = await setup();
+    await engine.asBob.setState(roomId, 'm.room.join_rules', {
+      join_rule: rule,
+    });
 
-    expect(svc.plan(ME, OLD, CAPS)?.invitePrivateDefault).toBe(expected);
+    expect(
+      (await planOf(svc, engine.alice, roomId))?.invitePrivateDefault,
+    ).toBe(expected);
   });
 
-  it('treats a room with no join rule as invite-only', () => {
-    const { svc } = setup([fakeRoom(OLD, { events: [create('10')] })]);
+  it('treats a room with no join rule as invite-only', async () => {
+    const { svc, engine, roomId } = await setup();
 
-    expect(svc.plan(ME, OLD, CAPS)?.invitePrivateDefault).toBe(true);
+    expect(
+      (await planOf(svc, engine.alice, roomId))?.invitePrivateDefault,
+    ).toBe(true);
   });
 
-  it('carries a v12 room’s other creators, named', () => {
-    const { svc } = setup([
-      fakeRoom(OLD, {
-        events: [
-          create('12', { additional_creators: [ME, '@carol:hs'] }, '@alice:hs'),
-        ],
-      }),
-    ]);
+  it('carries a v12 room’s other creators, named', async () => {
+    const session = administrationSession();
+    const { engine } = session;
+    const roomId = await roomWithAlice(engine, {
+      roomVersion: '12',
+      additionalCreators: [engine.alice, engine.carol],
+    });
+    await engine.asBob.setDisplayName(roomId, 'Bob');
+    TestBed.configureTestingModule({ providers: session.providers });
 
-    expect(svc.plan(ME, OLD, CAPS)?.additionalCreators).toEqual([
-      '@alice:hs',
-      '@carol:hs',
-    ]);
-    expect(svc.plan(ME, OLD, CAPS)?.additionalCreatorNames).toEqual([
-      '@alice:hs',
-      '@carol:hs',
-    ]);
+    const plan = await planOf(
+      TestBed.inject(RoomUpgradeService),
+      engine.alice,
+      roomId,
+    );
+
+    expect(plan?.additionalCreators).toEqual([engine.bob, engine.carol]);
+    expect(plan?.additionalCreatorNames).toEqual(['Bob', engine.carol]);
   });
 
   describe('creators of a pre-v12 room', () => {
-    const plan = (alice: readonly [string, string, number?] | null) =>
-      setup([
-        fakeRoom(OLD, {
-          events: [create('10', {}, '@alice:hs')],
-          members: [[ME, 'join', 100], ...(alice ? [alice] : [])],
-        }),
-      ]).svc.plan(ME, OLD, CAPS)?.additionalCreators;
+    /** Bob created it; alice is at 100; `bob` changes his membership or power. */
+    const carried = async (bob?: {
+      membership?: JsonObject;
+      power?: number;
+    }) => {
+      const { svc, engine, roomId } = await setup({ carol: false });
+      if (bob?.power !== undefined) {
+        await engine.asBob.setPowerLevel(roomId, engine.bob, bob.power);
+      }
+      if (bob?.membership) {
+        await engine.asBob.setState(
+          roomId,
+          'm.room.member',
+          bob.membership,
+          engine.bob,
+        );
+      }
+      return (await planOf(svc, engine.alice, roomId))?.additionalCreators;
+    };
 
-    it('carries one still joined at or above my power', () => {
-      expect(plan(['@alice:hs', 'join', 100])).toEqual(['@alice:hs']);
+    it('carries one still joined at or above my power', async () => {
+      expect(await carried()).toEqual(['@bob:example.org']);
     });
 
     it.each([
-      ['demoted below me', ['@alice:hs', 'join', 50] as const],
-      ['left', ['@alice:hs', 'leave', 100] as const],
-      ['banned', ['@alice:hs', 'ban', 100] as const],
-    ])('does not carry one who %s', (_label, alice) => {
-      expect(plan(alice)).toEqual([]);
-    });
-
-    it('does not carry one who is not a member at all', () => {
-      expect(plan(null)).toEqual([]);
+      ['demoted below me', { power: 50 }],
+      ['left', { membership: { membership: 'leave' } }],
+      ['banned', { membership: { membership: 'ban' } }],
+      ['not a member at all', { membership: {} }],
+    ])('does not carry one who is %s', async (_label, bob) => {
+      expect(await carried(bob)).toEqual([]);
     });
   });
 
-  it('lists the spaces that link the room and whether they can be re-linked', () => {
-    const { svc } = setup([
-      fakeRoom(OLD, { events: [create('10'), parent('!pending:hs')] }),
-      fakeRoom('!design:hs', {
-        name: 'Design',
-        space: true,
-        events: [create('10'), child(OLD, { via: ['hs'] })],
-      }),
-      fakeRoom('!readonly:hs', {
-        name: 'Read only',
-        space: true,
-        mayEdit: false,
-        events: [create('10'), child(OLD, { via: ['hs'] })],
-      }),
-      fakeRoom('!unlinked:hs', {
-        name: 'Unlinked',
-        space: true,
-        events: [create('10'), child('!other:hs', { via: ['hs'] })],
-      }),
-      fakeRoom('!removed:hs', {
-        name: 'Removed',
-        space: true,
-        events: [create('10'), child(OLD, { via: [] })],
-      }),
-      fakeRoom('!left:hs', {
-        name: 'Left',
-        space: true,
-        myMembership: 'leave',
-        events: [create('10'), child(OLD, { via: ['hs'] })],
-      }),
-      fakeRoom('!plain:hs', {
-        name: 'Plain room',
-        events: [create('10'), child(OLD, { via: ['hs'] })],
-      }),
-      fakeRoom('!pending:hs', { name: 'Pending', loaded: false }),
-    ]);
+  it('lists the spaces that link the room and whether they can be re-linked', async () => {
+    const { svc, engine, roomId } = await setup();
+    const linked = { roomId, content: { via: [SERVER] } };
+    const design = await space(engine, 'Design', linked);
+    const readonly = await space(engine, 'Read only', linked, 0);
+    await space(engine, 'Unlinked', {
+      roomId: '!other:example.org',
+      content: { via: [SERVER] },
+    });
+    await space(engine, 'Removed', { roomId, content: { via: [] } });
+    await space(engine, 'No child');
 
-    expect(svc.plan(ME, OLD, CAPS)?.spaces).toEqual([
-      { spaceId: '!design:hs', name: 'Design', relinkable: true },
+    expect((await planOf(svc, engine.alice, roomId))?.spaces).toEqual([
+      { spaceId: design, name: 'Design', relinkable: true },
       {
-        spaceId: '!readonly:hs',
+        spaceId: readonly,
         name: 'Read only',
         relinkable: false,
         reason: 'no permission',
       },
+    ]);
+  });
+
+  it('lists a space whose state is not loaded as not relinkable', async () => {
+    const { svc, engine, roomId } = await setup();
+    vi.spyOn(engine, 'linkingSpaces').mockReturnValue(
+      of(
+        engineOk([
+          {
+            spaceId: '!pending:example.org',
+            name: 'Pending',
+            childContent: null,
+            ownPower: 0,
+            powerLevels: null,
+          },
+        ]),
+      ),
+    );
+
+    expect((await planOf(svc, engine.alice, roomId))?.spaces).toEqual([
       {
-        spaceId: '!pending:hs',
+        spaceId: '!pending:example.org',
         name: 'Pending',
         relinkable: false,
         reason: 'state not loaded',
@@ -369,285 +360,305 @@ describe('RoomUpgradeService.plan', () => {
     ]);
   });
 
-  it('is null for an unknown Account or room', () => {
-    const { svc } = setup([fakeRoom(OLD, { events: [create('10')] })]);
+  it('is null for an unknown Account or room', async () => {
+    const { svc, engine, roomId } = await setup();
 
-    expect(svc.plan('@other:hs', OLD, CAPS)).toBeNull();
-    expect(svc.plan(ME, '!missing:hs', CAPS)).toBeNull();
+    expect(await planOf(svc, '@other:example.org', roomId)).toBeNull();
+    expect(await planOf(svc, engine.alice, '!missing:example.org')).toBeNull();
   });
 });
 
 describe('RoomUpgradeService.upgrade', () => {
-  const rooms = (extra: readonly FakeRoom[] = []) => [
-    fakeRoom(OLD, {
-      events: [create('10'), joinRule('invite')],
-      members: [
-        [ME, 'join'],
-        ['@bob:hs', 'join'],
-        ['@carol:hs', 'invite'],
-      ],
-    }),
-    fakeRoom('!design:hs', {
-      name: 'Design',
-      space: true,
-      events: [
-        create('10'),
-        child(OLD, { via: ['other.hs'], order: 'a', suggested: true }),
-      ],
-    }),
-    ...extra,
-  ];
-  const rejection = (svc: RoomUpgradeService, accountId = ME) =>
-    firstValueFrom(
-      svc.upgrade(accountId, OLD, { version: '11', inviteMembers: true }),
-    ).catch((error: unknown) => error);
+  const OPTIONS: RoomUpgradeOptions = { version: '11', inviteMembers: true };
 
-  it('loads the full member list before choosing who to invite (#1295)', async () => {
-    const [old, ...rest] = rooms();
-    const everyone = [
-      ...old.getMembers(),
-      {
-        userId: '@dave:hs',
-        membership: 'join',
-        name: '@dave:hs',
-        powerLevel: 0,
-      },
-    ];
-    let loaded = false;
-    // A lazily synced room knows only the members its loaded events named.
-    const lazy = {
-      ...old,
-      getMembers: () => (loaded ? everyone : old.getMembers()),
-      loadMembersIfNeeded: vi.fn(async () => {
-        loaded = true;
-        return true;
-      }),
-    };
-    const { svc, invite } = setup([lazy, ...rest]);
+  /** The room plus a space alice may edit that links it with order and suggested. */
+  async function linkedSetup(options: Parameters<typeof setup>[0] = {}) {
+    const fixture = await setup(options);
+    const design = await space(fixture.engine, 'Design', {
+      roomId: fixture.roomId,
+      content: { via: ['other.hs'], order: 'a', suggested: true },
+    });
+    return { ...fixture, design };
+  }
 
-    await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
+  const run = (
+    svc: RoomUpgradeService,
+    accountId: string,
+    roomId: string,
+    options: RoomUpgradeOptions = OPTIONS,
+  ) => firstValueFrom(svc.upgrade(accountId, roomId, options));
+
+  const rejection = (action: Promise<unknown>) =>
+    action.then(
+      () => null,
+      (error: unknown) => error,
     );
 
-    expect(lazy.loadMembersIfNeeded).toHaveBeenCalledOnce();
-    expect(invite.mock.calls).toContainEqual([NEW, '@dave:hs']);
-  });
-
   it('is cold, then upgrades, invites and moves the space link in order', async () => {
-    const { svc, upgradeRoom, invite, sendStateEvent } = setup(rooms());
+    const { svc, engine, roomId, design, upgradeRoom, invite, setState } =
+      await linkedSetup();
 
-    const action = svc.upgrade(ME, OLD, { version: '11', inviteMembers: true });
+    const action = svc.upgrade(engine.alice, roomId, OPTIONS);
     expect(upgradeRoom).not.toHaveBeenCalled();
 
-    await expect(firstValueFrom(action)).resolves.toEqual({
-      newRoomId: NEW,
-      invited: ['@bob:hs', '@carol:hs'],
+    const result = await firstValueFrom(action);
+    const newRoomId = result.newRoomId;
+    expect(result).toEqual({
+      newRoomId,
+      invited: [engine.bob, engine.carol],
       inviteFailed: [],
-      relinked: ['!design:hs'],
+      relinked: [design],
       relinkFailed: [],
       skippedSpaces: [],
     });
-    expect(upgradeRoom).toHaveBeenCalledWith(OLD, '11', undefined);
+    expect(upgradeRoom).toHaveBeenCalledWith(engine.alice, roomId, '11', null);
     expect(invite.mock.calls).toEqual([
-      [NEW, '@bob:hs'],
-      [NEW, '@carol:hs'],
+      [engine.alice, newRoomId, engine.bob],
+      [engine.alice, newRoomId, engine.carol],
     ]);
-    expect(sendStateEvent.mock.calls).toEqual([
+    expect(setState.mock.calls).toEqual([
       [
-        '!design:hs',
+        engine.alice,
+        design,
         'm.space.child',
-        { via: ['other.hs', 'hs'], order: 'a', suggested: true },
-        NEW,
+        newRoomId,
+        { via: ['other.hs', SERVER], order: 'a', suggested: true },
       ],
-      ['!design:hs', 'm.space.child', {}, OLD],
+      [engine.alice, design, 'm.space.child', roomId, {}],
     ]);
     expect(upgradeRoom.mock.invocationCallOrder[0]).toBeLessThan(
       invite.mock.invocationCallOrder[0],
     );
     expect(invite.mock.invocationCallOrder[1]).toBeLessThan(
-      sendStateEvent.mock.invocationCallOrder[0],
+      setState.mock.invocationCallOrder[0],
     );
   });
 
-  it('invites nobody when asked not to', async () => {
-    const { svc, invite } = setup(rooms());
-
-    const result = await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: false }),
+  it('loads the full member list before choosing who to invite (#1295)', async () => {
+    const { svc, engine, roomId, invite } = await setup({ carol: false });
+    const real = engine.members.bind(engine);
+    const members = new Subject<RoomMembers | null>();
+    vi.spyOn(engine, 'members').mockImplementation((accountId, id) =>
+      id === roomId ? members : real(accountId, id),
     );
+    const done = run(svc, engine.alice, roomId);
+    const member = (userId: string) => ({
+      userId,
+      displayName: userId,
+      avatarMxc: null,
+      membership: 'join' as const,
+      reason: null,
+      power: 0,
+    });
+
+    members.next({ roomId, complete: false, members: [member(engine.bob)] });
+    members.next({
+      roomId,
+      complete: true,
+      members: [member(engine.bob), member(engine.carol)],
+    });
+    await done;
+
+    expect(invite.mock.calls.map(([, , userId]) => userId)).toEqual([
+      engine.bob,
+      engine.carol,
+    ]);
+  });
+
+  it('invites nobody when asked not to', async () => {
+    const { svc, engine, roomId, invite } = await setup();
+
+    const result = await run(svc, engine.alice, roomId, {
+      version: '11',
+      inviteMembers: false,
+    });
 
     expect(invite).not.toHaveBeenCalled();
     expect(result.invited).toEqual([]);
   });
 
   it('skips members already in the new room', async () => {
-    const { svc, invite } = setup(
-      rooms([fakeRoom(NEW, { members: [['@carol:hs', 'invite']] })]),
+    const { svc, engine, roomId, invite } = await setup();
+    const real = engine.members.bind(engine);
+    vi.spyOn(engine, 'members').mockImplementation((accountId, id) =>
+      id === roomId
+        ? real(accountId, id)
+        : of({
+            roomId: id,
+            complete: true,
+            members: [
+              {
+                userId: engine.carol,
+                displayName: engine.carol,
+                avatarMxc: null,
+                membership: 'invite',
+                reason: null,
+                power: 0,
+              },
+            ],
+          }),
     );
 
-    await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
-    );
+    await run(svc, engine.alice, roomId);
 
-    expect(invite.mock.calls).toEqual([[NEW, '@bob:hs']]);
+    expect(invite.mock.calls.map(([, , userId]) => userId)).toEqual([
+      engine.bob,
+    ]);
   });
 
   it.each([
-    ['10', '11', undefined],
-    ['10', '12', ['@alice:hs']],
-    ['12', '12', ['@alice:hs']],
-    ['12', '13', ['@alice:hs']],
-    ['11', '11', undefined],
+    ['10', '11', null],
+    ['10', '12', ['@bob:example.org']],
+    ['12', '12', ['@bob:example.org']],
+    ['12', '13', ['@bob:example.org']],
+    ['11', '11', null],
   ])(
     'from v%s to version %s passes additional creators %j',
-    async (from, version, creators) => {
-      const { svc, upgradeRoom } = setup([
-        fakeRoom(OLD, {
-          events: [create(from, {}, '@alice:hs')],
-          members: [
-            [ME, 'join', 100],
-            ['@alice:hs', 'join', 100],
-          ],
-        }),
-      ]);
+    async (roomVersion, version, creators) => {
+      const { svc, engine, roomId, upgradeRoom } = await setup({
+        roomVersion,
+        carol: false,
+      });
 
-      await firstValueFrom(
-        svc.upgrade(ME, OLD, { version, inviteMembers: false }),
+      await run(svc, engine.alice, roomId, {
+        version,
+        inviteMembers: false,
+      }).catch(() => undefined);
+
+      expect(upgradeRoom).toHaveBeenCalledWith(
+        engine.alice,
+        roomId,
+        version,
+        creators,
       );
-
-      expect(upgradeRoom).toHaveBeenCalledWith(OLD, version, creators);
     },
   );
 
   it('rejects a second upgrade of the same room while one is in flight', async () => {
-    const { svc, upgradeRoom } = setup([
-      fakeRoom(OLD, { events: [create('10')] }),
-    ]);
-    let finish: (value: { replacement_room: string }) => void = () => undefined;
-    upgradeRoom.mockReturnValueOnce(
-      new Promise((resolve) => (finish = resolve)),
-    );
+    const { svc, engine, roomId, upgradeRoom } = await setup();
+    const answer = new Subject<
+      EngineResult<{ readonly replacementRoomId: string }>
+    >();
+    upgradeRoom.mockReturnValueOnce(answer);
     const options = { version: '11', inviteMembers: false };
 
-    const first = firstValueFrom(svc.upgrade(ME, OLD, options));
-    await expect(
-      firstValueFrom(svc.upgrade(ME, OLD, options)),
-    ).rejects.toMatchObject({
-      outcome: { failure: 'invalid-input', operation: 'upgrade-room' },
-    });
+    const first = run(svc, engine.alice, roomId, options);
+    await expect(run(svc, engine.alice, roomId, options)).rejects.toMatchObject(
+      { outcome: { failure: 'invalid-input', operation: 'upgrade-room' } },
+    );
     expect(upgradeRoom).toHaveBeenCalledTimes(1);
 
-    finish({ replacement_room: NEW });
+    answer.next(engineOk({ replacementRoomId: '!new:example.org' }));
+    answer.complete();
     await first;
-    await firstValueFrom(svc.upgrade(ME, OLD, options));
+    await run(svc, engine.alice, roomId, options);
     expect(upgradeRoom).toHaveBeenCalledTimes(2);
   });
 
   it('frees the room when the upgrade fails or is unsubscribed', async () => {
-    const { svc, upgradeRoom } = setup([
-      fakeRoom(OLD, { events: [create('10')] }),
-    ]);
+    const { svc, engine, roomId, upgradeRoom } = await setup();
     const options = { version: '11', inviteMembers: false };
-    upgradeRoom.mockRejectedValueOnce(new Error('boom'));
-    await expect(
-      firstValueFrom(svc.upgrade(ME, OLD, options)),
-    ).rejects.toThrow();
-    upgradeRoom.mockReturnValueOnce(new Promise(() => undefined));
-    // Unsubscribe while the server request is in flight: it now waits for the member load.
-    const inFlight = svc.upgrade(ME, OLD, options).subscribe();
-    await vi.waitFor(() => expect(upgradeRoom).toHaveBeenCalledTimes(2));
+    upgradeRoom.mockReturnValueOnce(of(fail('server', 500)));
+    await expect(run(svc, engine.alice, roomId, options)).rejects.toThrow();
+    upgradeRoom.mockReturnValueOnce(new Subject());
+    const inFlight = svc.upgrade(engine.alice, roomId, options).subscribe();
+    expect(upgradeRoom).toHaveBeenCalledTimes(2);
     inFlight.unsubscribe();
 
-    await firstValueFrom(svc.upgrade(ME, OLD, options));
+    await run(svc, engine.alice, roomId, options);
     expect(upgradeRoom).toHaveBeenCalledTimes(3);
   });
 
   it('uses the new room’s server from the Account for a v12 room ID', async () => {
-    const { svc, upgradeRoom, sendStateEvent } = setup(rooms());
-    upgradeRoom.mockResolvedValueOnce({ replacement_room: '!opaqueid' });
-
-    await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '12', inviteMembers: false }),
+    const { svc, engine, roomId, design, upgradeRoom, setState } =
+      await linkedSetup();
+    upgradeRoom.mockReturnValueOnce(
+      of(engineOk({ replacementRoomId: '!opaqueid' })),
     );
 
-    expect(sendStateEvent.mock.calls[0]).toEqual([
-      '!design:hs',
+    await run(svc, engine.alice, roomId, {
+      version: '12',
+      inviteMembers: false,
+    });
+
+    expect(setState.mock.calls[0]).toEqual([
+      engine.alice,
+      design,
       'm.space.child',
-      { via: ['other.hs', 'hs'], order: 'a', suggested: true },
       '!opaqueid',
+      { via: ['other.hs', SERVER], order: 'a', suggested: true },
     ]);
   });
 
-  it('reports each failed invite and keeps going', async () => {
-    const { svc, invite } = setup(rooms());
-    invite.mockRejectedValueOnce(new Error('M_FORBIDDEN: blocked'));
+  it('reports each failed invite with the engine’s text and keeps going', async () => {
+    const { svc, engine, roomId, design, invite } = await linkedSetup();
+    invite.mockReturnValueOnce(of(fail('permission', 403)));
 
-    const result = await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
-    );
+    const result = await run(svc, engine.alice, roomId);
 
-    expect(result.invited).toEqual(['@carol:hs']);
+    expect(result.invited).toEqual([engine.carol]);
     expect(result.inviteFailed).toEqual([
-      { userId: '@bob:hs', reason: 'M_FORBIDDEN: blocked' },
+      { userId: engine.bob, reason: FORBIDDEN_TEXT },
     ]);
-    expect(result.relinked).toEqual(['!design:hs']);
+    expect(result.relinked).toEqual([design]);
   });
 
   it('keeps the old link when the new one cannot be written', async () => {
-    const { svc, sendStateEvent } = setup(rooms());
-    sendStateEvent.mockRejectedValueOnce(new Error('M_FORBIDDEN: no'));
+    const { svc, engine, roomId, design, setState } = await linkedSetup();
+    setState.mockReturnValueOnce(of(fail('permission', 403)));
 
-    const result = await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: false }),
-    );
+    const result = await run(svc, engine.alice, roomId, {
+      version: '11',
+      inviteMembers: false,
+    });
 
-    expect(sendStateEvent).toHaveBeenCalledTimes(1);
+    expect(setState).toHaveBeenCalledTimes(1);
     expect(result.relinked).toEqual([]);
     expect(result.relinkFailed).toEqual([
-      { spaceId: '!design:hs', reason: 'M_FORBIDDEN: no', linkedTwice: false },
+      { spaceId: design, reason: FORBIDDEN_TEXT, linkedTwice: false },
     ]);
   });
 
   it('reports a space that now links both rooms', async () => {
-    const { svc, sendStateEvent } = setup(rooms());
-    sendStateEvent
-      .mockResolvedValueOnce({ event_id: '$new' })
-      .mockRejectedValueOnce(new Error('M_LIMIT_EXCEEDED'));
+    const { svc, engine, roomId, design, setState } = await linkedSetup();
+    setState
+      .mockReturnValueOnce(of(engineOk(null)))
+      .mockReturnValueOnce(of(fail('rate-limit', 429)));
 
-    const result = await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: false }),
-    );
+    const result = await run(svc, engine.alice, roomId, {
+      version: '11',
+      inviteMembers: false,
+    });
 
     expect(result.relinked).toEqual([]);
     expect(result.relinkFailed).toEqual([
-      { spaceId: '!design:hs', reason: 'M_LIMIT_EXCEEDED', linkedTwice: true },
+      {
+        spaceId: design,
+        reason: 'Too many requests. Try again shortly.',
+        linkedTwice: true,
+      },
     ]);
   });
 
   it('leaves spaces it cannot edit, and removed links, alone', async () => {
-    const { svc, sendStateEvent } = setup([
-      fakeRoom(OLD, { events: [create('10')] }),
-      fakeRoom('!readonly:hs', {
-        name: 'Read only',
-        space: true,
-        mayEdit: false,
-        events: [create('10'), child(OLD, { via: ['hs'] })],
-      }),
-      fakeRoom('!removed:hs', {
-        name: 'Removed',
-        space: true,
-        events: [create('10'), child(OLD, { via: [] })],
-      }),
-    ]);
-
-    const result = await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: false }),
+    const { svc, engine, roomId, setState } = await setup();
+    const readonly = await space(
+      engine,
+      'Read only',
+      { roomId, content: { via: [SERVER] } },
+      0,
     );
+    await space(engine, 'Removed', { roomId, content: { via: [] } });
 
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    const result = await run(svc, engine.alice, roomId, {
+      version: '11',
+      inviteMembers: false,
+    });
+
+    expect(setState).not.toHaveBeenCalled();
     expect(result.skippedSpaces).toEqual([
       {
-        spaceId: '!readonly:hs',
+        spaceId: readonly,
         name: 'Read only',
         relinkable: false,
         reason: 'no permission',
@@ -656,10 +667,11 @@ describe('RoomUpgradeService.upgrade', () => {
   });
 
   it('stops everything when the server rejects the upgrade', async () => {
-    const { svc, upgradeRoom, invite, sendStateEvent } = setup(rooms());
-    upgradeRoom.mockRejectedValueOnce(new Error('M_UNSUPPORTED_ROOM_VERSION'));
+    const { svc, engine, roomId, upgradeRoom, invite, setState } =
+      await linkedSetup();
+    upgradeRoom.mockReturnValueOnce(of(fail('http', 400)));
 
-    const error = await rejection(svc);
+    const error = await rejection(run(svc, engine.alice, roomId));
 
     expect(error).toBeInstanceOf(RoomAdministrationError);
     expect((error as RoomAdministrationError).outcome).toMatchObject({
@@ -667,18 +679,15 @@ describe('RoomUpgradeService.upgrade', () => {
       operation: 'upgrade-room',
     });
     expect(invite).not.toHaveBeenCalled();
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(setState).not.toHaveBeenCalled();
   });
 
   it('refuses without permission to send the tombstone', async () => {
-    const { svc, upgradeRoom } = setup(rooms(), {
-      upgrade: {
-        available: false,
-        reason: "Your role cannot change this room's version.",
-      },
+    const { svc, engine, roomId, upgradeRoom } = await setup({
+      alicePower: 0,
     });
 
-    const error = await rejection(svc);
+    const error = await rejection(run(svc, engine.alice, roomId));
 
     expect((error as RoomAdministrationError).outcome.failure).toBe(
       'permission-denied',
@@ -687,9 +696,10 @@ describe('RoomUpgradeService.upgrade', () => {
   });
 
   it('refuses when the opening Account is gone', async () => {
-    const { svc, upgradeRoom } = setup(rooms());
+    const { svc, engine, roomId, upgradeRoom, signIn } = await setup();
+    signIn([]);
 
-    const error = await rejection(svc, '@other:hs');
+    const error = await rejection(run(svc, engine.alice, roomId));
 
     expect((error as RoomAdministrationError).outcome.failure).toBe(
       'not-signed-in',
@@ -698,42 +708,39 @@ describe('RoomUpgradeService.upgrade', () => {
   });
 
   it('never rolls back once the new room exists', async () => {
-    const { svc, invite, sendStateEvent, leave } = setup(rooms());
-    invite.mockRejectedValue(new Error('down'));
-    sendStateEvent.mockRejectedValue(new Error('down'));
+    const { svc, engine, roomId, invite, setState } = await linkedSetup();
+    invite.mockReturnValue(of(fail('network')));
+    setState.mockReturnValue(of(fail('network')));
 
-    const result = await firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
-    );
+    const result = await run(svc, engine.alice, roomId);
 
-    expect(result.newRoomId).toBe(NEW);
     expect(result.inviteFailed).toHaveLength(2);
     expect(result.relinkFailed).toHaveLength(1);
     // One attempted write per space and nothing that undoes the upgrade.
-    expect(sendStateEvent).toHaveBeenCalledTimes(1);
-    expect(leave).not.toHaveBeenCalled();
+    expect(setState).toHaveBeenCalledTimes(1);
   });
 
   it('runs each request only after the previous one settles', async () => {
-    const second = fakeRoom('!ops:hs', {
-      name: 'Ops',
-      space: true,
-      events: [create('10'), child(OLD, { via: ['hs'] })],
-    });
-    const { svc, invite, sendStateEvent } = setup(rooms([second]));
+    const { svc, engine, roomId, invite, setState } = await linkedSetup();
+    await space(engine, 'Ops', { roomId, content: { via: [SERVER] } });
     const gates: (() => void)[] = [];
-    const gated = () => new Promise((resolve) => gates.push(() => resolve({})));
+    const gated = () => {
+      const answer = new Subject<EngineResult<null>>();
+      gates.push(() => {
+        answer.next(engineOk(null));
+        answer.complete();
+      });
+      return answer;
+    };
     invite.mockImplementation(gated);
-    sendStateEvent.mockImplementation(gated);
+    setState.mockImplementation(gated);
     const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-    const done = firstValueFrom(
-      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
-    );
+    const done = run(svc, engine.alice, roomId);
     const step = async (invites: number, writes: number) => {
       await flush();
       expect(invite).toHaveBeenCalledTimes(invites);
-      expect(sendStateEvent).toHaveBeenCalledTimes(writes);
+      expect(setState).toHaveBeenCalledTimes(writes);
       gates.shift()?.();
     };
     await step(1, 0);
@@ -746,16 +753,13 @@ describe('RoomUpgradeService.upgrade', () => {
   });
 
   it('refuses a room that already has a replacement', async () => {
-    const { svc, upgradeRoom, invite, sendStateEvent } = setup([
-      fakeRoom(OLD, {
-        events: [
-          create('10'),
-          { type: 'm.room.tombstone', content: { replacement_room: NEW } },
-        ],
-      }),
-    ]);
+    const { svc, engine, roomId, upgradeRoom, invite, setState } =
+      await setup();
+    await engine.asBob.setState(roomId, 'm.room.tombstone', {
+      replacement_room: '!new:example.org',
+    });
 
-    const error = await rejection(svc);
+    const error = await rejection(run(svc, engine.alice, roomId));
 
     expect(error).toBeInstanceOf(RoomAdministrationError);
     expect((error as RoomAdministrationError).outcome).toMatchObject({
@@ -764,6 +768,6 @@ describe('RoomUpgradeService.upgrade', () => {
     });
     expect(upgradeRoom).not.toHaveBeenCalled();
     expect(invite).not.toHaveBeenCalled();
-    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(setState).not.toHaveBeenCalled();
   });
 });
