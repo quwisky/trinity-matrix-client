@@ -76,6 +76,34 @@ pub enum RefreshCause {
     SessionRefresh,
 }
 
+/// `AccountStartFailureReason`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = DTO)]
+pub enum AccountStartFailureReason {
+    ReauthenticationRequired,
+    TransientNetwork,
+    CryptoFailure,
+    CryptoStoreKeyLost,
+    SecureStorageUnavailable,
+}
+
+/// `UiaChallenge` as the js adapter's `uiaChallengeOf` builds it: no stage parameters.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = DTO, optional_fields)]
+pub struct UiaChallengeDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    pub flows: Vec<UiaFlowDto>,
+    pub completed: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = DTO)]
+pub struct UiaFlowDto {
+    pub stages: Vec<String>,
+}
+
 /// The `code` and `params` of an [`EngineFailure`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FailureCode {
@@ -89,6 +117,15 @@ pub enum FailureCode {
         /// Text the homeserver wrote for a person to read.
         server_message: Option<String>,
     },
+    AccountNotLive,
+    AccountStartFailed {
+        reason: AccountStartFailureReason,
+    },
+    UiaRequired {
+        challenge: UiaChallengeDto,
+    },
+    Unsupported,
+    Forbidden,
 }
 
 /// A failure as plain data: a code and parameters, never text.
@@ -124,6 +161,17 @@ enum WireCode {
         #[ts(optional)]
         params: Option<RequestParams>,
     },
+    AccountNotLive,
+    AccountStartFailed {
+        #[ts(inline)]
+        params: AccountStartParams,
+    },
+    UiaRequired {
+        #[ts(inline)]
+        params: UiaParams,
+    },
+    Unsupported,
+    Forbidden,
 }
 
 #[derive(Serialize, TS)]
@@ -145,6 +193,16 @@ struct RequestParams {
     server_message: Option<String>,
 }
 
+#[derive(Serialize, TS)]
+struct AccountStartParams {
+    reason: AccountStartFailureReason,
+}
+
+#[derive(Serialize, TS)]
+struct UiaParams {
+    challenge: UiaChallengeDto,
+}
+
 impl From<EngineFailure> for WireFailure {
     fn from(failure: EngineFailure) -> Self {
         let code = match failure.code {
@@ -161,6 +219,15 @@ impl From<EngineFailure> for WireFailure {
                     server_message,
                 }),
             },
+            FailureCode::AccountNotLive => WireCode::AccountNotLive,
+            FailureCode::AccountStartFailed { reason } => WireCode::AccountStartFailed {
+                params: AccountStartParams { reason },
+            },
+            FailureCode::UiaRequired { challenge } => WireCode::UiaRequired {
+                params: UiaParams { challenge },
+            },
+            FailureCode::Unsupported => WireCode::Unsupported,
+            FailureCode::Forbidden => WireCode::Forbidden,
         };
         Self {
             kind: failure.kind,
@@ -200,6 +267,83 @@ pub fn not_signed_in() -> EngineFailure {
         kind: FailureKind::Unexpected,
         diagnostic: Diagnostic::new(FailureKind::Unexpected),
         code: FailureCode::NotSignedIn,
+    }
+}
+
+/// `ACCOUNT_NOT_LIVE` in the js adapter.
+pub fn account_not_live() -> EngineFailure {
+    EngineFailure {
+        kind: FailureKind::Unexpected,
+        diagnostic: Diagnostic::new(FailureKind::Unexpected),
+        code: FailureCode::AccountNotLive,
+    }
+}
+
+pub fn account_start_failed(
+    reason: AccountStartFailureReason,
+    kind: FailureKind,
+    diagnostic: Diagnostic,
+) -> EngineFailure {
+    EngineFailure {
+        kind,
+        diagnostic,
+        code: FailureCode::AccountStartFailed { reason },
+    }
+}
+
+/// The js adapter's `requestFailure`: a UIA challenge, a missing endpoint (`M_UNRECOGNIZED`, or a
+/// Matrix 404/405 that is not `M_NOT_FOUND`), a policy refusal (`M_FORBIDDEN`), or else
+/// [`request_failed`].
+pub fn request_failure(err: &Error) -> EngineFailure {
+    let server_error = match err {
+        Error::Http(http) => server_error(http),
+        _ => None,
+    };
+    let code = match server_error {
+        Some(RumaApiError::AuthResponse(info)) => FailureCode::UiaRequired {
+            challenge: UiaChallengeDto {
+                session: info.session.clone(),
+                flows: info
+                    .flows
+                    .iter()
+                    .map(|flow| UiaFlowDto {
+                        stages: flow.stages.iter().map(|s| s.as_str().into()).collect(),
+                    })
+                    .collect(),
+                completed: info.completed.iter().map(|s| s.as_str().into()).collect(),
+            },
+        },
+        // A body that is not JSON is the js-sdk's `HTTPError`, not a `MatrixError`.
+        Some(RumaApiError::MatrixError(error))
+            if !matches!(error.body, ErrorBody::NotJson { .. }) =>
+        {
+            let errcode = errcode(&error.body);
+            let missing = errcode.as_deref() == Some("M_UNRECOGNIZED")
+                || (matches!(error.status_code.as_u16(), 404 | 405)
+                    && errcode.as_deref() != Some("M_NOT_FOUND"));
+            if missing {
+                FailureCode::Unsupported
+            } else if errcode.as_deref() == Some("M_FORBIDDEN") {
+                FailureCode::Forbidden
+            } else {
+                return request_failed(err);
+            }
+        }
+        _ => return request_failed(err),
+    };
+    let (kind, diagnostic) = classify(err);
+    EngineFailure {
+        kind,
+        diagnostic,
+        code,
+    }
+}
+
+/// The homeserver's error response, read through a cached error as [`classify_http`] does.
+fn server_error(err: &HttpError) -> Option<&RumaApiError> {
+    match err {
+        HttpError::Cached(inner) => server_error(inner),
+        _ => err.as_ruma_api_error(),
     }
 }
 
@@ -439,6 +583,134 @@ mod tests {
         assert_eq!(
             request_failed_with(None, Some("Too weak"))["params"],
             json!({"serverMessage": "Too weak"})
+        );
+    }
+
+    #[test]
+    fn account_not_live_matches_the_typescript_constant() {
+        assert_eq!(
+            to_json(account_not_live()),
+            json!({"kind": "unexpected", "code": "account-not-live", "diagnostic": {"kind": "unexpected"}})
+        );
+    }
+
+    #[test]
+    fn the_session_codes_write_their_params() {
+        let unexpected = || Diagnostic::new(FailureKind::Unexpected);
+        assert_eq!(
+            to_json(account_start_failed(
+                AccountStartFailureReason::CryptoStoreKeyLost,
+                FailureKind::Unexpected,
+                unexpected()
+            )),
+            json!({
+                "kind": "unexpected",
+                "code": "account-start-failed",
+                "diagnostic": {"kind": "unexpected"},
+                "params": {"reason": "crypto-store-key-lost"},
+            })
+        );
+        let challenge = json!({"session": "s", "flows": [{"stages": ["m.login.password"]}]});
+        assert_eq!(
+            to_json(request_failure(
+                &response(401, &challenge.to_string(), None).into()
+            )),
+            json!({
+                "kind": "http",
+                "code": "uia-required",
+                "diagnostic": {"kind": "http", "httpStatus": 401},
+                "params": {"challenge": {
+                    "session": "s",
+                    "flows": [{"stages": ["m.login.password"]}],
+                    "completed": [],
+                }},
+            })
+        );
+        for (code, name) in [
+            (FailureCode::Unsupported, "unsupported"),
+            (FailureCode::Forbidden, "forbidden"),
+        ] {
+            let failure = EngineFailure {
+                kind: FailureKind::Unexpected,
+                diagnostic: unexpected(),
+                code,
+            };
+            assert_eq!(
+                to_json(failure),
+                json!({"kind": "unexpected", "code": name, "diagnostic": {"kind": "unexpected"}})
+            );
+        }
+    }
+
+    #[test]
+    fn request_failure_sorts_server_errors_like_the_js_adapter() {
+        let code = |error: HttpError| request_failure(&error.into()).code;
+        let challenge = json!({"flows": [{"stages": ["m.login.password"]}], "session": "s"});
+        assert_eq!(
+            code(response(401, &challenge.to_string(), None)),
+            FailureCode::UiaRequired {
+                challenge: UiaChallengeDto {
+                    session: Some("s".into()),
+                    flows: vec![UiaFlowDto {
+                        stages: vec!["m.login.password".into()]
+                    }],
+                    completed: vec![],
+                }
+            }
+        );
+        let request_failed = FailureCode::RequestFailed {
+            cause: None,
+            server_message: None,
+        };
+        for (error, expected) in [
+            (
+                matrix_error(400, "M_UNRECOGNIZED"),
+                FailureCode::Unsupported,
+            ),
+            (
+                matrix_error(404, "M_UNRECOGNIZED"),
+                FailureCode::Unsupported,
+            ),
+            (matrix_error(405, "M_UNKNOWN"), FailureCode::Unsupported),
+            (response(404, "{}", None), FailureCode::Unsupported),
+            (matrix_error(404, "M_NOT_FOUND"), request_failed.clone()),
+            (response(404, "<html>", None), request_failed.clone()),
+            (matrix_error(403, "M_FORBIDDEN"), FailureCode::Forbidden),
+            (matrix_error(401, "M_UNKNOWN_TOKEN"), request_failed.clone()),
+        ] {
+            let status = error.as_ruma_api_error().map(ToString::to_string);
+            assert_eq!(code(error), expected, "{status:?}");
+        }
+        let expired = request_failure(&matrix_error(401, "M_UNKNOWN_TOKEN").into());
+        assert_eq!(
+            expired.diagnostic.errcode.as_deref(),
+            Some("M_UNKNOWN_TOKEN")
+        );
+    }
+
+    #[test]
+    fn request_failure_reads_through_a_cached_error() {
+        let cached = HttpError::Cached(Arc::new(matrix_error(404, "M_UNRECOGNIZED")));
+        assert_eq!(
+            request_failure(&cached.into()).code,
+            FailureCode::Unsupported
+        );
+    }
+
+    #[tokio::test]
+    async fn request_failure_of_a_connection_error_is_a_network_request_failure() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let error =
+            request_error(&format!("http://127.0.0.1:{port}"), Duration::from_secs(5)).await;
+        let failure = request_failure(&error.into());
+        assert_eq!(failure.kind, FailureKind::Network);
+        assert!(
+            matches!(failure.code, FailureCode::RequestFailed { .. }),
+            "{failure:?}"
         );
     }
 

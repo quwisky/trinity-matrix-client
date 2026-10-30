@@ -7,6 +7,8 @@ import type { Diagnostic } from './Diagnostic';
 import type { DiscoveryParams } from './DiscoveryParams';
 import type { EngineFailure as EngineFailureDto } from './EngineFailure';
 import type { RequestParams } from './RequestParams';
+import type { UiaChallengeDto } from './UiaChallengeDto';
+import type { UiaChallenge } from '../uia-flow';
 
 type Params<C extends EngineFailure['code']> = NonNullable<
   Extract<EngineFailure, { code: C }> extends { params?: infer P } ? P : never
@@ -29,5 +31,6 @@ describe('Rust engine DTOs', () => {
     expectTypeOf<keyof RequestParams>().toExtend<
       keyof Params<'request-failed'>
     >();
+    expectTypeOf<keyof UiaChallengeDto>().toExtend<keyof UiaChallenge>();
   });
 });

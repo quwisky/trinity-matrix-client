@@ -1,55 +1,68 @@
 //! The engine and its signed-in accounts.
 
-use std::{collections::HashMap, future::ready, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use futures_util::{StreamExt, stream};
+use futures_util::{FutureExt, future::Shared};
 use matrix_sdk::{
-    Client, ClientBuildError, ClientBuilder, SessionMeta, SessionTokens,
-    authentication::matrix::MatrixSession,
+    BoxFuture, Client, ClientBuilder,
     bytes::Bytes,
+    executor::spawn,
     locks::Mutex,
     reqwest::{self, StatusCode, Url},
-    ruma::UserId,
     timeout::timeout,
 };
-use matrix_sdk_ui::{
-    encryption_sync_service,
-    room_list_service::{self, RoomListLoadingState},
-    sync_service::{self, State, SyncService},
-};
-use serde::Deserialize;
 
+pub use crate::engines::session::runtime::AccountRuntime;
 use crate::{
+    barrier::{Barrier, Subscribers, Tracked},
     config::EngineConfig,
-    failure::{Diagnostic, EngineFailure, FailureCode, FailureKind, classify_http, request_failed},
+    engines::session::{
+        LiveAccountsDto, SessionAccountStatusDto, SessionSnapshotDto, SessionSyncStateDto,
+        restore::StartState,
+    },
+    failure::{EngineFailure, account_not_live},
 };
 
-const LOAD_LIMIT: Duration = Duration::from_secs(30);
+/// How long a teardown waits for the engine commands still holding a retired runtime.
+const TEARDOWN_LIMIT: Duration = Duration::from_secs(30);
 
 pub struct Engine {
-    config: EngineConfig,
-    accounts: Mutex<HashMap<String, Arc<AccountRuntime>>>,
+    pub(crate) config: EngineConfig,
+    pub(crate) state: Mutex<SessionState>,
+    /// Starts in flight by account id, which a second restore of the account joins.
+    pub(crate) starting: Mutex<HashMap<String, Arc<Mutex<StartState>>>>,
+    /// The last teardown queued for each account id; a start of that account awaits it.
+    teardowns: Mutex<HashMap<String, Teardown>>,
     /// For the requests the engines send themselves rather than through the SDK.
     raw: reqwest::Client,
 }
 
-pub struct AccountRuntime {
-    pub client: Client,
-    pub sync_service: Arc<SyncService>,
+pub(crate) type Teardown = Shared<BoxFuture<'static, ()>>;
+
+/// Everything the session commands change, under one lock that is never held across an await.
+pub(crate) struct SessionState {
+    pub(crate) registry: Registry,
+    pub(crate) runtimes: HashMap<String, Arc<AccountRuntime>>,
+    /// The last snapshot published, so an unchanged one is not sent again.
+    pub(crate) snapshot: SessionSnapshotDto,
+    snapshots: Subscribers<SessionSnapshotDto>,
 }
 
-/// A session to restore, as the test host receives it.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartAccount {
-    homeserver_url: String,
-    user_id: String,
-    device_id: String,
-    access_token: String,
+/// Pure registry data: no `Client`, so its transitions are unit-tested.
+#[derive(Default)]
+pub(crate) struct Registry {
+    /// Live accounts in registry order.
+    entries: Vec<SessionAccountStatusDto>,
+    active: Option<String>,
+    soft_logged_out: Vec<String>,
+    /// Engine-wide, one more for each registered client; `stop` keeps it.
+    generation: u32,
 }
 
 impl Engine {
-    pub fn new(config: EngineConfig) -> Arc<Self> {
+    /// Fails only when the TLS backend cannot start, such as Android's platform verifier before
+    /// its initialization.
+    pub fn new(config: EngineConfig) -> Result<Arc<Self>, reqwest::Error> {
         let builder = reqwest::Client::builder();
         // The browser's fetch owns redirects and TLS on wasm.
         #[cfg(not(target_family = "wasm"))]
@@ -57,17 +70,176 @@ impl Engine {
             .redirect(reqwest::redirect::Policy::none())
             .danger_accept_invalid_certs(config.insecure_tls)
             .min_tls_version(reqwest::tls::Version::TLS_1_2);
-        // As `reqwest::Client::new`: only a TLS backend that cannot start fails here.
-        let raw = builder.build().expect("the raw HTTP client builds");
-        Arc::new(Self {
+        let registry = Registry::default();
+        Ok(Arc::new(Self {
             config,
-            accounts: Mutex::default(),
-            raw,
-        })
+            state: Mutex::new(SessionState {
+                snapshot: registry.snapshot(),
+                registry,
+                runtimes: HashMap::new(),
+                snapshots: Subscribers::default(),
+            }),
+            starting: Mutex::default(),
+            teardowns: Mutex::default(),
+            raw: builder.build()?,
+        }))
     }
 
+    /// The account's live runtime. Hold it for one request only: never across a lifecycle call
+    /// (remove, restart, rollback) and never in a long-lived stream, since its teardown waits
+    /// until every holder has let go.
     pub fn account(&self, account_id: &str) -> Option<Arc<AccountRuntime>> {
-        self.accounts.lock().get(account_id).cloned()
+        self.state.lock().runtimes.get(account_id).cloned()
+    }
+
+    /// A `session()` stream, which starts with the current snapshot.
+    pub(crate) fn subscribe_session(&self) -> Tracked<SessionSnapshotDto> {
+        let mut state = self.state.lock();
+        let first = state.snapshot.clone();
+        state.snapshots.subscribe(Some(first)).1
+    }
+
+    pub(crate) fn set_active(&self, account_id: &str) -> Barrier {
+        let mut state = self.state.lock();
+        state.registry.set_active(account_id);
+        state.publish_snapshot()
+    }
+
+    /// Makes a live account active; `Replace` also retires every other live account, whose
+    /// runtimes the caller stops.
+    pub(crate) fn activate_account(
+        &self,
+        account_id: &str,
+        live_accounts: LiveAccountsDto,
+    ) -> Result<(Barrier, Vec<Arc<AccountRuntime>>), EngineFailure> {
+        let mut state = self.state.lock();
+        if !state.registry.is_live(account_id) {
+            return Err(account_not_live());
+        }
+        let mut retired = Vec::new();
+        if live_accounts == LiveAccountsDto::Replace {
+            let others: Vec<String> = (state.registry.entries.iter())
+                .map(|entry| entry.account_id.clone())
+                .filter(|other| other != account_id)
+                .collect();
+            retired = others.iter().filter_map(|id| state.retire(id)).collect();
+        }
+        state.registry.set_active(account_id);
+        Ok((state.publish_snapshot(), retired))
+    }
+
+    pub(crate) fn require_reauthentication(&self, account_id: &str) -> Barrier {
+        let mut state = self.state.lock();
+        state.registry.mark_soft_logged_out(account_id);
+        state.publish_snapshot()
+    }
+
+    /// Retires a started account but keeps its store.
+    pub(crate) async fn rollback_account_start(&self, account_id: &str) {
+        let (runtime, barrier) = self.retire(account_id);
+        self.tear_down(account_id, runtime, false).await;
+        barrier.delivered().await;
+    }
+
+    /// Retires the account, live or not, and deletes its stores once its runtime is gone.
+    pub(crate) async fn remove(&self, account_id: &str) {
+        let (runtime, barrier) = self.retire(account_id);
+        self.tear_down(account_id, runtime, true).await;
+        barrier.delivered().await;
+    }
+
+    /// Stops every runtime and empties the registry; the stores stay.
+    pub(crate) async fn stop(&self) {
+        let (runtimes, barrier) = {
+            let mut state = self.state.lock();
+            state.registry.clear();
+            let runtimes: Vec<_> = state.runtimes.drain().collect();
+            (runtimes, state.publish_snapshot())
+        };
+        let teardowns = runtimes
+            .into_iter()
+            .map(|(id, runtime)| self.tear_down(&id, Some(runtime), false));
+        futures_util::future::join_all(teardowns).await;
+        barrier.delivered().await;
+    }
+
+    /// Undoes a start nobody took, unless the account has a newer client by now.
+    pub(crate) fn rollback_if_current(&self, account_id: &str, generation: u32) {
+        let runtime = {
+            let mut state = self.state.lock();
+            let current = state.runtimes.get(account_id);
+            if !current.is_some_and(|runtime| runtime.generation == generation) {
+                return;
+            }
+            let runtime = state.retire(account_id);
+            let _ = state.publish_snapshot();
+            runtime
+        };
+        drop(self.tear_down(account_id, runtime, false));
+    }
+
+    /// Writes a runtime's status while `generation` is still the account's; `false` once not.
+    pub(crate) fn update_status(
+        &self,
+        account_id: &str,
+        generation: u32,
+        f: impl FnOnce(&mut SessionAccountStatusDto),
+    ) -> bool {
+        let mut state = self.state.lock();
+        let current = state.registry.update_status(account_id, generation, f);
+        let _ = state.publish_snapshot();
+        current
+    }
+
+    /// Stops a retired runtime and waits, up to `TEARDOWN_LIMIT`, until no engine command holds
+    /// it, then deletes the account's stores when asked. It runs on its own task, after the
+    /// account's previous teardown, so a closed command cannot cut it short. A start of the
+    /// account awaits it, so two clients open one store only when a holder outlasts the limit
+    /// (R1). A command that triggers a teardown never awaits it while holding the runtime.
+    pub(crate) fn tear_down(
+        &self,
+        account_id: &str,
+        runtime: Option<Arc<AccountRuntime>>,
+        delete_stores: bool,
+    ) -> Teardown {
+        let mut teardowns = self.teardowns.lock();
+        let previous = teardowns.remove(account_id);
+        let (config, id) = (self.config.clone(), account_id.to_owned());
+        let task = spawn(async move {
+            if let Some(previous) = previous {
+                previous.await;
+            }
+            if let Some(runtime) = runtime {
+                runtime.sync_service.stop().await;
+                let mut dropped = runtime.dropped();
+                drop(runtime);
+                if timeout(dropped.changed(), TEARDOWN_LIMIT).await.is_err() {
+                    // shortcut: a client still held after 30 s outlives its teardown, so a restart
+                    // opens a second client on the store and a remove deletes the stores under
+                    // it (an unlink on Unix, a logged failure on Windows); upgrade when
+                    // matrix-sdk gains a client shutdown.
+                    tracing::warn!("a retired account is still in use");
+                }
+            }
+            if delete_stores {
+                delete_account_stores(&config, &id);
+            }
+        });
+        let task: BoxFuture<'static, ()> = Box::pin(task.map(|_| ()));
+        let teardown = task.shared();
+        teardowns.insert(account_id.to_owned(), teardown.clone());
+        teardown
+    }
+
+    /// The account's last teardown, which a start of the account must await.
+    pub(crate) fn teardown_of(&self, account_id: &str) -> Option<Teardown> {
+        self.teardowns.lock().get(account_id).cloned()
+    }
+
+    fn retire(&self, account_id: &str) -> (Option<Arc<AccountRuntime>>, Barrier) {
+        let mut state = self.state.lock();
+        let runtime = state.retire(account_id);
+        (runtime, state.publish_snapshot())
     }
 
     pub fn client_builder(&self) -> ClientBuilder {
@@ -97,185 +269,252 @@ impl Engine {
         }
         Ok((response.status(), response.bytes().await?))
     }
+}
 
-    /// Restores `start` with a memory store and syncs until its room list has loaded.
-    pub async fn start_account(&self, start: StartAccount) -> Result<(), EngineFailure> {
-        // Stopped first: two sync services for one device would reset each other's connection.
-        let previous = self.accounts.lock().remove(&start.user_id);
-        if let Some(previous) = previous {
-            previous.sync_service.stop().await;
+fn delete_account_stores(config: &EngineConfig, account_id: &str) {
+    #[cfg(feature = "native")]
+    if let Err(err) = crate::store::delete_account(config, account_id) {
+        tracing::warn!(kind = ?err.kind(), "deleting an account's stores failed");
+    }
+    #[cfg(not(feature = "native"))]
+    let _ = (config, account_id);
+}
+
+impl SessionState {
+    /// Sends the registry's snapshot to every `session()` stream when it changed.
+    pub(crate) fn publish_snapshot(&mut self) -> Barrier {
+        let snapshot = self.registry.snapshot();
+        if snapshot == self.snapshot {
+            return Barrier::default();
         }
-        let account_id = start.user_id.clone();
-        let runtime = Arc::new(self.run(start).await?);
-        let displaced = self.accounts.lock().insert(account_id, runtime);
-        if let Some(displaced) = displaced {
-            displaced.sync_service.stop().await;
-        }
-        Ok(())
+        let barrier = self.snapshots.publish(&snapshot);
+        self.snapshot = snapshot;
+        barrier
     }
 
-    async fn run(&self, start: StartAccount) -> Result<AccountRuntime, EngineFailure> {
-        let user_id = UserId::parse(&start.user_id).map_err(|_| unexpected())?;
-        let client = self
-            .client_builder()
-            .homeserver_url(&start.homeserver_url)
-            .build()
-            .await
-            .map_err(|err| build_failure(&err))?;
-        let session = MatrixSession {
-            meta: SessionMeta {
-                user_id,
-                device_id: start.device_id.into(),
-            },
-            tokens: SessionTokens {
-                access_token: start.access_token,
-                refresh_token: None,
-            },
-        };
-        client
-            .restore_session(session)
-            .await
-            .map_err(|err| request_failed(&err))?;
-        let sync_service = Arc::new(
-            SyncService::builder(client.clone())
-                .build()
-                .await
-                .map_err(|err| sync_failure(&err))?,
-        );
-        let rooms = sync_service
-            .room_list_service()
-            .all_rooms()
-            .await
-            .map_err(|err| sync_failure(&sync_service::Error::RoomList(err)))?;
-        // Subscribed before the start, so an error the first sync runs into is not missed.
-        let errors = sync_service.state().filter_map(|state| {
-            ready(match state {
-                State::Error(err) => Some(Err(sync_failure(&err))),
-                _ => None,
-            })
+    /// Takes the account out of the registry and its soft logout, and hands back its runtime.
+    fn retire(&mut self, account_id: &str) -> Option<Arc<AccountRuntime>> {
+        self.registry.retire(account_id);
+        self.registry.clear_soft_logged_out(account_id);
+        self.runtimes.remove(account_id)
+    }
+}
+
+impl Registry {
+    pub fn snapshot(&self) -> SessionSnapshotDto {
+        SessionSnapshotDto {
+            active_account_id: self.active.clone(),
+            accounts: self.entries.clone(),
+            soft_logged_out: self.soft_logged_out.clone(),
+        }
+    }
+
+    pub fn is_live(&self, account_id: &str) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| entry.account_id == account_id)
+    }
+
+    /// Registers a new client for `account_id`: its entry moves to the end with the next
+    /// generation, and the account is no longer soft-logged-out.
+    pub fn register(&mut self, account_id: &str, device_id: &str) -> u32 {
+        self.entries.retain(|entry| entry.account_id != account_id);
+        self.generation += 1;
+        self.entries.push(SessionAccountStatusDto {
+            account_id: account_id.into(),
+            device_id: Some(device_id.into()),
+            generation: self.generation,
+            sync_state: SessionSyncStateDto::Starting,
+            server_synced: false,
+            rooms_prepared: false,
+            waiting_count: 0, // shortcut: 2.3 owns send semantics (G14, R6), upgrade in 2.3
+            // Every Rust store opens with the store key.
+            crypto_store_encrypted: true,
         });
-        let loaded = rooms
-            .loading_state()
-            .filter(|state| ready(matches!(state, RoomListLoadingState::Loaded { .. })))
-            .map(|_| Ok(()));
-        sync_service.start().await;
-        let outcome = match timeout(stream::select(loaded, errors).next(), LOAD_LIMIT).await {
-            Ok(Some(outcome)) => outcome,
-            Ok(None) => Err(unexpected()),
-            Err(_) => Err(failure(
-                FailureKind::Timeout,
-                Diagnostic::new(FailureKind::Timeout),
-            )),
-        };
-        if let Err(err) = outcome {
-            sync_service.stop().await;
-            return Err(err);
+        self.clear_soft_logged_out(account_id);
+        self.generation
+    }
+
+    /// Drops the account's entry, repointing the active account to the first remaining one.
+    pub fn retire(&mut self, account_id: &str) -> bool {
+        if !self.is_live(account_id) {
+            return false;
         }
-        Ok(AccountRuntime {
-            client,
-            sync_service,
-        })
-    }
-}
-
-fn failure(kind: FailureKind, diagnostic: Diagnostic) -> EngineFailure {
-    EngineFailure {
-        kind,
-        diagnostic,
-        code: FailureCode::RequestFailed {
-            cause: None,
-            server_message: None,
-        },
-    }
-}
-
-fn unexpected() -> EngineFailure {
-    failure(
-        FailureKind::Unexpected,
-        Diagnostic::new(FailureKind::Unexpected),
-    )
-}
-
-fn build_failure(err: &ClientBuildError) -> EngineFailure {
-    match err {
-        ClientBuildError::Http(err) => {
-            let (kind, diagnostic) = classify_http(err);
-            failure(kind, diagnostic)
+        self.entries.retain(|entry| entry.account_id != account_id);
+        if self.active.as_deref() == Some(account_id) {
+            self.active = self.entries.first().map(|entry| entry.account_id.clone());
         }
-        _ => unexpected(),
+        true
     }
-}
 
-fn sync_failure(err: &sync_service::Error) -> EngineFailure {
-    use encryption_sync_service::Error as Encryption;
-    match err {
-        sync_service::Error::RoomList(room_list_service::Error::SlidingSync(err))
-        | sync_service::Error::EncryptionSync(
-            Encryption::SlidingSync(err)
-            | Encryption::LockError(err)
-            | Encryption::ClientError(err),
-        ) => request_failed(err),
-        _ => unexpected(),
+    /// Makes a live account active; any other is ignored.
+    pub fn set_active(&mut self, account_id: &str) -> bool {
+        let live = self.is_live(account_id);
+        if live {
+            self.active = Some(account_id.into());
+        }
+        live
+    }
+
+    pub fn mark_soft_logged_out(&mut self, account_id: &str) {
+        if !self.soft_logged_out.iter().any(|id| id == account_id) {
+            self.soft_logged_out.push(account_id.into());
+        }
+    }
+
+    pub fn clear_soft_logged_out(&mut self, account_id: &str) {
+        self.soft_logged_out.retain(|id| id != account_id);
+    }
+
+    /// Forgets every account but keeps counting generations.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.active = None;
+        self.soft_logged_out.clear();
+    }
+
+    /// Changes the status of the account's entry while it is still that generation's.
+    pub fn update_status(
+        &mut self,
+        account_id: &str,
+        generation: u32,
+        f: impl FnOnce(&mut SessionAccountStatusDto),
+    ) -> bool {
+        let entry = (self.entries.iter_mut())
+            .find(|entry| entry.account_id == account_id && entry.generation == generation);
+        entry.map(f).is_some()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
+    use crate::failure::FailureCode;
 
-    fn start(homeserver_url: &str, user_id: &str) -> StartAccount {
-        serde_json::from_value(json!({
-            "homeserverUrl": homeserver_url,
-            "userId": user_id,
-            "deviceId": "DEVICE",
-            "accessToken": "token",
-        }))
-        .unwrap()
+    fn ids(registry: &Registry) -> Vec<(String, u32)> {
+        let entries = registry.snapshot().accounts.into_iter();
+        entries.map(|a| (a.account_id, a.generation)).collect()
     }
 
-    fn assert_request_failed(failure: &EngineFailure, kind: FailureKind) {
-        assert_eq!(failure.kind, kind);
-        assert!(
-            matches!(failure.code, FailureCode::RequestFailed { .. }),
-            "{failure:?}"
+    #[test]
+    fn register_appends_bumps_the_generation_and_moves_a_restart_to_the_end() {
+        let mut registry = Registry::default();
+        assert_eq!(registry.register("@a:b", "A1"), 1);
+        assert_eq!(registry.register("@c:d", "C1"), 2);
+        assert_eq!(registry.register("@a:b", "A2"), 3);
+        assert_eq!(ids(&registry), [("@c:d".into(), 2), ("@a:b".into(), 3)]);
+        let restarted = &registry.snapshot().accounts[1];
+        assert_eq!(restarted.device_id.as_deref(), Some("A2"));
+        assert_eq!(restarted.sync_state, SessionSyncStateDto::Starting);
+    }
+
+    #[test]
+    fn retire_repoints_active_to_the_first_remaining() {
+        let mut registry = Registry::default();
+        for id in ["@a:b", "@c:d", "@e:f"] {
+            registry.register(id, "D");
+        }
+        assert!(registry.set_active("@e:f"));
+        assert!(registry.retire("@e:f"));
+        assert_eq!(
+            registry.snapshot().active_account_id.as_deref(),
+            Some("@a:b")
         );
+        assert!(registry.retire("@c:d"));
+        assert_eq!(
+            registry.snapshot().active_account_id.as_deref(),
+            Some("@a:b")
+        );
+        assert!(!registry.retire("@never:seen"));
+        assert!(registry.retire("@a:b"));
+        assert_eq!(registry.snapshot().active_account_id, None);
+    }
+
+    #[test]
+    fn set_active_ignores_an_account_that_is_not_live() {
+        let mut registry = Registry::default();
+        registry.register("@a:b", "D");
+        assert!(!registry.set_active("@x:y"));
+        assert_eq!(registry.snapshot().active_account_id, None);
+        assert!(registry.set_active("@a:b"));
+        assert_eq!(
+            registry.snapshot().active_account_id.as_deref(),
+            Some("@a:b")
+        );
+    }
+
+    #[test]
+    fn soft_logged_out_is_deduplicated_and_cleared_on_register() {
+        let mut registry = Registry::default();
+        registry.mark_soft_logged_out("@a:b");
+        registry.mark_soft_logged_out("@c:d");
+        registry.mark_soft_logged_out("@a:b");
+        assert_eq!(registry.snapshot().soft_logged_out, ["@a:b", "@c:d"]);
+        registry.register("@a:b", "D");
+        assert_eq!(registry.snapshot().soft_logged_out, ["@c:d"]);
+        registry.clear_soft_logged_out("@c:d");
+        assert!(registry.snapshot().soft_logged_out.is_empty());
+    }
+
+    #[test]
+    fn clear_keeps_the_generation_counter() {
+        let mut registry = Registry::default();
+        registry.register("@a:b", "D");
+        registry.set_active("@a:b");
+        registry.mark_soft_logged_out("@c:d");
+        registry.clear();
+        let snapshot = registry.snapshot();
+        assert!(snapshot.accounts.is_empty() && snapshot.soft_logged_out.is_empty());
+        assert_eq!(snapshot.active_account_id, None);
+        assert_eq!(registry.register("@a:b", "D"), 2);
+    }
+
+    #[test]
+    fn update_status_writes_only_the_current_generation() {
+        let mut registry = Registry::default();
+        let old = registry.register("@a:b", "D");
+        let current = registry.register("@a:b", "D");
+        assert!(!registry.update_status("@a:b", old, |s| s.server_synced = true));
+        assert!(registry.update_status("@a:b", current, |s| s.waiting_count = 2));
+        let status = &registry.snapshot().accounts[0];
+        assert!(!status.server_synced);
+        assert_eq!(status.waiting_count, 2);
+    }
+
+    #[tokio::test]
+    async fn session_commands_without_a_live_account_change_only_the_soft_logouts() {
+        use futures_util::{FutureExt, StreamExt};
+
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        let soft = || engine.state.lock().snapshot.soft_logged_out.clone();
+        let mut session = engine.subscribe_session();
+        assert!(session.next().now_or_never().is_some());
+        let refused = engine.activate_account("@x:y", LiveAccountsDto::Keep);
+        assert_eq!(
+            refused.err().map(|f| f.code),
+            Some(FailureCode::AccountNotLive)
+        );
+        // Unchanged, so nothing is published and nothing is waited for.
+        engine.set_active("@x:y").delivered().await;
+        assert!(session.next().now_or_never().is_none());
+        drop(session);
+        for id in ["@x:y", "@z:y", "@w:y"] {
+            engine.require_reauthentication(id).delivered().await;
+        }
+        engine.rollback_account_start("@x:y").await;
+        engine.remove("@z:y").await;
+        assert_eq!(soft(), ["@w:y"]);
+        engine.stop().await;
+        assert!(soft().is_empty());
     }
 
     #[test]
     fn an_unknown_account_is_absent() {
         assert!(
             Engine::new(EngineConfig::default())
+                .unwrap()
                 .account("@a:b")
                 .is_none()
         );
-    }
-
-    #[tokio::test]
-    async fn a_malformed_user_id_fails_without_registering() {
-        let engine = Engine::new(EngineConfig::default());
-        let failure = engine
-            .start_account(start("http://127.0.0.1:1", "not-a-user-id"))
-            .await
-            .unwrap_err();
-        assert_request_failed(&failure, FailureKind::Unexpected);
-        assert!(engine.account("not-a-user-id").is_none());
-    }
-
-    #[tokio::test]
-    async fn an_unreachable_homeserver_fails_before_the_load_limit() {
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let engine = Engine::new(EngineConfig::default());
-        let failure = engine
-            .start_account(start(&format!("http://127.0.0.1:{port}"), "@a:b"))
-            .await
-            .unwrap_err();
-        assert_request_failed(&failure, FailureKind::Network);
-        assert!(engine.account("@a:b").is_none());
     }
 }

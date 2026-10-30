@@ -4,16 +4,35 @@ edition.workspace = true
 version.workspace = true
 publish.workspace = true
 
+[features]
+default = ["native"]
+native = [
+  "matrix-sdk/sqlite",
+  "matrix-sdk/bundled-sqlite",
+  "matrix-sdk/rustls-aws-lc-rs",
+  "dep:matrix-sdk-sqlite",
+  "dep:hex",
+  "dep:sha2",
+]
+
 [dependencies]
 futures-util.workspace = true
+hex = { workspace = true, optional = true }
 matrix-sdk.workspace = true
+# Names the crypto settings types, which matrix-sdk does not re-export.
+matrix-sdk-base.workspace = true
+# Names `OpenStoreError`, which matrix-sdk does not re-export.
+matrix-sdk-sqlite = { workspace = true, optional = true }
 matrix-sdk-ui.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2 = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 ts-rs.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 tracing-subscriber.workspace = true

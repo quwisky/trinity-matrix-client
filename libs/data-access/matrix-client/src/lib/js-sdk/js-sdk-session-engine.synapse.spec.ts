@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-import { createHmac } from 'node:crypto';
 import { HttpApiEvent, MatrixClient, MatrixError } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -8,8 +7,8 @@ import {
   CryptoStoreKeyService,
   SessionStorageService,
 } from '@trinity/platform-native';
-import type { MatrixSession } from '@trinity/util/matrix';
 import { defineSessionEngineContract } from '../../contract/session-engine.contract';
+import { sessionSynapseFixture } from '../../contract/session-synapse-fixture';
 import { JsSdkSessionEngine } from './js-sdk-session-engine';
 import { MatrixClientService } from './matrix-client.service';
 
@@ -23,96 +22,10 @@ vi.mock('@trinity/util/matrix', async (importOriginal) => {
 });
 
 // Runs the session engine contract against a live Synapse; skipped unless TRINITY_ENGINE_CONTRACT_HS is set.
-const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'];
+const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'] ?? '';
 const secret = process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
 
-async function register(username: string, admin = false) {
-  const api = `${baseUrl}/_synapse/admin/v1/register`;
-  const nonceRes = await fetch(api);
-  if (!nonceRes.ok)
-    throw new Error(`Synapse nonce request failed: ${nonceRes.status}`);
-  const { nonce } = (await nonceRes.json()) as { nonce: string };
-  const password = `pw-${Math.random().toString(36).slice(2)}`;
-  const mac = createHmac('sha1', secret)
-    .update(
-      `${nonce}\0${username}\0${password}\0${admin ? 'admin' : 'notadmin'}`,
-    )
-    .digest('hex');
-  const res = await fetch(api, {
-    method: 'POST',
-    body: JSON.stringify({ nonce, username, password, mac, admin }),
-  });
-  if (!res.ok) throw new Error(`Synapse registration failed: ${res.status}`);
-  const body = (await res.json()) as { user_id: string; access_token: string };
-  return { userId: body.user_id, password, accessToken: body.access_token };
-}
-
-// A fresh Synapse rebuilds its user directory in a background update and drops users
-// registered meanwhile, so the contract users are only created once it has finished.
-async function waitForBackgroundUpdates(): Promise<void> {
-  const admin = await register(`admin-${Date.now().toString(36)}`, true);
-  for (let i = 0; i < 240; i++) {
-    const res = await fetch(
-      `${baseUrl}/_synapse/admin/v1/background_updates/status`,
-      { headers: { authorization: `Bearer ${admin.accessToken}` } },
-    );
-    if (!res.ok)
-      throw new Error(`Synapse background update status failed: ${res.status}`);
-    const { current_updates } = (await res.json()) as {
-      current_updates: Record<string, unknown>;
-    };
-    if (Object.keys(current_updates).length === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error('Synapse background updates did not finish');
-}
-
-let sequence = 0;
-const passwords = new Map<string, string>();
-
-/** A password session with its own device; no refresh token or lifetime is requested. */
-async function newPasswordSession(): Promise<MatrixSession> {
-  sequence += 1;
-  const user = await register(
-    `sess-${Date.now().toString(36)}-${sequence}-${Math.random().toString(36).slice(2, 6)}`,
-  );
-  passwords.set(user.userId, user.password);
-  return login(user.userId);
-}
-
-/** Signs in with the account's password as a new device. */
-async function login(userId: string): Promise<MatrixSession> {
-  const res = await fetch(`${baseUrl}/_matrix/client/v3/login`, {
-    method: 'POST',
-    body: JSON.stringify({
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: userId },
-      password: passwords.get(userId),
-    }),
-  });
-  if (!res.ok) throw new Error(`Synapse login failed: ${res.status}`);
-  const body = (await res.json()) as {
-    user_id: string;
-    device_id: string;
-    access_token: string;
-  };
-  return {
-    baseUrl: baseUrl as string,
-    userId: body.user_id,
-    deviceId: body.device_id,
-    accessToken: body.access_token,
-  };
-}
-
-async function whoamiAccepts(token: string): Promise<boolean> {
-  const res = await fetch(`${baseUrl}/_matrix/client/v3/account/whoami`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (res.ok) return true;
-  const body = (await res.json().catch(() => ({}))) as { errcode?: string };
-  if (res.status === 401 || body.errcode === 'M_UNKNOWN_TOKEN') return false;
-  throw new Error(`Synapse whoami failed: ${res.status}`);
-}
+const synapse = sessionSynapseFixture(baseUrl, secret);
 
 describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
   // Stopping a client aborts its in-flight /sync long-poll and the SDK leaves that rejection
@@ -128,7 +41,7 @@ describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
     ) as NodeJS.UnhandledRejectionListener[];
     process.removeAllListeners('unhandledRejection');
     process.on('unhandledRejection', ignoreSyncAbort);
-    await waitForBackgroundUpdates();
+    await synapse.waitForBackgroundUpdates();
   }, 120_000);
   afterAll(() => {
     process.removeListener('unhandledRejection', ignoreSyncAbort);
@@ -157,8 +70,8 @@ describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
       });
       return {
         engine: TestBed.inject(JsSdkSessionEngine),
-        newSession: newPasswordSession,
-        tokenAccepted: (session) => whoamiAccepts(session.accessToken),
+        newSession: synapse.newSession,
+        tokenAccepted: synapse.tokenAccepted,
         // What the SDK emits when the server answers 401 M_UNKNOWN_TOKEN with soft_logout.
         softLogout: async (session) => {
           TestBed.inject(MatrixClientService)
@@ -171,15 +84,9 @@ describe.skipIf(!baseUrl)('JsSdkSessionEngine against Synapse', () => {
               ),
             );
         },
-        revokeToken: async (session) => {
-          const res = await fetch(`${baseUrl}/_matrix/client/v3/logout`, {
-            method: 'POST',
-            headers: { authorization: `Bearer ${session.accessToken}` },
-          });
-          if (!res.ok) throw new Error(`Synapse logout failed: ${res.status}`);
-        },
-        passwordFor: (session) => passwords.get(session.userId) ?? '',
-        signInAgain: (session) => login(session.userId),
+        revokeToken: synapse.revokeToken,
+        passwordFor: synapse.passwordFor,
+        signInAgain: synapse.signInAgain,
         dispose: async () => {
           TestBed.resetTestingModule();
         },

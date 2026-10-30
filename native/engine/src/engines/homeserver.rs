@@ -328,14 +328,14 @@ mod tests {
     #[tokio::test]
     async fn a_redirect_is_no_answer_and_is_not_followed() {
         let (url, target_hits) = redirecting_server();
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         assert_eq!(get_json(&engine, url, None).await, None);
         assert_eq!(target_hits.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
     async fn probe_emits_null_for_an_account_with_no_session() {
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         let values: Vec<_> = dispatch(&engine, "homeserver.probe", vec![json!("@a:b")])
             .unwrap()
             .collect()

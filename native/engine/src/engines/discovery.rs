@@ -765,7 +765,7 @@ mod tests {
 
     #[tokio::test]
     async fn account_members_fail_not_signed_in_without_a_session() {
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         let nobody = json!("@nobody:invalid");
         let calls = [
             (

@@ -205,7 +205,7 @@ mod tests {
 
     fn session() -> (CarrierSession, UnboundedReceiver<Frame>) {
         let (out, frames) = unbounded_channel();
-        let session = CarrierSession::new(Engine::new(EngineConfig::default()), out);
+        let session = CarrierSession::new(Engine::new(EngineConfig::default()).unwrap(), out);
         (session.with_local(local), frames)
     }
 
@@ -392,6 +392,40 @@ mod tests {
                 id: 16,
                 v: json!(42)
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_command_reply_follows_its_snapshot_on_an_open_session_stream() {
+        let (mut session, mut frames) = session();
+        session.handle(open(1, "session.session", vec![]));
+        session.handle(open(
+            2,
+            "session.requireReauthentication",
+            vec![json!("@x:y")],
+        ));
+        let snapshot = |soft: Vec<&str>| json!({"activeAccountId": null, "accounts": [], "softLoggedOut": soft});
+        let mut received = Vec::new();
+        for _ in 0..4 {
+            received.push(next_frame(&mut frames).await);
+        }
+        assert_eq!(
+            received,
+            [
+                Frame::Next {
+                    id: 1,
+                    v: snapshot(vec![])
+                },
+                Frame::Next {
+                    id: 1,
+                    v: snapshot(vec!["@x:y"])
+                },
+                Frame::Next {
+                    id: 2,
+                    v: json!(null)
+                },
+                Frame::Complete { id: 2 },
+            ]
         );
     }
 

@@ -6,7 +6,12 @@ export async function registerSynapseUser(
   secret: string,
   username: string,
   admin = false,
-): Promise<{ userId: string; accessToken: string; deviceId: string }> {
+): Promise<{
+  userId: string;
+  accessToken: string;
+  deviceId: string;
+  password: string;
+}> {
   const api = `${baseUrl}/_synapse/admin/v1/register`;
   const nonceRes = await fetch(api);
   if (!nonceRes.ok)
@@ -32,5 +37,6 @@ export async function registerSynapseUser(
     userId: body.user_id,
     accessToken: body.access_token,
     deviceId: body.device_id,
+    password,
   };
 }

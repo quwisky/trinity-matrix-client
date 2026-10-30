@@ -666,6 +666,7 @@ describe('MAS sign-in journeys', () => {
         'libs/data-access/media/src/lib/media.rust.spec.ts',
         'libs/util/matrix/src/lib/engine-transport/engine-transport.ts',
         'libs/testing/src/lib/engine-stdio-transport.ts',
+        'libs/testing/src/lib/rust-account.ts',
         'libs/testing/src/lib/synapse-admin.ts',
         'libs/testing/src/index.ts',
         'vite.base.config.ts',

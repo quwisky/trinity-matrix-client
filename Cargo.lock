@@ -3774,14 +3774,20 @@ name = "trinity-engine"
 version = "0.0.0"
 dependencies = [
  "futures-util",
+ "hex",
  "matrix-sdk",
+ "matrix-sdk-base",
+ "matrix-sdk-sqlite",
  "matrix-sdk-ui",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "ts-rs",
+ "zeroize",
 ]
 
 [[package]]
@@ -3789,11 +3795,15 @@ name = "trinity-engine-testhost"
 version = "0.0.0"
 dependencies = [
  "futures-util",
+ "getrandom 0.2.17",
+ "hex",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "trinity-engine",
+ "zeroize",
 ]
 
 [[package]]
