@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { stripSourceComments } from './source-style-blocks.mjs';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const adapterFolder = /^libs\/data-access\/[^/]+\/src\/lib\/js-sdk\//;
@@ -17,6 +18,7 @@ export function reachesSdk(file, source) {
     return false;
   }
   if (sdkReach.test(source)) return true;
+  if (/\bJS_SDK_CLIENTS\b/.test(stripSourceComments(source))) return true;
   return /\.all\(\)/.test(source) && source.includes('MatrixClientService');
 }
 
@@ -91,6 +93,32 @@ describe('reachesSdk', () => {
     ).toBe(true);
     expect(reachesSdk('libs/y/a.spec-harness.ts', source)).toBe(false);
     expect(reachesSdk(adapter, source)).toBe(false);
+  });
+
+  it('matches any JS_SDK_CLIENTS reference outside adapters and specs', () => {
+    for (const source of [
+      'const { clientFor } = inject(JS_SDK_CLIENTS);',
+      "inject(JS_SDK_CLIENTS)['clientFor'](accountId);",
+    ]) {
+      expect(reachesSdk(file, source), source).toBe(true);
+      expect(reachesSdk(adapter, source), source).toBe(false);
+      expect(reachesSdk('libs/y/a.spec.ts', source), source).toBe(false);
+    }
+    expect(
+      reachesSdk(
+        'libs/data-access/matrix-client/src/lib/js-sdk/js-sdk-clients.ts',
+        'export const JS_SDK_CLIENTS = new InjectionToken<JsSdkClients>(',
+      ),
+    ).toBe(false);
+  });
+
+  it('ignores JS_SDK_CLIENTS named only in a comment', () => {
+    for (const source of [
+      '/** Reads what {@link JS_SDK_CLIENTS} holds. */\nexport const x = 1;',
+      '// JS_SDK_CLIENTS\nexport const x = 1;',
+    ]) {
+      expect(reachesSdk(file, source), source).toBe(false);
+    }
   });
 
   it('matches .all() only with MatrixClientService', () => {
