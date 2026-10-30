@@ -44,7 +44,7 @@ interface MutualRoomsPage {
  * caller falls back to its local view; so does no answer within {@link ANSWER_TIMEOUT_MS}. Cold and
  * finite; at most {@link MAX_PAGES} pages.
  */
-export function mutualRoomIds(
+function mutualRoomIds(
   client: MatrixClient,
   userId: string,
 ): Observable<ReadonlySet<string> | null> {
