@@ -6,7 +6,10 @@ use matrix_sdk::SendOutsideWasm;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::wire::{Fault, FaultKind};
+use crate::{
+    engines::homeserver,
+    wire::{Fault, FaultKind},
+};
 
 /// An engine method's output: a `BoxStream`, but a `LocalBoxStream` on wasm, where the SDK's
 /// futures and `Client` are not `Send`. [`stream`] is the one place that asks for `Send`, and only
@@ -46,7 +49,9 @@ macro_rules! methods {
     };
 }
 
-methods! {}
+methods! {
+    "homeserver.probe" => homeserver::probe(account_id: String),
+}
 
 /// Decodes positional args in order. Its `bad-args` faults name the position and the type
 /// classes but never quote a value: args carry access tokens and passwords.

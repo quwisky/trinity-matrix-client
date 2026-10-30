@@ -62,11 +62,14 @@ export const selectSuites = (
   }
 
   const { selection } = aggregate;
-  if (selection.kind === 'all') return [...suites];
+  const aggregated = suites.filter(({ ciJobOnly }) => !ciJobOnly);
+  if (selection.kind === 'all') return aggregated;
   if (selection.kind === 'environment') {
-    return suites.filter(({ environment }) => environment === selection.value);
+    return aggregated.filter(
+      ({ environment }) => environment === selection.value,
+    );
   }
-  return suites.filter(({ ciTier }) => ciTier === selection.value);
+  return aggregated.filter(({ ciTier }) => ciTier === selection.value);
 };
 
 export const quarantineApplies = (

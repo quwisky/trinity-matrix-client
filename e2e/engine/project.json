@@ -14,6 +14,11 @@
       "options": {
         "command": "node e2e/engine/run.mts",
         "cwd": "{workspaceRoot}"
+      },
+      "configurations": {
+        "rust": {
+          "command": "node e2e/engine/run.mts --engine rust"
+        }
       }
     },
     "lint": {

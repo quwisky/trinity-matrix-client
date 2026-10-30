@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { E2E_SUITES } from '../e2e/registry/index.mts';
+import { E2E_AGGREGATE_TARGETS, E2E_SUITES } from '../e2e/registry/index.mts';
 import {
   ELECTRON_FULL_SUITE,
   ELECTRON_SMOKE_SUITE,
@@ -122,6 +122,17 @@ describe('E2E suite registry runner', () => {
     expect(executeSuite).not.toHaveBeenCalled();
     expect(writeReport.mock.calls[0][1].suites).toContainEqual(
       expect.objectContaining({ id: 'mobile.ios', outcome: 'unavailable' }),
+    );
+  });
+
+  it('leaves the CI-job-only Rust contract out of every aggregate', () => {
+    for (const { target } of E2E_AGGREGATE_TARGETS) {
+      expect(selectSuites(target).map(({ id }) => id)).not.toContain(
+        'engine.rust',
+      );
+    }
+    expect(selectSuites('e2e-protocol').map(({ id }) => id)).toContain(
+      'engine.js-sdk',
     );
   });
 

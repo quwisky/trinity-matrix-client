@@ -23,6 +23,7 @@ import {
 import { assertPlainData, EngineFaultError } from '@trinity/util/matrix';
 import {
   StdioTransport,
+  startTesthostAccount,
   testhostBinaryAvailable,
 } from './engine-stdio-transport';
 
@@ -187,6 +188,7 @@ done
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await transport?.dispose();
   });
 
@@ -220,6 +222,18 @@ done
     }
     expect(await failure(transport.open('any.method', []))).toMatchObject(
       badFrame,
+    );
+  });
+
+  it('signs an account in, and fails when the host does not start it', async () => {
+    vi.stubEnv('TRINITY_ENGINE_TESTHOST', host);
+    const user = { userId: '@a:hs', deviceId: 'D', accessToken: 't' };
+    vi.stubEnv('FRAME', '{"k":"next","id":1,"v":{"ok":true,"value":null}}');
+    transport = await startTesthostAccount('https://hs', user);
+
+    vi.stubEnv('FRAME', '{"k":"next","id":1,"v":{"ok":false,"failure":{}}}');
+    await expect(startTesthostAccount('https://hs', user)).rejects.toThrow(
+      'testhost.startAccount failed: {"ok":false,"failure":{}}',
     );
   });
 

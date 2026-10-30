@@ -167,7 +167,7 @@ describe('Nightly Synapse workflow', () => {
     expect(on.schedule).toEqual([{ cron: '47 2 * * *' }]);
     expect(on).toHaveProperty('workflow_dispatch');
     // ci.yml picks a server only for QR sign-in on Tuwunel OAuth and for the engine
-    // contract, which runs against Synapse; every other job keeps the Tuwunel default.
+    // contracts, which run against Synapse; every other job keeps the Tuwunel default.
     const ci = loadWorkflow('ci.yml');
     expect(JSON.stringify(ci.env ?? {})).not.toContain(
       'TRINITY_E2E_HOMESERVER',
@@ -175,7 +175,7 @@ describe('Nightly Synapse workflow', () => {
     for (const [id, job] of Object.entries(ci.jobs)) {
       if (id === 'tuwunel-oauth-e2e') {
         expect(job.env.TRINITY_E2E_HOMESERVER).toBe('tuwunel-oauth');
-      } else if (id === 'engine-contract') {
+      } else if (id === 'engine-contract' || id === 'engine-contract-rust') {
         expect(job.env.TRINITY_E2E_HOMESERVER).toBe('synapse');
       } else {
         expect(JSON.stringify(job), id).not.toContain('TRINITY_E2E_HOMESERVER');

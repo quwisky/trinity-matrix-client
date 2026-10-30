@@ -31,7 +31,10 @@ export const CI_WORKFLOW_BY_TIER = {
 };
 
 /** Suites that run in the protocol environment from their own Nx project. */
-const TARGET_PROJECT_BY_SUITE = { 'engine.js-sdk': 'trinity-e2e-engine' };
+const TARGET_PROJECT_BY_SUITE = {
+  'engine.js-sdk': 'trinity-e2e-engine',
+  'engine.rust': 'trinity-e2e-engine',
+};
 
 const PROJECT_FILES = {
   'trinity-e2e-engine': 'e2e/engine/project.json',
@@ -193,7 +196,18 @@ export function validateRegistry(snapshot, now = new Date()) {
     }
 
     const canonicalScript = scriptByName.get(suite.canonicalScript);
-    if (!canonicalScript || canonicalScript.kind !== 'canonical') {
+    if (suite.ciJobOnly) {
+      // Its CI job is its only run: a package script would run it outside that job.
+      const listed = snapshot.packageScripts.some(({ suiteIds }) =>
+        suiteIds.includes(suite.id),
+      );
+      if (suite.canonicalScript !== undefined || listed) {
+        errors.push(`${suite.id} runs only in CI but has a package command`);
+      }
+      if (suite.ciTier === 'local-only') {
+        errors.push(`${suite.id} runs only in CI but is classified local-only`);
+      }
+    } else if (!canonicalScript || canonicalScript.kind !== 'canonical') {
       errors.push(`${suite.id} has no canonical package command`);
     } else if (!canonicalScript.suiteIds.includes(suite.id)) {
       errors.push(`${suite.id} is absent from ${suite.canonicalScript}`);
@@ -320,13 +334,16 @@ const resolvedProject = (workspaceRoot, project) => {
   return projectConfiguration;
 };
 
+/** The definition of `project:target`, or of its target when `project:target:configuration` exists. */
 const targetDefinition = (workspaceRoot, targetReference) => {
-  const separator = targetReference.indexOf(':');
-  const project = targetReference.slice(0, separator);
-  const target = targetReference.slice(separator + 1);
+  const [project, target, configuration] = targetReference.split(':');
   const projectFile = PROJECT_FILES[project];
   if (!projectFile) return undefined;
-  return resolvedProject(workspaceRoot, project).targets?.[target];
+  const definition = resolvedProject(workspaceRoot, project).targets?.[target];
+  return configuration === undefined ||
+    definition?.configurations?.[configuration]
+    ? definition
+    : undefined;
 };
 
 export const yamlRunCommands = (source) => {

@@ -5,7 +5,12 @@ use std::{collections::HashMap, future::ready, sync::Arc, time::Duration};
 use futures_util::{StreamExt, stream};
 use matrix_sdk::{
     Client, ClientBuildError, ClientBuilder, SessionMeta, SessionTokens,
-    authentication::matrix::MatrixSession, locks::Mutex, ruma::UserId, timeout::timeout,
+    authentication::matrix::MatrixSession,
+    bytes::Bytes,
+    locks::Mutex,
+    reqwest::{self, StatusCode, Url},
+    ruma::UserId,
+    timeout::timeout,
 };
 use matrix_sdk_ui::{
     encryption_sync_service,
@@ -24,6 +29,8 @@ const LOAD_LIMIT: Duration = Duration::from_secs(30);
 pub struct Engine {
     config: EngineConfig,
     accounts: Mutex<HashMap<String, Arc<AccountRuntime>>>,
+    /// For the requests the engines send themselves rather than through the SDK.
+    raw: reqwest::Client,
 }
 
 pub struct AccountRuntime {
@@ -43,9 +50,19 @@ pub struct StartAccount {
 
 impl Engine {
     pub fn new(config: EngineConfig) -> Arc<Self> {
+        let builder = reqwest::Client::builder();
+        // The browser's fetch owns redirects and TLS on wasm.
+        #[cfg(not(target_family = "wasm"))]
+        let builder = builder
+            .redirect(reqwest::redirect::Policy::none())
+            .danger_accept_invalid_certs(config.insecure_tls)
+            .min_tls_version(reqwest::tls::Version::TLS_1_2);
+        // As `reqwest::Client::new`: only a TLS backend that cannot start fails here.
+        let raw = builder.build().expect("the raw HTTP client builds");
         Arc::new(Self {
             config,
             accounts: Mutex::default(),
+            raw,
         })
     }
 
@@ -60,6 +77,25 @@ impl Engine {
         } else {
             builder
         }
+    }
+
+    /// A GET that follows no redirect, so `token` reaches only `url`: its status and body.
+    pub async fn raw_get(
+        &self,
+        url: Url,
+        token: Option<&str>,
+        timeout: Duration,
+    ) -> Result<(StatusCode, Bytes), reqwest::Error> {
+        let mut request = self.raw.get(url.clone()).timeout(timeout);
+        if let Some(token) = token {
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().await?;
+        // On wasm, fetch has already followed any redirect: answer with a 3xx, as native does.
+        if response.url() != &url {
+            return Ok((StatusCode::FOUND, Bytes::new()));
+        }
+        Ok((response.status(), response.bytes().await?))
     }
 
     /// Restores `start` with a memory store and syncs until its room list has loaded.
