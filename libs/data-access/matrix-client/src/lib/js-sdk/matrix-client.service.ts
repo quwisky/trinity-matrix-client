@@ -1,11 +1,4 @@
-import {
-  Injectable,
-  Signal,
-  WritableSignal,
-  computed,
-  signal,
-  inject,
-} from '@angular/core';
+import { Injectable, WritableSignal, signal, inject } from '@angular/core';
 import {
   createClient,
   IndexedDBStore,
@@ -52,12 +45,13 @@ import {
 import {
   MatrixSession,
   type OidcSessionBinding,
-  preloadCryptoWasm,
   rustCryptoStoreDbNames,
   syncStoreDbName,
   syncStoreIndexedDbName,
   verifiedEndpoints,
 } from '@trinity/util/matrix';
+import { preloadCryptoWasm } from './crypto-wasm-loader';
+import { importLinkedSecrets } from './linked-secrets';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';
 import {
@@ -73,8 +67,10 @@ import type {
   PersistedAccountActivation,
   ServerLogoutHoldUpdate,
   SessionAccessToken,
+  SessionStorageEffect,
 } from '../session-engine';
 import type { ServerLogoutHold } from '../server-logout-hold';
+import { SessionStorageWrites } from '../session-storage-writes';
 import {
   MatrixClientStartupError,
   classifyCryptoStartupFailure,
@@ -110,6 +106,10 @@ function sameEndpoint(a: unknown, b: string): boolean {
   } catch {
     return false;
   }
+}
+
+function linkedSecretsKey(userId: string, deviceId: string): string {
+  return `${userId}|${deviceId}`;
 }
 
 /**
@@ -172,6 +172,8 @@ interface AccountClient {
   readonly holder: SecretStorageKeyHolder;
   /** Room keys the SDK last reported as waiting for backup upload; null before any report. */
   readonly backupKeysRemaining: () => number | null;
+  /** Grows each time a new client is registered for the account. */
+  readonly generation: number;
 }
 
 /**
@@ -203,23 +205,29 @@ export interface AccessTokenRotation {
 
 /**
  * Owns the live matrix-js-sdk clients and their lifecycle: a registry of accounts, all
- * syncing, with one **active**. {@link instance} returns the active account's client.
+ * syncing, with one **active**.
  *
  * Lifecycle per account (see apps/docs-developers/src/content/docs/architecture/matrix-integration.md):
  *   createClient -> initRustCrypto({ cryptoDatabasePrefix, storageKey }) -> startClient()
  *
- * Components must NOT import matrix-js-sdk directly; go through this service and the
- * feature services layered on top.
+ * Private to the js-sdk session engine and `JS_SDK_CLIENTS`; everything else reads the
+ * session through `SessionEngine` and `SessionStateService`.
  */
 @Injectable({ providedIn: 'root' })
 export class MatrixClientService {
   private readonly storage = inject(SessionStorageService);
+  private readonly writes = inject(SessionStorageWrites);
   private readonly storeKeys = inject(CryptoStoreKeyService);
   private readonly projections = inject(ProjectionRuntime);
   private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
 
   private readonly clients = new Map<string, AccountClient>();
   private readonly logoutHolds = new Map<string, LogoutHoldState>();
+  /**
+   * Secrets another device shared in a QR sign-in, kept until the start of that exact session
+   * imports them, keyed by user and device. Memory only: never persisted or logged.
+   */
+  private readonly linkedSecrets = new Map<string, unknown>();
   /** Set by a session handover's {@link pauseSync}: a reconnect then resends nothing. */
   private syncPaused = false;
 
@@ -247,18 +255,13 @@ export class MatrixClientService {
     this.hostNetworkPolicy.allowOrigin(origin);
   }
   private readonly _activeUserId = signal<string | null>(null);
-  /** The account currently in view (whose client {@link instance} returns). */
+  /** The account currently in view. */
   readonly activeUserId = this._activeUserId.asReadonly();
 
   private readonly _accountIds = signal<readonly string[]>([]);
   /** Every signed-in account's user id (for the account switcher). */
   readonly accountIds = this._accountIds.asReadonly();
   private generationCounter = 0;
-  private readonly _sessionGenerations = signal<ReadonlyMap<string, number>>(
-    new Map(),
-  );
-  /** Per account, a number that grows each time a new client is registered for it. */
-  readonly sessionGenerations = this._sessionGenerations.asReadonly();
 
   private readonly _softLoggedOut = signal<readonly string[]>([]);
   /**
@@ -277,11 +280,16 @@ export class MatrixClientService {
   readonly accessTokenRotations: Observable<AccessTokenRotation> =
     this._accessTokenRotations.asObservable();
 
+  private readonly _storageEffects = new Subject<SessionStorageEffect>();
+  /** Server logouts for the caller to save, each once the active account has moved. */
+  readonly storageEffects: Observable<SessionStorageEffect> =
+    this._storageEffects.asObservable();
+
   /**
    * The access token Trinity last saw each OAuth account's client start with or persist,
    * with its expiry (epoch ms) when the server gave one, and whether the sign-in has a
    * refresh token. Moved to each refreshed pair once storage accepted it, before the
-   * rotation is published. Read through {@link accessTokenExpiry}.
+   * rotation is published. Read through {@link accessTokenState}.
    *
    * `client` is the start the entry belongs to. Only that client's refreshes move it and
    * only its teardown drops it: a refresh from a replaced or torn-down client, or a
@@ -319,55 +327,6 @@ export class MatrixClientService {
    */
   private cryptoInitializationQueue: Promise<unknown> = Promise.resolve();
 
-  /** Coarse sync state of the ACTIVE account (null until its first transition). */
-  readonly syncState: Signal<SyncState | null> = computed(() => {
-    // Depend on the account set too: re-adding the active user must re-bind to its fresh
-    // per-account signal even when the active id is unchanged.
-    this._accountIds();
-    return this.active()?.syncState() ?? null;
-  });
-
-  /**
-   * Whether the ACTIVE account's crypto store is encrypted at rest (null when none is
-   * active). False for a store created before store keys existed: it stays as it is until
-   * the account signs in again on this device, which creates a new, encrypted store.
-   */
-  readonly cryptoStoreEncrypted: Signal<boolean | null> = computed(() => {
-    this._accountIds();
-    return this.active()?.cryptoStoreEncrypted ?? null;
-  });
-
-  /**
-   * `offline` once the active account's sync is erroring or reconnecting, else `online`
-   * (including the pre-first-sync window, so a fresh start doesn't flash offline).
-   */
-  readonly connectivity = computed<'online' | 'offline'>(() => {
-    const state = this.syncState();
-    return state === SyncState.Error || state === SyncState.Reconnecting
-      ? 'offline'
-      : 'online';
-  });
-
-  /** How many messages of the ACTIVE account wait to go out once it reconnects. */
-  readonly waitingCount: Signal<number> = computed(() => {
-    this._accountIds();
-    return this.active()?.waitingCount() ?? 0;
-  });
-
-  get instance(): MatrixClient {
-    const account = this.active();
-    if (!account) {
-      throw new Error(
-        'MatrixClient not initialized — call init()/add() first.',
-      );
-    }
-    return account.client;
-  }
-
-  get isInitialized(): boolean {
-    return this.active() !== null;
-  }
-
   /** Every live account client, for cross-account aggregation (badge, notifications). */
   all(): readonly AccountClient[] {
     return [...this.clients.values()];
@@ -378,43 +337,9 @@ export class MatrixClientService {
     return this.clients.get(userId)?.holder ?? null;
   }
 
-  /**
-   * Whether `userId`'s live client has completed a sync with its homeserver since it
-   * started. A PREPARED replayed from the IndexedDB cache does not count: it can be
-   * minutes stale. Stays true through RECONNECTING, ERROR and STOPPED; a replacement
-   * client starts false; false when no client is live for the account.
-   */
-  serverSynced(userId: string): boolean {
-    // Re-bind after a same-id client replacement, like {@link syncState}.
-    this._accountIds();
-    return this.clients.get(userId)?.serverSynced() ?? false;
-  }
-
-  /**
-   * Whether `userId`'s live client has prepared its rooms at least once: from the sync it
-   * replays from its IndexedDB cache, or from its homeserver. False while the client is
-   * still loading even its cache, and when no client is live for the account. Unlike
-   * {@link serverSynced}, rooms from a cache can be minutes stale.
-   */
-  roomsPrepared(userId: string): boolean {
-    this._accountIds();
-    return this.clients.get(userId)?.roomsPrepared() ?? false;
-  }
-
   /** The live client for a specific account, or null (e.g. per-account server logout). */
   clientFor(userId: string): MatrixClient | null {
     return this.clients.get(userId)?.client ?? null;
-  }
-
-  /**
-   * When `accessToken` stops working (epoch ms), if it is the token Trinity last saw this
-   * account's client start with or persist and the server gave it a lifetime. Undefined
-   * for password and SSO tokens, a token without `expires_in`, and a token the client has
-   * already replaced, so an expiry never travels with the wrong token.
-   */
-  accessTokenExpiry(userId: string, accessToken: string): number | undefined {
-    const held = this.oauthTokens.get(userId);
-    return held?.accessToken === accessToken ? held.expiresAt : undefined;
   }
 
   /**
@@ -472,7 +397,7 @@ export class MatrixClientService {
    * Whether {@link refreshAccessToken} can refresh this account now: it is live, signed in
    * through OAuth and holds a refresh token.
    */
-  canRefreshAccessToken(userId: string): boolean {
+  private canRefreshAccessToken(userId: string): boolean {
     return (
       this.clients.has(userId) &&
       this.oauthTokens.get(userId)?.refreshable === true
@@ -540,6 +465,19 @@ export class MatrixClientService {
         map(() => void 0),
       );
     });
+  }
+
+  /**
+   * Keep a QR sign-in's shared secrets for the start of this user's device. That start imports
+   * them once, right after `startClient`; a start of any other user or device leaves them.
+   */
+  holdLinkedSecrets(userId: string, deviceId: string, bundle: unknown): void {
+    this.linkedSecrets.set(linkedSecretsKey(userId, deviceId), bundle);
+  }
+
+  /** Forget the secrets held for a user's device, if any. */
+  dropLinkedSecrets(userId: string, deviceId: string): void {
+    this.linkedSecrets.delete(linkedSecretsKey(userId, deviceId));
   }
 
   /** Add another account (keeping the others syncing) and make it active. */
@@ -860,6 +798,22 @@ export class MatrixClientService {
     );
   }
 
+  /** Imports the secrets held for exactly this session's user and device, taking them once. */
+  private async importHeldSecrets(
+    client: MatrixClient,
+    session: MatrixSession,
+  ): Promise<void> {
+    const key = linkedSecretsKey(session.userId, session.deviceId);
+    const bundle = this.linkedSecrets.get(key);
+    if (bundle === undefined) return;
+    this.linkedSecrets.delete(key);
+    if (!(await importLinkedSecrets(client, bundle))) {
+      console.warn(
+        "Couldn't verify this device with the secrets the other device shared.",
+      );
+    }
+  }
+
   /**
    * One actual start attempt: awaits a pending wipe for the same account, then builds,
    * bootstraps and registers the client. {@link start} owns the joining and cancellation.
@@ -1085,6 +1039,7 @@ export class MatrixClientService {
                 ? throwError(() => new MatrixClientStartupError(failure, error))
                 : throwError(() => error);
             }),
+            switchMap(() => this.importHeldSecrets(created!, session)),
           ),
         ),
         map(() => {
@@ -1108,12 +1063,10 @@ export class MatrixClientService {
             onLoggedOut,
             holder,
             backupKeysRemaining: () => backupKeysRemaining,
+            generation: ++this.generationCounter,
           };
           account = started;
           this.clients.set(session.userId, started);
-          this._sessionGenerations.update((m) =>
-            new Map(m).set(session.userId, ++this.generationCounter),
-          );
           // A logout recorded for a replaced client must not end this one; a token that is
           // still dead reports itself again.
           const held = this.logoutHolds.get(session.userId);
@@ -1156,9 +1109,9 @@ export class MatrixClientService {
    * `POST /logout`. Without `oauthClientId` the SDK does not refresh at all, and the first
    * 401 becomes a hard logout that deletes the account's crypto store.
    *
-   * `onTokenRefresh` persists for THIS account only and returns the write: the SDK awaits
-   * it before adopting the new pair, so a failed write fails the refresh and the old
-   * tokens stay in memory.
+   * `onTokenRefresh` persists for THIS account only, through {@link SessionStorageWrites}, and
+   * returns the write: the SDK awaits it before adopting the new pair, so a failed write fails
+   * the refresh and the old tokens stay in memory.
    *
    * The write is a compare-and-swap on the sign-in the session came from (its
    * {@link MatrixSession.lineage}): storage applies it only while the account's record still
@@ -1186,13 +1139,14 @@ export class MatrixClientService {
             fetchFn: this.pinnedProviderFetch(session, session.oidc),
             onTokenRefresh: (tokens: AccessTokens): Promise<void> =>
               firstValueFrom(
-                this.storage.updateTokens(
-                  session.userId,
-                  session.lineage,
-                  tokens.accessToken,
-                  tokens.refreshToken,
-                  tokens.expiry?.getTime(),
-                ),
+                this.writes.apply({
+                  kind: 'tokens-rotated',
+                  accountId: session.userId,
+                  lineage: session.lineage ?? null,
+                  accessToken: tokens.accessToken,
+                  refreshToken: tokens.refreshToken ?? null,
+                  expiresAt: tokens.expiry?.getTime() ?? null,
+                }),
               ).then(() => {
                 if (owner.kind === 'detached') {
                   return;
@@ -1387,7 +1341,6 @@ export class MatrixClientService {
       this.forgetOAuthTokens(account.userId, account.client);
     }
     this.clients.clear();
-    this._sessionGenerations.set(new Map());
     this._accountIds.set([]);
     this.publishCorsOrigins();
     this._activeUserId.set(null);
@@ -1426,11 +1379,6 @@ export class MatrixClientService {
     account.client.stopClient(); // clearStores must run with the client stopped
     account.holder.clear();
     this.clients.delete(userId);
-    this._sessionGenerations.update((m) => {
-      const next = new Map(m);
-      next.delete(userId);
-      return next;
-    });
     this._accountIds.set([...this.clients.keys()]);
     this.publishCorsOrigins();
     if (this._activeUserId() === userId) {
@@ -1518,24 +1466,19 @@ export class MatrixClientService {
       return;
     }
     if (soft) {
-      // Keep the stores and registry entry for re-auth, but drop the dead token so a
-      // restart's restore skips it instead of resurrecting a failing ghost account.
+      // Keep the stores and registry entry for re-auth. The effect's writer drops the dead
+      // token, so a restart's restore skips it instead of resurrecting a failing ghost account.
       this.removeInternal(userId, false);
-      this.storage
-        .invalidateToken(userId)
-        .subscribe({ error: () => undefined });
       this.markSoftLoggedOut(userId);
     } else {
-      // The device is gone server-side: wipe locally and forget the account.
+      // The device is gone server-side: wipe locally; the effect's writer forgets the account.
       this.removeInternal(userId, true);
-      this.storage.remove(userId).subscribe({ error: () => undefined });
     }
-    // removeInternal repoints in memory by Map order, storage.remove by array order; without
-    // this a restart could restore a different account than the UI shows.
-    const active = this._activeUserId();
-    if (active) {
-      this.storage.setActive(active).subscribe({ error: () => undefined });
-    }
+    this._storageEffects.next({
+      kind: soft ? 'soft-logout' : 'hard-logout',
+      accountId: userId,
+      activeAccountId: this._activeUserId(),
+    });
   }
 
   /** Drop a user id from the soft-logged-out set (on re-auth or full removal). */

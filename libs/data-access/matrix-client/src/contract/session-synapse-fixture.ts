@@ -18,6 +18,15 @@ export function sessionSynapseFixture(
   passwordFor(session: MatrixSession): string;
   /** Signs in with the account's password as a new device. */
   signInAgain(session: MatrixSession): Promise<MatrixSession>;
+  /** Outside the engine, the session's account takes a display name, then creates a room. */
+  createNamedRoom(
+    session: MatrixSession,
+    names: {
+      readonly displayName: string;
+      readonly roomName: string;
+      readonly roomTopic: string;
+    },
+  ): Promise<void>;
 } {
   const passwords = new Map<string, string>();
   let sequence = 0;
@@ -43,6 +52,21 @@ export function sessionSynapseFixture(
       deviceId: body.device_id,
       accessToken: body.access_token,
     };
+  }
+
+  async function asUser(
+    session: MatrixSession,
+    method: 'POST' | 'PUT',
+    path: string,
+    body: unknown,
+  ): Promise<void> {
+    const res = await fetch(`${baseUrl}/_matrix/client/v3${path}`, {
+      method,
+      headers: { authorization: `Bearer ${session.accessToken}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok)
+      throw new Error(`Synapse ${method} ${path} failed: ${res.status}`);
   }
 
   return {
@@ -103,5 +127,18 @@ export function sessionSynapseFixture(
     },
     passwordFor: (session) => passwords.get(session.userId) ?? '',
     signInAgain: (session) => login(session.userId),
+    async createNamedRoom(session, names) {
+      await asUser(
+        session,
+        'PUT',
+        `/profile/${encodeURIComponent(session.userId)}/displayname`,
+        { displayname: names.displayName },
+      );
+      await asUser(session, 'POST', '/createRoom', {
+        name: names.roomName,
+        topic: names.roomTopic,
+        preset: 'private_chat',
+      });
+    },
   };
 }

@@ -27,6 +27,9 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 
 type LinkState = { kind: 'scanning' } | ExistingDeviceState;
 
+const APPROVE_HINT =
+  "Your new device should now say it's waiting for approval. Continue only if it does.";
+
 /** The existing device's side of a QR sign-in: scans the new device's code and links it. */
 @Component({
   selector: 'trn-link-device',
@@ -68,7 +71,13 @@ export class LinkDeviceComponent {
   );
   /** What the live region says; written after each render, never on insertion. */
   readonly announcement = signal('');
-  readonly failureMessages = QR_SIGN_IN_FAILURE_MESSAGES;
+  readonly failureMessages = {
+    ...QR_SIGN_IN_FAILURE_MESSAGES,
+    // Here `insecure` means the approval link is not on the account's own server.
+    insecure:
+      "This request didn't come from your account's server, so nothing was shared.",
+  };
+  readonly approveHint = APPROVE_HINT;
 
   constructor() {
     effect(() => {
@@ -98,8 +107,8 @@ export class LinkDeviceComponent {
       });
   }
 
-  confirmCheckCode(match: boolean): void {
-    this.link?.confirmCheckCode(match);
+  approve(): void {
+    this.link?.approve();
   }
 
   openApprovalPage(): void {
@@ -125,7 +134,7 @@ export class LinkDeviceComponent {
     this.close();
   }
 
-  /** Cancel any link in progress (declining it at the check code) and close. */
+  /** Cancel any link in progress (declining it before it is confirmed) and close. */
   close(): void {
     this.flow?.unsubscribe();
     this.closed.emit();
@@ -137,7 +146,7 @@ export class LinkDeviceComponent {
       this.notice.set("That's not a Trinity sign-in code");
       return;
     }
-    if (state.kind === 'confirm-check-code') this.checkCode.set(state.code);
+    if (state.kind === 'check-code') this.checkCode.set(state.code);
     if (state.kind === 'approve-in-browser') {
       this.verificationUri.set(state.verificationUri);
     }
@@ -161,8 +170,10 @@ export class LinkDeviceComponent {
       case 'connecting':
       case 'not-sign-in-code':
         return 'Connecting to your new device…';
-      case 'confirm-check-code':
-        return `Check code: ${this.spokenCheckCode()}`;
+      case 'check-code':
+        return `Code to enter on your new device: ${this.spokenCheckCode()}`;
+      case 'approve':
+        return APPROVE_HINT;
       case 'approve-in-browser':
       case 'sharing-secrets':
         return 'Open the approval page and approve the sign-in.';

@@ -1,312 +1,146 @@
-import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MockProvider } from 'ng-mocks';
-import { describe, expect, it, type Mock, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { finalize } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
 import { AccountIdentitiesService } from './account-identities.service';
+import { ME, identityFixture, sessionWith } from './identity.spec-harness';
 
-interface FakeProfile {
-  displayName?: string;
-  avatarUrl?: string | null;
-}
+const ALT = '@alt:hs';
 
-/**
- * A client stub for one account, with `on`/`off` spies so listeners are assertable.
- *
- * `getUser` RESPECTS its argument: reading a client for the wrong user id is the bug class
- * this service exists to prevent, and a stub that answers for anyone cannot see it.
- */
-function fakeClient(ownId: string, profile: FakeProfile | null) {
-  return {
-    ownId,
-    getUser: (userId: string) => (userId === ownId ? profile : null),
-    on: vi.fn(),
-    off: vi.fn(),
-  };
-}
-
-function setup(
-  accounts: Record<string, ReturnType<typeof fakeClient>>,
-  /** Signed-in ids whose client is not created yet — `clientFor` returns null for these. */
-  idsWithoutClients: string[] = [],
-) {
-  const ids = signal<readonly string[]>([
-    ...Object.keys(accounts),
-    ...idsWithoutClients,
-  ]);
-  const active = signal<string | null>(null);
-  const clients = new Map(Object.entries(accounts));
+function setup(accounts: readonly string[] = [ME, ALT]) {
+  const fixture = identityFixture(accounts);
+  const closed: string[] = [];
+  const ownProfile = fixture.engine.ownProfile.bind(fixture.engine);
+  const subscribe = vi
+    .spyOn(fixture.engine, 'ownProfile')
+    .mockImplementation((accountId) =>
+      ownProfile(accountId).pipe(finalize(() => closed.push(accountId))),
+    );
   TestBed.resetTestingModule();
-  TestBed.configureTestingModule({
-    providers: [
-      AccountIdentitiesService,
-      MockProvider(MatrixClientService, {
-        accountIds: ids.asReadonly(),
-        activeUserId: active.asReadonly(),
-        clientFor: (userId: string) => (clients.get(userId) ?? null) as never,
-      }),
-    ],
-  });
+  TestBed.configureTestingModule({ providers: fixture.providers });
   const svc = TestBed.inject(AccountIdentitiesService);
-  // The projection wires itself from a constructor effect, which has not run yet.
+  // The subscriptions are reconciled from a constructor effect, which has not run yet.
   TestBed.tick();
-  return { svc, ids, active, clients };
-}
-
-/** Pull a captured listener by event name. */
-function handlerFor(
-  client: { on: Mock },
-  event: string,
-): ((e: unknown, user: { userId: string }) => void) | undefined {
-  const call = client.on.mock.calls.find(([e]) => e === event);
-  return call?.[1];
+  /** The engine's account changed its own profile, as its sync reports. */
+  const rename = (accountId: string, displayName: string | null) => {
+    fixture.engine.profiles.set(accountId, {
+      avatarMxc: fixture.engine.profiles.get(accountId)?.avatarMxc ?? null,
+      displayName,
+    });
+    fixture.engine.changed();
+  };
+  return { ...fixture, svc, subscribe, closed, rename };
 }
 
 describe('AccountIdentitiesService', () => {
-  it('reads every signed-in account through its own client', () => {
-    const { svc } = setup({
-      '@me:hs': fakeClient('@me:hs', {
-        displayName: 'Me',
-        avatarUrl: 'mxc://hs/me',
-      }),
-      '@alt:hs': fakeClient('@alt:hs', { displayName: 'Alt', avatarUrl: null }),
-    });
+  it('reads every signed-in account’s own profile', () => {
+    const { svc, engine } = setup();
+    engine.profiles.set(ME, { displayName: 'Me', avatarMxc: 'mxc://hs/me' });
+    engine.profiles.set(ALT, { displayName: 'Alt', avatarMxc: null });
+    engine.changed();
 
-    expect(svc.identityOf('@me:hs')).toEqual({
-      userId: '@me:hs',
+    expect(svc.identityOf(ME)).toEqual({
+      userId: ME,
       displayName: 'Me',
       avatarMxc: 'mxc://hs/me',
     });
-    expect(svc.identityOf('@alt:hs').displayName).toBe('Alt');
+    expect(svc.identityOf(ALT).displayName).toBe('Alt');
   });
 
   it('falls back to the user id before a profile has hydrated', () => {
-    const { svc } = setup({ '@alt:hs': fakeClient('@alt:hs', null) });
+    const { svc } = setup([ALT]);
 
-    expect(svc.identityOf('@alt:hs')).toEqual({
-      userId: '@alt:hs',
-      displayName: '@alt:hs',
+    expect(svc.identityOf(ALT)).toEqual({
+      userId: ALT,
+      displayName: ALT,
       avatarMxc: null,
     });
   });
 
-  it('follows a display-name change on the account it belongs to', async () => {
-    const client = fakeClient('@alt:hs', null);
-    const { svc } = setup({ '@alt:hs': client });
-    expect(svc.identityOf('@alt:hs').displayName).toBe('@alt:hs');
+  it('follows a display-name change on the account it belongs to', () => {
+    const { svc, rename } = setup();
 
-    // The profile hydrates on THAT account's sync, which is what the counter this
-    // replaced could not see — it was bumped only by the active client.
-    client.getUser = (id) =>
-      id === '@alt:hs' ? { displayName: 'Alice', avatarUrl: 'mxc://a' } : null;
-    handlerFor(client, 'User.displayName')?.({}, { userId: '@alt:hs' });
-    await Promise.resolve();
+    rename(ALT, 'Alice');
 
-    expect(svc.identityOf('@alt:hs').displayName).toBe('Alice');
-    expect(svc.identityOf('@alt:hs').avatarMxc).toBe('mxc://a');
+    expect(svc.identityOf(ALT).displayName).toBe('Alice');
+    expect(svc.identityOf(ME).displayName).toBe(ME);
   });
 
-  it('follows an avatar change that leaves the name alone', async () => {
-    // Every other test that changes a profile also changes the display name, so the
-    // avatar arm of the equality check was dead weight. Change only your picture and the
-    // header chip, the switcher and every mixed badge would never have updated.
-    const client = fakeClient('@me:hs', {
-      displayName: 'Me',
-      avatarUrl: 'mxc://old',
-    });
-    const { svc } = setup({ '@me:hs': client });
+  it('follows an avatar change that leaves the name alone', () => {
+    const { svc, engine } = setup([ME]);
+    engine.profiles.set(ME, { displayName: 'Me', avatarMxc: 'mxc://old' });
+    engine.changed();
 
-    client.getUser = (id) =>
-      id === '@me:hs' ? { displayName: 'Me', avatarUrl: 'mxc://new' } : null;
-    handlerFor(client, 'User.avatarUrl')?.({}, { userId: '@me:hs' });
-    await Promise.resolve();
+    engine.profiles.set(ME, { displayName: 'Me', avatarMxc: 'mxc://new' });
+    engine.changed();
 
-    expect(svc.identityOf('@me:hs').avatarMxc).toBe('mxc://new');
+    expect(svc.identityOf(ME).avatarMxc).toBe('mxc://new');
   });
 
   it('falls back to the mxid for an EMPTY display name', () => {
-    // Synapse and the SDK both hand back '' for a user with no displayname, so `??` would
-    // render a blank name where `||` renders the mxid. The hydration test uses a null
-    // profile, where the two agree.
-    const { svc } = setup({
-      '@me:hs': fakeClient('@me:hs', { displayName: '', avatarUrl: null }),
-    });
+    // Synapse hands back '' for a user with no displayname, so `??` would render a blank
+    // name where `||` renders the mxid.
+    const { svc, rename } = setup([ME]);
 
-    expect(svc.identityOf('@me:hs').displayName).toBe('@me:hs');
+    rename(ME, '');
+
+    expect(svc.identityOf(ME).displayName).toBe(ME);
   });
 
-  it('ignores an event about somebody else on the same client', async () => {
-    // The client re-emits these for every user it knows — everyone in every room — so an
-    // unfiltered handler would rebuild on other people's profile changes.
-    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
-    const { svc } = setup({ '@me:hs': client });
+  it('holds the same map when a change leaves every profile alone', () => {
+    const { svc, rename, engine } = setup();
+    rename(ME, 'Me');
     const before = svc.identities();
 
-    client.getUser = (id) =>
-      id === '@me:hs' ? { displayName: 'Changed', avatarUrl: null } : null;
-    handlerFor(client, 'User.displayName')?.({}, { userId: '@someone:hs' });
-    // Flushed BEFORE asserting: the rebuild is coalesced onto a microtask, so this would
-    // pass against an unflushed turn whether or not the filter works.
-    await Promise.resolve();
+    engine.changed();
 
     expect(svc.identities()).toBe(before);
   });
 
-  it('holds the same map when a rebuild changes nothing', async () => {
-    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
-    const { svc } = setup({ '@me:hs': client });
-    const before = svc.identities();
+  it('lets go of an account that signs out', () => {
+    const { svc, session, closed } = setup();
 
-    handlerFor(client, 'User.avatarUrl')?.({}, { userId: '@me:hs' });
-    await Promise.resolve();
-
-    expect(svc.identities()).toBe(before);
-  });
-
-  it('collapses a burst into one rebuild', async () => {
-    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
-    const { svc } = setup({ '@me:hs': client });
-    let reads = 0;
-    client.getUser = (id) => {
-      reads += 1;
-      return id === '@me:hs' ? { displayName: 'Me', avatarUrl: null } : null;
-    };
-
-    const onName = handlerFor(client, 'User.displayName');
-    onName?.({}, { userId: '@me:hs' });
-    onName?.({}, { userId: '@me:hs' });
-    onName?.({}, { userId: '@me:hs' });
-    await Promise.resolve();
-
-    expect(reads).toBe(1);
-    expect(svc.identityOf('@me:hs').displayName).toBe('Me');
-  });
-
-  it('detaches from an account that signs out', () => {
-    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
-    const { svc, ids, clients } = setup({ '@me:hs': client });
-    // Captured BEFORE the sign-out, so the assertions can name the exact functions.
-    // `expect.any(Function)` passed even when `detach` unregistered handlers it had never
-    // registered — which leaves the real ones attached to a stopped client.
-    const onName = handlerFor(client, 'User.displayName');
-    const onAvatar = handlerFor(client, 'User.avatarUrl');
-    const onSync = handlerFor(client, 'sync');
-
-    clients.delete('@me:hs');
-    ids.set([]);
+    session.set(sessionWith(ME, [ME]));
     TestBed.tick();
 
-    expect(client.off).toHaveBeenCalledWith('User.displayName', onName);
-    expect(client.off).toHaveBeenCalledWith('User.avatarUrl', onAvatar);
-    expect(client.off).toHaveBeenCalledWith('sync', onSync);
-    expect(svc.identities().size).toBe(0);
+    expect(closed).toEqual([ALT]);
+    expect([...svc.identities().keys()]).toEqual([ME]);
   });
 
-  it('rebinds when the same account gets a new client object', async () => {
-    // Re-adding an already signed-in account stops and re-creates its client. Holding the
-    // old one strands the listener on a stopped client and that account silently freezes.
-    const first = fakeClient('@me:hs', { displayName: 'Old', avatarUrl: null });
-    const { svc, active, clients } = setup({ '@me:hs': first });
+  it('subscribes again when the same account gets a new client', () => {
+    // Re-adding a signed-in account keeps its id and the account list, and starts a new
+    // session generation: holding the old subscription would freeze that account.
+    const { svc, session, subscribe, closed, rename } = setup([ME]);
+    expect(subscribe).toHaveBeenCalledTimes(1);
 
-    const second = fakeClient('@me:hs', {
-      displayName: 'New',
-      avatarUrl: null,
-    });
-    clients.set('@me:hs', second);
-    // Driving the ACTIVE ACCOUNT, not the id list — the id list is genuinely unchanged
-    // when an account is re-added, so `activeUserId` is what has to re-run the effect.
-    // Writing `ids.set([...])` instead would pass on array identity alone and leave that
-    // dependency unpinned.
-    active.set('@me:hs');
+    session.set(sessionWith(ME, [ME], 2));
+    TestBed.tick();
+    rename(ME, 'Newer');
+
+    expect(closed).toEqual([ME]);
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    expect(svc.identityOf(ME).displayName).toBe('Newer');
+  });
+
+  it('picks up an account that signs in later', () => {
+    const { svc, engine, session } = setup([ME]);
+    engine.signIn(ALT, { displayName: 'Alt', avatarMxc: null });
+
+    session.set(sessionWith(ME, [ME, ALT]));
     TestBed.tick();
 
-    expect(first.off).toHaveBeenCalledWith('sync', handlerFor(first, 'sync'));
-    expect(second.on.mock.calls.map(([e]) => e).sort()).toEqual([
-      'User.avatarUrl',
-      'User.displayName',
-      'sync',
-    ]);
-
-    second.getUser = (id) =>
-      id === '@me:hs' ? { displayName: 'Newer', avatarUrl: null } : null;
-    handlerFor(second, 'User.displayName')?.({}, { userId: '@me:hs' });
-    await Promise.resolve();
-
-    expect(svc.identityOf('@me:hs').displayName).toBe('Newer');
+    expect(svc.identityOf(ALT).displayName).toBe('Alt');
   });
 
-  it('follows the account\u2019s own profile hydrating on sync', async () => {
-    // THE case, and the one the UserEvent listeners cannot cover: the client seeds its own
-    // user with `new User(id)` rather than `User.createUser`, so it has no re-emitter and
-    // `User.displayName` never reaches a client-level listener for it. Before the sync
-    // trigger existed, the header chip and every account badge showed the raw mxid for the
-    // whole session.
-    const client = fakeClient('@me:hs', {
-      displayName: '@me:hs',
-      avatarUrl: null,
-    });
-    const { svc } = setup({ '@me:hs': client });
-    expect(svc.identityOf('@me:hs').displayName).toBe('@me:hs');
-
-    client.getUser = (id) =>
-      id === '@me:hs' ? { displayName: 'Me', avatarUrl: 'mxc://me' } : null;
-    handlerFor(client, 'sync')?.({}, { userId: '' } as never);
-    await Promise.resolve();
-
-    expect(svc.identityOf('@me:hs').displayName).toBe('Me');
-    expect(svc.identityOf('@me:hs').avatarMxc).toBe('mxc://me');
-  });
-
-  it('hears a BACKGROUND account sync without the active one syncing', async () => {
-    // Each account gets its own sync listener, which is the whole point: the counter this
-    // replaced was bumped by the active client only.
-    const me = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
-    const alt = fakeClient('@alt:hs', null);
-    const { svc } = setup({ '@me:hs': me, '@alt:hs': alt });
-
-    alt.getUser = (id) =>
-      id === '@alt:hs' ? { displayName: 'Alt', avatarUrl: null } : null;
-    handlerFor(alt, 'sync')?.({}, { userId: '' } as never);
-    await Promise.resolve();
-
-    expect(svc.identityOf('@alt:hs').displayName).toBe('Alt');
-  });
-
-  it('detaches the sync listener too', () => {
-    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
-    const { ids, clients } = setup({ '@me:hs': client });
-
-    const onSync = handlerFor(client, 'sync');
-    clients.delete('@me:hs');
-    ids.set([]);
-    TestBed.tick();
-
-    expect(client.off).toHaveBeenCalledWith('sync', onSync);
-  });
-
-  it('skips an account whose client is not live yet, and picks it up later', () => {
-    // Signed in but not started — `clientFor` returns null. The account must still appear
-    // (as its mxid) rather than being dropped, and must gain a listener once its client
-    // exists. The earlier version of this test passed no such id at all, so neither loop
-    // body ran and the guard it named was never reached.
-    const { svc, ids, clients } = setup({}, ['@pending:hs']);
-    expect(svc.identityOf('@pending:hs').displayName).toBe('@pending:hs');
-
-    const late = fakeClient('@pending:hs', {
+  it('shows the user id while the account’s client is not live', () => {
+    const { svc, engine, session } = setup([ME]);
+    engine.profiles.set('@pending:hs', {
       displayName: 'Pending',
-      avatarUrl: null,
+      avatarMxc: null,
     });
-    clients.set('@pending:hs', late);
-    ids.set(['@pending:hs']);
+
+    session.set(sessionWith(ME, [ME, '@pending:hs']));
     TestBed.tick();
 
-    // All three, named: `toHaveBeenCalled()` is satisfied by any one of them, and the
-    // sync listener is THE trigger for an account's own profile.
-    expect(late.on.mock.calls.map(([e]) => e).sort()).toEqual([
-      'User.avatarUrl',
-      'User.displayName',
-      'sync',
-    ]);
-    expect(svc.identityOf('@pending:hs').displayName).toBe('Pending');
+    expect(svc.identityOf('@pending:hs').displayName).toBe('@pending:hs');
   });
 });

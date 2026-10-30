@@ -24,12 +24,9 @@ vi.mock('matrix-js-sdk', async (importOriginal) => {
   };
 });
 
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
+vi.mock('./crypto-wasm-loader', async () => {
   const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
+  return { preloadCryptoWasm: () => rxOf(undefined) };
 });
 
 type Handler = (...args: never[]) => void;
@@ -44,22 +41,31 @@ describe('SessionStateService parity with MatrixClientService', () => {
   let clients: ReturnType<typeof fakeClient>[];
 
   function expectParity(): void {
+    const accounts = new Map(svc.all().map((a) => [a.userId, a]));
+    const active = accounts.get(svc.activeUserId() ?? '');
+    const activeSync = active?.syncState() ?? null;
     expect(state.activeAccountId()).toBe(svc.activeUserId());
     expect(state.accountIds()).toEqual(svc.accountIds());
     expect(state.softLoggedOut()).toEqual(svc.softLoggedOut());
-    expect(state.connectivity()).toBe(svc.connectivity());
-    expect(state.waitingCount()).toBe(svc.waitingCount());
-    expect(state.cryptoStoreEncrypted()).toBe(svc.cryptoStoreEncrypted());
+    expect(state.connectivity()).toBe(
+      activeSync === SyncState.Error || activeSync === SyncState.Reconnecting
+        ? 'offline'
+        : 'online',
+    );
+    expect(state.waitingCount()).toBe(active?.waitingCount() ?? 0);
+    expect(state.cryptoStoreEncrypted()).toBe(
+      active?.cryptoStoreEncrypted ?? null,
+    );
     expect(state.syncState()).toBe(
-      svc.activeUserId() === null ? null : toSessionSyncState(svc.syncState()),
+      svc.activeUserId() === null ? null : toSessionSyncState(activeSync),
     );
     for (const id of [SESSION.userId, SESSION_B.userId]) {
       const live = svc.accountIds().includes(id);
       expect(state.status(id)?.serverSynced ?? false).toBe(
-        svc.serverSynced(id),
+        accounts.get(id)?.serverSynced() ?? false,
       );
       expect(state.status(id)?.roomsPrepared ?? false).toBe(
-        svc.roomsPrepared(id),
+        accounts.get(id)?.roomsPrepared() ?? false,
       );
       expect(state.status(id) !== null).toBe(live);
     }

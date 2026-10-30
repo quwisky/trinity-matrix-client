@@ -9,6 +9,7 @@ import {
   HttpApiEvent,
   MatrixError,
   SyncState,
+  TokenRefreshError,
   createClient,
 } from 'matrix-js-sdk';
 import { firstValueFrom, of } from 'rxjs';
@@ -45,12 +46,9 @@ vi.mock('matrix-js-sdk', async (importOriginal) => {
   };
 });
 
-vi.mock('@trinity/util/matrix', async (importOriginal) => {
+vi.mock('./crypto-wasm-loader', async () => {
   const { of: rxOf } = await import('rxjs');
-  return {
-    ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
-    preloadCryptoWasm: () => rxOf(undefined),
-  };
+  return { preloadCryptoWasm: () => rxOf(undefined) };
 });
 
 const KEYED = {
@@ -128,11 +126,9 @@ describe('JsSdkSessionEngine', () => {
 
     expect(snapshot.accounts.map((a) => a.accountId)).toEqual(svc.accountIds());
     expect(snapshot.activeAccountId).toBe(svc.activeUserId());
-    for (const account of snapshot.accounts) {
-      expect(account.generation).toBe(
-        svc.sessionGenerations().get(account.accountId),
-      );
-    }
+    expect(snapshot.accounts.map((a) => a.generation)).toEqual(
+      svc.all().map((a) => a.generation),
+    );
     expect(snapshot.accounts[0]).toEqual({
       accountId: SESSION.userId,
       deviceId: SESSION.deviceId,
@@ -460,9 +456,8 @@ describe('JsSdkSessionEngine', () => {
 
     it('reports the dead token as it happens and replays it once released', async () => {
       const client = fakeClient();
-      const { engine, storage } = await live(client);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const { engine } = await live(client);
+      const effects = collect(engine.storageEffects());
       let completed = false;
       const updates: unknown[] = [];
       engine.holdServerLogout(SESSION.userId).subscribe({
@@ -480,14 +475,18 @@ describe('JsSdkSessionEngine', () => {
       await firstValueFrom(engine.releaseServerLogoutHold('1', false));
       expect(completed).toBe(true);
       expect(engine.snapshot().accounts).toEqual([]);
-      expect(storage.remove).toHaveBeenCalledWith(SESSION.userId);
+      expect(effects).toEqual([
+        {
+          kind: 'hard-logout',
+          accountId: SESSION.userId,
+          activeAccountId: null,
+        },
+      ]);
     });
 
     it('releases as not deleted on unsubscribe, and ends when the account leaves', async () => {
       const client = fakeClient();
-      const { engine, storage } = await live(client);
-      vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      const { engine } = await live(client);
       const dropped = engine.holdServerLogout(SESSION.userId).subscribe();
       const kept = collect(engine.holdServerLogout(SESSION.userId));
       loggedOut(client);
@@ -571,6 +570,26 @@ describe('JsSdkSessionEngine', () => {
       expect(() => assertPlainData(result)).not.toThrow();
     });
 
+    it('marks a request that failed on a token refresh with that cause', async () => {
+      const client = {
+        ...fakeClient(),
+        deactivateAccount: vi
+          .fn()
+          .mockRejectedValue(new TokenRefreshError(new Error('offline'))),
+      };
+      const { engine } = await live(client);
+
+      const result = await firstValueFrom(
+        engine.deactivateAccount(SESSION.userId, false, null),
+      );
+
+      expect(!result.ok && result.failure).toMatchObject({
+        code: 'request-failed',
+        params: { cause: 'session-refresh' },
+      });
+      expect(() => assertPlainData(result)).not.toThrow();
+    });
+
     it('logs out with the live client, or a detached one that saves no refresh', async () => {
       const client = { ...fakeClient(), logout: vi.fn(async () => ({})) };
       const { engine, svc } = await live(client);
@@ -591,6 +610,34 @@ describe('JsSdkSessionEngine', () => {
         persistRefreshedTokens: false,
       });
       expect(detached.logout).toHaveBeenCalledWith(true);
+    });
+
+    it('logoutSession drops a held bundle', async () => {
+      const importSecretsBundle = vi.fn().mockResolvedValue(undefined);
+      const client = {
+        ...fakeClient(),
+        getUserId: vi.fn(() => SESSION.userId),
+        getCrypto: vi.fn(() => ({
+          importSecretsBundle,
+          crossSignDevice: vi.fn().mockResolvedValue(undefined),
+          checkKeyBackupAndEnable: vi.fn().mockResolvedValue(null),
+          isCrossSigningReady: vi.fn().mockResolvedValue(true),
+          getDeviceVerificationStatus: vi
+            .fn()
+            .mockResolvedValue({ crossSigningVerified: true }),
+        })),
+      };
+      const { svc } = setup(client);
+      const engine = TestBed.inject(JsSdkSessionEngine);
+      vi.spyOn(svc, 'detachedClient').mockReturnValue({
+        logout: vi.fn(async () => ({})),
+      } as never);
+      svc.holdLinkedSecrets(SESSION.userId, SESSION.deviceId, { held: true });
+
+      await firstValueFrom(engine.logoutSession(SESSION));
+      await firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+
+      expect(importSecretsBundle).not.toHaveBeenCalled();
     });
   });
 

@@ -37,8 +37,8 @@ export interface DiagnosticReportSources {
   readonly platform: () => string;
   /** The signed-in accounts: read once, complete, never error. */
   readonly accounts: Observable<readonly DiagnosticAccount[]>;
-  /** The names to replace in the file, read only while the file is built. */
-  readonly knownNames: () => Iterable<DiagnosticNameGroup>;
+  /** The names to replace in the file: read once, after the snapshot; complete, never error. */
+  readonly knownNames: Observable<Iterable<DiagnosticNameGroup>>;
   /** Everything stored plus the unflushed lines, once the setting is known. */
   readonly snapshot: Observable<DiagnosticSnapshot>;
   /** Builds the redacted file. */
@@ -73,16 +73,21 @@ export function prepareDiagnosticReport(
         signedIn: signedIn.length > 0,
       })),
     );
+    // The names are read after the snapshot, so a name learned meanwhile is still known.
     const bundle = forkJoin([sources.snapshot, accounts]).pipe(
       switchMap(([snapshot, signedIn]) =>
-        sources.bundle({
-          now: new Date(),
-          build: sources.build,
-          platform,
-          accounts: signedIn,
-          knownNames: sources.knownNames(),
-          snapshot,
-        }),
+        sources.knownNames.pipe(
+          switchMap((knownNames) =>
+            sources.bundle({
+              now: new Date(),
+              build: sources.build,
+              platform,
+              accounts: signedIn,
+              knownNames,
+              snapshot,
+            }),
+          ),
+        ),
       ),
       map((built): DiagnosticReportProgress => ({
         kind: 'bundle',

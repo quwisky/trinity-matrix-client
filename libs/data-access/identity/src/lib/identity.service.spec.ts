@@ -1,99 +1,57 @@
-import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { MatrixClient } from 'matrix-js-sdk';
-import { MockProvider, ngMocks } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { AvatarService } from '@trinity/data-access/media';
+import { type EngineResult, engineOk } from '@trinity/util/matrix';
+import { MockProvider } from 'ng-mocks';
+import { Subject, firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { UserProfile } from './identity-engine';
 import { IdentityService } from './identity.service';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  ME,
+  OFFLINE,
+  SERVER_ERROR,
+  identityFixture,
+  sessionWith,
+} from './identity.spec-harness';
 
-/**
- * The fakes here implement only the slice of MatrixClient the service touches, so the
- * widening cast lives at this one visible seam rather than implicitly at every stub site.
- */
-const asClient = (fake: object): MatrixClient =>
-  fake as unknown as MatrixClient;
-
-function fakeClient(overrides: Record<string, unknown> = {}) {
-  return {
-    getUserId: vi.fn(() => '@me:hs'),
-    getProfileInfo: vi
-      .fn()
-      .mockResolvedValue({ displayname: 'Alice', avatar_url: 'mxc://hs/a' }),
-    setDisplayName: vi.fn().mockResolvedValue({}),
-    setAvatarUrl: vi.fn().mockResolvedValue({}),
-    uploadContent: vi.fn().mockResolvedValue({ content_uri: 'mxc://hs/new' }),
-    ...overrides,
-  };
-}
-
-function setup(clientOverrides: Record<string, unknown> = {}) {
-  const client = fakeClient(clientOverrides);
-  const activeUserId = signal<string | null>('@me:hs');
+function setup() {
+  const fixture = identityFixture();
+  const upload = vi.fn(() => of('mxc://hs/new'));
   TestBed.configureTestingModule({
-    providers: [
-      IdentityService,
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
-      }),
-    ],
+    providers: [...fixture.providers, MockProvider(AvatarService, { upload })],
   });
-  const matrix = TestBed.inject(MatrixClientService);
-  // The service reads `matrix.instance` (a getter) for the SDK client; stub both
-  // getters on the mock so it hands back our fake client.
-  ngMocks.stubMember(matrix, 'instance', asClient(client));
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(matrix, 'clientFor', () => asClient(client));
-  return { svc: TestBed.inject(IdentityService), client, activeUserId };
+  return { ...fixture, svc: TestBed.inject(IdentityService), upload };
 }
 
 describe('IdentityService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('loads the profile and exposes the raw mxc avatar', async () => {
-    const { svc, client } = setup();
+    const { svc, engine } = setup();
+    engine.profiles.set(ME, { displayName: 'Alice', avatarMxc: 'mxc://hs/a' });
 
     const profile = await firstValueFrom(svc.load());
 
-    expect(client.getProfileInfo).toHaveBeenCalledWith('@me:hs');
-    expect(profile).toMatchObject({
-      userId: '@me:hs',
+    expect(profile).toEqual({
+      userId: ME,
       displayName: 'Alice',
       avatarMxc: 'mxc://hs/a',
     });
-    expect(svc.profile()).toEqual(profile); // mirrored into the signal
+    expect(svc.profile()).toEqual(profile);
   });
 
   it('returns a raw-empty display name and no avatar when unset', async () => {
-    const { svc } = setup({
-      getProfileInfo: vi.fn().mockResolvedValue({}),
-    });
+    const { svc } = setup();
 
     const profile = await firstValueFrom(svc.load());
 
-    expect(profile.displayName).toBe(''); // raw; the UI renders `|| userId`
-    expect(profile.avatarMxc).toBeNull();
+    expect(profile).toEqual({ userId: ME, displayName: '', avatarMxc: null });
+    expect(svc.profile()).toEqual(profile);
   });
 
-  it('treats a 404 (brand-new account) as an empty profile, not an error', async () => {
-    const { svc } = setup({
-      getProfileInfo: vi.fn().mockRejectedValue({ httpStatus: 404 }),
-    });
-
-    const profile = await firstValueFrom(svc.load());
-
-    expect(profile).toMatchObject({
-      userId: '@me:hs',
-      displayName: '',
-      avatarMxc: null,
-    });
-    expect(svc.profile()).toEqual(profile); // editor can still render + set one
-  });
-
-  it('maps a non-404 load failure to a typed safe failure', async () => {
-    const { svc } = setup({
-      getProfileInfo: vi.fn().mockRejectedValue({ httpStatus: 500 }),
-    });
+  it('maps a server failure to a typed safe failure', async () => {
+    const { svc, engine } = setup();
+    engine.failure = SERVER_ERROR;
 
     await expect(firstValueFrom(svc.load())).rejects.toMatchObject({
       operation: 'load-own-profile',
@@ -102,28 +60,58 @@ describe('IdentityService', () => {
     });
   });
 
+  it('maps an unreached server to a retryable offline failure', async () => {
+    const { svc, engine } = setup();
+    engine.failure = OFFLINE;
+
+    await expect(firstValueFrom(svc.lookup('@bob:hs'))).rejects.toMatchObject({
+      operation: 'lookup-user',
+      kind: 'offline',
+      recovery: 'retry',
+    });
+  });
+
+  it('is not ready without an active Account', async () => {
+    const { svc, session } = setup();
+    session.set(sessionWith(null, []));
+
+    await expect(firstValueFrom(svc.load())).rejects.toMatchObject({
+      operation: 'load-own-profile',
+      kind: 'not-ready',
+    });
+  });
+
   it('sets the display name and patches the signal', async () => {
-    const { svc, client } = setup();
+    const { svc, engine } = setup();
     await firstValueFrom(svc.load());
 
     await firstValueFrom(svc.setDisplayName('  Bob  '));
 
-    expect(client.setDisplayName).toHaveBeenCalledWith('Bob'); // trimmed
+    expect(engine.profiles.get(ME)?.displayName).toBe('Bob');
     expect(svc.profile()?.displayName).toBe('Bob');
   });
 
   it('clears the display name (sends empty, settles to raw-empty)', async () => {
-    const { svc, client } = setup();
+    const { svc, engine } = setup();
+    engine.profiles.set(ME, { displayName: 'Alice', avatarMxc: null });
     await firstValueFrom(svc.load());
 
     await firstValueFrom(svc.setDisplayName('   '));
 
-    expect(client.setDisplayName).toHaveBeenCalledWith('');
-    expect(svc.profile()?.displayName).toBe(''); // raw; renders as the user id
+    expect(engine.profiles.get(ME)?.displayName).toBe('');
+    expect(svc.profile()?.displayName).toBe('');
+  });
+
+  it('is cold: nothing is written until subscribed', () => {
+    const { svc, engine } = setup();
+
+    svc.setDisplayName('Bob');
+
+    expect(engine.profiles.get(ME)?.displayName).toBeNull();
   });
 
   it('uploads then sets a new avatar and patches the signal', async () => {
-    const { svc, client } = setup();
+    const { svc, engine, upload } = setup();
     await firstValueFrom(svc.load());
     const file = new File([new Uint8Array([1])], 'me.png', {
       type: 'image/png',
@@ -131,35 +119,28 @@ describe('IdentityService', () => {
 
     await firstValueFrom(svc.setAvatar(file));
 
-    expect(client.uploadContent).toHaveBeenCalledTimes(1);
-    expect(client.setAvatarUrl).toHaveBeenCalledWith('mxc://hs/new');
+    expect(upload).toHaveBeenCalledWith(file, ME);
+    expect(engine.profiles.get(ME)?.avatarMxc).toBe('mxc://hs/new');
     expect(svc.profile()?.avatarMxc).toBe('mxc://hs/new');
   });
 
   it('fetches another user’s profile without touching the own-profile signal', async () => {
-    const { svc, client } = setup({
-      getProfileInfo: vi
-        .fn()
-        .mockResolvedValue({ displayname: 'Bob', avatar_url: 'mxc://hs/b' }),
+    const { svc, engine } = setup();
+    engine.profiles.set('@bob:hs', {
+      displayName: 'Bob',
+      avatarMxc: 'mxc://hs/b',
     });
 
-    const profile = await firstValueFrom(svc.lookup('@bob:hs'));
-
-    expect(client.getProfileInfo).toHaveBeenCalledWith('@bob:hs');
-    expect(profile).toEqual({
+    expect(await firstValueFrom(svc.lookup('@bob:hs'))).toEqual({
       userId: '@bob:hs',
       displayName: 'Bob',
       avatarMxc: 'mxc://hs/b',
     });
-    expect(svc.profile()).toBeNull(); // the signed-in profile is left untouched
+    expect(svc.profile()).toBeNull();
   });
 
   it('resolves an empty profile for a user the homeserver has none for', async () => {
-    const { svc } = setup({
-      getProfileInfo: vi
-        .fn()
-        .mockRejectedValue({ httpStatus: 404, errcode: 'M_NOT_FOUND' }),
-    });
+    const { svc } = setup();
 
     expect(await firstValueFrom(svc.lookup('@ghost:hs'))).toEqual({
       userId: '@ghost:hs',
@@ -169,28 +150,24 @@ describe('IdentityService', () => {
   });
 
   it('does not publish a stale own profile after the active Account changes', async () => {
-    let resolveProfile!: (value: { displayname: string }) => void;
-    const pending = new Promise<{ displayname: string }>((resolve) => {
-      resolveProfile = resolve;
-    });
-    const { svc, activeUserId } = setup({
-      getProfileInfo: vi.fn(() => pending),
-    });
+    const { svc, engine, session } = setup();
+    const reply = new Subject<EngineResult<UserProfile>>();
+    vi.spyOn(engine, 'profile').mockReturnValue(reply);
 
     const load = firstValueFrom(svc.load());
-    activeUserId.set('@other:hs');
-    resolveProfile({ displayname: 'Old Account' });
+    session.set(sessionWith('@other:hs', [ME, '@other:hs']));
+    reply.next(engineOk({ displayName: 'Old Account', avatarMxc: null }));
     await load;
 
     expect(svc.profile()).toBeNull();
   });
 
   it('hides an already-loaded profile immediately when the active Account changes', async () => {
-    const { svc, activeUserId } = setup();
+    const { svc, session } = setup();
     await firstValueFrom(svc.load());
-    expect(svc.profile()?.userId).toBe('@me:hs');
+    expect(svc.profile()?.userId).toBe(ME);
 
-    activeUserId.set('@other:hs');
+    session.set(sessionWith('@other:hs', [ME, '@other:hs']));
 
     expect(svc.profile()).toBeNull();
   });

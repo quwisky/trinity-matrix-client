@@ -57,6 +57,7 @@ describe.skipIf(!baseUrl || !testhostBinaryAvailable())(
           revokeToken: synapse.revokeToken,
           passwordFor: synapse.passwordFor,
           signInAgain: synapse.signInAgain,
+          createNamedRoom: synapse.createNamedRoom,
           dispose,
         };
       },

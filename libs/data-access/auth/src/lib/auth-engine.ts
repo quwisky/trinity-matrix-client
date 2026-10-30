@@ -11,8 +11,15 @@ export interface SignedInSession {
   readonly refreshToken: string | null;
 }
 
-/** The tokens a QR sign-in's device grant issued; TypeScript revokes them until they are established. */
-export interface QrGrantTokens {
+/**
+ * A QR sign-in's session. The engine holds it, with the secrets the other device shared, until
+ * `SessionEngine.restorePersisted` adopts this user and device or `logoutSession` ends it.
+ */
+export interface QrSignedInSession {
+  /** Where the session is: the engine may have followed the other device to its server. */
+  readonly homeserverUrl: string;
+  readonly userId: string;
+  readonly deviceId: string;
   readonly accessToken: string;
   readonly refreshToken: string | null;
   /** Epoch ms, stamped when the tokens arrived. */
@@ -20,8 +27,8 @@ export interface QrGrantTokens {
 }
 
 /**
- * The new device's QR sign-in (MSC4108). Updates that carry a `flowId` pause the flow until
- * TypeScript answers; `done` and `failed` end it. QR bytes cross as base64.
+ * The new device's QR sign-in (MSC4108). `enter-check-code` pauses until TypeScript answers;
+ * `done`, `client-rejected` and `failed` end it. QR bytes cross as base64.
  */
 export type QrSignInUpdate =
   | {
@@ -29,52 +36,38 @@ export type QrSignInUpdate =
       readonly qr: string;
       readonly expiresAt: number;
     }
-  /** Answer `server-accepted` once the other device's account is on the server entered. */
-  | {
-      readonly kind: 'server-reported';
-      readonly flowId: string;
-      readonly serverName: string | null;
-    }
-  | { readonly kind: 'confirm-check-code'; readonly code: string }
-  /** The provider refused the client id before anything reached the other device. */
-  | { readonly kind: 'client-rejected'; readonly flowId: string }
+  /** Answer with the two digits the other device shows; a wrong code ends `failed insecure`. */
+  | { readonly kind: 'enter-check-code'; readonly flowId: string }
   | { readonly kind: 'waiting-for-approval'; readonly userCode: string }
-  | { readonly kind: 'signing-in'; readonly tokens: QrGrantTokens }
-  /** The tokens' account exists on the server; establish it, then `continueQrSignIn`. */
-  | {
-      readonly kind: 'signed-in';
-      readonly flowId: string;
-      readonly userId: string;
-      readonly deviceId: string;
-    }
-  | { readonly kind: 'done'; readonly verified: boolean }
+  | { readonly kind: 'signing-in' }
+  | { readonly kind: 'done'; readonly session: QrSignedInSession }
+  /** The provider refused the client id before any grant; register again and start over. */
+  | { readonly kind: 'client-rejected' }
   | { readonly kind: 'failed'; readonly reason: QrSignInFailure };
 
-export type QrSignInAnswer =
-  | { readonly kind: 'server-accepted' }
-  | { readonly kind: 'retry-grant'; readonly clientId: string };
+export interface QrSignInAnswer {
+  /** Exactly two digits, as typed: "07". */
+  readonly checkCode: string;
+}
 
-/** The existing device's side of a QR sign-in, which links the device whose code it scanned. */
+/**
+ * The existing device's side of a QR sign-in, which links the device whose code it scanned.
+ * `approve` is the one pause; nothing beyond the protocol offer is sent before `confirmQrLink`.
+ */
 export type QrLinkUpdate =
   | { readonly kind: 'connecting' }
   | { readonly kind: 'not-sign-in-code' }
-  /** Answer with `confirmQrLink`; nothing beyond the protocol offer is sent before it. */
+  /** For the person to type on the new device; nothing to answer. */
+  | { readonly kind: 'check-code'; readonly code: string }
+  /** The new device asked for a grant. The URI is as the peer sent it: unchecked. */
   | {
-      readonly kind: 'confirm-check-code';
+      readonly kind: 'approve';
       readonly flowId: string;
-      readonly code: string;
+      readonly verificationUri: string;
     }
-  | { readonly kind: 'approve-in-browser'; readonly verificationUri: string }
   | { readonly kind: 'sharing-secrets' }
   | { readonly kind: 'done' }
   | { readonly kind: 'failed'; readonly reason: QrSignInFailure };
-
-export interface QrLinkAnswer {
-  /** Whether the person saw the same check code on both devices. */
-  readonly match: boolean;
-  /** Whether this device holds the cross-signing identity the server publishes. */
-  readonly identityHeld: boolean;
-}
 
 export interface PasswordLogin {
   readonly localpart: string;
@@ -206,8 +199,10 @@ export interface AuthEngine {
   /** OAuth 2.0 metadata with the device grant, and MSC4108; a failure when it cannot be asked. */
   supportsQrRendezvous(baseUrl: string): Observable<EngineResult<boolean>>;
   /**
-   * Shows a new code for another device to scan. Unsubscribing cancels the sign-in on both
-   * devices. The secrets the other device shares are imported here and never emitted.
+   * Shows a new code for another device to scan; unsubscribing cancels the sign-in on both
+   * devices. No grant is asked for before the typed code matches. Tokens the flow got are
+   * revoked unless `done` hands them over. The secrets the other device shares stay in the
+   * engine with the session and are never emitted.
    */
   signInWithQr(
     baseUrl: string,
@@ -216,31 +211,21 @@ export interface AuthEngine {
       readonly clientId: string;
     },
   ): Observable<QrSignInUpdate>;
-  /** A flow that is over, or not paused for this answer, fails `qr-flow-gone`. */
+  /** A flow that is over, or not paused for the code, fails `qr-flow-gone`. */
   answerQrSignIn(
     flowId: string,
     answer: QrSignInAnswer,
   ): Observable<EngineResult<null>>;
   /**
-   * The `signed-in` session is established as `accountId`: share and import the secrets.
-   * `accountId` must be that update's user, and its live session must be on that update's
-   * device; otherwise nothing is imported and the sign-in ends `done` unverified.
-   */
-  continueQrSignIn(
-    flowId: string,
-    accountId: string,
-  ): Observable<EngineResult<null>>;
-  /**
-   * Links the device whose code `accountId`'s device scanned; unsubscribing cancels it. The
-   * engine refuses an MSC4388 code (`not-sign-in-code`), opens the approval link only on the
-   * account's own issuer or device-authorization origin (else `failed insecure`), stops
-   * sending a decline once the identity check passed, so a cancel reaches the session first,
-   * and leaves the rendezvous session for the new device to delete.
+   * Links the device whose code `accountId`'s device scanned. The engine refuses an MSC4388
+   * code (`not-sign-in-code`) and leaves the rendezvous session for the new device to
+   * delete. Unsubscribing before `confirmQrLink` declines and cancels on the new device;
+   * after it, it cancels at once, so the cancel reaches the session before the secrets.
    */
   linkDeviceWithQr(accountId: string, qr: string): Observable<QrLinkUpdate>;
-  /** A mismatch ends the link as insecure; an identity not held ends it before any grant. */
-  confirmQrLink(
-    flowId: string,
-    answer: QrLinkAnswer,
-  ): Observable<EngineResult<null>>;
+  /**
+   * Continues past `approve`: the engine accepts the grant and shares the secrets once the new
+   * device is signed in. A flow not paused there fails `qr-flow-gone`.
+   */
+  confirmQrLink(flowId: string): Observable<EngineResult<null>>;
 }

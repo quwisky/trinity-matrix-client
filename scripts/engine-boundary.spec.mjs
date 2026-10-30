@@ -3,81 +3,73 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
-const allowlistPath = 'architecture/engine-boundary-allowlist.json';
+const adapterFolder = /^libs\/data-access\/[^/]+\/src\/lib\/js-sdk\//;
 const sdkReach =
-  /from ['"]matrix-js-sdk(?:\/[^'"]*)?['"]|\.clientFor\(|\.holderFor\(|\bmatrix\.instance\b|\.detachedClient\(|MatrixClientService\[\s*['"](?:clientFor|holderFor|instance|all|detachedClient)['"]\s*\]/;
-const utilMatrixImport =
-  /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]@trinity\/util\/matrix['"]/g;
-const sdkClasses = new Set(['ConnectionError', 'HTTPError', 'MatrixError']);
+  /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)['"](?:matrix-js-sdk(?:\/[^'"]*)?|@matrix-org\/matrix-sdk-crypto-wasm)['"]|\.clientFor\(|\.holderFor\(|\bmatrix\.instance\b|\.detachedClient\(|MatrixClientService\[\s*['"](?:clientFor|holderFor|instance|all|detachedClient)['"]\s*\]/;
 
-/** Whether a source file outside `js-sdk/` reaches matrix-js-sdk, directly or through a re-export. */
+/** Whether a source file outside a data-access `js-sdk/` folder reaches matrix-js-sdk or its crypto WASM. */
 export function reachesSdk(file, source) {
   if (
     file.endsWith('.spec.ts') ||
     file.endsWith('.spec-harness.ts') ||
-    file.includes('/js-sdk/')
+    adapterFolder.test(file)
   ) {
     return false;
   }
   if (sdkReach.test(source)) return true;
-  if (/\.all\(\)/.test(source) && source.includes('MatrixClientService'))
-    return true;
-  return [...source.matchAll(utilMatrixImport)].some(([, specifiers]) =>
-    specifiers.split(',').some((specifier) =>
-      sdkClasses.has(
-        specifier
-          .trim()
-          .replace(/^type\s+/, '')
-          .split(/\s+/)[0],
-      ),
-    ),
-  );
+  return /\.all\(\)/.test(source) && source.includes('MatrixClientService');
 }
 
-/**
- * Ratchet the engine boundary (#1153): only `js-sdk/` adapters reach matrix-js-sdk.
- * The allowlist holds the files that still do; it may only shrink.
- */
+/** The engine boundary (#1153): only `js-sdk/` adapters reach matrix-js-sdk. */
 describe('Engine boundary', () => {
-  const { files: allowlist } = JSON.parse(
-    readFileSync(join(workspaceRoot, allowlistPath), 'utf8'),
-  );
-  const offenders = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-    cwd: workspaceRoot,
-    exclude: (name) => name === 'node_modules',
-  })
-    .filter((file) =>
+  it('has no SDK reach outside js-sdk/ folders', () => {
+    const offenders = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
+      cwd: workspaceRoot,
+      exclude: (name) => name === 'node_modules',
+    }).filter((file) =>
       reachesSdk(file, readFileSync(join(workspaceRoot, file), 'utf8')),
-    )
-    .sort();
-
-  it('adds no new SDK reach', () => {
-    expect(offenders.filter((file) => !allowlist.includes(file))).toEqual([]);
-  });
-
-  it('drops entries that no longer reach the SDK', () => {
-    expect(allowlist.filter((file) => !offenders.includes(file))).toEqual([]);
-  });
-
-  it('keeps the allowlist sorted and unique', () => {
-    expect(allowlist).toEqual([...new Set(allowlist)].sort());
+    );
+    expect(offenders).toEqual([]);
   });
 });
 
 describe('reachesSdk', () => {
   const file = 'libs/x/src/a.ts';
+  const adapter = 'libs/data-access/y/src/lib/js-sdk/a.ts';
 
-  it('matches a multi-line util/matrix import of an SDK class', () => {
-    const source =
-      "import {\n  type Foo,\n  MatrixError,\n} from '@trinity/util/matrix';";
-    expect(reachesSdk(file, source)).toBe(true);
+  it('matches every import form of the SDK and the crypto WASM', () => {
+    for (const source of [
+      "const sdk = await import('matrix-js-sdk');",
+      "type E = import('matrix-js-sdk').MatrixEvent;",
+      "import 'matrix-js-sdk';",
+      "import sdk = require('matrix-js-sdk');",
+      "const { initAsync } = await import('@matrix-org/matrix-sdk-crypto-wasm');",
+      "export { MatrixEvent } from 'matrix-js-sdk/lib/models/event';",
+    ]) {
+      expect(reachesSdk(file, source), source).toBe(true);
+      expect(reachesSdk(adapter, source), source).toBe(false);
+    }
+    expect(reachesSdk(file, "const prefix = 'matrix-js-sdk';")).toBe(false);
   });
 
-  it('ignores a comment that only names the class', () => {
+  it('exempts only the js-sdk folder of a data-access library', () => {
+    const source = "import { createClient } from 'matrix-js-sdk';";
+    expect(reachesSdk(adapter, source)).toBe(false);
+    expect(reachesSdk('libs/feature/y/src/lib/js-sdk/a.ts', source)).toBe(true);
+    expect(reachesSdk('libs/data-access/y/src/js-sdk/a.ts', source)).toBe(true);
+  });
+
+  it('matches an import of the crypto WASM', () => {
     expect(
       reachesSdk(
         file,
-        "// MatrixError\nimport { Foo } from '@trinity/util/matrix';",
+        "import { initAsync } from '@matrix-org/matrix-sdk-crypto-wasm';",
+      ),
+    ).toBe(true);
+    expect(
+      reachesSdk(
+        adapter,
+        "import { initAsync } from '@matrix-org/matrix-sdk-crypto-wasm';",
       ),
     ).toBe(false);
   });
@@ -98,7 +90,7 @@ describe('reachesSdk', () => {
       ),
     ).toBe(true);
     expect(reachesSdk('libs/y/a.spec-harness.ts', source)).toBe(false);
-    expect(reachesSdk('libs/y/js-sdk/a.ts', source)).toBe(false);
+    expect(reachesSdk(adapter, source)).toBe(false);
   });
 
   it('matches .all() only with MatrixClientService', () => {
@@ -113,8 +105,6 @@ describe('reachesSdk', () => {
     expect(reachesSdk('a.spec-harness.ts', 'x.detachedClient(url)')).toBe(
       false,
     );
-    expect(reachesSdk('libs/y/js-sdk/a.ts', 'x.detachedClient(url)')).toBe(
-      false,
-    );
+    expect(reachesSdk(adapter, 'x.detachedClient(url)')).toBe(false);
   });
 });

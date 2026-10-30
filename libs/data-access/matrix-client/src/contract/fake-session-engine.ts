@@ -4,8 +4,13 @@ import {
   type Subscriber,
   defer,
   distinctUntilChanged,
+  finalize,
+  from,
   map,
   of,
+  Subject,
+  shareReplay,
+  tap,
 } from 'rxjs';
 import {
   type AccountStartFailureReason,
@@ -18,6 +23,7 @@ import {
   plainEqual,
 } from '@trinity/util/matrix';
 import {
+  type AccountNameGroup,
   type AccountServerStatus,
   EMPTY_SESSION,
   type PendingTextMessage,
@@ -28,6 +34,7 @@ import {
   type SessionCredentials,
   type SessionEngine,
   type SessionSnapshot,
+  type SessionStorageEffect,
 } from '../lib/session-engine';
 
 /** The request-failure kind the js-sdk adapter reports for each start failure reason. */
@@ -65,6 +72,7 @@ export class FakeSessionEngine implements SessionEngine {
   private readonly snapshot$ = new BehaviorSubject<SessionSnapshot>(
     EMPTY_SESSION,
   );
+  private readonly effects$ = new Subject<SessionStorageEffect>();
   private readonly tokens$ = new BehaviorSubject<
     ReadonlyMap<string, SessionAccessToken>
   >(new Map());
@@ -73,6 +81,8 @@ export class FakeSessionEngine implements SessionEngine {
   private readonly backedUp = new Map<string, boolean | null>();
   private readonly refreshTokens = new Map<string, string>();
   private readonly holds = new Map<string, FakeHold>();
+  private readonly names = new Map<string, readonly AccountNameGroup[]>();
+  private readonly starting = new Map<string, Observable<EngineResult<null>>>();
   /** Accounts whose token died while held, kept live until the hold ends. */
   private readonly diedWhileHeld = new Set<string>();
   /** Held accounts a holder released as deleted, which keeps a recorded death from wiping. */
@@ -111,6 +121,7 @@ export class FakeSessionEngine implements SessionEngine {
       ...s,
       softLoggedOut: [...new Set([...s.softLoggedOut, accountId])],
     }));
+    this.emitEffect('soft-logout', accountId);
   }
 
   setToken(accountId: string, token: SessionAccessToken | null): void {
@@ -128,6 +139,11 @@ export class FakeSessionEngine implements SessionEngine {
     this.backedUp.set(accountId, value);
   }
 
+  /** What the account's engine holds, kept across restarts as a server would. */
+  addKnownNames(accountId: string, group: AccountNameGroup): void {
+    this.names.set(accountId, [...(this.names.get(accountId) ?? []), group]);
+  }
+
   setOutgoing(work: boolean, texts: readonly PendingTextMessage[]): void {
     this.outgoingWork = work;
     this.outgoingTexts = texts;
@@ -137,6 +153,10 @@ export class FakeSessionEngine implements SessionEngine {
     return this.snapshot$.pipe(
       distinctUntilChanged<SessionSnapshot>(plainEqual),
     );
+  }
+
+  storageEffects(): Observable<SessionStorageEffect> {
+    return this.effects$.asObservable();
   }
 
   accessToken(accountId: string): Observable<SessionAccessToken | null> {
@@ -150,67 +170,32 @@ export class FakeSessionEngine implements SessionEngine {
     session: MatrixSession,
     activation: PersistedAccountActivation,
   ): Observable<EngineResult<null>> {
-    return this.run(`restorePersisted:${session.userId}`, () => {
-      const accountId = session.userId;
-      const reason = this.startFailures.get(accountId);
-      if (reason) {
-        this.startFailures.delete(accountId);
-        if (
-          reason === 'reauthentication-required' ||
-          reason === 'crypto-store-key-lost'
-        ) {
-          this.update((s) => ({
-            ...s,
-            softLoggedOut: [...new Set([...s.softLoggedOut, accountId])],
-          }));
-        }
-        const kind = START_FAILURE_KIND[reason];
-        return engineFail({
-          kind,
-          code: 'account-start-failed',
-          diagnostic: { kind },
-          params: { reason },
-        });
+    const accountId = session.userId;
+    return defer(() => {
+      this.calls.push(`restorePersisted:${accountId}`);
+      let started = this.starting.get(accountId);
+      if (!started) {
+        const shared: Observable<EngineResult<null>> = from(
+          Promise.resolve(),
+        ).pipe(
+          map(() => this.start(session)),
+          finalize(() => {
+            if (this.starting.get(accountId) === shared) {
+              this.starting.delete(accountId);
+            }
+          }),
+          shareReplay({ bufferSize: 1, refCount: false }),
+        );
+        this.starting.set(accountId, shared);
+        started = shared;
       }
-      this.generation += 1;
-      if (session.refreshToken) {
-        this.refreshTokens.set(accountId, session.refreshToken);
-      } else {
-        this.refreshTokens.delete(accountId);
-      }
-      const signedInAgain =
-        this.snapshot$.value.softLoggedOut.includes(accountId);
-      const status: SessionAccountStatus = {
-        accountId,
-        deviceId: session.deviceId,
-        generation: this.generation,
-        syncState: 'syncing',
-        serverSynced: true,
-        roomsPrepared: true,
-        waitingCount: 0,
-        cryptoStoreEncrypted: true,
-      };
-      this.setToken(accountId, {
-        homeserverUrl: session.baseUrl,
-        accessToken: session.accessToken,
-        expiresAt: session.oidc ? (session.accessTokenExpiresAt ?? null) : null,
-        refreshable: !!session.oidc && !!session.refreshToken,
-      });
-      this.update((s) => ({
-        activeAccountId:
-          activation === 'activate' ? accountId : s.activeAccountId,
-        accounts: [
-          ...s.accounts.filter((a) => a.accountId !== accountId),
-          status,
-        ],
-        softLoggedOut: s.softLoggedOut.filter((id) => id !== accountId),
-      }));
-      // As the SDK adapter does: a recorded death belonged to the replaced client.
-      if (this.diedWhileHeld.delete(accountId)) {
-        this.tell(accountId, { kind: 'token-renewed' });
-      }
-      if (signedInAgain) this.tell(accountId, { kind: 'signed-in-again' });
-      return engineOk(null);
+      return started.pipe(
+        tap((result) => {
+          if (result.ok && activation === 'activate') {
+            this.update((s) => ({ ...s, activeAccountId: accountId }));
+          }
+        }),
+      );
     });
   }
 
@@ -319,12 +304,15 @@ export class FakeSessionEngine implements SessionEngine {
   }
 
   accountStatus(accountId: string): Observable<AccountServerStatus> {
-    return this.run(
-      `accountStatus:${accountId}`,
-      () =>
-        this.serverStatuses.get(accountId) ??
-        (this.isLive(accountId) ? 'active' : 'unreachable'),
-    );
+    return this.run(`accountStatus:${accountId}`, () => {
+      const scripted = this.serverStatuses.get(accountId);
+      if (scripted) return scripted;
+      const whoami = this.request(accountId, () => engineOk(null));
+      if (whoami.ok) return 'active';
+      return whoami.failure.code === 'account-not-live'
+        ? 'unreachable'
+        : 'gone';
+    });
   }
 
   roomKeysBackedUp(accountId: string): Observable<boolean | null> {
@@ -389,6 +377,7 @@ export class FakeSessionEngine implements SessionEngine {
     return this.run(`logoutRemote:${accountId}`, () =>
       this.request(accountId, () => {
         this.revoke(accountId);
+        this.sync(accountId, { syncState: 'stopped' });
         return engineOk(null);
       }),
     );
@@ -416,6 +405,79 @@ export class FakeSessionEngine implements SessionEngine {
     });
   }
 
+  knownNames(
+    accountId: string,
+  ): Observable<EngineResult<readonly AccountNameGroup[]>> {
+    return this.run(`knownNames:${accountId}`, () =>
+      this.isLive(accountId)
+        ? engineOk(this.names.get(accountId) ?? [])
+        : engineFail(NOT_LIVE),
+    );
+  }
+
+  /** Registers a new client for the account, leaving its activation to each caller. */
+  private start(session: MatrixSession): EngineResult<null> {
+    const accountId = session.userId;
+    const reason = this.startFailures.get(accountId);
+    if (reason) {
+      this.startFailures.delete(accountId);
+      if (
+        reason === 'reauthentication-required' ||
+        reason === 'crypto-store-key-lost'
+      ) {
+        this.update((s) => ({
+          ...s,
+          softLoggedOut: [...new Set([...s.softLoggedOut, accountId])],
+        }));
+      }
+      const kind = START_FAILURE_KIND[reason];
+      return engineFail({
+        kind,
+        code: 'account-start-failed',
+        diagnostic: { kind },
+        params: { reason },
+      });
+    }
+    this.generation += 1;
+    if (session.refreshToken) {
+      this.refreshTokens.set(accountId, session.refreshToken);
+    } else {
+      this.refreshTokens.delete(accountId);
+    }
+    const signedInAgain =
+      this.snapshot$.value.softLoggedOut.includes(accountId);
+    const status: SessionAccountStatus = {
+      accountId,
+      deviceId: session.deviceId,
+      generation: this.generation,
+      syncState: 'syncing',
+      serverSynced: true,
+      roomsPrepared: true,
+      waitingCount: 0,
+      cryptoStoreEncrypted: true,
+    };
+    this.setToken(accountId, {
+      homeserverUrl: session.baseUrl,
+      accessToken: session.accessToken,
+      expiresAt: session.oidc ? (session.accessTokenExpiresAt ?? null) : null,
+      refreshable: !!session.oidc && !!session.refreshToken,
+    });
+    this.update((s) => ({
+      ...s,
+      accounts: [
+        ...s.accounts.filter((a) => a.accountId !== accountId),
+        status,
+      ],
+      softLoggedOut: s.softLoggedOut.filter((id) => id !== accountId),
+    }));
+    // As the SDK adapter does: a recorded death belonged to the replaced client.
+    if (this.diedWhileHeld.delete(accountId)) {
+      this.tell(accountId, { kind: 'token-renewed' });
+    }
+    if (signedInAgain) this.tell(accountId, { kind: 'signed-in-again' });
+    return engineOk(null);
+  }
+
   private revoke(accountId: string): void {
     const token = this.tokens$.value.get(accountId);
     if (token) this.revokedTokens.add(token.accessToken);
@@ -440,6 +502,7 @@ export class FakeSessionEngine implements SessionEngine {
     );
     if (held.length === 0) {
       this.drop(accountId);
+      this.emitEffect('hard-logout', accountId);
       return;
     }
     this.diedWhileHeld.add(accountId);
@@ -465,6 +528,7 @@ export class FakeSessionEngine implements SessionEngine {
     const keep = this.releasedAsDeleted.delete(accountId);
     if (this.diedWhileHeld.delete(accountId) && !keep) {
       this.drop(accountId);
+      this.emitEffect('hard-logout', accountId);
     }
   }
 
@@ -493,6 +557,18 @@ export class FakeSessionEngine implements SessionEngine {
 
   private update(change: (s: SessionSnapshot) => SessionSnapshot): void {
     this.snapshot$.next(change(this.snapshot$.value));
+  }
+
+  /** Reports a server logout once `drop` has repointed the active account. */
+  private emitEffect(
+    kind: 'soft-logout' | 'hard-logout',
+    accountId: string,
+  ): void {
+    this.effects$.next({
+      kind,
+      accountId,
+      activeAccountId: this.snapshot$.value.activeAccountId,
+    });
   }
 
   /** Retires a live account and repoints the active one to the first that remains. */

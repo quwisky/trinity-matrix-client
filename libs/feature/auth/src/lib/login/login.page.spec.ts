@@ -212,7 +212,10 @@ async function renderLogin(
         supports: vi.fn(() => of(opts.qrSupported ?? false)),
       }),
       MockProvider(QrSignInService, {
-        signInByShowingCode: vi.fn(() => opts.qrFlow ?? NEVER),
+        signInByShowingCode: vi.fn(() => ({
+          state$: opts.qrFlow ?? NEVER,
+          enterCheckCode: vi.fn(),
+        })),
       }),
       MockProvider(QrCodeService),
       ...(opts.bugReport
@@ -1918,24 +1921,21 @@ describe('LoginPage', () => {
       expect(document.activeElement).toBe(qrButton(root));
     });
 
-    it.each([true, false])(
-      'opens the rooms after a QR sign-in like any other (verified: %s)',
-      async (verified) => {
-        const { cmp, fixture, router } = await renderLogin(oidcServer, {
-          qrSupported: true,
-          qrFlow: of({ kind: 'done', verified } as const),
-        });
-        cmp.discover();
-        fixture.detectChanges();
+    it('opens the rooms after a QR sign-in like any other', async () => {
+      const { cmp, fixture, router } = await renderLogin(oidcServer, {
+        qrSupported: true,
+        qrFlow: of({ kind: 'done' } as const),
+      });
+      cmp.discover();
+      fixture.detectChanges();
 
-        fireEvent.click(qrButton(fixture.nativeElement as HTMLElement)!);
-        fixture.detectChanges();
+      fireEvent.click(qrButton(fixture.nativeElement as HTMLElement)!);
+      fixture.detectChanges();
 
-        expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
-          replaceUrl: true,
-        });
-      },
-    );
+      expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
+        replaceUrl: true,
+      });
+    });
 
     it('does not offer QR sign-in while re-authenticating an account', async () => {
       const { fixture } = await renderLogin(oidcServer, {

@@ -66,6 +66,7 @@ import {
   isMarkedUnread,
   toRoomInfo,
 } from './room-info';
+import { roomsInCommonOf } from './mutual-rooms';
 import { roomTyping } from './room-typing';
 import {
   childContent,
@@ -447,6 +448,16 @@ export class JsSdkRoomListEngine implements RoomListEngine {
         map(() => null),
       ),
     );
+  }
+
+  roomsInCommon(
+    accountId: string,
+    userId: string,
+  ): Observable<readonly string[]> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      return client ? roomsInCommonOf(client, userId) : concat(of([]), NEVER);
+    });
   }
 
   /** Sends the `m.space.child` event and waits for `/sync` to apply it, as {@link settle} does. */

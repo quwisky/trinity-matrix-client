@@ -26,7 +26,6 @@ export * from './lib/uia-flow';
 export * from './lib/attachment-crypto';
 export * from './lib/key-file-crypto';
 export * from './lib/room-create';
-export * from './lib/crypto-wasm-loader';
 export * from './lib/room-url';
 export * from './lib/oidc-issuer-discovery';
 export * from './lib/engine-result';
