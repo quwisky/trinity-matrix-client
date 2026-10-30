@@ -212,12 +212,16 @@ export class AuthService implements QrSignInCompletion {
   }
 
   /**
-   * Forget the cached dynamic-registration client id for a homeserver's issuer so the
+   * Forget the rejected dynamic-registration client id for a homeserver's issuer so the
    * next login re-registers — called when the provider rejects the id (`invalid_client`),
    * which would otherwise wedge login until app storage is wiped.
    */
-  forgetOidcClientId(baseUrl: string, issuer: string): Observable<void> {
-    return this.oidc.forgetClientId(baseUrl, issuer);
+  forgetOidcClientId(
+    baseUrl: string,
+    issuer: string,
+    rejectedClientId: string,
+  ): Observable<void> {
+    return this.oidc.forgetClientId(baseUrl, issuer, rejectedClientId);
   }
 
   /**
@@ -666,11 +670,7 @@ export class AuthService implements QrSignInCompletion {
     );
   }
 
-  /**
-   * Hand back a session this sign-in created but will not use. Detached and best-effort.
-   * shortcut: a password or SSO session is logged out with a throwaway js-sdk client, not an
-   * engine; move it to SessionEngine.logoutSession once that member exists (#1153, PR 7.4).
-   */
+  /** Hand back a session this sign-in created but will not use. Detached and best-effort. */
   private signOutNewDevice(
     baseUrl: string,
     response: AuthenticatedSessionResponse,
@@ -680,14 +680,12 @@ export class AuthService implements QrSignInCompletion {
           accessToken: response.access_token,
           refreshToken: response.refresh_token,
         })
-      : defer(() =>
-          from(
-            createClient({
-              baseUrl,
-              accessToken: response.access_token,
-            }).logout(true),
-          ),
-        );
+      : this.sessionEngine.logoutSession({
+          baseUrl,
+          userId: response.user_id,
+          deviceId: response.device_id,
+          accessToken: response.access_token,
+        });
     signOut.subscribe({ error: () => undefined });
   }
 

@@ -46,6 +46,8 @@ export interface UiaChallenge {
   readonly session?: string;
   readonly flows: readonly { readonly stages: readonly string[] }[];
   readonly completed?: readonly string[];
+  /** Each stage's parameters by stage type, such as the policies of `m.login.terms`. */
+  readonly params?: Readonly<Record<string, unknown>>;
 }
 
 /** The `auth` a request answers a challenge stage with, as the Matrix UIA wire shape. */

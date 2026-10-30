@@ -1,15 +1,5 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  OAuth2,
-  OAuth2Error,
-  OAuthGrantType,
-  createClient,
-  isValidAuthMetadata,
-  type BearerTokenResponse,
-  type OAuthRegistrationRequest,
-  type ValidatedAuthMetadata,
-} from 'matrix-js-sdk';
-import {
   Observable,
   catchError,
   defer,
@@ -25,12 +15,24 @@ import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import {
   OIDC_PROVIDER_MISMATCH,
   type OidcSessionBinding,
+  unwrapEngineResult,
   verifiedDeviceGrantMetadata,
   verifiedEndpoints,
   type VerifiedEndpoints,
 } from '@trinity/util/matrix';
+import { AUTH_ENGINE } from './auth-engine.token';
 import type { AuthMetadata } from './auth-metadata';
 import { checkIssuer, checkSavedEndpoints } from './oidc-issuer-check';
+import {
+  OAuthGrantType,
+  authorizationCodeUrl,
+  isValidAuthMetadata,
+  redeemAuthorizationCode,
+  registerClient,
+  revokeToken,
+  type BearerTokenResponse,
+  type OAuthClientMetadata,
+} from './oauth-http';
 
 /** Stable https identifier for the app (dynamic-registration `client_uri`). */
 const CLIENT_URI = 'https://trinity.trinityproject.dev';
@@ -49,28 +51,6 @@ const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v4:';
  * apart from the PKCE client. Versioned like {@link CLIENT_ID_KEY_PREFIX}.
  */
 const DEVICE_GRANT_CLIENT_ID_KEY_PREFIX = 'oidc.deviceGrantClientId.v2:';
-
-/**
- * Register with the provider, once more if that fails. MAS answers 500 to the loser of two
- * registrations racing to store the same client metadata, and the second try reuses the
- * winner's client; the SDK reports every failed registration the same way.
- */
-async function registerClient(
-  metadata: ValidatedAuthMetadata,
-  request: OAuthRegistrationRequest,
-): Promise<string> {
-  try {
-    return await OAuth2.registerClient(metadata, request);
-  } catch (error: unknown) {
-    if (
-      !(error instanceof Error) ||
-      error.message !== OAuth2Error.DynamicRegistrationFailed
-    ) {
-      throw error;
-    }
-    return OAuth2.registerClient(metadata, request);
-  }
-}
 
 /** What platform this build registers as (drives redirect-uri + registration policy). */
 export type OidcApplicationType = 'web' | 'native';
@@ -95,7 +75,7 @@ export interface OidcAuthorizationParams {
  * The authorization URL to redirect to, plus the PKCE context needed to complete the
  * grant afterwards.
  *
- * The SDK persists nothing, so the caller is the sole custodian of the context: it must
+ * Nothing here persists it, so the caller is the sole custodian of the context: it must
  * be stashed durably (Preferences) and fed back to {@link OidcClientService.completeGrant},
  * which lets a callback complete in a different browsing context (native / Electron) or
  * after a cold-start relaunch.
@@ -145,29 +125,31 @@ export interface OidcGrant {
 }
 
 /**
- * Owns the matrix-js-sdk OIDC ("next-gen auth", MSC3861) orchestration: dynamic client
- * registration, building the PKCE authorization URL, and exchanging the returned code
- * for tokens + identity. {@link AuthService} composes this with its Account Runtime
- * establishment command; components never touch it or the SDK directly.
+ * Owns the OIDC ("next-gen auth", MSC3861) orchestration: dynamic client registration,
+ * building the PKCE authorization URL, and exchanging the returned code for tokens +
+ * identity. The OAuth 2.0 requests are plain HTTP to the provider (`oauth-http.ts`); only
+ * the homeserver's auth metadata and `whoami` go through the {@link AUTH_ENGINE}.
+ * {@link AuthService} composes this with its Account Runtime establishment command;
+ * components never touch it directly.
  */
 @Injectable({ providedIn: 'root' })
 export class OidcClientService {
   private readonly storage = inject(DevicePreferenceStorageService);
   /** Names the client after the host app; Trinity Next keeps its ids in its own storage. */
   private readonly handoff = inject(HostAuthenticationHandoffService);
+  private readonly engine = inject(AUTH_ENGINE);
 
   /**
    * Build the authorization URL to redirect to. Registers this client with the provider
    * if needed (cached per homeserver and issuer), generates a PKCE authorization request,
-   * and returns the context the callback needs — the SDK keeps none of it, so the caller
-   * must stash what comes back.
+   * and returns the context the callback needs, which the caller must stash.
    */
   buildAuthorizationRequest(
     params: OidcAuthorizationParams,
   ): Observable<OidcAuthorizationRequest> {
     return defer(() => {
       const { metadata } = params;
-      // Only getAuthMetadata()'s answer reaches here, and it passed this guard already.
+      // Only the engine's auth metadata reaches here, and it passed this check already.
       if (!isValidAuthMetadata(metadata)) {
         throw new Error(OIDC_PROVIDER_MISMATCH);
       }
@@ -187,9 +169,8 @@ export class OidcClientService {
   /**
    * Exchange the authorization `code` for tokens and resolve the account identity.
    *
-   * `context` is the stash written when the request was built. The SDK keeps no PKCE
-   * verifier, so rebuilding an {@link OAuth2} around the same context is what makes the
-   * exchange possible. `baseUrl` is passed because the homeserver is not round-tripped
+   * `context` is the stash written when the request was built; it holds the only copy of
+   * the PKCE verifier. `baseUrl` is passed because the homeserver is not round-tripped
    * through OAuth state.
    *
    * Token responses carry no user/device id, so identity comes from `whoami`.
@@ -200,14 +181,10 @@ export class OidcClientService {
   ): Observable<OidcGrant> {
     return defer(() => from(this.exchange(code, context))).pipe(
       switchMap(({ token, metadata, endpoints, requestedAt }) =>
-        from(
-          createClient({
-            baseUrl: context.baseUrl,
-            accessToken: token.access_token,
-          }).whoami(),
-        ).pipe(
+        this.engine.whoami(context.baseUrl, token.access_token).pipe(
+          unwrapEngineResult(),
           map((who) => {
-            if (!who.device_id) {
+            if (!who.deviceId) {
               throw new Error(
                 'The provider returned no device for this session.',
               );
@@ -215,8 +192,8 @@ export class OidcClientService {
             const expiresAt = this.expiresAt(token, requestedAt);
             const result: OidcGrant = {
               homeserverUrl: context.baseUrl,
-              userId: who.user_id,
-              deviceId: who.device_id,
+              userId: who.userId,
+              deviceId: who.deviceId,
               accessToken: token.access_token,
               ...(token.refresh_token
                 ? { refreshToken: token.refresh_token }
@@ -239,19 +216,17 @@ export class OidcClientService {
           // and a long-lived refresh token nothing will use, one more per retry.
           //
           // DETACHED on purpose. These POSTs go to the provider, not the homeserver that
-          // just failed, through the SDK's fetch helper, which sets no AbortSignal or
-          // timeout. Gating the error on them would hold the callback page on its spinner
-          // (its only exit is the error branch) for a full TCP connect timeout, or forever
-          // against a host that black-holes the connection. Nothing consumes the result, so
-          // the user gets the real failure now.
+          // just failed, with no AbortSignal or timeout. Gating the error on them would hold
+          // the callback page on its spinner (its only exit is the error branch) for a full
+          // TCP connect timeout, or forever against a host that black-holes the connection.
+          // Nothing consumes the result, so the user gets the real failure now.
           catchError((err: unknown) => {
             const { revocationEndpoint } = endpoints;
             if (revocationEndpoint) {
-              void this.revokeGranted(
-                { ...metadata, revocation_endpoint: revocationEndpoint },
-                context,
-                token,
-              ).catch(() => undefined);
+              void this.revokeBoth(revocationEndpoint, context.clientId, {
+                accessToken: token.access_token,
+                refreshToken: token.refresh_token,
+              }).catch(() => undefined);
             }
             return throwError(() => err);
           }),
@@ -265,13 +240,11 @@ export class OidcClientService {
     context: OidcGrantContext,
   ): Promise<{
     token: BearerTokenResponse;
-    metadata: ValidatedAuthMetadata;
+    metadata: AuthMetadata;
     endpoints: VerifiedEndpoints;
     requestedAt: number;
   }> {
-    const metadata = await createClient({
-      baseUrl: context.baseUrl,
-    }).getAuthMetadata();
+    const metadata = await this.liveMetadata(context.baseUrl);
     // Check that the sign-in response comes from the provider it started with before the
     // code or the verifier is sent anywhere.
     checkIssuer(metadata, context);
@@ -286,35 +259,28 @@ export class OidcClientService {
           }
         : {}),
     };
-    const auth = new OAuth2(
-      { ...metadata, token_endpoint: endpoints.tokenEndpoint },
-      {
-        clientId: context.clientId,
-        codeVerifier: context.codeVerifier,
-        deviceId: context.deviceId,
-      },
-    );
     // Stamped BEFORE the POST: `expires_in` is relative to when the provider issued the
     // token, so measuring from after a slow round-trip would over-state the lifetime.
     const requestedAt = Date.now();
-    const token = await auth.completeAuthorizationCodeGrant(
+    // Redeemed at the token endpoint saved before the redirect, never a re-fetched one.
+    const token = await redeemAuthorizationCode(endpoints.tokenEndpoint, {
+      clientId: context.clientId,
+      codeVerifier: context.codeVerifier,
+      redirectUri: context.redirectUri,
       code,
-      context.redirectUri,
-    );
+    });
     return { token, metadata, endpoints, requestedAt };
   }
 
-  /** Hand back tokens from a grant that succeeded but could not be turned into a session. */
-  private revokeGranted(
-    metadata: ValidatedAuthMetadata,
-    context: OidcGrantContext,
-    token: BearerTokenResponse,
-  ): Promise<void> {
-    const auth = new OAuth2(metadata, { clientId: context.clientId });
-    return this.revokeBoth(auth, {
-      accessToken: token.access_token,
-      refreshToken: token.refresh_token,
-    });
+  /** The homeserver's auth metadata now; throws unless it names a valid OAuth 2.0 provider. */
+  private async liveMetadata(baseUrl: string): Promise<AuthMetadata> {
+    const metadata = await firstValueFrom(
+      this.engine.authMetadata(baseUrl).pipe(unwrapEngineResult()),
+    );
+    if (!metadata || !isValidAuthMetadata(metadata)) {
+      throw new Error(OIDC_PROVIDER_MISMATCH);
+    }
+    return metadata;
   }
 
   /**
@@ -341,10 +307,25 @@ export class OidcClientService {
   /**
    * Forget the cached dynamic-registration client id for a homeserver's issuer, so the
    * next login re-registers instead of reusing an id the provider has rejected (e.g.
-   * `invalid_client` after the provider pruned or expired the registration).
+   * `invalid_client` after the provider pruned or expired the registration). Only
+   * `rejectedClientId` is forgotten.
    */
-  forgetClientId(baseUrl: string, issuer: string): Observable<void> {
-    return this.storage.remove(clientIdKey(baseUrl, issuer));
+  forgetClientId(
+    baseUrl: string,
+    issuer: string,
+    rejectedClientId: string,
+  ): Observable<void> {
+    const key = clientIdKey(baseUrl, issuer);
+    // Compare-and-delete: a registration made since, by another sign-in, stays.
+    return this.storage
+      .get(key)
+      .pipe(
+        switchMap((cached) =>
+          cached === rejectedClientId
+            ? this.storage.remove(key)
+            : of(undefined),
+        ),
+      );
   }
 
   /**
@@ -352,7 +333,7 @@ export class OidcClientService {
    * client and cached per homeserver and issuer.
    */
   deviceGrantClientId(
-    metadata: ValidatedAuthMetadata,
+    metadata: AuthMetadata,
     homeserverUrl: string,
   ): Observable<string> {
     return defer(() =>
@@ -362,7 +343,7 @@ export class OidcClientService {
 
   /** Forget the device-grant client id, so the next sign-in registers a new one. */
   forgetDeviceGrantClientId(
-    metadata: ValidatedAuthMetadata,
+    metadata: AuthMetadata,
     homeserverUrl: string,
   ): Observable<void> {
     return this.storage.remove(
@@ -379,7 +360,7 @@ export class OidcClientService {
    * document confirms, as for a PKCE sign-in.
    */
   deviceGrantBinding(
-    metadata: ValidatedAuthMetadata,
+    metadata: AuthMetadata,
     clientId: string,
   ): Observable<OidcSessionBinding> {
     return defer(() => from(verifiedEndpoints(metadata))).pipe(
@@ -396,14 +377,12 @@ export class OidcClientService {
    * The metadata the device grant runs on: its token and device endpoints are the ones the
    * issuer's own document confirms, or on the issuer's own origin. Errors otherwise.
    */
-  deviceGrantMetadata(
-    metadata: ValidatedAuthMetadata,
-  ): Observable<ValidatedAuthMetadata> {
+  deviceGrantMetadata<M extends AuthMetadata>(metadata: M): Observable<M> {
     return defer(() => from(verifiedDeviceGrantMetadata(metadata)));
   }
 
   private async resolveDeviceGrantClientId(
-    metadata: ValidatedAuthMetadata,
+    metadata: AuthMetadata,
     homeserverUrl: string,
   ): Promise<string> {
     const key = clientIdKey(
@@ -442,13 +421,7 @@ export class OidcClientService {
       binding.revocationEndpoint ??
       (await this.unpinnedRevocationEndpoint(homeserverUrl, binding));
     if (!revocationEndpoint) return;
-    // OAuth2.revokeToken reads only the revocation endpoint.
-    const metadata = {
-      issuer: binding.issuer,
-      revocation_endpoint: revocationEndpoint,
-    } as ValidatedAuthMetadata;
-    const auth = new OAuth2(metadata, { clientId: binding.clientId });
-    await this.revokeBoth(auth, tokens);
+    await this.revokeBoth(revocationEndpoint, binding.clientId, tokens);
   }
 
   /**
@@ -461,9 +434,7 @@ export class OidcClientService {
     homeserverUrl: string,
     binding: OidcSessionBinding,
   ): Promise<string | undefined> {
-    const live = await createClient({
-      baseUrl: homeserverUrl,
-    }).getAuthMetadata();
+    const live = await this.liveMetadata(homeserverUrl);
     if (live.issuer !== binding.issuer) {
       console.warn(
         `Not revoking tokens: the homeserver now names issuer ${live.issuer}, not ${binding.issuer}`,
@@ -479,15 +450,30 @@ export class OidcClientService {
 
   /** POST a revocation for each token present. Concurrent: neither gates the other. */
   private async revokeBoth(
-    auth: OAuth2,
+    revocationEndpoint: string,
+    clientId: string,
     tokens: { accessToken?: string; refreshToken?: string },
   ): Promise<void> {
     const calls: Promise<void>[] = [];
     if (tokens.refreshToken) {
-      calls.push(auth.revokeToken(tokens.refreshToken, 'refresh_token'));
+      calls.push(
+        revokeToken(
+          revocationEndpoint,
+          clientId,
+          tokens.refreshToken,
+          'refresh_token',
+        ),
+      );
     }
     if (tokens.accessToken) {
-      calls.push(auth.revokeToken(tokens.accessToken, 'access_token'));
+      calls.push(
+        revokeToken(
+          revocationEndpoint,
+          clientId,
+          tokens.accessToken,
+          'access_token',
+        ),
+      );
     }
     await Promise.all(calls);
   }
@@ -499,7 +485,7 @@ export class OidcClientService {
    */
   private ensureClientId(
     baseUrl: string,
-    metadata: ValidatedAuthMetadata,
+    metadata: AuthMetadata,
     applicationType: OidcApplicationType,
     redirectUris: string[],
   ): Observable<string> {
@@ -512,7 +498,7 @@ export class OidcClientService {
 
   private async resolveClientId(
     baseUrl: string,
-    metadata: ValidatedAuthMetadata,
+    metadata: AuthMetadata,
     applicationType: OidcApplicationType,
     redirectUris: string[],
   ): Promise<string> {
@@ -523,11 +509,11 @@ export class OidcClientService {
     }
     // The fields a provider pins a later authorization against (redirect_uris,
     // application_type, client_uri) need a bump of the key prefix when they change.
-    const request: OAuthRegistrationRequest = {
+    const request: OAuthClientMetadata = {
       client_name: this.handoff.deviceDisplayName(),
       client_uri: CLIENT_URI,
       application_type: applicationType,
-      redirect_uris: redirectUris as OAuthRegistrationRequest['redirect_uris'],
+      redirect_uris: redirectUris,
     };
     const clientId = await registerClient(metadata, request);
     await firstValueFrom(this.storage.set(key, clientId));
@@ -536,40 +522,29 @@ export class OidcClientService {
 
   private async buildUrl(
     params: OidcAuthorizationParams,
-    metadata: ValidatedAuthMetadata,
+    metadata: AuthMetadata,
     clientId: string,
   ): Promise<OidcAuthorizationRequest> {
-    const auth = new OAuth2(metadata, {
-      clientId,
-      // Omitted for a normal login, where OAuth2 mints one (`?? secureRandomString(10)`).
-      ...(params.deviceId ? { deviceId: params.deviceId } : {}),
-    });
     // The `state` is ours to mint: the provider echoes it on callback and the stash is
     // keyed on it.
     const state = crypto.randomUUID();
-    // 'query' is LOAD-BEARING. The SDK defaults responseMode to 'fragment', but every
-    // callback reader here takes query params only (sso-callback.page.ts via queryParamMap,
-    // app.component.ts via searchParams), so the default would put the code somewhere
-    // nothing looks and hang the login on every platform. Moving to 'fragment' (it keeps
-    // the code out of server logs) means teaching both readers to parse a fragment first.
-    const url = await auth.generateAuthorizationCodeGrantUrl(
-      state,
-      params.redirectUri,
-      'query',
-      params.prompt,
+    const { url, deviceId, codeVerifier } = await authorizationCodeUrl(
+      metadata,
+      {
+        clientId,
+        redirectUri: params.redirectUri,
+        state,
+        // Omitted for a normal login, where a new device is minted.
+        ...(params.deviceId ? { deviceId: params.deviceId } : {}),
+        ...(params.prompt ? { prompt: params.prompt } : {}),
+      },
     );
-    return {
-      url,
-      state,
-      clientId,
-      deviceId: auth.context.deviceId,
-      codeVerifier: auth.context.codeVerifier,
-    };
+    return { url, state, clientId, deviceId, codeVerifier };
   }
 
   /**
    * Absolute epoch-ms access-token expiry, measured from `requestedAt` (stamped before
-   * the token POST). BearerTokenResponse carries only the relative `expires_in`.
+   * the token POST). The token response carries only the relative `expires_in`.
    */
   private expiresAt(
     token: BearerTokenResponse,

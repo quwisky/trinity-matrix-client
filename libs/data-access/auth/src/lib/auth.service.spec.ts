@@ -50,7 +50,7 @@ import {
   type SessionEngine,
 } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
-import { EngineRequestError } from '@trinity/util/matrix';
+import { EngineRequestError, engineOk } from '@trinity/util/matrix';
 const createClientMock = vi.mocked(createClient);
 
 /** A user-interactive-auth 401 offering the password stage for `session`. */
@@ -60,6 +60,9 @@ function uia(session: string): MatrixError {
     401,
   );
 }
+
+/** The session engine's detached logout, through which a created session is handed back. */
+const loggedOut = () => vi.mocked(TestBed.inject(SESSION_ENGINE).logoutSession);
 
 describe('AuthService', () => {
   let auth: AuthService;
@@ -85,7 +88,11 @@ describe('AuthService', () => {
           useValue: {
             accessToken: vi.fn(() => of(null)),
             roomKeysBackedUp: vi.fn(() => of(null)),
-          } satisfies Pick<SessionEngine, 'accessToken' | 'roomKeysBackedUp'>,
+            logoutSession: vi.fn(() => of(engineOk(null))),
+          } satisfies Pick<
+            SessionEngine,
+            'accessToken' | 'roomKeysBackedUp' | 'logoutSession'
+          >,
         },
         {
           provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
@@ -505,7 +512,7 @@ describe('AuthService', () => {
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
       // It asked for a specific device, so the session is not signed out: that device id
       // may name a device the user keeps.
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it("signs out the other user's new session when a re-auth on a new device returns them", async () => {
@@ -523,11 +530,31 @@ describe('AuthService', () => {
           ),
         ),
       ).rejects.toBeInstanceOf(ReauthAccountMismatchError);
-      expect(createClientMock).toHaveBeenLastCalledWith({
+      expect(loggedOut()).toHaveBeenCalledWith({
         baseUrl: 'https://hs',
+        userId: '@bob:hs',
+        deviceId: 'DEV',
         accessToken: 'tok',
       });
-      expect(logout).toHaveBeenCalledWith(true);
+    });
+
+    it('swallows a hand-back that fails, keeping the refusal', async () => {
+      answer('@bob:hs');
+      loggedOut().mockReturnValue(throwError(() => new Error('logout down')));
+
+      await expect(
+        firstValueFrom(
+          auth.loginWithPassword(
+            'https://hs',
+            '@alice:hs',
+            'pw',
+            'add',
+            undefined,
+            '@alice:hs',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(ReauthAccountMismatchError);
+      expect(loggedOut()).toHaveBeenCalledOnce();
     });
 
     it('refuses a legacy SSO login that returns a different user and persists nothing', async () => {
@@ -649,7 +676,7 @@ describe('AuthService', () => {
         await expect(attempt).rejects.toBeInstanceOf(UnacceptableAccountError);
         await expect(attempt).rejects.toThrow(userId);
         expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
-        expect(logout).toHaveBeenCalledWith(true);
+        expect(loggedOut()).toHaveBeenCalled();
       },
     );
 
@@ -788,7 +815,7 @@ describe('AuthService', () => {
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('keeps a re-authenticated device signed in when its account is refused', async () => {
@@ -806,7 +833,7 @@ describe('AuthService', () => {
           ),
         ),
       ).rejects.toBeInstanceOf(UnacceptableAccountError);
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('refuses an OAuth grant for an account on another server and revokes it', async () => {
@@ -1239,11 +1266,14 @@ describe('AuthService', () => {
     const oidc = TestBed.inject(OidcClientService);
     vi.mocked(oidc.forgetClientId).mockReturnValue(of(undefined));
 
-    await firstValueFrom(auth.forgetOidcClientId('https://hs', 'https://op'));
+    await firstValueFrom(
+      auth.forgetOidcClientId('https://hs', 'https://op', 'client-1'),
+    );
 
     expect(oidc.forgetClientId).toHaveBeenCalledWith(
       'https://hs',
       'https://op',
+      'client-1',
     );
   });
 
@@ -1404,7 +1434,7 @@ describe('AuthService', () => {
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('signs the new session out when the question goes away unanswered', async () => {
@@ -1420,7 +1450,7 @@ describe('AuthService', () => {
       );
       attempt.unsubscribe();
 
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('signs the new session out when the stored answer cannot be read', async () => {
@@ -1429,7 +1459,7 @@ describe('AuthService', () => {
       await expect(
         firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
       ).rejects.toThrow('preferences unavailable');
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('keeps the stored device signed in when a re-auth on it is declined', async () => {
@@ -1450,7 +1480,7 @@ describe('AuthService', () => {
           ),
         ),
       ).rejects.toBeInstanceOf(UnprotectedStorageDeclinedError);
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
   });
 
@@ -1517,11 +1547,12 @@ describe('AuthService', () => {
       );
 
       expect(result.kind).toBe(outcome.kind);
-      expect(createClientMock).toHaveBeenLastCalledWith({
+      expect(loggedOut()).toHaveBeenCalledWith({
         baseUrl: 'https://hs',
+        userId: expect.any(String),
+        deviceId: expect.any(String),
         accessToken: 'new-tok',
       });
-      expect(logout).toHaveBeenCalledWith(true);
     });
 
     it('keeps a re-authenticated device signed in when the runtime is busy', async () => {
@@ -1542,7 +1573,7 @@ describe('AuthService', () => {
       );
 
       expect(result.kind).toBe('transition-in-progress');
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('keeps an OIDC re-authenticated device when the runtime is busy', async () => {
@@ -1599,7 +1630,7 @@ describe('AuthService', () => {
           ),
         ),
       ).rejects.toThrow('registry unreadable');
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('still signs out a refused sign-in that got a new device for a stored account', async () => {
@@ -1615,11 +1646,12 @@ describe('AuthService', () => {
         auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
       );
 
-      expect(createClientMock).toHaveBeenLastCalledWith({
+      expect(loggedOut()).toHaveBeenCalledWith({
         baseUrl: 'https://hs',
+        userId: expect.any(String),
+        deviceId: expect.any(String),
         accessToken: 'new-tok',
       });
-      expect(logout).toHaveBeenCalledWith(true);
     });
 
     it('keeps a new session that was saved, whatever went wrong after', async () => {
@@ -1629,7 +1661,7 @@ describe('AuthService', () => {
         auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
       );
 
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('revokes a refused OIDC session at its provider', async () => {
@@ -1734,11 +1766,12 @@ describe('AuthService', () => {
       // Nothing was persisted, so the stored record and its crypto store are untouched.
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
       // The device this sign-in created is signed out again.
-      expect(createClientMock).toHaveBeenLastCalledWith({
+      expect(loggedOut()).toHaveBeenCalledWith({
         baseUrl: 'https://hs',
+        userId: expect.any(String),
+        deviceId: expect.any(String),
         accessToken: 'new-tok',
       });
-      expect(logout).toHaveBeenCalledWith(true);
     });
 
     it('replaces the stored device only after the user agrees', async () => {
@@ -1753,7 +1786,7 @@ describe('AuthService', () => {
         vi.mocked(accounts.establishAuthenticatedAccount).mock
           .invocationCallOrder[0],
       );
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
     });
 
     it('does not ask about a stored account saved through another server', async () => {
@@ -1866,7 +1899,7 @@ describe('AuthService', () => {
 
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
       // The sign-in did not go ahead, so the device it created is signed out again.
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
 
     it('signs the new device out when the sign-in is abandoned mid-dialog', async () => {
@@ -1877,11 +1910,11 @@ describe('AuthService', () => {
         .loginWithPassword('https://hs', '@me:hs', 'pw')
         .subscribe();
       await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
-      expect(logout).not.toHaveBeenCalled();
+      expect(loggedOut()).not.toHaveBeenCalled();
       signIn.unsubscribe(); // e.g. the login page is closed while the warning is open
 
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
-      expect(logout).toHaveBeenCalledWith(true);
+      expect(loggedOut()).toHaveBeenCalled();
     });
   });
 
