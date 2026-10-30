@@ -7,24 +7,36 @@ import {
   defaultIfEmpty,
   defer,
   finalize,
-  firstValueFrom,
-  ignoreElements,
+  map,
   of,
   pipe,
   switchMap,
   take,
+  tap,
   throwIfEmpty,
   type MonoTypeOperatorFunction,
 } from 'rxjs';
-import { SessionStateService } from '@trinity/data-access/matrix-client';
-import { SessionStorageService } from '@trinity/platform-native';
-import { unwrapEngineResult } from '@trinity/util/matrix';
+import {
+  SESSION_ENGINE,
+  SessionStateService,
+} from '@trinity/data-access/matrix-client';
+import {
+  SessionStorageService,
+  sameHomeserver,
+} from '@trinity/platform-native';
+import {
+  unwrapEngineResult,
+  type MatrixSession,
+  type OidcSessionBinding,
+} from '@trinity/util/matrix';
 import { AUTH_ENGINE } from '../auth-engine.token';
-import type { QrGrantTokens, QrSignInUpdate } from '../auth-engine';
+import type { QrSignInUpdate } from '../auth-engine';
 import type { AuthMetadata } from '../auth-metadata';
 import { AuthService } from '../auth.service';
-import { verifyAccountServer } from '../account-establishment';
-import { AUTHENTICATION_HOMESERVER_DISCOVERY } from '../homeserver-discovery.port';
+import {
+  UnacceptableAccountError,
+  refusedBeforeSaving,
+} from '../account-establishment';
 import { OidcClientService } from '../oidc-client.service';
 import { QR_LINK_IDENTITY_CHECK } from './qr-link-identity-check.port';
 import {
@@ -34,7 +46,15 @@ import {
   qrSignInFailureOf,
   type ExistingDeviceState,
   type NewDeviceState,
+  type QrSignInFailure,
 } from './qr-sign-in.model';
+
+/** The new device's side of a sign-in, with the typed check code as its input. */
+export interface NewDeviceQrSignIn {
+  readonly state$: Observable<NewDeviceState>;
+  /** Answers the code step with the digits typed; ignored at any other step. */
+  enterCheckCode(code: string): void;
+}
 
 /** The existing device's side of a link, with the check-code answer as its input. */
 export interface ExistingDeviceLink {
@@ -51,7 +71,7 @@ export interface QrDeviceLinker {
 
 /**
  * Sign-in by QR code (MSC4108): a new device shows the code, an existing device scans it.
- * The engine runs the rendezvous; every security decision is made here, while it waits.
+ * The engine runs the rendezvous; every security decision is made here.
  */
 @Injectable({ providedIn: 'root' })
 export class QrSignInService {
@@ -59,27 +79,54 @@ export class QrSignInService {
   private readonly auth = inject(AuthService);
   private readonly oidc = inject(OidcClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly sessionEngine = inject(SESSION_ENGINE);
   private readonly sessionState = inject(SessionStateService);
   private readonly identity = inject(QR_LINK_IDENTITY_CHECK);
-  private readonly discovery = inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
 
   /**
-   * Cold: each subscription shows a new code; unsubscribing cancels the sign-in. The other
-   * device must be signed in on `serverName`, the server entered. Until the account is being
-   * established, any failure or unsubscribe revokes the tokens the grant issued.
+   * `state$` is cold: each subscription shows a new code, and unsubscribing cancels the
+   * sign-in. The session the engine hands over is added as an account only on the homeserver
+   * signed in to, for an account on `serverName`, the server entered, that this device does
+   * not store yet. Until it is handed to establishing, any failure or unsubscribe signs it out
+   * again; from then on establishing owns it, as for every sign-in.
    */
   signInByShowingCode(
     homeserverUrl: string,
     serverName: string,
-  ): Observable<NewDeviceState> {
-    return defer(() => {
+  ): NewDeviceQrSignIn {
+    let current: ((code: string) => void) | undefined;
+    const state$ = defer(() => {
       let metadata: AuthMetadata;
       let grantMetadata: AuthMetadata;
-      let clientId = '';
       let retried = false;
-      let tokens: QrGrantTokens | null = null;
+      let waiting: string | null = null;
+      let handedOver: MatrixSession | null = null;
       let owned = false;
-      const onUpdate = (update: QrSignInUpdate): Observable<NewDeviceState> => {
+      const answers = new Subscription();
+      const answer = (code: string) => {
+        const flowId = waiting;
+        waiting = null;
+        if (flowId === null) return;
+        answers.add(
+          this.engine.answerQrSignIn(flowId, { checkCode: code }).subscribe(),
+        );
+      };
+      current = answer;
+      // Pinned before any session exists, so every sign-out revokes at the pinned provider.
+      const signIn = (clientId: string): Observable<NewDeviceState> =>
+        this.oidc.deviceGrantBinding(grantMetadata, clientId).pipe(
+          oneValue(),
+          switchMap((binding) =>
+            this.engine
+              .signInWithQr(homeserverUrl, { grantMetadata, clientId })
+              .pipe(switchMap((update) => onUpdate(update, binding))),
+          ),
+        );
+      const onUpdate = (
+        update: QrSignInUpdate,
+        binding: OidcSessionBinding,
+      ): Observable<NewDeviceState> => {
+        waiting = update.kind === 'enter-check-code' ? update.flowId : null;
         switch (update.kind) {
           case 'showing-code':
             return of({
@@ -87,22 +134,10 @@ export class QrSignInService {
               qr: fromBase64(update.qr),
               expiresAt: update.expiresAt,
             });
-          case 'server-reported':
-            return this.isEnteredServer(
-              update.serverName,
-              serverName,
-              homeserverUrl,
-            ).pipe(
-              switchMap((entered) => {
-                if (!entered) throw new OtherServerError();
-                return this.engine.answerQrSignIn(update.flowId, {
-                  kind: 'server-accepted',
-                });
-              }),
-              ignoreElements(),
-            );
+          case 'enter-check-code':
+            return of({ kind: 'enter-check-code' });
           case 'client-rejected':
-            // A cached client the provider no longer accepts: register once more and retry.
+            // A cached client the provider no longer accepts: register once more and start over.
             if (retried) throw new DeviceGrantRejectedError();
             retried = true;
             return this.oidc
@@ -113,57 +148,70 @@ export class QrSignInService {
                   this.oidc.deviceGrantClientId(metadata, homeserverUrl),
                 ),
                 oneValue(),
-                switchMap((fresh) => {
-                  clientId = fresh;
-                  return this.engine.answerQrSignIn(update.flowId, {
-                    kind: 'retry-grant',
-                    clientId: fresh,
-                  });
-                }),
-                ignoreElements(),
+                switchMap(signIn),
               );
-          case 'signing-in':
-            tokens = update.tokens;
-            return of({ kind: 'signing-in' });
-          case 'signed-in': {
-            const issued = tokens;
-            if (!issued) throw new Error('The QR sign-in issued no tokens.');
-            return this.storage.record(update.userId).pipe(
+          case 'done': {
+            const { session } = update;
+            handedOver = {
+              baseUrl: session.homeserverUrl,
+              userId: session.userId,
+              deviceId: session.deviceId,
+              accessToken: session.accessToken,
+              ...(session.refreshToken
+                ? { refreshToken: session.refreshToken }
+                : {}),
+              oidc: binding,
+            };
+            if (!sameHomeserver(session.homeserverUrl, homeserverUrl)) {
+              throw new OtherServerError();
+            }
+            return this.storage.record(session.userId).pipe(
               oneValue(),
               switchMap((stored) => {
                 if (stored) throw new QrAccountAlreadyStoredError();
-                return this.oidc.deviceGrantBinding(grantMetadata, clientId);
-              }),
-              oneValue(),
-              switchMap((binding) => {
+                // From here establishing owns it and hands a refused session back itself.
                 owned = true;
-                return this.auth.establishDeviceGrant(homeserverUrl, {
-                  user_id: update.userId,
-                  device_id: update.deviceId,
-                  access_token: issued.accessToken,
-                  ...(issued.refreshToken
-                    ? { refresh_token: issued.refreshToken }
-                    : {}),
-                  ...(issued.accessTokenExpiresAt !== null
-                    ? { accessTokenExpiresAt: issued.accessTokenExpiresAt }
-                    : {}),
-                  oidc: binding,
-                });
+                return this.auth
+                  .establishDeviceGrant(
+                    homeserverUrl,
+                    {
+                      user_id: session.userId,
+                      device_id: session.deviceId,
+                      access_token: session.accessToken,
+                      ...(session.refreshToken
+                        ? { refresh_token: session.refreshToken }
+                        : {}),
+                      ...(session.accessTokenExpiresAt !== null
+                        ? { accessTokenExpiresAt: session.accessTokenExpiresAt }
+                        : {}),
+                      oidc: binding,
+                    },
+                    serverName,
+                  )
+                  .pipe(
+                    // Refused before anything was stored: the engine must still drop what
+                    // it holds for this user and device, so sign out here too.
+                    tap({
+                      next: (outcome) => {
+                        if (refusedBeforeSaving(outcome)) owned = false;
+                      },
+                      error: (error: unknown) => {
+                        if (error instanceof UnacceptableAccountError) {
+                          owned = false;
+                        }
+                      },
+                    }),
+                  );
               }),
               oneValue(),
-              switchMap((outcome) => {
+              map((outcome): NewDeviceState => {
                 if (outcome.kind !== 'ready') {
                   throw new Error(
                     `The QR sign-in did not start (${outcome.kind}).`,
                   );
                 }
-                // The device exists on the server now, so the engine may share the secrets.
-                return this.engine.continueQrSignIn(
-                  update.flowId,
-                  outcome.accountId,
-                );
+                return { kind: 'done' };
               }),
-              ignoreElements(),
             );
           }
           default:
@@ -185,40 +233,27 @@ export class QrSignInService {
             return this.oidc.deviceGrantClientId(metadata, homeserverUrl);
           }),
           oneValue(),
-          switchMap((id) => {
-            clientId = id;
-            return this.engine.signInWithQr(homeserverUrl, {
-              grantMetadata,
-              clientId,
-            });
-          }),
-          // The engine waits at each pause, so a new update is a failure that ends the step.
-          switchMap(onUpdate),
+          switchMap(signIn),
         ),
       ).pipe(
         catchError((error: unknown) =>
           of<NewDeviceState>({
             kind: 'failed',
-            reason: qrSignInFailureOf(error),
+            reason: newDeviceFailure(error),
           }),
         ),
         finalize(() => {
-          if (!tokens || owned) return;
-          this.oidc
-            .revokeTokens(
-              homeserverUrl,
-              { issuer: grantMetadata.issuer, clientId },
-              {
-                accessToken: tokens.accessToken,
-                ...(tokens.refreshToken
-                  ? { refreshToken: tokens.refreshToken }
-                  : {}),
-              },
-            )
-            .subscribe({ error: () => undefined });
+          if (current === answer) current = undefined;
+          answers.unsubscribe();
+          if (handedOver && !owned) {
+            this.sessionEngine
+              .logoutSession(handedOver)
+              .subscribe({ error: () => undefined });
+          }
         }),
       );
     });
+    return { state$, enterCheckCode: (code) => current?.(code) };
   }
 
   /**
@@ -289,25 +324,6 @@ export class QrSignInService {
     });
     return { state$, confirmCheckCode: (match) => current?.(match) };
   }
-
-  /** Whether an account on `reported` is accepted as one on the homeserver entered. */
-  private isEnteredServer(
-    reported: string | null,
-    entered: string,
-    homeserverUrl: string,
-  ): Observable<boolean> {
-    if (!reported) return of(false);
-    // A user ID's server name has no root dot.
-    const userId = `@_:${reported.replace(/\.$/, '')}`;
-    return defer(() =>
-      firstValueFrom(
-        verifyAccountServer(homeserverUrl, userId, this.discovery, entered),
-      ).then(
-        () => true,
-        () => false,
-      ),
-    );
-  }
 }
 
 /** The first value of a sign-in step; an empty step fails at once instead of stalling the flow. */
@@ -316,6 +332,14 @@ function oneValue<T>(): MonoTypeOperatorFunction<T> {
     take(1),
     throwIfEmpty(() => new Error('The sign-in step returned nothing.')),
   );
+}
+
+/** An account the server check refused is on another server, as far as the new device can tell. */
+function newDeviceFailure(error: unknown): QrSignInFailure {
+  return error instanceof UnacceptableAccountError &&
+    error.reason !== 'malformed'
+    ? 'other-server'
+    : qrSignInFailureOf(error);
 }
 
 const toBase64 = (bytes: Uint8Array): string =>

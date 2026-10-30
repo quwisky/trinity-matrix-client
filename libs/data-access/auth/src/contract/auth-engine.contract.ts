@@ -465,17 +465,7 @@ export function defineAuthEngineContract(
 
         await expect(
           once(
-            context.engine.answerQrSignIn('no-such-flow', {
-              kind: 'server-accepted',
-            }),
-          ),
-        ).resolves.toEqual(gone);
-        await expect(
-          once(
-            context.engine.continueQrSignIn(
-              'no-such-flow',
-              context.live.userId,
-            ),
+            context.engine.answerQrSignIn('no-such-flow', { checkCode: '42' }),
           ),
         ).resolves.toEqual(gone);
         await expect(

@@ -2,6 +2,7 @@ import type { AuthenticationHomeserverDiscovery } from './homeserver-discovery.p
 import {
   AuthenticatedAccountGrant,
   type AccountEstablishmentIntent,
+  type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
 import { Observable, catchError, map, of, throwError } from 'rxjs';
 import { sameHomeserver } from '@trinity/platform-native';
@@ -51,6 +52,19 @@ export class UnacceptableAccountError extends Error {
   ) {
     super(UNACCEPTABLE_ACCOUNT_MESSAGES[reason](userId));
   }
+}
+
+/** Establishing refused the session before saving anything: nothing will ever use it. */
+export function refusedBeforeSaving(
+  outcome: AccountEstablishmentOutcome,
+): boolean {
+  return (
+    outcome.kind === 'transition-in-progress' ||
+    (outcome.kind === 'failed' &&
+      (outcome.failure === 'homeserver-mismatch' ||
+        outcome.failure === 'account-already-stored' ||
+        outcome.failure === 'unprotected-storage-declined'))
+  );
 }
 
 const MAX_ID_LENGTH = 255;

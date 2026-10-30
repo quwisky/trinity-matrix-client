@@ -12,7 +12,6 @@ export * from './lib/server-logout-hold';
 export * from './lib/js-sdk/server-support';
 export * from './lib/mutual-rooms';
 export * from './lib/js-sdk/js-sdk-clients';
-export * from './lib/js-sdk/linked-secrets';
 export * from './lib/js-sdk/uia';
 export * from './lib/js-sdk/replacement';
 export * from './lib/js-sdk/room-state';

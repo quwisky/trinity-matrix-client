@@ -160,13 +160,14 @@ export class FakeAuthEngine implements AuthEngine {
   qrRendezvous = false;
   /** The other device a QR sign-in meets. */
   readonly qrPeer = {
-    serverName: 'example.org' as string | null,
+    /** Where the new device's session ends up; null: the server it signs in to. */
+    homeserverUrl: null as string | null,
     userId: '@alice:example.org',
     deviceId: 'QRDEVICE',
+    /** The check code it shows; the new device must type these two digits. */
+    checkCode: '42',
     /** Client ids the provider refuses for the device grant. */
     refusedClients: new Set<string>(),
-    /** Whether the secrets it shares verify the new device. */
-    verifies: true,
     verificationUri: 'https://auth.example.org/link',
   };
   /** Stops each QR flow after its update of this kind: failing with `reason`, else waiting. */
@@ -439,40 +440,31 @@ export class FakeAuthEngine implements AuthEngine {
           qr: btoa(`MATRIX${run.id}`),
           expiresAt: Date.now() + 60_000,
         });
-        await run.pause('server', {
-          kind: 'server-reported',
+        const typed = await run.pause<string>('code', {
+          kind: 'enter-check-code',
           flowId: run.id,
-          serverName: this.qrPeer.serverName,
         });
-        run.emit({ kind: 'confirm-check-code', code: '42' });
-        let clientId = request.clientId;
-        while (this.qrPeer.refusedClients.has(clientId)) {
-          clientId = await run.pause<string>('grant', {
-            kind: 'client-rejected',
-            flowId: run.id,
-          });
+        if (typed !== this.qrPeer.checkCode) {
+          run.end({ kind: 'failed', reason: 'insecure' });
+          return;
+        }
+        const { clientId } = request;
+        if (this.qrPeer.refusedClients.has(clientId)) {
+          run.end({ kind: 'client-rejected' });
+          return;
         }
         run.emit({ kind: 'waiting-for-approval', userCode: 'ABCD' });
-        run.emit({
-          kind: 'signing-in',
-          tokens: {
+        run.emit({ kind: 'signing-in' });
+        run.end({
+          kind: 'done',
+          session: {
+            homeserverUrl: this.qrPeer.homeserverUrl ?? baseUrl,
+            userId: this.qrPeer.userId,
+            deviceId: this.qrPeer.deviceId,
             accessToken: `qr-token-${clientId}`,
             refreshToken: `qr-refresh-${clientId}`,
             accessTokenExpiresAt: Date.now() + 300_000,
           },
-        });
-        const accountId = await run.pause<string>('established', {
-          kind: 'signed-in',
-          flowId: run.id,
-          userId: this.qrPeer.userId,
-          deviceId: this.qrPeer.deviceId,
-        });
-        run.end({
-          kind: 'done',
-          verified:
-            this.qrPeer.verifies &&
-            accountId === this.qrPeer.userId &&
-            this.accounts.has(accountId),
         });
       },
     );
@@ -482,21 +474,8 @@ export class FakeAuthEngine implements AuthEngine {
     flowId: string,
     answer: QrSignInAnswer,
   ): Observable<EngineResult<null>> {
-    return answer.kind === 'retry-grant'
-      ? this.command(`answerQrSignIn:retry-grant:${answer.clientId}`, () =>
-          this.qrAnswer(flowId, 'grant', answer.clientId),
-        )
-      : this.command(`answerQrSignIn:${answer.kind}`, () =>
-          this.qrAnswer(flowId, 'server', undefined),
-        );
-  }
-
-  continueQrSignIn(
-    flowId: string,
-    accountId: string,
-  ): Observable<EngineResult<null>> {
-    return this.command(`continueQrSignIn:${accountId}`, () =>
-      this.qrAnswer(flowId, 'established', accountId),
+    return this.command(`answerQrSignIn:${answer.checkCode}`, () =>
+      this.qrAnswer(flowId, 'code', answer.checkCode),
     );
   }
 

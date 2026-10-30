@@ -382,13 +382,6 @@ export class JsSdkAuthEngine implements AuthEngine {
     return this.qr.answerQrSignIn(flowId, answer);
   }
 
-  continueQrSignIn(
-    flowId: string,
-    accountId: string,
-  ): Observable<EngineResult<null>> {
-    return this.qr.continueQrSignIn(flowId, accountId);
-  }
-
   linkDeviceWithQr(accountId: string, qr: string): Observable<QrLinkUpdate> {
     return this.qr.linkDeviceWithQr(accountId, qr);
   }

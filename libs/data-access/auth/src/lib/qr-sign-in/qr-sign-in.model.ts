@@ -9,17 +9,18 @@ export type QrSignInFailure =
   | 'network'
   | 'unknown';
 
-/** The plain sentence each failure shows; the new device words `already-signed-in` its own way. */
+/** The plain sentence each failure shows, unless the device on screen words it its own way. */
 export const QR_SIGN_IN_FAILURE_MESSAGES: Readonly<
   Record<QrSignInFailure, string>
 > = {
   expired: 'The code expired.',
   declined: 'Sign-in was cancelled on the other device.',
-  insecure: "The codes didn't match, so nothing was shared.",
+  insecure:
+    "The connection between the devices wasn't secure, so nothing was shared.",
   unsupported: "Your server doesn't support QR sign-in.",
   'already-signed-in': 'That device is already signed in.',
   'other-server':
-    'That device is signed in on a different server, so nothing was shared.',
+    "That account is on a different server from the one you chose, so Trinity signed it out again. Sign in through that account's server.",
   network: 'Lost connection. Check your network and try again.',
   unknown: 'Something went wrong. Try again or sign in another way.',
 };
@@ -27,10 +28,10 @@ export const QR_SIGN_IN_FAILURE_MESSAGES: Readonly<
 export type NewDeviceState =
   | { kind: 'creating' }
   | { kind: 'showing-code'; qr: Uint8Array; expiresAt: number }
-  | { kind: 'confirm-check-code'; code: string }
+  | { kind: 'enter-check-code' }
   | { kind: 'waiting-for-approval'; userCode: string }
   | { kind: 'signing-in' }
-  | { kind: 'done'; verified: boolean }
+  | { kind: 'done' }
   | { kind: 'failed'; reason: QrSignInFailure };
 
 export type ExistingDeviceState =
@@ -65,10 +66,10 @@ export class DeviceGrantRejectedError extends Error {
   }
 }
 
-/** The other device's account is not on the server this device signs in to. */
+/** The account the other device signed in is not on the server this device signs in to. */
 export class OtherServerError extends Error {
   constructor() {
-    super('The other device is signed in on a different server.');
+    super('The account is on a different server.');
   }
 }
 
