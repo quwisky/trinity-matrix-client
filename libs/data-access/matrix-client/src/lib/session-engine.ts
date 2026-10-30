@@ -90,6 +90,39 @@ export type ServerLogoutHoldUpdate =
   /** The account left this device and took its holds with it; the stream completes. */
   | { readonly kind: 'released' };
 
+/**
+ * What the caller saves for the engine, as it happens. Every refresh the engine adopts is reported,
+ * whoever asked for it, and so is every logout the server caused. A command's own intended outcome
+ * (`remove`, a successful `logoutRemote` or `deactivateAccount`, `requireReauthentication`) is the
+ * caller's to save.
+ */
+export type SessionStorageEffect =
+  | {
+      /** The engine adopted refreshed tokens it has not saved itself. */
+      readonly kind: 'tokens-rotated';
+      readonly accountId: string;
+      /** The stored sign-in the client started from: storage writes only while it still holds it. */
+      readonly lineage: string | null;
+      readonly accessToken: string;
+      /** Null when the provider rotated none: storage keeps the one it has. */
+      readonly refreshToken: string | null;
+      readonly expiresAt: number | null;
+    }
+  /** The server ended the session and kept the device: forget the token, keep the record. */
+  | {
+      readonly kind: 'soft-logout';
+      readonly accountId: string;
+      /** The active account after the logout; storage repoints to it. */
+      readonly activeAccountId: string | null;
+    }
+  /** The server deleted the device and the engine wiped the account: delete its record. */
+  | {
+      readonly kind: 'hard-logout';
+      readonly accountId: string;
+      /** The active account after the logout; storage repoints to it. */
+      readonly activeAccountId: string | null;
+    };
+
 /** A text message a live client has not got onto the homeserver. */
 export interface PendingTextMessage {
   readonly accountId: string;
@@ -132,6 +165,13 @@ export interface SessionEngine {
   session(): Observable<SessionSnapshot>;
   /** The live client's token on subscribe and after each change, or null when none is live. */
   accessToken(accountId: string): Observable<SessionAccessToken | null>;
+  /**
+   * Storage writes the caller owes the engine (see {@link SessionStorageEffect}), from subscribe on, with
+   * no replay. Each reaches the subscriber before the result of any engine request that met its cause; a
+   * hard logout met while held is reported only when its last hold is released as not deleted;
+   * `remove` and `stop` end holds without reporting a recorded death. The stream never errors.
+   */
+  storageEffects(): Observable<SessionStorageEffect>;
   /**
    * Starts a persisted account. It also adopts a pending QR session for the same user and
    * device, and the secrets that session received.

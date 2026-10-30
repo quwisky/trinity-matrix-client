@@ -20,6 +20,7 @@ import {
   type ServerLogoutHoldUpdate,
   type SessionEngine,
   type SessionSnapshot,
+  type SessionStorageEffect,
 } from '../lib/session-engine';
 
 export interface SessionContractSetup {
@@ -583,6 +584,7 @@ export function defineSessionEngineContract(
     it(
       'releases a hold as not deleted when its subscriber leaves',
       async () => {
+        const effects = record(engine.storageEffects());
         const a = await context.newSession();
         await restore(a);
         const held = await hold(a.userId);
@@ -599,6 +601,83 @@ export function defineSessionEngineContract(
             timeout(syncTimeoutMs),
           ),
         );
+        await until(() => effects.length > 0);
+        expect(effects).toEqual([
+          { kind: 'hard-logout', accountId: a.userId, activeAccountId: null },
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reports a server soft logout for the caller to save, and nothing for a removal',
+      async () => {
+        const effects = record(engine.storageEffects());
+        const a = await context.newSession();
+        const b = await context.newSession();
+        await restore(a);
+        await restore(b, 'background');
+
+        await context.softLogout(a);
+        await until(() => effects.length > 0);
+        expect(effects).toEqual([
+          {
+            kind: 'soft-logout',
+            accountId: a.userId,
+            activeAccountId: b.userId,
+          },
+        ]);
+
+        await once(engine.remove(b.userId));
+        expect(effects).toHaveLength(1);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reports an unheld hard logout before the request that met it',
+      async () => {
+        const effects = record(engine.storageEffects());
+        const a = await context.newSession();
+        await restore(a);
+        await context.revokeToken(a);
+
+        let seen: SessionStorageEffect[] = [];
+        await once(
+          engine
+            .deactivateAccount(a.userId, false, null)
+            .pipe(tap(() => (seen = [...effects]))),
+        );
+
+        expect(seen).toEqual([
+          { kind: 'hard-logout', accountId: a.userId, activeAccountId: null },
+        ]);
+        expect((await snapshot()).accounts).toEqual([]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'reports a held hard logout once its last hold is released as not deleted',
+      async () => {
+        const effects = record(engine.storageEffects());
+        const a = await context.newSession();
+        await restore(a);
+        const held = await hold(a.userId);
+        await context.revokeToken(a);
+        await once(engine.deactivateAccount(a.userId, false, null));
+        expect(effects).toEqual([]);
+
+        let seen: SessionStorageEffect[] = [];
+        await once(
+          engine
+            .releaseServerLogoutHold(held.holdId, false)
+            .pipe(tap(() => (seen = [...effects]))),
+        );
+
+        expect(seen).toEqual([
+          { kind: 'hard-logout', accountId: a.userId, activeAccountId: null },
+        ]);
       },
       testTimeoutMs,
     );
@@ -606,6 +685,7 @@ export function defineSessionEngineContract(
     it(
       'deactivates with a password and leaves the dead token to the deletion cleanup',
       async () => {
+        const effects = record(engine.storageEffects());
         const a = await context.newSession();
         await restore(a);
         const held = await hold(a.userId);
@@ -636,6 +716,7 @@ export function defineSessionEngineContract(
         await until(() => held.kinds().includes('token-died'));
         await once(engine.releaseServerLogoutHold(held.holdId, true));
 
+        expect(effects).toEqual([]);
         expect((await snapshot()).accounts.map((x) => x.accountId)).toEqual([
           a.userId,
         ]);
@@ -690,6 +771,7 @@ export function defineSessionEngineContract(
     it(
       'tells its holds of a sign-in again and of a token renewed by a new client',
       async () => {
+        const effects = record(engine.storageEffects());
         const a = await context.newSession();
         await restore(a);
         const held = await hold(a.userId);
@@ -713,6 +795,10 @@ export function defineSessionEngineContract(
 
         await once(engine.releaseServerLogoutHold(held.holdId, false));
 
+        // The renewal forgot the recorded death, so the release wipes nothing.
+        expect(effects).toEqual([
+          { kind: 'soft-logout', accountId: a.userId, activeAccountId: null },
+        ]);
         expect(held.completed()).toBe(true);
         expect(
           (await snapshot()).accounts.map(({ accountId, deviceId }) => ({
@@ -765,6 +851,7 @@ export function defineSessionEngineContract(
     it(
       'stops the session it logs out and keeps the account live',
       async () => {
+        const effects = record(engine.storageEffects());
         const a = await context.newSession();
         await restore(a);
         await firstValueFrom(
@@ -795,6 +882,8 @@ export function defineSessionEngineContract(
             syncState,
           })),
         ).toEqual([{ accountId: a.userId, syncState: 'stopped' }]);
+        // Its own logout is the caller's to save, not a server logout.
+        expect(effects).toEqual([]);
       },
       testTimeoutMs,
     );

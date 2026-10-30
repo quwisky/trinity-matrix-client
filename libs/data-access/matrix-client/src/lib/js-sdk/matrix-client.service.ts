@@ -67,6 +67,7 @@ import type {
   PersistedAccountActivation,
   ServerLogoutHoldUpdate,
   SessionAccessToken,
+  SessionStorageEffect,
 } from '../session-engine';
 import type { ServerLogoutHold } from '../server-logout-hold';
 import {
@@ -276,6 +277,11 @@ export class MatrixClientService {
    */
   readonly accessTokenRotations: Observable<AccessTokenRotation> =
     this._accessTokenRotations.asObservable();
+
+  private readonly _storageEffects = new Subject<SessionStorageEffect>();
+  /** Server logouts for the caller to save, each once the active account has moved. */
+  readonly storageEffects: Observable<SessionStorageEffect> =
+    this._storageEffects.asObservable();
 
   /**
    * The access token Trinity last saw each OAuth account's client start with or persist,
@@ -1475,6 +1481,11 @@ export class MatrixClientService {
     if (active) {
       this.storage.setActive(active).subscribe({ error: () => undefined });
     }
+    this._storageEffects.next({
+      kind: soft ? 'soft-logout' : 'hard-logout',
+      accountId: userId,
+      activeAccountId: active,
+    });
   }
 
   /** Drop a user id from the soft-logged-out set (on re-auth or full removal). */

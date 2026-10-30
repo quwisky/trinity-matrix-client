@@ -9,6 +9,7 @@ import {
   HttpApiEvent,
   MatrixError,
   SyncState,
+  TokenRefreshError,
   createClient,
 } from 'matrix-js-sdk';
 import { firstValueFrom, of } from 'rxjs';
@@ -563,6 +564,26 @@ describe('JsSdkSessionEngine', () => {
       );
 
       expect(!result.ok && result.failure.code).toBe(code);
+      expect(() => assertPlainData(result)).not.toThrow();
+    });
+
+    it('marks a request that failed on a token refresh with that cause', async () => {
+      const client = {
+        ...fakeClient(),
+        deactivateAccount: vi
+          .fn()
+          .mockRejectedValue(new TokenRefreshError(new Error('offline'))),
+      };
+      const { engine } = await live(client);
+
+      const result = await firstValueFrom(
+        engine.deactivateAccount(SESSION.userId, false, null),
+      );
+
+      expect(!result.ok && result.failure).toMatchObject({
+        code: 'request-failed',
+        params: { cause: 'session-refresh' },
+      });
       expect(() => assertPlainData(result)).not.toThrow();
     });
 

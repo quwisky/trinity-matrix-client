@@ -8,6 +8,7 @@ import {
   from,
   map,
   of,
+  Subject,
   shareReplay,
   tap,
 } from 'rxjs';
@@ -33,6 +34,7 @@ import {
   type SessionCredentials,
   type SessionEngine,
   type SessionSnapshot,
+  type SessionStorageEffect,
 } from '../lib/session-engine';
 
 /** The request-failure kind the js-sdk adapter reports for each start failure reason. */
@@ -70,6 +72,7 @@ export class FakeSessionEngine implements SessionEngine {
   private readonly snapshot$ = new BehaviorSubject<SessionSnapshot>(
     EMPTY_SESSION,
   );
+  private readonly effects$ = new Subject<SessionStorageEffect>();
   private readonly tokens$ = new BehaviorSubject<
     ReadonlyMap<string, SessionAccessToken>
   >(new Map());
@@ -118,6 +121,7 @@ export class FakeSessionEngine implements SessionEngine {
       ...s,
       softLoggedOut: [...new Set([...s.softLoggedOut, accountId])],
     }));
+    this.emitEffect('soft-logout', accountId);
   }
 
   setToken(accountId: string, token: SessionAccessToken | null): void {
@@ -149,6 +153,10 @@ export class FakeSessionEngine implements SessionEngine {
     return this.snapshot$.pipe(
       distinctUntilChanged<SessionSnapshot>(plainEqual),
     );
+  }
+
+  storageEffects(): Observable<SessionStorageEffect> {
+    return this.effects$.asObservable();
   }
 
   accessToken(accountId: string): Observable<SessionAccessToken | null> {
@@ -494,6 +502,7 @@ export class FakeSessionEngine implements SessionEngine {
     );
     if (held.length === 0) {
       this.drop(accountId);
+      this.emitEffect('hard-logout', accountId);
       return;
     }
     this.diedWhileHeld.add(accountId);
@@ -519,6 +528,7 @@ export class FakeSessionEngine implements SessionEngine {
     const keep = this.releasedAsDeleted.delete(accountId);
     if (this.diedWhileHeld.delete(accountId) && !keep) {
       this.drop(accountId);
+      this.emitEffect('hard-logout', accountId);
     }
   }
 
@@ -547,6 +557,18 @@ export class FakeSessionEngine implements SessionEngine {
 
   private update(change: (s: SessionSnapshot) => SessionSnapshot): void {
     this.snapshot$.next(change(this.snapshot$.value));
+  }
+
+  /** Reports a server logout once `drop` has repointed the active account. */
+  private emitEffect(
+    kind: 'soft-logout' | 'hard-logout',
+    accountId: string,
+  ): void {
+    this.effects$.next({
+      kind,
+      accountId,
+      activeAccountId: this.snapshot$.value.activeAccountId,
+    });
   }
 
   /** Retires a live account and repoints the active one to the first that remains. */
