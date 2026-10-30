@@ -8,7 +8,7 @@ import {
   of,
   shareReplay,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { HOMESERVER_ENGINE } from './homeserver-engine';
 import type { HomeserverInfo } from './homeserver-info.model';
 
@@ -37,7 +37,7 @@ interface CachedInfo {
  */
 @Injectable({ providedIn: 'root' })
 export class HomeserverInfoService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly session = inject(SessionStateService);
   private readonly engine = inject(HOMESERVER_ENGINE);
 
   private readonly cache = new Map<string, CachedInfo>();
@@ -55,10 +55,10 @@ export class HomeserverInfoService {
   readonly infos = this._infos.asReadonly();
 
   constructor() {
-    // Accounts come and go, and a re-add bumps the generation of the same user id; the map
-    // changes on both, so `evictStale` decides what survives.
+    // Accounts come and go, and a re-add bumps the generation of the same user id; the
+    // snapshot changes on both, so `evictStale` decides what survives.
     effect(() => {
-      this.matrix.sessionGenerations();
+      this.session.snapshot();
       this.evictStale();
     });
   }
@@ -96,7 +96,7 @@ export class HomeserverInfoService {
     // Wholly inside `defer`, so this really is cold as documented: the generation is read
     // on SUBSCRIBE, and the engine reads the client and token then too.
     const request = defer(() => {
-      const generation = this.matrix.sessionGenerations().get(userId);
+      const generation = this.session.status(userId)?.generation;
       if (generation === undefined) {
         // A user id held past sign-out, or one passed in from elsewhere: not an error.
         return of(undefined);
@@ -132,7 +132,7 @@ export class HomeserverInfoService {
 
   /** Probe every signed-in account that has no answer yet. Cold. */
   loadAll(): Observable<void> {
-    const pending = this.matrix
+    const pending = this.session
       .accountIds()
       .filter((userId) => !this.cache.has(userId));
     return pending.length
@@ -144,7 +144,7 @@ export class HomeserverInfoService {
 
   /** Re-probe every signed-in account, ignoring the cache. Cold. */
   refreshAll(): Observable<void> {
-    const accounts = this.matrix.accountIds();
+    const accounts = this.session.accountIds();
     return accounts.length
       ? forkJoin(accounts.map((userId) => this.refresh(userId))).pipe(
           map(() => undefined),
@@ -159,7 +159,7 @@ export class HomeserverInfoService {
   ): void {
     // A probe that finished after its account was removed — or after a re-add replaced the
     // session — must not resurrect an entry for a session nobody holds.
-    if (this.matrix.sessionGenerations().get(userId) !== generation) {
+    if (this.session.status(userId)?.generation !== generation) {
       return;
     }
     this.cache.set(userId, { generation, info });
@@ -177,7 +177,7 @@ export class HomeserverInfoService {
   private evictStale(): void {
     let changed = false;
     for (const [userId, held] of this.cache) {
-      if (this.matrix.sessionGenerations().get(userId) !== held.generation) {
+      if (this.session.status(userId)?.generation !== held.generation) {
         this.cache.delete(userId);
         changed = true;
       }

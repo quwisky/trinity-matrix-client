@@ -1,5 +1,5 @@
 export * from './lib/js-sdk/matrix-client.service';
-export * from './lib/matrix-sdk-logging';
+export * from './lib/js-sdk/matrix-sdk-logging';
 export * from './lib/reproject-on-switch';
 export * from './lib/coalesce';
 export * from './lib/project-from-client';
@@ -9,7 +9,7 @@ export * from './lib/known-names';
 export * from './lib/session-engine';
 export * from './lib/session-engine.token';
 export * from './lib/server-logout-hold';
-export * from './lib/server-support';
+export * from './lib/js-sdk/server-support';
 export * from './lib/mutual-rooms';
 export * from './lib/js-sdk/js-sdk-clients';
 export * from './lib/js-sdk/uia';

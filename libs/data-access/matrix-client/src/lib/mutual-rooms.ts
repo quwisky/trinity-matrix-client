@@ -8,7 +8,7 @@ import {
   switchMap,
   timeout,
 } from 'rxjs';
-import { serverAdvertises } from './server-support';
+import { serverAdvertises } from './js-sdk/server-support';
 
 // MSC2666: the stable endpoint has no `/user` segment; the unstable one does.
 const STABLE_PATH = '/_matrix/client/v1/mutual_rooms';
