@@ -16,7 +16,7 @@ use ts_rs::TS;
 
 use crate::{
     accounts::Engine,
-    dispatch::{Stream, stream},
+    dispatch::{Stream, reply, stream},
     failure::EngineResult,
 };
 
@@ -328,11 +328,6 @@ fn done(effect: impl Future<Output = ()> + SendOutsideWasm + 'static) -> Stream 
         effect.await;
         Value::Null
     })
-}
-
-/// A command that emits `value` once.
-fn reply<T: Serialize>(value: impl Future<Output = T> + SendOutsideWasm + 'static) -> Stream {
-    stream(stream::once(async move { Ok(json!(value.await)) }))
 }
 
 #[cfg(test)]

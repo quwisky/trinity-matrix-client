@@ -30,19 +30,18 @@ use matrix_sdk::{
     },
     timeout::timeout,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::{
-    MatrixSessionDto, ServerLogoutHoldUpdateDto, SessionStorageEffectDto, UiaAuthDto, done, reply,
+    MatrixSessionDto, ServerLogoutHoldUpdateDto, SessionStorageEffectDto, UiaAuthDto, done,
     restore::{auth_session, session_meta},
 };
 use crate::{
     accounts::{AccountRuntime, Engine, SessionState},
     barrier::{Barrier, DELIVERY_LIMIT, Subscribers, Tracked},
-    dispatch::{Stream, stream},
-    failure::{
-        EngineResult, account_not_live, http_error_from_response, refresh_logs_out, request_failure,
-    },
+    dispatch::{Stream, detached, reply, stream},
+    engines::member::on_account,
+    failure::{EngineResult, http_error_from_response, refresh_logs_out, request_failure},
     wire::{Fault, FaultKind},
 };
 
@@ -425,7 +424,7 @@ impl Engine {
     }
 
     /// What the rule has published for the account since its start.
-    fn deaths_of(&self, account_id: &str) -> Barrier {
+    pub(crate) fn deaths_of(&self, account_id: &str) -> Barrier {
         let state = self.state.lock();
         state.deaths.get(account_id).cloned().unwrap_or_default()
     }
@@ -619,41 +618,42 @@ pub fn deactivate_account(
     erase: bool,
     auth: Option<UiaAuthDto>,
 ) -> Stream {
-    reply(async move {
-        let Some(rt) = engine.account(&account_id) else {
-            return not_live(&engine, &account_id).await;
-        };
-        let mut request = deactivate::v3::Request::new();
-        (request.auth, request.erase) = (auth.map(uia_auth_data), erase);
-        let deactivate = rt.client.send(request).with_request_config(sent_once());
-        match engine.ruled(&rt, deactivate).await {
-            Ok(_) => EngineResult::Ok(()),
-            Err(err) => EngineResult::Err(request_failure(&err)),
-        }
-    })
+    reply(on_account(
+        engine,
+        account_id,
+        request_failure,
+        move |engine, rt| async move {
+            let mut request = deactivate::v3::Request::new();
+            (request.auth, request.erase) = (auth.map(uia_auth_data), erase);
+            let deactivate = rt.client.send(request).with_request_config(sent_once());
+            engine.ruled(&rt, deactivate).await.map(drop)
+        },
+    ))
 }
 
-/// Logs a live account out at its homeserver; it stays live with its sync stopped.
+/// Logs a live account out at its homeserver; it stays live with its sync stopped. Detached, so a
+/// close never leaves it signed out without its logout. It ends within `HOLDER_LIMIT`: a stop, a
+/// logout of at most two 30 s requests (an OAuth one fetches the server's metadata first), then
+/// the rule's delivery waits of at most 10 s.
 pub fn logout_remote(engine: Arc<Engine>, account_id: String) -> Stream {
-    reply(async move {
-        let Some(rt) = engine.account(&account_id) else {
-            return not_live(&engine, &account_id).await;
-        };
-        match engine.sign_out(&rt).await {
-            Ok(()) => EngineResult::Ok(()),
-            Err(err) => EngineResult::Err(request_failure(&err)),
-        }
-    })
+    detached(on_account(
+        engine,
+        account_id,
+        request_failure,
+        |engine, rt| async move { engine.sign_out(&rt).await },
+    ))
 }
 
-/// Logs every live account out at its homeserver, ignoring failures.
+/// Logs every live account out at its homeserver, ignoring failures; detached, and as long as
+/// `logoutRemote`, since the sign-outs run side by side.
 pub fn sign_out_all(engine: Arc<Engine>) -> Stream {
-    done(async move {
+    detached(async move {
         let engine = &engine;
         // Each runtime moves into its own sign-out, so it is let go of as that one ends.
         let sign_outs = (engine.live_runtimes().into_iter())
             .map(|rt| async move { drop(engine.sign_out(&rt).await) });
         join_all(sign_outs).await;
+        Value::Null
     })
 }
 
@@ -677,13 +677,6 @@ pub fn logout_session(engine: Arc<Engine>, session: MatrixSessionDto) -> Stream 
             Err(err) => EngineResult::Err(request_failure(&err)),
         }))
     }))
-}
-
-/// `account-not-live`. The sync may have met a dead token first: its logout reaches the caller
-/// first.
-async fn not_live(engine: &Engine, account_id: &str) -> EngineResult<()> {
-    engine.deaths_of(account_id).delivered().await;
-    EngineResult::Err(account_not_live())
 }
 
 /// The storage writes the caller owes the engine, from subscribe on, with no replay.
@@ -731,6 +724,7 @@ mod tests {
             },
         },
         ruma::{exports::http::StatusCode, owned_user_id},
+        sleep::sleep,
     };
     use serde_json::{Value, json};
     use tempfile::TempDir;
@@ -1261,6 +1255,36 @@ mod tests {
                 (1, &json!(failure)),
                 "{request}"
             );
+        }
+    }
+
+    /// Closed after its first poll, a sign-out still ends: its failed logout clears the sign-out,
+    /// so the account may sync again.
+    #[tokio::test]
+    async fn a_sign_out_closed_mid_flight_still_settles() {
+        const LOGOUT: &str = "POST /_matrix/client/v3/logout";
+        let commands: [fn(Arc<Engine>) -> Stream; 2] =
+            [|engine| logout_remote(engine, "@a:b".into()), sign_out_all];
+        for command in commands {
+            let unavailable = json!({"errcode": "M_UNKNOWN", "error": "x"});
+            let (base, seen) = scripted(vec![(LOGOUT, 502, unavailable)]);
+            let root = TempDir::new().unwrap();
+            let engine = engine_in(&root);
+            let client = builder_on(&base).build().await.unwrap();
+            let rt = live(&engine, &password(&base), client).await;
+            let mut closed = command(Arc::clone(&engine));
+            assert!(
+                closed.next().now_or_never().is_none(),
+                "the logout is in flight"
+            );
+            drop(closed);
+            let settled = async {
+                while requests(&seen).is_empty() || !engine.may_sync("@a:b", rt.generation) {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            };
+            let settled = timeout(settled, Duration::from_secs(5)).await;
+            assert!(settled.is_ok(), "the close cut the sign-out short");
         }
     }
 

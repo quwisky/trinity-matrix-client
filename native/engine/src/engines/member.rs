@@ -3,20 +3,50 @@
 use std::sync::Arc;
 
 use futures_util::{StreamExt, stream};
-use matrix_sdk::{Client, SendOutsideWasm};
+use matrix_sdk::{Client, Error, SendOutsideWasm};
 use serde::Serialize;
 use serde_json::json;
 
 use crate::{
     accounts::{AccountRuntime, Engine},
     dispatch::{Stream, stream},
+    failure::{EngineFailure, EngineResult, account_not_live},
 };
+
+/// An account command's result, the account looked up when first polled. Not live:
+/// `account-not-live`, once the deaths the rule published for the account are delivered. Otherwise
+/// `run`'s value, or its error mapped through `failed` (`request_failed`, `request_failure`, or a
+/// member's own mapper). Every request in `run` goes through `Engine::ruled`. `run` holds the
+/// runtime until it ends, about 30 s per request plus the delivery waits, and a teardown waits for
+/// it up to `HOLDER_LIMIT` (120 s): count a body's steps so it ends within that, and hold the
+/// runtime only for the steps that must not be split.
+pub async fn on_account<T, Fut>(
+    engine: Arc<Engine>,
+    account_id: String,
+    failed: fn(&Error) -> EngineFailure,
+    run: impl FnOnce(Arc<Engine>, Arc<AccountRuntime>) -> Fut,
+) -> EngineResult<T>
+where
+    Fut: Future<Output = Result<T, Error>>,
+{
+    let Some(rt) = engine.account(&account_id) else {
+        // The sync may have met a dead token first: its logout reaches the caller first.
+        engine.deaths_of(&account_id).delivered().await;
+        return EngineResult::Err(account_not_live());
+    };
+    match run(engine, rt).await {
+        Ok(value) => EngineResult::Ok(value),
+        Err(err) => EngineResult::Err(failed(&err)),
+    }
+}
 
 /// A long-lived account stream. Not live: `empty`, then nothing more. Live: `body` gets the
 /// runtime only to set up (keep neither it nor `rt.client`) and the lease's own client; its items
 /// flow until the account retires, and then the stream stays open with nothing more (js `NEVER`).
 /// `body` and the lease are dropped on retire, or when `body` ends, and the stream stays open
 /// after `body` ends too. The account is looked up at the call, as `session.session` subscribes.
+/// `body` must not spawn tasks that outlive the stream: a spawned task holding the `Client`
+/// escapes the lease, and teardown won't wait for it.
 pub fn account_stream<T, S>(
     engine: Arc<Engine>,
     account_id: String,
@@ -46,7 +76,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{future::Ready, time::Duration};
 
     use futures_util::FutureExt;
     use matrix_sdk::{executor::spawn, timeout::timeout};
@@ -57,6 +87,8 @@ mod tests {
     use super::*;
     use crate::{
         config::EngineConfig,
+        dispatch::reply,
+        failure::request_failed,
         testing::{builder_on, engine_in, live, password},
     };
 
@@ -97,6 +129,27 @@ mod tests {
             items.next().now_or_never().is_none(),
             "the stream stays open"
         );
+    }
+
+    #[tokio::test]
+    async fn a_command_on_an_account_that_is_not_live_fails_account_not_live() {
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        let mut reply = reply(on_account(
+            engine,
+            "@x:y".into(),
+            request_failed,
+            |_, _| -> Ready<Result<(), Error>> { unreachable!() },
+        ));
+        let not_live = json!({
+            "ok": false,
+            "failure": {
+                "kind": "unexpected",
+                "code": "account-not-live",
+                "diagnostic": {"kind": "unexpected"},
+            },
+        });
+        assert_eq!(reply.next().await, Some(Ok(not_live)));
+        assert_eq!(reply.next().await, None);
     }
 
     #[tokio::test]

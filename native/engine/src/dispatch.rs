@@ -2,9 +2,10 @@
 
 use std::any::type_name;
 
-use matrix_sdk::SendOutsideWasm;
-use serde::de::DeserializeOwned;
-use serde_json::Value;
+use futures_util::stream;
+use matrix_sdk::{SendOutsideWasm, executor::spawn};
+use serde::{Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 
 use crate::{
     engines::{discovery, homeserver, session},
@@ -22,6 +23,30 @@ pub fn stream(
     s: impl futures_util::Stream<Item = Result<Value, Fault>> + SendOutsideWasm + 'static,
 ) -> Stream {
     matrix_sdk::stream::StreamExt::boxed(s)
+}
+
+/// A command: emits `value` once, then completes; a close drops the work.
+pub fn reply<T: Serialize>(value: impl Future<Output = T> + SendOutsideWasm + 'static) -> Stream {
+    stream(stream::once(async move { Ok(json!(value.await)) }))
+}
+
+/// A command whose work outlives a close or an `attach`: `value` runs on its own task, spawned at
+/// dispatch, and a close drops only the wait for it. A panic in it is a `panic` fault (kind
+/// internal). A `value` that holds the account, as `detached(on_account(..))` does, still delays
+/// the account's teardown after a close, so it must end within the teardown's `HOLDER_LIMIT`.
+pub fn detached<T: Serialize + SendOutsideWasm + 'static>(
+    value: impl Future<Output = T> + SendOutsideWasm + 'static,
+) -> Stream {
+    // A dropped `JoinHandle` lets its task run on, natively and on wasm.
+    let task = spawn(value);
+    stream(stream::once(async move {
+        let value = task.await.map_err(|_| Fault {
+            kind: FaultKind::Internal,
+            code: "panic".into(),
+            diagnostic: "a detached command panicked".into(),
+        })?;
+        Ok(json!(value))
+    }))
 }
 
 /// Defines `dispatch` over `"engine.member" => function(arg: Type, ..)` entries. Each function
@@ -192,10 +217,12 @@ pub fn protocol(code: &str, diagnostic: String) -> Fault {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Duration};
 
     use futures_util::{FutureExt, StreamExt, future::ready, stream};
+    use matrix_sdk::timeout::timeout;
     use serde_json::json;
+    use tokio::sync::oneshot;
 
     use super::*;
     use crate::{accounts::Engine, config::EngineConfig};
@@ -253,6 +280,56 @@ mod tests {
         assert_eq!(
             code(table::dispatch(&engine, "test.none", vec![json!(1)])),
             "bad-args"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_detached_command_finishes_after_its_stream_is_dropped() {
+        let (release_tx, release) = oneshot::channel::<()>();
+        let (done, done_rx) = oneshot::channel();
+        let mut s = detached(async move {
+            release.await.ok();
+            done.send(()).ok();
+            1
+        });
+        assert!(s.next().now_or_never().is_none());
+        drop(s);
+        release_tx.send(()).unwrap();
+        let finished = timeout(done_rx, Duration::from_secs(1)).await;
+        assert!(
+            matches!(finished, Ok(Ok(()))),
+            "the work was dropped with its stream"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_detached_command_runs_though_its_stream_is_never_polled() {
+        let (done, done_rx) = oneshot::channel();
+        let s = detached(async move { done.send(()).ok() });
+        let finished = timeout(done_rx, Duration::from_secs(1)).await;
+        assert!(matches!(finished, Ok(Ok(()))), "the work waited for a poll");
+        drop(s);
+    }
+
+    #[tokio::test]
+    async fn a_detached_command_replies_once() {
+        let mut s = detached(ready(7));
+        assert_eq!(s.next().await, Some(Ok(json!(7))));
+        assert_eq!(s.next().await, None);
+    }
+
+    #[tokio::test]
+    async fn a_detached_panic_is_a_panic_fault() {
+        let mut s = detached::<u32>(async { panic!("payload-secret") });
+        let fault = s.next().await.unwrap().unwrap_err();
+        assert_eq!(
+            (fault.kind, fault.code.as_str()),
+            (FaultKind::Internal, "panic")
+        );
+        assert!(
+            !fault.diagnostic.contains("payload-secret"),
+            "{}",
+            fault.diagnostic
         );
     }
 

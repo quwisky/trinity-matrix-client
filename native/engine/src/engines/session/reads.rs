@@ -22,11 +22,11 @@ use serde_json::json;
 
 use super::{
     AccountNameGroupDto, AccountServerStatusDto, PendingTextMessageDto, RefreshOptionsDto,
-    SessionAccessTokenDto, SessionCredentialsDto, done, logout::sent_once, reply,
+    SessionAccessTokenDto, SessionCredentialsDto, done, logout::sent_once,
 };
 use crate::{
     accounts::{AccountRuntime, Engine},
-    dispatch::{Stream, stream},
+    dispatch::{Stream, reply, stream},
     failure::{EngineResult, account_not_live, refused_refresh},
     wire::{Fault, FaultKind},
 };
