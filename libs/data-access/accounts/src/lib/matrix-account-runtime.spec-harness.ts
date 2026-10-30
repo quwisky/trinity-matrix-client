@@ -98,6 +98,7 @@ export function setup(activeAccountId: string | null = '@old:hs') {
   /** Live accounts in registry order, with their client generation. */
   const liveAccounts = new Map<string, number>();
   const refreshTokens = new Map<string, string>();
+  const refreshedAccessTokens = new Map<string, string>();
   const wipeIndexedDb = vi.fn((_records: readonly never[]) =>
     Promise.resolve({ blocked: [], failed: [], enumerated: true }),
   );
@@ -162,7 +163,9 @@ export function setup(activeAccountId: string | null = '@old:hs') {
         liveAccounts.has(accountId)
           ? {
               // Per generation, so a spec can tell the captured token from a newer sign-in's.
-              accessToken: `live-${accountId}-g${liveAccounts.get(accountId)}`,
+              accessToken:
+                refreshedAccessTokens.get(accountId) ??
+                `live-${accountId}-g${liveAccounts.get(accountId)}`,
               refreshToken: refreshTokens.get(accountId) ?? null,
             }
           : null,
@@ -209,8 +212,14 @@ export function setup(activeAccountId: string | null = '@old:hs') {
     ) => {
       for (const accountId of accountIds) {
         liveAccounts.set(accountId, generation);
+        refreshedAccessTokens.delete(accountId);
         if (refreshToken) refreshTokens.set(accountId, refreshToken);
       }
+    },
+    /** A token refresh on a live client: new tokens, same generation. */
+    refresh: (accountId: string, accessToken: string, refreshToken: string) => {
+      refreshedAccessTokens.set(accountId, accessToken);
+      refreshTokens.set(accountId, refreshToken);
     },
     storage: TestBed.inject(SessionStorageService),
     wipe: TestBed.inject(LocalDataWipeService),

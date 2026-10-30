@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import {
   SESSION_ENGINE,
   SessionStateService,
+  type SessionCredentials,
 } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 import {
@@ -35,6 +36,14 @@ import type {
   InstallationResetOutcome,
 } from './account-runtime.models';
 import { InstallationResetWorkflow } from './installation-reset.workflow';
+
+/** The session with the live client's tokens; without a live refresh token it keeps its own. */
+function withLiveTokens<T extends object>(
+  session: T,
+  { accessToken, refreshToken }: SessionCredentials,
+) {
+  return { ...session, accessToken, ...(refreshToken ? { refreshToken } : {}) };
+}
 
 /** Matrix-backed Account-removal workflow kept separate from restore and establishment. */
 @Injectable({ providedIn: 'root' })
@@ -112,13 +121,7 @@ export class AccountLifecycleAdapter {
                         record && status && credentials
                           ? {
                               generation: status.generation,
-                              session: {
-                                ...record,
-                                accessToken: credentials.accessToken,
-                                ...(credentials.refreshToken
-                                  ? { refreshToken: credentials.refreshToken }
-                                  : {}),
-                              },
+                              session: withLiveTokens(record, credentials),
                             }
                           : null,
                       providerExpected: Boolean(record?.oidc),
@@ -286,7 +289,8 @@ export class AccountLifecycleAdapter {
                 }
               },
               onSettled: (session) => {
-                context.session = session;
+                // A late read must not replace the tokens taken at removal.
+                context.session ??= session;
                 // Never resolves: a late read must not erase a failed revocation.
                 if (providerNeedsSession && !session?.oidc) {
                   attempt.addIssue('provider-session', 'restart-application');
@@ -316,12 +320,40 @@ export class AccountLifecycleAdapter {
           ]).pipe(concatMap((operation) => operation)),
         ),
         reduce(() => undefined, undefined),
+        concatMap(() => this.takeRemovalTokens(context)),
         concatMap(() =>
           remainingAccountIds.length === 0
             ? this.clearLastAccount(attempt, accountId)
             : this.removeOneAccount(attempt, accountId, remainingAccountIds),
         ),
       );
+  }
+
+  /**
+   * Hands a retry the tokens the client holds as it is removed. After a refresh, the captured
+   * refresh token is dead: revoking it succeeds (RFC 7009) while the new one stays valid.
+   */
+  private takeRemovalTokens(context: SignOutRetryContext): Observable<unknown> {
+    return defer(() => {
+      const { accountId, live } = context;
+      if (
+        !live ||
+        this.state.status(accountId)?.generation !== live.generation
+      ) {
+        return of(null);
+      }
+      return this.engine.liveCredentials(accountId).pipe(
+        tap((credentials) => {
+          if (credentials) {
+            context.session = withLiveTokens(
+              context.session ?? live.session,
+              credentials,
+            );
+          }
+        }),
+        catchError(() => of(null)),
+      );
+    });
   }
 
   private runDeletedRemoval(
