@@ -37,7 +37,7 @@ use super::{
 #[cfg(feature = "native")]
 use crate::store::{StorePaths, prune_devices};
 use crate::{
-    accounts::Engine,
+    accounts::{Engine, Stores},
     barrier::Barrier,
     dispatch::protocol,
     failure::{
@@ -280,7 +280,7 @@ impl Engine {
             let barrier = state.publish_snapshot();
             drop(state);
             if previous.is_some() {
-                drop(self.tear_down(&s.user_id, previous, false));
+                drop(self.tear_down(&s.user_id, previous, Stores::Keep));
             }
             barrier
         };

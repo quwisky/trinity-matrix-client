@@ -114,6 +114,7 @@ mod tests {
 
     use super::*;
     use crate::{
+        accounts::Stores,
         config::EngineConfig,
         dispatch::reply,
         failure::request_failed,
@@ -231,7 +232,7 @@ mod tests {
         let engine = engine_in(&root);
         let first = offline(&engine).await;
         // Waits for `first`, which this test holds.
-        drop(engine.tear_down("@a:b", Some(Arc::clone(&first)), false));
+        drop(engine.tear_down("@a:b", Some(Arc::clone(&first)), Stores::Keep));
         drop(offline(&engine).await);
         let (guard, mut guarded) = oneshot::channel::<()>();
         let items = account_stream(Arc::clone(&engine), "@a:b".into(), json!(null), |_, _| {

@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use ts_rs::TS;
 
 use crate::{
-    accounts::Engine,
+    accounts::{Engine, Stores},
     dispatch::{Stream, reply, stream},
     failure::EngineResult,
 };
@@ -290,7 +290,7 @@ pub fn activate_account(
             Ok((barrier, retired)) => {
                 let teardowns = retired.into_iter().map(|runtime| {
                     let id = runtime.account_id.clone();
-                    engine.tear_down(&id, Some(runtime), false)
+                    engine.tear_down(&id, Some(runtime), Stores::Keep)
                 });
                 futures_util::future::join_all(teardowns).await;
                 barrier.delivered().await;

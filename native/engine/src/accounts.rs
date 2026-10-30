@@ -45,6 +45,13 @@ pub struct Engine {
 
 pub(crate) type Teardown = Shared<BoxFuture<'static, ()>>;
 
+/// What a teardown does with the account's stores once its runtime is gone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Stores {
+    Keep,
+    Delete,
+}
+
 /// Everything the session commands change, under one lock that is never held across an await.
 pub(crate) struct SessionState {
     pub(crate) registry: Registry,
@@ -199,7 +206,7 @@ impl Engine {
         let (teardown, barrier) = self
             .after_starts(Some(account_id), || {
                 let (runtime, barrier) = self.retire(account_id);
-                (self.tear_down(account_id, runtime, false), barrier)
+                (self.tear_down(account_id, runtime, Stores::Keep), barrier)
             })
             .await;
         teardown.await;
@@ -219,7 +226,7 @@ impl Engine {
                     let released = state.holds.release_account(account_id);
                     (runtime, state.publish_snapshot().join(released))
                 };
-                (self.tear_down(account_id, runtime, true), barrier)
+                (self.tear_down(account_id, runtime, Stores::Delete), barrier)
             })
             .await;
         teardown.await;
@@ -242,7 +249,7 @@ impl Engine {
                 };
                 let teardowns = runtimes
                     .into_iter()
-                    .map(|(id, runtime)| self.tear_down(&id, Some(runtime), false));
+                    .map(|(id, runtime)| self.tear_down(&id, Some(runtime), Stores::Keep));
                 (teardowns.collect::<Vec<_>>(), barrier)
             })
             .await;
@@ -260,7 +267,7 @@ impl Engine {
         let runtime = state.retire(account_id);
         let _ = state.publish_snapshot();
         // Queued under the lock, so a start of the account that follows awaits it.
-        drop(self.tear_down(account_id, runtime, false));
+        drop(self.tear_down(account_id, runtime, Stores::Keep));
     }
 
     /// Writes a runtime's status while `generation` is still the account's; `false` once not.
@@ -287,7 +294,7 @@ impl Engine {
         &self,
         account_id: &str,
         runtime: Option<Arc<AccountRuntime>>,
-        delete_stores: bool,
+        stores: Stores,
     ) -> Teardown {
         // Before the queue, so its streams end without waiting out the previous teardown.
         if let Some(runtime) = &runtime {
@@ -312,7 +319,7 @@ impl Engine {
                     tracing::warn!("a retired account is still in use");
                 }
             }
-            if delete_stores {
+            if stores == Stores::Delete {
                 delete_account_stores(&config, &id);
             }
         });

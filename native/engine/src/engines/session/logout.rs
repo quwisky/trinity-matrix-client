@@ -37,7 +37,7 @@ use super::{
     runtime::stop_sync,
 };
 use crate::{
-    accounts::{AccountRuntime, Engine, SessionState},
+    accounts::{AccountRuntime, Engine, SessionState, Stores},
     barrier::{Barrier, DELIVERY_LIMIT, Subscribers, Tracked},
     dispatch::{Stream, detached, reply, stream},
     engines::member::{on_account, sent_once},
@@ -49,8 +49,8 @@ use crate::{
 #[cfg_attr(not(feature = "native"), allow(dead_code))]
 type CallbackError = Box<dyn std::error::Error + Send + Sync>;
 
-/// A runtime the rule retired, and whether its stores go with it.
-type Retired = Option<(Arc<AccountRuntime>, bool)>;
+/// A runtime the rule retired, and what happens to its stores.
+type Retired = Option<(Arc<AccountRuntime>, Stores)>;
 
 /// How long a sign-out's logout may take, cut off as an `ElapsedError`. Uncut it can take three
 /// 30 s requests (an OAuth one asks for the versions and the metadata, then revokes; a refreshable
@@ -313,7 +313,8 @@ impl SessionState {
             }
         };
         let effected = self.effects.publish(&effect);
-        (published.join(effected), runtime.map(|rt| (rt, !soft)))
+        let stores = if soft { Stores::Keep } else { Stores::Delete };
+        (published.join(effected), runtime.map(|rt| (rt, stores)))
     }
 }
 
@@ -480,8 +481,8 @@ impl Engine {
     }
 
     fn tear_down_retired(&self, account_id: &str, retired: Retired) {
-        if let Some((runtime, delete_stores)) = retired {
-            drop(self.tear_down(account_id, Some(runtime), delete_stores));
+        if let Some((runtime, stores)) = retired {
+            drop(self.tear_down(account_id, Some(runtime), stores));
         }
     }
 }
