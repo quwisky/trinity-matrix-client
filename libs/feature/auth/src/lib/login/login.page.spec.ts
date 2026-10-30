@@ -31,7 +31,7 @@ import {
   provideHostCapabilities,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { fireEvent, render } from '@trinity/testing';
+import { fireEvent, render, connectionError } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
   EMPTY,
@@ -50,11 +50,7 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isNativeAndroid: () => platform.android,
 }));
-import {
-  ConnectionError,
-  EngineRequestError,
-  type LoginRefusal,
-} from '@trinity/util/matrix';
+import { EngineRequestError, type LoginRefusal } from '@trinity/util/matrix';
 
 /** A sign-in the homeserver refused, as the auth engine reports it. */
 function loginRefused(reason: LoginRefusal): EngineRequestError {
@@ -565,9 +561,7 @@ describe('LoginPage', () => {
 
   it('says the homeserver is unreachable when discovery hits a network error', async () => {
     const { cmp } = await renderLogin({
-      discoverHomeserver: vi.fn(() =>
-        throwError(() => new ConnectionError('fetch failed')),
-      ),
+      discoverHomeserver: vi.fn(() => throwError(() => connectionError())),
     } as unknown as Partial<AuthService>);
 
     cmp.discover();

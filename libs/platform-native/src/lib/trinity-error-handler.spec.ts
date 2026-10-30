@@ -1,5 +1,5 @@
 import { ErrorHandler } from '@angular/core';
-import { ConnectionError, HTTPError, MatrixError } from '@trinity/util/matrix';
+import { connectionError, httpError, matrixError } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrinityErrorHandler } from './trinity-error-handler';
 
@@ -24,7 +24,7 @@ describe('TrinityErrorHandler', () => {
   });
 
   it('swallows a transient homeserver error, logging it quietly', () => {
-    handler.handleError(new HTTPError('503', 503));
+    handler.handleError(httpError(503));
 
     expect(debugSpy).toHaveBeenCalledTimes(1);
     expect(debugSpy).toHaveBeenCalledWith(
@@ -40,15 +40,11 @@ describe('TrinityErrorHandler', () => {
   });
 
   it('does not log a Matrix error URL or response body', () => {
-    const error = new MatrixError(
-      {
-        errcode: 'M_UNKNOWN',
-        error: 'secret response text',
-        access_token: 'secret token',
-      },
-      503,
-      'https://hs.example/path?access_token=secret',
-    );
+    const error = matrixError('M_UNKNOWN', 503, {
+      error:
+        'secret response text (https://hs.example/path?access_token=secret)',
+      access_token: 'secret token',
+    });
 
     handler.handleError(error);
 
@@ -62,7 +58,7 @@ describe('TrinityErrorHandler', () => {
     // What provideBrowserGlobalErrorListeners() hands us: PromiseRejectionEvent.reason
     // itself. The `{ rejection, promise }` envelope this once unwrapped was zone.js's,
     // and this app has no zone.js — see global-error-listeners.spec.ts for the wiring.
-    handler.handleError(new ConnectionError('fetch failed'));
+    handler.handleError(connectionError());
 
     expect(debugSpy).toHaveBeenCalledTimes(1);
     expect(superSpy).not.toHaveBeenCalled();
@@ -94,7 +90,7 @@ describe('TrinityErrorHandler', () => {
   });
 
   it('delegates a non-transient (4xx) Matrix error to the default handler', () => {
-    const clientError = new HTTPError('bad request', 400);
+    const clientError = httpError(400, 'bad request');
 
     handler.handleError(clientError);
 

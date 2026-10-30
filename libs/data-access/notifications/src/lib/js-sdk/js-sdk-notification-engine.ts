@@ -26,7 +26,11 @@ import {
   map,
   of,
 } from 'rxjs';
-import { JS_SDK_CLIENTS, coalesce } from '@trinity/data-access/matrix-client';
+import {
+  JS_SDK_CLIENTS,
+  coalesce,
+  RoomEncryptionFlags,
+} from '@trinity/data-access/matrix-client';
 import {
   type EngineFailure,
   type EngineResult,
@@ -34,7 +38,6 @@ import {
   engineFail,
   engineOk,
   plainEqual,
-  RoomEncryptionFlags,
 } from '@trinity/util/matrix';
 import type {
   DefaultPushRule,

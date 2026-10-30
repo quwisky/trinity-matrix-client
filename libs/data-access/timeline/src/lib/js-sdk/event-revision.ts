@@ -1,11 +1,11 @@
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
+import { linkedUserIds } from '@trinity/util/matrix';
 import {
   displayContent,
   isWaitingToSend,
-  linkedUserIds,
   unencryptedMarkFor,
   validReplacement,
-} from '@trinity/util/matrix';
+} from '@trinity/data-access/matrix-client';
 import { reactionsFor, readReceiptsFor } from './event-reads';
 import { isPollStart, pollSignature } from './poll-reads';
 import { shownContent, shownSubject, showsEdit } from './shields';

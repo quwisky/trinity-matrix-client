@@ -40,17 +40,17 @@ import {
   JS_SDK_CLIENTS,
   SESSION_ENGINE,
   coalesce,
+  RoomEncryptionFlags,
+  isRoomEncrypted,
+  liveRoomState,
 } from '@trinity/data-access/matrix-client';
 import { MediaService } from '@trinity/data-access/media';
 import {
-  RoomEncryptionFlags,
   TYPING_TIMEOUT_MS,
   annotationContent,
   describeMatrixRequestFailure,
   engineFail,
   engineOk,
-  isRoomEncrypted,
-  liveRoomState,
   locationMessageContent,
   plainEqual,
   pollEndContent,

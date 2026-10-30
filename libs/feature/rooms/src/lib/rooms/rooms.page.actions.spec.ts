@@ -52,7 +52,7 @@ import {
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { defer, finalize, map, of, Subject, tap, throwError } from 'rxjs';
-import { MatrixError } from '@trinity/util/matrix';
+import { matrixError } from '@trinity/testing';
 import {
   SessionLockService,
   type SessionLockState,
@@ -1408,9 +1408,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     pick.mockReturnValue(of('@bob:remote.example'));
     inviteUser
-      .mockReturnValueOnce(
-        throwError(() => new MatrixError({ errcode: 'M_FORBIDDEN' }, 403)),
-      )
+      .mockReturnValueOnce(throwError(() => matrixError('M_FORBIDDEN', 403)))
       .mockReturnValueOnce(of(undefined));
 
     shell.rooms.onInviteToRoom();
@@ -1491,12 +1489,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     pending.set([pendingInvite({ roomId: '!i:remote.example' })]);
     acceptInvite
       .mockReturnValueOnce(
-        throwError(
-          () =>
-            new MatrixError(
-              { errcode: 'M_UNKNOWN', error: 'upstream unavailable' },
-              502,
-            ),
+        throwError(() =>
+          matrixError('M_UNKNOWN', 502, { error: 'upstream unavailable' }),
         ),
       )
       .mockReturnValueOnce(of(undefined));

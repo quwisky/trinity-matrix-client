@@ -1,12 +1,17 @@
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { displaySafeMime, mimeEssence } from './display-mime';
-import type { UnencryptedMark } from './room-encryption';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 import {
   linkifyMessageText,
   mentionNamesIn,
   sanitizeMatrixHtml,
 } from './message-html';
+
+/**
+ * How text that arrived unencrypted in an encrypted room is marked (matrix-client's
+ * `unencryptedMarkFor`).
+ */
+export type UnencryptedMark = 'unencrypted' | 'unencrypted-history';
 
 /** How many reactors a reaction pill names before "and N others". */
 export const MAX_NAMED_REACTORS = 3;

@@ -1,5 +1,8 @@
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
-import { displayContent, validReplacement } from '@trinity/util/matrix';
+import {
+  displayContent,
+  validReplacement,
+} from '@trinity/data-access/matrix-client';
 import type { IncomingNotification } from '../notification-engine';
 
 /**
