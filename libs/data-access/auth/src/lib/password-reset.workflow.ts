@@ -96,7 +96,7 @@ export class PasswordResetWorkflow {
 }
 
 /** 24 random bytes as base64url: 32 characters, as much entropy as js-sdk's secret or more. */
-function newClientSecret(): string {
+export function newClientSecret(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   return btoa(String.fromCharCode(...bytes))
     .replaceAll('+', '-')

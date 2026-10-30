@@ -33,6 +33,8 @@ defineAuthEngineContract(
           engine.confirmResetLink(clientSecret),
       },
       sessionAlive: async (accessToken) => engine.accessTokens.has(accessToken),
+      confirmRegistrationLink: async (_email, clientSecret) =>
+        engine.confirmRegistrationLink(clientSecret),
     };
   },
   { mail: true },

@@ -7,7 +7,7 @@ import { defineAuthEngineContract } from '../../contract/auth-engine.contract';
 import { JsSdkAuthEngine } from './js-sdk-auth-engine';
 
 // Runs the engine contract against a live Synapse; skipped unless TRINITY_ENGINE_CONTRACT_HS is
-// set. The reset cases also need the harness's Mailpit.
+// set. The reset and email registration cases also need the harness's Mailpit.
 const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'] as string;
 const secret = process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
 const mailpit = process.env['TRINITY_ENGINE_CONTRACT_MAILPIT'];
@@ -52,8 +52,11 @@ async function admin(
   if (!res.ok) throw new Error(`${method} ${path}: ${res.status}`);
 }
 
-/** Confirms the reset link Synapse mailed for `clientSecret`: open it, then post its form. */
-async function confirmResetLink(email: string, clientSecret: string) {
+/**
+ * Confirms the link Synapse mailed to `email` for `clientSecret`: open it, then post its form
+ * when it has one (a reset link asks to confirm; a registration link confirms when opened).
+ */
+async function confirmMailedLink(email: string, clientSecret: string) {
   for (let i = 0; i < 60; i++) {
     const search = await fetch(
       `${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`,
@@ -74,14 +77,18 @@ async function confirmResetLink(email: string, clientSecret: string) {
       const origin = new URL(baseUrl);
       link.protocol = origin.protocol;
       link.host = origin.host;
-      const page = await (await fetch(link)).text();
+      const opened = await fetch(link);
+      if (!opened.ok) throw new Error(`Mailed link: ${opened.status}`);
+      const page = await opened.text();
       const field = (name: string) =>
         page
           .match(new RegExp(`<input[^>]*name=["']${name}["'][^>]*>`, 'iu'))?.[0]
           .match(/value=["']([^"']*)["']/iu)?.[1]
           ?.replaceAll('&amp;', '&') ?? '';
-      const action = page.match(/<form\b[^>]*\baction=["']([^"']*)["']/iu)?.[1];
-      const target = new URL((action ?? '').replaceAll('&amp;', '&'), link);
+      const form = page.match(/<form\b[^>]*>/iu)?.[0];
+      if (!form) return;
+      const action = form.match(/\baction=["']([^"']*)["']/iu)?.[1] ?? '';
+      const target = new URL(action.replaceAll('&amp;', '&'), link);
       target.protocol = origin.protocol;
       target.host = origin.host;
       const posted = await fetch(target, {
@@ -92,12 +99,12 @@ async function confirmResetLink(email: string, clientSecret: string) {
           client_secret: field('client_secret'),
         }),
       });
-      if (!posted.ok) throw new Error(`Reset link: ${posted.status}`);
+      if (!posted.ok) throw new Error(`Mailed link form: ${posted.status}`);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error('Synapse mailed no reset link');
+  throw new Error('Synapse mailed no link');
 }
 
 describe.skipIf(!baseUrl)('JsSdkAuthEngine against Synapse', () => {
@@ -141,7 +148,7 @@ describe.skipIf(!baseUrl)('JsSdkAuthEngine against Synapse', () => {
         reset: {
           ...reset,
           email,
-          confirmLink: (clientSecret) => confirmResetLink(email, clientSecret),
+          confirmLink: (clientSecret) => confirmMailedLink(email, clientSecret),
         },
         sessionAlive: async (accessToken) =>
           (
@@ -149,6 +156,7 @@ describe.skipIf(!baseUrl)('JsSdkAuthEngine against Synapse', () => {
               headers: { authorization: `Bearer ${accessToken}` },
             })
           ).ok,
+        confirmRegistrationLink: confirmMailedLink,
       };
     },
     { mail: Boolean(mailpit) },

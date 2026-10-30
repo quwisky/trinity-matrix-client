@@ -26,8 +26,12 @@ import type {
   EmailTokenRequest,
   PasswordLogin,
   PasswordReset,
+  RegisteredAccount,
+  Registration,
+  RegistrationAuth,
   SignedInSession,
   TokenLogin,
+  TokenOwner,
 } from '../auth-engine';
 import type { AuthMetadata } from '../auth-metadata';
 
@@ -63,6 +67,45 @@ function requestFailed(err: unknown): EngineFailure {
     code: 'request-failed',
     diagnostic,
     ...(typeof serverMessage === 'string' ? { params: { serverMessage } } : {}),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A registration step as InteractiveAuth saw it: every 401 is the challenge, its stage
+ * params included, and the server's own text on a refused step crosses as `serverMessage`.
+ */
+function registrationFailure(err: unknown): EngineFailure {
+  const { kind, diagnostic } = describeMatrixRequestFailure(err);
+  const body = err instanceof MatrixError && isRecord(err.data) ? err.data : {};
+  const error = body['error'];
+  const text =
+    typeof error === 'string' && error ? { serverMessage: error } : null;
+  if (err instanceof MatrixError && err.httpStatus === 401) {
+    // uiaChallengeOf reads only a body with flows; one without still answers the challenge,
+    // and the caller keeps the progress of the last one, as InteractiveAuth did.
+    const challenge = uiaChallengeOf(
+      new MatrixError({ flows: [], ...body }, 401),
+    ) ?? { flows: [] };
+    const { params } = body;
+    return {
+      kind,
+      code: 'uia-required',
+      diagnostic,
+      params: {
+        challenge: { ...challenge, ...(isRecord(params) ? { params } : {}) },
+        ...text,
+      },
+    };
+  }
+  return {
+    kind,
+    code: 'request-failed',
+    diagnostic,
+    ...(text ? { params: text } : {}),
   };
 }
 
@@ -180,6 +223,42 @@ export class JsSdkAuthEngine implements AuthEngine {
     );
   }
 
+  register(
+    baseUrl: string,
+    registration: Registration,
+    auth: RegistrationAuth | null,
+  ): Observable<EngineResult<RegisteredAccount>> {
+    return request(async () => {
+      const res = await createClient({ baseUrl }).registerRequest({
+        username: registration.localpart,
+        password: registration.password,
+        refresh_token: true,
+        inhibit_login: false,
+        initial_device_display_name: registration.deviceDisplayName,
+        ...(auth ? { auth: auth as AuthDict } : {}),
+      });
+      return {
+        userId: res.user_id,
+        deviceId: res.device_id ?? null,
+        accessToken: res.access_token ?? null,
+        refreshToken: res.refresh_token ?? null,
+        expiresInMs: res.expires_in_ms ?? null,
+      };
+    }, registrationFailure);
+  }
+
+  requestRegistrationEmailToken(
+    baseUrl: string,
+    { email, clientSecret, sendAttempt }: EmailTokenRequest,
+  ): Observable<EngineResult<{ readonly sid: string }>> {
+    return request(async () => {
+      const { sid } = await createClient({
+        baseUrl,
+      }).requestRegisterEmailToken(email, clientSecret, sendAttempt);
+      return { sid };
+    }, registrationFailure);
+  }
+
   requestPasswordResetToken(
     baseUrl: string,
     { email, clientSecret, sendAttempt }: EmailTokenRequest,
@@ -209,6 +288,16 @@ export class JsSdkAuthEngine implements AuthEngine {
         reset.logoutDevices,
       );
       return null;
+    });
+  }
+
+  whoami(
+    baseUrl: string,
+    accessToken: string,
+  ): Observable<EngineResult<TokenOwner>> {
+    return request(async () => {
+      const who = await createClient({ baseUrl, accessToken }).whoami();
+      return { userId: who.user_id, deviceId: who.device_id ?? null };
     });
   }
 
