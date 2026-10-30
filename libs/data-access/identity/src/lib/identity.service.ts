@@ -1,20 +1,9 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
-import {
-  Observable,
-  catchError,
-  defer,
-  from,
-  map,
-  of,
-  switchMap,
-  tap,
-  throwError,
-} from 'rxjs';
-import {
-  IdentityMatrixPort,
-  type ActiveIdentityMatrix,
-} from '@trinity/data-access/matrix-client';
+import { Injectable, computed, inject, signal, untracked } from '@angular/core';
+import { Observable, defer, map, switchMap, tap } from 'rxjs';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import { AvatarService } from '@trinity/data-access/media';
+import { unwrapEngineResult } from '@trinity/util/matrix';
+import { IDENTITY_ENGINE } from './identity-engine.token';
 import {
   identityNotReady,
   recoverIdentityOperation,
@@ -37,16 +26,17 @@ export interface IdentitySummary {
 }
 
 /**
- * Reads and updates the current user's Matrix profile (display name + avatar), wrapping the
- * SDK. Exposes the profile as a signal that edits patch optimistically.
+ * Reads and updates the current user's Matrix profile (display name + avatar) through the
+ * identity engine. Exposes the profile as a signal that edits patch optimistically.
  */
 @Injectable({ providedIn: 'root' })
 export class IdentityService {
-  private readonly matrix = inject(IdentityMatrixPort);
+  private readonly engine = inject(IDENTITY_ENGINE);
+  private readonly session = inject(SessionStateService);
   private readonly avatars = inject(AvatarService);
 
   private readonly _profile = signal<IdentityProfile | null>(null);
-  readonly activeUserId = this.matrix.activeAccountId;
+  readonly activeUserId = this.session.activeAccountId;
   /** Never expose one Account's profile after the Active Account has changed. */
   readonly profile = computed(() => {
     const profile = this._profile();
@@ -56,19 +46,14 @@ export class IdentityService {
   /** Fetch the signed-in user's profile from the homeserver. */
   load(): Observable<IdentityProfile> {
     return defer(() => {
-      const { accountId: userId, client } = this.active('load-own-profile');
-      return from(client.getProfileInfo(userId)).pipe(
+      const userId = this.active('load-own-profile');
+      return this.engine.profile(userId, userId).pipe(
+        unwrapEngineResult(),
         map((info) =>
-          this.buildProfile(userId, info.displayname, info.avatar_url ?? null),
-        ),
-        // A brand-new account has no profile yet (the homeserver 404s): treat it as empty.
-        catchError((err) =>
-          isNotFound(err)
-            ? of(this.buildProfile(userId, undefined, null))
-            : throwError(() => err),
+          this.buildProfile(userId, info.displayName, info.avatarMxc),
         ),
         tap((profile) => {
-          if (this.matrix.activeAccountId() === userId) {
+          if (this.activeUserId() === userId) {
             this._profile.set(profile);
           }
         }),
@@ -82,28 +67,25 @@ export class IdentityService {
    * {@link profile} signal. A user with no profile resolves to an empty one.
    */
   lookup(userId: string): Observable<IdentitySummary> {
-    return defer(() => {
-      const { client } = this.active('lookup-user');
-      return from(client.getProfileInfo(userId)).pipe(
-        map((info) =>
-          this.buildSummary(userId, info.displayname, info.avatar_url ?? null),
-        ),
-        catchError((err) =>
-          isNotFound(err)
-            ? of(this.buildSummary(userId, undefined, null))
-            : throwError(() => err),
-        ),
-      );
-    }).pipe(recoverIdentityOperation('lookup-user'));
+    return defer(() =>
+      this.engine.profile(this.active('lookup-user'), userId),
+    ).pipe(
+      unwrapEngineResult(),
+      map((info) =>
+        this.buildSummary(userId, info.displayName, info.avatarMxc),
+      ),
+      recoverIdentityOperation('lookup-user'),
+    );
   }
 
   /** Set the display name (an empty name renders as the user id). */
   setDisplayName(name: string): Observable<void> {
     const trimmed = name.trim();
     return defer(() => {
-      const context = this.active('set-display-name');
-      return from(context.client.setDisplayName(trimmed)).pipe(
-        tap(() => this.patch(context.accountId, { displayName: trimmed })),
+      const accountId = this.active('set-display-name');
+      return this.engine.setDisplayName(accountId, trimmed).pipe(
+        unwrapEngineResult(),
+        tap(() => this.patch(accountId, { displayName: trimmed })),
         map(() => void 0),
       );
     }).pipe(recoverIdentityOperation('set-display-name'));
@@ -112,12 +94,15 @@ export class IdentityService {
   /** Upload a picked image to the media repo and set it as the avatar. */
   setAvatar(file: File): Observable<void> {
     return defer(() => {
-      const context = this.active('set-avatar');
-      return this.avatars.upload(file, context.accountId).pipe(
-        switchMap((res) =>
-          from(context.client.setAvatarUrl(res)).pipe(map(() => res)),
+      const accountId = this.active('set-avatar');
+      return this.avatars.upload(file, accountId).pipe(
+        switchMap((mxc) =>
+          this.engine.setAvatar(accountId, mxc).pipe(
+            unwrapEngineResult(),
+            map(() => mxc),
+          ),
         ),
-        tap((mxc) => this.patch(context.accountId, { avatarMxc: mxc })),
+        tap((mxc) => this.patch(accountId, { avatarMxc: mxc })),
         map(() => void 0),
       );
     }).pipe(recoverIdentityOperation('set-avatar'));
@@ -125,21 +110,21 @@ export class IdentityService {
 
   private buildProfile(
     userId: string,
-    displayname: string | undefined,
+    displayName: string | null,
     avatarMxc: string | null,
   ): IdentityProfile {
     return {
       // Raw display name ('' when unset): callers render `displayName || userId`, and the
       // editor shows an empty field for a nameless user.
       userId,
-      displayName: displayname ?? '',
+      displayName: displayName ?? '',
       avatarMxc,
     };
   }
 
   private buildSummary(
     userId: string,
-    displayName: string | undefined,
+    displayName: string | null,
     avatarMxc: string | null,
   ): IdentitySummary {
     return {
@@ -151,28 +136,16 @@ export class IdentityService {
 
   private patch(accountId: string, partial: Partial<IdentityProfile>): void {
     const current = this._profile();
-    if (
-      current?.userId === accountId &&
-      this.matrix.activeAccountId() === accountId
-    ) {
+    if (current?.userId === accountId && this.activeUserId() === accountId) {
       this._profile.set({ ...current, ...partial });
     }
   }
 
-  private active(operation: IdentityOperation): ActiveIdentityMatrix {
-    if (!this.matrix.isAvailable()) {
+  private active(operation: IdentityOperation): string {
+    const accountId = untracked(this.activeUserId);
+    if (!accountId) {
       throw identityNotReady(operation);
     }
-    const context = this.matrix.active();
-    if (!context.accountId) {
-      throw identityNotReady(operation);
-    }
-    return context;
+    return accountId;
   }
-}
-
-/** Whether a getProfileInfo rejection means "no profile yet" (vs a real error). */
-function isNotFound(err: unknown): boolean {
-  const e = err as { httpStatus?: number; errcode?: string };
-  return e?.httpStatus === 404 || e?.errcode === 'M_NOT_FOUND';
 }

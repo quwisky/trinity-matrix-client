@@ -40,4 +40,20 @@ describe('FakeIdentityEngine', () => {
       value: { presence: null, statusMessage: null },
     });
   });
+
+  it('answers every command with the scripted failure, changing nothing', async () => {
+    const engine = new FakeIdentityEngine();
+    engine.signIn(ALICE, { displayName: 'Alice', avatarMxc: null });
+    const failure = {
+      kind: 'network',
+      code: 'request-failed',
+      diagnostic: { kind: 'network' },
+    } as const;
+    engine.failure = failure;
+
+    expect(
+      await firstValueFrom(engine.setDisplayName(ALICE, 'Changed')),
+    ).toEqual({ ok: false, failure });
+    expect(engine.profiles.get(ALICE)?.displayName).toBe('Alice');
+  });
 });
