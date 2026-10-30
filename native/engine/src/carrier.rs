@@ -205,7 +205,7 @@ mod tests {
 
     fn session() -> (CarrierSession, UnboundedReceiver<Frame>) {
         let (out, frames) = unbounded_channel();
-        let session = CarrierSession::new(Engine::new(EngineConfig::default()), out);
+        let session = CarrierSession::new(Engine::new(EngineConfig::default()).unwrap(), out);
         (session.with_local(local), frames)
     }
 

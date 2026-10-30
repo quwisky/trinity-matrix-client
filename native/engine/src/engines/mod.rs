@@ -2,3 +2,4 @@
 
 pub mod discovery;
 pub mod homeserver;
+pub mod session;

@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn methods_decode_positional_args_in_order() {
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         let mut stream = table::dispatch(&engine, "test.pair", vec![json!("x"), json!(2)]).unwrap();
         let first = stream.next().now_or_never().flatten().unwrap().unwrap();
         assert_eq!(first, json!(["x", 2]));
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn methods_reject_a_wrong_count_or_type_as_bad_args() {
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         for args in [
             vec![json!("x")],
             vec![json!("x"), json!(2), json!(3)],
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn zero_arg_method_accepts_empty_args() {
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         assert!(table::dispatch(&engine, "test.none", vec![]).is_ok());
         assert_eq!(
             code(table::dispatch(&engine, "test.none", vec![json!(1)])),
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn an_unknown_method_is_a_protocol_fault() {
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         assert_eq!(
             code(dispatch(&engine, "nope.nothing", vec![])),
             "unknown-method"

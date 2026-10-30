@@ -4,6 +4,8 @@ pub mod config;
 pub mod dispatch;
 pub mod engines;
 pub mod failure;
+#[cfg(feature = "native")]
+mod store;
 pub mod wire;
 
 #[cfg(test)]

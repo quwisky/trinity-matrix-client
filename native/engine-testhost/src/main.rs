@@ -1,7 +1,7 @@
 //! The engine over stdio for the contract suites: one `Inbound` JSON per stdin line in, one `Frame`
 //! JSON per stdout line out. Logs go to stderr, so stdout carries nothing but frames.
 
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use futures_util::{StreamExt, future::ready, stream};
 use serde_json::{Value, json};
@@ -18,6 +18,7 @@ use trinity_engine::{
     failure::EngineResult,
     wire::Fault,
 };
+use zeroize::Zeroizing;
 
 #[tokio::main]
 async fn main() {
@@ -34,11 +35,28 @@ async fn main() {
         let at = info.location().map(ToString::to_string);
         tracing::error!(at = at.as_deref().unwrap_or("unknown"), "panicked");
     }));
+    let key = store_key();
+    // Dropped when `main` returns, which deletes the stores in it.
+    let temporary;
+    let data_dir = match std::env::var_os("TRINITY_ENGINE_DATA_DIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => {
+            temporary = tempfile::tempdir()
+                .unwrap_or_else(|err| exit(&format!("cannot create a data dir: {err}")));
+            temporary.path().to_owned()
+        }
+    };
     let config = EngineConfig {
         insecure_tls: std::env::var("TRINITY_ENGINE_INSECURE_TLS").as_deref() == Ok("1"),
+        cache_dir: std::env::var_os("TRINITY_ENGINE_CACHE_DIR")
+            .map_or_else(|| data_dir.join("cache"), PathBuf::from),
+        data_dir,
+        store_key: Arc::new(move || Ok(key.clone())),
     };
+    let engine = Engine::new(config)
+        .unwrap_or_else(|err| exit(&format!("the engine cannot start: {err:?}")));
     let (out, mut frames) = unbounded_channel();
-    let mut session = CarrierSession::new(Engine::new(config), out).with_local(local);
+    let mut session = CarrierSession::new(engine, out).with_local(local);
     let writer = tokio::spawn(async move {
         let mut stdout = stdout();
         while let Some(frame) = frames.recv().await {
@@ -68,6 +86,33 @@ async fn main() {
     // The writer ends once the aborted streams have let go of the output.
     drop(session);
     let _ = writer.await;
+}
+
+/// `TRINITY_ENGINE_STORE_KEY` as 64 hex characters, or a random key when it is unset.
+fn store_key() -> Zeroizing<[u8; 32]> {
+    let Some(value) = std::env::var_os("TRINITY_ENGINE_STORE_KEY") else {
+        let mut key = Zeroizing::new([0; 32]);
+        getrandom::getrandom(key.as_mut())
+            .unwrap_or_else(|err| exit(&format!("cannot draw a store key: {err}")));
+        return key;
+    };
+    // Never echoes the value: it is the key to every store.
+    value
+        .to_str()
+        .and_then(parse_key)
+        .unwrap_or_else(|| exit("TRINITY_ENGINE_STORE_KEY must be 64 hex characters"))
+}
+
+fn parse_key(hex: &str) -> Option<Zeroizing<[u8; 32]>> {
+    let mut key = Zeroizing::new([0; 32]);
+    hex::decode_to_slice(hex, key.as_mut()).ok()?;
+    Some(key)
+}
+
+/// A startup failure: exits before any frame, with a message that quotes no secret.
+fn exit(message: &str) -> ! {
+    eprintln!("trinity-engine-testhost: {message}");
+    std::process::exit(2)
 }
 
 /// The test host's own methods, served before the engine's.
@@ -106,4 +151,18 @@ fn ticks(_: Arc<Engine>, args: &mut Args<'_>) -> Result<Stream, Fault> {
         tokio::time::sleep(period).await;
         Ok(json!(n))
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_store_key_is_exactly_64_hex_characters() {
+        let key = parse_key(&"0f".repeat(32)).unwrap();
+        assert_eq!(*key, [0x0f; 32]);
+        assert!(parse_key(&"0f".repeat(31)).is_none());
+        assert!(parse_key(&"0f".repeat(33)).is_none());
+        assert!(parse_key(&"zz".repeat(32)).is_none());
+    }
 }

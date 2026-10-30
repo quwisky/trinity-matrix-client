@@ -43,7 +43,7 @@ impl io::Write for Log {
 fn bad_args_never_echo_a_value() {
     let (out, mut frames) = unbounded_channel();
     let mut session =
-        CarrierSession::new(Engine::new(EngineConfig::default()), out).with_local(echo);
+        CarrierSession::new(Engine::new(EngineConfig::default()).unwrap(), out).with_local(echo);
     let log = Log::default();
     let writer = log.clone();
     let subscriber = tracing_subscriber::fmt()

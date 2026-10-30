@@ -27,7 +27,7 @@ use crate::{
 const LOAD_LIMIT: Duration = Duration::from_secs(30);
 
 pub struct Engine {
-    config: EngineConfig,
+    pub(crate) config: EngineConfig,
     accounts: Mutex<HashMap<String, Arc<AccountRuntime>>>,
     /// For the requests the engines send themselves rather than through the SDK.
     raw: reqwest::Client,
@@ -49,7 +49,9 @@ pub struct StartAccount {
 }
 
 impl Engine {
-    pub fn new(config: EngineConfig) -> Arc<Self> {
+    /// Fails only when the TLS backend cannot start, such as Android's platform verifier before
+    /// its initialization.
+    pub fn new(config: EngineConfig) -> Result<Arc<Self>, reqwest::Error> {
         let builder = reqwest::Client::builder();
         // The browser's fetch owns redirects and TLS on wasm.
         #[cfg(not(target_family = "wasm"))]
@@ -57,13 +59,11 @@ impl Engine {
             .redirect(reqwest::redirect::Policy::none())
             .danger_accept_invalid_certs(config.insecure_tls)
             .min_tls_version(reqwest::tls::Version::TLS_1_2);
-        // As `reqwest::Client::new`: only a TLS backend that cannot start fails here.
-        let raw = builder.build().expect("the raw HTTP client builds");
-        Arc::new(Self {
+        Ok(Arc::new(Self {
             config,
             accounts: Mutex::default(),
-            raw,
-        })
+            raw: builder.build()?,
+        }))
     }
 
     pub fn account(&self, account_id: &str) -> Option<Arc<AccountRuntime>> {
@@ -247,6 +247,7 @@ mod tests {
     fn an_unknown_account_is_absent() {
         assert!(
             Engine::new(EngineConfig::default())
+                .unwrap()
                 .account("@a:b")
                 .is_none()
         );
@@ -254,7 +255,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_malformed_user_id_fails_without_registering() {
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         let failure = engine
             .start_account(start("http://127.0.0.1:1", "not-a-user-id"))
             .await
@@ -270,7 +271,7 @@ mod tests {
             .local_addr()
             .unwrap()
             .port();
-        let engine = Engine::new(EngineConfig::default());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
         let failure = engine
             .start_account(start(&format!("http://127.0.0.1:{port}"), "@a:b"))
             .await
