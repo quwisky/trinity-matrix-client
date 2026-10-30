@@ -558,6 +558,8 @@ export function sessionStateProvider(
     softLoggedOut: signal<readonly string[]>([]).asReadonly(),
     // Read by the room administration store the moderation service injects.
     snapshot: signal(EMPTY_SESSION).asReadonly(),
+    // Read by the identity presence projection; nothing here runs it.
+    active: signal(null).asReadonly(),
   });
 }
 

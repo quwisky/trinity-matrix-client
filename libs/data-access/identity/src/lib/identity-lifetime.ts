@@ -19,7 +19,7 @@ import {
   timeout,
   catchError,
 } from 'rxjs';
-import { IdentityMatrixPort } from '@trinity/data-access/matrix-client';
+import { SessionStateService } from '@trinity/data-access/matrix-client';
 import {
   ProjectionRuntime,
   type CapabilityContext,
@@ -36,7 +36,7 @@ export type IdentityLifetimeEvent =
 export class IdentityLifetime {
   private readonly injector = inject(Injector);
   private readonly projections = inject(ProjectionRuntime);
-  private readonly matrix = inject(IdentityMatrixPort);
+  private readonly session = inject(SessionStateService);
   private readonly presence = inject(IdentityPresenceService);
   private readonly changes = new Subject<IdentityPresenceHealth>();
   // Published as fact.generation; recover() filters obsolete generations. Not a latest-wins guard.
@@ -149,7 +149,7 @@ export class IdentityLifetime {
       };
       const apply = (): void => {
         if (applying) return;
-        const nextAccount = this.matrix.activeAccountId();
+        const nextAccount = this.session.activeAccountId();
         const nextRequired = !!nextAccount && demanded();
         if (
           nextAccount === accountId &&
@@ -192,7 +192,7 @@ export class IdentityLifetime {
         }
       };
       this.demandCurrent = () =>
-        accountId === this.matrix.activeAccountId() && required && demanded();
+        accountId === this.session.activeAccountId() && required && demanded();
       this.retry = () => {
         disconnect();
         if (!this.current) return;
@@ -203,7 +203,7 @@ export class IdentityLifetime {
       apply();
       const changes = effect(
         () => {
-          this.matrix.activeAccountId();
+          this.session.activeAccountId();
           demanded();
           untracked(apply);
         },

@@ -18,7 +18,7 @@ import { createRoom } from '../../support/space-journey.mts';
 
 /**
  * The dev build's Angular debug API, reaching the active account's Matrix client through the
- * long-lived Identity lifetime, as the presence journey does.
+ * long-lived Identity lifetime's engine, as the presence journey reaches that lifetime.
  */
 interface MatrixClientWindow extends Window {
   ng: {
@@ -27,15 +27,18 @@ interface MatrixClientWindow extends Window {
         adapter: {
           session: {
             identity: {
-              matrix: {
-                active(): {
-                  client: {
-                    getCrypto(): {
-                      isEncryptionEnabledInRoom(
-                        roomId: string,
-                      ): Promise<boolean>;
-                      /** RustCrypto's private per-room encryptors. */
-                      roomEncryptors?: Record<string, unknown>;
+              session: { activeAccountId(): string };
+              presence: {
+                engine: {
+                  clients: {
+                    clientFor(accountId: string): {
+                      getCrypto(): {
+                        isEncryptionEnabledInRoom(
+                          roomId: string,
+                        ): Promise<boolean>;
+                        /** RustCrypto's private per-room encryptors. */
+                        roomEncryptors?: Record<string, unknown>;
+                      };
                     };
                   };
                 };
@@ -53,10 +56,12 @@ function encryptsOnThisDevice(page: Page, roomId: string): Promise<boolean> {
   return page.evaluate(async (id) => {
     const root = document.querySelector('trn-root');
     if (!root) return false;
-    const crypto = (window as unknown as MatrixClientWindow).ng
-      .getComponent(root)
-      .runtime.adapter.session.identity.matrix.active()
-      .client.getCrypto();
+    const identity = (window as unknown as MatrixClientWindow).ng.getComponent(
+      root,
+    ).runtime.adapter.session.identity;
+    const crypto = identity.presence.engine.clients
+      .clientFor(identity.session.activeAccountId())
+      .getCrypto();
     return (
       (await crypto.isEncryptionEnabledInRoom(id)) &&
       !!crypto.roomEncryptors?.[id]
