@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util';
 import { buildBackMerge, resolutionFor } from './back-merge.mjs';
 
 const STABLE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const METADATA = new Set(['release', 'higher']);
+const METADATA = new Set(['release', 'higher', 'anchor']);
 const PASSING = new Set(['success', 'skipped', 'neutral']);
 
 export function tagFor(branch) {

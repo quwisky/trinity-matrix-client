@@ -17,6 +17,7 @@ const RELEASE_SIDE = new Set([
   RELEASE_JSON,
 ]);
 const NEXT_MANIFEST = '.release-please-manifest.next.json';
+const NEXT_CONFIG = 'release-please-config.next.json';
 const USER_GUIDE_PAGE = /^apps\/docs-users\/src\/content\/docs\/.+\.mdx?$/;
 const VERSION =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-next\.(0|[1-9]\d*))?$/;
@@ -25,6 +26,7 @@ const STABLE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 export function resolutionFor(path) {
   if (RELEASE_SIDE.has(path) || USER_GUIDE_PAGE.test(path)) return 'release';
   if (path === NEXT_MANIFEST) return 'higher';
+  if (path === NEXT_CONFIG) return 'anchor';
   return null;
 }
 
@@ -205,6 +207,20 @@ export function buildBackMerge(tag, cwd = process.cwd()) {
       : cut;
     write(STABLE_MANIFEST, `${JSON.stringify({ '.': next }, null, 2)}\n`);
     if (!resolved.includes(STABLE_MANIFEST)) resolved.push(STABLE_MANIFEST);
+    // When main's next manifest (read from the index) names this stable tag, which is not on
+    // main's history, release-please would collect commits far past the cut; stop it there.
+    const config = show('HEAD', NEXT_CONFIG);
+    if (
+      config !== null &&
+      JSON.parse(show('', NEXT_MANIFEST) ?? '{}')['.'] === version
+    ) {
+      const anchor = at('rev-parse', `v${cut}^{commit}`).trim();
+      write(
+        NEXT_CONFIG,
+        `${JSON.stringify({ ...JSON.parse(config), 'last-release-sha': anchor }, null, 2)}\n`,
+      );
+      resolved.push(NEXT_CONFIG);
+    }
   }
   let changed = false;
   try {
@@ -283,7 +299,7 @@ function run({ tag, branch }) {
   const body = [
     `Brings the release metadata of \`${branch}\` at \`${tag}\` to \`main\` as one metadata-only commit whose only parent is \`main\`. No release-branch commit enters \`main\`'s history; a fix made only on the release branch needs its own PR to \`main\`.`,
     '',
-    `Paths (rules in \`scripts/back-merge.mjs\`; \`CHANGELOG.md\` gains only \`${tag}\`'s section; \`${STABLE_MANIFEST}\` keeps the higher of main's \`-next\` value and the line's cut):\n${resolved.map((path) => `- \`${path}\``).join('\n')}`,
+    `Paths (rules in \`scripts/back-merge.mjs\`; \`CHANGELOG.md\` gains only \`${tag}\`'s section; \`${STABLE_MANIFEST}\` keeps the higher of main's \`-next\` value and the line's cut; \`${NEXT_CONFIG}\` gets \`last-release-sha\` at the cut when main's next manifest takes the stable version):\n${resolved.map((path) => `- \`${path}\``).join('\n')}`,
     '',
     'Lands on `main` as this commit, by a direct push from `scripts/land-back-merge.mjs`, once CI is green on it. Do not merge it with the button.',
   ].join('\n');

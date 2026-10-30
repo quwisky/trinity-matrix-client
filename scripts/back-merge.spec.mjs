@@ -43,6 +43,9 @@ const CHANGELOG = (...versions) =>
   `# Changelog\n\n${versions.map((v) => `## [${v}](https://example.test/v${v}) (2026-10-23)\n\n* a fix in ${v}\n`).join('\n')}`;
 const OLD_PAGE = 'apps/docs-users/src/content/docs/old.md';
 const HEAD = 'back-merge/v0.5.2';
+const NEXT_CONFIG = 'release-please-config.next.json';
+const nextConfig = (anchor) =>
+  `${JSON.stringify({ 'bootstrap-sha': 'b'.repeat(40), 'last-release-sha': anchor, versioning: 'prerelease' }, null, 2)}\n`;
 
 /** main, and release/0.5.x cut at v0.5.0-next.6 with a cherry-picked fix, tagged v0.5.2. */
 function releaseRepo({ cutTag = true } = {}) {
@@ -72,6 +75,7 @@ function releaseRepo({ cutTag = true } = {}) {
     'CHANGELOG.md': CHANGELOG('0.4.0'),
     '.release-please-manifest.json': manifest('0.4.0'),
     '.release-please-manifest.next.json': manifest('0.5.0-next.6'),
+    [NEXT_CONFIG]: nextConfig('a'.repeat(40)),
     [RELEASE_JSON]: releaseJson('0.4.0'),
     'package.json': pkg('0.5.0-next.6', '1.0.0'),
     [PAGE]: page('0.5.0-next.6', 'footer'),
@@ -137,6 +141,7 @@ describe('back-merge', () => {
       resolutionFor('apps/docs-users/src/content/docs/guide/setup.mdx'),
     ).toBe('release');
     expect(resolutionFor('.release-please-manifest.next.json')).toBe('higher');
+    expect(resolutionFor(NEXT_CONFIG)).toBe('anchor');
     for (const other of [
       'package.json',
       'electron/package.json',
@@ -290,6 +295,22 @@ describe('back-merge', () => {
         manifest('0.6.0-next.0'),
       );
       expect(repo.read('package.json')).toBe(pkg('0.6.0-next.0', '1.0.0'));
+      expect(repo.read(NEXT_CONFIG)).toBe(nextConfig('a'.repeat(40)));
+    });
+
+    it("anchors main's prerelease line at the cut when its manifest takes the stable version", () => {
+      repo = releaseRepo();
+      repo.commit('chore: no prerelease on main since the cut', {
+        '.release-please-manifest.next.json': manifest('0.5.0-next.6'),
+      });
+      const { resolved } = repo.backMerge();
+      expect(repo.read('.release-please-manifest.next.json')).toBe(
+        manifest('0.5.2'),
+      );
+      expect(resolved).toContain(NEXT_CONFIG);
+      expect(repo.read(NEXT_CONFIG)).toBe(
+        nextConfig(repo.git('rev-parse', 'v0.5.0-next.6^{commit}')),
+      );
     });
 
     it("sets the stable manifest to the line's cut prerelease", () => {
