@@ -146,6 +146,22 @@ export function defineRoomListEngineContract(
       return rooms.find((r) => r.roomId === roomId) as RoomInfo;
     }
 
+    /** A new subscription's first batch: the list as the engine holds it right now. */
+    function snapshotNow(): Promise<readonly RoomInfo[]> {
+      return firstValueFrom(folded().pipe(take(1), timeout(settleTimeoutMs)));
+    }
+
+    async function invitedByBob(
+      historyVisibility?: RoomInfo['historyVisibility'],
+    ): Promise<string> {
+      const roomId = await context.asBob.createRoom(`bob ${unique()}`, {
+        historyVisibility,
+      });
+      await context.asBob.invite(roomId, alice);
+      await roomUntil(roomId, (r) => r.membership === 'invite');
+      return roomId;
+    }
+
     function request(
       patch: Partial<CreateRoomRequest> = {},
     ): CreateRoomRequest {
@@ -270,9 +286,7 @@ export function defineRoomListEngineContract(
       async () => {
         const roomId = await createRoom();
 
-        const snapshot = await firstValueFrom(
-          folded().pipe(take(1), timeout(settleTimeoutMs)),
-        );
+        const snapshot = await snapshotNow();
 
         expect(snapshot.find((r) => r.roomId === roomId)?.membership).toBe(
           'join',
@@ -315,9 +329,7 @@ export function defineRoomListEngineContract(
       async () => {
         // Bob's room: an unencrypted message only counts toward notifications in an unencrypted
         // room, and rooms created through the engine are encrypted.
-        const roomId = await context.asBob.createRoom(`bob ${unique()}`);
-        await context.asBob.invite(roomId, alice);
-        await roomUntil(roomId, (r) => r.membership === 'invite');
+        const roomId = await invitedByBob();
         await context.asAlice.join(roomId);
         await context.asBob.sendMessage(roomId, 'hello');
         await roomUntil(roomId, (r) => r.notificationCount > 0);
@@ -368,7 +380,10 @@ export function defineRoomListEngineContract(
       'createDirectMessage reuses the joined DM',
       async () => {
         const first = await ok(engine.createDirectMessage(alice, bob));
-        await roomUntil(first.roomId, (r) => r.membership === 'join');
+        await roomUntil(
+          first.roomId,
+          (r) => r.membership === 'join' && r.directUserId === bob,
+        );
         await firstValueFrom(
           engine.directMap(alice).pipe(
             filter((map) => map[bob]?.includes(first.roomId) ?? false),
@@ -496,9 +511,7 @@ export function defineRoomListEngineContract(
     it(
       'roomsInCommon adds a room once alice joins bob in it',
       async () => {
-        const roomId = await context.asBob.createRoom(`bob ${unique()}`);
-        await context.asBob.invite(roomId, alice);
-        await roomUntil(roomId, (r) => r.membership === 'invite');
+        const roomId = await invitedByBob();
         const latest = track(engine.roomsInCommon(alice, bob));
         await latestUntil(latest, () => true);
         expect(latest.value).toEqual([]);
@@ -539,9 +552,7 @@ export function defineRoomListEngineContract(
           ok(engine.join(alice, alias, [context.serverName])),
         ).resolves.toEqual({ roomId });
 
-        const snapshot = await firstValueFrom(
-          folded().pipe(take(1), timeout(settleTimeoutMs)),
-        );
+        const snapshot = await snapshotNow();
         expect(snapshot.find((r) => r.roomId === roomId)?.membership).toBe(
           'join',
         );
@@ -743,6 +754,113 @@ export function defineRoomListEngineContract(
           'leave',
           engine.leave(alice, created),
           (rooms) => row(rooms, created) === undefined,
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "a created room's row carries its name, topic, encryption and history",
+      async () => {
+        const name = `contract ${unique()}`;
+        const roomId = await createRoom({ name, topic: 'about' });
+        const spaceId = await createRoom({ kind: 'space' });
+
+        const room = await roomUntil(
+          roomId,
+          (r) =>
+            r.displayName === name &&
+            r.topic !== '' &&
+            r.joinedMemberCount > 0 &&
+            r.encryption !== 'unknown',
+        );
+        const space = await roomUntil(
+          spaceId,
+          (r) => r.isSpace && r.encryption !== 'unknown',
+        );
+
+        expect(room).toMatchObject({
+          membership: 'join',
+          isSpace: false,
+          displayName: name,
+          topic: 'about',
+          avatarMxc: null,
+          directUserId: null,
+          encryption: 'encrypted',
+          joinedMemberCount: 1,
+          historyVisibility: 'shared',
+          latestMessage: null,
+          favourite: false,
+          inviter: null,
+        });
+        expect(space.encryption).toBe('unencrypted');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'a message from bob shows as the latest message and moves recencyStamp',
+      async () => {
+        const roomId = await invitedByBob('joined');
+        await context.asAlice.join(roomId);
+        const before = await roomUntil(roomId, (r) => r.membership === 'join');
+
+        await context.asBob.sendMessage(roomId, 'hello');
+
+        const after = await roomUntil(
+          roomId,
+          (r) => r.latestMessage?.text === 'hello',
+        );
+        expect(after.latestMessage).toEqual({ text: 'hello', mark: null });
+        expect(after.historyVisibility).toBe('joined');
+        expect(after.recencyStamp).toBeGreaterThan(before.recencyStamp);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'a plaintext message in an encrypted room shows with the unencrypted mark',
+      async () => {
+        const roomId = await createRoom();
+        await ok(engine.invite(alice, roomId, bob));
+        await context.asBob.join(roomId);
+
+        await context.asBob.sendMessage(roomId, 'hello');
+
+        const room = await roomUntil(
+          roomId,
+          (r) => r.latestMessage?.text === 'hello',
+        );
+        expect(room.latestMessage?.mark).toBe('unencrypted');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'join accepts an invite',
+      async () => {
+        const roomId = await invitedByBob();
+
+        await expect(ok(engine.join(alice, roomId, []))).resolves.toEqual({
+          roomId,
+        });
+
+        expect(
+          (await snapshotNow()).find((r) => r.roomId === roomId),
+        ).toMatchObject({ membership: 'join', inviter: null });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'leave declines an invite',
+      async () => {
+        const roomId = await invitedByBob();
+
+        await ok(engine.leave(alice, roomId));
+
+        expect((await snapshotNow()).some((r) => r.roomId === roomId)).toBe(
+          false,
         );
       },
       testTimeoutMs,

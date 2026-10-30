@@ -96,11 +96,19 @@ describe.skipIf(!baseUrl)('JsSdkRoomListEngine against Synapse', () => {
         ),
       );
 
+      // Crypto is stubbed: a room without an encryption event is then unencrypted, not unknown.
+      const cryptoSpy = vi
+        .spyOn(MatrixClient.prototype, 'getCrypto')
+        .mockReturnValue({
+          isEncryptionEnabledInRoom: async () => false,
+        } as unknown as ReturnType<MatrixClient['getCrypto']>);
+
       return {
         engine: TestBed.inject(JsSdkRoomListEngine),
         ...fixture,
         alice: alice.userId,
         dispose: async () => {
+          cryptoSpy.mockRestore();
           try {
             await firstValueFrom(session.stop());
           } finally {
