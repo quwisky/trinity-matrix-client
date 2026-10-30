@@ -49,11 +49,11 @@ export interface DiagnosticAccountSource {
   accounts(): Observable<readonly DiagnosticAccount[]>;
   /**
    * Room names, room topics and members' display names (the user's own included) of every
-   * signed-in account, a group per room, read lazily as the export iterates them while it
-   * builds the file. The export keeps only the names that occur in the log, and nothing
-   * stores them.
+   * signed-in account, a group per room. Emits once; iterating the groups throws after the
+   * last one if some names could not be read. The export keeps only the names that occur in
+   * the log, and nothing stores them.
    */
-  knownNames(): Iterable<DiagnosticNameGroup>;
+  knownNames(): Observable<Iterable<DiagnosticNameGroup>>;
 }
 
 export const DIAGNOSTIC_ACCOUNT_SOURCE =

@@ -4,8 +4,9 @@ import {
   type Direction,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { describe, expect, it, vi } from 'vitest';
-import { accountKnownNames, type AccountNameGroup } from './known-names';
+import { describe, expect, it } from 'vitest';
+import { assertPlainData } from '@trinity/util/matrix';
+import { accountKnownNames } from './known-names';
 
 interface FakeMember {
   readonly userId: string;
@@ -26,7 +27,7 @@ function fakeClient(
 ) {
   const content = (value: Record<string, unknown> | null) =>
     value ? { getContent: () => value } : null;
-  const getRooms = vi.fn(() =>
+  const getRooms = () =>
     rooms.map((room) => {
       const state = {
         getStateEvents: (type: string, stateKey: string) => {
@@ -52,24 +53,14 @@ function fakeClient(
             direction === EventTimeline.FORWARDS ? state : null,
         }),
       };
-    }),
-  );
+    });
   const client = {
     getRooms,
     getUserId: () => own?.userId ?? null,
     getUser: (userId: string) =>
       own && userId === own.userId ? { displayName: own.displayName } : null,
   } as unknown as MatrixClient;
-  return { client, getRooms };
-}
-
-/** Every group read in full, display names included. */
-function readAll(groups: Iterable<AccountNameGroup>) {
-  return [...groups].map((group) => ({
-    roomNames: group.roomNames,
-    roomTopics: group.roomTopics,
-    displayNames: [...group.displayNames],
-  }));
+  return { client };
 }
 
 describe('accountKnownNames', () => {
@@ -107,7 +98,7 @@ describe('accountKnownNames', () => {
       { userId: '@alice:example.org', displayName: 'Alice L.' },
     );
 
-    expect(readAll(accountKnownNames(client))).toEqual([
+    expect(accountKnownNames(client)).toEqual([
       { roomNames: [], roomTopics: [], displayNames: ['Alice L.'] },
       {
         roomNames: ['Garden Club'],
@@ -123,14 +114,10 @@ describe('accountKnownNames', () => {
     ]);
   });
 
-  it('reads the rooms only when iterated', () => {
-    const { client, getRooms } = fakeClient([{ name: 'Lazy', members: [] }]);
+  it('reads plain data', () => {
+    const { client } = fakeClient([{ name: 'Plain', members: [] }]);
 
-    const groups = accountKnownNames(client);
-    expect(getRooms).not.toHaveBeenCalled();
-
-    expect(readAll(groups)).toHaveLength(2);
-    expect(getRooms).toHaveBeenCalledTimes(1);
+    expect(() => assertPlainData(accountKnownNames(client))).not.toThrow();
   });
 
   it('ignores members without a display name and malformed state', () => {
@@ -148,7 +135,7 @@ describe('accountKnownNames', () => {
       },
     ]);
 
-    expect(readAll(accountKnownNames(client))).toEqual([
+    expect(accountKnownNames(client)).toEqual([
       { roomNames: [], roomTopics: [], displayNames: [] },
       { roomNames: [], roomTopics: [], displayNames: [] },
     ]);

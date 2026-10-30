@@ -688,13 +688,14 @@ describe('DiagnosticLogService', () => {
             provide: DIAGNOSTIC_ACCOUNT_SOURCE,
             useValue: {
               accounts: () => of([ALICE_ACCOUNT]),
-              knownNames: () => [
-                {
-                  roomNames: ['Garden Club'],
-                  roomTopics: [],
-                  displayNames: ['Alice Liddell'],
-                },
-              ],
+              knownNames: () =>
+                of([
+                  {
+                    roomNames: ['Garden Club'],
+                    roomTopics: [],
+                    displayNames: ['Alice Liddell'],
+                  },
+                ]),
             },
           },
         ],
@@ -746,14 +747,17 @@ describe('DiagnosticLogService', () => {
             provide: DIAGNOSTIC_ACCOUNT_SOURCE,
             useValue: {
               accounts: () => of([ALICE_ACCOUNT]),
-              *knownNames() {
-                yield {
-                  roomNames: ['Garden Club'],
-                  roomTopics: [],
-                  displayNames: [],
-                };
-                throw new Error('client stopped');
-              },
+              knownNames: () =>
+                of({
+                  *[Symbol.iterator]() {
+                    yield {
+                      roomNames: ['Garden Club'],
+                      roomTopics: [],
+                      displayNames: [],
+                    };
+                    throw new Error('client stopped');
+                  },
+                }),
             },
           },
         ],
@@ -790,6 +794,8 @@ describe('DiagnosticLogService', () => {
             useValue: {
               accounts: () =>
                 throwError(() => new Error('registry unreadable')),
+              knownNames: () =>
+                throwError(() => new Error('engine unreachable')),
             },
           },
         ],
@@ -800,6 +806,7 @@ describe('DiagnosticLogService', () => {
       const bundle = await firstValueFrom(service.export());
 
       expect(bundle.text).toContain('# Accounts signed in: 0');
+      expect(bundle.text).toContain('# Some names were not replaced');
     });
 
     it('exports no entries, and never opens the store, while the log is off', async () => {
