@@ -51,4 +51,12 @@ pnpm nx run native-engine:cargo-test
 
 The first test run compiles the Matrix SDK and takes several minutes. `native-engine:cargo-lint` runs `cargo fmt --check` and `cargo clippy`, and `native-engine:cargo-build` builds every crate.
 
+CI also runs `cargo machete`, which fails on an unused dependency, and `cargo deny check`, which checks licences, advisories and sources against `deny.toml`. To run them locally, install the versions CI uses (cargo-deny 0.20.2, the version of its GitHub action, and cargo-machete 0.9.2):
+
+```bash
+cargo install --locked cargo-deny@0.20.2 cargo-machete@0.9.2
+cargo machete
+cargo deny check
+```
+
 Continue with [Run Trinity](../run-trinity/).

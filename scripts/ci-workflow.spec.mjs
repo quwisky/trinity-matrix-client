@@ -660,6 +660,8 @@ describe('MAS sign-in journeys', () => {
         'Cargo.lock',
         'rust-toolchain.toml',
         'clippy.toml',
+        'rustfmt.toml',
+        'deny.toml',
         '.cargo/config.toml',
         'libs/data-access/media/src/contract/media.contract.ts',
         'libs/data-access/homeserver/src/lib/probe-homeserver.ts',
@@ -740,6 +742,8 @@ describe('Rust engine job', () => {
     expect(job.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual([
       'rustup toolchain install\ncargo --version\n',
       'cargo fmt --all --check',
+      'cargo install cargo-machete --locked --version 0.9.2',
+      'cargo machete',
       'cargo clippy --workspace --all-targets --locked -- -D warnings',
       'cargo clippy -p trinity-engine --no-default-features --locked -- -D warnings',
       "find libs -path '*/rust-dto/*.ts' ! -name '*.spec.ts' -delete",
@@ -748,6 +752,29 @@ describe('Rust engine job', () => {
       'cargo build -p trinity-engine-testhost --locked',
       'TRINITY_ENGINE_TESTHOST="$PWD/target/debug/trinity-engine-testhost" pnpm exec nx test testing --skip-nx-cache',
     ]);
+  });
+
+  it('installs cargo-machete after the cache step, which keeps the binary', () => {
+    const index = (predicate) => job.steps.findIndex(predicate);
+    const cache = index((step) =>
+      step.uses?.startsWith('Swatinem/rust-cache@'),
+    );
+    const install = index((step) => step.run?.startsWith('cargo install'));
+    expect(cache).toBeGreaterThan(-1);
+    expect(install).toBeGreaterThan(cache);
+  });
+
+  it('checks licences and advisories with a pinned cargo-deny action after cargo machete', () => {
+    const index = (predicate) => job.steps.findIndex(predicate);
+    const machete = index((step) => step.run === 'cargo machete');
+    const deny = index((step) =>
+      step.uses?.startsWith('EmbarkStudios/cargo-deny-action@'),
+    );
+    expect(machete).toBeGreaterThan(-1);
+    expect(deny).toBe(machete + 1);
+    expect(job.steps[deny].uses).toMatch(/@[0-9a-f]{40}$/);
+    // The defaults check the root manifest with `--all-features`; any input would change that.
+    expect(job.steps[deny].with).toBeUndefined();
   });
 
   it('runs the stdio transport spec against the test host it built', () => {

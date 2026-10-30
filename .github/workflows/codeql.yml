@@ -8,11 +8,15 @@ name: CodeQL
 #
 # Every category is `/language:<language>`, the name default setup used, so the alert history
 # of the three existing languages continues instead of starting over.
+#
+# The Rust engine lives on the long-lived feat/1153-rust-engine branch until it lands on main,
+# so push and pull_request also fire for it. Only the `rust` job analyses that branch: the
+# other jobs skip unless the ref or the pull request's base is main.
 on:
   push:
-    branches: [main]
+    branches: [main, feat/1153-rust-engine]
   pull_request:
-    branches: [main]
+    branches: [main, feat/1153-rust-engine]
   schedule:
     # Weekly, like default setup: picks up new queries for code nobody has changed.
     - cron: '37 5 * * 1'
@@ -29,6 +33,7 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
+    if: ${{ github.ref == 'refs/heads/main' || github.base_ref == 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -51,6 +56,31 @@ jobs:
       - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           category: /language:${{ matrix.language }}
+
+  # Rust has no build step in `build-mode: none`, but CodeQL fails an analysis of a tree with no
+  # Rust source, and main has none until the engine lands. A job `if` cannot see the checkout,
+  # so the steps after it skip while no .rs file exists; the job then reports success.
+  rust:
+    name: Analyze (rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: ${{ hashFiles('**/*.rs') != '' }}
+        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: rust
+          build-mode: none
+      - if: ${{ hashFiles('**/*.rs') != '' }}
+        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:rust
 
   # Each analysis of main saves a new overlay base database per language (about 350 MB for
   # JavaScript, 48 MB for Java) and CodeQL never deletes the old ones, so they filled the
@@ -89,7 +119,7 @@ jobs:
   # instead of quietly skipping Swift.
   changes:
     name: Swift changes
-    if: github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -127,7 +157,7 @@ jobs:
   swift:
     name: Analyze (swift)
     needs: changes
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.swift == 'true') }}
+    if: ${{ !cancelled() && (github.ref == 'refs/heads/main' || github.base_ref == 'main') && (github.event_name != 'pull_request' || needs.changes.outputs.swift == 'true') }}
     runs-on: macos-26
     timeout-minutes: 30
     permissions:

@@ -98,3 +98,60 @@ describe('CodeQL overlay cache pruning', () => {
     expect(prune([])).toEqual({ status: 0, stderr: '', ids: [] });
   });
 });
+
+describe('CodeQL Rust analysis', () => {
+  const analyze = workflow.jobs.analyze;
+  const rust = workflow.jobs.rust;
+  const initOf = (candidate) =>
+    candidate.steps.find((step) =>
+      step.uses?.startsWith('github/codeql-action/init@'),
+    );
+  const analyzeOf = (candidate) =>
+    candidate.steps.find((step) =>
+      step.uses?.startsWith('github/codeql-action/analyze@'),
+    );
+  const gate = "${{ hashFiles('**/*.rs') != '' }}";
+
+  it('analyses Rust without a build, under its own category, with the file pinned actions', () => {
+    expect(initOf(rust).with).toEqual({
+      languages: 'rust',
+      'build-mode': 'none',
+    });
+    expect(analyzeOf(rust).with).toEqual({ category: '/language:rust' });
+    expect(rust.permissions).toEqual(analyze.permissions);
+    for (const step of rust.steps) {
+      expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
+    }
+    expect(initOf(rust).uses).toBe(initOf(analyze).uses);
+    expect(analyzeOf(rust).uses).toBe(analyzeOf(analyze).uses);
+  });
+
+  it('skips the analysis while the tree has no Rust source', () => {
+    expect(initOf(rust)['if']).toBe(gate);
+    expect(analyzeOf(rust)['if']).toBe(gate);
+    expect(rust['if']).toBeUndefined();
+  });
+
+  it('adds the Rust branch to the push and pull request triggers, and the weekly run stays', () => {
+    expect(workflow.on.push.branches).toEqual([
+      'main',
+      'feat/1153-rust-engine',
+    ]);
+    expect(workflow.on.pull_request.branches).toEqual([
+      'main',
+      'feat/1153-rust-engine',
+    ]);
+    expect(workflow.on.schedule).toHaveLength(1);
+  });
+
+  it('keeps every other language on main, its pull requests and the weekly run', () => {
+    const onMain =
+      "github.ref == 'refs/heads/main' || github.base_ref == 'main'";
+    expect(analyze['if']).toBe(`\${{ ${onMain} }}`);
+    expect(workflow.jobs.swift['if']).toContain(`(${onMain})`);
+    expect(workflow.jobs.changes['if']).toContain("github.base_ref == 'main'");
+    expect(workflow.jobs['prune-overlay-caches']['if']).toContain(
+      "github.ref == 'refs/heads/main'",
+    );
+  });
+});

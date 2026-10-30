@@ -1,0 +1,51 @@
+# cargo-deny policy for the Rust workspace: the `rust` job in .github/workflows/ci.yml runs
+# `cargo deny check`. Reproduce it locally with the same command.
+
+[graph]
+# The native feature set pulls in the most crates, so check that.
+all-features = true
+
+[advisories]
+# RustSec's database. A vulnerability always fails the check, and `all` makes unsound and
+# unmaintained advisories fail too, whether the crate is a direct or a transitive dependency.
+# The default scope for unsound advisories is the workspace's own direct dependencies.
+unmaintained = "all"
+unsound = "all"
+yanked = "warn"
+ignore = [
+  { id = "RUSTSEC-2026-0319", reason = "matrix-sdk 0.19.1 pulls in the unmaintained anymap2 and it cannot change without a fork; revisit when matrix-sdk is upgraded" },
+]
+
+[licenses]
+# Anything not listed here fails.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "CC0-1.0",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
+  "BSL-1.0",
+]
+
+[licenses.private]
+# The workspace crates set publish = false and no license.
+ignore = true
+
+[bans]
+# matrix-sdk's tree carries many duplicate versions, so these are noise, not failures.
+multiple-versions = "warn"
+wildcards = "deny"
+# The workspace's own path dependencies carry no version requirement.
+allow-wildcard-paths = true
+
+[sources]
+# crates.io only: no git dependencies, patches or forks.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
