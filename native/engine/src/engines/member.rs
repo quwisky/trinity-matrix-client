@@ -101,7 +101,6 @@ pub async fn bounded<T, E: Into<Error>>(
 }
 
 /// `work`, unless the account retires first: then `None`, with `work` and what it holds dropped.
-#[cfg_attr(not(test), expect(dead_code, reason = "M3 calls it"))]
 pub(crate) async fn until_retired<T>(
     mut retired: watch::Receiver<bool>,
     work: impl Future<Output = T>,

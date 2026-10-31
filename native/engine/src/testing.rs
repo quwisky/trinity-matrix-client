@@ -117,6 +117,35 @@ fn answer(
     stream.write_all(reply.as_bytes())
 }
 
+/// A homeserver on loopback that answers every request with `bytes`, as `text/html`, so a client
+/// that believes the server's `Content-Type` shows it.
+pub(crate) fn binary_on_loopback(bytes: Vec<u8>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let _ = answer_with(stream, &bytes);
+        }
+    });
+    base
+}
+
+fn answer_with(mut stream: TcpStream, bytes: &[u8]) -> io::Result<()> {
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut line = String::new();
+    // Up to the blank line that ends the head: these requests have no body.
+    while reader.read_line(&mut line)? > 2 {
+        line.clear();
+    }
+    let length = bytes.len();
+    write!(
+        stream,
+        "HTTP/1.1 200 X\r\ncontent-type: text/html\r\ncontent-length: {length}\r\n\
+         connection: close\r\n\r\n"
+    )?;
+    stream.write_all(bytes)
+}
+
 pub(crate) fn requests(seen: &Seen) -> Vec<(String, Option<String>)> {
     seen.lock().unwrap().clone()
 }

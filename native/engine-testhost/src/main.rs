@@ -89,7 +89,8 @@ async fn main() {
             Err(err) => tracing::warn!(category = ?err.classify(), "unreadable inbound line"),
         }
     }
-    // First, so the session still holds the engine's last reference.
+    // First, so the server's reference to the engine ends before the session's. Aborted connection
+    // tasks may still hold one for a moment: `JoinSet` doesn't wait for them.
     server.abort();
     let _ = server.await;
     // The writer ends once the aborted streams have let go of the output.

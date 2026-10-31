@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::{
     accounts::Engine,
-    engines::{contact_addresses, discovery, homeserver, identity, room_list, session},
+    engines::{contact_addresses, discovery, homeserver, identity, media, room_list, session},
     wire::{BlobRefDto, Fault, FaultCode},
 };
 
@@ -163,6 +163,9 @@ methods! {
         user_id: String,
         ignored: bool,
     ),
+    "media.content" => media::content(account_id: String, request: media::MediaRequestDto),
+    "media.release" => media::release(urls: Vec<String>),
+    "media.forgetProbes" => media::forget_probes(),
     "roomList.directMap" => room_list::typing::direct_map(account_id: String),
     "roomList.rooms" => room_list::rows::rooms(account_id: String),
     "roomList.typing" => room_list::typing::typing(account_id: String),

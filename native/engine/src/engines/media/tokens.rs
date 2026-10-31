@@ -39,7 +39,6 @@ pub(crate) struct MediaTokens {
 impl MediaTokens {
     /// A fresh 256-bit token for `bytes`, or `None` once the account has retired, or if the OS
     /// has no randomness to give: a weaker token is never minted.
-    #[cfg_attr(not(test), expect(dead_code, reason = "M3 calls it"))]
     pub(crate) fn mint(&self, rt: &AccountRuntime, mime: &str, bytes: Bytes) -> Option<String> {
         let Some(token) = token_from(getrandom::getrandom) else {
             tracing::error!("the OS random source failed");
@@ -60,7 +59,6 @@ impl MediaTokens {
         Some(token)
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "M3 calls it"))]
     pub(crate) fn release(&self, token: &str) {
         self.table.lock().remove(token);
     }
@@ -74,6 +72,12 @@ impl MediaTokens {
     // when a mint can tell it belongs to an earlier attach.
     pub(crate) fn clear(&self) {
         self.table.lock().clear();
+    }
+
+    /// How many tokens are live. A test's only way to see that nothing was minted.
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.table.lock().len()
     }
 
     /// Holds the table, so a test can see what a caller does before it reaches the lock.
