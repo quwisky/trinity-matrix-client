@@ -418,13 +418,29 @@ class TokenRefresherTest {
     }
 
     @Test
-    fun aLeaseThatCannotBeRetakenIsUnsaved() {
-        client.onGrant = {
-            lease.lapsed = true
-            lease.busy = true
+    fun tokensWithABusyRetakeStillCompareAndWrite() {
+        fun refreshWithABusyRetake(alsoDuringTheGrant: () -> Unit = {}): TokenRefreshResult {
+            vault.stored = R0
+            lease.busy = false
+            lease.lapsed = false
+            client.onGrant = {
+                lease.lapsed = true
+                lease.busy = true
+                alsoDuringTheGrant()
+            }
+            return refresh()
         }
 
-        assertEquals(TokenRefreshResult.Rotated(a1r1, true), refresh())
+        assertEquals(TokenRefreshResult.Rotated(a1r1, false), refreshWithABusyRetake())
+        assertEquals(a1r1, vault.stored)
+
+        assertEquals(TokenRefreshResult.Current(r2Stored), refreshWithABusyRetake { vault.stored = r2Stored })
+        assertEquals(r2Stored, vault.stored)
+
+        assertEquals(TokenRefreshResult.Gone, refreshWithABusyRetake { vault.stored = null })
+        assertNull(vault.stored)
+
+        assertEquals(TokenRefreshResult.Rotated(a1r1, true), refreshWithABusyRetake { vault.failedUpdates = 1 })
         assertEquals(R0, vault.stored)
     }
 

@@ -102,7 +102,9 @@ class TokenRefresher(
                         answer.refreshToken,
                         answer.expiresIn?.let { started + it * 1_000L },
                     )
-                    ticket = retake(ticket, account, deadline) ?: return keepUnsaved(account, onDisk, next)
+                    // Busy still compares and writes: the provider has spent the old token, so dropping
+                    // this pair gets the next refresh refused, and a process death would lose `pending`.
+                    ticket = retake(ticket, account, deadline) ?: ticket
                     when (val read = vault.read(account)) {
                         TokenVaultRead.Absent -> TokenRefreshResult.Gone
                         TokenVaultRead.Unavailable -> keepUnsaved(account, onDisk, next)
