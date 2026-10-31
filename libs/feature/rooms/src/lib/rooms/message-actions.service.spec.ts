@@ -11,7 +11,15 @@ import { type MediaTransferEvent } from '@trinity/data-access/media';
 import { TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
 import { MessageActionsService } from './message-actions.service';
@@ -79,6 +87,9 @@ describe('MessageActionsService', () => {
   const submitText = vi.fn<() => Observable<ConversationTextSendOutcome>>(() =>
     of({ kind: 'sent', eventId: '$sent' }),
   );
+  const intent = signal<ReturnType<ConversationRuntime['compose']['intent']>>({
+    kind: 'message',
+  });
   const toastShow = vi.fn();
   const mediaSend = vi.fn<() => Observable<MediaTransferEvent>>();
   const conversation = { media: { send: mediaSend } };
@@ -101,7 +112,7 @@ describe('MessageActionsService', () => {
       useFactory: () => ({
         timeline: inject(ConversationTimelineStub),
         focused: () => conversation,
-        compose: { setDraft, submit: submitText, setTyping },
+        compose: { setDraft, submit: submitText, setTyping, intent },
         messages: { redact, toggleReaction, retry, cancel },
         pins: { isPinned, pin, unpin },
       }),
@@ -189,6 +200,85 @@ describe('MessageActionsService', () => {
       actions.onSend({ body: 'x', mentions: [] });
 
       expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    describe('editing', () => {
+      const EDIT_FAILED = 'Could not edit the message.';
+      const refused = {
+        kind: 'rejected',
+        failure: 'send-rejected',
+        retryable: true,
+      } as const;
+
+      beforeEach(() => intent.set({ kind: 'edit', eventId: '$message' }));
+      afterEach(() => intent.set({ kind: 'message' }));
+
+      it('toasts once when the edit is refused, as its echo is gone', () => {
+        const { actions } = build();
+        submitText.mockReturnValueOnce(of(refused));
+
+        actions.onSend({ body: 'x', mentions: [] });
+
+        expect(toastShow).toHaveBeenCalledExactlyOnceWith(
+          EDIT_FAILED,
+          expect.objectContaining({ variant: 'danger' }),
+        );
+      });
+
+      it('still toasts a refusal arriving after the edit was cancelled', () => {
+        const { actions } = build();
+        const outcome = new Subject<ConversationTextSendOutcome>();
+        submitText.mockReturnValueOnce(outcome);
+
+        actions.onSend({ body: 'x', mentions: [] });
+        intent.set({ kind: 'message' });
+        outcome.next(refused);
+
+        expect(toastShow).toHaveBeenCalledExactlyOnceWith(
+          EDIT_FAILED,
+          expect.anything(),
+        );
+      });
+
+      it('toasts an edit the closed conversation could not take', () => {
+        const { actions } = build();
+        submitText.mockReturnValueOnce(
+          of({
+            kind: 'rejected',
+            failure: 'conversation-unavailable',
+            retryable: false,
+          }),
+        );
+
+        actions.onSend({ body: 'x', mentions: [] });
+
+        expect(toastShow).toHaveBeenCalledExactlyOnceWith(
+          EDIT_FAILED,
+          expect.anything(),
+        );
+      });
+
+      it('does not toast an edit that lands', () => {
+        const { actions } = build();
+
+        actions.onSend({ body: 'x', mentions: [] });
+
+        expect(toastShow).not.toHaveBeenCalled();
+      });
+
+      it.each(['send-in-progress', 'empty-draft'] as const)(
+        'does not toast a submit refused as %s, which never tried to edit',
+        (failure) => {
+          const { actions } = build();
+          submitText.mockReturnValueOnce(
+            of({ kind: 'rejected', failure, retryable: false }),
+          );
+
+          actions.onSend({ body: 'x', mentions: [] });
+
+          expect(toastShow).not.toHaveBeenCalled();
+        },
+      );
     });
 
     it('warns that sticker media stays public in an encrypted room', () => {

@@ -462,6 +462,17 @@ test.describe('Edit history', () => {
     await expect(sidebarRow).toContainText(typed);
     refuse();
 
+    const toast = page.locator('[data-sonner-toast]', {
+      hasText: 'Could not edit the message.',
+    });
+    await expect(toast).toHaveCount(1, { timeout: 15_000 });
+    await expect(toast).toBeVisible();
+    const toastBox = await toast.boundingBox();
+    const composerBox = await composer.boundingBox();
+    expect(toastBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(composerBox!.y);
+
     // Nothing reached the server, so the row and the sidebar go back to what it has.
     const cancelEdit = page.getByRole('button', { name: 'Cancel edit' });
     await expect(cancelEdit).toBeVisible();

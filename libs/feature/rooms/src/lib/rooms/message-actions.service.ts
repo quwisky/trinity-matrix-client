@@ -249,10 +249,22 @@ export class MessageActionsService {
     // The runtime clears durable intent only after the SDK accepts the event and exposes
     // its authoritative local echo. Rejections and cancellation restore it for retry.
     this.compose.setDraft(body);
+    const editing = this.compose.intent().kind === 'edit';
     this.compose
       .submit(mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      .subscribe((outcome) => {
+        // A failed message keeps its echo to retry from; a failed edit's echo is gone. A second
+        // Enter while one is pending, or an empty draft, tried nothing.
+        if (
+          editing &&
+          outcome.kind === 'rejected' &&
+          outcome.failure !== 'send-in-progress' &&
+          outcome.failure !== 'empty-draft'
+        ) {
+          void this.status.showError('Could not edit the message.');
+        }
+      });
   }
 
   onSendSticker(sticker: ImagePackImage): void {
