@@ -28,7 +28,7 @@ use super::member::sent_once;
 use crate::failure::classify;
 
 /// The least time between two reads of one stream.
-const MIN_GAP: Duration = Duration::from_secs(1);
+pub(crate) const MIN_GAP: Duration = Duration::from_secs(1);
 /// The wait before a failed read is tried again.
 pub(crate) const RETRY_GAP: Duration = Duration::from_secs(30);
 
@@ -91,6 +91,7 @@ fn state_request(rooms: &[OwnedRoomId], types: &[StateEventType]) -> v5::Request
 /// `first` at once, with no network. Then a read and an item if it changed, then a wait for a
 /// tick and at least 1 s, or 30 s after a failed read. Ticks during a read or a wait count as
 /// one. The stream ends when `changes` does, noticed after a wait or a failed read's wait.
+#[cfg_attr(not(test), expect(dead_code, reason = "W4 calls it"))]
 pub(crate) fn follow_state<T, F, Fut>(
     first: T,
     mut read: F,
