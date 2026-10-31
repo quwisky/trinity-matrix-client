@@ -34,19 +34,31 @@ class KeystoreTokenVault internal constructor(
     }
 
     override fun update(userId: String, record: TokenRecord): TokenVaultWrite = synchronized(LOCK) {
-        when {
-            !preferences.contains(key(userId)) -> TokenVaultWrite.ABSENT
-            write(userId, record) -> TokenVaultWrite.WRITTEN
-            else -> TokenVaultWrite.FAILED
+        try {
+            when {
+                !preferences.contains(key(userId)) -> TokenVaultWrite.ABSENT
+                write(userId, record) -> TokenVaultWrite.WRITTEN
+                else -> TokenVaultWrite.FAILED
+            }
+        } catch (error: Exception) {
+            TokenVaultWrite.FAILED
         }
     }
 
     override fun remove(userId: String): Boolean = synchronized(LOCK) {
-        preferences.edit().remove(key(userId)).commit()
+        try {
+            preferences.edit().remove(key(userId)).commit()
+        } catch (error: Exception) {
+            false
+        }
     }
 
     override fun removeAll(): Boolean = synchronized(LOCK) {
-        preferences.edit().clear().commit()
+        try {
+            preferences.edit().clear().commit()
+        } catch (error: Exception) {
+            false
+        }
     }
 
     private fun encode(record: TokenRecord): JSONObject = JSONObject()

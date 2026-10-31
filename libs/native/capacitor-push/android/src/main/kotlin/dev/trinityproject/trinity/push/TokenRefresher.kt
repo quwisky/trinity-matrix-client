@@ -28,7 +28,8 @@ class TokenRefresher(
 ) : PushTokenRefreshing {
     private class Unsaved(val base: TokenRecord, val next: TokenRecord)
 
-    // A pair the vault would not take, per process. `current` reads it without the lease.
+    // A pair the vault would not take. Per process because fromContext shares one instance;
+    // `current` reads it without the lease.
     private val pending = HashMap<String, Unsaved>()
 
     fun refresh(account: String, lineage: String, tokenSeen: String, deadline: Deadline): TokenRefreshResult =
@@ -54,7 +55,8 @@ class TokenRefresher(
         recordRefusal: Boolean,
     ): TokenRefreshResult {
         val budget = deadline.remainingMillis().coerceAtLeast(0)
-        var ticket = lease.take(account, budget + TokenBudgets.LEASE_MARGIN_MILLIS, budget)
+        // Twice: connecting and reading each get what is left of the budget.
+        var ticket = lease.take(account, 2 * budget + TokenBudgets.LEASE_MARGIN_MILLIS, budget)
             ?: return TokenRefreshResult.Busy
         try {
             flushPending(account)
@@ -254,9 +256,11 @@ class TokenRefresher(
 
     companion object {
         private const val RETAKE_FLOOR_MILLIS = 1_000L
+        private val SHARED = SharedRefresher()
 
+        /** One instance per process: the plugin and the service must see the same unsaved pair. */
         @JvmStatic
-        fun fromContext(context: Context): TokenRefresher = TokenRefresher(KeystoreTokenVault(context))
+        fun fromContext(context: Context): TokenRefresher = SHARED.get { TokenRefresher(KeystoreTokenVault(context)) }
 
         @JvmStatic
         fun appDeadline(): Deadline = deadlineIn(TokenBudgets.APP_GRANT_MILLIS)
