@@ -84,8 +84,11 @@ describe('macOS signing isolation', () => {
       for (const [id, job] of Object.entries(jobs)) {
         if (name === 'release.yml' && id === 'sign-mac') continue;
         const text = JSON.stringify(job);
-        for (const secret of SIGNING_SECRETS)
+        for (const secret of SIGNING_SECRETS) {
+          // The TestFlight job has its own APPLE_TEAM_ID in the release-mobile environment.
+          if (name === 'testflight.yml' && secret === 'APPLE_TEAM_ID') continue;
           expect(text, `${name} ${id}`).not.toContain(`secrets.${secret}`);
+        }
       }
     }
   });

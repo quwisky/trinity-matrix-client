@@ -1,0 +1,140 @@
+name: TestFlight upload
+# A manual upload of the iOS app to TestFlight. Never automatic: it runs only when someone
+# dispatches it, and the `release-mobile` environment then waits for its required reviewer.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+# An upload in flight is never cancelled; a second dispatch queues behind it.
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+jobs:
+  testflight:
+    name: Archive and upload to TestFlight
+    # The only job that can read the mobile secrets, which live in this environment (limited
+    # to `main` and `release/**`, with a required reviewer). No other workflow references them.
+    environment: release-mobile
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      ASC_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+      ARCHIVE_PATH: ${{ runner.temp }}/Trinity.xcarchive
+      EXPORT_PATH: ${{ runner.temp }}/export
+      EXPORT_OPTIONS: ${{ runner.temp }}/ExportOptions.plist
+      PLIST_PATH: ios/App/App/GoogleService-Info.plist
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Before the long build, so a missing secret fails in seconds.
+      - name: Mobile secrets are complete
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in GOOGLE_SERVICE_INFO_PLIST ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::The release-mobile environment secret $name is not set."
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - uses: ./.github/actions/setup
+      # trinity-ios:sync builds the production renderer (trinity:build, whose default
+      # configuration swaps in environment.prod.ts) and runs `cap sync ios`.
+      - name: Build the production renderer and sync Capacitor
+        run: pnpm nx run trinity-ios:sync --skipNxCache
+      - name: Record selected Xcode
+        run: xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
+      # The marketing version is package.json's without any prerelease suffix. The build number
+      # is the run number: it counts up per workflow and never resets, but a re-run of a run
+      # keeps its number, so a retry after an upload that went through needs a new dispatch.
+      - name: Resolve the marketing version and build number
+        id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          marketing="${version%%[-+]*}"
+          if ! [[ "$marketing" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::package.json version '$version' does not give three numeric parts."
+            exit 1
+          fi
+          if ! [[ "$RUN_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::The run number '$RUN_NUMBER' is not an integer."
+            exit 1
+          fi
+          echo "marketing=$marketing" >> "$GITHUB_OUTPUT"
+          echo "build=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "TestFlight version $marketing, build $RUN_NUMBER" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Write the Firebase plist and the App Store Connect key
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          umask 077
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$PLIST_PATH"
+          printf '%s' "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
+          chmod 600 "$ASC_KEY_PATH"
+      # The build settings on the command line apply to every target of the scheme, so the
+      # NotificationService extension gets the same versions as the app, as App Store Connect
+      # requires.
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          CURRENT_PROJECT_VERSION: ${{ steps.version.outputs.build }}
+        run: |
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+            CODE_SIGN_STYLE=Automatic
+      # `destination` upload sends the build to App Store Connect from this command.
+      - name: Export and upload
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cat > "$EXPORT_OPTIONS" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      # No xcodebuild log is uploaded: it echoes the key's path and ids.
+      - name: Remove the key and the decoded plist
+        if: always()
+        run: rm -f "$ASC_KEY_PATH" "$PLIST_PATH" "$EXPORT_OPTIONS"

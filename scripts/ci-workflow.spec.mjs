@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { CODE_JOB_IDS } from './ci-classify.mjs';
-import { workflow as loadWorkflow } from './workspace-sources.mjs';
+import { workflow as loadWorkflow, workflows } from './workspace-sources.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
@@ -810,5 +810,149 @@ describe('iOS nightly E2E workflow', () => {
     expect(byPath('.appium')).toHaveLength(1);
     expect(byPath('trinity-caddy')[0].with.key).toContain('env.CADDY_VERSION');
     expect(caches).toHaveLength(4);
+  });
+});
+
+describe('TestFlight upload workflow', () => {
+  const FILE = 'testflight.yml';
+  const SECRETS = [
+    'GOOGLE_SERVICE_INFO_PLIST',
+    'ASC_KEY_ID',
+    'ASC_ISSUER_ID',
+    'ASC_KEY_P8',
+    'APPLE_TEAM_ID',
+  ];
+  const testflight = () => loadWorkflow(FILE);
+  const job = () => Object.values(testflight().jobs)[0];
+  const step = (id) => job().steps.find((candidate) => candidate.id === id);
+
+  it('runs only when dispatched by hand', () => {
+    expect(Object.keys(testflight().on)).toEqual(['workflow_dispatch']);
+  });
+
+  it('is one job, gated by release-mobile, with least privilege and no cancelled upload', () => {
+    const { jobs, permissions, concurrency } = testflight();
+    expect(Object.keys(jobs)).toHaveLength(1);
+    expect(job().environment).toBe('release-mobile');
+    expect(job()['runs-on']).toBe('macos-26');
+    expect(permissions).toEqual({ contents: 'read' });
+    expect(concurrency['cancel-in-progress']).toBe(false);
+    expect(job()['timeout-minutes']).toBeGreaterThan(0);
+    const checkout = job().steps.find((s) =>
+      s.uses?.startsWith('actions/checkout@'),
+    );
+    expect(checkout.with['persist-credentials']).toBe(false);
+    for (const { uses } of job().steps.filter((s) => s.uses)) {
+      expect(uses).toMatch(/^(\.\/|[\w./-]+@[0-9a-f]{40}$)/);
+    }
+  });
+
+  it('reads secrets only through step env, never inside a script', () => {
+    const { env: _env, ...rest } = testflight();
+    const withoutStepEnv = {
+      ...rest,
+      jobs: {
+        job: {
+          ...job(),
+          steps: job().steps.map(({ env: _stepEnv, ...s }) => s),
+        },
+      },
+    };
+    expect(JSON.stringify(withoutStepEnv)).not.toContain('secrets.');
+    for (const { run = '' } of job().steps) {
+      expect(run).not.toContain('${{ secrets.');
+      expect(run).not.toMatch(/set -\w*x/);
+    }
+    const read = JSON.stringify(job().steps.map((s) => s.env ?? {}));
+    for (const name of SECRETS) expect(read).toContain(`secrets.${name}`);
+  });
+
+  it('is the only workflow that reads the mobile secrets', () => {
+    // APPLE_TEAM_ID is also a `release` environment secret that release.yml reads.
+    for (const file of workflows().filter((name) => name !== FILE)) {
+      const text = readFileSync(
+        resolve(root, '.github/workflows', file),
+        'utf8',
+      );
+      for (const name of SECRETS.filter((n) => n !== 'APPLE_TEAM_ID')) {
+        expect(text, `${file} ${name}`).not.toContain(name);
+      }
+    }
+  });
+
+  it('removes the key and the decoded plist even when the upload fails', () => {
+    const last = job().steps.at(-1);
+    expect(last.if).toBe('always()');
+    expect(last.run).toContain('$ASC_KEY_PATH');
+    expect(last.run).toContain('$PLIST_PATH');
+    expect(job().env.ASC_KEY_PATH).toContain('AuthKey.p8');
+    expect(job().env.PLIST_PATH).toBe('ios/App/App/GoogleService-Info.plist');
+  });
+
+  describe('versions', () => {
+    const run = (version, runNumber = '42') => {
+      const dir = mkdtempSync(join(tmpdir(), 'testflight-version-'));
+      try {
+        writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
+        const out = join(dir, 'output');
+        const summary = join(dir, 'summary');
+        writeFileSync(out, '');
+        writeFileSync(summary, '');
+        const result = spawnSync(
+          'bash',
+          [
+            '--noprofile',
+            '--norc',
+            '-eo',
+            'pipefail',
+            '-c',
+            step('version').run,
+          ],
+          {
+            cwd: dir,
+            encoding: 'utf8',
+            env: {
+              ...process.env,
+              RUN_NUMBER: runNumber,
+              GITHUB_OUTPUT: out,
+              GITHUB_STEP_SUMMARY: summary,
+            },
+          },
+        );
+        return {
+          status: result.status,
+          stderr: result.stderr,
+          output: readFileSync(out, 'utf8'),
+          summary: readFileSync(summary, 'utf8'),
+        };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    it('strips the prerelease suffix and takes the build number from the run number', () => {
+      const result = run('0.6.0-next.6');
+      expect(result.status).toBe(0);
+      expect(result.output).toContain('marketing=0.6.0\n');
+      expect(result.output).toContain('build=42\n');
+      expect(result.summary).toContain('0.6.0');
+      expect(result.summary).toContain('42');
+    });
+
+    it('keeps a stable version as it is', () => {
+      expect(run('1.2.3').output).toContain('marketing=1.2.3\n');
+    });
+
+    it('fails on a version that is not three numeric parts', () => {
+      for (const bad of ['1.2', 'v1.2.3', 'abc', '1.2.x-next.1']) {
+        const result = run(bad);
+        expect(result.status, bad).not.toBe(0);
+        expect(result.output, bad).toBe('');
+      }
+    });
+
+    it('fails on a run number that is not an integer', () => {
+      expect(run('1.2.3', 'abc').status).not.toBe(0);
+    });
   });
 });

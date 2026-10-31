@@ -17,6 +17,7 @@ public developer guide.
 | [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR after a stable tag |
 | [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
 | [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)    | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                        |
+| [`testflight.yml`](../../.github/workflows/testflight.yml)           | A manual dispatch, then the `release-mobile` reviewer's approval           | Archives the signed iOS app and uploads it to TestFlight (see [TestFlight upload](#testflight-upload))                                                          |
 | [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                        |
 | [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
 | [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
@@ -470,8 +471,8 @@ Never force-push.
 ### Release credentials
 
 Every release credential lives in an environment: the release App key in `release-app`,
-the macOS signing and notarization secrets in `release`, the tap deploy key in `homebrew`
-and the Renovate App key in `renovate`. An environment admits a job by its ref, so the
+the macOS signing and notarization secrets in `release`, the tap deploy key in `homebrew`,
+the iOS upload secrets in `release-mobile` and the Renovate App key in `renovate`. An environment admits a job by its ref, so the
 rules on those refs decide who can reach the credentials:
 
 - The `Protect release tags` ruleset blocks creating, updating and deleting `v*` tags.
@@ -488,7 +489,7 @@ rules on those refs decide who can reach the credentials:
   as before. GitHub reads `CODEOWNERS` from the pull request's base branch, so each
   `release/X.Y.x` branch carries its own copy; `Release stable` refuses a prerelease
   without one.
-- `release` and `homebrew` require the maintainer's approval for each deployment, so every
+- `release`, `release-mobile` and `homebrew` require the maintainer's approval for each deployment, so every
   signed macOS build and every tap update waits for it. `release-app` runs on every push
   to `main` and `release/**` and `renovate` runs daily, so neither has reviewers; the
   approval rules on those branches guard them instead.
@@ -812,7 +813,7 @@ The `release-notes` job reads the draft release body with the release App token 
 `package`, `desktop-shell` and `package-web` as `TRINITY_CURRENT_RELEASE_NOTES`, because their
 read-only token cannot see a draft. They build with `TRINITY_RELEASE_NOTES=required`, so a
 notes failure fails the build. A dispatch therefore re-packages an existing release, draft or
-published, only: for a tag without one, `release-notes` fails and the builds are skipped. Android and iOS builds run locally after publishing: set
+published, only: for a tag without one, `release-notes` fails and the builds are skipped. Android builds run locally after publishing, and so do iOS builds unless uploaded with [TestFlight upload](#testflight-upload): set
 `TRINITY_RELEASE_NOTES=required` and `GITHUB_TOKEN=$(gh auth token)`.
 
 After verification, the package matrix builds the desktop shell with publishing
@@ -892,6 +893,55 @@ Android and iOS retain independent `1.0` / build-code values and are not part
 of the current release version gate. Their build and distribution requirements
 belong to the [Android](../../apps/docs-developers/src/content/docs/platforms/android.md)
 and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
+
+## TestFlight upload
+
+[`testflight.yml`](../../.github/workflows/testflight.yml) archives the iOS app and uploads it
+to TestFlight. It runs only on a manual dispatch, and it is unproven: no upload has run yet,
+so expect to fix signing or export problems on the first dispatch.
+
+Run it with `gh workflow run testflight.yml --ref main` (or a `release/X.Y.x` ref). The
+`release-mobile` environment, limited to `main` and `release/**`, waits for the maintainer's
+approval. The job builds the production renderer and syncs Capacitor with
+`pnpm nx run trinity-ios:sync`, then runs `xcodebuild archive` and `xcodebuild -exportArchive`
+with `destination` set to `upload` and automatic signing through an App Store Connect API key.
+
+Only that job reads these `release-mobile` secrets, and no other workflow references them:
+
+| Secret                      | Value                                                        |
+| --------------------------- | ------------------------------------------------------------ |
+| `GOOGLE_SERVICE_INFO_PLIST` | base64 of the Firebase `GoogleService-Info.plist`            |
+| `ASC_KEY_ID`                | the API key's ID                                             |
+| `ASC_ISSUER_ID`             | the App Store Connect issuer ID                              |
+| `ASC_KEY_P8`                | base64 of the API key's `.p8` file                           |
+| `APPLE_TEAM_ID`             | the Apple Developer team ID (a separate copy from `release`) |
+
+The job fails first, naming any missing secret. It writes the plist and the key under
+`$RUNNER_TEMP` or the git-ignored plist path, passes secrets through step `env` only, uploads
+no xcodebuild log, and deletes both files in an `always()` step.
+
+The marketing version is the root `package.json` version without its prerelease suffix
+(`0.6.0-next.6` gives `0.6.0`), and the build number is `github.run_number`, both written to
+the job summary. The run number grows per workflow and never resets, but a re-run keeps its
+number, so after an upload that went through, dispatch again rather than re-running. Renaming
+or deleting the workflow file would restart the count and App Store Connect would refuse lower
+build numbers for the same version. The command-line `MARKETING_VERSION` and
+`CURRENT_PROJECT_VERSION` reach the NotificationService extension too, so the two match.
+
+These must exist before the first run:
+
+- The Apple Developer setup tracked in [#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152):
+  App IDs for `dev.trinityproject.trinity` and its NotificationService extension, the App
+  Group and Keychain Sharing capabilities, and the Firebase and APNs key.
+- An App Store Connect app record for `dev.trinityproject.trinity`.
+- An App Store Connect API key with access to cloud-managed distribution certificates (the
+  Admin role, unverified), so automatic signing can create the certificate and
+  profiles on a runner with none.
+- The five secrets above in `release-mobile`, and the environment's reviewer.
+
+The app declares no `ITSAppUsesNonExemptEncryption` key, so App Store Connect asks the export
+compliance question for each build before TestFlight testing. The owner decides the answer and
+whether to add the key later.
 
 ## Homebrew tap
 
