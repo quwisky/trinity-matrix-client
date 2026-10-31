@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of, throwError } from 'rxjs';
+import { PushHandoffBridge } from '@trinity/capacitor-push';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AccountHomeserverMismatchError,
@@ -85,7 +86,7 @@ const CAROL: MatrixSession = {
  * so the keychain stand-in round-trips like the real thing; `secure.store` exposes
  * that map for assertions.
  */
-function setup() {
+function setup(options: { nativeBridge?: boolean } = { nativeBridge: true }) {
   const store = new Map<string, string>();
   const storeKeys = new Map<string, Uint8Array>();
   TestBed.configureTestingModule({
@@ -93,6 +94,7 @@ function setup() {
       SessionStorageService,
       MockProvider(SecureStorageService),
       MockProvider(CryptoStoreKeyService),
+      ...(options.nativeBridge ? [MockProvider(PushHandoffBridge)] : []),
     ],
   });
   const secure = TestBed.inject(SecureStorageService);
@@ -120,8 +122,14 @@ function setup() {
   vi.mocked(secure.remove).mockImplementation(async (key) => {
     store.delete(key);
   });
+  const bridge = options.nativeBridge
+    ? vi.mocked(TestBed.inject(PushHandoffBridge))
+    : undefined;
+  bridge?.removeTokens.mockReturnValue(of(undefined));
   return {
     svc: TestBed.inject(SessionStorageService),
+    bridge: bridge as NonNullable<typeof bridge>,
+    removals: vi.mocked(secure.remove),
     secure: { store },
     keys: {
       store: storeKeys,
@@ -1085,6 +1093,105 @@ describe('SessionStorageService', () => {
     expect(secure.store.get('matrix.accessToken:@bob:other')).toBe(
       'bob-token-abc',
     );
+  });
+
+  describe('the native token vault', () => {
+    it('removes the vault record when it removes an account', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+
+      await firstValueFrom(svc.remove('@bob:other'));
+
+      expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith('@bob:other');
+    });
+
+    it('empties the vault when it clears every account', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(ALICE));
+
+      await firstValueFrom(svc.clear());
+      await firstValueFrom(svc.clearAll());
+
+      expect(bridge.removeTokens).toHaveBeenCalledTimes(2);
+      expect(bridge.removeTokens).toHaveBeenNthCalledWith(1);
+    });
+
+    it('removes the vault record on a soft logout and keeps the registry entry', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(ALICE));
+
+      await firstValueFrom(svc.invalidateToken('@alice:hs'));
+
+      expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith('@alice:hs');
+      expect(await firstValueFrom(svc.list())).toHaveLength(1);
+    });
+
+    it('removes the vault record on a sign-in without a refresh token, and a refused removal does not fail it', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(CAROL));
+      bridge.removeTokens.mockReturnValue(throwError(() => new Error('no')));
+
+      await firstValueFrom(svc.save({ ...CAROL, refreshToken: undefined }));
+
+      expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith('@carol:hs');
+      expect((await firstValueFrom(svc.load()))?.accessToken).toBe(
+        'carol-access',
+      );
+    });
+
+    it('leaves the vault alone on a sign-in with a refresh token or over a password record', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(svc.save(CAROL));
+
+      expect(bridge.removeTokens).not.toHaveBeenCalled();
+    });
+
+    it('rejects remove() when the native removal is refused, so the residue is retried', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      bridge.removeTokens.mockReturnValueOnce(
+        throwError(() => new Error('no')),
+      );
+
+      await expect(firstValueFrom(svc.remove('@alice:hs'))).rejects.toThrow(
+        'no',
+      );
+      expect(await firstValueFrom(svc.list())).toHaveLength(1);
+
+      await firstValueFrom(svc.remove('@alice:hs'));
+      expect(await firstValueFrom(svc.list())).toEqual([]);
+    });
+
+    it('drops the refresh token copy only for the stored lineage', async () => {
+      const { svc, secure } = setup();
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const key = 'matrix.refreshToken:@carol:hs';
+
+      await firstValueFrom(svc.dropRefreshToken('@carol:hs', 'older'));
+      await firstValueFrom(svc.dropRefreshToken('@nobody:hs', lineage));
+      expect(secure.store.get(key)).toBe('carol-refresh');
+
+      await firstValueFrom(svc.dropRefreshToken('@carol:hs', lineage));
+      expect(secure.store.has(key)).toBe(false);
+      expect(secure.store.has('matrix.accessToken:@carol:hs')).toBe(true);
+    });
+
+    it('never asks the bridge anything off native', async () => {
+      const { svc, removals } = setup({});
+      await firstValueFrom(svc.save(CAROL));
+      removals.mockClear();
+
+      await firstValueFrom(svc.remove('@carol:hs'));
+
+      expect(removals.mock.calls.map(([key]) => key)).toEqual([
+        'matrix.accessToken:@carol:hs',
+        'matrix.refreshToken:@carol:hs',
+      ]);
+    });
   });
 
   it('clear removes every account and token', async () => {

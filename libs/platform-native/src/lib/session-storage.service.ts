@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
-import { Observable, defer, from, map } from 'rxjs';
+import { PushHandoffBridge } from '@trinity/capacitor-push';
+import { Observable, defer, firstValueFrom, from, map } from 'rxjs';
 import {
   MatrixSession,
   type OidcSessionBinding,
@@ -15,7 +16,8 @@ import { CryptoStoreKeyService } from './crypto-store-key.service';
 
 /**
  * Non-secret per-account record. Both credentials (access token and OIDC refresh token)
- * live in {@link SecureStorageService}; everything else is kept here.
+ * live in {@link SecureStorageService}, and on a phone the native token vault holds the
+ * OIDC pair too; everything else is kept here.
  */
 export type AccountRecord = Omit<MatrixSession, 'accessToken' | 'refreshToken'>;
 
@@ -76,6 +78,7 @@ const CRYPTO_PREFIX = 'trinity-crypto:';
 export class SessionStorageService {
   private readonly secure = inject(SecureStorageService);
   private readonly storeKeys = inject(CryptoStoreKeyService);
+  private readonly handoff = inject(PushHandoffBridge);
 
   /**
    * Serializes registry read-modify-write cycles. The OIDC token refresher calls
@@ -230,7 +233,33 @@ export class SessionStorageService {
           await Promise.all([
             this.secure.remove(this.tokenKey(userId)),
             this.secure.remove(this.refreshTokenKey(userId)),
+            firstValueFrom(this.handoff.removeTokens(userId)),
           ]);
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Delete the refresh token copy kept here once native holds it, only while the record
+   * still holds `lineage`; a no-op for another sign-in or an account no longer stored.
+   */
+  dropRefreshToken(
+    userId: string,
+    lineage: string | undefined,
+  ): Observable<void> {
+    return defer(() =>
+      from(
+        this.serialize(async () => {
+          const registry = await this.readRegistry();
+          const record = registry.accounts.find((a) => a.userId === userId);
+          if (
+            !record ||
+            (record.lineage !== undefined && record.lineage !== lineage)
+          ) {
+            return;
+          }
+          await this.secure.remove(this.refreshTokenKey(userId));
         }),
       ),
     );
@@ -428,6 +457,13 @@ export class SessionStorageService {
         );
       } else {
         await this.secure.remove(this.refreshTokenKey(incoming.userId));
+        if (existing?.oidc) {
+          // The old sign-in's vault record must not outlive it; a refusal is residue the
+          // next sign-in or removal clears.
+          await firstValueFrom(
+            this.handoff.removeTokens(incoming.userId),
+          ).catch(() => undefined);
+        }
       }
       await this.writeRegistry(registry);
     } catch (error) {
@@ -621,6 +657,7 @@ export class SessionStorageService {
     }
     await this.secure.remove(this.tokenKey(userId));
     await this.secure.remove(this.refreshTokenKey(userId));
+    await firstValueFrom(this.handoff.removeTokens(userId));
     await this.writeRegistry(registry);
     if (removed) {
       await this.removeStoreKey(removed);
@@ -635,6 +672,7 @@ export class SessionStorageService {
       removals.push(this.secure.remove(this.refreshTokenKey(account.userId)));
     }
     await Promise.all(removals);
+    await firstValueFrom(this.handoff.removeTokens());
     await Preferences.remove({ key: ACCOUNTS_KEY });
     // Retire any legacy single-slot residue too.
     await Preferences.remove({ key: LEGACY_SESSION_KEY });
