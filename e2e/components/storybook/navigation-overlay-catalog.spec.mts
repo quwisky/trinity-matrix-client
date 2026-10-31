@@ -208,8 +208,7 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
         .filter({ hasText: message });
       await expect(toast).toHaveAttribute('data-visible', 'true');
       await expect(toast).toHaveCSS('opacity', '1');
-      await expect(toast.locator('..')).toHaveAttribute('role', 'status');
-      await expect(toast.locator('..')).toHaveAttribute('aria-live', 'polite');
+      await expect(toast).toHaveAttribute('aria-live', 'polite');
       await expectReadable(toast.locator('[data-title]'));
       await expectAxeClean(page);
     }
@@ -222,7 +221,7 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
     const undo = page.getByRole('button', { name: 'Undo' });
     await expect(actionToast).toHaveAttribute('data-visible', 'true');
     await expect(actionToast).toHaveCSS('opacity', '1');
-    await expect(actionToast.locator('..')).toHaveAttribute('role', 'status');
+    await expect(actionToast).toHaveAttribute('aria-live', 'polite');
     await expectReadable(actionToast.locator('[data-title]'));
     await expectReadable(undo);
     await expectAxeClean(page);
