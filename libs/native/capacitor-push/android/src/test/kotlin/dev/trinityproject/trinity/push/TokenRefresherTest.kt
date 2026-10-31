@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -126,10 +127,10 @@ class TokenRefresherTest {
     }
 
     @Test
-    fun theLeaseLastsTheBudgetAndTheMarginAndIsReleased() {
+    fun theLeaseLastsTwiceTheBudgetAndTheMarginAndIsReleased() {
         refresh()
 
-        assertEquals(listOf(8_000L + TokenBudgets.LEASE_MARGIN_MILLIS), lease.lifetimes)
+        assertEquals(listOf(2 * 8_000L + TokenBudgets.LEASE_MARGIN_MILLIS), lease.lifetimes)
         assertEquals(listOf("ticket1"), lease.released)
     }
 
@@ -381,15 +382,30 @@ class TokenRefresherTest {
 
     @Test
     fun aLapsedLeaseIsRetakenBeforeTheCompare() {
+        // The store changes only during the retake, so a compare before it would see the old pair.
         client.onGrant = {
             lease.lapsed = true
-            vault.stored = r2Stored
+            lease.onTake = { vault.stored = r2Stored }
         }
 
         assertEquals(TokenRefreshResult.Current(r2Stored), refresh())
 
+        assertEquals(r2Stored, vault.stored)
         assertEquals(2, lease.waits.size)
         assertEquals(listOf("ticket2"), lease.released)
+    }
+
+    @Test
+    fun aLapsedLeaseIsRetakenBeforeARefusalsCompare() {
+        client.answer = TokenGrantAnswer.Refused
+        client.onGrant = {
+            lease.lapsed = true
+            lease.onTake = { vault.stored = r2Stored }
+        }
+
+        assertEquals(TokenRefreshResult.Current(r2Stored), refresh())
+
+        assertEquals(r2Stored, vault.stored)
     }
 
     @Test
@@ -546,7 +562,7 @@ class TokenRefresherTest {
         val holder = TokenRefresher(vault, table, client, WallClock { now })
         val newer = R0.copy(accessToken = "a9", refreshToken = "r9", lineage = "L2")
         client.onGrant = {
-            leaseNow += 8_000L + TokenBudgets.LEASE_MARGIN_MILLIS + 1
+            leaseNow += 2 * 8_000L + TokenBudgets.LEASE_MARGIN_MILLIS + 1
             assertTrue(holder.migrate(newer, user))
         }
 
@@ -637,6 +653,24 @@ class TokenRefresherTest {
 
         assertNull(vault.stored)
         assertEquals(TokenRefreshResult.Gone, refresher.current(user, "L"))
+    }
+
+    @Test
+    fun twoCallersOfTheSharedRefresherShareAnUnsavedPair() {
+        val shared = SharedRefresher()
+        val plugin = shared.get { TokenRefresher(vault, lease, client, WallClock { now }) }
+        val service = shared.get { error("built twice") }
+        assertSame(plugin, service)
+        vault.failedUpdates = 100
+
+        assertEquals(TokenRefreshResult.Rotated(a1r1, true), plugin.refresh(user, "L", "a0", deadline()))
+
+        // The service saw the old token: it gets the unsaved pair, and r0 is not sent again.
+        assertEquals(TokenRefreshResult.Current(a1r1), service.refreshForPush(user, "a0", deadline()))
+        client.answer = TokenGrantAnswer.Tokens("a2", "r2", null)
+        service.refreshForPush(user, "a1", deadline())
+
+        assertEquals(listOf("r0", "r1"), client.grants.map { it.refreshToken })
     }
 
     @Test

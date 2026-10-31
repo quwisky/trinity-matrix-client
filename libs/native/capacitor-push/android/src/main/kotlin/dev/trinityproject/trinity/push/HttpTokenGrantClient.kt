@@ -18,7 +18,9 @@ interface TokenGrantClient {
  * Grants and revocations over HttpURLConnection, to the record's pinned endpoints only, with no
  * retry, no discovery and no redirect. Logs nothing: bodies and URLs carry tokens and endpoints.
  */
-class HttpTokenGrantClient : TokenGrantClient {
+class HttpTokenGrantClient internal constructor(private val streaming: Boolean) : TokenGrantClient {
+    constructor() : this(true)
+
     private class Answer(val status: Int, val body: String)
 
     override fun grant(record: TokenRecord, deadline: Deadline): TokenGrantAnswer {
