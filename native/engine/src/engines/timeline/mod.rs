@@ -160,17 +160,18 @@ where
             yield TimelineUpdateDto::RoomUnavailable;
             return;
         };
-        // As js shows a root no thread has: nothing, and here nothing can ever form it.
-        let Some(focus) = focus.parsed() else {
-            yield empty_reset();
-            return;
-        };
+        let focus = focus.parsed();
         let hub = {
             let mut changes = room_changes(&client, &room_id);
             let (mut announced, mut reset) = (false, false);
             loop {
-                let opened = match client.get_room(&room_id) {
-                    Some(room) => {
+                let opened = match (client.get_room(&room_id), &focus) {
+                    // As js shows a root no thread has: nothing, and here nothing can ever form it.
+                    (Some(_), None) => {
+                        yield empty_reset();
+                        return;
+                    }
+                    (Some(room), Some(focus)) => {
                         // The SDK's build then asks the server, and a stream's first item comes
                         // before the network.
                         if room.encryption_state().is_unknown() && !reset {
@@ -179,7 +180,7 @@ where
                         }
                         Some(open(room, focus.clone()).await)
                     }
-                    None => None,
+                    (None, _) => None,
                 };
                 match opened {
                     Some(Ok(hub)) => break hub,
@@ -341,6 +342,30 @@ mod tests {
         sync(&rt.client).await;
         assert_eq!(next().await, items(json!([])), "the hub's own snapshot");
         assert_eq!(tries.get(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_bad_thread_root_on_a_room_not_held_is_unavailable_first() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let joined = json!({"rooms": {"join": {"!r:b": {"timeline": {"events": []}}}}});
+        let rt = syncing(&engine, vec![joined]).await;
+        let open = |_: Room, _: Focus| async { Err(timeline::Error::UnsupportedEvent) };
+        let focus = TimelineFocusDto::Thread {
+            root_event_id: "x".into(),
+        };
+        let room_id = room_id!("!r:b").to_string();
+        let updates = updates(rt.client.clone(), open, room_id, focus);
+        let mut updates = pin!(updates);
+        let mut next = async || {
+            let update = timeout(updates.next(), Duration::from_secs(5)).await;
+            serde_json::to_value(update.unwrap().unwrap()).unwrap()
+        };
+
+        assert_eq!(next().await, json!({"kind": "room-unavailable"}));
+        sync(&rt.client).await;
+        let reset = json!({"kind": "items", "diffs": [{"op": "reset", "values": []}], "backPagination": "idle"});
+        assert_eq!(next().await, reset);
     }
 
     #[tokio::test]
