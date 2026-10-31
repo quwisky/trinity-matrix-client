@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::{
     accounts::Engine,
-    engines::{contact_addresses, discovery, homeserver, identity, room_list, session},
+    engines::{contact_addresses, discovery, expression, homeserver, identity, room_list, session},
     wire::{BlobRefDto, Fault, FaultCode},
 };
 
@@ -144,6 +144,36 @@ methods! {
         account_id: String,
         term: String,
         limit: u64,
+    ),
+    "expression.accountData" => expression::account_data(
+        account_id: String,
+        types: Vec<String>,
+    ),
+    "expression.fetchAccountData" => expression::fetch_account_data(
+        account_id: String,
+        event_type: String,
+    ),
+    "expression.setAccountData" => expression::set_account_data(
+        account_id: String,
+        event_type: String,
+        content: Value,
+    ),
+    "expression.fetchRoomState" => expression::fetch_room_state(
+        account_id: String,
+        room_id: String,
+        event_type: String,
+        state_key: String,
+    ),
+    "expression.setRoomState" => expression::set_room_state(
+        account_id: String,
+        room_id: String,
+        event_type: String,
+        state_key: String,
+        content: Value,
+    ),
+    "expression.joinPackRoom" => expression::join_pack_room(
+        account_id: String,
+        room_id_or_alias: String,
     ),
     "homeserver.probe" => homeserver::probe(account_id: String),
     "identity.ownProfile" => identity::own_profile(account_id: String),

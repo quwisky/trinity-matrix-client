@@ -77,23 +77,31 @@ pub(crate) fn account_data_changes(
     client: &Client,
     event_type: &'static str,
 ) -> impl Stream<Item = ()> + Unpin + use<> {
+    account_data_changes_of(client, vec![event_type.to_owned()])
+}
+
+/// [`account_data_changes`] for any of `types`.
+pub(crate) fn account_data_changes_of(
+    client: &Client,
+    types: Vec<String>,
+) -> impl Stream<Item = ()> + Unpin + use<> {
     let (changed, mut changes) = mpsc::unbounded_channel();
-    let guard = on_account_data(client, event_type, changed);
+    let guard = on_account_data(client, types, changed);
     stream::poll_fn(move |cx| {
         let _ = &guard;
         changes.poll_recv(cx)
     })
 }
 
-/// A client handler that sends on `changed` for each global account-data event of `event_type`,
-/// until the guard drops.
+/// A client handler that sends on `changed` for each global account-data event of one of
+/// `types`, until the guard drops.
 fn on_account_data(
     client: &Client,
-    event_type: &'static str,
+    types: Vec<String>,
     changed: mpsc::UnboundedSender<()>,
 ) -> EventHandlerDropGuard {
     let handle = client.add_event_handler(move |event: Raw<AnyGlobalAccountDataEvent>| {
-        if matches!(event.get_field::<String>("type"), Ok(Some(t)) if t == event_type) {
+        if matches!(event.get_field::<String>("type"), Ok(Some(t)) if types.contains(&t)) {
             let _ = changed.send(());
         }
         ready(())
@@ -239,11 +247,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn account_data_changes_of_report_each_listed_type() {
+        let events = |types: &[&str]| -> Value {
+            let events: Vec<_> = types
+                .iter()
+                .map(|t| json!({"type": t, "content": {}}))
+                .collect();
+            json!({"account_data": {"events": events}})
+        };
+        let root = TempDir::new().unwrap();
+        let syncs = vec![events(&["c.d"]), events(&["a.b", "c.d"])];
+        let rt = syncing(&engine_in(&root), syncs).await;
+        let listed = vec!["a.b".to_owned(), "c.d".to_owned()];
+        let mut changes = account_data_changes_of(&rt.client, listed);
+        sync(&rt.client).await;
+        assert_eq!(changes.next().now_or_never(), Some(Some(())));
+        assert!(changes.next().now_or_never().is_none());
+        sync(&rt.client).await;
+        assert_eq!(changes.next().now_or_never(), Some(Some(())));
+        assert_eq!(changes.next().now_or_never(), Some(Some(())));
+    }
+
+    #[tokio::test]
     async fn dropping_the_guard_removes_the_handler_while_the_client_lives() {
         let root = TempDir::new().unwrap();
         let rt = syncing(&engine_in(&root), vec![]).await;
         let (changed, mut changes) = mpsc::unbounded_channel();
-        drop(on_account_data(&rt.client, "m.direct", changed));
+        drop(on_account_data(
+            &rt.client,
+            vec!["m.direct".to_owned()],
+            changed,
+        ));
         let closed = timeout(changes.recv(), Duration::from_secs(5)).await;
         assert!(matches!(closed, Ok(None)), "the handler kept its sender");
     }

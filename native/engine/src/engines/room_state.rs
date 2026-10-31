@@ -134,7 +134,6 @@ where
 
 /// One raw `GET /rooms/{room}/state/{type}/{key}`, sent once: the content, or `None` for
 /// `M_NOT_FOUND`. Each caller maps its own failure.
-#[cfg_attr(not(test), expect(dead_code, reason = "W2 calls it"))]
 pub(crate) async fn fetch(
     client: &Client,
     room: &RoomId,

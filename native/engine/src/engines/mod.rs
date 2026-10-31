@@ -5,6 +5,7 @@
 pub mod account_data;
 pub mod contact_addresses;
 pub mod discovery;
+pub mod expression;
 pub mod homeserver;
 pub mod identity;
 pub mod member;

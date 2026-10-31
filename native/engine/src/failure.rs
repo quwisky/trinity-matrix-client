@@ -442,6 +442,20 @@ pub fn request_failed(err: &Error) -> EngineFailure {
     }
 }
 
+/// The js adapter's `tooLargeOrFailed`: `too-large` for `M_TOO_LARGE` or a 413, else
+/// [`request_failed`], which keeps an `M_FORBIDDEN` as `kind: permission`.
+pub fn too_large_or_failed(err: &Error) -> EngineFailure {
+    let (kind, diagnostic) = classify(err);
+    if diagnostic.errcode.as_deref() == Some("M_TOO_LARGE") || diagnostic.http_status == Some(413) {
+        return EngineFailure {
+            kind,
+            diagnostic,
+            code: FailureCode::TooLarge,
+        };
+    }
+    request_failed(err)
+}
+
 /// The js adapter's `inviteFailed`: `invite-blocked` where the invitee blocks invites (MSC4155),
 /// else [`request_failed`].
 pub fn invite_failed(err: &Error) -> EngineFailure {
@@ -838,6 +852,29 @@ mod tests {
             expired.diagnostic.errcode.as_deref(),
             Some("M_UNKNOWN_TOKEN")
         );
+    }
+
+    #[test]
+    fn too_large_or_failed_table() {
+        let table = [
+            (matrix_error(413, "M_TOO_LARGE"), true, FailureKind::Http),
+            (matrix_error(400, "M_TOO_LARGE"), true, FailureKind::Http),
+            (response(413, "<html>", None), true, FailureKind::Http),
+            (
+                matrix_error(403, "M_FORBIDDEN"),
+                false,
+                FailureKind::Permission,
+            ),
+            (matrix_error(400, "M_BAD_JSON"), false, FailureKind::Http),
+        ];
+        for (error, too_large, kind) in table {
+            let failure = too_large_or_failed(&error.into());
+            assert_eq!(failure.code == FailureCode::TooLarge, too_large);
+            assert_eq!(failure.kind, kind);
+            if !too_large {
+                assert!(matches!(failure.code, FailureCode::RequestFailed { .. }));
+            }
+        }
     }
 
     #[test]
