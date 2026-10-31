@@ -3,21 +3,13 @@ import { beforeEach, describe, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { defineMediaEngineContract } from '../../contract/media-engine.contract';
 import { JsSdkMediaEngine } from './js-sdk-media-engine';
+import { mediaSynapseFixture } from '../../contract/media-synapse-fixture';
 import {
   baseUrl,
-  cs,
-  localpart,
-  room,
-  register,
+  secret,
   startSession,
   useSynapseSuite,
 } from './synapse.spec-harness';
-
-function filenameOf(disposition: string): string | null {
-  const encoded = /filename\*=utf-8''([^;]+)/i.exec(disposition)?.[1];
-  if (encoded) return decodeURIComponent(encoded);
-  return /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null;
-}
 
 // Runs the media contract against a live Synapse; skipped unless
 // TRINITY_ENGINE_CONTRACT_HS is set.
@@ -41,7 +33,8 @@ describe.skipIf(!baseUrl)('JsSdkMediaEngine against Synapse', () => {
 
   defineMediaEngineContract(
     async () => {
-      const session = await startSession(await register(localpart('alice')));
+      const fixture = await mediaSynapseFixture(baseUrl as string, secret);
+      const session = await startSession(fixture.alice);
       const client = TestBed.inject(JS_SDK_CLIENTS).clientFor(session.userId);
       if (!client) throw new Error('No live client for alice');
       const uploads = vi.spyOn(client, 'uploadContent');
@@ -59,40 +52,9 @@ describe.skipIf(!baseUrl)('JsSdkMediaEngine against Synapse', () => {
           if (!blob) throw new Error(`No bytes behind ${url}`);
           return new Uint8Array(await blob.arrayBuffer());
         },
-        stored: async (mxc) => {
-          const res = await fetch(
-            `${baseUrl}/_matrix/client/v1/media/download/${mxc.slice('mxc://'.length)}`,
-            { headers: { authorization: `Bearer ${session.accessToken}` } },
-          );
-          if (!res.ok)
-            throw new Error(`Synapse download failed: ${res.status}`);
-          return {
-            filename: filenameOf(res.headers.get('content-disposition') ?? ''),
-            mimeType: (res.headers.get('content-type') ?? '')
-              .split(';')[0]
-              .trim(),
-          };
-        },
+        stored: fixture.stored,
         room: async (encrypted) => {
-          const { room_id } = (await cs(
-            session.accessToken,
-            'POST',
-            '/createRoom',
-            {
-              preset: 'private_chat',
-              ...(encrypted
-                ? {
-                    initial_state: [
-                      {
-                        type: 'm.room.encryption',
-                        state_key: '',
-                        content: { algorithm: 'm.megolm.v1.aes-sha2' },
-                      },
-                    ],
-                  }
-                : {}),
-            },
-          )) as { room_id: string };
+          const room_id = await fixture.createRoom(encrypted);
           await vi.waitFor(
             () => {
               const seen = client.getRoom(room_id);
@@ -104,32 +66,7 @@ describe.skipIf(!baseUrl)('JsSdkMediaEngine against Synapse', () => {
           );
           return room_id;
         },
-        messages: async (roomId) => {
-          const { chunk } = (await cs(
-            session.accessToken,
-            'GET',
-            `${room(roomId)}/messages?dir=f&limit=100`,
-          )) as {
-            chunk: { type: string; content: Record<string, unknown> }[];
-          };
-          return chunk
-            .filter(
-              (event) =>
-                event.type === 'm.room.message' &&
-                typeof event.content['msgtype'] === 'string',
-            )
-            .map(({ content }) => {
-              const info = content['info'] as
-                Record<string, unknown> | undefined;
-              return {
-                msgtype: String(content['msgtype']),
-                body: String(content['body']),
-                hasThumbnail: Boolean(
-                  info?.['thumbnail_url'] ?? info?.['thumbnail_file'],
-                ),
-              };
-            });
-        },
+        messages: fixture.messages,
         dropNextSendResponse: () => {
           const realFetch = globalThis.fetch;
           const drop = vi

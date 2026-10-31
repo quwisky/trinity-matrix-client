@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-import { createHmac } from 'node:crypto';
 import { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { filter, firstValueFrom, of, timeout } from 'rxjs';
@@ -12,77 +11,12 @@ import {
   CryptoStoreKeyService,
   SessionStorageService,
 } from '@trinity/platform-native';
+import { waitForSynapseBackgroundUpdates } from '@trinity/testing';
 
 // The gated Synapse specs run only when TRINITY_ENGINE_CONTRACT_HS is set.
 export const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'];
-const secret = process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
-
-export async function register(username: string, admin = false) {
-  const api = `${baseUrl}/_synapse/admin/v1/register`;
-  const nonceRes = await fetch(api);
-  if (!nonceRes.ok)
-    throw new Error(`Synapse nonce request failed: ${nonceRes.status}`);
-  const { nonce } = (await nonceRes.json()) as { nonce: string };
-  const password = `pw-${Math.random().toString(36).slice(2)}`;
-  const mac = createHmac('sha1', secret)
-    .update(
-      `${nonce}\0${username}\0${password}\0${admin ? 'admin' : 'notadmin'}`,
-    )
-    .digest('hex');
-  const res = await fetch(api, {
-    method: 'POST',
-    body: JSON.stringify({ nonce, username, password, mac, admin }),
-  });
-  if (!res.ok) throw new Error(`Synapse registration failed: ${res.status}`);
-  const body = (await res.json()) as { user_id: string; access_token: string };
-  return { userId: body.user_id, password, accessToken: body.access_token };
-}
-
-// A fresh Synapse rebuilds its user directory in a background update and drops users
-// registered meanwhile, so the contract users are only created once it has finished.
-async function waitForBackgroundUpdates(): Promise<void> {
-  const admin = await register(`admin-${Date.now().toString(36)}`, true);
-  for (let i = 0; i < 240; i++) {
-    const res = await fetch(
-      `${baseUrl}/_synapse/admin/v1/background_updates/status`,
-      { headers: { authorization: `Bearer ${admin.accessToken}` } },
-    );
-    if (!res.ok)
-      throw new Error(`Synapse background update status failed: ${res.status}`);
-    const { current_updates } = (await res.json()) as {
-      current_updates: Record<string, unknown>;
-    };
-    if (Object.keys(current_updates).length === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error('Synapse background updates did not finish');
-}
-
-/** A client-server API call as the token's user; returns the JSON body, or `null` on 404. */
-export async function cs(
-  accessToken: string,
-  method: 'GET' | 'POST' | 'PUT',
-  path: string,
-  body?: unknown,
-): Promise<unknown> {
-  const res = await fetch(`${baseUrl}/_matrix/client/v3${path}`, {
-    method,
-    headers: { authorization: `Bearer ${accessToken}` },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Synapse ${method} failed: ${res.status}`);
-  return res.json();
-}
-
-export const room = (roomId: string) => `/rooms/${encodeURIComponent(roomId)}`;
-
-let sequence = 0;
-
-export function localpart(role: string): string {
-  sequence += 1;
-  return `wg-${role}-${Date.now().toString(36)}-${sequence}-${Math.random().toString(36).slice(2, 6)}`;
-}
+export const secret =
+  process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
 
 /**
  * Registers the suite hooks: waits for Synapse's background updates, stubs Rust crypto,
@@ -100,7 +34,7 @@ export function useSynapseSuite(): void {
     ) as NodeJS.UnhandledRejectionListener[];
     process.removeAllListeners('unhandledRejection');
     process.on('unhandledRejection', ignoreSyncAbort);
-    await waitForBackgroundUpdates();
+    await waitForSynapseBackgroundUpdates(baseUrl as string, secret);
   }, 120_000);
   afterAll(() => {
     process.removeListener('unhandledRejection', ignoreSyncAbort);
@@ -119,7 +53,9 @@ export async function startSession(user: {
   readonly password: string;
 }): Promise<{
   readonly userId: string;
+  readonly deviceId: string;
   readonly accessToken: string;
+  readonly baseUrl: string;
   dispose(): Promise<void>;
 }> {
   const login = (await fetch(`${baseUrl}/_matrix/client/v3/login`, {
@@ -173,7 +109,9 @@ export async function startSession(user: {
   );
   return {
     userId: login.user_id,
+    deviceId: login.device_id,
     accessToken: login.access_token,
+    baseUrl: baseUrl as string,
     dispose: async () => {
       try {
         await firstValueFrom(session.stop());
