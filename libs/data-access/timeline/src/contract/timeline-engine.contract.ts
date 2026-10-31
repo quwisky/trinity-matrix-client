@@ -1623,9 +1623,12 @@ export function defineTimelineEngineContract(
     /** The wire content of the event `eventId`, as `eventSource` returns it. */
     async function contentOf(
       roomId: string,
-      eventId: string,
+      eventId: string | null | undefined,
     ): Promise<Record<string, unknown>> {
-      const source = await ok(engine.eventSource(alice, roomId, eventId));
+      expect(eventId).toBeTruthy();
+      const source = await ok(
+        engine.eventSource(alice, roomId, eventId as string),
+      );
       return (source?.['content'] ?? {}) as Record<string, unknown>;
     }
 
@@ -2060,7 +2063,7 @@ export function defineTimelineEngineContract(
               }),
             );
 
-            const content = await contentOf(roomId, eventId ?? '');
+            const content = await contentOf(roomId, eventId);
 
             expect(content).toMatchObject({
               msgtype: 'm.text',
@@ -2159,14 +2162,14 @@ export function defineTimelineEngineContract(
               await target.until((v) => !!ownCopy(v)),
             )?.eventId;
 
-            const content = await contentOf(targetId, forwardedId ?? '');
+            const content = await contentOf(targetId, forwardedId);
 
             expect(content).toMatchObject({
               msgtype: 'm.text',
               body: 'answer',
               formatted_body: 'answer',
-              'm.mentions': {},
             });
+            expect(content['m.mentions']).toEqual({});
             expect(content).not.toHaveProperty('m.relates_to');
             expect(content).not.toHaveProperty('x.private');
           } finally {
@@ -2205,7 +2208,7 @@ export function defineTimelineEngineContract(
               (item) => item.isOwn && item.content.kind === 'media',
             )?.eventId;
 
-            const content = await contentOf(roomId, voiceId ?? '');
+            const content = await contentOf(roomId, voiceId);
 
             expect(content).toMatchObject({
               msgtype: 'm.audio',
