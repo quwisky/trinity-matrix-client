@@ -4,6 +4,7 @@ import {
   EventStatus,
   MatrixError,
   MatrixEvent as SdkMatrixEvent,
+  createClient,
   type MatrixClient,
   type MatrixEvent,
   type Room,
@@ -18,6 +19,7 @@ import {
   reactionsFor,
   readReceiptsFor,
   replyPreview,
+  trackEncryptedNonMessages,
 } from './message-view';
 
 /** A reaction (`m.annotation`) event stub: only sender, redaction and timestamp are read. */
@@ -455,7 +457,6 @@ describe('isDisplayableMessage', () => {
     ({
       getType: () => o.type,
       isState: () => o.state ?? false,
-      isEncrypted: () => false,
       isRelation: (relType?: string) =>
         o.replace === true &&
         (relType === undefined || relType === 'm.replace'),
@@ -492,38 +493,63 @@ describe('isDisplayableMessage for a deleted event', () => {
     room_id: '!r:hs',
     content: {},
   });
-  const wire = (over: object = {}): SdkMatrixEvent =>
-    new SdkMatrixEvent({
-      type: 'm.room.encrypted',
-      event_id: '$event',
-      sender: '@alice:hs',
-      room_id: '!r:hs',
-      content: { algorithm: 'm.megolm.v1.aes-sha2', ciphertext: 'opaque' },
-      ...over,
+  type Decryptor = Parameters<SdkMatrixEvent['attemptDecryption']>[0];
+  const answering = (
+    outcome: () => Promise<{ clearEvent: object }>,
+  ): Decryptor => ({ decryptEvent: outcome }) as unknown as Decryptor;
+
+  /** A real client, so an event's Decrypted reaches a listener the way it does in the app. */
+  const setUp = () => {
+    const client = createClient({
+      baseUrl: 'https://hs',
+      userId: '@me:hs',
+      fetchFn: () => Promise.reject(new Error('no network in unit tests')),
     });
-  /** Decrypted `type`, with any relation on the wire too, where a sender must leave it. */
-  const decrypted = async (type: string, content: Record<string, unknown>) => {
-    const relation = content['m.relates_to'];
-    const event = wire({
-      content: {
-        algorithm: 'm.megolm.v1.aes-sha2',
-        ciphertext: 'opaque',
-        ...(relation ? { 'm.relates_to': relation } : {}),
-      },
-    });
-    await event.attemptDecryption({
-      decryptEvent: () => Promise.resolve({ clearEvent: { type, content } }),
-    } as unknown as Parameters<SdkMatrixEvent['attemptDecryption']>[0]);
-    return event;
+    const map = client.getEventMapper({ decrypt: false });
+    const wire = (over: object = {}): SdkMatrixEvent =>
+      map({
+        type: 'm.room.encrypted',
+        event_id: '$event',
+        sender: '@alice:hs',
+        room_id: '!r:hs',
+        content: { algorithm: 'm.megolm.v1.aes-sha2', ciphertext: 'opaque' },
+        ...over,
+      });
+    /** Decrypted `type`, with any relation on the wire too, where a sender must leave it. */
+    const decrypted = async (
+      type: string,
+      content: Record<string, unknown> = {},
+    ) => {
+      const relation = content['m.relates_to'];
+      const event = wire({
+        content: {
+          algorithm: 'm.megolm.v1.aes-sha2',
+          ciphertext: 'opaque',
+          ...(relation ? { 'm.relates_to': relation } : {}),
+        },
+      });
+      await event.attemptDecryption(
+        answering(() => Promise.resolve({ clearEvent: { type, content } })),
+      );
+      return event;
+    };
+    const arrivingRedacted = (over: object = {}): SdkMatrixEvent =>
+      wire({
+        content: {},
+        unsigned: { redacted_because: redaction.event },
+        ...over,
+      });
+    return { client, wire, decrypted, arrivingRedacted };
   };
-  const arrivingRedacted = (over: object = {}): SdkMatrixEvent =>
-    wire({
-      content: {},
-      unsigned: { redacted_because: redaction.event },
-      ...over,
-    });
+
+  const REPLACES = {
+    msgtype: 'm.text',
+    'm.new_content': { msgtype: 'm.text', body: 'edited' },
+    'm.relates_to': { rel_type: 'm.replace', event_id: '$target' },
+  };
 
   it('keeps a decrypted message that is then deleted', async () => {
+    const { decrypted } = setUp();
     const event = await decrypted('m.room.message', {
       msgtype: 'm.text',
       body: 'secret',
@@ -537,10 +563,12 @@ describe('isDisplayableMessage for a deleted event', () => {
   });
 
   it('keeps a deleted message that failed to decrypt', async () => {
+    const { client, wire } = setUp();
+    trackEncryptedNonMessages(client);
     const event = wire();
-    await event.attemptDecryption({
-      decryptEvent: () => Promise.reject(new Error('no key')),
-    } as unknown as Parameters<SdkMatrixEvent['attemptDecryption']>[0]);
+    await event.attemptDecryption(
+      answering(() => Promise.reject(new Error('no key'))),
+    );
 
     event.makeRedacted(redaction, ROOM);
 
@@ -548,30 +576,30 @@ describe('isDisplayableMessage for a deleted event', () => {
   });
 
   it('keeps a message that arrives already deleted', () => {
-    const event = arrivingRedacted();
+    const event = setUp().arrivingRedacted();
 
     expect(event.getType()).toBe('m.room.encrypted');
     expect(isDisplayableMessage(event)).toBe(true);
   });
 
   it('skips an encrypted event still waiting to decrypt', () => {
-    expect(isDisplayableMessage(wire())).toBe(false);
+    expect(isDisplayableMessage(setUp().wire())).toBe(false);
   });
 
   it('skips a deleted encrypted state event', () => {
-    expect(isDisplayableMessage(arrivingRedacted({ state_key: '' }))).toBe(
-      false,
-    );
+    expect(
+      isDisplayableMessage(setUp().arrivingRedacted({ state_key: '' })),
+    ).toBe(false);
   });
 
   // The wire type survives redaction, and the SDK never encrypts a reaction.
   it('skips a deleted reaction sent in the clear', () => {
-    const event = arrivingRedacted({ type: 'm.reaction' });
+    const event = setUp().arrivingRedacted({ type: 'm.reaction' });
 
     expect(isDisplayableMessage(event)).toBe(false);
   });
 
-  // Redaction wipes the clear type, so only a sighting before it can tell these apart.
+  // Redaction wipes the clear type, so only hearing it decrypt can tell these apart.
   it.each<[string, string, Record<string, unknown>]>([
     [
       'reaction',
@@ -584,22 +612,15 @@ describe('isDisplayableMessage for a deleted event', () => {
         },
       },
     ],
-    [
-      'edit',
-      'm.room.message',
-      {
-        msgtype: 'm.text',
-        'm.new_content': { msgtype: 'm.text', body: 'edited' },
-        'm.relates_to': { rel_type: 'm.replace', event_id: '$target' },
-      },
-    ],
+    ['edit', 'm.room.message', REPLACES],
     ['poll vote', 'org.matrix.msc3381.poll.response', {}],
     ['call', 'm.call.invite', {}],
   ])(
-    'skips a deleted %s it saw decrypted before the deletion',
+    'skips a deleted %s the client heard decrypt, unjudged until then',
     async (_name, type, content) => {
+      const { client, decrypted } = setUp();
+      trackEncryptedNonMessages(client);
       const event = await decrypted(type, content);
-      expect(isDisplayableMessage(event)).toBe(false);
 
       event.makeRedacted(redaction, ROOM);
 
@@ -608,13 +629,81 @@ describe('isDisplayableMessage for a deleted event', () => {
     },
   );
 
-  // The known limit: nothing on this event says what it was, so it shows as a deleted message.
-  it('cannot tell a non-message apart when it was only ever seen deleted', async () => {
-    const event = await decrypted('m.reaction', {});
+  it('learns nothing from being asked', async () => {
+    const { decrypted } = setUp();
+    const event = await decrypted('m.reaction');
+    expect(isDisplayableMessage(event)).toBe(false);
 
     event.makeRedacted(redaction, ROOM);
 
     expect(isDisplayableMessage(event)).toBe(true);
+  });
+
+  it('stops listening when told to', async () => {
+    const { client, decrypted } = setUp();
+    trackEncryptedNonMessages(client)();
+    const event = await decrypted('m.reaction');
+
+    event.makeRedacted(redaction, ROOM);
+
+    expect(isDisplayableMessage(event)).toBe(true);
+  });
+
+  // The object is what is remembered: the known limit for history paged back in, or a restart.
+  it('cannot tell a non-message apart once a new object holds it', async () => {
+    const { client, decrypted, arrivingRedacted } = setUp();
+    trackEncryptedNonMessages(client);
+    (await decrypted('m.reaction')).makeRedacted(redaction, ROOM);
+
+    expect(isDisplayableMessage(arrivingRedacted())).toBe(true);
+  });
+
+  // Accepted for now: what "remove revision" leaves behind when the edit was not heard decrypting.
+  // Nothing on the redacted event says it was an edit, in a plain room or an encrypted one.
+  it('shows a removed revision as a deleted message once its relation is gone', () => {
+    const { arrivingRedacted } = setUp();
+
+    expect(isDisplayableMessage(arrivingRedacted())).toBe(true);
+    expect(
+      isDisplayableMessage(arrivingRedacted({ type: 'm.room.message' })),
+    ).toBe(true);
+  });
+
+  // The SDK's setClearData doesn't look at redaction, so a decrypt finishing after the deletion
+  // puts the clear type and content back.
+  describe('when the deletion lands while a decrypt is in flight', () => {
+    const inFlight = async (type: string, content: object) => {
+      const { client, wire } = setUp();
+      trackEncryptedNonMessages(client);
+      const event = wire();
+      let answer: (result: { clearEvent: object }) => void = () => undefined;
+      const decrypting = event.attemptDecryption(
+        answering(() => new Promise((resolve) => (answer = resolve))),
+      );
+      await Promise.resolve();
+      event.makeRedacted(redaction, ROOM);
+      answer({ clearEvent: { type, content } });
+      await decrypting;
+      return event;
+    };
+
+    it('keeps a message', async () => {
+      const event = await inFlight('m.room.message', {
+        msgtype: 'm.text',
+        body: 'secret',
+      });
+
+      expect(event.getType()).toBe('m.room.message');
+      expect(event.isRedacted()).toBe(true);
+      expect(isDisplayableMessage(event)).toBe(true);
+    });
+
+    it('skips a non-message', async () => {
+      const event = await inFlight('m.reaction', {});
+
+      expect(event.getType()).toBe('m.reaction');
+      expect(isDisplayableMessage(event)).toBe(false);
+    });
   });
 });
 

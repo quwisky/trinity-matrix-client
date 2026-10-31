@@ -89,5 +89,8 @@ test.describe('Deleting a message in an encrypted room', () => {
       timeout: 60_000,
     });
     await expect(page.locator('.scroll .msg', { hasText: kept })).toBeVisible();
+    await expect(page.locator('.scroll .msg', { hasText: body })).toHaveCount(
+      0,
+    );
   });
 });

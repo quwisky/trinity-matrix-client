@@ -8,6 +8,7 @@ import {
   HttpApiEvent,
   MatrixError,
   MatrixEvent,
+  MatrixEventEvent,
   RoomEvent,
   SyncState,
   createClient,
@@ -1057,6 +1058,64 @@ describe('MatrixClientService', () => {
         RoomEvent.LocalEchoUpdated,
         expect.any(Function),
       );
+    });
+
+    describe('encrypted non-messages', () => {
+      const listenerOf = (client: ReturnType<typeof clientWith>) =>
+        client.on.mock.calls.find(
+          ([event]) => event === MatrixEventEvent.Decrypted,
+        )?.[1];
+
+      it('remembers them from before the client starts', async () => {
+        const client = clientWith();
+        const { svc } = setup(client);
+        client.startClient.mockImplementation(async () => {
+          expect(listenerOf(client)).toBeDefined();
+        });
+
+        await firstValueFrom(svc.init(SESSION));
+
+        expect(client.startClient).toHaveBeenCalled();
+      });
+
+      it('stops remembering when the account is removed', async () => {
+        const client = clientWith();
+        const { svc } = setup(client);
+        await firstValueFrom(svc.init(SESSION));
+
+        await firstValueFrom(svc.remove(SESSION.userId));
+
+        expect(client.off).toHaveBeenCalledWith(
+          MatrixEventEvent.Decrypted,
+          listenerOf(client),
+        );
+      });
+
+      it('stops remembering when the runtime stops', async () => {
+        const client = clientWith();
+        const { svc } = setup(client);
+        await firstValueFrom(svc.init(SESSION));
+
+        await firstValueFrom(svc.stop());
+
+        expect(client.off).toHaveBeenCalledWith(
+          MatrixEventEvent.Decrypted,
+          listenerOf(client),
+        );
+      });
+
+      it('stops remembering when the start fails', async () => {
+        const client = clientWith();
+        client.startClient.mockRejectedValue(new Error('no'));
+        const { svc } = setup(client);
+
+        await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow();
+
+        expect(client.off).toHaveBeenCalledWith(
+          MatrixEventEvent.Decrypted,
+          listenerOf(client),
+        );
+      });
     });
   });
 

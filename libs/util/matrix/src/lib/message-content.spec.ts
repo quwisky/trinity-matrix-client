@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { MatrixEvent, Room } from 'matrix-js-sdk';
+import { MatrixEvent, type Room } from 'matrix-js-sdk';
 import {
   editMessageContent,
   emoteMessageContent,
@@ -496,6 +496,36 @@ function fakeEvent(o: {
 }
 
 describe('messagePreview', () => {
+  // The SDK's setClearData puts the content back when a decrypt outlasts the deletion.
+  it('hides the text of a message deleted while it was decrypting', async () => {
+    const event = new MatrixEvent({
+      type: 'm.room.encrypted',
+      event_id: '$event',
+      sender: '@alice:hs',
+      room_id: '!r:hs',
+      content: { algorithm: 'm.megolm.v1.aes-sha2', ciphertext: 'opaque' },
+    });
+    let answer: (result: { clearEvent: object }) => void = () => undefined;
+    const decrypting = event.attemptDecryption({
+      decryptEvent: () => new Promise((resolve) => (answer = resolve)),
+    } as unknown as Parameters<MatrixEvent['attemptDecryption']>[0]);
+    await Promise.resolve();
+    event.makeRedacted(
+      new MatrixEvent({ type: 'm.room.redaction', content: {} }),
+      {} as Room,
+    );
+    answer({
+      clearEvent: {
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body: 'secret' },
+      },
+    });
+    await decrypting;
+
+    expect(event.getContent()['body']).toBe('secret');
+    expect(messagePreview(event)).toBe('(message deleted)');
+  });
+
   it('returns the body trimmed and with internal whitespace collapsed', () => {
     expect(messagePreview(fakeEvent({ body: '  hello   world  \n\n' }))).toBe(
       'hello world',
