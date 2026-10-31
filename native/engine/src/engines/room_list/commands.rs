@@ -268,6 +268,8 @@ pub fn join(
     ))
 }
 
+/// Worst case about 100 s for an invite: the request (30 s), a settle (15 s), a second leave (30 s)
+/// or the forget (30 s), each with up to ~5 s of `ruled` waits, and the delivery (5 s).
 pub fn leave(engine: Arc<Engine>, account_id: String, room_id: String) -> Stream {
     reply(on_account(
         engine,
@@ -281,22 +283,23 @@ pub fn leave(engine: Arc<Engine>, account_id: String, room_id: String) -> Stream
                 .filter(|room| listed(Some(room.state())))
             {
                 // The SDK's leave forgets an invite at once, and the sync that carries our own
-                // leave can then re-create the room as joined; forget it after that echo.
+                // leave can then re-create the room as joined; forget it after that echo. With
+                // no echo (a stalled sync) or on M_FORBIDDEN, the SDK's leave marks it left.
                 Some(room) if room.state() == RoomState::Invited => {
                     let request = leave_room::v3::Request::new(room_id.clone());
                     let sent = rt.client.send(request).with_request_config(sent_once());
                     match engine.ruled(&rt, sent).await {
-                        Ok(_) => {
-                            show(&rt, &room_id, |state| state == Some(RoomState::Left)).await;
-                            if let Err(err) = engine.ruled(&rt, bounded(room.forget())).await {
-                                tracing::warn!(kind = ?err.client_api_error_kind(), "forgetting a declined invite failed");
-                            }
-                        }
-                        // The SDK counts M_FORBIDDEN as left and marks the room so itself.
-                        Err(err) if err.client_api_error_kind() == Some(&ErrorKind::Forbidden) => {
-                            engine.ruled(&rt, bounded(room.leave())).await?
-                        }
+                        Ok(_) => show(&rt, &room_id, |state| !listed(state)).await,
+                        Err(err) if err.client_api_error_kind() == Some(&ErrorKind::Forbidden) => {}
                         Err(err) => return Err(err),
+                    }
+                    if !listed(Some(room.state())) {
+                        if let Err(err) = engine.ruled(&rt, bounded(room.forget())).await {
+                            let kind = err.client_api_error_kind().map(ErrorKind::errcode);
+                            tracing::warn!(?kind, "forgetting a declined invite failed");
+                        }
+                    } else if !*rt.retired().borrow() {
+                        engine.ruled(&rt, bounded(room.leave())).await?
                     }
                 }
                 Some(room) => engine.ruled(&rt, bounded(room.leave())).await?,
@@ -710,6 +713,7 @@ mod tests {
         assert_eq!(targets(&seen).len(), 2, "no forget before the echo");
         sync(&client).await;
         assert_eq!(declined.await.unwrap(), json!({"ok": true, "value": null}));
+        assert!(client.get_room(room_id!("!r:b")).is_none());
         let seen = targets(&seen);
         assert!(seen[2].starts_with("GET /_matrix/client/v3/sync"));
         assert_eq!([&seen[1], &seen[3]], [leave, forget]);
@@ -728,9 +732,32 @@ mod tests {
         ]);
         let root = TempDir::new().unwrap();
         let engine = account_on(&base, &root).await;
-        sync(&engine.account("@a:b").unwrap().client).await;
+        let client = engine.account("@a:b").unwrap().client.clone();
+        sync(&client).await;
         let answer = declined_by(&engine).await.unwrap();
         assert_eq!(answer, json!({"ok": true, "value": null}));
+        assert!(client.get_room(room_id!("!r:b")).is_none());
+        assert_eq!(targets(&seen)[1..], [leave, leave, forget]);
+    }
+
+    // Real time: a paused clock would also cut the scripted server's replies short.
+    #[tokio::test]
+    async fn an_invite_with_no_sync_echo_is_left_locally_after_the_settle_limit() {
+        let leave = "POST /_matrix/client/v3/rooms/!r:b/leave";
+        let forget = "POST /_matrix/client/v3/rooms/!r:b/forget";
+        let (base, seen) = scripted(vec![
+            sync_answer(0, invited()),
+            (leave, 200, json!({})),
+            (leave, 200, json!({})),
+            (forget, 200, json!({})),
+        ]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        let client = engine.account("@a:b").unwrap().client.clone();
+        sync(&client).await;
+        let answer = declined_by(&engine).await.unwrap();
+        assert_eq!(answer, json!({"ok": true, "value": null}));
+        assert!(client.get_room(room_id!("!r:b")).is_none());
         assert_eq!(targets(&seen)[1..], [leave, leave, forget]);
     }
 
