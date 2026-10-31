@@ -35,7 +35,7 @@ use matrix_sdk::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, OwnedMutexGuard, watch};
 use ts_rs::TS;
 
 use super::{
@@ -129,6 +129,9 @@ pub(crate) struct IdentitySignals {
     pub(crate) ignored: watch::Sender<u64>,
     /// Serialises `setIgnored` on this account; shared so a call can queue without the account.
     pub(crate) ignore_writes: Arc<Mutex<()>>,
+    /// Keeps the account's presence reads and writes apart: Synapse drops a write that lands while
+    /// its first read of the user's presence is still loading.
+    pub(crate) presence_requests: Arc<Mutex<()>>,
 }
 
 impl IdentitySignals {
@@ -138,6 +141,7 @@ impl IdentitySignals {
             presence: watch::Sender::new(0),
             ignored: watch::Sender::new(0),
             ignore_writes: Arc::new(Mutex::new(())),
+            presence_requests: Arc::new(Mutex::new(())),
         };
         let (own, profile) = (account_id.to_owned(), signals.profile.clone());
         client.add_event_handler(move |event: OriginalSyncRoomMemberEvent| {
@@ -159,6 +163,25 @@ impl IdentitySignals {
 
 pub(crate) fn tick(signal: &watch::Sender<u64>) {
     signal.send_modify(|n| *n += 1);
+}
+
+/// The account's turn on the lock `queue` names, taken before the call takes the account so a
+/// queue never holds it; `None` for an account that is not live.
+async fn turn(
+    engine: &Engine,
+    account_id: &str,
+    queue: fn(&IdentitySignals) -> &Arc<Mutex<()>>,
+) -> Option<OwnedMutexGuard<()>> {
+    // shortcut: a call queued across a client replacement waits on the old client's lock and can
+    // run beside the new runtime's first presence read, and if no account is live here but
+    // `on_account` then finds one, the call runs unlocked; upgrade if either shows in practice.
+    let queue = engine
+        .account(account_id)
+        .map(|rt| Arc::clone(queue(&rt.identity)));
+    match queue {
+        Some(queue) => Some(queue.lock_owned().await),
+        None => None,
+    }
 }
 
 /// Any user's profile, from the server; a user it does not know has an empty one. The endpoint
@@ -211,17 +234,22 @@ fn write_profile(engine: Arc<Engine>, account_id: String, value: ProfileFieldVal
 }
 
 pub fn own_presence(engine: Arc<Engine>, account_id: String) -> Stream {
-    reply(on_account(
-        engine,
-        account_id,
-        request_failed,
-        |engine, rt| async move {
-            let request = get_presence::v3::Request::new(own_id(&rt.client)?);
-            let send = rt.client.send(request).with_request_config(sent_once());
-            let response = engine.ruled(&rt, send).await?;
-            Ok(own_presence_of(&response))
-        },
-    ))
+    reply(async move {
+        let turn = turn(&engine, &account_id, |s| &s.presence_requests).await;
+        on_account(
+            engine,
+            account_id,
+            request_failed,
+            |engine, rt| async move {
+                let _turn = turn;
+                let request = get_presence::v3::Request::new(own_id(&rt.client)?);
+                let send = rt.client.send(request).with_request_config(sent_once());
+                let response = engine.ruled(&rt, send).await?;
+                Ok(own_presence_of(&response))
+            },
+        )
+        .await
+    })
 }
 
 pub fn set_presence(
@@ -230,19 +258,25 @@ pub fn set_presence(
     presence: PresenceStateDto,
     status_message: Option<String>,
 ) -> Stream {
-    detached(on_account(
-        engine,
-        account_id,
-        request_failed,
-        move |engine, rt| async move {
-            let mut request = set_presence::v3::Request::new(own_id(&rt.client)?, presence.into());
-            request.status_msg = status_message;
-            let send = rt.client.send(request).with_request_config(sent_once());
-            engine.ruled(&rt, send).await?;
-            tick(&rt.identity.presence);
-            Ok(())
-        },
-    ))
+    detached(async move {
+        let turn = turn(&engine, &account_id, |s| &s.presence_requests).await;
+        on_account(
+            engine,
+            account_id,
+            request_failed,
+            move |engine, rt| async move {
+                let _turn = turn;
+                let mut request =
+                    set_presence::v3::Request::new(own_id(&rt.client)?, presence.into());
+                request.status_msg = status_message;
+                let send = rt.client.send(request).with_request_config(sent_once());
+                engine.ruled(&rt, send).await?;
+                tick(&rt.identity.presence);
+                Ok(())
+            },
+        )
+        .await
+    })
 }
 
 /// A call waits for the writes ahead of it before it takes the account, so a queue never holds
@@ -255,15 +289,7 @@ pub fn set_ignored(
     ignored: bool,
 ) -> Stream {
     detached(async move {
-        // shortcut: a call queued across a client replacement waits on the old client's lock and
-        // runs beside the new one's writes, upgrade if replacements overlap writes in practice.
-        let queue = engine
-            .account(&account_id)
-            .map(|rt| Arc::clone(&rt.identity.ignore_writes));
-        let turn = match queue {
-            Some(queue) => Some(queue.lock_owned().await),
-            None => None,
-        };
+        let turn = turn(&engine, &account_id, |s| &s.ignore_writes).await;
         on_account(
             engine,
             account_id,
@@ -297,10 +323,19 @@ pub fn own_profile(engine: Arc<Engine>, account_id: String) -> Stream {
     )
 }
 
-/// The presence entries the account has received: its own, once the server has one.
+/// The presence entries the account has received: its own, once the server has one. Each read
+/// waits its turn among the account's presence requests.
 pub fn presence(engine: Arc<Engine>, account_id: String) -> Stream {
-    let presence = |rt: &AccountRuntime| rt.identity.presence.subscribe();
-    snapshots(engine, account_id, Vec::new(), presence, read_presence)
+    account_stream(engine, account_id, Vec::new(), |rt, client| {
+        let requests = Arc::clone(&rt.identity.presence_requests);
+        let read = move || read_presence(client.clone(), Arc::clone(&requests));
+        follow(
+            Vec::new(),
+            ticks(rt.identity.presence.subscribe()),
+            RETRY_AFTER,
+            read,
+        )
+    })
 }
 
 /// The account's `m.ignored_user_list`, each user with the name their profile carries.
@@ -403,15 +438,29 @@ where
 
 async fn read_own_profile(client: Client) -> Option<UserProfileDto> {
     let me = own_id(&client).ok()?;
-    let request = get_profile::v3::Request::new(me.clone());
-    let send = client
-        .send(request)
-        .with_request_config(sent_once().force_auth());
-    Some(own_profile_of(me.as_str(), &send.await.ok()?))
+    match fetch_profile(&client, me.clone(), None).await {
+        Ok(response) => Some(user_profile_of(me.as_str(), &response)),
+        Err(err) if is_not_found(&err) => Some(UserProfileDto::default()),
+        Err(_) => None,
+    }
 }
 
-async fn read_presence(client: Client) -> Option<Vec<PresenceInfoDto>> {
+/// `user`'s profile from the server, sent once. The endpoint wants no token, but the server may
+/// hide a profile from an anonymous request, so the token goes along.
+async fn fetch_profile(
+    client: &Client,
+    user: OwnedUserId,
+    limit: Option<Duration>,
+) -> Result<get_profile::v3::Response, Error> {
+    let config = sent_once().force_auth();
+    let config = limit.map_or(config, |limit| config.timeout(limit));
+    let request = get_profile::v3::Request::new(user);
+    Ok(client.send(request).with_request_config(config).await?)
+}
+
+async fn read_presence(client: Client, requests: Arc<Mutex<()>>) -> Option<Vec<PresenceInfoDto>> {
     let me = own_id(&client).ok()?;
+    let _turn = requests.lock().await;
     let request = get_presence::v3::Request::new(me.clone());
     let response = client
         .send(request)
@@ -435,15 +484,13 @@ async fn read_ignored(client: Client) -> Option<Vec<IgnoredUserInfoDto>> {
 /// `user_id` with the name and avatar of its profile; one the server does not answer in time has
 /// none.
 async fn ignored_info(client: &Client, user_id: String) -> IgnoredUserInfoDto {
+    // shortcut: a failed or timed-out lookup leaves the name null until the list changes, and each
+    // tick fetches all N profiles with no cap; upgrade by caching names and retrying transient
+    // failures.
     let looked_up = async {
-        let request = get_profile::v3::Request::new(UserId::parse(&user_id).ok()?);
-        let config = sent_once().force_auth().timeout(NAME_LOOKUP);
-        let response = client
-            .send(request)
-            .with_request_config(config)
-            .await
-            .ok()?;
-        Some(own_profile_of(&user_id, &response))
+        let user = UserId::parse(&user_id).ok()?;
+        let response = fetch_profile(client, user, Some(NAME_LOOKUP)).await.ok()?;
+        Some(user_profile_of(&user_id, &response))
     };
     let profile = looked_up.await.unwrap_or_default();
     IgnoredUserInfoDto {
@@ -464,12 +511,12 @@ fn string_of(r: &get_profile::v3::Response, field: &str) -> Option<String> {
     r.get(field).and_then(Value::as_str).map(str::to_owned)
 }
 
-/// The account's own profile, as js reads its `User`: an empty string is no value, and the
-/// display name the SDK makes of a nameless user, the user id, is none.
-fn own_profile_of(account_id: &str, r: &get_profile::v3::Response) -> UserProfileDto {
+/// The profile of `user_id` (the account or an ignored user), as js reads its `User`: an empty
+/// string is no value, and the display name the SDK makes of a nameless user, the user id, is none.
+fn user_profile_of(user_id: &str, r: &get_profile::v3::Response) -> UserProfileDto {
     let set = |field| string_of(r, field).filter(|value| !value.is_empty());
     UserProfileDto {
-        display_name: set("displayname").filter(|name| name != account_id),
+        display_name: set("displayname").filter(|name| name != user_id),
         avatar_mxc: set("avatar_url"),
     }
 }
@@ -522,8 +569,8 @@ fn own_presence_of(r: &get_presence::v3::Response) -> OwnPresenceDto {
     }
 }
 
-/// The account's entry in `presence`, `None` while the server has no presence for it. The server
-/// may echo the account's own presence through the stream, so the id is the caller's.
+/// The account's entry in `presence`, `None` while the server has no presence for it. The id is
+/// the caller's because `get_presence::Response` carries no user id.
 fn own_entry(
     account_id: &str,
     r: &get_presence::v3::Response,
@@ -633,10 +680,62 @@ mod tests {
     /// `@a:b` live on a client with the SDK's default config, which retries, answered by `answers`.
     async fn live_on(root: &TempDir, answers: Answers) -> (Arc<Engine>, Seen) {
         let (base, seen) = scripted(answers);
+        (live_at(root, &base).await, seen)
+    }
+
+    async fn live_at(root: &TempDir, base: &str) -> Arc<Engine> {
         let engine = engine_in(root);
-        let account = password(&base);
+        let account = password(base);
         drop(live(&engine, &account, default_client(&engine, &account).await).await);
-        (engine, seen)
+        engine
+    }
+
+    /// A server that takes every presence request and answers the n-th only once `released`
+    /// passes n; `taken` counts the requests it has read. Anything else gets the versions.
+    fn holding_presence() -> (String, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (taken, released) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let (counted, release) = (Arc::clone(&taken), Arc::clone(&released));
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let (counted, release) = (Arc::clone(&counted), Arc::clone(&release));
+                std::thread::spawn(move || hold_presence(stream, &counted, &release));
+            }
+        });
+        (base, taken, released)
+    }
+
+    fn hold_presence(mut stream: std::net::TcpStream, taken: &AtomicUsize, released: &AtomicUsize) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let presence = line.contains("/presence/");
+        let mut length = 0;
+        loop {
+            let mut header = String::new();
+            reader.read_line(&mut header).unwrap();
+            let header = header.trim_end().to_ascii_lowercase();
+            if header.is_empty() {
+                break;
+            }
+            if let Some(value) = header.strip_prefix("content-length: ") {
+                length = value.parse().unwrap();
+            }
+        }
+        reader.read_exact(&mut vec![0; length]).unwrap();
+        let body = if presence {
+            let n = taken.fetch_add(1, Ordering::SeqCst);
+            while released.load(Ordering::SeqCst) <= n {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            r#"{"presence":"online"}"#
+        } else {
+            r#"{"versions":["v1.15"]}"#
+        };
+        let head = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nconnection: close\r\n";
+        let _ = write!(stream, "{head}content-length: {}\r\n\r\n{body}", body.len());
     }
 
     async fn first(mut reply: Stream) -> Value {
@@ -660,8 +759,8 @@ mod tests {
     }
 
     #[test]
-    fn own_profile_reads_the_user_id_and_empty_strings_as_null() {
-        let own = |fields| own_profile_of("@a:b", &profile_response(fields));
+    fn a_profile_reads_the_user_id_and_empty_strings_as_null() {
+        let own = |fields| user_profile_of("@a:b", &profile_response(fields));
         let named = json!({"displayname": "Ann", "avatar_url": "mxc://b/c"});
         assert_eq!(own(named), profile_dto(Some("Ann"), Some("mxc://b/c")));
         let nameless = json!({"displayname": "@a:b", "avatar_url": ""});
@@ -1110,6 +1209,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_presence_request_waits_for_the_one_in_flight() {
+        let online = || json!({"presence": "online"});
+        let calls: [(Answers, Command); 3] = [
+            (vec![(PRESENCE_SET, 200, json!({}))], |engine| {
+                set_presence(engine, "@a:b".into(), PresenceStateDto::Online, None)
+            }),
+            (vec![(PRESENCE_GET, 200, online())], |engine| {
+                own_presence(engine, "@a:b".into())
+            }),
+            (vec![(PRESENCE_GET, 200, online())], |engine| {
+                super::presence(engine, "@a:b".into())
+            }),
+        ];
+        for (answers, call) in calls {
+            let root = TempDir::new().unwrap();
+            let (engine, seen) = live_on(&root, answers).await;
+            let rt = engine.account("@a:b").unwrap();
+            let in_flight = Arc::clone(&rt.identity.presence_requests)
+                .lock_owned()
+                .await;
+            drop(rt);
+            let _items = forward(call(Arc::clone(&engine)));
+            sleep(Duration::from_millis(200)).await;
+            assert!(requests(&seen).is_empty(), "it went out beside the other");
+            drop(in_flight);
+            let sent = async {
+                while requests(&seen).is_empty() {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            };
+            let sent = timeout(sent, Duration::from_secs(2)).await;
+            assert!(sent.is_ok(), "it never went out");
+        }
+    }
+
+    async fn reached(taken: &AtomicUsize, n: usize) {
+        while taken.load(Ordering::SeqCst) < n {
+            sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn a_presence_request_keeps_its_turn_until_the_server_has_answered() {
+        let set: Command =
+            |engine| set_presence(engine, "@a:b".into(), PresenceStateDto::Unavailable, None);
+        let own: Command = |engine| own_presence(engine, "@a:b".into());
+        let stream: Command = |engine| super::presence(engine, "@a:b".into());
+        for (first, second) in [(set, own), (own, stream), (stream, set)] {
+            let root = TempDir::new().unwrap();
+            let (base, taken, released) = holding_presence();
+            let engine = live_at(&root, &base).await;
+            let _first = forward(first(Arc::clone(&engine)));
+            let sent = timeout(reached(&taken, 1), Duration::from_secs(2)).await;
+            assert!(sent.is_ok(), "the first request never went out");
+            let _second = forward(second(Arc::clone(&engine)));
+            sleep(Duration::from_millis(200)).await;
+            assert_eq!(
+                taken.load(Ordering::SeqCst),
+                1,
+                "it went out beside the first"
+            );
+            released.store(1, Ordering::SeqCst);
+            let sent = timeout(reached(&taken, 2), Duration::from_secs(2)).await;
+            assert!(sent.is_ok(), "it never went out after the first answer");
+            released.store(usize::MAX, Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
     async fn a_not_live_account_fails_before_its_arguments_are_parsed() {
         let engine = Engine::new(EngineConfig::default()).unwrap();
         let reply = first(profile(engine, "@x:y".into(), "not a user id".into())).await;
@@ -1158,6 +1326,13 @@ mod tests {
         let more = timeout(items.next(), Duration::from_secs(60)).await;
         assert!(more.is_err(), "the tick brought one read, not a loop");
         assert_eq!(reads.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn follow_ends_when_the_triggers_end_during_a_retry_wait() {
+        let read = answering([None]);
+        let items = follow(0, stream::empty::<()>(), RETRY_AFTER, read);
+        assert_eq!(items.collect::<Vec<_>>().await, [0]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1218,7 +1393,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_stream_emits_empty_first_and_keeps_retrying_a_failed_read() {
+    async fn a_stream_emits_empty_first_and_reads_again_on_the_next_tick() {
         let ann = json!({"displayname": "Ann"});
         let answers = vec![
             (OWN_PROFILE, 502, unavailable()),
@@ -1236,6 +1411,22 @@ mod tests {
         let named = json!({"displayName": "Ann", "avatarMxc": null});
         assert_eq!(next_item(&mut items).await, named);
         assert_eq!(requests(&seen).len(), 3);
+    }
+
+    #[tokio::test]
+    async fn an_own_profile_the_server_does_not_have_is_empty_and_no_failed_read() {
+        let answers = vec![(
+            OWN_PROFILE,
+            404,
+            json!({"errcode": "M_NOT_FOUND", "error": "x"}),
+        )];
+        let root = TempDir::new().unwrap();
+        let (engine, _) = live_on(&root, answers).await;
+        let client = engine.account("@a:b").unwrap().client.clone();
+        assert_eq!(
+            read_own_profile(client).await,
+            Some(UserProfileDto::default())
+        );
     }
 
     #[tokio::test]
