@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { of, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -18,7 +18,7 @@ const applied = of<ConversationThreadOutcome>({
 function setup() {
   const thread = {
     send: vi.fn(() => applied),
-    edit: vi.fn(() => applied),
+    edit: vi.fn((): Observable<ConversationThreadOutcome> => applied),
     reply: vi.fn(() => applied),
     media: { send: vi.fn() },
   };
@@ -52,7 +52,7 @@ describe('ThreadCommands', () => {
       of<ConversationThreadOutcome>({
         kind: 'rejected',
         operation: 'edit',
-        failure: 'request-failed',
+        failure: 'request-rejected',
         retryable: true,
       }),
     );
