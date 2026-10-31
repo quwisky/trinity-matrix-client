@@ -92,8 +92,18 @@ describe('a session whose token exchanges a host makes', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
+
+  /** Run past the SDK's backoff between attempts, which is up to 60 s over five attempts. */
+  async function pastBackoff<T>(run: () => Promise<T>): Promise<T> {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const result = run();
+    result.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(120_000);
+    return result;
+  }
 
   it('sends no grant and no discovery when a host refreshes', async () => {
     const net = fakeNetwork('rotate');
@@ -387,6 +397,156 @@ describe('a session whose token exchanges a host makes', () => {
     });
   });
 
+  it('refreshes when the pair a host held is rejected, without signing out', async () => {
+    const net = fakeNetwork('rotate');
+    net.live.add('at-3');
+    const host = fakeHost({
+      kind: 'tokens',
+      accessToken: 'at-3',
+      expiry: inAnHour(),
+    });
+    const { client, loggedOut } = await startWithHost(host);
+    await rejectedWithFarExpiry(client);
+    // Left by a process suspended mid-grant: the provider has revoked this rotation.
+    host.current.mockResolvedValue({
+      accessToken: 'at-2',
+      expiry: inAnHour(),
+    });
+
+    await expect(pastBackoff(() => client.whoami())).resolves.toMatchObject({
+      user_id: '@me:hs',
+    });
+
+    expect(host.refresh).toHaveBeenCalledExactlyOnceWith('at-2');
+    expect(client.getAccessToken()).toBe('at-3');
+    expect(loggedOut).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['fails', () => Promise.reject(new Error('bridge died'))],
+    ['cannot say', () => Promise.resolve(undefined)],
+  ])(
+    'does not sign out when the refreshed token is rejected and the read of the held pair %s',
+    async (_, secondRead) => {
+      fakeNetwork('rotate');
+      const host = fakeHost({
+        kind: 'tokens',
+        accessToken: 'at-refused',
+        expiry: inAnHour(),
+      });
+      const { svc, client, loggedOut } = await startWithHost(host);
+      await rejectedWithFarExpiry(client);
+      host.current
+        .mockResolvedValueOnce(undefined)
+        .mockImplementationOnce(secondRead);
+
+      await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+      expect(host.refresh).toHaveBeenCalledOnce();
+      expect(loggedOut).not.toHaveBeenCalled();
+      expect(svc.accountIds()).toContain('@me:hs');
+      expect(client.clearStores).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['no expiry', () => undefined],
+    ['an expiry under the shortcut', () => new Date(Date.now() + 30_000)],
+  ])(
+    'stops after three refreshes whose tokens the server refuses, with %s',
+    async (_, expiry) => {
+      fakeNetwork('rotate');
+      const host = fakeHost();
+      const { svc, client, loggedOut } = await startWithHost(host);
+      let issued = 1;
+      host.refresh.mockImplementation(async () => ({
+        kind: 'tokens',
+        accessToken: `at-${(issued += 1)}`,
+        expiry: expiry(),
+      }));
+      host.current.mockImplementation(async () => ({
+        accessToken: client.getAccessToken() ?? '',
+      }));
+
+      await expect(pastBackoff(() => client.whoami())).rejects.toBeInstanceOf(
+        TokenRefreshError,
+      );
+
+      expect(host.refresh).toHaveBeenCalledTimes(3);
+      expect(loggedOut).not.toHaveBeenCalled();
+      expect(svc.accountIds()).toContain('@me:hs');
+    },
+  );
+
+  it('does not let a late refresh answer overwrite a newer pair', async () => {
+    const net = fakeNetwork('rotate');
+    net.live.add('at-3');
+    const host = fakeHost();
+    const { client, storage, loggedOut } = await startWithHost(host);
+    let answer!: (answer: HostTokenAnswer) => void;
+    host.refresh.mockReturnValueOnce(
+      new Promise((resolve) => (answer = resolve)),
+    );
+
+    const pending = client.whoami();
+    await vi.waitFor(() => expect(host.refresh).toHaveBeenCalledOnce());
+    await client.http.adoptOAuthTokens({
+      accessToken: 'at-3',
+      expiry: inAnHour(),
+    });
+    answer({ kind: 'tokens', accessToken: 'at-2', expiry: inAnHour() });
+
+    await expect(pending).resolves.toMatchObject({ user_id: '@me:hs' });
+    expect(client.getAccessToken()).toBe('at-3');
+    expect(
+      vi.mocked(storage.updateTokens).mock.calls.map(([, , at]) => at),
+    ).toEqual(['at-3']);
+    expect(loggedOut).not.toHaveBeenCalled();
+  });
+
+  it('a refused host answer signs out with a far expiry too', async () => {
+    fakeNetwork('rotate');
+    const host = fakeHost({ kind: 'refused' });
+    const { svc, client, loggedOut } = await startWithHost(host);
+    await rejectedWithFarExpiry(client);
+
+    await expect(client.whoami()).rejects.toMatchObject({
+      errcode: 'M_UNKNOWN_TOKEN',
+    });
+
+    expect(host.refresh).toHaveBeenCalledExactlyOnceWith('at-1');
+    expect(loggedOut).toHaveBeenCalledOnce();
+    expect(svc.accountIds()).not.toContain('@me:hs');
+  });
+
+  it('wipes once for a burst of requests that a refused host answer signs out', async () => {
+    fakeNetwork('rotate');
+    const host = fakeHost();
+    const { svc, client, storage, loggedOut } = await startWithHost(host);
+    await rejectedWithFarExpiry(client);
+    let answer!: (answer: HostTokenAnswer) => void;
+    host.refresh.mockReturnValueOnce(
+      new Promise((resolve) => (answer = resolve)),
+    );
+
+    const burst = [client.whoami(), client.whoami(), client.whoami()];
+    await vi.waitFor(() => expect(host.current).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(host.refresh).toHaveBeenCalledOnce());
+    answer({ kind: 'refused' });
+    const settled = await Promise.allSettled(burst);
+
+    expect(settled.map(({ status }) => status)).toEqual([
+      'rejected',
+      'rejected',
+      'rejected',
+    ]);
+    // The SDK emits once per request; the service acts on the first and has left by the next.
+    expect(loggedOut).toHaveBeenCalledTimes(3);
+    expect(client.clearStores).toHaveBeenCalledOnce();
+    expect(storage.remove).toHaveBeenCalledExactlyOnceWith('@me:hs');
+    expect(svc.accountIds()).not.toContain('@me:hs');
+  });
+
   describe('without a host', () => {
     it('still signs out at once on a rejection with a far expiry', async () => {
       const net = fakeNetwork('rotate', 3600);
@@ -400,6 +560,19 @@ describe('a session whose token exchanges a host makes', () => {
 
       expect(net.grants).toHaveLength(1);
       expect(loggedOut).toHaveBeenCalledOnce();
+    });
+
+    it('still retries past three refreshes whose tokens the server refuses', async () => {
+      const net = fakeNetwork('rotate', null);
+      vi.spyOn(net.live, 'has').mockImplementation(
+        () => net.grants.length >= 5,
+      );
+      const { client, loggedOut } = await startReal(OIDC_SESSION);
+
+      await expect(pastBackoff(() => client.whoami())).resolves.toBeDefined();
+
+      expect(net.grants).toHaveLength(5);
+      expect(loggedOut).not.toHaveBeenCalled();
     });
 
     it('still sends the grant and revokes both tokens itself', async () => {
