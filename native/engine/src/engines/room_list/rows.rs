@@ -12,11 +12,11 @@ use futures_util::{
     stream::{self, PollNext},
 };
 use matrix_sdk::{
-    Room, RoomState,
-    deserialized_responses::RawSyncOrStrippedState,
+    Room, RoomState, check_validity_of_replacement_events,
+    deserialized_responses::{RawSyncOrStrippedState, TimelineEvent},
     latest_events::LatestEventValue,
     ruma::{
-        OwnedDirectUserIdentifier, OwnedRoomId, UserId,
+        EventId, OwnedDirectUserIdentifier, OwnedRoomId, UserId,
         events::room::{
             encryption::RoomEncryptionEventContent, history_visibility::HistoryVisibility,
         },
@@ -326,6 +326,38 @@ fn latest_message(
     })
 }
 
+/// `edit` may replace `target`. The SDK checked this before it picked the edit, but with the
+/// target's encryption info in place of the edit's, so a clear edit of an encrypted message passes.
+fn is_valid_edit(target: Option<&TimelineEvent>, edit: &TimelineEvent) -> bool {
+    target.is_some_and(|target| {
+        check_validity_of_replacement_events(
+            target.raw(),
+            target.encryption_info().map(Arc::as_ref),
+            edit.raw(),
+            edit.encryption_info().map(Arc::as_ref),
+        )
+        .is_ok()
+    })
+}
+
+/// Whether the latest event's `m.new_content` may show. Any event can carry the field; only a valid
+/// edit of a target still loaded replaces anything.
+async fn shows_new_content(room: &Room, event: &TimelineEvent, json: &Value) -> bool {
+    let relation = &json["content"]["m.relates_to"];
+    if relation["rel_type"] != "m.replace" {
+        return false;
+    }
+    let Some(target) = relation["event_id"].as_str() else {
+        return false;
+    };
+    let (Ok(target), Ok((cache, _handles))) = (EventId::parse(target), room.event_cache().await)
+    else {
+        return false;
+    };
+    let target = cache.find_event(&target).await.ok().flatten();
+    is_valid_edit(target.as_ref(), event)
+}
+
 /// `latestMessage` from the SDK's latest event.
 async fn latest_message_of(room: &Room, encryption: RoomEncryptionDto) -> Option<LatestMessageDto> {
     let (event, origin) = match room.latest_event() {
@@ -335,7 +367,13 @@ async fn latest_message_of(room: &Room, encryption: RoomEncryptionDto) -> Option
                 encrypted: event.encryption_info().is_some(),
                 ts: event.timestamp().map(|ts| u64::from(ts.get())),
             };
-            (event.raw().deserialize_as::<Value>().ok()?, origin)
+            let mut json = event.raw().deserialize_as::<Value>().ok()?;
+            if !shows_new_content(room, &event, &json).await
+                && let Some(content) = json.get_mut("content").and_then(Value::as_object_mut)
+            {
+                content.remove("m.new_content");
+            }
+            (json, origin)
         }
         LatestEventValue::LocalIsSending(local)
         | LatestEventValue::LocalCannotBeSent(local)
@@ -467,16 +505,31 @@ mod tests {
         future::{Ready, ready},
         pin::pin,
         rc::Rc,
+        time::Duration,
     };
 
     use futures_util::{FutureExt, StreamExt};
+    use matrix_sdk::{
+        deserialized_responses::{
+            AlgorithmInfo, DecryptedRoomEvent, DeviceLinkProblem, EncryptionInfo,
+            VerificationLevel, VerificationState,
+        },
+        ruma::serde::Raw,
+        sleep::sleep,
+        timeout::timeout,
+    };
     use serde_json::json;
+    use tempfile::TempDir;
     use tokio::sync::mpsc;
 
     use matrix_sdk_base::RoomInfoNotableUpdateReasons;
 
     use super::*;
-    use crate::{config::EngineConfig, engines::room_list::RoomEncryptionDto};
+    use crate::{
+        config::EngineConfig,
+        engines::room_list::RoomEncryptionDto,
+        testing::{default_client, engine_in, live, password, scripted, sync, sync_answer},
+    };
 
     fn id(room_id: &str) -> OwnedRoomId {
         OwnedRoomId::try_from(room_id).unwrap()
@@ -705,6 +758,140 @@ mod tests {
             let got = latest_message(event, origin, room, encrypted_at);
             assert_eq!(got, expected, "{event} {origin:?} {room:?}");
         }
+    }
+
+    /// `row`'s text once the SDK has picked a latest event from a sync of `events`.
+    async fn latest_text(events: Vec<Value>) -> String {
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let room_id = "!r:b";
+        let joined = json!({"rooms": {"join": {room_id: {
+            "timeline": {"events": events},
+            "state_after": {"events": [{
+                "type": "m.room.encryption", "state_key": "", "event_id": "$e", "sender": "@b:b",
+                "origin_server_ts": 1, "content": {"algorithm": "m.megolm.v1.aes-sha2"},
+            }]},
+        }}}});
+        let (base, _seen) = scripted(vec![sync_answer(0, joined)]);
+        let account = password(&base);
+        let client = default_client(&engine, &account).await;
+        let rt = live(&engine, &account, client).await;
+        let id = id(room_id);
+        let latest = rt.client.latest_events().await;
+        sync(&rt.client).await;
+        latest.listen_to_room(&id).await.unwrap();
+        let room = rt.client.get_room(&id).unwrap();
+        let picked = async {
+            while matches!(room.latest_event(), LatestEventValue::None) {
+                sleep(Duration::from_millis(5)).await;
+            }
+        };
+        timeout(picked, Duration::from_secs(5)).await.unwrap();
+        row(&room).await.unwrap().latest_message.unwrap().text
+    }
+
+    fn message_from(id: &str, sender: &str, content: Value) -> Value {
+        json!({"type": "m.room.message", "event_id": id, "sender": sender,
+            "origin_server_ts": 1, "content": content})
+    }
+
+    fn edit_of(target: &str) -> Value {
+        json!({"msgtype": "m.text", "body": "* new",
+            "m.new_content": {"msgtype": "m.text", "body": "new"},
+            "m.relates_to": {"rel_type": "m.replace", "event_id": target}})
+    }
+
+    fn original() -> Value {
+        message_from("$o", "@b:b", json!({"msgtype": "m.text", "body": "old"}))
+    }
+
+    #[tokio::test]
+    async fn an_invalid_edit_keeps_its_targets_preview() {
+        let edit = message_from("$edit", "@c:b", edit_of("$o"));
+        assert_eq!(latest_text(vec![original(), edit]).await, "old");
+    }
+
+    #[tokio::test]
+    async fn an_own_edit_previews_its_new_text() {
+        let edit = message_from("$edit", "@b:b", edit_of("$o"));
+        assert_eq!(latest_text(vec![original(), edit]).await, "new");
+    }
+
+    #[tokio::test]
+    async fn new_content_on_what_is_no_edit_is_not_shown() {
+        let hidden = json!({"msgtype": "m.text", "body": "hidden"});
+        let plain = json!({"msgtype": "m.text", "body": "seen", "m.new_content": hidden});
+        let relation = |relation: Value| {
+            let mut content = plain.clone();
+            content["m.relates_to"] = relation;
+            content
+        };
+        let contents = [
+            plain.clone(),
+            relation(json!({"rel_type": "m.thread", "event_id": "$o"})),
+            relation(json!({"m.in_reply_to": {"event_id": "$o"}})),
+            relation(json!({"rel_type": "m.replace"})),
+            relation(json!({"rel_type": "m.replace", "event_id": "not an id"})),
+        ];
+        for content in contents {
+            let hostile = message_from("$m", "@b:b", content.clone());
+            let text = latest_text(vec![original(), hostile]).await;
+            assert_eq!(text, "seen", "{content}");
+        }
+        let elsewhere = message_from("$edit", "@b:b", edit_of("$not-loaded"));
+        let text = latest_text(vec![original(), elsewhere]).await;
+        assert_eq!(
+            text, "old",
+            "the SDK passes over an edit of what it can't see"
+        );
+    }
+
+    fn sync_event(json: Value) -> TimelineEvent {
+        TimelineEvent::from_plaintext(Raw::from_json(
+            serde_json::value::to_raw_value(&json).unwrap(),
+        ))
+    }
+
+    fn decrypted(json: Value) -> TimelineEvent {
+        let info = EncryptionInfo {
+            sender: "@b:b".try_into().unwrap(),
+            sender_device: None,
+            forwarder: None,
+            algorithm_info: AlgorithmInfo::MegolmV1AesSha2 {
+                curve25519_key: "k".to_owned(),
+                sender_claimed_keys: BTreeMap::new(),
+                session_id: None,
+            },
+            verification_state: VerificationState::Unverified(VerificationLevel::None(
+                DeviceLinkProblem::MissingDevice,
+            )),
+        };
+        TimelineEvent::from_decrypted(
+            DecryptedRoomEvent {
+                event: Raw::from_json(serde_json::value::to_raw_value(&json).unwrap()),
+                encryption_info: Arc::new(info),
+                unsigned_encryption_info: None,
+            },
+            None,
+        )
+    }
+
+    #[test]
+    fn an_edit_needs_a_loaded_target_and_as_much_encryption() {
+        let edit = message_from("$edit", "@b:b", edit_of("$o"));
+        let mallory = message_from("$edit", "@c:b", edit_of("$o"));
+        let (clear, secret) = (sync_event(original()), decrypted(original()));
+        assert!(
+            !is_valid_edit(None, &sync_event(edit.clone())),
+            "not loaded"
+        );
+        assert!(is_valid_edit(Some(&clear), &sync_event(edit.clone())));
+        assert!(is_valid_edit(Some(&secret), &decrypted(edit.clone())));
+        assert!(!is_valid_edit(Some(&secret), &sync_event(edit)), "in clear");
+        assert!(
+            !is_valid_edit(Some(&clear), &sync_event(mallory)),
+            "not the sender"
+        );
     }
 
     #[tokio::test]

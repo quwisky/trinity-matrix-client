@@ -17,7 +17,7 @@ use matrix_sdk::{
 };
 use matrix_sdk_ui::{eyeball_im::VectorDiff, timeline};
 use serde::Serialize;
-use tokio::sync::broadcast::error::TryRecvError;
+use tokio::sync::{MutexGuard, broadcast::error::TryRecvError};
 
 use super::{BackPagination, Focus, TimelineFocusDto, hub::Hub, on_room};
 use crate::{
@@ -94,8 +94,24 @@ fn request_error(err: timeline::Error) -> Error {
     }
 }
 
-/// Whether the page reached the start, or `None` for an account that retired while it queued: a
-/// teardown waits for each holder, and pages queued on a stalled server would outlast its limit.
+/// A turn on the hub's paging, or `None` for an account that retired while it queued: a teardown
+/// waits for each holder, and pages queued on a stalled server would outlast its limit.
+pub(super) async fn paging_turn<'a>(
+    rt: &AccountRuntime,
+    hub: &'a Hub,
+) -> Option<MutexGuard<'a, ()>> {
+    let mut retired = rt.retired();
+    let retire = async {
+        let _ = retired.wait_for(|retired| *retired).await;
+    };
+    let queue = hub.paging.lock();
+    match select(pin!(retire), pin!(queue)).await {
+        Either::Left(_) => None,
+        Either::Right((turn, _)) => Some(turn),
+    }
+}
+
+/// Whether the page reached the start, or `None` for an account that retired while it queued.
 pub(super) async fn page(
     engine: &Arc<Engine>,
     rt: &AccountRuntime,
@@ -104,14 +120,8 @@ pub(super) async fn page(
     focus: &Focus,
     count: u16,
 ) -> Result<Option<bool>, Error> {
-    let mut retired = rt.retired();
-    let retire = async {
-        let _ = retired.wait_for(|retired| *retired).await;
-    };
-    let queue = hub.paging.lock();
-    let _one_at_a_time = match select(pin!(retire), pin!(queue)).await {
-        Either::Left(_) => return Ok(None),
-        Either::Right((turn, _)) => turn,
+    let Some(_one_at_a_time) = paging_turn(rt, hub).await else {
+        return Ok(None);
     };
     let before = *hub.state.borrow();
     let ending = Ending {

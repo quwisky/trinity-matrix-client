@@ -40,7 +40,7 @@ use super::{
     dto::{ProfileDto, ReactionDetailGroupDto},
     hub::Hub,
     on_room,
-    paging::{hub_of, page},
+    paging::{hub_of, page, paging_turn},
     rows::profile_of,
 };
 use crate::{
@@ -95,7 +95,12 @@ pub fn paginate_until(
             let mut pages_left = max_pages;
             let mut at_start = *hub.state.borrow() == super::BackPagination::StartReached;
             loop {
+                // A page commits to the cache before its rows show, and holds its turn until then.
+                let Some(settled) = paging_turn(&rt, &hub).await else {
+                    return Ok(EngineResult::Err(account_not_live()));
+                };
                 let found = reached(&room, &hub, &event_id).await?;
+                drop(settled);
                 if found || at_start || pages_left == 0 {
                     return Ok(EngineResult::Ok(FoundDto { found }));
                 }
@@ -607,6 +612,44 @@ mod tests {
 
     fn receipt_options(visibility: &str, fully_read: bool) -> Value {
         json!({"threadRootId": null, "visibility": visibility, "fullyRead": fully_read})
+    }
+
+    #[tokio::test]
+    async fn a_found_answer_waits_for_a_running_page_to_show() {
+        let events = vec![message("$m"), reaction("$on-m", "@b:b", 1, "$m", "k")];
+        let account = Account::plain(events).await;
+        let room = account.rt.client.get_room(room_id!("!r:b")).unwrap();
+        let hub = (account.rt.hubs.open(&room, Focus::Live).await).unwrap();
+        let running = hub.paging.lock().await;
+
+        let args = args(&[json!("$on-m"), json!(0)]);
+        let mut reply = dispatch(&account.engine, "timeline.paginateUntil", args).unwrap();
+        let early = timeout(reply.next(), Duration::from_millis(200)).await;
+        assert!(
+            early.is_err(),
+            "the page's rows may not have landed: {early:?}"
+        );
+        drop(running);
+        let found = timeout(reply.next(), Duration::from_secs(5)).await;
+        let found = found.expect("a reply in time").unwrap().unwrap();
+        assert_eq!(found, json!({"ok": true, "value": {"found": true}}));
+    }
+
+    #[tokio::test]
+    async fn a_retire_ends_the_wait_for_a_running_page() {
+        let account = Account::plain(vec![message("$m")]).await;
+        let room = account.rt.client.get_room(room_id!("!r:b")).unwrap();
+        let hub = (account.rt.hubs.open(&room, Focus::Live).await).unwrap();
+        let _running = hub.paging.lock().await;
+
+        let args = args(&[json!("$m"), json!(0)]);
+        let mut reply = dispatch(&account.engine, "timeline.paginateUntil", args).unwrap();
+        let early = timeout(reply.next(), Duration::from_millis(200)).await;
+        assert!(early.is_err(), "{early:?}");
+        account.rt.set_retired();
+        let refused = timeout(reply.next(), Duration::from_secs(5)).await;
+        let refused = refused.expect("it stops waiting").unwrap().unwrap();
+        assert_eq!(refused["failure"]["code"], "account-not-live");
     }
 
     #[tokio::test]
