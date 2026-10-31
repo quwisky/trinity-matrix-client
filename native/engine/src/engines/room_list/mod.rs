@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+pub mod rows;
 pub mod settle;
 pub mod typing;
 

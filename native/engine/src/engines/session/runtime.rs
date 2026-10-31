@@ -65,13 +65,6 @@ pub struct AccountRuntime {
     _all_rooms: RoomList,
     _tasks: [AbortOnDrop<()>; 3],
     /// The open room list streams a command must reach before it replies.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the room list streams and commands that use it come in later commits"
-        )
-    )]
     nudges: Mutex<Subscribers<Option<OwnedRoomId>>>,
     /// Who is typing per joined room, kept from the start: typing EDUs are not stored or repeated.
     pub(crate) typing: Typing,
@@ -158,13 +151,6 @@ impl AccountRuntime {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the room list streams and commands that use it come in later commits"
-    )
-)]
 impl AccountRuntime {
     /// The nudges of a stream that recomputes on each one, each naming the room it is about or
     /// `None` for any. A command waits until the carrier has written what the stream emitted for
@@ -176,6 +162,13 @@ impl AccountRuntime {
     /// Nudges every open `nudged` stream about `room`, or about every room when `None`. A command
     /// calls it once its effect shows in the SDK's state, and waits for the barrier before it
     /// replies.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the room list commands that nudge come in later commits"
+        )
+    )]
     pub(crate) fn nudge(&self, room: Option<&RoomId>) -> Barrier {
         self.nudges.lock().publish(&room.map(ToOwned::to_owned))
     }

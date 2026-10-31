@@ -127,6 +127,7 @@ methods! {
         ignored: bool,
     ),
     "roomList.directMap" => room_list::typing::direct_map(account_id: String),
+    "roomList.rooms" => room_list::rows::rooms(account_id: String),
     "roomList.typing" => room_list::typing::typing(account_id: String),
     "session.session" => session::session(),
     "session.restorePersisted" => session::restore_persisted(
