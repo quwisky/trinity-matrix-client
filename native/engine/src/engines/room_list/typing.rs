@@ -16,8 +16,12 @@ use tokio::sync::{
     watch,
 };
 
-use super::{DirectMapDto, TypingMapDto, TypingMemberDto, settle::account_data_changes};
-use crate::{accounts::Engine, dispatch::Stream, engines::member::account_stream};
+use super::{DirectMapDto, TypingMapDto, TypingMemberDto};
+use crate::{
+    accounts::Engine,
+    dispatch::Stream,
+    engines::{member::account_stream, settle::account_data_changes},
+};
 
 /// Who is typing in each joined room, from the account's start: a typing EDU is not stored or
 /// repeated, so a stream that opens later could not rebuild it. It lives and dies with the runtime.
