@@ -48,3 +48,8 @@ callback_url = "https://localhost:8448/_matrix/client/unstable/login/sso/callbac
 # the specs expect (@sso-e2e:localhost).
 userid_claims = ["email"]
 default = true
+
+# The suite signs the same accounts in far more often than the default five sign-ins, which
+# then refill at about one every five minutes. Zero disables the limit.
+[global.rate_limiting.login.account]
+per_second = 0
