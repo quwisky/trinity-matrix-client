@@ -16,9 +16,9 @@ concurrency:
   group: testflight
   cancel-in-progress: false
 jobs:
-  # Builds the production renderer for the signing job without a secret, so the App Store
-  # Connect key never shares a runner with the workspace install, the Nx build or their
-  # dependencies. The renderer is the same on every host, so Linux builds it. It also checks
+  # Builds the production renderer for the signing job without a secret, so the Nx build and
+  # the renderer's install scripts never run on the runner that holds the App Store Connect
+  # key. The renderer is the same on every host, so Linux builds it. It also checks
   # the dispatch and the tag, so a refused run needs no approval, and it hands the verified
   # commit to the signing job, so a tag moved meanwhile cannot swap the code.
   renderer:
@@ -103,8 +103,8 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup
       # The configuration is explicit: it swaps in environment.prod.ts. The release notes
-      # are fetched from the published releases, as in release.yml; without them the build
-      # bundles none and testers see no What's New.
+      # are fetched from the tag's published GitHub release, as in release.yml; with no
+      # published release for the tag this step fails, so publish it before dispatching.
       - run: pnpm nx build trinity --configuration=production --skipNxCache
         env:
           TRINITY_RELEASE_NOTES: required
@@ -128,8 +128,9 @@ jobs:
   # workflow references them. It installs with --ignore-scripts and runs no Nx and no build.
   # Code from node_modules still runs here: Capacitor's CLI (`cap sync`), and Xcode builds
   # the local Swift packages that point into node_modules. The key file is written only after
-  # the sync and the checks, right before `xcodebuild archive`, so no workspace process before
-  # that point can read it; a compromised dependency could still reach it during the archive.
+  # the sync and the checks, right before `xcodebuild archive`. This narrows the exposure and
+  # does not remove it: the install is a full workspace install, a process left running by
+  # `cap sync` could read the key once it exists, and the archive builds code from node_modules.
   testflight:
     name: Archive and upload to TestFlight
     needs: [renderer]

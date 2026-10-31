@@ -907,15 +907,17 @@ versions live on `release/**`. The dispatch must come from `main`: the `release-
 environment also admits `release/**` for later, so the workflow itself refuses any other ref.
 The tag must exist, point at a commit contained in `main`, and equal `package.json`'s version at
 that commit, which gives the marketing version (`v0.6.0-next.6` gives `0.6.0`). A bad input
-fails in the first job, before any approval is requested. Both jobs build that commit, which
+fails in the first job, before any approval is requested. The tag's GitHub release must be
+published before you dispatch: the renderer build bundles its release notes from it and fails
+without one. Both jobs build that commit, which
 the first job passes on by SHA, so a tag moved after the check cannot swap the code.
 
 A tag older than this workflow's merge lacks `ios/App/App/PrivacyInfo.xcprivacy`, so an upload
 from it would be refused by App Store Connect; the first job fails with a message saying so.
 The first usable tag is the first `-next` released after the workflow merges. The other build
 steps (`trinity-ios:sync-prebuilt`, the manifest checks) exist at older tags. The workflow has two
-jobs, split as `release.yml` splits `desktop-shell` from `sign-mac`, so the App Store Connect key
-never shares a runner with a full dependency install:
+jobs, split as `release.yml` splits `desktop-shell` from `sign-mac`, so no install script, Nx or
+renderer build runs on the runner that holds the App Store Connect key:
 
 - `renderer` has no environment and no secret. It builds the production renderer with
   `TRINITY_RELEASE_NOTES=required`, so the app bundles its What's New notes from the published
@@ -929,9 +931,10 @@ never shares a runner with a full dependency install:
   an App Store Connect API key. Keep those three commands in step with the Nx target.
 
   Code from `node_modules` still runs on that runner: Capacitor's CLI during the sync, and
-  Xcode builds the local Swift packages that point into `node_modules`. The split and the
-  late write keep a compromised dependency out of every process that runs before the key
-  exists, not out of the archive itself. The artifact is kept for 30 days because the
+  Xcode builds the local Swift packages that point into `node_modules`. The job still does a
+  full workspace install (without scripts), so the split and the late key write narrow the
+  exposure rather than remove it: a process left running by `cap sync` could read the key
+  once it exists, and the archive builds that code. The artifact is kept for 30 days because the
   environment's approval has no timer and the download fails once it expires.
 
 Only the `testflight` job reads these `release-mobile` secrets, and no other workflow references
