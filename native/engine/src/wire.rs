@@ -22,7 +22,8 @@ pub enum Inbound {
         args: Vec<Value>,
     },
     /// `open` with Blob arguments: `args` name each Blob as a [`BlobRefDto`], an index into
-    /// `bytes`. `bytes` is base64 only in this enum's JSON form.
+    /// `bytes`. `bytes` is base64 only in this enum's JSON form, which belongs to the test host's
+    /// carrier: a raw carrier builds the variant with raw bytes and must not send the JSON form.
     OpenBytes {
         id: u32,
         method: String,

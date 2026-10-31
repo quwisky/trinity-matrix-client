@@ -112,6 +112,8 @@ export async function startHomeserverProxy(
       const chunks: Buffer[] = [];
       res.once('close', () => (entry.gone = true));
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      // shortcut: a release() during an upload's body read leaves that upload held until dispose,
+      // upgrade when a spec releases while a body is still being read.
       req.once('end', () => {
         entry.body = Buffer.concat(chunks);
         held.push(entry);

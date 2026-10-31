@@ -280,7 +280,8 @@ methods! {
 }
 
 /// A member with Blob arguments: decodes its args and takes its Blobs. `finish` runs after it
-/// returns.
+/// returns, so a member must stay cold until polled or call `args.finish()?` before `detached`:
+/// `detached` spawns at call time, and a late `bad-args` would answer while the work still runs.
 pub type BytesMember = fn(Arc<Engine>, &mut Args<'_>) -> Result<Stream, Fault>;
 
 /// The members `openBytes` reaches, sorted by name, one per line.

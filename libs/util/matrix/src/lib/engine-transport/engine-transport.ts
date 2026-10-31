@@ -1,6 +1,7 @@
 import type { Observable } from 'rxjs';
 import type { Fault } from './rust-dto/Fault';
 
+export type { BlobRefDto } from './rust-dto/BlobRefDto';
 export type { Fault } from './rust-dto/Fault';
 export type { Frame } from './rust-dto/Frame';
 export type { Inbound } from './rust-dto/Inbound';

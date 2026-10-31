@@ -37,8 +37,9 @@ pub(crate) type Seen = Arc<StdMutex<Vec<(String, Option<String>)>>>;
 /// one's method and path and its `Authorization`. It names its versions for a client that
 /// asks, and any other request, such as the client's own background ones, gets a 404. A 3xx
 /// answer's body is the `location` it redirects to. An expected target ending in `*` matches
-/// any suffix, and status `0` accepts the request and holds the connection open with no answer. A connection that breaks off gets no answer
-/// and costs none, so the script goes on for the requests after it.
+/// any suffix, and status `0` accepts the request and holds the connection open with no answer. A
+/// connection that breaks off gets no answer and costs none, so the script goes on for the
+/// requests after it.
 pub(crate) fn scripted(answers: Vec<(&'static str, u16, Value)>) -> (String, Seen) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
