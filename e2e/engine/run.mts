@@ -43,6 +43,7 @@ export const RUST_LIBS = [
   'data-access-matrix-client',
   'data-access-identity',
   'data-access-contact-addresses',
+  'data-access-room-library',
 ] as const;
 
 export type ContractEngine = 'js-sdk' | 'rust';

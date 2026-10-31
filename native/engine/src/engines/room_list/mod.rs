@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub mod commands;
+pub mod invites;
 pub mod rows;
 pub mod settle;
+pub mod spaces;
 pub mod typing;
 
 const DTO: &str = "data-access/room-library/src/lib/rust-dto/";

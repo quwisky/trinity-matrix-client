@@ -167,6 +167,7 @@ jobs:
               'libs/.*/rust-dto/'
               'libs/.*\.rust\.spec\.ts$'
               'libs/util/matrix/src/lib/engine-transport/'
+              'libs/util/matrix/src/lib/vector-diff\.ts$'
               'libs/testing/src/lib/(engine-stdio-transport|rust-account)'
               'libs/testing/src/(index\.ts|lib/synapse-admin\.ts)$'
               '(vite\.base\.config|test-setup\.base)\.ts$'

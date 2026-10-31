@@ -22,7 +22,7 @@ export function testhostBinaryAvailable(): boolean {
 export class StdioTransport implements EngineTransport {
   private readonly streams = new Map<number, Subscriber<unknown>>();
   private nextId = 1;
-  /** Set once the host is gone or its output is unreadable; every later stream fails with it. */
+  /** Set once the host is gone, disposed or its output is unreadable; every later stream fails with it. */
   private dead: EngineFaultError | undefined;
 
   private constructor(readonly child: ChildProcessWithoutNullStreams) {
@@ -66,8 +66,17 @@ export class StdioTransport implements EngineTransport {
     });
   }
 
-  /** Ends the host's input and waits until it has exited. */
+  /**
+   * Ends the host's input and waits until it has exited. Streams still open are forgotten
+   * without a signal: disposing is deliberate, so their end is not a failure.
+   */
   async dispose(): Promise<void> {
+    this.dead ??= new EngineFaultError({
+      kind: 'internal',
+      code: 'testhost-exited',
+      diagnostic: 'the test host was disposed',
+    });
+    this.streams.clear();
     if (this.child.exitCode !== null || this.child.signalCode !== null) {
       return;
     }

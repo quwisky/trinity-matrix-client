@@ -2,6 +2,7 @@
 
 use std::{future::ready, sync::Arc};
 
+use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::{
     Client, Error, Room, RoomState,
     ruma::{
@@ -26,7 +27,8 @@ use matrix_sdk::{
         },
         events::{
             AnyInitialStateEvent, InitialStateEvent, marked_unread::MarkedUnreadEventContent,
-            room::encryption::RoomEncryptionEventContent, tag::TagInfo,
+            room::encryption::RoomEncryptionEventContent, space::parent::SpaceParentEventContent,
+            tag::TagInfo,
         },
         room::RoomType,
         serde::Raw,
@@ -35,9 +37,10 @@ use matrix_sdk::{
 use serde_json::{Map, Value, json};
 
 use super::{
-    CreateRoomRequestDto, ReceiptsDto, RoomIdDto, RoomKindDto, RoomTagDto,
+    CreateRoomRequestDto, ReceiptsDto, RoomIdDto, RoomKindDto, RoomTagDto, SpaceChildLinkInputDto,
     rows::membership_of,
     settle::{account_data_changes, room_changes, settle},
+    spaces::{child_content, write_child},
     typing::direct_map_in,
 };
 use crate::{
@@ -56,8 +59,14 @@ fn encrypted() -> Vec<Raw<AnyInitialStateEvent>> {
     vec![InitialStateEvent::with_empty_state_key(content).to_raw_any()]
 }
 
-/// The js adapter's `createRoomOrSpace`: an encrypted room, or a space, which is not encrypted.
-pub(crate) fn create_request(req: &CreateRoomRequestDto) -> create_room::v3::Request {
+/// The js adapter's `createRoomOrSpace`: an encrypted room, or a space, which is not encrypted. A
+/// parent space adds a canonical `m.space.parent` to the initial state, so the new room is never
+/// seen without it.
+pub(crate) fn create_request(
+    req: &CreateRoomRequestDto,
+    server: &ServerName,
+    parent: Option<&RoomId>,
+) -> create_room::v3::Request {
     let mut request = create_room::v3::Request::new();
     request.name = Some(req.name.trim().to_owned());
     request.topic = req
@@ -78,6 +87,12 @@ pub(crate) fn create_request(req: &CreateRoomRequestDto) -> create_room::v3::Req
             request.creation_content = Raw::new(&content).ok();
         }
         RoomKindDto::Room => request.initial_state = encrypted(),
+    }
+    if let Some(parent) = parent {
+        let mut content = SpaceParentEventContent::new(vec![server.to_owned()]);
+        content.canonical = true;
+        let event = InitialStateEvent::new(parent.to_owned(), content);
+        request.initial_state.push(event.to_raw_any());
     }
     request
 }
@@ -144,8 +159,8 @@ fn answer(room_id: &RoomId) -> RoomIdDto {
     }
 }
 
-/// Worst case about 55 s: the request (30 s) with up to ~5 s of `ruled` waits, a settle (15 s) and
-/// the delivery (5 s).
+/// Worst case about 110 s: the request (30 s) with up to ~5 s of `ruled` waits, a settle (15 s) and
+/// the delivery (5 s), and with a parent the same again for the child link.
 pub fn create_room(
     engine: Arc<Engine>,
     account_id: String,
@@ -156,12 +171,25 @@ pub fn create_room(
         account_id,
         request_failed,
         move |engine, rt| async move {
+            let server = me(&rt.client)?.server_name().to_owned();
+            let parent = request.parent_space_id.as_deref().map(RoomId::parse);
+            let parent = parent.transpose()?;
             let sent = rt
                 .client
-                .send(create_request(&request))
+                .send(create_request(&request, &server, parent.as_deref()))
                 .with_request_config(sent_once());
             let room_id = engine.ruled(&rt, sent).await?.room_id;
             show(&rt, &room_id, |state| state == Some(RoomState::Joined)).await;
+            if let Some(parent) = parent {
+                let link = SpaceChildLinkInputDto {
+                    via: vec![server.to_string()],
+                    suggested: true,
+                    order: String::new(),
+                };
+                let content = child_content(Some(&link));
+                write_child(&engine, &rt, &parent, room_id.as_str(), &content).await?;
+                rt.nudge(Some(&parent)).delivered().await;
+            }
             Ok(answer(&room_id))
         },
     ))
@@ -240,6 +268,8 @@ pub fn join(
     ))
 }
 
+/// Worst case about 100 s for an invite: the request (30 s), a settle (15 s), a second leave (30 s)
+/// or the forget (30 s), each with up to ~5 s of `ruled` waits, and the delivery (5 s).
 pub fn leave(engine: Arc<Engine>, account_id: String, room_id: String) -> Stream {
     reply(on_account(
         engine,
@@ -252,6 +282,26 @@ pub fn leave(engine: Arc<Engine>, account_id: String, room_id: String) -> Stream
                 .get_room(&room_id)
                 .filter(|room| listed(Some(room.state())))
             {
+                // The SDK's leave forgets an invite at once, and the sync that carries our own
+                // leave can then re-create the room as joined; forget it after that echo. With
+                // no echo (a stalled sync) or on M_FORBIDDEN, the SDK's leave marks it left.
+                Some(room) if room.state() == RoomState::Invited => {
+                    let request = leave_room::v3::Request::new(room_id.clone());
+                    let sent = rt.client.send(request).with_request_config(sent_once());
+                    match engine.ruled(&rt, sent).await {
+                        Ok(_) => show(&rt, &room_id, |state| !listed(state)).await,
+                        Err(err) if err.client_api_error_kind() == Some(&ErrorKind::Forbidden) => {}
+                        Err(err) => return Err(err),
+                    }
+                    if !listed(Some(room.state())) {
+                        if let Err(err) = engine.ruled(&rt, bounded(room.forget())).await {
+                            let kind = err.client_api_error_kind().map(ErrorKind::errcode);
+                            tracing::warn!(?kind, "forgetting a declined invite failed");
+                        }
+                    } else if !*rt.retired().borrow() {
+                        engine.ruled(&rt, bounded(room.leave())).await?
+                    }
+                }
                 Some(room) => engine.ruled(&rt, bounded(room.leave())).await?,
                 None => {
                     let request = leave_room::v3::Request::new(room_id.clone());
@@ -448,7 +498,7 @@ mod tests {
 
     use futures_util::StreamExt;
     use matrix_sdk::{
-        ruma::{event_id, room_id, user_id},
+        ruma::{event_id, room_id, server_name, user_id},
         timeout::timeout,
     };
     use serde_json::json;
@@ -482,7 +532,11 @@ mod tests {
     #[test]
     fn create_request_builds_a_room_and_a_space() {
         let encryption: Value = serde_json::from_str(ENCRYPTION).unwrap();
-        let room = create_request(&room_request(" x ", Some("  "), RoomKindDto::Room));
+        let room = create_request(
+            &room_request(" x ", Some("  "), RoomKindDto::Room),
+            server(),
+            None,
+        );
         assert_eq!(room.name.as_deref(), Some("x"));
         assert_eq!(room.topic, None);
         assert_eq!(room.visibility, Visibility::Private);
@@ -492,12 +546,29 @@ mod tests {
 
         let mut public = room_request("p", Some(" why "), RoomKindDto::Space);
         public.is_public = true;
-        let space = create_request(&public);
+        let space = create_request(&public, server(), None);
         assert_eq!(space.topic.as_deref(), Some("why"));
         assert_eq!(space.visibility, Visibility::Public);
         assert_eq!(space.preset, Some(RoomPreset::PublicChat));
         assert_eq!(json_of(&space.creation_content), json!({"type": "m.space"}));
         assert!(space.initial_state.is_empty());
+    }
+
+    fn server() -> &'static ServerName {
+        server_name!("x")
+    }
+
+    #[test]
+    fn create_request_puts_a_canonical_parent_in_initial_state() {
+        let encryption: Value = serde_json::from_str(ENCRYPTION).unwrap();
+        let child = room_request("c", None, RoomKindDto::Room);
+        let parent = json!({
+            "type": "m.space.parent",
+            "state_key": "!s:x",
+            "content": {"via": ["x"], "canonical": true},
+        });
+        let request = create_request(&child, server(), Some(room_id!("!s:x")));
+        assert_eq!(json_of(&request.initial_state), json!([encryption, parent]));
     }
 
     #[test]
@@ -604,6 +675,90 @@ mod tests {
             .map(|(target, _)| target)
             .collect();
         assert_eq!(seen, [leave, invite]);
+    }
+
+    fn invited() -> Value {
+        let member = json!({
+            "type": "m.room.member", "state_key": "@a:b", "sender": "@b:b",
+            "content": {"membership": "invite"},
+        });
+        json!({"rooms": {"invite": {"!r:b": {"invite_state": {"events": [member]}}}}})
+    }
+
+    fn declined_by(engine: &Arc<Engine>) -> tokio::task::JoinHandle<Value> {
+        let args = vec![json!("@a:b"), json!("!r:b")];
+        tokio::spawn(answer_of(dispatch(engine, "roomList.leave", args).unwrap()))
+    }
+
+    #[tokio::test]
+    async fn declining_an_invite_forgets_it_only_after_the_sync_echo_shows_it_left() {
+        let leave = "POST /_matrix/client/v3/rooms/!r:b/leave";
+        let forget = "POST /_matrix/client/v3/rooms/!r:b/forget";
+        let left = json!({"rooms": {"leave": {"!r:b": {}}}});
+        let (base, seen) = scripted(vec![
+            sync_answer(0, invited()),
+            (leave, 200, json!({})),
+            sync_answer(1, left),
+            (forget, 200, json!({})),
+        ]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        let client = engine.account("@a:b").unwrap().client.clone();
+        sync(&client).await;
+        let declined = declined_by(&engine);
+        timeout(until(&seen, 2), Duration::from_secs(5))
+            .await
+            .unwrap();
+        sleep(Duration::from_millis(200)).await;
+        assert_eq!(targets(&seen).len(), 2, "no forget before the echo");
+        sync(&client).await;
+        assert_eq!(declined.await.unwrap(), json!({"ok": true, "value": null}));
+        assert!(client.get_room(room_id!("!r:b")).is_none());
+        let seen = targets(&seen);
+        assert!(seen[2].starts_with("GET /_matrix/client/v3/sync"));
+        assert_eq!([&seen[1], &seen[3]], [leave, forget]);
+    }
+
+    #[tokio::test]
+    async fn m_forbidden_on_an_invite_still_counts_as_left() {
+        let leave = "POST /_matrix/client/v3/rooms/!r:b/leave";
+        let forget = "POST /_matrix/client/v3/rooms/!r:b/forget";
+        let refused = json!({"errcode": "M_FORBIDDEN", "error": "no"});
+        let (base, seen) = scripted(vec![
+            sync_answer(0, invited()),
+            (leave, 403, refused.clone()),
+            (leave, 403, refused),
+            (forget, 200, json!({})),
+        ]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        let client = engine.account("@a:b").unwrap().client.clone();
+        sync(&client).await;
+        let answer = declined_by(&engine).await.unwrap();
+        assert_eq!(answer, json!({"ok": true, "value": null}));
+        assert!(client.get_room(room_id!("!r:b")).is_none());
+        assert_eq!(targets(&seen)[1..], [leave, leave, forget]);
+    }
+
+    // Real time: a paused clock would also cut the scripted server's replies short.
+    #[tokio::test]
+    async fn an_invite_with_no_sync_echo_is_left_locally_after_the_settle_limit() {
+        let leave = "POST /_matrix/client/v3/rooms/!r:b/leave";
+        let forget = "POST /_matrix/client/v3/rooms/!r:b/forget";
+        let (base, seen) = scripted(vec![
+            sync_answer(0, invited()),
+            (leave, 200, json!({})),
+            (leave, 200, json!({})),
+            (forget, 200, json!({})),
+        ]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        let client = engine.account("@a:b").unwrap().client.clone();
+        sync(&client).await;
+        let answer = declined_by(&engine).await.unwrap();
+        assert_eq!(answer, json!({"ok": true, "value": null}));
+        assert!(client.get_room(room_id!("!r:b")).is_none());
+        assert_eq!(targets(&seen)[1..], [leave, leave, forget]);
     }
 
     async fn leave_of(engine: &Arc<Engine>) -> Value {
