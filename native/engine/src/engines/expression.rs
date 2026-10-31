@@ -7,11 +7,11 @@ use std::{collections::BTreeMap, pin::pin, sync::Arc, time::Duration};
 
 use async_stream::stream;
 use futures_util::{
-    FutureExt, Stream, StreamExt,
-    future::{Either, join, select},
+    Stream, StreamExt,
+    future::{Either, select},
 };
 use matrix_sdk::{
-    BoxFuture, Client, Error, RoomDisplayName, RoomState,
+    Client, Error, RoomDisplayName, RoomState,
     ruma::{
         OwnedRoomId, RoomAliasId, RoomId, RoomOrAliasId,
         api::client::{
@@ -30,7 +30,7 @@ use ts_rs::TS;
 use super::{
     account_data,
     member::{account_stream, bounded, on_account, sent_once},
-    room_state::{self, MIN_GAP, RETRY_GAP, read_state},
+    room_state::{self, follow_state, read_state},
     settle::{account_data_changes_of, rooms_changes},
 };
 use crate::{
@@ -335,25 +335,14 @@ fn pack_event(event: &Value) -> Value {
     json!({"type": event["type"], "state_key": key, "content": content})
 }
 
-/// What ended a wait between reads.
-enum Wake {
-    Ended,
-    Tick,
-    Retry,
-}
-
-/// The store-only rows, then rows after each read. The first item waits at most `LEVELS_WAIT` in
-/// all for rooms joined but without stored power levels, woken by `changes`; later ticks read
-/// without waiting. Reads are at least `MIN_GAP` apart. A failed read keeps the last events and
-/// still refreshes the store's fields; until the server answers again, ticks read only the store
-/// and the server is asked after `RETRY_GAP` from the failure, whatever the ticks do. The stream
-/// ends with `changes`.
-// shortcut: this is `follow_state` with rows that a failed read still refreshes, and ticks read
-// only the store during back-off; fold the two when another stream needs the same.
+/// The store-only rows, then rows after each read (`follow_state`). The first item waits at most
+/// `LEVELS_WAIT` in all for rooms joined but without stored power levels, woken by `changes`;
+/// later ticks read without waiting. A failed read keeps the last events and still refreshes the
+/// store's fields.
 fn pack_stream<L, LF, E, EF>(
     ids: Vec<String>,
     mut locals: L,
-    mut events: E,
+    events: E,
     mut changes: impl Stream<Item = ()> + Unpin,
 ) -> impl Stream<Item = Vec<PackRoomDto>>
 where
@@ -375,54 +364,11 @@ where
                 break locals().await;
             }
         };
-        let mut last = pack_rows(&ids, &first, &Events::new());
-        yield last.clone();
-        let mut kept = Events::new();
-        let mut retry: Option<BoxFuture<'static, ()>> = None;
-        let mut skip = false;
-        loop {
-            let store = locals().await;
-            if !skip {
-                match events().await {
-                    Ok(fresh) => {
-                        kept = fresh;
-                        retry = None;
-                    }
-                    Err(err) => {
-                        tracing::warn!(kind = ?classify(&err).0, "a pack room read failed");
-                        retry = Some(Box::pin(sleep(RETRY_GAP)));
-                    }
-                }
-            }
-            let now = pack_rows(&ids, &store, &kept);
-            if now != last {
-                last = now.clone();
-                yield now;
-            }
-            let wake = async {
-                match retry.as_mut() {
-                    None => changes.next().await.map_or(Wake::Ended, |()| Wake::Tick),
-                    // The timer goes first: a tick that is ready at once must not starve it.
-                    Some(timer) => match select(timer, changes.next()).await {
-                        Either::Left(_) => Wake::Retry,
-                        Either::Right((None, _)) => Wake::Ended,
-                        Either::Right((Some(()), _)) => Wake::Tick,
-                    },
-                }
-            };
-            match join(sleep(MIN_GAP), wake).await.1 {
-                Wake::Ended => return,
-                Wake::Tick => skip = retry.is_some(),
-                Wake::Retry => {
-                    retry = None;
-                    skip = false;
-                }
-            }
-            while let Some(tick) = changes.next().now_or_never() {
-                if tick.is_none() {
-                    return;
-                }
-            }
+        let first_rows = pack_rows(&ids, &first, &Events::new());
+        let show = |store: &Vec<Option<Local>>, kept: &Events| pack_rows(&ids, store, kept);
+        let mut rows = pin!(follow_state(first_rows, locals, events, show, changes));
+        while let Some(now) = rows.next().await {
+            yield now;
         }
     }
 }
@@ -975,56 +921,6 @@ mod pack_tests {
         stream::poll_fn(move |cx| rx.poll_recv(cx))
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn a_failed_first_read_is_tried_again_after_30_s() {
-        let reads = Arc::new(AtomicUsize::new(0));
-        let n = Arc::clone(&reads);
-        let events = move || {
-            let first = n.fetch_add(1, Ordering::SeqCst) == 0;
-            let seen = Events::from([(owned_room_id!("!r:x"), vec![pack("")])]);
-            async move {
-                if first {
-                    Err(Error::UnknownError("x".into()))
-                } else {
-                    Ok(seen)
-                }
-            }
-        };
-        let locals = || async { vec![local(true, None, true)] };
-        let (_tx, rx) = mpsc::unbounded_channel();
-        let mut rows = Box::pin(pack_stream(ids(&["!r:x"]), locals, events, changes_of(rx)));
-        assert!(rows.next().await.unwrap()[0].pack_events.is_empty());
-        let later = timeout(rows.next(), Duration::from_secs(31)).await;
-        assert_eq!(later.unwrap().unwrap()[0].pack_events.len(), 1);
-        assert_eq!(reads.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_busy_stream_backs_off_after_a_failed_read() {
-        let reads = Arc::new(AtomicUsize::new(0));
-        let n = Arc::clone(&reads);
-        let events = move || {
-            n.fetch_add(1, Ordering::SeqCst);
-            async { Err(Error::UnknownError("x".into())) }
-        };
-        let locals = || async { vec![local(true, None, true)] };
-        let (tx, rx) = mpsc::unbounded_channel();
-        let mut rows = Box::pin(pack_stream(ids(&["!r:x"]), locals, events, changes_of(rx)));
-        rows.next().await.unwrap();
-        let ticks = async {
-            for second in 1..=35 {
-                tx.send(()).unwrap();
-                matrix_sdk::sleep::sleep(Duration::from_secs(1)).await;
-                let seen = reads.load(Ordering::SeqCst);
-                let due = if second <= 30 { 1 } else { 2 };
-                assert_eq!(seen, due, "at {second} s");
-            }
-        };
-        let (_, quiet) =
-            futures_util::future::join(ticks, timeout(rows.next(), Duration::from_secs(35))).await;
-        assert!(quiet.is_err());
-    }
-
     /// Scripted answers of the server read, `None` for a failure.
     fn script(
         answers: Vec<Option<Events>>,
@@ -1061,26 +957,6 @@ mod pack_tests {
             futures_util::future::join(tick, timeout(rows.next(), Duration::from_secs(40))).await;
         assert_eq!(row.unwrap().unwrap()[0].pack_events.len(), 1);
         assert_eq!(reads.load(Ordering::SeqCst), 3);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_tick_after_a_recovery_reads_the_server() {
-        let answers = vec![None, Some(Events::new()), Some(with_pack())];
-        let (reads, events) = script(answers);
-        let locals = || async { vec![local(true, None, true)] };
-        let (tx, rx) = mpsc::unbounded_channel();
-        let mut rows = Box::pin(pack_stream(ids(&["!r:x"]), locals, events, changes_of(rx)));
-        rows.next().await.unwrap();
-        let tick = async {
-            matrix_sdk::sleep::sleep(Duration::from_secs(35)).await;
-            tx.send(()).unwrap();
-        };
-        let (_, row) =
-            futures_util::future::join(tick, timeout(rows.next(), Duration::from_secs(40))).await;
-        assert_eq!(row.unwrap().unwrap()[0].pack_events.len(), 1);
-        // Past the 60 s a spurious retry would have read at.
-        assert!(timeout(rows.next(), Duration::from_secs(40)).await.is_err());
-        assert_eq!(reads.load(Ordering::SeqCst), 3, "no read at 60 s either");
     }
 
     #[tokio::test(start_paused = true)]

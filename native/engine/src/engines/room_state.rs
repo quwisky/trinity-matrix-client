@@ -4,14 +4,17 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use futures_util::{FutureExt, Stream, StreamExt, future::join};
+use futures_util::{
+    FutureExt, Stream, StreamExt,
+    future::{Either, join, select},
+};
 use matrix_sdk::{
-    Client, Error,
+    BoxFuture, Client, Error,
     ruma::{
         OwnedRoomId, RoomId,
         api::{
             client::{
-                state::get_state_event_for_key,
+                state::get_state_event_for_key::{self, v3::StateEventFormat},
                 sync::sync_events::v5::{self, request::RoomSubscription},
             },
             error::ErrorKind,
@@ -88,38 +91,76 @@ fn state_request(rooms: &[OwnedRoomId], types: &[StateEventType]) -> v5::Request
     request
 }
 
-/// `first` at once, with no network. Then a read and an item if it changed, then a wait for a
-/// tick and at least 1 s, or 30 s after a failed read. Ticks during a read or a wait count as
-/// one. The stream ends when `changes` does, noticed after a wait or a failed read's wait.
-#[cfg_attr(not(test), expect(dead_code, reason = "W4 calls it"))]
-pub(crate) fn follow_state<T, F, Fut>(
+/// What ended a wait between reads.
+enum Wake {
+    Ended,
+    Tick,
+    Retry,
+}
+
+/// `first` at once, with no network, then an item whenever `show` of the store and the last read
+/// differs from the last item. Each round reads the store, then the server (`R::default()` until it
+/// answers) and waits for a tick and at least 1 s. A failed read keeps the last answer: until the
+/// server is asked again, `RETRY_GAP` after the failure whatever the ticks do, ticks read only the
+/// store, so what it says still shows. Ticks during a read or a wait count as one. The stream ends
+/// when `changes` does.
+pub(crate) fn follow_state<T, S, R, SF, SFut, RF, RFut>(
     first: T,
-    mut read: F,
+    mut store: SF,
+    mut read: RF,
+    show: impl Fn(&S, &R) -> T,
     mut changes: impl Stream<Item = ()> + Unpin,
 ) -> impl Stream<Item = T>
 where
     T: Clone + PartialEq,
-    F: FnMut() -> Fut,
-    Fut: Future<Output = Result<T, Error>>,
+    R: Default,
+    SF: FnMut() -> SFut,
+    SFut: Future<Output = S>,
+    RF: FnMut() -> RFut,
+    RFut: Future<Output = Result<R, Error>>,
 {
     async_stream::stream! {
         let mut last = first.clone();
         yield first;
+        let mut kept = R::default();
+        let mut retry: Option<BoxFuture<'static, ()>> = None;
+        let mut skip = false;
         loop {
-            match read().await {
-                Ok(now) => {
-                    if now != last {
-                        last = now.clone();
-                        yield now;
+            let now_store = store().await;
+            if !skip {
+                match read().await {
+                    Ok(fresh) => {
+                        kept = fresh;
+                        retry = None;
                     }
-                    let (_, tick) = join(sleep(MIN_GAP), changes.next()).await;
-                    if tick.is_none() {
-                        return;
+                    Err(err) => {
+                        tracing::warn!(kind = ?classify(&err).0, "a room state read failed");
+                        retry = Some(Box::pin(sleep(RETRY_GAP)));
                     }
                 }
-                Err(err) => {
-                    tracing::warn!(kind = ?classify(&err).0, "a room state read failed");
-                    sleep(RETRY_GAP).await;
+            }
+            let now = show(&now_store, &kept);
+            if now != last {
+                last = now.clone();
+                yield now;
+            }
+            let wake = async {
+                match retry.as_mut() {
+                    None => changes.next().await.map_or(Wake::Ended, |()| Wake::Tick),
+                    // The timer goes first: a tick that is ready at once must not starve it.
+                    Some(timer) => match select(timer, changes.next()).await {
+                        Either::Left(_) => Wake::Retry,
+                        Either::Right((None, _)) => Wake::Ended,
+                        Either::Right((Some(()), _)) => Wake::Tick,
+                    },
+                }
+            };
+            match join(sleep(MIN_GAP), wake).await.1 {
+                Wake::Ended => return,
+                Wake::Tick => skip = retry.is_some(),
+                Wake::Retry => {
+                    retry = None;
+                    skip = false;
                 }
             }
             while let Some(tick) = changes.next().now_or_never() {
@@ -139,11 +180,39 @@ pub(crate) async fn fetch(
     event_type: &StateEventType,
     state_key: &str,
 ) -> Result<Option<Value>, Error> {
-    let request = get_state_event_for_key::v3::Request::new(
+    get(
+        client,
+        room,
+        event_type,
+        state_key,
+        StateEventFormat::Content,
+    )
+    .await
+}
+
+/// [`fetch`] of the whole event, with its `event_id` and `sender`.
+pub(crate) async fn fetch_event(
+    client: &Client,
+    room: &RoomId,
+    event_type: &StateEventType,
+    state_key: &str,
+) -> Result<Option<Value>, Error> {
+    get(client, room, event_type, state_key, StateEventFormat::Event).await
+}
+
+async fn get(
+    client: &Client,
+    room: &RoomId,
+    event_type: &StateEventType,
+    state_key: &str,
+    format: StateEventFormat,
+) -> Result<Option<Value>, Error> {
+    let mut request = get_state_event_for_key::v3::Request::new(
         room.to_owned(),
         event_type.clone(),
         state_key.to_owned(),
     );
+    request.format = format;
     match client.send(request).with_request_config(sent_once()).await {
         Ok(response) => Ok(Some(serde_json::from_str(response.event_or_content.get())?)),
         Err(err) if err.client_api_error_kind() == Some(&ErrorKind::NotFound) => Ok(None),
@@ -153,14 +222,17 @@ pub(crate) async fn fetch(
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, collections::VecDeque};
+    use std::{
+        cell::{Cell, RefCell},
+        collections::VecDeque,
+    };
 
     use futures_util::stream;
     use matrix_sdk::ruma::{owned_room_id, room_id};
     use serde_json::json;
     use tokio::{
         sync::mpsc,
-        time::{Instant, timeout},
+        time::{Instant, sleep_until, timeout, timeout_at},
     };
 
     use super::*;
@@ -326,6 +398,10 @@ mod tests {
             next.expect("a read too many")
                 .map_err(|()| Error::UnknownError("failed".into()))
         }
+
+        fn secs(&self) -> Vec<u64> {
+            self.at.borrow().iter().map(Duration::as_secs).collect()
+        }
     }
 
     fn ticks() -> (mpsc::UnboundedSender<()>, impl Stream<Item = ()> + Unpin) {
@@ -333,26 +409,61 @@ mod tests {
         (tx, stream::poll_fn(move |cx| rx.poll_recv(cx)))
     }
 
+    /// What a stream shows: the store's value and the last read's.
+    type Shown = (u32, u32);
+
+    /// A stream over a store `level` that a test sets and a scripted server read.
+    fn follow<'a>(
+        reads: &'a Reads,
+        level: &'a Cell<u32>,
+        changes: impl Stream<Item = ()> + Unpin + 'a,
+    ) -> impl Stream<Item = Shown> + 'a {
+        let store = || std::future::ready(level.get());
+        follow_state((0, 0), store, || reads.read(), |s, r| (*s, *r), changes)
+    }
+
+    /// The items that arrive within `secs` of `start`, each with its time.
+    async fn within(
+        items: &mut (impl Stream<Item = Shown> + Unpin),
+        start: Instant,
+        secs: u64,
+    ) -> Vec<(u64, Shown)> {
+        let end = start + Duration::from_secs(secs);
+        let mut got = Vec::new();
+        while let Ok(Some(shown)) = timeout_at(end, items.next()).await {
+            got.push((start.elapsed().as_secs(), shown));
+        }
+        got
+    }
+
+    /// Sends a tick at each of `secs` from `start`.
+    async fn tick_at(tx: &mpsc::UnboundedSender<()>, start: Instant, secs: &[f64]) {
+        for at in secs {
+            sleep_until(start + Duration::from_secs_f64(*at)).await;
+            tx.send(()).unwrap();
+        }
+    }
+
     #[tokio::test(start_paused = true)]
     async fn first_arrives_with_no_read() {
-        let reads = Reads::new(&[]);
-        let mut items = Box::pin(follow_state(1, || reads.read(), stream::pending()));
-        assert_eq!(items.next().await, Some(1));
+        let (reads, level) = (Reads::new(&[]), Cell::new(0));
+        let mut items = Box::pin(follow(&reads, &level, stream::pending()));
+        assert_eq!(items.next().await, Some((0, 0)));
         assert!(reads.at.borrow().is_empty());
     }
 
     #[tokio::test(start_paused = true)]
     async fn a_burst_of_ticks_reads_at_most_once_a_second() {
-        let reads = Reads::new(&[Ok(1), Ok(2), Ok(3)]);
+        let (reads, level) = (Reads::new(&[Ok(1), Ok(2), Ok(3)]), Cell::new(0));
         let (tx, changes) = ticks();
-        let mut items = Box::pin(follow_state(0, || reads.read(), changes));
-        assert_eq!(items.next().await, Some(0));
-        assert_eq!(items.next().await, Some(1));
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        assert_eq!(items.next().await, Some((0, 0)));
+        assert_eq!(items.next().await, Some((0, 1)));
         for _ in 0..10 {
             tx.send(()).unwrap();
         }
         let burst = Instant::now();
-        assert_eq!(items.next().await, Some(2));
+        assert_eq!(items.next().await, Some((0, 2)));
         assert!(burst.elapsed() >= MIN_GAP);
         // The ten ticks were one: the next read waits for a new tick.
         assert!(
@@ -367,30 +478,34 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn an_unchanged_read_emits_nothing() {
-        let reads = Reads::new(&[Ok(5), Ok(6)]);
+        let (reads, level) = (Reads::new(&[Ok(0), Ok(0), Ok(6)]), Cell::new(0));
         let (tx, changes) = ticks();
-        let mut items = Box::pin(follow_state(5, || reads.read(), changes));
-        assert_eq!(items.next().await, Some(5));
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        assert_eq!(items.next().await, Some((0, 0)));
         let mut next = Box::pin(items.next());
         assert!(
             next.as_mut().now_or_never().is_none(),
-            "the same 5 is no item"
+            "the same 0 is no item"
         );
         assert_eq!(reads.at.borrow().len(), 1);
         tx.send(()).unwrap();
-        assert_eq!(next.await, Some(6));
+        let quiet = timeout(Duration::from_secs(2), next.as_mut()).await;
+        assert!(quiet.is_err(), "nor is the second");
         assert_eq!(reads.at.borrow().len(), 2);
+        tx.send(()).unwrap();
+        assert_eq!(next.await, Some((0, 6)));
+        assert_eq!(reads.at.borrow().len(), 3);
     }
 
     #[tokio::test(start_paused = true)]
     async fn a_failed_read_keeps_the_last_and_retries_after_30_s() {
-        let reads = Reads::new(&[Err(()), Ok(1)]);
+        let (reads, level) = (Reads::new(&[Err(()), Ok(1)]), Cell::new(0));
         let (tx, changes) = ticks();
-        let mut items = Box::pin(follow_state(0, || reads.read(), changes));
-        assert_eq!(items.next().await, Some(0));
-        // A tick that arrives during the wait is not a reason for another read.
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        assert_eq!(items.next().await, Some((0, 0)));
+        // A tick during the wait is no reason for another read.
         tx.send(()).unwrap();
-        assert_eq!(items.next().await, Some(1));
+        assert_eq!(items.next().await, Some((0, 1)));
         let at = reads.at.borrow().clone();
         assert_eq!(at, [Duration::ZERO, RETRY_GAP]);
         assert!(
@@ -403,10 +518,10 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn the_stream_ends_with_changes_after_a_failed_read() {
-        let reads = Reads::new(&[Err(())]);
+        let (reads, level) = (Reads::new(&[Err(())]), Cell::new(0));
         let (tx, changes) = ticks();
-        let mut items = Box::pin(follow_state(0, || reads.read(), changes));
-        assert_eq!(items.next().await, Some(0));
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        assert_eq!(items.next().await, Some((0, 0)));
         drop(tx);
         assert_eq!(items.next().await, None);
     }
@@ -423,11 +538,95 @@ mod tests {
             }
             async move { Ok::<_, Error>(n) }
         };
-        let mut items = Box::pin(follow_state(0, read, changes));
+        let store = || std::future::ready(());
+        let mut items = Box::pin(follow_state(0, store, read, |(), n| *n, changes));
         assert_eq!(items.next().await, Some(0));
         assert_eq!(items.next().await, Some(1));
         let start = Instant::now();
         assert_eq!(items.next().await, Some(2));
         assert_eq!(start.elapsed(), MIN_GAP, "the tick was waiting");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_read_is_retried_by_a_stream_that_started_healthy() {
+        let answers = [Ok(1), Err(()), Ok(2)];
+        let (reads, level) = (Reads::new(&answers), Cell::new(0));
+        let (tx, changes) = ticks();
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        let start = Instant::now();
+        let ticking = tick_at(&tx, start, &[5.0]);
+        let got = futures_util::future::join(ticking, within(&mut items, start, 100))
+            .await
+            .1;
+        assert_eq!(got, [(0, (0, 0)), (0, (0, 1)), (35, (0, 2))]);
+        assert_eq!(reads.secs(), [0, 5, 35], "no read after the retry");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_tick_after_a_recovery_reads_the_server() {
+        let (reads, level) = (Reads::new(&[Err(()), Ok(1), Ok(2)]), Cell::new(0));
+        let (tx, changes) = ticks();
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        let start = Instant::now();
+        let ticking = tick_at(&tx, start, &[35.0]);
+        let got = futures_util::future::join(ticking, within(&mut items, start, 100))
+            .await
+            .1;
+        assert_eq!(got, [(0, (0, 0)), (30, (0, 1)), (35, (0, 2))]);
+        assert_eq!(reads.secs(), [0, 30, 35], "no read at 60 s either");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn steady_ticks_do_not_starve_the_retry() {
+        let (reads, level) = (Reads::new(&[Err(()), Ok(1)]), Cell::new(0));
+        let (tx, changes) = ticks();
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        let start = Instant::now();
+        let every_second: Vec<f64> = (1..=29).map(f64::from).collect();
+        let ticking = tick_at(&tx, start, &every_second);
+        let got = futures_util::future::join(ticking, within(&mut items, start, 40))
+            .await
+            .1;
+        assert_eq!(got, [(0, (0, 0)), (30, (0, 1))]);
+        assert_eq!(reads.secs(), [0, 30], "no read between, none after");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_tick_late_in_the_gap_delays_the_retry_by_less_than_a_second() {
+        let (reads, level) = (Reads::new(&[Err(()), Ok(1)]), Cell::new(0));
+        let (tx, changes) = ticks();
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        let start = Instant::now();
+        let ticking = tick_at(&tx, start, &[28.5, 29.5, 30.0]);
+        futures_util::future::join(ticking, within(&mut items, start, 40)).await;
+        let retry = reads.at.borrow()[1];
+        assert!(
+            retry >= RETRY_GAP && retry <= RETRY_GAP + MIN_GAP,
+            "{retry:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_read_still_shows_what_the_store_says() {
+        let (reads, level) = (Reads::new(&[Ok(1), Err(()), Ok(2)]), Cell::new(0));
+        let (tx, changes) = ticks();
+        let mut items = Box::pin(follow(&reads, &level, changes));
+        let start = Instant::now();
+        let change = async {
+            tick_at(&tx, start, &[5.0]).await;
+            sleep_until(start + Duration::from_secs(7)).await;
+            level.set(7);
+            tick_at(&tx, start, &[10.0]).await;
+        };
+        let got = futures_util::future::join(change, within(&mut items, start, 60))
+            .await
+            .1;
+        let want = [(0, (0, 0)), (0, (0, 1)), (10, (7, 1)), (35, (7, 2))];
+        assert_eq!(got, want);
+        assert_eq!(
+            reads.secs(),
+            [0, 5, 35],
+            "the tick at 10 s read only the store"
+        );
     }
 }

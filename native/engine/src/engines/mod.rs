@@ -11,5 +11,6 @@ pub mod identity;
 pub mod member;
 pub mod room_list;
 pub mod room_state;
+pub mod room_widget;
 pub mod session;
 pub mod settle;

@@ -9,7 +9,10 @@ use serde_json::Value;
 
 use crate::{
     accounts::Engine,
-    engines::{contact_addresses, discovery, expression, homeserver, identity, room_list, session},
+    engines::{
+        contact_addresses, discovery, expression, homeserver, identity, room_list, room_widget,
+        session,
+    },
     wire::{BlobRefDto, Fault, FaultCode},
 };
 
@@ -268,6 +271,18 @@ methods! {
     "roomList.roomsInCommon" => room_list::invites::rooms_in_common(
         account_id: String,
         user_id: String,
+    ),
+    "roomWidget.roomWidgets" => room_widget::room_widgets(account_id: String, room_id: String),
+    "roomWidget.putRoomWidget" => room_widget::put_room_widget(
+        account_id: String,
+        room_id: String,
+        content: room_widget::RoomWidgetStateContentDto,
+    ),
+    "roomWidget.removeRoomWidget" => room_widget::remove_room_widget(
+        account_id: String,
+        room_id: String,
+        widget_id: String,
+        expected_event_id: String,
     ),
     "session.session" => session::session(),
     "session.restorePersisted" => session::restore_persisted(
