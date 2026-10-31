@@ -205,7 +205,7 @@ export function engineFailureMessage(failure: EngineFailure): string {
     case 'media-unavailable':
       return 'This media is unavailable.';
     case 'too-large':
-      return 'This file is too large to upload.';
+      return 'This file is too large.';
     case 'conversation-unavailable':
       return 'This conversation is unavailable.';
     case 'room-unavailable':

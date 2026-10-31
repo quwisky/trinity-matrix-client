@@ -196,7 +196,7 @@ describe('engineFailureMessage', () => {
     ],
     ['state-key-taken', 'That identifier is already in use.'],
     ['media-unavailable', 'This media is unavailable.'],
-    ['too-large', 'This file is too large to upload.'],
+    ['too-large', 'This file is too large.'],
     ['conversation-unavailable', 'This conversation is unavailable.'],
     ['room-unavailable', 'This room is unavailable.'],
     ['already-encrypted', 'This room is already encrypted.'],

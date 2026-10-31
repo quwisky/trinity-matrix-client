@@ -114,7 +114,8 @@ export interface MediaEngine {
   /**
    * Command: a fresh URL for the request's bytes on every subscription, minted only while
    * subscribed. Fails `account-not-live`, `media-unavailable` (no source, or a failed hash
-   * check) or `request-failed`.
+   * check), `too-large` (over what the engine will hold; not retried, and the matrix-js-sdk
+   * adapter holds no such limit) or `request-failed`.
    */
   content(
     accountId: string,

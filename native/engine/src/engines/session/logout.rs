@@ -261,6 +261,11 @@ impl RawToken {
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
+
+    #[cfg(test)]
+    pub(crate) fn for_tests(token: &str) -> Self {
+        Self(token.to_owned())
+    }
 }
 
 impl SessionState {
@@ -496,18 +501,21 @@ impl Engine {
     }
 }
 
-/// A GET with the client's token, outside the SDK's token handling: on an `M_UNKNOWN_TOKEN`
+/// A request with the client's token, outside the SDK's token handling: on an `M_UNKNOWN_TOKEN`
 /// from a refreshable session it refreshes once through the SDK, whose lock joins a refresh
-/// already in flight, and retries once the rotation is delivered. A refused refresh keeps the
+/// already in flight, and sends again once the rotation is delivered. A refused refresh keeps the
 /// dead token's answer; any other refresh failure is returned, and is no token death.
-pub(crate) async fn get_with_refresh(
+async fn with_refresh<T, Fut>(
     engine: &Engine,
     client: &Client,
     refreshable: bool,
-    url: Url,
-    timeout: Duration,
-) -> Result<Bytes, Error> {
-    match get(engine, client, url.clone(), timeout).await {
+    send: impl Fn(Option<RawToken>) -> Fut,
+) -> Result<T, Error>
+where
+    Fut: Future<Output = Result<T, Error>>,
+{
+    let token = || client.access_token().map(RawToken);
+    match send(token()).await {
         Err(err) if refreshable && unknown_token(&err).is_some() => {
             match client.refresh_access_token().await {
                 Ok(()) => {}
@@ -517,7 +525,7 @@ pub(crate) async fn get_with_refresh(
             if let Some(account_id) = client.user_id() {
                 engine.rotation_of(account_id.as_str()).delivered().await;
             }
-            get(engine, client, url, timeout).await
+            send(token()).await
         }
         answer => answer,
     }
@@ -526,11 +534,10 @@ pub(crate) async fn get_with_refresh(
 /// The body of a 2xx answer, or the error the SDK would have made of the answer.
 async fn get(
     engine: &Engine,
-    client: &Client,
+    token: Option<RawToken>,
     url: Url,
     timeout: Duration,
 ) -> Result<Bytes, Error> {
-    let token = client.access_token().map(RawToken);
     let (status, body) = engine.raw_get(url, token.as_ref(), timeout).await?;
     if !status.is_success() {
         return Err(http_error_from_response(status, &body).into());
@@ -538,15 +545,17 @@ async fn get(
     Ok(body)
 }
 
-/// [`get_with_refresh`] with a live account's client; a failure meets the token-death rule
-/// before it is returned. Its own refresh never broadcasts, so no broadcast is awaited.
-pub(crate) async fn raw_get(
+/// [`with_refresh`] with a live account's client; a failure meets the token-death rule before it
+/// is returned. Its own refresh never broadcasts, so no broadcast is awaited.
+pub(crate) async fn raw_request<T, Fut>(
     engine: &Arc<Engine>,
     rt: &AccountRuntime,
-    url: Url,
-    timeout: Duration,
-) -> Result<Bytes, Error> {
-    let answer = get_with_refresh(engine, &rt.client, rt.refreshable, url, timeout).await;
+    send: impl Fn(Option<RawToken>) -> Fut,
+) -> Result<T, Error>
+where
+    Fut: Future<Output = Result<T, Error>>,
+{
+    let answer = with_refresh(engine, &rt.client, rt.refreshable, send).await;
     let died = answer
         .as_ref()
         .err()
@@ -555,6 +564,16 @@ pub(crate) async fn raw_get(
         barrier.delivered().await;
     }
     answer
+}
+
+/// A GET through [`raw_request`].
+pub(crate) async fn raw_get(
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
+    url: Url,
+    timeout: Duration,
+) -> Result<Bytes, Error> {
+    raw_request(engine, rt, |token| get(engine, token, url.clone(), timeout)).await
 }
 
 /// The SDK's reload callback, which runs only under the cross-process lock, which is off.
@@ -743,8 +762,6 @@ impl Drop for Hold {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex as StdMutex;
-
     use futures_util::{FutureExt, StreamExt};
     use matrix_sdk::{
         SessionMeta,
@@ -767,8 +784,8 @@ mod tests {
         engines::session::reads::account_status,
         failure::{FailureCode, FailureKind, RefreshCause, http_error_from_response},
         testing::{
-            WHOAMI, builder_on, default_client, engine_in, live, password, requests, scripted,
-            session,
+            WHOAMI, builder_on, default_client, engine_in, live, password, record, requests,
+            scripted, session,
         },
     };
 
@@ -943,7 +960,10 @@ mod tests {
     async fn fetched(base: &str, client: &Client, refreshable: bool) -> Result<Bytes, Error> {
         let engine = Engine::new(EngineConfig::default()).unwrap();
         let url = Url::parse(&format!("{base}/x")).unwrap();
-        get_with_refresh(&engine, client, refreshable, url, Duration::from_secs(5)).await
+        with_refresh(&engine, client, refreshable, |token| {
+            super::get(&engine, token, url.clone(), Duration::from_secs(5))
+        })
+        .await
     }
 
     fn refreshed() -> (&'static str, u16, Value) {
@@ -992,18 +1012,6 @@ mod tests {
         let err = fetched(&base, &client, false).await.unwrap_err();
         assert_eq!(unknown_token(&err), Some(false));
         assert_eq!(requests(&seen), [get("t1")]);
-    }
-
-    /// Records every storage effect, polling as the carrier does.
-    fn record(engine: &Arc<Engine>) -> Arc<StdMutex<Vec<Value>>> {
-        let recorded = Arc::new(StdMutex::new(Vec::new()));
-        let (sink, mut effects) = (Arc::clone(&recorded), storage_effects(Arc::clone(engine)));
-        spawn(async move {
-            while let Some(effect) = effects.next().await {
-                sink.lock().unwrap().push(effect.unwrap());
-            }
-        });
-        recorded
     }
 
     #[tokio::test]

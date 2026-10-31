@@ -10,10 +10,12 @@ use std::{
     time::Duration,
 };
 
+use futures_util::StreamExt;
 use matrix_sdk::{
     Client, ClientBuilder, SessionMeta, SessionTokens,
     authentication::matrix::MatrixSession,
     config::{RequestConfig, SyncSettings},
+    executor::spawn,
     ruma::{UserId, api::MatrixVersion},
 };
 use matrix_sdk_ui::sync_service::SyncService;
@@ -25,6 +27,7 @@ use crate::{
     config::EngineConfig,
     engines::session::{
         MatrixSessionDto,
+        logout::storage_effects,
         restore::{auth_session, session_meta},
     },
 };
@@ -131,12 +134,7 @@ pub(crate) fn binary_on_loopback(bytes: Vec<u8>) -> String {
 }
 
 fn answer_with(mut stream: TcpStream, bytes: &[u8]) -> io::Result<()> {
-    let mut reader = BufReader::new(stream.try_clone()?);
-    let mut line = String::new();
-    // Up to the blank line that ends the head: these requests have no body.
-    while reader.read_line(&mut line)? > 2 {
-        line.clear();
-    }
+    request_line(&stream)?;
     let length = bytes.len();
     write!(
         stream,
@@ -144,6 +142,42 @@ fn answer_with(mut stream: TcpStream, bytes: &[u8]) -> io::Result<()> {
          connection: close\r\n\r\n"
     )?;
     stream.write_all(bytes)
+}
+
+/// A request's first line, its head read up to the blank line: these requests have no body.
+fn request_line(stream: &TcpStream) -> io::Result<String> {
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let (mut first, mut line) = (String::new(), String::new());
+    reader.read_line(&mut first)?;
+    while reader.read_line(&mut line)? > 2 {
+        line.clear();
+    }
+    Ok(first)
+}
+
+/// A homeserver on loopback that lets `write` put what it likes on the socket of its `n`th media
+/// request, then closes it, one at a time. Any other request, such as the client's own background
+/// ones, gets a 404.
+pub(crate) fn media_on_loopback(
+    write: impl Fn(usize, &mut TcpStream) -> io::Result<()> + Send + 'static,
+) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        let mut media = 0;
+        for mut stream in listener.incoming().flatten() {
+            let Ok(line) = request_line(&stream) else {
+                continue;
+            };
+            if line.contains("/media/") {
+                let _ = write(media, &mut stream);
+                media += 1;
+            } else {
+                let _ = stream.write_all(b"HTTP/1.1 404 X\r\ncontent-length: 0\r\n\r\n");
+            }
+        }
+    });
+    base
 }
 
 pub(crate) fn requests(seen: &Seen) -> Vec<(String, Option<String>)> {
@@ -197,6 +231,18 @@ pub(crate) fn password(base_url: &str) -> MatrixSessionDto {
     let mut password = session("@a:b", base_url);
     (password.oidc, password.refresh_token) = (None, None);
     password
+}
+
+/// Records every storage effect, polling as the carrier does.
+pub(crate) fn record(engine: &Arc<Engine>) -> Arc<StdMutex<Vec<Value>>> {
+    let recorded = Arc::new(StdMutex::new(Vec::new()));
+    let (sink, mut effects) = (Arc::clone(&recorded), storage_effects(Arc::clone(engine)));
+    spawn(async move {
+        while let Some(effect) = effects.next().await {
+            sink.lock().unwrap().push(effect.unwrap());
+        }
+    });
+    recorded
 }
 
 /// A runtime of `generation` for `s` on `client`, never started. A client without a session
