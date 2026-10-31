@@ -880,23 +880,39 @@ describe('TestFlight upload workflow', () => {
     expect(renderer.env.GITHUB_TOKEN).toBe('${{ github.token }}');
   });
 
-  it('installs without lifecycle scripts and syncs the downloaded renderer', () => {
-    const runs = upload().steps.map((s) => s.run ?? '');
-    expect(
-      runs.some((r) =>
-        r.includes('install --frozen-lockfile --ignore-scripts'),
-      ),
-    ).toBe(true);
-    expect(
-      runs.some((r) => r.includes('nx run trinity-ios:sync-prebuilt')),
-    ).toBe(true);
-    expect(runs.join('\n')).not.toMatch(/trinity-ios:sync\b(?!-)/);
-    expect(runs.join('\n')).not.toContain('nx build');
-    expect(
-      upload()
-        .steps.map((s) => s.uses ?? '')
-        .join('\n'),
-    ).not.toContain('upload-artifact');
+  it('runs no Nx next to the key, and writes the key only after the sync and the checks', () => {
+    const steps = upload().steps;
+    const runs = steps.map((s) => s.run ?? '');
+    const at = (text) => runs.findIndex((r) => r.includes(text));
+    expect(at('install --frozen-lockfile --ignore-scripts')).toBeGreaterThan(
+      -1,
+    );
+    expect(runs.join('\n')).not.toMatch(/\bnx\b/);
+    expect(steps.map((s) => s.uses ?? '').join('\n')).not.toContain(
+      'upload-artifact',
+    );
+    // The commands of trinity-ios:sync-prebuilt, in its order.
+    const target = JSON.parse(
+      readFileSync(resolve(root, 'ios/project.json'), 'utf8'),
+    ).targets['sync-prebuilt'].options.commands;
+    const sync = steps.findIndex((s) =>
+      target.every((command) => s.run?.includes(command)),
+    );
+    expect(sync).toBeGreaterThan(-1);
+    const positions = target.map((command) => steps[sync].run.indexOf(command));
+    expect(positions).toEqual([...positions].sort((x, y) => x - y));
+    const key = steps.findIndex(
+      (s) => s.run?.includes('"$ASC_KEY_PATH"') && s.run.includes('base64'),
+    );
+    expect(key).toBeGreaterThan(sync);
+    expect(steps[key + 1].name).toBe('Archive');
+  });
+
+  it('keeps the renderer artifact for as long as a reviewer may take to approve', () => {
+    const artifact = build().steps.find((s) =>
+      s.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(artifact.with['retention-days']).toBe(30);
   });
 
   it('reads secrets only through the signing job step env, never inside a script', () => {

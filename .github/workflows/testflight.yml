@@ -38,13 +38,18 @@ jobs:
             dist/web-bundle-manifest.json
           include-hidden-files: true
           if-no-files-found: error
-          retention-days: 1
+          # Long enough for a reviewer to approve the signing job days later; there is no timer on
+          # the gate, and the download fails once the artifact has expired.
+          retention-days: 30
           overwrite: true
 
   # The only job that can read the mobile secrets, which live in the release-mobile
   # environment (limited to `main` and `release/**`, with a required reviewer); no other
-  # workflow references them. It installs with --ignore-scripts and runs nothing from the
-  # workspace but `cap sync`, which finishes before the key is written: no renderer build.
+  # workflow references them. It installs with --ignore-scripts and runs no Nx and no build.
+  # Code from node_modules still runs here: Capacitor's CLI (`cap sync`), and Xcode builds
+  # the local Swift packages that point into node_modules. The key file is written only after
+  # the sync and the checks, right before `xcodebuild archive`, so no workspace process before
+  # that point can read it; a compromised dependency could still reach it during the archive.
   testflight:
     name: Archive and upload to TestFlight
     needs: [renderer]
@@ -110,8 +115,13 @@ jobs:
           mkdir -p dist
           cp -R "$RENDERER_DIR/www" .
           cp "$RENDERER_DIR/dist/web-bundle-manifest.json" dist/
-      # Verifies the copied renderer against its manifest, then runs `cap sync ios`.
-      - run: pnpm nx run trinity-ios:sync-prebuilt
+      # The commands of `trinity-ios:sync-prebuilt` (ios/project.json), run directly so Nx and
+      # its plugins do not load on this runner. Keep them in step with that target.
+      - name: Verify the renderer and sync Capacitor
+        run: |
+          node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www
+          pnpm exec cap sync ios
+          node scripts/web-bundle-manifest.mjs verify-with-extras dist/web-bundle-manifest.json ios/App/App/public cordova.js cordova_plugins.js
       - name: Record selected Xcode
         run: xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
       # The marketing version is package.json's without any prerelease suffix. The build number

@@ -909,10 +909,17 @@ never shares a runner with a full dependency install:
   releases, writes the web bundle manifest and uploads `www` with it.
 - `testflight` runs in the `release-mobile` environment, limited to `main` and `release/**`,
   which waits for the maintainer's approval. It installs with `--ignore-scripts`, downloads the
-  renderer outside the checkout, runs `pnpm nx run trinity-ios:sync-prebuilt` (it verifies the
-  manifest, then `cap sync ios`), and only then writes the key. It runs `xcodebuild archive` and
+  renderer outside the checkout and runs the three commands of `trinity-ios:sync-prebuilt`
+  directly (verify the manifest, `pnpm exec cap sync ios`, verify the synced copy), with no Nx
+  and no build. Only then does it write the key, right before `xcodebuild archive`, and run
   `xcodebuild -exportArchive` with `destination` set to `upload` and automatic signing through
-  an App Store Connect API key.
+  an App Store Connect API key. Keep those three commands in step with the Nx target.
+
+  Code from `node_modules` still runs on that runner: Capacitor's CLI during the sync, and
+  Xcode builds the local Swift packages that point into `node_modules`. The split and the
+  late write keep a compromised dependency out of every process that runs before the key
+  exists, not out of the archive itself. The artifact is kept for 30 days because the
+  environment's approval has no timer and the download fails once it expires.
 
 Only the `testflight` job reads these `release-mobile` secrets, and no other workflow references
 them. `APPLE_TEAM_ID` is a separate copy from the `release` environment's.
@@ -945,23 +952,23 @@ to measure elapsed time (`35F9.1`, `PushHandoffPlugin`) and file metadata inside
 container (`C617.1`, the Filesystem plugin's `stat`). The NotificationService extension's binary
 references none of them, so it has no manifest. Add a reason when new code uses one of these APIs.
 
-Before the first run:
+A fresh setup needs all of these (done for this repository):
 
-- The Apple Developer setup tracked in [#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152)
-  is finished, and an App Store Connect app record exists for `dev.trinityproject.trinity`.
-- The App Store Connect API key has the Admin role, because cloud signing with an API key has no
-  narrower option: this is reported in Apple's developer forums
-  ([698117](https://developer.apple.com/forums/thread/698117),
-  [690676](https://developer.apple.com/forums/thread/690676)), not stated by Apple.
-- All five secrets are set in `release-mobile`, with the environment's reviewer.
+- [ ] The Apple Developer setup tracked in [#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152):
+      App IDs for the app and the NotificationService extension with their capabilities (App
+      Group, Keychain Sharing, push), and at least one registered device, because archive
+      signing uses a development identity (`CODE_SIGN_IDENTITY` in `project.pbxproj`).
+- [ ] An App Store Connect app record for `dev.trinityproject.trinity`.
+- [ ] An App Store Connect API key with the Admin role, because cloud signing with an API key
+      has no narrower option: this is reported in Apple's developer forums
+      ([698117](https://developer.apple.com/forums/thread/698117),
+      [690676](https://developer.apple.com/forums/thread/690676)), not stated by Apple.
+- [ ] The five secrets above in the `release-mobile` environment, with its required reviewer
+      and deployment branches (`main` and `release/**`).
 
 Watch these on the first run:
 
-- Archive signing uses a development identity (`project.pbxproj`, `CODE_SIGN_IDENTITY`), so a
-  team with no registered device may fail, and each runner may create a new development
-  certificate until the team's limit.
-- Both App IDs, the app and the extension, need their capabilities (App Group, Keychain Sharing,
-  push).
+- Each runner may create a new development certificate until the team's limit.
 - Apple emails ITMS warnings and errors for an uploaded build; read them even when the upload
   succeeds.
 - The app declares no `ITSAppUsesNonExemptEncryption` key, so App Store Connect asks the export
