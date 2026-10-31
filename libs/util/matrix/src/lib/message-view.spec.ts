@@ -672,10 +672,14 @@ describe('isDisplayableMessage for a deleted event', () => {
   // The SDK's setClearData doesn't look at redaction, so a decrypt finishing after the deletion
   // puts the clear type and content back.
   describe('when the deletion lands while a decrypt is in flight', () => {
-    const inFlight = async (type: string, content: object) => {
+    const inFlight = async (
+      type: string,
+      content: object,
+      wireOver: object = {},
+    ) => {
       const { client, wire } = setUp();
       trackEncryptedNonMessages(client);
-      const event = wire();
+      const event = wire(wireOver);
       let answer: (result: { clearEvent: object }) => void = () => undefined;
       const decrypting = event.attemptDecryption(
         answering(() => new Promise((resolve) => (answer = resolve))),
@@ -695,6 +699,22 @@ describe('isDisplayableMessage for a deleted event', () => {
 
       expect(event.getType()).toBe('m.room.message');
       expect(event.isRedacted()).toBe(true);
+      expect(isDisplayableMessage(event)).toBe(true);
+    });
+
+    // The relation that marks an edit is only read off the wire, and that has been wiped.
+    it('takes an edit for a message, the ghost this order leaves', async () => {
+      const event = await inFlight('m.room.message', REPLACES, {
+        content: {
+          algorithm: 'm.megolm.v1.aes-sha2',
+          ciphertext: 'opaque',
+          'm.relates_to': REPLACES['m.relates_to'],
+        },
+      });
+
+      expect(event.getType()).toBe('m.room.message');
+      expect(event.getWireContent()).toEqual({});
+      expect(event.isRelation()).toBe(false);
       expect(isDisplayableMessage(event)).toBe(true);
     });
 

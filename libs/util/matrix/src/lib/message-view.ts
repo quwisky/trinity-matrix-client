@@ -125,7 +125,7 @@ export function readReceiptsFor(
   });
 }
 
-/** Encrypted events heard decrypting to a non-message, which is unknowable once redacted. */
+/** Events a client decrypted or sent as a non-message, which is unknowable once redacted. */
 const encryptedNonMessages = new WeakSet<MatrixEvent>();
 
 function isMessageRow(event: MatrixEvent): boolean {
@@ -157,9 +157,10 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
 }
 
 /**
- * Remember every encrypted non-message `client` decrypts or sends, for
- * {@link isDisplayableMessage}. Start before the client syncs, as nothing else sees an event from
- * a closed room or unopened thread before it is deleted. Returns the call that stops listening.
+ * Remember every non-message `client` decrypts or sends, for {@link isDisplayableMessage}, which
+ * only needs the encrypted ones; a plain echo is recorded too and never read. Start before the
+ * client syncs, as nothing else sees an event from a closed room or unopened thread before it is
+ * deleted. Returns the call that stops listening.
  */
 export function trackEncryptedNonMessages(client: MatrixClient): () => void {
   const note = (event: MatrixEvent): void => {

@@ -523,7 +523,8 @@ export class NotificationService {
     encryption: RoomEncryptionFlags,
     forceRecalculate = false,
   ): void {
-    if (!room) {
+    // A decrypt outlasting the deletion puts the deleted text back on the event.
+    if (!room || event.isRedacted()) {
       return;
     }
     // `forceRecalculate` makes the rules score the cleartext, not a cached ciphertext result.

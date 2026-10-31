@@ -736,6 +736,46 @@ describe('TimelineService incremental projection', () => {
         });
       });
 
+      // A ghost: the wiped wire was all that marked it as an edit, yet nothing restored shows.
+      it('shows only a deleted row for an edit whose decrypt outlasts its deletion', async () => {
+        const { row, event, receive } = await inEncrypted();
+        const relates = { rel_type: 'm.replace', event_id: id(2) };
+        await receive(
+          live('$edit', {
+            type: 'm.room.encrypted',
+            content: { ...ENCRYPTED.content, 'm.relates_to': relates },
+          }),
+        );
+        let answer: (result: unknown) => void = () => undefined;
+        const decrypting = event('$edit').attemptDecryption(
+          decryptor(() => new Promise((resolve) => (answer = resolve))),
+        );
+
+        await receive(redact('$edit'));
+        answer({
+          clearEvent: {
+            type: 'm.room.message',
+            content: {
+              msgtype: 'm.text',
+              body: '* words to forget',
+              'm.new_content': { msgtype: 'm.text', body: 'words to forget' },
+              'm.relates_to': relates,
+            },
+          },
+        });
+        await decrypting;
+        await settle();
+
+        expect(event('$edit').getType()).toBe('m.room.message');
+        expect(event('$edit').getWireContent()).toEqual({});
+        expect(event('$edit').isRelation()).toBe(false);
+        expect(row('$edit')).toMatchObject({
+          kind: 'redacted',
+          body: '(message deleted)',
+        });
+        expect(row(id(2))?.body).toBe('message 2');
+      });
+
       it('adds no row when a decrypted edit is deleted', async () => {
         const { row, event, receive } = await inEncrypted();
         const relates = { rel_type: 'm.replace', event_id: id(2) };
