@@ -8,10 +8,10 @@ use std::{collections::BTreeMap, pin::pin, sync::Arc, time::Duration};
 use async_stream::stream;
 use futures_util::{
     FutureExt, Stream, StreamExt,
-    future::{BoxFuture, Either, join, select},
+    future::{Either, join, select},
 };
 use matrix_sdk::{
-    Client, Error, RoomDisplayName, RoomState,
+    BoxFuture, Client, Error, RoomDisplayName, RoomState,
     ruma::{
         OwnedRoomId, RoomAliasId, RoomId, RoomOrAliasId,
         api::client::{
@@ -348,8 +348,8 @@ enum Wake {
 /// still refreshes the store's fields; until the server answers again, ticks read only the store
 /// and the server is asked after `RETRY_GAP` from the failure, whatever the ticks do. The stream
 /// ends with `changes`.
-// shortcut: this is `follow_state` with rows that a failed read still refreshes; fold the two
-// when another stream needs the same.
+// shortcut: this is `follow_state` with rows that a failed read still refreshes, and ticks read
+// only the store during back-off; fold the two when another stream needs the same.
 fn pack_stream<L, LF, E, EF>(
     ids: Vec<String>,
     mut locals: L,
@@ -1078,6 +1078,8 @@ mod pack_tests {
         let (_, row) =
             futures_util::future::join(tick, timeout(rows.next(), Duration::from_secs(40))).await;
         assert_eq!(row.unwrap().unwrap()[0].pack_events.len(), 1);
+        // Past the 60 s a spurious retry would have read at.
+        assert!(timeout(rows.next(), Duration::from_secs(40)).await.is_err());
         assert_eq!(reads.load(Ordering::SeqCst), 3, "no read at 60 s either");
     }
 
