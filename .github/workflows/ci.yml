@@ -143,6 +143,7 @@ jobs:
       # generated types the Rust side shares with TypeScript, the js homeserver engine and probe
       # the Rust homeserver spec imports, the stdio transport, the Synapse registration helper,
       # the identity-server client the contact fixture imports,
+      # the display allowlist a Rust test reads,
       # the shared Vitest config and setup, the engine contract runner and the e2e/support files
       # on its import path, and the homeserver harness. Pushes answer false:
       # the jobs exist to gate pull requests.
@@ -168,6 +169,7 @@ jobs:
               'libs/.*\.rust\.spec\.ts$'
               'libs/util/matrix/src/lib/engine-transport/'
               'libs/util/matrix/src/lib/vector-diff\.ts$'
+              'libs/util/matrix/src/lib/display-mime\.ts$'
               'libs/testing/src/lib/(engine-stdio-transport|rust-account|homeserver-proxy)'
               'libs/testing/src/(index\.ts|lib/synapse-admin\.ts)$'
               '(vite\.base\.config|test-setup\.base)\.ts$'

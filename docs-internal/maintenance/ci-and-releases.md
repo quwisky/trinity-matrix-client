@@ -82,7 +82,7 @@ as pull-request.
 A `rust` step of `classify` decides the same way whether the `rust` and `engine-contract-rust` jobs run on a pull request. It answers `true`
 when the diff touches `native/engine*`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `clippy.toml`, `rustfmt.toml`, `deny.toml`, `.cargo/`, the data-access
 `src/contract/` files, `probe-homeserver.ts` and `js-sdk-homeserver-engine.ts` in `libs/data-access/homeserver`, `identity-server-http.ts` in `libs/data-access/contact-addresses`, any `rust-dto/`
-directory or `*.rust.spec.ts` under `libs/`, the engine transport and `vector-diff.ts` in
+directory or `*.rust.spec.ts` under `libs/`, the engine transport, `vector-diff.ts` and `display-mime.ts` in
 `libs/util/matrix`, the engine transport in `libs/testing`, the `libs/testing` index, `synapse-admin.ts`, `rust-account.ts` or `homeserver-proxy.ts`, the shared `vite.base.config.ts` or
 `test-setup.base.ts`, `e2e/engine/`, `e2e/support/homeserver/`, or the `e2e/support` files on the runner's import path listed
 above. Pushes answer `false`. The `rust` job runs `rustup toolchain install`, then
