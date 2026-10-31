@@ -274,6 +274,48 @@ export async function timelineSynapseFixture(
       },
       sendEvent: (roomId, type, content) =>
         sendEvent(baseUrl, bob, roomId, type, content),
+      sendState: async (roomId, type, stateKey, content) => {
+        const { event_id } = await synapseRequest<{ event_id: string }>(
+          baseUrl,
+          bob.accessToken,
+          'PUT',
+          `${room(roomId)}/state/${encodeURIComponent(type)}/${encodeURIComponent(stateKey)}`,
+          content,
+        );
+        return event_id;
+      },
+      markRead: async (roomId, eventId) => {
+        await synapseRequest(
+          baseUrl,
+          bob.accessToken,
+          'POST',
+          `${room(roomId)}/receipt/m.read/${encodeURIComponent(eventId)}`,
+          {},
+        );
+      },
+      // The v3 API has no relations endpoint, so read them off the room's recent history.
+      relations: async (roomId, eventId, relType) => {
+        const { chunk } = await synapseRequest<{
+          chunk: {
+            event_id: string;
+            content?: {
+              'm.relates_to'?: { rel_type?: string; event_id?: string };
+            };
+          }[];
+        }>(
+          baseUrl,
+          bob.accessToken,
+          'GET',
+          `${room(roomId)}/messages?dir=b&limit=100`,
+        );
+        return chunk
+          .filter(
+            ({ content }) =>
+              content?.['m.relates_to']?.rel_type === relType &&
+              content['m.relates_to'].event_id === eventId,
+          )
+          .map((event) => event.event_id);
+      },
     },
   };
 }

@@ -23,6 +23,7 @@ import type {
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
+  TimelineRoomState,
   TimelineUpdate,
 } from '../lib/timeline-engine';
 
@@ -64,6 +65,21 @@ export interface TimelineContractSetup {
     ): Promise<void>;
     /** Sends an event of any type and returns its event id. */
     sendEvent(roomId: string, type: string, content: object): Promise<string>;
+    /** Sets a state event as bob and returns its event id. */
+    sendState(
+      roomId: string,
+      type: string,
+      stateKey: string,
+      content: object,
+    ): Promise<string>;
+    /** Moves bob's public `m.read` receipt to `eventId`. */
+    markRead(roomId: string, eventId: string): Promise<void>;
+    /** The ids of the events that relate to `eventId` by `relType`, as the server holds them. */
+    relations(
+      roomId: string,
+      eventId: string,
+      relType: string,
+    ): Promise<readonly string[]>;
   };
   /**
    * Makes alice's crypto answer that rooms are unencrypted until the returned restore runs, for
@@ -120,6 +136,17 @@ function byTxn(
 
 function eventKey(eventId: string) {
   return { eventId, transactionId: null } as const;
+}
+
+function threadRelation(rootId: string) {
+  return {
+    'm.relates_to': {
+      rel_type: 'm.thread',
+      event_id: rootId,
+      is_falling_back: true,
+      'm.in_reply_to': { event_id: rootId },
+    },
+  };
 }
 
 function unique(): string {
@@ -1577,6 +1604,684 @@ export function defineTimelineEngineContract(
           );
         } finally {
           thread.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    /** The `room` of the newest `items` update. */
+    function roomOf(timeline: Watch): TimelineRoomState | undefined {
+      const last = timeline.updates.filter((u) => u.kind === 'items').at(-1);
+      return last?.kind === 'items' ? last.room : undefined;
+    }
+
+    const stateChanges = (view: TimelineView | null) =>
+      events(view).flatMap((item) =>
+        item.content.kind === 'state' ? [item.content.change] : [],
+      );
+
+    /** The wire content of the event `eventId`, as `eventSource` returns it. */
+    async function contentOf(
+      roomId: string,
+      eventId: string,
+    ): Promise<Record<string, unknown>> {
+      const source = await ok(engine.eventSource(alice, roomId, eventId));
+      return (source?.['content'] ?? {}) as Record<string, unknown>;
+    }
+
+    it(
+      'G4 — a thread of 40 replies opens with its root, pages to the start and has no timelineStart item',
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId],
+        } = await roomWith(['root']);
+        const replyIds: string[] = [];
+        for (let n = 1; n <= 40; n++)
+          replyIds.push(
+            await context.asBob.sendInThread(roomId, rootId, `reply ${n}`),
+          );
+        const focus: TimelineFocus = { kind: 'thread', rootEventId: rootId };
+        const thread = watch(roomId, focus);
+        try {
+          const opened = await thread.until((v) => !!byId(v, rootId));
+          expect(events(opened)[0].eventId).toBe(rootId);
+
+          let startReached = false;
+          for (let page = 0; page < 10 && !startReached; page++)
+            ({ startReached } = await ok(
+              engine.paginateBackwards(alice, roomId, focus, 20),
+            ));
+          expect(startReached).toBe(true);
+
+          const view = await thread.until(
+            (v) => !!byId(v, replyIds[0]) && !!byId(v, replyIds[39]),
+          );
+          expect(events(view).map((item) => item.eventId)).toEqual([
+            rootId,
+            ...replyIds,
+          ]);
+          expect(view.items.some((item) => item.kind === 'timelineStart')).toBe(
+            false,
+          );
+          expect(view.backPagination).toBe('start-reached');
+        } finally {
+          thread.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G5 — threadSummaries counts unread replies, clears on a thread receipt and highlights a mention',
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId],
+        } = await roomWith(['root']);
+        const replyId = await context.asBob.sendInThread(
+          roomId,
+          rootId,
+          'unread reply',
+        );
+        const summaries = watchSummaries(roomId);
+        try {
+          const unread = await summaries.until(
+            rootId,
+            (s) => s.unreadCount > 0,
+          );
+          expect(unread.highlight).toBe(false);
+
+          await ok(
+            engine.sendReceipt(alice, roomId, replyId, {
+              threadRootId: rootId,
+              visibility: 'public',
+              fullyRead: false,
+            }),
+          );
+          await summaries.until(rootId, (s) => s.unreadCount === 0);
+
+          await context.asBob.sendEvent(roomId, 'm.room.message', {
+            msgtype: 'm.text',
+            body: 'look at this, alice',
+            'm.mentions': { user_ids: [alice] },
+            ...threadRelation(rootId),
+          });
+          await summaries.until(
+            rootId,
+            (s) => s.highlight && s.unreadCount > 0,
+          );
+        } finally {
+          summaries.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — a formatted body keeps data-mx-emoticon, names its linked users and flags a mention of alice',
+      async () => {
+        const { roomId } = await roomWith();
+        const formattedBody =
+          'hi <img data-mx-emoticon src="mxc://localhost/smile" alt=":smile:" height="32"> ' +
+          `<a href="https://matrix.to/#/${alice}">alice</a>`;
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const mentioned = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            {
+              msgtype: 'm.text',
+              body: 'hi :smile: alice',
+              format: 'org.matrix.custom.html',
+              formatted_body: formattedBody,
+              'm.mentions': { user_ids: [alice] },
+            },
+          );
+          const linked = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            {
+              msgtype: 'm.text',
+              body: 'hi alice',
+              format: 'org.matrix.custom.html',
+              formatted_body: `hi <a href="https://matrix.to/#/${alice}">alice</a>`,
+            },
+          );
+
+          const view = await timeline.until((v) => !!byId(v, linked));
+
+          expect(byId(view, mentioned)?.content).toMatchObject({
+            kind: 'message',
+            formattedBody,
+            mentions: [alice],
+            mentionsMe: true,
+          });
+          expect(byId(view, linked)?.content).toMatchObject({
+            kind: 'message',
+            mentions: [alice],
+            mentionsMe: false,
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — a reply fallback is flagged, not stripped',
+      async () => {
+        const {
+          roomId,
+          eventIds: [questionId],
+        } = await roomWith(['question']);
+        const timeline = watch(roomId);
+        try {
+          await timeline.until((v) => !!byId(v, questionId));
+          const answerId = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            {
+              msgtype: 'm.text',
+              body: `> <${bob}> question\n\nanswer`,
+              'm.relates_to': { 'm.in_reply_to': { event_id: questionId } },
+            },
+          );
+
+          const view = await timeline.until((v) => !!byId(v, answerId));
+
+          expect(byId(view, answerId)?.content).toMatchObject({
+            kind: 'message',
+            body: `> <${bob}> question\n\nanswer`,
+            replyFallback: true,
+          });
+          expect(byId(view, questionId)?.content).toMatchObject({
+            replyFallback: false,
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — an emote and a notice keep their msgtype',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const emoteId = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            { msgtype: 'm.emote', body: 'waves' },
+          );
+          const noticeId = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            { msgtype: 'm.notice', body: 'beep' },
+          );
+
+          const view = await timeline.until((v) => !!byId(v, noticeId));
+
+          expect(byId(view, emoteId)?.content).toMatchObject({
+            kind: 'message',
+            msgtype: 'emote',
+            body: 'waves',
+          });
+          expect(byId(view, noticeId)?.content).toMatchObject({
+            kind: 'message',
+            msgtype: 'notice',
+            body: 'beep',
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — a sticker and an image carry their media source',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const info = { mimetype: 'image/png', size: 1024, w: 64, h: 48 };
+          const stickerId = await context.asBob.sendEvent(roomId, 'm.sticker', {
+            body: 'a sticker',
+            url: 'mxc://localhost/sticker',
+            info,
+          });
+          const imageId = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            {
+              msgtype: 'm.image',
+              body: 'photo.png',
+              url: 'mxc://localhost/photo',
+              info,
+            },
+          );
+
+          const view = await timeline.until((v) => !!byId(v, imageId));
+
+          expect(byId(view, stickerId)?.content).toMatchObject({
+            kind: 'sticker',
+            body: 'a sticker',
+            url: 'mxc://localhost/sticker',
+            info,
+            source: { kind: 'image', mxc: 'mxc://localhost/sticker' },
+          });
+          expect(byId(view, imageId)?.content).toMatchObject({
+            kind: 'media',
+            msgtype: 'image',
+            body: 'photo.png',
+            caption: null,
+            source: {
+              kind: 'image',
+              mxc: 'mxc://localhost/photo',
+              mimeType: 'image/png',
+            },
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — a rename and a leave are state items with their actor',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          await context.asBob.sendState(roomId, 'm.room.name', '', {
+            name: 'Renamed room',
+          });
+          await context.asBob.sendState(roomId, 'm.room.member', bob, {
+            membership: 'leave',
+          });
+
+          const view = await timeline.until((v) =>
+            stateChanges(v).some(
+              (change) =>
+                change.kind === 'membership' && change.membership === 'leave',
+            ),
+          );
+          const changes = stateChanges(view);
+
+          expect(changes).toContainEqual(
+            expect.objectContaining({
+              kind: 'room-name',
+              actorId: bob,
+              name: 'Renamed room',
+            }),
+          );
+          expect(changes).toContainEqual(
+            expect.objectContaining({
+              kind: 'membership',
+              actorId: bob,
+              targetId: bob,
+              membership: 'leave',
+              previousMembership: 'join',
+            }),
+          );
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G7 — a message bob has read lists him in readBy, and he is not listed on his own',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const bobsId = await context.asBob.send(roomId, 'bob wrote this');
+          await timeline.until((v) => !!byId(v, bobsId));
+          const ownId = await ownMessage(roomId, timeline, 'read by bob');
+
+          await context.asBob.markRead(roomId, ownId);
+
+          const view = await timeline.until(
+            (v) => byId(v, ownId)?.readBy.includes(bob) ?? false,
+          );
+          expect(byId(view, ownId)?.readBy).toEqual([bob]);
+          expect(byId(view, ownId)?.profiles[bob]).toBeDefined();
+          expect(byId(view, bobsId)?.readBy).toEqual([]);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G7 — the read marker sits between the fully-read event and the next one',
+      async () => {
+        const {
+          roomId,
+          eventIds: [readId],
+        } = await roomWith(['read']);
+        const reading = watch(roomId);
+        try {
+          await reading.until((v) => !!byId(v, readId));
+          await ok(
+            engine.sendReceipt(alice, roomId, readId, {
+              threadRootId: null,
+              visibility: 'public',
+              fullyRead: true,
+            }),
+          );
+        } finally {
+          reading.close();
+        }
+        await expect(context.asAlice.fullyRead(roomId)).resolves.toBe(readId);
+        const unreadId = await context.asBob.send(roomId, 'unread');
+        const timeline = watch(roomId);
+        try {
+          const view = await timeline.until((v) => !!byId(v, unreadId));
+
+          const order = view.items.map((item) =>
+            item.kind === 'event' ? item.eventId : item.kind,
+          );
+          const marker = order.indexOf('readMarker');
+          expect(marker).toBeGreaterThan(order.indexOf(readId));
+          expect(order[marker + 1]).toBe(unreadId);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G7 — room state reports the encryption state event and a tombstone',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          expect(roomOf(timeline)).toMatchObject({
+            hasEncryptionStateEvent: false,
+            tombstone: null,
+          });
+
+          await context.asBob.sendState(roomId, 'm.room.encryption', '', {
+            algorithm: 'm.megolm.v1.aes-sha2',
+          });
+          await timeline.until(
+            () => roomOf(timeline)?.hasEncryptionStateEvent === true,
+          );
+          expect(roomOf(timeline)?.encryption).toBe('encrypted');
+
+          const replacementRoomId = `!replacement:${context.serverName}`;
+          await context.asBob.sendState(roomId, 'm.room.tombstone', '', {
+            body: 'This room has been replaced',
+            replacement_room: replacementRoomId,
+          });
+          await timeline.until(() => roomOf(timeline)?.tombstone != null);
+          expect(roomOf(timeline)?.tombstone).toEqual({
+            replacementRoomId,
+            body: 'This room has been replaced',
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it.each([
+      {
+        command: 'reply',
+        run: async () => {
+          const {
+            roomId,
+            eventIds: [questionId],
+          } = await roomWith(['question']);
+          const timeline = watch(roomId);
+          try {
+            await timeline.until((v) => !!byId(v, questionId));
+            const { eventId } = await ok(
+              engine.send(alice, roomId, text('answer'), {
+                threadRootId: null,
+                replyTo: questionId,
+              }),
+            );
+
+            const content = await contentOf(roomId, eventId ?? '');
+
+            expect(content).toMatchObject({
+              msgtype: 'm.text',
+              body: `> <${bob}> question\n\nanswer`,
+              format: 'org.matrix.custom.html',
+              'm.relates_to': { 'm.in_reply_to': { event_id: questionId } },
+              'm.mentions': { user_ids: [bob] },
+            });
+            expect(content['formatted_body']).toEqual(
+              expect.stringContaining('<mx-reply>'),
+            );
+          } finally {
+            timeline.close();
+          }
+        },
+      },
+      {
+        command: 'edit',
+        run: async () => {
+          const { roomId } = await roomWith();
+          const timeline = watch(roomId);
+          try {
+            const originalId = await ownMessage(roomId, timeline, 'tpyo');
+            await ok(
+              engine.edit(
+                alice,
+                roomId,
+                eventKey(originalId),
+                {
+                  ...plain('typo'),
+                  mentions: { userIds: [bob], room: false },
+                },
+                NO_THREAD,
+              ),
+            );
+
+            const [editId] = await context.asBob.relations(
+              roomId,
+              originalId,
+              'm.replace',
+            );
+            const content = await contentOf(roomId, editId);
+
+            expect(content).toMatchObject({
+              msgtype: 'm.text',
+              body: '* typo',
+              'm.mentions': { user_ids: [bob] },
+              'm.new_content': {
+                msgtype: 'm.text',
+                body: 'typo',
+                'm.mentions': { user_ids: [bob] },
+              },
+              'm.relates_to': { rel_type: 'm.replace', event_id: originalId },
+            });
+          } finally {
+            timeline.close();
+          }
+        },
+      },
+      {
+        command: 'forward',
+        run: async () => {
+          const {
+            roomId: sourceId,
+            eventIds: [questionId],
+          } = await roomWith(['question']);
+          const { roomId: targetId } = await roomWith();
+          const replyId = await context.asBob.sendEvent(
+            sourceId,
+            'm.room.message',
+            {
+              msgtype: 'm.text',
+              body: `> <${bob}> question\n\nanswer`,
+              format: 'org.matrix.custom.html',
+              formatted_body:
+                '<mx-reply><blockquote>question</blockquote></mx-reply>answer',
+              'm.relates_to': { 'm.in_reply_to': { event_id: questionId } },
+              'm.mentions': { user_ids: [alice], room: true },
+              'x.private': 'not for the next room',
+            },
+          );
+          const source = watch(sourceId);
+          const target = watch(targetId);
+          try {
+            await source.until((v) => !!byId(v, replyId));
+            await target.until(() => true);
+            await ok(engine.forward(alice, sourceId, replyId, targetId));
+            const ownCopy = (v: TimelineView) =>
+              events(v).find(
+                (item) =>
+                  item.isOwn &&
+                  item.content.kind === 'message' &&
+                  item.eventId !== null,
+              );
+            const forwardedId = ownCopy(
+              await target.until((v) => !!ownCopy(v)),
+            )?.eventId;
+
+            const content = await contentOf(targetId, forwardedId ?? '');
+
+            expect(content).toMatchObject({
+              msgtype: 'm.text',
+              body: 'answer',
+              formatted_body: 'answer',
+              'm.mentions': {},
+            });
+            expect(content).not.toHaveProperty('m.relates_to');
+            expect(content).not.toHaveProperty('x.private');
+          } finally {
+            target.close();
+            source.close();
+          }
+        },
+      },
+      {
+        command: 'voice',
+        run: async () => {
+          const { roomId } = await roomWith();
+          const timeline = watch(roomId);
+          const restore = context.knownUnencrypted?.();
+          try {
+            await timeline.until(() => true);
+            await ok(
+              engine.sendVoice(alice, roomId, {
+                blob: new Blob([new Uint8Array([26, 69, 223, 163])], {
+                  type: 'audio/webm',
+                }),
+                mimeType: 'audio/webm',
+                durationMs: 1200,
+                waveform: [0, 512, 1024],
+              }),
+            );
+            const view = await timeline.until((v) =>
+              events(v).some(
+                (item) =>
+                  item.isOwn &&
+                  item.content.kind === 'media' &&
+                  item.eventId !== null,
+              ),
+            );
+            const voiceId = events(view).find(
+              (item) => item.isOwn && item.content.kind === 'media',
+            )?.eventId;
+
+            const content = await contentOf(roomId, voiceId ?? '');
+
+            expect(content).toMatchObject({
+              msgtype: 'm.audio',
+              body: 'Voice message',
+              info: { mimetype: 'audio/webm', duration: 1200 },
+              'org.matrix.msc3245.voice': {},
+              'org.matrix.msc1767.audio': {
+                duration: 1200,
+                waveform: [0, 512, 1024],
+              },
+            });
+          } finally {
+            restore?.();
+            timeline.close();
+          }
+        },
+      },
+    ])(
+      'G8 — $command writes the wire format',
+      async ({ run }) => {
+        await run();
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G11 — reactionDetails on an unknown event is message-unavailable',
+      async () => {
+        const { roomId } = await roomWith();
+
+        const result = await once(
+          engine.reactionDetails(alice, roomId, `$unknown-${unique()}`),
+        );
+
+        expect(!result.ok && result.failure.code).toBe('message-unavailable');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G11 — sendReceipt on an unknown event is message-unavailable',
+      async () => {
+        const { roomId } = await roomWith();
+
+        const result = await once(
+          engine.sendReceipt(alice, roomId, `$unknown-${unique()}`, {
+            threadRootId: null,
+            visibility: 'public',
+            fullyRead: false,
+          }),
+        );
+
+        expect(!result.ok && result.failure.code).toBe('message-unavailable');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G12 — timeline on an invited room emits items, then the join continues',
+      async () => {
+        const roomId = await context.asBob.createRoom(`timeline ${unique()}`);
+        const timeline = watch(roomId);
+        try {
+          await context.asBob.invite(roomId, alice);
+          await timeline.until(() => true);
+          const beforeJoin = timeline.updates.filter(
+            (update) => update.kind === 'items',
+          );
+          expect(beforeJoin.length).toBeGreaterThan(0);
+
+          await context.asAlice.join(roomId);
+          const eventId = await context.asBob.send(roomId, 'after the join');
+
+          await timeline.until((v) => !!byId(v, eventId));
+        } finally {
+          timeline.close();
         }
       },
       testTimeoutMs,
