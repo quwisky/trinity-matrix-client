@@ -1,5 +1,7 @@
 package dev.trinityproject.trinity.push
 
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
@@ -63,15 +65,19 @@ class HttpTokenGrantClient internal constructor(private val streaming: Boolean) 
         )
     }
 
-    // A proxy or captive portal answers 400 and 401 too, and a Matrix error is not a refusal.
+    // A gateway or captive portal answers 400 and 401 too, some in JSON, and a refusal signs out.
     private fun isOAuthError(body: String): Boolean {
         val json = parse(body) ?: return false
-        return PushRenderRules.stringOrNull(json, "error") != null && !json.has("errcode")
+        val code = PushRenderRules.stringOrNull(json, "error") ?: return false
+        return code in OAUTH_ERRORS && !json.has("errcode")
     }
 
     private fun parse(body: String): JSONObject? = try {
         JSONObject(body)
     } catch (error: JSONException) {
+        null
+    } catch (error: StackOverflowError) {
+        // Android's JSONTokener recurses on deep nesting.
         null
     }
 
@@ -85,18 +91,25 @@ class HttpTokenGrantClient internal constructor(private val streaming: Boolean) 
             return null
         }
         return try {
+            val body = encode(form).toByteArray()
             // The body is the refresh token: never let a redirect carry it to another host.
             connection.instanceFollowRedirects = false
             connection.connectTimeout = remaining.toInt()
             connection.readTimeout = remaining.toInt()
             connection.requestMethod = "POST"
             connection.doOutput = true
+            // A streamed body cannot be replayed, so the stack can never re-send a refresh token.
+            if (streaming) connection.setFixedLengthStreamingMode(body.size)
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             connection.setRequestProperty("Accept", "application/json")
-            connection.outputStream.use { it.write(encode(form).toByteArray()) }
+            connection.connect()
+            // Connecting can use the whole budget: a body sent now would outlive the caller's wait.
+            if (deadline.remainingMillis() <= 0) return null
+            connection.outputStream.use { it.write(body) }
             val status = connection.responseCode
             val stream = if (status < HttpURLConnection.HTTP_BAD_REQUEST) connection.inputStream else connection.errorStream
-            Answer(status, stream?.bufferedReader()?.use { it.readText() }.orEmpty())
+            val text = if (stream == null) "" else readCapped(stream, deadline) ?: return null
+            Answer(status, text)
         } catch (error: Exception) {
             // Not only IOException: a failure must stay a value, and on a revocation's daemon
             // thread an escaped one would take the process down.
@@ -106,7 +119,38 @@ class HttpTokenGrantClient internal constructor(private val streaming: Boolean) 
         }
     }
 
+    /** Null past the cap or the deadline: a read timeout covers one stalled read, not a trickle. */
+    private fun readCapped(stream: InputStream, deadline: Deadline): String? {
+        return stream.use { input ->
+            val bytes = ByteArrayOutputStream()
+            val chunk = ByteArray(READ_CHUNK_BYTES)
+            while (true) {
+                val read = input.read(chunk)
+                if (read < 0) break
+                if (bytes.size() + read > MAX_BODY_BYTES) return null
+                bytes.write(chunk, 0, read)
+                if (deadline.remainingMillis() <= 0) return null
+            }
+            bytes.toByteArray().toString(Charsets.UTF_8)
+        }
+    }
+
     private fun encode(form: List<Pair<String, String>>): String = form.joinToString("&") { (name, value) ->
         "$name=${URLEncoder.encode(value, Charsets.UTF_8.name())}"
+    }
+
+    private companion object {
+        const val MAX_BODY_BYTES = 64 * 1024
+        const val READ_CHUNK_BYTES = 8 * 1024
+
+        // RFC 6749 section 5.2.
+        val OAUTH_ERRORS = setOf(
+            "invalid_request",
+            "invalid_client",
+            "invalid_grant",
+            "unauthorized_client",
+            "unsupported_grant_type",
+            "invalid_scope",
+        )
     }
 }
