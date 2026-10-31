@@ -18,7 +18,10 @@ export async function widgetsSynapseFixture(
   baseUrl: string,
   secret: string,
 ): Promise<
-  Omit<RoomWidgetContractSetup, 'engine' | 'alice' | 'dispose'> & {
+  Omit<
+    RoomWidgetContractSetup,
+    'engine' | 'alice' | 'aliceDeviceId' | 'homeserverUrl' | 'dispose'
+  > & {
     readonly alice: SynapseUser;
   }
 > {

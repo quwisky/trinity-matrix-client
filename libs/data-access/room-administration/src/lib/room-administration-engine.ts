@@ -34,7 +34,7 @@ export interface AdministeredRoomState {
   readonly tombstone: JsonObject | null;
 }
 
-/** One room's current state as Room Administration reads it. Rust: `Room` + `RoomInfo` + `RoomPowerLevels`. */
+/** One room's current state as Room Administration reads it. */
 export interface AdministeredRoom {
   readonly roomId: string;
   readonly ownUserId: string;
@@ -126,7 +126,7 @@ export interface RoomAdministrationEngine {
 
   /**
    * One state event's content as the server holds it now; null when it has none. Fails
-   * `account-not-live` or `request-failed`. Rust: `get_state_events_for_key` via `Client::send`.
+   * `account-not-live` or `request-failed`.
    */
   stateEvent(
     accountId: string,
@@ -154,7 +154,7 @@ export interface RoomAdministrationEngine {
     roomId: string,
     userId: string,
   ): Observable<EngineResult<null>>;
-  /** Reports an event to the account's server admins with the strongest score (-100). */
+  /** Reports an event to the account's server admins; js sends score -100, Rust sends no score. */
   reportEvent(
     accountId: string,
     roomId: string,
@@ -199,7 +199,7 @@ export interface RoomAdministrationEngine {
   ): Observable<EngineResult<null>>;
   /**
    * Asks the server to replace the room with one of `version`; `additionalCreators` are
-   * sent as given (v12+ targets only). Rust: ruma `upgrade_room::v3` via `Client::send`.
+   * sent as given (v12+ targets only).
    */
   upgradeRoom(
     accountId: string,
@@ -214,7 +214,7 @@ export interface RoomAdministrationEngine {
    * the account does not know the room, `already-encrypted` (state or crypto store; a
    * store that cannot answer counts as encrypted), `request-failed`, or
    * `encryption-not-applied` when the server has the event but this device could not
-   * apply it. Rust: `Room::enable_encryption()`.
+   * apply it.
    */
   enableEncryption(
     accountId: string,

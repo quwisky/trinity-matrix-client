@@ -27,10 +27,10 @@ import {
 import type { RawImagePackStateEvent } from '../lib/image-pack-management.model';
 
 interface FakeRoom {
-  readonly name: string | null;
+  name: string | null;
   readonly alias: string | null;
   /** Whether alice may send state here. */
-  readonly writable: boolean;
+  writable: boolean;
   /** Whether a non-member may read its state. */
   readonly worldReadable: boolean;
   joined: boolean;
@@ -50,6 +50,15 @@ const FORBIDDEN: EngineFailure = {
   code: 'request-failed',
   diagnostic: { kind: 'permission', httpStatus: 403, errcode: 'M_FORBIDDEN' },
 };
+
+const TOO_LARGE: EngineFailure = {
+  kind: 'http',
+  code: 'too-large',
+  diagnostic: { kind: 'http', httpStatus: 413, errcode: 'M_TOO_LARGE' },
+};
+
+/** A homeserver's cap on one event, as Synapse enforces it. */
+const MAX_EVENT_BYTES = 65_536;
 
 const UNKNOWN_ALIAS: EngineFailure = {
   kind: 'http',
@@ -205,6 +214,16 @@ export class FakeExpressionEngine implements ExpressionEngine {
     return this.command(accountId, () => {
       const room = this.rooms.get(roomId);
       if (!room?.joined || !room.writable) return engineFail(FORBIDDEN);
+      if (JSON.stringify(content).length > MAX_EVENT_BYTES) {
+        return engineFail(TOO_LARGE);
+      }
+      if (type === 'm.room.name') {
+        room.name =
+          typeof content['name'] === 'string' ? content['name'] : null;
+      } else if (type === 'm.room.power_levels') {
+        // Alice may write state only at the default state level, 50.
+        room.writable = (powerOf(content, accountId) ?? 0) >= 50;
+      }
       room.state.set(stateKey(type, key), {
         type,
         state_key: key,
@@ -246,6 +265,15 @@ export class FakeExpressionEngine implements ExpressionEngine {
       of(accountId === this.alice ? run() : engineFail(NOT_LIVE)),
     );
   }
+}
+
+function powerOf(
+  content: Readonly<Record<string, unknown>>,
+  userId: string,
+): number | null {
+  const users = content['users'] as Record<string, unknown> | undefined;
+  const level = users?.[userId];
+  return typeof level === 'number' ? level : null;
 }
 
 function stateKey(type: string, key: string): string {

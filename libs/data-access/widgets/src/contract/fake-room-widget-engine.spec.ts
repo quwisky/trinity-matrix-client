@@ -10,6 +10,8 @@ defineRoomWidgetEngineContract(
     return {
       engine,
       alice: engine.alice,
+      aliceDeviceId: 'FAKEDEVICE',
+      homeserverUrl: `https://${engine.serverName}`,
       bob: engine.bob,
       asAlice: engine.asAlice,
       asBob: engine.asBob,

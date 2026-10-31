@@ -10,7 +10,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type EngineResult, assertPlainData } from '@trinity/util/matrix';
 import type {
-  AdministeredRoom,
   JsonObject,
   RoomAdministrationEngine,
   RoomMemberInfo,
@@ -171,18 +170,13 @@ export function defineRoomAdministrationEngineContract(
 
     it(
       'room and members emit null at once for an account that is not live',
-      () => {
-        const seen: unknown[] = [];
-        engine
-          .room(NOBODY, '!unknown:invalid')
-          .subscribe((value) => seen.push(value))
-          .unsubscribe();
-        engine
-          .members(NOBODY, '!unknown:invalid')
-          .subscribe((value) => seen.push(value))
-          .unsubscribe();
+      async () => {
+        const first = await Promise.all([
+          firstValueFrom(engine.room(NOBODY, '!unknown:invalid')),
+          firstValueFrom(engine.members(NOBODY, '!unknown:invalid')),
+        ]);
 
-        expect(seen).toEqual([null, null]);
+        expect(first).toEqual([null, null]);
       },
       testTimeoutMs,
     );
@@ -194,7 +188,10 @@ export function defineRoomAdministrationEngineContract(
         const room = watch(engine.room(alice, roomId));
         try {
           const snapshot = await room.until(
-            (r) => r.ownMembership === 'join' && r.creators.length > 0,
+            (r) =>
+              r.ownMembership === 'join' &&
+              r.creators.length > 0 &&
+              r.encryption === 'unencrypted',
           );
 
           expect(snapshot).toMatchObject({
@@ -204,6 +201,7 @@ export function defineRoomAdministrationEngineContract(
             ownPower: 0,
             isSpace: false,
             spaceParents: [],
+            encryption: 'unencrypted',
           });
           expect(snapshot.powerLevels?.['users']).toMatchObject({
             [bob]: 100,
@@ -214,13 +212,8 @@ export function defineRoomAdministrationEngineContract(
           room.close();
         }
 
-        const seen: (AdministeredRoom | null)[] = [];
-        engine
-          .room(alice, roomId)
-          .subscribe((value) => seen.push(value))
-          .unsubscribe();
-        expect(seen).toHaveLength(1);
-        expect(seen[0]?.ownMembership).toBe('join');
+        const first = await firstValueFrom(engine.room(alice, roomId));
+        expect(first?.ownMembership).toBe('join');
       },
       testTimeoutMs,
     );
@@ -281,8 +274,9 @@ export function defineRoomAdministrationEngineContract(
         const members = watch(engine.members(alice, roomId));
         try {
           const first = await members.until(
-            (m) => memberOf(m, alice)?.membership === 'join',
+            (m) => m.complete && memberOf(m, alice)?.membership === 'join',
           );
+          expect(first.complete).toBe(true);
           expect(memberOf(first, bob)).toMatchObject({
             membership: 'join',
             power: 100,
@@ -983,6 +977,15 @@ export function defineRoomAdministrationEngineContract(
           { via: [server], order: 'a' },
           roomId,
         );
+        await context.asBob.setState(roomId, 'm.room.topic', {
+          topic: 'Contract topic',
+        });
+        await context.asBob.setState(
+          roomId,
+          'm.space.parent',
+          { via: [server], canonical: true },
+          spaceId,
+        );
         // A space alice has not joined does not count.
         const other = await context.asBob.createRoom({ space: true });
         await context.asBob.setState(
@@ -994,13 +997,20 @@ export function defineRoomAdministrationEngineContract(
         await context.asBob.invite(spaceId, alice);
         await context.asAlice.join(spaceId);
         const space = watch(engine.room(alice, spaceId));
+        const child = watch(engine.room(alice, roomId));
         try {
-          await space.until(
+          const joinedSpace = await space.until(
             (r) =>
               r.ownMembership === 'join' && r.isSpace && r.state.name !== null,
           );
+          expect(joinedSpace.state.name).toEqual({ name: 'Contract space' });
+          const linked = await child.until((r) => r.spaceParents.length > 0);
+          expect(linked.isSpace).toBe(false);
+          expect(linked.spaceParents).toEqual([spaceId]);
+          expect(linked.state.topic).toEqual({ topic: 'Contract topic' });
         } finally {
           space.close();
+          child.close();
         }
 
         const result = await once(engine.linkingSpaces(alice, roomId));

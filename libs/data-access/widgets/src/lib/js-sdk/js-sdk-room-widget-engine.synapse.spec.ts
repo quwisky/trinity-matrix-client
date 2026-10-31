@@ -27,6 +27,8 @@ describe.skipIf(!baseUrl)('JsSdkRoomWidgetEngine against Synapse', () => {
         ...fixture,
         engine: TestBed.inject(JsSdkRoomWidgetEngine),
         alice: session.userId,
+        aliceDeviceId: session.deviceId,
+        homeserverUrl: session.baseUrl,
         dispose: () => session.dispose(),
       };
     },

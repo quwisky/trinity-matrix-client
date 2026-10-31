@@ -171,6 +171,13 @@ export function defineMediaEngineContract(
           request({ kind: 'plain', mxc: uploaded.mxc }),
         );
         expect(read).toEqual(bytes);
+
+        const unnamed = await upload(bytes, { filename: null });
+        if (unnamed.kind !== 'plain') throw new Error('Not plain');
+        await expect(context.stored(unnamed.mxc)).resolves.toEqual({
+          filename: null,
+          mimeType: 'image/png',
+        });
       },
       testTimeoutMs,
     );
@@ -416,7 +423,7 @@ export function defineMediaEngineContract(
     }
 
     /** Uploads, then the send is refused: the upload and its echo stay retained under the key. */
-    async function refused(
+    async function blocked(
       roomId: string,
       request: AttachmentRequest,
     ): Promise<void> {
@@ -462,7 +469,7 @@ export function defineMediaEngineContract(
         const roomId = await context.room(false);
         const request = attachment();
 
-        await refused(roomId, request);
+        await blocked(roomId, request);
         const { result } = await send(roomId, request);
 
         expect(result.ok && result.value.kind).toBe('sent');
@@ -478,7 +485,7 @@ export function defineMediaEngineContract(
         const roomId = await context.room(false);
         const request = attachment({ caption: 'first' });
 
-        await refused(roomId, request);
+        await blocked(roomId, request);
         await send(roomId, attachment({ ...request, caption: 'second' }));
 
         expect(context.uploads()).toBe(1);
@@ -495,8 +502,8 @@ export function defineMediaEngineContract(
         const roomId = await context.room(false);
         const first = attachment({ metadata: 'kept' });
 
-        await refused(roomId, first);
-        await refused(roomId, attachment());
+        await blocked(roomId, first);
+        await blocked(roomId, attachment());
         const { result } = await send(
           roomId,
           attachment({ supersedes: first.attachmentKey }),
@@ -515,7 +522,7 @@ export function defineMediaEngineContract(
         const roomId = await context.room(false);
         const request = attachment();
 
-        await refused(roomId, request);
+        await blocked(roomId, request);
         const forgotten = await firstValueFrom(
           engine.forgetAttachment(request.attachmentKey).pipe(toArray()),
         );
