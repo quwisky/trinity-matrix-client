@@ -54,10 +54,11 @@ describe('TrnToastService', () => {
     });
   });
 
-  it('maps duration 0 (keep until dismissed) to Infinity', () => {
+  it('maps duration 0 (keep until dismissed) to Infinity, with a close button', () => {
     svc.show('Persistent', { duration: 0 });
     expect(toast).toHaveBeenCalledWith('Persistent', {
       duration: Number.POSITIVE_INFINITY,
+      closeButton: true,
     });
   });
 

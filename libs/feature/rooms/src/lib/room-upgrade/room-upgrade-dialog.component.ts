@@ -69,8 +69,7 @@ export function upgradeSummary(
   ].filter(Boolean);
   return {
     message: [`Upgraded; ${counts.join(' and ')} failed.`, ...retry].join(' '),
-    // Kept until dismissed: it is the only list of what still needs doing. The toaster has
-    // no close button, so the action is how a keyboard user dismisses it.
+    // Kept until dismissed: it is the only list of what still needs doing.
     options: {
       variant: 'warning',
       duration: 0,
