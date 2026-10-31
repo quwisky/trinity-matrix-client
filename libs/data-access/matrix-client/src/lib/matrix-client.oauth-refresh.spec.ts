@@ -5,6 +5,14 @@ import {
   createClient,
 } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
+import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
+import {
+  CryptoStoreKeyService,
+  SecureStorageService,
+  SessionStorageService,
+} from '@trinity/platform-native';
+import { PushHandoffBridge } from '@trinity/capacitor-push';
 import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -686,7 +694,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     ['400 invalid_grant', { status: 400, body: { error: 'invalid_grant' } }],
     ['401 invalid_client', { status: 401, body: { error: 'invalid_client' } }],
   ])(
-    'signs the account out when the provider refuses the refresh (%s)',
+    'keeps the account keys when the provider refuses the refresh (%s) (failure 1)',
     async (_, answer) => {
       const net = fakeNetwork('rotate');
       const { svc, storage, client } = await startReal();
@@ -696,14 +704,14 @@ describe('OAuth tokens through a real MatrixClient', () => {
         errcode: 'M_UNKNOWN_TOKEN',
       });
 
-      expect(svc.accountIds()).not.toContain('@me:hs');
-      // The homeserver's 401 said soft_logout: false, so this is the hard path, as before.
-      expect(client.clearStores).toHaveBeenCalledOnce();
-      expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+      expect(svc.softLoggedOut()).toContain('@me:hs');
+      expect(client.clearStores).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
+      expect(storage.invalidateToken).toHaveBeenCalledOnce();
     },
   );
 
-  it('still wipes the account when the homeserver revokes a token that has not expired', async () => {
+  it('a real revocation reaches a soft logout and does not loop (failure 11)', async () => {
     const net = fakeNetwork('rotate', 3600);
     const { svc, storage, client } = await startReal();
     await client.whoami(); // refreshes once; the new token is good for an hour
@@ -714,9 +722,112 @@ describe('OAuth tokens through a real MatrixClient', () => {
     });
 
     expect(net.grants).toHaveLength(1); // no refresh was attempted
-    expect(svc.accountIds()).not.toContain('@me:hs');
+    expect(svc.softLoggedOut()).toContain('@me:hs');
+    expect(client.clearStores).not.toHaveBeenCalled();
+    expect(storage.remove).not.toHaveBeenCalled();
+    expect(storage.invalidateToken).toHaveBeenCalledOnce();
+
+    const calls = net.calls.length;
+    await expect(client.whoami()).rejects.toBeDefined();
+    expect(net.calls.filter((c) => c.endsWith('/token'))).toHaveLength(
+      net.calls.slice(0, calls).filter((c) => c.endsWith('/token')).length,
+    );
+    expect(storage.invalidateToken).toHaveBeenCalledOnce();
+  });
+
+  it('a password account with soft_logout: false still wipes', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage, client } = await startReal(SESSION);
+    net.expireAll();
+
+    await expect(client.whoami()).rejects.toMatchObject({
+      errcode: 'M_UNKNOWN_TOKEN',
+    });
+
+    expect(svc.softLoggedOut()).not.toContain('@me:hs');
     expect(client.clearStores).toHaveBeenCalledOnce();
     expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+  });
+
+  describe('a deletion hold on an OIDC account', () => {
+    /** The hold is taken, then the server revokes the token it was holding the wipe for. */
+    async function revokedWhileHeld() {
+      const net = fakeNetwork('rotate', 3600);
+      const started = await startReal();
+      await started.client.whoami();
+      const onTokenDied = vi.fn();
+      const hold = started.svc.holdServerLogout('@me:hs', { onTokenDied });
+      net.expireAll();
+      await expect(started.client.whoami()).rejects.toMatchObject({
+        errcode: 'M_UNKNOWN_TOKEN',
+      });
+      return { ...started, hold, onTokenDied };
+    }
+
+    it('still records the token death and stops the client', async () => {
+      const { svc, storage, client, hold, onTokenDied } =
+        await revokedWhileHeld();
+
+      expect(hold.tokenDied()).toBe(true);
+      expect(onTokenDied).toHaveBeenCalledOnce();
+      expect(svc.softLoggedOut()).not.toContain('@me:hs');
+      expect(svc.accountIds()).toContain('@me:hs');
+      expect(storage.invalidateToken).not.toHaveBeenCalled();
+      expect(client.clearStores).not.toHaveBeenCalled();
+    });
+
+    it('lands soft, not hard, when released as not deleted', async () => {
+      const { svc, storage, client, hold } = await revokedWhileHeld();
+
+      hold.release({ deleted: false });
+
+      expect(svc.softLoggedOut()).toContain('@me:hs');
+      expect(client.clearStores).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
+      expect(storage.invalidateToken).toHaveBeenCalledOnce();
+    });
+
+    it('hands the account to the deletion cleanup when released as deleted', async () => {
+      const { svc, storage, hold } = await revokedWhileHeld();
+
+      hold.release({ deleted: true });
+
+      expect(svc.softLoggedOut()).not.toContain('@me:hs');
+      expect(storage.invalidateToken).not.toHaveBeenCalled();
+    });
+  });
+
+  it('a soft logout removes the native record through storage', async () => {
+    const net = fakeNetwork('rotate', 3600);
+    await useRealClients();
+    const removeTokens = vi.fn(() => of(undefined));
+    TestBed.configureTestingModule({
+      providers: [
+        MatrixClientService,
+        SessionStorageService,
+        MockProvider(SecureStorageService, {
+          get: async () => null,
+          set: async () => undefined,
+          remove: async () => undefined,
+        }),
+        MockProvider(CryptoStoreKeyService),
+        MockProvider(PushHandoffBridge, { removeTokens }),
+      ],
+    });
+    const svc = TestBed.inject(MatrixClientService);
+    await firstValueFrom(svc.init(OIDC_SESSION));
+    const client = svc.instance;
+    await client.whoami();
+
+    net.expireAll();
+    await expect(client.whoami()).rejects.toMatchObject({
+      errcode: 'M_UNKNOWN_TOKEN',
+    });
+
+    await vi.waitFor(() =>
+      expect(removeTokens).toHaveBeenCalledExactlyOnceWith('@me:hs'),
+    );
+    expect(svc.softLoggedOut()).toContain('@me:hs');
   });
 
   it('refreshes once for concurrent expired requests', async () => {

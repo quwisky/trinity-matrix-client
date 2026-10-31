@@ -200,7 +200,7 @@ export interface ServerLogoutHold {
   readonly isHeld: () => boolean;
   /**
    * `deleted: true` hands what follows to the deletion cleanup; `deleted: false` replays a
-   * recorded logout through the ordinary hard path.
+   * recorded logout through the ordinary path: soft for an OAuth account, hard otherwise.
    */
   release(outcome: { readonly deleted: boolean }): void;
 }
@@ -1203,10 +1203,10 @@ export class MatrixClientService {
   }
 
   /**
-   * What lets matrix-js-sdk 43 own an OAuth-native session's tokens: it refreshes them on
+   * What lets matrix-js-sdk own an OAuth-native session's tokens: it refreshes them on
    * a 401 or near expiry, and `logout()` revokes them at the provider instead of calling
    * `POST /logout`. Without `oauthClientId` the SDK does not refresh at all, and the first
-   * 401 becomes a hard logout that deletes the account's crypto store.
+   * 401 ends the session.
    *
    * `onTokenRefresh` persists for THIS account only and returns the write: the SDK awaits
    * it before adopting the new pair, so a failed write fails the refresh and the old
@@ -1556,19 +1556,23 @@ export class MatrixClientService {
 
   /**
    * Handle a server-side session logout for one account (`M_UNKNOWN_TOKEN`). A **soft**
-   * logout (`soft_logout: true`) keeps the device and stores: the client stops without
-   * wiping and is marked {@link softLoggedOut}, so re-authenticating (its registry entry
-   * and crypto-store prefix are preserved) restores it. A **hard** logout (device deleted
-   * server-side) wipes the account's stores and drops its registry entry. Either way the
+   * logout keeps the device and stores: the client stops without wiping and is marked
+   * {@link softLoggedOut}, so re-authenticating (its registry entry and crypto-store prefix
+   * are preserved) restores it. It is what the server reports with `soft_logout: true` and
+   * every logout of an OAuth account, whose refusals carry no such flag. A **hard** logout
+   * (a password account's device deleted server-side) wipes the account's stores and drops
+   * its registry entry. Either way the
    * other accounts keep running and the active pointer moves to a survivor (or null).
    */
   private handleServerLogout(userId: string, err: MatrixError): void {
     if (!this.clients.has(userId)) {
       return; // already torn down
     }
-    const soft =
+    const reportedSoft =
       (err.data as { soft_logout?: boolean } | undefined)?.soft_logout === true;
-    const held = soft ? undefined : this.logoutHolds.get(userId);
+    // Read before removeInternal forgets the account's tracked tokens.
+    const oauth = this.oauthTokens.has(userId);
+    const held = reportedSoft ? undefined : this.logoutHolds.get(userId);
     if (held) {
       this.clients.get(userId)?.client.stopClient();
       held.died ??= err;
@@ -1577,7 +1581,7 @@ export class MatrixClientService {
       }
       return;
     }
-    if (soft) {
+    if (reportedSoft || oauth) {
       // Keep the stores and registry entry for re-auth, but drop the dead token so a
       // restart's restore skips it instead of resurrecting a failing ghost account.
       this.removeInternal(userId, false);

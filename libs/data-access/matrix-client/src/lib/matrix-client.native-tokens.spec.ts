@@ -740,7 +740,8 @@ describe('a phone account whose refresh token native code holds', () => {
 
       expect(vault.refreshTokens).toHaveBeenCalledTimes(2);
       expect(loggedOut).toHaveBeenCalledOnce();
-      expect(storage.remove).toHaveBeenCalledExactlyOnceWith(ME);
+      expect(storage.invalidateToken).toHaveBeenCalledExactlyOnceWith(ME);
+      expect(storage.remove).not.toHaveBeenCalled();
     });
 
     it('makes 4 native refreshes at most for one request the server keeps refusing', async () => {
