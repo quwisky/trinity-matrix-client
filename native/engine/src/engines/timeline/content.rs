@@ -2,19 +2,23 @@
 //! map it. The SDK's own message content is not used: it strips `data-mx-emoticon` and the reply
 //! fallback, which the renderer needs.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use matrix_sdk::ruma::UserId;
 use matrix_sdk_base::crypto::types::events::UtdCause;
 use serde_json::Value;
 
 use super::dto::{
-    EncryptedFileInfoDto, MediaKindDto, MediaPayloadDto, SystemChangeDto, TextKindDto,
-    TimelineItemContentDto, UndecryptableReasonDto,
+    EncryptedFileInfoDto, MediaKindDto, MediaPayloadDto, PollOptionDto, PollViewDto,
+    StickerInfoDto, SystemChangeDto, TextKindDto, TimelineItemContentDto, UndecryptableReasonDto,
 };
+use crate::engines::room_list::rows::saturated;
 
 /// The most waveform bars a received voice message keeps: one DOM node each.
 const MAX_WAVEFORM_BARS: usize = 512;
+
+/// MSC3381's limit: each answer is a rendered row.
+const MAX_POLL_ANSWERS: usize = 20;
 
 const VOICE: &str = "org.matrix.msc3245.voice";
 const AUDIO: &str = "org.matrix.msc1767.audio";
@@ -27,11 +31,22 @@ pub(super) struct Mapped {
 }
 
 impl Mapped {
-    fn plain(content: TimelineItemContentDto) -> Self {
+    pub(super) fn plain(content: TimelineItemContentDto) -> Self {
         Self {
             content,
             named: Vec::new(),
         }
+    }
+}
+
+/// js truthiness of a JSON value.
+pub(super) fn truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(flag) => *flag,
+        Value::Number(number) => number.as_f64() != Some(0.0),
+        Value::String(string) => !string.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
     }
 }
 
@@ -149,21 +164,21 @@ fn media(content: &Value, source: MediaPayloadDto, reply_fallback: bool, me: &st
 }
 
 fn sticker(content: &Value) -> Option<Mapped> {
-    let mut shaped = content.clone();
+    let mut shaped = content.as_object()?.clone();
     let info = content["info"].as_object().cloned().unwrap_or_default();
     let mut shaped_info = info.clone();
     let mimetype = text(&info.get("mimetype").cloned().unwrap_or_default())
         .unwrap_or("image/png")
         .to_owned();
     shaped_info.insert("mimetype".into(), mimetype.into());
-    shaped["info"] = Value::Object(shaped_info);
-    let source =
-        media_payload(&shaped, "m.image").filter(|s| s.mxc.as_deref().is_some_and(valid_mxc))?;
+    shaped.insert("info".into(), Value::Object(shaped_info));
+    let source = media_payload(&Value::Object(shaped), "m.image")
+        .filter(|s| s.mxc.as_deref().is_some_and(valid_mxc))?;
     Some(Mapped::plain(TimelineItemContentDto::Sticker {
         source,
         body: content["body"].as_str().map(str::to_owned),
         url: content["url"].as_str().map(str::to_owned),
-        info: content["info"].is_object().then(|| content["info"].clone()),
+        info: (content["info"].is_object()).then(|| StickerInfoDto(content["info"].clone())),
     }))
 }
 
@@ -186,7 +201,7 @@ pub(super) fn media_payload(content: &Value, msgtype: &str) -> Option<MediaPaylo
     } else {
         owned_str(&content["url"])
     };
-    if mxc.is_none() && file.is_none() {
+    if mxc.as_deref().is_none_or(str::is_empty) && file.is_none() {
         return None;
     }
     let none = Value::Null;
@@ -263,11 +278,11 @@ fn owned_str(value: &Value) -> Option<String> {
     value.as_str().map(str::to_owned)
 }
 
-/// `content.file`: it needs a `url` and an `iv`, and a key.
+/// `content.file`: it needs a `url` and an `iv`, and a key js counts as one.
 fn encrypted_file(value: &Value) -> Option<EncryptedFileInfoDto> {
     let (url, iv) = (value["url"].as_str()?, value["iv"].as_str()?);
     let key = &value["key"];
-    if matches!(key, Value::Null | Value::Bool(false)) {
+    if !truthy(key) {
         return None;
     }
     let strings = |map: &Value| -> BTreeMap<String, String> {
@@ -390,12 +405,17 @@ fn number_prefix(s: &str) -> Option<(f64, &str)> {
 
 /// The users `html` links to: what the renderer shows as pills. Anchors only.
 pub(super) fn linked_user_ids(html: &str) -> Vec<String> {
-    let mut ids: Vec<String> = Vec::new();
+    let names_matrix = (html.as_bytes().windows(6)).any(|w| w.eq_ignore_ascii_case(b"matrix"));
+    if !names_matrix {
+        return Vec::new();
+    }
+    let mut seen = HashSet::new();
+    let mut ids = Vec::new();
     for href in anchor_hrefs(html) {
         // shortcut: ruma's id check stands in for `isWellFormedUserId`, which is as strict on
         // the server name; upgrade if a lookalike id ever reaches a pill.
         if let Some(id) = user_link(&href).filter(|id| id.len() <= 255 && UserId::parse(id).is_ok())
-            && !ids.contains(&id)
+            && seen.insert(id.clone())
         {
             ids.push(id);
         }
@@ -403,54 +423,56 @@ pub(super) fn linked_user_ids(html: &str) -> Vec<String> {
     ids
 }
 
-/// The `href` of each `<a>` in `html`.
+const HTML_SPACE: [char; 5] = [' ', '\t', '\n', '\r', '\x0c'];
+
+/// The `href` of each `<a>` in `html`. Each tag is read once, from where the last one ended:
+/// the body comes from another user, and mapping runs on every change to its row.
 fn anchor_hrefs(html: &str) -> Vec<String> {
     let mut hrefs = Vec::new();
     let mut rest = html;
     while let Some(open) = rest.find('<') {
         rest = &rest[open + 1..];
-        let Some(tag) = rest.strip_prefix(['a', 'A']) else {
+        let Some(tag) = (rest.strip_prefix(['a', 'A']))
+            .filter(|tag| tag.starts_with(HTML_SPACE) || tag.starts_with('/'))
+        else {
             continue;
         };
-        if !tag.starts_with([' ', '\t', '\n', '\r', '\x0c']) {
-            continue;
-        }
-        if let Some(href) = attributes(tag).into_iter().find(|(name, _)| name == "href") {
-            hrefs.push(href.1);
-        }
+        let (href, after) = tag_href(tag);
+        hrefs.extend(href);
+        rest = after;
     }
     hrefs
 }
 
-/// A tag's attributes, up to its `>`; names lowercased and values with `&amp;` decoded.
-fn attributes(mut s: &str) -> Vec<(String, String)> {
-    let mut found = Vec::new();
+/// A tag's first `href` with `&amp;` decoded, and what follows the attributes.
+fn tag_href(mut s: &str) -> (Option<String>, &str) {
+    let mut href = None;
     loop {
-        s = s.trim_start_matches([' ', '\t', '\n', '\r', '\x0c', '/']);
+        s = s.trim_start_matches(|c| HTML_SPACE.contains(&c) || c == '/');
         if s.is_empty() || s.starts_with('>') {
-            return found;
+            return (href, s);
         }
         let end = s
-            .find([' ', '\t', '\n', '\r', '\x0c', '=', '>', '/'])
+            .find(|c| HTML_SPACE.contains(&c) || matches!(c, '=' | '>' | '/'))
             .unwrap_or(s.len());
-        let name = s[..end].to_lowercase();
-        s = s[end..].trim_start_matches([' ', '\t', '\n', '\r', '\x0c']);
+        let is_href = s[..end].eq_ignore_ascii_case("href");
+        s = s[end..].trim_start_matches(HTML_SPACE);
         let mut value = "";
         if let Some(after) = s.strip_prefix('=') {
-            s = after.trim_start_matches([' ', '\t', '\n', '\r', '\x0c']);
+            s = after.trim_start_matches(HTML_SPACE);
             if let Some(quote) = s.chars().next().filter(|c| matches!(c, '"' | '\'')) {
                 let inner = &s[1..];
                 let close = inner.find(quote).unwrap_or(inner.len());
                 (value, s) = (&inner[..close], inner.get(close + 1..).unwrap_or_default());
             } else {
                 let close = s
-                    .find([' ', '\t', '\n', '\r', '\x0c', '>'])
+                    .find(|c| HTML_SPACE.contains(&c) || c == '>')
                     .unwrap_or(s.len());
                 (value, s) = (&s[..close], &s[close..]);
             }
         }
-        if !name.is_empty() {
-            found.push((name, value.replace("&amp;", "&")));
+        if is_href && href.is_none() {
+            href = Some(value.replace("&amp;", "&"));
         }
     }
 }
@@ -508,6 +530,56 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(bytes)
         .ok()
         .filter(|decoded| !decoded.is_empty())
+}
+
+/// Whether an event of this type starts a poll: js `isPollStart`.
+pub(super) fn is_poll_start(event_type: &str) -> bool {
+    matches!(event_type, "m.poll.start" | "org.matrix.msc3381.poll.start")
+}
+
+/// The first string of an extensible text: js `extensibleText`.
+fn extensible_text(block: &Value) -> String {
+    ["m.text", "org.matrix.msc1767.text", "body"]
+        .iter()
+        .find_map(|key| block[key].as_str())
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// A poll start the SDK does not hold as a poll: the stable type, or one that did not parse.
+// shortcut: no votes and never ended, because the SDK only counts the unstable types; T15 reads
+// both namespaces.
+pub(super) fn poll_start(content: &Value, id: &str) -> PollViewDto {
+    let stable = &content["m.poll.start"];
+    let start = if stable.is_null() {
+        &content["org.matrix.msc3381.poll.start"]
+    } else {
+        stable
+    };
+    let answers = (start["answers"].as_array().into_iter().flatten()).take(MAX_POLL_ANSWERS);
+    let options: Vec<_> = answers
+        .map(|answer| PollOptionDto {
+            id: match &answer["id"] {
+                Value::String(id) => id.clone(),
+                Value::Number(id) => id.to_string(),
+                _ => String::new(),
+            },
+            text: extensible_text(answer),
+            votes: 0,
+            chosen: false,
+        })
+        .collect();
+    let max_selections = (start["max_selections"].as_u64())
+        .filter(|max| *max > 0)
+        .map_or(1, |max| saturated(max).min(saturated(options.len()).max(1)));
+    PollViewDto {
+        id: id.to_owned(),
+        question: extensible_text(&start["question"]),
+        options,
+        total_votes: 0,
+        max_selections,
+        ended: false,
+    }
 }
 
 /// The change a state event makes, and the users it names. `None` for a type js does not show.
@@ -772,8 +844,19 @@ mod tests {
             "m.file",
         )
         .unwrap();
+        let sticker = message_like(
+            "m.sticker",
+            &json!({"url": "mxc://x/s", "info": {"thumbnail_file": {"url": "mxc://x/t", "iv": "i",
+                "key": {"k": "TOPSECRET"}}}}),
+            false,
+            "",
+        );
+        assert!(matches!(
+            sticker.content,
+            TimelineItemContentDto::Sticker { .. }
+        ));
         let shown = format!(
-            "{payload:?} {:?}",
+            "{payload:?} {sticker:?} {:?}",
             message_like(
                 "m.room.message",
                 &json!({"msgtype": "m.file", "body": "f",
@@ -816,6 +899,155 @@ mod tests {
             bad,
             json!({"kind": "unsupported", "body": "[sticker]", "replyFallback": false})
         );
+    }
+
+    #[test]
+    fn hostile_content_is_mapped_and_never_panics() {
+        let shapes = [
+            json!("x"),
+            json!(1),
+            json!(1.5),
+            json!(true),
+            json!(null),
+            json!([]),
+            json!([{"url": "mxc://x/s"}]),
+            json!({}),
+            json!({"url": 1, "info": "x", "body": 1, "file": "x"}),
+            json!({"url": "mxc://x/s", "info": [], "file": {"url": 1, "iv": [], "key": 1}}),
+            json!({"url": "mxc://x/s", "info": {"thumbnail_info": 1, "thumbnail_file": []},
+                "m.mentions": 1, "formatted_body": 1, AUDIO: 1, VOICE: 1}),
+        ];
+        for shape in &shapes {
+            for event_type in ["m.sticker", "m.room.message", "org.example.x"] {
+                message_like(event_type, shape, false, "@me:x");
+            }
+            for msgtype in ["m.text", "m.image", "m.audio", "m.location", "org.example"] {
+                let mut typed = shape.as_object().cloned().unwrap_or_default();
+                typed.insert("msgtype".into(), msgtype.into());
+                let typed = Value::Object(typed);
+                message_like("m.room.message", &typed, false, "@me:x");
+                media_payload(shape, msgtype);
+            }
+            for event_type in ["m.room.member", "m.room.name", "m.room.create"] {
+                let event = json!({"type": event_type, "sender": shape, "state_key": shape,
+                    "content": shape, "unsigned": {"prev_content": shape}});
+                state_change(&event);
+            }
+            state_change(shape);
+            parse_geo_uri(shape);
+        }
+        for shape in [json!("x"), json!(1), json!(true), json!(null), json!([])] {
+            assert_eq!(
+                to_json(message_like("m.sticker", &shape, false, "").content),
+                json!({"kind": "unsupported", "body": "[sticker]", "replyFallback": false}),
+                "{shape}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_link_scan_is_linear() {
+        let huge = |unit: &str| format!("matrix{}", unit.repeat(300_000 / unit.len()));
+        let mut bodies = [
+            "<a ",
+            "<a href ",
+            "<a x=\"",
+            "<a x='y' ",
+            "<",
+            "<a href=matrix:u/a:b ",
+        ]
+        .map(huge)
+        .to_vec();
+        bodies.push(
+            (0..12_000)
+                .map(|n| format!("<a href=matrix:u/{n}:b>"))
+                .collect(),
+        );
+        let (done, finished) = std::sync::mpsc::channel();
+        // In a thread, with a limit far above a linear scan even on a loaded machine: one that
+        // re-reads the body from each tag would take hours here.
+        std::thread::spawn(move || {
+            for body in &bodies {
+                linked_user_ids(body);
+            }
+            let _ = done.send(());
+        });
+        finished
+            .recv_timeout(std::time::Duration::from_secs(60))
+            .expect("a linear scan ends well within the limit");
+    }
+
+    #[test]
+    fn an_anchor_is_read_as_a_document_reads_it() {
+        assert_eq!(
+            linked_user_ids("<A HREF='MATRIX:u/a:y'>"),
+            ["@a:y"],
+            "the check for a link ignores case"
+        );
+        assert_eq!(
+            linked_user_ids(r#"<a title="<a href='matrix:u/a:y'>" href="matrix:u/b:y">"#),
+            ["@b:y"],
+            "a quoted value holds no tag"
+        );
+        assert!(
+            linked_user_ids("<a href=https://x.org href=matrix:u/a:y>").is_empty(),
+            "the first href is the anchor's"
+        );
+        assert_eq!(linked_user_ids("<a/href=matrix:u/a:y>"), ["@a:y"]);
+        assert_eq!(linked_user_ids("<a é=é href=matrix:u/a:y>é"), ["@a:y"]);
+    }
+
+    #[test]
+    fn a_falsy_key_is_no_encrypted_file() {
+        for key in [json!(null), json!(false), json!(0), json!(""), json!(0.0)] {
+            let content = json!({"url": "mxc://x/plain", "file": {"url": "mxc://x/enc", "iv": "i", "key": key}});
+            let payload = media_payload(&content, "m.file").unwrap();
+            assert_eq!(payload.mxc.as_deref(), Some("mxc://x/plain"), "{content}");
+            assert!(payload.file.is_none());
+        }
+        let keyed = json!({"file": {"url": "mxc://x/enc", "iv": "i", "key": 1}});
+        assert!(media_payload(&keyed, "m.file").unwrap().file.is_some());
+    }
+
+    #[test]
+    fn an_empty_url_is_no_source() {
+        assert!(media_payload(&json!({"url": ""}), "m.file").is_none());
+    }
+
+    #[test]
+    fn a_poll_start_reads_either_namespace_and_caps_its_answers() {
+        let answers: Vec<Value> = (0..25)
+            .map(|n| json!({"id": n.to_string(), "m.text": format!("answer {n}")}))
+            .collect();
+        for namespace in ["m.poll.start", "org.matrix.msc3381.poll.start"] {
+            let content = json!({namespace: {"question": {"org.matrix.msc1767.text": "why"},
+                "answers": answers, "max_selections": 99}});
+            let poll = poll_start(&content, "$p");
+            assert_eq!(poll.id, "$p");
+            assert_eq!(poll.question, "why");
+            assert_eq!(poll.options.len(), 20);
+            assert_eq!(poll.options[3].text, "answer 3");
+            assert_eq!(poll.max_selections, 20);
+            assert_eq!((poll.total_votes, poll.ended), (0, false));
+        }
+        for hostile in [
+            json!("x"),
+            json!(null),
+            json!([1]),
+            json!({"m.poll.start": 1}),
+        ] {
+            let poll = poll_start(&hostile, "$p");
+            assert_eq!(poll.question, "");
+            assert!(poll.options.is_empty());
+            assert_eq!(poll.max_selections, 1);
+        }
+        let odd = json!({"m.poll.start": {"question": {"body": "q"}, "max_selections": 0,
+            "answers": ["x", null, {"id": 7, "body": "seven"}]}});
+        let poll = poll_start(&odd, "$p");
+        assert_eq!(poll.question, "q");
+        assert_eq!(poll.max_selections, 1);
+        let ids: Vec<_> = poll.options.iter().map(|o| o.id.as_str()).collect();
+        assert_eq!(ids, ["", "", "7"]);
     }
 
     #[test]

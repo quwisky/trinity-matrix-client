@@ -228,7 +228,7 @@ pub(super) enum TimelineItemContentDto {
         body: Option<String>,
         url: Option<String>,
         #[ts(type = "Record<string, unknown> | null")]
-        info: Option<Value>,
+        info: Option<StickerInfoDto>,
     },
     Location {
         lat: f64,
@@ -252,6 +252,17 @@ pub(super) enum TimelineItemContentDto {
     State {
         change: SystemChangeDto,
     },
+}
+
+/// A sticker's `info` as sent. Its `Debug` shows none of it: it can hold a thumbnail's file key.
+#[derive(Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+pub(super) struct StickerInfoDto(pub Value);
+
+impl fmt::Debug for StickerInfoDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("StickerInfoDto(<redacted>)")
+    }
 }
 
 /// The `msgtype` of a `message` item.

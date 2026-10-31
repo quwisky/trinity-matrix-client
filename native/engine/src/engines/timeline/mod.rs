@@ -41,7 +41,7 @@ use dto::{DTO, TimelineItemDto, TimelineRoomStateDto, TimelineUpdateDto};
 use fold::{Fold, Marker};
 use hub::Hub;
 use paging::LANDING_LIMIT;
-use rows::{RowContext, room_state, row};
+use rows::{Pass, RowContext, is_hidden, is_message_row, room_state, row};
 
 /// `TimelineFocus`. The root stays a string: a malformed one is a thread that can't exist, which
 /// the members answer, and never a `bad-args` fault on a stream.
@@ -208,10 +208,10 @@ where
         let mut sdk_items = items.clone();
         let mut state = *hub.state.borrow();
         let mut snapshot = marker.apply(fold.apply(VectorDiff::Reset { values: items }, is_virtual));
-        snapshot.extend(marker.place(marker_target(&sdk_items, &ctx.me)));
+        snapshot.extend(marker.place(marker_target(&sdk_items, &ctx.me, thread)));
         let mut shown = room_of(&room, &sdk_items, thread).await;
         yield TimelineUpdateDto::Items {
-            diffs: rows_of(snapshot, &ctx).await,
+            diffs: rows_of(snapshot, &ctx, &sdk_items).await,
             back_pagination: state,
             room: shown.clone(),
         };
@@ -256,8 +256,8 @@ where
                 .flat_map(|diff| fold.apply(diff, is_virtual))
                 .collect();
             let mut folded = marker.apply(folded);
-            folded.extend(marker.place(marker_target(&sdk_items, &ctx.me)));
-            let mut framed = frames(rows_of(folded, &ctx).await);
+            folded.extend(marker.place(marker_target(&sdk_items, &ctx.me, thread)));
+            let mut framed = frames(rows_of(folded, &ctx, &sdk_items).await);
             let room_now = room_of(&room, &sdk_items, thread).await;
             if framed.is_empty() {
                 if end_state.is_none() && room_now == shown {
@@ -279,9 +279,9 @@ where
     }
 }
 
-/// The rows the interface has no item for: the fold drops them, and the marker is placed apart.
+/// The items the interface has no row for: the fold drops them, and the marker is placed apart.
 fn is_virtual(item: &Arc<TimelineItem>) -> bool {
-    item.is_date_divider() || is_marker(item)
+    item.is_date_divider() || is_marker(item) || item.as_event().is_some_and(is_hidden)
 }
 
 fn is_marker(item: &TimelineItem) -> bool {
@@ -289,30 +289,34 @@ fn is_marker(item: &TimelineItem) -> bool {
 }
 
 /// Where js puts the marker: before the first message after the SDK's marker that is not our
-/// own, past any state items; with none, where the SDK has it. The index counts the rows
-/// without the marker.
+/// own, past any state items. With none, and always in a thread, there is no marker. The index
+/// counts the rows without the marker.
 fn marker_target(
     items: &Vector<Arc<TimelineItem>>,
     me: &UserId,
+    thread: bool,
 ) -> Option<(usize, Arc<TimelineItem>)> {
+    if thread {
+        return None;
+    }
     let (mut shown, mut sdk) = (0, None);
     for item in items {
         if is_marker(item) {
-            sdk = Some((shown, Arc::clone(item)));
+            sdk = Some(item);
             continue;
         }
-        if item.is_date_divider() {
+        if is_virtual(item) {
             continue;
         }
         let unread = item
             .as_event()
-            .is_some_and(|event| event.content().as_msglike().is_some() && event.sender() != me);
-        if let (true, Some((_, marker))) = (unread, &sdk) {
+            .is_some_and(|event| is_message_row(event.content()) && event.sender() != me);
+        if let (true, Some(marker)) = (unread, sdk) {
             return Some((shown, Arc::clone(marker)));
         }
         shown += 1;
     }
-    sdk
+    None
 }
 
 /// What woke the stream.
@@ -336,14 +340,16 @@ fn apply_all(
 fn rows_of<'a>(
     diffs: Vec<VectorDiffDto<Arc<TimelineItem>>>,
     ctx: &'a RowContext,
+    sdk_items: &'a Vector<Arc<TimelineItem>>,
 ) -> BoxFuture<'a, Vec<VectorDiffDto<TimelineItemDto>>> {
     // Boxed: inline, these futures nest too deep for the stream's layout.
-    Box::pin(rows_in(diffs, ctx))
+    Box::pin(rows_in(diffs, ctx, sdk_items))
 }
 
 async fn rows_in(
     diffs: Vec<VectorDiffDto<Arc<TimelineItem>>>,
     ctx: &RowContext,
+    sdk_items: &Vector<Arc<TimelineItem>>,
 ) -> Vec<VectorDiffDto<TimelineItemDto>> {
     let mut items = Vec::new();
     let slots: Vec<_> = diffs
@@ -356,8 +362,9 @@ async fn rows_in(
         })
         .collect();
     let mut rows = Vec::with_capacity(items.len());
+    let mut pass = Pass::new(sdk_items);
     for item in &items {
-        rows.push(Some(row(item, ctx).await));
+        rows.push(Some(row(item, ctx, &mut pass).await));
     }
     slots
         .into_iter()
@@ -365,7 +372,8 @@ async fn rows_in(
         .collect()
 }
 
-/// The room's state beside the rows: the oldest event is the first the rows show.
+/// The room's state beside the rows: the oldest event is the first the list holds, as js takes
+/// it, hidden or not.
 fn room_of<'a>(
     room: &'a Room,
     items: &'a Vector<Arc<TimelineItem>>,
@@ -384,8 +392,8 @@ async fn room_in(
         .find_map(|item| item.as_event()?.event_id())
         .map(ToString::to_string);
     if thread {
-        // shortcut: the room cache's newest event is no thread's; the thread tasks read the
-        // thread cache.
+        // shortcut: the room cache's newest event is no thread's, so an open thread sends no read
+        // receipt; T12 reads the thread cache.
         state.latest_confirmed_event_id = None;
     }
     state
