@@ -86,7 +86,8 @@ sealed interface TokenRefreshResult {
 
 private fun tokensWire(kind: String, record: TokenRecord): JSONObject =
     JSONObject().put("kind", kind).put("accessToken", record.accessToken).apply {
-        record.expiresAtMillis?.let { put("accessTokenExpiresAt", it) }
+        // A saturated or wrapped expiry is left off: JavaScript can't hold it above 2^53 - 1.
+        record.expiresAtMillis?.takeIf { it in 1..9_007_199_254_740_991L }?.let { put("accessTokenExpiresAt", it) }
     }
 
 enum class TokenRevokeResult {

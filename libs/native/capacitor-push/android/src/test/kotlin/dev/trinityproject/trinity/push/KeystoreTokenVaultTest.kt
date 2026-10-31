@@ -1,12 +1,13 @@
 package dev.trinityproject.trinity.push
 
+import android.content.SharedPreferences
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,6 +31,15 @@ class KeystoreTokenVaultTest {
 
         crypto.failing = false
         assertEquals(TokenVaultRead.Record(R0), vault.read(user))
+    }
+
+    @Test
+    fun aFaultReadingThePreferencesIsUnavailable() {
+        val faulty = object : SharedPreferences by preferences {
+            override fun getString(key: String, defValue: String?): String? = throw ClassCastException()
+        }
+
+        assertEquals(TokenVaultRead.Unavailable, KeystoreTokenVault(faulty, crypto).read(user))
     }
 
     @Test
@@ -120,12 +130,16 @@ class KeystoreTokenVaultTest {
     @Test
     fun clearingTheHandoffStoreLeavesTokens() {
         assertEquals("trinity_push_tokens", KeystoreTokenVault.FILE)
-        assertNotEquals(PushHandoffStore.FILE, KeystoreTokenVault.FILE)
-        assertTrue(vault.write(user, R0))
+        val files = mutableMapOf<String, MemoryPreferences>()
+        val tokens = KeystoreTokenVault(files.getOrPut(KeystoreTokenVault.FILE) { MemoryPreferences() }, crypto)
+        val handoff = PushHandoffStore(files.getOrPut(PushHandoffStore.FILE) { MemoryPreferences() }, crypto)
+        assertTrue(tokens.write(user, R0))
+        assertTrue(handoff.setAccount(user, HandoffAccount("https://hs.example", "token", sound = false)))
 
-        assertTrue(PushHandoffStore(MemoryPreferences(), crypto).clear())
+        assertTrue(handoff.clear())
 
-        assertEquals(TokenVaultRead.Record(R0), vault.read(user))
+        assertNull(handoff.account(user))
+        assertEquals(TokenVaultRead.Record(R0), tokens.read(user))
     }
 
     @Test
