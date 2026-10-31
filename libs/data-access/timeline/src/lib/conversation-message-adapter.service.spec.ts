@@ -320,7 +320,7 @@ describe('MatrixConversationMessageAdapter', () => {
     expect(client.setRoomReadMarkers).not.toHaveBeenCalled();
   });
 
-  it('redacts a thread reaction with the thread overload only for a server id', async () => {
+  it('redacts a thread reaction with a server id through the thread overload', async () => {
     const { adapter, client } = setup({ existingReaction: true });
 
     await firstValueFrom(
@@ -337,14 +337,13 @@ describe('MatrixConversationMessageAdapter', () => {
     ]);
   });
 
-  it('never lets a pending thread reaction id redact the thread root', async () => {
-    const pending = '~!shared:hs:txn1';
+  it('does nothing on a double-tap while the first reaction is still pending', async () => {
     const { adapter, client } = setup({
       existingReaction: true,
-      reactionId: pending,
+      reactionId: '~!shared:hs:txn1',
     });
 
-    await firstValueFrom(
+    const outcome = await firstValueFrom(
       adapter.toggleReaction({
         key: KEY,
         threadRootId: '$thread-root',
@@ -353,14 +352,42 @@ describe('MatrixConversationMessageAdapter', () => {
       }),
     );
 
-    expect(client.redactEvent.mock.calls).toEqual([[KEY.roomId, pending]]);
+    expect(outcome).toEqual({ kind: 'applied', operation: 'reaction' });
+    expect(client.redactEvent).not.toHaveBeenCalled();
+    expect(client.sendEvent).not.toHaveBeenCalled();
   });
 
-  it('never lets a pending thread message id redact the thread root', async () => {
+  it('redacts only the server id when own reactions are pending and sent', async () => {
+    const { adapter, client } = setup({
+      existingReaction: true,
+      reactionId: '~!shared:hs:txn1',
+      duplicateReaction: true,
+    });
+
+    const outcome = await firstValueFrom(
+      adapter.toggleReaction({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+        reaction: '👍',
+      }),
+    );
+
+    expect(outcome).toEqual({ kind: 'applied', operation: 'reaction' });
+    expect(client.redactEvent.mock.calls).toEqual([
+      [KEY.roomId, '$thread-root', '$mine2'],
+    ]);
+  });
+
+  it('refuses to delete a pending thread message without redacting the thread root', async () => {
     const pending = '~!shared:hs:txn2';
     const { adapter, client } = setup();
+    // The SDK throws synchronously for a pending id in the two-argument form.
+    client.redactEvent.mockImplementation(() => {
+      throw new Error('pending events are unavailable');
+    });
 
-    await firstValueFrom(
+    const outcome = await firstValueFrom(
       adapter.redact({
         key: KEY,
         threadRootId: '$thread-root',
@@ -368,6 +395,11 @@ describe('MatrixConversationMessageAdapter', () => {
       }),
     );
 
+    expect(outcome).toMatchObject({
+      kind: 'rejected',
+      operation: 'redaction',
+      failure: 'request-rejected',
+    });
     expect(client.redactEvent.mock.calls).toEqual([[KEY.roomId, pending]]);
   });
 });

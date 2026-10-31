@@ -43,7 +43,9 @@ const unavailablePolicy: ConversationMessagePolicy = {
 /**
  * The SDK takes the thread overload only for a `$` event id; any other id (a pending local echo,
  * `~!room:txn`) shifts the arguments and redacts the thread root instead. So only a server id
- * gets the thread scope; a pending id takes the two-argument form, as in the main timeline.
+ * gets the thread scope. A pending id takes the two-argument form, where the SDK throws
+ * synchronously instead of sending a request; callers must not let that throw escape, and
+ * `toggleReaction` skips pending ids altogether.
  */
 function redactById(
   client: MatrixClient,
@@ -85,9 +87,11 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       const mine = myReactionIds(client, room, request.messageId, reaction);
       const action = mine.length
         ? Promise.all(
-            mine.map((id) =>
-              redactById(client, room.roomId, request.threadRootId, id),
-            ),
+            mine
+              .filter((id) => id.startsWith('$'))
+              .map((id) =>
+                redactById(client, room.roomId, request.threadRootId, id),
+              ),
           )
         : request.threadRootId
           ? client.sendEvent(
@@ -122,13 +126,14 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       if (!context) {
         return of(this.rejected('redaction', 'conversation-unavailable'));
       }
-      const action = redactById(
-        context.client,
-        context.room.roomId,
-        request.threadRootId,
-        request.messageId,
-      );
-      return from(action).pipe(
+      return defer(() =>
+        redactById(
+          context.client,
+          context.room.roomId,
+          request.threadRootId,
+          request.messageId,
+        ),
+      ).pipe(
         map(() => this.applied('redaction')),
         catchError((error: unknown) =>
           of(this.requestRejected('redaction', error)),
