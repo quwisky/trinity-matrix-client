@@ -16,9 +16,16 @@ export class TrnToasterComponent {
   /**
    * Sonner ends a gesture only on `pointerup`, but a browser that takes a drag over to scroll
    * sends `pointercancel`. Unended, the toast stays offset and every auto-dismiss timer stops.
+   * The offset is cleared first: that drag was a scroll, and read as a swipe it dismisses the toast.
    */
   protected endGesture(event: PointerEvent): void {
-    event.target?.dispatchEvent(
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    event.target
+      .closest<HTMLElement>('[data-sonner-toast]')
+      ?.style.setProperty('--swipe-amount', '0px');
+    event.target.dispatchEvent(
       new PointerEvent('pointerup', {
         bubbles: true,
         pointerId: event.pointerId,

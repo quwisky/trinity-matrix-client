@@ -176,38 +176,56 @@ test('overlay behavior stays immediate under reduced motion', async ({
 test.describe('toasts under touch', () => {
   test.use({ hasTouch: true });
 
-  test('a drag the browser takes over does not leave a toast stuck', async ({
-    page,
-    browserName,
-  }) => {
-    test.skip(browserName !== 'chromium', 'drives touch through CDP');
-    await page.goto(overlayRecipeStory('feedback'));
-    await page.getByTestId('toast-warning').click();
-    const toast = page
-      .locator('[data-sonner-toast]')
-      .filter({ hasText: 'Canonical warning' });
-    await expect(toast).toBeVisible();
-    const box = await toast.locator('[data-content]').boundingBox();
-    expect(box).not.toBeNull();
-    const x = box!.x + box!.width / 2;
-    const y = box!.y + box!.height / 2;
+  for (const [direction, sign] of [
+    ['down', 1],
+    ['up', -1],
+  ] as const) {
+    test(`a drag ${direction} the browser takes over neither sticks nor dismisses a toast`, async ({
+      page,
+      browserName,
+    }) => {
+      test.skip(browserName !== 'chromium', 'drives touch through CDP');
+      await page.goto(overlayRecipeStory('feedback'));
+      await page.getByTestId('toast-warning').click();
+      const toast = page
+        .locator('[data-sonner-toast]')
+        .filter({ hasText: 'Canonical warning' });
+      await expect(toast).toBeVisible();
+      const box = await toast.locator('[data-content]').boundingBox();
+      expect(box).not.toBeNull();
+      const x = box!.x + box!.width / 2;
+      const y = box!.y + box!.height / 2;
+      await page.evaluate(() => {
+        document.body.dataset['cancels'] = '0';
+        window.addEventListener(
+          'pointercancel',
+          () => {
+            document.body.dataset['cancels'] = '1';
+          },
+          { capture: true },
+        );
+      });
 
-    const touch = await page.context().newCDPSession(page);
-    const drag = async (
-      type: 'touchStart' | 'touchMove' | 'touchEnd',
-      points: { x: number; y: number }[],
-    ) => touch.send('Input.dispatchTouchEvent', { type, touchPoints: points });
-    await drag('touchStart', [{ x, y }]);
-    for (const offset of [5, 15, 30, 45]) {
-      await drag('touchMove', [{ x, y: y + offset }]);
-    }
-    await drag('touchEnd', []);
+      const touch = await page.context().newCDPSession(page);
+      const drag = async (
+        type: 'touchStart' | 'touchMove' | 'touchEnd',
+        points: { x: number; y: number }[],
+      ) =>
+        touch.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+      await drag('touchStart', [{ x, y }]);
+      for (const offset of [5, 15, 25, 35]) {
+        await drag('touchMove', [{ x, y: y + sign * offset }]);
+      }
+      await drag('touchEnd', []);
 
-    await expect(toast).toHaveAttribute('data-swiping', 'false');
-    expect(
-      await toast.evaluate((el) =>
-        (el as HTMLElement).style.getPropertyValue('--swipe-amount'),
-      ),
-    ).toBe('0px');
-  });
+      await expect(page.locator('body')).toHaveAttribute('data-cancels', '1');
+      await expect(toast).toHaveAttribute('data-swiping', 'false');
+      expect(
+        await toast.evaluate((el) =>
+          (el as HTMLElement).style.getPropertyValue('--swipe-amount'),
+        ),
+      ).toBe('0px');
+      await expect(toast).toBeVisible();
+    });
+  }
 });
