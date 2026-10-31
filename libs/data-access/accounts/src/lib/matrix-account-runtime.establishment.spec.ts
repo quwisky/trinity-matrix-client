@@ -571,6 +571,30 @@ describe('replacing a stored device', () => {
     expect(order).toEqual(['persist', 'start', 'logout']);
   });
 
+  it("removes the replaced device's native tokens after its sign-out ran", async () => {
+    const test = setup();
+    const order: string[] = [];
+    saved(test, OLD_SESSION);
+    vi.mocked(test.matrix.detachedClient).mockReturnValue({
+      logout: vi.fn(() => {
+        order.push('logout');
+        return Promise.reject(new Error('offline'));
+      }),
+    } as never);
+    vi.mocked(test.storage.removeNativeTokens).mockImplementation(() => {
+      order.push('removeNativeTokens');
+      return of(void 0);
+    });
+
+    await expect(establish(test, order)).resolves.toEqual({ kind: 'ready' });
+    await settled();
+
+    expect(test.storage.removeNativeTokens).toHaveBeenCalledExactlyOnceWith(
+      '@new:hs',
+    );
+    expect(order).toEqual(['persist', 'start', 'logout', 'removeNativeTokens']);
+  });
+
   it('keeps the replaced device signed in when saving the new session fails', async () => {
     const test = setup();
     saved(test, OLD_SESSION);

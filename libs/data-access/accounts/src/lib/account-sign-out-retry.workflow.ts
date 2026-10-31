@@ -2,7 +2,15 @@ import { Injectable, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 import type { MatrixSession } from '@trinity/util/matrix';
-import { Observable, concatMap, defer, from, of, reduce } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  concatMap,
+  defer,
+  from,
+  of,
+  reduce,
+} from 'rxjs';
 import {
   AccountCleanupAttempt,
   runDetachedCleanupAttempt,
@@ -61,8 +69,11 @@ export class AccountSignOutRetryWorkflow {
     this.residue.set(context.accountId, context);
   }
 
+  /** Forget a retained removal; one given up or dismissed releases its native tokens. */
   clear(accountId: string): void {
-    this.residue.delete(accountId);
+    if (this.residue.delete(accountId)) {
+      this.removeNativeTokens(accountId).subscribe();
+    }
   }
 
   retry(
@@ -143,6 +154,17 @@ export class AccountSignOutRetryWorkflow {
     if (retryable.has('account-registry') || retryable.has('secure-storage')) {
       operations.push(this.retryAccountRegistry(attempt, context));
     }
+    if (retryable.has(logoutScope) && logoutScope === 'provider-session') {
+      // The removal kept the vault record for this revocation; it is dead weight once the
+      // revocation resolved, and kept while it still stands.
+      operations.push(
+        defer(() =>
+          this.providerRevocationStands(attempt)
+            ? of(void 0)
+            : this.removeNativeTokens(context.accountId),
+        ),
+      );
+    }
     return operations.length === 0
       ? of(void 0)
       : from(operations).pipe(
@@ -185,10 +207,24 @@ export class AccountSignOutRetryWorkflow {
     attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
     context: SignOutRetryContext,
   ): Observable<unknown> {
+    const keep = defer(() => of(this.providerRevocationStands(attempt)));
     const source =
       context.remainingAccountIds.length === 0
-        ? this.storage.clear()
-        : this.storage.remove(context.accountId).pipe(
+        ? keep.pipe(
+            concatMap((kept) =>
+              kept
+                ? this.storage.clear({ keepNativeTokens: true })
+                : this.storage.clear(),
+            ),
+          )
+        : keep.pipe(
+            concatMap((kept) =>
+              kept
+                ? this.storage.remove(context.accountId, {
+                    keepNativeTokens: true,
+                  })
+                : this.storage.remove(context.accountId),
+            ),
             concatMap(() => {
               const active = context.remainingAccountIds[0] ?? null;
               return active ? this.storage.setActive(active) : of(void 0);
@@ -203,6 +239,24 @@ export class AccountSignOutRetryWorkflow {
         attempt.resolveIssue('secure-storage');
       },
     });
+  }
+
+  private providerRevocationStands(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+  ): boolean {
+    return attempt
+      .settledIssues()
+      .some(
+        ({ scope, recovery }) =>
+          scope === 'provider-session' && recovery === 'retry-sign-out',
+      );
+  }
+
+  /** Best effort: a refusal leaves residue the startup sweep clears. */
+  private removeNativeTokens(accountId: string): Observable<void> {
+    return defer(() => this.storage.removeNativeTokens(accountId)).pipe(
+      catchError(() => of(void 0)),
+    );
   }
 
   private retryStep(
@@ -230,7 +284,8 @@ export class AccountSignOutRetryWorkflow {
       issues,
     );
     if (issues.length === 0) {
-      this.clear(context.accountId);
+      // Not `clear`: `run` already released the native tokens the revocation resolved.
+      this.residue.delete(context.accountId);
       return outcome;
     }
     this.retain(context);

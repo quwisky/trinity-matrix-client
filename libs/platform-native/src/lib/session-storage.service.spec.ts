@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of, throwError } from 'rxjs';
+import { NEVER, firstValueFrom, of, throwError } from 'rxjs';
 import { PushHandoffBridge } from '@trinity/capacitor-push';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -1113,8 +1113,139 @@ describe('SessionStorageService', () => {
       await firstValueFrom(svc.clear());
       await firstValueFrom(svc.clearAll());
 
+      expect(bridge.removeTokens.mock.calls).toEqual([[], []]);
+    });
+
+    it('rejects clear() and clearAll() when the native removal is refused, after the JS tokens', async () => {
+      const { svc, bridge, secure } = setup();
+      await firstValueFrom(svc.save(CAROL));
+      bridge.removeTokens.mockReturnValue(throwError(() => new Error('no')));
+
+      await expect(firstValueFrom(svc.clear())).rejects.toThrow('no');
+      await expect(firstValueFrom(svc.clearAll())).rejects.toThrow('no');
+
+      expect(secure.store.size).toBe(0);
+      expect(prefs.has('matrix.accounts')).toBe(true);
+    });
+
+    it('clears the vault after the JS tokens and before the registry', async () => {
+      const { svc, bridge, removals } = setup();
+      await firstValueFrom(svc.save(CAROL));
+      const order: string[] = [];
+      removals.mockImplementation(async (key) => {
+        order.push(key);
+      });
+      bridge.removeTokens.mockImplementation(() => {
+        order.push(`vault:${prefs.has('matrix.accounts')}`);
+        return of(undefined);
+      });
+
+      await firstValueFrom(svc.clear());
+
+      expect(order.indexOf('vault:true')).toBeGreaterThan(
+        order.indexOf('matrix.refreshToken:@carol:hs'),
+      );
+      expect(order).toContain('vault:true');
+    });
+
+    it('removes the vault record after the JS tokens and before the registry write', async () => {
+      const { svc, bridge, removals } = setup();
+      await firstValueFrom(svc.save(CAROL));
+      const order: string[] = [];
+      removals.mockImplementation(async (key) => {
+        order.push(key);
+      });
+      bridge.removeTokens.mockImplementation(() => {
+        order.push(`vault:${prefs.has('matrix.accounts')}`);
+        return of(undefined);
+      });
+
+      await firstValueFrom(svc.remove('@carol:hs'));
+
+      expect(order).toEqual([
+        'matrix.accessToken:@carol:hs',
+        'matrix.refreshToken:@carol:hs',
+        'vault:true',
+      ]);
+    });
+
+    it('keeps the vault record when told to, for a revocation still to run', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+
+      await firstValueFrom(svc.remove('@alice:hs', { keepNativeTokens: true }));
+      await firstValueFrom(svc.clear({ keepNativeTokens: true }));
+
+      expect(bridge.removeTokens).not.toHaveBeenCalled();
+      expect(await firstValueFrom(svc.list())).toEqual([]);
+    });
+
+    it('removes a kept vault record later unless the account is stored with a binding', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(svc.removeNativeTokens('@carol:hs'));
+      expect(bridge.removeTokens).not.toHaveBeenCalled();
+
+      await firstValueFrom(svc.remove('@carol:hs', { keepNativeTokens: true }));
+      await firstValueFrom(svc.removeNativeTokens('@carol:hs'));
+      expect(bridge.removeTokens.mock.calls).toEqual([['@carol:hs']]);
+
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.removeNativeTokens('@alice:hs'));
       expect(bridge.removeTokens).toHaveBeenCalledTimes(2);
-      expect(bridge.removeTokens).toHaveBeenNthCalledWith(1);
+    });
+
+    it('rejects invalidateToken when the native removal is refused, after the JS removals settled', async () => {
+      const { svc, bridge, secure } = setup();
+      await firstValueFrom(svc.save(CAROL));
+      bridge.removeTokens.mockReturnValue(throwError(() => new Error('no')));
+
+      await expect(
+        firstValueFrom(svc.invalidateToken('@carol:hs')),
+      ).rejects.toThrow('no');
+
+      expect(secure.store.has('matrix.accessToken:@carol:hs')).toBe(false);
+      expect(secure.store.has('matrix.refreshToken:@carol:hs')).toBe(false);
+    });
+
+    it('keeps the vault record when a sign-in on a new device replaces an OAuth record', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(CAROL));
+
+      await firstValueFrom(
+        svc.save({
+          ...ALICE,
+          userId: CAROL.userId,
+          baseUrl: CAROL.baseUrl,
+          deviceId: 'NEWDEV',
+        }),
+      );
+
+      expect(bridge.removeTokens).not.toHaveBeenCalled();
+    });
+
+    it('fails a native call that never answers like a refusal and frees the queue', async () => {
+      vi.useFakeTimers();
+      try {
+        const { svc, bridge } = setup();
+        await firstValueFrom(svc.save(ALICE));
+        bridge.removeTokens.mockReturnValueOnce(NEVER);
+
+        const stuck = firstValueFrom(svc.remove('@alice:hs')).catch(
+          (error: unknown) => error,
+        );
+        const next = firstValueFrom(svc.save(BOB));
+        await vi.advanceTimersByTimeAsync(4999);
+        expect(await Promise.race([stuck, 'pending'])).toBe('pending');
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(await stuck).toMatchObject({ name: 'TimeoutError' });
+        await expect(next).resolves.toMatchObject({ userId: '@bob:other' });
+        expect(await firstValueFrom(svc.list())).toHaveLength(2);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('removes the vault record on a soft logout and keeps the registry entry', async () => {
@@ -1182,10 +1313,17 @@ describe('SessionStorageService', () => {
 
     it('never asks the bridge anything off native', async () => {
       const { svc, removals } = setup({});
+      const bridge = TestBed.inject(PushHandoffBridge);
+      const removeTokens = vi.spyOn(bridge, 'removeTokens');
       await firstValueFrom(svc.save(CAROL));
       removals.mockClear();
 
       await firstValueFrom(svc.remove('@carol:hs'));
+
+      expect(bridge.available).toBe(false);
+      expect(removeTokens.mock.results.map(({ value }) => value)).toHaveLength(
+        1,
+      );
 
       expect(removals.mock.calls.map(([key]) => key)).toEqual([
         'matrix.accessToken:@carol:hs',

@@ -342,6 +342,21 @@ export class AccountLifecycleAdapter {
       );
   }
 
+  /**
+   * The native vault record is the retry's only way to revoke at the provider, so a
+   * removal keeps it while that revocation stands as retry residue; the retry removes it.
+   */
+  private keepsNativeTokens(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+  ): boolean {
+    return attempt
+      .settledIssues()
+      .some(
+        ({ scope, recovery }) =>
+          scope === 'provider-session' && recovery === 'retry-sign-out',
+      );
+  }
+
   private clearLastAccount(
     attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
     accountId: string,
@@ -357,7 +372,11 @@ export class AccountLifecycleAdapter {
         tap(() => this.clearSharedAccountState(attempt)),
         concatMap(() =>
           attempt.capture(
-            this.storage.clear(),
+            defer(() =>
+              this.keepsNativeTokens(attempt)
+                ? this.storage.clear({ keepNativeTokens: true })
+                : this.storage.clear(),
+            ),
             'account-registry',
             'retry-sign-out',
             ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
@@ -383,7 +402,11 @@ export class AccountLifecycleAdapter {
         tap(() => this.clearDrafts(attempt)),
         concatMap(() =>
           attempt.capture(
-            this.storage.remove(accountId),
+            defer(() =>
+              this.keepsNativeTokens(attempt)
+                ? this.storage.remove(accountId, { keepNativeTokens: true })
+                : this.storage.remove(accountId),
+            ),
             'account-registry',
             'retry-sign-out',
             ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,

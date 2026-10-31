@@ -446,14 +446,21 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
    * starting it detached any old live client for this account, so that client's logout
    * handling never sees this sign-out, and a failed save never leaves the account without
    * any session. Best-effort with the old token on a detached client (for OAuth,
-   * `logout(true)` revokes at the provider); it never delays or fails the sign-in.
+   * `logout(true)` revokes at the provider), then drops its native tokens; it never delays
+   * or fails the sign-in.
    */
   private signOutReplacedDevice(stored: MatrixSession): void {
     defer(() =>
       this.matrix
         .detachedClient(stored, { persistRefreshedTokens: false })
         .logout(true),
-    ).subscribe({ error: () => undefined });
+    )
+      .pipe(
+        catchError(() => of(void 0)),
+        // The sign-in left the old device's native tokens for this logout to revoke.
+        switchMap(() => this.storage.removeNativeTokens(stored.userId)),
+      )
+      .subscribe({ error: () => undefined });
   }
 
   private toAdapterOutcome(

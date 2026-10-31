@@ -390,6 +390,103 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
+  describe('the native token vault record', () => {
+    function offline(remaining: readonly string[]) {
+      const test = setup('@oidc:hs');
+      const client = {
+        logout: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('offline'))
+          .mockResolvedValue(undefined),
+      };
+      vi.mocked(test.matrix.clientFor).mockReturnValue(client as never);
+      vi.mocked(test.storage.list).mockReturnValue(
+        of([
+          OIDC_RECORD,
+          ...remaining.map((userId) => ({
+            userId,
+            baseUrl: 'https://hs',
+            deviceId: 'B',
+          })),
+        ]) as never,
+      );
+      vi.mocked(test.storage.load).mockReturnValue(of(OIDC_STORED));
+      vi.mocked(test.matrix.remove).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.clear).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.remove).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.setActive).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.removeNativeTokens).mockReturnValue(of(void 0));
+      return { ...test, client };
+    }
+
+    it.each([
+      ['the last account', [] as string[]],
+      ['one of several', ['@other:hs']],
+    ])(
+      'keeps it through an offline sign-out of %s until the retry revokes',
+      async (_, remaining) => {
+        const test = offline(remaining);
+        const removal =
+          remaining.length === 0 ? test.storage.clear : test.storage.remove;
+
+        const first = await firstValueFrom(
+          test.adapter.signOutAccount('@oidc:hs'),
+        );
+
+        expect(first).toMatchObject({
+          kind: 'partial-cleanup',
+          issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
+        });
+        expect(removal).toHaveBeenCalledWith(
+          ...(remaining.length === 0
+            ? [{ keepNativeTokens: true }]
+            : ['@oidc:hs', { keepNativeTokens: true }]),
+        );
+        expect(test.storage.removeNativeTokens).not.toHaveBeenCalled();
+
+        await firstValueFrom(
+          test.adapter.retrySignOutCleanup(
+            '@oidc:hs',
+            first.kind === 'partial-cleanup' ? first.issues : [],
+          ),
+        );
+
+        expect(test.storage.removeNativeTokens).toHaveBeenCalledExactlyOnceWith(
+          '@oidc:hs',
+        );
+      },
+    );
+
+    it('keeps it while the retry still cannot revoke', async () => {
+      const test = offline([]);
+      test.client.logout.mockReset();
+      test.client.logout.mockRejectedValue(new Error('offline'));
+      const first = await firstValueFrom(
+        test.adapter.signOutAccount('@oidc:hs'),
+      );
+
+      await firstValueFrom(
+        test.adapter.retrySignOutCleanup(
+          '@oidc:hs',
+          first.kind === 'partial-cleanup' ? first.issues : [],
+        ),
+      );
+
+      expect(test.storage.removeNativeTokens).not.toHaveBeenCalled();
+    });
+
+    it('removes it with the account when the revocation succeeded', async () => {
+      const test = offline([]);
+      test.client.logout.mockReset();
+      test.client.logout.mockResolvedValue(undefined);
+
+      await firstValueFrom(test.adapter.signOutAccount('@oidc:hs'));
+
+      expect(test.storage.clear).toHaveBeenCalledExactlyOnceWith();
+      expect(test.storage.removeNativeTokens).not.toHaveBeenCalled();
+    });
+  });
+
   it('keeps a failed live revocation as provider residue when the session read settles late', async () => {
     vi.useFakeTimers();
     try {
