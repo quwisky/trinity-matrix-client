@@ -201,7 +201,7 @@ importers:
         specifier: 10.0.0
         version: 10.0.0
       '@aparajita/capacitor-secure-storage':
-        specifier: ^8.0.1
+        specifier: ^8.0.0
         version: 8.0.1
       '@capacitor/android':
         specifier: ^8.6.0
@@ -213,16 +213,16 @@ importers:
         specifier: ^8.0.5
         version: 8.0.5(@capacitor/core@8.6.0)
       '@capacitor/camera':
-        specifier: ^8.2.6
+        specifier: ^8.2.5
         version: 8.2.6(@capacitor/core@8.6.0)
       '@capacitor/core':
         specifier: 8.6.0
         version: 8.6.0
       '@capacitor/filesystem':
-        specifier: ^8.1.5
+        specifier: ^8.1.4
         version: 8.1.5(@capacitor/core@8.6.0)
       '@capacitor/geolocation':
-        specifier: ^8.2.4
+        specifier: ^8.2.3
         version: 8.2.4(@capacitor/core@8.6.0)
       '@capacitor/haptics':
         specifier: 8.0.2
@@ -255,46 +255,46 @@ importers:
         specifier: 8.0.4
         version: 8.0.4(@capacitor/core@8.6.0)
       '@codemirror/autocomplete':
-        specifier: ^6.20.4
+        specifier: ^6.20.3
         version: 6.20.4
       '@codemirror/commands':
-        specifier: ^6.11.1
+        specifier: ^6.10.4
         version: 6.11.1
       '@codemirror/lang-json':
         specifier: ^6.0.2
         version: 6.0.2
       '@codemirror/language':
-        specifier: ^6.13.1
+        specifier: ^6.12.4
         version: 6.13.1
       '@codemirror/lint':
         specifier: ^6.9.7
         version: 6.9.7
       '@codemirror/state':
-        specifier: ^6.7.6
+        specifier: ^6.7.1
         version: 6.7.6
       '@codemirror/view':
-        specifier: ^6.43.15
+        specifier: ^6.43.8
         version: 6.43.15
       '@ctrl/ngx-emoji-mart':
         specifier: ^9.3.0
         version: 9.3.0(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       '@lezer/common':
-        specifier: ^1.5.5
+        specifier: ^1.5.2
         version: 1.5.5
       '@lezer/highlight':
-        specifier: ^1.2.5
+        specifier: ^1.2.3
         version: 1.2.5
       '@matrix-org/matrix-sdk-crypto-wasm':
         specifier: 18.9.0
         version: 18.9.0
       '@ng-icons/core':
-        specifier: ^36.1.0
+        specifier: ^36.0.0
         version: 36.1.0(@angular-devkit/schematics@22.2.4(chokidar@5.0.0))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@schematics/angular@22.2.4(chokidar@5.0.0))(rxjs@7.8.2)
       '@ng-icons/lucide':
-        specifier: ^36.1.0
+        specifier: ^36.0.0
         version: 36.1.0(@ng-icons/core@36.1.0(@angular-devkit/schematics@22.2.4(chokidar@5.0.0))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@schematics/angular@22.2.4(chokidar@5.0.0))(rxjs@7.8.2))
       '@sanity/diff-match-patch':
-        specifier: ^3.2.1
+        specifier: ^3.2.0
         version: 3.2.1
       '@shikijs/core':
         specifier: 4.5.0
@@ -324,7 +324,7 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       dompurify:
-        specifier: ^3.4.17
+        specifier: ^3.4.12
         version: 3.4.17
       katex:
         specifier: 0.19.1
@@ -333,7 +333,7 @@ importers:
         specifier: ^1.9.2
         version: 1.9.2
       marked:
-        specifier: ^18.1.2
+        specifier: ^18.0.6
         version: 18.1.2
       matrix-js-sdk:
         specifier: ^45.0.0
@@ -342,13 +342,13 @@ importers:
         specifier: 1.20.0
         version: 1.20.0(patch_hash=91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c)
       qr:
-        specifier: ^0.7.2
+        specifier: ^0.7.0
         version: 0.7.2
       rxjs:
         specifier: ~7.8.2
         version: 7.8.2
       tailwind-merge:
-        specifier: ^3.7.0
+        specifier: ^3.6.0
         version: 3.7.0
       tslib:
         specifier: ^2.8.1
@@ -385,10 +385,10 @@ importers:
         specifier: 8.6.0
         version: 8.6.0(supports-color@8.1.1)
       '@commitlint/cli':
-        specifier: ^21.2.4
+        specifier: ^21.2.1
         version: 21.2.4(conventional-commits-parser@7.1.3)(typescript@6.0.3)
       '@commitlint/config-conventional':
-        specifier: ^21.2.4
+        specifier: ^21.2.0
         version: 21.2.4
       '@nx/angular':
         specifier: 24.0.2
@@ -412,7 +412,7 @@ importers:
         specifier: 24.0.2
         version: 24.0.2(@babel/traverse@7.29.12(supports-color@8.1.1))(@nx/cypress@24.0.2(@babel/traverse@7.29.12(supports-color@8.1.1))(@zkochan/js-yaml@0.0.7)(eslint@10.12.0(jiti@2.7.0)(supports-color@8.1.1))(nx@24.0.2)(supports-color@8.1.1)(typescript@6.0.3))(@nx/eslint@24.0.2(@babel/traverse@7.29.12(supports-color@8.1.1))(@zkochan/js-yaml@0.0.7)(eslint@10.12.0(jiti@2.7.0)(supports-color@8.1.1))(nx@24.0.2)(supports-color@8.1.1))(@nx/playwright@24.0.2(@babel/traverse@7.29.12(supports-color@8.1.1))(@playwright/test@1.64.1)(@zkochan/js-yaml@0.0.7)(eslint@10.12.0(jiti@2.7.0)(supports-color@8.1.1))(nx@24.0.2)(supports-color@8.1.1))(debug@4.4.3(supports-color@8.1.1))(nx@24.0.2)(supports-color@8.1.1)
       '@playwright/test':
-        specifier: ^1.64.1
+        specifier: ^1.62.1
         version: 1.64.1
       '@resvg/resvg-js':
         specifier: 2.6.2
@@ -436,13 +436,13 @@ importers:
         specifier: ^19.4.1
         version: 19.5.0(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@testing-library/dom@10.4.2)
       '@testing-library/dom':
-        specifier: ^10.4.2
+        specifier: ^10.4.1
         version: 10.4.2
       '@testing-library/jest-dom':
-        specifier: ^7.0.1
+        specifier: ^7.0.0
         version: 7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.5)
       '@types/node':
-        specifier: ^24.19.2
+        specifier: ^24.13.3
         version: 24.19.2
       '@types/omggif':
         specifier: ^1.0.5
@@ -490,19 +490,19 @@ importers:
         specifier: ^10.8.0
         version: 10.12.0(jiti@2.7.0)(supports-color@8.1.1)
       eslint-plugin-tailwindcss:
-        specifier: ^4.4.0
+        specifier: ^4.2.0
         version: 4.4.0(eslint@10.12.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(tailwindcss@4.3.3)(typescript@6.0.3)
       husky:
         specifier: ^9.1.7
         version: 9.1.7
       jsdom:
-        specifier: ^30.1.3
+        specifier: ^30.0.1
         version: 30.1.3
       lint-staged:
-        specifier: ^17.6.0
+        specifier: ^17.3.0
         version: 17.6.0
       ng-mocks:
-        specifier: ^14.18.4
+        specifier: ^14.15.3
         version: 14.18.4(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/forms@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))
       ng-packagr:
         specifier: 22.2.5
@@ -514,13 +514,13 @@ importers:
         specifier: 1.0.10
         version: 1.0.10
       playwright:
-        specifier: ^1.64.1
+        specifier: ^1.62.1
         version: 1.64.1
       postcss:
-        specifier: ^8.5.32
+        specifier: ^8.5.25
         version: 8.5.32
       prettier:
-        specifier: ^3.9.10
+        specifier: ^3.9.6
         version: 3.9.10
       prettier-plugin-tailwindcss:
         specifier: ^0.8.1
@@ -529,7 +529,7 @@ importers:
         specifier: 10.6.5
         version: 10.6.5(prettier@3.9.10)(react@19.3.1)
       stylelint:
-        specifier: ^17.16.0
+        specifier: ^17.14.1
         version: 17.16.0(supports-color@8.1.1)(typescript@6.0.3)
       stylelint-config-standard-scss:
         specifier: ^17.0.0
@@ -544,13 +544,13 @@ importers:
         specifier: ^8.65.0
         version: 8.71.2(eslint@10.12.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
       vite:
-        specifier: ^8.3.5
+        specifier: ^8.2.0
         version: 8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1(supports-color@8.1.1))(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.23.15)(yaml@2.9.1)
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(jsdom@30.1.3)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1(supports-color@8.1.1))(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.23.15)(yaml@2.9.1))
       yaml:
-        specifier: ^2.9.1
+        specifier: ^2.9.0
         version: 2.9.1
 
   libs/native/capacitor-app-lock: {}
