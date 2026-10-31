@@ -1,4 +1,4 @@
-# Trinity e2e settings for matrix-authentication-service 1.26.0, merged over the generated
+# Trinity e2e settings for matrix-authentication-service 1.28.0, merged over the generated
 # mas-data/mas/generated.yaml (secrets and signing keys, created at start and never
 # committed). MAS_CONFIG lists that file first, so these keys win. Test-only.
 http:
