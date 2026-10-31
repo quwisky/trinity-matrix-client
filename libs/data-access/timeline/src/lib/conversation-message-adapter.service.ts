@@ -1,5 +1,11 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
-import { EventStatus, EventType, ReceiptType, type Room } from 'matrix-js-sdk';
+import {
+  EventStatus,
+  EventType,
+  ReceiptType,
+  type MatrixClient,
+  type Room,
+} from 'matrix-js-sdk';
 import {
   catchError,
   defer,
@@ -34,6 +40,22 @@ const unavailablePolicy: ConversationMessagePolicy = {
   }),
 };
 
+/**
+ * The SDK takes the thread overload only for a `$` event id; any other id (a pending local echo,
+ * `~!room:txn`) shifts the arguments and redacts the thread root instead. So only a server id
+ * gets the thread scope; a pending id takes the two-argument form, as in the main timeline.
+ */
+function redactById(
+  client: MatrixClient,
+  roomId: string,
+  threadRootId: string | undefined,
+  eventId: string,
+) {
+  return threadRootId && eventId.startsWith('$')
+    ? client.redactEvent(roomId, threadRootId, eventId)
+    : client.redactEvent(roomId, eventId);
+}
+
 export const CONVERSATION_MESSAGE_POLICY =
   new InjectionToken<ConversationMessagePolicy>(
     'conversation-runtime.room-administration-message-policy',
@@ -64,9 +86,7 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       const action = mine.length
         ? Promise.all(
             mine.map((id) =>
-              request.threadRootId
-                ? client.redactEvent(room.roomId, request.threadRootId, id)
-                : client.redactEvent(room.roomId, id),
+              redactById(client, room.roomId, request.threadRootId, id),
             ),
           )
         : request.threadRootId
@@ -102,13 +122,12 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       if (!context) {
         return of(this.rejected('redaction', 'conversation-unavailable'));
       }
-      const action = request.threadRootId
-        ? context.client.redactEvent(
-            context.room.roomId,
-            request.threadRootId,
-            request.messageId,
-          )
-        : context.client.redactEvent(context.room.roomId, request.messageId);
+      const action = redactById(
+        context.client,
+        context.room.roomId,
+        request.threadRootId,
+        request.messageId,
+      );
       return from(action).pipe(
         map(() => this.applied('redaction')),
         catchError((error: unknown) =>

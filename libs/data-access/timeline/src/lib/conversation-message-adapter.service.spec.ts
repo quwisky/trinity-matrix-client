@@ -26,6 +26,8 @@ function setup(
   options: {
     readonly eventStatus?: EventStatus | null;
     readonly existingReaction?: boolean;
+    /** Id of the own reaction; a local echo's is `~!room:txn` until the server answers. */
+    readonly reactionId?: string;
     /** A second own reaction with the same key, as another device can race one in. */
     readonly duplicateReaction?: boolean;
     readonly privateReceipt?: boolean;
@@ -44,7 +46,7 @@ function setup(
       [
         '👍',
         new Set([
-          fakeReaction(KEY.accountId, '$mine'),
+          fakeReaction(KEY.accountId, options.reactionId ?? '$mine'),
           ...(options.duplicateReaction
             ? [fakeReaction(KEY.accountId, '$mine2')]
             : []),
@@ -316,5 +318,56 @@ describe('MatrixConversationMessageAdapter', () => {
       ReceiptType.Read,
     );
     expect(client.setRoomReadMarkers).not.toHaveBeenCalled();
+  });
+
+  it('redacts a thread reaction with the thread overload only for a server id', async () => {
+    const { adapter, client } = setup({ existingReaction: true });
+
+    await firstValueFrom(
+      adapter.toggleReaction({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+        reaction: '👍',
+      }),
+    );
+
+    expect(client.redactEvent.mock.calls).toEqual([
+      [KEY.roomId, '$thread-root', '$mine'],
+    ]);
+  });
+
+  it('never lets a pending thread reaction id redact the thread root', async () => {
+    const pending = '~!shared:hs:txn1';
+    const { adapter, client } = setup({
+      existingReaction: true,
+      reactionId: pending,
+    });
+
+    await firstValueFrom(
+      adapter.toggleReaction({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+        reaction: '👍',
+      }),
+    );
+
+    expect(client.redactEvent.mock.calls).toEqual([[KEY.roomId, pending]]);
+  });
+
+  it('never lets a pending thread message id redact the thread root', async () => {
+    const pending = '~!shared:hs:txn2';
+    const { adapter, client } = setup();
+
+    await firstValueFrom(
+      adapter.redact({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: pending,
+      }),
+    );
+
+    expect(client.redactEvent.mock.calls).toEqual([[KEY.roomId, pending]]);
   });
 });
