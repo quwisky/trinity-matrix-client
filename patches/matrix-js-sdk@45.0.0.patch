@@ -19,10 +19,10 @@ index 70dc3337d28e22f122bb05b221ed9d1823c25f75..89832c91b4b510df3c7248f7d74f09f5
      /**
       * Sets the base URL for the identity server
 diff --git a/lib/http-api/fetch.js b/lib/http-api/fetch.js
-index dde6d845be2926397f2a4bdc3b09325748cd1adc..3519a4910e128336a9b8c997884d41314c9a4918 100644
+index 0beec8077ebcfd57ec96e30765874c25c2d9fb7f..57e524bbaeb4cf1492ec039a7a2373a614f16e19 100644
 --- a/lib/http-api/fetch.js
 +++ b/lib/http-api/fetch.js
-@@ -53,6 +53,16 @@ export class FetchHttpApi {
+@@ -56,6 +56,16 @@ export class FetchHttpApi {
    async revokeOAuthTokens() {
      return this.tokenManager.revokeTokens();
    }
@@ -40,10 +40,10 @@ index dde6d845be2926397f2a4bdc3b09325748cd1adc..3519a4910e128336a9b8c997884d4131
      if (this.opts.fetchFn) {
        return this.opts.fetchFn(resource, options);
 diff --git a/lib/http-api/refresh.d.ts b/lib/http-api/refresh.d.ts
-index 223f4c8bb02839a87d04f68b7fed846f3b5fc577..9e8d450c6e7552f7cb5c99d4fb649a7bf34660f0 100644
+index 7561cea4dd1ea743c8d84125d4e799f2deb35b72..e2658f086f22934d85307dd88ef9cf2852914cca 100644
 --- a/lib/http-api/refresh.d.ts
 +++ b/lib/http-api/refresh.d.ts
-@@ -41,6 +41,14 @@ export declare class TokenManager {
+@@ -47,6 +47,14 @@ export declare class TokenManager {
       * @returns a TokenRefreshOutcome indicating the result of the refresh attempt
       */
      handleUnknownToken(snapshot: AccessTokens, attempt: number): Promise<TokenRefreshOutcome>;
@@ -59,10 +59,10 @@ index 223f4c8bb02839a87d04f68b7fed846f3b5fc577..9e8d450c6e7552f7cb5c99d4fb649a7b
      /**
       * Attempt to refresh access tokens.
 diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
-index 1a7147907487b62ca6a72440b767a7619a205b6f..9f85b133d8ee2296676fac57a809f1b676be63cf 100644
+index 33663e12c92d0f2edebc32c26651ba109a5023b5..2f4f6cc45486efbaab8624415f8c14b2b102d872 100644
 --- a/lib/http-api/refresh.js
 +++ b/lib/http-api/refresh.js
-@@ -97,8 +97,37 @@ export class TokenManager {
+@@ -103,8 +103,37 @@ export class TokenManager {
    async handleUnknownToken(snapshot, attempt) {
      return this._handleUnknownToken(snapshot, attempt);
    }
@@ -101,7 +101,7 @@ index 1a7147907487b62ca6a72440b767a7619a205b6f..9f85b133d8ee2296676fac57a809f1b6
        // If our token is unknown, but it should not have expired yet, then we should not refresh
        const expiresIn = snapshot.expiry.getTime() - Date.now();
        // If it still has plenty of time left on the clock, we assume something else must be wrong and
-@@ -127,7 +156,7 @@ export class TokenManager {
+@@ -133,7 +162,7 @@ export class TokenManager {
     * On success, sets new access and refresh tokens in opts.
     * @returns Promise that resolves to a boolean - true when token was refreshed successfully
     */
@@ -110,16 +110,17 @@ index 1a7147907487b62ca6a72440b767a7619a205b6f..9f85b133d8ee2296676fac57a809f1b6
      if (!this.opts.refreshToken || !this.opts.oauth2ClientConfig) {
        this.opts.logger?.error("Unable to refresh token - no refresh token or OAuth2 client config");
        return TokenRefreshOutcome.Logout;
-@@ -147,7 +176,7 @@ export class TokenManager {
-         accessToken,
+@@ -154,7 +183,8 @@ export class TokenManager {
          refreshToken,
          expiry
--      } = await tokenRefresher.refreshTokens(this.opts.refreshToken);
-+      } = await tokenRefresher.refreshTokens(this.opts.refreshToken, deadline);
+       } = await tokenRefresher.refreshTokens(this.opts.refreshToken, {
+-        abortSignal: this.getAbortSignal?.()
++        abortSignal: this.getAbortSignal?.(),
++        deadline
+       });
        this.opts.accessToken = accessToken;
        this.opts.refreshToken = refreshToken;
-       this.latestTokenRefreshExpiry = expiry;
-@@ -156,8 +185,10 @@ export class TokenManager {
+@@ -164,8 +194,10 @@ export class TokenManager {
        // successfully got new tokens
        return TokenRefreshOutcome.Success;
      } catch (error) {
@@ -213,10 +214,10 @@ index d48e3a17c0e732e390ecb85ad90052335445018d..f128752e62e37ae35f49b392a27104a0
  //# sourceMappingURL=matrix.js.map
 \ No newline at end of file
 diff --git a/lib/models/thread.js b/lib/models/thread.js
-index cd840e00452252b417e042912aaf35c8f59da059..9b202c7ad38bf0841cca44b8089c25194f469490 100644
+index b3da3c475f9581fccdfca4249f3d34c8e8760cc9..0a4e98383c2af51a7a40be73991e24607e74081d 100644
 --- a/lib/models/thread.js
 +++ b/lib/models/thread.js
-@@ -98,6 +98,8 @@ export class Thread extends ReadReceipt {
+@@ -119,6 +119,8 @@ export class Thread extends ReadReceipt {
      _defineProperty(this, "replyCount", 0);
      _defineProperty(this, "lastPendingEvent", void 0);
      _defineProperty(this, "pendingReplyCount", 0);
@@ -225,7 +226,7 @@ index cd840e00452252b417e042912aaf35c8f59da059..9b202c7ad38bf0841cca44b8089c2519
      _defineProperty(this, "room", void 0);
      _defineProperty(this, "client", void 0);
      _defineProperty(this, "pendingEventOrdering", void 0);
-@@ -158,7 +160,9 @@ export class Thread extends ReadReceipt {
+@@ -179,7 +181,9 @@ export class Thread extends ReadReceipt {
          if (sender && room && this.shouldSendLocalEchoReceipt(sender, event)) {
            room.addLocalEchoReceipt(sender, event, ReceiptType.Read);
          }
@@ -236,7 +237,7 @@ index cd840e00452252b417e042912aaf35c8f59da059..9b202c7ad38bf0841cca44b8089c2519
            this.replyCount++;
          }
        }
-@@ -470,6 +474,7 @@ export class Thread extends ReadReceipt {
+@@ -491,6 +495,7 @@ export class Thread extends ReadReceipt {
      const bundledRelationship = this.getRootEventBundledRelationship();
      if (Thread.hasServerSideSupport && bundledRelationship) {
        this.replyCount = bundledRelationship.count;
@@ -244,11 +245,35 @@ index cd840e00452252b417e042912aaf35c8f59da059..9b202c7ad38bf0841cca44b8089c2519
        this._currentUserParticipated = !!bundledRelationship.current_user_participated;
        const mapper = this.client.getEventMapper();
        // re-insert roomId
+diff --git a/lib/oauth/index.d.ts b/lib/oauth/index.d.ts
+index becabb6271ed8b84954be18042cb497b104b8257..1bba861d2fc065e2de4c909e6211ac1e7f9e994c 100644
+--- a/lib/oauth/index.d.ts
++++ b/lib/oauth/index.d.ts
+@@ -34,6 +34,11 @@ export interface OAuth2RequestOptions {
+      * A signal which, when aborted, aborts the request.
+      */
+     abortSignal?: AbortSignal;
++    /**
++     * Trinity patch: when a refresh token grant must have answered (epoch ms), in place of its
++     * default bound.
++     */
++    deadline?: number;
+ }
+ export declare class OAuth2 {
+     readonly metadata: ValidatedAuthMetadata;
 diff --git a/lib/oauth/index.js b/lib/oauth/index.js
-index e333e24c6097c087a90ea15d3335bcf1d53f0994..a7246eed79d7d605b56302a496973c2628b8c8b9 100644
+index 3b0a30e0188c7eb6ac2e9f3823d0c326864c17dc..212490c82de49223ae62e62e61a931f51a8bd619 100644
 --- a/lib/oauth/index.js
 +++ b/lib/oauth/index.js
-@@ -31,6 +31,14 @@ export * from "./error.js";
+@@ -22,6 +22,7 @@ import { encodeUnpaddedBase64Url } from "../base64.js";
+ import { sha256 } from "../digest.js";
+ import { HTTPError, isMatrixErrorResponse, MatrixError } from "../http-api/errors.js";
+ import { Method } from "../http-api/method.js";
++import { anySignal } from "../http-api/utils.js";
+ import { logger as rootLogger } from "../logger.js";
+ import { fetchWithLogging } from "./fetch.js";
+ import { isOAuth2ErrorResponse, OAuth2Error, OAuth2HTTPError } from "./error.js";
+@@ -31,6 +32,14 @@ export * from "./error.js";
  export * from "./register.js";
  export * from "./discover.js";
  
@@ -263,30 +288,30 @@ index e333e24c6097c087a90ea15d3335bcf1d53f0994..a7246eed79d7d605b56302a496973c26
  /**
   * Type representing the persistent context needed for typical OAuth flows
   */
-@@ -171,17 +179,28 @@ export class OAuth2 {
-    * Refresh the access token using the given refresh token and the refresh token grant
-    * @param refreshToken - the token to use to refresh the access token
-    */
--  async performRefreshTokenGrant(refreshToken) {
-+  async performRefreshTokenGrant(refreshToken, deadline) {
-     const params = new URLSearchParams();
+@@ -187,12 +196,30 @@ export class OAuth2 {
      params.append("grant_type", "refresh_token");
      params.append("client_id", this.context.clientId);
      params.append("refresh_token", refreshToken);
--    const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed);
+-    const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, opts);
 -    const tokenResponse = await res.json();
  
 -    // throws when response is invalid
 -    validateBearerTokenResponse(tokenResponse);
 -    return normalizeBearerTokenResponseTokenType(tokenResponse);
 +    // Trinity patch: abort the grant, body included, once it outlasts its bound, or at the caller's
-+    // deadline (epoch ms) instead. A deadline already passed sends nothing.
++    // deadline (epoch ms) instead. A deadline already passed sends nothing. opts.abortSignal still aborts it.
 +    const controller = new AbortController();
-+    const bound = deadline === undefined ? REFRESH_TOKEN_GRANT_TIMEOUT_MS : deadline - Date.now();
++    const bound = opts?.deadline === undefined ? REFRESH_TOKEN_GRANT_TIMEOUT_MS : opts.deadline - Date.now();
 +    if (bound <= 0) controller.abort();
 +    const timer = setTimeout(() => controller.abort(), bound);
++    const {
++      signal,
++      cleanup
++    } = anySignal(opts?.abortSignal ? [opts.abortSignal, controller.signal] : [controller.signal]);
 +    try {
-+      const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, controller.signal);
++      const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, {
++        abortSignal: signal
++      });
 +      const tokenResponse = await res.json();
 +
 +      // throws when response is invalid
@@ -294,47 +319,16 @@ index e333e24c6097c087a90ea15d3335bcf1d53f0994..a7246eed79d7d605b56302a496973c26
 +      return normalizeBearerTokenResponseTokenType(tokenResponse);
 +    } finally {
 +      clearTimeout(timer);
++      cleanup();
 +    }
    }
  
    /**
-@@ -238,7 +257,7 @@ export class OAuth2 {
-    * Make a request to one of the OAuth 2.0 endpoints, throwing if it responds with an error.
-    * @returns the {@link Response}, for the caller to parse if the endpoint returns a body.
-    */
--  async fetch(target, params, error) {
-+  async fetch(target, params, error, signal) {
-     const url = this.metadata[`${target}_endpoint`];
-     const res = await fetchWithLogging(this.logger, url, {
-       method: Method.Post,
-@@ -246,7 +265,8 @@ export class OAuth2 {
-         "Content-Type": "application/x-www-form-urlencoded",
-         "Accept": "application/json"
-       },
--      body: params
-+      body: params,
-+      signal
-     });
-     if (res.status >= 400) {
-       let body;
 diff --git a/lib/oauth/tokenRefresher.js b/lib/oauth/tokenRefresher.js
-index e5f15214886cca4fa33073e684f954c75df50ddd..aecf44dbe42681dbe13f6486e10534045f3f9c16 100644
+index dee9d00ca53b5b623b13e07aa3165a51b3c37fd7..74756797a6e2ad5638522ffdac5f14a1ce046904 100644
 --- a/lib/oauth/tokenRefresher.js
 +++ b/lib/oauth/tokenRefresher.js
-@@ -32,9 +32,10 @@ export class TokenRefresher {
-    * @param refreshToken - refresh token to use in request with token issuer
-    * @throws when token refresh fails
-    */
--  async refreshTokens(refreshToken) {
-+  async refreshTokens(refreshToken, deadline) {
-     if (!this.inflightRefreshRequest) {
--      this.inflightRefreshRequest = this.getNewTokens(refreshToken);
-+      // Trinity patch: pass the caller's grant deadline on (epoch ms; undefined for the default bound).
-+      this.inflightRefreshRequest = this.getNewTokens(refreshToken, deadline);
-     }
-     try {
-       const tokens = await this.inflightRefreshRequest;
-@@ -62,14 +63,18 @@ export class TokenRefresher {
+@@ -65,14 +65,18 @@ export class TokenRefresher {
    shouldLogoutOnError(error) {
      // Treat as logout as per https://spec.matrix.org/v1.18/client-server-api/#refresh-token-grant
      // after making sure it is an RFC 6749 section 5.2 error response
@@ -343,11 +337,9 @@ index e5f15214886cca4fa33073e684f954c75df50ddd..aecf44dbe42681dbe13f6486e1053404
 +    // ends the session; a temporary or proxy error (403, 404, 408, 429, 5xx) must not.
 +    return error instanceof OAuth2HTTPError && (error.httpStatus === 400 || error.httpStatus === 401);
    }
--  async getNewTokens(refreshToken) {
-+  async getNewTokens(refreshToken, deadline) {
+   async getNewTokens(refreshToken, opts) {
      const requestStart = Date.now();
--    const response = await this.auth.performRefreshTokenGrant(refreshToken);
-+    const response = await this.auth.performRefreshTokenGrant(refreshToken, deadline);
+     const response = await this.auth.performRefreshTokenGrant(refreshToken, opts);
      const tokens = {
        accessToken: response.access_token,
 -      refreshToken: response.refresh_token,
@@ -375,10 +367,10 @@ index 97a01598f3c0328fd6b8684e2879719e9461f7e0..ab8b12b181a58e3d5fba221a9b2d29b3
      this.importKeyBackup({
        rooms: {
 diff --git a/src/http-api/fetch.ts b/src/http-api/fetch.ts
-index 387c1ebc6087adaf4947a377be434b9f56e05fe9..4e7ac563a10e8074aae034c8854706a707c7fc50 100644
+index f52b7d4b31298925ff8c51ae0579131da69562c9..a94d9eb5d4883b22ba943b90843ce6c789ed5e72 100644
 --- a/src/http-api/fetch.ts
 +++ b/src/http-api/fetch.ts
-@@ -66,6 +66,16 @@ export class FetchHttpApi<O extends IHttpOpts> {
+@@ -68,6 +68,16 @@ export class FetchHttpApi<O extends IHttpOpts> {
          return this.tokenManager.revokeTokens();
      }
  
@@ -396,10 +388,10 @@ index 387c1ebc6087adaf4947a377be434b9f56e05fe9..4e7ac563a10e8074aae034c8854706a7
          if (this.opts.fetchFn) {
              return this.opts.fetchFn(resource, options);
 diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
-index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..93682800464342b2c97e0f15d8f411fabe2a5458 100644
+index 04cc1c46c80490248d9602d3dabfbb23405faa94..606ef7e3810e550ea5e88d4d51c0e32f38d9d392 100644
 --- a/src/http-api/refresh.ts
 +++ b/src/http-api/refresh.ts
-@@ -109,10 +109,39 @@ export class TokenManager {
+@@ -123,10 +123,39 @@ export class TokenManager {
          return this._handleUnknownToken(snapshot, attempt);
      }
  
@@ -440,7 +432,7 @@ index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..93682800464342b2c97e0f15d8f411fa
              // If our token is unknown, but it should not have expired yet, then we should not refresh
              const expiresIn = snapshot.expiry.getTime() - Date.now();
              // If it still has plenty of time left on the clock, we assume something else must be wrong and
-@@ -143,7 +172,7 @@ export class TokenManager {
+@@ -157,7 +186,7 @@ export class TokenManager {
       * On success, sets new access and refresh tokens in opts.
       * @returns Promise that resolves to a boolean - true when token was refreshed successfully
       */
@@ -449,16 +441,15 @@ index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..93682800464342b2c97e0f15d8f411fa
          if (!this.opts.refreshToken || !this.opts.oauth2ClientConfig) {
              this.opts.logger?.error("Unable to refresh token - no refresh token or OAuth2 client config");
              return TokenRefreshOutcome.Logout;
-@@ -162,7 +191,7 @@ export class TokenManager {
-                 return TokenRefreshOutcome.Logout;
-             }
+@@ -178,6 +207,7 @@ export class TokenManager {
  
--            const { accessToken, refreshToken, expiry } = await tokenRefresher.refreshTokens(this.opts.refreshToken);
-+            const { accessToken, refreshToken, expiry } = await tokenRefresher.refreshTokens(this.opts.refreshToken, deadline);
+             const { accessToken, refreshToken, expiry } = await tokenRefresher.refreshTokens(this.opts.refreshToken, {
+                 abortSignal: this.getAbortSignal?.(),
++                deadline,
+             });
              this.opts.accessToken = accessToken;
              this.opts.refreshToken = refreshToken;
-             this.latestTokenRefreshExpiry = expiry;
-@@ -171,8 +200,10 @@ export class TokenManager {
+@@ -187,8 +217,10 @@ export class TokenManager {
              // successfully got new tokens
              return TokenRefreshOutcome.Success;
          } catch (error) {
@@ -525,10 +516,10 @@ index 249d5156ad098720a05b3f2a53e1dd59290fa8ae..9c6773947ae7ed78ff971152e4b1702c
 -}
 +// Trinity patch: createRoomWidgetClient removed with the embedded.js re-export.
 diff --git a/src/models/thread.ts b/src/models/thread.ts
-index 24d9cf123525922407827ba716720920b01586ee..ad8017358544e45b9a6d8db78846a25175f9d2ed 100644
+index 3e9f798b6dae8c49bd9e2284a02ecd80d5ec0af1..ce9ca506c102480c640897db7d0cfcdd9211516e 100644
 --- a/src/models/thread.ts
 +++ b/src/models/thread.ts
-@@ -119,6 +119,8 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
+@@ -141,6 +141,8 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
      private replyCount = 0;
      private lastPendingEvent: MatrixEvent | undefined;
      private pendingReplyCount = 0;
@@ -537,7 +528,7 @@ index 24d9cf123525922407827ba716720920b01586ee..ad8017358544e45b9a6d8db78846a251
  
      public readonly room: Room;
      public readonly client: MatrixClient;
-@@ -270,7 +272,13 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
+@@ -292,7 +294,13 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
              if (sender && room && this.shouldSendLocalEchoReceipt(sender, event)) {
                  room.addLocalEchoReceipt(sender, event, ReceiptType.Read);
              }
@@ -552,7 +543,7 @@ index 24d9cf123525922407827ba716720920b01586ee..ad8017358544e45b9a6d8db78846a251
                  this.replyCount++;
              }
          }
-@@ -554,6 +562,7 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
+@@ -576,6 +584,7 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
          const bundledRelationship = this.getRootEventBundledRelationship();
          if (Thread.hasServerSideSupport && bundledRelationship) {
              this.replyCount = bundledRelationship.count;
@@ -561,10 +552,18 @@ index 24d9cf123525922407827ba716720920b01586ee..ad8017358544e45b9a6d8db78846a251
  
              const mapper = this.client.getEventMapper();
 diff --git a/src/oauth/index.ts b/src/oauth/index.ts
-index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..8bf7c785199671abc855531ac028e154d6cad266 100644
+index c930432862e4d648fcae77c6805f108fa7c6d0a5..95d4affa65eeb8f5fc1f47a50f5ea40e84b96281 100644
 --- a/src/oauth/index.ts
 +++ b/src/oauth/index.ts
-@@ -47,6 +47,14 @@ export * from "./error.ts";
+@@ -36,6 +36,7 @@ import { encodeUnpaddedBase64Url } from "../base64.ts";
+ import { sha256 } from "../digest.ts";
+ import { HTTPError, isMatrixErrorResponse, MatrixError } from "../http-api/errors.ts";
+ import { Method } from "../http-api/method.ts";
++import { anySignal } from "../http-api/utils.ts";
+ import { type Logger, logger as rootLogger } from "../logger.ts";
+ import { fetchWithLogging } from "./fetch.ts";
+ import { isOAuth2ErrorResponse, OAuth2Error, OAuth2HTTPError } from "./error.ts";
+@@ -47,6 +48,14 @@ export * from "./error.ts";
  export * from "./register.ts";
  export * from "./discover.ts";
  
@@ -579,31 +578,39 @@ index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..8bf7c785199671abc855531ac028e154
  /**
   * Type representing the persistent context needed for typical OAuth flows
   */
-@@ -221,18 +229,28 @@ export class OAuth2 {
-      * Refresh the access token using the given refresh token and the refresh token grant
-      * @param refreshToken - the token to use to refresh the access token
+@@ -77,6 +86,11 @@ export interface OAuth2RequestOptions {
+      * A signal which, when aborted, aborts the request.
       */
--    public async performRefreshTokenGrant(refreshToken: string): Promise<BearerTokenResponse> {
-+    public async performRefreshTokenGrant(refreshToken: string, deadline?: number): Promise<BearerTokenResponse> {
-         const params = new URLSearchParams();
-         params.append("grant_type", "refresh_token");
+     abortSignal?: AbortSignal;
++    /**
++     * Trinity patch: when a refresh token grant must have answered (epoch ms), in place of its
++     * default bound.
++     */
++    deadline?: number;
+ }
+ 
+ export class OAuth2 {
+@@ -253,12 +267,26 @@ export class OAuth2 {
          params.append("client_id", this.context.clientId);
          params.append("refresh_token", refreshToken);
  
--        const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed);
+-        const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, opts);
 -        const tokenResponse = await res.json();
 -
 -        // throws when response is invalid
 -        validateBearerTokenResponse(tokenResponse);
 -        return normalizeBearerTokenResponseTokenType(tokenResponse);
 +        // Trinity patch: abort the grant, body included, once it outlasts its bound, or at the caller's
-+        // deadline (epoch ms) instead. A deadline already passed sends nothing.
++        // deadline (epoch ms) instead. A deadline already passed sends nothing. opts.abortSignal still aborts it.
 +        const controller = new AbortController();
-+        const bound = deadline === undefined ? REFRESH_TOKEN_GRANT_TIMEOUT_MS : deadline - Date.now();
++        const bound = opts?.deadline === undefined ? REFRESH_TOKEN_GRANT_TIMEOUT_MS : opts.deadline - Date.now();
 +        if (bound <= 0) controller.abort();
 +        const timer = setTimeout(() => controller.abort(), bound);
++        const { signal, cleanup } = anySignal(
++            opts?.abortSignal ? [opts.abortSignal, controller.signal] : [controller.signal],
++        );
 +        try {
-+            const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, controller.signal);
++            const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, { abortSignal: signal });
 +            const tokenResponse = await res.json();
 +
 +            // throws when response is invalid
@@ -611,44 +618,16 @@ index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..8bf7c785199671abc855531ac028e154
 +            return normalizeBearerTokenResponseTokenType(tokenResponse);
 +        } finally {
 +            clearTimeout(timer);
++            cleanup();
 +        }
      }
  
      /**
-@@ -295,6 +313,7 @@ export class OAuth2 {
-         target: "token" | "registration" | "revocation",
-         params: URLSearchParams,
-         error: OAuth2Error,
-+        signal?: AbortSignal,
-     ): Promise<Response> {
-         const url = this.metadata[`${target}_endpoint`];
-         const res = await fetchWithLogging(this.logger, url, {
-@@ -304,6 +323,7 @@ export class OAuth2 {
-                 "Accept": "application/json",
-             },
-             body: params,
-+            signal,
-         });
- 
-         if (res.status >= 400) {
 diff --git a/src/oauth/tokenRefresher.ts b/src/oauth/tokenRefresher.ts
-index d19d64c4820e63a4030b056ab331912ad9589833..86f925c45aca236c353ff9c83e707fea126eb32f 100644
+index e858c9ca70bd154f40cdee6d505faa6617a45b60..c441d375cb49aaa0b17508a55e93f98be1b22934 100644
 --- a/src/oauth/tokenRefresher.ts
 +++ b/src/oauth/tokenRefresher.ts
-@@ -35,9 +35,10 @@ export class TokenRefresher {
-      * @param refreshToken - refresh token to use in request with token issuer
-      * @throws when token refresh fails
-      */
--    public async refreshTokens(refreshToken: string): Promise<AccessTokens> {
-+    public async refreshTokens(refreshToken: string, deadline?: number): Promise<AccessTokens> {
-         if (!this.inflightRefreshRequest) {
--            this.inflightRefreshRequest = this.getNewTokens(refreshToken);
-+            // Trinity patch: pass the caller's grant deadline on (epoch ms; undefined for the default bound).
-+            this.inflightRefreshRequest = this.getNewTokens(refreshToken, deadline);
-         }
- 
-         try {
-@@ -67,22 +68,21 @@ export class TokenRefresher {
+@@ -74,12 +74,9 @@ export class TokenRefresher {
      private shouldLogoutOnError(error: HTTPError): boolean {
          // Treat as logout as per https://spec.matrix.org/v1.18/client-server-api/#refresh-token-grant
          // after making sure it is an RFC 6749 section 5.2 error response
@@ -663,12 +642,8 @@ index d19d64c4820e63a4030b056ab331912ad9589833..86f925c45aca236c353ff9c83e707fea
 +        return error instanceof OAuth2HTTPError && (error.httpStatus === 400 || error.httpStatus === 401);
      }
  
--    private async getNewTokens(refreshToken: string): Promise<AccessTokens> {
-+    private async getNewTokens(refreshToken: string, deadline?: number): Promise<AccessTokens> {
-         const requestStart = Date.now();
- 
--        const response = await this.auth.performRefreshTokenGrant(refreshToken);
-+        const response = await this.auth.performRefreshTokenGrant(refreshToken, deadline);
+     private async getNewTokens(refreshToken: string, opts?: OAuth2RequestOptions): Promise<AccessTokens> {
+@@ -89,7 +86,9 @@ export class TokenRefresher {
  
          const tokens = {
              accessToken: response.access_token,
