@@ -86,7 +86,7 @@ async function approve(
   userCode: string,
 ): Promise<void> {
   if (server === 'tuwunel-oauth') {
-    // Tuwunel 1.9.3: /_tuwunel/oidc/native signs in, then "Authorize device" approves.
+    // Tuwunel 1.9.4: /_tuwunel/oidc/native signs in, then "Authorize device" approves.
     await provider.locator('input[name="username"]').fill(account.user);
     await provider.locator('input[name="password"]').fill(account.pass);
     await provider.getByRole('button', { name: 'Sign in' }).click();
