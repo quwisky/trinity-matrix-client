@@ -36,6 +36,10 @@ allow_public_room_directory_without_auth = true
 # against power levels that list the creator) do not model. Pin the long-standing default.
 default_room_version = "10"
 
+# Vouches for the app under test, so SSO returns to it directly instead of stopping on the
+# "Continue sign-in" page Tuwunel shows for a destination it does not list.
+oidc_registration_allowed_redirect_hosts = ["127.0.0.1"]
+
 # Legacy SSO through Dex (see ../dex.yaml). The issuer is reachable at the same URL from the
 # browser and from here because this container shares Dex's network namespace.
 [[global.identity_provider]]
@@ -50,6 +54,10 @@ userid_claims = ["email"]
 default = true
 
 # The suite signs the same accounts in far more often than the default five sign-ins, which
-# then refill at about one every five minutes. Zero disables the limit.
+# then refill at about one every five minutes, and enters wrong passwords on purpose. Zero
+# disables each limit.
 [global.rate_limiting.login.account]
+per_second = 0
+
+[global.rate_limiting.login.failed]
 per_second = 0
