@@ -10,7 +10,7 @@ use futures_util::{Stream, StreamExt, future::select, stream};
 use matrix_sdk::{
     Client,
     event_handler::EventHandlerDropGuard,
-    ruma::{RoomId, events::AnyGlobalAccountDataEvent, serde::Raw},
+    ruma::{OwnedRoomId, RoomId, events::AnyGlobalAccountDataEvent, serde::Raw},
     timeout::timeout,
 };
 use tokio::sync::{broadcast::error::RecvError, mpsc, watch};
@@ -59,6 +59,24 @@ pub(crate) fn room_changes(
         loop {
             match updates.recv().await {
                 Ok(update) if update.room_id != room_id => {}
+                Ok(_) | Err(RecvError::Lagged(_)) => yield (),
+                Err(RecvError::Closed) => return,
+            }
+        }
+    })
+}
+
+/// Notable updates of any of `rooms`; a lag counts as a change.
+#[cfg_attr(not(test), expect(dead_code, reason = "W2 calls it"))]
+pub(crate) fn rooms_changes(
+    client: &Client,
+    rooms: Vec<OwnedRoomId>,
+) -> impl Stream<Item = ()> + Unpin + use<> {
+    let mut updates = client.room_info_notable_update_receiver();
+    Box::pin(async_stream::stream! {
+        loop {
+            match updates.recv().await {
+                Ok(update) if !rooms.contains(&update.room_id) => {}
                 Ok(_) | Err(RecvError::Lagged(_)) => yield (),
                 Err(RecvError::Closed) => return,
             }
@@ -190,6 +208,22 @@ mod tests {
         let mut changes = room_changes(&rt.client, room_id!("!r:b"));
         sync(&rt.client).await;
         assert!(changes.next().now_or_never().is_none(), "another room");
+        sync(&rt.client).await;
+        assert_eq!(changes.next().now_or_never(), Some(Some(())));
+    }
+
+    #[tokio::test]
+    async fn rooms_changes_sees_only_its_rooms() {
+        let touched = |room: &str| json!({"rooms": {"join": {room: {}}}});
+        let root = TempDir::new().unwrap();
+        let bodies = vec![touched("!s:b"), touched("!r:b"), touched("!q:b")];
+        let rt = syncing(&engine_in(&root), bodies).await;
+        let mine = vec![room_id!("!q:b").to_owned(), room_id!("!r:b").to_owned()];
+        let mut changes = rooms_changes(&rt.client, mine);
+        sync(&rt.client).await;
+        assert!(changes.next().now_or_never().is_none(), "another room");
+        sync(&rt.client).await;
+        assert_eq!(changes.next().now_or_never(), Some(Some(())));
         sync(&rt.client).await;
         assert_eq!(changes.next().now_or_never(), Some(Some(())));
     }
