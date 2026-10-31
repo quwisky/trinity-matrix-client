@@ -47,6 +47,8 @@ interface FakeRoom {
   /** The whole history, oldest first, as every member sees it. */
   history: readonly TimelineItem[];
   overrides: Partial<TimelineRoomState>;
+  /** Whether alice's writes are refused, as a server refuses a sender below the required level. */
+  refusing: boolean;
   /** How many of the newest history items each member has loaded. */
   readonly loaded: Map<string, number>;
   readonly startReached: Set<string>;
@@ -71,6 +73,7 @@ function failure(code: FailNextCode): EngineFailure {
 
 const MESSAGE_UNAVAILABLE = failure('message-unavailable');
 const NOT_CANCELLABLE = failure('not-cancellable');
+const REQUEST_FAILED = failure('request-failed');
 const NOT_FORWARDABLE = failure('not-forwardable');
 /** What the fake can copy: the kinds whose content stands on its own. */
 const FORWARDABLE: ReadonlySet<TimelineItemContent['kind']> = new Set([
@@ -231,8 +234,19 @@ export class FakeTimelineEngine implements TimelineEngine {
       userId: string,
     ): Promise<string | null> =>
       this.rooms.get(roomId)?.readReceipts.get(userId) ?? null,
-    setPowerLevels: async (): Promise<void> => {
-      throw new Error('The fake models no power levels');
+    // The fake models one level: whether `events_default` (or a per-type level) refuses alice's writes.
+    setPowerLevels: async (
+      roomId: string,
+      patch: {
+        readonly events_default?: number;
+        readonly events?: Readonly<Record<string, number>>;
+      },
+    ): Promise<void> => {
+      const levels = [
+        patch.events_default,
+        ...Object.values(patch.events ?? {}),
+      ];
+      this.room(roomId).refusing = levels.some((level) => (level ?? 0) > 0);
     },
     sendEvent: async (): Promise<string> => {
       throw new Error('The fake sends only text, reactions and edits');
@@ -547,6 +561,10 @@ export class FakeTimelineEngine implements TimelineEngine {
         room.threads.set(`txn:${transactionId}`, options.threadRootId);
       this.append(roomId, {
         ...this.own(accountId, eventId, this.contentOf(message, eventId)),
+        ...(room.refusing && {
+          eventId: null,
+          sendState: { kind: 'failed', recoverable: false } as const,
+        }),
         uniqueId: `txn:${transactionId}`,
         transactionId,
         inReplyTo:
@@ -568,7 +586,10 @@ export class FakeTimelineEngine implements TimelineEngine {
               }
             : null,
       });
-      return engineOk({ transactionId, eventId });
+      return engineOk({
+        transactionId,
+        eventId: room.refusing ? null : eventId,
+      });
     });
   }
 
@@ -655,7 +676,11 @@ export class FakeTimelineEngine implements TimelineEngine {
     return this.run(accountId, roomId, (room) => {
       const echo = this.unsent(room, transactionId);
       if (!echo) return engineFail(MESSAGE_UNAVAILABLE);
-      this.patchItem(roomId, echo, () => ({ sendState: null }));
+      if (room.refusing) return engineFail(REQUEST_FAILED);
+      this.patchItem(roomId, echo, () => ({
+        eventId: this.nextEventId(),
+        sendState: null,
+      }));
       return engineOk(null);
     });
   }
@@ -760,6 +785,7 @@ export class FakeTimelineEngine implements TimelineEngine {
           (key.transactionId !== null && i.transactionId === key.transactionId),
       );
       if (!item) return engineFail(MESSAGE_UNAVAILABLE);
+      if (room.refusing) return engineFail(REQUEST_FAILED);
       action(item);
       return engineOk(null);
     });
@@ -1090,6 +1116,7 @@ export class FakeTimelineEngine implements TimelineEngine {
         members: new Set(),
         history: [],
         overrides: {},
+        refusing: false,
         loaded: new Map(),
         startReached: new Set(),
         fullyRead: new Map(),

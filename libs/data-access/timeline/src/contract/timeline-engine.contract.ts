@@ -18,6 +18,7 @@ import {
 import type {
   EventTimelineItem,
   OutgoingMessage,
+  OutgoingText,
   ThreadSummaryInfo,
   TimelineEngine,
   TimelineFocus,
@@ -97,14 +98,17 @@ const LIVE: TimelineFocus = { kind: 'live' };
 const MAIN = { threadRootId: null, replyTo: null } as const;
 const NO_THREAD = { threadRootId: null } as const;
 
-function text(body: string): OutgoingMessage {
+function plain(body: string): OutgoingText {
   return {
-    kind: 'text',
     msgtype: 'text',
     body,
     formattedBody: null,
     mentions: { userIds: [], room: false },
   };
+}
+
+function text(body: string): OutgoingMessage {
+  return { kind: 'text', ...plain(body) };
 }
 
 function byTxn(
@@ -1040,6 +1044,253 @@ export function defineTimelineEngineContract(
           expect(!result.ok && result.failure.code).toBe('not-forwardable');
         } finally {
           source.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    /** Alice's own message in the open timeline, confirmed by the server. */
+    async function ownMessage(
+      roomId: string,
+      timeline: Watch,
+      body: string,
+    ): Promise<string> {
+      await timeline.until(() => true);
+      const { eventId } = await ok(
+        engine.send(alice, roomId, text(body), MAIN),
+      );
+      await timeline.until((v) => byId(v, eventId ?? '')?.sendState === null);
+      return eventId ?? '';
+    }
+
+    const reaction = (view: TimelineView | null, eventId: string) =>
+      byId(view, eventId)?.reactions.find((group) => group.key === '👍');
+
+    it.each([
+      {
+        command: 'edit',
+        run: async (roomId: string, timeline: Watch) => {
+          const eventId = await ownMessage(roomId, timeline, 'tpyo');
+          await ok(
+            engine.edit(
+              alice,
+              roomId,
+              eventKey(eventId),
+              plain('typo'),
+              NO_THREAD,
+            ),
+          );
+          const item = byId(timeline.view(), eventId);
+          expect(bodyOf(item)).toBe('typo');
+          expect(item?.edited).toBe(true);
+        },
+      },
+      {
+        command: 'toggleReaction on',
+        run: async (roomId: string, timeline: Watch) => {
+          const eventId = await ownMessage(roomId, timeline, 'like me');
+          await ok(
+            engine.toggleReaction(
+              alice,
+              roomId,
+              eventKey(eventId),
+              '👍',
+              NO_THREAD,
+            ),
+          );
+          expect(reaction(timeline.view(), eventId)?.reactedByMe).toBe(true);
+        },
+      },
+      {
+        command: 'toggleReaction off',
+        run: async (roomId: string, timeline: Watch) => {
+          const eventId = await ownMessage(roomId, timeline, 'like me');
+          const toggle = () =>
+            ok(
+              engine.toggleReaction(
+                alice,
+                roomId,
+                eventKey(eventId),
+                '👍',
+                NO_THREAD,
+              ),
+            );
+          await toggle();
+          await toggle();
+          expect(reaction(timeline.view(), eventId)).toBeUndefined();
+        },
+      },
+      {
+        command: 'redact',
+        run: async (roomId: string, timeline: Watch) => {
+          const eventId = await ownMessage(roomId, timeline, 'oops');
+          await ok(engine.redact(alice, roomId, eventKey(eventId), NO_THREAD));
+          expect(byId(timeline.view(), eventId)?.content.kind).toBe('redacted');
+        },
+      },
+    ])(
+      'G1 — $command shows its effect in an open timeline before it replies',
+      async ({ run }) => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await run(roomId, timeline);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G2 — a refused send keeps a failed echo; cancel removes it, retry sends it, and later sends go',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          await context.asBob.setPowerLevels(roomId, { events_default: 50 });
+
+          const refused = await ok(
+            engine.send(alice, roomId, text('refused'), MAIN),
+          );
+          expect(refused.eventId).toBeNull();
+          expect(
+            byTxn(timeline.view(), refused.transactionId)?.sendState?.kind,
+          ).toBe('failed');
+
+          await ok(engine.cancelSend(alice, roomId, refused.transactionId));
+          expect(byTxn(timeline.view(), refused.transactionId)).toBeUndefined();
+
+          const again = await ok(
+            engine.send(alice, roomId, text('again'), MAIN),
+          );
+          expect(again.eventId).toBeNull();
+          expect(
+            byTxn(timeline.view(), again.transactionId)?.sendState?.kind,
+          ).toBe('failed');
+
+          await context.asBob.setPowerLevels(roomId, { events_default: 0 });
+          await ok(engine.retrySend(alice, roomId, again.transactionId));
+          const view = await timeline.until(
+            (v) => !!byTxn(v, again.transactionId)?.eventId,
+          );
+          expect(byTxn(view, again.transactionId)?.eventId).toEqual(
+            expect.any(String),
+          );
+
+          const third = await ok(
+            engine.send(alice, roomId, text('third'), MAIN),
+          );
+          expect(third.eventId).toEqual(expect.any(String));
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G3 — a caller can cancel a send before it returns',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const transactionId = `contract-cancel-${unique()}`;
+          const first = ok(engine.send(alice, roomId, text('first'), MAIN));
+          const second = firstValueFrom(
+            engine.send(alice, roomId, text('second'), {
+              ...MAIN,
+              transactionId,
+            }),
+          );
+
+          const cancelled = await once(
+            engine.cancelSend(alice, roomId, transactionId),
+          );
+          const [sent] = await Promise.all([second, first]);
+
+          if (cancelled.ok) {
+            await timeline.until((v) => !byTxn(v, transactionId));
+          } else {
+            expect(cancelled.failure.code).toBe('not-cancellable');
+            expect(sent.ok && sent.value.eventId).toEqual(expect.any(String));
+            await timeline.until(
+              (v) => byTxn(v, transactionId)?.sendState === null,
+            );
+          }
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it.each([
+      {
+        command: 'edit',
+        run: (roomId: string, eventId: string) =>
+          engine.edit(
+            alice,
+            roomId,
+            eventKey(eventId),
+            plain('changed'),
+            NO_THREAD,
+          ),
+        unchanged: (item: EventTimelineItem | undefined) =>
+          expect(bodyOf(item)).toBe('original'),
+      },
+      {
+        command: 'toggleReaction',
+        run: (roomId: string, eventId: string) =>
+          engine.toggleReaction(
+            alice,
+            roomId,
+            eventKey(eventId),
+            '👍',
+            NO_THREAD,
+          ),
+        unchanged: (item: EventTimelineItem | undefined) =>
+          expect(item?.reactions.some((group) => group.reactedByMe)).toBe(
+            false,
+          ),
+      },
+      {
+        command: 'redact',
+        run: (roomId: string, eventId: string) =>
+          engine.redact(alice, roomId, eventKey(eventId), NO_THREAD),
+        unchanged: (item: EventTimelineItem | undefined) =>
+          expect(item?.content.kind).not.toBe('redacted'),
+      },
+    ])(
+      'G16 — a refused $command fails alone, and the room keeps sending',
+      async ({ run, unchanged }) => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          const eventId = await ownMessage(roomId, timeline, 'original');
+          const levels = {
+            events_default: 50,
+            events: { 'm.reaction': 50, 'm.room.redaction': 50 },
+          };
+          await context.asBob.setPowerLevels(roomId, levels);
+
+          const result = await once(run(roomId, eventId));
+
+          expect(!result.ok && result.failure.code).toBe('request-failed');
+          unchanged(byId(timeline.view(), eventId));
+
+          await context.asBob.setPowerLevels(roomId, {
+            events_default: 0,
+            events: { 'm.reaction': 0, 'm.room.redaction': 0 },
+          });
+          const sent = await ok(
+            engine.send(alice, roomId, text('after'), MAIN),
+          );
+          expect(sent.eventId).toEqual(expect.any(String));
+        } finally {
+          timeline.close();
         }
       },
       testTimeoutMs,

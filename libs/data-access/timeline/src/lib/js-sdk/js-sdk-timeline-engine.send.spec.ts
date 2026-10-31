@@ -398,7 +398,12 @@ describe('JsSdkTimelineEngine sending', () => {
 
     expect(ok(result)).toBeNull();
     expect(timeline.events()[0]?.content.kind).toBe('redacted');
-    expect(w.client.redactEvent).toHaveBeenCalledWith(ROOM, '$root', '$a');
+    expect(w.client.redactEvent).toHaveBeenCalledWith(
+      ROOM,
+      '$root',
+      '$a',
+      'txn-1',
+    );
     await firstValueFrom(
       engine.redact(
         ME,
@@ -407,7 +412,7 @@ describe('JsSdkTimelineEngine sending', () => {
         NO_THREAD,
       ),
     );
-    expect(w.client.redactEvent).toHaveBeenLastCalledWith(ROOM, '$a');
+    expect(w.client.redactEvent).toHaveBeenLastCalledWith(ROOM, '$a', 'txn-2');
     timeline.subscription.unsubscribe();
   });
 
@@ -496,6 +501,13 @@ describe('JsSdkTimelineEngine sending', () => {
       reacted
         ? { getSortedAnnotationsByKey: () => [['👍', new Set(mine)]] }
         : undefined) as never;
+    w.client.redactEvent.mockImplementation((...args: unknown[]) => {
+      const event = w.room.findEventById(
+        args.find((id) => id === '$r1') as string,
+      );
+      if (event) Object.assign(event, { isRedacted: () => true });
+      return Promise.resolve({ event_id: '$redaction' });
+    });
     const engine = engineFor(w.client);
     const key = { eventId: '$a', transactionId: null };
 
@@ -523,8 +535,8 @@ describe('JsSdkTimelineEngine sending', () => {
       ),
     ).toBeNull();
     expect(w.client.redactEvent.mock.calls).toEqual([
-      [ROOM, '$root', '$r1'],
-      [ROOM, '$root', '$r2'],
+      [ROOM, '$root', '$r1', 'txn-2'],
+      [ROOM, '$root', '$r2', 'txn-3'],
     ]);
 
     const missing = await firstValueFrom(
