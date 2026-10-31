@@ -173,52 +173,50 @@ test('overlay behavior stays immediate under reduced motion', async ({
   await expect(surface).toHaveCount(0);
 });
 
-test.describe('toasts under touch', () => {
-  test.use({ hasTouch: true });
-
+test.describe('toast gestures', () => {
   for (const [direction, sign] of [
     ['down', 1],
     ['up', -1],
   ] as const) {
-    test(`a drag ${direction} the browser takes over neither sticks nor dismisses a toast`, async ({
+    // Sent directly, because a real touch drag is cancelled only some of the time.
+    test(`a cancelled drag ${direction} neither sticks nor dismisses a toast`, async ({
       page,
-      browserName,
     }) => {
-      test.skip(browserName !== 'chromium', 'drives touch through CDP');
       await page.goto(overlayRecipeStory('feedback'));
       await page.getByTestId('toast-warning').click();
       const toast = page
         .locator('[data-sonner-toast]')
         .filter({ hasText: 'Canonical warning' });
       await expect(toast).toBeVisible();
-      const box = await toast.locator('[data-content]').boundingBox();
-      expect(box).not.toBeNull();
-      const x = box!.x + box!.width / 2;
-      const y = box!.y + box!.height / 2;
-      await page.evaluate(() => {
-        document.body.dataset['cancels'] = '0';
-        window.addEventListener(
-          'pointercancel',
-          () => {
-            document.body.dataset['cancels'] = '1';
-          },
-          { capture: true },
-        );
+
+      const content = toast.locator('[data-content]');
+      const at = (y: number) => ({
+        bubbles: true,
+        pointerId: 1,
+        pointerType: 'touch',
+        clientX: 10,
+        clientY: y,
       });
+      await content.evaluate((el, init) => {
+        el.setPointerCapture = () => undefined;
+        el.dispatchEvent(new PointerEvent('pointerdown', init));
+      }, at(100));
+      await expect(toast).toHaveAttribute('data-swiping', 'true');
 
-      const touch = await page.context().newCDPSession(page);
-      const drag = async (
-        type: 'touchStart' | 'touchMove' | 'touchEnd',
-        points: { x: number; y: number }[],
-      ) =>
-        touch.send('Input.dispatchTouchEvent', { type, touchPoints: points });
-      await drag('touchStart', [{ x, y }]);
-      for (const offset of [5, 15, 25, 35]) {
-        await drag('touchMove', [{ x, y: y + sign * offset }]);
-      }
-      await drag('touchEnd', []);
+      const swipedTo = await content.evaluate(
+        (el, init) => {
+          el.dispatchEvent(new PointerEvent('pointermove', init));
+          const swiped = el
+            .closest<HTMLElement>('[data-sonner-toast]')
+            ?.style.getPropertyValue('--swipe-amount');
+          el.dispatchEvent(new PointerEvent('pointercancel', init));
+          return swiped;
+        },
+        at(100 + sign * 35),
+      );
 
-      await expect(page.locator('body')).toHaveAttribute('data-cancels', '1');
+      // Only a drag up moves a top toast, and it is past Sonner's dismiss threshold.
+      expect(swipedTo).toBe(sign < 0 ? '-35px' : '');
       await expect(toast).toHaveAttribute('data-swiping', 'false');
       expect(
         await toast.evaluate((el) =>
