@@ -4,7 +4,7 @@
 //! why a message could not be decrypted.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -55,6 +55,11 @@ use crate::{
 const MAX_READERS: usize = 5;
 /// How many reactors a reaction names; the rest come from `reactionDetails`.
 const MAX_NAMED_REACTORS: usize = 3;
+
+/// How many members one row reads, because a body from another user can link thousands. Enough
+/// for the sender, a quote, the readers, three reactors on each of a dozen keys and a score of
+/// mentions; a mention past it shows its user id, as a member with no name does.
+const MAX_PROFILES: usize = 64;
 
 /// What mapping the items of one room needs besides the item.
 #[derive(Debug)]
@@ -138,6 +143,8 @@ fn arrived_redacted(item: &EventTimelineItem) -> bool {
 
 /// A list item js has no row for and `event_filter` could not stop: the SDK lists an event that
 /// did not parse without asking the filter, and a redaction leaves a state item in place.
+// shortcut: the SDK lists a threaded reply that did not parse in the live list too, where js hides
+// it; T12 hides it there with the focus and `extract_thread_root`.
 pub(super) fn is_hidden(item: &EventTimelineItem) -> bool {
     match item.content() {
         TimelineItemContent::FailedToParseMessageLike { event_type, .. } => match event_type {
@@ -250,7 +257,7 @@ pub(super) async fn item_row(
     let thread_fallback =
         relation.is_some_and(|r| r["rel_type"] == "m.thread" && r["is_falling_back"] == true);
 
-    let Mapped { content, mut named } =
+    let Mapped { content, named } =
         content_of(item, original.as_ref(), edit.as_ref(), reply_fallback, me);
 
     let in_reply_to = match msg.and_then(|m| m.in_reply_to.as_ref()) {
@@ -272,13 +279,6 @@ pub(super) async fn item_row(
                 details: InReplyToDetailsDto::Unavailable,
             }),
     };
-    if let Some(InReplyToDto {
-        details: InReplyToDetailsDto::Ready { sender, .. },
-        ..
-    }) = &in_reply_to
-    {
-        named.insert(0, sender.clone());
-    }
 
     let reactions = msg.map_or_else(Vec::new, |m| reaction_groups(&m.reactions, me));
     let read_by: Vec<String> = (item.read_receipts().keys())
@@ -290,15 +290,22 @@ pub(super) async fn item_row(
     let (shield, _) = shield_of(&item.get_shield(false));
     let unencrypted_mark = clear_mark(item, ctx).await;
 
+    // As js orders them, and the mentions last: the cap should cost a pill's name, not an avatar.
     let mut ids = vec![sender.clone()];
-    ids.extend(named);
+    if let Some(InReplyToDto {
+        details: InReplyToDetailsDto::Ready { sender, .. },
+        ..
+    }) = &in_reply_to
+    {
+        ids.push(sender.clone());
+    }
     ids.extend(reactions.iter().flat_map(|group| group.senders.clone()));
     ids.extend(read_by.clone());
+    ids.extend(named);
+    let mut asked = HashSet::new();
     let mut profiles = BTreeMap::new();
-    for id in ids {
-        if profiles.contains_key(&id) {
-            continue;
-        }
+    let distinct = ids.into_iter().filter(|id| asked.insert(id.clone()));
+    for id in distinct.take(MAX_PROFILES) {
         if let Some(profile) = pass.profile(&ctx.room, &id).await {
             profiles.insert(id, profile);
         }
@@ -1044,6 +1051,15 @@ mod tests {
         };
         vec![
             (
+                event(
+                    "m.room.message",
+                    "$far-away",
+                    json!({"msgtype": "m.location", "body": "there",
+                        "geo_uri": format!("geo:{},0", "9".repeat(400))}),
+                ),
+                unsupported("there"),
+            ),
+            (
                 event("m.sticker", "$sticker-text", json!("x")),
                 unsupported("[sticker]"),
             ),
@@ -1320,6 +1336,51 @@ mod tests {
             "the SDK has one, before the state row"
         );
         assert!(marker_target(&caught_up.items, me, false).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_row_reads_a_bounded_number_of_profiles_and_keeps_every_mention() {
+        let member = |user: &str, name: &str| {
+            let mut member = state(
+                "m.room.member",
+                "$member",
+                json!({"membership": "join", "displayname": name}),
+            );
+            member["state_key"] = json!(user);
+            member["sender"] = json!(user);
+            member
+        };
+        let over = MAX_PROFILES + 10;
+        let html: String = (0..over)
+            .map(|n| format!("<a href=\"https://matrix.to/#/@u{n}:b\">u</a>"))
+            .collect();
+        let reply = json!({"msgtype": "m.text", "body": "hi", "format": "org.matrix.custom.html",
+            "formatted_body": html, "m.relates_to": {"m.in_reply_to": {"event_id": "$quoted"}}});
+        let mut quoted = text("$quoted");
+        quoted["sender"] = json!("@c:b");
+        let list = listed(
+            vec![member("@b:b", "Bob"), member("@c:b", "Cy")],
+            vec![quoted, event("m.room.message", "$end", reply)],
+            None,
+        )
+        .await;
+        let end = (list.items.iter())
+            .find_map(|item| item.as_event().filter(|event| event.sender() == "@b:b"))
+            .unwrap();
+        let mut pass = Pass::new(&list.items);
+        let shown = item_row(end, &list.ctx(), &mut pass).await;
+        assert_eq!(pass.profiles.len(), MAX_PROFILES, "the store reads");
+        let name = |user: &str| shown.profiles[user].display_name.as_deref();
+        assert_eq!(name("@b:b"), Some("Bob"), "the sender comes first");
+        assert_eq!(
+            name("@c:b"),
+            Some("Cy"),
+            "then who it quotes, before any mention"
+        );
+        let TimelineItemContentDto::Message { mentions, .. } = &shown.content else {
+            panic!("{:?}", shown.content);
+        };
+        assert_eq!(mentions.len(), over);
     }
 
     #[tokio::test]

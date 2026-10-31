@@ -382,7 +382,7 @@ pub(super) fn parse_geo_uri(geo_uri: &Value) -> Option<(f64, f64)> {
     let rest = geo_uri.as_str()?.trim().strip_prefix("geo:")?;
     let (lat, rest) = number_prefix(rest)?;
     let (lng, _) = number_prefix(rest.strip_prefix(',')?)?;
-    Some((lat, lng))
+    (lat.is_finite() && lng.is_finite()).then_some((lat, lng))
 }
 
 /// `-?\d+(\.\d+)?` at the start of `s`, and what follows.
@@ -775,6 +775,14 @@ mod tests {
             json!({"kind": "location", "lat": 51.5, "lng": -0.12, "label": "Park"})
         );
         assert_eq!(located(" geo:3,4 ")["lat"], 3.0);
+        let huge = "9".repeat(400);
+        for uri in [
+            format!("geo:{huge},0"),
+            format!("geo:0,-{huge}"),
+            format!("geo:{huge}.5,{huge}"),
+        ] {
+            assert_eq!(located(&uri)["kind"], "unsupported", "{uri}");
+        }
         let broken = located("geo:north,south");
         assert_eq!(
             broken,
