@@ -9,7 +9,8 @@ use futures_util::{
 };
 use matrix_sdk::{
     Client, Error, Room,
-    ruma::{OwnedEventId, RoomId},
+    ruma::{EventId, OwnedEventId, RoomId},
+    timeout::timeout,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,
@@ -35,15 +36,34 @@ pub mod paging;
 
 use fold::Fold;
 use hub::Hub;
+use paging::LANDING_LIMIT;
 
-/// `TimelineFocus`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+/// `TimelineFocus`. The root stays a string: a malformed one is a thread that can't exist, which
+/// the members answer, and never a `bad-args` fault on a stream.
+#[derive(Clone, Debug, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum Focus {
+pub enum TimelineFocusDto {
+    Live,
+    Thread { root_event_id: String },
+}
+
+impl TimelineFocusDto {
+    fn parsed(self) -> Option<Focus> {
+        match self {
+            Self::Live => Some(Focus::Live),
+            Self::Thread { root_event_id } => (EventId::parse(root_event_id).ok())
+                .map(|root_event_id| Focus::Thread { root_event_id }),
+        }
+    }
+}
+
+/// What a hub is opened on.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum Focus {
     Live,
     Thread { root_event_id: OwnedEventId },
 }
@@ -80,7 +100,7 @@ async fn on_room<T, Fut>(
     run: impl FnOnce(Arc<Engine>, Arc<AccountRuntime>, Room) -> Fut,
 ) -> EngineResult<T>
 where
-    Fut: Future<Output = Result<T, Error>>,
+    Fut: Future<Output = Result<EngineResult<T>, Error>>,
 {
     let held = on_account(
         engine,
@@ -91,7 +111,7 @@ where
                 .ok()
                 .and_then(|id| rt.client.get_room(&id));
             match room {
-                Some(room) => run(engine, rt, room).await.map(EngineResult::Ok),
+                Some(room) => run(engine, rt, room).await,
                 None => Ok(EngineResult::Err(local_failure(
                     FailureCode::MessageUnavailable,
                 ))),
@@ -104,7 +124,12 @@ where
     }
 }
 
-pub fn timeline(engine: Arc<Engine>, account_id: String, room_id: String, focus: Focus) -> Stream {
+pub fn timeline(
+    engine: Arc<Engine>,
+    account_id: String,
+    room_id: String,
+    focus: TimelineFocusDto,
+) -> Stream {
     account_stream(
         engine,
         account_id,
@@ -125,7 +150,7 @@ fn updates<F>(
     client: Client,
     open: impl Fn(Room, Focus) -> F,
     room_id: String,
-    focus: Focus,
+    focus: TimelineFocusDto,
 ) -> impl futures_util::Stream<Item = TimelineUpdateDto>
 where
     F: Future<Output = Result<Arc<Hub>, timeline::Error>>,
@@ -133,6 +158,11 @@ where
     async_stream::stream! {
         let Ok(room_id) = RoomId::parse(&room_id) else {
             yield TimelineUpdateDto::RoomUnavailable;
+            return;
+        };
+        // As js shows a root no thread has: nothing, and here nothing can ever form it.
+        let Some(focus) = focus.parsed() else {
+            yield empty_reset();
             return;
         };
         let hub = {
@@ -181,11 +211,16 @@ where
             diffs: snapshot.into_iter().map(|diff| diff.map(row)).collect(),
             back_pagination: state,
         };
+        let mut holding = state == BackPagination::Paginating;
         loop {
             // While a page runs its batch stays in the SDK's stream: sent now, it would go out
-            // without the page's end state.
-            let woken = if state == BackPagination::Paginating {
-                Either::Left(flushes.next().await)
+            // without the page's end state. Only briefly, because everything else in the room
+            // waits with it: a slower page goes out marked `paginating`, then an empty end state.
+            let woken = if std::mem::take(&mut holding) {
+                match timeout(flushes.next(), LANDING_LIMIT).await {
+                    Ok(flush) => Either::Left(flush),
+                    Err(_) => continue,
+                }
             } else {
                 match select(flushes.next(), batches.next()).await {
                     Either::Left((flush, _)) => Either::Left(flush),
@@ -195,7 +230,8 @@ where
             let mut diffs = Vec::new();
             let end_state = match woken {
                 Either::Left(Some(flush)) => {
-                    if flush.end_state != Some(BackPagination::Paginating) {
+                    holding = flush.end_state == Some(BackPagination::Paginating);
+                    if !holding {
                         while let Some(Some(batch)) = batches.next().now_or_never() {
                             diffs.extend(batch);
                         }
@@ -254,13 +290,14 @@ fn row(item: Arc<TimelineItem>) -> Value {
 mod tests {
     use std::{cell::Cell, time::Duration};
 
-    use matrix_sdk::{ruma::room_id, timeout::timeout};
+    use matrix_sdk::ruma::room_id;
     use serde_json::json;
     use tempfile::TempDir;
 
     use super::*;
-    use crate::testing::{
-        builder_on, engine_in, live, password, scripted, sync, sync_answer, syncing,
+    use crate::{
+        dispatch::dispatch,
+        testing::{builder_on, engine_in, live, password, scripted, sync, sync_answer, syncing},
     };
 
     #[tokio::test]
@@ -290,9 +327,12 @@ mod tests {
             }
         };
         let room_id = room_id!("!r:b").to_string();
-        let updates = updates(rt.client.clone(), open, room_id, Focus::Live);
+        let updates = updates(rt.client.clone(), open, room_id, TimelineFocusDto::Live);
         let mut updates = pin!(updates);
-        let mut next = async || serde_json::to_value(updates.next().await.unwrap()).unwrap();
+        let mut next = async || {
+            let update = timeout(updates.next(), Duration::from_secs(5)).await;
+            serde_json::to_value(update.unwrap().unwrap()).unwrap()
+        };
 
         assert_eq!(next().await, json!({"kind": "room-unavailable"}));
         sync(&rt.client).await;
@@ -319,10 +359,40 @@ mod tests {
             Arc::clone(&engine),
             "@a:b".into(),
             "!r:b".into(),
-            Focus::Live,
+            TimelineFocusDto::Live,
         );
         let first = timeout(items.next(), Duration::from_secs(1)).await;
         let first = first.expect("before the held request").unwrap().unwrap();
         assert_eq!(first["diffs"], json!([{"op": "reset", "values": []}]));
+    }
+
+    #[tokio::test]
+    async fn a_malformed_root_is_no_fault_and_the_account_is_looked_up_first() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let args = || {
+            vec![
+                json!("@a:b"),
+                json!("!r:b"),
+                json!({"kind": "thread", "rootEventId": "x"}),
+            ]
+        };
+        let first = async |engine: &Arc<Engine>, method, args| {
+            let mut stream = dispatch(engine, method, args).unwrap();
+            let item = timeout(stream.next(), Duration::from_secs(5)).await;
+            item.unwrap().unwrap().unwrap()
+        };
+        let not_live = first(&engine, "timeline.timeline", args()).await;
+        assert_eq!(not_live, json!({"kind": "room-unavailable"}));
+
+        let joined = json!({"rooms": {"join": {"!r:b": {"timeline": {"events": []}}}}});
+        let rt = syncing(&engine, vec![joined]).await;
+        sync(&rt.client).await;
+        let shown = first(&engine, "timeline.timeline", args()).await;
+        assert_eq!(shown["diffs"], json!([{"op": "reset", "values": []}]));
+        let mut paged = args();
+        paged.push(json!(10));
+        let paged = first(&engine, "timeline.paginateBackwards", paged).await;
+        assert_eq!(paged, json!({"ok": true, "value": {"startReached": true}}));
     }
 }

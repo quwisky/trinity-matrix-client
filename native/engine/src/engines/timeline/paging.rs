@@ -1,9 +1,12 @@
 //! `paginateBackwards`: the page and its end state reach every open stream in one update, and the
 //! reply follows them. The SDK can return before a timeline task has applied the page (H7).
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, future::pending, pin::pin, sync::Arc, time::Duration};
 
-use futures_util::StreamExt;
+use futures_util::{
+    StreamExt,
+    future::{Either, select},
+};
 use matrix_sdk::{
     BoxFuture, Error, Room,
     event_cache::{
@@ -16,16 +19,22 @@ use matrix_sdk_ui::{eyeball_im::VectorDiff, timeline};
 use serde::Serialize;
 use tokio::sync::broadcast::error::TryRecvError;
 
-use super::{BackPagination, Focus, hub::Hub, on_room};
+use super::{BackPagination, Focus, TimelineFocusDto, hub::Hub, on_room};
 use crate::{
     accounts::{AccountRuntime, Engine},
     barrier::Barrier,
     dispatch::{Stream, reply},
     engines::member::bounded,
+    failure::{EngineResult, account_not_live},
 };
 
-/// How long a page may take to show after the SDK returns; a page of hidden events ends here.
-const LANDING_LIMIT: Duration = Duration::from_secs(2);
+/// How long a page may take to show after the SDK returns, a page of hidden events ending here,
+/// and how long a stream holds its batches for a running page.
+pub(super) const LANDING_LIMIT: Duration = if cfg!(test) {
+    Duration::from_millis(300)
+} else {
+    Duration::from_secs(2)
+};
 
 /// `{ startReached }`.
 #[derive(Debug, Serialize)]
@@ -38,7 +47,7 @@ pub fn paginate_backwards(
     engine: Arc<Engine>,
     account_id: String,
     room_id: String,
-    focus: Focus,
+    focus: TimelineFocusDto,
     count: u16,
 ) -> Stream {
     reply(on_room(
@@ -46,13 +55,22 @@ pub fn paginate_backwards(
         account_id,
         room_id,
         move |engine, rt, room| async move {
+            // As js answers for a root no thread has.
+            let Some(focus) = focus.parsed() else {
+                let start_reached = true;
+                return Ok(EngineResult::Ok(PageReplyDto { start_reached }));
+            };
             // An unknown encryption state makes the SDK's build ask the server.
             let opened = bounded(async {
                 (rt.hubs.open(&room, focus.clone()).await).map_err(request_error)
             });
             let hub = engine.ruled(&rt, opened).await?;
-            let start_reached = page(&engine, &rt, &room, &hub, &focus, count).await?;
-            Ok(PageReplyDto { start_reached })
+            Ok(
+                match page(&engine, &rt, &room, &hub, &focus, count).await? {
+                    Some(start_reached) => EngineResult::Ok(PageReplyDto { start_reached }),
+                    None => EngineResult::Err(account_not_live()),
+                },
+            )
         },
     ))
 }
@@ -68,6 +86,8 @@ fn request_error(err: timeline::Error) -> Error {
     }
 }
 
+/// Whether the page reached the start, or `None` for an account that retired while it queued: a
+/// teardown waits for each holder, and pages queued on a stalled server would outlast its limit.
 async fn page(
     engine: &Arc<Engine>,
     rt: &AccountRuntime,
@@ -75,8 +95,16 @@ async fn page(
     hub: &Hub,
     focus: &Focus,
     count: u16,
-) -> Result<bool, Error> {
-    let _one_at_a_time = hub.paging.lock().await;
+) -> Result<Option<bool>, Error> {
+    let mut retired = rt.retired();
+    let retire = async {
+        let _ = retired.wait_for(|retired| *retired).await;
+    };
+    let queue = hub.paging.lock();
+    let _one_at_a_time = match select(pin!(retire), pin!(queue)).await {
+        Either::Left(_) => return Ok(None),
+        Either::Right((turn, _)) => turn,
+    };
     let before = *hub.state.borrow();
     let ending = Ending {
         hub,
@@ -84,6 +112,7 @@ async fn page(
     };
     hub.move_to(BackPagination::Paginating).delivered().await;
     let mut pages = Pages::open(room, focus).await?;
+    let before_page = shown(hub).await;
     let paged = bounded(async {
         // Boxed as `Hubs::open` boxes its build.
         let paged: BoxFuture<'_, _> = Box::pin(hub.timeline.paginate_backwards(count));
@@ -91,7 +120,7 @@ async fn page(
     });
     let start_reached = engine.ruled(rt, paged).await;
     if start_reached.is_ok() {
-        landed(hub, pages.ids()).await;
+        landed(hub, pages.ids(), &before_page).await;
     }
     let end = match start_reached {
         Ok(true) => BackPagination::StartReached,
@@ -99,7 +128,7 @@ async fn page(
         Err(_) => before,
     };
     ending.at(end).delivered().await;
-    start_reached
+    start_reached.map(Some)
 }
 
 /// Ends the page's state however the command does: a close drops it mid-page, and a stream left
@@ -124,30 +153,34 @@ impl Drop for Ending<'_> {
     }
 }
 
-/// Until one of `ids` shows in the timeline: a page commits at once, so one is all of them. No
-/// ids: the page came from the skip window, which moved already, or held nothing.
-async fn landed(hub: &Hub, ids: Vec<OwnedEventId>) {
+/// The event ids in the timeline, those the skip window hides included.
+async fn shown(hub: &Hub) -> HashSet<OwnedEventId> {
+    let items = hub.timeline.items().await;
+    let id_of = |item: &Arc<timeline::TimelineItem>| Some(item.as_event()?.event_id()?.to_owned());
+    items.iter().filter_map(id_of).collect()
+}
+
+/// Until one of `ids` that was not `before_page` shows in the timeline: a page commits at once, so
+/// one is all of them. The others are a cache's update during the page, such as a late key's
+/// `Set`, and say nothing about it. None left: the page came from the skip window, which moved
+/// already, or held nothing.
+async fn landed(hub: &Hub, ids: Vec<OwnedEventId>, before_page: &HashSet<OwnedEventId>) {
+    let ids: Vec<_> = (ids.into_iter())
+        .filter(|id| !before_page.contains(id))
+        .collect();
     if ids.is_empty() {
         return;
     }
     let shows = async {
         let (_, changes) = hub.timeline.subscribe().await;
-        let mut changes = std::pin::pin!(changes);
+        let mut changes = pin!(changes);
         loop {
-            let items = hub.timeline.items().await;
-            let event_id = |item: &Arc<timeline::TimelineItem>| {
-                item.as_event()
-                    .and_then(|event| event.event_id().map(ToOwned::to_owned))
-            };
-            if items
-                .iter()
-                .filter_map(event_id)
-                .any(|id| ids.contains(&id))
-            {
+            let now = shown(hub).await;
+            if ids.iter().any(|id| now.contains(id)) {
                 return;
             }
             if changes.next().await.is_none() {
-                std::future::pending::<()>().await;
+                pending::<()>().await;
             }
         }
     };
@@ -223,8 +256,9 @@ impl Pages {
 
 #[cfg(test)]
 mod tests {
-    use futures_util::StreamExt;
-    use matrix_sdk::executor::spawn;
+    use std::time::Instant;
+
+    use matrix_sdk::{Client, executor::spawn, ruma::event_id};
     use serde_json::{Value, json};
     use tempfile::TempDir;
     use tokio::sync::mpsc;
@@ -232,59 +266,161 @@ mod tests {
     use super::*;
     use crate::{
         engines::timeline::timeline,
-        testing::{builder_on, engine_in, live, password, scripted, sync, sync_answer},
+        testing::{builder_on, engine_in, live, password, requests, scripted, sync, sync_answer},
     };
 
     const ROOM: &str = "!r:b";
+    const MESSAGES: &str = "GET /_matrix/client/v3/rooms/*";
 
-    #[tokio::test]
-    async fn a_closed_page_ends_its_state_and_the_stream_goes_on() {
-        let root = TempDir::new().unwrap();
-        let engine = engine_in(&root);
-        let joined = json!({"rooms": {"join": {ROOM: {
-            "timeline": {
-                "events": [{
-                    "type": "m.room.message", "event_id": "$one", "sender": "@b:b",
-                    "origin_server_ts": 1, "content": {"msgtype": "m.text", "body": "hi"},
-                }],
-                "limited": true,
-                "prev_batch": "p0",
-            },
+    fn message(id: &str) -> Value {
+        json!({
+            "type": "m.room.message", "event_id": id, "sender": "@b:b",
+            "origin_server_ts": 1, "content": {"msgtype": "m.text", "body": "hi"},
+        })
+    }
+
+    /// A sync that joins `ROOM` with `$one`, a gap before it, and a known encryption state.
+    fn joined() -> Value {
+        json!({"rooms": {"join": {ROOM: {
+            "timeline": {"events": [message("$one")], "limited": true, "prev_batch": "p0"},
             "state_after": {"events": [{
                 "type": "m.room.encryption", "state_key": "", "event_id": "$e", "sender": "@b:b",
                 "origin_server_ts": 1, "content": {"algorithm": "m.megolm.v1.aes-sha2"},
             }]},
-        }}}});
-        let (base, _) = scripted(vec![
-            sync_answer(0, joined),
-            ("GET /_matrix/client/v3/rooms/*", 0, json!(null)),
-        ]);
+        }}}})
+    }
+
+    /// `@a:b` on a homeserver that answers `answers` after the first sync, which has run.
+    async fn account(
+        root: &TempDir,
+        answers: Vec<(&'static str, u16, Value)>,
+    ) -> (Arc<Engine>, Client, crate::testing::Seen) {
+        let engine = engine_in(root);
+        let (base, seen) = scripted([vec![sync_answer(0, joined())], answers].concat());
         let client = builder_on(&base).build().await.unwrap();
         let rt = live(&engine, &password(&base), client).await;
         sync(&rt.client).await;
+        (engine, rt.client.clone(), seen)
+    }
 
-        let mut items = timeline(Arc::clone(&engine), "@a:b".into(), ROOM.into(), Focus::Live);
-        let (shown, mut frames) = mpsc::unbounded_channel::<Value>();
+    /// The `timeline` frames of `ROOM`, polled from a task of their own as the carrier polls.
+    fn frames_of(engine: &Arc<Engine>) -> mpsc::UnboundedReceiver<Value> {
+        let live = TimelineFocusDto::Live;
+        let mut items = timeline(Arc::clone(engine), "@a:b".into(), ROOM.into(), live);
+        let (shown, frames) = mpsc::unbounded_channel();
         spawn(async move {
             while let Some(Ok(item)) = items.next().await {
                 let _ = shown.send(item);
             }
         });
-        let state = |frame: Value| frame["backPagination"].clone();
-        assert_eq!(state(frames.recv().await.unwrap()), json!("idle"));
+        frames
+    }
 
-        let mut reply = paginate_backwards(
-            Arc::clone(&engine),
-            "@a:b".into(),
-            ROOM.into(),
-            Focus::Live,
-            10,
-        );
-        let held = timeout(reply.next(), Duration::from_millis(300)).await;
+    fn page_of(engine: &Arc<Engine>) -> crate::dispatch::Stream {
+        let live = TimelineFocusDto::Live;
+        paginate_backwards(Arc::clone(engine), "@a:b".into(), ROOM.into(), live, 10)
+    }
+
+    async fn next_frame(frames: &mut mpsc::UnboundedReceiver<Value>) -> Value {
+        let frame = timeout(frames.recv(), Duration::from_secs(5)).await;
+        frame.expect("a frame in time").unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_closed_page_ends_its_state_and_the_stream_goes_on() {
+        let root = TempDir::new().unwrap();
+        let (engine, _client, _) = account(&root, vec![(MESSAGES, 0, json!(null))]).await;
+        let mut frames = frames_of(&engine);
+        assert_eq!(next_frame(&mut frames).await["backPagination"], "idle");
+
+        let mut reply = page_of(&engine);
+        let held = timeout(reply.next(), Duration::from_millis(100)).await;
         assert!(held.is_err(), "the page waits on its request");
-        assert_eq!(state(frames.recv().await.unwrap()), json!("paginating"));
+        assert_eq!(
+            next_frame(&mut frames).await["backPagination"],
+            "paginating"
+        );
         drop(reply);
-        let ended = timeout(frames.recv(), Duration::from_secs(5)).await;
-        assert_eq!(state(ended.unwrap().unwrap()), json!("idle"));
+        assert_eq!(next_frame(&mut frames).await["backPagination"], "idle");
+    }
+
+    #[tokio::test]
+    async fn a_page_slower_than_the_limit_lets_the_room_go_on_marked_paginating() {
+        let root = TempDir::new().unwrap();
+        let later = json!({"rooms": {"join": {ROOM: {"timeline": {"events": [message("$two")]}}}}});
+        let answers = vec![(MESSAGES, 0, json!(null)), sync_answer(1, later)];
+        let (engine, client, _) = account(&root, answers).await;
+        let mut frames = frames_of(&engine);
+        next_frame(&mut frames).await;
+
+        let since = Instant::now();
+        let mut reply = page_of(&engine);
+        let held = timeout(reply.next(), Duration::from_millis(50)).await;
+        assert!(held.is_err(), "the page waits on its request");
+        let started = next_frame(&mut frames).await;
+        assert_eq!(started["diffs"], json!([]));
+        sync(&client).await;
+
+        let frame = next_frame(&mut frames).await;
+        assert!(since.elapsed() >= LANDING_LIMIT, "it is held that long");
+        assert_eq!(frame["backPagination"], "paginating");
+        assert_ne!(frame["diffs"], json!([]), "bob's message goes out");
+        drop(reply);
+        let ended = next_frame(&mut frames).await;
+        assert_eq!(ended["backPagination"], "idle");
+        assert_eq!(ended["diffs"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn a_page_queued_when_the_account_retires_fails_and_never_runs() {
+        let root = TempDir::new().unwrap();
+        let (engine, client, seen) = account(&root, vec![(MESSAGES, 0, json!(null))]).await;
+        let rt = engine.account("@a:b").unwrap();
+        let room = client.get_room(<&matrix_sdk::ruma::RoomId>::try_from(ROOM).unwrap());
+        let hub = rt.hubs.open(&room.unwrap(), Focus::Live).await.unwrap();
+        let _running = hub.paging.lock().await;
+
+        let mut reply = page_of(&engine);
+        let queued = timeout(reply.next(), Duration::from_millis(100)).await;
+        assert!(queued.is_err(), "it waits for its turn");
+        rt.set_retired();
+        let refused = timeout(reply.next(), Duration::from_secs(5)).await;
+        let refused = refused.expect("it stops waiting").unwrap().unwrap();
+        assert_eq!(refused["failure"]["code"], "account-not-live");
+        let paged = requests(&seen)
+            .iter()
+            .any(|(target, _)| target.contains("/messages"));
+        assert!(!paged, "no page ran after the retire");
+    }
+
+    #[tokio::test]
+    async fn an_id_shown_before_the_page_does_not_end_the_wait_for_it() {
+        let root = TempDir::new().unwrap();
+        let (engine, client, _) = account(&root, vec![]).await;
+        let rt = engine.account("@a:b").unwrap();
+        let room = client.get_room(<&matrix_sdk::ruma::RoomId>::try_from(ROOM).unwrap());
+        let hub = rt.hubs.open(&room.unwrap(), Focus::Live).await.unwrap();
+        let one = event_id!("$one").to_owned();
+        let before_page = shown(&hub).await;
+        assert!(before_page.contains(&one));
+
+        let waited = Instant::now();
+        landed(&hub, vec![one.clone()], &before_page).await;
+        assert!(
+            waited.elapsed() < LANDING_LIMIT,
+            "nothing of a page to wait for"
+        );
+
+        let waited = Instant::now();
+        let page = vec![one.clone(), event_id!("$older").to_owned()];
+        landed(&hub, page, &before_page).await;
+        assert!(waited.elapsed() >= LANDING_LIMIT, "$older has not shown");
+
+        let waited = Instant::now();
+        landed(&hub, vec![one], &HashSet::new()).await;
+        assert!(
+            waited.elapsed() < LANDING_LIMIT,
+            "a page's id that shows ends it"
+        );
     }
 }

@@ -267,7 +267,9 @@ export interface TimelineEngine {
 
   /**
    * Starting emits `{ diffs: [], backPagination: 'paginating' }`. The page's diffs and the
-   * next `backPagination` state arrive in one update, and the reply follows it.
+   * next `backPagination` state arrive in one update, and the reply follows it. An engine need
+   * not hold the room's other updates for a slow page: its diffs can then arrive marked
+   * `paginating`, followed by an empty update with the next state.
    */
   paginateBackwards(
     accountId: string,

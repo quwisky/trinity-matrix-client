@@ -6,7 +6,7 @@ use std::{
 };
 
 use matrix_sdk::{
-    BoxFuture, Room,
+    BoxFuture, Room, SendOutsideWasm, SyncOutsideWasm,
     event_cache::PaginationStatus,
     locks::Mutex,
     ruma::{OwnedEventId, OwnedRoomId, RoomId},
@@ -71,7 +71,7 @@ impl Hubs {
             subscriptions: Arc::new(Subscriptions {
                 counts: Mutex::default(),
                 in_order: tokio::sync::Mutex::new(()),
-                sync_service,
+                target: sync_service,
             }),
         }
     }
@@ -157,7 +157,27 @@ struct Subscriptions {
     counts: Mutex<Refcounts>,
     /// The SDK's set awaits before it applies its list, and the last list must win.
     in_order: tokio::sync::Mutex<()>,
-    sync_service: Arc<SyncService>,
+    target: Arc<dyn SubscriptionTarget>,
+}
+
+/// The SDK's room subscriptions, a seam because a never-started `SyncService` sends nothing a test
+/// could read.
+trait SubscriptionTarget: SendOutsideWasm + SyncOutsideWasm {
+    fn set<'a>(&'a self, rooms: &'a [&'a RoomId]) -> BoxFuture<'a, ()>;
+    fn remove(&self, room: &RoomId);
+}
+
+impl SubscriptionTarget for SyncService {
+    fn set<'a>(&'a self, rooms: &'a [&'a RoomId]) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let list = self.room_list_service();
+            list.set_room_subscriptions(rooms).await;
+        })
+    }
+
+    fn remove(&self, room: &RoomId) {
+        self.room_list_service().remove_room_subscriptions(&[room]);
+    }
 }
 
 /// How many holders each subscribed room has.
@@ -206,8 +226,7 @@ impl RoomSubscription {
         // next set, one extra room in the sync; upgrade if piece 3 measures it.
         if let Some(rooms) = rooms {
             let rooms: Vec<&RoomId> = rooms.iter().map(AsRef::as_ref).collect();
-            let list = subscriptions.sync_service.room_list_service();
-            list.set_room_subscriptions(&rooms).await;
+            subscriptions.target.set(&rooms).await;
         }
         held
     }
@@ -216,15 +235,14 @@ impl RoomSubscription {
 impl Drop for RoomSubscription {
     fn drop(&mut self) {
         if self.subscriptions.counts.lock().give(&self.room) {
-            let list = self.subscriptions.sync_service.room_list_service();
-            list.remove_room_subscriptions(&[&self.room]);
+            self.subscriptions.target.remove(&self.room);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{future::ready, time::Duration};
 
     use futures_util::{StreamExt, future::join};
     use matrix_sdk::{Client, executor::spawn, ruma::room_id, timeout::timeout};
@@ -242,7 +260,7 @@ mod tests {
                 PersistedAccountActivationDto,
                 restore::{auth_session, session_meta},
             },
-            timeline::timeline,
+            timeline::{TimelineFocusDto, timeline},
         },
         failure::EngineResult,
         testing::{builder_on, password, scripted, sync, sync_answer},
@@ -275,10 +293,10 @@ mod tests {
         (client, Hubs::new(Arc::new(service)))
     }
 
-    /// U14 by a store reopen. A marker in the client's handler context can't tell: a client that
-    /// synced under a `SyncService` keeps it past 1 s with no hub at all.
+    /// U14 by a store reopen: a marker in the client's handler context can't tell, because the
+    /// client outlives its handles whether or not a hub was open.
     #[tokio::test]
-    async fn a_dropped_hub_releases_its_client() {
+    async fn a_restart_drops_an_open_hub_and_reopens_the_store() {
         let root = TempDir::new().unwrap();
         let engine = Engine::new(EngineConfig {
             data_dir: root.path().join("data"),
@@ -294,7 +312,8 @@ mod tests {
         let rt = engine.account("@a:b").unwrap();
         sync(&rt.client).await;
         drop(rt);
-        let mut items = timeline(engine.clone(), "@a:b".into(), "!r:b".into(), Focus::Live);
+        let live = TimelineFocusDto::Live;
+        let mut items = timeline(engine.clone(), "@a:b".into(), "!r:b".into(), live);
         let (opened, seen) = oneshot::channel();
         spawn(async move {
             let first = items.next().await;
@@ -303,6 +322,11 @@ mod tests {
         });
         let first = seen.await.unwrap().unwrap().unwrap();
         assert_eq!(first["kind"], "items", "the stream holds a hub");
+        let rt = engine.account("@a:b").unwrap();
+        let room = rt.client.get_room(room_id!("!r:b")).unwrap();
+        let hub = Arc::downgrade(&rt.hubs.open(&room, Focus::Live).await.unwrap());
+        assert!(hub.upgrade().is_some(), "the stream's own");
+        drop((rt, room));
 
         let restart = engine.restore(password(&base), activate);
         let restarted = timeout(restart, Duration::from_secs(10)).await;
@@ -312,6 +336,7 @@ mod tests {
         );
         let rt = engine.account("@a:b").unwrap();
         assert_eq!(rt.generation, 2);
+        assert!(hub.upgrade().is_none(), "the old hub is gone");
         let room = rt.client.get_room(room_id!("!r:b")).expect("in the store");
         assert!(rt.hubs.open(&room, Focus::Live).await.is_ok());
     }
@@ -351,25 +376,49 @@ mod tests {
         assert!(!Weak::ptr_eq(&old, &Arc::downgrade(&again)));
     }
 
-    #[test]
-    fn subscriptions_refcount_set_and_remove() {
+    #[derive(Default)]
+    struct Counted(Mutex<Vec<String>>);
+
+    impl SubscriptionTarget for Counted {
+        fn set<'a>(&'a self, rooms: &'a [&'a RoomId]) -> BoxFuture<'a, ()> {
+            let mut rooms: Vec<&str> = rooms.iter().map(|room| room.as_str()).collect();
+            rooms.sort_unstable();
+            self.0.lock().push(format!("set {}", rooms.join(" ")));
+            Box::pin(ready(()))
+        }
+
+        fn remove(&self, room: &RoomId) {
+            self.0.lock().push(format!("remove {room}"));
+        }
+    }
+
+    #[tokio::test]
+    async fn subscriptions_refcount_set_and_remove() {
         let (a, b) = (room_id!("!a:b"), room_id!("!b:b"));
-        let mut counts = Refcounts::default();
+        let counted = Arc::new(Counted::default());
+        let target: Arc<dyn SubscriptionTarget> = counted.clone();
+        let subscriptions = Arc::new(Subscriptions {
+            counts: Mutex::default(),
+            in_order: tokio::sync::Mutex::new(()),
+            target,
+        });
+        let calls = || std::mem::take(&mut *counted.0.lock());
+
+        let first = RoomSubscription::take(&subscriptions, a).await;
+        let second = RoomSubscription::take(&subscriptions, a).await;
+        assert_eq!(calls(), ["set !a:b"], "the first holder sets");
+        let other = RoomSubscription::take(&subscriptions, b).await;
+        assert_eq!(calls(), ["set !a:b !b:b"], "a set names every room");
+        drop(first);
+        assert!(calls().is_empty());
+        drop(second);
+        assert_eq!(calls(), ["remove !a:b"], "the last holder removes");
+        drop(other);
+        assert_eq!(calls(), ["remove !b:b"]);
+        drop(RoomSubscription::take(&subscriptions, a).await);
         assert_eq!(
-            counts.take(a),
-            Some(vec![a.to_owned()]),
-            "the first holder sets"
-        );
-        assert_eq!(counts.take(a), None);
-        let mut both = counts.take(b).unwrap();
-        both.sort();
-        assert_eq!(both, [a.to_owned(), b.to_owned()], "a set names every room");
-        assert!(!counts.give(a));
-        assert!(counts.give(a), "the last holder removes");
-        assert!(counts.give(b));
-        assert_eq!(
-            counts.take(a),
-            Some(vec![a.to_owned()]),
+            calls(),
+            ["set !a:b", "remove !a:b"],
             "and the next sets again"
         );
     }

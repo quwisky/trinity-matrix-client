@@ -280,12 +280,12 @@ methods! {
     "timeline.timeline" => timeline::timeline(
         account_id: String,
         room_id: String,
-        focus: timeline::Focus,
+        focus: timeline::TimelineFocusDto,
     ),
     "timeline.paginateBackwards" => timeline::paging::paginate_backwards(
         account_id: String,
         room_id: String,
-        focus: timeline::Focus,
+        focus: timeline::TimelineFocusDto,
         count: u16,
     ),
 }
