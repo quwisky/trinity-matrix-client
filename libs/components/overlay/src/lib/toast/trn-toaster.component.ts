@@ -1,13 +1,16 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { HlmToaster } from '@trinity/helm/sonner';
 
-/** The single app-root toast viewport, owned by Trinity's public overlay tier. */
+/**
+ * The single app-root toast viewport, owned by Trinity's public overlay tier.
+ * Toasts stay at the top: at the bottom they cover the composer, and its typed text.
+ */
 @Component({
   selector: 'trn-toaster',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmToaster],
   host: { class: 'contents' },
-  template: `<hlm-toaster [style]="toastStyle" />`,
+  template: `<hlm-toaster position="top-center" [style]="toastStyle" />`,
 })
 export class TrnToasterComponent {
   /** Keep Sonner's runtime-injected portal on Trinity's governed surface tokens. */
