@@ -110,6 +110,7 @@ describe('a session whose token exchanges a host makes', () => {
     net.live.add('at-2');
     const host = fakeHost({
       kind: 'tokens',
+      granted: true,
       accessToken: 'at-2',
       expiry: inAnHour(),
     });
@@ -133,7 +134,7 @@ describe('a session whose token exchanges a host makes', () => {
     net.live.add('at-2');
     const expiry = inAnHour();
     const { client, storage } = await startWithHost(
-      fakeHost({ kind: 'tokens', accessToken: 'at-2', expiry }),
+      fakeHost({ kind: 'tokens', granted: true, accessToken: 'at-2', expiry }),
     );
 
     await client.whoami();
@@ -191,6 +192,7 @@ describe('a session whose token exchanges a host makes', () => {
       net.live.add('at-2');
       const host = fakeHost({
         kind: 'tokens',
+        granted: true,
         accessToken: 'at-2',
         expiry: inAnHour(),
       });
@@ -211,6 +213,7 @@ describe('a session whose token exchanges a host makes', () => {
     fakeNetwork('rotate');
     const host = fakeHost({
       kind: 'tokens',
+      granted: true,
       accessToken: 'at-refused',
       expiry: inAnHour(),
     });
@@ -249,6 +252,7 @@ describe('a session whose token exchanges a host makes', () => {
     net.live.add('at-2');
     const host = fakeHost({
       kind: 'tokens',
+      granted: true,
       accessToken: 'at-2',
       expiry: inAnHour(),
     });
@@ -293,6 +297,7 @@ describe('a session whose token exchanges a host makes', () => {
     net.live.add('at-2');
     const host = fakeHost({
       kind: 'tokens',
+      granted: true,
       accessToken: 'at-2',
       expiry: inAnHour(),
     });
@@ -317,7 +322,12 @@ describe('a session whose token exchanges a host makes', () => {
     const net = fakeNetwork('rotate');
     net.live.add('at-2');
     const { client, storage, loggedOut } = await startWithHost(
-      fakeHost({ kind: 'tokens', accessToken: 'at-2', expiry: inAnHour() }),
+      fakeHost({
+        kind: 'tokens',
+        granted: true,
+        accessToken: 'at-2',
+        expiry: inAnHour(),
+      }),
     );
     vi.mocked(storage.updateTokens).mockReturnValue(
       throwError(() => new Error('secure store locked')),
@@ -364,6 +374,7 @@ describe('a session whose token exchanges a host makes', () => {
       net.live.add('at-2');
       const host = fakeHost({
         kind: 'tokens',
+        granted: true,
         accessToken: 'at-2',
         expiry: inAnHour(),
       });
@@ -402,6 +413,7 @@ describe('a session whose token exchanges a host makes', () => {
     net.live.add('at-3');
     const host = fakeHost({
       kind: 'tokens',
+      granted: true,
       accessToken: 'at-3',
       expiry: inAnHour(),
     });
@@ -431,6 +443,7 @@ describe('a session whose token exchanges a host makes', () => {
       fakeNetwork('rotate');
       const host = fakeHost({
         kind: 'tokens',
+        granted: true,
         accessToken: 'at-refused',
         expiry: inAnHour(),
       });
@@ -461,6 +474,7 @@ describe('a session whose token exchanges a host makes', () => {
       let issued = 1;
       host.refresh.mockImplementation(async () => ({
         kind: 'tokens',
+        granted: true,
         accessToken: `at-${(issued += 1)}`,
         expiry: expiry(),
       }));
@@ -494,7 +508,12 @@ describe('a session whose token exchanges a host makes', () => {
       accessToken: 'at-3',
       expiry: inAnHour(),
     });
-    answer({ kind: 'tokens', accessToken: 'at-2', expiry: inAnHour() });
+    answer({
+      kind: 'tokens',
+      granted: true,
+      accessToken: 'at-2',
+      expiry: inAnHour(),
+    });
 
     await expect(pending).resolves.toMatchObject({ user_id: '@me:hs' });
     expect(client.getAccessToken()).toBe('at-3');
@@ -503,6 +522,65 @@ describe('a session whose token exchanges a host makes', () => {
     ).toEqual(['at-3']);
     expect(loggedOut).not.toHaveBeenCalled();
   });
+
+  it('refreshes again when a token no grant returned is rejected, without signing out', async () => {
+    const net = fakeNetwork('rotate');
+    net.live.add('at-3');
+    const host = fakeHost();
+    const { client, loggedOut } = await startWithHost(host);
+    await rejectedWithFarExpiry(client);
+    host.current
+      .mockRejectedValueOnce(new Error('bridge died'))
+      .mockResolvedValue({ accessToken: 'at-2', expiry: inAnHour() });
+    host.refresh
+      .mockResolvedValueOnce({
+        kind: 'tokens',
+        granted: false,
+        accessToken: 'at-2',
+        expiry: inAnHour(),
+      })
+      .mockResolvedValueOnce({
+        kind: 'tokens',
+        granted: true,
+        accessToken: 'at-3',
+        expiry: inAnHour(),
+      });
+
+    await expect(pastBackoff(() => client.whoami())).resolves.toMatchObject({
+      user_id: '@me:hs',
+    });
+
+    expect(host.refresh.mock.calls).toEqual([['at-1'], ['at-2']]);
+    expect(client.getAccessToken()).toBe('at-3');
+    expect(loggedOut).not.toHaveBeenCalled();
+  });
+
+  it.each(['refused', 'transient'] as const)(
+    'retries on the newer token when a %s answer arrives late',
+    async (kind) => {
+      const net = fakeNetwork('rotate');
+      net.live.add('at-3');
+      const host = fakeHost();
+      const { svc, client, loggedOut } = await startWithHost(host);
+      let answer!: (answer: HostTokenAnswer) => void;
+      host.refresh.mockReturnValueOnce(
+        new Promise((resolve) => (answer = resolve)),
+      );
+
+      const pending = client.whoami();
+      await vi.waitFor(() => expect(host.refresh).toHaveBeenCalledOnce());
+      await client.http.adoptOAuthTokens({
+        accessToken: 'at-3',
+        expiry: inAnHour(),
+      });
+      answer({ kind });
+
+      await expect(pending).resolves.toMatchObject({ user_id: '@me:hs' });
+      expect(client.getAccessToken()).toBe('at-3');
+      expect(loggedOut).not.toHaveBeenCalled();
+      expect(svc.accountIds()).toContain('@me:hs');
+    },
+  );
 
   it('a refused host answer signs out with a far expiry too', async () => {
     fakeNetwork('rotate');

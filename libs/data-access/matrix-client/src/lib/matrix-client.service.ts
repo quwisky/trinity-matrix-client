@@ -433,7 +433,8 @@ export class MatrixClientService {
    * `timeoutMs` bounds the token grant this call starts, counted from the call; past it the
    * grant is aborted and fails like a network error. Without it the patched SDK's own bound
    * ({@link MATRIX_REQUEST_TIMEOUT_MS}, from the grant's start) applies. A refresh already
-   * in flight keeps its own bound.
+   * in flight keeps its own bound. A session whose client has a `tokenHost` ignores it: the
+   * host bounds its own exchange.
    */
   refreshAccessToken(
     userId: string,
