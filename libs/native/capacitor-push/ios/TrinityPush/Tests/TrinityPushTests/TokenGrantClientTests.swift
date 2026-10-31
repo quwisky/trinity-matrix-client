@@ -350,12 +350,13 @@ final class TokenGrantClientTests: XCTestCase {
         }
     }
 
-    func testOnlyServerTrustKeepsDefaultHandling() {
-        XCTAssertEqual(
-            URLSessionTokenGrantClient.disposition(for: NSURLAuthenticationMethodServerTrust), .performDefaultHandling)
+    func testOnlyHandshakeChallengesKeepDefaultHandling() {
+        for method in [NSURLAuthenticationMethodServerTrust, NSURLAuthenticationMethodClientCertificate] {
+            XCTAssertEqual(URLSessionTokenGrantClient.disposition(for: method), .performDefaultHandling, method)
+        }
         for method in [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest,
                        NSURLAuthenticationMethodNegotiate, NSURLAuthenticationMethodNTLM,
-                       NSURLAuthenticationMethodClientCertificate, NSURLAuthenticationMethodDefault] {
+                       NSURLAuthenticationMethodDefault] {
             XCTAssertEqual(URLSessionTokenGrantClient.disposition(for: method), .cancelAuthenticationChallenge, method)
         }
     }

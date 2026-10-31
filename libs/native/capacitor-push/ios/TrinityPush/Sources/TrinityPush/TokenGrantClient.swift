@@ -43,8 +43,8 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
             if now() >= readsUntil { dataTask.cancel() }
         }
 
-        // Answering a challenge sends the POST again, refresh token and all. So a real refusal that
-        // carries one reads as failed and never reaches soft logout, which stays signed in.
+        // Answering an HTTP challenge sends the POST again, refresh token and all. So a real refusal
+        // that carries one reads as failed and never reaches soft logout, which stays signed in.
         func urlSession(
             _ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
             completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
@@ -102,9 +102,12 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
         min(deadline.timeIntervalSince(now), TokenBudgets.longestLifetime)
     }
 
-    /// ServerTrust stays with the system, so TLS validation is untouched.
+    /// The two TLS handshake challenges come before any body and stay with the system: TLS
+    /// validation is untouched, and a server that only optionally asks for a client certificate
+    /// still answers rather than failing every grant.
     static func disposition(for authenticationMethod: String) -> URLSession.AuthChallengeDisposition {
         authenticationMethod == NSURLAuthenticationMethodServerTrust
+            || authenticationMethod == NSURLAuthenticationMethodClientCertificate
             ? .performDefaultHandling : .cancelAuthenticationChallenge
     }
 
@@ -194,10 +197,15 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
             let task = urlSession.dataTask(with: request)
             task.resume()
             urlSession.finishTasksAndInvalidate()
-            // The grace is for an answer on its way, not for a send that has yet to start.
-            DispatchQueue.global().asyncAfter(deadline: .now() + remaining) { [weak task] in
+            // The grace is for an answer on its way, not for a send that has yet to start. Strict:
+            // a late timer would let a handshake finishing in the gap send past the deadline.
+            let sendStop = DispatchSource.makeTimerSource(flags: .strict, queue: .global())
+            sendStop.schedule(deadline: .now() + remaining)
+            sendStop.setEventHandler { [weak task] in
                 if task?.countOfBytesSent == 0 { task?.cancel() }
+                sendStop.cancel()
             }
+            sendStop.resume()
         }
     }
 
