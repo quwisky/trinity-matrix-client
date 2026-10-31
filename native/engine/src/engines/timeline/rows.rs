@@ -691,6 +691,7 @@ pub(super) mod tests {
     use matrix_sdk_ui::timeline::ReactionInfo;
     use serde_json::json;
     use tempfile::TempDir;
+    use tokio::sync::mpsc;
 
     use super::{
         super::{Focus, TimelineFocusDto, hub::Hub, is_marker, is_virtual, marker_row, timeline},
@@ -698,6 +699,7 @@ pub(super) mod tests {
     };
     use crate::{
         accounts::{AccountRuntime, Engine},
+        dispatch::dispatch,
         testing::{engine_in, sync, syncing},
     };
 
@@ -1362,15 +1364,47 @@ pub(super) mod tests {
         assert!(target.is_none());
     }
 
-    /// The rows' kinds and ids of a room whose `m.fully_read` names `$read`, in the first frame.
-    async fn first_rows(events: Vec<Value>) -> Vec<String> {
-        let root = TempDir::new().unwrap();
-        let engine = engine_in(&root);
+    /// A stream's rows, by event id, or by kind for a row with none.
+    fn apply_frame(rows: &mut Vec<String>, frame: &Value) {
+        let name = |row: &Value| {
+            let name = row["eventId"].as_str().or(row["kind"].as_str());
+            name.unwrap().to_owned()
+        };
+        let at = |diff: &Value| usize::try_from(diff["index"].as_u64().unwrap()).unwrap();
+        for diff in frame["diffs"].as_array().unwrap() {
+            match diff["op"].as_str().unwrap() {
+                "reset" => {
+                    *rows = diff["values"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(name)
+                        .collect()
+                }
+                "append" => rows.extend(diff["values"].as_array().unwrap().iter().map(name)),
+                "pushFront" => rows.insert(0, name(&diff["value"])),
+                "pushBack" => rows.push(name(&diff["value"])),
+                "insert" => rows.insert(at(diff), name(&diff["value"])),
+                "set" => rows[at(diff)] = name(&diff["value"]),
+                "remove" => drop(rows.remove(at(diff))),
+                other => panic!("{other}"),
+            }
+        }
+    }
+
+    /// An account whose `m.fully_read` names `$read`, past a sync of `events`, the last with the
+    /// id `$end` and in the event cache. `later` answers its next syncs.
+    async fn read_up_to(
+        root: &TempDir,
+        events: Vec<Value>,
+        later: Vec<Value>,
+    ) -> (Arc<Engine>, Arc<AccountRuntime>) {
+        let engine = engine_in(root);
         let bodies = vec![
             joined(vec![], vec![encrypted()], None),
             joined(events, vec![], Some("$read")),
         ];
-        let rt = syncing(&engine, bodies).await;
+        let rt = syncing(&engine, [bodies, later].concat()).await;
         sync(&rt.client).await;
         sync(&rt.client).await;
         let room = rt.client.get_room(room_id!("!r:b")).unwrap();
@@ -1381,26 +1415,33 @@ pub(super) mod tests {
             }
         };
         timeout(cached, Duration::from_secs(5)).await.unwrap();
+        (engine, rt)
+    }
+
+    /// The stream's frames, polled from a task of their own as the carrier polls.
+    fn frames_of(engine: &Arc<Engine>) -> mpsc::UnboundedReceiver<Value> {
         let live = TimelineFocusDto::Live;
-        let mut stream = timeline(Arc::clone(&engine), ME.into(), ROOM.into(), live);
-        let first = timeout(stream.next(), Duration::from_secs(5)).await;
-        let first = first.unwrap().unwrap().unwrap();
-        let mut rows = Vec::new();
-        for diff in first["diffs"].as_array().unwrap() {
-            match diff["op"].as_str().unwrap() {
-                "reset" => {
-                    rows = (diff["values"].as_array().unwrap().iter())
-                        .map(|row| row["eventId"].as_str().unwrap().to_owned())
-                        .collect();
-                }
-                "insert" => {
-                    let index = usize::try_from(diff["index"].as_u64().unwrap()).unwrap();
-                    assert_eq!(diff["value"]["kind"], "readMarker");
-                    rows.insert(index, "marker".to_owned());
-                }
-                other => panic!("{other}"),
+        let mut stream = timeline(Arc::clone(engine), ME.into(), ROOM.into(), live);
+        let (shown, frames) = mpsc::unbounded_channel();
+        matrix_sdk::executor::spawn(async move {
+            while let Some(Ok(frame)) = stream.next().await {
+                let _ = shown.send(frame);
             }
-        }
+        });
+        frames
+    }
+
+    async fn next_frame(frames: &mut mpsc::UnboundedReceiver<Value>) -> Value {
+        let frame = timeout(frames.recv(), Duration::from_secs(5)).await;
+        frame.expect("a frame in time").unwrap()
+    }
+
+    /// The rows of the first frame of a room read up to `$read`.
+    async fn first_rows(events: Vec<Value>) -> Vec<String> {
+        let root = TempDir::new().unwrap();
+        let (engine, _rt) = read_up_to(&root, events, vec![]).await;
+        let mut rows = Vec::new();
+        apply_frame(&mut rows, &next_frame(&mut frames_of(&engine)).await);
         rows
     }
 
@@ -1417,7 +1458,7 @@ pub(super) mod tests {
         ];
         for hidden in hidden {
             let rows = first_rows(vec![text("$before"), hidden.clone(), text("$end")]).await;
-            assert_eq!(rows, ["$before", "marker", "$end"], "{hidden}");
+            assert_eq!(rows, ["$before", "readMarker", "$end"], "{hidden}");
         }
 
         let hidden = state("m.room.power_levels", "$read", json!({"users": {}}));
@@ -1426,7 +1467,7 @@ pub(super) mod tests {
 
         let hidden = state("m.room.power_levels", "$read", json!({"users": {}}));
         let rows = first_rows(vec![hidden, text("$end")]).await;
-        assert_eq!(rows, ["marker", "$end"], "before the first row");
+        assert_eq!(rows, ["readMarker", "$end"], "before the first row");
     }
 
     #[tokio::test]
@@ -1435,10 +1476,70 @@ pub(super) mod tests {
         let mut events = vec![hidden];
         events.extend((0..30).map(|n| text(&format!("$m{n}"))));
         events.push(text("$end"));
-        let rows = first_rows(events).await;
+        let root = TempDir::new().unwrap();
+        let (engine, _rt) = read_up_to(&root, events, vec![]).await;
+        let mut frames = frames_of(&engine);
+        let mut rows = Vec::new();
+        apply_frame(&mut rows, &next_frame(&mut frames).await);
         assert!(
-            rows.len() <= 20 && !rows.contains(&"marker".to_owned()),
+            rows.len() <= 20 && !rows.contains(&"readMarker".to_owned()),
             "{rows:?}"
+        );
+
+        let args = vec![json!(ME), json!(ROOM), json!({"kind": "live"}), json!(30)];
+        let page = dispatch(&engine, "timeline.paginateBackwards", args);
+        let reply = timeout(page.unwrap().next(), Duration::from_secs(5)).await;
+        assert_eq!(reply.unwrap().unwrap().unwrap()["ok"], true);
+        while let Ok(frame) = frames.try_recv() {
+            apply_frame(&mut rows, &frame);
+        }
+        let marker = rows.iter().position(|row| row == "readMarker");
+        let marker = marker.unwrap_or_else(|| panic!("{rows:?}"));
+        assert_eq!(rows[marker + 1], "$m0", "{rows:?}");
+    }
+
+    #[tokio::test]
+    async fn a_live_batch_places_the_marker_and_moves_it() {
+        let hidden = |id: &str| state("m.room.power_levels", id, json!({"users": {}}));
+        let later = vec![
+            joined(vec![own("$mine")], vec![], None),
+            joined(vec![text("$unread")], vec![], None),
+            joined(
+                vec![hidden("$later"), text("$newest")],
+                vec![],
+                Some("$later"),
+            ),
+        ];
+        let events = vec![text("$before"), hidden("$read"), own("$end")];
+        let root = TempDir::new().unwrap();
+        let (engine, rt) = read_up_to(&root, events, later).await;
+        let mut frames = frames_of(&engine);
+        let mut rows = Vec::new();
+        apply_frame(&mut rows, &next_frame(&mut frames).await);
+        assert_eq!(rows, ["$before", "$end"], "nothing unread yet");
+
+        let mut until_shows = async |rows: &mut Vec<String>, id: &str| {
+            sync(&rt.client).await;
+            while !rows.iter().any(|row| row == id) {
+                apply_frame(rows, &next_frame(&mut frames).await);
+            }
+        };
+        until_shows(&mut rows, "$mine").await;
+        assert_eq!(rows, ["$before", "$end", "$mine"], "our own is no unread");
+        until_shows(&mut rows, "$unread").await;
+        assert_eq!(rows, ["$before", "$end", "$mine", "readMarker", "$unread"]);
+        until_shows(&mut rows, "$newest").await;
+        assert_eq!(
+            rows,
+            [
+                "$before",
+                "$end",
+                "$mine",
+                "$unread",
+                "readMarker",
+                "$newest"
+            ],
+            "a fully-read event no row shows moves it"
         );
     }
 

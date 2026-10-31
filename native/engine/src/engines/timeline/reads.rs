@@ -1,5 +1,6 @@
-//! `TimelineEngine`'s reads, and its receipt and typing notices: each request goes once, under the
-//! account's rule, because the SDK's wrappers for them retry for up to 15 minutes.
+//! `TimelineEngine`'s reads, and its receipt and typing notices. Each raw request goes once, under
+//! the account's rule, because the SDK's wrappers for them retry for up to 15 minutes. A page of
+//! `paginateUntil` is the SDK's own request.
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -30,6 +31,7 @@ use matrix_sdk::{
     },
     serde_helpers::{extract_relation, extract_thread_root},
 };
+use matrix_sdk_ui::timeline::TimelineItem;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -57,9 +59,9 @@ use crate::{
 const PAGE_SIZE: u16 = 30;
 /// js `TYPING_TIMEOUT_MS`.
 const TYPING_TIMEOUT: Duration = Duration::from_secs(8);
-/// How far a receipt follows relations to find its thread: a chain longer than a reaction on an
-/// edit of a reply is no client's.
-const RELATION_HOPS: usize = 4;
+/// How many events a receipt looks through for its thread: the five levels Synapse checks before
+/// it accepts a thread's receipt (`relations.py`).
+const RELATION_LEVELS: usize = 5;
 
 fn unavailable<T>() -> EngineResult<T> {
     EngineResult::Err(local_failure(FailureCode::MessageUnavailable))
@@ -78,6 +80,9 @@ pub fn paginate_until(
     event_id: String,
     max_pages: u32,
 ) -> Stream {
+    // shortcut: a page is `Room::messages` on the client's default retries, so a 502 can retry for
+    // the 30 s of `bounded` per page, paginating, with the paging lock held; upgrade if the SDK
+    // lets a pagination take a request config.
     reply(on_room(
         engine,
         account_id,
@@ -104,24 +109,39 @@ pub fn paginate_until(
     ))
 }
 
-/// Whether a stream shows the event, or it is one no row can show. The SDK's whole list and the
-/// event cache hold events a stream's window does not reveal until a page: those aren't found yet.
+fn event_id_of(item: &Arc<TimelineItem>) -> Option<&EventId> {
+    item.as_event()?.event_id()
+}
+
+/// Whether a stream shows the event, or, for one no row can show, every row after it: `jumpToDate`
+/// then takes the first row from that time on. The SDK's list and the event cache hold more than
+/// a stream's window reveals before a page, so holding the event isn't enough.
 async fn reached(room: &Room, hub: &Hub, event_id: &EventId) -> Result<bool, Error> {
-    let holds =
-        |items: &matrix_sdk_ui::eyeball_im::Vector<Arc<matrix_sdk_ui::timeline::TimelineItem>>| {
-            (items.iter())
-                .any(|item| item.as_event().and_then(|event| event.event_id()) == Some(event_id))
-        };
-    if holds(&hub.timeline.subscribe().await.0) {
+    let window = hub.timeline.subscribe().await.0;
+    if window
+        .iter()
+        .filter_map(event_id_of)
+        .any(|id| id == event_id)
+    {
         return Ok(true);
     }
-    if holds(&hub.timeline.items().await) {
+    let all = hub.timeline.items().await;
+    if all.iter().filter_map(event_id_of).any(|id| id == event_id) {
         return Ok(false);
     }
+    let oldest_shown = window.iter().find_map(event_id_of);
+    let newest_above = (all.iter().filter_map(event_id_of))
+        .take_while(|id| Some(*id) != oldest_shown)
+        .last();
     let (cache, _handles) = room.event_cache().await?;
-    let found = cache
-        .rfind_map_event_in_memory_by(|event| (event.event_id() == Some(event_id)).then_some(()));
-    Ok(found.await?.is_some())
+    let found = cache.rfind_map_event_in_memory_by(|event| {
+        let id = event.event_id()?;
+        if id == event_id {
+            return Some(true);
+        }
+        (Some(id) == newest_above).then_some(false)
+    });
+    Ok(found.await?.unwrap_or(false))
 }
 
 /// `{ eventId }`.
@@ -205,8 +225,8 @@ pub fn event_source(
             else {
                 return Ok(unavailable());
             };
-            // A synced event has none (H15).
-            (source.entry("room_id")).or_insert_with(|| room.room_id().as_str().into());
+            // A synced event has none (H15), and as js a sender's own is not believed.
+            source.insert("room_id".to_owned(), room.room_id().as_str().into());
             Ok(EngineResult::Ok(source))
         },
     ))
@@ -346,8 +366,11 @@ pub struct ReceiptOptionsDto {
 /// js `threadIdForReceipt`: the event's thread, through a relation to one of its replies, or the
 /// main timeline. The server refuses a main receipt on a reaction to a thread reply.
 async fn receipt_thread(cache: &RoomEventCache, event: &TimelineEvent) -> ReceiptThread {
+    // shortcut: a decrypted event's relation in the ciphertext wins over the wire's, which the SDK
+    // keeps no copy of and js reads, so a sender can name any thread and Synapse refuses the
+    // receipt while that event is the newest; upgrade if the SDK keeps the wire relation.
     let mut event = event.clone();
-    for _ in 0..RELATION_HOPS {
+    for _ in 0..RELATION_LEVELS {
         if let Some(root) = extract_thread_root(event.raw()) {
             return ReceiptThread::Thread(root);
         }
@@ -723,6 +746,8 @@ mod tests {
             thread("$reply", "$root"),
             reaction("$on-reply", "@b:b", 1, "$reply", "k"),
             reaction("$on-that", "@b:b", 1, "$on-reply", "k"),
+            reaction("$third", "@b:b", 1, "$on-that", "k"),
+            reaction("$fourth", "@b:b", 1, "$third", "k"),
             reaction("$on-root", "@b:b", 1, "$root", "k"),
             reaction("$on-unknown", "@b:b", 1, "$nothing", "k"),
             loop_of("$one", "$two"),
@@ -736,7 +761,8 @@ mod tests {
             ("$root", ReceiptThread::Main),
             ("$reply", ReceiptThread::Thread(root.clone())),
             ("$on-reply", ReceiptThread::Thread(root.clone())),
-            ("$on-that", ReceiptThread::Thread(root)),
+            ("$on-that", ReceiptThread::Thread(root.clone())),
+            ("$fourth", ReceiptThread::Thread(root.clone())),
             ("$on-root", ReceiptThread::Main),
             ("$on-unknown", ReceiptThread::Main),
             ("$one", ReceiptThread::Main),
@@ -746,6 +772,18 @@ mod tests {
             let event = cache.find_event(&id).await.unwrap().expect("in the cache");
             assert_eq!(receipt_thread(&cache, &event).await, expected, "{id}");
         }
+
+        let (id, request) = receipt_request(&room, "$on-reply", ReceiptVisibilityDto::Private)
+            .await
+            .unwrap()
+            .expect("a request");
+        assert_eq!(id, "$on-reply");
+        assert_eq!(request.event_id, id);
+        assert_eq!(request.thread, ReceiptThread::Thread(root));
+        assert_eq!(
+            request.receipt_type,
+            create_receipt::v3::ReceiptType::ReadPrivate
+        );
     }
 
     #[tokio::test]
@@ -780,7 +818,7 @@ mod tests {
         let reply = account
             .reply("eventSource", args(&[json!("$other-room")]))
             .await;
-        assert_eq!(reply["value"]["room_id"], "!elsewhere:b");
+        assert_eq!(reply["value"]["room_id"], ROOM, "as js overwrites it");
         assert_eq!(account.sent().len(), 1, "only the unloaded one is fetched");
     }
 
@@ -956,6 +994,85 @@ mod tests {
         let found = account.reply("paginateUntil", until("$r", 5)).await;
         assert_eq!(found["value"]["found"], true, "{found}");
         assert!(account.sent().is_empty());
+    }
+
+    fn power_levels(id: &str) -> Value {
+        let mut levels = event("m.room.power_levels", id, "@b:b", 1, json!({"users": {}}));
+        levels["state_key"] = json!("");
+        levels
+    }
+
+    /// `count` messages from `$m0`.
+    fn messages(count: usize) -> Vec<Value> {
+        (0..count).map(|n| message(&format!("$m{n}"))).collect()
+    }
+
+    #[tokio::test]
+    async fn an_event_no_row_shows_above_the_window_is_found_only_after_a_page() {
+        // The window holds the last 20 items, here from `$m20` up.
+        let mut events = messages(40);
+        events.insert(5, reaction("$far", "@b:b", 1, "$m0", "k"));
+        let account = Account::plain(events).await;
+        let mut frames = frames_of(&account.engine);
+        let first = first_frame(&mut frames).await;
+        assert!(
+            first.contains("\"$m20\"") && !first.contains("\"$m19\""),
+            "{first}"
+        );
+
+        let held = account.reply("paginateUntil", until("$far", 0)).await;
+        assert_eq!(
+            held["value"]["found"], false,
+            "rows lie between it and the window"
+        );
+
+        let found = account.reply("paginateUntil", until("$far", 20)).await;
+        assert_eq!(found["value"]["found"], true, "{found}");
+        assert!(
+            all_frames(&mut frames).contains("\"$m5\""),
+            "the row after it came first"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_event_no_row_shows_right_above_the_window_needs_no_page() {
+        let mut events = messages(40);
+        events.insert(20, reaction("$next-to", "@b:b", 1, "$m0", "k"));
+        let account = Account::plain(events).await;
+        let mut frames = frames_of(&account.engine);
+        let first = first_frame(&mut frames).await;
+        assert!(
+            first.contains("\"$m20\"") && !first.contains("\"$m19\""),
+            "{first}"
+        );
+
+        let found = account.reply("paginateUntil", until("$next-to", 0)).await;
+        assert_eq!(
+            found["value"]["found"], true,
+            "the window's oldest row follows it"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_event_no_row_shows_before_every_row_is_found_at_the_room_start() {
+        let account = Account::plain(vec![power_levels("$first"), message("$m")]).await;
+        let mut frames = frames_of(&account.engine);
+        first_frame(&mut frames).await;
+        let found = account.reply("paginateUntil", until("$first", 5)).await;
+        assert_eq!(found["value"]["found"], true, "{found}");
+        assert!(account.sent().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_page_answered_502_is_left_to_the_sdk_s_retries() {
+        let page = json!({"start": "p0", "end": "p1", "chunk": [message("$older")]});
+        let answers = vec![(ROOMS_GET, 502, unavailable_body()), (ROOMS_GET, 200, page)];
+        let account = Account::on(joined(vec![message("$m")], true), answers).await;
+        let mut frames = frames_of(&account.engine);
+        first_frame(&mut frames).await;
+        let found = account.reply("paginateUntil", until("$older", 1)).await;
+        assert_eq!(found["value"]["found"], true, "{found}");
+        assert_eq!(account.sent().len(), 2);
     }
 
     #[tokio::test]
