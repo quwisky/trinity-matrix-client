@@ -2,7 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
-import { assertProgressThenResult } from '@trinity/util/matrix';
+import {
+  assertProgressThenResult,
+  mediaCaptionFields,
+} from '@trinity/util/matrix';
 import type { AttachmentRequest } from '../media-engine';
 import { JsSdkMediaEngine } from './js-sdk-media-engine';
 
@@ -77,6 +80,10 @@ function attachment(
     info: { w: 4, h: 2, durationMs: null },
     thumbnail: null,
     caption: '',
+    captionFields: mediaCaptionFields(
+      overrides.filename ?? 'secret.png',
+      overrides.caption ?? '',
+    ),
     metadata: 'stripped',
     ...overrides,
   };
@@ -335,6 +342,17 @@ describe('JsSdkMediaEngine.sendAttachment', () => {
       expect.objectContaining({ id: `~${ROOM}:txn-1` }),
       expect.objectContaining({ roomId: ROOM }),
     );
+  });
+
+  it('sends the caption fields it is given', async () => {
+    const { engine, client } = setup();
+
+    await run(
+      engine,
+      attachment({ captionFields: { body: 'given' }, caption: 'other' }),
+    );
+
+    expect(sentContent(client)).toMatchObject({ body: 'given' });
   });
 
   it('cancels the failed echo and uses a fresh transaction when a retry changes the caption', async () => {

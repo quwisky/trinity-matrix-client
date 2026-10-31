@@ -1,7 +1,11 @@
 import { Injectable, inject, untracked } from '@angular/core';
 import { Observable, defer, from, of, switchMap, throwError } from 'rxjs';
 import { SessionStateService } from '@trinity/data-access/matrix-client';
-import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
+import {
+  mediaCaptionFields,
+  type EncryptedFileInfo,
+  type MediaPayload,
+} from '@trinity/util/matrix';
 import { MediaService } from './media.service';
 import type { AttachmentRequest } from './media-engine';
 import { MEDIA_ENGINE } from './media-engine.token';
@@ -42,7 +46,7 @@ interface PresentedEntry {
 
 type PreparedAttachment = Omit<
   AttachmentRequest,
-  'attachmentKey' | 'supersedes' | 'threadRootId' | 'caption'
+  'attachmentKey' | 'supersedes' | 'threadRootId' | 'caption' | 'captionFields'
 >;
 
 let nextStagedId = 0;
@@ -187,6 +191,10 @@ export class MediaPipeline {
                 ...(supersedes === undefined ? {} : { supersedes }),
                 threadRootId,
                 caption: request.caption,
+                captionFields: mediaCaptionFields(
+                  prepared.filename || 'attachment',
+                  request.caption,
+                ),
               }),
             ),
           )

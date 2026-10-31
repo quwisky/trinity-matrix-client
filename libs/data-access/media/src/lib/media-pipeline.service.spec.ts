@@ -3,7 +3,11 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, take, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SESSION_SNAPSHOT } from '@trinity/data-access/matrix-client';
-import { engineOk, type MediaPayload } from '@trinity/util/matrix';
+import {
+  engineOk,
+  mediaCaptionFields,
+  type MediaPayload,
+} from '@trinity/util/matrix';
 import { FakeMediaEngine } from '../contract/fake-media-engine';
 import { strippedMedia } from './image-metadata/strip-file-metadata';
 import type { AttachmentOutcome, TransferUpdate } from './media-engine';
@@ -820,6 +824,28 @@ describe('MediaPipeline', () => {
     expect(engine.messages(roomId)).toEqual([
       expect.objectContaining({ msgtype: 'm.video', hasThumbnail: true }),
     ]);
+  });
+
+  it('renders the caption fields', async () => {
+    const { engine, stage, run } = setup();
+    const send = vi.spyOn(engine, 'sendAttachment');
+
+    await run({ media: stage('pic.png'), caption: 'a **bold** one' });
+
+    expect(send.mock.calls[0]?.[2].captionFields).toEqual(
+      mediaCaptionFields('pic.png', 'a **bold** one'),
+    );
+  });
+
+  it('falls back to attachment for a nameless file', async () => {
+    const { engine, stage, run } = setup();
+    const send = vi.spyOn(engine, 'sendAttachment');
+
+    await run({ media: stage(''), caption: '' });
+
+    expect(send.mock.calls[0]?.[2].captionFields).toEqual({
+      body: 'attachment',
+    });
   });
 
   it('hands over the file as picked when the transfer keeps its metadata', async () => {

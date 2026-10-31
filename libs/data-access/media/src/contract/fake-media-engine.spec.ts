@@ -85,6 +85,7 @@ describe('FakeMediaEngine', () => {
       info: { w: null, h: null, durationMs: null },
       thumbnail: null,
       caption: '',
+      captionFields: { body: 'x.bin' },
       metadata: 'kept',
     });
     let reachedSend!: () => void;

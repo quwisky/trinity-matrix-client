@@ -10,6 +10,7 @@ import {
   type EncryptedFileInfo,
   assertPlainData,
   assertProgressThenResult,
+  mediaCaptionFields,
 } from '@trinity/util/matrix';
 import type {
   AttachmentRequest,
@@ -385,7 +386,7 @@ export function defineMediaEngineContract(
     function attachment(
       overrides: Partial<AttachmentRequest> = {},
     ): AttachmentRequest {
-      return {
+      const merged = {
         attachmentKey: `key-${++keys}`,
         threadRootId: null,
         file: new Blob([PNG], { type: 'image/png' }),
@@ -397,6 +398,13 @@ export function defineMediaEngineContract(
         caption: '',
         metadata: 'stripped',
         ...overrides,
+      } satisfies Omit<AttachmentRequest, 'captionFields'>;
+      return {
+        ...merged,
+        captionFields: mediaCaptionFields(
+          merged.filename || 'attachment',
+          merged.caption,
+        ),
       };
     }
 

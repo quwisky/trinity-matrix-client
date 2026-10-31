@@ -93,6 +93,8 @@ export interface AttachmentRequest {
     readonly h: number;
   } | null;
   readonly caption: string;
+  /** The MSC2530 fields of `mediaCaptionFields(filename || 'attachment', caption)`: TypeScript renders them. */
+  readonly captionFields: Readonly<Record<string, unknown>>;
   /**
    * What the pipeline did with the file's identifying metadata. `strip-failed` means stripping
    * threw and `file` is the original: an encrypted room refuses it before any progress
