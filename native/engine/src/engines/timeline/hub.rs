@@ -18,7 +18,7 @@ use matrix_sdk_ui::{
 };
 use tokio::sync::watch;
 
-use super::{BackPagination, Focus};
+use super::{BackPagination, Focus, rows::event_filter};
 use crate::barrier::{Barrier, Subscribers};
 
 /// What a command asks an open stream to do before its barrier resolves.
@@ -103,6 +103,7 @@ impl Hubs {
         let builder = room
             .timeline_builder()
             .with_focus(key.1.sdk())
+            .event_filter(event_filter)
             .track_read_marker_and_receipts(TimelineReadReceiptTracking::AllEvents);
         // Boxed: moved by value through its callers, this future overflows a debug build's stack.
         let build: BoxFuture<'_, _> = Box::pin(builder.build());

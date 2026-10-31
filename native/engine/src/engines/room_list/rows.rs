@@ -164,7 +164,7 @@ fn direct_user_id(targets: &HashSet<OwnedDirectUserIdentifier>) -> Option<String
 }
 
 /// `messagePreview`: the reply fallback stripped, whitespace collapsed, `…` when nothing is left.
-fn preview(body: Option<&str>, utd: bool, redacted: bool) -> String {
+pub(crate) fn preview(body: Option<&str>, utd: bool, redacted: bool) -> String {
     if utd {
         return "⚠️ Unable to decrypt".to_owned();
     }
@@ -184,7 +184,7 @@ fn preview(body: Option<&str>, utd: bool, redacted: bool) -> String {
 }
 
 /// `unencryptedMarkFor`: only a real date before the room's encryption earns the quieter mark.
-fn mark(
+pub(crate) fn mark(
     room_encrypted: bool,
     in_clear: bool,
     ts: Option<u64>,
@@ -359,7 +359,7 @@ async fn latest_message_of(room: &Room, encryption: RoomEncryptionDto) -> Option
 }
 
 /// The `origin_server_ts` of the room's `m.room.encryption` event.
-async fn encrypted_at(room: &Room) -> Option<u64> {
+pub(crate) async fn encrypted_at(room: &Room) -> Option<u64> {
     let event = room.get_state_event_static::<RoomEncryptionEventContent>();
     match event.await.ok()?? {
         RawSyncOrStrippedState::Sync(raw) => raw.get_field("origin_server_ts").ok()?,

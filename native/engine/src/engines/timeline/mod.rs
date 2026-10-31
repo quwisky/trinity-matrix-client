@@ -8,16 +8,16 @@ use futures_util::{
     future::{Either, select},
 };
 use matrix_sdk::{
-    Client, Error, Room,
-    ruma::{EventId, OwnedEventId, RoomId},
+    BoxFuture, Client, Error, Room,
+    ruma::{EventId, OwnedEventId, RoomId, UserId},
     timeout::timeout,
 };
 use matrix_sdk_ui::{
-    eyeball_im::VectorDiff,
-    timeline::{self, TimelineItem},
+    eyeball_im::{Vector, VectorDiff},
+    timeline::{self, TimelineItem, VirtualTimelineItem},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use ts_rs::TS;
 
 use crate::{
     accounts::{AccountRuntime, Engine},
@@ -30,13 +30,18 @@ use crate::{
     vector_diff::{VectorDiffDto, frames},
 };
 
+mod content;
+mod dto;
 mod fold;
 pub(crate) mod hub;
 pub mod paging;
+mod rows;
 
-use fold::Fold;
+use dto::{DTO, TimelineItemDto, TimelineRoomStateDto, TimelineUpdateDto};
+use fold::{Fold, Marker};
 use hub::Hub;
 use paging::LANDING_LIMIT;
+use rows::{RowContext, room_state, row};
 
 /// `TimelineFocus`. The root stays a string: a malformed one is a thread that can't exist, which
 /// the members answer, and never a `bad-args` fault on a stream.
@@ -69,27 +74,13 @@ pub(crate) enum Focus {
 }
 
 /// `TimelineUpdate['backPagination']`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = DTO)]
 pub(crate) enum BackPagination {
     Idle,
     Paginating,
     StartReached,
-}
-
-/// `TimelineUpdate`.
-#[derive(Debug, Serialize)]
-#[serde(
-    tag = "kind",
-    rename_all = "kebab-case",
-    rename_all_fields = "camelCase"
-)]
-enum TimelineUpdateDto {
-    RoomUnavailable,
-    Items {
-        diffs: Vec<VectorDiffDto<Value>>,
-        back_pagination: BackPagination,
-    },
 }
 
 /// js `onRoom`: `run` on a room the account holds, `message-unavailable` when it does not.
@@ -161,14 +152,15 @@ where
             return;
         };
         let focus = focus.parsed();
-        let hub = {
+        let (hub, room) = {
             let mut changes = room_changes(&client, &room_id);
             let (mut announced, mut reset) = (false, false);
             loop {
-                let opened = match (client.get_room(&room_id), &focus) {
+                let held = client.get_room(&room_id);
+                let opened = match (&held, &focus) {
                     // As js shows a root no thread has: nothing, and here nothing can ever form it.
-                    (Some(_), None) => {
-                        yield empty_reset();
+                    (Some(room), None) => {
+                        yield empty_reset(Some(room)).await;
                         return;
                     }
                     (Some(room), Some(focus)) => {
@@ -176,41 +168,52 @@ where
                         // before the network.
                         if room.encryption_state().is_unknown() && !reset {
                             reset = true;
-                            yield empty_reset();
+                            yield empty_reset(Some(room)).await;
                         }
-                        Some(open(room, focus.clone()).await)
+                        Some(open(room.clone(), focus.clone()).await)
                     }
                     (None, _) => None,
                 };
-                match opened {
-                    Some(Ok(hub)) => break hub,
-                    Some(Err(err)) => {
+                match (opened, held) {
+                    (Some(Ok(hub)), Some(room)) => break (hub, room),
+                    (Some(Err(err)), room) => {
                         tracing::warn!(?err, "a timeline did not build");
                         if !reset {
                             reset = true;
-                            yield empty_reset();
+                            yield empty_reset(room.as_ref()).await;
                         }
                     }
-                    None if !announced => {
+                    (None, _) if !announced => {
                         announced = true;
                         yield TimelineUpdateDto::RoomUnavailable;
                     }
-                    None => {}
+                    _ => {}
                 }
                 if changes.next().await.is_none() {
                     return;
                 }
             }
         };
+        let Some(me) = client.user_id().map(ToOwned::to_owned) else {
+            return;
+        };
+        let ctx = RowContext::new(room.clone(), me);
+        let thread = matches!(focus, Some(Focus::Thread { .. }));
+        let mut room_updates = room_changes(&client, &room_id);
         let mut flushes = hub.flushes.lock().subscribe(None).1;
         let (items, batches) = hub.timeline.subscribe().await;
         let mut batches = pin!(batches);
         let mut fold = Fold::default();
+        let mut marker = Marker::default();
+        let mut sdk_items = items.clone();
         let mut state = *hub.state.borrow();
-        let snapshot = fold.apply(VectorDiff::Reset { values: items }, |item| item.is_date_divider());
+        let mut snapshot = marker.apply(fold.apply(VectorDiff::Reset { values: items }, is_virtual));
+        snapshot.extend(marker.place(marker_target(&sdk_items, &ctx.me)));
+        let mut shown = room_of(&room, &sdk_items, thread).await;
         yield TimelineUpdateDto::Items {
-            diffs: snapshot.into_iter().map(|diff| diff.map(row)).collect(),
+            diffs: rows_of(snapshot, &ctx).await,
             back_pagination: state,
+            room: shown.clone(),
         };
         let mut holding = state == BackPagination::Paginating;
         loop {
@@ -219,18 +222,19 @@ where
             // waits with it: a slower page goes out marked `paginating`, then an empty end state.
             let woken = if std::mem::take(&mut holding) {
                 match timeout(flushes.next(), LANDING_LIMIT).await {
-                    Ok(flush) => Either::Left(flush),
+                    Ok(flush) => Woken::Flush(flush),
                     Err(_) => continue,
                 }
             } else {
-                match select(flushes.next(), batches.next()).await {
-                    Either::Left((flush, _)) => Either::Left(flush),
-                    Either::Right((batch, _)) => Either::Right(batch),
+                match select(flushes.next(), select(batches.next(), room_updates.next())).await {
+                    Either::Left((flush, _)) => Woken::Flush(flush),
+                    Either::Right((Either::Left((batch, _)), _)) => Woken::Batch(batch),
+                    Either::Right((Either::Right((change, _)), _)) => Woken::Room(change),
                 }
             };
             let mut diffs = Vec::new();
             let end_state = match woken {
-                Either::Left(Some(flush)) => {
+                Woken::Flush(Some(flush)) => {
                     holding = flush.end_state == Some(BackPagination::Paginating);
                     if !holding {
                         while let Some(Some(batch)) = batches.next().now_or_never() {
@@ -239,52 +243,166 @@ where
                     }
                     flush.end_state
                 }
-                Either::Right(Some(batch)) => {
+                Woken::Batch(Some(batch)) => {
                     diffs = batch;
                     None
                 }
-                Either::Left(None) | Either::Right(None) => return,
+                Woken::Room(Some(())) => None,
+                Woken::Flush(None) | Woken::Batch(None) | Woken::Room(None) => return,
             };
-            let rows = diffs
+            sdk_items = apply_all(sdk_items, diffs.iter().cloned());
+            let folded = diffs
                 .into_iter()
-                .flat_map(|diff| fold.apply(diff, |item| item.is_date_divider()))
-                .map(|diff| diff.map(row))
+                .flat_map(|diff| fold.apply(diff, is_virtual))
                 .collect();
-            let mut framed = frames(rows);
+            let mut folded = marker.apply(folded);
+            folded.extend(marker.place(marker_target(&sdk_items, &ctx.me)));
+            let mut framed = frames(rows_of(folded, &ctx).await);
+            let room_now = room_of(&room, &sdk_items, thread).await;
             if framed.is_empty() {
-                if end_state.is_none() {
+                if end_state.is_none() && room_now == shown {
                     continue;
                 }
                 framed.push(Vec::new());
             }
+            shown = room_now;
             let last = framed.len() - 1;
             for (at, diffs) in framed.into_iter().enumerate() {
                 let back_pagination = match end_state {
                     Some(end) if at == last => end,
                     _ => state,
                 };
-                yield TimelineUpdateDto::Items { diffs, back_pagination };
+                yield TimelineUpdateDto::Items { diffs, back_pagination, room: shown.clone() };
             }
             state = end_state.unwrap_or(state);
         }
     }
 }
 
-fn empty_reset() -> TimelineUpdateDto {
-    TimelineUpdateDto::Items {
-        diffs: vec![VectorDiffDto::Reset { values: vec![] }],
-        back_pagination: BackPagination::Idle,
-    }
+/// The rows the interface has no item for: the fold drops them, and the marker is placed apart.
+fn is_virtual(item: &Arc<TimelineItem>) -> bool {
+    item.is_date_divider() || is_marker(item)
 }
 
-/// A placeholder row, until T2 maps the items.
-fn row(item: Arc<TimelineItem>) -> Value {
-    let unique_id = &item.unique_id().0;
-    match item.as_event() {
-        Some(event) => json!({"kind": "event", "eventId": event.event_id(), "uniqueId": unique_id}),
-        None if item.is_timeline_start() => json!({"kind": "timelineStart", "uniqueId": unique_id}),
-        None => json!({"kind": "readMarker", "uniqueId": unique_id}),
+fn is_marker(item: &TimelineItem) -> bool {
+    matches!(item.as_virtual(), Some(VirtualTimelineItem::ReadMarker))
+}
+
+/// Where js puts the marker: before the first message after the SDK's marker that is not our
+/// own, past any state items; with none, where the SDK has it. The index counts the rows
+/// without the marker.
+fn marker_target(
+    items: &Vector<Arc<TimelineItem>>,
+    me: &UserId,
+) -> Option<(usize, Arc<TimelineItem>)> {
+    let (mut shown, mut sdk) = (0, None);
+    for item in items {
+        if is_marker(item) {
+            sdk = Some((shown, Arc::clone(item)));
+            continue;
+        }
+        if item.is_date_divider() {
+            continue;
+        }
+        let unread = item
+            .as_event()
+            .is_some_and(|event| event.content().as_msglike().is_some() && event.sender() != me);
+        if let (true, Some((_, marker))) = (unread, &sdk) {
+            return Some((shown, Arc::clone(marker)));
+        }
+        shown += 1;
     }
+    sdk
+}
+
+/// What woke the stream.
+enum Woken {
+    Flush(Option<hub::Flush>),
+    Batch(Option<Vec<VectorDiff<Arc<TimelineItem>>>>),
+    Room(Option<()>),
+}
+
+fn apply_all(
+    mut items: Vector<Arc<TimelineItem>>,
+    diffs: impl IntoIterator<Item = VectorDiff<Arc<TimelineItem>>>,
+) -> Vector<Arc<TimelineItem>> {
+    for diff in diffs {
+        diff.apply(&mut items);
+    }
+    items
+}
+
+/// The diffs with their items mapped, in order: the mapping reads the store, so it is async.
+fn rows_of<'a>(
+    diffs: Vec<VectorDiffDto<Arc<TimelineItem>>>,
+    ctx: &'a RowContext,
+) -> BoxFuture<'a, Vec<VectorDiffDto<TimelineItemDto>>> {
+    // Boxed: inline, these futures nest too deep for the stream's layout.
+    Box::pin(rows_in(diffs, ctx))
+}
+
+async fn rows_in(
+    diffs: Vec<VectorDiffDto<Arc<TimelineItem>>>,
+    ctx: &RowContext,
+) -> Vec<VectorDiffDto<TimelineItemDto>> {
+    let mut items = Vec::new();
+    let slots: Vec<_> = diffs
+        .into_iter()
+        .map(|diff| {
+            diff.map(|item| {
+                items.push(item);
+                items.len() - 1
+            })
+        })
+        .collect();
+    let mut rows = Vec::with_capacity(items.len());
+    for item in &items {
+        rows.push(Some(row(item, ctx).await));
+    }
+    slots
+        .into_iter()
+        .map(|diff| diff.map(|at| rows[at].take().expect("one row per item")))
+        .collect()
+}
+
+/// The room's state beside the rows: the oldest event is the first the rows show.
+fn room_of<'a>(
+    room: &'a Room,
+    items: &'a Vector<Arc<TimelineItem>>,
+    thread: bool,
+) -> BoxFuture<'a, TimelineRoomStateDto> {
+    Box::pin(room_in(room, items, thread))
+}
+
+async fn room_in(
+    room: &Room,
+    items: &Vector<Arc<TimelineItem>>,
+    thread: bool,
+) -> TimelineRoomStateDto {
+    let mut state = room_state(room).await;
+    state.oldest_event_id = (items.iter())
+        .find_map(|item| item.as_event()?.event_id())
+        .map(ToString::to_string);
+    if thread {
+        // shortcut: the room cache's newest event is no thread's; the thread tasks read the
+        // thread cache.
+        state.latest_confirmed_event_id = None;
+    }
+    state
+}
+
+fn empty_reset(room: Option<&Room>) -> BoxFuture<'_, TimelineUpdateDto> {
+    Box::pin(async move {
+        let room = match room {
+            Some(room) => room_state(room).await,
+            None => TimelineRoomStateDto::unknown(),
+        };
+        TimelineUpdateDto::Items {
+            diffs: vec![VectorDiffDto::Reset { values: vec![] }],
+            back_pagination: BackPagination::Idle,
+            room,
+        }
+    })
 }
 
 #[cfg(test)]
@@ -292,7 +410,7 @@ mod tests {
     use std::{cell::Cell, time::Duration};
 
     use matrix_sdk::ruma::room_id;
-    use serde_json::json;
+    use serde_json::{Value, json};
     use tempfile::TempDir;
 
     use super::*;
@@ -300,6 +418,14 @@ mod tests {
         dispatch::dispatch,
         testing::{builder_on, engine_in, live, password, scripted, sync, sync_answer, syncing},
     };
+
+    /// An update without its `room`, which the tests that read it look at themselves.
+    fn bare(mut update: Value) -> Value {
+        if let Some(update) = update.as_object_mut() {
+            update.remove("room");
+        }
+        update
+    }
 
     #[tokio::test]
     async fn room_unavailable_then_a_failed_build_is_an_empty_reset_until_the_next_change() {
@@ -332,7 +458,7 @@ mod tests {
         let mut updates = pin!(updates);
         let mut next = async || {
             let update = timeout(updates.next(), Duration::from_secs(5)).await;
-            serde_json::to_value(update.unwrap().unwrap()).unwrap()
+            bare(serde_json::to_value(update.unwrap().unwrap()).unwrap())
         };
 
         assert_eq!(next().await, json!({"kind": "room-unavailable"}));
@@ -359,7 +485,7 @@ mod tests {
         let mut updates = pin!(updates);
         let mut next = async || {
             let update = timeout(updates.next(), Duration::from_secs(5)).await;
-            serde_json::to_value(update.unwrap().unwrap()).unwrap()
+            bare(serde_json::to_value(update.unwrap().unwrap()).unwrap())
         };
 
         assert_eq!(next().await, json!({"kind": "room-unavailable"}));
