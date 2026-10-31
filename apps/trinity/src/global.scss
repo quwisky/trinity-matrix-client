@@ -29,19 +29,19 @@
 
 @layer components {
   /* Touch pointers cannot hover a tooltip, so a blocked action announces its reason in a
-   * short, non-interactive surface near the thumb zone. */
+   * short, non-interactive surface, at the top because at the bottom it covers the composer. */
   .trn-action-feedback {
     position: fixed;
     z-index: var(--trinity-z-feedback);
-    right: max(1rem, env(safe-area-inset-right));
-    bottom: calc(
-      max(1rem, env(safe-area-inset-bottom)) + var(--trinity-keyboard-shrink)
+    top: max(
+      var(--trinity-title-row-inset, 0px),
+      env(safe-area-inset-top, 0px)
     );
+    right: max(1rem, env(safe-area-inset-right));
     left: max(1rem, env(safe-area-inset-left));
-    transition: bottom var(--trinity-duration-keyboard)
-      var(--trinity-ease-keyboard);
     width: fit-content;
     max-width: min(32rem, calc(100vw - 2rem));
+    margin-block-start: var(--trinity-space-4);
     margin-inline: auto;
     padding: 0.625rem 0.875rem;
     color: var(--trinity-tooltip-foreground);
@@ -255,12 +255,30 @@
     );
   }
 
-  /* Sonner pins bottom toasts to the layout viewport, which the iOS keyboard covers; `translate`
-   * lifts them clear of it without touching Sonner's own `transform`. */
-  [data-sonner-toaster][data-y-position='bottom'] {
-    translate: 0 calc(-1 * var(--trinity-keyboard-shrink));
-    transition: translate var(--trinity-duration-keyboard)
-      var(--trinity-ease-keyboard);
+  /* Sonner places top toasts without the desktop title row, and at a fixed 20px on a phone, under
+   * the notch; `translate` moves them clear without touching Sonner's own `transform`. */
+  [data-sonner-toaster][data-y-position='top'] {
+    translate: 0
+      max(var(--trinity-title-row-inset, 0px), env(safe-area-inset-top, 0px));
+  }
+
+  /* A long toast scrolls rather than growing down to the composer. */
+  [data-sonner-toast] [data-content] {
+    overflow-y: auto;
+    max-height: calc((100dvh - var(--trinity-keyboard-shrink)) / 5);
+  }
+
+  /* Sonner's toast refuses touch panning, so a toast that stays asks for it: it has time to be
+   * read, and a close button to replace the swipe this gives up. Other toasts keep their swipe. */
+  [data-sonner-toast]:has([data-close-button]) [data-content] {
+    touch-action: pan-y;
+  }
+
+  /* Sonner's close button is 20px; a persistent toast may be the only way back to what it covers. */
+  [data-sonner-toast] [data-close-button]::after {
+    content: '';
+    position: absolute;
+    inset: -0.5rem;
   }
 
   /* Dialog and sheet entrances; the reduced-motion blanket in `overrides` shortens them. */

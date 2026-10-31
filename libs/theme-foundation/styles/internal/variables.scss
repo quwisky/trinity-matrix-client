@@ -199,7 +199,7 @@
     --trinity-z-overlay: 20; // a sheet over one pane (the drag-and-drop target)
     --trinity-z-scrim: 30; // the dimmer behind a panel — under it, over everything else
     --trinity-z-panel: 40; // a panel over the shell (mobile room list)
-    --trinity-z-feedback: 10000; // transient unavailable-action reason above CDK overlays
+    --trinity-z-feedback: 1000000000; // transient unavailable-action reason above CDK overlays and Sonner's toaster, which shares the top of the screen
 
     // --- Motion -------------------------------------------------------------------
     // One vocabulary, and one place to collapse it (see the reduced-motion block at the end
