@@ -1,6 +1,7 @@
 import { computed, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
+  MatrixEventEvent,
   NotificationCountType,
   RoomEvent,
   type MatrixClient,
@@ -257,8 +258,8 @@ describe('SelectedRoomLibraryService', () => {
     expect(b.listenerCount()).toBe(0);
 
     const lifetime = harness.service.runProjection().subscribe();
-    expect(a.listenerCount()).toBe(9);
-    expect(b.listenerCount()).toBe(9);
+    expect(a.listenerCount()).toBe(10);
+    expect(b.listenerCount()).toBe(10);
 
     lifetime.unsubscribe();
     expect(a.listenerCount()).toBe(0);
@@ -271,9 +272,9 @@ describe('SelectedRoomLibraryService', () => {
     });
 
     harness.service.runProjection().subscribe();
-    expect(a.listenerCount()).toBe(9);
-    expect(b.listenerCount()).toBe(9);
-    expect(a.attachmentCount()).toBe(18);
+    expect(a.listenerCount()).toBe(10);
+    expect(b.listenerCount()).toBe(10);
+    expect(a.attachmentCount()).toBe(20);
   });
 
   it('delegates one Account to active projections without duplicate listeners', () => {
@@ -361,7 +362,7 @@ describe('SelectedRoomLibraryService', () => {
     ]);
     // Shared SDK events have one listener, rather than one per domain projector.
     expect(a.listenerCount('Room')).toBe(1);
-    expect(a.listenerCount()).toBe(9);
+    expect(a.listenerCount()).toBe(10);
   });
 
   it('locks a mixed-list room the crypto store of its Account has as encrypted when its state lacks the event', async () => {
@@ -653,6 +654,25 @@ describe('SelectedRoomLibraryService', () => {
     expect(after.invitations).toBe(before.invitations);
   });
 
+  it('rebuilds the mixed list when a cancelled edit changes a preview', async () => {
+    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
+    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs']),
+      live: ['@a:hs', '@b:hs'],
+      clients: new Map([
+        ['@a:hs', a],
+        ['@b:hs', b],
+      ]),
+    });
+    const before = harness.service.view();
+
+    a.emit(MatrixEventEvent.Replaced);
+    await flushProjection();
+
+    expect(harness.service.view().rooms).not.toBe(before.rooms);
+  });
+
   it('reconciles live Accounts and same-id client replacement', async () => {
     const first = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
@@ -671,7 +691,7 @@ describe('SelectedRoomLibraryService', () => {
     await flushProjection();
 
     expect(first.listenerCount()).toBe(0);
-    expect(replacement.listenerCount()).toBe(9);
+    expect(replacement.listenerCount()).toBe(10);
     expect(
       harness.service
         .view()
@@ -731,9 +751,9 @@ describe('SelectedRoomLibraryService', () => {
     harness.selected.set(new Set(['@b:hs', '@a:hs']));
     TestBed.tick();
 
-    expect(a.attachmentCount()).toBe(9);
+    expect(a.attachmentCount()).toBe(10);
     expect(a.detachmentCount()).toBe(0);
-    expect(a.listenerCount()).toBe(9);
+    expect(a.listenerCount()).toBe(10);
   });
 
   it('detaches selected sources before returning to one active Account', () => {
@@ -747,7 +767,7 @@ describe('SelectedRoomLibraryService', () => {
         ['@b:hs', b],
       ]),
     });
-    expect(a.listenerCount()).toBe(9);
+    expect(a.listenerCount()).toBe(10);
 
     harness.selected.set(new Set(['@a:hs']));
     TestBed.tick();
@@ -780,8 +800,8 @@ describe('SelectedRoomLibraryService', () => {
 
     expect(a.listenerCount()).toBe(0);
     expect(b.listenerCount()).toBe(0);
-    expect(a.attachmentCount()).toBe(9);
-    expect(a.detachmentCount()).toBe(9);
+    expect(a.attachmentCount()).toBe(10);
+    expect(a.detachmentCount()).toBe(10);
   });
 
   it('keeps selection commands cold and returns typed unavailable recovery', async () => {

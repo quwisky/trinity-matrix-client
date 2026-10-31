@@ -1515,7 +1515,7 @@ describe('RoomLibraryService', () => {
     expect(svc.totalUnread()).toBe(1);
   });
 
-  it('rebuilds on MatrixEventEvent.Replaced, which is all a cancelled edit echo fires', async () => {
+  it('rebuilds on MatrixEventEvent.Replaced, which fires once a cancelled edit is unwound', async () => {
     const events = [
       timelineEvent({ body: 'server text' }),
       timelineEvent({ body: '* refused text' }),
