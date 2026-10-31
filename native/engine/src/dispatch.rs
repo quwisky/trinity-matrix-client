@@ -166,6 +166,7 @@ methods! {
     "media.content" => media::content(account_id: String, request: media::MediaRequestDto),
     "media.release" => media::release(urls: Vec<String>),
     "media.forgetProbes" => media::forget_probes(),
+    "media.uploadLimit" => media::upload::upload_limit(account_id: String),
     "roomList.directMap" => room_list::typing::direct_map(account_id: String),
     "roomList.rooms" => room_list::rows::rooms(account_id: String),
     "roomList.typing" => room_list::typing::typing(account_id: String),
@@ -288,7 +289,7 @@ methods! {
 pub type BytesMember = fn(Arc<Engine>, &mut Args<'_>) -> Result<Stream, Fault>;
 
 /// The members `openBytes` reaches, sorted by name, one per line.
-const BYTES_MEMBERS: &[(&str, BytesMember)] = &[];
+const BYTES_MEMBERS: &[(&str, BytesMember)] = &[("media.upload", media::upload::upload)];
 
 /// Like `dispatch`, for a call that carries `blobs`: `bad-args` unless the member takes them all.
 pub(crate) fn dispatch_bytes(

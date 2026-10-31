@@ -3,6 +3,7 @@
 //! and it can write decrypted bytes to disk.
 
 pub mod tokens;
+pub mod upload;
 
 use std::{fmt, future::ready, io::Read, sync::Arc, time::Duration};
 
@@ -334,7 +335,7 @@ mod tests {
         })
     }
 
-    fn file_of(value: Value) -> EncryptedFile {
+    pub(super) fn file_of(value: Value) -> EncryptedFile {
         serde_json::from_value(value).unwrap()
     }
 
@@ -368,7 +369,7 @@ mod tests {
         .unwrap()
     }
 
-    async fn live_on(base: &str) -> (TempDir, Arc<Engine>, Arc<AccountRuntime>) {
+    pub(super) async fn live_on(base: &str) -> (TempDir, Arc<Engine>, Arc<AccountRuntime>) {
         let root = TempDir::new().unwrap();
         let engine = engine_on_prefix(&root);
         let client = builder_on(base).build().await.unwrap();
@@ -378,12 +379,12 @@ mod tests {
 
     /// A homeserver that takes any request into `Seen` once the scripted `answers` are spent, the
     /// client's own background ones too, so read it through `media_requests`.
-    fn watched(mut answers: Vec<(&'static str, u16, Value)>) -> (String, Seen) {
+    pub(super) fn watched(mut answers: Vec<(&'static str, u16, Value)>) -> (String, Seen) {
         answers.extend(std::iter::repeat_n(("*", 200, json!({})), 8));
         scripted(answers)
     }
 
-    fn media_requests(seen: &Seen) -> Vec<String> {
+    pub(super) fn media_requests(seen: &Seen) -> Vec<String> {
         let targets = requests(seen).into_iter().map(|(target, _)| target);
         targets
             .filter(|target| target.contains("/media/"))
@@ -401,7 +402,7 @@ mod tests {
         call(engine, "content", vec![json!("@a:b"), request]).await
     }
 
-    fn code(reply: &Value) -> &str {
+    pub(super) fn code(reply: &Value) -> &str {
         reply["failure"]["code"].as_str().unwrap_or("none")
     }
 

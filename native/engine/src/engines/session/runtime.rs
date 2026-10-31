@@ -68,6 +68,8 @@ pub struct AccountRuntime {
     nudges: Mutex<Subscribers<Option<OwnedRoomId>>>,
     /// Who is typing per joined room, kept from the start: typing EDUs are not stored or repeated.
     pub(crate) typing: Typing,
+    /// The homeserver's `m.upload.size`, once it has stated one.
+    pub(crate) upload_limit: std::sync::OnceLock<u64>,
 }
 
 impl AccountRuntime {
@@ -122,6 +124,7 @@ impl AccountRuntime {
             ],
             nudges: Mutex::default(),
             typing,
+            upload_limit: std::sync::OnceLock::new(),
         }
     }
 
