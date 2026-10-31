@@ -23,9 +23,12 @@ describe('Rust engine DTOs', () => {
   });
 
   it('produce only list updates the TypeScript type allows', () => {
-    // One direction only: the room list emits four of the eleven ops.
+    // One direction only: all eleven ops, so the codes match exactly.
     expectTypeOf<VectorDiffDto<{ n: number }>>().toExtend<
       VectorDiff<{ n: number }>
+    >();
+    expectTypeOf<VectorDiffDto<{ n: number }>['op']>().toEqualTypeOf<
+      VectorDiff<{ n: number }>['op']
     >();
   });
 
