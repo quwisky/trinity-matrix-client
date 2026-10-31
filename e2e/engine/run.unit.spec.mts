@@ -43,6 +43,7 @@ describe('buildContractCommand', () => {
         '--',
       ]);
       expect(args[6]).toBe('synapse');
+      expect(args).toContain('--disableConsoleIntercept');
       expect(args).toContain(`--outputFile.json=${reportFile}`);
     }
   });
