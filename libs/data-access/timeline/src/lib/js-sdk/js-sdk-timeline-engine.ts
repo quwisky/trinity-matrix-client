@@ -815,6 +815,10 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       const eventId = idOf(room, item);
       if (eventId === null)
         return engineFail(localFailure('message-unavailable'));
+      // Only a server id can be redacted: a pending `~` id would shift the thread overload's
+      // arguments onto the root, and the plain one throws on it.
+      if (!eventId.startsWith('$'))
+        return engineFail(localFailure('message-unavailable'));
       return this.redactions(client, room, options.threadRootId, [
         eventId,
       ]).then(() => engineOk(null));
@@ -836,7 +840,11 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       }
       const mine = myReactionIds(client, room, eventId, key);
       if (mine.length) {
-        return this.redactions(client, room, threadRootId, mine).then(() =>
+        // A reaction still sending has no server id yet: a tap meanwhile is a no-op, not a second
+        // reaction and not a redaction.
+        const sent = mine.filter((id) => id.startsWith('$'));
+        if (!sent.length) return engineOk(null);
+        return this.redactions(client, room, threadRootId, sent).then(() =>
           engineOk(null),
         );
       }
@@ -1172,9 +1180,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
           client,
           room,
           transactionId,
-          // A pending `~!room:txn` id is not an event id: the thread overload would shift it into
-          // the transaction slot and redact the root.
-          threadRootId && eventId.startsWith('$')
+          threadRootId
             ? client.redactEvent(
                 room.roomId,
                 threadRootId,
