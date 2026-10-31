@@ -182,7 +182,8 @@ mod tests {
     use std::{
         sync::atomic::{AtomicU32, Ordering},
         task::Poll,
-        time::Duration,
+        thread,
+        time::{Duration, Instant},
     };
 
     use futures_util::{StreamExt, future::ready, stream};
@@ -426,6 +427,28 @@ mod tests {
                 .iter()
                 .all(|token| engine.media_bytes(token).is_none())
         );
+    }
+
+    #[tokio::test]
+    async fn attach_aborts_the_streams_before_it_purges() {
+        let (mut session, mut frames) = session();
+        let engine = Arc::clone(&session.engine);
+        let live = Arc::clone(&session.live);
+        session.handle(open(1, "test.ticks", vec![]));
+        next_frame(&mut frames).await;
+        // The purge waits on the table, which this test holds, so an abort can only come first.
+        let held = engine.media.tokens.hold();
+        let attaching = thread::spawn(move || {
+            session.handle(Inbound::Attach);
+            session
+        });
+        let waited = Instant::now();
+        while !live.lock().is_empty() && waited.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(live.lock().is_empty());
+        drop(held);
+        drop(attaching.join().unwrap());
     }
 
     #[tokio::test]

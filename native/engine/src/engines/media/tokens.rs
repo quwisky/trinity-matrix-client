@@ -41,12 +41,10 @@ impl MediaTokens {
     /// has no randomness to give: a weaker token is never minted.
     #[cfg_attr(not(test), expect(dead_code, reason = "M3 calls it"))]
     pub(crate) fn mint(&self, rt: &AccountRuntime, mime: &str, bytes: Bytes) -> Option<String> {
-        let mut random = [0u8; 32];
-        if getrandom::getrandom(&mut random).is_err() {
+        let Some(token) = token_from(getrandom::getrandom) else {
             tracing::error!("the OS random source failed");
             return None;
-        }
-        let token: String = random.iter().map(|b| format!("{b:02x}")).collect();
+        };
         let minted = Minted {
             account_id: rt.account_id.clone(),
             mime: safe_mime(mime),
@@ -71,8 +69,17 @@ impl MediaTokens {
         (self.table.lock()).retain(|_, minted| minted.account_id != account_id);
     }
 
+    // shortcut: a task aborted mid-poll can mint after this clear, so its decrypted bytes stay in
+    // memory, unreachable, until the account's teardown rather than until this attach (D5); upgrade
+    // when a mint can tell it belongs to an earlier attach.
     pub(crate) fn clear(&self) {
         self.table.lock().clear();
+    }
+
+    /// Holds the table, so a test can see what a caller does before it reaches the lock.
+    #[cfg(test)]
+    pub(crate) fn hold(&self) -> impl Sized + '_ {
+        self.table.lock()
     }
 }
 
@@ -93,22 +100,34 @@ impl Engine {
     }
 }
 
-/// `type/subtype` of RFC 7230 token characters, parameters dropped, lowercased. Anything else:
-/// `application/octet-stream`.
+/// 32 bytes from `fill` as 64 lowercase hex characters, or `None` if `fill` fails.
+fn token_from<E>(fill: impl FnOnce(&mut [u8]) -> Result<(), E>) -> Option<String> {
+    let mut random = [0u8; 32];
+    fill(&mut random).ok()?;
+    Some(random.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// A lowercased `image`, `video` or `audio` type of RFC 7230 token characters, parameters dropped.
+/// Anything else is `application/octet-stream`: a registered scheme counts as local to Tauri, so a
+/// document served from it would run script with the app's IPC, and this is the core's only guard
+/// if a caller skips `displaySafeMime`.
 fn safe_mime(declared: &str) -> String {
     let essence = declared
         .split_once(';')
         .map_or(declared, |(essence, _)| essence);
-    let essence = essence.trim_matches([' ', '\t']);
-    let is_token = |part: &str| {
-        let token_char = |b: u8| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b);
-        !part.is_empty() && part.bytes().all(token_char)
-    };
-    match essence.split_once('/') {
-        Some((kind, subtype)) if is_token(kind) && is_token(subtype) => {
-            essence.to_ascii_lowercase()
-        }
-        _ => "application/octet-stream".to_owned(),
+    let essence = essence.trim_matches([' ', '\t']).to_ascii_lowercase();
+    let token_char = |b: u8| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b);
+    let safe = essence.split_once('/').is_some_and(|(kind, subtype)| {
+        matches!(kind, "image" | "video" | "audio")
+            && !subtype.is_empty()
+            && subtype.bytes().all(token_char)
+            // Any `+xml` subtype opens as an XML document, which can hold script; SVG is one.
+            && !subtype.ends_with("+xml")
+    });
+    if safe {
+        essence
+    } else {
+        "application/octet-stream".to_owned()
     }
 }
 
@@ -155,6 +174,11 @@ mod tests {
         for token in &minted {
             let hex = |b: u8| b.is_ascii_digit() || (b'a'..=b'f').contains(&b);
             assert!(token.len() == 64 && token.bytes().all(hex), "{token}");
+        }
+        // Every position varies, which a short fill leaves constant.
+        for at in 0..64 {
+            let column: HashSet<u8> = minted.iter().map(|token| token.as_bytes()[at]).collect();
+            assert!(column.len() > 1, "position {at}");
         }
     }
 
@@ -250,7 +274,17 @@ mod tests {
             ("IMAGE/PNG", "image/png"),
             ("audio/ogg; codecs=opus", "audio/ogg"),
             ("audio/ogg ;codecs=opus", "audio/ogg"),
-            ("image/svg+xml", "image/svg+xml"),
+            (" audio/ogg", "audio/ogg"),
+            ("video/mp4", "video/mp4"),
+            ("application/octet-stream", OCTETS),
+            ("image/svg+xml", OCTETS),
+            ("Image/SVG+XML; charset=utf-8", OCTETS),
+            ("image/svg+xml;x=1", OCTETS),
+            ("video/x+xml", OCTETS),
+            ("text/html", OCTETS),
+            ("TEXT/HTML; charset=utf-8", OCTETS),
+            ("application/xhtml+xml", OCTETS),
+            ("application/pdf", OCTETS),
             ("text/html\r\nX-Evil: 1", OCTETS),
             ("\r\nimage/png", OCTETS),
             ("image/png\n", OCTETS),
@@ -261,9 +295,58 @@ mod tests {
             ("/b", OCTETS),
             ("png", OCTETS),
             ("a b/c", OCTETS),
+            ("image/a/b", OCTETS),
+            ("image/", OCTETS),
+            ("/png", OCTETS),
+            ("image/a b", OCTETS),
+            ("image/é", OCTETS),
         ] {
             assert_eq!(safe_mime(declared), expected, "{declared:?}");
         }
+        // Each character alone, so nothing else in the type refuses it.
+        for separator in "(),:<>@[\\]\"?={}\u{7f}".chars() {
+            let declared = format!("image/a{separator}b");
+            assert_eq!(safe_mime(&declared), OCTETS, "{declared:?}");
+        }
+        for token_char in "!#$%&'*+-.^_`|~".chars() {
+            let declared = format!("image/a{token_char}b");
+            assert_eq!(safe_mime(&declared), declared);
+        }
+    }
+
+    /// Every type `displaySafeMime` can hand a caller must survive here.
+    #[test]
+    fn safe_mime_keeps_every_type_the_display_allowlist_keeps() {
+        let source = include_str!("../../../../../libs/util/matrix/src/lib/display-mime.ts");
+        let allowed: Vec<&str> = source
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix('\'')?.strip_suffix("',"))
+            .collect();
+        assert!(allowed.len() >= 26, "{allowed:?}");
+        assert!(allowed.contains(&"image/png"));
+        for mime in allowed {
+            assert_eq!(safe_mime(mime), mime);
+        }
+    }
+
+    #[test]
+    fn token_from_encodes_every_byte_it_is_given() {
+        let token = token_from(|random| {
+            assert_eq!(random.len(), 32);
+            random.fill(0xab);
+            random[31] = 0x0c;
+            Ok::<_, ()>(())
+        });
+        assert_eq!(token, Some(format!("{}0c", "ab".repeat(31))));
+    }
+
+    #[test]
+    fn token_from_gives_no_token_when_the_fill_fails() {
+        let token = token_from(|random| {
+            random.fill(0xab);
+            Err(())
+        });
+        assert_eq!(token, None);
     }
 
     #[tokio::test]
