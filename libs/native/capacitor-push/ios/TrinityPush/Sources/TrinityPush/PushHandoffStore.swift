@@ -79,10 +79,10 @@ public enum PushHandoffStoreError: Error {
 /// Never logs what it stores.
 public final class PushHandoffStore: HandoffReading {
     static let service = "dev.trinityproject.trinity.push-handoff"
-    private let keychainGroup: String
+    let keychainGroup: String
     private let roomsURL: URL
     private let settingsURL: URL
-    private let queue = DispatchQueue(label: "dev.trinityproject.trinity.push-handoff")
+    let queue = DispatchQueue(label: "dev.trinityproject.trinity.push-handoff")
 
     public init(keychainGroup: String, containerURL: URL) {
         self.keychainGroup = keychainGroup
