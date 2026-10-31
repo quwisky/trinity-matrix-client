@@ -1,6 +1,8 @@
 //! The engine over stdio for the contract suites: one `Inbound` JSON per stdin line in, one `Frame`
 //! JSON per stdout line out. Logs go to stderr, so stdout carries nothing but frames.
 
+mod media_server;
+
 use std::{mem, path::PathBuf, sync::Arc, time::Duration};
 
 use futures_util::{StreamExt, future::ready, stream};
@@ -45,16 +47,20 @@ async fn main() {
             temporary.path().to_owned()
         }
     };
+    let (media_listener, media_url_prefix) = media_server::bind()
+        .await
+        .unwrap_or_else(|err| exit(&format!("cannot bind the media server: {err}")));
     let config = EngineConfig {
         insecure_tls: std::env::var("TRINITY_ENGINE_INSECURE_TLS").as_deref() == Ok("1"),
         cache_dir: std::env::var_os("TRINITY_ENGINE_CACHE_DIR")
             .map_or_else(|| data_dir.join("cache"), PathBuf::from),
         data_dir,
         store_key: Arc::new(move || Ok(key.clone())),
-        media_url_prefix: String::new(),
+        media_url_prefix,
     };
     let engine = Engine::new(config)
         .unwrap_or_else(|err| exit(&format!("the engine cannot start: {err:?}")));
+    let server = tokio::spawn(media_server::serve(media_listener, Arc::clone(&engine)));
     let (out, mut frames) = unbounded_channel();
     let mut session = CarrierSession::new(engine, out).with_local(local);
     let writer = tokio::spawn(async move {
@@ -83,6 +89,9 @@ async fn main() {
             Err(err) => tracing::warn!(category = ?err.classify(), "unreadable inbound line"),
         }
     }
+    // First, so the session still holds the engine's last reference.
+    server.abort();
+    let _ = server.await;
     // The writer ends once the aborted streams have let go of the output.
     drop(session);
     let _ = writer.await;
