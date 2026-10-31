@@ -20,6 +20,7 @@ import { onlyOn } from '../support/platform.mts';
 import {
   storeExpiredPushAccount,
   tokenAnswersForUnknownAccount,
+  tokenRoundTrip,
 } from '../support/push-handoff.mts';
 
 /** What the NotificationService extension would show, as the debug render probe reports it. */
@@ -204,6 +205,38 @@ describe('device-rendered push on iOS', () => {
 
     expect(answers.current).toEqual({ kind: 'gone' });
     expect(answers.refresh).toEqual({ kind: 'gone' });
-    expect(answers.malformedRemoval).toContain('userId must be a string');
+    expect(answers.malformedRemovals).toEqual(
+      Array.from({ length: 6 }, () =>
+        expect.stringContaining('Must provide a userId or all: true'),
+      ),
+    );
+  });
+
+  it('stores, reads and removes tokens through the installed plugin, with no network', async () => {
+    const accessTokenExpiresAt = 4_102_444_800_000;
+    const answers = await tokenRoundTrip(
+      `@${uniqueId('vault')}:unknown.invalid`,
+      `@${uniqueId('nobody')}:unknown.invalid`,
+      {
+        lineage: 'L',
+        accessToken: 'synthetic-access',
+        refreshToken: 'synthetic-refresh',
+        accessTokenExpiresAt,
+        tokenEndpoint: 'https://unreachable.invalid/token',
+        revocationEndpoint: 'https://unreachable.invalid/revoke',
+        clientId: 'synthetic-client',
+        deviceId: 'SYNTHETIC',
+      },
+    );
+
+    expect(answers.stored).toEqual({ stored: true });
+    expect(answers.current).toEqual({
+      kind: 'current',
+      accessToken: 'synthetic-access',
+      accessTokenExpiresAt,
+    });
+    expect(answers.current).not.toHaveProperty('refreshToken');
+    expect(answers.revokedUnknown).toEqual({ kind: 'gone' });
+    expect(answers.currentAfter).toEqual({ kind: 'gone' });
   });
 });

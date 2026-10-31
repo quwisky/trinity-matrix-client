@@ -81,11 +81,19 @@ public struct TokenRecord: Codable, Equatable, CustomStringConvertible, CustomDe
 public struct TokenRemoval: Equatable {
     public let account: String?
 
-    /// Nil for a malformed user id. Only one left out removes every record, because the removal
-    /// cannot be undone: it takes every account's refresh token.
+    /// Nil unless the call has exactly one of a non-empty user id and `all: true`. Removing every
+    /// record cannot be undone: it takes every account's refresh token.
     public static func fromPluginCall(_ options: [String: Any]) -> TokenRemoval? {
-        guard let raw = options["userId"] else { return TokenRemoval(account: nil) }
-        return (raw as? String).map { TokenRemoval(account: $0) }
+        switch (options["userId"], options["all"]) {
+        case (let userId?, nil):
+            return (userId as? String).flatMap { $0.isEmpty ? nil : TokenRemoval(account: $0) }
+        case (nil, let all?):
+            // `as? Bool` alone would also take the number 1.
+            guard CFGetTypeID(all as CFTypeRef) == CFBooleanGetTypeID(), all as? Bool == true else { return nil }
+            return TokenRemoval(account: nil)
+        default:
+            return nil
+        }
     }
 }
 

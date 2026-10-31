@@ -241,14 +241,14 @@ public class PushHandoffPlugin extends Plugin {
     }
 
     /**
-     * One account, or every record when no user id is given. Rejects on a malformed id or a store
-     * failure.
+     * One account, or every record with all: true. Rejects on anything but exactly one of those, or
+     * on a store failure.
      */
     @PluginMethod
     public void removeTokens(PluginCall call) {
         TokenRemoval removal = TokenRecordKt.tokenRemovalFromPluginCall(call.getData());
         if (removal == null) {
-            call.reject("userId must be a string");
+            call.reject("Must provide a userId or all: true");
             return;
         }
         tokenWork.execute(() -> {

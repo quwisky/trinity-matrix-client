@@ -52,15 +52,30 @@ class TokenPluginArgumentsTest {
     }
 
     @Test
-    fun aRemovalWithoutAUserIdIsEveryRecord() {
-        assertEquals(TokenRemoval(null), tokenRemovalFromPluginCall(JSONObject()))
+    fun aRemovalNamesOneAccountOrAsksForAll() {
         assertEquals(TokenRemoval("@a:hs"), tokenRemovalFromPluginCall(JSONObject().put("userId", "@a:hs")))
+        assertEquals(TokenRemoval(null), tokenRemovalFromPluginCall(JSONObject().put("all", true)))
     }
 
     @Test
     fun aMalformedUserIdRemovesNothing() {
-        for (bad in listOf<Any>(JSONObject.NULL, 7, true, JSONObject())) {
+        for (bad in listOf<Any>(JSONObject.NULL, "", 7, true, JSONObject())) {
             assertNull(tokenRemovalFromPluginCall(JSONObject().put("userId", bad)))
         }
+    }
+
+    @Test
+    fun onlyALiteralTrueRemovesEverything() {
+        for (bad in listOf<Any>(JSONObject.NULL, false, 1, "true")) {
+            assertNull(tokenRemovalFromPluginCall(JSONObject().put("all", bad)))
+        }
+    }
+
+    @Test
+    fun aRemovalWithNeitherOrBothRemovesNothing() {
+        assertNull(tokenRemovalFromPluginCall(JSONObject()))
+        assertNull(tokenRemovalFromPluginCall(JSONObject().put("userId", "@a:hs").put("all", true)))
+        assertNull(tokenRemovalFromPluginCall(JSONObject().put("userId", "@a:hs").put("all", false)))
+        assertNull(tokenRemovalFromPluginCall(JSONObject().put("userId", JSONObject.NULL).put("all", true)))
     }
 }

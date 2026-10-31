@@ -55,15 +55,29 @@ final class TokenPluginArgumentsTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(TokenRecord.fromPluginCall(options)).record.lineage, "")
     }
 
-    func testARemovalWithoutAUserIdIsEveryRecord() {
-        XCTAssertEqual(TokenRemoval.fromPluginCall([:]), TokenRemoval(account: nil))
+    func testARemovalNamesOneAccountOrAsksForAll() {
         XCTAssertEqual(TokenRemoval.fromPluginCall(["userId": "@a:hs"]), TokenRemoval(account: "@a:hs"))
+        XCTAssertEqual(TokenRemoval.fromPluginCall(["all": true]), TokenRemoval(account: nil))
+        XCTAssertEqual(TokenRemoval.fromPluginCall(["all": NSNumber(value: true)]), TokenRemoval(account: nil))
     }
 
     func testAMalformedUserIdRemovesNothing() {
-        for bad: Any in [NSNull(), 7, true, ["@a:hs"]] {
+        for bad: Any in [NSNull(), "", 7, true, ["@a:hs"]] {
             XCTAssertNil(TokenRemoval.fromPluginCall(["userId": bad]))
         }
+    }
+
+    func testOnlyALiteralTrueRemovesEverything() {
+        for bad: Any in [NSNull(), false, 1, NSNumber(value: 1), "true"] {
+            XCTAssertNil(TokenRemoval.fromPluginCall(["all": bad]), "\(bad)")
+        }
+    }
+
+    func testARemovalWithNeitherOrBothRemovesNothing() {
+        XCTAssertNil(TokenRemoval.fromPluginCall([:]))
+        XCTAssertNil(TokenRemoval.fromPluginCall(["userId": "@a:hs", "all": true]))
+        XCTAssertNil(TokenRemoval.fromPluginCall(["userId": "@a:hs", "all": false]))
+        XCTAssertNil(TokenRemoval.fromPluginCall(["userId": NSNull(), "all": true]))
     }
 
     func testAGrantNeedsBackgroundTimeUnlessTheAppIsActive() {

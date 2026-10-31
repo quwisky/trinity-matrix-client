@@ -60,12 +60,13 @@ fun tokenRecordFromPluginCall(data: JSONObject): Pair<String, TokenRecord>? {
 data class TokenRemoval(val account: String?)
 
 /**
- * Null for a malformed user id. Only one left out removes every record, because the removal
- * cannot be undone: it takes every account's refresh token.
+ * Null unless the call has exactly one of a non-empty user id and `all: true`. Removing every
+ * record cannot be undone: it takes every account's refresh token.
  */
-fun tokenRemovalFromPluginCall(data: JSONObject): TokenRemoval? {
-    if (!data.has("userId")) return TokenRemoval(null)
-    return PushRenderRules.stringOrNull(data, "userId")?.let { TokenRemoval(it) }
+fun tokenRemovalFromPluginCall(data: JSONObject): TokenRemoval? = when {
+    data.has("userId") == data.has("all") -> null
+    data.has("all") -> if (data.opt("all") == true) TokenRemoval(null) else null
+    else -> PushRenderRules.stringOrNull(data, "userId")?.takeIf { it.isNotEmpty() }?.let { TokenRemoval(it) }
 }
 
 sealed interface TokenVaultRead {

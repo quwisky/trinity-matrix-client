@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Observable, defer, from, map, of } from 'rxjs';
+import { Observable, defer, from, map, of, throwError } from 'rxjs';
 import {
   PUSH_HANDOFF_PLUGIN_NAME,
   type BackgroundWork,
@@ -159,11 +159,19 @@ export class PushHandoffBridge {
     });
   }
 
-  /** Cold. Removes one account's tokens, or every account's without a user id; inert off native. */
-  removeTokens(userId?: string): Observable<void> {
-    return this.call(() =>
-      pushHandoff.removeTokens(userId === undefined ? {} : { userId }),
-    );
+  /**
+   * Cold. Removes one account's tokens; inert off native. Errors on any host for an empty or
+   * non-string id, which must never reach native as a wipe.
+   */
+  removeTokens(userId: string): Observable<void> {
+    return typeof userId === 'string' && userId !== ''
+      ? this.call(() => pushHandoff.removeTokens({ userId }))
+      : throwError(() => new Error('removeTokens needs a user id'));
+  }
+
+  /** Cold. Removes every account's tokens; inert off native. */
+  removeAllTokens(): Observable<void> {
+    return this.call(() => pushHandoff.removeTokens({ all: true }));
   }
 
   private call(command: () => Promise<void>): Observable<void> {

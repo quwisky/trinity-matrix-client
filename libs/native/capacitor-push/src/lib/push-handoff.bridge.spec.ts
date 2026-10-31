@@ -373,8 +373,10 @@ describe('PushHandoffBridge', () => {
       });
     });
 
-    it('sends removeTokens with or without a user id', async () => {
-      await firstValueFrom(bridge().removeTokens('@me:hs'));
+    it('removes one account by name and every account only by asking', async () => {
+      const offNative = bridge();
+      await firstValueFrom(offNative.removeTokens('@me:hs'));
+      await firstValueFrom(offNative.removeAllTokens());
       expect(plugin.removeTokens).not.toHaveBeenCalled();
 
       TestBed.resetTestingModule();
@@ -385,13 +387,32 @@ describe('PushHandoffBridge', () => {
       await firstValueFrom(answer);
       expect(plugin.removeTokens).toHaveBeenCalledWith({ userId: '@me:hs' });
 
-      await firstValueFrom(handoff.removeTokens());
-      expect(plugin.removeTokens).toHaveBeenLastCalledWith({});
+      const every = handoff.removeAllTokens();
+      expect(plugin.removeTokens).toHaveBeenCalledTimes(1);
+      await firstValueFrom(every);
+      expect(plugin.removeTokens).toHaveBeenLastCalledWith({ all: true });
 
       plugin.removeTokens.mockRejectedValue(new Error('store failed'));
-      await expect(firstValueFrom(handoff.removeTokens())).rejects.toThrow(
+      await expect(firstValueFrom(handoff.removeAllTokens())).rejects.toThrow(
         'store failed',
       );
+    });
+
+    it('never turns a stray user id into a wipe', async () => {
+      const session = undefined as { userId: string } | undefined;
+      // @ts-expect-error A possibly missing user id must not compile.
+      const missing = () => onNative().removeTokens(session?.userId);
+
+      for (const call of [
+        missing,
+        () => onNative().removeTokens(''),
+        () => onNative().removeTokens(7 as unknown as string),
+        () => onNative().removeTokens(null as unknown as string),
+      ]) {
+        TestBed.resetTestingModule();
+        await expect(firstValueFrom(call())).rejects.toThrow('removeTokens');
+      }
+      expect(plugin.removeTokens).not.toHaveBeenCalled();
     });
   });
 });

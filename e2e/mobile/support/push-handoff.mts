@@ -50,7 +50,8 @@ export async function storeExpiredPushAccount(userId: string): Promise<void> {
 export interface UnknownAccountTokenAnswers {
   readonly current: unknown;
   readonly refresh: unknown;
-  readonly malformedRemoval: string;
+  /** Each removal that names neither one account nor all of them: how it was rejected. */
+  readonly malformedRemovals: readonly string[];
 }
 
 /**
@@ -86,9 +87,20 @@ export async function tokenAnswersForUnknownAccount(
             lineage: 'L',
             tokenSeen: 'unused',
           }),
-          malformedRemoval: await handoff.removeTokens({ userId: 7 }).then(
-            () => 'resolved',
-            (error: unknown) => String(error),
+          malformedRemovals: await Promise.all(
+            [
+              {},
+              { userId: 7 },
+              { userId: '' },
+              { all: false },
+              { all: 1 },
+              { userId: id, all: true },
+            ].map((options) =>
+              handoff.removeTokens(options).then(
+                () => 'resolved',
+                (error: unknown) => String(error),
+              ),
+            ),
           ),
         };
       } catch (error: unknown) {
@@ -96,6 +108,69 @@ export async function tokenAnswersForUnknownAccount(
       }
     },
     userId,
+  );
+  if (typeof result === 'string') throw new Error(result);
+  return result;
+}
+
+/** Each answer of one no-network trip through the vault's write path, in order. */
+export interface TokenRoundTrip {
+  readonly stored: unknown;
+  readonly current: unknown;
+  readonly revokedUnknown: unknown;
+  readonly currentAfter: unknown;
+}
+
+/**
+ * Store synthetic tokens through the installed plugin, read them back and remove them. Nothing here
+ * sends a grant: the only revocation names another account. Run in the WebView context.
+ */
+export async function tokenRoundTrip(
+  userId: string,
+  otherUserId: string,
+  record: Record<string, unknown>,
+): Promise<TokenRoundTrip> {
+  const result = await browser.execute(
+    async (
+      id: string,
+      otherId: string,
+      tokens: Record<string, unknown>,
+    ): Promise<TokenRoundTrip | string> => {
+      const handoff = (
+        window as typeof window & {
+          Capacitor?: {
+            Plugins?: {
+              PushHandoff?: {
+                migrateTokens(options: unknown): Promise<unknown>;
+                currentTokens(options: unknown): Promise<unknown>;
+                revokeTokens(options: unknown): Promise<unknown>;
+                removeTokens(options: unknown): Promise<unknown>;
+              };
+            };
+          };
+        }
+      ).Capacitor?.Plugins?.PushHandoff;
+      if (!handoff) {
+        return 'PushHandoff is unavailable';
+      }
+      const account = { userId: id, lineage: tokens['lineage'] };
+      try {
+        const stored = await handoff.migrateTokens({ ...tokens, userId: id });
+        const current = await handoff.currentTokens(account);
+        const revokedUnknown = await handoff.revokeTokens({
+          ...account,
+          userId: otherId,
+        });
+        await handoff.removeTokens({ userId: id });
+        const currentAfter = await handoff.currentTokens(account);
+        return { stored, current, revokedUnknown, currentAfter };
+      } catch (error: unknown) {
+        return String(error);
+      }
+    },
+    userId,
+    otherUserId,
+    record,
   );
   if (typeof result === 'string') throw new Error(result);
   return result;

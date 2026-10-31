@@ -368,7 +368,7 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func removeTokens(_ call: CAPPluginCall) {
         guard let options = call.options as? [String: Any], let removal = TokenRemoval.fromPluginCall(options) else {
-            call.reject("userId must be a string")
+            call.reject("Must provide a userId or all: true")
             return
         }
         guard let tokens else {
