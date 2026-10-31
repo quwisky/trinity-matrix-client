@@ -18,17 +18,18 @@ use matrix_sdk::{
     store::SerializableEventContent,
     timeout::timeout,
 };
-use serde_json::json;
+use serde_json::Value;
 
 use super::{
     AccountNameGroupDto, AccountServerStatusDto, PendingTextMessageDto, RefreshOptionsDto,
-    SessionAccessTokenDto, SessionCredentialsDto, done, logout::sent_once, reply,
+    SessionAccessTokenDto, SessionCredentialsDto, runtime::stop_sync,
 };
 use crate::{
     accounts::{AccountRuntime, Engine},
-    dispatch::{Stream, stream},
+    dispatch::{Stream, detached, item, reply, stream},
+    engines::member::sent_once,
     failure::{EngineResult, account_not_live, refused_refresh},
-    wire::{Fault, FaultKind},
+    wire::{Fault, FaultCode},
 };
 
 /// How long `roomKeysBackedUp` waits for waiting room keys to upload.
@@ -37,7 +38,7 @@ const STEADY_STATE_LIMIT: Duration = Duration::from_secs(10);
 /// The account's token now, then each change; null while it has no live client.
 pub fn access_token(engine: Arc<Engine>, account_id: String) -> Stream {
     let tokens = engine.subscribe_token(&account_id);
-    stream(tokens.map(|token| Ok(json!(token))))
+    stream(tokens.map(item))
 }
 
 pub fn live_credentials(engine: Arc<Engine>, account_id: String) -> Stream {
@@ -134,8 +135,9 @@ pub fn pending_text_messages(engine: Arc<Engine>) -> Stream {
 }
 
 /// Stops every live account's sync, but not its crypto or its sends; `stop` ends the pause.
+/// Detached, so a close never leaves a sync running while paused; the stops run side by side.
 pub fn pause_sync(engine: Arc<Engine>) -> Stream {
-    done(async move {
+    detached(async move {
         let services = {
             let mut state = engine.state.lock();
             state.paused = true;
@@ -144,7 +146,8 @@ pub fn pause_sync(engine: Arc<Engine>) -> Stream {
                 .map(|rt| Arc::clone(&rt.sync_service))
                 .collect::<Vec<_>>()
         };
-        join_all(services.iter().map(|service| service.stop())).await;
+        join_all(services.iter().map(|service| stop_sync(service))).await;
+        Value::Null
     })
 }
 
@@ -152,7 +155,7 @@ pub fn pause_sync(engine: Arc<Engine>) -> Stream {
 pub fn known_names(engine: Arc<Engine>, account_id: String) -> Stream {
     stream(futures_util::stream::once(async move {
         let Some(rt) = engine.account(&account_id) else {
-            return Ok(json!(EngineResult::<()>::Err(account_not_live())));
+            return item(EngineResult::<()>::Err(account_not_live()));
         };
         let memberships = RoomMemberships::JOIN
             | RoomMemberships::INVITE
@@ -187,7 +190,7 @@ pub fn known_names(engine: Arc<Engine>, account_id: String) -> Stream {
             display_names: own,
         };
         let groups = std::iter::once(own).chain(rooms).collect::<Vec<_>>();
-        Ok(json!(EngineResult::Ok(groups)))
+        item(EngineResult::Ok(groups))
     }))
 }
 
@@ -223,8 +226,8 @@ pub(crate) fn member_names<'a>(
     names.map(Into::into).collect()
 }
 
-// shortcut: an `m.text` body only, without js's emote, spoiler and rich-reply handling; 2.3
-// owns the send queue and refines it (R7).
+// shortcut: an `m.text` body only, without js's emote, spoiler and rich-reply handling; upgrade
+// when the engine owns the send queue.
 pub(crate) fn pending_text(
     account_id: &str,
     room_id: &RoomId,
@@ -253,12 +256,7 @@ pub(crate) fn pending_text(
 }
 
 fn store_failed() -> Fault {
-    let diagnostic = "reading a room's members failed".into();
-    Fault {
-        kind: FaultKind::Internal,
-        code: "store-failed".into(),
-        diagnostic,
-    }
+    Fault::new(FaultCode::StoreFailed, "reading a room's members failed")
 }
 
 fn name_of(member: &RoomMember) -> (&str, Option<&str>) {
@@ -320,24 +318,27 @@ async fn local_echoes(engine: &Engine) -> (Vec<Echo>, bool) {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use futures_util::FutureExt;
+    use matrix_sdk::sleep::sleep;
     use matrix_sdk::{
-        HttpError, RefreshTokenError, RumaApiError, SessionMeta,
-        authentication::matrix::MatrixSession,
+        HttpError, RefreshTokenError, RumaApiError,
         ruma::{
-            UserId,
             api::{EndpointError, error::FromHttpResponseError},
             exports::http,
             room_id,
             serde::Raw,
         },
     };
-    use matrix_sdk_ui::sync_service::SyncService;
-    use serde_json::{Value, value::to_raw_value};
+    use matrix_sdk_ui::sync_service;
+    use serde_json::{Value, json, value::to_raw_value};
 
     use super::*;
-    use crate::{config::EngineConfig, engines::session::MatrixSessionDto};
+    use crate::{
+        config::EngineConfig,
+        engines::session::MatrixSessionDto,
+        testing::{builder_on, live, password, runtime_on},
+    };
 
     fn session(base_url: &str) -> MatrixSessionDto {
         serde_json::from_value(json!({
@@ -359,32 +360,6 @@ pub(crate) mod tests {
             .await
             .unwrap();
         runtime_on(engine, s, 1, client).await
-    }
-
-    /// A runtime of `generation` for `s` on `client`, never started. A client without a session
-    /// is restored with the session's tokens as a Matrix one.
-    pub(crate) async fn runtime_on(
-        engine: &Arc<Engine>,
-        s: &MatrixSessionDto,
-        generation: u32,
-        client: matrix_sdk::Client,
-    ) -> AccountRuntime {
-        let meta = SessionMeta {
-            user_id: UserId::parse(&s.user_id).unwrap(),
-            device_id: s.device_id.as_str().into(),
-        };
-        let tokens = SessionTokens {
-            access_token: s.access_token.clone(),
-            refresh_token: s.refresh_token.clone(),
-        };
-        if client.session_meta().is_none() {
-            let matrix = MatrixSession { meta, tokens };
-            client.restore_session(matrix).await.unwrap();
-        }
-        let sync = Arc::new(SyncService::builder(client.clone()).build().await.unwrap());
-        let all_rooms = sync.room_list_service().all_rooms().await.unwrap();
-        let changes = client.subscribe_to_session_changes();
-        AccountRuntime::new(engine, s, generation, client, sync, all_rooms, changes)
     }
 
     fn tokens(access_token: &str) -> SessionTokens {
@@ -547,6 +522,33 @@ pub(crate) mod tests {
         }
         assert_eq!(refreshed(&engine, &password.user_id).await, [json!(false)]);
         assert!(homeserver.accept().is_err(), "no refresh was sent");
+    }
+
+    #[tokio::test]
+    async fn a_pause_closed_mid_flight_still_stops_the_sync() {
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", silent.local_addr().unwrap());
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        let rt = live(
+            &engine,
+            &password(&base),
+            builder_on(&base).build().await.unwrap(),
+        )
+        .await;
+        rt.sync_service.start().await;
+        let mut closed = pause_sync(Arc::clone(&engine));
+        assert!(
+            closed.next().now_or_never().is_none(),
+            "the stop is in flight"
+        );
+        drop(closed);
+        let idle = async {
+            while !matches!(rt.sync_service.state().get(), sync_service::State::Idle) {
+                sleep(Duration::from_millis(10)).await;
+            }
+        };
+        let idle = timeout(idle, Duration::from_secs(5)).await;
+        assert!(idle.is_ok(), "the close cut the pause short");
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashMap,
+    fmt,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::Arc,
 };
@@ -17,7 +18,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     accounts::Engine,
     dispatch::{Stream, dispatch},
-    wire::{Fault, FaultKind, Frame, Inbound},
+    wire::{Fault, FaultCode, Frame, Inbound},
 };
 
 /// Methods a host serves before the engine's own, such as the test host's `testhost.*`.
@@ -113,6 +114,14 @@ impl CarrierSession {
     }
 }
 
+impl fmt::Debug for CarrierSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CarrierSession")
+            .field("serial", &self.serial)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Drop for CarrierSession {
     fn drop(&mut self) {
         self.abort_all();
@@ -140,15 +149,12 @@ fn emit(
 }
 
 fn panicked(method: &str) -> Fault {
-    Fault {
-        kind: FaultKind::Internal,
-        code: "panic".into(),
-        diagnostic: format!("{method} panicked"),
-    }
+    Fault::new(FaultCode::Panic, format!("{method} panicked"))
 }
 
 fn error_frame(id: u32, fault: Fault) -> Frame {
-    tracing::warn!(id, code = %fault.code, diagnostic = %fault.diagnostic, "engine stream fault");
+    let code = fault.code.as_str();
+    tracing::warn!(id, code, diagnostic = %fault.diagnostic, "engine stream fault");
     Frame::Error { id, e: fault }
 }
 
@@ -169,6 +175,7 @@ mod tests {
     use crate::{
         config::EngineConfig,
         dispatch::{Args, stream},
+        wire::FaultKind,
     };
 
     static SEQUENCE: AtomicU32 = AtomicU32::new(0);
@@ -242,7 +249,7 @@ mod tests {
         while frames.try_recv().is_ok() {}
     }
 
-    fn fault_code(frame: Frame, expected_id: u32) -> String {
+    fn fault_code(frame: Frame, expected_id: u32) -> FaultCode {
         match frame {
             Frame::Error { id, e } => {
                 assert_eq!(id, expected_id);
@@ -297,7 +304,7 @@ mod tests {
         session.handle(open(4, "nope.nothing", vec![]));
         assert_eq!(
             fault_code(next_frame(&mut frames).await, 4),
-            "unknown-method"
+            FaultCode::UnknownMethod
         );
     }
 
@@ -305,9 +312,10 @@ mod tests {
     async fn bad_args_yield_protocol_error() {
         let (mut session, mut frames) = session();
         session.handle(open(5, "test.echo", vec![json!("x")]));
-        assert_eq!(fault_code(next_frame(&mut frames).await, 5), "bad-args");
+        let bad = FaultCode::BadArgs;
+        assert_eq!(fault_code(next_frame(&mut frames).await, 5), bad);
         session.handle(open(6, "test.echo", vec![]));
-        assert_eq!(fault_code(next_frame(&mut frames).await, 6), "bad-args");
+        assert_eq!(fault_code(next_frame(&mut frames).await, 6), bad);
         session.handle(open(7, "test.echo", vec![json!(7)]));
         assert_eq!(
             next_frame(&mut frames).await,
@@ -366,8 +374,8 @@ mod tests {
             panic!("no error frame");
         };
         assert_eq!(
-            (id, e.kind, e.code.as_str()),
-            (13, FaultKind::Internal, "panic")
+            (id, e.kind, e.code),
+            (13, FaultKind::Internal, FaultCode::Panic)
         );
         assert!(!e.diagnostic.contains("payload-secret"), "{}", e.diagnostic);
         assert_eq!(later_frames(&mut frames).await, vec![]);
@@ -381,8 +389,8 @@ mod tests {
             panic!("no error frame");
         };
         assert_eq!(
-            (id, e.kind, e.code.as_str()),
-            (15, FaultKind::Internal, "panic")
+            (id, e.kind, e.code),
+            (15, FaultKind::Internal, FaultCode::Panic)
         );
         assert!(!e.diagnostic.contains("payload-secret"), "{}", e.diagnostic);
         session.handle(open(16, "test.once", vec![]));

@@ -6,17 +6,17 @@ pub mod reads;
 pub(crate) mod restore;
 pub mod runtime;
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use futures_util::{StreamExt, stream};
 use matrix_sdk::SendOutsideWasm;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use ts_rs::TS;
 
 use crate::{
-    accounts::Engine,
-    dispatch::{Stream, stream},
+    accounts::{Engine, Stores},
+    dispatch::{Stream, item, reply, stream},
     failure::EngineResult,
 };
 
@@ -62,7 +62,6 @@ pub enum SessionSyncStateDto {
 }
 
 /// `SessionAccessToken`.
-// No `Debug`: it carries the token.
 #[derive(Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
@@ -74,7 +73,6 @@ pub struct SessionAccessTokenDto {
 }
 
 /// `SessionCredentials`.
-// No `Debug`: it carries the tokens.
 #[derive(Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
@@ -100,7 +98,6 @@ pub enum ServerLogoutHoldUpdateDto {
 }
 
 /// `SessionStorageEffect`.
-// No `Debug`: it carries the tokens.
 #[derive(Clone, PartialEq, Serialize, TS)]
 #[serde(
     tag = "kind",
@@ -127,7 +124,6 @@ pub enum SessionStorageEffectDto {
 }
 
 /// `PendingTextMessage`.
-// No `Debug`: it carries what the person wrote.
 #[derive(Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
@@ -162,7 +158,6 @@ pub struct AccountNameGroupDto {
 }
 
 /// `MatrixSession`, of which the engine reads only these fields.
-// No `Debug`: it carries the tokens.
 #[derive(Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
@@ -217,7 +212,6 @@ pub struct RefreshOptionsDto {
 }
 
 /// `UiaAuth`: a password for the stage, or the session alone.
-// No `Debug`: it carries the password.
 #[derive(Deserialize, TS)]
 #[serde(untagged)]
 #[ts(export, export_to = DTO)]
@@ -256,13 +250,71 @@ pub enum UserIdentifierType {
     User,
 }
 
+// The `Debug` of a DTO that carries a token, a password or what the person wrote leaves it out.
+
+impl fmt::Debug for SessionAccessTokenDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SessionAccessTokenDto")
+            .field("homeserver_url", &self.homeserver_url)
+            .field("expires_at", &self.expires_at)
+            .field("refreshable", &self.refreshable)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for SessionCredentialsDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SessionCredentialsDto")
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for SessionStorageEffectDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (kind, account_id) = match self {
+            Self::TokensRotated { account_id, .. } => ("TokensRotated", account_id),
+            Self::SoftLogout { account_id, .. } => ("SoftLogout", account_id),
+            Self::HardLogout { account_id, .. } => ("HardLogout", account_id),
+        };
+        f.debug_struct(kind)
+            .field("account_id", account_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for PendingTextMessageDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingTextMessageDto")
+            .field("account_id", &self.account_id)
+            .field("room_id", &self.room_id)
+            .field("txn_id", &self.txn_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for MatrixSessionDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MatrixSessionDto")
+            .field("base_url", &self.base_url)
+            .field("user_id", &self.user_id)
+            .field("device_id", &self.device_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for UiaAuthDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = match self {
+            Self::Password { .. } => "Password",
+            Self::Session { .. } => "Session",
+        };
+        f.debug_struct(kind).finish_non_exhaustive()
+    }
+}
+
 /// The current snapshot, then each change.
 pub fn session(engine: Arc<Engine>) -> Stream {
-    stream(
-        engine
-            .subscribe_session()
-            .map(|snapshot| Ok(json!(snapshot))),
-    )
+    stream(engine.subscribe_session().map(item))
 }
 
 pub fn restore_persisted(
@@ -271,8 +323,7 @@ pub fn restore_persisted(
     activation: PersistedAccountActivationDto,
 ) -> Stream {
     stream(stream::once(async move {
-        let result = engine.restore(session, activation).await?;
-        Ok(json!(result))
+        item(engine.restore(session, activation).await?)
     }))
 }
 
@@ -290,7 +341,7 @@ pub fn activate_account(
             Ok((barrier, retired)) => {
                 let teardowns = retired.into_iter().map(|runtime| {
                     let id = runtime.account_id.clone();
-                    engine.tear_down(&id, Some(runtime), false)
+                    engine.tear_down(&id, Some(runtime), Stores::Keep)
                 });
                 futures_util::future::join_all(teardowns).await;
                 barrier.delivered().await;
@@ -330,13 +381,10 @@ fn done(effect: impl Future<Output = ()> + SendOutsideWasm + 'static) -> Stream 
     })
 }
 
-/// A command that emits `value` once.
-fn reply<T: Serialize>(value: impl Future<Output = T> + SendOutsideWasm + 'static) -> Stream {
-    stream(stream::once(async move { Ok(json!(value.await)) }))
-}
-
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     fn to_json(value: impl Serialize) -> Value {
@@ -444,6 +492,72 @@ mod tests {
         }))
         .unwrap();
         assert!(password.refresh_token.is_none() && password.oidc.is_none());
+    }
+
+    #[test]
+    fn debug_leaves_out_tokens_passwords_and_text() {
+        let secret = || "hunter2".to_owned();
+        let session: MatrixSessionDto = serde_json::from_value(json!({
+            "baseUrl": "https://hs.example",
+            "userId": "@a:b",
+            "deviceId": "DEV",
+            "accessToken": "hunter2",
+            "refreshToken": "hunter2",
+        }))
+        .unwrap();
+        let password: UiaAuthDto = serde_json::from_value(json!({
+            "type": "m.login.password",
+            "identifier": {"type": "m.id.user", "user": "@a:b"},
+            "password": "hunter2",
+            "session": "hunter2",
+        }))
+        .unwrap();
+        let debug = [
+            format!("{session:?}"),
+            format!("{password:?}"),
+            format!(
+                "{:?}",
+                SessionAccessTokenDto {
+                    homeserver_url: "https://hs.example".into(),
+                    access_token: secret(),
+                    expires_at: None,
+                    refreshable: false,
+                }
+            ),
+            format!(
+                "{:?}",
+                SessionCredentialsDto {
+                    access_token: secret(),
+                    refresh_token: Some(secret()),
+                }
+            ),
+            format!(
+                "{:?}",
+                SessionStorageEffectDto::TokensRotated {
+                    account_id: "@a:b".into(),
+                    lineage: None,
+                    access_token: secret(),
+                    refresh_token: Some(secret()),
+                    expires_at: None,
+                }
+            ),
+            format!(
+                "{:?}",
+                PendingTextMessageDto {
+                    account_id: "@a:b".into(),
+                    room_id: "!r:b".into(),
+                    thread_root_id: None,
+                    text: secret(),
+                    txn_id: None,
+                }
+            ),
+        ];
+        for (index, debug) in debug.iter().enumerate() {
+            assert!(
+                !debug.contains("hunter2"),
+                "Debug output {index} shows a secret"
+            );
+        }
     }
 
     #[test]

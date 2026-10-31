@@ -4,11 +4,16 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    thread,
+    time::Duration,
 };
 
 use sha2::{Digest, Sha256};
 
 use crate::config::EngineConfig;
+
+const REMOVE_ATTEMPTS: u32 = 10;
+const REMOVE_RETRY_DELAY: Duration = Duration::from_millis(50);
 
 pub(crate) struct StorePaths {
     pub data: PathBuf,
@@ -16,7 +21,7 @@ pub(crate) struct StorePaths {
 }
 
 impl StorePaths {
-    pub fn new(config: &EngineConfig, user_id: &str, device_id: &str) -> Self {
+    pub(crate) fn new(config: &EngineConfig, user_id: &str, device_id: &str) -> Self {
         let device = |root: &Path| root.join(hashed(user_id)).join(hashed(device_id));
         Self {
             data: device(&config.data_dir),
@@ -27,12 +32,7 @@ impl StorePaths {
 
 /// Deletes every device's stores of `user_id`; an account without stores is no failure.
 pub(crate) fn delete_account(config: &EngineConfig, user_id: &str) -> io::Result<()> {
-    under_both_roots(config, user_id, |account| {
-        match fs::remove_dir_all(account) {
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
-            result => result,
-        }
-    })
+    under_both_roots(config, user_id, remove_dir)
 }
 
 /// Deletes the stores of every device of `user_id` but `keep_device_id`.
@@ -50,11 +50,26 @@ pub(crate) fn prune_devices(
         for device in devices {
             let device = device?;
             if device.file_name() != keep.as_str() {
-                fs::remove_dir_all(device.path())?;
+                remove_dir(&device.path())?;
             }
         }
         Ok(())
     })
+}
+
+/// Removes `dir` and tries again while it is still there: a store opens and closes its SQLite
+/// connections on tokio's blocking pool (deadpool-sync), so a store file can come back while
+/// `remove_dir_all` runs. A missing `dir` is no failure.
+fn remove_dir(dir: &Path) -> io::Result<()> {
+    let mut removed = Ok(());
+    for _ in 0..REMOVE_ATTEMPTS {
+        removed = fs::remove_dir_all(dir);
+        if let Ok(false) = dir.try_exists() {
+            return Ok(());
+        }
+        thread::sleep(REMOVE_RETRY_DELAY);
+    }
+    removed.and(Err(io::ErrorKind::DirectoryNotEmpty.into()))
 }
 
 /// Runs `clean` on the account's dir under the data root and then the cache root, the second even

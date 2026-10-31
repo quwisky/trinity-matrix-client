@@ -1,6 +1,6 @@
 //! The engine and its signed-in accounts.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use futures_util::{FutureExt, future::Shared};
 use matrix_sdk::{
@@ -23,12 +23,14 @@ use crate::{
         logout::{Holds, RawToken},
         reads::live_token,
         restore::StartState,
+        runtime::stop_sync,
     },
     failure::{EngineFailure, account_not_live},
 };
 
-/// How long a teardown waits for the engine commands still holding a retired runtime.
-const TEARDOWN_LIMIT: Duration = Duration::from_secs(30);
+/// How long a teardown waits for the engine commands and leased streams still holding a retired
+/// runtime.
+const HOLDER_LIMIT: Duration = Duration::from_secs(120);
 
 pub struct Engine {
     pub(crate) config: EngineConfig,
@@ -41,7 +43,23 @@ pub struct Engine {
     raw: reqwest::Client,
 }
 
+// Only the config: the session state holds every account's tokens.
+impl fmt::Debug for Engine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Engine")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
+}
+
 pub(crate) type Teardown = Shared<BoxFuture<'static, ()>>;
+
+/// What a teardown does with the account's stores once its runtime is gone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Stores {
+    Keep,
+    Delete,
+}
 
 /// Everything the session commands change, under one lock that is never held across an await.
 pub(crate) struct SessionState {
@@ -53,13 +71,13 @@ pub(crate) struct SessionState {
     /// By account id, for each account an `accessToken` stream has asked for; it outlives the
     /// account's runtimes.
     tokens: HashMap<String, Tokens>,
-    /// Set by `pauseSync`, cleared by `stop`. The restart policy reads it, and 2.3's resend gate
-    /// will (js `syncPaused`).
+    /// Set by `pauseSync`, cleared by `stop`. The restart policy reads it, and the send queue's
+    /// resend gate will (js `syncPaused`).
     pub(crate) paused: bool,
     pub(crate) holds: Holds,
     pub(crate) effects: Subscribers<SessionStorageEffectDto>,
     /// By account id, what the token-death rule has published since the account's last start,
-    /// which a request that meets the dead token later still awaits (O8).
+    /// which a request that meets the dead token later still awaits.
     pub(crate) deaths: HashMap<String, Barrier>,
     /// Sent each time the rule runs, for a request waiting on the SDK's broadcast.
     pub(crate) deaths_seen: watch::Sender<()>,
@@ -83,8 +101,10 @@ pub(crate) struct Registry {
     active: Option<String>,
     soft_logged_out: Vec<String>,
     /// Engine-wide, one more for each registered client; `stop` keeps it.
-    // Without `native` no start registers a client.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
     generation: u32,
 }
 
@@ -122,8 +142,9 @@ impl Engine {
     }
 
     /// The account's live runtime. Hold it for one request only: never across a lifecycle call
-    /// (remove, restart, rollback) and never in a long-lived stream, since its teardown waits
-    /// until every holder has let go.
+    /// (remove, restart, rollback) and never in a long-lived stream, which runs on
+    /// [`account_stream`](crate::engines::member::account_stream), since its teardown waits until
+    /// every holder has let go.
     pub fn account(&self, account_id: &str) -> Option<Arc<AccountRuntime>> {
         self.state.lock().runtimes.get(account_id).cloned()
     }
@@ -196,7 +217,7 @@ impl Engine {
         let (teardown, barrier) = self
             .after_starts(Some(account_id), || {
                 let (runtime, barrier) = self.retire(account_id);
-                (self.tear_down(account_id, runtime, false), barrier)
+                (self.tear_down(account_id, runtime, Stores::Keep), barrier)
             })
             .await;
         teardown.await;
@@ -216,7 +237,7 @@ impl Engine {
                     let released = state.holds.release_account(account_id);
                     (runtime, state.publish_snapshot().join(released))
                 };
-                (self.tear_down(account_id, runtime, true), barrier)
+                (self.tear_down(account_id, runtime, Stores::Delete), barrier)
             })
             .await;
         teardown.await;
@@ -239,7 +260,7 @@ impl Engine {
                 };
                 let teardowns = runtimes
                     .into_iter()
-                    .map(|(id, runtime)| self.tear_down(&id, Some(runtime), false));
+                    .map(|(id, runtime)| self.tear_down(&id, Some(runtime), Stores::Keep));
                 (teardowns.collect::<Vec<_>>(), barrier)
             })
             .await;
@@ -257,11 +278,14 @@ impl Engine {
         let runtime = state.retire(account_id);
         let _ = state.publish_snapshot();
         // Queued under the lock, so a start of the account that follows awaits it.
-        drop(self.tear_down(account_id, runtime, false));
+        drop(self.tear_down(account_id, runtime, Stores::Keep));
     }
 
     /// Writes a runtime's status while `generation` is still the account's; `false` once not.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
     pub(crate) fn update_status(
         &self,
         account_id: &str,
@@ -274,17 +298,22 @@ impl Engine {
         current
     }
 
-    /// Stops a retired runtime and waits, up to `TEARDOWN_LIMIT`, until no engine command holds
-    /// it, then deletes the account's stores when asked. It runs on its own task, after the
-    /// account's previous teardown, so a closed command cannot cut it short. A start of the
-    /// account awaits it, so two clients open one store only when a holder outlasts the limit
-    /// (R1). A command that triggers a teardown never awaits it while holding the runtime.
+    /// Stops a retired runtime's sync, for up to `STOP_LIMIT` (30 s), then waits up to
+    /// `HOLDER_LIMIT` (120 s) until no engine command or leased stream holds it, then deletes the
+    /// account's stores when asked. It runs on its own task, after the account's previous
+    /// teardown, so a closed command cannot cut it short. A start of the account awaits it, so two
+    /// clients open one store only when a holder outlasts the limit. A command that triggers a
+    /// teardown never awaits it while holding the runtime.
     pub(crate) fn tear_down(
         &self,
         account_id: &str,
         runtime: Option<Arc<AccountRuntime>>,
-        delete_stores: bool,
+        stores: Stores,
     ) -> Teardown {
+        // Before the queue, so its streams end without waiting out the previous teardown.
+        if let Some(runtime) = &runtime {
+            runtime.set_retired();
+        }
         let mut teardowns = self.teardowns.lock();
         let previous = teardowns.remove(account_id);
         let (config, id) = (self.config.clone(), account_id.to_owned());
@@ -293,18 +322,18 @@ impl Engine {
                 previous.await;
             }
             if let Some(runtime) = runtime {
-                runtime.sync_service.stop().await;
+                stop_sync(&runtime.sync_service).await;
                 let mut dropped = runtime.dropped();
                 drop(runtime);
-                if timeout(dropped.changed(), TEARDOWN_LIMIT).await.is_err() {
-                    // shortcut: a client still held after 30 s outlives its teardown, so a restart
-                    // opens a second client on the store and a remove deletes the stores under
-                    // it (an unlink on Unix, a logged failure on Windows); upgrade when
-                    // matrix-sdk gains a client shutdown.
+                if timeout(dropped.changed(), HOLDER_LIMIT).await.is_err() {
+                    // shortcut: a client still held after 120 s, as by a detached multi-step
+                    // body, outlives its teardown, so a restart opens a second client on the
+                    // store and a remove deletes the stores under it (an unlink on Unix, a logged
+                    // failure on Windows); upgrade when matrix-sdk gains a client shutdown.
                     tracing::warn!("a retired account is still in use");
                 }
             }
-            if delete_stores {
+            if stores == Stores::Delete {
                 delete_account_stores(&config, &id);
             }
         });
@@ -354,6 +383,10 @@ impl Engine {
     }
 }
 
+// shortcut: the delete runs on the executor and can stall it for seconds over a large media
+// cache, plus up to half a second of retries while store files come back. In a multi-thread host,
+// SDK tasks that outlive a teardown can keep a store busy past the last retry, which leaves its
+// files behind with a warning; upgrade when matrix-sdk gains a client shutdown.
 fn delete_account_stores(config: &EngineConfig, account_id: &str) {
     #[cfg(feature = "native")]
     if let Err(err) = crate::store::delete_account(config, account_id) {
@@ -402,7 +435,7 @@ impl Tokens {
 }
 
 impl Registry {
-    pub fn snapshot(&self) -> SessionSnapshotDto {
+    pub(crate) fn snapshot(&self) -> SessionSnapshotDto {
         SessionSnapshotDto {
             active_account_id: self.active.clone(),
             accounts: self.entries.clone(),
@@ -410,7 +443,7 @@ impl Registry {
         }
     }
 
-    pub fn is_live(&self, account_id: &str) -> bool {
+    pub(crate) fn is_live(&self, account_id: &str) -> bool {
         self.entries
             .iter()
             .any(|entry| entry.account_id == account_id)
@@ -418,8 +451,11 @@ impl Registry {
 
     /// Registers a new client for `account_id`: its entry moves to the end with the next
     /// generation, and the account is no longer soft-logged-out.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
-    pub fn register(&mut self, account_id: &str, device_id: &str) -> u32 {
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
+    pub(crate) fn register(&mut self, account_id: &str, device_id: &str) -> u32 {
         self.entries.retain(|entry| entry.account_id != account_id);
         self.generation += 1;
         self.entries.push(SessionAccountStatusDto {
@@ -429,7 +465,8 @@ impl Registry {
             sync_state: SessionSyncStateDto::Starting,
             server_synced: false,
             rooms_prepared: false,
-            waiting_count: 0, // shortcut: 2.3 owns send semantics (G14, R6), upgrade in 2.3
+            // shortcut: no send counts as waiting yet; upgrade when the engine owns sending.
+            waiting_count: 0,
             // Every Rust store opens with the store key.
             crypto_store_encrypted: true,
         });
@@ -438,7 +475,7 @@ impl Registry {
     }
 
     /// Drops the account's entry, repointing the active account to the first remaining one.
-    pub fn retire(&mut self, account_id: &str) -> bool {
+    pub(crate) fn retire(&mut self, account_id: &str) -> bool {
         if !self.is_live(account_id) {
             return false;
         }
@@ -450,7 +487,7 @@ impl Registry {
     }
 
     /// Makes a live account active; any other is ignored.
-    pub fn set_active(&mut self, account_id: &str) -> bool {
+    pub(crate) fn set_active(&mut self, account_id: &str) -> bool {
         let live = self.is_live(account_id);
         if live {
             self.active = Some(account_id.into());
@@ -458,30 +495,33 @@ impl Registry {
         live
     }
 
-    pub fn mark_soft_logged_out(&mut self, account_id: &str) {
+    pub(crate) fn mark_soft_logged_out(&mut self, account_id: &str) {
         if !self.is_soft_logged_out(account_id) {
             self.soft_logged_out.push(account_id.into());
         }
     }
 
-    pub fn is_soft_logged_out(&self, account_id: &str) -> bool {
+    pub(crate) fn is_soft_logged_out(&self, account_id: &str) -> bool {
         self.soft_logged_out.iter().any(|id| id == account_id)
     }
 
-    pub fn clear_soft_logged_out(&mut self, account_id: &str) {
+    pub(crate) fn clear_soft_logged_out(&mut self, account_id: &str) {
         self.soft_logged_out.retain(|id| id != account_id);
     }
 
     /// Forgets every account but keeps counting generations.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.entries.clear();
         self.active = None;
         self.soft_logged_out.clear();
     }
 
     /// Changes the status of the account's entry while it is still that generation's.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
-    pub fn update_status(
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
+    pub(crate) fn update_status(
         &mut self,
         account_id: &str,
         generation: u32,

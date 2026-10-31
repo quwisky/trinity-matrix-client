@@ -1,14 +1,15 @@
 //! Routes an `"engine.member"` call with positional args to the engine method that serves it.
 
-use std::any::type_name;
+use std::{any::type_name, fmt};
 
-use matrix_sdk::SendOutsideWasm;
-use serde::de::DeserializeOwned;
+use futures_util::stream;
+use matrix_sdk::{SendOutsideWasm, executor::spawn};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use crate::{
     engines::{discovery, homeserver, session},
-    wire::{Fault, FaultKind},
+    wire::{Fault, FaultCode},
 };
 
 /// An engine method's output: a `BoxStream`, but a `LocalBoxStream` on wasm, where the SDK's
@@ -24,11 +25,39 @@ pub fn stream(
     matrix_sdk::stream::StreamExt::boxed(s)
 }
 
+/// `value` as a stream item. A value that is no JSON, such as a map with non-string keys, is a
+/// fault rather than a panic.
+pub(crate) fn item(value: impl Serialize) -> Result<Value, Fault> {
+    serde_json::to_value(value)
+        .map_err(|_| Fault::new(FaultCode::SerializeFailed, "a value did not serialize"))
+}
+
+/// A command: emits `value` once, then completes; a close drops the work.
+pub fn reply<T: Serialize>(value: impl Future<Output = T> + SendOutsideWasm + 'static) -> Stream {
+    stream(stream::once(async move { item(value.await) }))
+}
+
+/// A command whose work outlives a close or an `attach`: `value` runs on its own task, spawned at
+/// dispatch, and a close drops only the wait for it. A panic in it is a `panic` fault (kind
+/// internal). A `value` that holds the account, as `detached(on_account(..))` does, still delays
+/// the account's teardown after a close, so it must end within the teardown's `HOLDER_LIMIT`.
+pub fn detached<T: Serialize + SendOutsideWasm + 'static>(
+    value: impl Future<Output = T> + SendOutsideWasm + 'static,
+) -> Stream {
+    // A dropped `JoinHandle` lets its task run on, natively and on wasm.
+    let task = spawn(value);
+    stream(stream::once(async move {
+        let value = (task.await)
+            .map_err(|_| Fault::new(FaultCode::Panic, "a detached command panicked"))?;
+        item(value)
+    }))
+}
+
 /// Defines `dispatch` over `"engine.member" => function(arg: Type, ..)` entries. Each function
 /// takes the engine, then the decoded positional args, and returns a [`Stream`].
 macro_rules! methods {
     ($($name:literal => $($serve:ident)::+ ( $($arg:ident : $ty:ty),* $(,)? )),* $(,)?) => {
-        pub fn dispatch(
+        pub(crate) fn dispatch(
             engine: &std::sync::Arc<$crate::accounts::Engine>,
             method: &str,
             args: Vec<serde_json::Value>,
@@ -42,7 +71,10 @@ macro_rules! methods {
                 })*
                 _ => {
                     let _ = (engine, args);
-                    Err($crate::dispatch::protocol("unknown-method", format!("no method {method}")))
+                    Err($crate::wire::Fault::new(
+                        $crate::wire::FaultCode::UnknownMethod,
+                        format!("no method {method}"),
+                    ))
                 }
             }
         }
@@ -167,7 +199,17 @@ impl<'a> Args<'a> {
     }
 
     fn bad(&self, detail: String) -> Fault {
-        protocol("bad-args", format!("{}: {detail}", self.method))
+        Fault::new(FaultCode::BadArgs, format!("{}: {detail}", self.method))
+    }
+}
+
+// The method and the position only: the values are args.
+impl fmt::Debug for Args<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Args")
+            .field("method", &self.method)
+            .field("position", &self.position)
+            .finish_non_exhaustive()
     }
 }
 
@@ -182,23 +224,17 @@ fn type_class(value: &Value) -> &'static str {
     }
 }
 
-pub fn protocol(code: &str, diagnostic: String) -> Fault {
-    Fault {
-        kind: FaultKind::Protocol,
-        code: code.into(),
-        diagnostic,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Duration};
 
     use futures_util::{FutureExt, StreamExt, future::ready, stream};
+    use matrix_sdk::timeout::timeout;
     use serde_json::json;
+    use tokio::sync::oneshot;
 
     use super::*;
-    use crate::{accounts::Engine, config::EngineConfig};
+    use crate::{accounts::Engine, config::EngineConfig, wire::FaultKind};
 
     fn pair(_: Arc<Engine>, text: String, count: u32) -> Stream {
         stream(stream::once(ready(Ok(json!([text, count])))))
@@ -217,7 +253,7 @@ mod tests {
         }
     }
 
-    fn code(result: Result<Stream, Fault>) -> String {
+    fn code(result: Result<Stream, Fault>) -> FaultCode {
         let fault = result.err().expect("a fault");
         assert_eq!(fault.kind, FaultKind::Protocol);
         fault.code
@@ -241,7 +277,7 @@ mod tests {
         ] {
             assert_eq!(
                 code(table::dispatch(&engine, "test.pair", args)),
-                "bad-args"
+                FaultCode::BadArgs
             );
         }
     }
@@ -252,7 +288,57 @@ mod tests {
         assert!(table::dispatch(&engine, "test.none", vec![]).is_ok());
         assert_eq!(
             code(table::dispatch(&engine, "test.none", vec![json!(1)])),
-            "bad-args"
+            FaultCode::BadArgs
+        );
+    }
+
+    #[tokio::test]
+    async fn a_detached_command_finishes_after_its_stream_is_dropped() {
+        let (release_tx, release) = oneshot::channel::<()>();
+        let (done, done_rx) = oneshot::channel();
+        let mut s = detached(async move {
+            release.await.ok();
+            done.send(()).ok();
+            1
+        });
+        assert!(s.next().now_or_never().is_none());
+        drop(s);
+        release_tx.send(()).unwrap();
+        let finished = timeout(done_rx, Duration::from_secs(1)).await;
+        assert!(
+            matches!(finished, Ok(Ok(()))),
+            "the work was dropped with its stream"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_detached_command_runs_though_its_stream_is_never_polled() {
+        let (done, done_rx) = oneshot::channel();
+        let s = detached(async move { done.send(()).ok() });
+        let finished = timeout(done_rx, Duration::from_secs(1)).await;
+        assert!(matches!(finished, Ok(Ok(()))), "the work waited for a poll");
+        drop(s);
+    }
+
+    #[tokio::test]
+    async fn a_detached_command_replies_once() {
+        let mut s = detached(ready(7));
+        assert_eq!(s.next().await, Some(Ok(json!(7))));
+        assert_eq!(s.next().await, None);
+    }
+
+    #[tokio::test]
+    async fn a_detached_panic_is_a_panic_fault() {
+        let mut s = detached::<u32>(async { panic!("payload-secret") });
+        let fault = s.next().await.unwrap().unwrap_err();
+        assert_eq!(
+            (fault.kind, fault.code),
+            (FaultKind::Internal, FaultCode::Panic)
+        );
+        assert!(
+            !fault.diagnostic.contains("payload-secret"),
+            "{}",
+            fault.diagnostic
         );
     }
 
@@ -261,11 +347,11 @@ mod tests {
         let engine = Engine::new(EngineConfig::default()).unwrap();
         assert_eq!(
             code(dispatch(&engine, "nope.nothing", vec![])),
-            "unknown-method"
+            FaultCode::UnknownMethod
         );
         assert_eq!(
             code(table::dispatch(&engine, "nope.nothing", vec![])),
-            "unknown-method"
+            FaultCode::UnknownMethod
         );
     }
 }

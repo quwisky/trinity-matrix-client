@@ -1,5 +1,8 @@
 import type { MatrixSession } from '@trinity/util/matrix';
-import { registerSynapseUser } from '@trinity/testing';
+import {
+  registerSynapseUser,
+  waitForSynapseBackgroundUpdates,
+} from '@trinity/testing';
 
 /**
  * The live-Synapse side of the session contract, over plain HTTP so any engine can use it.
@@ -70,32 +73,8 @@ export function sessionSynapseFixture(
   }
 
   return {
-    // A fresh Synapse rebuilds its user directory in a background update and drops users
-    // registered meanwhile, so the contract users are only created once it has finished.
-    async waitForBackgroundUpdates() {
-      const admin = await registerSynapseUser(
-        baseUrl,
-        secret,
-        `admin-${Date.now().toString(36)}`,
-        true,
-      );
-      for (let i = 0; i < 240; i++) {
-        const res = await fetch(
-          `${baseUrl}/_synapse/admin/v1/background_updates/status`,
-          { headers: { authorization: `Bearer ${admin.accessToken}` } },
-        );
-        if (!res.ok)
-          throw new Error(
-            `Synapse background update status failed: ${res.status}`,
-          );
-        const { current_updates } = (await res.json()) as {
-          current_updates: Record<string, unknown>;
-        };
-        if (Object.keys(current_updates).length === 0) return;
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-      throw new Error('Synapse background updates did not finish');
-    },
+    waitForBackgroundUpdates: () =>
+      waitForSynapseBackgroundUpdates(baseUrl, secret),
     async newSession() {
       sequence += 1;
       const user = await registerSynapseUser(

@@ -22,11 +22,13 @@ use tokio::sync::{mpsc, watch};
 pub const DELIVERY_LIMIT: Duration = Duration::from_secs(5);
 
 /// Subscriber streams of one kind of update, by key.
+#[derive(Debug)]
 pub struct Subscribers<T> {
     next_key: u64,
     entries: HashMap<u64, Entry<T>>,
 }
 
+#[derive(Debug)]
 struct Entry<T> {
     tx: mpsc::UnboundedSender<T>,
     sent: u64,
@@ -117,6 +119,7 @@ impl<T> Entry<T> {
 }
 
 /// A subscriber's stream, which reports how many of its items the carrier has emitted.
+#[derive(Debug)]
 pub struct Tracked<T> {
     rx: mpsc::UnboundedReceiver<T>,
     taken: u64,
@@ -141,7 +144,7 @@ impl<T> Stream for Tracked<T> {
 /// What a command waits for before its reply: each ticket is a stream and the count of its items
 /// that must be emitted first, or `u64::MAX` for its close.
 #[must_use]
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Barrier(Vec<(watch::Receiver<u64>, u64)>);
 
 impl Barrier {

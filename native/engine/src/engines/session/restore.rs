@@ -1,7 +1,13 @@
 //! Restoring a persisted session: its client's settings, the start that concurrent restores of
 //! one account join, and what a failed start means.
-// Without `native` there is no store to open, so the start and its settings go unused.
-#![cfg_attr(not(feature = "native"), allow(dead_code, unused_imports))]
+#![cfg_attr(
+    not(feature = "native"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "without `native` there is no store to open, so the start goes unused"
+    )
+)]
 
 use std::{
     mem,
@@ -32,19 +38,18 @@ use matrix_sdk_ui::sync_service::SyncService;
 use super::{
     MatrixSessionDto, PersistedAccountActivationDto,
     logout::{reload_tokens, save_tokens_callback},
-    runtime::AccountRuntime,
+    runtime::{AccountRuntime, stop_sync},
 };
 #[cfg(feature = "native")]
 use crate::store::{StorePaths, prune_devices};
 use crate::{
-    accounts::Engine,
+    accounts::{Engine, Stores},
     barrier::Barrier,
-    dispatch::protocol,
     failure::{
         AccountStartFailureReason, Diagnostic, EngineFailure, EngineResult, FailureCode,
         FailureKind, account_start_failed, classify_http,
     },
-    wire::{Fault, FaultKind},
+    wire::{Fault, FaultCode},
 };
 
 /// A start of one account, which every restore of it joins while the start runs.
@@ -103,7 +108,12 @@ pub(crate) fn refreshable(s: &MatrixSessionDto) -> bool {
 /// The session's user and device, once its user id and base URL parse. A fault names the field,
 /// never its value: the session carries tokens.
 pub(crate) fn session_meta(method: &str, s: &MatrixSessionDto) -> Result<SessionMeta, Fault> {
-    let malformed = |field: &str| protocol("bad-args", format!("{method}: {field} is malformed"));
+    let malformed = |field: &str| {
+        Fault::new(
+            FaultCode::BadArgs,
+            format!("{method}: {field} is malformed"),
+        )
+    };
     let meta = SessionMeta {
         user_id: UserId::parse(&s.user_id).map_err(|_| malformed("userId"))?,
         device_id: s.device_id.as_str().into(),
@@ -280,7 +290,7 @@ impl Engine {
             let barrier = state.publish_snapshot();
             drop(state);
             if previous.is_some() {
-                drop(self.tear_down(&s.user_id, previous, false));
+                drop(self.tear_down(&s.user_id, previous, Stores::Keep));
             }
             barrier
         };
@@ -301,8 +311,11 @@ impl Engine {
         _: &mut Barrier,
     ) -> StartOutcome {
         // shortcut: no store backend without `native`; the wasm build adds one
-        let diagnostic = "no store backend in this build".into();
-        Err(StartError::Fault(protocol("unsupported", diagnostic)))
+        let diagnostic = "no store backend in this build";
+        Err(StartError::Fault(Fault::new(
+            FaultCode::Unsupported,
+            diagnostic,
+        )))
     }
 
     #[cfg(feature = "native")]
@@ -313,14 +326,13 @@ impl Engine {
         key: &[u8; 32],
         barrier: &mut Barrier,
     ) -> StartOutcome {
-        let crypto_failure = || start_failed(AccountStartFailureReason::CryptoFailure);
         let paths = StorePaths::new(&self.config, &s.user_id, &s.device_id);
         let client = match account_builder(self, s, &paths, key).build().await {
             Ok(client) => client,
             Err(err) => {
                 let Some(failure) = start_failure(&err) else {
-                    let diagnostic = "the client did not build".into();
-                    return Err(StartError::Fault(internal(diagnostic)));
+                    let diagnostic = "the client did not build";
+                    return Err(StartError::Fault(start_fault(diagnostic)));
                 };
                 let lost = AccountStartFailureReason::CryptoStoreKeyLost;
                 if failure.code == (FailureCode::AccountStartFailed { reason: lost }) {
@@ -335,19 +347,20 @@ impl Engine {
             .set_session_callbacks(Box::new(reload_tokens), Box::new(save))
             .is_err()
         {
-            let diagnostic = "the session callbacks were already set".into();
-            return Err(StartError::Fault(internal(diagnostic)));
+            let diagnostic = "the session callbacks were already set";
+            return Err(StartError::Fault(start_fault(diagnostic)));
         }
         let changes = client.subscribe_to_session_changes();
-        (client.restore_session(auth_session(s, meta)).await).map_err(|_| crypto_failure())?;
+        (client.restore_session(auth_session(s, meta)).await)
+            .map_err(|_| failed_at("restore_session"))?;
         let sync_service = SyncService::builder(client.clone())
             .with_offline_mode()
             .build()
             .await
-            .map_err(|_| crypto_failure())?;
+            .map_err(|_| failed_at("sync_service"))?;
         let sync_service = Arc::new(sync_service);
-        let all_rooms =
-            (sync_service.room_list_service().all_rooms().await).map_err(|_| crypto_failure())?;
+        let all_rooms = (sync_service.room_list_service().all_rooms().await)
+            .map_err(|_| failed_at("room_list"))?;
         let (generation, registered) = {
             let mut state = self.state.lock();
             let signed_in_again = state.registry.is_soft_logged_out(&s.user_id);
@@ -373,8 +386,9 @@ impl Engine {
         }
         // Retired or signed out meanwhile, so a stop may have come before this start.
         if !self.may_sync(&s.user_id, generation) {
-            sync_service.stop().await;
+            stop_sync(&sync_service).await;
         }
+        // shortcut: blocks the executor, as `delete_account_stores` does; upgrade with it.
         if let Err(err) = prune_devices(&self.config, &s.user_id, &s.device_id) {
             tracing::warn!(kind = ?err.kind(), "pruning an account's other devices failed");
         }
@@ -456,19 +470,23 @@ fn start_failed(reason: AccountStartFailureReason) -> StartError {
     StartError::Failure(account_start_failed(reason, kind, Diagnostic::new(kind)))
 }
 
+/// A start that failed at `step`, logged without its error: a crypto store's errors can name
+/// users and devices. Each step's failure is the client's local state, so `crypto-failure`.
+fn failed_at(step: &'static str) -> StartError {
+    tracing::warn!(step, "an account start failed");
+    start_failed(AccountStartFailureReason::CryptoFailure)
+}
+
 fn panicked() -> StartError {
-    StartError::Fault(internal("restorePersisted panicked".into()))
+    StartError::Fault(start_fault("restorePersisted panicked"))
 }
 
-fn internal(diagnostic: String) -> Fault {
-    Fault {
-        kind: FaultKind::Internal,
-        code: "start-failed".into(),
-        diagnostic,
-    }
+fn start_fault(diagnostic: &str) -> Fault {
+    Fault::new(FaultCode::StartFailed, diagnostic)
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(test)]
+#[cfg(feature = "native")]
 mod tests {
     use std::fs;
 
@@ -828,6 +846,60 @@ mod tests {
         );
         assert_eq!(snapshot(&second).soft_logged_out, ["@a:b"]);
         assert!(ids(&second).is_empty());
+    }
+
+    /// The log writer of [`a_failed_start_logs_its_step_but_not_its_error`].
+    #[derive(Clone, Default)]
+    struct Log(Arc<StdMutex<Vec<u8>>>);
+
+    impl std::io::Write for Log {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A crypto store's errors can name users and devices, so a failed start logs only its step.
+    #[tokio::test]
+    async fn a_failed_start_logs_its_step_but_not_its_error() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_on(root.path(), 1);
+        let s = offline("@a:b");
+        // A crypto store that holds another device's account, which the restore refuses.
+        let paths = StorePaths::new(&engine.config, &s.user_id, &s.device_id);
+        let other = account_builder(&engine, &s, &paths, &[1; 32]).build().await;
+        let other = other.unwrap();
+        let meta = SessionMeta {
+            user_id: UserId::parse(&s.user_id).unwrap(),
+            device_id: "OTHERDEVICE".into(),
+        };
+        other.restore_session(auth_session(&s, meta)).await.unwrap();
+        drop(other);
+        let log = Log::default();
+        let writer = log.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_max_level(tracing::Level::WARN)
+            .with_writer(move || writer.clone())
+            .finish();
+        let guard = tracing::subscriber::set_default(subscriber);
+        let result = engine.restore(s, ACTIVATE).await;
+        drop(guard);
+        assert_eq!(
+            start_reason(result),
+            AccountStartFailureReason::CryptoFailure
+        );
+        let log = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
+        let ours: Vec<_> = log
+            .lines()
+            .filter(|l| l.contains("trinity_engine"))
+            .collect();
+        assert!(ours.iter().any(|l| l.contains("restore_session")), "{log}");
+        assert!(!ours.iter().any(|l| l.contains("OTHERDEVICE")), "{log}");
     }
 
     #[tokio::test]

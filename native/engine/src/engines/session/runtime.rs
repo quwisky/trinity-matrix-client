@@ -1,9 +1,13 @@
 //! One live account: its client, its sync, and the tasks that report their status, follow its
 //! session and restart its sync.
-// Without `native` no start builds a runtime, so only the type is used.
-#![cfg_attr(not(feature = "native"), allow(dead_code))]
+#![cfg_attr(
+    not(feature = "native"),
+    allow(dead_code, reason = "without `native` no start builds a runtime")
+)]
 
 use std::{
+    fmt,
+    pin::pin,
     sync::{
         Arc, Weak,
         atomic::{AtomicBool, Ordering},
@@ -11,11 +15,12 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{Stream, StreamExt, stream};
+use futures_util::{Stream, StreamExt, future::select, stream};
 use matrix_sdk::{
     Client, SessionChange,
     executor::{AbortOnDrop, spawn},
     sleep::sleep,
+    timeout::timeout,
 };
 use matrix_sdk_ui::{
     room_list_service::{self, RoomList, RoomListLoadingState},
@@ -29,6 +34,9 @@ use tokio::sync::{
 use super::{MatrixSessionDto, SessionSyncStateDto, restore::refreshable};
 use crate::accounts::Engine;
 
+/// How long `stop_sync` waits for the sync service to stop.
+const STOP_LIMIT: Duration = Duration::from_secs(30);
+
 pub struct AccountRuntime {
     pub account_id: String,
     pub generation: u32,
@@ -39,10 +47,12 @@ pub struct AccountRuntime {
     pub(crate) refreshable: bool,
     /// Set once the engine signs the session out itself, so its own logout is no death.
     pub(crate) signed_out: AtomicBool,
-    /// The restored token with its expiry, which a token the SDK refreshed does not have (H8).
+    /// The restored token with its expiry, which a token the SDK refreshed does not have.
     pub(crate) expiry: Option<(String, f64)>,
-    /// Dropped with the runtime, which tells a teardown that no engine command holds it.
-    alive: watch::Sender<()>,
+    /// Dropped with the runtime and with every lease: a teardown waits until all are gone.
+    alive: Arc<watch::Sender<()>>,
+    /// Set once, by `tear_down`, before anything else; every leased stream ends on it.
+    retired: watch::Sender<bool>,
     /// Keeps the room list's loading task, which `roomsPrepared` follows.
     _all_rooms: RoomList,
     _tasks: [AbortOnDrop<()>; 3],
@@ -87,7 +97,8 @@ impl AccountRuntime {
             refreshable: refreshable(s),
             signed_out: AtomicBool::new(false),
             expiry: expiry.map(|at| (s.access_token.clone(), at)),
-            alive: watch::Sender::new(()),
+            alive: Arc::new(watch::Sender::new(())),
+            retired: watch::Sender::new(false),
             _all_rooms: all_rooms,
             _tasks: [
                 AbortOnDrop::new(spawn(status)),
@@ -97,14 +108,51 @@ impl AccountRuntime {
         }
     }
 
-    /// Ends, with an error, once the runtime is dropped.
+    /// Ends, with an error, once the runtime and every lease are dropped.
     pub(crate) fn dropped(&self) -> watch::Receiver<()> {
         self.alive.subscribe()
     }
+
+    /// A teardown waits until every lease is dropped, as for the runtime, so a holder drops its
+    /// lease once its `retired` turns `true`.
+    pub(crate) fn lease(&self) -> Lease {
+        Lease {
+            client: self.client.clone(),
+            retired: self.retired(),
+            _alive: Arc::clone(&self.alive),
+        }
+    }
+
+    /// Turns `true` once the account retires; unlike a lease, a teardown does not wait for it.
+    pub(crate) fn retired(&self) -> watch::Receiver<bool> {
+        self.retired.subscribe()
+    }
+
+    /// Retires the account's leases; `tear_down` calls it before anything else.
+    pub(crate) fn set_retired(&self) {
+        self.retired.send_replace(true);
+    }
+}
+
+// Only the account: `expiry` holds the restored token.
+impl fmt::Debug for AccountRuntime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AccountRuntime")
+            .field("account_id", &self.account_id)
+            .field("generation", &self.generation)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What a long-lived account stream holds instead of the runtime.
+pub(crate) struct Lease {
+    pub(crate) client: Client,
+    pub(crate) retired: watch::Receiver<bool>,
+    _alive: Arc<watch::Sender<()>>,
 }
 
 /// Reports the SDK's `UnknownToken` to the token-death rule, without waiting for its delivery:
-/// a command that met the token awaits that itself (O8). The save callback owns refreshed
+/// a command that met the token awaits that itself. The save callback owns refreshed
 /// tokens, and a death a lag drops returns on the next request or restart.
 async fn follow_session(
     engine: Weak<Engine>,
@@ -127,7 +175,7 @@ async fn follow_session(
 }
 
 /// Restarts the sync after an error, backing off, unless its token died, the engine signed it
-/// out, `pauseSync` paused it or the account has a newer client (O6). The backoff never resets:
+/// out, `pauseSync` paused it or the account has a newer client. The backoff never resets:
 /// `start()` itself reports `Running`, and the count dies with the runtime.
 async fn restart_on_error(
     engine: Weak<Engine>,
@@ -155,8 +203,29 @@ async fn restart_on_error(
             .upgrade()
             .is_some_and(|e| e.may_sync(&account_id, generation))
         {
-            service.stop().await;
+            stop_sync(&service).await;
         }
+    }
+}
+
+/// Stops the sync service, giving up after `STOP_LIMIT`. matrix-sdk-ui 0.19.1 loses a stop that
+/// comes before the room-list task's first poll and then waits on that task for good, so the room
+/// list's stop is sent again until `stop()` returns.
+// shortcut: matrix-sdk-ui 0.19.1 can also lose an early stop of the encryption sync, which has
+// no stop to send again: a stop that times out leaves it running and holding the client, and
+// after a restart it can keep running on the crypto store; upgrade when SyncService::stop no
+// longer loses a stop sent before a child task's first poll.
+pub(crate) async fn stop_sync(service: &SyncService) {
+    let rooms = service.room_list_service();
+    let resend = async {
+        loop {
+            sleep(Duration::from_millis(100)).await;
+            let _ = rooms.stop_sync();
+        }
+    };
+    let (stop, resend) = (pin!(service.stop()), pin!(resend));
+    if timeout(select(stop, resend), STOP_LIMIT).await.is_err() {
+        tracing::warn!("a sync service did not stop");
     }
 }
 
@@ -275,6 +344,10 @@ mod tests {
     use matrix_sdk_ui::sync_service::State;
 
     use super::*;
+    use crate::{
+        engines::session::restore::{auth_session, session_meta},
+        testing::{builder_on, password},
+    };
     use SessionSyncStateDto::*;
 
     #[test]
@@ -308,5 +381,25 @@ mod tests {
                 "{label}"
             );
         }
+    }
+
+    // The current-thread runtime first runs the supervisor once `stop()` has sent its report,
+    // before the room-list task's first poll.
+    #[tokio::test]
+    async fn a_stop_sent_before_the_room_list_task_runs_still_stops_the_sync_service() {
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let s = password(&format!("http://{}", silent.local_addr().unwrap()));
+        let client = builder_on(&s.base_url).build().await.unwrap();
+        let meta = session_meta("test", &s).unwrap();
+        client
+            .restore_session(auth_session(&s, meta))
+            .await
+            .unwrap();
+        let service = SyncService::builder(client).with_offline_mode();
+        let service = service.build().await.unwrap();
+        service.start().await;
+        let stopped = timeout(stop_sync(&service), Duration::from_secs(5)).await;
+        assert!(stopped.is_ok(), "the sync service did not stop");
+        assert!(matches!(service.state().get(), State::Idle));
     }
 }

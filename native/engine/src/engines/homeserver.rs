@@ -3,15 +3,15 @@
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use futures_util::{future::join3, stream};
+use futures_util::{future::join, stream};
 use matrix_sdk::reqwest::Url;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use ts_rs::TS;
 
 use crate::{
     accounts::{AccountRuntime, Engine},
-    dispatch::{Stream, stream},
+    dispatch::{Stream, item, stream},
     engines::session::logout::raw_get,
 };
 
@@ -77,16 +77,18 @@ pub enum RoomVersionStabilityDto {
 pub fn probe(engine: Arc<Engine>, account_id: String) -> Stream {
     stream(stream::once(async move {
         let probe = match engine.account(&account_id) {
-            Some(rt) => Some(probe_client(&engine, &rt, &account_id).await),
+            Some(rt) => Some(probe_client(&engine, rt, &account_id).await),
             None => None,
         };
-        Ok(json!(probe))
+        item(probe)
     }))
 }
 
+/// Holds `rt` only for the requests that carry its token: the software probe asks other hosts,
+/// for up to three requests of 8 s, and a teardown need not wait for it.
 async fn probe_client(
     engine: &Arc<Engine>,
-    rt: &AccountRuntime,
+    rt: Arc<AccountRuntime>,
     account_id: &str,
 ) -> HomeserverProbeDto {
     let client = &rt.client;
@@ -102,12 +104,17 @@ async fn probe_client(
             .map_or(account_id, |(_, server)| server)
             .to_owned(),
     };
-    let (software, versions, capabilities) = join3(
-        probe_server_software(engine, &base_url, &server_name),
-        fetch_spec_versions(engine, rt, &base_url),
-        fetch_capabilities(engine, rt, &base_url),
-    )
-    .await;
+    let base = base_url.as_str();
+    let authed = async move {
+        let rt = rt;
+        join(
+            fetch_spec_versions(engine, &rt, base),
+            fetch_capabilities(engine, &rt, base),
+        )
+        .await
+    };
+    let software = probe_server_software(engine, base, &server_name);
+    let (software, (versions, capabilities)) = join(software, authed).await;
     let (spec_versions, unstable_features) = versions.unzip();
     HomeserverProbeDto {
         server_name,
@@ -299,47 +306,61 @@ fn read_string_array(value: &Value, key: &str) -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::{Read, Write},
-        net::TcpListener,
-        sync::atomic::{AtomicUsize, Ordering},
-        thread,
-    };
-
-    use futures_util::StreamExt;
+    use futures_util::{FutureExt, StreamExt};
+    use matrix_sdk::{sleep::sleep, timeout::timeout};
+    use serde_json::json;
+    use tempfile::TempDir;
 
     use super::*;
-    use crate::{config::EngineConfig, dispatch::dispatch};
+    use crate::{
+        config::EngineConfig,
+        dispatch::dispatch,
+        testing::{builder_on, engine_in, live, requests, scripted, session},
+    };
 
-    /// A loopback server answering `/redirect` with a 302 to `/target`, and the hits on `/target`.
-    fn redirecting_server() -> (Url, Arc<AtomicUsize>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/redirect", listener.local_addr().unwrap());
-        let hits = Arc::new(AtomicUsize::new(0));
-        let target_hits = Arc::clone(&hits);
-        thread::spawn(move || {
-            for stream in listener.incoming() {
-                let mut stream = stream.unwrap();
-                let mut head = [0; 1024];
-                let read = stream.read(&mut head).unwrap();
-                let response = if head[..read].starts_with(b"GET /target") {
-                    target_hits.fetch_add(1, Ordering::SeqCst);
-                    "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}"
-                } else {
-                    "HTTP/1.1 302 Found\r\nlocation: /target\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
-                };
-                stream.write_all(response.as_bytes()).unwrap();
-            }
-        });
-        (Url::parse(&url).unwrap(), hits)
-    }
+    const OFFLINE: &str = "http://127.0.0.1:1";
 
     #[tokio::test]
     async fn a_redirect_is_no_answer_and_is_not_followed() {
-        let (url, target_hits) = redirecting_server();
+        const REDIRECT: &str = "GET /redirect";
+        let target = ("GET /target", 200, json!({}));
+        let (base, seen) = scripted(vec![(REDIRECT, 302, json!("/target")), target]);
         let engine = Engine::new(EngineConfig::default()).unwrap();
+        let url = Url::parse(&format!("{base}/redirect")).unwrap();
         assert_eq!(get_json(&engine, url).await, None);
-        assert_eq!(target_hits.load(Ordering::SeqCst), 0);
+        assert_eq!(requests(&seen), [(REDIRECT.to_owned(), None)]);
+    }
+
+    /// The software probe asks other hosts and never needs the account, so a remove during it
+    /// waits for none of it.
+    #[tokio::test]
+    async fn a_probe_lets_go_of_the_account_before_the_software_probe() {
+        // An https host that accepts and never answers, which the account's server name names.
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let user_id = format!("@a:{}", silent.local_addr().unwrap());
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let client = builder_on(OFFLINE).build().await.unwrap();
+        let held = Arc::downgrade(&live(&engine, &session(&user_id, OFFLINE), client).await);
+        let mut probing = probe(Arc::clone(&engine), user_id.clone());
+        // Past the first poll the engine holds the runtime, and the authed half until its
+        // refused connects fail.
+        let authed_ended = timeout(
+            async {
+                loop {
+                    let polled = probing.next().now_or_never();
+                    assert!(polled.is_none(), "the software probe waits");
+                    if held.strong_count() == 1 {
+                        break;
+                    }
+                    sleep(Duration::from_millis(10)).await;
+                }
+            },
+            Duration::from_secs(2),
+        );
+        assert!(authed_ended.await.is_ok(), "the authed half never ended");
+        let removed = timeout(engine.remove(&user_id), Duration::from_secs(2)).await;
+        assert!(removed.is_ok(), "the remove waited for the software probe");
     }
 
     #[tokio::test]

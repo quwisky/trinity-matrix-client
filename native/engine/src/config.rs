@@ -7,7 +7,7 @@ use zeroize::Zeroizing;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyUnavailable;
 
-/// The store key, read per start: piece 3's closure reads the OS keychain.
+/// The store key, read per start: an app host's closure reads the OS keychain.
 pub type StoreKey = Arc<dyn Fn() -> Result<Zeroizing<[u8; 32]>, KeyUnavailable> + Send + Sync>;
 
 #[derive(Clone)]

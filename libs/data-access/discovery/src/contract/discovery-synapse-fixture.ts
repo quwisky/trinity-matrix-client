@@ -1,54 +1,10 @@
-import { registerSynapseUser } from '@trinity/testing';
+import {
+  registerSynapseUser,
+  synapseRequest,
+  waitForSynapseBackgroundUpdates,
+} from '@trinity/testing';
 
 type SynapseUser = Awaited<ReturnType<typeof registerSynapseUser>>;
-
-/** A Client-Server API call as `token`, through plain HTTP so any engine can use the fixture. */
-async function api<T>(
-  baseUrl: string,
-  token: string,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
-  const res = await fetch(`${baseUrl}/_matrix/client/v3${path}`, {
-    method,
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json',
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  if (!res.ok) throw new Error(`${method} ${path} failed: ${res.status}`);
-  return (await res.json()) as T;
-}
-
-// A fresh Synapse rebuilds its user directory in a background update and drops users
-// registered meanwhile, so the contract users are only created once it has finished.
-async function waitForBackgroundUpdates(
-  baseUrl: string,
-  secret: string,
-): Promise<void> {
-  const admin = await registerSynapseUser(
-    baseUrl,
-    secret,
-    `admin-${Date.now().toString(36)}`,
-    true,
-  );
-  for (let i = 0; i < 240; i++) {
-    const res = await fetch(
-      `${baseUrl}/_synapse/admin/v1/background_updates/status`,
-      { headers: { authorization: `Bearer ${admin.accessToken}` } },
-    );
-    if (!res.ok)
-      throw new Error(`Synapse background update status failed: ${res.status}`);
-    const { current_updates } = (await res.json()) as {
-      current_updates: Record<string, unknown>;
-    };
-    if (Object.keys(current_updates).length === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error('Synapse background updates did not finish');
-}
 
 /**
  * The users, rooms and directory entries the discovery contract reads, on a live Synapse.
@@ -68,7 +24,7 @@ export async function discoverySynapseFixture(
   knockRoom: { roomId: string };
   otherUser: { userId: string; displayName: string };
 }> {
-  await waitForBackgroundUpdates(baseUrl, secret);
+  await waitForSynapseBackgroundUpdates(baseUrl, secret);
   const unique = Date.now().toString(36);
   const [me, other] = await Promise.all([
     registerSynapseUser(baseUrl, secret, `disc-a-${unique}`),
@@ -79,7 +35,7 @@ export async function discoverySynapseFixture(
     body: Record<string, unknown>,
   ): Promise<string> =>
     (
-      await api<{ room_id: string }>(
+      await synapseRequest<{ room_id: string }>(
         baseUrl,
         user.accessToken,
         'POST',
@@ -90,7 +46,7 @@ export async function discoverySynapseFixture(
 
   const displayName = `Other ${unique}`;
   const name = `Room ${unique}`;
-  await api(
+  await synapseRequest(
     baseUrl,
     other.accessToken,
     'PUT',
@@ -127,13 +83,11 @@ export async function discoverySynapseFixture(
     name: joinedName,
   });
   for (let i = 0; i < 20; i++) {
-    const { results } = await api<{ results: { user_id: string }[] }>(
-      baseUrl,
-      me.accessToken,
-      'POST',
-      '/user_directory/search',
-      { search_term: displayName },
-    );
+    const { results } = await synapseRequest<{
+      results: { user_id: string }[];
+    }>(baseUrl, me.accessToken, 'POST', '/user_directory/search', {
+      search_term: displayName,
+    });
     if (results.some((user) => user.user_id === other.userId)) break;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }

@@ -15,7 +15,6 @@ use futures_util::{StreamExt, future::join_all, stream};
 use matrix_sdk::{
     Client, ClientBuildError, Error, HttpError, RefreshTokenError, SessionTokens,
     bytes::Bytes,
-    config::RequestConfig,
     executor::spawn,
     reqwest::Url,
     ruma::api::{
@@ -30,28 +29,38 @@ use matrix_sdk::{
     },
     timeout::timeout,
 };
-use serde_json::json;
+use serde_json::Value;
 
 use super::{
-    MatrixSessionDto, ServerLogoutHoldUpdateDto, SessionStorageEffectDto, UiaAuthDto, done, reply,
+    MatrixSessionDto, ServerLogoutHoldUpdateDto, SessionStorageEffectDto, UiaAuthDto, done,
     restore::{auth_session, session_meta},
+    runtime::stop_sync,
 };
 use crate::{
-    accounts::{AccountRuntime, Engine, SessionState},
+    accounts::{AccountRuntime, Engine, SessionState, Stores},
     barrier::{Barrier, DELIVERY_LIMIT, Subscribers, Tracked},
-    dispatch::{Stream, stream},
-    failure::{
-        EngineResult, account_not_live, http_error_from_response, refresh_logs_out, request_failure,
-    },
-    wire::{Fault, FaultKind},
+    dispatch::{Stream, detached, item, reply, stream},
+    engines::member::{on_account, sent_once},
+    failure::{EngineResult, http_error_from_response, refresh_logs_out, request_failure},
+    wire::{Fault, FaultCode},
 };
 
-// Without `native` no start sets the SDK's session callbacks or registers a client.
-#[cfg_attr(not(feature = "native"), allow(dead_code))]
+#[cfg_attr(
+    not(feature = "native"),
+    allow(
+        dead_code,
+        reason = "without `native` no start sets the session callbacks"
+    )
+)]
 type CallbackError = Box<dyn std::error::Error + Send + Sync>;
 
-/// A runtime the rule retired, and whether its stores go with it.
-type Retired = Option<(Arc<AccountRuntime>, bool)>;
+/// A runtime the rule retired, and what happens to its stores.
+type Retired = Option<(Arc<AccountRuntime>, Stores)>;
+
+/// How long a sign-out's logout may take, cut off as an `ElapsedError`. Uncut it can take three
+/// 30 s requests (an OAuth one asks for the versions and the metadata, then revokes; a refreshable
+/// session refreshes and sends again), and a detached sign-out must end within `HOLDER_LIMIT`.
+const LOGOUT_LIMIT: Duration = Duration::from_secs(60);
 
 /// Every account's logout holds and their streams.
 #[derive(Default)]
@@ -107,7 +116,10 @@ impl Holds {
 
     /// A new client registered for the account: it forgets a recorded death, and tells a sign-in
     /// again after a soft logout.
-    #[cfg_attr(not(feature = "native"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "native"),
+        allow(dead_code, reason = "without `native` no start registers a client")
+    )]
     pub(crate) fn registered(&mut self, account_id: &str, signed_in_again: bool) -> Barrier {
         let Some(holds) = self.by_account.get_mut(account_id) else {
             return Barrier::default();
@@ -240,14 +252,8 @@ fn broadcast_first(err: &Error) -> bool {
     }
 }
 
-/// One request, as js sends it: the SDK's default retries a 5xx or 429 for up to 15 minutes, and
-/// a retried deactivation that the server completed meets the dead token (S17).
-pub(crate) fn sent_once() -> RequestConfig {
-    RequestConfig::new().disable_retry()
-}
-
 /// An account's token for a raw request, which only this module can make, so every raw request
-/// that carries a token meets the token-death rule (O8).
+/// that carries a token meets the token-death rule.
 // No `Debug`: it is the token.
 pub(crate) struct RawToken(String);
 
@@ -274,7 +280,7 @@ impl SessionState {
             TokenDeath::MarkDied => {
                 if let Some(rt) = runtime {
                     let service = Arc::clone(&rt.sync_service);
-                    drop(spawn(async move { service.stop().await }));
+                    drop(spawn(async move { stop_sync(&service).await }));
                 }
                 (self.holds.mark_died(account_id), None)
             }
@@ -315,7 +321,8 @@ impl SessionState {
             }
         };
         let effected = self.effects.publish(&effect);
-        (published.join(effected), runtime.map(|rt| (rt, !soft)))
+        let stores = if soft { Stores::Keep } else { Stores::Delete };
+        (published.join(effected), runtime.map(|rt| (rt, stores)))
     }
 }
 
@@ -345,7 +352,8 @@ impl Engine {
             .await;
     }
 
-    /// The cross-slice rule: marks a dead token before the command replies.
+    /// The token-death rule for a command's request error: marks a dead token before the command
+    /// replies.
     pub(crate) fn on_request_error(
         self: &Arc<Self>,
         rt: &AccountRuntime,
@@ -366,7 +374,7 @@ impl Engine {
         barrier.delivered().await;
     }
 
-    /// A command's typed call through the account's client (O8): a refresh it made, and the rule
+    /// A command's typed call through the account's client: a refresh it made, and the rule
     /// for its error, reach the subscribers before it returns.
     pub(crate) async fn ruled<T, E: Into<Error>>(
         self: &Arc<Self>,
@@ -425,7 +433,7 @@ impl Engine {
     }
 
     /// What the rule has published for the account since its start.
-    fn deaths_of(&self, account_id: &str) -> Barrier {
+    pub(crate) fn deaths_of(&self, account_id: &str) -> Barrier {
         let state = self.state.lock();
         state.deaths.get(account_id).cloned().unwrap_or_default()
     }
@@ -439,9 +447,19 @@ impl Engine {
     /// Logs the account out at its homeserver, its sync stopped first, so its own logout is no
     /// token death. A failed logout meets the rule: a dead token still logs the account out.
     pub(crate) async fn sign_out(self: &Arc<Self>, rt: &Arc<AccountRuntime>) -> Result<(), Error> {
+        self.sign_out_within(rt, LOGOUT_LIMIT).await
+    }
+
+    async fn sign_out_within(
+        self: &Arc<Self>,
+        rt: &Arc<AccountRuntime>,
+        limit: Duration,
+    ) -> Result<(), Error> {
         rt.signed_out.store(true, Ordering::Relaxed);
-        rt.sync_service.stop().await;
-        let Err(err) = self.logout_request(rt).await else {
+        stop_sync(&rt.sync_service).await;
+        let logout = timeout(self.logout_request(rt), limit).await;
+        let logout = logout.unwrap_or_else(|elapsed| Err(Error::UnknownError(elapsed.into())));
+        let Err(err) = logout else {
             return Ok(());
         };
         rt.signed_out.store(false, Ordering::Relaxed);
@@ -449,7 +467,7 @@ impl Engine {
         Err(err)
     }
 
-    /// The account's logout, sent once (S17). The SDK fetches an OAuth server's metadata with the
+    /// The account's logout, sent once. The SDK fetches an OAuth server's metadata with the
     /// client's own retrying config, so a client that never retries revokes an OAuth token.
     async fn logout_request(&self, rt: &AccountRuntime) -> Result<(), Error> {
         let Some(oauth) = rt.client.oauth().full_session() else {
@@ -472,8 +490,8 @@ impl Engine {
     }
 
     fn tear_down_retired(&self, account_id: &str, retired: Retired) {
-        if let Some((runtime, delete_stores)) = retired {
-            drop(self.tear_down(account_id, Some(runtime), delete_stores));
+        if let Some((runtime, stores)) = retired {
+            drop(self.tear_down(account_id, Some(runtime), stores));
         }
     }
 }
@@ -521,7 +539,7 @@ async fn get(
 }
 
 /// [`get_with_refresh`] with a live account's client; a failure meets the token-death rule
-/// before it is returned (O8). Its own refresh never broadcasts, so no broadcast is awaited.
+/// before it is returned. Its own refresh never broadcasts, so no broadcast is awaited.
 pub(crate) async fn raw_get(
     engine: &Arc<Engine>,
     rt: &AccountRuntime,
@@ -540,7 +558,13 @@ pub(crate) async fn raw_get(
 }
 
 /// The SDK's reload callback, which runs only under the cross-process lock, which is off.
-#[cfg_attr(not(feature = "native"), allow(dead_code))]
+#[cfg_attr(
+    not(feature = "native"),
+    allow(
+        dead_code,
+        reason = "without `native` no start sets the session callbacks"
+    )
+)]
 pub(crate) fn reload_tokens(client: Client) -> Result<SessionTokens, CallbackError> {
     client.session_tokens().ok_or_else(|| "no session".into())
 }
@@ -548,7 +572,13 @@ pub(crate) fn reload_tokens(client: Client) -> Result<SessionTokens, CallbackErr
 /// The SDK's save callback, which runs once the client has adopted refreshed tokens, retired or
 /// not. It republishes the live tokens, and always reports the rotation for storage to save, as
 /// js persists for a retired client.
-#[cfg_attr(not(feature = "native"), allow(dead_code))]
+#[cfg_attr(
+    not(feature = "native"),
+    allow(
+        dead_code,
+        reason = "without `native` no start sets the session callbacks"
+    )
+)]
 pub(crate) fn save_tokens_callback(
     engine: Weak<Engine>,
     account_id: String,
@@ -560,7 +590,7 @@ pub(crate) fn save_tokens_callback(
         };
         let tokens = client.session_tokens().ok_or("no session")?;
         let mut state = engine.state.lock();
-        // Only a current client's token is published, and a refreshed one has no expiry (H8).
+        // Only a current client's token is published, and a refreshed one has no expiry.
         let published = state.publish_snapshot();
         let rotated = state
             .effects
@@ -606,7 +636,7 @@ pub fn hold_server_logout(engine: Arc<Engine>, account_id: String) -> Stream {
         hold_id,
         engine: Arc::downgrade(&engine),
     };
-    stream(hold.map(|update| Ok(json!(update))))
+    stream(hold.map(item))
 }
 
 pub fn release_server_logout_hold(engine: Arc<Engine>, hold_id: String, deleted: bool) -> Stream {
@@ -619,41 +649,42 @@ pub fn deactivate_account(
     erase: bool,
     auth: Option<UiaAuthDto>,
 ) -> Stream {
-    reply(async move {
-        let Some(rt) = engine.account(&account_id) else {
-            return not_live(&engine, &account_id).await;
-        };
-        let mut request = deactivate::v3::Request::new();
-        (request.auth, request.erase) = (auth.map(uia_auth_data), erase);
-        let deactivate = rt.client.send(request).with_request_config(sent_once());
-        match engine.ruled(&rt, deactivate).await {
-            Ok(_) => EngineResult::Ok(()),
-            Err(err) => EngineResult::Err(request_failure(&err)),
-        }
-    })
+    reply(on_account(
+        engine,
+        account_id,
+        request_failure,
+        move |engine, rt| async move {
+            let mut request = deactivate::v3::Request::new();
+            (request.auth, request.erase) = (auth.map(uia_auth_data), erase);
+            let deactivate = rt.client.send(request).with_request_config(sent_once());
+            engine.ruled(&rt, deactivate).await.map(drop)
+        },
+    ))
 }
 
-/// Logs a live account out at its homeserver; it stays live with its sync stopped.
+/// Logs a live account out at its homeserver; it stays live with its sync stopped. Detached, so a
+/// close never leaves it signed out without its logout. It ends within `HOLDER_LIMIT` (120 s): a
+/// stop of at most 30 s, a logout cut off after `LOGOUT_LIMIT` (60 s), then the rule's delivery
+/// waits of at most 10 s, 100 s in all.
 pub fn logout_remote(engine: Arc<Engine>, account_id: String) -> Stream {
-    reply(async move {
-        let Some(rt) = engine.account(&account_id) else {
-            return not_live(&engine, &account_id).await;
-        };
-        match engine.sign_out(&rt).await {
-            Ok(()) => EngineResult::Ok(()),
-            Err(err) => EngineResult::Err(request_failure(&err)),
-        }
-    })
+    detached(on_account(
+        engine,
+        account_id,
+        request_failure,
+        |engine, rt| async move { engine.sign_out(&rt).await },
+    ))
 }
 
-/// Logs every live account out at its homeserver, ignoring failures.
+/// Logs every live account out at its homeserver, ignoring failures; detached, and as long as
+/// `logoutRemote`, since the sign-outs run side by side.
 pub fn sign_out_all(engine: Arc<Engine>) -> Stream {
-    done(async move {
+    detached(async move {
         let engine = &engine;
         // Each runtime moves into its own sign-out, so it is let go of as that one ends.
         let sign_outs = (engine.live_runtimes().into_iter())
             .map(|rt| async move { drop(engine.sign_out(&rt).await) });
         join_all(sign_outs).await;
+        Value::Null
     })
 }
 
@@ -663,33 +694,27 @@ pub fn logout_session(engine: Arc<Engine>, session: MatrixSessionDto) -> Stream 
     stream(stream::once(async move {
         let meta = session_meta("session.logoutSession", &session)?;
         let built = engine.logout_client(&session.base_url).await;
-        let client = built.map_err(|_| Fault {
-            kind: FaultKind::Internal,
-            code: "client-build-failed".into(),
-            diagnostic: "the logout client did not build".into(),
+        let client = built.map_err(|_| {
+            Fault::new(
+                FaultCode::ClientBuildFailed,
+                "the logout client did not build",
+            )
         })?;
         let logged_out = async {
             client.restore_session(auth_session(&session, meta)).await?;
             client.logout().await
         };
-        Ok(json!(match logged_out.await {
+        item(match logged_out.await {
             Ok(()) => EngineResult::Ok(()),
             Err(err) => EngineResult::Err(request_failure(&err)),
-        }))
+        })
     }))
-}
-
-/// `account-not-live`. The sync may have met a dead token first: its logout reaches the caller
-/// first.
-async fn not_live(engine: &Engine, account_id: &str) -> EngineResult<()> {
-    engine.deaths_of(account_id).delivered().await;
-    EngineResult::Err(account_not_live())
 }
 
 /// The storage writes the caller owes the engine, from subscribe on, with no replay.
 pub fn storage_effects(engine: Arc<Engine>) -> Stream {
     let (_, effects) = engine.state.lock().effects.subscribe(None);
-    stream(effects.map(|effect| Ok(json!(effect))))
+    stream(effects.map(item))
 }
 
 /// A hold's stream. Dropped, as when the carrier closes it, it releases the hold as not
@@ -718,16 +743,11 @@ impl Drop for Hold {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::{BufRead, BufReader, Read, Write},
-        net::TcpListener,
-        sync::Mutex as StdMutex,
-        thread,
-    };
+    use std::sync::Mutex as StdMutex;
 
     use futures_util::{FutureExt, StreamExt};
     use matrix_sdk::{
-        ClientBuilder, SessionMeta, SessionTokens,
+        SessionMeta,
         authentication::{
             matrix::MatrixSession,
             oauth::{
@@ -735,8 +755,8 @@ mod tests {
                 error::{BasicErrorResponseType, RequestTokenError, StandardErrorResponse},
             },
         },
-        config::RequestConfig,
-        ruma::{api::MatrixVersion, exports::http::StatusCode, owned_user_id},
+        ruma::{exports::http::StatusCode, owned_user_id},
+        sleep::sleep,
     };
     use serde_json::{Value, json};
     use tempfile::TempDir;
@@ -744,11 +764,12 @@ mod tests {
     use super::*;
     use crate::{
         config::EngineConfig,
-        engines::session::{
-            MatrixSessionDto,
-            reads::{account_status, tests::runtime_on},
+        engines::session::reads::account_status,
+        failure::{FailureCode, FailureKind, RefreshCause, http_error_from_response},
+        testing::{
+            WHOAMI, builder_on, default_client, engine_in, live, password, requests, scripted,
+            session,
         },
-        failure::{FailureCode, RefreshCause, http_error_from_response},
     };
 
     #[test]
@@ -890,71 +911,8 @@ mod tests {
         assert_eq!(to_json(json!({"session": "s"})), json!({"session": "s"}));
     }
 
-    type Seen = Arc<StdMutex<Vec<(String, Option<String>)>>>;
-
     const GET_X: &str = "GET /x";
     const REFRESH: &str = "POST /_matrix/client/v3/refresh";
-    const WHOAMI: &str = "GET /_matrix/client/v3/account/whoami";
-
-    /// A homeserver on loopback that answers the scripted requests in order, and records each
-    /// one's method and path and its `Authorization`. It names its versions for a client that
-    /// asks, and any other request, such as the client's own background ones, gets a 404.
-    fn scripted(answers: Vec<(&'static str, u16, Value)>) -> (String, Seen) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let seen = Seen::default();
-        let log = Arc::clone(&seen);
-        thread::spawn(move || {
-            let mut answers = answers.into_iter().peekable();
-            while let Some((expected, ..)) = answers.peek() {
-                let expected = *expected;
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                let target = line.split(' ').take(2).collect::<Vec<_>>().join(" ");
-                let (mut authorization, mut length) = (None, 0);
-                loop {
-                    line.clear();
-                    reader.read_line(&mut line).unwrap();
-                    let Some((name, value)) = line.trim_end().split_once(": ") else {
-                        break;
-                    };
-                    match name.to_ascii_lowercase().as_str() {
-                        "authorization" => authorization = Some(value.to_owned()),
-                        "content-length" => length = value.parse().unwrap(),
-                        _ => {}
-                    }
-                }
-                reader.read_exact(&mut vec![0; length]).unwrap();
-                let (status, body) = if target == expected {
-                    log.lock().unwrap().push((target, authorization));
-                    let (_, status, body) = answers.next().unwrap();
-                    (status, body)
-                } else if target == "GET /_matrix/client/versions" {
-                    (200, json!({"versions": ["v1.15"]}))
-                } else {
-                    (404, json!({"errcode": "M_NOT_FOUND", "error": "x"}))
-                };
-                let body = body.to_string();
-                let reply = format!(
-                    "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\n\
-                     content-length: {}\r\nconnection: close\r\n\r\n{body}",
-                    body.len()
-                );
-                stream.write_all(reply.as_bytes()).unwrap();
-            }
-        });
-        (base, seen)
-    }
-
-    /// A memory-store client that never asks for the versions and never retries.
-    fn builder_on(base: &str) -> ClientBuilder {
-        Client::builder()
-            .homeserver_url(base)
-            .server_versions([MatrixVersion::V1_13])
-            .request_config(RequestConfig::new().disable_retry())
-    }
 
     /// A client restored with `t1`/`r1`.
     async fn client_on(base: &str) -> Client {
@@ -972,10 +930,6 @@ mod tests {
             .await
             .unwrap();
         client
-    }
-
-    fn requests(seen: &Seen) -> Vec<(String, Option<String>)> {
-        seen.lock().unwrap().clone()
     }
 
     fn get(token: &str) -> (String, Option<String>) {
@@ -1038,46 +992,6 @@ mod tests {
         let err = fetched(&base, &client, false).await.unwrap_err();
         assert_eq!(unknown_token(&err), Some(false));
         assert_eq!(requests(&seen), [get("t1")]);
-    }
-
-    fn engine_in(root: &TempDir) -> Arc<Engine> {
-        Engine::new(EngineConfig {
-            data_dir: root.path().join("data"),
-            cache_dir: root.path().join("cache"),
-            ..EngineConfig::default()
-        })
-        .unwrap()
-    }
-
-    /// A session with `t1`/`r1` that may refresh: Matrix-native refresh needs no OAuth metadata.
-    fn session(user_id: &str, base_url: &str) -> MatrixSessionDto {
-        serde_json::from_value(json!({
-            "baseUrl": base_url,
-            "userId": user_id,
-            "deviceId": "DEV",
-            "accessToken": "t1",
-            "refreshToken": "r1",
-            "oidc": {"issuer": "https://id.example", "clientId": "client"},
-        }))
-        .unwrap()
-    }
-
-    /// Registers a never-started runtime of `s` on `client` as the account's live one.
-    async fn live(
-        engine: &Arc<Engine>,
-        s: &MatrixSessionDto,
-        client: Client,
-    ) -> Arc<AccountRuntime> {
-        let generation = engine
-            .state
-            .lock()
-            .registry
-            .register(&s.user_id, &s.device_id);
-        let rt = Arc::new(runtime_on(engine, s, generation, client).await);
-        let mut state = engine.state.lock();
-        state.runtimes.insert(s.user_id.clone(), Arc::clone(&rt));
-        let _ = state.publish_snapshot();
-        rt
     }
 
     /// Records every storage effect, polling as the carrier does.
@@ -1243,7 +1157,7 @@ mod tests {
         let mut s = session("not-a-user-id", "http://127.0.0.1:1");
         s.access_token = "secret-token".into();
         let fault = logout_session(engine, s).next().await.unwrap().unwrap_err();
-        assert_eq!(fault.code, "bad-args");
+        assert_eq!(fault.code, FaultCode::BadArgs);
         assert!(!fault.diagnostic.contains("secret-token") && !fault.diagnostic.contains("not-a"));
     }
 
@@ -1301,12 +1215,6 @@ mod tests {
         assert_eq!(rotated["kind"], json!("tokens-rotated"));
         assert!(effects.next().now_or_never().is_none());
         assert_eq!(reply.await.unwrap().unwrap(), json!("active"));
-    }
-
-    fn password(base_url: &str) -> MatrixSessionDto {
-        let mut password = session("@a:b", base_url);
-        (password.oidc, password.refresh_token) = (None, None);
-        password
     }
 
     /// As in js, one 5xx fails an account command: the SDK's default would send it again, and a
@@ -1369,20 +1277,8 @@ mod tests {
             let (base, seen) = scripted(vec![(request, 502, unavailable), (request, 200, ok)]);
             let root = TempDir::new().unwrap();
             let engine = engine_in(&root);
-            // The SDK's default request config, as an account's client has.
-            let client = (engine.client_builder().homeserver_url(&base))
-                .server_versions([MatrixVersion::V1_13])
-                .build()
-                .await
-                .unwrap();
-            // An OAuth account's client is an OAuth one, as a start restores it.
             let account = account(&base);
-            let meta = session_meta("test", &account).unwrap();
-            client
-                .restore_session(auth_session(&account, meta))
-                .await
-                .unwrap();
-            drop(live(&engine, &account, client).await);
+            drop(live(&engine, &account, default_client(&engine, &account).await).await);
             let reply = command(Arc::clone(&engine), &base).next().await;
             let reply = reply.unwrap().unwrap();
             let kind = reply.pointer("/failure/kind").unwrap_or(&reply);
@@ -1392,6 +1288,56 @@ mod tests {
                 "{request}"
             );
         }
+    }
+
+    /// Closed after its first poll, a sign-out still ends: its failed logout clears the sign-out,
+    /// so the account may sync again.
+    #[tokio::test]
+    async fn a_sign_out_closed_mid_flight_still_settles() {
+        const LOGOUT: &str = "POST /_matrix/client/v3/logout";
+        let commands: [fn(Arc<Engine>) -> Stream; 2] =
+            [|engine| logout_remote(engine, "@a:b".into()), sign_out_all];
+        for command in commands {
+            let unavailable = json!({"errcode": "M_UNKNOWN", "error": "x"});
+            let (base, seen) = scripted(vec![(LOGOUT, 502, unavailable)]);
+            let root = TempDir::new().unwrap();
+            let engine = engine_in(&root);
+            let client = builder_on(&base).build().await.unwrap();
+            let rt = live(&engine, &password(&base), client).await;
+            let mut closed = command(Arc::clone(&engine));
+            assert!(
+                closed.next().now_or_never().is_none(),
+                "the logout is in flight"
+            );
+            drop(closed);
+            let settled = async {
+                while requests(&seen).is_empty() || !engine.may_sync("@a:b", rt.generation) {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            };
+            let settled = timeout(settled, Duration::from_secs(5)).await;
+            assert!(settled.is_ok(), "the close cut the sign-out short");
+        }
+    }
+
+    /// A logout that never answers is cut off at its limit as a `timeout` failure, and the
+    /// account may sync again.
+    #[tokio::test]
+    async fn a_logout_that_never_answers_is_cut_off_as_a_timeout() {
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", silent.local_addr().unwrap());
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let client = builder_on(&base).build().await.unwrap();
+        let rt = live(&engine, &password(&base), client).await;
+        let signed_out = engine.sign_out_within(&rt, Duration::from_millis(300));
+        let outcome = timeout(signed_out, Duration::from_secs(5)).await;
+        let err = outcome.expect("the logout outlived its limit").unwrap_err();
+        assert_eq!(request_failure(&err).kind, FailureKind::Timeout);
+        assert!(
+            engine.may_sync("@a:b", rt.generation),
+            "the sign-out is cleared"
+        );
     }
 
     #[tokio::test]

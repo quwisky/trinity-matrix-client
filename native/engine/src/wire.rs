@@ -48,8 +48,66 @@ pub enum Frame {
 #[ts(export, export_to = DTO)]
 pub struct Fault {
     pub kind: FaultKind,
-    pub code: String,
+    #[ts(type = "string")]
+    pub code: FaultCode,
     pub diagnostic: String,
+}
+
+impl Fault {
+    /// A fault of the kind `code` belongs to. The diagnostic quotes no value: faults are logged.
+    pub fn new(code: FaultCode, diagnostic: impl Into<String>) -> Self {
+        Self {
+            kind: code.kind(),
+            code,
+            diagnostic: diagnostic.into(),
+        }
+    }
+}
+
+/// A fault's `code`, on the wire as kebab-case text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(into = "&'static str")]
+pub enum FaultCode {
+    Panic,
+    BadArgs,
+    UnknownMethod,
+    StartFailed,
+    ClientBuildFailed,
+    StoreFailed,
+    Unsupported,
+    SerializeFailed,
+}
+
+impl FaultCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Panic => "panic",
+            Self::BadArgs => "bad-args",
+            Self::UnknownMethod => "unknown-method",
+            Self::StartFailed => "start-failed",
+            Self::ClientBuildFailed => "client-build-failed",
+            Self::StoreFailed => "store-failed",
+            Self::Unsupported => "unsupported",
+            Self::SerializeFailed => "serialize-failed",
+        }
+    }
+
+    fn kind(self) -> FaultKind {
+        match self {
+            Self::BadArgs | Self::UnknownMethod | Self::Unsupported => FaultKind::Protocol,
+            Self::Panic
+            | Self::StartFailed
+            | Self::ClientBuildFailed
+            | Self::StoreFailed
+            | Self::SerializeFailed => FaultKind::Internal,
+        }
+    }
+}
+
+impl From<FaultCode> for &'static str {
+    fn from(code: FaultCode) -> Self {
+        code.as_str()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -83,11 +141,7 @@ mod tests {
             to_json(Frame::Complete { id: 3 }),
             json!({"k": "complete", "id": 3})
         );
-        let fault = Fault {
-            kind: FaultKind::Protocol,
-            code: "unknown-method".into(),
-            diagnostic: "no method x.y".into(),
-        };
+        let fault = Fault::new(FaultCode::UnknownMethod, "no method x.y");
         assert_eq!(
             to_json(Frame::Error { id: 3, e: fault }),
             json!({
