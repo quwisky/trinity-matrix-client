@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_stream::stream;
 use futures_util::{Stream, StreamExt};
 use matrix_sdk::{
-    Client, Error, RoomState,
+    Client, Error, RoomDisplayName, RoomState,
     ruma::{
         RoomAliasId, RoomId, RoomOrAliasId,
         api::client::{
@@ -32,11 +32,12 @@ use super::{
 use crate::{
     accounts::Engine,
     dispatch::{Stream as Items, detached, reply},
-    failure::{classify, request_failed, too_large_or_failed},
+    failure::{classify, too_large_or_failed},
 };
 
 const DTO: &str = "data-access/media/src/lib/rust-dto/";
 const IMAGE_PACK: &str = "m.room.image_pack";
+const MAX_VIA: usize = 3;
 const ROOM_EMOTES: &str = "im.ponies.room_emotes";
 
 /// `AccountDataSnapshot`: each watched type's content, or null.
@@ -67,7 +68,7 @@ pub fn fetch_account_data(engine: Arc<Engine>, account_id: String, event_type: S
     reply(on_account(
         engine,
         account_id,
-        request_failed,
+        too_large_or_failed,
         move |engine, rt| async move {
             let read = account_data::get(&rt.client, &event_type);
             engine.ruled(&rt, read).await
@@ -104,7 +105,7 @@ pub fn fetch_room_state(
     reply(on_account(
         engine,
         account_id,
-        request_failed,
+        too_large_or_failed,
         move |engine, rt| async move {
             let room = RoomId::parse(&room_id)?;
             let kind = StateEventType::from(event_type);
@@ -144,9 +145,9 @@ pub fn join_pack_room(engine: Arc<Engine>, account_id: String, room_id_or_alias:
     detached(on_account(
         engine,
         account_id,
-        request_failed,
+        too_large_or_failed,
         move |engine, rt| async move {
-            let (room_id, via) = if room_id_or_alias.starts_with('#') {
+            let (room_id, mut via) = if room_id_or_alias.starts_with('#') {
                 let alias = RoomAliasId::parse(&room_id_or_alias)?;
                 let request = get_alias::v3::Request::new(alias);
                 let send = rt.client.send(request).with_request_config(sent_once());
@@ -155,6 +156,8 @@ pub fn join_pack_room(engine: Arc<Engine>, account_id: String, room_id_or_alias:
             } else {
                 (RoomId::parse(&room_id_or_alias)?, Vec::new())
             };
+            // As js: a long list could exceed a proxy's URL limit.
+            via.truncate(MAX_VIA);
             let joined =
                 (rt.client.get_room(&room_id)).is_some_and(|r| r.state() == RoomState::Joined);
             if !joined {
@@ -192,7 +195,10 @@ fn pack_state<E>(state: &[Raw<E>]) -> (Option<String>, Vec<Value>) {
         };
         let kind = event["type"].as_str().unwrap_or_default().to_owned();
         let key = event["state_key"].as_str().map(str::to_owned);
-        let content = event["content"].take();
+        let content = event
+            .get_mut("content")
+            .map(Value::take)
+            .unwrap_or(Value::Null);
         match (kind.as_str(), key) {
             ("m.room.name", Some(key)) if key.is_empty() => {
                 name = content["name"]
@@ -211,7 +217,12 @@ fn pack_state<E>(state: &[Raw<E>]) -> (Option<String>, Vec<Value>) {
 
 async fn local_name(client: &Client, room_id: &RoomId) -> Option<String> {
     let room = client.get_room(room_id)?;
-    Some(room.display_name().await.ok()?.to_string())
+    // js's room is unstored until sync, so an unnamed one has no name there; "Empty Room" is
+    // unlocalised English.
+    match room.display_name().await.ok()? {
+        RoomDisplayName::Empty | RoomDisplayName::EmptyWas(_) => None,
+        name => Some(name.to_string()),
+    }
 }
 
 fn nulls(types: &[String]) -> Snapshot {
@@ -506,7 +517,7 @@ mod tests {
         let alias = "GET /_matrix/client/v3/directory/room/*";
         let join = "POST /_matrix/client/v3/join/*";
         let state = format!("GET {STATE}").leak();
-        let found = json!({"room_id": "!r:b", "servers": ["b"]});
+        let found = json!({"room_id": "!r:b", "servers": ["a", "b", "c", "d", "e"]});
         let (base, seen) = scripted(vec![
             (alias, 200, found),
             (join, 200, json!({"room_id": "!r:b"})),
@@ -524,10 +535,8 @@ mod tests {
             seen[0].starts_with("GET /_matrix/client/v3/directory/room/"),
             "{seen:?}"
         );
-        assert!(
-            seen[1].starts_with("POST /_matrix/client/v3/join/!r:b"),
-            "{seen:?}"
-        );
+        let join_target = "POST /_matrix/client/v3/join/!r:b?via=a&via=b&via=c";
+        assert_eq!(seen[1], join_target, "the first three servers only");
         assert_eq!(seen[2], format!("GET {STATE}"));
     }
 
@@ -550,6 +559,46 @@ mod tests {
         let answer = answer_of(&engine, "expression.joinPackRoom", args).await;
         assert_eq!(answer["ok"], json!(true), "{answer}");
         assert_eq!(answer["value"]["events"], packs());
+    }
+
+    #[test]
+    fn a_state_entry_that_is_no_object_is_skipped_without_a_panic() {
+        let raw = |text: &str| Raw::<Value>::from_json_string(text.to_owned()).unwrap();
+        let events = [
+            raw("[5]"),
+            raw("5"),
+            raw(r#"{"type":"m.room.image_pack","state_key":"y"}"#),
+        ];
+        let (_, packs) = pack_state(&events);
+        let pack = json!({"type": "m.room.image_pack", "state_key": "y", "content": null});
+        assert_eq!(packs, [pack]);
+    }
+
+    #[tokio::test]
+    async fn a_413_on_the_join_is_too_large_as_in_js() {
+        let alias = "GET /_matrix/client/v3/directory/room/*";
+        let too_large = json!({"errcode": "M_TOO_LARGE", "error": "x"});
+        let (base, _) = scripted(vec![(alias, 413, too_large)]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        let args = vec![json!("@a:b"), json!("#pack:b")];
+        let answer = answer_of(&engine, "expression.joinPackRoom", args).await;
+        assert_eq!(answer["failure"]["code"], json!("too-large"));
+    }
+
+    #[tokio::test]
+    async fn an_unnamed_room_has_no_name_rather_than_empty_room() {
+        let state = format!("GET {STATE}").leak();
+        let (base, _) = scripted(vec![
+            sync_answer(0, joined_room()),
+            (state, 200, state_of(None)),
+        ]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        sync(&engine.account("@a:b").unwrap().client).await;
+        let args = vec![json!("@a:b"), json!("!r:b")];
+        let answer = answer_of(&engine, "expression.joinPackRoom", args).await;
+        assert_eq!(answer["value"]["roomName"], json!(null), "{answer}");
     }
 
     #[test]

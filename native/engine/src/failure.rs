@@ -442,20 +442,6 @@ pub fn request_failed(err: &Error) -> EngineFailure {
     }
 }
 
-/// The js adapter's `tooLargeOrFailed`: `too-large` for `M_TOO_LARGE` or a 413, else
-/// [`request_failed`], which keeps an `M_FORBIDDEN` as `kind: permission`.
-pub fn too_large_or_failed(err: &Error) -> EngineFailure {
-    let (kind, diagnostic) = classify(err);
-    if diagnostic.errcode.as_deref() == Some("M_TOO_LARGE") || diagnostic.http_status == Some(413) {
-        return EngineFailure {
-            kind,
-            diagnostic,
-            code: FailureCode::TooLarge,
-        };
-    }
-    request_failed(err)
-}
-
 /// The js adapter's `inviteFailed`: `invite-blocked` where the invitee blocks invites (MSC4155),
 /// else [`request_failed`].
 pub fn invite_failed(err: &Error) -> EngineFailure {
@@ -468,6 +454,23 @@ pub fn invite_failed(err: &Error) -> EngineFailure {
             kind,
             diagnostic,
             code: FailureCode::InviteBlocked,
+        };
+    }
+    request_failed(err)
+}
+
+/// `M_TOO_LARGE` or a 413: `too-large` with the server's classification. Otherwise `request_failed`.
+pub fn too_large_or_failed(err: &Error) -> EngineFailure {
+    if let Error::Http(http) = err
+        && let Some(RumaApiError::MatrixError(error)) = server_error(http)
+        && (error.status_code.as_u16() == 413
+            || errcode(&error.body).as_deref() == Some("M_TOO_LARGE"))
+    {
+        let (kind, diagnostic) = classify(err);
+        return EngineFailure {
+            kind,
+            diagnostic,
+            code: FailureCode::TooLarge,
         };
     }
     request_failed(err)
@@ -855,29 +858,6 @@ mod tests {
     }
 
     #[test]
-    fn too_large_or_failed_table() {
-        let table = [
-            (matrix_error(413, "M_TOO_LARGE"), true, FailureKind::Http),
-            (matrix_error(400, "M_TOO_LARGE"), true, FailureKind::Http),
-            (response(413, "<html>", None), true, FailureKind::Http),
-            (
-                matrix_error(403, "M_FORBIDDEN"),
-                false,
-                FailureKind::Permission,
-            ),
-            (matrix_error(400, "M_BAD_JSON"), false, FailureKind::Http),
-        ];
-        for (error, too_large, kind) in table {
-            let failure = too_large_or_failed(&error.into());
-            assert_eq!(failure.code == FailureCode::TooLarge, too_large);
-            assert_eq!(failure.kind, kind);
-            if !too_large {
-                assert!(matches!(failure.code, FailureCode::RequestFailed { .. }));
-            }
-        }
-    }
-
-    #[test]
     fn uia_or_request_failed_table() {
         let challenge = json!({"flows": [{"stages": ["m.login.password"]}], "session": "s"});
         let uia = uia_or_request_failed(&response(401, &challenge.to_string(), None).into());
@@ -966,6 +946,43 @@ mod tests {
                 "diagnostic": {"kind": "http", "httpStatus": 403, "errcode": "M_INVITE_BLOCKED"},
             })
         );
+    }
+
+    #[test]
+    fn too_large_or_failed_table() {
+        let bare_413 = || response(413, "<html>", None);
+        let table = [
+            (matrix_error(413, "M_TOO_LARGE"), true),
+            (matrix_error(400, "M_TOO_LARGE"), true),
+            (response(413, "{}", None), true),
+            (bare_413(), true),
+            (HttpError::Cached(Arc::new(bare_413())), true),
+            (matrix_error(500, "M_UNKNOWN"), false),
+            (matrix_error(403, "M_FORBIDDEN"), false),
+        ];
+        for (error, too_large) in table {
+            let error = Error::from(error);
+            let failure = too_large_or_failed(&error);
+            assert_eq!(
+                failure.code == FailureCode::TooLarge,
+                too_large,
+                "{error:?}"
+            );
+            assert_eq!((failure.kind, failure.diagnostic), classify(&error));
+        }
+        assert_eq!(
+            to_json(too_large_or_failed(&bare_413().into())),
+            json!({
+                "kind": "http",
+                "code": "too-large",
+                "diagnostic": {"kind": "http", "httpStatus": 413},
+            })
+        );
+        let failed = too_large_or_failed(&matrix_error(500, "M_UNKNOWN").into());
+        assert_eq!(to_json(&failed)["code"], json!("request-failed"));
+        assert_eq!(failed.kind, FailureKind::Server);
+        let refused = too_large_or_failed(&Error::InsufficientData);
+        assert_eq!(to_json(refused)["code"], json!("request-failed"));
     }
 
     #[tokio::test]

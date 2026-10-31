@@ -9,6 +9,9 @@ describe('Rust engine DTOs', () => {
     expectTypeOf<keyof JoinedPackRoomDto>().toEqualTypeOf<
       keyof JoinedPackRoom
     >();
+    expectTypeOf<JoinedPackRoomDto['roomName']>().toEqualTypeOf<
+      string | null
+    >();
     expectTypeOf<JoinedPackRoomDto['events'][number]>().toEqualTypeOf<{
       type: string;
       state_key: string;
