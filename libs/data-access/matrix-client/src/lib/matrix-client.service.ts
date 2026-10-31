@@ -38,10 +38,13 @@ import {
   switchMap,
   tap,
   throwError,
+  timeout,
 } from 'rxjs';
 import {
   CryptoStoreKeyService,
   HostNetworkPolicyService,
+  NATIVE_REFRESH_MARKER,
+  NativeTokenBridge,
   SessionStorageService,
   deleteDatabase,
 } from '@trinity/platform-native';
@@ -89,6 +92,12 @@ export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Where matrix-js-sdk discovers an OAuth account's provider (`MatrixClient.getAuthMetadata`). */
 const AUTH_METADATA_PATH = '/_matrix/client/v1/auth_metadata';
+
+/**
+ * How long a refresh waits for storage's copy of a pair native code already saved. Every
+ * authenticated request queues behind the refresh, and the copy is not the authority.
+ */
+const NATIVE_TOKEN_COPY_TIMEOUT_MS = 3_000;
 
 /** Sync states that mean the homeserver could not be reached. */
 const DISCONNECTED: ReadonlySet<SyncState> = new Set([
@@ -229,6 +238,7 @@ export class MatrixClientService {
   private readonly storeKeys = inject(CryptoStoreKeyService);
   private readonly projections = inject(ProjectionRuntime);
   private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
+  private readonly nativeTokens = inject(NativeTokenBridge);
 
   private readonly clients = new Map<string, AccountClient>();
   private readonly logoutHolds = new Map<string, LogoutHoldState>();
@@ -448,8 +458,29 @@ export class MatrixClientService {
   }
 
   /**
+   * Use the pair native code holds for each live client it refreshes for, unless a refresh
+   * adopted a newer one while this read waited. Another process may have rotated it. A failed
+   * read reads as unchanged, and a refused record is met by the next 401 or the next start.
+   * Cold; emits once; never errors.
+   */
+  adoptNativeTokens(): Observable<void> {
+    return defer(async () => {
+      await Promise.all(
+        [...this.clients.values()].map(async ({ client }) => {
+          const { opts } = client.http;
+          const before = opts.accessToken;
+          const held = await opts.tokenHost?.current().catch(() => undefined);
+          if (held && opts.accessToken === before) {
+            await client.http.adoptOAuthTokens(held);
+          }
+        }),
+      );
+    });
+  }
+
+  /**
    * Whether {@link refreshAccessToken} can refresh this account now: it is live, signed in
-   * through OAuth and holds a refresh token.
+   * through OAuth and it or native code holds a refresh token.
    */
   canRefreshAccessToken(userId: string): boolean {
     return (
@@ -490,10 +521,11 @@ export class MatrixClientService {
       persistRefreshedTokens: true,
     },
   ): MatrixClient {
-    const { onTokenRefresh, ...tokens } = this.tokenOptions(session, {
+    const detached = this.nativeTokens.detachedSession(session);
+    const { onTokenRefresh, ...tokens } = this.tokenOptions(detached, {
       kind: 'detached',
     });
-    return createClient({
+    const client = createClient({
       baseUrl: session.baseUrl,
       localTimeoutMs: MATRIX_REQUEST_TIMEOUT_MS,
       accessToken: session.accessToken,
@@ -503,6 +535,21 @@ export class MatrixClientService {
       ...(options.persistRefreshedTokens && onTokenRefresh
         ? { onTokenRefresh }
         : {}),
+    });
+    this.bindNativeTokens(client, detached);
+    return client;
+  }
+
+  /** Hands a marked session's token exchanges to native, with the expiry it knows. */
+  private bindNativeTokens(client: MatrixClient, session: MatrixSession): void {
+    if (session.refreshToken !== NATIVE_REFRESH_MARKER) {
+      return;
+    }
+    client.http.opts.tokenHost = this.nativeTokens.host(session);
+    const expiresAt = session.accessTokenExpiresAt;
+    void client.http.adoptOAuthTokens({
+      accessToken: session.accessToken,
+      expiry: expiresAt === undefined ? undefined : new Date(expiresAt),
     });
   }
 
@@ -837,8 +884,9 @@ export class MatrixClientService {
   }
 
   /**
-   * One actual start attempt: awaits a pending wipe for the same account, then builds,
-   * bootstraps and registers the client. {@link start} owns the joining and cancellation.
+   * One actual start attempt: stops the account's old client, so it can't rotate behind the
+   * vault read, then starts from the session native code answers with. {@link start} owns the
+   * joining and cancellation.
    */
   private startNew(
     session: MatrixSession,
@@ -851,6 +899,31 @@ export class MatrixClientService {
       if (this.clients.has(session.userId)) {
         this.removeInternal(session.userId, false);
       }
+      return this.nativeTokens.prepare(session);
+    }).pipe(
+      switchMap((prepared) =>
+        prepared.kind === 'refused'
+          ? throwError(
+              () =>
+                new MatrixClientStartupError(
+                  'reauthentication-required',
+                  new Error('The provider refused this session.'),
+                ),
+            )
+          : this.startPrepared(prepared.session, consumed),
+      ),
+    );
+  }
+
+  /**
+   * Awaits a pending wipe for the same account, then builds, bootstraps and registers the
+   * client. `session` may carry {@link NATIVE_REFRESH_MARKER}, so it must not reach storage.
+   */
+  private startPrepared(
+    session: MatrixSession,
+    consumed: () => boolean,
+  ): Observable<AccountClient> {
+    return defer(() => {
       let created: MatrixClient | null = null;
       let store: IndexedDBStore | null = null;
       let account: AccountClient | null = null;
@@ -944,6 +1017,7 @@ export class MatrixClientService {
               cacheSecretStorageKey: holder.cacheSecretStorageKey,
             },
           });
+          this.bindNativeTokens(created, session);
           if (session.oidc) {
             this.oauthTokens.set(session.userId, {
               client: created,
@@ -1148,6 +1222,9 @@ export class MatrixClientService {
    * A `started` client's refresh then moves the tracked pair and publishes the rotation,
    * only while that client still owns the tracked pair (it is live or starting). A
    * `detached` client is never the live client, so its refresh is only persisted.
+   *
+   * Under {@link NATIVE_REFRESH_MARKER} native code already saved the pair, so a phone that
+   * locked during the refresh fails only this copy, and the refreshed token is still used.
    */
   private tokenOptions(
     session: MatrixSession,
@@ -1163,15 +1240,7 @@ export class MatrixClientService {
             oauthClientId: session.oidc.clientId,
             fetchFn: this.pinnedProviderFetch(session, session.oidc),
             onTokenRefresh: (tokens: AccessTokens): Promise<void> =>
-              firstValueFrom(
-                this.storage.updateTokens(
-                  session.userId,
-                  session.lineage,
-                  tokens.accessToken,
-                  tokens.refreshToken,
-                  tokens.expiry?.getTime(),
-                ),
-              ).then(() => {
+              this.saveRefreshedTokens(session, tokens).then(() => {
                 if (owner.kind === 'detached') {
                   return;
                 }
@@ -1195,6 +1264,25 @@ export class MatrixClientService {
           }
         : {}),
     };
+  }
+
+  private saveRefreshedTokens(
+    session: MatrixSession,
+    tokens: AccessTokens,
+  ): Promise<void> {
+    const native = session.refreshToken === NATIVE_REFRESH_MARKER;
+    const write = this.storage.updateTokens(
+      session.userId,
+      session.lineage,
+      tokens.accessToken,
+      native ? undefined : tokens.refreshToken,
+      tokens.expiry?.getTime(),
+    );
+    return native
+      ? firstValueFrom(write.pipe(timeout(NATIVE_TOKEN_COPY_TIMEOUT_MS))).catch(
+          () => undefined,
+        )
+      : firstValueFrom(write);
   }
 
   /**

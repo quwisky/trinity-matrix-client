@@ -267,6 +267,16 @@ export class PushHandoffService {
     });
   }
 
+  /**
+   * As the app returns to the foreground, use the pair native code holds: a push may have
+   * rotated it while the app was away. Cold; emits once; inert off native.
+   */
+  adoptOnResume(): Observable<void> {
+    return defer(() =>
+      this.bridge.available ? this.matrix.adoptNativeTokens() : of(void 0),
+    );
+  }
+
   /** Best effort: a native failure completes quietly, so it never surfaces in Workspace. */
   clearRoom(userId: string, roomId: string): Observable<void> {
     return defer(() =>

@@ -137,6 +137,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
       of(true),
   );
   const refreshable = vi.fn((_userId: string): boolean => true);
+  const adoptNativeTokens = vi.fn((): Observable<void> => of(void 0));
   TestBed.configureTestingModule({
     providers: [
       PushHandoffService,
@@ -147,6 +148,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
         accessTokenExpiry: expiry,
         refreshAccessToken: refresh,
         canRefreshAccessToken: refreshable,
+        adoptNativeTokens,
       }),
       { provide: PushHandoffBridge, useValue: bridge },
       { provide: NotificationSoundService, useValue: sound },
@@ -162,6 +164,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     expiry,
     refresh,
     refreshable,
+    adoptNativeTokens,
   };
 }
 
@@ -705,6 +708,17 @@ describe('PushHandoffService', () => {
     lifetime.unsubscribe();
 
     expect(me(h).listeners()).toBe(0);
+  });
+
+  it('adopts on resume only on native', async () => {
+    const native = setup();
+    await firstValueFrom(native.service.adoptOnResume());
+    expect(native.adoptNativeTokens).toHaveBeenCalledOnce();
+
+    TestBed.resetTestingModule();
+    const web = setup({ available: false });
+    await firstValueFrom(web.service.adoptOnResume());
+    expect(web.adoptNativeTokens).not.toHaveBeenCalled();
   });
 
   describe('refreshBeforeBackground', () => {

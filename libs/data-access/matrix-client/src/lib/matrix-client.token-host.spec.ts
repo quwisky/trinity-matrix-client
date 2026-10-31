@@ -32,6 +32,7 @@ const NATIVE_REFRESH_MARKER = 'trinity-native-vault';
 const HOUR_MS = 3_600_000;
 const NATIVE_SESSION: MatrixSession = {
   ...OIDC_SESSION,
+  accessTokenExpiresAt: undefined,
   refreshToken: NATIVE_REFRESH_MARKER,
 };
 

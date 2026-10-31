@@ -72,6 +72,7 @@ export class NotificationSessionService {
       this.push.run().pipe(concatMap((event) => this.handlePush(event))),
       this.handoff.run(),
       this.refreshTokensOnBackground(),
+      this.adoptTokensOnResume(),
       this.clearOpenedRooms(),
       this.clearResumedRoom(),
       this.mirrorNotificationText(),
@@ -141,6 +142,17 @@ export class NotificationSessionService {
       filter((event) => event.kind === 'background'),
       exhaustMap(() =>
         this.handoff.refreshBeforeBackground().pipe(catchError(() => EMPTY)),
+      ),
+      ignoreElements(),
+    );
+  }
+
+  /** On each return to the foreground, as {@link refreshTokensOnBackground} is on leaving it. */
+  private adoptTokensOnResume(): Observable<never> {
+    return this.lifecycle.events.pipe(
+      filter((event) => event.kind === 'active'),
+      exhaustMap(() =>
+        this.handoff.adoptOnResume().pipe(catchError(() => EMPTY)),
       ),
       ignoreElements(),
     );

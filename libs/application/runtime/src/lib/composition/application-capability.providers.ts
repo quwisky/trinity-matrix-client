@@ -78,13 +78,14 @@ import {
   BUILD_INFO,
   DraftStoreService,
   NativeAppearanceChromeAdapter,
+  NativeTokenBridge,
   type BuildInfo,
   providePlatformConfigEntries,
   providePrivacyPreferenceSet,
 } from '@trinity/platform-native';
 import { HostBadgeService } from '@trinity/runtime/host';
 import { PreferenceStoreService } from '@trinity/runtime/preferences';
-import { map, of } from 'rxjs';
+import { map, of, switchMap } from 'rxjs';
 import { appLockCovers, visibilityWhileLocked } from './app-lock.providers';
 import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
 import { UnprotectedStorageConsentPresenter } from './unprotected-storage.presenter';
@@ -208,19 +209,29 @@ export function applicationCapabilityProviders(
         const handoff = inject(PushHandoffService);
         const drafts = inject(DraftStoreService);
         const oidc = inject(OidcClientService);
+        const nativeTokens = inject(NativeTokenBridge);
         const diagnosticLog = inject(DiagnosticLogService);
         const preferences = inject(PreferenceStoreService);
         return {
           forgetPushHandoff: (accountId) => handoff.forget(accountId),
           registerNotifications: () => push.register(),
           unregisterNotifications: (accountId) => push.unregister(accountId),
-          revokeProviderSession: (session) =>
-            session.oidc
-              ? oidc.revokeTokens(session.baseUrl, session.oidc, {
-                  accessToken: session.accessToken,
-                  refreshToken: session.refreshToken,
-                })
-              : of(void 0),
+          revokeProviderSession: (session) => {
+            const { oidc: binding } = session;
+            return binding
+              ? nativeTokens.revokeStored(session).pipe(
+                  // Not again here: the shared 3 s step can't afford a second request.
+                  switchMap((revoked) =>
+                    revoked
+                      ? of(void 0)
+                      : oidc.revokeTokens(session.baseUrl, binding, {
+                          accessToken: session.accessToken,
+                          refreshToken: session.refreshToken,
+                        }),
+                  ),
+                )
+              : of(void 0);
+          },
           stopDiagnosticLog: () => diagnosticLog.discard(),
           resumeDiagnosticLog: () => diagnosticLog.resumeAfterReset(),
           releaseSharedCaches: () => {

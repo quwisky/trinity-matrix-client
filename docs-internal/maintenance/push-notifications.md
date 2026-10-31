@@ -243,14 +243,20 @@ Android Keystore key and stored in the private preferences file `trinity_push_ha
 `NotificationSessionService` asks `PushHandoffService.refreshBeforeBackground` to refresh
 every bound account whose token has an expiry and that holds a refresh token
 (`MatrixClientService.canRefreshAccessToken`), unless that token rotated within the last
-minute, so the copy in the store lives one full lifetime from then. The refresh runs through
-the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
-`patches/matrix-js-sdk@45.0.0.patch`). It therefore joins a refresh already in flight,
-persists the pair before the SDK adopts it and reaches the store as an ordinary rotation. The
-app stays the only process that rotates tokens; the renderers refreshing tokens themselves is
-[#1210](https://github.com/quwisky/trinity-matrix-client/issues/1210). A refused refresh signs
-nothing out at that moment; the account's next request meets the refusal and takes the usual
-path.
+minute, so the copy in the store lives one full lifetime from then. The refresh starts in the
+SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
+`patches/matrix-js-sdk@45.0.0.patch`), so it joins a refresh already in flight and reaches the
+store as an ordinary rotation. On iOS and Android it then runs through
+`PushHandoff.refreshTokens`: native code reads the record, makes the grant and writes the
+result, and the SDK adopts the answer (`NativeTokenBridge.host`, the client's `tokenHost`).
+JavaScript holds a non-secret marker in place of the refresh token, and its copy of the access
+token is best effort, given 3 s. An account not yet moved to native, like every account on web
+and Electron, stays on the SDK's own grant, which persists the pair before the SDK adopts it.
+The app stays the only process that rotates tokens; the renderers refreshing tokens themselves
+is [#1210](https://github.com/quwisky/trinity-matrix-client/issues/1210). Each return to the
+foreground also adopts the pair native holds (`PushHandoffService.adoptOnResume`). A refused
+refresh signs nothing out at that moment; the account's next request meets the refusal and
+takes the usual path.
 
 A refresh is attributed to the sign-in and the client it came from
 ([#1207](https://github.com/quwisky/trinity-matrix-client/issues/1207)). Every saved session
@@ -263,12 +269,18 @@ while the refresh waited, and does nothing once the account was signed out. A re
 before lineages existed accepts any refresh. Separately, the tracked token and its expiry
 belong to the client that started with them. Only a refresh from that client, while it is the
 account's live or starting client, moves them and publishes a rotation. A refresh from any
-other client never reaches the push store.
+other client never reaches the push store. Native code adds its own compare before it writes:
+a grant's answer lands only while the stored pair and lineage are the ones the grant started
+from. A late answer is discarded, and the SDK ignores one that arrives after it adopted a newer
+pair.
 
-The run is bounded. `BACKGROUND_REFRESH_GRANT_TIMEOUT_MS` (8 s) bounds the token grant of
-each refresh the run starts, counted from the start of that refresh
+The run is bounded. Native code bounds a migrated account's grant at 8 s itself.
+`BACKGROUND_REFRESH_GRANT_TIMEOUT_MS` (8 s) bounds the token grant of each refresh the run
+starts for an account still on the SDK's grant, counted from the start of that refresh
 (`refreshOAuthTokens({ timeoutMs })`); past it the patched SDK aborts the grant, or does not
-send it at all. `BACKGROUND_REFRESH_TIMEOUT_MS` (15 s) caps each account's refresh, and then
+send it at all. A `tokenHost` ignores `timeoutMs`. The run itself exists only on iOS and
+Android; on web and Electron the SDK's 30 s grant bound applies.
+`BACKGROUND_REFRESH_TIMEOUT_MS` (15 s) caps each account's refresh, and then
 the wait for the store writes it queued; past it the run completes without that account, so
 the next background event refreshes again. `BACKGROUND_RUN_DEADLINE_MS` (25 s) cuts off the
 whole run, asking for background time included, so the worst case is about 25 s. While any
@@ -286,7 +298,9 @@ refresh can leave three things behind, and a refresh that outlasts a lock a four
   revoked that token, so pushes for the account read "New message" only until that old
   expiry passes: at most one token lifetime, about 5 minutes on MAS defaults. After that
   they read "Open Trinity to read this message". Holding iOS background time until the write
-  lands narrows this window but does not close it.
+  lands narrows this window but does not close it. A migrated account's vault write is native's
+  own, before it answers: one that fails answers `rotated` with `unsaved: true`, so the app uses
+  the new pair and that process holds it in memory until a later refresh writes it.
 - Spent refresh token. This does not need the process to die. If the refresh grant's
   response is lost, for example because the connection is cut as the OS suspends the app,
   the app keeps the spent refresh token in memory and in storage, and the next refresh
@@ -307,11 +321,16 @@ refresh can leave three things behind, and a refresh that outlasts a lock a four
   The device check (#1211, step B4) includes "go to the background mid-refresh, come back,
   confirm sync resumes".
 - Lock during a refresh. Locking the phone is the most common way to send the app to the
-  background. The session's tokens are stored with
+  background. A migrated account's native write runs under
+  `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which a lock does not take away. Only
+  JavaScript's copy of the access token can fail then, and the refreshed token is still used.
+  The rest of this case is an account not yet moved to native. Its tokens are stored with
   `KeychainAccess.whenUnlockedThisDeviceOnly`, and iOS discards the key for those items
   about 10 s after the lock. A forced refresh whose grant answers after that cannot save the
   rotated pair: `onTokenRefresh` rejects, the server has already rotated, and the SDK keeps
-  the spent pair, which is the spent-refresh-token case above. Two things guard against it.
+  the spent pair, which is the spent-refresh-token case above. Two things guard against it,
+  and both stay for that account. They cover the whole run, so a migrated account also waits
+  for the next background event.
   `beginBackgroundWork` reports whether protected data is available
   (`isProtectedDataAvailable`) and whether the device is locking (iOS posted
   `protectedDataWillBecomeUnavailableNotification` within the last 10 s and has not posted
