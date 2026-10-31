@@ -1,4 +1,4 @@
-FROM ghcr.io/static-web-server/static-web-server:2.44.0-alpine@sha256:c6704bc8f1fe05378d91c3288495ce2e0131cf31cf8956f117cb1c7d83c49c31
+FROM ghcr.io/static-web-server/static-web-server:2.44.1-alpine@sha256:2fe3e5c0a20691f23fb270338578c8d31b5f7a19abb308c4c1ec901a7eefbe2e
 
 LABEL org.opencontainers.image.title="Trinity Web" \
       org.opencontainers.image.description="Trinity Matrix client static web host" \

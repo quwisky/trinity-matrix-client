@@ -16,7 +16,7 @@ services:
   # password (see dex.yaml). The browser reaches the published port. Memory storage, so
   # there is nothing to clean up.
   dex:
-    image: ghcr.io/dexidp/dex:v2.45.1-alpine
+    image: ghcr.io/dexidp/dex:v2.46.1-alpine
     container_name: trinity-e2e-dex
     restart: 'no'
     command: ['dex', 'serve', '/etc/dex/trinity-e2e.yaml']
@@ -31,7 +31,7 @@ services:
   # network-internal), and the specs read them from the published HTTP API. Nothing
   # outlives the container.
   mailpit:
-    image: mirror.gcr.io/axllent/mailpit:v1.31.4
+    image: mirror.gcr.io/axllent/mailpit:v1.32.0
     container_name: trinity-e2e-mailpit
     restart: 'no'
     ports:
