@@ -18,8 +18,8 @@ class KeystoreTokenVault internal constructor(
     )
 
     override fun read(userId: String): TokenVaultRead {
-        val stored = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
         return try {
+            val stored = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
             decode(JSONObject(crypto.decrypt(stored)))?.let { TokenVaultRead.Record(it) } ?: TokenVaultRead.Unavailable
         } catch (error: Exception) {
             // Keystore faults are security and provider exceptions; Android's JSONException is checked.

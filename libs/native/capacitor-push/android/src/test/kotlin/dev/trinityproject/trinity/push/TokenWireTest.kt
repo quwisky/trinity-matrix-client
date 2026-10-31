@@ -60,6 +60,17 @@ class TokenWireTest {
     }
 
     @Test
+    fun anExpiryJavaScriptCannotHoldIsLeftOffTheWire() {
+        for (expiry in listOf(Long.MAX_VALUE, 9_007_199_254_740_992L, 0L, -1L, Long.MIN_VALUE)) {
+            assertFalse(TokenRefreshResult.Current(R0.copy(expiresAtMillis = expiry)).wire().has("accessTokenExpiresAt"))
+            assertFalse(TokenRefreshResult.Rotated(R0.copy(expiresAtMillis = expiry), unsaved = false).wire().has("accessTokenExpiresAt"))
+        }
+
+        val largestSafe = TokenRefreshResult.Current(R0.copy(expiresAtMillis = 9_007_199_254_740_991L)).wire()
+        assertEquals(9_007_199_254_740_991L, largestSafe.getLong("accessTokenExpiresAt"))
+    }
+
+    @Test
     fun rotatedCarriesUnsavedOnlyWhenUnsaved() {
         val unsaved = TokenRefreshResult.Rotated(R0, unsaved = true).wire()
         assertEquals("rotated", unsaved.getString("kind"))

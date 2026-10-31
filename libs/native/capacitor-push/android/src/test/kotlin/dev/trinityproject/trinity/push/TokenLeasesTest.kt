@@ -45,7 +45,8 @@ class TokenLeasesTest {
         assertNotNull(second.get())
     }
 
-    @Test
+    // The clock here never advances, so a swallowed interrupt would spin until the timeout.
+    @Test(timeout = 5_000L)
     fun anInterruptedWaitGivesUpAndKeepsTheFlag() {
         held(lifetimeMillis = 60_000)
 
