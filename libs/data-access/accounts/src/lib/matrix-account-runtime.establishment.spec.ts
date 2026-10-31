@@ -123,7 +123,7 @@ it('persists, starts in the background, then commits Active placement', async ()
 });
 
 describe('a sign-in over an unreadable native record', () => {
-  it('replaces the record once the sign-in is saved, before its client starts', async () => {
+  it('removes the record once the sign-in is saved, before its client starts', async () => {
     const { adapter, matrix, storage, nativeTokens } = setup();
     const order: string[] = [];
     vi.mocked(storage.persistForEstablishment).mockReturnValue(
@@ -132,9 +132,9 @@ describe('a sign-in over an unreadable native record', () => {
         return of(session);
       }),
     );
-    vi.mocked(nativeTokens.replaceUnreadableRecord).mockReturnValue(
+    vi.mocked(nativeTokens.removeUnreadableRecord).mockReturnValue(
       defer(() => {
-        order.push('replace');
+        order.push('remove');
         return of(void 0);
       }),
     );
@@ -153,8 +153,8 @@ describe('a sign-in over an unreadable native record', () => {
       ),
     );
 
-    expect(order).toEqual(['persist', 'replace', 'start']);
-    expect(nativeTokens.replaceUnreadableRecord).toHaveBeenCalledWith(session);
+    expect(order).toEqual(['persist', 'remove', 'start']);
+    expect(nativeTokens.removeUnreadableRecord).toHaveBeenCalledWith(session);
   });
 
   it('leaves the record to a retried first establishment, whose pair native may have rotated', async () => {
@@ -178,7 +178,7 @@ describe('a sign-in over an unreadable native record', () => {
 
     expect(matrix.restorePersisted).toHaveBeenCalledTimes(2);
     expect(storage.persistForEstablishment).toHaveBeenCalledOnce();
-    expect(nativeTokens.replaceUnreadableRecord).toHaveBeenCalledOnce();
+    expect(nativeTokens.removeUnreadableRecord).toHaveBeenCalledOnce();
   });
 });
 

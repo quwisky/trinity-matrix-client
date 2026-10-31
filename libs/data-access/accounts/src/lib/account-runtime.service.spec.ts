@@ -819,6 +819,39 @@ describe('AccountRuntimeService', () => {
       expect(settled).toHaveBeenCalledOnce();
     });
 
+    it('restoring twice sweeps once', async () => {
+      const test = testAdapter({
+        kind: 'available',
+        activeAccountId: null,
+        accountIds: [],
+      });
+      const service = setup(test);
+
+      await firstValueFrom(service.restoreSavedAccounts());
+      await firstValueFrom(service.restoreSavedAccounts());
+
+      expect(test.readSavedAccounts).toHaveBeenCalledTimes(2);
+      expect(test.sweepNativeTokens).toHaveBeenCalledOnce();
+    });
+
+    it('a later restore sweeps nothing though the first one could not', async () => {
+      const test = testAdapter({
+        kind: 'available',
+        activeAccountId: null,
+        accountIds: [],
+      });
+      test.readSavedAccounts.mockReturnValueOnce(
+        of({ kind: 'corrupt-local-state' }),
+      );
+      const service = setup(test);
+
+      await firstValueFrom(service.restoreSavedAccounts());
+      await firstValueFrom(service.restoreSavedAccounts());
+
+      expect(test.readSavedAccounts).toHaveBeenCalledTimes(2);
+      expect(test.sweepNativeTokens).not.toHaveBeenCalled();
+    });
+
     it('a failed registry read sweeps nothing', async () => {
       const test = testAdapter({ kind: 'corrupt-local-state' });
 

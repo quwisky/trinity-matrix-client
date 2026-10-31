@@ -7,6 +7,7 @@ import {
 import type { MatrixSession } from '@trinity/util/matrix';
 import {
   Observable,
+  TimeoutError,
   catchError,
   firstValueFrom,
   map,
@@ -42,7 +43,8 @@ export interface NativeTokenHost {
   revoke(): Promise<boolean>;
 }
 
-type Migration = 'no-copy' | 'stored' | 'not-stored';
+/** `unknown`: the call timed out and its write may still land, unlike a false or a rejection. */
+type Migration = 'no-copy' | 'stored' | 'not-stored' | 'unknown';
 
 /**
  * Moves a phone's OAuth refresh tokens into native code and answers the SDK's token host from
@@ -81,32 +83,27 @@ export class NativeTokenBridge {
 
   /**
    * Sign-in only, once its session is saved: an unreadable record can't be migrated over and
-   * would leave the new refresh token unused for good. It belongs to an earlier sign-in, so it
-   * can go. On a restart it may hold the only live token, so {@link prepare} never does this.
+   * would leave the new refresh token unused for good, so it goes and {@link prepare} migrates.
+   * It belongs to an earlier sign-in; on a restart it may hold the only live token. Writes
+   * nothing: a record stored before the client's start can outlive the JS copy it was made from.
    */
-  replaceUnreadableRecord(session: MatrixSession): Observable<void> {
-    const record = this.handoff.available ? nativeRecord(session) : null;
-    if (!record) {
+  removeUnreadableRecord(session: MatrixSession): Observable<void> {
+    if (!this.handoff.available || !nativeRecord(session)) {
       return of(void 0);
     }
-    const migrate = () => bounded(this.handoff.migrateTokens(record), false);
-    return migrate().pipe(
-      switchMap((stored) =>
-        stored
-          ? of(null)
-          : bounded(
-              this.handoff.currentTokens(record.userId, record.lineage),
-              null,
-            ),
-      ),
+    const { userId } = session;
+    return bounded(
+      this.handoff.currentTokens(userId, session.lineage ?? ''),
+      null,
+    ).pipe(
       switchMap((answer) =>
         answer?.kind === 'transient'
-          ? bounded(this.handoff.removeTokens(record.userId), void 0).pipe(
-              switchMap(migrate),
-            )
-          : of(false),
+          ? // shortcut: a removal still running natively past this timeout can delete the record
+            // prepare just wrote; that needs a hung keychain and ends in a soft logout a new
+            // sign-in recovers, so wait for the removal to settle if it is ever seen.
+            bounded(this.handoff.removeTokens(userId), void 0)
+          : of(void 0),
       ),
-      map(() => void 0),
     );
   }
 
@@ -185,14 +182,19 @@ export class NativeTokenBridge {
     if (!record) {
       return of('no-copy');
     }
-    return bounded(this.handoff.migrateTokens(record), false).pipe(
-      switchMap((stored) =>
-        stored
+    return this.handoff.migrateTokens(record).pipe(
+      timeout(NATIVE_CALL_TIMEOUT_MS),
+      map((stored): Migration => (stored ? 'stored' : 'not-stored')),
+      catchError((error: unknown) =>
+        of<Migration>(error instanceof TimeoutError ? 'unknown' : 'not-stored'),
+      ),
+      switchMap((migration) =>
+        migration === 'stored'
           ? bounded(
               this.storage.dropRefreshToken(session.userId, session.lineage),
               void 0,
-            ).pipe(map((): Migration => 'stored'))
-          : of<Migration>('not-stored'),
+            ).pipe(map(() => migration))
+          : of(migration),
       ),
     );
   }
@@ -219,7 +221,7 @@ export class NativeTokenBridge {
           void 0,
         ).pipe(map((): PreparedSession => ({ kind: 'refused' })));
       case 'gone':
-        if (migration !== 'stored') {
+        if (migration === 'no-copy' || migration === 'not-stored') {
           return of({ kind: 'ready', session });
         }
         break;
@@ -229,7 +231,7 @@ export class NativeTokenBridge {
         }
         break;
     }
-    if (migration === 'not-stored') {
+    if (migration === 'not-stored' || migration === 'unknown') {
       this.unconfirmedCopies.add(session.userId);
     }
     return of({

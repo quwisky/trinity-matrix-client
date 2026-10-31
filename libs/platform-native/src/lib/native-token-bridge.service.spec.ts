@@ -278,6 +278,31 @@ describe('NativeTokenBridge', () => {
       expect(storage.dropRefreshToken).not.toHaveBeenCalled();
     });
 
+    it.each(['gone', 'unavailable'] as const)(
+      'a migrate that times out never takes the old path, its write may still land: current is %s',
+      async (kind) => {
+        vi.useFakeTimers();
+        const { tokens, bridge, storage } = setup();
+        bridge.migrateTokens.mockReturnValue(NEVER);
+        bridge.currentTokens.mockReturnValue(of({ kind }));
+        const next = vi.fn();
+
+        tokens.prepare(SESSION).subscribe(next);
+        await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+
+        expect(next).toHaveBeenCalledExactlyOnceWith({
+          kind: 'ready',
+          session: { ...SESSION, refreshToken: NATIVE_REFRESH_MARKER },
+        });
+        expect(storage.dropRefreshToken).not.toHaveBeenCalled();
+
+        bridge.refreshTokens.mockReturnValue(of({ kind: 'gone' }));
+        await expect(tokens.host(SESSION).refresh('a0')).resolves.toEqual({
+          kind: 'transient',
+        });
+      },
+    );
+
     it('a storage call that never answers does not hold the start', async () => {
       vi.useFakeTimers();
       const { tokens, storage } = setup();
@@ -476,7 +501,7 @@ describe('NativeTokenBridge', () => {
       const { tokens, bridge, state } = setup(R2);
       state.unreadable = true;
 
-      await firstValueFrom(tokens.replaceUnreadableRecord(SIGN_IN));
+      await firstValueFrom(tokens.removeUnreadableRecord(SIGN_IN));
       const prepared = await firstValueFrom(tokens.prepare(SIGN_IN));
 
       expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith(USER);
@@ -495,21 +520,34 @@ describe('NativeTokenBridge', () => {
       );
       const completed = vi.fn();
 
-      tokens
-        .replaceUnreadableRecord(SIGN_IN)
-        .subscribe({ complete: completed });
+      tokens.removeUnreadableRecord(SIGN_IN).subscribe({ complete: completed });
       await vi.waitFor(() => expect(completed).toHaveBeenCalled());
 
-      expect(bridge.migrateTokens).toHaveBeenCalledTimes(2);
+      expect(bridge.removeTokens).toHaveBeenCalledOnce();
     });
 
     it('removes nothing over a readable record', async () => {
       const { tokens, bridge, state } = setup(R2);
 
-      await firstValueFrom(tokens.replaceUnreadableRecord(SIGN_IN));
+      await firstValueFrom(tokens.removeUnreadableRecord(SIGN_IN));
 
       expect(bridge.removeTokens).not.toHaveBeenCalled();
-      expect(state.record?.refreshToken).toBe('new-r');
+      expect(state.record).toBe(R2);
+    });
+
+    it('an OAuth sign-in in the gap writes nothing to the vault', async () => {
+      const { tokens, bridge, state } = setup();
+
+      await firstValueFrom(tokens.removeUnreadableRecord(SIGN_IN));
+
+      expect(bridge.migrateTokens).not.toHaveBeenCalled();
+      expect(state.record).toBeUndefined();
+
+      state.unreadable = true;
+      await firstValueFrom(tokens.removeUnreadableRecord(SIGN_IN));
+
+      expect(bridge.migrateTokens).not.toHaveBeenCalled();
+      expect(state.record).toBeUndefined();
     });
 
     it.each([
@@ -517,10 +555,9 @@ describe('NativeTokenBridge', () => {
       ['a failed read', throwError(() => new Error('rejected'))],
     ])('removes nothing for %s', async (_name, answer) => {
       const { tokens, bridge } = setup(R2);
-      bridge.migrateTokens.mockReturnValue(of(false));
       bridge.currentTokens.mockReturnValue(answer);
 
-      await firstValueFrom(tokens.replaceUnreadableRecord(SIGN_IN));
+      await firstValueFrom(tokens.removeUnreadableRecord(SIGN_IN));
 
       expect(bridge.removeTokens).not.toHaveBeenCalled();
     });
@@ -528,14 +565,11 @@ describe('NativeTokenBridge', () => {
     it('a call that never answers does not hold the sign-in and removes nothing', async () => {
       vi.useFakeTimers();
       const { tokens, bridge } = setup(R2);
-      bridge.migrateTokens.mockReturnValue(NEVER);
       bridge.currentTokens.mockReturnValue(NEVER);
       const completed = vi.fn();
 
-      tokens
-        .replaceUnreadableRecord(SIGN_IN)
-        .subscribe({ complete: completed });
-      await vi.advanceTimersByTimeAsync(2 * TIMEOUT_MS);
+      tokens.removeUnreadableRecord(SIGN_IN).subscribe({ complete: completed });
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
 
       expect(completed).toHaveBeenCalledOnce();
       expect(bridge.removeTokens).not.toHaveBeenCalled();
@@ -544,20 +578,20 @@ describe('NativeTokenBridge', () => {
     it('does nothing with no refresh token, no endpoint, off native or for a password account', async () => {
       const { tokens, bridge } = setup(R2);
 
-      await firstValueFrom(tokens.replaceUnreadableRecord(NO_COPY));
+      await firstValueFrom(tokens.removeUnreadableRecord(NO_COPY));
       await firstValueFrom(
-        tokens.replaceUnreadableRecord({
+        tokens.removeUnreadableRecord({
           ...SIGN_IN,
           oidc: { issuer: 'https://op.example', clientId: 'c' },
         }),
       );
       await firstValueFrom(
-        tokens.replaceUnreadableRecord({ ...SIGN_IN, oidc: undefined }),
+        tokens.removeUnreadableRecord({ ...SIGN_IN, oidc: undefined }),
       );
       bridge.available = false;
-      await firstValueFrom(tokens.replaceUnreadableRecord(SIGN_IN));
+      await firstValueFrom(tokens.removeUnreadableRecord(SIGN_IN));
 
-      expect(bridge.migrateTokens).not.toHaveBeenCalled();
+      expect(bridge.currentTokens).not.toHaveBeenCalled();
     });
   });
 

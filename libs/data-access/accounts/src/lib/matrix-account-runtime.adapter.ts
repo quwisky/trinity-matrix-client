@@ -196,7 +196,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
               }),
               switchMap((stored) =>
                 this.nativeTokens
-                  .replaceUnreadableRecord(stored)
+                  .removeUnreadableRecord(stored)
                   .pipe(map(() => stored)),
               ),
             );

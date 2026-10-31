@@ -81,7 +81,7 @@ export function setup(activeAccountId: string | null = '@old:hs') {
       }),
       MockProvider(SessionStorageService),
       MockProvider(NativeTokenBridge, {
-        replaceUnreadableRecord: vi.fn(() => of(void 0)),
+        removeUnreadableRecord: vi.fn(() => of(void 0)),
       }),
       MockProvider(SecureStorageService, {
         withoutKeychain: vi.fn(() => Promise.resolve(false)),

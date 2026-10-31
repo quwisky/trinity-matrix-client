@@ -272,6 +272,9 @@ export class SessionStorageService {
         ? from(
             this.serialize(async () => {
               const { accounts } = await this.readRegistry();
+              // shortcut: a sweep still running natively past this timeout can remove a sign-in
+              // landing on an orphaned id; that needs a hung keychain and ends in a soft logout a
+              // new sign-in recovers, so hold new sign-ins back longer if it is ever seen.
               await this.nativeVault(
                 this.handoff.removeTokensExcept(
                   accounts.filter((a) => a.oidc).map((a) => a.userId),
