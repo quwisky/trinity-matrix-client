@@ -1,17 +1,25 @@
 //! `IdentityEngine` (`libs/data-access/identity/src/lib/identity-engine.ts`), member by member as
 //! its js-sdk adapter (`js-sdk-identity-engine.ts`) derives each value.
-#![expect(
-    dead_code,
-    reason = "the commands and streams that use the mappers and signals come in the next commits"
+// The tests use every item, so the expectation holds only outside them.
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the streams that use the rest of the mappers and the DTOs come in the next commit"
+    )
 )]
 
-use std::future::ready;
+use std::{future::ready, sync::Arc};
 
 use matrix_sdk::{
     Client, Error,
     ruma::{
+        OwnedUserId, UserId,
         api::{
-            client::{presence::get_presence, profile::get_profile},
+            client::{
+                presence::{get_presence, set_presence},
+                profile::{get_profile, set_profile_field},
+            },
             error::ErrorKind,
         },
         events::{
@@ -19,6 +27,7 @@ use matrix_sdk::{
             room::member::OriginalSyncRoomMemberEvent,
         },
         presence::PresenceState,
+        profile::ProfileFieldValue,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -26,6 +35,17 @@ use serde_json::{Map, Value, json};
 use tokio::sync::{Mutex, watch};
 use ts_rs::TS;
 
+use super::{
+    account_data,
+    member::{on_account, sent_once},
+};
+use crate::{
+    accounts::Engine,
+    dispatch::{Stream, detached, reply},
+    failure::request_failed,
+};
+
+const IGNORED_USER_LIST: &str = "m.ignored_user_list";
 const DTO: &str = "data-access/identity/src/lib/rust-dto/";
 
 /// `UserProfile`.
@@ -78,6 +98,16 @@ pub enum PresenceStateDto {
     Offline,
 }
 
+impl From<PresenceStateDto> for PresenceState {
+    fn from(state: PresenceStateDto) -> Self {
+        match state {
+            PresenceStateDto::Online => Self::Online,
+            PresenceStateDto::Unavailable => Self::Unavailable,
+            PresenceStateDto::Offline => Self::Offline,
+        }
+    }
+}
+
 /// What wakes the account's identity streams. A stream reads on each change; the SDK's handlers
 /// and the commands count them. The handlers close over clones of the senders and the client
 /// owns the handlers, so dropping the runtime leaves no cycle, and a replaced client has
@@ -122,6 +152,123 @@ impl IdentitySignals {
 
 pub(crate) fn tick(signal: &watch::Sender<u64>) {
     signal.send_modify(|n| *n += 1);
+}
+
+/// Any user's profile, from the server; a user it does not know has an empty one. The endpoint
+/// wants no token, but the server may hide a profile from an anonymous request.
+pub fn profile(engine: Arc<Engine>, account_id: String, user_id: String) -> Stream {
+    reply(on_account(
+        engine,
+        account_id,
+        request_failed,
+        move |engine, rt| async move {
+            let request = get_profile::v3::Request::new(UserId::parse(user_id)?);
+            let send = rt
+                .client
+                .send(request)
+                .with_request_config(sent_once().force_auth());
+            match engine.ruled(&rt, send).await {
+                Ok(response) => Ok(profile_of(&response)),
+                Err(err) if is_not_found(&err) => Ok(UserProfileDto {
+                    display_name: None,
+                    avatar_mxc: None,
+                }),
+                Err(err) => Err(err),
+            }
+        },
+    ))
+}
+
+pub fn set_display_name(engine: Arc<Engine>, account_id: String, name: String) -> Stream {
+    write_profile(engine, account_id, ProfileFieldValue::DisplayName(name))
+}
+
+/// `mxc` is the server's to judge.
+pub fn set_avatar(engine: Arc<Engine>, account_id: String, mxc: String) -> Stream {
+    write_profile(engine, account_id, ProfileFieldValue::AvatarUrl(mxc.into()))
+}
+
+fn write_profile(engine: Arc<Engine>, account_id: String, value: ProfileFieldValue) -> Stream {
+    detached(on_account(
+        engine,
+        account_id,
+        request_failed,
+        move |engine, rt| async move {
+            let request = set_profile_field::v3::Request::new(own_id(&rt.client)?, value);
+            let send = rt.client.send(request).with_request_config(sent_once());
+            engine.ruled(&rt, send).await?;
+            tick(&rt.identity.profile);
+            Ok(())
+        },
+    ))
+}
+
+pub fn own_presence(engine: Arc<Engine>, account_id: String) -> Stream {
+    reply(on_account(
+        engine,
+        account_id,
+        request_failed,
+        |engine, rt| async move {
+            let request = get_presence::v3::Request::new(own_id(&rt.client)?);
+            let send = rt.client.send(request).with_request_config(sent_once());
+            let response = engine.ruled(&rt, send).await?;
+            Ok(own_presence_of(&response))
+        },
+    ))
+}
+
+pub fn set_presence(
+    engine: Arc<Engine>,
+    account_id: String,
+    presence: PresenceStateDto,
+    status_message: Option<String>,
+) -> Stream {
+    detached(on_account(
+        engine,
+        account_id,
+        request_failed,
+        move |engine, rt| async move {
+            let mut request = set_presence::v3::Request::new(own_id(&rt.client)?, presence.into());
+            request.status_msg = status_message;
+            let send = rt.client.send(request).with_request_config(sent_once());
+            engine.ruled(&rt, send).await?;
+            tick(&rt.identity.presence);
+            Ok(())
+        },
+    ))
+}
+
+/// A read of at most 30 s, a write cut off at 60 s and the rule's delivery waits end within
+/// `HOLDER_LIMIT`, not counting a wait for the writes ahead of it.
+pub fn set_ignored(
+    engine: Arc<Engine>,
+    account_id: String,
+    user_id: String,
+    ignored: bool,
+) -> Stream {
+    detached(on_account(
+        engine,
+        account_id,
+        request_failed,
+        move |engine, rt| async move {
+            // Held across the read and the write, so quick changes never undo each other.
+            let _writing = rt.identity.ignore_writes.lock().await;
+            let read = account_data::get(&rt.client, IGNORED_USER_LIST);
+            let current = engine.ruled(&rt, read).await?;
+            if let Some(edited) = edit_ignored(current, &user_id, ignored) {
+                let write = account_data::put(&rt.client, IGNORED_USER_LIST, &edited);
+                engine.ruled(&rt, write).await?;
+            }
+            tick(&rt.identity.ignored);
+            Ok(())
+        },
+    ))
+}
+
+fn own_id(client: &Client) -> Result<OwnedUserId, Error> {
+    let me = client.user_id();
+    me.map(ToOwned::to_owned)
+        .ok_or(Error::AuthenticationRequired)
 }
 
 fn string_of(r: &get_profile::v3::Response, field: &str) -> Option<String> {
@@ -237,20 +384,33 @@ fn edit_ignored(content: Option<Value>, user_id: &str, ignored: bool) -> Option<
 mod tests {
     use std::time::Duration;
 
-    use matrix_sdk::config::SyncSettings;
+    use futures_util::{FutureExt, StreamExt, future::join};
+    use matrix_sdk::{config::SyncSettings, sleep::sleep, timeout::timeout};
+    use tempfile::TempDir;
 
     use super::*;
     use crate::{
         accounts::Engine,
         config::EngineConfig,
+        dispatch::Stream,
         failure::http_error_from_response,
-        testing::{default_client, password, scripted},
+        testing::{Seen, default_client, engine_in, live, password, requests, scripted},
     };
 
     const SYNC: &str = "GET /_matrix/client/v3/sync?timeout=0&use_state_after=true";
+    const PROFILE: &str = "GET /_matrix/client/v3/profile/@b:c";
+    const NAME: &str = "PUT /_matrix/client/v3/profile/@a:b/displayname";
+    const AVATAR: &str = "PUT /_matrix/client/v3/profile/@a:b/avatar_url";
+    const PRESENCE_GET: &str = "GET /_matrix/client/v3/presence/@a:b/status";
+    const PRESENCE_SET: &str = "PUT /_matrix/client/v3/presence/@a:b/status";
+    const IGNORED_GET: &str = "GET /_matrix/client/v3/user/@a:b/account_data/m.ignored_user_list";
+    const IGNORED_PUT: &str = "PUT /_matrix/client/v3/user/@a:b/account_data/m.ignored_user_list";
+
+    type Command = fn(Arc<Engine>) -> Stream;
+    type Answers = Vec<(&'static str, u16, Value)>;
 
     /// A profile response of `fields`, an object.
-    fn profile(fields: Value) -> get_profile::v3::Response {
+    fn profile_response(fields: Value) -> get_profile::v3::Response {
         let Value::Object(fields) = fields else {
             panic!("fields are an object");
         };
@@ -268,6 +428,23 @@ mod tests {
         r
     }
 
+    /// `@a:b` live on a client with the SDK's default config, which retries, answered by `answers`.
+    async fn live_on(root: &TempDir, answers: Answers) -> (Arc<Engine>, Seen) {
+        let (base, seen) = scripted(answers);
+        let engine = engine_in(root);
+        let account = password(&base);
+        drop(live(&engine, &account, default_client(&engine, &account).await).await);
+        (engine, seen)
+    }
+
+    async fn first(mut reply: Stream) -> Value {
+        reply.next().await.unwrap().unwrap()
+    }
+
+    fn unavailable() -> Value {
+        json!({"errcode": "M_UNKNOWN", "error": "x"})
+    }
+
     fn failed(status: u16, body: &str) -> Error {
         let status = status.try_into().unwrap();
         http_error_from_response(status, body.as_bytes()).into()
@@ -282,7 +459,7 @@ mod tests {
 
     #[test]
     fn own_profile_reads_the_user_id_and_empty_strings_as_null() {
-        let own = |fields| own_profile_of("@a:b", &profile(fields));
+        let own = |fields| own_profile_of("@a:b", &profile_response(fields));
         let named = json!({"displayname": "Ann", "avatar_url": "mxc://b/c"});
         assert_eq!(own(named), profile_dto(Some("Ann"), Some("mxc://b/c")));
         let nameless = json!({"displayname": "@a:b", "avatar_url": ""});
@@ -297,7 +474,7 @@ mod tests {
 
     #[test]
     fn a_profile_keeps_strings_as_sent_and_non_strings_as_null() {
-        let of = |fields| profile_of(&profile(fields));
+        let of = |fields| profile_of(&profile_response(fields));
         let sent = json!({"displayname": "", "avatar_url": "mxc://b/c"});
         assert_eq!(of(sent), profile_dto(Some(""), Some("mxc://b/c")));
         let own_id = json!({"displayname": "@a:b"});
@@ -490,5 +667,218 @@ mod tests {
         );
         assert_eq!(*signals.ignored.borrow(), 1);
         assert_eq!(*signals.presence.borrow(), 0);
+    }
+
+    #[tokio::test]
+    async fn every_identity_command_sends_its_request_once() {
+        let commands: [(&'static str, Value, Command); 6] = [
+            (PROFILE, json!({"displayname": "B"}), |engine| {
+                profile(engine, "@a:b".into(), "@b:c".into())
+            }),
+            (NAME, json!({}), |engine| {
+                set_display_name(engine, "@a:b".into(), "Ann".into())
+            }),
+            (AVATAR, json!({}), |engine| {
+                set_avatar(engine, "@a:b".into(), "mxc://b/c".into())
+            }),
+            (PRESENCE_GET, json!({"presence": "online"}), |engine| {
+                own_presence(engine, "@a:b".into())
+            }),
+            (PRESENCE_SET, json!({}), |engine| {
+                set_presence(engine, "@a:b".into(), PresenceStateDto::Online, None)
+            }),
+            (IGNORED_GET, json!({"ignored_users": {}}), |engine| {
+                set_ignored(engine, "@a:b".into(), "@b:c".into(), true)
+            }),
+        ];
+        for (route, ok, command) in commands {
+            let root = TempDir::new().unwrap();
+            let answers = vec![(route, 502, unavailable()), (route, 200, ok)];
+            let (engine, seen) = live_on(&root, answers).await;
+            let reply = first(command(engine)).await;
+            let kind = &reply["failure"]["kind"];
+            assert_eq!(
+                (requests(&seen).len(), kind),
+                (1, &json!("server")),
+                "{route}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_put_of_the_ignored_list_retries() {
+        let answers = vec![
+            (IGNORED_GET, 200, json!({"ignored_users": {}})),
+            (IGNORED_PUT, 502, unavailable()),
+            (IGNORED_PUT, 200, json!({})),
+        ];
+        let root = TempDir::new().unwrap();
+        let (engine, seen) = live_on(&root, answers).await;
+        let reply = first(set_ignored(engine, "@a:b".into(), "@b:c".into(), true)).await;
+        assert_eq!(reply, json!({"ok": true, "value": null}));
+        assert_eq!(requests(&seen).len(), 3);
+    }
+
+    #[tokio::test]
+    async fn profile_sends_the_token_though_the_endpoint_wants_none() {
+        let root = TempDir::new().unwrap();
+        let ok = json!({"displayname": "B", "avatar_url": "mxc://c/d"});
+        let (engine, seen) = live_on(&root, vec![(PROFILE, 200, ok)]).await;
+        let reply = first(profile(engine, "@a:b".into(), "@b:c".into())).await;
+        let expected = json!({"displayName": "B", "avatarMxc": "mxc://c/d"});
+        assert_eq!(reply, json!({"ok": true, "value": expected}));
+        let sent = vec![(PROFILE.to_owned(), Some("Bearer t1".to_owned()))];
+        assert_eq!(requests(&seen), sent);
+    }
+
+    #[tokio::test]
+    async fn a_missing_profile_is_an_empty_one_and_a_forbidden_one_fails() {
+        let root = TempDir::new().unwrap();
+        let answers = vec![
+            (
+                PROFILE,
+                404,
+                json!({"errcode": "M_NOT_FOUND", "error": "x"}),
+            ),
+            (
+                PROFILE,
+                403,
+                json!({"errcode": "M_FORBIDDEN", "error": "x"}),
+            ),
+        ];
+        let (engine, _) = live_on(&root, answers).await;
+        let ask = || profile(Arc::clone(&engine), "@a:b".into(), "@b:c".into());
+        let empty = json!({"displayName": null, "avatarMxc": null});
+        assert_eq!(first(ask()).await, json!({"ok": true, "value": empty}));
+        let forbidden = first(ask()).await;
+        assert_eq!(forbidden["ok"], json!(false));
+        assert_eq!(forbidden["failure"]["kind"], json!("permission"));
+        assert_eq!(forbidden["failure"]["code"], json!("request-failed"));
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_set_presence_reports_when_to_retry() {
+        let limited = json!({"errcode": "M_LIMIT_EXCEEDED", "error": "x", "retry_after_ms": 4000});
+        let root = TempDir::new().unwrap();
+        let answers = vec![(PRESENCE_SET, 429, limited), (PRESENCE_SET, 200, json!({}))];
+        let (engine, seen) = live_on(&root, answers).await;
+        let reply = first(set_presence(
+            engine,
+            "@a:b".into(),
+            PresenceStateDto::Online,
+            None,
+        ))
+        .await;
+        let failure = &reply["failure"];
+        assert_eq!(failure["kind"], json!("rate-limit"));
+        assert_eq!(failure["code"], json!("request-failed"));
+        assert_eq!(failure["diagnostic"]["retryAfterMs"], json!(4000));
+        assert_eq!(requests(&seen).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn two_quick_set_ignored_calls_run_one_after_another() {
+        let answers = vec![
+            (IGNORED_GET, 200, json!({"ignored_users": {}})),
+            (IGNORED_PUT, 200, json!({})),
+            (IGNORED_GET, 200, json!({"ignored_users": {"@b:c": {}}})),
+            (IGNORED_PUT, 200, json!({})),
+        ];
+        let root = TempDir::new().unwrap();
+        let (engine, seen) = live_on(&root, answers).await;
+        let ignore =
+            |user: &str| set_ignored(Arc::clone(&engine), "@a:b".into(), user.into(), true);
+        let (one, two) = join(first(ignore("@b:c")), first(ignore("@d:e"))).await;
+        let ok = json!({"ok": true, "value": null});
+        assert_eq!((one, two), (ok.clone(), ok));
+        let order: Vec<_> = requests(&seen)
+            .into_iter()
+            .map(|(route, _)| route)
+            .collect();
+        assert_eq!(order, [IGNORED_GET, IGNORED_PUT, IGNORED_GET, IGNORED_PUT]);
+    }
+
+    #[tokio::test]
+    async fn set_ignored_writes_nothing_when_nothing_changes() {
+        let root = TempDir::new().unwrap();
+        let ignored = json!({"ignored_users": {"@b:c": {}}});
+        let (engine, seen) = live_on(&root, vec![(IGNORED_GET, 200, ignored)]).await;
+        let reply = first(set_ignored(engine, "@a:b".into(), "@b:c".into(), true)).await;
+        assert_eq!(reply, json!({"ok": true, "value": null}));
+        assert_eq!(requests(&seen).len(), 1);
+    }
+
+    /// The four writes with their scripts and the ticks each leaves on the profile, presence and
+    /// ignored signals.
+    fn writes() -> [(Answers, Command, [u64; 3]); 4] {
+        let ok = || json!({});
+        [
+            (
+                vec![(NAME, 200, ok())],
+                |engine| set_display_name(engine, "@a:b".into(), "Ann".into()),
+                [1, 0, 0],
+            ),
+            (
+                vec![(AVATAR, 200, ok())],
+                |engine| set_avatar(engine, "@a:b".into(), "mxc://b/c".into()),
+                [1, 0, 0],
+            ),
+            (
+                vec![(PRESENCE_SET, 200, ok())],
+                |engine| set_presence(engine, "@a:b".into(), PresenceStateDto::Offline, None),
+                [0, 1, 0],
+            ),
+            (
+                vec![
+                    (IGNORED_GET, 200, json!({"ignored_users": {}})),
+                    (IGNORED_PUT, 200, ok()),
+                ],
+                |engine| set_ignored(engine, "@a:b".into(), "@b:c".into(), true),
+                [0, 0, 1],
+            ),
+        ]
+    }
+
+    #[tokio::test]
+    async fn a_closed_write_still_reaches_the_server() {
+        for (answers, command, _) in writes() {
+            let wanted = answers.len();
+            let root = TempDir::new().unwrap();
+            let (engine, seen) = live_on(&root, answers).await;
+            let mut closed = command(engine);
+            assert!(
+                closed.next().now_or_never().is_none(),
+                "the write is in flight"
+            );
+            drop(closed);
+            let arrived = async {
+                while requests(&seen).len() < wanted {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            };
+            let arrived = timeout(arrived, Duration::from_secs(2)).await;
+            assert!(arrived.is_ok(), "the close cut the write short");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_write_ticks_the_signal_of_what_it_changed() {
+        for (answers, command, ticks) in writes() {
+            let root = TempDir::new().unwrap();
+            let (engine, _) = live_on(&root, answers).await;
+            let done = first(command(Arc::clone(&engine))).await;
+            assert_eq!(done, json!({"ok": true, "value": null}));
+            let rt = engine.account("@a:b").unwrap();
+            let signals = &rt.identity;
+            let seen = [&signals.profile, &signals.presence, &signals.ignored].map(|s| *s.borrow());
+            assert_eq!(seen, ticks);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_not_live_account_fails_before_its_arguments_are_parsed() {
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        let reply = first(profile(engine, "@x:y".into(), "not a user id".into())).await;
+        assert_eq!(reply["failure"]["code"], json!("account-not-live"));
     }
 }

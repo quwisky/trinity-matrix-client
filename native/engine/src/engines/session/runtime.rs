@@ -46,10 +46,6 @@ pub struct AccountRuntime {
     /// The session's `baseUrl` as given: `Client::homeserver()` adds a trailing slash.
     pub(crate) base_url: String,
     pub(crate) refreshable: bool,
-    #[expect(
-        dead_code,
-        reason = "the identity commands that read it come in the next commit"
-    )]
     pub(crate) identity: IdentitySignals,
     /// Set once the engine signs the session out itself, so its own logout is no death.
     pub(crate) signed_out: AtomicBool,
