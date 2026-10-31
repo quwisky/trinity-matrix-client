@@ -167,14 +167,16 @@ mod tests {
     };
 
     use futures_util::{StreamExt, future::ready, stream};
-    use matrix_sdk::{sleep::sleep, timeout::timeout};
+    use matrix_sdk::{ruma::room_id, sleep::sleep, timeout::timeout};
     use serde_json::json;
+    use tempfile::TempDir;
     use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
     use super::*;
     use crate::{
         config::EngineConfig,
-        dispatch::{Args, stream},
+        dispatch::{Args, reply, stream},
+        testing::{builder_on, engine_in, live, password},
         wire::FaultKind,
     };
 
@@ -208,6 +210,21 @@ mod tests {
             ))),
             _ => return None,
         })
+    }
+
+    /// The rooms of a nudged stream, after a first 0; a nudge waits for them to be written.
+    fn nudging(engine: &Arc<Engine>, method: &str, _: &[Value]) -> Option<Result<Stream, Fault>> {
+        let rt = engine.account("@a:b")?;
+        Some(Ok(match method {
+            "t.nudged" => {
+                let rooms = rt.nudged().map(|room| Ok(json!(room)));
+                stream(stream::once(ready(Ok(json!(0)))).chain(rooms))
+            }
+            "t.nudge" => reply(async move {
+                rt.nudge(Some(room_id!("!r:b"))).delivered().await;
+            }),
+            _ => return None,
+        }))
     }
 
     fn session() -> (CarrierSession, UnboundedReceiver<Frame>) {
@@ -465,6 +482,29 @@ mod tests {
                 },
                 Frame::Complete { id: 2 },
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_nudged_stream_emits_before_the_command_reply() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let client = builder_on("http://127.0.0.1:1").build().await.unwrap();
+        let _rt = live(&engine, &password("http://127.0.0.1:1"), client).await;
+        let (out, mut frames) = unbounded_channel();
+        let mut session = CarrierSession::new(engine, out).with_local(nudging);
+        session.handle(open(1, "t.nudged", vec![]));
+        let next = |id, v| Frame::Next { id, v };
+        assert_eq!(next_frame(&mut frames).await, next(1, json!(0)));
+        session.handle(open(2, "t.nudge", vec![]));
+        let mut received = Vec::new();
+        for _ in 0..3 {
+            received.push(next_frame(&mut frames).await);
+        }
+        let complete = Frame::Complete { id: 2 };
+        assert_eq!(
+            received,
+            [next(1, json!("!r:b")), next(2, json!(null)), complete]
         );
     }
 

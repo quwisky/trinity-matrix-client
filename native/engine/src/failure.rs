@@ -25,6 +25,10 @@ use ts_rs::TS;
 
 const DTO: &str = "util/matrix/src/lib/rust-dto/";
 const MAX_RETRY_AFTER_MS: u32 = 24 * 60 * 60 * 1000;
+/// The errcodes of a refused invite: MSC4155's unstable and stable spellings. ruma folds the
+/// unstable one into `M_INVITE_BLOCKED` in a standard body, so it is read only from another one.
+const INVITE_BLOCKED_ERRCODES: [&str; 2] =
+    ["M_INVITE_BLOCKED", "ORG.MATRIX.MSC4155.INVITE_BLOCKED"];
 
 /// `MatrixRequestFailureKind`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
@@ -135,6 +139,7 @@ pub enum FailureCode {
     UiaRequired {
         challenge: UiaChallengeDto,
     },
+    InviteBlocked,
     Unsupported,
     Forbidden,
 }
@@ -181,6 +186,7 @@ enum WireCode {
         #[ts(inline)]
         params: UiaParams,
     },
+    InviteBlocked,
     Unsupported,
     Forbidden,
 }
@@ -237,6 +243,7 @@ impl From<EngineFailure> for WireFailure {
             FailureCode::UiaRequired { challenge } => WireCode::UiaRequired {
                 params: UiaParams { challenge },
             },
+            FailureCode::InviteBlocked => WireCode::InviteBlocked,
             FailureCode::Unsupported => WireCode::Unsupported,
             FailureCode::Forbidden => WireCode::Forbidden,
         };
@@ -377,6 +384,23 @@ pub fn request_failed(err: &Error) -> EngineFailure {
             server_message: None,
         },
     }
+}
+
+/// The js adapter's `inviteFailed`: `invite-blocked` where the invitee blocks invites (MSC4155),
+/// else [`request_failed`].
+pub fn invite_failed(err: &Error) -> EngineFailure {
+    if let Error::Http(http) = err
+        && let Some(RumaApiError::MatrixError(error)) = server_error(http)
+        && errcode(&error.body).is_some_and(|code| INVITE_BLOCKED_ERRCODES.contains(&code.as_str()))
+    {
+        let (kind, diagnostic) = classify(err);
+        return EngineFailure {
+            kind,
+            diagnostic,
+            code: FailureCode::InviteBlocked,
+        };
+    }
+    request_failed(err)
 }
 
 pub fn classify(err: &Error) -> (FailureKind, Diagnostic) {
@@ -745,18 +769,59 @@ mod tests {
 
     #[tokio::test]
     async fn request_failure_of_a_connection_error_is_a_network_request_failure() {
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let error =
-            request_error(&format!("http://127.0.0.1:{port}"), Duration::from_secs(5)).await;
+        let error = refused_connection().await;
         let failure = request_failure(&error.into());
         assert_eq!(failure.kind, FailureKind::Network);
         assert!(
             matches!(failure.code, FailureCode::RequestFailed { .. }),
             "{failure:?}"
+        );
+    }
+
+    #[test]
+    fn invite_blocked_serialises_without_params() {
+        let failure = EngineFailure {
+            kind: FailureKind::Http,
+            diagnostic: Diagnostic {
+                kind: FailureKind::Http,
+                http_status: Some(403),
+                errcode: Some("M_INVITE_BLOCKED".into()),
+                retry_after_ms: None,
+            },
+            code: FailureCode::InviteBlocked,
+        };
+        assert_eq!(
+            to_json(failure),
+            json!({
+                "kind": "http",
+                "code": "invite-blocked",
+                "diagnostic": {"kind": "http", "httpStatus": 403, "errcode": "M_INVITE_BLOCKED"},
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn invite_failed_maps_the_blocked_errcodes_and_nothing_else() {
+        for errcode in ["M_INVITE_BLOCKED", "ORG.MATRIX.MSC4155.INVITE_BLOCKED"] {
+            let error = Error::from(matrix_error(403, errcode));
+            let failure = invite_failed(&error);
+            assert_eq!(failure.code, FailureCode::InviteBlocked, "{errcode}");
+            assert_eq!((failure.kind, failure.diagnostic), classify(&error));
+        }
+        // A number for `error` makes the body non-standard, so ruma keeps the unstable errcode.
+        let unstable = json!({"errcode": "ORG.MATRIX.MSC4155.INVITE_BLOCKED", "error": 5});
+        let raw = Error::from(response(403, &unstable.to_string(), None));
+        assert_eq!(invite_failed(&raw).code, FailureCode::InviteBlocked);
+        let forbidden = invite_failed(&matrix_error(403, "M_FORBIDDEN").into());
+        assert!(
+            matches!(forbidden.code, FailureCode::RequestFailed { .. }),
+            "{forbidden:?}"
+        );
+        let refused = invite_failed(&refused_connection().await.into());
+        assert_eq!(refused.kind, FailureKind::Network);
+        assert!(
+            matches!(refused.code, FailureCode::RequestFailed { .. }),
+            "{refused:?}"
         );
     }
 
@@ -827,6 +892,16 @@ mod tests {
             .fetch_server_versions(Some(config))
             .await
             .unwrap_err()
+    }
+
+    /// The error for a request to a port nothing listens on.
+    async fn refused_connection() -> HttpError {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        request_error(&format!("http://127.0.0.1:{port}"), Duration::from_secs(5)).await
     }
 
     fn refresh_error(error: RefreshTokenError) -> HttpError {
@@ -942,13 +1017,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_connection_error_is_network() {
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let error =
-            request_error(&format!("http://127.0.0.1:{port}"), Duration::from_secs(5)).await;
+        let error = refused_connection().await;
         assert_eq!(classify_http(&error), bare(FailureKind::Network));
         assert_eq!(refresh_cause(request_failed(&error.into())), None);
     }
