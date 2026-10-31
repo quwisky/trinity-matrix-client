@@ -3,12 +3,24 @@
 //! its failure like js `tooLargeOrFailed`: `M_FORBIDDEN` stays a `request-failed` of kind
 //! `permission`.
 
-use std::{collections::BTreeMap, sync::Arc, sync::Mutex, time::Duration};
+use std::{
+    collections::BTreeMap,
+    pin::pin,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use async_stream::stream;
-use futures_util::{Stream, StreamExt};
+use futures_util::{
+    Stream, StreamExt,
+    future::{BoxFuture, Either, select},
+    stream,
+};
 use matrix_sdk::{
-    Client, Error, Room, RoomDisplayName, RoomState,
+    Client, Error, RoomDisplayName, RoomState,
     ruma::{
         OwnedRoomId, RoomAliasId, RoomId, RoomOrAliasId,
         api::client::{
@@ -27,7 +39,7 @@ use ts_rs::TS;
 use super::{
     account_data,
     member::{account_stream, bounded, on_account, sent_once},
-    room_state::{self, follow_state, read_state},
+    room_state::{self, RETRY_GAP, follow_state, read_state},
     settle::{account_data_changes_of, rooms_changes},
 };
 use crate::{
@@ -39,8 +51,8 @@ use crate::{
 const DTO: &str = "data-access/media/src/lib/rust-dto/";
 const IMAGE_PACK: &str = "m.room.image_pack";
 const MAX_VIA: usize = 3;
-const LEVELS_POLL: Duration = Duration::from_millis(100);
-const LEVELS_POLLS: u32 = 30;
+/// How long the first item waits, once for all rooms, for the levels of rooms just joined.
+const LEVELS_WAIT: Duration = Duration::from_secs(3);
 const ROOM_EMOTES: &str = "im.ponies.room_emotes";
 
 /// `AccountDataSnapshot`: each watched type's content, or null.
@@ -73,6 +85,8 @@ pub struct PackRoomDto {
 /// What the account's store says of one room.
 struct Local {
     joined: bool,
+    /// False while the room is joined but its power levels are not in the store yet.
+    settled: bool,
     name: Option<String>,
     can_write_pack: bool,
 }
@@ -89,8 +103,9 @@ pub fn account_data(engine: Arc<Engine>, account_id: String, types: Vec<String>)
     })
 }
 
-/// One entry per id, in order. The store's fields come at once and again on each change, and the
-/// pack events from the server once the first read is in; a failed read keeps the last events.
+/// One entry per id, in order. The first item holds the store's fields, after waiting at most 3 s
+/// for the power levels of rooms just joined; each change brings them again, with the pack events
+/// from the server. A failed read keeps the last events and is retried after 30 s.
 pub fn pack_rooms(engine: Arc<Engine>, account_id: String, room_ids: Vec<String>) -> Items {
     let empty = pack_rows(&room_ids, &[], &Events::new());
     account_stream(engine, account_id, empty, move |_, client| {
@@ -282,9 +297,10 @@ async fn local_row(client: &Client, id: &str) -> Option<Local> {
     let id = RoomId::parse(id).ok()?;
     let room = client.get_room(&id)?;
     let joined = room.state() == RoomState::Joined;
+    // A room just joined can be in the store before its power levels are: the next tick has them.
+    let known = room.power_levels().await.is_ok();
     let can_write_pack = match client.user_id() {
         Some(me) if joined => {
-            settled(&room).await;
             let levels = room.power_levels_or_default().await;
             levels.user_can_send_state(me, StateEventType::from(IMAGE_PACK))
         }
@@ -292,22 +308,10 @@ async fn local_row(client: &Client, id: &str) -> Option<Local> {
     };
     Some(Local {
         joined,
+        settled: known || !joined,
         name: local_name(client, &id).await,
         can_write_pack,
     })
-}
-
-/// A room the account has just joined can be in the store before its power levels are, and
-/// reading the default then would say the owner cannot write. Waits until they are there.
-// shortcut: a polled wait of at most `LEVELS_WAIT`, since a store write that carries no room
-// update notifies nothing; replace it with a signal if the SDK gains one.
-async fn settled(room: &Room) {
-    for _ in 0..LEVELS_POLLS {
-        if room.power_levels().await.is_ok() {
-            return;
-        }
-        sleep(LEVELS_POLL).await;
-    }
 }
 
 /// One row per id in order; a room with no `locals` entry is a null row.
@@ -325,25 +329,31 @@ fn pack_rows(ids: &[String], locals: &[Option<Local>], events: &Events) -> Vec<P
                 room_id: id.clone(),
                 joined: local.is_some_and(|l| l.joined),
                 name: local.and_then(|l| l.name.clone()),
-                can_write_pack: local.is_some_and(|l| l.can_write_pack),
+                can_write_pack: local.is_some_and(|l| l.joined && l.can_write_pack),
                 pack_events,
             }
         })
         .collect()
 }
 
+/// As js: a missing key is `""` and missing content `{}`.
 fn pack_event(event: &Value) -> Value {
-    json!({"type": event["type"], "state_key": event["state_key"], "content": event["content"]})
+    let key = event["state_key"].as_str().unwrap_or_default();
+    let content = event.get("content").filter(|c| c.is_object());
+    let content = content.cloned().unwrap_or_else(|| json!({}));
+    json!({"type": event["type"], "state_key": key, "content": content})
 }
 
-/// The store-only rows at once, then each read's rows through `follow_state`. A read that fails
-/// still refreshes the store's fields and keeps the last events, so `joined` and `name` stay
-/// current.
+/// The store-only rows, then each read's rows through `follow_state`. The first item waits at
+/// most `LEVELS_WAIT` in all for rooms joined but without stored power levels, woken by `changes`;
+/// later ticks read without waiting. A failed read still refreshes the store's fields and keeps
+/// the last events. After one, ticks read only the store, and the server is asked again `RETRY_GAP`
+/// after the failure, tick or not.
 fn pack_stream<L, LF, E, EF>(
     ids: Vec<String>,
     mut locals: L,
     mut events: E,
-    changes: impl Stream<Item = ()> + Unpin,
+    mut changes: impl Stream<Item = ()> + Unpin,
 ) -> impl Stream<Item = Vec<PackRoomDto>>
 where
     L: FnMut() -> LF,
@@ -352,30 +362,91 @@ where
     EF: Future<Output = Result<Events, Error>>,
 {
     stream! {
-        let first = pack_rows(&ids, &locals().await, &Events::new());
-        let kept = Arc::new(Mutex::new(Events::new()));
-        let read = move || {
-            let (store, server) = (locals(), events());
-            let (kept, ids) = (Arc::clone(&kept), ids.clone());
-            async move {
-                let store = store.await;
-                let server = server.await;
-                let mut kept = kept.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                match server {
-                    Ok(fresh) => *kept = fresh,
-                    Err(err) => {
-                        tracing::warn!(kind = ?classify(&err).0, "a pack room read failed");
-                    }
-                }
-                Ok(pack_rows(&ids, &store, &kept))
+        let mut deadline = pin!(sleep(LEVELS_WAIT));
+        let first = loop {
+            let now = locals().await;
+            if now.iter().flatten().all(|l| l.settled) {
+                break now;
+            }
+            if let Either::Right(_) | Either::Left((None, _)) =
+                select(changes.next(), deadline.as_mut()).await
+            {
+                break locals().await;
             }
         };
+        let first = pack_rows(&ids, &first, &Events::new());
+        let failed = Arc::new(AtomicBool::new(false));
+        let skip = Arc::new(AtomicBool::new(false));
+        let kept = Arc::new(Mutex::new(Events::new()));
+        let read = {
+            let (failed, skip, ids) = (Arc::clone(&failed), Arc::clone(&skip), ids.clone());
+            move || {
+                let store = locals();
+                let server = (!skip.load(Ordering::SeqCst)).then(&mut events);
+                let (failed, kept, ids) = (Arc::clone(&failed), Arc::clone(&kept), ids.clone());
+                async move {
+                    let store = store.await;
+                    let server = match server {
+                        Some(server) => Some(server.await),
+                        None => None,
+                    };
+                    let mut kept = kept.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    match server {
+                        Some(Ok(fresh)) => {
+                            *kept = fresh;
+                            failed.store(false, Ordering::SeqCst);
+                        }
+                        Some(Err(err)) => {
+                            tracing::warn!(kind = ?classify(&err).0, "a pack room read failed");
+                            failed.store(true, Ordering::SeqCst);
+                        }
+                        None => {}
+                    }
+                    Ok(pack_rows(&ids, &store, &kept))
+                }
+            }
+        };
+        let changes = backing_off(changes, failed, skip);
         let mut rows = Box::pin(follow_state(first.clone(), read, changes).skip(1));
         yield first;
         while let Some(rows) = rows.next().await {
             yield rows;
         }
     }
+}
+
+/// `changes`, except that while `failed` a tick sets `skip` (read the store only), and
+/// `RETRY_GAP` after the failure was first seen a tick comes by itself with `skip` cleared.
+fn backing_off(
+    changes: impl Stream<Item = ()> + Unpin,
+    failed: Arc<AtomicBool>,
+    skip: Arc<AtomicBool>,
+) -> impl Stream<Item = ()> + Unpin {
+    let retry: Option<BoxFuture<'static, ()>> = None;
+    Box::pin(stream::unfold(
+        (changes, retry),
+        move |(mut changes, mut retry)| {
+            let (failed, skip) = (Arc::clone(&failed), Arc::clone(&skip));
+            async move {
+                if failed.load(Ordering::SeqCst) {
+                    let timer = retry.get_or_insert_with(|| Box::pin(sleep(RETRY_GAP)));
+                    match select(changes.next(), timer).await {
+                        Either::Left((None, _)) => return None,
+                        Either::Left((Some(()), _)) => skip.store(true, Ordering::SeqCst),
+                        Either::Right(_) => {
+                            retry = None;
+                            skip.store(false, Ordering::SeqCst);
+                        }
+                    }
+                } else {
+                    retry = None;
+                    changes.next().await?;
+                    skip.store(false, Ordering::SeqCst);
+                }
+                Some(((), (changes, retry)))
+            }
+        },
+    ))
 }
 
 fn nulls(types: &[String]) -> Snapshot {
@@ -436,7 +507,6 @@ where
 mod tests {
     use std::{collections::VecDeque, sync::Mutex};
 
-    use futures_util::stream;
     use matrix_sdk::StoreError;
     use serde_json::json;
     use tempfile::TempDir;
@@ -776,12 +846,8 @@ mod tests {
 
 #[cfg(test)]
 mod pack_tests {
-    use std::{
-        sync::atomic::{AtomicUsize, Ordering},
-        time::Duration,
-    };
+    use std::{sync::atomic::AtomicUsize, time::Duration};
 
-    use futures_util::stream;
     use matrix_sdk::{ruma::owned_room_id, timeout::timeout};
     use tokio::sync::mpsc;
 
@@ -795,8 +861,16 @@ mod pack_tests {
         let name = name.map(str::to_owned);
         Some(Local {
             joined,
+            settled: true,
             name,
             can_write_pack,
+        })
+    }
+
+    fn unsettled() -> Option<Local> {
+        local(true, None, false).map(|l| Local {
+            settled: false,
+            ..l
         })
     }
 
@@ -854,10 +928,10 @@ mod pack_tests {
             counted.fetch_add(1, Ordering::SeqCst);
             async { Ok(Events::new()) }
         };
-        let locals = || async { vec![local(true, None, true)] };
+        let locals = || async { vec![local(true, None, true), local(true, None, true)] };
         let (tx, mut rx) = mpsc::unbounded_channel();
         let changes = stream::poll_fn(move |cx| rx.poll_recv(cx));
-        let mut rows = Box::pin(pack_stream(ids(&["!r:x"]), locals, events, changes));
+        let mut rows = Box::pin(pack_stream(ids(&["!r:x", "!s:x"]), locals, events, changes));
         assert!(rows.next().await.is_some(), "the store-only row");
         assert_eq!(
             reads.load(Ordering::SeqCst),
@@ -868,7 +942,11 @@ mod pack_tests {
             tx.send(()).unwrap();
         }
         assert!(timeout(rows.next(), Duration::from_secs(10)).await.is_err());
-        assert!(reads.load(Ordering::SeqCst) <= 2);
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            2,
+            "the first read and one for the burst"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -908,5 +986,128 @@ mod pack_tests {
         let after = rows.next().await.unwrap();
         assert_eq!(after[0].name.as_deref(), Some("New"));
         assert_eq!(after[0].pack_events.len(), 1, "the last events stand");
+    }
+
+    fn changes_of(mut rx: mpsc::UnboundedReceiver<()>) -> impl Stream<Item = ()> + Unpin {
+        stream::poll_fn(move |cx| rx.poll_recv(cx))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_first_read_is_tried_again_after_30_s() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let n = Arc::clone(&reads);
+        let events = move || {
+            let first = n.fetch_add(1, Ordering::SeqCst) == 0;
+            let seen = Events::from([(owned_room_id!("!r:x"), vec![pack("")])]);
+            async move {
+                if first {
+                    Err(Error::UnknownError("x".into()))
+                } else {
+                    Ok(seen)
+                }
+            }
+        };
+        let locals = || async { vec![local(true, None, true)] };
+        let (_tx, rx) = mpsc::unbounded_channel();
+        let mut rows = Box::pin(pack_stream(ids(&["!r:x"]), locals, events, changes_of(rx)));
+        assert!(rows.next().await.unwrap()[0].pack_events.is_empty());
+        let later = timeout(rows.next(), Duration::from_secs(31)).await;
+        assert_eq!(later.unwrap().unwrap()[0].pack_events.len(), 1);
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_busy_stream_backs_off_after_a_failed_read() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let n = Arc::clone(&reads);
+        let events = move || {
+            n.fetch_add(1, Ordering::SeqCst);
+            async { Err(Error::UnknownError("x".into())) }
+        };
+        let locals = || async { vec![local(true, None, true)] };
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut rows = Box::pin(pack_stream(ids(&["!r:x"]), locals, events, changes_of(rx)));
+        rows.next().await.unwrap();
+        let ticks = async {
+            for _ in 0..10 {
+                tx.send(()).unwrap();
+                matrix_sdk::sleep::sleep(Duration::from_secs(1)).await;
+            }
+        };
+        let (_, quiet) =
+            futures_util::future::join(ticks, timeout(rows.next(), Duration::from_secs(10))).await;
+        assert!(quiet.is_err());
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            1,
+            "ticks during the back-off read nothing"
+        );
+        assert!(timeout(rows.next(), Duration::from_secs(30)).await.is_err());
+        assert_eq!(reads.load(Ordering::SeqCst), 2, "one retry after 30 s");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_first_item_waits_for_levels_until_a_tick_brings_them() {
+        let ready = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&ready);
+        let locals = move || {
+            let ok = flag.load(Ordering::SeqCst);
+            async move {
+                let row = || {
+                    if ok {
+                        local(true, None, true)
+                    } else {
+                        unsettled()
+                    }
+                };
+                vec![row(), row()]
+            }
+        };
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut rows = Box::pin(pack_stream(
+            ids(&["!r:x", "!s:x"]),
+            locals,
+            || async { Ok(Events::new()) },
+            changes_of(rx),
+        ));
+        let arrive = async {
+            matrix_sdk::sleep::sleep(Duration::from_millis(500)).await;
+            ready.store(true, Ordering::SeqCst);
+            tx.send(()).unwrap();
+        };
+        let start = tokio::time::Instant::now();
+        let (_, first) = futures_util::future::join(arrive, rows.next()).await;
+        assert!(first.unwrap().iter().all(|r| r.can_write_pack));
+        assert!(start.elapsed() < Duration::from_secs(1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn rooms_that_never_settle_hold_the_first_item_for_one_deadline() {
+        let locals = || async { vec![unsettled(), unsettled(), unsettled()] };
+        let (_tx, rx) = mpsc::unbounded_channel();
+        let events = || async { Ok(Events::new()) };
+        let asked = ids(&["!a:x", "!b:x", "!c:x"]);
+        let mut rows = Box::pin(pack_stream(asked, locals, events, changes_of(rx)));
+        let start = tokio::time::Instant::now();
+        assert!(rows.next().await.is_some());
+        assert_eq!(start.elapsed(), Duration::from_secs(3));
+    }
+
+    #[test]
+    fn only_a_joined_room_can_write() {
+        let left = Some(Local {
+            joined: false,
+            ..local(true, None, true).unwrap()
+        });
+        assert!(!pack_rows(&ids(&["!r:x"]), &[left], &Events::new())[0].can_write_pack);
+    }
+
+    #[test]
+    fn a_pack_event_missing_its_key_or_content_reads_as_js_does() {
+        let bare = json!({"type": IMAGE_PACK});
+        assert_eq!(
+            pack_event(&bare),
+            json!({"type": IMAGE_PACK, "state_key": "", "content": {}})
+        );
     }
 }

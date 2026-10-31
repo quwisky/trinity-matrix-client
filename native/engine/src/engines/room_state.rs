@@ -30,7 +30,7 @@ use crate::failure::classify;
 /// The least time between two reads of one stream.
 const MIN_GAP: Duration = Duration::from_secs(1);
 /// The wait before a failed read is tried again.
-const RETRY_GAP: Duration = Duration::from_secs(30);
+pub(crate) const RETRY_GAP: Duration = Duration::from_secs(30);
 
 /// The current state events of `types` per room, read from the server. A room the account was
 /// never in is absent.
