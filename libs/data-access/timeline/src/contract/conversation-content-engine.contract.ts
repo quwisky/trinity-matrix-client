@@ -226,7 +226,7 @@ export function defineConversationContentEngineContract(
           roomId,
           eventIds: [real],
         } = await roomWith(['real']);
-        const missing = 'not-an-event-id';
+        const missing = `$unknown-${unique()}:localhost`;
         await context.asBob.setPinned(roomId, [missing, real]);
         const pins = watchPins(roomId);
         try {
