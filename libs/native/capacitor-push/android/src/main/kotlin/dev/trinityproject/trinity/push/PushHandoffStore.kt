@@ -43,7 +43,7 @@ class PushHandoffStore internal constructor(
 ) : HandoffReader {
     constructor(context: Context) : this(
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE),
-        KeystoreCrypto(),
+        KeystoreCrypto(KEY_ALIAS),
     )
 
     @Synchronized
@@ -145,6 +145,7 @@ class PushHandoffStore internal constructor(
 
     internal companion object {
         const val FILE = "trinity_push_handoff"
+        const val KEY_ALIAS = "trinity_push_handoff"
         private const val SETTINGS_KEY = "settings:notification-text"
     }
 }
@@ -171,11 +172,12 @@ internal interface ValueCrypto {
 
 /** AES-256-GCM under a non-exportable Android Keystore key. */
 internal class KeystoreCrypto(
-    private val storedKey: () -> SecretKey? = { keystoreKey() },
-    private val newKey: () -> SecretKey = { generateKeystoreKey() },
+    private val alias: String,
+    private val storedKey: (String) -> SecretKey? = { keystoreKey(it) },
+    private val newKey: (String) -> SecretKey = { generateKeystoreKey(it) },
 ) : ValueCrypto {
     override fun encrypt(plain: String): String {
-        val key = synchronized(KEY_LOCK) { storedKey() ?: newKey() }
+        val key = synchronized(KEY_LOCK) { storedKey(alias) ?: newKey(alias) }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key)
         val sealed = cipher.iv + cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
@@ -186,7 +188,7 @@ internal class KeystoreCrypto(
         // A read never generates. A lookup can report a transient Keystore fault as "no such
         // alias" (getKeyMetadata answers null on any KeyStoreException), and generating then
         // would replace the key and destroy every value sealed under it.
-        val key = synchronized(KEY_LOCK) { storedKey() } ?: throw KeyStoreException("No sealing key")
+        val key = synchronized(KEY_LOCK) { storedKey(alias) } ?: throw KeyStoreException("No sealing key")
         val sealed = Base64.decode(stored, Base64.NO_WRAP)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, sealed, 0, IV_BYTES))
@@ -194,7 +196,6 @@ internal class KeystoreCrypto(
     }
 
     private companion object {
-        const val ALIAS = "trinity_push_handoff"
         const val KEYSTORE = "AndroidKeyStore"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val IV_BYTES = 12
@@ -204,15 +205,15 @@ internal class KeystoreCrypto(
         // over the alias would replace the key the first one sealed with.
         private val KEY_LOCK = Any()
 
-        fun keystoreKey(): SecretKey? {
+        fun keystoreKey(alias: String): SecretKey? {
             val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-            return (keyStore.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+            return (keyStore.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.secretKey
         }
 
-        fun generateKeystoreKey(): SecretKey {
+        fun generateKeystoreKey(alias: String): SecretKey {
             val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)
             generator.init(
-                KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(256)

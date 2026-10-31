@@ -6,7 +6,9 @@ import org.json.JSONObject
 
 /**
  * Token records in their own private preferences file, so clearing the handoff store never
- * touches them, sealed under the handoff store's Keystore key. Nothing here logs what it stores.
+ * touches them, sealed under their own Keystore key: a lookup fault while sealing replaces that
+ * alias's key, and handoff values heal at the next start where these do not. Nothing here logs
+ * what it stores.
  */
 class KeystoreTokenVault internal constructor(
     private val preferences: SharedPreferences,
@@ -14,7 +16,7 @@ class KeystoreTokenVault internal constructor(
 ) : TokenVault {
     constructor(context: Context) : this(
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE),
-        KeystoreCrypto(),
+        KeystoreCrypto(KEY_ALIAS),
     )
 
     override fun read(userId: String): TokenVaultRead {
@@ -99,6 +101,7 @@ class KeystoreTokenVault internal constructor(
 
     internal companion object {
         const val FILE = "trinity_push_tokens"
+        const val KEY_ALIAS = "trinity_push_tokens"
 
         // Process-wide, not per instance: the plugin and the service each build their own vault.
         // A removal that gave up waiting for the lease must not be overwritten by an update.
