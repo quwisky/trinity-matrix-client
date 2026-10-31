@@ -33,6 +33,7 @@ use tokio::sync::{
 
 use super::{MatrixSessionDto, SessionSyncStateDto, restore::refreshable};
 use crate::accounts::Engine;
+use crate::engines::identity::IdentitySignals;
 
 /// How long `stop_sync` waits for the sync service to stop.
 const STOP_LIMIT: Duration = Duration::from_secs(30);
@@ -45,6 +46,11 @@ pub struct AccountRuntime {
     /// The session's `baseUrl` as given: `Client::homeserver()` adds a trailing slash.
     pub(crate) base_url: String,
     pub(crate) refreshable: bool,
+    #[expect(
+        dead_code,
+        reason = "the identity commands that read it come in the next commit"
+    )]
+    pub(crate) identity: IdentitySignals,
     /// Set once the engine signs the session out itself, so its own logout is no death.
     pub(crate) signed_out: AtomicBool,
     /// The restored token with its expiry, which a token the SDK refreshed does not have.
@@ -88,6 +94,7 @@ impl AccountRuntime {
         let service = Arc::clone(&sync_service);
         let restart = restart_on_error(Arc::downgrade(engine), id(), generation, service);
         let expiry = s.oidc.as_ref().and(s.access_token_expires_at);
+        let identity = IdentitySignals::new(&client, &s.user_id);
         Self {
             account_id: s.user_id.clone(),
             generation,
@@ -95,6 +102,7 @@ impl AccountRuntime {
             sync_service,
             base_url: s.base_url.clone(),
             refreshable: refreshable(s),
+            identity,
             signed_out: AtomicBool::new(false),
             expiry: expiry.map(|at| (s.access_token.clone(), at)),
             alive: Arc::new(watch::Sender::new(())),
