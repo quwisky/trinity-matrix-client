@@ -21,7 +21,10 @@ interface TokenGrantClient {
  * Grants and revocations over HttpURLConnection, to the record's pinned endpoints only, with no
  * retry, no discovery and no redirect. Logs nothing: bodies and URLs carry tokens and endpoints.
  */
-class HttpTokenGrantClient internal constructor(private val streaming: Boolean) : TokenGrantClient {
+class HttpTokenGrantClient internal constructor(
+    private val streaming: Boolean,
+    private val open: (String) -> HttpURLConnection = { URI.create(it).toURL().openConnection() as HttpURLConnection },
+) : TokenGrantClient {
     constructor() : this(true)
 
     private class Answer(val status: Int, val body: String)
@@ -88,7 +91,7 @@ class HttpTokenGrantClient internal constructor(private val streaming: Boolean) 
         // HttpURLConnection reads a 0 timeout as none.
         if (remaining <= 0) return null
         val connection = try {
-            URI.create(endpoint).toURL().openConnection() as HttpURLConnection
+            open(endpoint)
         } catch (error: Exception) {
             return null
         }
@@ -117,7 +120,8 @@ class HttpTokenGrantClient internal constructor(private val streaming: Boolean) 
             // thread an escaped one would take the process down.
             null
         } finally {
-            connection.disconnect()
+            // The answer is already in hand, and the provider has spent the old token.
+            runCatching { connection.disconnect() }
         }
     }
 

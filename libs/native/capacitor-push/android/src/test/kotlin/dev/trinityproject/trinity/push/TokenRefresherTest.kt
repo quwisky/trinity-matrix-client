@@ -20,6 +20,7 @@ private class FakeVault(var stored: TokenRecord? = R0) : TokenVault {
     var unavailable = false
     var failedUpdates = 0
     var writes = 0
+    var writesFail = false
 
     override fun read(userId: String): TokenVaultRead {
         if (unavailable) return TokenVaultRead.Unavailable
@@ -27,6 +28,7 @@ private class FakeVault(var stored: TokenRecord? = R0) : TokenVault {
     }
 
     override fun write(userId: String, record: TokenRecord): Boolean {
+        if (writesFail) return false
         stored = record
         writes += 1
         return true
@@ -79,6 +81,7 @@ private class FakeClient : TokenGrantClient {
     var answer: TokenGrantAnswer = TokenGrantAnswer.Tokens("a1", "r1", 300L)
     var revokeAnswer = true
     var onGrant: () -> Unit = {}
+    var onRevoke: () -> Unit = {}
     val grants = CopyOnWriteArrayList<TokenRecord>()
     val revokes = CopyOnWriteArrayList<TokenRecord>()
     val revoked = CountDownLatch(1)
@@ -92,6 +95,7 @@ private class FakeClient : TokenGrantClient {
     override fun revoke(record: TokenRecord, deadline: Deadline): Boolean {
         revokes.add(record)
         revoked.countDown()
+        onRevoke()
         return revokeAnswer
     }
 }
@@ -274,6 +278,25 @@ class TokenRefresherTest {
     }
 
     @Test
+    fun aRefusalOfAnOlderSignInIsGoneAndMarksNothing() {
+        val newer = R0.copy(lineage = "L2")
+        client.answer = TokenGrantAnswer.Refused
+        client.onGrant = { vault.stored = newer }
+
+        assertEquals(TokenRefreshResult.Gone, refresh())
+
+        assertEquals(newer, vault.stored)
+    }
+
+    @Test
+    fun aRefusalThatCannotReadTheStoreIsTransient() {
+        client.answer = TokenGrantAnswer.Refused
+        client.onGrant = { vault.unavailable = true }
+
+        assertEquals(TokenRefreshResult.Transient, refresh())
+    }
+
+    @Test
     fun aLateAnswerIsDiscardedWhenAnotherProcessRotated() {
         client.onGrant = { vault.stored = r2Stored }
 
@@ -342,6 +365,31 @@ class TokenRefresherTest {
     }
 
     @Test
+    fun currentIgnoresAnUnsavedPairOfAnotherLineage() {
+        leaveAnUnsavedPair()
+        vault.failedUpdates = 1
+
+        assertEquals(TokenRefreshResult.Gone, refresher.current(user, "other"))
+    }
+
+    @Test
+    fun currentReleasesALeaseItTookToFlush() {
+        leaveAnUnsavedPair()
+
+        refresher.current(user, "L")
+
+        assertEquals(listOf("ticket1", "ticket2"), lease.released)
+        assertEquals(TokenBudgets.LEASE_MARGIN_MILLIS, lease.lifetimes.last())
+    }
+
+    @Test
+    fun currentWithNothingUnsavedTakesNoLease() {
+        refresher.current(user, "L")
+
+        assertTrue(lease.waits.isEmpty())
+    }
+
+    @Test
     fun currentReadsTheStore() {
         assertEquals(TokenRefreshResult.Current(R0), refresher.current(user, "L"))
         assertEquals(TokenRefreshResult.Gone, refresher.current(user, "other"))
@@ -378,6 +426,48 @@ class TokenRefresherTest {
 
         assertEquals(TokenRefreshResult.Current(r1Stored), refresher.current(user, "L"))
         assertEquals(r1Stored, vault.stored)
+    }
+
+    @Test
+    fun anUnsavedPairIsDroppedWhenTheRecordWasRemoved() {
+        leaveAnUnsavedPair()
+        vault.stored = null
+
+        assertEquals(TokenRefreshResult.Gone, refresher.current(user, "L"))
+
+        assertNull(vault.stored)
+    }
+
+    /** The pair is the same: only the lineage tells the two sign-ins apart. */
+    @Test
+    fun anUnsavedPairIsNeverWrittenOverANewerSignIn() {
+        leaveAnUnsavedPair()
+        val newer = R0.copy(lineage = "L2")
+        vault.stored = newer
+
+        assertEquals(TokenRefreshResult.Gone, refresh("a1"))
+
+        assertEquals(newer, vault.stored)
+    }
+
+    @Test
+    fun anUnsavedPairSurvivesAnUnreadableStore() {
+        leaveAnUnsavedPair()
+        vault.unavailable = true
+
+        assertEquals(TokenRefreshResult.Current(a1r1), refresher.current(user, "L"))
+    }
+
+    @Test
+    fun aSavedRotationClearsTheUnsavedPair() {
+        leaveAnUnsavedPair()
+        vault.failedUpdates = 1 // fails the flush; the rotation's own write then lands
+        client.answer = TokenGrantAnswer.Tokens("a2", "r2", null)
+        val saved = a1r1.rotated("a2", "r2", null)
+
+        assertEquals(TokenRefreshResult.Rotated(saved, false), refresh("a1"))
+
+        assertEquals(TokenRefreshResult.Current(saved), refresher.current(user, "L"))
     }
 
     @Test
@@ -543,6 +633,53 @@ class TokenRefresherTest {
         assertTrue(client.revoked.await(5, TimeUnit.SECONDS))
         assertEquals(listOf(old), client.revokes.toList())
         assertEquals(newer, vault.stored)
+    }
+
+    @Test
+    fun aRevocationThatThrowsDoesNotEscapeItsThread() {
+        val escaped = CountDownLatch(1)
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { _, _ -> escaped.countDown() }
+        try {
+            vault.stored = R0.copy(accessToken = "a8", refreshToken = "r8", deviceId = "OLD", lineage = "L1")
+            client.onRevoke = { throw IllegalStateException("disconnect") }
+
+            assertTrue(refresher.migrate(R0.copy(lineage = "L2"), user))
+
+            assertTrue(client.revoked.await(5, TimeUnit.SECONDS))
+            assertFalse(escaped.await(300, TimeUnit.MILLISECONDS))
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous)
+        }
+    }
+
+    @Test
+    fun migrationReplacesARecordOfTheSameLineageWithNoRefreshToken() {
+        vault.stored = R0.copy(refreshToken = null)
+
+        assertTrue(refresher.migrate(R0, user))
+
+        assertEquals(R0, vault.stored)
+    }
+
+    @Test
+    fun aMigrationWhoseWriteFailsIsNotStoredAndRevokesNothing() {
+        vault.stored = R0.copy(accessToken = "a8", refreshToken = "r8", deviceId = "OLD", lineage = "L1")
+        vault.writesFail = true
+
+        assertFalse(refresher.migrate(R0.copy(lineage = "L2"), user))
+
+        assertFalse(client.revoked.await(200, TimeUnit.MILLISECONDS))
+        assertEquals(listOf("ticket1"), lease.released)
+    }
+
+    @Test
+    fun migrationOverAnotherDeviceWithNoRefreshTokenRevokesNothing() {
+        vault.stored = R0.copy(refreshToken = null, deviceId = "OLD", lineage = "L1")
+
+        assertTrue(refresher.migrate(R0.copy(lineage = "L2"), user))
+
+        assertFalse(client.revoked.await(200, TimeUnit.MILLISECONDS))
     }
 
     @Test

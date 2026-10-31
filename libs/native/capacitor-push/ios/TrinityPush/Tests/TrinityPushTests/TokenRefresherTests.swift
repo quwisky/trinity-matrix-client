@@ -110,6 +110,8 @@ private final class FakeLease: TokenLease, @unchecked Sendable {
         var waits: [TimeInterval] = []
         var lifetimes: [TimeInterval] = []
         var released: [String] = []
+        var discarded: [String] = []
+        var discardedAll = 0
     }
 
     enum LeaseAnswer {
@@ -133,6 +135,8 @@ private final class FakeLease: TokenLease, @unchecked Sendable {
     var waits: [TimeInterval] { state.withLock { $0.waits } }
     var lifetimes: [TimeInterval] { state.withLock { $0.lifetimes } }
     var released: [String] { state.withLock { $0.released } }
+    var discarded: [String] { state.withLock { $0.discarded } }
+    var discardedAll: Int { state.withLock { $0.discardedAll } }
 
     func take(_ account: String, lifetime: TimeInterval, wait: TimeInterval) async -> LeaseTake {
         let hook = state.withLock { state -> @Sendable () -> Void in
@@ -154,6 +158,14 @@ private final class FakeLease: TokenLease, @unchecked Sendable {
 
     func release(_ ticket: LeaseTicket) {
         state.withLock { $0.released.append(ticket.owner) }
+    }
+
+    func discard(_ ticket: LeaseTicket) {
+        state.withLock { $0.discarded.append(ticket.owner) }
+    }
+
+    func discardAll() {
+        state.withLock { $0.discardedAll += 1 }
     }
 }
 
@@ -225,6 +237,8 @@ private struct CountingLease: TokenLease {
 
     func holds(_ ticket: LeaseTicket) -> Bool { lease.holds(ticket) }
     func release(_ ticket: LeaseTicket) { lease.release(ticket) }
+    func discard(_ ticket: LeaseTicket) { lease.discard(ticket) }
+    func discardAll() { lease.discardAll() }
 }
 
 final class TokenRefresherTests: XCTestCase {
@@ -512,11 +526,19 @@ final class TokenRefresherTests: XCTestCase {
         XCTAssertEqual(result, .gone)
     }
 
-    func testCurrentReleasesALeaseItTook() async {
+    func testCurrentReleasesALeaseItTookToFlush() async {
+        await leaveAnUnsavedPair()
+
         _ = await refresher.current(account: user, lineage: "L")
 
-        XCTAssertEqual(lease.released, ["ticket1"])
-        XCTAssertEqual(lease.lifetimes, [TokenBudgets.leaseMargin])
+        XCTAssertEqual(lease.released, ["ticket1", "ticket2"])
+        XCTAssertEqual(lease.lifetimes.last, TokenBudgets.leaseMargin)
+    }
+
+    func testCurrentWithNothingUnsavedTakesNoLease() async {
+        _ = await refresher.current(account: user, lineage: "L")
+
+        XCTAssertEqual(lease.waits, [])
     }
 
     func testCurrentReadsTheStore() async {
@@ -1166,10 +1188,21 @@ final class TokenRefresherTests: XCTestCase {
         }
     }
 
-    func testRemoveReleasesALeaseItTook() async {
+    func testRemoveDiscardsALeaseItTook() async {
         _ = await refresher.remove(account: user)
 
-        XCTAssertEqual(lease.released, ["ticket1"])
+        XCTAssertEqual(lease.discarded, ["ticket1"])
+        XCTAssertEqual(lease.released, [])
+    }
+
+    func testRemovingAnAccountThatNeverHadALeaseLeavesNoFile() async throws {
+        let refresher = makeRefresher(lease: realLease())
+
+        let removed = await refresher.remove(account: user)
+
+        XCTAssertTrue(removed)
+        let leases = container.appendingPathComponent("push-handoff/leases")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: leases.path), [])
     }
 
     func testRemoveDropsAnUnsavedPair() async {
@@ -1190,6 +1223,7 @@ final class TokenRefresherTests: XCTestCase {
 
         XCTAssertTrue(removed)
         XCTAssertNil(vault.stored)
+        XCTAssertEqual(lease.discardedAll, 1)
         let current = await refresher.current(account: user, lineage: "L")
         XCTAssertEqual(current, .gone)
     }

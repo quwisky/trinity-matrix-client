@@ -143,7 +143,7 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
     }
 
     public func current(account: String, lineage: String) async -> TokenRefreshResult {
-        if case .taken(let ticket) = await lease.take(
+        if unsaved(account) != nil, case .taken(let ticket) = await lease.take(
             account, lifetime: TokenBudgets.leaseMargin, wait: TokenBudgets.removalWait) {
             flushPending(account)
             lease.release(ticket)
@@ -213,10 +213,11 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
     public func remove(account: String?) async -> Bool {
         guard let account else {
             pendingLock.withLock { pending.removeAll() }
+            defer { lease.discardAll() }
             return vault.removeAll()
         }
         let take = await lease.take(account, lifetime: TokenBudgets.leaseMargin, wait: TokenBudgets.removalWait)
-        defer { if case .taken(let ticket) = take { lease.release(ticket) } }
+        defer { if case .taken(let ticket) = take { lease.discard(ticket) } }
         clearPending(account)
         return vault.remove(account)
     }

@@ -20,6 +20,10 @@ public protocol TokenLease: Sendable {
     func take(_ account: String, lifetime: TimeInterval, wait: TimeInterval) async -> LeaseTake
     func holds(_ ticket: LeaseTicket) -> Bool
     func release(_ ticket: LeaseTicket)
+    /// Releases and leaves nothing behind, for an account whose tokens are going.
+    func discard(_ ticket: LeaseTicket)
+    /// Every account's lease, held or not.
+    func discardAll()
 }
 
 /// The lease as a file in the app group, `push-handoff/leases/<sha256 of the user id>.lease`, named
@@ -29,7 +33,8 @@ public protocol TokenLease: Sendable {
 /// Every change to the name is one atomic `renamex_np`, and a file's contents never change once it
 /// has been written. `RENAME_EXCL` creates the name. After that `RENAME_SWAP` replaces what is
 /// there, so the name is never empty, not even for a process killed between two steps. A release
-/// swaps in a long-expired file, and that file stays until the next take.
+/// swaps in a long-expired file, and that file stays until the next take. Only a discard, when the
+/// tokens are removed, empties the name; a taker or holder reads that as a free lease.
 ///
 /// Two processes can still both believe they hold the lease until the older one next asks `holds`:
 /// - The wall clock jumps forward past a live lease's expiry, so it is taken over as expired.
@@ -112,6 +117,20 @@ public final class AppGroupTokenLease: TokenLease {
               let expired = writeCandidate(Body(owner: UUID().uuidString, expiresAt: .distantPast), beside: lease)
         else { return }
         _ = replace(lease, seen: mine, with: expired)
+    }
+
+    public func discard(_ ticket: LeaseTicket) {
+        let lease = leaseURL(ticket.account)
+        guard case .contents(let mine) = read(lease), decoded(mine)?.owner == ticket.owner else { return }
+        unlink(lease.path)
+    }
+
+    /// Leaves another taker's candidate alone: its rename would otherwise fail as a platform refusal.
+    public func discardAll() {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in names where name.hasSuffix(".lease") {
+            unlink(directory.appendingPathComponent(name).path)
+        }
     }
 
     /// Reads first, so polling a held lease writes nothing.

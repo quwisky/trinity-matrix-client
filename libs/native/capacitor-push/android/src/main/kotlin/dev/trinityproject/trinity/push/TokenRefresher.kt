@@ -134,7 +134,11 @@ class TokenRefresher(
     }
 
     fun current(account: String, lineage: String): TokenRefreshResult {
-        val ticket = lease.take(account, TokenBudgets.LEASE_MARGIN_MILLIS, TokenBudgets.REMOVAL_WAIT_MILLIS)
+        val ticket = if (unsaved(account) == null) {
+            null
+        } else {
+            lease.take(account, TokenBudgets.LEASE_MARGIN_MILLIS, TokenBudgets.REMOVAL_WAIT_MILLIS)
+        }
         if (ticket != null) {
             try {
                 flushPending(account)
@@ -178,7 +182,8 @@ class TokenRefresher(
             !overwritten.samePair(record) // revoking it would sign out the record just stored
         ) {
             val deadline = deadlineIn(TokenBudgets.REVOKE_REQUEST_MILLIS)
-            Thread { client.revoke(overwritten, deadline) }.apply { isDaemon = true }.start()
+            // Nobody waits on this thread, and an exception escaping it would end the process.
+            Thread { runCatching { client.revoke(overwritten, deadline) } }.apply { isDaemon = true }.start()
         }
         return true
     }

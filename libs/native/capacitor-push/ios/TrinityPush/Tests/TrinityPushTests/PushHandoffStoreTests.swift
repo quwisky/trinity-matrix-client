@@ -68,6 +68,14 @@ final class PushHandoffStoreTests: XCTestCase {
         XCTAssertEqual(store.notificationText(), .show)
     }
 
+    func testClearRemovesEveryLeaseFile() async throws {
+        let lease = AppGroupTokenLease(containerURL: container)
+        guard case .taken = await lease.take("@a:hs", lifetime: 30, wait: 0) else { return XCTFail("not taken") }
+        try? store.clear()
+        let leases = container.appendingPathComponent("push-handoff/leases")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: leases.path), [])
+    }
+
     func testAMissingMirrorShowsTextAndADamagedOrUnknownOneHidesEverything() throws {
         XCTAssertEqual(store.notificationText(), .show)
         try FileManager.default.createDirectory(

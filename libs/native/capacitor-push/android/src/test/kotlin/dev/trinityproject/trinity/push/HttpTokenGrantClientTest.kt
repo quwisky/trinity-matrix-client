@@ -1,7 +1,12 @@
 package dev.trinityproject.trinity.push
 
 import com.sun.net.httpserver.HttpServer
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.HttpURLConnection
 import java.net.InetSocketAddress
+import java.net.URI
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
@@ -29,21 +34,29 @@ class HttpTokenGrantClientTest {
     @Volatile
     private var delayMillis = 0L
 
+    @Volatile
+    private var statusFor: ((String) -> Int)? = null
+
+    @Volatile
+    private var location: String? = null
+
     @Before
     fun start() {
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { exchange ->
+            val body = exchange.requestBody.bufferedReader().use { it.readText() }
             requests.add(
                 Request(
                     exchange.requestMethod,
                     exchange.requestURI.rawPath,
                     exchange.requestHeaders.getFirst("Content-Type"),
-                    exchange.requestBody.bufferedReader().use { it.readText() },
+                    body,
                 ),
             )
             Thread.sleep(delayMillis)
             val bytes = answer.toByteArray()
-            exchange.sendResponseHeaders(status, bytes.size.toLong())
+            location?.let { exchange.responseHeaders.add("Location", it) }
+            exchange.sendResponseHeaders(statusFor?.invoke(body) ?: status, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }
         }
         server.start()
@@ -382,6 +395,63 @@ class HttpTokenGrantClientTest {
         assertFalse(HttpTokenGrantClient().revoke(record(), deadline()))
 
         assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun anyTwoHundredAnswerIsRevoked() {
+        answer = ""
+        status = 202
+
+        assertTrue(HttpTokenGrantClient().revoke(record(), deadline()))
+    }
+
+    @Test
+    fun revokeWithNoRefreshTokenSendsTheAccessToken() {
+        answer = ""
+
+        assertTrue(HttpTokenGrantClient().revoke(record().copy(refreshToken = null), deadline()))
+
+        assertEquals(1, requests.size)
+        assertTrue(requests[0].form.contains("token=a0"))
+    }
+
+    @Test
+    fun eitherTokenFailingIsFalseAndBothAreTried() {
+        answer = ""
+        for (failing in listOf("token=r0", "token=a0")) {
+            requests.clear()
+            statusFor = { body -> if (failing in body.split("&")) 503 else 200 }
+
+            assertFalse(failing, HttpTokenGrantClient().revoke(record(), deadline()))
+
+            assertEquals(failing, 2, requests.size)
+        }
+    }
+
+    @Test
+    fun aRedirectedRevocationIsFalse() {
+        answer = ""
+        status = 302
+        location = "http://127.0.0.1:${server.address.port}/elsewhere"
+
+        assertFalse(HttpTokenGrantClient().revoke(record(), deadline()))
+
+        assertEquals(listOf("/revoke", "/revoke"), requests.map { it.path })
+    }
+
+    @Test
+    fun aDisconnectThatThrowsKeepsTheAnswer() {
+        val connection = object : HttpURLConnection(URI.create("http://unused.invalid/").toURL()) {
+            override fun connect() = Unit
+            override fun disconnect(): Unit = throw IllegalStateException("disconnect")
+            override fun usingProxy() = false
+            override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
+            override fun getResponseCode() = 200
+            override fun getInputStream(): InputStream = """{"access_token":"a1"}""".byteInputStream()
+        }
+        val client = HttpTokenGrantClient(true) { connection }
+
+        assertEquals(TokenGrantAnswer.Tokens("a1", null, null), client.grant(record(), deadline()))
     }
 
     @Test

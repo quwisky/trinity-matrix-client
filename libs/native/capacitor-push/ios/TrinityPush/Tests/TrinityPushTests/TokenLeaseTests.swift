@@ -132,6 +132,38 @@ final class TokenLeaseTests: XCTestCase {
         XCTAssertEqual(try allFiles().count, 1)
     }
 
+    func testADiscardedLeaseLeavesNoFileAndCanBeTakenAgain() async throws {
+        let ticket = try await held()
+        lease.discard(ticket)
+        XCTAssertFalse(lease.holds(ticket))
+        XCTAssertEqual(try allFiles(), [])
+        let next = try await held()
+        XCTAssertTrue(lease.holds(next))
+    }
+
+    func testDiscardIsANoOpForAnotherOwner() async throws {
+        let ticket = try await held()
+        lease.discard(LeaseTicket(account: account, owner: "someone else"))
+        XCTAssertTrue(lease.holds(ticket))
+    }
+
+    func testDiscardAllRemovesEveryLeaseButNoOtherFile() async throws {
+        let first = try await held()
+        let other = await lease.take("@b:hs", lifetime: 30, wait: 0)
+        guard case .taken = other else { return XCTFail("\(other)") }
+        let inFlight = leaseFile.appendingPathExtension("candidate")
+        try Data().write(to: inFlight)
+
+        lease.discardAll()
+
+        XCTAssertFalse(lease.holds(first))
+        XCTAssertEqual(try allFiles().map(\.lastPathComponent), [inFlight.lastPathComponent])
+    }
+
+    func testDiscardAllWithNoDirectoryIsANoOp() {
+        lease.discardAll()
+    }
+
     func testReleasingAnExpiredLeaseStillFreesIt() async throws {
         let t = Date(timeIntervalSince1970: 1_700_000_000)
         let clock = MovableClock(t)
