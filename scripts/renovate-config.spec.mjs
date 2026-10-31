@@ -193,3 +193,18 @@ describe('Renovate App key', () => {
     expect(jobs.renovate.environment).toBe('renovate');
   });
 });
+
+describe('Matrix crypto WASM', () => {
+  it('resolves to one copy, the one the build serves and initialises', () => {
+    // matrix-js-sdk pins its own copy exactly, so a lone bump of the root dependency splits them,
+    // and the SDK's copy then starts from a URL the Angular build does not serve.
+    const versions = new Set(
+      [
+        ...read('pnpm-lock.yaml').matchAll(
+          /^ {2}'@matrix-org\/matrix-sdk-crypto-wasm@([^']+)':$/gm,
+        ),
+      ].map(([, version]) => version),
+    );
+    expect([...versions]).toHaveLength(1);
+  });
+});
