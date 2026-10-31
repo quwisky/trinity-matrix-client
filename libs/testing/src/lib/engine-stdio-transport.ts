@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import { Observable, type Subscriber } from 'rxjs';
 import {
   EngineFaultError,
+  extractBlobs,
   type EngineTransport,
   type Fault,
   type Frame,
@@ -56,8 +57,13 @@ export class StdioTransport implements EngineTransport {
         return;
       }
       const id = this.nextId++;
-      this.write({ t: 'open', id, method, args: [...args] });
       this.streams.set(id, subscriber);
+      const { args: wireArgs, blobs } = extractBlobs(args);
+      if (blobs.length === 0) {
+        this.write({ t: 'open', id, method, args: [...args] });
+      } else {
+        void this.openBytes(id, method, wireArgs, blobs);
+      }
       return () => {
         if (this.streams.delete(id)) {
           this.write({ t: 'close', id });
@@ -86,6 +92,35 @@ export class StdioTransport implements EngineTransport {
     const kill = setTimeout(() => this.child.kill('SIGKILL'), DISPOSE_GRACE_MS);
     await closed;
     clearTimeout(kill);
+  }
+
+  /** Writes the call once every Blob is read, unless its stream has ended meanwhile. */
+  private async openBytes(
+    id: number,
+    method: string,
+    args: unknown[],
+    blobs: readonly Blob[],
+  ): Promise<void> {
+    try {
+      const bytes = await Promise.all(
+        blobs.map(async (blob) =>
+          Buffer.from(await blob.arrayBuffer()).toString('base64'),
+        ),
+      );
+      if (this.streams.has(id)) {
+        this.write({ t: 'openBytes', id, method, args, bytes });
+      }
+    } catch {
+      const subscriber = this.streams.get(id);
+      this.streams.delete(id);
+      subscriber?.error(
+        new EngineFaultError({
+          kind: 'internal',
+          code: 'blob-unreadable',
+          diagnostic: 'a Blob argument could not be read',
+        }),
+      );
+    }
   }
 
   private write(message: Inbound): void {

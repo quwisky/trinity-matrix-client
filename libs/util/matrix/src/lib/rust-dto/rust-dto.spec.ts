@@ -3,6 +3,7 @@ import { describe, expectTypeOf, it } from 'vitest';
 import type { DeepWritable } from '../deep-writable';
 import type { EngineFailure } from '../engine-result';
 import type { MatrixRequestFailureMetadata } from '../request-failure';
+import type { BlobRefDto } from '../engine-transport/rust-dto/BlobRefDto';
 import type { Diagnostic } from './Diagnostic';
 import type { DiscoveryParams } from './DiscoveryParams';
 import type { EngineFailure as EngineFailureDto } from './EngineFailure';
@@ -30,6 +31,10 @@ describe('Rust engine DTOs', () => {
     expectTypeOf<VectorDiffDto<{ n: number }>['op']>().toEqualTypeOf<
       VectorDiff<{ n: number }>['op']
     >();
+  });
+
+  it('name a Blob by its index', () => {
+    expectTypeOf<BlobRefDto>().toEqualTypeOf<{ $blob: number }>();
   });
 
   it('name only optional fields the TypeScript type has', () => {
