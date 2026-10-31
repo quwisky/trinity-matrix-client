@@ -49,16 +49,13 @@ describe('TrnToastService → <hlm-toaster/> (shared brain sonner state)', () =>
     });
     await settle();
 
-    const region = document.querySelector('brn-sonner-toaster section');
     const list = document.querySelector('[data-sonner-toaster]');
-    const toastHost = document.querySelector('brn-sonner-toast');
     const toast = document.querySelector('[data-sonner-toast]');
-    expect(region?.getAttribute('role')).toBe('region');
-    expect(list?.getAttribute('role')).toBe('group');
-    expect(toastHost?.getAttribute('role')).toBe('status');
-    expect(toastHost?.getAttribute('aria-live')).toBe('polite');
-    expect(toast?.getAttribute('role')).toBe('none');
-    expect(toast?.getAttribute('aria-live')).toBeNull();
+    expect(list?.getAttribute('role')).toBe('list');
+    expect(toast?.parentElement).toBe(list);
+    expect(toast?.tagName).toBe('LI');
+    expect(toast?.getAttribute('aria-live')).toBe('polite');
+    expect(toast?.getAttribute('role')).toBeNull();
   });
 
   it('renders an action button and runs its handler on click', async () => {
