@@ -123,22 +123,34 @@ export function readReceiptsFor(
   });
 }
 
+/** Encrypted events seen decrypted as a non-message, which is unknowable once redacted. */
+const encryptedNonMessages = new WeakSet<MatrixEvent>();
+
 /**
  * True when an event should render as a message row (message, sticker, or poll). A state
  * event never is, whatever its type: it is room state, not a turn in the conversation.
+ *
+ * Redaction leaves an encrypted event with only its wire type, whatever it decrypted to, so
+ * it counts as a deleted message unless a call here already saw it decrypted as a non-message.
+ * shortcut: a reaction, edit or vote never seen decrypted (history, a restart, a closed room)
+ * shows as a deleted message; upgrade if redaction starts keeping relations (MSC3389).
  */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
   if (event.isState()) {
     return false;
   }
-  if (isPollStart(event)) {
-    return true;
+  if (event.getType() === EventType.RoomMessageEncrypted) {
+    return event.isRedacted() && !encryptedNonMessages.has(event);
   }
-  return (
-    (event.getType() === EventType.RoomMessage ||
+  const displayable =
+    isPollStart(event) ||
+    ((event.getType() === EventType.RoomMessage ||
       event.getType() === EventType.Sticker) &&
-    !event.isRelation(RelationType.Replace)
-  );
+      !event.isRelation(RelationType.Replace));
+  if (!displayable && event.isEncrypted()) {
+    encryptedNonMessages.add(event);
+  }
+  return displayable;
 }
 
 /**

@@ -430,6 +430,160 @@ describe('TimelineService incremental projection', () => {
       );
     });
 
+    describe('in an encrypted room', () => {
+      const redact = (target: string): IRoomEvent =>
+        live(`$redact-${target}`, {
+          type: 'm.room.redaction',
+          redacts: target,
+          content: { redacts: target },
+        });
+      const decrypt = (
+        event: MatrixEvent,
+        type: string,
+        content: Record<string, unknown>,
+      ) =>
+        event.attemptDecryption(
+          decryptor(() => Promise.resolve({ clearEvent: { type, content } })),
+        );
+      const inEncrypted = () =>
+        openConversation(5, 5, {}, { crypto: TRUSTING });
+
+      it('keeps the row of a message deleted after it decrypted', async () => {
+        const { row, event, receive } = await inEncrypted();
+        await receive(live('$secret', ENCRYPTED));
+        await decrypt(event('$secret'), 'm.room.message', {
+          msgtype: 'm.text',
+          body: 'words to forget',
+        });
+        await vi.waitFor(() =>
+          expect(row('$secret')?.body).toBe('words to forget'),
+        );
+
+        await receive(redact('$secret'));
+
+        expect(row('$secret')?.kind).toBe('redacted');
+        expect(row('$secret')?.body).not.toContain('words to forget');
+      });
+
+      it('shows a row for a message that arrives already deleted', async () => {
+        const { row, receive } = await inEncrypted();
+
+        await receive(
+          live('$gone', {
+            type: 'm.room.encrypted',
+            content: {},
+            unsigned: {
+              redacted_because: redact('$gone') as never,
+            },
+          }),
+        );
+
+        expect(row('$gone')?.kind).toBe('redacted');
+      });
+
+      it('drops the sender check from a deleted row', async () => {
+        const { row, event, receive } = await openConversation(
+          5,
+          5,
+          {},
+          {
+            crypto: {
+              ...TRUSTING,
+              getEncryptionInfoForEvent: () =>
+                Promise.resolve({
+                  shieldColour: EventShieldColour.RED,
+                  shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+                }),
+            },
+          },
+        );
+        await receive(live('$secret', ENCRYPTED));
+        await decrypt(event('$secret'), 'm.room.message', {
+          msgtype: 'm.text',
+          body: 'words',
+        });
+        await vi.waitFor(() =>
+          expect(row('$secret')?.shield?.level).toBe('red'),
+        );
+
+        await receive(redact('$secret'));
+
+        expect(row('$secret')?.kind).toBe('redacted');
+        expect(row('$secret')?.shield).toBeNull();
+      });
+
+      it.each([
+        ['reaction', 'm.reaction', {}],
+        ['poll vote', 'org.matrix.msc3381.poll.response', {}],
+      ])(
+        'adds no row when a decrypted %s is deleted',
+        async (_name, type, content) => {
+          const { row, event, receive } = await inEncrypted();
+          await receive(live('$other', ENCRYPTED));
+          await decrypt(event('$other'), type, content);
+          await settle();
+          expect(row('$other')).toBeUndefined();
+
+          await receive(redact('$other'));
+
+          expect(event('$other').isRedacted()).toBe(true);
+          expect(row('$other')).toBeUndefined();
+        },
+      );
+
+      it('moves a deleted thread reply to the timeline, as in a plain room', async () => {
+        const { room, row, event, receive } = await inEncrypted();
+        await receive(
+          live('$reply', {
+            type: 'm.room.encrypted',
+            content: {
+              ...ENCRYPTED.content,
+              'm.relates_to': { rel_type: 'm.thread', event_id: id(2) },
+            },
+          }),
+        );
+        await decrypt(event('$reply'), 'm.room.message', {
+          msgtype: 'm.text',
+          body: 'in the thread',
+        });
+        await settle();
+        const thread = room.getThread(id(2));
+        expect(thread?.events.map((e) => e.getId())).toContain('$reply');
+        expect(row('$reply')).toBeUndefined();
+
+        await receive(redact('$reply'));
+
+        expect(thread?.events.map((e) => e.getId())).not.toContain('$reply');
+        expect(row('$reply')?.kind).toBe('redacted');
+      });
+
+      it('adds no row when a decrypted edit is deleted', async () => {
+        const { row, event, receive } = await inEncrypted();
+        const relates = { rel_type: 'm.replace', event_id: id(2) };
+        await receive(
+          live('$edit', {
+            type: 'm.room.encrypted',
+            content: {
+              ...ENCRYPTED.content,
+              'm.relates_to': relates,
+            },
+          }),
+        );
+        await decrypt(event('$edit'), 'm.room.message', {
+          msgtype: 'm.text',
+          body: '* changed',
+          'm.new_content': { msgtype: 'm.text', body: 'changed' },
+          'm.relates_to': relates,
+        });
+        await vi.waitFor(() => expect(row(id(2))?.body).toBe('changed'));
+
+        await receive(redact('$edit'));
+
+        expect(row('$edit')).toBeUndefined();
+        expect(row(id(2))?.body).toBe('message 2');
+      });
+    });
+
     it('counts a reaction as it is added and removed', async () => {
       const { row, receive } = await openConversation(40, 40);
 
