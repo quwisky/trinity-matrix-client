@@ -172,6 +172,9 @@ impl Download {
         }
     }
 
+    // shortcut: the whole body is held in memory, about twice its size at the peak, with no limit
+    // but the homeserver's, so a room member can link a file that ends the process; upgrade when
+    // the SDK can stream a media download or the engine learns a byte cap before the request.
     async fn run(
         self,
         engine: &Arc<Engine>,
@@ -204,6 +207,9 @@ impl Download {
 /// The plaintext if `ciphertext` matches the file's hash and the file is one this engine reads,
 /// else `Undecryptable`. Nothing partial escapes. The hash covers the ciphertext, so a well-formed
 /// wrong key is not detected, as in js.
+// shortcut: decrypts on the calling worker for the whole file, which delays that worker's other
+// tasks and a retire, and stalls a single-threaded host outright; upgrade to a blocking task or
+// chunked yields before a wasm host (piece 5) ships.
 fn decrypted(file: EncryptedFile, mut ciphertext: &[u8]) -> Result<Vec<u8>, Undecryptable> {
     let mut plaintext = Vec::with_capacity(ciphertext.len());
     let mut reader =
