@@ -1258,6 +1258,70 @@ describe('SessionStorageService', () => {
       }
     });
 
+    describe('sweeping at the start', () => {
+      function nativeSetup() {
+        const test = setup();
+        Object.assign(test.bridge, { available: true });
+        test.bridge.removeTokensExcept.mockReturnValue(of({ removed: 0 }));
+        return test;
+      }
+
+      it('a record left by an offline sign-out is swept at the next start', async () => {
+        const { svc, bridge } = nativeSetup();
+        await firstValueFrom(svc.save(CAROL));
+        await firstValueFrom(svc.clear({ keepNativeTokens: true }));
+
+        await firstValueFrom(svc.sweepNativeTokens());
+
+        expect(bridge.removeTokensExcept).toHaveBeenCalledExactlyOnceWith([]);
+      });
+
+      it('keeps only accounts stored with an OIDC binding', async () => {
+        const { svc, bridge } = nativeSetup();
+        await firstValueFrom(svc.save(ALICE));
+        await firstValueFrom(svc.save(CAROL));
+
+        await firstValueFrom(svc.sweepNativeTokens());
+
+        expect(bridge.removeTokensExcept).toHaveBeenCalledExactlyOnceWith([
+          '@carol:hs',
+        ]);
+      });
+
+      it('a failed registry read sweeps nothing', async () => {
+        const { svc, bridge } = nativeSetup();
+        prefs.set('matrix.accounts', '{not json');
+
+        await expect(firstValueFrom(svc.sweepNativeTokens())).rejects.toThrow();
+
+        prefs.set('matrix.accounts', '{}');
+
+        await expect(firstValueFrom(svc.sweepNativeTokens())).rejects.toThrow();
+        expect(bridge.removeTokensExcept).not.toHaveBeenCalled();
+      });
+
+      it('lists a sign-in saved while the sweep waits its turn', async () => {
+        const { svc, bridge } = nativeSetup();
+
+        const save = firstValueFrom(svc.save(CAROL));
+        const sweep = firstValueFrom(svc.sweepNativeTokens());
+        await Promise.all([save, sweep]);
+
+        expect(bridge.removeTokensExcept).toHaveBeenCalledExactlyOnceWith([
+          '@carol:hs',
+        ]);
+      });
+
+      it('does nothing off native', async () => {
+        const { svc, bridge } = setup();
+        prefs.set('matrix.accounts', '{not json');
+
+        await firstValueFrom(svc.sweepNativeTokens());
+
+        expect(bridge.removeTokensExcept).not.toHaveBeenCalled();
+      });
+    });
+
     it('removes the vault record on a soft logout and keeps the registry entry', async () => {
       const { svc, bridge } = setup();
       await firstValueFrom(svc.save(ALICE));

@@ -122,6 +122,66 @@ it('persists, starts in the background, then commits Active placement', async ()
   expect(matrix.activateAccount).toHaveBeenCalledWith('@new:hs', 'replace');
 });
 
+describe('a sign-in over an unreadable native record', () => {
+  it('replaces the record once the sign-in is saved, before its client starts', async () => {
+    const { adapter, matrix, storage, nativeTokens } = setup();
+    const order: string[] = [];
+    vi.mocked(storage.persistForEstablishment).mockReturnValue(
+      defer(() => {
+        order.push('persist');
+        return of(session);
+      }),
+    );
+    vi.mocked(nativeTokens.replaceUnreadableRecord).mockReturnValue(
+      defer(() => {
+        order.push('replace');
+        return of(void 0);
+      }),
+    );
+    vi.mocked(matrix.restorePersisted).mockReturnValue(
+      defer(() => {
+        order.push('start');
+        return of({ kind: 'ready' as const });
+      }),
+    );
+    vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+
+    await firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    );
+
+    expect(order).toEqual(['persist', 'replace', 'start']);
+    expect(nativeTokens.replaceUnreadableRecord).toHaveBeenCalledWith(session);
+  });
+
+  it('leaves the record to a retried first establishment, whose pair native may have rotated', async () => {
+    const { adapter, matrix, storage, nativeTokens } = setup();
+    const grant = AuthenticatedAccountGrant.issue(session);
+    const intent = {
+      ...activeIntent,
+      accountRecord: 'new',
+    } satisfies AccountEstablishmentIntent;
+    vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+    vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+    vi.mocked(matrix.restorePersisted).mockReturnValueOnce(
+      of({ kind: 'failed' as const, failure: 'transient-network' as const }),
+    );
+    vi.mocked(matrix.restorePersisted).mockReturnValue(
+      of({ kind: 'ready' as const }),
+    );
+
+    await firstValueFrom(adapter.establishAccount(grant, intent));
+    await firstValueFrom(adapter.establishAccount(grant, intent));
+
+    expect(matrix.restorePersisted).toHaveBeenCalledTimes(2);
+    expect(storage.persistForEstablishment).toHaveBeenCalledOnce();
+    expect(nativeTokens.replaceUnreadableRecord).toHaveBeenCalledOnce();
+  });
+});
+
 describe('without a usable keychain', () => {
   function withoutKeychain(test: AdapterTest): void {
     vi.mocked(test.secure.withoutKeychain).mockResolvedValue(true);

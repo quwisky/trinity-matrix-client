@@ -117,7 +117,17 @@ export class AccountRuntimeService {
           activeAccountId = snapshot.activeAccountId;
           totalAccounts = snapshot.accountIds.length;
           this.publishProgress(activeAccountId, totalAccounts, outcomes);
-          return this.restoreSnapshot(snapshot, outcomes);
+          return this.restoreSnapshot(snapshot, outcomes).pipe(
+            // Still restoring, so no sign-in can start until the sweep has read its list.
+            switchMap((result) =>
+              result.kind === 'local-state-unavailable'
+                ? of(result)
+                : this.adapter.sweepNativeTokens().pipe(
+                    catchError(() => of(void 0)),
+                    map(() => result),
+                  ),
+            ),
+          );
         }),
         tap((result) => {
           termination = 'settled';

@@ -44,6 +44,8 @@ export interface AccountRuntimeAdapter {
    */
   readonly newDevices: Observable<NewDeviceEstablishment>;
   sweepOrphanedStores(): Observable<void>;
+  /** Errors, removing nothing, when the saved Accounts can't be read. */
+  sweepNativeTokens(): Observable<void>;
   readSavedAccounts(): Observable<SavedAccountsSnapshot>;
   restoreAccount(
     accountId: string,

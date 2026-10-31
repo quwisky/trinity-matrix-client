@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   LocalDataWipeService,
+  NativeTokenBridge,
   SecureStorageService,
   SessionStorageService,
   type AccountRecord,
@@ -79,6 +80,9 @@ export function setup(activeAccountId: string | null = '@old:hs') {
         rollbackAccountStart: vi.fn(() => of(void 0)),
       }),
       MockProvider(SessionStorageService),
+      MockProvider(NativeTokenBridge, {
+        replaceUnreadableRecord: vi.fn(() => of(void 0)),
+      }),
       MockProvider(SecureStorageService, {
         withoutKeychain: vi.fn(() => Promise.resolve(false)),
         unprotectedStorageAcknowledged: vi.fn(() => Promise.resolve(null)),
@@ -96,6 +100,7 @@ export function setup(activeAccountId: string | null = '@old:hs') {
     adapter: TestBed.inject(MatrixAccountRuntimeAdapter),
     matrix: TestBed.inject(MatrixClientService),
     storage: TestBed.inject(SessionStorageService),
+    nativeTokens: TestBed.inject(NativeTokenBridge),
     wipe: TestBed.inject(LocalDataWipeService),
     secure: TestBed.inject(SecureStorageService),
     consent: TestBed.inject(UNPROTECTED_STORAGE_CONSENT),

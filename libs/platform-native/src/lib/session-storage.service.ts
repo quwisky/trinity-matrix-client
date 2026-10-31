@@ -1,7 +1,15 @@
 import { Injectable, inject } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import { PushHandoffBridge } from '@trinity/capacitor-push';
-import { Observable, defer, firstValueFrom, from, map, timeout } from 'rxjs';
+import {
+  Observable,
+  defer,
+  firstValueFrom,
+  from,
+  map,
+  of,
+  timeout,
+} from 'rxjs';
 import {
   MatrixSession,
   type OidcSessionBinding,
@@ -254,6 +262,28 @@ export class SessionStorageService {
   }
 
   /**
+   * Remove every vault record but those of accounts stored with an OIDC binding: what an offline
+   * sign-out kept for a retry that never came. In one serialized turn, so a sign-in saved
+   * meanwhile is on the list; rejects, removing nothing, when the registry can't be read.
+   */
+  sweepNativeTokens(): Observable<void> {
+    return defer(() =>
+      this.handoff.available
+        ? from(
+            this.serialize(async () => {
+              const { accounts } = await this.readRegistry();
+              await this.nativeVault(
+                this.handoff.removeTokensExcept(
+                  accounts.filter((a) => a.oidc).map((a) => a.userId),
+                ),
+              );
+            }),
+          )
+        : of(void 0),
+    );
+  }
+
+  /**
    * Drop an account's tokens (e.g. after a soft-logout) but keep its registry record, so
    * a later re-authentication restores it on the same crypto store. {@link load} treats
    * a token-less record as absent, so a restart doesn't resurrect it.
@@ -404,7 +434,7 @@ export class SessionStorageService {
     return defer(() => from(this.sweepOrphans()));
   }
 
-  private async nativeVault(call: Observable<void>): Promise<void> {
+  private async nativeVault(call: Observable<unknown>): Promise<void> {
     await firstValueFrom(call.pipe(timeout(NATIVE_VAULT_TIMEOUT_MS)));
   }
 

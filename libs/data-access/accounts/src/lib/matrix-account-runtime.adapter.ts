@@ -6,6 +6,7 @@ import {
 import {
   AccountAlreadyStoredError,
   AccountHomeserverMismatchError,
+  NativeTokenBridge,
   SessionStorageService,
   sameHomeserver,
 } from '@trinity/platform-native';
@@ -54,6 +55,7 @@ type DeviceNovelty = 'new' | 'existing' | 'unknown';
 export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly nativeTokens = inject(NativeTokenBridge);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly lifecycleAdapter = inject(AccountLifecycleAdapter);
   private readonly unprotectedStorage = inject(UnprotectedStorageGate);
@@ -72,6 +74,10 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
 
   sweepOrphanedStores(): Observable<void> {
     return this.storage.sweepOrphanedCryptoStores();
+  }
+
+  sweepNativeTokens(): Observable<void> {
+    return this.storage.sweepNativeTokens();
   }
 
   readSavedAccounts(): Observable<SavedAccountsSnapshot> {
@@ -188,6 +194,11 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   });
                 }
               }),
+              switchMap((stored) =>
+                this.nativeTokens
+                  .replaceUnreadableRecord(stored)
+                  .pipe(map(() => stored)),
+              ),
             );
       const prepare$ =
         intent.liveAccounts === 'replace'
