@@ -142,9 +142,9 @@ class PushHandoffStore internal constructor(
 
     private fun roomsKey(userId: String) = "rooms:$userId"
 
-    private companion object {
+    internal companion object {
         const val FILE = "trinity_push_handoff"
-        const val SETTINGS_KEY = "settings:notification-text"
+        private const val SETTINGS_KEY = "settings:notification-text"
     }
 }
 
