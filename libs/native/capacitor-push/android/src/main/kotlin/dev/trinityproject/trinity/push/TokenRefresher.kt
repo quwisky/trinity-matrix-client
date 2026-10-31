@@ -171,7 +171,12 @@ class TokenRefresher(
         } finally {
             lease.release(ticket)
         }
-        if (overwritten != null && overwritten.refreshToken != null && overwritten.deviceId != record.deviceId) {
+        if (
+            overwritten != null &&
+            overwritten.refreshToken != null &&
+            overwritten.deviceId != record.deviceId &&
+            !overwritten.samePair(record) // revoking it would sign out the record just stored
+        ) {
             val deadline = deadlineIn(TokenBudgets.REVOKE_REQUEST_MILLIS)
             Thread { client.revoke(overwritten, deadline) }.apply { isDaemon = true }.start()
         }
@@ -185,6 +190,8 @@ class TokenRefresher(
             TokenBudgets.REVOKE_WAIT_MILLIS,
         ) ?: return TokenRevokeResult.TRANSIENT
         try {
+            // A stale unsaved pair must not be revoked in place of the stored, live one.
+            flushPending(account)
             val stored = when (val read = vault.read(account)) {
                 TokenVaultRead.Absent -> return TokenRevokeResult.GONE
                 TokenVaultRead.Unavailable -> return TokenRevokeResult.TRANSIENT

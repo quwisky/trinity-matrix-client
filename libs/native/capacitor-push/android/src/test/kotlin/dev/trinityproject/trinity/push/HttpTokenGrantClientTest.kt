@@ -360,8 +360,19 @@ class HttpTokenGrantClientTest {
         assertTrue(HttpTokenGrantClient().revoke(record(), deadline()))
 
         assertEquals(listOf("/revoke", "/revoke"), requests.map { it.path })
-        assertTrue(requests[0].form.containsAll(listOf("token=a0", "token_type_hint=access_token", "client_id=c")))
-        assertTrue(requests[1].form.containsAll(listOf("token=r0", "token_type_hint=refresh_token", "client_id=c")))
+        assertTrue(requests[0].form.containsAll(listOf("token=r0", "token_type_hint=refresh_token", "client_id=c")))
+        assertTrue(requests[1].form.containsAll(listOf("token=a0", "token_type_hint=access_token", "client_id=c")))
+    }
+
+    @Test
+    fun aStalledRevocationHasAlreadySentTheRefreshToken() {
+        delayMillis = 2_000L
+        val started = monotonicMillis()
+
+        assertFalse(HttpTokenGrantClient().revoke(record(), Deadline(started + 300, ::monotonicMillis)))
+
+        assertEquals(1, requests.size)
+        assertTrue(requests[0].form.contains("token=r0"))
     }
 
     @Test

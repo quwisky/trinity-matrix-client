@@ -43,9 +43,10 @@ class HttpTokenGrantClient internal constructor(private val streaming: Boolean) 
     override fun revoke(record: TokenRecord, deadline: Deadline): Boolean {
         val endpoint = record.revocationEndpoint ?: return false
         val clientId = record.clientId ?: return false
+        // Refresh token first: the deadline is shared, and a stall must not leave it unrevoked.
         val tokens = listOfNotNull(
-            "access_token" to record.accessToken,
             record.refreshToken?.let { "refresh_token" to it },
+            "access_token" to record.accessToken,
         )
         // map, not all: one token failing must not leave the other unrevoked.
         return tokens.map { (hint, token) ->

@@ -546,6 +546,18 @@ class TokenRefresherTest {
     }
 
     @Test
+    fun migrationOverAnotherDeviceWithTheSamePairRevokesNothing() {
+        val incoming = R0.copy(lineage = "L2")
+        vault.stored = R0.copy(deviceId = "OLD", lineage = "L1")
+
+        assertTrue(refresher.migrate(incoming, user))
+
+        assertFalse(client.revoked.await(200, TimeUnit.MILLISECONDS))
+        assertTrue(client.revokes.isEmpty())
+        assertEquals(incoming, vault.stored)
+    }
+
+    @Test
     fun migrationOverTheSameDeviceRevokesNothing() {
         assertTrue(refresher.migrate(R0.copy(lineage = "L2"), user))
 
@@ -627,10 +639,21 @@ class TokenRefresherTest {
     @Test
     fun revokeUsesAnUnsavedPair() {
         leaveAnUnsavedPair()
+        vault.failedUpdates = 1
 
         assertEquals(TokenRevokeResult.REVOKED, refresher.revoke(user, "L"))
 
         assertEquals(listOf(a1r1), client.revokes.toList())
+    }
+
+    @Test
+    fun revokeFlushesAStaleUnsavedPairFirst() {
+        leaveAnUnsavedPair()
+        vault.stored = r1Stored
+
+        assertEquals(TokenRevokeResult.REVOKED, refresher.revoke(user, "L"))
+
+        assertEquals(listOf(r1Stored), client.revokes.toList())
     }
 
     @Test
