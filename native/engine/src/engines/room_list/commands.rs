@@ -3,15 +3,18 @@
 use std::{future::ready, sync::Arc};
 
 use matrix_sdk::{
-    Client, RoomState,
+    Client, Error, Room, RoomState,
     ruma::{
-        EventEncryptionAlgorithm, RoomAliasId, RoomId, RoomOrAliasId, ServerName, UserId,
+        EventEncryptionAlgorithm, OwnedEventId, OwnedRoomId, OwnedUserId, RoomAliasId, RoomId,
+        RoomOrAliasId, ServerName, UserId,
         api::client::{
             alias::get_alias,
+            config::set_room_account_data,
             membership::{
                 invite_user::{self, v3::InviteUserId},
                 leave_room,
             },
+            read_marker::set_read_marker,
             room::{
                 Visibility,
                 create_room::{
@@ -19,9 +22,11 @@ use matrix_sdk::{
                     v3::{CreationContent, RoomPreset},
                 },
             },
+            tag::{create_tag, delete_tag},
         },
         events::{
-            AnyInitialStateEvent, InitialStateEvent, room::encryption::RoomEncryptionEventContent,
+            AnyInitialStateEvent, InitialStateEvent, marked_unread::MarkedUnreadEventContent,
+            room::encryption::RoomEncryptionEventContent, tag::TagInfo,
         },
         room::RoomType,
         serde::Raw,
@@ -30,7 +35,7 @@ use matrix_sdk::{
 use serde_json::{Map, Value, json};
 
 use super::{
-    CreateRoomRequestDto, RoomIdDto, RoomKindDto,
+    CreateRoomRequestDto, ReceiptsDto, RoomIdDto, RoomKindDto, RoomTagDto,
     rows::membership_of,
     settle::{account_data_changes, room_changes, settle},
     typing::direct_map_in,
@@ -304,12 +309,148 @@ pub fn resolve_alias(engine: Arc<Engine>, account_id: String, alias: String) -> 
     ))
 }
 
+fn me(client: &Client) -> Result<OwnedUserId, Error> {
+    Ok(client
+        .user_id()
+        .ok_or(Error::AuthenticationRequired)?
+        .to_owned())
+}
+
+fn tagged(room: &Room, tag: RoomTagDto) -> bool {
+    match tag {
+        RoomTagDto::Favourite => room.is_favourite(),
+        RoomTagDto::LowPriority => room.is_low_priority(),
+    }
+}
+
+/// `fully_read` and the chosen receipt at `event`; the other receipt stays unset.
+pub(crate) fn read_markers(
+    room: OwnedRoomId,
+    event: OwnedEventId,
+    receipts: ReceiptsDto,
+) -> set_read_marker::v3::Request {
+    let mut request = set_read_marker::v3::Request::new(room);
+    request.fully_read = Some(event.clone());
+    match receipts {
+        ReceiptsDto::Public => request.read_receipt = Some(event),
+        ReceiptsDto::Private => request.private_read_receipt = Some(event),
+    }
+    request
+}
+
+/// A raw write, because `Room::set_unread_flag` skips a write it thinks is redundant.
+async fn write_marked_unread(
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
+    room_id: &RoomId,
+    unread: bool,
+) -> Result<(), Error> {
+    let content = MarkedUnreadEventContent::new(unread);
+    let request =
+        set_room_account_data::v3::Request::new(me(&rt.client)?, room_id.to_owned(), &content)?;
+    let sent = rt.client.send(request).with_request_config(sent_once());
+    engine.ruled(rt, sent).await?;
+    Ok(())
+}
+
+/// Raw `create_tag`/`delete_tag`, because `Room::set_is_favourite` clears the other tag.
+pub fn set_tag(
+    engine: Arc<Engine>,
+    account_id: String,
+    room_id: String,
+    tag: RoomTagDto,
+    on: bool,
+) -> Stream {
+    reply(on_account(
+        engine,
+        account_id,
+        request_failed,
+        move |engine, rt| async move {
+            let room_id = RoomId::parse(&room_id)?;
+            let name = match tag {
+                RoomTagDto::Favourite => "m.favourite",
+                RoomTagDto::LowPriority => "m.lowpriority",
+            };
+            let (user, room, tag_name) = (me(&rt.client)?, room_id.clone(), name.to_owned());
+            if on {
+                let request = create_tag::v3::Request::new(user, room, tag_name, TagInfo::new());
+                let sent = rt.client.send(request).with_request_config(sent_once());
+                engine.ruled(&rt, sent).await?;
+            } else {
+                let request = delete_tag::v3::Request::new(user, room, tag_name);
+                let sent = rt.client.send(request).with_request_config(sent_once());
+                engine.ruled(&rt, sent).await?;
+            }
+            if let Some(room) = rt.client.get_room(&room_id) {
+                let changes = room_changes(&rt.client, &room_id);
+                settle(rt.retired(), changes, || ready(tagged(&room, tag) == on)).await;
+            }
+            rt.nudge(Some(&room_id)).delivered().await;
+            Ok(())
+        },
+    ))
+}
+
+pub fn set_marked_unread(
+    engine: Arc<Engine>,
+    account_id: String,
+    room_id: String,
+    unread: bool,
+) -> Stream {
+    reply(on_account(
+        engine,
+        account_id,
+        request_failed,
+        move |engine, rt| async move {
+            let room_id = RoomId::parse(&room_id)?;
+            write_marked_unread(&engine, &rt, &room_id, unread).await
+        },
+    ))
+}
+
+/// js `markRead`: clears a marked-unread flag, then sets `fully_read` and a read receipt at the
+/// newest event held in memory. `fully_read` alone leaves the device-side count unchanged.
+pub fn mark_read(
+    engine: Arc<Engine>,
+    account_id: String,
+    room_id: String,
+    receipts: ReceiptsDto,
+) -> Stream {
+    reply(on_account(
+        engine,
+        account_id,
+        request_failed,
+        move |engine, rt| async move {
+            let room_id = RoomId::parse(&room_id)?;
+            let Some(room) = rt.client.get_room(&room_id) else {
+                return Ok(());
+            };
+            if room.is_marked_unread() {
+                write_marked_unread(&engine, &rt, &room_id, false).await?;
+            }
+            let (cache, _drop_handles) = room.event_cache().await?;
+            let newest = cache
+                .rfind_map_event_in_memory_by(|event| event.event_id().map(ToOwned::to_owned))
+                .await?;
+            if let Some(event) = newest {
+                let request = read_markers(room_id, event, receipts);
+                let sent = rt.client.send(request).with_request_config(sent_once());
+                engine.ruled(&rt, sent).await?;
+            }
+            Ok(())
+        },
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
     use futures_util::StreamExt;
-    use matrix_sdk::{ruma::user_id, timeout::timeout};
+    use matrix_sdk::{
+        ruma::{event_id, room_id, user_id},
+        timeout::timeout,
+    };
     use serde_json::json;
     use tempfile::TempDir;
     use tokio::time::sleep;
@@ -317,7 +458,9 @@ mod tests {
     use super::*;
     use crate::{
         dispatch::dispatch,
-        testing::{Seen, builder_on, engine_in, live, password, requests, scripted},
+        testing::{
+            Seen, builder_on, engine_in, live, password, requests, scripted, sync, sync_answer,
+        },
     };
 
     const ENCRYPTION: &str = r#"{"type":"m.room.encryption","state_key":"","content":{"algorithm":"m.megolm.v1.aes-sha2"}}"#;
@@ -395,6 +538,28 @@ mod tests {
             merged_direct(None, "@b:x", "!3"),
             Some(json!({"@b:x": ["!3"]}))
         );
+    }
+
+    #[test]
+    fn read_markers_sets_fully_read_and_the_chosen_receipt() {
+        let (room, event) = (room_id!("!r:b").to_owned(), event_id!("$e").to_owned());
+        let public = read_markers(room.clone(), event.clone(), ReceiptsDto::Public);
+        assert_eq!(public.fully_read.as_ref(), Some(&event));
+        assert_eq!(public.read_receipt.as_ref(), Some(&event));
+        assert_eq!(public.private_read_receipt, None);
+        let private = read_markers(room, event.clone(), ReceiptsDto::Private);
+        assert_eq!(private.fully_read.as_ref(), Some(&event));
+        assert_eq!(private.read_receipt, None);
+        assert_eq!(private.private_read_receipt.as_ref(), Some(&event));
+    }
+
+    #[tokio::test]
+    async fn mark_read_of_an_unknown_room_replies_ok_without_a_request() {
+        let root = TempDir::new().unwrap();
+        let engine = account_on("http://127.0.0.1:1", &root).await;
+        let args = vec![json!("@a:b"), json!("!x:b"), json!("public")];
+        let answer = answer_of(dispatch(&engine, "roomList.markRead", args).unwrap()).await;
+        assert_eq!(answer, json!({"ok": true, "value": null}));
     }
 
     async fn account_on(base: &str, root: &TempDir) -> Arc<Engine> {
@@ -493,5 +658,118 @@ mod tests {
             requests(&seen)
         );
         assert_eq!(requests(&seen)[2].0, format!("PUT {m_direct}"));
+    }
+
+    fn targets(seen: &Seen) -> Vec<String> {
+        requests(seen)
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect()
+    }
+
+    /// A sync in which `!r:b` is joined with `account_data` and `timeline` events.
+    fn joined(account_data: Value, timeline: Value) -> Value {
+        let room =
+            json!({"account_data": {"events": account_data}, "timeline": {"events": timeline}});
+        json!({"rooms": {"join": {"!r:b": room}}})
+    }
+
+    #[tokio::test]
+    async fn set_tag_writes_only_its_own_tag() {
+        let tags = |tags: Value| {
+            joined(
+                json!([{"type": "m.tag", "content": {"tags": tags}}]),
+                json!([]),
+            )
+        };
+        let favourite = "PUT /_matrix/client/v3/user/@a:b/rooms/!r:b/tags/m.favourite";
+        let (base, seen) = scripted(vec![
+            sync_answer(0, tags(json!({"m.lowpriority": {}}))),
+            (favourite, 200, json!({})),
+            sync_answer(1, tags(json!({"m.lowpriority": {}, "m.favourite": {}}))),
+        ]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        let client = engine.account("@a:b").unwrap().client.clone();
+        sync(&client).await;
+        let args = vec![
+            json!("@a:b"),
+            json!("!r:b"),
+            json!("favourite"),
+            json!(true),
+        ];
+        let tagged = tokio::spawn(answer_of(
+            dispatch(&engine, "roomList.setTag", args).unwrap(),
+        ));
+        timeout(until(&seen, 2), Duration::from_secs(5))
+            .await
+            .unwrap();
+        sync(&client).await;
+        assert_eq!(tagged.await.unwrap(), json!({"ok": true, "value": null}));
+        assert_eq!(
+            targets(&seen)[1],
+            favourite,
+            "no request touched m.lowpriority"
+        );
+        let room = client.get_room(room_id!("!r:b")).unwrap();
+        assert!(room.is_favourite() && room.is_low_priority());
+    }
+
+    #[tokio::test]
+    async fn set_marked_unread_false_is_always_written() {
+        let put = "PUT /_matrix/client/v3/user/@a:b/rooms/!r:b/account_data/m.marked_unread";
+        let (base, seen) = scripted(vec![
+            sync_answer(0, joined(json!([]), json!([]))),
+            (put, 200, json!({})),
+        ]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        sync(&engine.account("@a:b").unwrap().client).await;
+        let args = vec![json!("@a:b"), json!("!r:b"), json!(false)];
+        let answer = answer_of(dispatch(&engine, "roomList.setMarkedUnread", args).unwrap()).await;
+        assert_eq!(answer, json!({"ok": true, "value": null}));
+        assert_eq!(
+            targets(&seen)[1..],
+            [put],
+            "a room not marked unread is written too"
+        );
+    }
+
+    #[tokio::test]
+    async fn mark_read_clears_marked_unread_before_the_read_markers() {
+        let unread = json!([{"type": "m.marked_unread", "content": {"unread": true}}]);
+        let message = json!([{
+            "type": "m.room.message", "event_id": "$e", "sender": "@b:b", "origin_server_ts": 1,
+            "content": {"msgtype": "m.text", "body": "hi"},
+        }]);
+        let cleared = "PUT /_matrix/client/v3/user/@a:b/rooms/!r:b/account_data/m.marked_unread";
+        let markers = "POST /_matrix/client/v3/rooms/!r:b/read_markers";
+        let (base, seen) = scripted(vec![
+            sync_answer(0, joined(unread, message)),
+            (cleared, 200, json!({})),
+            (markers, 200, json!({})),
+        ]);
+        let root = TempDir::new().unwrap();
+        let engine = account_on(&base, &root).await;
+        let client = engine.account("@a:b").unwrap().client.clone();
+        sync(&client).await;
+        let room = client.get_room(room_id!("!r:b")).unwrap();
+        assert!(room.is_marked_unread());
+        let (cache, _handles) = room.event_cache().await.unwrap();
+        let cached = async {
+            while (cache
+                .rfind_map_event_in_memory_by(|event| event.event_id().map(ToOwned::to_owned))
+                .await)
+                .unwrap()
+                .is_none()
+            {
+                sleep(Duration::from_millis(10)).await;
+            }
+        };
+        timeout(cached, Duration::from_secs(5)).await.unwrap();
+        let args = vec![json!("@a:b"), json!("!r:b"), json!("public")];
+        let answer = answer_of(dispatch(&engine, "roomList.markRead", args).unwrap()).await;
+        assert_eq!(answer, json!({"ok": true, "value": null}));
+        assert_eq!(targets(&seen)[1..], [cleared, markers]);
     }
 }

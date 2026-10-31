@@ -129,6 +129,22 @@ methods! {
     "roomList.directMap" => room_list::typing::direct_map(account_id: String),
     "roomList.rooms" => room_list::rows::rooms(account_id: String),
     "roomList.typing" => room_list::typing::typing(account_id: String),
+    "roomList.setTag" => room_list::commands::set_tag(
+        account_id: String,
+        room_id: String,
+        tag: room_list::RoomTagDto,
+        on: bool,
+    ),
+    "roomList.setMarkedUnread" => room_list::commands::set_marked_unread(
+        account_id: String,
+        room_id: String,
+        unread: bool,
+    ),
+    "roomList.markRead" => room_list::commands::mark_read(
+        account_id: String,
+        room_id: String,
+        receipts: room_list::ReceiptsDto,
+    ),
     "roomList.leave" => room_list::commands::leave(account_id: String, room_id: String),
     "roomList.createRoom" => room_list::commands::create_room(
         account_id: String,
