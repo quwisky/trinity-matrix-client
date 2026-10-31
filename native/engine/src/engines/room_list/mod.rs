@@ -6,6 +6,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+pub mod settle;
+pub mod typing;
+
 const DTO: &str = "data-access/room-library/src/lib/rust-dto/";
 
 /// `RoomInfo`.

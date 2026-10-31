@@ -7,12 +7,13 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex as StdMutex},
     thread,
+    time::Duration,
 };
 
 use matrix_sdk::{
     Client, ClientBuilder, SessionMeta, SessionTokens,
     authentication::matrix::MatrixSession,
-    config::RequestConfig,
+    config::{RequestConfig, SyncSettings},
     ruma::{UserId, api::MatrixVersion},
 };
 use matrix_sdk_ui::sync_service::SyncService;
@@ -180,6 +181,30 @@ pub(crate) async fn runtime_on(
     let all_rooms = sync.room_list_service().all_rooms().await.unwrap();
     let changes = client.subscribe_to_session_changes();
     AccountRuntime::new(engine, s, generation, client, sync, all_rooms, changes)
+}
+
+/// A never-started live runtime for `@a:b` on a scripted homeserver that answers each
+/// `sync(client)` with the next of `bodies`, which are sync responses without a `next_batch`.
+pub(crate) async fn syncing(engine: &Arc<Engine>, bodies: Vec<Value>) -> Arc<AccountRuntime> {
+    let answers = bodies.into_iter().enumerate();
+    let (base, _) = scripted(answers.map(|(n, body)| sync_answer(n, body)).collect());
+    let client = builder_on(&base).build().await.unwrap();
+    live(engine, &password(&base), client).await
+}
+
+/// The scripted answer to the `n`th `sync(client)` of a client: `body` with its `next_batch`.
+pub(crate) fn sync_answer(n: usize, mut body: Value) -> (&'static str, u16, Value) {
+    let since = (n.checked_sub(1)).map_or(String::new(), |n| format!("since=s{n}&"));
+    // The server matches `'static` targets, and a test's few are left to the process.
+    let target = format!("GET /_matrix/client/v3/sync?{since}timeout=0&use_state_after=true");
+    body["next_batch"] = json!(format!("s{n}"));
+    (target.leak(), 200, body)
+}
+
+/// One sync with no wait, which runs the client's event handlers on the next scripted body.
+pub(crate) async fn sync(client: &Client) {
+    let settings = SyncSettings::default().timeout(Duration::ZERO);
+    client.sync_once(settings).await.unwrap();
 }
 
 /// Registers a never-started runtime of `s` on `client` as the account's live one.

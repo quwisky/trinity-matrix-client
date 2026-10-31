@@ -16,10 +16,11 @@ native = [
 ]
 
 [dependencies]
+async-stream.workspace = true
 futures-util.workspace = true
 hex = { workspace = true, optional = true }
 matrix-sdk.workspace = true
-# Names the crypto settings types, which matrix-sdk does not re-export.
+# Names the crypto settings types and `RoomInfoNotableUpdate`, which matrix-sdk does not re-export.
 matrix-sdk-base.workspace = true
 # Names `OpenStoreError`, which matrix-sdk does not re-export.
 matrix-sdk-sqlite = { workspace = true, optional = true }

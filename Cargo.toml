@@ -8,6 +8,7 @@ version = "0.0.0"
 publish = false
 
 [workspace.dependencies]
+async-stream = "0.3"
 matrix-sdk = { version = "=0.19.1", default-features = false, features = ["e2e-encryption"] }
 matrix-sdk-base = { version = "=0.19.1", default-features = false, features = ["e2e-encryption"] }
 matrix-sdk-sqlite = { version = "=0.19.1", default-features = false }

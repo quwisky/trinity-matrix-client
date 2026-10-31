@@ -19,6 +19,8 @@ use futures_util::{Stream, StreamExt, future::select, stream};
 use matrix_sdk::{
     Client, SessionChange,
     executor::{AbortOnDrop, spawn},
+    locks::Mutex,
+    ruma::{OwnedRoomId, RoomId},
     sleep::sleep,
     timeout::timeout,
 };
@@ -32,8 +34,12 @@ use tokio::sync::{
 };
 
 use super::{MatrixSessionDto, SessionSyncStateDto, restore::refreshable};
-use crate::accounts::Engine;
 use crate::engines::identity::IdentitySignals;
+use crate::{
+    accounts::Engine,
+    barrier::{Barrier, Subscribers, Tracked},
+    engines::room_list::typing::Typing,
+};
 
 /// How long `stop_sync` waits for the sync service to stop.
 const STOP_LIMIT: Duration = Duration::from_secs(30);
@@ -58,6 +64,17 @@ pub struct AccountRuntime {
     /// Keeps the room list's loading task, which `roomsPrepared` follows.
     _all_rooms: RoomList,
     _tasks: [AbortOnDrop<()>; 3],
+    /// The open room list streams a command must reach before it replies.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the room list streams and commands that use it come in later commits"
+        )
+    )]
+    nudges: Mutex<Subscribers<Option<OwnedRoomId>>>,
+    /// Who is typing per joined room, kept from the start: typing EDUs are not stored or repeated.
+    pub(crate) typing: Typing,
 }
 
 impl AccountRuntime {
@@ -91,6 +108,7 @@ impl AccountRuntime {
         let restart = restart_on_error(Arc::downgrade(engine), id(), generation, service);
         let expiry = s.oidc.as_ref().and(s.access_token_expires_at);
         let identity = IdentitySignals::new(&client, &s.user_id);
+        let typing = Typing::start(&client);
         Self {
             account_id: s.user_id.clone(),
             generation,
@@ -109,6 +127,8 @@ impl AccountRuntime {
                 AbortOnDrop::new(spawn(session)),
                 AbortOnDrop::new(spawn(restart)),
             ],
+            nudges: Mutex::default(),
+            typing,
         }
     }
 
@@ -135,6 +155,29 @@ impl AccountRuntime {
     /// Retires the account's leases; `tear_down` calls it before anything else.
     pub(crate) fn set_retired(&self) {
         self.retired.send_replace(true);
+    }
+}
+
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the room list streams and commands that use it come in later commits"
+    )
+)]
+impl AccountRuntime {
+    /// The nudges of a stream that recomputes on each one, each naming the room it is about or
+    /// `None` for any. A command waits until the carrier has written what the stream emitted for
+    /// its nudge, if the stream is polled as [`Tracked`] says.
+    pub(crate) fn nudged(&self) -> Tracked<Option<OwnedRoomId>> {
+        self.nudges.lock().subscribe(None).1
+    }
+
+    /// Nudges every open `nudged` stream about `room`, or about every room when `None`. A command
+    /// calls it once its effect shows in the SDK's state, and waits for the barrier before it
+    /// replies.
+    pub(crate) fn nudge(&self, room: Option<&RoomId>) -> Barrier {
+        self.nudges.lock().publish(&room.map(ToOwned::to_owned))
     }
 }
 

@@ -8,7 +8,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use crate::{
-    engines::{discovery, homeserver, identity, session},
+    engines::{discovery, homeserver, identity, room_list, session},
     wire::{Fault, FaultCode},
 };
 
@@ -126,6 +126,8 @@ methods! {
         user_id: String,
         ignored: bool,
     ),
+    "roomList.directMap" => room_list::typing::direct_map(account_id: String),
+    "roomList.typing" => room_list::typing::typing(account_id: String),
     "session.session" => session::session(),
     "session.restorePersisted" => session::restore_persisted(
         session: session::MatrixSessionDto,
