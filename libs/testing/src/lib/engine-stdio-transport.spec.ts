@@ -111,15 +111,23 @@ describe.skipIf(!testhostBinaryAvailable())('StdioTransport', () => {
     ).toMatchObject(exited);
   });
 
-  it('dispose ends the host with exit code 0 while a stream is open', async () => {
+  it('dispose ends the host with exit code 0 and drops an open stream quietly', async () => {
     transport = StdioTransport.start();
-    const ended = failure(transport.open('testhost.ticks', [5]));
+    const events: string[] = [];
+    transport.open('testhost.ticks', [5]).subscribe({
+      error: () => events.push('error'),
+      complete: () => events.push('complete'),
+    });
     await lastValueFrom(transport.open('testhost.echo', [null]));
 
     await transport.dispose();
+    await sleep(50);
 
     expect(transport.child.exitCode).toBe(0);
-    expect(await ended).toMatchObject(exited);
+    expect(events).toEqual([]);
+    expect(
+      await failure(transport.open('testhost.echo', [null])),
+    ).toMatchObject(exited);
   });
 
   it('RUST_LOG=debug output never reaches the frame stream', async () => {
