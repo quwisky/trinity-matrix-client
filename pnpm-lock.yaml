@@ -285,7 +285,7 @@ importers:
         specifier: ^1.2.3
         version: 1.2.5
       '@matrix-org/matrix-sdk-crypto-wasm':
-        specifier: ^18.9.0
+        specifier: 18.9.0
         version: 18.9.0
       '@ng-icons/core':
         specifier: ^36.0.0
