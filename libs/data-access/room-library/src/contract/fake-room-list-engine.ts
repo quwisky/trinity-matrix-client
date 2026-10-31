@@ -96,6 +96,7 @@ export class FakeRoomListEngine implements RoomListEngine {
   private readonly aliases = new Map<string, string>();
   private readonly userNames = new Map<string, string>();
   private readonly spaces = new Set<string>();
+  private readonly histories = new Map<string, RoomInfo['historyVisibility']>();
   /** Child links by space, then by child: shared server state, as are the parents. */
   private readonly links = new Map<string, Map<string, SpaceChildLink>>();
   private readonly parents = new Map<string, readonly string[]>();
@@ -114,8 +115,18 @@ export class FakeRoomListEngine implements RoomListEngine {
 
   /** Acts on the fake's state as `bob` would on a server. */
   readonly asBob = {
-    createRoom: async (name: string): Promise<string> =>
-      this.newRoom(name, this.bob),
+    createRoom: async (
+      name: string,
+      options: {
+        readonly historyVisibility?: RoomInfo['historyVisibility'];
+      } = {},
+    ): Promise<string> => {
+      const roomId = this.newRoom(name, this.bob);
+      if (options.historyVisibility) {
+        this.histories.set(roomId, options.historyVisibility);
+      }
+      return roomId;
+    },
     createPublicRoom: async (
       name: string,
       localpart: string,
@@ -125,6 +136,18 @@ export class FakeRoomListEngine implements RoomListEngine {
     },
     join: async (roomId: string): Promise<void> =>
       this.setJoined(roomId, this.bob, true),
+    leave: async (roomId: string): Promise<void> =>
+      this.setJoined(roomId, this.bob, false),
+    createSpace: async (name: string, childId: string): Promise<string> => {
+      const spaceId = this.newRoom(name, this.bob);
+      this.spaces.add(spaceId);
+      this.writeLink(spaceId, childId, {
+        via: [this.serverName],
+        suggested: false,
+        order: '',
+      });
+      return spaceId;
+    },
     invite: async (
       roomId: string,
       userId: string,
@@ -157,7 +180,10 @@ export class FakeRoomListEngine implements RoomListEngine {
               ...room,
               notificationCount: room.notificationCount + 1,
               recencyStamp: room.recencyStamp + 1,
-              latestMessage: { text: body, mark: null },
+              latestMessage: {
+                text: body,
+                mark: room.encryption === 'encrypted' ? 'unencrypted' : null,
+              },
             },
           },
         ]);
@@ -321,6 +347,7 @@ export class FakeRoomListEngine implements RoomListEngine {
             displayName: request.name,
             topic: request.topic ?? '',
             isSpace: request.kind === 'space',
+            encryption: request.kind === 'room' ? 'encrypted' : 'unencrypted',
           }),
         },
       ]);
@@ -657,6 +684,7 @@ export class FakeRoomListEngine implements RoomListEngine {
         value: fakeRoom(roomId, {
           membership: 'invite',
           displayName: this.roomNames.get(roomId) ?? roomId,
+          historyVisibility: this.histories.get(roomId) ?? 'shared',
           inviter: {
             userId: from,
             displayName: this.displayName(from),

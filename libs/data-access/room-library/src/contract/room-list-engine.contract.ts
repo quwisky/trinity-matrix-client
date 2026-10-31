@@ -9,12 +9,20 @@ import {
   timeout,
   toArray,
 } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from 'vitest';
 import {
   type EngineResult,
   type VectorDiff,
   applyVectorDiffs,
   assertPlainData,
+  plainEqual,
 } from '@trinity/util/matrix';
 import type {
   CreateRoomRequest,
@@ -42,13 +50,19 @@ export interface RoomListContractSetup {
     spaceParents(roomId: string): Promise<readonly string[]>;
   };
   readonly asBob: {
-    createRoom(name: string): Promise<string>;
+    createRoom(
+      name: string,
+      options?: { readonly historyVisibility?: RoomInfo['historyVisibility'] },
+    ): Promise<string>;
     /** A public room with the alias `#localpart:serverName`. */
     createPublicRoom(
       name: string,
       localpart: string,
     ): Promise<{ readonly roomId: string; readonly alias: string }>;
     join(roomId: string): Promise<void>;
+    leave(roomId: string): Promise<void>;
+    /** A space whose initial state links `childId` with `via: [serverName]` and nothing else. */
+    createSpace(name: string, childId: string): Promise<string>;
     invite(
       roomId: string,
       userId: string,
@@ -136,20 +150,68 @@ export function defineRoomListEngineContract(
       return rooms.find((r) => r.roomId === roomId) as RoomInfo;
     }
 
+    /** A new subscription's first batch: the list as the engine holds it right now. */
+    function snapshotNow(): Promise<readonly RoomInfo[]> {
+      return firstValueFrom(folded().pipe(take(1), timeout(settleTimeoutMs)));
+    }
+
+    async function invitedByBob(
+      historyVisibility?: RoomInfo['historyVisibility'],
+    ): Promise<string> {
+      const roomId = await context.asBob.createRoom(`bob ${unique()}`, {
+        historyVisibility,
+      });
+      await context.asBob.invite(roomId, alice);
+      await roomUntil(roomId, (r) => r.membership === 'invite');
+      return roomId;
+    }
+
+    function request(
+      patch: Partial<CreateRoomRequest> = {},
+    ): CreateRoomRequest {
+      return {
+        name: `contract ${unique()}`,
+        topic: null,
+        isPublic: false,
+        kind: 'room',
+        parentSpaceId: null,
+        ...patch,
+      };
+    }
+
     async function createRoom(
       patch: Partial<CreateRoomRequest> = {},
     ): Promise<string> {
-      const { roomId } = await ok(
-        engine.createRoom(alice, {
-          name: `contract ${unique()}`,
-          topic: null,
-          isPublic: false,
-          kind: 'room',
-          parentSpaceId: null,
-          ...patch,
-        }),
-      );
+      const { roomId } = await ok(engine.createRoom(alice, request(patch)));
       return roomId;
+    }
+
+    /** Alice's open subscription to `source`: its latest value, closed when the test finishes. */
+    function track<T>(source: Observable<T>): BehaviorSubject<T | null> {
+      const latest = new BehaviorSubject<T | null>(null);
+      const open = source
+        .pipe(
+          tap((value) => expect(() => assertPlainData(value)).not.toThrow()),
+        )
+        .subscribe((value) => latest.next(value));
+      onTestFinished(() => open.unsubscribe());
+      return latest;
+    }
+
+    /** The command's value, with what `latest` held at the moment it replied. */
+    async function atReply<T, S>(
+      command: Observable<EngineResult<T>>,
+      latest: { readonly value: S },
+    ): Promise<{ readonly value: T; readonly seen: S }> {
+      let seen = latest.value;
+      const value = await ok<T>(
+        command.pipe(
+          tap(() => {
+            seen = latest.value;
+          }),
+        ),
+      );
+      return { value, seen };
     }
 
     /** The space's links as an open subscription sees them right now. */
@@ -158,6 +220,19 @@ export function defineRoomListEngineContract(
         engine.spaceChildLinks(alice, spaceId).pipe(
           tap((links) => expect(() => assertPlainData(links)).not.toThrow()),
           take(1),
+          timeout(settleTimeoutMs),
+        ),
+      );
+    }
+
+    /** Waits until an open subscription's latest value satisfies the predicate. */
+    function latestUntil<T>(
+      latest: BehaviorSubject<T | null>,
+      predicate: (value: T) => boolean,
+    ): Promise<T> {
+      return firstValueFrom(
+        latest.pipe(
+          filter((value): value is T => value !== null && predicate(value)),
           timeout(settleTimeoutMs),
         ),
       );
@@ -215,9 +290,7 @@ export function defineRoomListEngineContract(
       async () => {
         const roomId = await createRoom();
 
-        const snapshot = await firstValueFrom(
-          folded().pipe(take(1), timeout(settleTimeoutMs)),
-        );
+        const snapshot = await snapshotNow();
 
         expect(snapshot.find((r) => r.roomId === roomId)?.membership).toBe(
           'join',
@@ -260,9 +333,7 @@ export function defineRoomListEngineContract(
       async () => {
         // Bob's room: an unencrypted message only counts toward notifications in an unencrypted
         // room, and rooms created through the engine are encrypted.
-        const roomId = await context.asBob.createRoom(`bob ${unique()}`);
-        await context.asBob.invite(roomId, alice);
-        await roomUntil(roomId, (r) => r.membership === 'invite');
+        const roomId = await invitedByBob();
         await context.asAlice.join(roomId);
         await context.asBob.sendMessage(roomId, 'hello');
         await roomUntil(roomId, (r) => r.notificationCount > 0);
@@ -313,7 +384,10 @@ export function defineRoomListEngineContract(
       'createDirectMessage reuses the joined DM',
       async () => {
         const first = await ok(engine.createDirectMessage(alice, bob));
-        await roomUntil(first.roomId, (r) => r.membership === 'join');
+        await roomUntil(
+          first.roomId,
+          (r) => r.membership === 'join' && r.directUserId === bob,
+        );
         await firstValueFrom(
           engine.directMap(alice).pipe(
             filter((map) => map[bob]?.includes(first.roomId) ?? false),
@@ -409,13 +483,7 @@ export function defineRoomListEngineContract(
           engine.setMarkedUnread(NOBODY, '!r:invalid', true),
           engine.markRead(NOBODY, '!r:invalid', 'private'),
           engine.leave(NOBODY, '!r:invalid'),
-          engine.createRoom(NOBODY, {
-            name: 'x',
-            topic: null,
-            isPublic: false,
-            kind: 'room',
-            parentSpaceId: null,
-          }),
+          engine.createRoom(NOBODY, request()),
           engine.createDirectMessage(NOBODY, bob),
           engine.resolveAlias(NOBODY, '#x:invalid'),
           engine.invite(NOBODY, '!r:invalid', bob),
@@ -447,35 +515,15 @@ export function defineRoomListEngineContract(
     it(
       'roomsInCommon adds a room once alice joins bob in it',
       async () => {
-        const roomId = await context.asBob.createRoom(`bob ${unique()}`);
-        await context.asBob.invite(roomId, alice);
-        await roomUntil(roomId, (r) => r.membership === 'invite');
-        const latest = new BehaviorSubject<readonly string[] | null>(null);
-        const open = engine
-          .roomsInCommon(alice, bob)
-          .pipe(tap((ids) => expect(() => assertPlainData(ids)).not.toThrow()))
-          .subscribe((ids) => latest.next(ids));
-        try {
-          await firstValueFrom(
-            latest.pipe(
-              filter((ids) => ids !== null),
-              timeout(settleTimeoutMs),
-            ),
-          );
-          expect(latest.value).toEqual([]);
+        const roomId = await invitedByBob();
+        const latest = track(engine.roomsInCommon(alice, bob));
+        await latestUntil(latest, () => true);
+        expect(latest.value).toEqual([]);
 
-          await context.asAlice.join(roomId);
+        await context.asAlice.join(roomId);
 
-          await firstValueFrom(
-            latest.pipe(
-              filter((ids) => ids?.includes(roomId) ?? false),
-              timeout(settleTimeoutMs),
-            ),
-          );
-          expect(latest.value).toEqual([roomId]);
-        } finally {
-          open.unsubscribe();
-        }
+        await latestUntil(latest, (ids) => ids.includes(roomId));
+        expect(latest.value).toEqual([roomId]);
       },
       testTimeoutMs,
     );
@@ -508,9 +556,7 @@ export function defineRoomListEngineContract(
           ok(engine.join(alice, alias, [context.serverName])),
         ).resolves.toEqual({ roomId });
 
-        const snapshot = await firstValueFrom(
-          folded().pipe(take(1), timeout(settleTimeoutMs)),
-        );
+        const snapshot = await snapshotNow();
         expect(snapshot.find((r) => r.roomId === roomId)?.membership).toBe(
           'join',
         );
@@ -645,26 +691,181 @@ export function defineRoomListEngineContract(
           ).resolves.toEqual({ supported: false, blocked: false });
           return;
         }
-        const latest = new BehaviorSubject<InviteBlocking | null>(null);
-        const open = engine.inviteBlocking(alice).subscribe(latest);
-        try {
-          await firstValueFrom(
-            latest.pipe(
-              filter((state) => !!state?.supported),
-              timeout(settleTimeoutMs),
-            ),
-          );
-          expect(latest.value).toEqual({ supported: true, blocked: false });
+        const latest = track(engine.inviteBlocking(alice));
+        await latestUntil(latest, (state) => state.supported);
+        expect(latest.value).toEqual({ supported: true, blocked: false });
 
-          await ok(engine.setInviteBlocking(alice, true));
-          expect(latest.value).toEqual({ supported: true, blocked: true });
-          await blockingUntil((state) => state.blocked);
+        const on = await atReply(engine.setInviteBlocking(alice, true), latest);
+        expect(on.seen).toEqual({ supported: true, blocked: true });
+        await blockingUntil((state) => state.blocked);
 
-          await ok(engine.setInviteBlocking(alice, false));
-          expect(latest.value).toEqual({ supported: true, blocked: false });
-        } finally {
-          open.unsubscribe();
-        }
+        const off = await atReply(
+          engine.setInviteBlocking(alice, false),
+          latest,
+        );
+        expect(off.seen).toEqual({ supported: true, blocked: false });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "shows each command's effect in an open rooms() subscription before it replies",
+      async () => {
+        const latest = track(folded());
+        const row = (rooms: readonly RoomInfo[], roomId: string) =>
+          rooms.find((r) => r.roomId === roomId);
+        const shows = async <T>(
+          step: string,
+          command: Observable<EngineResult<T>>,
+          effect: (rooms: readonly RoomInfo[], value: T) => boolean,
+        ): Promise<T> => {
+          const { value, seen } = await atReply(command, latest);
+          expect(effect(seen ?? [], value), step).toBe(true);
+          return value;
+        };
+        await latestUntil(latest, () => true);
+
+        const { roomId: created } = await shows(
+          'createRoom',
+          engine.createRoom(alice, request()),
+          (rooms, { roomId }) => row(rooms, roomId)?.membership === 'join',
+        );
+        await shows(
+          'setTag on',
+          engine.setTag(alice, created, 'favourite', true),
+          (rooms) => row(rooms, created)?.favourite === true,
+        );
+        await shows(
+          'setTag off',
+          engine.setTag(alice, created, 'favourite', false),
+          (rooms) => row(rooms, created)?.favourite === false,
+        );
+        await shows(
+          'createDirectMessage',
+          engine.createDirectMessage(alice, bob),
+          (rooms, { roomId }) => row(rooms, roomId) !== undefined,
+        );
+        const publicRoom = await context.asBob.createPublicRoom(
+          `bob ${unique()}`,
+          `contract-${unique()}`,
+        );
+        await shows(
+          'join',
+          engine.join(alice, publicRoom.roomId, [context.serverName]),
+          (rooms) => row(rooms, publicRoom.roomId)?.membership === 'join',
+        );
+        await shows(
+          'leave',
+          engine.leave(alice, created),
+          (rooms) => row(rooms, created) === undefined,
+        );
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "a created room's row carries its name, topic, encryption and history",
+      async () => {
+        const name = `contract ${unique()}`;
+        const roomId = await createRoom({ name, topic: 'about' });
+        const spaceId = await createRoom({ kind: 'space' });
+
+        const room = await roomUntil(
+          roomId,
+          (r) =>
+            r.displayName === name &&
+            r.topic !== '' &&
+            r.joinedMemberCount > 0 &&
+            r.encryption !== 'unknown',
+        );
+        const space = await roomUntil(
+          spaceId,
+          (r) => r.isSpace && r.encryption !== 'unknown',
+        );
+
+        expect(room).toMatchObject({
+          membership: 'join',
+          isSpace: false,
+          displayName: name,
+          topic: 'about',
+          avatarMxc: null,
+          directUserId: null,
+          encryption: 'encrypted',
+          joinedMemberCount: 1,
+          historyVisibility: 'shared',
+          latestMessage: null,
+          favourite: false,
+          inviter: null,
+        });
+        expect(space.encryption).toBe('unencrypted');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'a message from bob shows as the latest message and moves recencyStamp',
+      async () => {
+        const roomId = await invitedByBob('joined');
+        await context.asAlice.join(roomId);
+        const before = await roomUntil(roomId, (r) => r.membership === 'join');
+
+        await context.asBob.sendMessage(roomId, 'hello');
+
+        const after = await roomUntil(
+          roomId,
+          (r) => r.latestMessage?.text === 'hello',
+        );
+        expect(after.latestMessage).toEqual({ text: 'hello', mark: null });
+        expect(after.historyVisibility).toBe('joined');
+        expect(after.recencyStamp).toBeGreaterThan(before.recencyStamp);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'a plaintext message in an encrypted room shows with the unencrypted mark',
+      async () => {
+        const roomId = await createRoom();
+        await ok(engine.invite(alice, roomId, bob));
+        await context.asBob.join(roomId);
+
+        await context.asBob.sendMessage(roomId, 'hello');
+
+        const room = await roomUntil(
+          roomId,
+          (r) => r.latestMessage?.text === 'hello',
+        );
+        expect(room.latestMessage?.mark).toBe('unencrypted');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'join accepts an invite',
+      async () => {
+        const roomId = await invitedByBob();
+
+        await expect(ok(engine.join(alice, roomId, []))).resolves.toEqual({
+          roomId,
+        });
+
+        expect(
+          (await snapshotNow()).find((r) => r.roomId === roomId),
+        ).toMatchObject({ membership: 'join', inviter: null });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'leave declines an invite',
+      async () => {
+        const roomId = await invitedByBob();
+
+        await ok(engine.leave(alice, roomId));
+
+        expect((await snapshotNow()).some((r) => r.roomId === roomId)).toBe(
+          false,
+        );
       },
       testTimeoutMs,
     );
@@ -686,6 +887,94 @@ export function defineRoomListEngineContract(
         await roomUntil(roomId, (r) => r.favourite);
 
         expect(seen).toBe(before);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'setSpaceChild and createRoom with a parent show in an open spaceChildLinks() before they reply',
+      async () => {
+        const spaceId = await createRoom({ kind: 'space' });
+        const childId = await createRoom();
+        await roomUntil(spaceId, (r) => r.isSpace);
+        const latest = track(engine.spaceChildLinks(alice, spaceId));
+        await latestUntil(latest, () => true);
+        const link = {
+          via: [context.serverName],
+          suggested: false,
+          order: 'a',
+        };
+
+        const linked = await atReply(
+          engine.setSpaceChild(alice, spaceId, childId, link),
+          latest,
+        );
+        const unlinked = await atReply(
+          engine.setSpaceChild(alice, spaceId, childId, null),
+          latest,
+        );
+        const created = await atReply(
+          engine.createRoom(alice, request({ parentSpaceId: spaceId })),
+          latest,
+        );
+
+        expect(linked.seen).toEqual([{ childId, ...link }]);
+        expect(unlinked.seen).toEqual([]);
+        expect(created.seen).toEqual([
+          {
+            childId: created.value.roomId,
+            via: [context.serverName],
+            suggested: true,
+            order: '',
+          },
+        ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'roomsInCommon drops a room once bob leaves it',
+      async () => {
+        const roomId = await invitedByBob();
+        await context.asAlice.join(roomId);
+        const latest = track(engine.roomsInCommon(alice, bob));
+        await latestUntil(latest, (ids) => ids.includes(roomId));
+
+        await context.asBob.leave(roomId);
+
+        await latestUntil(latest, (ids) => !ids.includes(roomId));
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'spaceChildLinks is empty for a space alice does not know, then shows its links once she joins',
+      async () => {
+        const childId = await context.asBob.createRoom(`bob ${unique()}`);
+        const spaceId = await context.asBob.createSpace(
+          `bob ${unique()}`,
+          childId,
+        );
+        const latest = track(engine.spaceChildLinks(alice, spaceId));
+        await latestUntil(latest, () => true);
+        expect(latest.value).toEqual([]);
+
+        // A real server's invite carries no m.space.child in its stripped state, so the links
+        // arrive with the join; the fake shows them from the invite.
+        await context.asBob.invite(spaceId, alice);
+        await roomUntil(spaceId, (r) => r.membership === 'invite');
+        await context.asAlice.join(spaceId);
+
+        await latestUntil(latest, (links) =>
+          plainEqual(links, [
+            {
+              childId,
+              via: [context.serverName],
+              suggested: false,
+              order: '',
+            },
+          ]),
+        );
       },
       testTimeoutMs,
     );
