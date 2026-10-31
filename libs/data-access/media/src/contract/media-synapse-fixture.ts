@@ -125,7 +125,7 @@ export async function expressionSynapseFixture(
           alice.accessToken,
           'POST',
           '/createRoom',
-          { preset: 'private_chat' },
+          { preset: 'private_chat', room_version: '11' },
         )
       ).room_id,
     leave: async (roomId) => {

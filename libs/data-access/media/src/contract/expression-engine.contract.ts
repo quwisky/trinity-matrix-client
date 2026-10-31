@@ -316,6 +316,8 @@ export function defineExpressionEngineContract(
         const all = await rooms.until(
           (latest) =>
             room(latest, roomId).joined &&
+            room(latest, roomId).name === name &&
+            !room(latest, roomId).canWritePack &&
             room(latest, roomId).packEvents.length > 0,
         );
         expect(room(all, roomId)).toEqual({
@@ -345,7 +347,9 @@ export function defineExpressionEngineContract(
         const { alias } = await context.foreignPackRoom(name, { images: {} });
         const { roomId } = await ok(engine.joinPackRoom(alice, alias));
         const rooms = watch(engine.packRooms(alice, [roomId]));
-        await rooms.until((all) => room(all, roomId).joined);
+        await rooms.until(
+          (all) => room(all, roomId).joined && room(all, roomId).name === name,
+        );
 
         await context.leave(roomId);
         const left = await rooms.until((all) => !room(all, roomId).joined);

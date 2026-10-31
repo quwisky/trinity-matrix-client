@@ -69,9 +69,7 @@ export async function roomAdministrationSynapseFixture(
             '/createRoom',
             {
               preset: 'private_chat',
-              ...(options.roomVersion
-                ? { room_version: options.roomVersion }
-                : {}),
+              room_version: options.roomVersion ?? '11',
               creation_content: {
                 ...(options.additionalCreators
                   ? { additional_creators: options.additionalCreators }

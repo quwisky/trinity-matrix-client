@@ -317,9 +317,12 @@ export function defineRoomWidgetEngineContract(
       'putRoomWidget without power is forbidden',
       async () => {
         const roomId = await sharedRoom(false);
+        await context.asBob.putWidget(roomId, 'marker', {
+          ...content('marker'),
+        });
         const widgets = watch(roomId);
         try {
-          await widgets.until((s) => s.identity !== null);
+          await widgets.until((s) => s.widgets.some((w) => w.id === 'marker'));
 
           expect(
             await failureOf(

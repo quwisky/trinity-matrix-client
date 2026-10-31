@@ -346,9 +346,10 @@ export function defineMediaEngineContract(
           });
         await progressed;
         subscription.unsubscribe();
+        const atUnsubscribe = seen.length;
         await new Promise((resolve) => setTimeout(resolve, 200));
 
-        expect(seen).toEqual(['progress']);
+        expect(seen).toHaveLength(atUnsubscribe);
       },
       testTimeoutMs,
     );
@@ -558,11 +559,12 @@ export function defineMediaEngineContract(
           });
         await progressed;
         subscription.unsubscribe();
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        const atUnsubscribe = seen.length;
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
         release();
         await new Promise((resolve) => setTimeout(resolve, 200));
 
-        expect(seen).toEqual(['progress']);
+        expect(seen).toHaveLength(atUnsubscribe);
         expect(context.uploads()).toBe(0);
         expect(await context.messages(roomId)).toEqual([]);
       },

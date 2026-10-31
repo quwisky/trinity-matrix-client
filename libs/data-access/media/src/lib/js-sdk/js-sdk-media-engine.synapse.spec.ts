@@ -54,7 +54,7 @@ describe.skipIf(!baseUrl)('JsSdkMediaEngine against Synapse', () => {
   }
 
   it('fails closed with encryption-unavailable in an encrypted room without crypto', async () => {
-    const { session, client, room } = await open();
+    const { fixture, session, client, room } = await open();
     const crypto = vi.spyOn(client, 'getCrypto').mockReturnValue(undefined);
     const upload = vi.spyOn(client, 'uploadContent');
     const roomId = await room(true);
@@ -81,6 +81,7 @@ describe.skipIf(!baseUrl)('JsSdkMediaEngine against Synapse', () => {
       ok: false,
       failure: { code: 'encryption-unavailable' },
     });
+    expect(await fixture.messages(roomId)).toEqual([]);
     expect(upload).not.toHaveBeenCalled();
     await session.dispose();
   }, 180_000);
