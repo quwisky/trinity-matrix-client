@@ -17,6 +17,7 @@ describe('buildContractCommand', () => {
       'data-access-discovery',
       'data-access-matrix-client',
       'data-access-identity',
+      'data-access-contact-addresses',
     ]);
     // A Rust contract is the js-sdk contract run on another engine.
     expect(LIBS).toEqual(expect.arrayContaining([...RUST_LIBS]));

@@ -8,7 +8,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use crate::{
-    engines::{discovery, homeserver, identity, room_list, session},
+    engines::{contact_addresses, discovery, homeserver, identity, room_list, session},
     wire::{Fault, FaultCode},
 };
 
@@ -82,6 +82,42 @@ macro_rules! methods {
 }
 
 methods! {
+    "contactAddresses.threePids" => contact_addresses::three_pids(account_id: String),
+    "contactAddresses.requestAddEmailToken" => contact_addresses::request_add_email_token(
+        account_id: String,
+        request: contact_addresses::AddEmailTokenRequestDto,
+    ),
+    "contactAddresses.addThreePid" => contact_addresses::add_three_pid(
+        account_id: String,
+        request: contact_addresses::AddThreePidRequestDto,
+        auth: Option<session::UiaAuthDto>,
+    ),
+    "contactAddresses.deleteThreePid" => contact_addresses::delete_three_pid(
+        account_id: String,
+        medium: String,
+        address: String,
+    ),
+    "contactAddresses.identityServerSetting" => contact_addresses::identity_server_setting(
+        account_id: String,
+    ),
+    "contactAddresses.setIdentityServer" => contact_addresses::set_identity_server(
+        account_id: String,
+        base_url: Option<String>,
+    ),
+    "contactAddresses.acceptedTerms" => contact_addresses::accepted_terms(account_id: String),
+    "contactAddresses.setAcceptedTerms" => contact_addresses::set_accepted_terms(
+        account_id: String,
+        urls: Vec<String>,
+    ),
+    "contactAddresses.openIdToken" => contact_addresses::open_id_token(account_id: String),
+    "contactAddresses.bindThreePid" => contact_addresses::bind_three_pid(
+        account_id: String,
+        request: contact_addresses::BindThreePidRequestDto,
+    ),
+    "contactAddresses.unbindThreePid" => contact_addresses::unbind_three_pid(
+        account_id: String,
+        request: contact_addresses::UnbindThreePidRequestDto,
+    ),
     "discovery.discover" => discovery::discover(domain: String),
     "discovery.searchPublicRooms" => discovery::search_public_rooms(
         account_id: String,

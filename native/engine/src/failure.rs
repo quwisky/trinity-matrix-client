@@ -309,16 +309,23 @@ pub fn account_start_failed(
     }
 }
 
-/// The js adapter's `requestFailure`: a UIA challenge, a missing endpoint (`M_UNRECOGNIZED`, or a
-/// Matrix 404/405 that is not `M_NOT_FOUND`), a policy refusal (`M_FORBIDDEN`), or else
-/// [`request_failed`].
-pub fn request_failure(err: &Error) -> EngineFailure {
-    let server_error = match err {
-        Error::Http(http) => server_error(http),
-        _ => None,
+/// The UIA branch of [`request_failure`], else [`request_failed`]. `unsupported` and `forbidden`
+/// are codes the caller's interface does not list, so they stay `request-failed`.
+pub fn uia_or_request_failed(err: &Error) -> EngineFailure {
+    uia_required(err).unwrap_or_else(|| request_failed(err))
+}
+
+/// The homeserver's user-interactive auth challenge, as a `uia-required` failure.
+fn uia_required(err: &Error) -> Option<EngineFailure> {
+    let Error::Http(http) = err else { return None };
+    let Some(RumaApiError::AuthResponse(info)) = server_error(http) else {
+        return None;
     };
-    let code = match server_error {
-        Some(RumaApiError::AuthResponse(info)) => FailureCode::UiaRequired {
+    let (kind, diagnostic) = classify(err);
+    Some(EngineFailure {
+        kind,
+        diagnostic,
+        code: FailureCode::UiaRequired {
             challenge: UiaChallengeDto {
                 session: info.session.clone(),
                 flows: info
@@ -331,6 +338,21 @@ pub fn request_failure(err: &Error) -> EngineFailure {
                 completed: info.completed.iter().map(|s| s.as_str().into()).collect(),
             },
         },
+    })
+}
+
+/// The js adapter's `requestFailure`: a UIA challenge, a missing endpoint (`M_UNRECOGNIZED`, or a
+/// Matrix 404/405 that is not `M_NOT_FOUND`), a policy refusal (`M_FORBIDDEN`), or else
+/// [`request_failed`].
+pub fn request_failure(err: &Error) -> EngineFailure {
+    if let Some(failure) = uia_required(err) {
+        return failure;
+    }
+    let server_error = match err {
+        Error::Http(http) => server_error(http),
+        _ => None,
+    };
+    let code = match server_error {
         // A body that is not JSON is the js-sdk's `HTTPError`, not a `MatrixError`.
         Some(RumaApiError::MatrixError(error))
             if !matches!(error.body, ErrorBody::NotJson { .. }) =>
@@ -756,6 +778,55 @@ mod tests {
             expired.diagnostic.errcode.as_deref(),
             Some("M_UNKNOWN_TOKEN")
         );
+    }
+
+    #[test]
+    fn uia_or_request_failed_table() {
+        let challenge = json!({"flows": [{"stages": ["m.login.password"]}], "session": "s"});
+        let uia = uia_or_request_failed(&response(401, &challenge.to_string(), None).into());
+        assert_eq!(
+            uia.code,
+            FailureCode::UiaRequired {
+                challenge: UiaChallengeDto {
+                    session: Some("s".into()),
+                    flows: vec![UiaFlowDto {
+                        stages: vec!["m.login.password".into()]
+                    }],
+                    completed: vec![],
+                }
+            }
+        );
+        let request_failed = FailureCode::RequestFailed {
+            cause: None,
+            server_message: None,
+        };
+        for (error, kind) in [
+            (matrix_error(404, "M_NOT_FOUND"), FailureKind::Http),
+            (matrix_error(404, "M_UNKNOWN"), FailureKind::Http),
+            (matrix_error(405, "M_UNKNOWN"), FailureKind::Http),
+            (matrix_error(400, "M_UNRECOGNIZED"), FailureKind::Http),
+            (matrix_error(403, "M_FORBIDDEN"), FailureKind::Permission),
+            (response(502, "<html>", None), FailureKind::Server),
+        ] {
+            let status = error.as_ruma_api_error().map(ToString::to_string);
+            let failure = uia_or_request_failed(&error.into());
+            assert_eq!(failure.code, request_failed, "{status:?}");
+            assert_eq!(failure.kind, kind, "{status:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn uia_or_request_failed_of_a_connection_error_is_a_network_failure() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let error =
+            request_error(&format!("http://127.0.0.1:{port}"), Duration::from_secs(5)).await;
+        let failure = uia_or_request_failed(&error.into());
+        assert_eq!(failure.kind, FailureKind::Network);
+        assert!(matches!(failure.code, FailureCode::RequestFailed { .. }));
     }
 
     #[test]
