@@ -81,6 +81,13 @@ public struct TokenRecord: Codable, Equatable, CustomStringConvertible, CustomDe
 public struct TokenRemoval: Equatable {
     public let account: String?
 
+    /// Who a sweep keeps. Nil unless the call has a list of non-empty user ids: an empty list keeps
+    /// nobody, so a missing or damaged one must never read as empty.
+    public static func keptUserIds(fromPluginCall options: [String: Any]) -> Set<String>? {
+        guard let userIds = options["userIds"] as? [String], !userIds.contains("") else { return nil }
+        return Set(userIds)
+    }
+
     /// Nil unless the call has exactly one of a non-empty user id and `all: true`. Removing every
     /// record cannot be undone: it takes every account's refresh token.
     public static func fromPluginCall(_ options: [String: Any]) -> TokenRemoval? {
@@ -194,4 +201,6 @@ public protocol TokenVault {
     func update(_ record: TokenRecord, for userId: String) -> TokenVaultWrite
     func remove(_ userId: String) -> Bool
     func removeAll() -> Bool
+    /// Every stored account. Nil when the store could not answer: never an empty list.
+    func accounts() -> [String]?
 }

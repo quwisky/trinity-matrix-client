@@ -80,6 +80,26 @@ final class TokenPluginArgumentsTests: XCTestCase {
         XCTAssertNil(TokenRemoval.fromPluginCall(["userId": NSNull(), "all": true]))
     }
 
+    func testASweepKeepsTheListedAccounts() {
+        XCTAssertEqual(
+            TokenRemoval.keptUserIds(fromPluginCall: ["userIds": ["@a:hs", "@b:hs"]]), ["@a:hs", "@b:hs"])
+    }
+
+    func testAnEmptyListIsAnExplicitSweepOfEverything() {
+        XCTAssertEqual(TokenRemoval.keptUserIds(fromPluginCall: ["userIds": [String]()]), [])
+        XCTAssertEqual(TokenRemoval.keptUserIds(fromPluginCall: ["userIds": NSArray()]), [])
+    }
+
+    func testAMissingOrMalformedListSweepsNothing() {
+        XCTAssertNil(TokenRemoval.keptUserIds(fromPluginCall: [:]))
+        let malformed: [Any] = [
+            NSNull(), "@a:hs", 7, true, ["@a:hs": true], [7], ["@a:hs", 7] as [Any], [""], [NSNull()] as [Any],
+        ]
+        for bad in malformed {
+            XCTAssertNil(TokenRemoval.keptUserIds(fromPluginCall: ["userIds": bad]), "\(bad)")
+        }
+    }
+
     func testAGrantNeedsBackgroundTimeUnlessTheAppIsActive() {
         XCTAssertTrue(TokenRefresher.mayStartAppGrant(hasBackgroundTime: true, appIsActive: true))
         XCTAssertTrue(TokenRefresher.mayStartAppGrant(hasBackgroundTime: true, appIsActive: false))

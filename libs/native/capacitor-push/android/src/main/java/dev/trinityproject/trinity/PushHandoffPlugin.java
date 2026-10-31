@@ -21,6 +21,7 @@ import dev.trinityproject.trinity.push.TokenRefresher;
 import dev.trinityproject.trinity.push.TokenRemoval;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -260,6 +261,33 @@ public class PushHandoffPlugin extends Plugin {
             }
             if (removed) {
                 call.resolve();
+            } else {
+                call.reject("Could not remove the tokens");
+            }
+        });
+    }
+
+    /**
+     * Every record whose user id is not listed; an empty list removes them all. Rejects and removes
+     * nothing on a missing or malformed list or when the store cannot list its records; also
+     * rejects when a removal failed, after trying the others.
+     */
+    @PluginMethod
+    public void removeTokensExcept(PluginCall call) {
+        Set<String> keeping = TokenRecordKt.keptUserIdsFromPluginCall(call.getData());
+        if (keeping == null) {
+            call.reject("Must provide userIds as a list of user ids");
+            return;
+        }
+        tokenWork.execute(() -> {
+            Integer removed;
+            try {
+                removed = tokens.removeExcept(keeping);
+            } catch (RuntimeException error) {
+                removed = null;
+            }
+            if (removed != null) {
+                call.resolve(new JSObject().put("removed", removed));
             } else {
                 call.reject("Could not remove the tokens");
             }

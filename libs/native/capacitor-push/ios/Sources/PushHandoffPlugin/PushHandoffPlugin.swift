@@ -42,6 +42,7 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             CAPPluginMethod(name: "migrateTokens", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "revokeTokens", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "removeTokens", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "removeTokensExcept", returnType: CAPPluginReturnPromise),
         ]
         #if DEBUG
         methods.append(CAPPluginMethod(name: "renderProbe", returnType: CAPPluginReturnPromise))
@@ -378,6 +379,26 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
         Task {
             if await tokens.remove(account: removal.account) {
                 call.resolve()
+            } else {
+                call.reject("Could not remove the tokens")
+            }
+        }
+    }
+
+    @objc func removeTokensExcept(_ call: CAPPluginCall) {
+        guard let options = call.options as? [String: Any],
+              let keeping = TokenRemoval.keptUserIds(fromPluginCall: options)
+        else {
+            call.reject("Must provide userIds as a list of user ids")
+            return
+        }
+        guard let tokens else {
+            call.resolve(["removed": 0])
+            return
+        }
+        Task {
+            if let removed = await tokens.remove(except: keeping) {
+                call.resolve(["removed": removed])
             } else {
                 call.reject("Could not remove the tokens")
             }

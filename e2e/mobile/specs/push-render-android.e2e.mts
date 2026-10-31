@@ -189,6 +189,11 @@ describe('device-rendered push on Android', () => {
         expect.stringContaining('Must provide a userId or all: true'),
       ),
     );
+    expect(answers.malformedSweeps).toEqual(
+      Array.from({ length: 4 }, () =>
+        expect.stringContaining('Must provide userIds'),
+      ),
+    );
   });
 
   it('stores, reads and removes tokens through the installed plugin, with no network', async () => {
@@ -216,6 +221,10 @@ describe('device-rendered push on Android', () => {
     });
     expect(answers.current).not.toHaveProperty('refreshToken');
     expect(answers.revokedUnknown).toEqual({ kind: 'gone' });
+    expect(answers.sweepKeeping).toEqual({ removed: expect.any(Number) });
+    expect(answers.currentKept).toEqual(answers.current);
     expect(answers.currentAfter).toEqual({ kind: 'gone' });
+    expect(answers.sweepOfAll).toEqual({ removed: 1 });
+    expect(answers.currentSwept).toEqual({ kind: 'gone' });
   });
 });

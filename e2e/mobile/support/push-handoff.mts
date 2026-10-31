@@ -52,6 +52,8 @@ export interface UnknownAccountTokenAnswers {
   readonly refresh: unknown;
   /** Each removal that names neither one account nor all of them: how it was rejected. */
   readonly malformedRemovals: readonly string[];
+  /** Each sweep without a list of user ids: how it was rejected. */
+  readonly malformedSweeps: readonly string[];
 }
 
 /**
@@ -71,6 +73,7 @@ export async function tokenAnswersForUnknownAccount(
                 currentTokens(options: unknown): Promise<unknown>;
                 refreshTokens(options: unknown): Promise<unknown>;
                 removeTokens(options: unknown): Promise<unknown>;
+                removeTokensExcept(options: unknown): Promise<unknown>;
               };
             };
           };
@@ -102,6 +105,15 @@ export async function tokenAnswersForUnknownAccount(
               ),
             ),
           ),
+          malformedSweeps: await Promise.all(
+            [{}, { userIds: id }, { userIds: [7] }, { userIds: [''] }].map(
+              (options) =>
+                handoff.removeTokensExcept(options).then(
+                  () => 'resolved',
+                  (error: unknown) => String(error),
+                ),
+            ),
+          ),
         };
       } catch (error: unknown) {
         return String(error);
@@ -118,12 +130,17 @@ export interface TokenRoundTrip {
   readonly stored: unknown;
   readonly current: unknown;
   readonly revokedUnknown: unknown;
+  readonly sweepKeeping: unknown;
+  readonly currentKept: unknown;
   readonly currentAfter: unknown;
+  readonly sweepOfAll: unknown;
+  readonly currentSwept: unknown;
 }
 
 /**
- * Store synthetic tokens through the installed plugin, read them back and remove them. Nothing here
- * sends a grant: the only revocation names another account. Run in the WebView context.
+ * Store synthetic tokens through the installed plugin, read them back, remove them, then store and
+ * sweep them. Nothing here sends a grant: the only revocation names another account. This empties
+ * the app's vault. Run in the WebView context.
  */
 export async function tokenRoundTrip(
   userId: string,
@@ -145,6 +162,7 @@ export async function tokenRoundTrip(
                 currentTokens(options: unknown): Promise<unknown>;
                 revokeTokens(options: unknown): Promise<unknown>;
                 removeTokens(options: unknown): Promise<unknown>;
+                removeTokensExcept(options: unknown): Promise<unknown>;
               };
             };
           };
@@ -161,9 +179,25 @@ export async function tokenRoundTrip(
           ...account,
           userId: otherId,
         });
+        const sweepKeeping = await handoff.removeTokensExcept({
+          userIds: [id],
+        });
+        const currentKept = await handoff.currentTokens(account);
         await handoff.removeTokens({ userId: id });
         const currentAfter = await handoff.currentTokens(account);
-        return { stored, current, revokedUnknown, currentAfter };
+        await handoff.migrateTokens({ ...tokens, userId: id });
+        const sweepOfAll = await handoff.removeTokensExcept({ userIds: [] });
+        const currentSwept = await handoff.currentTokens(account);
+        return {
+          stored,
+          current,
+          revokedUnknown,
+          sweepKeeping,
+          currentKept,
+          currentAfter,
+          sweepOfAll,
+          currentSwept,
+        };
       } catch (error: unknown) {
         return String(error);
       }

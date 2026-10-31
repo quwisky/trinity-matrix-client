@@ -45,6 +45,28 @@ extension PushHandoffStore: TokenVault {
 
     public func removeAll() -> Bool { delete(tokenQuery(nil)) }
 
+    public func accounts() -> [String]? {
+        queue.sync {
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(tokenAccountsQuery() as CFDictionary, &result)
+            return Self.tokenAccounts(status: status, result: result)
+        }
+    }
+
+    static func tokenAccounts(status: OSStatus, result: Any?) -> [String]? {
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else { return nil }
+        let accounts = items.compactMap { $0[kSecAttrAccount as String] as? String }
+        return accounts.count == items.count ? accounts : nil
+    }
+
+    func tokenAccountsQuery() -> [String: Any] {
+        var query = tokenQuery(nil)
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitAll
+        return query
+    }
+
     private func delete(_ query: [String: Any]) -> Bool {
         queue.sync {
             let status = SecItemDelete(query as CFDictionary)

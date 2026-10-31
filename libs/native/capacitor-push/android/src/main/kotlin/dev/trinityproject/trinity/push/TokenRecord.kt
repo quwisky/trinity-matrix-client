@@ -1,5 +1,6 @@
 package dev.trinityproject.trinity.push
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 enum class TokenState { ACTIVE, REFUSED }
@@ -67,6 +68,17 @@ fun tokenRemovalFromPluginCall(data: JSONObject): TokenRemoval? = when {
     data.has("userId") == data.has("all") -> null
     data.has("all") -> if (data.opt("all") == true) TokenRemoval(null) else null
     else -> PushRenderRules.stringOrNull(data, "userId")?.takeIf { it.isNotEmpty() }?.let { TokenRemoval(it) }
+}
+
+/**
+ * Who a sweep keeps. Null unless the call has a list of non-empty user ids: an empty list keeps
+ * nobody, so a missing or damaged one must never read as empty.
+ */
+fun keptUserIdsFromPluginCall(data: JSONObject): Set<String>? {
+    val userIds = data.opt("userIds") as? JSONArray ?: return null
+    return (0 until userIds.length())
+        .map { index -> (userIds.opt(index) as? String)?.takeIf { it.isNotEmpty() } ?: return null }
+        .toSet()
 }
 
 sealed interface TokenVaultRead {
@@ -154,4 +166,7 @@ interface TokenVault {
     fun remove(userId: String): Boolean
 
     fun removeAll(): Boolean
+
+    /** Every stored account. Null when the store could not answer: never an empty list. */
+    fun accounts(): List<String>?
 }

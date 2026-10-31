@@ -110,6 +110,14 @@ export interface PushHandoffPlugin {
    * (an empty or non-string id included), or on a store failure.
    */
   removeTokens(options: { userId: string } | { all: true }): Promise<void>;
+  /**
+   * Removes every record whose user id is not listed, each under its lease: an empty list removes
+   * them all. Rejects and removes nothing on a missing or malformed list or when the store cannot
+   * list its records; also rejects when a removal failed, after trying the others.
+   */
+  removeTokensExcept(options: {
+    userIds: string[];
+  }): Promise<{ removed: number }>;
 }
 
 /**

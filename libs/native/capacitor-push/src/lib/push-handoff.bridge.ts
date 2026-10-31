@@ -174,6 +174,24 @@ export class PushHandoffBridge {
     return this.call(() => pushHandoff.removeTokens({ all: true }));
   }
 
+  /**
+   * Cold. Removes every account's tokens but the listed ones', and emits how many went; an empty
+   * list removes them all. Emits 0 off native. Errors on any host unless given a list of user ids.
+   */
+  removeTokensExcept(
+    userIds: readonly string[],
+  ): Observable<{ readonly removed: number }> {
+    return Array.isArray(userIds) &&
+      userIds.every((id) => typeof id === 'string' && id !== '')
+      ? this.ask(
+          () => pushHandoff.removeTokensExcept({ userIds: [...userIds] }),
+          { removed: 0 },
+        )
+      : throwError(
+          () => new Error('removeTokensExcept needs a list of user ids'),
+        );
+  }
+
   private call(command: () => Promise<void>): Observable<void> {
     return this.ask(command, void 0);
   }

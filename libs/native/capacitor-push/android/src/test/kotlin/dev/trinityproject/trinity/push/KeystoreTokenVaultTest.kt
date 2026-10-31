@@ -57,6 +57,35 @@ class KeystoreTokenVaultTest {
     }
 
     @Test
+    fun accountsListsEveryRecordAndNothingElse() {
+        assertEquals(emptyList<String>(), vault.accounts())
+
+        assertTrue(vault.write("@a:hs", R0))
+        assertTrue(vault.write("@b:hs", R0))
+        preferences.values["other"] = "x"
+
+        assertEquals(setOf("@a:hs", "@b:hs"), vault.accounts()?.toSet())
+    }
+
+    @Test
+    fun accountsNeedsNoKeystoreKey() {
+        assertTrue(vault.write(user, R0))
+
+        crypto.failing = true
+
+        assertEquals(listOf(user), vault.accounts())
+    }
+
+    @Test
+    fun aFaultListingThePreferencesIsNoAnswerNeverNoAccounts() {
+        val faulty = object : SharedPreferences by preferences {
+            override fun getAll(): MutableMap<String, *> = throw ClassCastException()
+        }
+
+        assertNull(KeystoreTokenVault(faulty, crypto).accounts())
+    }
+
+    @Test
     fun damagedJsonReadsAsUnavailable() {
         val damaged = listOf(
             "",

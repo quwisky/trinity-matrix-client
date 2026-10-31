@@ -231,6 +231,16 @@ class TokenRefresher(
         }
     }
 
+    /**
+     * Every record whose account is not in [keeping], each under its lease. Null when the store
+     * cannot list them, and then nothing goes, or when a removal failed, after trying the others.
+     */
+    fun removeExcept(keeping: Set<String>): Int? {
+        val accounts = vault.accounts() ?: return null
+        val removals = accounts.filter { it !in keeping }.map { remove(it) }
+        return if (removals.all { it }) removals.size else null
+    }
+
     /** A stored pair still equal to the unsaved pair's base gets the unsaved pair. */
     private fun flushPending(account: String) {
         val unsaved = unsaved(account) ?: return

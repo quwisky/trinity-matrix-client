@@ -63,6 +63,12 @@ class KeystoreTokenVault internal constructor(
         }
     }
 
+    override fun accounts(): List<String>? = try {
+        preferences.all.keys.filter { it.startsWith(KEY_PREFIX) }.map { it.removePrefix(KEY_PREFIX) }
+    } catch (error: Exception) {
+        null
+    }
+
     private fun encode(record: TokenRecord): JSONObject = JSONObject()
         .put("accessToken", record.accessToken)
         .put("lineage", record.lineage)
@@ -97,11 +103,12 @@ class KeystoreTokenVault internal constructor(
         )
     }
 
-    private fun key(userId: String) = "tokens:$userId"
+    private fun key(userId: String) = "$KEY_PREFIX$userId"
 
     internal companion object {
         const val FILE = "trinity_push_tokens"
         const val KEY_ALIAS = "trinity_push_tokens"
+        private const val KEY_PREFIX = "tokens:"
 
         // Process-wide, not per instance: the plugin and the service each build their own vault.
         // A removal that gave up waiting for the lease must not be overwritten by an update.

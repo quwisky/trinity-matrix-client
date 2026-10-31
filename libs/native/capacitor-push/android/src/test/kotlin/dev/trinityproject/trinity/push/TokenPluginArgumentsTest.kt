@@ -1,5 +1,6 @@
 package dev.trinityproject.trinity.push
 
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -77,5 +78,35 @@ class TokenPluginArgumentsTest {
         assertNull(tokenRemovalFromPluginCall(JSONObject().put("userId", "@a:hs").put("all", true)))
         assertNull(tokenRemovalFromPluginCall(JSONObject().put("userId", "@a:hs").put("all", false)))
         assertNull(tokenRemovalFromPluginCall(JSONObject().put("userId", JSONObject.NULL).put("all", true)))
+    }
+
+    @Test
+    fun aSweepKeepsTheListedAccounts() {
+        val data = JSONObject().put("userIds", JSONArray().put("@a:hs").put("@b:hs"))
+        assertEquals(setOf("@a:hs", "@b:hs"), keptUserIdsFromPluginCall(data))
+    }
+
+    @Test
+    fun anEmptyListIsAnExplicitSweepOfEverything() {
+        assertEquals(emptySet<String>(), keptUserIdsFromPluginCall(JSONObject().put("userIds", JSONArray())))
+    }
+
+    @Test
+    fun aMissingOrMalformedListSweepsNothing() {
+        assertNull(keptUserIdsFromPluginCall(JSONObject()))
+        val malformed = listOf<Any>(
+            JSONObject.NULL,
+            "@a:hs",
+            7,
+            true,
+            JSONObject(),
+            JSONArray().put(7),
+            JSONArray().put("@a:hs").put(7),
+            JSONArray().put(""),
+            JSONArray().put(JSONObject.NULL),
+        )
+        for (bad in malformed) {
+            assertNull(keptUserIdsFromPluginCall(JSONObject().put("userIds", bad)))
+        }
     }
 }

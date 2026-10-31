@@ -33,6 +33,9 @@ private final class FakeVault: TokenVault, @unchecked Sendable {
         var writes = 0
         var removeBeforeUpdate = false
         var writesFail = false
+        var listed: [String]? = []
+        var removalsFailing: Set<String> = []
+        var removed: [String] = []
     }
 
     private let state: LockedState<State>
@@ -62,6 +65,17 @@ private final class FakeVault: TokenVault, @unchecked Sendable {
         set { state.withLock { $0.writesFail = newValue } }
     }
     var writes: Int { state.withLock { $0.writes } }
+    var listed: [String]? {
+        get { state.withLock { $0.listed } }
+        set { state.withLock { $0.listed = newValue } }
+    }
+    var removalsFailing: Set<String> {
+        get { state.withLock { $0.removalsFailing } }
+        set { state.withLock { $0.removalsFailing = newValue } }
+    }
+    var removed: [String] { state.withLock { $0.removed } }
+
+    func accounts() -> [String]? { listed }
 
     func read(_ userId: String) -> TokenVaultRead {
         state.withLock { state in
@@ -94,6 +108,8 @@ private final class FakeVault: TokenVault, @unchecked Sendable {
 
     func remove(_ userId: String) -> Bool {
         state.withLock { state in
+            if state.removalsFailing.contains(userId) { return false }
+            state.removed.append(userId)
             state.stored = nil
             return true
         }
@@ -1224,6 +1240,68 @@ final class TokenRefresherTests: XCTestCase {
         XCTAssertTrue(removed)
         XCTAssertNil(vault.stored)
         XCTAssertEqual(lease.discardedAll, 1)
+        let current = await refresher.current(account: user, lineage: "L")
+        XCTAssertEqual(current, .gone)
+    }
+
+    // MARK: Sweeping
+
+    func testASweepRemovesOnlyTheUnlistedAccountsEachUnderItsLease() async {
+        vault.listed = ["@a:hs", "@b:hs", "@c:hs"]
+
+        let removed = await refresher.remove(except: ["@b:hs"])
+
+        XCTAssertEqual(removed, 2)
+        XCTAssertEqual(vault.removed, ["@a:hs", "@c:hs"])
+        XCTAssertEqual(lease.waits, [TokenBudgets.removalWait, TokenBudgets.removalWait])
+        XCTAssertEqual(lease.discarded, ["ticket1", "ticket2"])
+    }
+
+    func testASweepKeepingNothingRemovesEverything() async {
+        vault.listed = ["@a:hs", "@b:hs"]
+
+        let removed = await refresher.remove(except: [])
+
+        XCTAssertEqual(removed, 2)
+        XCTAssertEqual(vault.removed, ["@a:hs", "@b:hs"])
+    }
+
+    func testASweepWithNothingToRemoveAnswersZero() async {
+        vault.listed = ["@a:hs"]
+
+        let removed = await refresher.remove(except: ["@a:hs", "@b:hs"])
+
+        XCTAssertEqual(removed, 0)
+        XCTAssertEqual(vault.removed, [])
+        XCTAssertEqual(lease.waits, [])
+    }
+
+    func testASweepThatCannotListRemovesNothing() async {
+        vault.listed = nil
+
+        let removed = await refresher.remove(except: [])
+
+        XCTAssertNil(removed)
+        XCTAssertEqual(vault.removed, [])
+        XCTAssertEqual(lease.waits, [])
+    }
+
+    func testASweepTriesEveryAccountAndAnswersNilWhenARemovalFails() async {
+        vault.listed = ["@a:hs", "@b:hs"]
+        vault.removalsFailing = ["@a:hs"]
+
+        let removed = await refresher.remove(except: [])
+
+        XCTAssertNil(removed)
+        XCTAssertEqual(vault.removed, ["@b:hs"])
+    }
+
+    func testASweepDropsARemovedAccountsUnsavedPair() async {
+        await leaveAnUnsavedPair()
+        vault.listed = [user]
+
+        _ = await refresher.remove(except: [])
+
         let current = await refresher.current(account: user, lineage: "L")
         XCTAssertEqual(current, .gone)
     }

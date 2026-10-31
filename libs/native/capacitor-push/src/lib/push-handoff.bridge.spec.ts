@@ -20,6 +20,7 @@ const plugin = vi.hoisted(() => ({
   migrateTokens: vi.fn(),
   revokeTokens: vi.fn(),
   removeTokens: vi.fn(),
+  removeTokensExcept: vi.fn(),
 }));
 // Recorded outside the mock: the registration happens once at import, and the runner clears
 // mock call history before each test.
@@ -396,6 +397,47 @@ describe('PushHandoffBridge', () => {
       await expect(firstValueFrom(handoff.removeAllTokens())).rejects.toThrow(
         'store failed',
       );
+    });
+
+    it('sweeps every account but the listed ones, and an empty list sweeps all', async () => {
+      const offNative = bridge();
+      await expect(
+        firstValueFrom(offNative.removeTokensExcept(['@me:hs'])),
+      ).resolves.toEqual({ removed: 0 });
+      expect(plugin.removeTokensExcept).not.toHaveBeenCalled();
+
+      TestBed.resetTestingModule();
+      const handoff = onNative();
+      plugin.removeTokensExcept.mockResolvedValue({ removed: 2 });
+      const answer = handoff.removeTokensExcept(['@me:hs']);
+
+      expect(plugin.removeTokensExcept).not.toHaveBeenCalled();
+      await expect(firstValueFrom(answer)).resolves.toEqual({ removed: 2 });
+      expect(plugin.removeTokensExcept).toHaveBeenCalledWith({
+        userIds: ['@me:hs'],
+      });
+
+      await firstValueFrom(handoff.removeTokensExcept([]));
+      expect(plugin.removeTokensExcept).toHaveBeenLastCalledWith({
+        userIds: [],
+      });
+    });
+
+    it('never turns a malformed list into a sweep', async () => {
+      for (const bad of [
+        undefined,
+        null,
+        '@me:hs',
+        [7],
+        [''],
+        ['@me:hs', undefined],
+      ]) {
+        TestBed.resetTestingModule();
+        await expect(
+          firstValueFrom(onNative().removeTokensExcept(bad as string[])),
+        ).rejects.toThrow('removeTokensExcept');
+      }
+      expect(plugin.removeTokensExcept).not.toHaveBeenCalled();
     });
 
     it('never turns a stray user id into a wipe', async () => {

@@ -21,6 +21,11 @@ private class FakeVault(var stored: TokenRecord? = R0) : TokenVault {
     var failedUpdates = 0
     var writes = 0
     var writesFail = false
+    var listed: List<String>? = emptyList()
+    val removalsFailing = mutableSetOf<String>()
+    val removed = mutableListOf<String>()
+
+    override fun accounts(): List<String>? = listed
 
     override fun read(userId: String): TokenVaultRead {
         if (unavailable) return TokenVaultRead.Unavailable
@@ -45,6 +50,8 @@ private class FakeVault(var stored: TokenRecord? = R0) : TokenVault {
     }
 
     override fun remove(userId: String): Boolean {
+        if (userId in removalsFailing) return false
+        removed.add(userId)
         stored = null
         return true
     }
@@ -828,6 +835,66 @@ class TokenRefresherTest {
         assertTrue(refresher.remove(null))
 
         assertNull(vault.stored)
+        assertEquals(TokenRefreshResult.Gone, refresher.current(user, "L"))
+    }
+
+    @Test
+    fun aSweepRemovesOnlyTheUnlistedAccountsEachUnderItsLease() {
+        vault.listed = listOf("@a:hs", "@b:hs", "@c:hs")
+
+        assertEquals(2, refresher.removeExcept(setOf("@b:hs")))
+
+        assertEquals(listOf("@a:hs", "@c:hs"), vault.removed)
+        assertEquals(listOf(TokenBudgets.REMOVAL_WAIT_MILLIS, TokenBudgets.REMOVAL_WAIT_MILLIS), lease.waits)
+        assertEquals(listOf("ticket1", "ticket2"), lease.released)
+    }
+
+    @Test
+    fun aSweepKeepingNothingRemovesEverything() {
+        vault.listed = listOf("@a:hs", "@b:hs")
+
+        assertEquals(2, refresher.removeExcept(emptySet()))
+
+        assertEquals(listOf("@a:hs", "@b:hs"), vault.removed)
+    }
+
+    @Test
+    fun aSweepWithNothingToRemoveAnswersZero() {
+        vault.listed = listOf("@a:hs")
+
+        assertEquals(0, refresher.removeExcept(setOf("@a:hs", "@b:hs")))
+
+        assertTrue(vault.removed.isEmpty())
+        assertTrue(lease.waits.isEmpty())
+    }
+
+    @Test
+    fun aSweepThatCannotListRemovesNothing() {
+        vault.listed = null
+
+        assertNull(refresher.removeExcept(emptySet()))
+
+        assertTrue(vault.removed.isEmpty())
+        assertTrue(lease.waits.isEmpty())
+    }
+
+    @Test
+    fun aSweepTriesEveryAccountAndAnswersNullWhenARemovalFails() {
+        vault.listed = listOf("@a:hs", "@b:hs")
+        vault.removalsFailing.add("@a:hs")
+
+        assertNull(refresher.removeExcept(emptySet()))
+
+        assertEquals(listOf("@b:hs"), vault.removed)
+    }
+
+    @Test
+    fun aSweepDropsARemovedAccountsUnsavedPair() {
+        leaveAnUnsavedPair()
+        vault.listed = listOf(user)
+
+        refresher.removeExcept(emptySet())
+
         assertEquals(TokenRefreshResult.Gone, refresher.current(user, "L"))
     }
 

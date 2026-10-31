@@ -222,6 +222,18 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
         return vault.remove(account)
     }
 
+    /// Every record whose account is not in `keeping`, each under its lease. Nil when the store
+    /// cannot list them, and then nothing goes, or when a removal failed, after trying the others.
+    public func remove(except keeping: Set<String>) async -> Int? {
+        guard let accounts = vault.accounts() else { return nil }
+        var removed = 0
+        var failed = false
+        for account in accounts where !keeping.contains(account) {
+            if await remove(account: account) { removed += 1 } else { failed = true }
+        }
+        return failed ? nil : removed
+    }
+
     /// A stored pair still equal to the unsaved pair's base gets the unsaved pair.
     private func flushPending(_ account: String) {
         guard let unsaved = unsaved(account) else { return }

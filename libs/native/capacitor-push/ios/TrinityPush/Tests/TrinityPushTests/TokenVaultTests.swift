@@ -96,6 +96,34 @@ final class TokenVaultTests: XCTestCase {
         XCTAssertNil(store.tokenQuery(nil)[kSecAttrAccount as String], "removeAll takes every account")
     }
 
+    func testListingAccountsAsksForAttributesOfEveryTokenItemAndNoSecret() {
+        let store = PushHandoffStore(keychainGroup: "group", containerURL: FileManager.default.temporaryDirectory)
+        let query = store.tokenAccountsQuery()
+
+        XCTAssertEqual(query[kSecAttrService as String] as? String, PushHandoffStore.tokenService)
+        XCTAssertEqual(query[kSecAttrAccessGroup as String] as? String, "group")
+        XCTAssertNil(query[kSecAttrAccount as String])
+        XCTAssertEqual(query[kSecReturnAttributes as String] as? Bool, true)
+        XCTAssertEqual(query[kSecMatchLimit as String] as? String, kSecMatchLimitAll as String)
+        XCTAssertNil(query[kSecReturnData as String])
+    }
+
+    func testAccountsReadFromAListing() {
+        let account = kSecAttrAccount as String
+        XCTAssertEqual(
+            PushHandoffStore.tokenAccounts(status: errSecSuccess, result: [[account: "@a:hs"], [account: "@b:hs"]]),
+            ["@a:hs", "@b:hs"])
+        XCTAssertEqual(PushHandoffStore.tokenAccounts(status: errSecItemNotFound, result: nil), [])
+    }
+
+    func testAListingThatFailsIsNoAnswerNeverNoAccounts() {
+        let account = kSecAttrAccount as String
+        XCTAssertNil(PushHandoffStore.tokenAccounts(status: errSecInteractionNotAllowed, result: nil))
+        XCTAssertNil(PushHandoffStore.tokenAccounts(status: errSecSuccess, result: nil))
+        XCTAssertNil(PushHandoffStore.tokenAccounts(status: errSecSuccess, result: "not a list"))
+        XCTAssertNil(PushHandoffStore.tokenAccounts(status: errSecSuccess, result: [[account: "@a:hs"], [:]]))
+    }
+
     func testTheRevocationWire() {
         XCTAssertEqual(TokenRevokeResult.revoked.wire as NSDictionary, ["kind": "revoked"] as NSDictionary)
         XCTAssertEqual(TokenRevokeResult.gone.wire as NSDictionary, ["kind": "gone"] as NSDictionary)
