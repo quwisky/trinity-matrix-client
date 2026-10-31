@@ -7,6 +7,14 @@ interface PushTokenRefreshing {
     fun refreshForPush(account: String, tokenSeen: String, deadline: Deadline): TokenRefreshResult
 }
 
+/** Builds one refresher and hands it to every caller. */
+internal class SharedRefresher {
+    private var refresher: TokenRefresher? = null
+
+    @Synchronized
+    fun get(build: () -> TokenRefresher): TokenRefresher = refresher ?: build().also { refresher = it }
+}
+
 /**
  * The one place an account's tokens rotate. The order of [refreshUnderLease] is what keeps someone
  * signed in: read under the lease, send what was read, compare again before any write. Blocking:

@@ -43,6 +43,20 @@ class KeystoreTokenVaultTest {
     }
 
     @Test
+    fun aFaultInThePreferencesIsAValueOnEveryWritePath() {
+        val faulty = object : SharedPreferences by preferences {
+            override fun contains(key: String): Boolean = throw ClassCastException()
+
+            override fun edit(): SharedPreferences.Editor = throw IllegalStateException()
+        }
+        val vault = KeystoreTokenVault(faulty, crypto)
+
+        assertEquals(TokenVaultWrite.FAILED, vault.update(user, R0))
+        assertFalse(vault.remove(user))
+        assertFalse(vault.removeAll())
+    }
+
+    @Test
     fun damagedJsonReadsAsUnavailable() {
         val damaged = listOf(
             "",

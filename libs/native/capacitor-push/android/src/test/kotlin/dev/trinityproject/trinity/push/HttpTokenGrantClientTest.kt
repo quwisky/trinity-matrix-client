@@ -60,10 +60,12 @@ class HttpTokenGrantClientTest {
 
     private fun deadline() = Deadline(8_000L, { 0L })
 
+    // Only a 401 leaves the production path: the JDK throws on one in streaming mode, Android does not.
     private fun grantAnswering(answeredStatus: Int, body: String): TokenGrantAnswer {
         status = answeredStatus
         answer = body
-        return HttpTokenGrantClient().grant(record(), deadline())
+        val client = if (answeredStatus == 401) HttpTokenGrantClient(streaming = false) else HttpTokenGrantClient()
+        return client.grant(record(), deadline())
     }
 
     @Test
@@ -112,8 +114,18 @@ class HttpTokenGrantClientTest {
 
     @Test
     fun a400Or401WithAnOAuthBodyIsRefused() {
+        val codes = listOf(
+            "invalid_request",
+            "invalid_client",
+            "invalid_grant",
+            "unauthorized_client",
+            "unsupported_grant_type",
+            "invalid_scope",
+        )
         for (refusing in listOf(400, 401)) {
-            assertEquals(TokenGrantAnswer.Refused, grantAnswering(refusing, """{"error":"invalid_grant"}"""))
+            for (code in codes) {
+                assertEquals(TokenGrantAnswer.Refused, grantAnswering(refusing, """{"error":"$code"}"""))
+            }
         }
     }
 
@@ -125,8 +137,93 @@ class HttpTokenGrantClientTest {
     }
 
     @Test
+    fun aGatewaysJsonErrorIsTransient() {
+        for (notARefusal in listOf(400, 401)) {
+            assertEquals(TokenGrantAnswer.Failed, grantAnswering(notARefusal, """{"status":401,"error":"Unauthorized"}"""))
+            assertEquals(TokenGrantAnswer.Failed, grantAnswering(notARefusal, """{"error":""}"""))
+        }
+    }
+
+    @Test
     fun aMatrixErrorBodyIsTransient() {
         assertEquals(TokenGrantAnswer.Failed, grantAnswering(401, """{"errcode":"M_UNKNOWN","error":"x"}"""))
+        assertEquals(TokenGrantAnswer.Failed, grantAnswering(401, """{"errcode":"M_UNKNOWN","error":"invalid_grant"}"""))
+    }
+
+    @Test
+    fun aDroppedAnswerIsNotResent() {
+        server.removeContext("/")
+        server.createContext("/") { exchange ->
+            requests.add(
+                Request(
+                    exchange.requestMethod,
+                    exchange.requestURI.rawPath,
+                    null,
+                    exchange.requestBody.bufferedReader().use { it.readText() },
+                ),
+            )
+            exchange.close()
+        }
+
+        assertEquals(TokenGrantAnswer.Failed, HttpTokenGrantClient().grant(record(), deadline()))
+
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun aDeadlineSpentWhileConnectingSendsNoBody() {
+        var reads = 0
+        val spentAfterTheFirstRead = Deadline(100L, { if (reads++ == 0) 0L else 1_000L })
+
+        assertEquals(TokenGrantAnswer.Failed, HttpTokenGrantClient().grant(record(), spentAfterTheFirstRead))
+
+        assertTrue(requests.isEmpty())
+    }
+
+    private fun aBodyOfBytes(size: Int): String {
+        val start = "{\"access_token\":\"a1\",\"pad\":\""
+        val end = "\"}"
+        return start + "x".repeat(size - start.length - end.length) + end
+    }
+
+    @Test
+    fun aBodyUpToTheCapIsRead() {
+        assertEquals(TokenGrantAnswer.Tokens("a1", null, null), grantAnswering(200, aBodyOfBytes(64 * 1024)))
+    }
+
+    @Test
+    fun aBodyOverTheCapIsTransient() {
+        assertEquals(TokenGrantAnswer.Failed, grantAnswering(200, aBodyOfBytes(64 * 1024 + 1)))
+    }
+
+    @Test
+    fun aTricklingBodyStopsAtTheDeadline() {
+        server.removeContext("/")
+        server.createContext("/") { exchange ->
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { body ->
+                repeat(30) {
+                    body.write(' '.code)
+                    body.flush()
+                    Thread.sleep(100)
+                }
+                body.write("""{"access_token":"a1"}""".toByteArray())
+            }
+        }
+        val started = monotonicMillis()
+
+        val answered = HttpTokenGrantClient().grant(record(), Deadline(started + 300, ::monotonicMillis))
+
+        assertEquals(TokenGrantAnswer.Failed, answered)
+        assertTrue(monotonicMillis() - started < 1_500)
+    }
+
+    @Test
+    fun aDeeplyNestedBodyIsTransient() {
+        val deep = """{"access_token":"a1","x":""" + "[".repeat(60_000)
+
+        assertEquals(TokenGrantAnswer.Failed, grantAnswering(200, deep))
+        assertEquals(TokenGrantAnswer.Failed, grantAnswering(400, deep))
     }
 
     @Test

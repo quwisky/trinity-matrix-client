@@ -50,7 +50,7 @@ class TokenRefresherRaceTest {
     private fun TokenRefresher.refreshOnThread() = onThread { refresh(user, "L", "a0", TokenRefresher.appDeadline()) }
 
     private fun lapseTheManualLease() {
-        clock.addAndGet(TokenBudgets.APP_GRANT_MILLIS + TokenBudgets.LEASE_MARGIN_MILLIS + 1)
+        clock.addAndGet(2 * TokenBudgets.APP_GRANT_MILLIS + TokenBudgets.LEASE_MARGIN_MILLIS + 1)
     }
 
     @Test(timeout = 30_000L)
