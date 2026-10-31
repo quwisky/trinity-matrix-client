@@ -81,6 +81,8 @@ export function buildContractCommand(
         '--skip-nx-cache',
         '--',
         filter,
+        // The SDK logs past a spec's end; intercepted logs fail the run when the worker's RPC closes first.
+        '--disableConsoleIntercept',
         '--reporter=default',
         '--reporter=json',
         `--outputFile.json=${reportFile}`,
