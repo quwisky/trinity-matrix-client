@@ -2253,6 +2253,64 @@ export function defineTimelineEngineContract(
     );
 
     it(
+      'G7 — the marker stays before the next message when the fully-read event shows no row',
+      async () => {
+        const {
+          roomId,
+          eventIds: [readId],
+        } = await roomWith(['read']);
+        let unreadId = '';
+        const reading = watch(roomId);
+        try {
+          await reading.until((v) => !!byId(v, readId));
+          // What latestConfirmedEventId names when the room's newest event is a reaction.
+          const reactionId = await context.asBob.sendEvent(
+            roomId,
+            'm.reaction',
+            {
+              'm.relates_to': {
+                rel_type: 'm.annotation',
+                event_id: readId,
+                key: '👍',
+              },
+            },
+          );
+          await reading.until(
+            (v) => (byId(v, readId)?.reactions.length ?? 0) > 0,
+          );
+          await ok(
+            engine.sendReceipt(alice, roomId, reactionId, {
+              threadRootId: null,
+              visibility: 'public',
+              fullyRead: true,
+            }),
+          );
+          await expect(context.asAlice.fullyRead(roomId)).resolves.toBe(
+            reactionId,
+          );
+          unreadId = await context.asBob.send(roomId, 'unread');
+          await reading.until((v) => !!byId(v, unreadId));
+        } finally {
+          reading.close();
+        }
+        const timeline = watch(roomId);
+        try {
+          const view = await timeline.until((v) => !!byId(v, unreadId));
+
+          const order = view.items.map((item) =>
+            item.kind === 'event' ? item.eventId : item.kind,
+          );
+          const marker = order.indexOf('readMarker');
+          expect(marker).toBeGreaterThan(order.indexOf(readId));
+          expect(order[marker + 1]).toBe(unreadId);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
       'G7 — room state reports the encryption state event and a tombstone',
       async () => {
         const { roomId } = await roomWith();

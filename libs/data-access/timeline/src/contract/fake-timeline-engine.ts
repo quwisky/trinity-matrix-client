@@ -60,6 +60,8 @@ interface FakeRoom {
   readonly loaded: Map<string, number>;
   readonly startReached: Set<string>;
   readonly fullyRead: Map<string, string>;
+  /** Events that show no row, by id, each with the row just before it. */
+  readonly rowless: Map<string, string>;
   /** Public `m.read` receipts by user. */
   readonly readReceipts: Map<string, string>;
   readonly invited: Set<string>;
@@ -536,6 +538,13 @@ export class FakeTimelineEngine implements TimelineEngine {
       const room = this.room(roomId);
       room.wire.set(eventId, { type, sender: this.bob, content: wire });
       const relation = asRecord(wire['m.relates_to']);
+      if (type === 'm.reaction') {
+        // No row: it counts on its target, and a fully-read marker can still name it.
+        const target = String(relation['event_id']);
+        room.rowless.set(eventId, this.events(room).at(-1)?.eventId ?? target);
+        await this.asBob.react(roomId, target, String(relation['key']));
+        return eventId;
+      }
       if (relation['rel_type'] === 'm.thread')
         room.threads.set(`ev:${eventId}`, String(relation['event_id']));
       const quoted = asRecord(relation['m.in_reply_to'])['event_id'];
@@ -875,7 +884,8 @@ export class FakeTimelineEngine implements TimelineEngine {
     },
   ): Observable<EngineResult<null>> {
     return this.run(accountId, roomId, (room) => {
-      if (!this.event(room, eventId)) return engineFail(MESSAGE_UNAVAILABLE);
+      if (!this.event(room, eventId) && !room.rowless.has(eventId))
+        return engineFail(MESSAGE_UNAVAILABLE);
       if (options.threadRootId) {
         room.threadReads.set(`${accountId}\n${options.threadRootId}`, eventId);
         this.publish(roomId);
@@ -1661,7 +1671,8 @@ export class FakeTimelineEngine implements TimelineEngine {
     room: FakeRoom,
     items: readonly TimelineItem[],
   ): readonly TimelineItem[] {
-    const readId = room.fullyRead.get(accountId);
+    const fullyRead = room.fullyRead.get(accountId) ?? '';
+    const readId = room.rowless.get(fullyRead) ?? fullyRead;
     const read = items.findIndex(
       (item) => item.kind === 'event' && item.eventId === readId,
     );
@@ -1692,6 +1703,7 @@ export class FakeTimelineEngine implements TimelineEngine {
         loaded: new Map(),
         startReached: new Set(),
         fullyRead: new Map(),
+        rowless: new Map(),
         readReceipts: new Map(),
         invited: new Set(),
         pollEvents: [],
