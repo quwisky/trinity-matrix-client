@@ -142,6 +142,7 @@ jobs:
       # jobs): the crates and their toolchain and lint configuration, the contract files and
       # generated types the Rust side shares with TypeScript, the js homeserver engine and probe
       # the Rust homeserver spec imports, the stdio transport, the Synapse registration helper,
+      # the identity-server client the contact fixture imports,
       # the shared Vitest config and setup, the engine contract runner and the e2e/support files
       # on its import path, and the homeserver harness. Pushes answer false:
       # the jobs exist to gate pull requests.
@@ -162,6 +163,7 @@ jobs:
               '\.cargo/'
               'libs/data-access/[^/]+/src/contract/'
               'libs/data-access/homeserver/src/lib/(probe-homeserver|js-sdk/js-sdk-homeserver-engine)\.ts$'
+              'libs/data-access/contact-addresses/src/lib/identity-server-http\.ts$'
               'libs/.*/rust-dto/'
               'libs/.*\.rust\.spec\.ts$'
               'libs/util/matrix/src/lib/engine-transport/'
