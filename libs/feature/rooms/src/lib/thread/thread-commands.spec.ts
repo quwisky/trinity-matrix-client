@@ -45,4 +45,36 @@ describe('ThreadCommands', () => {
 
     expect(thread.send).not.toHaveBeenCalled();
   });
+
+  it('keeps the edit open when the edit is refused, so the typed text can be retried', () => {
+    const { commands, thread, show } = setup();
+    thread.edit.mockReturnValueOnce(
+      of<ConversationThreadOutcome>({
+        kind: 'rejected',
+        operation: 'edit',
+        failure: 'request-failed',
+        retryable: true,
+      }),
+    );
+    commands.startEdit('$m1');
+
+    commands.submit({ text: 'fixed', mentions: [] });
+
+    expect(thread.edit).toHaveBeenCalledWith('$m1', 'fixed', []);
+    expect(show).toHaveBeenCalledWith(
+      'Could not edit the message.',
+      expect.anything(),
+    );
+    expect(commands.editingId()).toBe('$m1');
+  });
+
+  it('ends the edit once it is applied', () => {
+    const { commands, thread } = setup();
+    commands.startEdit('$m1');
+
+    commands.submit({ text: 'fixed', mentions: [] });
+
+    expect(thread.edit).toHaveBeenCalledWith('$m1', 'fixed', []);
+    expect(commands.editingId()).toBeNull();
+  });
 });

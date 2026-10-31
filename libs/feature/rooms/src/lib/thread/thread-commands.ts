@@ -87,10 +87,13 @@ export class ThreadCommands {
     const editId = this.editingId();
     const replyId = this.replyingToId();
     if (editId) {
-      this.editingId.set(null);
+      // Ends the edit only once it lands: a refused one keeps the composer's text to retry.
       this.run(
         (t) => t.edit(editId, text, mentions),
         'Could not edit the message.',
+        () => {
+          if (this.editingId() === editId) this.editingId.set(null);
+        },
       );
     } else if (replyId) {
       this.replyingToId.set(null);
@@ -210,6 +213,7 @@ export class ThreadCommands {
       thread: ConversationThread,
     ) => Observable<ConversationThreadOutcome>,
     failureMessage: string,
+    onApplied?: () => void,
   ): void {
     const thread = this.thread();
     if (!thread) return;
@@ -218,6 +222,7 @@ export class ThreadCommands {
       .subscribe({
         next: (outcome) => {
           if (outcome.kind === 'rejected') this.showError(failureMessage);
+          else onApplied?.();
         },
         error: () => this.showError(failureMessage),
       });
