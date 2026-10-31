@@ -160,6 +160,7 @@ export class ThreadViewComponent implements OnDestroy {
   });
 
   readonly editingId = this.commands.editingId;
+  readonly editSending = this.commands.sending;
   readonly replyingToId = this.commands.replyingToId;
   readonly uploadProgress = this.commands.uploadProgress;
   private readonly threadBinding = effect(() => {
@@ -338,13 +339,17 @@ export class ThreadViewComponent implements OnDestroy {
     this.commands.startEdit(row.id);
   }
 
+  onCancelEdit(): void {
+    this.commands.cancelEdit();
+  }
+
   startReply(row: MessageRow): void {
     this.commands.startReply(row.id);
   }
 
   /** Pull a thread message's text into THIS panel's composer as a `>` block. */
   startQuote(row: MessageRow): void {
-    this.editingId.set(null);
+    this.commands.cancelEdit();
     this.composer()?.insertQuote(quoteBlock(row.body));
   }
 

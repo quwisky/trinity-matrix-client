@@ -934,7 +934,7 @@ describe('ThreadViewComponent members', () => {
 
   it('does not route a thread batch caption into an edit in progress', async () => {
     const { fixture, sendToThread, editInThread } = await build();
-    fixture.componentInstance.editingId.set('$m1');
+    fixture.componentInstance.startEdit(row('$m1', '@me:hs', 'mine'));
 
     composerOf(fixture).submitBatchCaption.emit({
       text: 'both of these',
