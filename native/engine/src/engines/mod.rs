@@ -2,6 +2,7 @@
 //! runs a member on one account, and `account_data` reads and writes global account data.
 
 pub mod account_data;
+pub mod contact_addresses;
 pub mod discovery;
 pub mod homeserver;
 pub mod identity;
