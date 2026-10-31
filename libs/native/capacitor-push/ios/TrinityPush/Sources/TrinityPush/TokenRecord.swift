@@ -82,7 +82,7 @@ public enum TokenVaultWrite: Equatable {
     case failed
 }
 
-public enum TokenGrantAnswer: CustomStringConvertible, CustomReflectable {
+public enum TokenGrantAnswer: Equatable, CustomStringConvertible, CustomReflectable {
     case tokens(accessToken: String, refreshToken: String?, expiresIn: TimeInterval?)
     case refused
     case failed
@@ -99,7 +99,7 @@ public enum TokenGrantAnswer: CustomStringConvertible, CustomReflectable {
 }
 
 /// What the plugin resolves. The wire carries the access token and its expiry only.
-public enum TokenRefreshResult: CustomStringConvertible {
+public enum TokenRefreshResult: Equatable, CustomStringConvertible {
     case busy, gone, refused, transient, unavailable
     case current(TokenRecord)
     case rotated(TokenRecord, unsaved: Bool)

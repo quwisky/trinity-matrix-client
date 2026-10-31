@@ -9,7 +9,7 @@ public protocol MatrixPushAPI {
 
 /// Refuses every redirect, so the access token never follows one to another host. The 3xx
 /// then reads as a failed fetch.
-private final class RefusingRedirects: NSObject, URLSessionTaskDelegate {
+class RefusingRedirects: NSObject, URLSessionTaskDelegate {
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
