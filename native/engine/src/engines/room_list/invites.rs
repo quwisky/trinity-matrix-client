@@ -166,7 +166,7 @@ pub fn invite_blocking(engine: Arc<Engine>, account_id: String) -> EngineStream 
 /// room in particular, so open `rooms()` streams read all rooms again; the command is rare.
 // shortcut: worst about 200 s (`/versions` 30 s, two writes of 60 s, a 15 s settle after each,
 // ~15 s of `ruled` waits, 5 s delivery), past `HOLDER_LIMIT`; a teardown stops the settles, so the
-// overrun is the requests' ~165 s; upgrade to a whole-command bound or a detached command if a
+// overrun is the requests' ~165 s, and a store call after them fails on the closed store; upgrade to a whole-command bound or a detached command if a
 // teardown gives up on it.
 pub fn set_invite_blocking(engine: Arc<Engine>, account_id: String, blocked: bool) -> EngineStream {
     reply(on_account(

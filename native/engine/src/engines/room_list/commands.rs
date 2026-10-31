@@ -198,7 +198,8 @@ pub fn create_room(
 // shortcut: retire ends both settles and the delivery waits but not the three requests: create
 // (30 s), the m.direct read (30 s) and write (60 s), each with up to ~5 s of `ruled` waits, take
 // up to about 135 s and outlast the teardown's 120 s `HOLDER_LIMIT` only when every request hits
-// its timeout, which then logs a retired account still in use; upgrade when matrix-sdk gains a
+// its timeout, which then logs a retired account still in use, and a store call after them fails
+// on the closed store; upgrade when matrix-sdk gains a
 // client shutdown or the write is bounded tighter.
 pub fn create_direct_message(engine: Arc<Engine>, account_id: String, user_id: String) -> Stream {
     detached(on_account(

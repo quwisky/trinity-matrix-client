@@ -31,6 +31,9 @@ use crate::{
 /// How long a teardown waits for the engine commands and leased streams still holding a retired
 /// runtime.
 const HOLDER_LIMIT: Duration = Duration::from_secs(120);
+/// How long `tear_down` waits for a retired client's stores to close: each of the four waits for
+/// its in-flight work and up to 5 s for its read connections.
+const CLOSE_LIMIT: Duration = Duration::from_secs(30);
 
 pub struct Engine {
     pub(crate) config: EngineConfig,
@@ -299,11 +302,11 @@ impl Engine {
     }
 
     /// Stops a retired runtime's sync, for up to `STOP_LIMIT` (30 s), then waits up to
-    /// `HOLDER_LIMIT` (120 s) until no engine command or leased stream holds it, then deletes the
-    /// account's stores when asked. It runs on its own task, after the account's previous
-    /// teardown, so a closed command cannot cut it short. A start of the account awaits it, so two
-    /// clients open one store only when a holder outlasts the limit. A command that triggers a
-    /// teardown never awaits it while holding the runtime.
+    /// `HOLDER_LIMIT` (120 s) until no engine command or leased stream holds it, then closes its
+    /// client's stores, for up to `CLOSE_LIMIT` (30 s), and deletes them when asked. It runs on its
+    /// own task, after the account's previous teardown, so a closed command cannot cut it short. A
+    /// start of the account awaits it, so a new client opens the store only after the old one
+    /// closed it or ran out of `CLOSE_LIMIT`. A command that triggers a teardown never awaits it while holding the runtime.
     pub(crate) fn tear_down(
         &self,
         account_id: &str,
@@ -323,14 +326,19 @@ impl Engine {
             }
             if let Some(runtime) = runtime {
                 stop_sync(&runtime.sync_service).await;
+                let client = runtime.client.clone();
                 let mut dropped = runtime.dropped();
                 drop(runtime);
                 if timeout(dropped.changed(), HOLDER_LIMIT).await.is_err() {
-                    // shortcut: a client still held after 120 s, as by a detached multi-step
-                    // body, outlives its teardown, so a restart opens a second client on the
-                    // store and a remove deletes the stores under it (an unlink on Unix, a logged
-                    // failure on Windows); upgrade when matrix-sdk gains a client shutdown.
+                    // A multi-step body that overran can get here; its store calls now fail.
                     tracing::warn!("a retired account is still in use");
+                }
+                match timeout(client.pause(), CLOSE_LIMIT).await {
+                    Ok(Ok(())) => {}
+                    // shortcut: a store that does not close stays open under a restart or a
+                    // delete (an unlink on Unix, a logged failure on Windows); upgrade when
+                    // matrix-sdk gains a client shutdown that cannot fail.
+                    _ => tracing::warn!("closing a retired account's stores failed"),
                 }
             }
             if stores == Stores::Delete {
@@ -384,9 +392,9 @@ impl Engine {
 }
 
 // shortcut: the delete runs on the executor and can stall it for seconds over a large media
-// cache, plus up to half a second of retries while store files come back. In a multi-thread host,
-// SDK tasks that outlive a teardown can keep a store busy past the last retry, which leaves its
-// files behind with a warning; upgrade when matrix-sdk gains a client shutdown.
+// cache, plus up to half a second of retries while store files come back. A store its teardown
+// could not close can stay busy past the last retry, which leaves its files behind with a warning;
+// upgrade when matrix-sdk gains a client shutdown that cannot fail.
 fn delete_account_stores(config: &EngineConfig, account_id: &str) {
     #[cfg(feature = "native")]
     if let Err(err) = crate::store::delete_account(config, account_id) {
