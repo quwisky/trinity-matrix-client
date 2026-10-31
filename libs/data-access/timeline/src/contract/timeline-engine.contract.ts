@@ -1406,9 +1406,14 @@ export function defineTimelineEngineContract(
     ])(
       'G1 — $command shows its effect in an open timeline before it replies',
       async ({ run }) => {
-        const { roomId } = await roomWith();
+        const {
+          roomId,
+          eventIds: [joinedId],
+        } = await roomWith(['joined']);
         const timeline = watch(roomId);
         try {
+          // Bob's message shows once alice's join has synced, so no join resets the timeline.
+          await timeline.until((v) => !!byId(v, joinedId));
           await run(roomId, timeline);
         } finally {
           timeline.close();
@@ -1541,9 +1546,13 @@ export function defineTimelineEngineContract(
     ])(
       'G16 — $command is refused alone, and the room keeps sending',
       async ({ run, unchanged }) => {
-        const { roomId } = await roomWith();
+        const {
+          roomId,
+          eventIds: [joinedId],
+        } = await roomWith(['joined']);
         const timeline = watch(roomId);
         try {
+          await timeline.until((v) => !!byId(v, joinedId));
           const eventId = await ownMessage(roomId, timeline, 'original');
           const levels = {
             events_default: 50,
@@ -1557,7 +1566,9 @@ export function defineTimelineEngineContract(
           );
 
           expect(!result.ok && result.failure.code).toBe('request-failed');
-          unchanged(byId(view, eventId));
+          const item = byId(view, eventId);
+          expect(item).toBeDefined();
+          unchanged(item);
 
           await context.asBob.setPowerLevels(roomId, {
             events_default: 0,
@@ -2206,6 +2217,7 @@ export function defineTimelineEngineContract(
           roomId,
           eventIds: [readId],
         } = await roomWith(['read']);
+        let unreadId = '';
         const reading = watch(roomId);
         try {
           await reading.until((v) => !!byId(v, readId));
@@ -2216,11 +2228,13 @@ export function defineTimelineEngineContract(
               fullyRead: true,
             }),
           );
+          await expect(context.asAlice.fullyRead(roomId)).resolves.toBe(readId);
+          unreadId = await context.asBob.send(roomId, 'unread');
+          // The marker is captured at subscribe, so reopen only once the open timeline has it.
+          await reading.until((v) => !!byId(v, unreadId));
         } finally {
           reading.close();
         }
-        await expect(context.asAlice.fullyRead(roomId)).resolves.toBe(readId);
-        const unreadId = await context.asBob.send(roomId, 'unread');
         const timeline = watch(roomId);
         try {
           const view = await timeline.until((v) => !!byId(v, unreadId));
