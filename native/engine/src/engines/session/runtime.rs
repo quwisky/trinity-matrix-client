@@ -162,13 +162,6 @@ impl AccountRuntime {
     /// Nudges every open `nudged` stream about `room`, or about every room when `None`. A command
     /// calls it once its effect shows in the SDK's state, and waits for the barrier before it
     /// replies.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the room list commands that nudge come in later commits"
-        )
-    )]
     pub(crate) fn nudge(&self, room: Option<&RoomId>) -> Barrier {
         self.nudges.lock().publish(&room.map(ToOwned::to_owned))
     }

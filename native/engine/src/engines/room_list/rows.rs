@@ -148,7 +148,7 @@ fn saturated(n: impl TryInto<u32>) -> u32 {
     n.try_into().unwrap_or(u32::MAX)
 }
 
-fn membership_of(state: RoomState) -> Option<RoomMembershipDto> {
+pub(super) fn membership_of(state: RoomState) -> Option<RoomMembershipDto> {
     match state {
         RoomState::Joined => Some(RoomMembershipDto::Join),
         RoomState::Invited => Some(RoomMembershipDto::Invite),

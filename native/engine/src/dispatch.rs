@@ -129,6 +129,29 @@ methods! {
     "roomList.directMap" => room_list::typing::direct_map(account_id: String),
     "roomList.rooms" => room_list::rows::rooms(account_id: String),
     "roomList.typing" => room_list::typing::typing(account_id: String),
+    "roomList.leave" => room_list::commands::leave(account_id: String, room_id: String),
+    "roomList.createRoom" => room_list::commands::create_room(
+        account_id: String,
+        request: room_list::CreateRoomRequestDto,
+    ),
+    "roomList.createDirectMessage" => room_list::commands::create_direct_message(
+        account_id: String,
+        user_id: String,
+    ),
+    "roomList.resolveAlias" => room_list::commands::resolve_alias(
+        account_id: String,
+        alias: String,
+    ),
+    "roomList.invite" => room_list::commands::invite(
+        account_id: String,
+        room_id: String,
+        user_id: String,
+    ),
+    "roomList.join" => room_list::commands::join(
+        account_id: String,
+        room_id_or_alias: String,
+        via: Vec<String>,
+    ),
     "session.session" => session::session(),
     "session.restorePersisted" => session::restore_persisted(
         session: session::MatrixSessionDto,

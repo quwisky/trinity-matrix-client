@@ -187,7 +187,7 @@ pub fn direct_map(engine: Arc<Engine>, account_id: String) -> Stream {
     })
 }
 
-async fn direct_map_in(client: &Client) -> Result<DirectMapDto, matrix_sdk::Error> {
+pub(super) async fn direct_map_in(client: &Client) -> Result<DirectMapDto, matrix_sdk::Error> {
     let content = client.account().account_data_raw("m.direct".into()).await?;
     let content = content
         .map(|raw| raw.deserialize_as::<Value>())

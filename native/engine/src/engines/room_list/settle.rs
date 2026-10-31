@@ -1,11 +1,4 @@
 //! Waiting for a command's effect to show in the SDK's state before the command replies.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the room list commands that settle come in later commits"
-    )
-)]
 
 use std::{
     future::{pending, ready},
