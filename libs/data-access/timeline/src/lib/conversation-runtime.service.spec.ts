@@ -24,6 +24,7 @@ import {
   type ConversationTimelineController,
   type ConversationTimelineFactory,
 } from './conversation-timeline-factory';
+import type { ConversationTextSendOutcome } from './conversation-compose';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import { conversationDraftKey } from './conversation-draft-key';
 import type {
@@ -1099,6 +1100,32 @@ describe('ConversationRuntime', () => {
     });
     expect(compose.draft()).toBe('try again');
     expect(compose.intent()).toEqual({ kind: 'reply', eventId: '$target' });
+  });
+
+  it('leaves a newer edit alone when an older one is refused', () => {
+    const { runtime, sends } = setup(2, undefined, [
+      message('$older'),
+      message('$newer'),
+    ]);
+    const handle = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const compose = handle.compose;
+    handle.messages.beginEdit('$older', 'older text');
+    const outcomes: ConversationTextSendOutcome[] = [];
+    compose.submit().subscribe((outcome) => outcomes.push(outcome));
+
+    handle.messages.beginEdit('$newer', 'newer text');
+    sends.next({ kind: 'rejected', retryable: true });
+    sends.complete();
+
+    expect(outcomes).toEqual([
+      { kind: 'rejected', failure: 'send-rejected', retryable: true },
+    ]);
+    expect(compose.intent()).toEqual({ kind: 'edit', eventId: '$newer' });
+    expect(compose.draft()).toBe('newer text');
+    expect(compose.sending()).toBe(false);
   });
 
   it('clears the composer for a send queued offline, without restoring it', async () => {

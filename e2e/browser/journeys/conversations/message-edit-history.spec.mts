@@ -7,11 +7,14 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
+  clickRowMenuItem,
   login,
   homeserverSession,
+  waitForSent,
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom } from '../../../support/message-composer.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
@@ -393,6 +396,107 @@ test.describe('Edit history', () => {
     await expect(deletedRow).toBeVisible({ timeout: 20_000 });
     await expect(deletedRow.getByTestId('msg-edited')).toHaveCount(0);
     await expect(deletedRow).not.toContainText(deletedBody);
+  });
+
+  test('keeps the row on the server text when an edit is refused', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(180_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}ref`;
+    const user = `edits-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Refused ${runId}`;
+    const original = `original ${runId}`;
+    const typed = `typed ${runId}`;
+
+    await registerUser(request, user, pass);
+    const { access_token } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    await createRoom(request, hs, { accessToken: access_token }, roomName);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openNamedRoom(page, roomName);
+
+    const composer = page.getByTestId('composer-input');
+    await composer.fill(original);
+    await composer.press('Enter');
+    const sent = page
+      .locator('.scroll .msg[data-mid]', { hasText: original })
+      .first();
+    await expect(sent).toBeVisible({ timeout: 20_000 });
+    await waitForSent(sent);
+    // By id, as the row's text is what this journey is about.
+    const row = page.locator(
+      `.scroll .msg[data-mid="${await sent.getAttribute('data-mid')}"]`,
+    );
+    const sidebarRow = page.locator('trn-sidebar-room-row', {
+      hasText: roomName,
+    });
+    await expect(sidebarRow).toContainText(original);
+
+    // The homeserver holds the send until the echo shows, then refuses it.
+    const sends = '**/_matrix/client/**/send/m.room.message/**';
+    let refuse!: () => void;
+    const refused = new Promise<void>((resolve) => (refuse = resolve));
+    await page.route(sends, async (route) => {
+      await refused;
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ errcode: 'M_FORBIDDEN', error: 'refused' }),
+      });
+    });
+    await clickRowMenuItem(row, page.getByTestId('msg-edit'));
+    await expect(composer).toHaveValue(original);
+    await composer.fill(typed);
+    await composer.press('Enter');
+    await expect(row.getByText(typed)).toBeVisible({ timeout: 15_000 });
+    await expect(sidebarRow).toContainText(typed);
+    refuse();
+
+    const toast = page.locator('[data-sonner-toast]', {
+      hasText: 'Could not edit the message.',
+    });
+    await expect(toast).toHaveCount(1, { timeout: 15_000 });
+    await expect(toast).toBeVisible();
+    const toastBox = await toast.boundingBox();
+    const composerBox = await composer.boundingBox();
+    expect(toastBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(composerBox!.y);
+
+    // Nothing reached the server, so the row and the sidebar go back to what it has.
+    const cancelEdit = page.getByRole('button', { name: 'Cancel edit' });
+    await expect(cancelEdit).toBeVisible();
+    await expect(composer).toHaveValue(typed);
+    await expect(row.getByText(original)).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByText(typed)).toHaveCount(0);
+    await expect(row.getByTestId('msg-edited')).toHaveCount(0);
+    await expect(sidebarRow).toContainText(original);
+    await expect(sidebarRow).not.toContainText(typed);
+
+    // Cancelling keeps the row, and editing again starts from the server's text.
+    await cancelEdit.click();
+    await expect(row.getByText(original)).toBeVisible();
+    await expect(row.getByTestId('msg-edited')).toHaveCount(0);
+    await clickRowMenuItem(row, page.getByTestId('msg-edit'));
+    await expect(composer).toHaveValue(original);
+
+    // The server takes the retry.
+    await page.unroute(sends);
+    await composer.fill(typed);
+    await composer.press('Enter');
+    await expect(row.getByText(typed)).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByTestId('msg-edited')).toBeVisible();
+    await expect(cancelEdit).toHaveCount(0);
   });
 
   test('uses the shared dialog frame with a fixed header and scrolling body', async ({

@@ -63,6 +63,7 @@ const EVENTS: readonly (readonly [
   [RoomEvent.Tags, ROOM_DOMAINS],
   [RoomEvent.AccountData, ROOM_DOMAINS],
   [MatrixEventEvent.Decrypted, ROOM_DOMAINS],
+  [MatrixEventEvent.Replaced, ROOM_DOMAINS],
   [RoomStateEvent.Members, ROOM_DOMAINS],
 ];
 

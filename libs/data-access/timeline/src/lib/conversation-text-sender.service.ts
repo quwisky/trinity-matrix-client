@@ -29,6 +29,7 @@ import {
 } from './conversation-compose';
 import { shownContent } from './shields';
 import { conversationDraftKey } from './conversation-draft-key';
+import { sendEdit } from './edit-echo';
 import { keepWhileWaiting } from './waiting-draft';
 
 class MissingLocalEchoError extends Error {
@@ -59,9 +60,16 @@ class MatrixConversationTextSender implements ConversationTextSender {
     }).pipe(
       switchMap((target) => {
         const content = this.content(request, room, target);
-        txnId = client.makeTxnId();
-        localEventId = `~${room.roomId}:${txnId}`;
-        return from(client.sendMessage(room.roomId, content as never, txnId));
+        const id = client.makeTxnId();
+        txnId = id;
+        localEventId = `~${room.roomId}:${id}`;
+        const send = () =>
+          client.sendMessage(room.roomId, content as never, id);
+        return from(
+          request.intent.kind === 'edit'
+            ? sendEdit(client, room, request.intent.eventId, id, send)
+            : send(),
+        );
       }),
       map(({ event_id }) => {
         if (!event_id || !room.findEventById(event_id)) {

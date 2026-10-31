@@ -299,6 +299,8 @@ export class RoomLibraryService {
       // fires when a room is read and its count clears. (UnreadNotifications is Room-only, not
       // re-emitted here.)
       MatrixEventEvent.Decrypted,
+      // Which edit the preview resolves to can change with no Sync: a cancelled echo.
+      MatrixEventEvent.Replaced,
       RoomEvent.Receipt,
       // Room tags (e.g. `m.favourite`, the favourite flag) can change from another device;
       // rebuild so a remote favourite/unfavourite re-partitions and re-sorts the list live.
