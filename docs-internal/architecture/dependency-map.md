@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **82 Nx projects** and **326 dependencies**. No project cycles detected.
+This snapshot contains **82 Nx projects** and **328 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -149,14 +149,14 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-homeserver`            | `libs/data-access/homeserver`            | role:capability; capability:discovery           |                   3 |
 | `data-access-identity`              | `libs/data-access/identity`              | role:capability; capability:identity            |                   5 |
 | `data-access-matrix-client`         | `libs/data-access/matrix-client`         | role:adapter; capability:matrix-runtime         |                   4 |
-| `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   3 |
+| `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   4 |
 | `data-access-notifications`         | `libs/data-access/notifications`         | role:capability; capability:notifications       |                   7 |
 | `data-access-room-administration`   | `libs/data-access/room-administration`   | role:capability; capability:room-administration |                   6 |
 | `data-access-room-library`          | `libs/data-access/room-library`          | role:capability; capability:room-library        |                   7 |
 | `data-access-timeline`              | `libs/data-access/timeline`              | role:capability; capability:conversations       |                   6 |
 | `data-access-trust`                 | `libs/data-access/trust`                 | role:capability; capability:trust               |                   6 |
 | `data-access-whats-new`             | `libs/data-access/whats-new`             | role:capability; capability:whats-new           |                   1 |
-| `data-access-widgets`               | `libs/data-access/widgets`               | role:capability; capability:conversations       |                   4 |
+| `data-access-widgets`               | `libs/data-access/widgets`               | role:capability; capability:conversations       |                   5 |
 | `docs-developers`                   | `apps/docs-developers`                   | unmanaged tooling/test                          |                   1 |
 | `docs-e2e`                          | `e2e/docs`                               | unmanaged tooling/test                          |                   0 |
 | `docs-site`                         | `tools/docs`                             | unmanaged tooling/test                          |                   0 |

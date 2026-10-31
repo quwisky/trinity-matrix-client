@@ -30,7 +30,7 @@ export interface MediaRequest {
 
 /** A URL the webview can load. The subscriber owns it until it calls `release([url])`. */
 export interface MediaContent {
-  /** js-sdk: `blob:…`; Rust: a custom-scheme URL. */
+  /** js-sdk: `blob:…`; Rust: a token URL. */
   readonly url: string;
   /** Bytes behind the URL, for MediaService's byte cap. */
   readonly size: number;
@@ -93,6 +93,8 @@ export interface AttachmentRequest {
     readonly h: number;
   } | null;
   readonly caption: string;
+  /** The MSC2530 fields of `mediaCaptionFields(filename || 'attachment', caption)`: TypeScript renders them. */
+  readonly captionFields: Readonly<Record<string, unknown>>;
   /**
    * What the pipeline did with the file's identifying metadata. `strip-failed` means stripping
    * threw and `file` is the original: an encrypted room refuses it before any progress
@@ -142,10 +144,11 @@ export interface MediaEngine {
 
   /**
    * Command with progress: upload the attachment (encrypting iff the room is) and send one
-   * media message, its local echo in the timeline before `sent`. The engine retains the upload
+   * media message. js: its local echo in the timeline before `sent`; Rust: no echo, the event
+   * before `sent` when sync brings it within 5 s. The engine retains the upload
    * and echo under `attachmentKey` until {@link forgetAttachment}, so a retry neither uploads
    * again nor sends twice; a changed caption withdraws a retained echo and sends a new event.
-   * Fails `account-not-live`, `conversation-unavailable`, `encryption-unavailable` (an encrypted
+   * Fails `account-not-live`, `conversation-unavailable`, `encryption-unavailable` (js only: an encrypted
    * room without crypto, before any upload), `too-large` or `request-failed`. A failure after a
    * `sending` progress update failed the send; any other failed the upload, except
    * `encryption-unavailable`, which refuses the send itself although no `sending` precedes it.

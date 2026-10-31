@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 
 /** Registers `username` through Synapse's shared-secret admin API. Node only, for tests. */
 export async function registerSynapseUser(
@@ -49,7 +49,7 @@ export async function waitForSynapseBackgroundUpdates(
   const admin = await registerSynapseUser(
     baseUrl,
     secret,
-    `admin-${Date.now().toString(36)}`,
+    `admin-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`,
     true,
   );
   for (let i = 0; i < 240; i++) {

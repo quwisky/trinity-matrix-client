@@ -34,7 +34,6 @@ import {
   encryptAttachment,
   engineFail,
   engineOk,
-  mediaCaptionFields,
 } from '@trinity/util/matrix';
 import type {
   AttachmentOutcome,
@@ -87,7 +86,6 @@ const ENCRYPTED_UPLOAD: UploadRequest = {
 /** An attachment's event content, less its caption fields. */
 interface AttachmentContent {
   readonly msgtype: AttachmentRequest['msgtype'];
-  readonly body: string;
   readonly info: Readonly<Record<string, unknown>>;
   readonly source:
     { readonly file: EncryptedFileInfo } | { readonly url: string };
@@ -304,7 +302,7 @@ export class JsSdkMediaEngine implements MediaEngine {
             cached.txnId = client.makeTxnId();
           }
         }
-        const content = eventContent(cached.content, request.caption);
+        const content = eventContent(cached.content, request.captionFields);
         const attemptEventId =
           cached.pendingEvent?.getId() ?? `~${room.roomId}:${cached.txnId}`;
         localEventId = attemptEventId;
@@ -630,7 +628,6 @@ function attachmentContent(
   const { w, h, durationMs } = request.info;
   return {
     msgtype: request.msgtype,
-    body: request.filename || 'attachment',
     info: {
       mimetype: request.mimeType,
       size: uploaded.size,
@@ -646,10 +643,13 @@ function attachmentContent(
   };
 }
 
-function eventContent(content: AttachmentContent, caption: string): object {
+function eventContent(
+  content: AttachmentContent,
+  captionFields: AttachmentRequest['captionFields'],
+): object {
   return {
     msgtype: content.msgtype,
-    ...mediaCaptionFields(content.body, caption),
+    ...captionFields,
     info: content.info,
     ...content.source,
   };

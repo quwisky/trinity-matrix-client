@@ -255,6 +255,22 @@ export function defineExpressionEngineContract(
         expect(room(after, roomId).packEvents).toEqual([
           { type: IMAGE_PACK_EVENT_TYPE, state_key: '', content: pack },
         ]);
+
+        const name = `Renamed ${unique()}`;
+        await ok(
+          engine.setRoomState(alice, roomId, 'm.room.name', '', { name }),
+        );
+        await rooms.until((all) => room(all, roomId).name === name);
+
+        await ok(
+          engine.setRoomState(alice, roomId, 'm.room.power_levels', '', {
+            users: { [alice]: 0 },
+          }),
+        );
+        const demoted = await rooms.until(
+          (all) => !room(all, roomId).canWritePack,
+        );
+        expect(room(demoted, roomId).name).toBe(name);
       },
       testTimeoutMs,
     );
@@ -300,6 +316,8 @@ export function defineExpressionEngineContract(
         const all = await rooms.until(
           (latest) =>
             room(latest, roomId).joined &&
+            room(latest, roomId).name === name &&
+            !room(latest, roomId).canWritePack &&
             room(latest, roomId).packEvents.length > 0,
         );
         expect(room(all, roomId)).toEqual({
@@ -329,7 +347,9 @@ export function defineExpressionEngineContract(
         const { alias } = await context.foreignPackRoom(name, { images: {} });
         const { roomId } = await ok(engine.joinPackRoom(alice, alias));
         const rooms = watch(engine.packRooms(alice, [roomId]));
-        await rooms.until((all) => room(all, roomId).joined);
+        await rooms.until(
+          (all) => room(all, roomId).joined && room(all, roomId).name === name,
+        );
 
         await context.leave(roomId);
         const left = await rooms.until((all) => !room(all, roomId).joined);
@@ -373,6 +393,29 @@ export function defineExpressionEngineContract(
           expect(result.failure.code).toBe('request-failed');
           expect(result.failure.kind).toBe('permission');
         }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'refuses room state over the size limit as too-large',
+      async () => {
+        const roomId = await context.ownRoom();
+
+        const result = await once(
+          engine.setRoomState(
+            alice,
+            roomId,
+            `org.trinity.test.${unique()}`,
+            '',
+            {
+              filler: 'x'.repeat(70 * 1024),
+            },
+          ),
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.failure.code).toBe('too-large');
       },
       testTimeoutMs,
     );

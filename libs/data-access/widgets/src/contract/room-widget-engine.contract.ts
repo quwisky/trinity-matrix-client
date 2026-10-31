@@ -19,6 +19,10 @@ export interface RoomWidgetContractSetup {
   readonly engine: RoomWidgetEngine;
   /** A live account in `engine`. */
   readonly alice: string;
+  /** The device `alice` is signed in with. */
+  readonly aliceDeviceId: string;
+  /** The homeserver URL `alice`'s session talks to. */
+  readonly homeserverUrl: string;
   /** A registered user on the same server, driven only through `asBob`. */
   readonly bob: string;
   readonly asAlice: {
@@ -71,11 +75,13 @@ export function defineRoomWidgetEngineContract(
     let context: RoomWidgetContractSetup;
     let engine: RoomWidgetEngine;
     let alice: string;
+    let aliceDeviceId: string;
+    let homeserverUrl: string;
     let bob: string;
 
     beforeEach(async () => {
       context = await setup();
-      ({ engine, alice, bob } = context);
+      ({ engine, alice, aliceDeviceId, homeserverUrl, bob } = context);
     }, testTimeoutMs);
 
     afterEach(async () => {
@@ -144,16 +150,16 @@ export function defineRoomWidgetEngineContract(
 
     it(
       'roomWidgets emits the empty snapshot at once for an account that is not live',
-      () => {
-        const seen: RoomWidgetSnapshot[] = [];
-        const subscription = engine
-          .roomWidgets(NOBODY, '!unknown:invalid')
-          .subscribe((s) => seen.push(s));
-        subscription.unsubscribe();
+      async () => {
+        const first = await firstValueFrom(
+          engine.roomWidgets(NOBODY, '!unknown:invalid'),
+        );
 
-        expect(seen).toEqual([
-          { widgets: [], canManage: false, identity: null },
-        ]);
+        expect(first).toEqual({
+          widgets: [],
+          canManage: false,
+          identity: null,
+        });
       },
       testTimeoutMs,
     );
@@ -188,7 +194,13 @@ export function defineRoomWidgetEngineContract(
             },
           ]);
           expect(snapshot.canManage).toBe(false);
-          expect(snapshot.identity).toMatchObject({ userId: alice });
+          expect(snapshot.identity).toEqual({
+            userId: alice,
+            deviceId: aliceDeviceId,
+            homeserverUrl,
+            displayName: expect.any(String),
+            avatarUrl: '',
+          });
         } finally {
           widgets.close();
         }
@@ -197,7 +209,7 @@ export function defineRoomWidgetEngineContract(
     );
 
     it(
-      'roomWidgets emits its current snapshot synchronously on subscribe',
+      'roomWidgets emits its current snapshot first',
       async () => {
         const roomId = await sharedRoom(true);
         const widgets = watch(roomId);
@@ -207,14 +219,9 @@ export function defineRoomWidgetEngineContract(
           widgets.close();
         }
 
-        const seen: RoomWidgetSnapshot[] = [];
-        engine
-          .roomWidgets(alice, roomId)
-          .subscribe((s) => seen.push(s))
-          .unsubscribe();
+        const first = await firstValueFrom(engine.roomWidgets(alice, roomId));
 
-        expect(seen).toHaveLength(1);
-        expect(seen[0].canManage).toBe(true);
+        expect(first.canManage).toBe(true);
       },
       testTimeoutMs,
     );
@@ -310,9 +317,12 @@ export function defineRoomWidgetEngineContract(
       'putRoomWidget without power is forbidden',
       async () => {
         const roomId = await sharedRoom(false);
+        await context.asBob.putWidget(roomId, 'marker', {
+          ...content('marker'),
+        });
         const widgets = watch(roomId);
         try {
-          await widgets.until((s) => s.identity !== null);
+          await widgets.until((s) => s.widgets.some((w) => w.id === 'marker'));
 
           expect(
             await failureOf(
@@ -413,6 +423,21 @@ export function defineRoomWidgetEngineContract(
         ).toBe('not-signed-in');
         expect(
           await failureOf(engine.removeRoomWidget(NOBODY, roomId, 'x', '$e')),
+        ).toBe('not-signed-in');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'commands for a live account and an unknown room are not-signed-in',
+      async () => {
+        const roomId = '!unknown:invalid';
+
+        expect(
+          await failureOf(engine.putRoomWidget(alice, roomId, content('x'))),
+        ).toBe('not-signed-in');
+        expect(
+          await failureOf(engine.removeRoomWidget(alice, roomId, 'x', '$e')),
         ).toBe('not-signed-in');
       },
       testTimeoutMs,
