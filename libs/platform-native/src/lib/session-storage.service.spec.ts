@@ -126,6 +126,7 @@ function setup(options: { nativeBridge?: boolean } = { nativeBridge: true }) {
     ? vi.mocked(TestBed.inject(PushHandoffBridge))
     : undefined;
   bridge?.removeTokens.mockReturnValue(of(undefined));
+  bridge?.removeAllTokens.mockReturnValue(of(undefined));
   return {
     svc: TestBed.inject(SessionStorageService),
     bridge: bridge as NonNullable<typeof bridge>,
@@ -1120,13 +1121,15 @@ describe('SessionStorageService', () => {
       bridge.removeTokens.mockClear();
       await firstValueFrom(svc.clearAll());
 
-      expect(bridge.removeTokens.mock.calls).toEqual([[]]);
+      expect(bridge.removeTokens).not.toHaveBeenCalled();
+      expect(bridge.removeAllTokens).toHaveBeenCalledExactlyOnceWith();
     });
 
     it('rejects clear() and clearAll() when the native removal is refused, after the JS tokens', async () => {
       const { svc, bridge, secure } = setup();
       await firstValueFrom(svc.save(CAROL));
       bridge.removeTokens.mockReturnValue(throwError(() => new Error('no')));
+      bridge.removeAllTokens.mockReturnValue(throwError(() => new Error('no')));
 
       await expect(firstValueFrom(svc.clear())).rejects.toThrow('no');
       await expect(firstValueFrom(svc.clearAll())).rejects.toThrow('no');

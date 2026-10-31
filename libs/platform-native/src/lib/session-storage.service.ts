@@ -728,7 +728,7 @@ export class SessionStorageService {
     }
     await Promise.all(removals);
     if (vault === 'everything') {
-      await this.nativeVault(this.handoff.removeTokens());
+      await this.nativeVault(this.handoff.removeAllTokens());
     } else if (!options?.keepNativeTokens) {
       // Only these accounts' records: another account's kept record still awaits its
       // retry's revocation.
