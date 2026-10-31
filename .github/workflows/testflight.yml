@@ -1,0 +1,286 @@
+name: TestFlight upload
+# A manual upload of the iOS app to TestFlight, from the commit of a `-next` release tag.
+# Never automatic: it runs only when someone dispatches it from `main`, and the
+# `release-mobile` environment then waits for its required reviewer.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The -next release tag to upload, such as v0.6.0-next.6
+        required: true
+        type: string
+permissions:
+  contents: read
+# An upload in flight is never cancelled; a second dispatch queues behind it.
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+jobs:
+  # Builds the production renderer for the signing job without a secret, so the Nx build and
+  # the renderer's install scripts never run on the runner that holds the App Store Connect
+  # key. The renderer is the same on every host, so Linux builds it. It also checks
+  # the dispatch and the tag, so a refused run needs no approval, and it hands the verified
+  # commit to the signing job, so a tag moved meanwhile cannot swap the code.
+  renderer:
+    name: Verify the tag and build the production renderer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      marketing: ${{ steps.tag.outputs.marketing }}
+      build: ${{ steps.tag.outputs.build }}
+    steps:
+      # The workflow file comes from the ref it is dispatched on, and the environment's branch
+      # policy also admits `release/**` for later, so the check belongs here.
+      - name: Dispatched from main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != 'refs/heads/main' ]; then
+            echo "::error::Dispatch this workflow from main (--ref main); it was dispatched from '$REF'."
+            exit 1
+          fi
+      # Validated before anything uses it: a dispatch input is free text. The marketing
+      # version is the tag's; the build number is the run number, which counts up per workflow
+      # and never resets, but a re-run of a run keeps its number, so a retry after an upload
+      # that went through needs a new dispatch.
+      - name: Tag is a next release
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-next\.[0-9]+$ ]]; then
+            echo "::error::The tag is not a vX.Y.Z-next.N release tag; TestFlight uploads come from -next versions only."
+            exit 1
+          fi
+          if ! [[ "$RUN_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::The run number is not an integer."
+            exit 1
+          fi
+          version="${TAG#v}"
+          marketing="${version%%-*}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "marketing=$marketing" >> "$GITHUB_OUTPUT"
+          echo "build=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "TestFlight $TAG: version $marketing, build $RUN_NUMBER" | tee -a "$GITHUB_STEP_SUMMARY"
+      # As a tag, never a branch of that name; a tag that does not exist fails here. Full
+      # history and every branch: the ancestry check needs main's tip.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      # A tag is not evidence of review: anyone who can push one can point it at any commit.
+      - name: Tagged commit is on main
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$TAG points at a commit that is not contained in main."
+            exit 1
+          fi
+      - name: Tag matches package.json
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          root=$(node -p "require('./package.json').version")
+          if [ "${TAG#v}" != "$root" ]; then
+            echo "::error::$TAG does not match package.json ($root) at its commit."
+            exit 1
+          fi
+      # The app needs its privacy manifest for App Store Connect, and tags from before it
+      # was added build into an upload that is refused.
+      - name: Tagged commit has the iOS privacy manifest
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if [ ! -f ios/App/App/PrivacyInfo.xcprivacy ]; then
+            echo "::error::$TAG predates ios/App/App/PrivacyInfo.xcprivacy, which an upload needs. Use a -next tag released after the TestFlight workflow merged."
+            exit 1
+          fi
+      - id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/setup
+      # The configuration is explicit: it swaps in environment.prod.ts. The release notes
+      # are fetched from the tag's published GitHub release, as in release.yml; with no
+      # published release for the tag this step fails, so publish it before dispatching.
+      - run: pnpm nx build trinity --configuration=production --skipNxCache
+        env:
+          TRINITY_RELEASE_NOTES: required
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: node scripts/web-bundle-manifest.mjs write www
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: testflight-renderer
+          path: |
+            www/
+            dist/web-bundle-manifest.json
+          include-hidden-files: true
+          if-no-files-found: error
+          # Long enough for a reviewer to approve the signing job days later; there is no timer on
+          # the gate, and the download fails once the artifact has expired.
+          retention-days: 30
+          overwrite: true
+
+  # The only job that can read the mobile secrets, which live in the release-mobile
+  # environment (limited to `main` and `release/**`, with a required reviewer); no other
+  # workflow references them. It installs with --ignore-scripts and runs no Nx and no build.
+  # Code from node_modules still runs here: Capacitor's CLI (`cap sync`), and Xcode builds
+  # the local Swift packages that point into node_modules. The key file is written only after
+  # the sync and the checks, right before `xcodebuild archive`. This narrows the exposure and
+  # does not remove it: the install is a full workspace install, a process left running by
+  # `cap sync` could read the key once it exists, and the archive builds code from node_modules.
+  testflight:
+    name: Archive and upload to TestFlight
+    needs: [renderer]
+    environment: release-mobile
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      # The runner context is not available in job-level env, so the paths are set here.
+      - name: Set the file paths
+        run: |
+          {
+            echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8"
+            echo "ARCHIVE_PATH=$RUNNER_TEMP/Trinity.xcarchive"
+            echo "EXPORT_PATH=$RUNNER_TEMP/export"
+            echo "EXPORT_OPTIONS=$RUNNER_TEMP/ExportOptions.plist"
+            echo "RENDERER_DIR=$RUNNER_TEMP/renderer"
+            echo "PLIST_PATH=ios/App/App/GoogleService-Info.plist"
+          } >> "$GITHUB_ENV"
+      # The commit the first job verified, not the tag, which may have moved since.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.renderer.outputs.sha }}
+          persist-credentials: false
+      # Before the install, so a missing secret fails in seconds.
+      - name: Mobile secrets are complete
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in GOOGLE_SERVICE_INFO_PLIST ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::The release-mobile environment secret $name is not set."
+              missing=1
+            fi
+          done
+          exit "$missing"
+      # The setup action's pinned pnpm and Node, without its workspace install.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # No package's install script runs.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Outside the checkout, so the artifact can never land on the files the install made.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: testflight-renderer
+          path: ${{ runner.temp }}/renderer
+      - name: Copy the built renderer
+        run: |
+          # Exactly the two directories and no symbolic link, or nothing is copied.
+          entries=$(find "$RENDERER_DIR" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | paste -s -d ' ' -)
+          if [ "$entries" != 'dist www' ] || [ ! -d "$RENDERER_DIR/dist" ] || [ ! -d "$RENDERER_DIR/www" ]; then
+            echo "::error::The renderer artifact must hold exactly dist and www; it holds: $entries"
+            exit 1
+          fi
+          if [ -n "$(find "$RENDERER_DIR" -type l)" ]; then
+            echo '::error::The renderer artifact holds a symbolic link.'
+            exit 1
+          fi
+          mkdir -p dist
+          cp -R "$RENDERER_DIR/www" .
+          cp "$RENDERER_DIR/dist/web-bundle-manifest.json" dist/
+      # The commands of `trinity-ios:sync-prebuilt` (ios/project.json), run directly so Nx and
+      # its plugins do not load on this runner. Keep them in step with that target.
+      - name: Verify the renderer and sync Capacitor
+        run: |
+          node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www
+          pnpm exec cap sync ios
+          node scripts/web-bundle-manifest.mjs verify-with-extras dist/web-bundle-manifest.json ios/App/App/public cordova.js cordova_plugins.js
+      - name: Record selected Xcode
+        run: xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
+      # macOS base64 --decode exits 0 on input that is not base64 (a raw PEM pasted in place of
+      # its encoding), so the decoded files are checked, and only by shape: nothing is printed.
+      - name: Write the Firebase plist and the App Store Connect key
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          umask 077
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$PLIST_PATH"
+          printf '%s' "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
+          if ! plutil -lint "$PLIST_PATH" > /dev/null 2>&1; then
+            echo '::error::GOOGLE_SERVICE_INFO_PLIST does not decode to a valid plist.'
+            exit 1
+          fi
+          if ! head -n 1 "$ASC_KEY_PATH" | grep -qx -- '-----BEGIN PRIVATE KEY-----'; then
+            echo '::error::ASC_KEY_P8 does not decode to a PEM private key.'
+            exit 1
+          fi
+      # The build settings on the command line apply to every target of the scheme, so the
+      # NotificationService extension gets the same versions as the app, as App Store Connect
+      # requires.
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MARKETING_VERSION: ${{ needs.renderer.outputs.marketing }}
+          CURRENT_PROJECT_VERSION: ${{ needs.renderer.outputs.build }}
+        run: |
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+            CODE_SIGN_STYLE=Automatic
+      # `destination` upload sends the build to App Store Connect from this command, and
+      # manageAppVersionAndBuildNumber keeps Xcode from rewriting the build number.
+      - name: Export and upload
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cat > "$EXPORT_OPTIONS" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      # No xcodebuild log is uploaded: it echoes the key's path and ids.
+      - name: Remove the key and the decoded plist
+        if: always()
+        run: rm -f "$ASC_KEY_PATH" "$PLIST_PATH" "$EXPORT_OPTIONS"

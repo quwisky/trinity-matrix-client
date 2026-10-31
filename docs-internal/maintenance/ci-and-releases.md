@@ -10,19 +10,20 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                             | Starts when                                                                | What it provides                                                                                                                                                |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)                           | A pull request, selected pushes, or its weekly schedule                    | Branch checks and browser, desktop, and Android evidence                                                                                                        |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)           | A `main` push, a published stable release, or a manual dispatch            | Validated user and developer sites deployed to GitHub Pages                                                                                                     |
-| [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR after a stable tag |
-| [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
-| [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)    | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                        |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                        |
-| [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
-| [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
-| [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository              | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
-| [`codeql.yml`](../../.github/workflows/codeql.yml)                   | A push to `main`, a pull request to `main`, or Mondays at 05:37 UTC        | CodeQL code scanning for GitHub Actions, Java/Kotlin, JavaScript/TypeScript and Swift (see [Code scanning](#code-scanning))                                     |
-| [`cache-cleanup.yml`](../../.github/workflows/cache-cleanup.yml)     | A pull request closes, merged or not                                       | Deletes the Actions caches saved under that pull request's `refs/pull/<n>/merge` ref                                                                            |
+| Workflow                                                             | Starts when                                                                                             | What it provides                                                                                                                                                |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                           | A pull request, selected pushes, or its weekly schedule                                                 | Branch checks and browser, desktop, and Android evidence                                                                                                        |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)           | A `main` push, a published stable release, or a manual dispatch                                         | Validated user and developer sites deployed to GitHub Pages                                                                                                     |
+| [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input                                 | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR after a stable tag |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input                                           | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
+| [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)                                 | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                        |
+| [`testflight.yml`](../../.github/workflows/testflight.yml)           | A manual dispatch from `main` with a `-next` `tag` input, then the `release-mobile` reviewer's approval | Archives the signed iOS app and uploads it to TestFlight (see [TestFlight upload](#testflight-upload))                                                          |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                                                 | Dependency update maintenance through a GitHub App token                                                                                                        |
+| [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                                                      | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
+| [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x`                              | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
+| [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository                                           | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
+| [`codeql.yml`](../../.github/workflows/codeql.yml)                   | A push to `main`, a pull request to `main`, or Mondays at 05:37 UTC                                     | CodeQL code scanning for GitHub Actions, Java/Kotlin, JavaScript/TypeScript and Swift (see [Code scanning](#code-scanning))                                     |
+| [`cache-cleanup.yml`](../../.github/workflows/cache-cleanup.yml)     | A pull request closes, merged or not                                                                    | Deletes the Actions caches saved under that pull request's `refs/pull/<n>/merge` ref                                                                            |
 
 The branch workflow accepts pushes to `main` and `release/**`; pull requests,
 Renovate updates included, are its usual review path. A newer run for
@@ -470,8 +471,8 @@ Never force-push.
 ### Release credentials
 
 Every release credential lives in an environment: the release App key in `release-app`,
-the macOS signing and notarization secrets in `release`, the tap deploy key in `homebrew`
-and the Renovate App key in `renovate`. An environment admits a job by its ref, so the
+the macOS signing and notarization secrets in `release`, the tap deploy key in `homebrew`,
+the iOS upload secrets in `release-mobile` and the Renovate App key in `renovate`. An environment admits a job by its ref, so the
 rules on those refs decide who can reach the credentials:
 
 - The `Protect release tags` ruleset blocks creating, updating and deleting `v*` tags.
@@ -488,7 +489,7 @@ rules on those refs decide who can reach the credentials:
   as before. GitHub reads `CODEOWNERS` from the pull request's base branch, so each
   `release/X.Y.x` branch carries its own copy; `Release stable` refuses a prerelease
   without one.
-- `release` and `homebrew` require the maintainer's approval for each deployment, so every
+- `release`, `release-mobile` and `homebrew` require the maintainer's approval for each deployment, so every
   signed macOS build and every tap update waits for it. `release-app` runs on every push
   to `main` and `release/**` and `renovate` runs daily, so neither has reviewers; the
   approval rules on those branches guard them instead.
@@ -812,7 +813,7 @@ The `release-notes` job reads the draft release body with the release App token 
 `package`, `desktop-shell` and `package-web` as `TRINITY_CURRENT_RELEASE_NOTES`, because their
 read-only token cannot see a draft. They build with `TRINITY_RELEASE_NOTES=required`, so a
 notes failure fails the build. A dispatch therefore re-packages an existing release, draft or
-published, only: for a tag without one, `release-notes` fails and the builds are skipped. Android and iOS builds run locally after publishing: set
+published, only: for a tag without one, `release-notes` fails and the builds are skipped. Android builds run locally after publishing, and so do iOS builds unless uploaded with [TestFlight upload](#testflight-upload): set
 `TRINITY_RELEASE_NOTES=required` and `GITHUB_TOKEN=$(gh auth token)`.
 
 After verification, the package matrix builds the desktop shell with publishing
@@ -892,6 +893,102 @@ Android and iOS retain independent `1.0` / build-code values and are not part
 of the current release version gate. Their build and distribution requirements
 belong to the [Android](../../apps/docs-developers/src/content/docs/platforms/android.md)
 and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
+
+## TestFlight upload
+
+[`testflight.yml`](../../.github/workflows/testflight.yml) archives the iOS app at a `-next`
+release tag and uploads it to TestFlight. It runs only on a manual dispatch, and it is
+unproven: no upload has run yet, so expect to fix signing or export problems on the first
+dispatch.
+
+Run it with `gh workflow run testflight.yml --ref main -f tag=vX.Y.Z-next.N`. The tag must match
+`vX.Y.Z-next.N` exactly: a stable tag, `-rc.N` or build metadata is refused, since stable
+versions live on `release/**`. The dispatch must come from `main`: the `release-mobile`
+environment also admits `release/**` for later, so the workflow itself refuses any other ref.
+The tag must exist, point at a commit contained in `main`, and equal `package.json`'s version at
+that commit, which gives the marketing version (`v0.6.0-next.6` gives `0.6.0`). A bad input
+fails in the first job, before any approval is requested. The tag's GitHub release must be
+published before you dispatch: the renderer build bundles its release notes from it and fails
+without one. Both jobs build that commit, which
+the first job passes on by SHA, so a tag moved after the check cannot swap the code.
+
+A tag older than this workflow's merge lacks `ios/App/App/PrivacyInfo.xcprivacy`, so an upload
+from it would be refused by App Store Connect; the first job fails with a message saying so.
+The first usable tag is the first `-next` released after the workflow merges. The other build
+steps (`trinity-ios:sync-prebuilt`, the manifest checks) exist at older tags. The workflow has two
+jobs, split as `release.yml` splits `desktop-shell` from `sign-mac`, so no install script, Nx or
+renderer build runs on the runner that holds the App Store Connect key:
+
+- `renderer` has no environment and no secret. It builds the production renderer with
+  `TRINITY_RELEASE_NOTES=required`, so the app bundles its What's New notes from the published
+  releases, writes the web bundle manifest and uploads `www` with it.
+- `testflight` runs in the `release-mobile` environment, limited to `main` and `release/**`,
+  which waits for the maintainer's approval. It installs with `--ignore-scripts`, downloads the
+  renderer outside the checkout and runs the three commands of `trinity-ios:sync-prebuilt`
+  directly (verify the manifest, `pnpm exec cap sync ios`, verify the synced copy), with no Nx
+  and no build. Only then does it write the key, right before `xcodebuild archive`, and run
+  `xcodebuild -exportArchive` with `destination` set to `upload` and automatic signing through
+  an App Store Connect API key. Keep those three commands in step with the Nx target.
+
+  Code from `node_modules` still runs on that runner: Capacitor's CLI during the sync, and
+  Xcode builds the local Swift packages that point into `node_modules`. The job still does a
+  full workspace install (without scripts), so the split and the late key write narrow the
+  exposure rather than remove it: a process left running by `cap sync` could read the key
+  once it exists, and the archive builds that code. The artifact is kept for 30 days because the
+  environment's approval has no timer and the download fails once it expires.
+
+Only the `testflight` job reads these `release-mobile` secrets, and no other workflow references
+them. `APPLE_TEAM_ID` is a separate copy from the `release` environment's.
+
+| Secret                      | Value                                             |
+| --------------------------- | ------------------------------------------------- |
+| `GOOGLE_SERVICE_INFO_PLIST` | base64 of the Firebase `GoogleService-Info.plist` |
+| `ASC_KEY_ID`                | the API key's ID                                  |
+| `ASC_ISSUER_ID`             | the App Store Connect issuer ID                   |
+| `ASC_KEY_P8`                | base64 of the API key's `.p8` file                |
+| `APPLE_TEAM_ID`             | the Apple Developer team ID                       |
+
+The job fails first, naming any missing secret. It passes secrets through step `env` only,
+checks that the plist and key decode (macOS `base64 --decode` accepts a raw PEM without error),
+uploads no xcodebuild log, and deletes the key and plist in an `always()` step.
+
+The build number is `github.run_number`, and both numbers are written to the job summary. The run number grows per workflow and never resets, but a re-run keeps its
+number, so after an upload that went through, dispatch again rather than re-running. Renaming
+or deleting the workflow file would restart the count, and App Store Connect would refuse lower
+build numbers for the same version. The command-line `MARKETING_VERSION` and
+`CURRENT_PROJECT_VERSION` reach the NotificationService extension too, so the two match, and
+`manageAppVersionAndBuildNumber` is `false` so Xcode cannot change the number.
+
+`ios/App/App/PrivacyInfo.xcprivacy` declares the required-reason APIs the app target uses, from
+[Apple's list](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api):
+user defaults for the app alone (`CA92.1`, the Preferences and Badge plugins), system boot time
+to measure elapsed time (`35F9.1`, `PushHandoffPlugin`) and file metadata inside the app
+container (`C617.1`, the Filesystem plugin's `stat`). The NotificationService extension's binary
+references none of them, so it has no manifest. Add a reason when new code uses one of these APIs.
+
+A fresh setup needs all of these (done for this repository):
+
+- [ ] The Apple Developer setup tracked in [#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152):
+      App IDs for the app and the NotificationService extension with their capabilities (App
+      Group, Keychain Sharing, push), and at least one registered device, because archive
+      signing uses a development identity (`CODE_SIGN_IDENTITY` in `project.pbxproj`).
+- [ ] An App Store Connect app record for `dev.trinityproject.trinity`.
+- [ ] An App Store Connect API key with the Admin role, because cloud signing with an API key
+      has no narrower option: this is reported in Apple's developer forums
+      ([698117](https://developer.apple.com/forums/thread/698117),
+      [690676](https://developer.apple.com/forums/thread/690676)), not stated by Apple.
+- [ ] The five secrets above in the `release-mobile` environment, with its required reviewer
+      and deployment branches (`main` and `release/**`).
+
+Watch these on the first run:
+
+- Each runner may create a new development certificate until the team's limit.
+- Apple emails ITMS warnings and errors for an uploaded build; read them even when the upload
+  succeeds.
+- The app declares no `ITSAppUsesNonExemptEncryption` key, so App Store Connect asks the export
+  compliance question for each build before testing. The owner decides the answer and whether
+  to add the key.
+- A `0.6.0` build is refused once that version's train has been approved for the App Store.
 
 ## Homebrew tap
 

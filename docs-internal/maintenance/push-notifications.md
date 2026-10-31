@@ -147,6 +147,8 @@ device (below).
    Firebase, hands the APNs token to Firebase Messaging and reports the FCM token as the
    pushkey; `FirebaseAppDelegateProxyEnabled` is `NO`, so the delegate does this itself.
    Without the plist the APNs token is reported, which the gateway cannot deliver to.
+   The [TestFlight upload](ci-and-releases.md#testflight-upload) workflow writes the plist from
+   the `GOOGLE_SERVICE_INFO_PLIST` secret of its `release-mobile` environment.
    Firebase is pinned to 12.17.0, the last version whose FCM-token API is not deprecated.
    Do not infer silent background handling from notification registration: the
    [Capacitor plugin does not implement iOS silent push](https://capacitorjs.com/docs/apis/push-notifications#silent-push-notifications--data-only-notifications).
