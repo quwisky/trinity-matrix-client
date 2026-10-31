@@ -35,6 +35,27 @@ data class TokenRecord(
     override fun toString(): String = "TokenRecord(lineage=$lineage, state=$state)"
 }
 
+/**
+ * What `migrateTokens` was given, or null when a field a refresh needs is missing. A lineage may
+ * be empty: a session saved before lineages existed has none.
+ */
+fun tokenRecordFromPluginCall(data: JSONObject): Pair<String, TokenRecord>? {
+    fun text(key: String) = PushRenderRules.stringOrNull(data, key)?.takeIf { it.isNotEmpty() }
+    val userId = text("userId") ?: return null
+    val record = TokenRecord(
+        accessToken = text("accessToken") ?: return null,
+        refreshToken = text("refreshToken") ?: return null,
+        expiresAtMillis = accessTokenExpiryFrom(data.opt("accessTokenExpiresAt")),
+        tokenEndpoint = text("tokenEndpoint") ?: return null,
+        revocationEndpoint = text("revocationEndpoint"),
+        clientId = text("clientId") ?: return null,
+        deviceId = text("deviceId") ?: return null,
+        lineage = PushRenderRules.stringOrNull(data, "lineage") ?: return null,
+        state = TokenState.ACTIVE,
+    )
+    return userId to record
+}
+
 sealed interface TokenVaultRead {
     data object Absent : TokenVaultRead
 

@@ -35,6 +35,22 @@ public struct TokenRecord: Codable, Equatable, CustomStringConvertible, CustomDe
         self.state = state
     }
 
+    /// What `migrateTokens` was given, or nil when a field a refresh needs is missing. A lineage
+    /// may be empty: a session saved before lineages existed has none.
+    public static func fromPluginCall(_ options: [String: Any]) -> (userId: String, record: TokenRecord)? {
+        func text(_ key: String) -> String? { (options[key] as? String).flatMap { $0.isEmpty ? nil : $0 } }
+        guard let userId = text("userId"), let lineage = options["lineage"] as? String,
+              let accessToken = text("accessToken"), let refreshToken = text("refreshToken"),
+              let tokenEndpoint = text("tokenEndpoint"), let clientId = text("clientId"),
+              let deviceId = text("deviceId")
+        else { return nil }
+        return (userId, TokenRecord(
+            accessToken: accessToken, refreshToken: refreshToken,
+            expiresAt: HandoffAccount.expiry(fromEpochMilliseconds: options["accessTokenExpiresAt"]),
+            tokenEndpoint: tokenEndpoint, revocationEndpoint: text("revocationEndpoint"), clientId: clientId,
+            deviceId: deviceId, lineage: lineage, state: .active))
+    }
+
     public var description: String { "TokenRecord(lineage: \(lineage), state: \(state.rawValue))" }
     public var debugDescription: String { description }
     public var customMirror: Mirror { Mirror(self, children: ["lineage": lineage, "state": state.rawValue]) }

@@ -4,6 +4,9 @@ import { Observable, defer, from, map, of } from 'rxjs';
 import {
   PUSH_HANDOFF_PLUGIN_NAME,
   type BackgroundWork,
+  type NativeTokenRecord,
+  type NativeTokenResult,
+  type NativeTokenRevocation,
   type PushHandoffAccount,
   type PushHandoffNotificationText,
   type PushHandoffPlugin,
@@ -112,7 +115,62 @@ export class PushHandoffBridge {
     return this.call(() => pushHandoff.clearDelivered());
   }
 
+  /**
+   * Cold. Grants new tokens natively if the stored access token is still `tokenSeen`; answers
+   * unavailable off native. Errors only when the native side failed to answer.
+   */
+  refreshTokens(
+    userId: string,
+    lineage: string,
+    tokenSeen: string,
+  ): Observable<NativeTokenResult> {
+    return this.ask(
+      () => pushHandoff.refreshTokens({ userId, lineage, tokenSeen }),
+      { kind: 'unavailable' },
+    );
+  }
+
+  /** Cold. Reads the stored access token; answers unavailable off native. */
+  currentTokens(
+    userId: string,
+    lineage: string,
+  ): Observable<NativeTokenResult> {
+    return this.ask(() => pushHandoff.currentTokens({ userId, lineage }), {
+      kind: 'unavailable',
+    });
+  }
+
+  /** Cold. Emits whether the native vault holds the record; false off native. */
+  migrateTokens(record: NativeTokenRecord): Observable<boolean> {
+    return this.ask(
+      async () =>
+        (await pushHandoff.migrateTokens({ ...record })).stored === true,
+      false,
+    );
+  }
+
+  /** Cold. Revokes the account's tokens at the provider; answers gone off native. */
+  revokeTokens(
+    userId: string,
+    lineage: string,
+  ): Observable<NativeTokenRevocation> {
+    return this.ask(() => pushHandoff.revokeTokens({ userId, lineage }), {
+      kind: 'gone',
+    });
+  }
+
+  /** Cold. Removes one account's tokens, or every account's without a user id; inert off native. */
+  removeTokens(userId?: string): Observable<void> {
+    return this.call(() =>
+      pushHandoff.removeTokens(userId === undefined ? {} : { userId }),
+    );
+  }
+
   private call(command: () => Promise<void>): Observable<void> {
-    return defer(() => (this.available ? from(command()) : of(void 0)));
+    return this.ask(command, void 0);
+  }
+
+  private ask<T>(command: () => Promise<T>, inert: T): Observable<T> {
+    return defer(() => (this.available ? from(command()) : of(inert)));
   }
 }
