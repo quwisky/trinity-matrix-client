@@ -81,7 +81,7 @@ export type { PersistedAccountStartOutcome } from './account-start-failure';
 /**
  * Default deadline for ordinary Matrix HTTP requests made by an account client. The
  * matrix-js-sdk patch's refresh-token grant abort (`REFRESH_TOKEN_GRANT_TIMEOUT_MS` in
- * `patches/matrix-js-sdk@43.0.0.patch`) mirrors this value and must change with it; the
+ * `patches/matrix-js-sdk@45.0.0.patch`) mirrors this value and must change with it; the
  * spec pins the two together.
  */
 export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;

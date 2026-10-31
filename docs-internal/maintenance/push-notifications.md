@@ -243,7 +243,7 @@ every bound account whose token has an expiry and that holds a refresh token
 (`MatrixClientService.canRefreshAccessToken`), unless that token rotated within the last
 minute, so the copy in the store lives one full lifetime from then. The refresh runs through
 the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
-`patches/matrix-js-sdk@43.0.0.patch`). It therefore joins a refresh already in flight,
+`patches/matrix-js-sdk@45.0.0.patch`). It therefore joins a refresh already in flight,
 persists the pair before the SDK adopts it and reaches the store as an ordinary rotation. The
 app stays the only process that rotates tokens; the renderers refreshing tokens themselves is
 [#1210](https://github.com/quwisky/trinity-matrix-client/issues/1210). A refused refresh signs
