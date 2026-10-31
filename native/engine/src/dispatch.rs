@@ -175,6 +175,10 @@ methods! {
         account_id: String,
         room_id_or_alias: String,
     ),
+    "expression.packRooms" => expression::pack_rooms(
+        account_id: String,
+        room_ids: Vec<String>,
+    ),
     "homeserver.probe" => homeserver::probe(account_id: String),
     "identity.ownProfile" => identity::own_profile(account_id: String),
     "identity.profile" => identity::profile(account_id: String, user_id: String),

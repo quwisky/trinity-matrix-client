@@ -3,14 +3,14 @@
 //! its failure like js `tooLargeOrFailed`: `M_FORBIDDEN` stays a `request-failed` of kind
 //! `permission`.
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc, sync::Mutex, time::Duration};
 
 use async_stream::stream;
 use futures_util::{Stream, StreamExt};
 use matrix_sdk::{
-    Client, Error, RoomDisplayName, RoomState,
+    Client, Error, Room, RoomDisplayName, RoomState,
     ruma::{
-        RoomAliasId, RoomId, RoomOrAliasId,
+        OwnedRoomId, RoomAliasId, RoomId, RoomOrAliasId,
         api::client::{
             alias::get_alias,
             state::{get_state_events, send_state_event},
@@ -18,6 +18,7 @@ use matrix_sdk::{
         events::{GlobalAccountDataEventType, StateEventType},
         serde::Raw,
     },
+    sleep::sleep,
 };
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -26,8 +27,8 @@ use ts_rs::TS;
 use super::{
     account_data,
     member::{account_stream, bounded, on_account, sent_once},
-    room_state,
-    settle::account_data_changes_of,
+    room_state::{self, follow_state, read_state},
+    settle::{account_data_changes_of, rooms_changes},
 };
 use crate::{
     accounts::Engine,
@@ -38,6 +39,8 @@ use crate::{
 const DTO: &str = "data-access/media/src/lib/rust-dto/";
 const IMAGE_PACK: &str = "m.room.image_pack";
 const MAX_VIA: usize = 3;
+const LEVELS_POLL: Duration = Duration::from_millis(100);
+const LEVELS_POLLS: u32 = 30;
 const ROOM_EMOTES: &str = "im.ponies.room_emotes";
 
 /// `AccountDataSnapshot`: each watched type's content, or null.
@@ -54,6 +57,28 @@ pub struct JoinedPackRoomDto {
     events: Vec<Value>,
 }
 
+/// `PackRoomSnapshot`. Each pack event is `{ type, state_key, content }`.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = DTO)]
+pub struct PackRoomDto {
+    room_id: String,
+    joined: bool,
+    name: Option<String>,
+    can_write_pack: bool,
+    #[ts(type = "Array<{ type: string, state_key: string, content: unknown }>")]
+    pack_events: Vec<Value>,
+}
+
+/// What the account's store says of one room.
+struct Local {
+    joined: bool,
+    name: Option<String>,
+    can_write_pack: bool,
+}
+
+type Events = BTreeMap<OwnedRoomId, Vec<Value>>;
+
 /// The local copies of `types`, which a failed read keeps from the last snapshot.
 pub fn account_data(engine: Arc<Engine>, account_id: String, types: Vec<String>) -> Items {
     let empty = nulls(&types);
@@ -61,6 +86,26 @@ pub fn account_data(engine: Arc<Engine>, account_id: String, types: Vec<String>)
         let changes = account_data_changes_of(&client, types.clone());
         let read = move || read_snapshot(client.clone(), types.clone());
         snapshots(empty, read, changes)
+    })
+}
+
+/// One entry per id, in order. The store's fields come at once and again on each change, and the
+/// pack events from the server once the first read is in; a failed read keeps the last events.
+pub fn pack_rooms(engine: Arc<Engine>, account_id: String, room_ids: Vec<String>) -> Items {
+    let empty = pack_rows(&room_ids, &[], &Events::new());
+    account_stream(engine, account_id, empty, move |_, client| {
+        let parsed: Vec<OwnedRoomId> = room_ids
+            .iter()
+            .filter_map(|id| RoomId::parse(id).ok())
+            .collect();
+        let changes = rooms_changes(&client, parsed.clone());
+        let (store, ids) = (client.clone(), room_ids.clone());
+        let locals = move || local_rows(store.clone(), ids.clone());
+        let events = move || {
+            let (client, parsed) = (client.clone(), parsed.clone());
+            async move { read_state(&client, &parsed, &[IMAGE_PACK.into(), ROOM_EMOTES.into()]).await }
+        };
+        pack_stream(room_ids, locals, events, changes)
     })
 }
 
@@ -217,11 +262,119 @@ fn pack_state<E>(state: &[Raw<E>]) -> (Option<String>, Vec<Value>) {
 
 async fn local_name(client: &Client, room_id: &RoomId) -> Option<String> {
     let room = client.get_room(room_id)?;
-    // js's room is unstored until sync, so an unnamed one has no name there; "Empty Room" is
-    // unlocalised English.
+    // An unnamed room reads `None`, also once synced, and the reader shows "Image pack": the
+    // SDK's "Empty Room" is unlocalised English.
     match room.display_name().await.ok()? {
         RoomDisplayName::Empty | RoomDisplayName::EmptyWas(_) => None,
         name => Some(name.to_string()),
+    }
+}
+
+async fn local_rows(client: Client, ids: Vec<String>) -> Vec<Option<Local>> {
+    let mut rows = Vec::with_capacity(ids.len());
+    for id in ids {
+        rows.push(local_row(&client, &id).await);
+    }
+    rows
+}
+
+async fn local_row(client: &Client, id: &str) -> Option<Local> {
+    let id = RoomId::parse(id).ok()?;
+    let room = client.get_room(&id)?;
+    let joined = room.state() == RoomState::Joined;
+    let can_write_pack = match client.user_id() {
+        Some(me) if joined => {
+            settled(&room).await;
+            let levels = room.power_levels_or_default().await;
+            levels.user_can_send_state(me, StateEventType::from(IMAGE_PACK))
+        }
+        _ => false,
+    };
+    Some(Local {
+        joined,
+        name: local_name(client, &id).await,
+        can_write_pack,
+    })
+}
+
+/// A room the account has just joined can be in the store before its power levels are, and
+/// reading the default then would say the owner cannot write. Waits until they are there.
+// shortcut: a polled wait of at most `LEVELS_WAIT`, since a store write that carries no room
+// update notifies nothing; replace it with a signal if the SDK gains one.
+async fn settled(room: &Room) {
+    for _ in 0..LEVELS_POLLS {
+        if room.power_levels().await.is_ok() {
+            return;
+        }
+        sleep(LEVELS_POLL).await;
+    }
+}
+
+/// One row per id in order; a room with no `locals` entry is a null row.
+fn pack_rows(ids: &[String], locals: &[Option<Local>], events: &Events) -> Vec<PackRoomDto> {
+    ids.iter()
+        .enumerate()
+        .map(|(i, id)| {
+            let local = locals.get(i).and_then(Option::as_ref);
+            let pack_events = RoomId::parse(id)
+                .ok()
+                .and_then(|room| events.get(&room))
+                .map(|all| all.iter().map(pack_event).collect())
+                .unwrap_or_default();
+            PackRoomDto {
+                room_id: id.clone(),
+                joined: local.is_some_and(|l| l.joined),
+                name: local.and_then(|l| l.name.clone()),
+                can_write_pack: local.is_some_and(|l| l.can_write_pack),
+                pack_events,
+            }
+        })
+        .collect()
+}
+
+fn pack_event(event: &Value) -> Value {
+    json!({"type": event["type"], "state_key": event["state_key"], "content": event["content"]})
+}
+
+/// The store-only rows at once, then each read's rows through `follow_state`. A read that fails
+/// still refreshes the store's fields and keeps the last events, so `joined` and `name` stay
+/// current.
+fn pack_stream<L, LF, E, EF>(
+    ids: Vec<String>,
+    mut locals: L,
+    mut events: E,
+    changes: impl Stream<Item = ()> + Unpin,
+) -> impl Stream<Item = Vec<PackRoomDto>>
+where
+    L: FnMut() -> LF,
+    LF: Future<Output = Vec<Option<Local>>>,
+    E: FnMut() -> EF,
+    EF: Future<Output = Result<Events, Error>>,
+{
+    stream! {
+        let first = pack_rows(&ids, &locals().await, &Events::new());
+        let kept = Arc::new(Mutex::new(Events::new()));
+        let read = move || {
+            let (store, server) = (locals(), events());
+            let (kept, ids) = (Arc::clone(&kept), ids.clone());
+            async move {
+                let store = store.await;
+                let server = server.await;
+                let mut kept = kept.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                match server {
+                    Ok(fresh) => *kept = fresh,
+                    Err(err) => {
+                        tracing::warn!(kind = ?classify(&err).0, "a pack room read failed");
+                    }
+                }
+                Ok(pack_rows(&ids, &store, &kept))
+            }
+        };
+        let mut rows = Box::pin(follow_state(first.clone(), read, changes).skip(1));
+        yield first;
+        while let Some(rows) = rows.next().await {
+            yield rows;
+        }
     }
 }
 
@@ -618,5 +771,142 @@ mod tests {
             packs,
             [json!({"type": "m.room.image_pack", "state_key": "y", "content": {}})]
         );
+    }
+}
+
+#[cfg(test)]
+mod pack_tests {
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
+
+    use futures_util::stream;
+    use matrix_sdk::{ruma::owned_room_id, timeout::timeout};
+    use tokio::sync::mpsc;
+
+    use super::*;
+
+    fn ids(ids: &[&str]) -> Vec<String> {
+        ids.iter().map(|id| (*id).to_owned()).collect()
+    }
+
+    fn local(joined: bool, name: Option<&str>, can_write_pack: bool) -> Option<Local> {
+        let name = name.map(str::to_owned);
+        Some(Local {
+            joined,
+            name,
+            can_write_pack,
+        })
+    }
+
+    fn pack(state_key: &str) -> Value {
+        json!({"type": IMAGE_PACK, "state_key": state_key, "content": {"images": {}},
+            "event_id": "$e", "sender": "@a:b"})
+    }
+
+    #[test]
+    fn rows_keep_the_order_asked() {
+        let asked = ids(&["!b:x", "!a:x"]);
+        let locals = [local(true, Some("B"), true), local(true, Some("A"), false)];
+        let events = Events::from([(owned_room_id!("!a:x"), vec![pack("k")])]);
+        let rows = pack_rows(&asked, &locals, &events);
+        let order: Vec<_> = rows.iter().map(|r| r.room_id.as_str()).collect();
+        assert_eq!(order, ["!b:x", "!a:x"]);
+        assert_eq!(rows[0].name.as_deref(), Some("B"));
+        assert!(rows[0].pack_events.is_empty());
+        assert_eq!(
+            rows[1].pack_events,
+            [json!({"type": IMAGE_PACK, "state_key": "k", "content": {"images": {}}})],
+            "the entry keeps its three fields only"
+        );
+    }
+
+    #[test]
+    fn an_unknown_room_is_a_null_row() {
+        let asked = ids(&["!gone:x", "not an id"]);
+        let rows = pack_rows(&asked, &[None, None], &Events::new());
+        for (row, id) in rows.iter().zip(&asked) {
+            let null = PackRoomDto {
+                room_id: id.clone(),
+                joined: false,
+                name: None,
+                can_write_pack: false,
+                pack_events: vec![],
+            };
+            assert_eq!(row, &null);
+        }
+    }
+
+    #[test]
+    fn a_left_room_keeps_its_name_and_cannot_write() {
+        let asked = ids(&["!r:x"]);
+        let rows = pack_rows(&asked, &[local(false, Some("Gone"), false)], &Events::new());
+        assert_eq!(rows[0].name.as_deref(), Some("Gone"));
+        assert!(!rows[0].joined && !rows[0].can_write_pack);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_open_stream_sends_one_request_in_a_burst() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&reads);
+        let events = move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+            async { Ok(Events::new()) }
+        };
+        let locals = || async { vec![local(true, None, true)] };
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let changes = stream::poll_fn(move |cx| rx.poll_recv(cx));
+        let mut rows = Box::pin(pack_stream(ids(&["!r:x"]), locals, events, changes));
+        assert!(rows.next().await.is_some(), "the store-only row");
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            0,
+            "no request before the first item"
+        );
+        for _ in 0..10 {
+            tx.send(()).unwrap();
+        }
+        assert!(timeout(rows.next(), Duration::from_secs(10)).await.is_err());
+        assert!(reads.load(Ordering::SeqCst) <= 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_read_still_refreshes_the_store_fields_and_keeps_the_events() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let n = Arc::clone(&reads);
+        let room = owned_room_id!("!r:x");
+        let events = move || {
+            let first = n.fetch_add(1, Ordering::SeqCst) == 0;
+            let seen = Events::from([(owned_room_id!("!r:x"), vec![pack("")])]);
+            async move {
+                if first {
+                    Ok(seen)
+                } else {
+                    Err(Error::UnknownError("x".into()))
+                }
+            }
+        };
+        let step = Arc::new(AtomicUsize::new(0));
+        let locals = move || {
+            let name = if step.fetch_add(1, Ordering::SeqCst) < 2 {
+                "Old"
+            } else {
+                "New"
+            };
+            let rows = vec![local(true, Some(name), true)];
+            async move { rows }
+        };
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let changes = stream::poll_fn(move |cx| rx.poll_recv(cx));
+        let mut rows = Box::pin(pack_stream(ids(&[room.as_str()]), locals, events, changes));
+        let first = rows.next().await.unwrap();
+        assert!(first[0].pack_events.is_empty());
+        let read = rows.next().await.unwrap();
+        assert_eq!(read[0].pack_events.len(), 1);
+        tx.send(()).unwrap();
+        let after = rows.next().await.unwrap();
+        assert_eq!(after[0].name.as_deref(), Some("New"));
+        assert_eq!(after[0].pack_events.len(), 1, "the last events stand");
     }
 }

@@ -34,7 +34,6 @@ const RETRY_GAP: Duration = Duration::from_secs(30);
 
 /// The current state events of `types` per room, read from the server. A room the account was
 /// never in is absent.
-#[cfg_attr(not(test), expect(dead_code, reason = "W3 calls it"))]
 pub(crate) async fn read_state(
     client: &Client,
     rooms: &[OwnedRoomId],
@@ -92,7 +91,6 @@ fn state_request(rooms: &[OwnedRoomId], types: &[StateEventType]) -> v5::Request
 /// `first` at once, with no network. Then a read and an item if it changed, then a wait for a
 /// tick and at least 1 s, or 30 s after a failed read. Ticks during a read or a wait count as
 /// one. The stream ends when `changes` does, noticed after a wait or a failed read's wait.
-#[cfg_attr(not(test), expect(dead_code, reason = "W3 calls it"))]
 pub(crate) fn follow_state<T, F, Fut>(
     first: T,
     mut read: F,

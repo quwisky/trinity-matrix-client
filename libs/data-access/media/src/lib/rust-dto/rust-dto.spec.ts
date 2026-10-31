@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import type { JoinedPackRoom } from '../expression-engine';
+import type { JoinedPackRoom, PackRoomSnapshot } from '../expression-engine';
 import type { JoinedPackRoomDto } from './JoinedPackRoomDto';
+import type { PackRoomDto } from './PackRoomDto';
 
 describe('Rust engine DTOs', () => {
   it('match what the TypeScript types describe, numbers included', () => {
@@ -17,5 +18,8 @@ describe('Rust engine DTOs', () => {
       state_key: string;
       content: unknown;
     }>();
+    expectTypeOf<PackRoomDto>().toExtend<PackRoomSnapshot>();
+    expectTypeOf<keyof PackRoomDto>().toEqualTypeOf<keyof PackRoomSnapshot>();
+    expectTypeOf<PackRoomDto['name']>().toEqualTypeOf<string | null>();
   });
 });
