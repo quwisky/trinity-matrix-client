@@ -113,8 +113,8 @@ jobs:
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
   # Builds only the Swift CodeQL can compile without the app: the TrinityPush package
-  # (libs/native/capacitor-push/ios/TrinityPush, Foundation and Security only), the push
-  # rendering shared by the plugin and the NotificationService extension; and the
+  # (libs/native/capacitor-push/ios/TrinityPush, Foundation, Security and CryptoKit only), the
+  # push rendering shared by the plugin and the NotificationService extension; and the
   # TrinityAppLockCore package (libs/native/capacitor-app-lock/ios/TrinityAppLockCore,
   # Foundation, Security and CommonCrypto only), the App lock PIN verifier.
   #
