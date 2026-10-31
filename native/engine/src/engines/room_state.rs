@@ -34,7 +34,7 @@ const RETRY_GAP: Duration = Duration::from_secs(30);
 
 /// The current state events of `types` per room, read from the server. A room the account was
 /// never in is absent.
-#[cfg_attr(not(test), expect(dead_code, reason = "W2 calls it"))]
+#[cfg_attr(not(test), expect(dead_code, reason = "W3 calls it"))]
 pub(crate) async fn read_state(
     client: &Client,
     rooms: &[OwnedRoomId],
@@ -44,6 +44,8 @@ pub(crate) async fn read_state(
         return Ok(BTreeMap::new());
     }
     let request = state_request(rooms, types);
+    // shortcut: no byte cap on the response, only the 30 s limit; cap it if a pack room's state
+    // grows large enough to matter.
     let response = client
         .send(request)
         .with_request_config(sent_once())
@@ -53,7 +55,10 @@ pub(crate) async fn read_state(
     for (room, data) in response.rooms {
         let mut events = Vec::new();
         for event in &data.required_state {
-            let event: Value = event.deserialize_as()?;
+            let Ok(event) = event.deserialize_as::<Value>() else {
+                tracing::warn!("a state event was unreadable");
+                continue;
+            };
             if event["type"]
                 .as_str()
                 .is_some_and(|t| wanted.iter().any(|w| w == t))
@@ -86,8 +91,8 @@ fn state_request(rooms: &[OwnedRoomId], types: &[StateEventType]) -> v5::Request
 
 /// `first` at once, with no network. Then a read and an item if it changed, then a wait for a
 /// tick and at least 1 s, or 30 s after a failed read. Ticks during a read or a wait count as
-/// one. The stream ends with `changes`.
-#[cfg_attr(not(test), expect(dead_code, reason = "W2 calls it"))]
+/// one. The stream ends when `changes` does, noticed after a wait or a failed read's wait.
+#[cfg_attr(not(test), expect(dead_code, reason = "W3 calls it"))]
 pub(crate) fn follow_state<T, F, Fut>(
     first: T,
     mut read: F,
@@ -118,7 +123,11 @@ where
                     sleep(RETRY_GAP).await;
                 }
             }
-            while changes.next().now_or_never().flatten().is_some() {}
+            while let Some(tick) = changes.next().now_or_never() {
+                if tick.is_none() {
+                    return;
+                }
+            }
         }
     }
 }
@@ -151,7 +160,10 @@ mod tests {
     use futures_util::stream;
     use matrix_sdk::ruma::{owned_room_id, room_id};
     use serde_json::json;
-    use tokio::{sync::mpsc, time::Instant};
+    use tokio::{
+        sync::mpsc,
+        time::{Instant, timeout},
+    };
 
     use super::*;
     use crate::{
@@ -247,6 +259,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_bad_event_is_skipped_beside_a_good_one() {
+        // Deeper than serde_json's recursion limit, which `Raw` does not apply.
+        let nested = (0..127).fold(json!(1), |inner, _| json!({"a": inner}));
+        let deep = json!({"type": "m.room.image_pack", "state_key": "d", "content": nested});
+        let body = json!({"pos": "0", "rooms": {"!r:b": {"required_state": [
+            deep,
+            event("m.room.image_pack", ""),
+        ]}}});
+        let (base, _) = scripted(vec![(SYNC, 200, body)]);
+        let client = client_on(&base).await;
+        let asked = [owned_room_id!("!r:b")];
+        let read = read_state(&client, &asked, &kinds()).await.unwrap();
+        assert_eq!(read[&asked[0]], [event("m.room.image_pack", "")]);
+    }
+
+    #[tokio::test]
     async fn fetch_is_none_for_a_missing_event() {
         let kind = StateEventType::from("im.vector.modular.widgets");
         let (base, _) = scripted(vec![
@@ -264,6 +292,18 @@ mod tests {
             Some(json!({"a": 1}))
         );
         assert_eq!(fetch(&client, room, &kind, "w").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn fetch_is_sent_once() {
+        let (base, seen) = scripted(vec![
+            ("GET /_matrix/client/v3/rooms/*", 502, json!({})),
+            ("GET /_matrix/client/v3/rooms/*", 200, json!({})),
+        ]);
+        let client = client_on(&base).await;
+        let kind = StateEventType::from("im.vector.modular.widgets");
+        assert!(fetch(&client, room_id!("!r:b"), &kind, "w").await.is_err());
+        assert_eq!(requests(&seen).len(), 1);
     }
 
     /// Reads answered from a script, each noting when it ran.
@@ -317,7 +357,11 @@ mod tests {
         assert_eq!(items.next().await, Some(2));
         assert!(burst.elapsed() >= MIN_GAP);
         // The ten ticks were one: the next read waits for a new tick.
-        assert!(items.next().now_or_never().is_none());
+        assert!(
+            timeout(Duration::from_secs(10), items.next())
+                .await
+                .is_err()
+        );
         let at = reads.at.borrow().clone();
         assert_eq!(at.len(), 2, "{at:?}");
         assert!(at[1] - at[0] >= MIN_GAP, "{at:?}");
@@ -346,11 +390,27 @@ mod tests {
         let (tx, changes) = ticks();
         let mut items = Box::pin(follow_state(0, || reads.read(), changes));
         assert_eq!(items.next().await, Some(0));
-        let next = items.next();
-        assert_eq!(next.await, Some(1));
+        // A tick that arrives during the wait is not a reason for another read.
+        tx.send(()).unwrap();
+        assert_eq!(items.next().await, Some(1));
         let at = reads.at.borrow().clone();
         assert_eq!(at, [Duration::ZERO, RETRY_GAP]);
+        assert!(
+            timeout(Duration::from_secs(10), items.next())
+                .await
+                .is_err()
+        );
+        assert_eq!(reads.at.borrow().len(), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_stream_ends_with_changes_after_a_failed_read() {
+        let reads = Reads::new(&[Err(())]);
+        let (tx, changes) = ticks();
+        let mut items = Box::pin(follow_state(0, || reads.read(), changes));
+        assert_eq!(items.next().await, Some(0));
         drop(tx);
+        assert_eq!(items.next().await, None);
     }
 
     #[tokio::test(start_paused = true)]

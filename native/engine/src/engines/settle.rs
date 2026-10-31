@@ -51,23 +51,10 @@ pub(crate) fn room_changes(
     client: &Client,
     room_id: &RoomId,
 ) -> impl Stream<Item = ()> + Unpin + use<> {
-    let (room_id, mut updates) = (
-        room_id.to_owned(),
-        client.room_info_notable_update_receiver(),
-    );
-    Box::pin(async_stream::stream! {
-        loop {
-            match updates.recv().await {
-                Ok(update) if update.room_id != room_id => {}
-                Ok(_) | Err(RecvError::Lagged(_)) => yield (),
-                Err(RecvError::Closed) => return,
-            }
-        }
-    })
+    rooms_changes(client, vec![room_id.to_owned()])
 }
 
 /// Notable updates of any of `rooms`; a lag counts as a change.
-#[cfg_attr(not(test), expect(dead_code, reason = "W2 calls it"))]
 pub(crate) fn rooms_changes(
     client: &Client,
     rooms: Vec<OwnedRoomId>,
