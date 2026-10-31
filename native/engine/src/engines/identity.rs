@@ -120,8 +120,8 @@ pub(crate) struct IdentitySignals {
     pub(crate) presence: watch::Sender<u64>,
     /// `setIgnored` ran, or an `m.ignored_user_list` account-data event arrived.
     pub(crate) ignored: watch::Sender<u64>,
-    /// Serialises `setIgnored` on this account.
-    pub(crate) ignore_writes: Mutex<()>,
+    /// Serialises `setIgnored` on this account; shared so a call can queue without the account.
+    pub(crate) ignore_writes: Arc<Mutex<()>>,
 }
 
 impl IdentitySignals {
@@ -130,7 +130,7 @@ impl IdentitySignals {
             profile: watch::Sender::new(0),
             presence: watch::Sender::new(0),
             ignored: watch::Sender::new(0),
-            ignore_writes: Mutex::new(()),
+            ignore_writes: Arc::new(Mutex::new(())),
         };
         let (own, profile) = (account_id.to_owned(), signals.profile.clone());
         client.add_event_handler(move |event: OriginalSyncRoomMemberEvent| {
@@ -238,36 +238,50 @@ pub fn set_presence(
     ))
 }
 
-/// A read of at most 30 s, a write cut off at 60 s and the rule's delivery waits end within
-/// `HOLDER_LIMIT`, not counting a wait for the writes ahead of it.
+/// A call waits for the writes ahead of it before it takes the account, so a queue never holds
+/// it: a read of at most 30 s, a write cut off at 60 s and the rule's delivery waits end within
+/// `HOLDER_LIMIT`. A call whose turn comes after a teardown answers `account-not-live`.
 pub fn set_ignored(
     engine: Arc<Engine>,
     account_id: String,
     user_id: String,
     ignored: bool,
 ) -> Stream {
-    detached(on_account(
-        engine,
-        account_id,
-        request_failed,
-        move |engine, rt| async move {
-            // Held across the read and the write, so quick changes never undo each other.
-            let _writing = rt.identity.ignore_writes.lock().await;
-            let read = account_data::get(&rt.client, IGNORED_USER_LIST);
-            let current = engine.ruled(&rt, read).await?;
-            if let Some(edited) = edit_ignored(current, &user_id, ignored) {
-                let write = account_data::put(&rt.client, IGNORED_USER_LIST, &edited);
-                engine.ruled(&rt, write).await?;
-            }
-            tick(&rt.identity.ignored);
-            Ok(())
-        },
-    ))
+    detached(async move {
+        // shortcut: a call queued across a client replacement waits on the old client's lock and
+        // runs beside the new one's writes, upgrade if replacements overlap writes in practice.
+        let queue = engine
+            .account(&account_id)
+            .map(|rt| Arc::clone(&rt.identity.ignore_writes));
+        let turn = match queue {
+            Some(queue) => Some(queue.lock_owned().await),
+            None => None,
+        };
+        on_account(
+            engine,
+            account_id,
+            request_failed,
+            move |engine, rt| async move {
+                // Held across the read and the write, so quick changes never undo each other.
+                let _turn = turn;
+                let read = account_data::get(&rt.client, IGNORED_USER_LIST);
+                let current = engine.ruled(&rt, read).await?;
+                if let Some(edited) = edit_ignored(current, &user_id, ignored) {
+                    let write = account_data::put(&rt.client, IGNORED_USER_LIST, &edited);
+                    engine.ruled(&rt, write).await?;
+                }
+                tick(&rt.identity.ignored);
+                Ok(())
+            },
+        )
+        .await
+    })
 }
 
 fn own_id(client: &Client) -> Result<OwnedUserId, Error> {
-    let me = client.user_id();
-    me.map(ToOwned::to_owned)
+    client
+        .user_id()
+        .map(ToOwned::to_owned)
         .ok_or(Error::AuthenticationRequired)
 }
 
@@ -390,9 +404,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        accounts::Engine,
         config::EngineConfig,
-        dispatch::Stream,
         failure::http_error_from_response,
         testing::{Seen, default_client, engine_in, live, password, requests, scripted},
     };
@@ -873,6 +885,38 @@ mod tests {
             let seen = [&signals.profile, &signals.presence, &signals.ignored].map(|s| *s.borrow());
             assert_eq!(seen, ticks);
         }
+    }
+
+    #[tokio::test]
+    async fn a_queued_ignore_write_waits_without_holding_the_account() {
+        let root = TempDir::new().unwrap();
+        let (engine, seen) = live_on(
+            &root,
+            vec![(IGNORED_GET, 200, json!({"ignored_users": {}}))],
+        )
+        .await;
+        let rt = engine.account("@a:b").unwrap();
+        let queue = Arc::clone(&rt.identity.ignore_writes);
+        drop(rt);
+        let turn = Arc::clone(&queue).lock_owned().await;
+        let queued = set_ignored(Arc::clone(&engine), "@a:b".into(), "@b:c".into(), true);
+        // The registry's runtime, the guard, this test, and the call waiting for its turn.
+        let waiting = async {
+            while Arc::strong_count(&queue) < 4 {
+                sleep(Duration::from_millis(10)).await;
+            }
+        };
+        let waiting = timeout(waiting, Duration::from_secs(2)).await;
+        assert!(
+            waiting.is_ok(),
+            "the call did not take its place in the queue"
+        );
+        let removed = timeout(engine.remove("@a:b"), Duration::from_secs(5)).await;
+        assert!(removed.is_ok(), "the queued call held the account");
+        drop(turn);
+        let reply = first(queued).await;
+        assert_eq!(reply["failure"]["code"], json!("account-not-live"));
+        assert!(requests(&seen).is_empty());
     }
 
     #[tokio::test]
