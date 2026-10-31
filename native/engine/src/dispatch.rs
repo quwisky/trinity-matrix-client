@@ -204,6 +204,27 @@ methods! {
         room_id_or_alias: String,
         via: Vec<String>,
     ),
+    "roomList.spaceChildLinks" => room_list::spaces::space_child_links(
+        account_id: String,
+        space_id: String,
+    ),
+    "roomList.spaceHierarchy" => room_list::spaces::space_hierarchy(
+        account_id: String,
+        space_id: String,
+        options: room_list::HierarchyOptionsDto,
+    ),
+    "roomList.setSpaceChild" => room_list::spaces::set_space_child(
+        account_id: String,
+        space_id: String,
+        child_id: String,
+        link: Option<room_list::SpaceChildLinkInputDto>,
+    ),
+    "roomList.setSpaceParent" => room_list::spaces::set_space_parent(
+        account_id: String,
+        child_id: String,
+        space_id: String,
+        via: Vec<String>,
+    ),
     "session.session" => session::session(),
     "session.restorePersisted" => session::restore_persisted(
         session: session::MatrixSessionDto,

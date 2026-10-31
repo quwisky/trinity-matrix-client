@@ -26,7 +26,8 @@ use matrix_sdk::{
         },
         events::{
             AnyInitialStateEvent, InitialStateEvent, marked_unread::MarkedUnreadEventContent,
-            room::encryption::RoomEncryptionEventContent, tag::TagInfo,
+            room::encryption::RoomEncryptionEventContent, space::parent::SpaceParentEventContent,
+            tag::TagInfo,
         },
         room::RoomType,
         serde::Raw,
@@ -35,9 +36,10 @@ use matrix_sdk::{
 use serde_json::{Map, Value, json};
 
 use super::{
-    CreateRoomRequestDto, ReceiptsDto, RoomIdDto, RoomKindDto, RoomTagDto,
+    CreateRoomRequestDto, ReceiptsDto, RoomIdDto, RoomKindDto, RoomTagDto, SpaceChildLinkInputDto,
     rows::membership_of,
     settle::{account_data_changes, room_changes, settle},
+    spaces::{child_content, write_child},
     typing::direct_map_in,
 };
 use crate::{
@@ -56,8 +58,14 @@ fn encrypted() -> Vec<Raw<AnyInitialStateEvent>> {
     vec![InitialStateEvent::with_empty_state_key(content).to_raw_any()]
 }
 
-/// The js adapter's `createRoomOrSpace`: an encrypted room, or a space, which is not encrypted.
-pub(crate) fn create_request(req: &CreateRoomRequestDto) -> create_room::v3::Request {
+/// The js adapter's `createRoomOrSpace`: an encrypted room, or a space, which is not encrypted. A
+/// parent space adds a canonical `m.space.parent` to the initial state, so the new room is never
+/// seen without it.
+pub(crate) fn create_request(
+    req: &CreateRoomRequestDto,
+    server: &ServerName,
+    parent: Option<&RoomId>,
+) -> create_room::v3::Request {
     let mut request = create_room::v3::Request::new();
     request.name = Some(req.name.trim().to_owned());
     request.topic = req
@@ -78,6 +86,12 @@ pub(crate) fn create_request(req: &CreateRoomRequestDto) -> create_room::v3::Req
             request.creation_content = Raw::new(&content).ok();
         }
         RoomKindDto::Room => request.initial_state = encrypted(),
+    }
+    if let Some(parent) = parent {
+        let mut content = SpaceParentEventContent::new(vec![server.to_owned()]);
+        content.canonical = true;
+        let event = InitialStateEvent::new(parent.to_owned(), content);
+        request.initial_state.push(event.to_raw_any());
     }
     request
 }
@@ -144,8 +158,8 @@ fn answer(room_id: &RoomId) -> RoomIdDto {
     }
 }
 
-/// Worst case about 55 s: the request (30 s) with up to ~5 s of `ruled` waits, a settle (15 s) and
-/// the delivery (5 s).
+/// Worst case about 110 s: the request (30 s) with up to ~5 s of `ruled` waits, a settle (15 s) and
+/// the delivery (5 s), and with a parent the same again for the child link.
 pub fn create_room(
     engine: Arc<Engine>,
     account_id: String,
@@ -156,12 +170,25 @@ pub fn create_room(
         account_id,
         request_failed,
         move |engine, rt| async move {
+            let server = me(&rt.client)?.server_name().to_owned();
+            let parent = request.parent_space_id.as_deref().map(RoomId::parse);
+            let parent = parent.transpose()?;
             let sent = rt
                 .client
-                .send(create_request(&request))
+                .send(create_request(&request, &server, parent.as_deref()))
                 .with_request_config(sent_once());
             let room_id = engine.ruled(&rt, sent).await?.room_id;
             show(&rt, &room_id, |state| state == Some(RoomState::Joined)).await;
+            if let Some(parent) = parent {
+                let link = SpaceChildLinkInputDto {
+                    via: vec![server.to_string()],
+                    suggested: true,
+                    order: String::new(),
+                };
+                let content = child_content(Some(&link));
+                write_child(&engine, &rt, &parent, room_id.as_str(), &content).await?;
+                rt.nudge(Some(&parent)).delivered().await;
+            }
             Ok(answer(&room_id))
         },
     ))
@@ -448,7 +475,7 @@ mod tests {
 
     use futures_util::StreamExt;
     use matrix_sdk::{
-        ruma::{event_id, room_id, user_id},
+        ruma::{event_id, room_id, server_name, user_id},
         timeout::timeout,
     };
     use serde_json::json;
@@ -482,7 +509,11 @@ mod tests {
     #[test]
     fn create_request_builds_a_room_and_a_space() {
         let encryption: Value = serde_json::from_str(ENCRYPTION).unwrap();
-        let room = create_request(&room_request(" x ", Some("  "), RoomKindDto::Room));
+        let room = create_request(
+            &room_request(" x ", Some("  "), RoomKindDto::Room),
+            server(),
+            None,
+        );
         assert_eq!(room.name.as_deref(), Some("x"));
         assert_eq!(room.topic, None);
         assert_eq!(room.visibility, Visibility::Private);
@@ -492,12 +523,29 @@ mod tests {
 
         let mut public = room_request("p", Some(" why "), RoomKindDto::Space);
         public.is_public = true;
-        let space = create_request(&public);
+        let space = create_request(&public, server(), None);
         assert_eq!(space.topic.as_deref(), Some("why"));
         assert_eq!(space.visibility, Visibility::Public);
         assert_eq!(space.preset, Some(RoomPreset::PublicChat));
         assert_eq!(json_of(&space.creation_content), json!({"type": "m.space"}));
         assert!(space.initial_state.is_empty());
+    }
+
+    fn server() -> &'static ServerName {
+        server_name!("x")
+    }
+
+    #[test]
+    fn create_request_puts_a_canonical_parent_in_initial_state() {
+        let encryption: Value = serde_json::from_str(ENCRYPTION).unwrap();
+        let child = room_request("c", None, RoomKindDto::Room);
+        let parent = json!({
+            "type": "m.space.parent",
+            "state_key": "!s:x",
+            "content": {"via": ["x"], "canonical": true},
+        });
+        let request = create_request(&child, server(), Some(room_id!("!s:x")));
+        assert_eq!(json_of(&request.initial_state), json!([encryption, parent]));
     }
 
     #[test]
