@@ -457,6 +457,34 @@ describe('MatrixAccountRuntimeAdapter', () => {
       },
     );
 
+    it('keeps it when the revocation has not settled by the time of removal', async () => {
+      vi.useFakeTimers();
+      try {
+        const test = offline([]);
+        test.client.logout.mockReset();
+        let settleLogout: (error: Error) => void = () => undefined;
+        test.client.logout.mockReturnValue(
+          new Promise((_, reject) => {
+            settleLogout = reject;
+          }),
+        );
+
+        test.adapter.signOutAccount('@oidc:hs').subscribe();
+        await vi.advanceTimersByTimeAsync(
+          ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
+        );
+
+        expect(test.storage.clear).toHaveBeenCalledExactlyOnceWith({
+          keepNativeTokens: true,
+        });
+        settleLogout(new Error('late transient'));
+        await vi.runAllTimersAsync();
+        expect(test.storage.removeNativeTokens).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('keeps it while the retry still cannot revoke', async () => {
       const test = offline([]);
       test.client.logout.mockReset();

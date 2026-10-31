@@ -22,6 +22,7 @@ import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
 import { accountSignOutSettlement } from './account-sign-out-outcome';
 import {
   AccountSignOutRetryWorkflow,
+  providerRevocationUnresolved,
   remoteLogout,
   remoteLogoutScope,
   type SignOutRetryContext,
@@ -342,21 +343,6 @@ export class AccountLifecycleAdapter {
       );
   }
 
-  /**
-   * The native vault record is the retry's only way to revoke at the provider, so a
-   * removal keeps it while that revocation stands as retry residue; the retry removes it.
-   */
-  private keepsNativeTokens(
-    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
-  ): boolean {
-    return attempt
-      .settledIssues()
-      .some(
-        ({ scope, recovery }) =>
-          scope === 'provider-session' && recovery === 'retry-sign-out',
-      );
-  }
-
   private clearLastAccount(
     attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
     accountId: string,
@@ -373,7 +359,7 @@ export class AccountLifecycleAdapter {
         concatMap(() =>
           attempt.capture(
             defer(() =>
-              this.keepsNativeTokens(attempt)
+              providerRevocationUnresolved(attempt)
                 ? this.storage.clear({ keepNativeTokens: true })
                 : this.storage.clear(),
             ),
@@ -403,7 +389,7 @@ export class AccountLifecycleAdapter {
         concatMap(() =>
           attempt.capture(
             defer(() =>
-              this.keepsNativeTokens(attempt)
+              providerRevocationUnresolved(attempt)
                 ? this.storage.remove(accountId, { keepNativeTokens: true })
                 : this.storage.remove(accountId),
             ),

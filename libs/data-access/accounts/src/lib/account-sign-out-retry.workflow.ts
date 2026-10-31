@@ -57,6 +57,24 @@ export function remoteLogoutScope(
   return context.providerExpected ? 'provider-session' : 'matrix-session';
 }
 
+/**
+ * Whether the provider revocation can still need the native vault record: it failed with a
+ * retry standing, or has not settled within its step budget and may yet fail.
+ */
+export function providerRevocationUnresolved(
+  attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+): boolean {
+  return (
+    attempt.pendingScopes().includes('provider-session') ||
+    attempt
+      .settledIssues()
+      .some(
+        ({ scope, recovery }) =>
+          scope === 'provider-session' && recovery === 'retry-sign-out',
+      )
+  );
+}
+
 /** Retains only the context required to retry settled, safe Account-removal residue. */
 @Injectable({ providedIn: 'root' })
 export class AccountSignOutRetryWorkflow {
@@ -69,11 +87,8 @@ export class AccountSignOutRetryWorkflow {
     this.residue.set(context.accountId, context);
   }
 
-  /** Forget a retained removal; one given up or dismissed releases its native tokens. */
   clear(accountId: string): void {
-    if (this.residue.delete(accountId)) {
-      this.removeNativeTokens(accountId).subscribe();
-    }
+    this.residue.delete(accountId);
   }
 
   retry(
@@ -159,7 +174,7 @@ export class AccountSignOutRetryWorkflow {
       // revocation resolved, and kept while it still stands.
       operations.push(
         defer(() =>
-          this.providerRevocationStands(attempt)
+          providerRevocationUnresolved(attempt)
             ? of(void 0)
             : this.removeNativeTokens(context.accountId),
         ),
@@ -207,7 +222,7 @@ export class AccountSignOutRetryWorkflow {
     attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
     context: SignOutRetryContext,
   ): Observable<unknown> {
-    const keep = defer(() => of(this.providerRevocationStands(attempt)));
+    const keep = defer(() => of(providerRevocationUnresolved(attempt)));
     const source =
       context.remainingAccountIds.length === 0
         ? keep.pipe(
@@ -239,17 +254,6 @@ export class AccountSignOutRetryWorkflow {
         attempt.resolveIssue('secure-storage');
       },
     });
-  }
-
-  private providerRevocationStands(
-    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
-  ): boolean {
-    return attempt
-      .settledIssues()
-      .some(
-        ({ scope, recovery }) =>
-          scope === 'provider-session' && recovery === 'retry-sign-out',
-      );
   }
 
   /** Best effort: a refusal leaves residue the startup sweep clears. */
@@ -284,8 +288,7 @@ export class AccountSignOutRetryWorkflow {
       issues,
     );
     if (issues.length === 0) {
-      // Not `clear`: `run` already released the native tokens the revocation resolved.
-      this.residue.delete(context.accountId);
+      this.clear(context.accountId);
       return outcome;
     }
     this.retain(context);

@@ -1106,14 +1106,21 @@ describe('SessionStorageService', () => {
       expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith('@bob:other');
     });
 
-    it('empties the vault when it clears every account', async () => {
+    it('removes only its own records when the last account signs out, and empties the vault on a clear-all', async () => {
       const { svc, bridge } = setup();
       await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+      await firstValueFrom(svc.remove('@alice:hs', { keepNativeTokens: true }));
 
       await firstValueFrom(svc.clear());
+
+      expect(bridge.removeTokens.mock.calls).toEqual([['@bob:other']]);
+
+      await firstValueFrom(svc.save(ALICE));
+      bridge.removeTokens.mockClear();
       await firstValueFrom(svc.clearAll());
 
-      expect(bridge.removeTokens.mock.calls).toEqual([[], []]);
+      expect(bridge.removeTokens.mock.calls).toEqual([[]]);
     });
 
     it('rejects clear() and clearAll() when the native removal is refused, after the JS tokens', async () => {
@@ -1311,19 +1318,13 @@ describe('SessionStorageService', () => {
       expect(secure.store.has('matrix.accessToken:@carol:hs')).toBe(true);
     });
 
-    it('never asks the bridge anything off native', async () => {
+    it('changes none of the JS removals off native, where the bridge is inert', async () => {
       const { svc, removals } = setup({});
-      const bridge = TestBed.inject(PushHandoffBridge);
-      const removeTokens = vi.spyOn(bridge, 'removeTokens');
+      expect(TestBed.inject(PushHandoffBridge).available).toBe(false);
       await firstValueFrom(svc.save(CAROL));
       removals.mockClear();
 
       await firstValueFrom(svc.remove('@carol:hs'));
-
-      expect(bridge.available).toBe(false);
-      expect(removeTokens.mock.results.map(({ value }) => value)).toHaveLength(
-        1,
-      );
 
       expect(removals.mock.calls.map(([key]) => key)).toEqual([
         'matrix.accessToken:@carol:hs',
