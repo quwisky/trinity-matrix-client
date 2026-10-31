@@ -6,4 +6,4 @@ import type { FailureKind } from "./FailureKind";
 import type { RequestParams } from "./RequestParams";
 import type { UiaChallengeDto } from "./UiaChallengeDto";
 
-export type EngineFailure = { kind: FailureKind, diagnostic: Diagnostic, } & ({ "code": "not-signed-in" } | { "code": "discovery-failed", params: DiscoveryParams, } | { "code": "request-failed", params?: RequestParams, } | { "code": "account-not-live" } | { "code": "account-start-failed", params: { reason: AccountStartFailureReason, }, } | { "code": "uia-required", params: { challenge: UiaChallengeDto, }, } | { "code": "unsupported" } | { "code": "forbidden" });
+export type EngineFailure = { kind: FailureKind, diagnostic: Diagnostic, } & ({ "code": "not-signed-in" } | { "code": "discovery-failed", params: DiscoveryParams, } | { "code": "request-failed", params?: RequestParams, } | { "code": "account-not-live" } | { "code": "account-start-failed", params: { reason: AccountStartFailureReason, }, } | { "code": "uia-required", params: { challenge: UiaChallengeDto, }, } | { "code": "invite-blocked" } | { "code": "unsupported" } | { "code": "forbidden" });

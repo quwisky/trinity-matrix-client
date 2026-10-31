@@ -9,4 +9,5 @@ pub mod failure;
 mod store;
 #[cfg(test)]
 pub(crate) mod testing;
+pub mod vector_diff;
 pub mod wire;

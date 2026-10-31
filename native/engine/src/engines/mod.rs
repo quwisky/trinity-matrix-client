@@ -6,4 +6,5 @@ pub mod discovery;
 pub mod homeserver;
 pub mod identity;
 pub mod member;
+pub mod room_list;
 pub mod session;
