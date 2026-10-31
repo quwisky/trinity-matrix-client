@@ -17,7 +17,10 @@ import {
   resetApp,
 } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
-import { storeExpiredPushAccount } from '../support/push-handoff.mts';
+import {
+  storeExpiredPushAccount,
+  tokenAnswersForUnknownAccount,
+} from '../support/push-handoff.mts';
 
 /** What the NotificationService extension would show, as the debug render probe reports it. */
 interface RenderedPush {
@@ -192,5 +195,15 @@ describe('device-rendered push on iOS', () => {
       body: 'Open Trinity to read this message',
       threadIdentifier: room.roomId,
     });
+  });
+
+  it('answers the token calls for an account with no tokens through the installed plugin', async () => {
+    const answers = await tokenAnswersForUnknownAccount(
+      `@${uniqueId('nobody')}:unknown.invalid`,
+    );
+
+    expect(answers.current).toEqual({ kind: 'gone' });
+    expect(answers.refresh).toEqual({ kind: 'gone' });
+    expect(answers.malformedRemoval).toContain('userId must be a string');
   });
 });

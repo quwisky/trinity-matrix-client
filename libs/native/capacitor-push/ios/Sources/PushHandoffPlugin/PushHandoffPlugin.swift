@@ -295,6 +295,12 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
         UIApplication.shared.endBackgroundTask(task)
     }
 
+    /// `resolve` queues its delivery to JS on the main queue: suspending before that runs would
+    /// hold the answer until the app resumes.
+    private func endBackgroundTaskAfterQueuedWork(_ task: UIBackgroundTaskIdentifier) {
+        DispatchQueue.main.async { self.endBackgroundTask(task) }
+    }
+
     /// Holds background run time until it answers or iOS ends the granted time: suspended
     /// mid-grant, the app loses the answer after the provider has spent the refresh token.
     @objc func refreshTokens(_ call: CAPPluginCall) {
@@ -310,10 +316,17 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         Task { @MainActor in
             let task = self.beginBackgroundTask()
+            guard TokenRefresher.mayStartAppGrant(
+                hasBackgroundTime: task != .invalid,
+                appIsActive: UIApplication.shared.applicationState == .active
+            ) else {
+                call.resolve(TokenRefreshResult.transient.wire)
+                return
+            }
             let result = await tokens.refresh(
                 account: userId, lineage: lineage, tokenSeen: tokenSeen, budget: TokenBudgets.appGrant)
             call.resolve(result.wire)
-            self.endBackgroundTask(task)
+            self.endBackgroundTaskAfterQueuedWork(task)
         }
     }
 
@@ -354,9 +367,7 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func removeTokens(_ call: CAPPluginCall) {
-        let userId = call.getString("userId")
-        // Only a user id left out removes every record: a malformed one must not.
-        guard userId != nil || call.getValue("userId") == nil else {
+        guard let options = call.options as? [String: Any], let removal = TokenRemoval.fromPluginCall(options) else {
             call.reject("userId must be a string")
             return
         }
@@ -365,7 +376,7 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         Task {
-            if await tokens.remove(account: userId) {
+            if await tokens.remove(account: removal.account) {
                 call.resolve()
             } else {
                 call.reject("Could not remove the tokens")

@@ -45,6 +45,12 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
     /// One instance per process: every caller in it must see the same unsaved pair.
     public static func fromMainBundle() -> TokenRefresher? { shared }
 
+    /// A grant spends the refresh token. If the app suspends before the answer arrives the answer
+    /// is lost, the next refresh is refused, and that signs the account out.
+    public static func mayStartAppGrant(hasBackgroundTime: Bool, appIsActive: Bool) -> Bool {
+        hasBackgroundTime || appIsActive
+    }
+
     public func refresh(
         account: String, lineage: String, tokenSeen: String, budget: TimeInterval
     ) async -> TokenRefreshResult {

@@ -18,6 +18,7 @@ import dev.trinityproject.trinity.push.RoomNotificationKey;
 import dev.trinityproject.trinity.push.TokenRecord;
 import dev.trinityproject.trinity.push.TokenRecordKt;
 import dev.trinityproject.trinity.push.TokenRefresher;
+import dev.trinityproject.trinity.push.TokenRemoval;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -239,19 +240,21 @@ public class PushHandoffPlugin extends Plugin {
         answerOnWorker(call, transientAnswer(), () -> tokens.revoke(userId, lineage).wire());
     }
 
-    /** One account, or every record when no user id is given. Rejects only on a store failure. */
+    /**
+     * One account, or every record when no user id is given. Rejects on a malformed id or a store
+     * failure.
+     */
     @PluginMethod
     public void removeTokens(PluginCall call) {
-        String userId = call.getString("userId");
-        // Only a user id left out removes every record: a malformed one must not.
-        if (userId == null && call.getData().has("userId")) {
+        TokenRemoval removal = TokenRecordKt.tokenRemovalFromPluginCall(call.getData());
+        if (removal == null) {
             call.reject("userId must be a string");
             return;
         }
         tokenWork.execute(() -> {
             boolean removed;
             try {
-                removed = tokens.remove(userId);
+                removed = tokens.remove(removal.getAccount());
             } catch (RuntimeException error) {
                 removed = false;
             }

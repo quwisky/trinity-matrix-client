@@ -50,4 +50,17 @@ class TokenPluginArgumentsTest {
         assertNotNull(parsed)
         assertEquals("", parsed!!.second.lineage)
     }
+
+    @Test
+    fun aRemovalWithoutAUserIdIsEveryRecord() {
+        assertEquals(TokenRemoval(null), tokenRemovalFromPluginCall(JSONObject()))
+        assertEquals(TokenRemoval("@a:hs"), tokenRemovalFromPluginCall(JSONObject().put("userId", "@a:hs")))
+    }
+
+    @Test
+    fun aMalformedUserIdRemovesNothing() {
+        for (bad in listOf<Any>(JSONObject.NULL, 7, true, JSONObject())) {
+            assertNull(tokenRemovalFromPluginCall(JSONObject().put("userId", bad)))
+        }
+    }
 }

@@ -105,7 +105,10 @@ export interface PushHandoffPlugin {
     userId: string;
     lineage: string;
   }): Promise<NativeTokenRevocation>;
-  /** One account, or every record when no user id is given. Rejects only on a store failure. */
+  /**
+   * One account, or every record when no user id is given. Rejects on a malformed id or a store
+   * failure.
+   */
   removeTokens(options: { userId?: string }): Promise<void>;
 }
 

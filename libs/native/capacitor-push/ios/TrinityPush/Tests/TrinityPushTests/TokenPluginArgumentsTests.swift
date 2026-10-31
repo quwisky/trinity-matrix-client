@@ -54,4 +54,22 @@ final class TokenPluginArgumentsTests: XCTestCase {
         options["lineage"] = ""
         XCTAssertEqual(try XCTUnwrap(TokenRecord.fromPluginCall(options)).record.lineage, "")
     }
+
+    func testARemovalWithoutAUserIdIsEveryRecord() {
+        XCTAssertEqual(TokenRemoval.fromPluginCall([:]), TokenRemoval(account: nil))
+        XCTAssertEqual(TokenRemoval.fromPluginCall(["userId": "@a:hs"]), TokenRemoval(account: "@a:hs"))
+    }
+
+    func testAMalformedUserIdRemovesNothing() {
+        for bad: Any in [NSNull(), 7, true, ["@a:hs"]] {
+            XCTAssertNil(TokenRemoval.fromPluginCall(["userId": bad]))
+        }
+    }
+
+    func testAGrantNeedsBackgroundTimeUnlessTheAppIsActive() {
+        XCTAssertTrue(TokenRefresher.mayStartAppGrant(hasBackgroundTime: true, appIsActive: true))
+        XCTAssertTrue(TokenRefresher.mayStartAppGrant(hasBackgroundTime: true, appIsActive: false))
+        XCTAssertTrue(TokenRefresher.mayStartAppGrant(hasBackgroundTime: false, appIsActive: true))
+        XCTAssertFalse(TokenRefresher.mayStartAppGrant(hasBackgroundTime: false, appIsActive: false))
+    }
 }

@@ -9,7 +9,10 @@ import {
   webview,
 } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
-import { storeExpiredPushAccount } from '../support/push-handoff.mts';
+import {
+  storeExpiredPushAccount,
+  tokenAnswersForUnknownAccount,
+} from '../support/push-handoff.mts';
 
 const PROBE = `${APP_PACKAGE}/dev.trinityproject.trinity.push.PushRenderProbeReceiver`;
 
@@ -171,5 +174,15 @@ describe('device-rendered push on Android', () => {
         'new UiSelector().textContains("Open Trinity to read this message")',
       ),
     ).toBeDisplayed({ wait: 30_000 });
+  });
+
+  it('answers the token calls for an account with no tokens through the installed plugin', async () => {
+    const answers = await tokenAnswersForUnknownAccount(
+      `@${uniqueId('nobody')}:unknown.invalid`,
+    );
+
+    expect(answers.current).toEqual({ kind: 'gone' });
+    expect(answers.refresh).toEqual({ kind: 'gone' });
+    expect(answers.malformedRemoval).toContain('userId must be a string');
   });
 });

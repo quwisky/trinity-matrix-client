@@ -77,6 +77,18 @@ public struct TokenRecord: Codable, Equatable, CustomStringConvertible, CustomDe
     }
 }
 
+/// Which records `removeTokens` was asked for: `account` nil is every record.
+public struct TokenRemoval: Equatable {
+    public let account: String?
+
+    /// Nil for a malformed user id. Only one left out removes every record, because the removal
+    /// cannot be undone: it takes every account's refresh token.
+    public static func fromPluginCall(_ options: [String: Any]) -> TokenRemoval? {
+        guard let raw = options["userId"] else { return TokenRemoval(account: nil) }
+        return (raw as? String).map { TokenRemoval(account: $0) }
+    }
+}
+
 public enum TokenVaultRead: Equatable {
     case absent
     /// The keychain could not answer (locked, or an item that does not decode): never "absent".
