@@ -230,4 +230,90 @@ test.describe('Thread composer', () => {
 
     await expect(threadInput).toHaveValue('draft A');
   });
+
+  test('keeps the edit open with the typed text when a thread edit is refused', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(180_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}thf`;
+    const user = `thf-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Thread ${runId}`;
+    const root = `root ${runId}`;
+    const reply = `reply ${runId}`;
+    const fixed = `fixed ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    await createRoom(request, hs, { accessToken: token }, roomName);
+
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openRoom(page, roomName);
+
+    const composer = page.getByTestId('composer-input');
+    await composer.fill(root);
+    await composer.press('Enter');
+    const rootRow = page
+      .locator('.scroll .msg[data-mid]', { hasText: root })
+      .first();
+    await expect(rootRow).toBeVisible({ timeout: 20_000 });
+    await waitForSent(rootRow);
+    await clickRowToolbar(
+      rootRow,
+      rootRow.getByRole('button', { name: 'Reply in thread' }),
+    );
+
+    const thread = page.getByTestId('thread-view');
+    const threadInput = thread.getByTestId('composer-input');
+    await expect(threadInput).toBeVisible({ timeout: 15_000 });
+    await threadInput.fill(reply);
+    await threadInput.press('Enter');
+    const replyRow = thread
+      .locator('.msg[data-mid]', { hasText: reply })
+      .first();
+    await expect(replyRow).toBeVisible({ timeout: 20_000 });
+    await waitForSent(replyRow);
+
+    // The homeserver refuses every send from here on, so the edit is refused.
+    await page.route('**/_matrix/client/**/send/m.room.message/**', (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ errcode: 'M_FORBIDDEN', error: 'refused' }),
+      }),
+    );
+    await clickRowMenuItem(replyRow, page.getByTestId('msg-edit'));
+    await expect(threadInput).toHaveValue(reply);
+    await threadInput.fill(fixed);
+    await threadInput.press('Enter');
+
+    await expect(page.getByText('Could not edit the message.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(threadInput).toHaveValue(fixed);
+    await expect(
+      thread.getByRole('button', { name: 'Cancel edit' }),
+    ).toBeVisible();
+
+    const toastBox = await page
+      .locator('[data-sonner-toast]', {
+        hasText: 'Could not edit the message.',
+      })
+      .boundingBox();
+    const composerBox = await threadInput.boundingBox();
+    expect(toastBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(composerBox!.y);
+  });
 });

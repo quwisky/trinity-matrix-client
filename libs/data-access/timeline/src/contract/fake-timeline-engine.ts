@@ -16,11 +16,17 @@ import {
   type VectorDiff,
   applyVectorDiffs,
   engineOk,
+  escapeHtml,
+  linkedUserIds,
   plainEqual,
+  stripReplyFallbackHtml,
+  stripReplyFallbackText,
+  voiceMessageContent,
 } from '@trinity/util/matrix';
 import type { PollView } from '@trinity/util/matrix';
 import type {
   EventTimelineItem,
+  InReplyTo,
   OutgoingMessage,
   OutgoingText,
   Profile,
@@ -30,6 +36,7 @@ import type {
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
+  SystemChange,
   TimelineItemContent,
   TimelineItemKey,
   TimelineRoomState,
@@ -47,6 +54,8 @@ interface FakeRoom {
   /** The whole history, oldest first, as every member sees it. */
   history: readonly TimelineItem[];
   overrides: Partial<TimelineRoomState>;
+  /** Whether alice's writes are refused, as a server refuses a sender below the required level. */
+  refusing: boolean;
   /** How many of the newest history items each member has loaded. */
   readonly loaded: Map<string, number>;
   readonly startReached: Set<string>;
@@ -54,10 +63,38 @@ interface FakeRoom {
   /** Public `m.read` receipts by user. */
   readonly readReceipts: Map<string, string>;
   readonly invited: Set<string>;
-  /** Each voter's answers, per poll event id. */
-  readonly votes: Map<string, Map<string, readonly string[]>>;
+  /** Poll responses and ends in arrival order: the poll views are derived from them. */
+  readonly pollEvents: PollEvent[];
+  /** Explicit power levels by user; bob, the room's creator, holds 100 unless set. */
+  readonly powerUsers: Map<string, number>;
+  /** The level that lets a member end another member's poll. */
+  redactLevel: number;
   /** The thread root of each thread reply, by the reply's `uniqueId`. */
   readonly threads: Map<string, string>;
+  /** The newest event each member has read in a thread, by `member` and root. */
+  readonly threadReads: Map<string, string>;
+  /** Events as a server holds them, by event id: what `eventSource` and `relations` read. */
+  readonly wire: Map<string, WireEvent>;
+  name: string | null;
+}
+
+interface PollEvent {
+  readonly pollId: string;
+  readonly kind: 'response' | 'end';
+  readonly sender: string;
+  readonly answers: readonly string[];
+  readonly ts: number;
+}
+
+const POLL_START = 'org.matrix.msc3381.poll.start';
+const POLL_RESPONSE = 'org.matrix.msc3381.poll.response';
+const POLL_END = 'org.matrix.msc3381.poll.end';
+const POLL_TEXT = 'org.matrix.msc1767.text';
+
+interface WireEvent {
+  readonly type: string;
+  readonly sender: string;
+  readonly content: Readonly<Record<string, unknown>>;
 }
 
 function failure(code: FailNextCode): EngineFailure {
@@ -71,6 +108,7 @@ function failure(code: FailNextCode): EngineFailure {
 
 const MESSAGE_UNAVAILABLE = failure('message-unavailable');
 const NOT_CANCELLABLE = failure('not-cancellable');
+const REQUEST_FAILED = failure('request-failed');
 const NOT_FORWARDABLE = failure('not-forwardable');
 /** What the fake can copy: the kinds whose content stands on its own. */
 const FORWARDABLE: ReadonlySet<TimelineItemContent['kind']> = new Set([
@@ -88,6 +126,238 @@ const START_ITEM: TimelineItem = {
 
 function profileOf(displayName: string): Profile {
   return { displayName, displayNameAmbiguous: false, avatarMxc: null };
+}
+
+const FAKE_READ_MARKER_ID = 'fake-read-marker';
+const MEDIA_MSGTYPES: ReadonlySet<unknown> = new Set([
+  'm.image',
+  'm.file',
+  'm.audio',
+  'm.video',
+]);
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function mentionsUser(
+  content: Readonly<Record<string, unknown>> | undefined,
+  userId: string,
+): boolean {
+  const ids = asRecord(content?.['m.mentions'])['user_ids'];
+  return Array.isArray(ids) && ids.includes(userId);
+}
+
+function mentionsBlock(userIds: readonly string[], room: boolean) {
+  const ids = [...new Set(userIds)].filter(Boolean);
+  return {
+    'm.mentions': {
+      ...(ids.length > 0 ? { user_ids: ids } : {}),
+      ...(room ? { room: true } : {}),
+    },
+  };
+}
+
+function textWire(message: OutgoingText): Record<string, unknown> {
+  return {
+    msgtype: `m.${message.msgtype}`,
+    body: message.body,
+    ...(message.formattedBody !== null
+      ? {
+          format: 'org.matrix.custom.html',
+          formatted_body: message.formattedBody,
+        }
+      : {}),
+    ...mentionsBlock(message.mentions.userIds, message.mentions.room),
+  };
+}
+
+function editWire(
+  eventId: string,
+  message: OutgoingText,
+): Record<string, unknown> {
+  return {
+    msgtype: `m.${message.msgtype}`,
+    body: `* ${message.body}`,
+    ...mentionsBlock(message.mentions.userIds, message.mentions.room),
+    ...(message.formattedBody !== null
+      ? {
+          format: 'org.matrix.custom.html',
+          formatted_body: `* ${message.formattedBody}`,
+        }
+      : {}),
+    'm.new_content': textWire(message),
+    'm.relates_to': { rel_type: 'm.replace', event_id: eventId },
+  };
+}
+
+/** A text send as the wire carries it: a reply quotes `target`, a thread layers its relation. */
+function sendWire(
+  message: OutgoingText,
+  reply: string | null,
+  quote: WireTarget | null,
+  threadRootId: string | null,
+): Record<string, unknown> {
+  const html =
+    message.formattedBody ??
+    escapeHtml(message.body).replace(/\r\n?|\n/g, '<br>');
+  const firstLine = stripReplyFallbackText(quote?.body ?? '').split('\n')[0];
+  const base = reply
+    ? {
+        msgtype: `m.${message.msgtype}`,
+        body: quote
+          ? `> <${quote.sender}> ${firstLine}\n\n${message.body}`
+          : message.body,
+        format: 'org.matrix.custom.html',
+        formatted_body: `${
+          quote
+            ? `<mx-reply><blockquote>${escapeHtml(firstLine)}</blockquote></mx-reply>`
+            : ''
+        }${html}`,
+        ...mentionsBlock(
+          [quote?.sender ?? '', ...message.mentions.userIds],
+          message.mentions.room,
+        ),
+      }
+    : textWire(message);
+  const relation = {
+    ...(reply ? { 'm.in_reply_to': { event_id: reply } } : {}),
+    ...(threadRootId
+      ? {
+          rel_type: 'm.thread',
+          event_id: threadRootId,
+          is_falling_back: !reply,
+          'm.in_reply_to': { event_id: reply ?? threadRootId },
+        }
+      : {}),
+  };
+  return Object.keys(relation).length > 0
+    ? { ...base, 'm.relates_to': relation }
+    : base;
+}
+
+interface WireTarget {
+  readonly sender: string;
+  readonly body: string;
+}
+
+/** A forward is the forwarder's own message: no relation, no mentions, no reply quote. */
+function forwardedWire(
+  content: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const key of ['msgtype', 'body', 'format', 'formatted_body'])
+    if (Object.hasOwn(content, key)) kept[key] = content[key];
+  const relation = asRecord(content['m.relates_to']);
+  if ('m.in_reply_to' in relation && relation['is_falling_back'] !== true) {
+    if (typeof kept['body'] === 'string')
+      kept['body'] = stripReplyFallbackText(kept['body']);
+    if (typeof kept['formatted_body'] === 'string')
+      kept['formatted_body'] = stripReplyFallbackHtml(kept['formatted_body']);
+  }
+  return { ...kept, 'm.mentions': {} };
+}
+
+/** A poll start as matrix-js-sdk reads it: one option per answer, `max_selections` cut to a whole number in range. */
+function pollFromWire(
+  content: Readonly<Record<string, unknown>>,
+): TimelineItemContent {
+  const start = asRecord(content[POLL_START]);
+  const answers = Array.isArray(start['answers']) ? start['answers'] : [];
+  const max = start['max_selections'];
+  return {
+    kind: 'poll',
+    poll: {
+      id: '',
+      question: String(asRecord(start['question'])[POLL_TEXT] ?? ''),
+      options: answers.map((answer) => ({
+        id: String(asRecord(answer)['id'] ?? ''),
+        text: String(asRecord(answer)[POLL_TEXT] ?? ''),
+        votes: 0,
+        chosen: false,
+      })),
+      totalVotes: 0,
+      maxSelections:
+        Number.isInteger(max) && (max as number) > 0
+          ? Math.min(max as number, Math.max(answers.length, 1))
+          : 1,
+      ended: false,
+    },
+  };
+}
+
+/** The item content an event of `type` shows, for `viewer`. */
+function contentFromWire(
+  type: string,
+  content: Readonly<Record<string, unknown>>,
+  viewer: string,
+): TimelineItemContent {
+  const body = typeof content['body'] === 'string' ? content['body'] : '';
+  const info = asRecord(content['info']);
+  const mxc = typeof content['url'] === 'string' ? content['url'] : null;
+  const relation = asRecord(content['m.relates_to']);
+  const replyFallback =
+    'm.in_reply_to' in relation && relation['is_falling_back'] !== true;
+  const mentionsMe = mentionsUser(content, viewer);
+  const mimeType =
+    typeof info['mimetype'] === 'string' ? info['mimetype'] : 'image/png';
+  const source = (
+    kind: 'image' | 'file' | 'audio' | 'video',
+    filename: string,
+  ) => ({
+    kind,
+    mxc,
+    file: null,
+    filename,
+    mimeType,
+    thumbnailMxc: null,
+    thumbnailFile: null,
+    ...(typeof info['size'] === 'number' && { size: info['size'] }),
+    ...(typeof info['w'] === 'number' && { width: info['w'] }),
+    ...(typeof info['h'] === 'number' && { height: info['h'] }),
+  });
+  if (type === POLL_START) return pollFromWire(content);
+  if (type === 'm.sticker') {
+    return {
+      kind: 'sticker',
+      source: source('image', body),
+      body,
+      url: mxc,
+      info: asRecord(content['info']),
+    };
+  }
+  const msgtype = String(content['msgtype']).replace('m.', '');
+  if (MEDIA_MSGTYPES.has(content['msgtype'])) {
+    const filename =
+      typeof content['filename'] === 'string' ? content['filename'] : body;
+    return {
+      kind: 'media',
+      msgtype: msgtype as 'image' | 'file' | 'video' | 'audio',
+      source: source(msgtype as 'image' | 'file' | 'video' | 'audio', filename),
+      body: filename,
+      caption: filename !== body ? body : null,
+      formattedCaption: null,
+      replyFallback,
+      mentionsMe,
+      mentions: [],
+    };
+  }
+  const formattedBody =
+    content['format'] === 'org.matrix.custom.html' &&
+    typeof content['formatted_body'] === 'string'
+      ? content['formatted_body']
+      : null;
+  return {
+    kind: 'message',
+    msgtype: msgtype as 'text' | 'emote' | 'notice',
+    body,
+    formattedBody,
+    replyFallback,
+    mentionsMe,
+    mentions: linkedUserIds(formattedBody),
+  };
 }
 
 function outgoingContent(message: OutgoingText): TimelineItemContent {
@@ -180,14 +450,17 @@ export class FakeTimelineEngine implements TimelineEngine {
 
   /** Acts on the fake's rooms as `bob` would on a server. */
   readonly asBob = {
-    createRoom: async (_name: string): Promise<string> => {
+    createRoom: async (name: string): Promise<string> => {
       this.nextRoom += 1;
       const roomId = `!fake-${this.nextRoom}:${this.serverName}`;
-      this.room(roomId).members.add(this.bob);
+      const room = this.room(roomId);
+      room.members.add(this.bob);
+      room.name = name;
       return roomId;
     },
     invite: async (roomId: string, userId: string): Promise<void> => {
       this.room(roomId).invited.add(userId);
+      this.publish(roomId);
     },
     send: async (roomId: string, body: string): Promise<string> =>
       this.bobSends(roomId, body, null),
@@ -231,6 +504,115 @@ export class FakeTimelineEngine implements TimelineEngine {
       userId: string,
     ): Promise<string | null> =>
       this.rooms.get(roomId)?.readReceipts.get(userId) ?? null,
+    // Writes are refused when `events_default` (or a per-type level) is above 0; `users` and
+    // `redact` decide who may end another member's poll.
+    setPowerLevels: async (
+      roomId: string,
+      patch: {
+        readonly events_default?: number;
+        readonly events?: Readonly<Record<string, number>>;
+        readonly users?: Readonly<Record<string, number>>;
+        readonly redact?: number;
+      },
+    ): Promise<void> => {
+      const room = this.room(roomId);
+      for (const [user, level] of Object.entries(patch.users ?? {}))
+        room.powerUsers.set(user, level);
+      if (patch.redact !== undefined) room.redactLevel = patch.redact;
+      this.publish(roomId);
+      const levels = [
+        patch.events_default,
+        ...Object.values(patch.events ?? {}),
+      ];
+      this.room(roomId).refusing = levels.some((level) => (level ?? 0) > 0);
+    },
+    sendEvent: async (
+      roomId: string,
+      type: string,
+      content: object,
+    ): Promise<string> => {
+      const wire = content as Record<string, unknown>;
+      const eventId = this.nextEventId();
+      const room = this.room(roomId);
+      room.wire.set(eventId, { type, sender: this.bob, content: wire });
+      const relation = asRecord(wire['m.relates_to']);
+      if (relation['rel_type'] === 'm.thread')
+        room.threads.set(`ev:${eventId}`, String(relation['event_id']));
+      const quoted = asRecord(relation['m.in_reply_to'])['event_id'];
+      this.clock += 1;
+      if (type === POLL_RESPONSE || type === POLL_END) {
+        const answers = asRecord(wire[POLL_RESPONSE])['answers'];
+        room.pollEvents.push({
+          pollId: String(relation['event_id']),
+          kind: type === POLL_END ? 'end' : 'response',
+          sender: this.bob,
+          answers: Array.isArray(answers) ? answers.map(String) : [],
+          ts: this.clock,
+        });
+        this.publish(roomId);
+        return eventId;
+      }
+      const shown = contentFromWire(type, wire, this.alice);
+      this.append(
+        roomId,
+        fakeEventItem(eventId, this.bob, {
+          timestamp: this.clock,
+          content:
+            shown.kind === 'poll'
+              ? { kind: 'poll', poll: { ...shown.poll, id: eventId } }
+              : shown,
+          inReplyTo:
+            typeof quoted === 'string' && relation['is_falling_back'] !== true
+              ? this.inReplyTo(room, quoted)
+              : null,
+          profiles: { [this.bob]: this.profile(this.bob) },
+        }),
+      );
+      return eventId;
+    },
+    sendState: async (
+      roomId: string,
+      type: string,
+      stateKey: string,
+      content: object,
+    ): Promise<string> => {
+      const room = this.room(roomId);
+      const eventId = this.nextEventId();
+      const wire = content as Record<string, unknown>;
+      room.wire.set(eventId, { type, sender: this.bob, content: wire });
+      const change = this.stateChange(room, type, stateKey, wire);
+      if (change) {
+        this.clock += 1;
+        this.append(
+          roomId,
+          fakeEventItem(eventId, this.bob, {
+            timestamp: this.clock,
+            content: { kind: 'state', change },
+            profiles: { [this.bob]: this.profile(this.bob) },
+          }),
+        );
+      } else {
+        this.publish(roomId);
+      }
+      return eventId;
+    },
+    markRead: async (roomId: string, eventId: string): Promise<void> => {
+      this.room(roomId).readReceipts.set(this.bob, eventId);
+      this.publish(roomId);
+    },
+    relations: async (
+      roomId: string,
+      eventId: string,
+      relType: string,
+    ): Promise<readonly string[]> =>
+      [...this.room(roomId).wire]
+        .filter(([, { content }]) => {
+          const relation = asRecord(content['m.relates_to']);
+          return (
+            relation['rel_type'] === relType && relation['event_id'] === eventId
+          );
+        })
+        .map(([id]) => id),
   };
 
   private bobSends(
@@ -301,7 +683,9 @@ export class FakeTimelineEngine implements TimelineEngine {
         ? current.diffs[0].values
         : [];
     const next = applyVectorDiffs(shown, diffs).filter(
-      (item) => item.uniqueId !== START_ITEM.uniqueId,
+      (item) =>
+        item.uniqueId !== START_ITEM.uniqueId &&
+        item.uniqueId !== FAKE_READ_MARKER_ID,
     );
     const hidden = room.history.slice(
       0,
@@ -414,6 +798,17 @@ export class FakeTimelineEngine implements TimelineEngine {
   ): Observable<EngineResult<Readonly<Record<string, unknown>> | null>> {
     return this.run(accountId, roomId, (room) => {
       const item = this.event(room, eventId);
+      const wire = room.wire.get(eventId);
+      if (wire && (item || wire.type === 'm.room.message')) {
+        return engineOk({
+          event_id: eventId,
+          room_id: roomId,
+          sender: wire.sender,
+          origin_server_ts: item?.timestamp ?? 0,
+          type: wire.type,
+          content: wire.content,
+        });
+      }
       if (!item) return engineFail(MESSAGE_UNAVAILABLE);
       const { content } = item;
       const rootId = room.threads.get(item.uniqueId);
@@ -474,12 +869,19 @@ export class FakeTimelineEngine implements TimelineEngine {
     roomId: string,
     eventId: string,
     options: {
+      readonly threadRootId: string | null;
       readonly visibility: 'public' | 'private';
       readonly fullyRead: boolean;
     },
   ): Observable<EngineResult<null>> {
     return this.run(accountId, roomId, (room) => {
-      if (options.fullyRead) room.fullyRead.set(accountId, eventId);
+      if (!this.event(room, eventId)) return engineFail(MESSAGE_UNAVAILABLE);
+      if (options.threadRootId) {
+        room.threadReads.set(`${accountId}\n${options.threadRootId}`, eventId);
+        this.publish(roomId);
+      } else if (options.fullyRead) {
+        room.fullyRead.set(accountId, eventId);
+      }
       if (options.visibility === 'public')
         room.readReceipts.set(accountId, eventId);
       return engineOk(null);
@@ -517,52 +919,53 @@ export class FakeTimelineEngine implements TimelineEngine {
         const poll = this.event(room, message.pollId);
         if (poll?.content.kind !== 'poll')
           return engineFail(MESSAGE_UNAVAILABLE);
-        if (message.kind === 'poll-end') {
-          this.patchEvent(roomId, message.pollId, () => ({
-            content: {
-              kind: 'poll',
-              poll: { ...this.pollOf(poll), ended: true },
-            },
-          }));
-        } else {
-          const votes =
-            room.votes.get(message.pollId) ??
-            new Map<string, readonly string[]>();
-          room.votes.set(
-            message.pollId,
-            votes.set(accountId, message.answerIds),
-          );
-          this.publish(roomId);
-        }
+        this.clock += 1;
+        room.pollEvents.push({
+          pollId: message.pollId,
+          kind: message.kind === 'poll-end' ? 'end' : 'response',
+          sender: accountId,
+          answers: message.kind === 'poll-end' ? [] : message.answerIds,
+          ts: this.clock,
+        });
+        this.publish(roomId);
         return engineOk({ transactionId, eventId });
       }
-      const target = options.replyTo ? this.event(room, options.replyTo) : null;
       if (options.threadRootId)
         room.threads.set(`txn:${transactionId}`, options.threadRootId);
+      if (message.kind === 'text' && !room.refusing) {
+        const target = options.replyTo
+          ? this.event(room, options.replyTo)
+          : undefined;
+        room.wire.set(eventId, {
+          type: 'm.room.message',
+          sender: accountId,
+          content: sendWire(
+            message,
+            options.replyTo,
+            target?.content.kind === 'message'
+              ? { sender: target.sender, body: target.content.body }
+              : null,
+            options.threadRootId,
+          ),
+        });
+      }
       this.append(roomId, {
         ...this.own(accountId, eventId, this.contentOf(message, eventId)),
+        ...(room.refusing && {
+          eventId: null,
+          sendState: { kind: 'failed', recoverable: false } as const,
+        }),
         uniqueId: `txn:${transactionId}`,
         transactionId,
         inReplyTo:
           options.replyTo && message.kind === 'text'
-            ? {
-                eventId: options.replyTo,
-                details: target
-                  ? {
-                      kind: 'ready',
-                      sender: target.sender,
-                      body:
-                        target.content.kind === 'message'
-                          ? target.content.body
-                          : '',
-                      redacted: target.content.kind === 'redacted',
-                      unencryptedMark: null,
-                    }
-                  : { kind: 'unavailable' },
-              }
+            ? this.inReplyTo(room, options.replyTo)
             : null,
       });
-      return engineOk({ transactionId, eventId });
+      return engineOk({
+        transactionId,
+        eventId: room.refusing ? null : eventId,
+      });
     });
   }
 
@@ -573,12 +976,18 @@ export class FakeTimelineEngine implements TimelineEngine {
     message: OutgoingText,
     _options: { readonly threadRootId: string | null },
   ): Observable<EngineResult<null>> {
-    return this.onItem(accountId, roomId, item, (found) =>
+    return this.onItem(accountId, roomId, item, (found) => {
+      if (found.eventId)
+        this.room(roomId).wire.set(this.nextEventId(), {
+          type: 'm.room.message',
+          sender: accountId,
+          content: editWire(found.eventId, message),
+        });
       this.patchItem(roomId, found, () => ({
         content: outgoingContent(message),
         edited: true,
-      })),
-    );
+      }));
+    });
   }
 
   redact(
@@ -649,7 +1058,11 @@ export class FakeTimelineEngine implements TimelineEngine {
     return this.run(accountId, roomId, (room) => {
       const echo = this.unsent(room, transactionId);
       if (!echo) return engineFail(MESSAGE_UNAVAILABLE);
-      this.patchItem(roomId, echo, () => ({ sendState: null }));
+      if (room.refusing) return engineFail(REQUEST_FAILED);
+      this.patchItem(roomId, echo, () => ({
+        eventId: this.nextEventId(),
+        sendState: null,
+      }));
       return engineOk(null);
     });
   }
@@ -686,9 +1099,23 @@ export class FakeTimelineEngine implements TimelineEngine {
         return engineFail(NOT_FORWARDABLE);
       if (!this.rooms.get(targetRoomId)?.members.has(accountId))
         return engineFail(MESSAGE_UNAVAILABLE);
+      const forwardedId = this.nextEventId();
+      const sourceContent =
+        room.wire.get(eventId)?.content ??
+        (source.content.kind === 'message'
+          ? {
+              msgtype: `m.${source.content.msgtype}`,
+              body: source.content.body,
+            }
+          : {});
+      this.room(targetRoomId).wire.set(forwardedId, {
+        type: 'm.room.message',
+        sender: accountId,
+        content: forwardedWire(sourceContent),
+      });
       this.append(
         targetRoomId,
-        this.own(accountId, this.nextEventId(), source.content),
+        this.own(accountId, forwardedId, source.content),
       );
       return engineOk(null);
     });
@@ -701,6 +1128,20 @@ export class FakeTimelineEngine implements TimelineEngine {
   ): Observable<EngineResult<null>> {
     return this.run(accountId, roomId, () => {
       const eventId = this.nextEventId();
+      this.room(roomId).wire.set(eventId, {
+        type: 'm.room.message',
+        sender: accountId,
+        content: voiceMessageContent(
+          {
+            mxc: `mxc://${this.serverName}/${eventId.slice(1)}`,
+            file: null,
+            mimeType: clip.mimeType,
+            size: clip.blob.size,
+          },
+          clip.durationMs,
+          [...clip.waveform],
+        ),
+      });
       this.append(
         roomId,
         this.own(accountId, eventId, {
@@ -754,6 +1195,7 @@ export class FakeTimelineEngine implements TimelineEngine {
           (key.transactionId !== null && i.transactionId === key.transactionId),
       );
       if (!item) return engineFail(MESSAGE_UNAVAILABLE);
+      if (room.refusing) return engineFail(REQUEST_FAILED);
       action(item);
       return engineOk(null);
     });
@@ -839,27 +1281,56 @@ export class FakeTimelineEngine implements TimelineEngine {
     }
   }
 
-  private pollOf(item: EventTimelineItem): PollView {
-    if (item.content.kind !== 'poll') throw new Error('not a poll');
-    return item.content.poll;
-  }
-
-  private tally(
+  /**
+   * The poll as matrix-js-sdk tallies it: each voter's latest response cast before the earliest
+   * valid end counts, a response naming an unknown answer or none withdraws the vote, and one
+   * is de-duplicated and cut to `max_selections`. Only the poll's sender, or a member who may
+   * redact, can end it.
+   */
+  private pollView(
+    room: FakeRoom,
+    start: EventTimelineItem,
     poll: PollView,
-    votes: ReadonlyMap<string, readonly string[]>,
     viewer: string,
   ): PollView {
-    const voters = [...votes].filter(([, answers]) => answers.length > 0);
+    const events = room.pollEvents.filter((e) => e.pollId === poll.id);
+    const endTs = Math.min(
+      Number.POSITIVE_INFINITY,
+      ...events
+        .filter(
+          (e) =>
+            e.kind === 'end' &&
+            (e.sender === start.sender ||
+              this.powerOf(room, e.sender) >= room.redactLevel),
+        )
+        .map((e) => e.ts),
+    );
+    const latest = new Map<string, readonly string[]>();
+    for (const e of events)
+      if (e.kind === 'response' && e.ts <= endTs)
+        latest.set(e.sender, e.answers);
+    const known = new Set(poll.options.map((option) => option.id));
+    const chosenBy = new Map<string, ReadonlySet<string>>();
+    for (const [voter, answers] of latest)
+      if (answers.length > 0 && answers.every((id) => known.has(id)))
+        chosenBy.set(
+          voter,
+          new Set([...new Set(answers)].slice(0, poll.maxSelections)),
+        );
     return {
       ...poll,
-      totalVotes: voters.length,
+      ended: endTs !== Number.POSITIVE_INFINITY,
+      totalVotes: chosenBy.size,
       options: poll.options.map((option) => ({
         ...option,
-        votes: voters.filter(([, answers]) => answers.includes(option.id))
-          .length,
-        chosen: votes.get(viewer)?.includes(option.id) ?? false,
+        votes: [...chosenBy.values()].filter((c) => c.has(option.id)).length,
+        chosen: chosenBy.get(viewer)?.has(option.id) ?? false,
       })),
     };
+  }
+
+  private powerOf(room: FakeRoom, userId: string): number {
+    return room.powerUsers.get(userId) ?? (userId === this.bob ? 100 : 0);
   }
 
   private append(roomId: string, item: EventTimelineItem): void {
@@ -923,9 +1394,14 @@ export class FakeTimelineEngine implements TimelineEngine {
 
   private snapshot(accountId: string, roomId: string): TimelineUpdate {
     const room = this.rooms.get(roomId);
-    if (!room?.members.has(accountId)) return { kind: 'room-unavailable' };
+    if (!room?.members.has(accountId) && !room?.invited.has(accountId))
+      return { kind: 'room-unavailable' };
     const startReached = room.startReached.has(accountId);
-    const items = this.visible(accountId, room);
+    const items = this.withReadMarker(
+      accountId,
+      room,
+      this.visible(accountId, room),
+    );
     return {
       kind: 'items',
       diffs: [
@@ -974,6 +1450,10 @@ export class FakeTimelineEngine implements TimelineEngine {
       const root = this.event(room, rootId);
       const replies = this.replies(room, rootId);
       const latest = replies.at(-1);
+      const readUpTo = room.threadReads.get(`${accountId}\n${rootId}`);
+      const unread = replies
+        .slice(replies.findIndex((r) => r.eventId === readUpTo) + 1)
+        .filter((r) => r.sender !== accountId);
       const participants = [
         ...new Set([
           ...(root ? [root.sender] : []),
@@ -1003,8 +1483,10 @@ export class FakeTimelineEngine implements TimelineEngine {
         profiles: Object.fromEntries(
           participants.map((userId) => [userId, this.profile(userId)]),
         ),
-        unreadCount: 0,
-        highlight: false,
+        unreadCount: unread.length,
+        highlight: unread.some((r) =>
+          mentionsUser(room.wire.get(r.eventId ?? '')?.content, accountId),
+        ),
       };
     });
   }
@@ -1029,18 +1511,15 @@ export class FakeTimelineEngine implements TimelineEngine {
     const shown = room.history
       .slice(room.history.length - loaded)
       .filter((item) => !room.threads.has(item.uniqueId));
-    return shown.map((item) => {
-      const votes =
-        item.kind === 'event' && item.content.kind === 'poll'
-          ? room.votes.get(item.content.poll.id)
-          : undefined;
+    return shown.map((shownItem) => {
+      const item = this.withReaders(accountId, room, shownItem);
       // Tallied per viewer: `chosen` is the viewing account's own vote.
-      return votes && item.kind === 'event' && item.content.kind === 'poll'
+      return item.kind === 'event' && item.content.kind === 'poll'
         ? {
             ...item,
             content: {
               kind: 'poll' as const,
-              poll: this.tally(item.content.poll, votes, accountId),
+              poll: this.pollView(room, item, item.content.poll, accountId),
             },
           }
         : item;
@@ -1073,8 +1552,133 @@ export class FakeTimelineEngine implements TimelineEngine {
   }
 
   private publish(roomId: string): void {
-    for (const accountId of this.room(roomId).members)
+    const room = this.room(roomId);
+    for (const accountId of new Set([...room.members, ...room.invited]))
       this.emit(accountId, roomId, this.snapshot(accountId, roomId));
+  }
+
+  private inReplyTo(room: FakeRoom, eventId: string): InReplyTo {
+    const target = this.event(room, eventId);
+    return {
+      eventId,
+      details: target
+        ? {
+            kind: 'ready',
+            sender: target.sender,
+            body: target.content.kind === 'message' ? target.content.body : '',
+            redacted: target.content.kind === 'redacted',
+            unencryptedMark: null,
+          }
+        : { kind: 'unavailable' },
+    };
+  }
+
+  /** The state item bob's `type` event makes, applying the room state it sets. */
+  private stateChange(
+    room: FakeRoom,
+    type: string,
+    stateKey: string,
+    content: Readonly<Record<string, unknown>>,
+  ): SystemChange | null {
+    const actorId = this.bob;
+    switch (type) {
+      case 'm.room.name': {
+        const name =
+          typeof content['name'] === 'string' ? content['name'] : null;
+        const change: SystemChange = {
+          kind: 'room-name',
+          actorId,
+          previousName: room.name,
+          name,
+        };
+        room.name = name;
+        return change;
+      }
+      case 'm.room.member':
+        return {
+          kind: 'membership',
+          actorId,
+          membership: String(content['membership']),
+          previousMembership: 'join',
+          actorIsTarget: stateKey === actorId,
+          targetId: stateKey,
+          previousDisplayName: null,
+          displayName: null,
+          avatarChanged: false,
+          reason: null,
+        };
+      case 'm.room.encryption':
+        room.overrides = {
+          ...room.overrides,
+          encryption: 'encrypted',
+          hasEncryptionStateEvent: true,
+        };
+        return null;
+      case 'm.room.tombstone':
+        room.overrides = {
+          ...room.overrides,
+          tombstone: {
+            replacementRoomId: String(content['replacement_room']),
+            body: String(content['body'] ?? ''),
+          },
+        };
+        return null;
+      default:
+        throw new Error(`The fake does not model ${type} state`);
+    }
+  }
+
+  /** `item` with the other members whose public receipt sits on it. */
+  private withReaders(
+    accountId: string,
+    room: FakeRoom,
+    item: TimelineItem,
+  ): TimelineItem {
+    if (item.kind !== 'event' || item.eventId === null) return item;
+    const readBy = [...room.readReceipts]
+      .filter(
+        ([user, id]) =>
+          id === item.eventId && user !== accountId && user !== item.sender,
+      )
+      .map(([user]) => user);
+    return readBy.length === 0
+      ? item
+      : {
+          ...item,
+          readBy,
+          profiles: {
+            ...item.profiles,
+            ...Object.fromEntries(
+              readBy.map((user) => [user, this.profile(user)]),
+            ),
+          },
+        };
+  }
+
+  /** The marker goes before the first event of someone else after the fully-read one. */
+  private withReadMarker(
+    accountId: string,
+    room: FakeRoom,
+    items: readonly TimelineItem[],
+  ): readonly TimelineItem[] {
+    const readId = room.fullyRead.get(accountId);
+    const read = items.findIndex(
+      (item) => item.kind === 'event' && item.eventId === readId,
+    );
+    const next = items.findIndex(
+      (item, index) =>
+        index > read &&
+        item.kind === 'event' &&
+        item.sender !== accountId &&
+        item.content.kind !== 'state',
+    );
+    return read < 0 || next < 0
+      ? items
+      : [
+          ...items.slice(0, next),
+          { kind: 'readMarker', uniqueId: FAKE_READ_MARKER_ID },
+          ...items.slice(next),
+        ];
   }
 
   private room(roomId: string): FakeRoom {
@@ -1084,13 +1688,19 @@ export class FakeTimelineEngine implements TimelineEngine {
         members: new Set(),
         history: [],
         overrides: {},
+        refusing: false,
         loaded: new Map(),
         startReached: new Set(),
         fullyRead: new Map(),
         readReceipts: new Map(),
         invited: new Set(),
-        votes: new Map(),
+        pollEvents: [],
+        powerUsers: new Map(),
+        redactLevel: 50,
         threads: new Map(),
+        threadReads: new Map(),
+        wire: new Map(),
+        name: null,
       };
       this.rooms.set(roomId, room);
     }

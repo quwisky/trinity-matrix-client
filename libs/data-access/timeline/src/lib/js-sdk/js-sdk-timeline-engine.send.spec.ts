@@ -398,7 +398,12 @@ describe('JsSdkTimelineEngine sending', () => {
 
     expect(ok(result)).toBeNull();
     expect(timeline.events()[0]?.content.kind).toBe('redacted');
-    expect(w.client.redactEvent).toHaveBeenCalledWith(ROOM, '$root', '$a');
+    expect(w.client.redactEvent).toHaveBeenCalledWith(
+      ROOM,
+      '$root',
+      '$a',
+      'txn-1',
+    );
     await firstValueFrom(
       engine.redact(
         ME,
@@ -407,8 +412,33 @@ describe('JsSdkTimelineEngine sending', () => {
         NO_THREAD,
       ),
     );
-    expect(w.client.redactEvent).toHaveBeenLastCalledWith(ROOM, '$a');
+    expect(w.client.redactEvent).toHaveBeenLastCalledWith(ROOM, '$a', 'txn-2');
     timeline.subscription.unsubscribe();
+  });
+
+  it('redact replies ok after the wait when the sync never shows the redaction', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = sendingWorld([msg('$a')]);
+      const engine = engineFor(w.client);
+
+      let settled = false;
+      const reply = firstValueFrom(
+        engine.redact(
+          ME,
+          ROOM,
+          { eventId: '$a', transactionId: null },
+          NO_THREAD,
+        ),
+      ).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(ok(await reply)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a command settling while a page has landed replies after the page flush', async () => {
@@ -496,6 +526,13 @@ describe('JsSdkTimelineEngine sending', () => {
       reacted
         ? { getSortedAnnotationsByKey: () => [['👍', new Set(mine)]] }
         : undefined) as never;
+    w.client.redactEvent.mockImplementation((...args: unknown[]) => {
+      const event = w.room.findEventById(
+        args.find((id) => id === '$r1') as string,
+      );
+      if (event) Object.assign(event, { isRedacted: () => true });
+      return Promise.resolve({ event_id: '$redaction' });
+    });
     const engine = engineFor(w.client);
     const key = { eventId: '$a', transactionId: null };
 
@@ -523,8 +560,8 @@ describe('JsSdkTimelineEngine sending', () => {
       ),
     ).toBeNull();
     expect(w.client.redactEvent.mock.calls).toEqual([
-      [ROOM, '$root', '$r1'],
-      [ROOM, '$root', '$r2'],
+      [ROOM, '$root', '$r1', 'txn-2'],
+      [ROOM, '$root', '$r2', 'txn-3'],
     ]);
 
     const missing = await firstValueFrom(
@@ -537,6 +574,77 @@ describe('JsSdkTimelineEngine sending', () => {
       ),
     );
     expect(failureCode(missing)).toBe('message-unavailable');
+  });
+
+  describe('a reaction still sending (pending ~ id)', () => {
+    const pending = '~!room:txn-9';
+    const own = (id: string) => ({
+      getId: () => id,
+      getSender: () => ME,
+      isRedacted: () => false,
+    });
+    const reacted = (w: ReturnType<typeof sendingWorld>, ids: string[]) => {
+      w.room.relations.getChildEventsForEvent = (() => ({
+        getSortedAnnotationsByKey: () => [['👍', new Set(ids.map(own))]],
+      })) as never;
+      // The real SDK throws synchronously on a ~ id in the plain overload.
+      w.client.redactEvent.mockImplementation((...args: unknown[]) => {
+        if (args.some((a) => typeof a === 'string' && a.startsWith('~'))) {
+          throw new Error('pending ids cannot be redacted');
+        }
+        return Promise.resolve({ event_id: '$redaction' });
+      });
+    };
+    const toggle = (w: ReturnType<typeof sendingWorld>) =>
+      firstValueFrom(
+        engineFor(w.client).toggleReaction(
+          ME,
+          ROOM,
+          { eventId: '$a', transactionId: null },
+          '👍',
+          { threadRootId: '$root' },
+        ),
+      );
+
+    it('is a no-op when tapped again: no redaction and no second reaction', async () => {
+      const w = sendingWorld();
+      reacted(w, [pending]);
+
+      expect(ok(await toggle(w))).toBeNull();
+
+      expect(w.client.redactEvent).not.toHaveBeenCalled();
+      expect(w.client.sendEvent).not.toHaveBeenCalled();
+    });
+
+    it('is skipped while the sent ones are redacted, with the exact arguments', async () => {
+      const w = sendingWorld();
+      reacted(w, ['$r1', pending]);
+
+      expect(ok(await toggle(w))).toBeNull();
+
+      expect(w.client.redactEvent.mock.calls).toEqual([
+        [ROOM, '$root', '$r1', 'txn-1'],
+      ]);
+    });
+
+    it('is refused by redact with message-unavailable, not thrown', async () => {
+      const w = sendingWorld();
+      reacted(w, [pending]);
+
+      const result = await firstValueFrom(
+        engineFor(w.client).redact(
+          ME,
+          ROOM,
+          { eventId: pending, transactionId: null },
+          {
+            threadRootId: '$root',
+          },
+        ),
+      );
+
+      expect(failureCode(result)).toBe('message-unavailable');
+      expect(w.client.redactEvent).not.toHaveBeenCalled();
+    });
   });
 
   it('retrySend resends an unsent echo; anything else is message-unavailable', async () => {

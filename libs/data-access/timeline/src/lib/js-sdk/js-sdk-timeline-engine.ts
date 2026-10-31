@@ -112,6 +112,9 @@ import { threadSummaryInfo, threadSummaryRevision } from './thread-summary';
 import { profileOf, toTimelineItem, transactionIdOf } from './timeline-item';
 import { TimelineRowCache } from './timeline-row-cache';
 
+/** How long a redaction's reply waits for the sync to apply it. */
+const REDACTION_LANDING_MS = 5_000;
+
 /** Events per page while paging back to a target event. */
 const SCROLLBACK = 30;
 /** The most pages a rewound room is refilled with. */
@@ -787,14 +790,18 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       const eventId = idOf(room, item);
       if (eventId === null)
         return engineFail(localFailure('message-unavailable'));
-      return client
-        .sendMessage(
+      const transactionId = client.makeTxnId();
+      return this.withoutEchoOnFailure(
+        client,
+        room,
+        transactionId,
+        client.sendMessage(
           roomId,
           options.threadRootId,
           editContent(eventId, message) as never,
-          client.makeTxnId(),
-        )
-        .then(() => engineOk(null));
+          transactionId,
+        ),
+      ).then(() => engineOk(null));
     });
   }
 
@@ -808,11 +815,13 @@ export class JsSdkTimelineEngine implements TimelineEngine {
       const eventId = idOf(room, item);
       if (eventId === null)
         return engineFail(localFailure('message-unavailable'));
-      return (
-        options.threadRootId
-          ? client.redactEvent(roomId, options.threadRootId, eventId)
-          : client.redactEvent(roomId, eventId)
-      ).then(() => engineOk(null));
+      // Only a server id can be redacted: a pending `~` id would shift the thread overload's
+      // arguments onto the root, and the plain one throws on it.
+      if (!eventId.startsWith('$'))
+        return engineFail(localFailure('message-unavailable'));
+      return this.redactions(client, room, options.threadRootId, [
+        eventId,
+      ]).then(() => engineOk(null));
     });
   }
 
@@ -830,22 +839,28 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         return engineFail(localFailure('message-unavailable'));
       }
       const mine = myReactionIds(client, room, eventId, key);
-      const action = mine.length
-        ? Promise.all(
-            mine.map((id) =>
-              threadRootId
-                ? client.redactEvent(roomId, threadRootId, id)
-                : client.redactEvent(roomId, id),
-            ),
-          )
-        : client.sendEvent(
-            roomId,
-            threadRootId,
-            EventType.Reaction,
-            annotationContent(eventId, key) as never,
-            client.makeTxnId(),
-          );
-      return action.then(() => engineOk(null));
+      if (mine.length) {
+        // A reaction still sending has no server id yet: a tap meanwhile is a no-op, not a second
+        // reaction and not a redaction.
+        const sent = mine.filter((id) => id.startsWith('$'));
+        if (!sent.length) return engineOk(null);
+        return this.redactions(client, room, threadRootId, sent).then(() =>
+          engineOk(null),
+        );
+      }
+      const transactionId = client.makeTxnId();
+      return this.withoutEchoOnFailure(
+        client,
+        room,
+        transactionId,
+        client.sendEvent(
+          roomId,
+          threadRootId,
+          EventType.Reaction,
+          annotationContent(eventId, key) as never,
+          transactionId,
+        ),
+      ).then(() => engineOk(null));
     });
   }
 
@@ -1149,6 +1164,67 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         new Promise<EngineResult<T>>((resolve) => resolve(run(client, room))),
       );
     });
+  }
+
+  /** Redacts `eventIds`, replying once the sync has applied them so the open timeline shows them gone. */
+  private async redactions(
+    client: MatrixClient,
+    room: Room,
+    threadRootId: string | null,
+    eventIds: readonly string[],
+  ): Promise<void> {
+    await Promise.all(
+      eventIds.map((eventId) => {
+        const transactionId = client.makeTxnId();
+        return this.withoutEchoOnFailure(
+          client,
+          room,
+          transactionId,
+          threadRootId
+            ? client.redactEvent(
+                room.roomId,
+                threadRootId,
+                eventId,
+                transactionId,
+              )
+            : client.redactEvent(room.roomId, eventId, transactionId),
+        );
+      }),
+    );
+    await new Promise<void>((resolve) => {
+      const landed = () =>
+        eventIds.every((id) => room.findEventById(id)?.isRedacted() ?? true);
+      if (landed()) return resolve();
+      const done = (): void => {
+        if (!landed()) return;
+        clearTimeout(timer);
+        room.off(RoomEvent.Redaction, done);
+        resolve();
+      };
+      // shortcut: a sync slower than this replies before the row shows, wait on the sync token when a slow homeserver is seen to do so
+      const timer = setTimeout(() => {
+        room.off(RoomEvent.Redaction, done);
+        resolve();
+      }, REDACTION_LANDING_MS);
+      room.on(RoomEvent.Redaction, done);
+    });
+  }
+
+  /** `request`, whose refusal also drops its pending echo so the timeline never shows the refused write. */
+  private async withoutEchoOnFailure<T>(
+    client: MatrixClient,
+    room: Room,
+    transactionId: string,
+    request: Promise<T>,
+  ): Promise<T> {
+    try {
+      return await request;
+    } catch (error) {
+      const echo = room.getEventForTxnId(transactionId);
+      if (echo?.status === EventStatus.NOT_SENT)
+        client.cancelPendingEvent(echo);
+      throw error;
+    }
   }
 
   /** `result`, once the room's open subscriptions show what it did, failed or not. */

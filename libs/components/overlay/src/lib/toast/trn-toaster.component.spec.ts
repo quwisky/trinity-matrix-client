@@ -12,6 +12,19 @@ describe('TrnToasterComponent', () => {
     expect(container.querySelector('brn-sonner-toaster')).not.toBeNull();
   });
 
+  it('shows toasts at the top, where they cannot cover a composer', async () => {
+    await render(TrnToasterComponent);
+
+    TestBed.inject(TrnToastService).show('position-marker', { duration: 0 });
+    TestBed.inject(ApplicationRef).tick();
+    await Promise.resolve();
+    TestBed.inject(ApplicationRef).tick();
+
+    const list = document.querySelector<HTMLElement>('[data-sonner-toaster]');
+    expect(list?.getAttribute('data-y-position')).toBe('top');
+    expect(list?.getAttribute('data-x-position')).toBe('center');
+  });
+
   it("gives toasts the app's font stack instead of Sonner's system-ui stack", async () => {
     await render(TrnToasterComponent);
 

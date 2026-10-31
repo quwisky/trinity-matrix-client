@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { Subject, of, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -18,7 +18,7 @@ const applied = of<ConversationThreadOutcome>({
 function setup() {
   const thread = {
     send: vi.fn(() => applied),
-    edit: vi.fn(() => applied),
+    edit: vi.fn((): Observable<ConversationThreadOutcome> => applied),
     reply: vi.fn(() => applied),
     media: { send: vi.fn() },
   };
@@ -44,5 +44,102 @@ describe('ThreadCommands', () => {
     commands.submit({ text: 'a', mentions: [] });
 
     expect(thread.send).not.toHaveBeenCalled();
+  });
+
+  it('keeps the edit open when the edit is refused, so the typed text can be retried', () => {
+    const { commands, thread, show } = setup();
+    thread.edit.mockReturnValueOnce(
+      of<ConversationThreadOutcome>({
+        kind: 'rejected',
+        operation: 'edit',
+        failure: 'request-rejected',
+        retryable: true,
+      }),
+    );
+    commands.startEdit('$m1');
+
+    commands.submit({ text: 'fixed', mentions: [] });
+
+    expect(thread.edit).toHaveBeenCalledWith('$m1', 'fixed', []);
+    expect(show).toHaveBeenCalledWith(
+      'Could not edit the message.',
+      expect.anything(),
+    );
+    expect(commands.editingId()).toBe('$m1');
+  });
+
+  it('ends the edit once it is applied', () => {
+    const { commands, thread } = setup();
+    commands.startEdit('$m1');
+
+    commands.submit({ text: 'fixed', mentions: [] });
+
+    expect(thread.edit).toHaveBeenCalledWith('$m1', 'fixed', []);
+    expect(commands.editingId()).toBeNull();
+  });
+
+  describe('while an edit is pending', () => {
+    const outcome = (kind: 'applied' | 'rejected') =>
+      kind === 'applied'
+        ? ({ kind, operation: 'edit' } as const)
+        : ({
+            kind,
+            operation: 'edit',
+            failure: 'request-rejected',
+            retryable: true,
+          } as const);
+
+    function pending() {
+      const ctx = setup();
+      const reply = new Subject<ConversationThreadOutcome>();
+      ctx.thread.edit.mockReturnValueOnce(reply);
+      ctx.commands.startEdit('$m1');
+      ctx.commands.submit({ text: 'one', mentions: [] });
+      return { ...ctx, reply };
+    }
+
+    it('refuses a second submit, so only one edit is sent', () => {
+      const { commands, thread } = pending();
+
+      expect(commands.sending()).toBe(true);
+      commands.submit({ text: 'two', mentions: [] });
+
+      expect(thread.edit).toHaveBeenCalledTimes(1);
+      expect(thread.send).not.toHaveBeenCalled();
+    });
+
+    it('is not closed by the old success after a cancel and re-edit of the same message', () => {
+      const { commands, reply } = pending();
+
+      commands.cancelEdit();
+      commands.startEdit('$m1');
+      reply.next(outcome('applied'));
+      reply.complete();
+
+      expect(commands.editingId()).toBe('$m1');
+      expect(commands.sending()).toBe(false);
+    });
+
+    it('only toasts on a later refusal, keeping the edit open and unblocked', () => {
+      const { commands, reply, show } = pending();
+
+      reply.next(outcome('rejected'));
+      reply.complete();
+
+      expect(show).toHaveBeenCalledTimes(1);
+      expect(commands.editingId()).toBe('$m1');
+      expect(commands.sending()).toBe(false);
+    });
+
+    it('closes the edit on success and accepts the next submit', () => {
+      const { commands, thread, reply } = pending();
+
+      reply.next(outcome('applied'));
+      reply.complete();
+      commands.submit({ text: 'plain', mentions: [] });
+
+      expect(commands.editingId()).toBeNull();
+      expect(thread.send).toHaveBeenCalledWith('plain', []);
+    });
   });
 });

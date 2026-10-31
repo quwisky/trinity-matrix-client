@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { throwError, type Observable } from 'rxjs';
+import { finalize, throwError, type Observable } from 'rxjs';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   TimelineActionsService,
@@ -37,8 +37,15 @@ export class ThreadCommands {
 
   /** The exact thread child every command is routed through; set by the view. */
   readonly thread = signal<ConversationThread | null>(null);
+  private readonly editingIdState = signal<string | null>(null);
+  private readonly editSending = signal(false);
+  /** Bumped whenever the edit target changes, so a late outcome cannot close a newer edit. */
+  private editRevision = 0;
+
   /** Id of the thread message being edited, or null. */
-  readonly editingId = signal<string | null>(null);
+  readonly editingId = this.editingIdState.asReadonly();
+  /** An edit is still resolving; a second submit is refused, as the room's compose does. */
+  readonly sending = this.editSending.asReadonly();
   /** Id of the thread message being replied to, or null. */
   readonly replyingToId = signal<string | null>(null);
   /** Which file of how many is uploading, and how far along, or null when idle. */
@@ -46,7 +53,7 @@ export class ThreadCommands {
 
   /** Forget the edit/reply in progress and orphan any upload, on a thread switch. */
   reset(): void {
-    this.editingId.set(null);
+    this.cancelEdit();
     this.replyingToId.set(null);
     this.uploads.invalidate();
     this.uploadProgress.set(null);
@@ -54,11 +61,23 @@ export class ThreadCommands {
 
   startEdit(id: string): void {
     this.replyingToId.set(null);
-    this.editingId.set(id);
+    this.setEditing(id);
+  }
+
+  cancelEdit(): void {
+    this.setEditing(null);
+  }
+
+  private setEditing(id: string | null): void {
+    this.editRevision += 1;
+    // shortcut: text typed while an edit resolves is lost when it lands, as the thread composer
+    // reports no draft changes; upgrade when threads move behind the Conversation compose.
+    this.editSending.set(false);
+    this.editingIdState.set(id);
   }
 
   startReply(id: string): void {
-    this.editingId.set(null);
+    this.cancelEdit();
     this.replyingToId.set(id);
   }
 
@@ -67,7 +86,7 @@ export class ThreadCommands {
     const msgs = this.thread()?.messages() ?? [];
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (isEditableMessage(msgs[i])) {
-        this.editingId.set(msgs[i].id);
+        this.setEditing(msgs[i].id);
         return;
       }
     }
@@ -87,10 +106,21 @@ export class ThreadCommands {
     const editId = this.editingId();
     const replyId = this.replyingToId();
     if (editId) {
-      this.editingId.set(null);
+      if (this.editSending() || !this.thread()) return;
+      const revision = this.editRevision;
+      this.editSending.set(true);
+      // Ends the edit only once it lands: a refused one keeps the composer's text to retry.
       this.run(
         (t) => t.edit(editId, text, mentions),
         'Could not edit the message.',
+        {
+          onApplied: () => {
+            if (this.editRevision === revision) this.cancelEdit();
+          },
+          onSettled: () => {
+            if (this.editRevision === revision) this.editSending.set(false);
+          },
+        },
       );
     } else if (replyId) {
       this.replyingToId.set(null);
@@ -210,14 +240,19 @@ export class ThreadCommands {
       thread: ConversationThread,
     ) => Observable<ConversationThreadOutcome>,
     failureMessage: string,
+    edit?: { onApplied: () => void; onSettled: () => void },
   ): void {
     const thread = this.thread();
     if (!thread) return;
     command(thread)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => edit?.onSettled()),
+      )
       .subscribe({
         next: (outcome) => {
           if (outcome.kind === 'rejected') this.showError(failureMessage);
+          else edit?.onApplied();
         },
         error: () => this.showError(failureMessage),
       });

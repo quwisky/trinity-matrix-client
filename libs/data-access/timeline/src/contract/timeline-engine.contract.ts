@@ -18,10 +18,12 @@ import {
 import type {
   EventTimelineItem,
   OutgoingMessage,
+  OutgoingText,
   ThreadSummaryInfo,
   TimelineEngine,
   TimelineFocus,
   TimelineItem,
+  TimelineRoomState,
   TimelineUpdate,
 } from '../lib/timeline-engine';
 
@@ -51,6 +53,33 @@ export interface TimelineContractSetup {
     edit(roomId: string, eventId: string, body: string): Promise<void>;
     /** The event `userId`'s public `m.read` receipt names, as bob's sync reports it. */
     readReceipt(roomId: string, userId: string): Promise<string | null>;
+    /** Merges `patch` into the room's `m.room.power_levels`; `events` and `users` merge per key. */
+    setPowerLevels(
+      roomId: string,
+      patch: {
+        readonly events_default?: number;
+        readonly events?: Readonly<Record<string, number>>;
+        readonly users?: Readonly<Record<string, number>>;
+        readonly redact?: number;
+      },
+    ): Promise<void>;
+    /** Sends an event of any type and returns its event id. */
+    sendEvent(roomId: string, type: string, content: object): Promise<string>;
+    /** Sets a state event as bob and returns its event id. */
+    sendState(
+      roomId: string,
+      type: string,
+      stateKey: string,
+      content: object,
+    ): Promise<string>;
+    /** Moves bob's public `m.read` receipt to `eventId`. */
+    markRead(roomId: string, eventId: string): Promise<void>;
+    /** The ids of the events that relate to `eventId` by `relType`, as the server holds them. */
+    relations(
+      roomId: string,
+      eventId: string,
+      relType: string,
+    ): Promise<readonly string[]>;
   };
   /**
    * Makes alice's crypto answer that rooms are unencrypted until the returned restore runs, for
@@ -85,14 +114,17 @@ const LIVE: TimelineFocus = { kind: 'live' };
 const MAIN = { threadRootId: null, replyTo: null } as const;
 const NO_THREAD = { threadRootId: null } as const;
 
-function text(body: string): OutgoingMessage {
+function plain(body: string): OutgoingText {
   return {
-    kind: 'text',
     msgtype: 'text',
     body,
     formattedBody: null,
     mentions: { userIds: [], room: false },
   };
+}
+
+function text(body: string): OutgoingMessage {
+  return { kind: 'text', ...plain(body) };
 }
 
 function byTxn(
@@ -104,6 +136,56 @@ function byTxn(
 
 function eventKey(eventId: string) {
   return { eventId, transactionId: null } as const;
+}
+
+function threadRelation(rootId: string) {
+  return {
+    'm.relates_to': {
+      rel_type: 'm.thread',
+      event_id: rootId,
+      is_falling_back: true,
+      'm.in_reply_to': { event_id: rootId },
+    },
+  };
+}
+
+const POLL_START = 'org.matrix.msc3381.poll.start';
+const POLL_RESPONSE = 'org.matrix.msc3381.poll.response';
+const POLL_END = 'org.matrix.msc3381.poll.end';
+const POLL_TEXT = 'org.matrix.msc1767.text';
+
+function pollStartContent(
+  question: string,
+  answers: readonly string[],
+  maxSelections: number,
+): object {
+  return {
+    [POLL_START]: {
+      question: { [POLL_TEXT]: question, body: question },
+      kind: 'org.matrix.msc3381.poll.undisclosed',
+      max_selections: maxSelections,
+      answers: answers.map((answer) => ({
+        id: answer.toLowerCase(),
+        [POLL_TEXT]: answer,
+      })),
+    },
+    [POLL_TEXT]: question,
+  };
+}
+
+function pollResponseContent(pollId: string, answerIds: readonly string[]) {
+  return {
+    [POLL_RESPONSE]: { answers: answerIds },
+    'm.relates_to': { rel_type: 'm.reference', event_id: pollId },
+  };
+}
+
+function pollEndContent(pollId: string) {
+  return {
+    [POLL_END]: {},
+    [POLL_TEXT]: 'The poll has ended.',
+    'm.relates_to': { rel_type: 'm.reference', event_id: pollId },
+  };
 }
 
 function unique(): string {
@@ -941,6 +1023,197 @@ export function defineTimelineEngineContract(
       testTimeoutMs,
     );
 
+    /** Bob's poll with answers a, b and c in a room alice has joined, watched by alice. */
+    async function pollRoom(maxSelections = 1) {
+      const { roomId } = await roomWith();
+      const timeline = watch(roomId);
+      await timeline.until(() => true);
+      const pollId = await context.asBob.sendEvent(
+        roomId,
+        POLL_START,
+        pollStartContent('Lunch?', ['A', 'B', 'C'], maxSelections),
+      );
+      const poll = (v: TimelineView) => {
+        const content = byId(v, pollId)?.content;
+        return content?.kind === 'poll' ? content.poll : null;
+      };
+      await timeline.until((v) => poll(v) !== null);
+      const vote = (answerIds: readonly string[]) =>
+        context.asBob.sendEvent(
+          roomId,
+          POLL_RESPONSE,
+          pollResponseContent(pollId, answerIds),
+        );
+      const votes = (v: TimelineView) =>
+        poll(v)?.options.map((option) => option.votes);
+      return { roomId, timeline, pollId, poll, vote, votes };
+    }
+
+    it(
+      'G13 — a poll end from a member who may not redact does not end it',
+      async () => {
+        const { roomId, timeline, pollId, poll } = await pollRoom();
+        try {
+          await ok(
+            engine.send(alice, roomId, { kind: 'poll-end', pollId }, MAIN),
+          );
+          // Bob's marker follows alice's end in sync, so the end has been applied by now.
+          const marker = await context.asBob.send(roomId, 'after the end');
+          const seen = await timeline.until((v) => !!byId(v, marker));
+          expect(poll(seen)?.ended).toBe(false);
+
+          await context.asBob.setPowerLevels(roomId, {
+            users: { [alice]: 50 },
+          });
+          await timeline.until((v) => poll(v)?.ended === true);
+
+          await context.asBob.setPowerLevels(roomId, {
+            users: { [alice]: 0 },
+          });
+          await timeline.until((v) => poll(v)?.ended === false);
+
+          await context.asBob.sendEvent(
+            roomId,
+            POLL_END,
+            pollEndContent(pollId),
+          );
+          await timeline.until((v) => poll(v)?.ended === true);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "G13 — the poll's sender can end it at any power level",
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const started = await ok(
+            engine.send(
+              alice,
+              roomId,
+              {
+                kind: 'poll-start',
+                question: 'Lunch?',
+                answers: ['A', 'B'],
+                maxSelections: 1,
+              },
+              MAIN,
+            ),
+          );
+          const pollId = started.eventId;
+          expect(pollId).toBeTruthy();
+          if (!pollId) return;
+
+          await ok(
+            engine.send(alice, roomId, { kind: 'poll-end', pollId }, MAIN),
+          );
+
+          await timeline.until((v) => {
+            const content = byId(v, pollId)?.content;
+            return content?.kind === 'poll' && content.poll.ended;
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "G13 — a voter's latest response counts",
+      async () => {
+        const { timeline, poll, vote, votes } = await pollRoom();
+        try {
+          await vote(['a']);
+          await timeline.until((v) => poll(v)?.totalVotes === 1);
+
+          await vote(['b']);
+          const view = await timeline.until((v) => votes(v)?.[1] === 1);
+
+          expect(votes(view)).toEqual([0, 1, 0]);
+          expect(poll(view)?.totalVotes).toBe(1);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G13 — a spoiled or empty latest response withdraws the vote',
+      async () => {
+        const { timeline, poll, vote, votes } = await pollRoom();
+        try {
+          await vote(['a']);
+          await timeline.until((v) => poll(v)?.totalVotes === 1);
+          await vote(['nope']);
+          const spoiled = await timeline.until(
+            (v) => poll(v)?.totalVotes === 0,
+          );
+          expect(votes(spoiled)).toEqual([0, 0, 0]);
+
+          await vote(['a']);
+          await timeline.until((v) => poll(v)?.totalVotes === 1);
+          await vote([]);
+          const empty = await timeline.until((v) => poll(v)?.totalVotes === 0);
+          expect(votes(empty)).toEqual([0, 0, 0]);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G13 — a vote after the end does not count',
+      async () => {
+        const { roomId, timeline, pollId, poll, vote, votes } =
+          await pollRoom();
+        try {
+          await vote(['a']);
+          await context.asBob.sendEvent(
+            roomId,
+            POLL_END,
+            pollEndContent(pollId),
+          );
+          await timeline.until((v) => poll(v)?.ended === true);
+
+          await vote(['b']);
+          const marker = await context.asBob.send(roomId, 'after the vote');
+          const view = await timeline.until((v) => !!byId(v, marker));
+
+          expect(votes(view)).toEqual([1, 0, 0]);
+          expect(poll(view)?.totalVotes).toBe(1);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G13 — a response is cut to max_selections and de-duplicated',
+      async () => {
+        const { timeline, poll, vote, votes } = await pollRoom(2);
+        try {
+          await vote(['a', 'a', 'b', 'c']);
+
+          const view = await timeline.until((v) => poll(v)?.totalVotes === 1);
+
+          expect(poll(view)?.maxSelections).toBe(2);
+          expect(votes(view)).toEqual([1, 1, 0]);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
     it(
       'send location shows a location item',
       async () => {
@@ -1028,6 +1301,285 @@ export function defineTimelineEngineContract(
           expect(!result.ok && result.failure.code).toBe('not-forwardable');
         } finally {
           source.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    /** Alice's own message in the open timeline, confirmed by the server. */
+    async function ownMessage(
+      roomId: string,
+      timeline: Watch,
+      body: string,
+    ): Promise<string> {
+      await timeline.until(() => true);
+      const { eventId } = await ok(
+        engine.send(alice, roomId, text(body), MAIN),
+      );
+      await timeline.until((v) => byId(v, eventId ?? '')?.sendState === null);
+      return eventId ?? '';
+    }
+
+    /** The command's single reply and the folded view read the moment it arrives. */
+    async function atReply<T>(
+      timeline: Watch,
+      command: Observable<EngineResult<T>>,
+    ) {
+      let view: TimelineView | null = null;
+      const result = await once(
+        command.pipe(tap(() => (view = timeline.view()))),
+      );
+      if (!result.ok) throw new Error(`Command failed: ${result.failure.code}`);
+      return view;
+    }
+
+    const reaction = (view: TimelineView | null, eventId: string) =>
+      byId(view, eventId)?.reactions.find((group) => group.key === '👍');
+
+    it.each([
+      {
+        command: 'edit',
+        run: async (roomId: string, timeline: Watch) => {
+          const eventId = await ownMessage(roomId, timeline, 'tpyo');
+          const view = await atReply(
+            timeline,
+            engine.edit(
+              alice,
+              roomId,
+              eventKey(eventId),
+              plain('typo'),
+              NO_THREAD,
+            ),
+          );
+          const item = byId(view, eventId);
+          expect(bodyOf(item)).toBe('typo');
+          expect(item?.edited).toBe(true);
+        },
+      },
+      {
+        command: 'toggleReaction on',
+        run: async (roomId: string, timeline: Watch) => {
+          const eventId = await ownMessage(roomId, timeline, 'like me');
+          const view = await atReply(
+            timeline,
+            engine.toggleReaction(
+              alice,
+              roomId,
+              eventKey(eventId),
+              '👍',
+              NO_THREAD,
+            ),
+          );
+          expect(reaction(view, eventId)?.reactedByMe).toBe(true);
+        },
+      },
+      {
+        command: 'toggleReaction off',
+        run: async (roomId: string, timeline: Watch) => {
+          const eventId = await ownMessage(roomId, timeline, 'like me');
+          const toggle = () =>
+            atReply(
+              timeline,
+              engine.toggleReaction(
+                alice,
+                roomId,
+                eventKey(eventId),
+                '👍',
+                NO_THREAD,
+              ),
+            );
+          await toggle();
+          expect(reaction(await toggle(), eventId)).toBeUndefined();
+        },
+      },
+      {
+        command: 'redact',
+        run: async (roomId: string, timeline: Watch) => {
+          const eventId = await ownMessage(roomId, timeline, 'oops');
+          const view = await atReply(
+            timeline,
+            engine.redact(alice, roomId, eventKey(eventId), NO_THREAD),
+          );
+          expect(byId(view, eventId)?.content.kind).toBe('redacted');
+        },
+      },
+    ])(
+      'G1 — $command shows its effect in an open timeline before it replies',
+      async ({ run }) => {
+        const {
+          roomId,
+          eventIds: [joinedId],
+        } = await roomWith(['joined']);
+        const timeline = watch(roomId);
+        try {
+          // Bob's message shows once alice's join has synced, so no join resets the timeline.
+          await timeline.until((v) => !!byId(v, joinedId));
+          await run(roomId, timeline);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G2 — a refused send keeps a failed echo; cancel removes it, retry sends it, and later sends go',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          await context.asBob.setPowerLevels(roomId, { events_default: 50 });
+
+          const refused = await ok(
+            engine.send(alice, roomId, text('refused'), MAIN),
+          );
+          expect(refused.eventId).toBeNull();
+          expect(
+            byTxn(timeline.view(), refused.transactionId)?.sendState?.kind,
+          ).toBe('failed');
+
+          await ok(engine.cancelSend(alice, roomId, refused.transactionId));
+          expect(byTxn(timeline.view(), refused.transactionId)).toBeUndefined();
+
+          const again = await ok(
+            engine.send(alice, roomId, text('again'), MAIN),
+          );
+          expect(again.eventId).toBeNull();
+          expect(
+            byTxn(timeline.view(), again.transactionId)?.sendState?.kind,
+          ).toBe('failed');
+
+          await context.asBob.setPowerLevels(roomId, { events_default: 0 });
+          await ok(engine.retrySend(alice, roomId, again.transactionId));
+          const view = await timeline.until(
+            (v) => !!byTxn(v, again.transactionId)?.eventId,
+          );
+          expect(byTxn(view, again.transactionId)?.eventId).toEqual(
+            expect.any(String),
+          );
+
+          const third = await ok(
+            engine.send(alice, roomId, text('third'), MAIN),
+          );
+          expect(third.eventId).toEqual(expect.any(String));
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G3 — a caller can cancel a send before it returns',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const transactionId = `contract-cancel-${unique()}`;
+          const first = ok(engine.send(alice, roomId, text('first'), MAIN));
+          const second = firstValueFrom(
+            engine.send(alice, roomId, text('second'), {
+              ...MAIN,
+              transactionId,
+            }),
+          );
+
+          const cancelled = await once(
+            engine.cancelSend(alice, roomId, transactionId),
+          );
+          const [sent] = await Promise.all([second, first]);
+
+          if (cancelled.ok) {
+            await timeline.until((v) => !byTxn(v, transactionId));
+          } else {
+            expect(cancelled.failure.code).toBe('not-cancellable');
+            expect(sent.ok && sent.value.eventId).toEqual(expect.any(String));
+            await timeline.until(
+              (v) => byTxn(v, transactionId)?.sendState === null,
+            );
+          }
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it.each([
+      {
+        command: 'edit',
+        run: (roomId: string, eventId: string) =>
+          engine.edit(
+            alice,
+            roomId,
+            eventKey(eventId),
+            plain('changed'),
+            NO_THREAD,
+          ),
+        unchanged: (item: EventTimelineItem | undefined) =>
+          expect(bodyOf(item)).toBe('original'),
+      },
+      {
+        command: 'toggleReaction',
+        run: (roomId: string, eventId: string) =>
+          engine.toggleReaction(
+            alice,
+            roomId,
+            eventKey(eventId),
+            '👍',
+            NO_THREAD,
+          ),
+        unchanged: (item: EventTimelineItem | undefined) =>
+          expect(item?.reactions.some((group) => group.reactedByMe)).toBe(
+            false,
+          ),
+      },
+      {
+        command: 'redact',
+        run: (roomId: string, eventId: string) =>
+          engine.redact(alice, roomId, eventKey(eventId), NO_THREAD),
+        unchanged: (item: EventTimelineItem | undefined) =>
+          expect(item?.content.kind).not.toBe('redacted'),
+      },
+    ])(
+      'G16 — $command is refused alone, and the room keeps sending',
+      async ({ run, unchanged }) => {
+        const {
+          roomId,
+          eventIds: [joinedId],
+        } = await roomWith(['joined']);
+        const timeline = watch(roomId);
+        try {
+          await timeline.until((v) => !!byId(v, joinedId));
+          const eventId = await ownMessage(roomId, timeline, 'original');
+          const levels = {
+            events_default: 50,
+            events: { 'm.reaction': 50, 'm.room.redaction': 50 },
+          };
+          await context.asBob.setPowerLevels(roomId, levels);
+
+          let view: TimelineView | null = null;
+          const result = await once(
+            run(roomId, eventId).pipe(tap(() => (view = timeline.view()))),
+          );
+
+          expect(!result.ok && result.failure.code).toBe('request-failed');
+          const item = byId(view, eventId);
+          expect(item).toBeDefined();
+          unchanged(item);
+
+          await context.asBob.setPowerLevels(roomId, {
+            events_default: 0,
+            events: { 'm.reaction': 0, 'm.room.redaction': 0 },
+          });
+          const sent = await ok(
+            engine.send(alice, roomId, text('after'), MAIN),
+          );
+          expect(sent.eventId).toEqual(expect.any(String));
+        } finally {
+          timeline.close();
         }
       },
       testTimeoutMs,
@@ -1293,6 +1845,690 @@ export function defineTimelineEngineContract(
           );
         } finally {
           thread.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    /** The `room` of the newest `items` update. */
+    function roomOf(timeline: Watch): TimelineRoomState | undefined {
+      const last = timeline.updates.filter((u) => u.kind === 'items').at(-1);
+      return last?.kind === 'items' ? last.room : undefined;
+    }
+
+    const stateChanges = (view: TimelineView | null) =>
+      events(view).flatMap((item) =>
+        item.content.kind === 'state' ? [item.content.change] : [],
+      );
+
+    /** The wire content of the event `eventId`, as `eventSource` returns it. */
+    async function contentOf(
+      roomId: string,
+      eventId: string | null | undefined,
+    ): Promise<Record<string, unknown>> {
+      expect(eventId).toBeTruthy();
+      const source = await ok(
+        engine.eventSource(alice, roomId, eventId as string),
+      );
+      return (source?.['content'] ?? {}) as Record<string, unknown>;
+    }
+
+    it(
+      'G4 — a thread of 40 replies opens with its root, pages to the start and has no timelineStart item',
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId],
+        } = await roomWith(['root']);
+        const replyIds: string[] = [];
+        for (let n = 1; n <= 40; n++)
+          replyIds.push(
+            await context.asBob.sendInThread(roomId, rootId, `reply ${n}`),
+          );
+        const focus: TimelineFocus = { kind: 'thread', rootEventId: rootId };
+        const thread = watch(roomId, focus);
+        try {
+          const opened = await thread.until((v) => !!byId(v, rootId));
+          expect(events(opened)[0].eventId).toBe(rootId);
+
+          let startReached = false;
+          for (let page = 0; page < 10 && !startReached; page++)
+            ({ startReached } = await ok(
+              engine.paginateBackwards(alice, roomId, focus, 20),
+            ));
+          expect(startReached).toBe(true);
+
+          const view = await thread.until(
+            (v) => !!byId(v, replyIds[0]) && !!byId(v, replyIds[39]),
+          );
+          expect(events(view).map((item) => item.eventId)).toEqual([
+            rootId,
+            ...replyIds,
+          ]);
+          expect(view.items.some((item) => item.kind === 'timelineStart')).toBe(
+            false,
+          );
+          expect(view.backPagination).toBe('start-reached');
+        } finally {
+          thread.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G5 — threadSummaries counts unread replies, clears on a thread receipt and highlights a mention',
+      async () => {
+        const {
+          roomId,
+          eventIds: [rootId],
+        } = await roomWith(['root']);
+        const replyId = await context.asBob.sendInThread(
+          roomId,
+          rootId,
+          'unread reply',
+        );
+        const summaries = watchSummaries(roomId);
+        try {
+          const unread = await summaries.until(
+            rootId,
+            (s) => s.unreadCount > 0,
+          );
+          expect(unread.highlight).toBe(false);
+
+          await ok(
+            engine.sendReceipt(alice, roomId, replyId, {
+              threadRootId: rootId,
+              visibility: 'public',
+              fullyRead: false,
+            }),
+          );
+          await summaries.until(rootId, (s) => s.unreadCount === 0);
+
+          await context.asBob.sendEvent(roomId, 'm.room.message', {
+            msgtype: 'm.text',
+            body: 'look at this, alice',
+            'm.mentions': { user_ids: [alice] },
+            ...threadRelation(rootId),
+          });
+          await summaries.until(
+            rootId,
+            (s) => s.highlight && s.unreadCount > 0,
+          );
+        } finally {
+          summaries.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — a formatted body keeps data-mx-emoticon, names its linked users and flags a mention of alice',
+      async () => {
+        const { roomId } = await roomWith();
+        const formattedBody =
+          'hi <img data-mx-emoticon src="mxc://localhost/smile" alt=":smile:" height="32"> ' +
+          `<a href="https://matrix.to/#/${alice}">alice</a>`;
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const mentioned = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            {
+              msgtype: 'm.text',
+              body: 'hi :smile: alice',
+              format: 'org.matrix.custom.html',
+              formatted_body: formattedBody,
+              'm.mentions': { user_ids: [alice] },
+            },
+          );
+          const linked = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            {
+              msgtype: 'm.text',
+              body: 'hi alice',
+              format: 'org.matrix.custom.html',
+              formatted_body: `hi <a href="https://matrix.to/#/${alice}">alice</a>`,
+            },
+          );
+
+          const view = await timeline.until((v) => !!byId(v, linked));
+
+          expect(byId(view, mentioned)?.content).toMatchObject({
+            kind: 'message',
+            formattedBody,
+            mentions: [alice],
+            mentionsMe: true,
+          });
+          expect(byId(view, linked)?.content).toMatchObject({
+            kind: 'message',
+            mentions: [alice],
+            mentionsMe: false,
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — a reply fallback is flagged, not stripped',
+      async () => {
+        const {
+          roomId,
+          eventIds: [questionId],
+        } = await roomWith(['question']);
+        const timeline = watch(roomId);
+        try {
+          await timeline.until((v) => !!byId(v, questionId));
+          const answerId = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            {
+              msgtype: 'm.text',
+              body: `> <${bob}> question\n\nanswer`,
+              'm.relates_to': { 'm.in_reply_to': { event_id: questionId } },
+            },
+          );
+
+          const view = await timeline.until((v) => !!byId(v, answerId));
+
+          expect(byId(view, answerId)?.content).toMatchObject({
+            kind: 'message',
+            body: `> <${bob}> question\n\nanswer`,
+            replyFallback: true,
+          });
+          expect(byId(view, questionId)?.content).toMatchObject({
+            replyFallback: false,
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — an emote and a notice keep their msgtype',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const emoteId = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            { msgtype: 'm.emote', body: 'waves' },
+          );
+          const noticeId = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            { msgtype: 'm.notice', body: 'beep' },
+          );
+
+          const view = await timeline.until((v) => !!byId(v, noticeId));
+
+          expect(byId(view, emoteId)?.content).toMatchObject({
+            kind: 'message',
+            msgtype: 'emote',
+            body: 'waves',
+          });
+          expect(byId(view, noticeId)?.content).toMatchObject({
+            kind: 'message',
+            msgtype: 'notice',
+            body: 'beep',
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — a sticker and an image carry their media source',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const info = { mimetype: 'image/png', size: 1024, w: 64, h: 48 };
+          const stickerId = await context.asBob.sendEvent(roomId, 'm.sticker', {
+            body: 'a sticker',
+            url: 'mxc://localhost/sticker',
+            info,
+          });
+          const imageId = await context.asBob.sendEvent(
+            roomId,
+            'm.room.message',
+            {
+              msgtype: 'm.image',
+              body: 'photo.png',
+              url: 'mxc://localhost/photo',
+              info,
+            },
+          );
+
+          const view = await timeline.until((v) => !!byId(v, imageId));
+
+          expect(byId(view, stickerId)?.content).toMatchObject({
+            kind: 'sticker',
+            body: 'a sticker',
+            url: 'mxc://localhost/sticker',
+            info,
+            source: { kind: 'image', mxc: 'mxc://localhost/sticker' },
+          });
+          expect(byId(view, imageId)?.content).toMatchObject({
+            kind: 'media',
+            msgtype: 'image',
+            body: 'photo.png',
+            caption: null,
+            source: {
+              kind: 'image',
+              mxc: 'mxc://localhost/photo',
+              mimeType: 'image/png',
+            },
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G6 — a rename and a leave are state items with their actor',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          await context.asBob.sendState(roomId, 'm.room.name', '', {
+            name: 'Renamed room',
+          });
+          await context.asBob.sendState(roomId, 'm.room.member', bob, {
+            membership: 'leave',
+          });
+
+          const view = await timeline.until((v) =>
+            stateChanges(v).some(
+              (change) =>
+                change.kind === 'membership' && change.membership === 'leave',
+            ),
+          );
+          const changes = stateChanges(view);
+
+          expect(changes).toContainEqual(
+            expect.objectContaining({
+              kind: 'room-name',
+              actorId: bob,
+              name: 'Renamed room',
+            }),
+          );
+          expect(changes).toContainEqual(
+            expect.objectContaining({
+              kind: 'membership',
+              actorId: bob,
+              targetId: bob,
+              membership: 'leave',
+              previousMembership: 'join',
+            }),
+          );
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G7 — a message bob has read lists him in readBy, and he is not listed on his own',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const bobsId = await context.asBob.send(roomId, 'bob wrote this');
+          await timeline.until((v) => !!byId(v, bobsId));
+          const ownId = await ownMessage(roomId, timeline, 'read by bob');
+
+          await context.asBob.markRead(roomId, ownId);
+
+          const view = await timeline.until(
+            (v) => byId(v, ownId)?.readBy.includes(bob) ?? false,
+          );
+          expect(byId(view, ownId)?.readBy).toEqual([bob]);
+          expect(byId(view, ownId)?.profiles[bob]).toBeDefined();
+          expect(byId(view, bobsId)?.readBy).toEqual([]);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G7 — the read marker sits between the fully-read event and the next one',
+      async () => {
+        const {
+          roomId,
+          eventIds: [readId],
+        } = await roomWith(['read']);
+        let unreadId = '';
+        const reading = watch(roomId);
+        try {
+          await reading.until((v) => !!byId(v, readId));
+          await ok(
+            engine.sendReceipt(alice, roomId, readId, {
+              threadRootId: null,
+              visibility: 'public',
+              fullyRead: true,
+            }),
+          );
+          await expect(context.asAlice.fullyRead(roomId)).resolves.toBe(readId);
+          unreadId = await context.asBob.send(roomId, 'unread');
+          // The marker is captured at subscribe, so reopen only once the open timeline has it.
+          await reading.until((v) => !!byId(v, unreadId));
+        } finally {
+          reading.close();
+        }
+        const timeline = watch(roomId);
+        try {
+          const view = await timeline.until((v) => !!byId(v, unreadId));
+
+          const order = view.items.map((item) =>
+            item.kind === 'event' ? item.eventId : item.kind,
+          );
+          const marker = order.indexOf('readMarker');
+          expect(marker).toBeGreaterThan(order.indexOf(readId));
+          expect(order[marker + 1]).toBe(unreadId);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G7 — room state reports the encryption state event and a tombstone',
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          expect(roomOf(timeline)).toMatchObject({
+            hasEncryptionStateEvent: false,
+            tombstone: null,
+          });
+
+          await context.asBob.sendState(roomId, 'm.room.encryption', '', {
+            algorithm: 'm.megolm.v1.aes-sha2',
+          });
+          await timeline.until(
+            () => roomOf(timeline)?.hasEncryptionStateEvent === true,
+          );
+          expect(roomOf(timeline)?.encryption).toBe('encrypted');
+
+          const replacementRoomId = `!replacement:${context.serverName}`;
+          await context.asBob.sendState(roomId, 'm.room.tombstone', '', {
+            body: 'This room has been replaced',
+            replacement_room: replacementRoomId,
+          });
+          await timeline.until(() => roomOf(timeline)?.tombstone != null);
+          expect(roomOf(timeline)?.tombstone).toEqual({
+            replacementRoomId,
+            body: 'This room has been replaced',
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it.each([
+      {
+        command: 'reply',
+        run: async () => {
+          const {
+            roomId,
+            eventIds: [questionId],
+          } = await roomWith(['question']);
+          const timeline = watch(roomId);
+          try {
+            await timeline.until((v) => !!byId(v, questionId));
+            const { eventId } = await ok(
+              engine.send(alice, roomId, text('answer'), {
+                threadRootId: null,
+                replyTo: questionId,
+              }),
+            );
+
+            const content = await contentOf(roomId, eventId);
+
+            expect(content).toMatchObject({
+              msgtype: 'm.text',
+              body: `> <${bob}> question\n\nanswer`,
+              format: 'org.matrix.custom.html',
+              'm.relates_to': { 'm.in_reply_to': { event_id: questionId } },
+              'm.mentions': { user_ids: [bob] },
+            });
+            expect(content['formatted_body']).toEqual(
+              expect.stringContaining('<mx-reply>'),
+            );
+          } finally {
+            timeline.close();
+          }
+        },
+      },
+      {
+        command: 'edit',
+        run: async () => {
+          const { roomId } = await roomWith();
+          const timeline = watch(roomId);
+          try {
+            const originalId = await ownMessage(roomId, timeline, 'tpyo');
+            await ok(
+              engine.edit(
+                alice,
+                roomId,
+                eventKey(originalId),
+                {
+                  ...plain('typo'),
+                  mentions: { userIds: [bob], room: false },
+                },
+                NO_THREAD,
+              ),
+            );
+
+            const [editId] = await context.asBob.relations(
+              roomId,
+              originalId,
+              'm.replace',
+            );
+            const content = await contentOf(roomId, editId);
+
+            expect(content).toMatchObject({
+              msgtype: 'm.text',
+              body: '* typo',
+              'm.mentions': { user_ids: [bob] },
+              'm.new_content': {
+                msgtype: 'm.text',
+                body: 'typo',
+                'm.mentions': { user_ids: [bob] },
+              },
+              'm.relates_to': { rel_type: 'm.replace', event_id: originalId },
+            });
+          } finally {
+            timeline.close();
+          }
+        },
+      },
+      {
+        command: 'forward',
+        run: async () => {
+          const {
+            roomId: sourceId,
+            eventIds: [questionId],
+          } = await roomWith(['question']);
+          const { roomId: targetId } = await roomWith();
+          const replyId = await context.asBob.sendEvent(
+            sourceId,
+            'm.room.message',
+            {
+              msgtype: 'm.text',
+              body: `> <${bob}> question\n\nanswer`,
+              format: 'org.matrix.custom.html',
+              formatted_body:
+                '<mx-reply><blockquote>question</blockquote></mx-reply>answer',
+              'm.relates_to': { 'm.in_reply_to': { event_id: questionId } },
+              'm.mentions': { user_ids: [alice], room: true },
+              'x.private': 'not for the next room',
+            },
+          );
+          const source = watch(sourceId);
+          const target = watch(targetId);
+          try {
+            await source.until((v) => !!byId(v, replyId));
+            await target.until(() => true);
+            await ok(engine.forward(alice, sourceId, replyId, targetId));
+            const ownCopy = (v: TimelineView) =>
+              events(v).find(
+                (item) =>
+                  item.isOwn &&
+                  item.content.kind === 'message' &&
+                  item.eventId !== null,
+              );
+            const forwardedId = ownCopy(
+              await target.until((v) => !!ownCopy(v)),
+            )?.eventId;
+
+            const content = await contentOf(targetId, forwardedId);
+
+            expect(content).toMatchObject({
+              msgtype: 'm.text',
+              body: 'answer',
+              formatted_body: 'answer',
+            });
+            expect(content['m.mentions']).toEqual({});
+            expect(content).not.toHaveProperty('m.relates_to');
+            expect(content).not.toHaveProperty('x.private');
+          } finally {
+            target.close();
+            source.close();
+          }
+        },
+      },
+      {
+        command: 'voice',
+        run: async () => {
+          const { roomId } = await roomWith();
+          const timeline = watch(roomId);
+          const restore = context.knownUnencrypted?.();
+          try {
+            await timeline.until(() => true);
+            await ok(
+              engine.sendVoice(alice, roomId, {
+                blob: new Blob([new Uint8Array([26, 69, 223, 163])], {
+                  type: 'audio/webm',
+                }),
+                mimeType: 'audio/webm',
+                durationMs: 1200,
+                waveform: [0, 512, 1024],
+              }),
+            );
+            const view = await timeline.until((v) =>
+              events(v).some(
+                (item) =>
+                  item.isOwn &&
+                  item.content.kind === 'media' &&
+                  item.eventId !== null,
+              ),
+            );
+            const voiceId = events(view).find(
+              (item) => item.isOwn && item.content.kind === 'media',
+            )?.eventId;
+
+            const content = await contentOf(roomId, voiceId);
+
+            expect(content).toMatchObject({
+              msgtype: 'm.audio',
+              body: 'Voice message',
+              info: { mimetype: 'audio/webm', duration: 1200 },
+              'org.matrix.msc3245.voice': {},
+              'org.matrix.msc1767.audio': {
+                duration: 1200,
+                waveform: [0, 512, 1024],
+              },
+            });
+          } finally {
+            restore?.();
+            timeline.close();
+          }
+        },
+      },
+    ])(
+      'G8 — $command writes the wire format',
+      async ({ run }) => {
+        await run();
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G11 — reactionDetails on an unknown event is message-unavailable',
+      async () => {
+        const { roomId } = await roomWith();
+
+        const result = await once(
+          engine.reactionDetails(alice, roomId, `$unknown-${unique()}`),
+        );
+
+        expect(!result.ok && result.failure.code).toBe('message-unavailable');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G11 — sendReceipt on an unknown event is message-unavailable',
+      async () => {
+        const { roomId } = await roomWith();
+
+        const result = await once(
+          engine.sendReceipt(alice, roomId, `$unknown-${unique()}`, {
+            threadRootId: null,
+            visibility: 'public',
+            fullyRead: false,
+          }),
+        );
+
+        expect(!result.ok && result.failure.code).toBe('message-unavailable');
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G12 — timeline on an invited room emits items, then the join continues',
+      async () => {
+        const roomId = await context.asBob.createRoom(`timeline ${unique()}`);
+        const timeline = watch(roomId);
+        try {
+          await context.asBob.invite(roomId, alice);
+          await timeline.until(() => true);
+          const beforeJoin = timeline.updates.filter(
+            (update) => update.kind === 'items',
+          );
+          expect(beforeJoin.length).toBeGreaterThan(0);
+
+          await context.asAlice.join(roomId);
+          const eventId = await context.asBob.send(roomId, 'after the join');
+
+          await timeline.until((v) => !!byId(v, eventId));
+        } finally {
+          timeline.close();
         }
       },
       testTimeoutMs,
