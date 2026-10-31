@@ -26,6 +26,35 @@ pub enum VectorDiffDto<T> {
     Reset { values: Vec<T> },
 }
 
+impl<T> VectorDiffDto<T> {
+    /// The same op over `f` of its values.
+    pub(crate) fn map<U>(self, mut f: impl FnMut(T) -> U) -> VectorDiffDto<U> {
+        match self {
+            Self::Append { values } => VectorDiffDto::Append {
+                values: values.into_iter().map(f).collect(),
+            },
+            Self::Clear => VectorDiffDto::Clear,
+            Self::PushFront { value } => VectorDiffDto::PushFront { value: f(value) },
+            Self::PushBack { value } => VectorDiffDto::PushBack { value: f(value) },
+            Self::PopFront => VectorDiffDto::PopFront,
+            Self::PopBack => VectorDiffDto::PopBack,
+            Self::Insert { index, value } => VectorDiffDto::Insert {
+                index,
+                value: f(value),
+            },
+            Self::Set { index, value } => VectorDiffDto::Set {
+                index,
+                value: f(value),
+            },
+            Self::Remove { index } => VectorDiffDto::Remove { index },
+            Self::Truncate { length } => VectorDiffDto::Truncate { length },
+            Self::Reset { values } => VectorDiffDto::Reset {
+                values: values.into_iter().map(f).collect(),
+            },
+        }
+    }
+}
+
 /// At most `MAX_BATCH` diffs per frame, in order (O8: a reset counts as one and is never split).
 pub(crate) fn frames<T>(diffs: Vec<VectorDiffDto<T>>) -> Vec<Vec<VectorDiffDto<T>>> {
     let mut diffs = diffs.into_iter().peekable();

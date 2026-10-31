@@ -41,7 +41,9 @@ use crate::{
     barrier::{Barrier, DELIVERY_LIMIT, Subscribers, Tracked},
     dispatch::{Stream, detached, item, reply, stream},
     engines::member::{on_account, sent_once},
-    failure::{EngineResult, http_error_from_response, refresh_logs_out, request_failure},
+    failure::{
+        EngineResult, http_error_from_response, refresh_logs_out, request_failure, request_of,
+    },
     wire::{Fault, FaultCode},
 };
 
@@ -366,6 +368,7 @@ impl Engine {
     /// The rule for a typed call's error. The SDK may have reported the death through its
     /// broadcast instead, before it returned a refused refresh: that one is awaited too.
     pub(crate) async fn after_request_error(self: &Arc<Self>, rt: &AccountRuntime, err: &Error) {
+        let err = request_of(err);
         let barrier = match self.on_request_error(rt, err) {
             Some(barrier) => barrier,
             None if broadcast_first(err) => self.broadcast_death(rt).await,

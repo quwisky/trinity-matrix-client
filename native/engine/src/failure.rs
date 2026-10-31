@@ -10,6 +10,7 @@ use matrix_sdk::{
             RequestTokenError,
         },
     },
+    event_cache::EventCacheError,
     ruma::{
         MilliSecondsSinceUnixEpoch,
         api::{
@@ -430,6 +431,7 @@ fn server_error(err: &HttpError) -> Option<&RumaApiError> {
 
 /// A `request-failed` failure for `err`, classified like `describeMatrixRequestFailure`.
 pub fn request_failed(err: &Error) -> EngineFailure {
+    let err = request_of(err);
     let (kind, diagnostic) = classify(err);
     let refresh = matches!(err, Error::Http(http) if session_refresh(http));
     EngineFailure {
@@ -439,6 +441,17 @@ pub fn request_failed(err: &Error) -> EngineFailure {
             cause: refresh.then_some(RefreshCause::SessionRefresh),
             server_message: None,
         },
+    }
+}
+
+/// The request's own error, which pagination wraps in the event cache's.
+pub(crate) fn request_of(err: &Error) -> &Error {
+    match err {
+        Error::EventCache(cache) => match cache.as_ref() {
+            EventCacheError::PaginationError(inner) => request_of(inner),
+            _ => err,
+        },
+        _ => err,
     }
 }
 
@@ -1124,6 +1137,18 @@ mod tests {
         // As the js adapter's `requestFailure` marks a `TokenRefreshError`.
         let sorted = request_failure(&error().into());
         assert_eq!(refresh_cause(sorted), Some(RefreshCause::SessionRefresh));
+    }
+
+    #[test]
+    fn a_page_refused_by_the_server_fails_as_its_request() {
+        let refused = || Error::from(matrix_error(403, "M_FORBIDDEN"));
+        let wrapped = EventCacheError::PaginationError(Arc::new(refused()));
+        let wrapped = Error::from(wrapped);
+        assert_eq!(
+            to_json(request_failed(&wrapped)),
+            to_json(request_failed(&refused()))
+        );
+        assert_eq!(request_failed(&wrapped).kind, FailureKind::Permission);
     }
 
     #[test]

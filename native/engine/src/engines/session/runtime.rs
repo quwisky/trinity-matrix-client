@@ -44,7 +44,7 @@ use crate::engines::identity::IdentitySignals;
 use crate::{
     accounts::Engine,
     barrier::{Barrier, Subscribers, Tracked},
-    engines::room_list::typing::Typing,
+    engines::{room_list::typing::Typing, timeline::hub::Hubs},
 };
 
 /// How long `stop_sync` waits for the sync service to stop.
@@ -77,6 +77,8 @@ pub struct AccountRuntime {
     nudges: Mutex<Subscribers<Option<OwnedRoomId>>>,
     /// Who is typing per joined room, kept from the start: typing EDUs are not stored or repeated.
     pub(crate) typing: Typing,
+    /// The open timelines; the streams and commands using them keep them alive.
+    pub(crate) hubs: Arc<Hubs>,
 }
 
 impl AccountRuntime {
@@ -117,6 +119,7 @@ impl AccountRuntime {
                 tracing::warn!(kind = ?err.kind(), "the latest events runtime did not start");
             })
             .ok();
+        let hubs = Arc::new(Hubs::new(Arc::clone(&sync_service)));
         Self {
             account_id: s.user_id.clone(),
             generation,
@@ -139,6 +142,7 @@ impl AccountRuntime {
             ],
             nudges: Mutex::default(),
             typing,
+            hubs,
         }
     }
 

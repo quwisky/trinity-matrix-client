@@ -11,3 +11,4 @@ pub mod member;
 pub mod room_list;
 pub mod session;
 pub mod settle;
+pub mod timeline;

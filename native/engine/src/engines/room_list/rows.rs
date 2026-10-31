@@ -133,7 +133,7 @@ pub(crate) fn update(
     }
 }
 
-pub(super) fn saturated(n: impl TryInto<u32>) -> u32 {
+pub(crate) fn saturated(n: impl TryInto<u32>) -> u32 {
     n.try_into().unwrap_or(u32::MAX)
 }
 

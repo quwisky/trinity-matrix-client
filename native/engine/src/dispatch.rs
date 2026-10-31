@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::{
     accounts::Engine,
-    engines::{contact_addresses, discovery, homeserver, identity, room_list, session},
+    engines::{contact_addresses, discovery, homeserver, identity, room_list, session, timeline},
     wire::{BlobRefDto, Fault, FaultCode},
 };
 
@@ -276,6 +276,17 @@ methods! {
     "session.signOutAll" => session::logout::sign_out_all(),
     "session.logoutSession" => session::logout::logout_session(
         session: session::MatrixSessionDto,
+    ),
+    "timeline.timeline" => timeline::timeline(
+        account_id: String,
+        room_id: String,
+        focus: timeline::Focus,
+    ),
+    "timeline.paginateBackwards" => timeline::paging::paginate_backwards(
+        account_id: String,
+        room_id: String,
+        focus: timeline::Focus,
+        count: u16,
     ),
 }
 
