@@ -417,7 +417,7 @@ export class ThreadsService {
     // receipt surfaces only when an unrelated event re-refreshes.
     room.on(RoomEvent.Receipt, this.onThreadChanged);
     client.on(MatrixEventEvent.Decrypted, this.onThreadEventChanged);
-    // The SDK re-aggregates a cancelled echo after its LocalEchoUpdated, too late for that refresh.
+    // A cancelled echo or a redaction re-aggregates without a thread event of its own to follow.
     client.on(MatrixEventEvent.Replaced, this.onThreadEventChanged);
     client.on(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
     client.on(CryptoEvent.DevicesUpdated, this.onThreadTrust);
@@ -635,7 +635,7 @@ export class ThreadsService {
 
   /**
    * Back to what the server accepted: the SDK leaves a failed edit attached to its message. Only
-   * NOT_SENT is dropped, as anything else has landed or makes `cancelPendingEvent` throw.
+   * NOT_SENT is dropped: a rejected send always ends there, and a landed one must stay.
    */
   private dropEditEcho(
     client: MatrixClient,
