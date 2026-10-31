@@ -20,7 +20,7 @@ import { promisify } from 'node:util';
 import { offsetPorts, PORT_OFFSET, PORTS } from './constants.mjs';
 
 /** The Synapse the Docker stack runs (synapse/docker-compose.yml); a test keeps them equal. */
-export const SYNAPSE_VERSION = '1.161.0';
+export const SYNAPSE_VERSION = '1.164.1';
 /** The Sydent the Docker stack runs (synapse/docker-compose.yml); a test keeps them equal. */
 export const SYDENT_VERSION = '2.6.1';
 export const NATIVE_SERVICES = [

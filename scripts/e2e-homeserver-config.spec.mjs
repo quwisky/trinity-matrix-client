@@ -530,7 +530,7 @@ describe('Opt-in MAS stack', () => {
     expect(MAS_IMAGE).toBe(services.mas.image);
     expect(SYNAPSE_IMAGE).toBe(services['homeserver-mas'].image);
     expect(services.mas.image).toBe(
-      'ghcr.io/element-hq/matrix-authentication-service:1.26.0',
+      'ghcr.io/element-hq/matrix-authentication-service:1.28.0',
     );
     expect(services['homeserver-mas'].image).toBe(
       parse(read(`${HERE}/synapse/docker-compose.yml`)).services.homeserver

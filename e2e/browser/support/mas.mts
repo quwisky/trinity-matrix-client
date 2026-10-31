@@ -130,7 +130,7 @@ export async function signInWithMas(
   const provider = await authPlatform.waitForExternalPage(page, () =>
     start.click(),
   );
-  // MAS 1.26.0 templates: pages/login.html (inputs `username`, `password`) and
+  // MAS 1.28.0 templates: pages/login.html (inputs `username`, `password`) and
   // pages/consent.html at /consent/{grant_id}; both submit with "Continue".
   await provider.locator('input[name="username"]').fill(account.user);
   await provider.locator('input[name="password"]').fill(account.pass);
