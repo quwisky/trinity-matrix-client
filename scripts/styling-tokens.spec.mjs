@@ -98,6 +98,16 @@ describe('styling tokens', () => {
     expect(toaster).toContain('safe-area-inset-top');
   });
 
+  it('keeps toast-like surfaces off the composer', () => {
+    const block = (selector) =>
+      globalStyles.slice(globalStyles.indexOf(selector)).split('}')[0];
+    expect(block('[data-sonner-toast] [data-content]')).toContain('max-height');
+    const feedback = block('.trn-action-feedback {');
+    expect(feedback).toMatch(/\btop: max\(/);
+    expect(feedback).toContain('--trinity-title-row-inset');
+    expect(feedback).not.toMatch(/\bbottom:/);
+  });
+
   it('keeps every viewport-pinned surface and height cap above the iOS keyboard', () => {
     // The iOS WebView stays full height under the keyboard (`resize: 'none'`), so `dvh` and a
     // fixed `bottom: 0` no longer shrink with it. Whatever reaches the bottom of the layout
@@ -119,10 +129,6 @@ describe('styling tokens', () => {
     );
     expect(lockCover).toContain(shrink);
     expect(lockCover).toContain(`duration-[${follows}]`);
-    expect(rule(globalStyles, '.trn-action-feedback {')).toContain(shrink);
-    expect(rule(globalStyles, '.trn-action-feedback {')).toContain(
-      `transition: bottom ${follows}`,
-    );
 
     const caps = [
       'libs/**/*.{scss,css,html,ts}',

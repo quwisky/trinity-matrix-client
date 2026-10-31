@@ -9,7 +9,7 @@ export type TrnToastVariant = Extract<
   'neutral' | 'success' | 'warning' | 'danger'
 >;
 export interface ToastOptions {
-  /** Auto-dismiss after this many ms; 0 keeps it until tapped. Default 3000. */
+  /** Auto-dismiss after this many ms; 0 keeps it until closed. Default 3000. */
   duration?: number;
   variant?: TrnToastVariant;
   /**
@@ -45,6 +45,8 @@ export class TrnToastService {
     // "render a button", and call sites (and their mocks) assert on exact literals.
     const options = {
       duration: duration > 0 ? duration : Number.POSITIVE_INFINITY,
+      // A toast that stays must be closable: it sits over the header's controls on a phone.
+      ...(duration > 0 ? {} : { closeButton: true }),
       ...(opts.action
         ? {
             action: {

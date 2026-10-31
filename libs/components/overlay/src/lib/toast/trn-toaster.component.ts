@@ -19,6 +19,16 @@ export class TrnToasterComponent {
     '--normal-text': 'var(--trinity-text-bright)',
     '--normal-border': 'var(--trinity-border-subtle)',
     '--border-radius': 'var(--trinity-shape-overlay-radius)',
+    '--brn-sonner-toast-close-button-background':
+      'var(--trinity-surface-raised)',
+    '--brn-sonner-toast-close-button-color': 'var(--trinity-text-bright)',
+    '--brn-sonner-toast-close-button-border':
+      '1px solid var(--trinity-border-subtle)',
+    '--brn-sonner-toast-close-button-hover-background':
+      'var(--trinity-surface-raised)',
+    '--brn-sonner-toast-close-button-hover-color': 'var(--trinity-text-bright)',
+    '--brn-sonner-toast-close-button-hover-border-color':
+      'var(--trinity-border-subtle)',
     // Sonner's own stack leads with system-ui, which Linux fontconfig can resolve to a
     // serif face; use the stack the rest of the app inherits from Tailwind's preflight.
     '--brn-sonner-font-family': 'var(--default-font-family)',
