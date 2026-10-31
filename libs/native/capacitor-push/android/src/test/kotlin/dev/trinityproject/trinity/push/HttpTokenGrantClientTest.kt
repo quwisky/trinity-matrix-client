@@ -3,6 +3,7 @@ package dev.trinityproject.trinity.push
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -216,6 +217,63 @@ class HttpTokenGrantClientTest {
 
         assertEquals(TokenGrantAnswer.Failed, answered)
         assertTrue(monotonicMillis() - started < 1_500)
+    }
+
+    @Test
+    fun aSlowCompleteBodyPastTheDeadlineIsUsed() {
+        val spent = AtomicBoolean(false)
+        server.removeContext("/")
+        server.createContext("/") { exchange ->
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { body ->
+                body.write("""{"access_token":"a1",""".toByteArray())
+                body.flush()
+                Thread.sleep(300)
+                spent.set(true)
+                body.write(""" "refresh_token":"r1"}""".toByteArray())
+            }
+        }
+
+        val answered = HttpTokenGrantClient().grant(record(), Deadline(8_000L, { if (spent.get()) 9_000L else 0L }))
+
+        assertEquals(TokenGrantAnswer.Tokens("a1", "r1", null), answered)
+    }
+
+    @Test
+    fun aBodyUnfinishedAtTheDeadlineIsTransient() {
+        val spent = AtomicBoolean(false)
+        server.removeContext("/")
+        server.createContext("/") { exchange ->
+            spent.set(true)
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { body ->
+                body.write("""{"access_token":"a1",""".toByteArray())
+                body.flush()
+                Thread.sleep(300)
+            }
+        }
+
+        val answered = HttpTokenGrantClient().grant(record(), Deadline(8_000L, { if (spent.get()) 9_000L else 0L }))
+
+        assertEquals(TokenGrantAnswer.Failed, answered)
+    }
+
+    @Test
+    fun aCompleteBodyWhoseEndNeverArrivesIsUsed() {
+        server.removeContext("/")
+        server.createContext("/") { exchange ->
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { body ->
+                body.write("""{"access_token":"a1"}""".toByteArray())
+                body.flush()
+                Thread.sleep(1_000)
+            }
+        }
+        val started = monotonicMillis()
+
+        val answered = HttpTokenGrantClient().grant(record(), Deadline(started + 300, ::monotonicMillis))
+
+        assertEquals(TokenGrantAnswer.Tokens("a1", null, null), answered)
     }
 
     @Test

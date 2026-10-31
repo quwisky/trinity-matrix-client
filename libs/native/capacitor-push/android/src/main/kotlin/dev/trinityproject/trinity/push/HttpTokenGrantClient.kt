@@ -1,6 +1,7 @@
 package dev.trinityproject.trinity.push
 
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
@@ -119,20 +120,26 @@ class HttpTokenGrantClient internal constructor(private val streaming: Boolean) 
         }
     }
 
-    /** Null past the cap or the deadline: a read timeout covers one stalled read, not a trickle. */
+    /**
+     * Null only past the cap. Past the deadline, or on a failed read, it stops and what arrived
+     * decides: the provider has already spent the old refresh token, so a complete answer must be
+     * used however late, and an unfinished one does not parse. `post`'s disconnect closes [stream].
+     */
     private fun readCapped(stream: InputStream, deadline: Deadline): String? {
-        return stream.use { input ->
-            val bytes = ByteArrayOutputStream()
-            val chunk = ByteArray(READ_CHUNK_BYTES)
-            while (true) {
-                val read = input.read(chunk)
-                if (read < 0) break
-                if (bytes.size() + read > MAX_BODY_BYTES) return null
-                bytes.write(chunk, 0, read)
-                if (deadline.remainingMillis() <= 0) return null
+        val bytes = ByteArrayOutputStream()
+        val chunk = ByteArray(READ_CHUNK_BYTES)
+        while (true) {
+            val read = try {
+                stream.read(chunk)
+            } catch (error: IOException) {
+                -1
             }
-            bytes.toByteArray().toString(Charsets.UTF_8)
+            if (read < 0) break
+            if (bytes.size() + read > MAX_BODY_BYTES) return null
+            bytes.write(chunk, 0, read)
+            if (deadline.remainingMillis() <= 0) break
         }
+        return bytes.toByteArray().toString(Charsets.UTF_8)
     }
 
     private fun encode(form: List<Pair<String, String>>): String = form.joinToString("&") { (name, value) ->
