@@ -29,7 +29,7 @@ export function isTemporarySendError(error: unknown): boolean {
 /**
  * Whether a local echo is a text, emote or notice that failed only for now
  * ({@link isTemporarySendError}), so it can go out by itself once sync is back. matrix-js-sdk never
- * resends it on its own. An edit, or a send the server refused, keeps the manual Retry.
+ * resends it on its own. An edit is left out, and a send the server refused keeps the manual Retry.
  */
 export function isWaitingToSend(event: MatrixEvent): boolean {
   return (

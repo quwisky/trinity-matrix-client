@@ -1063,6 +1063,19 @@ export function defineTimelineEngineContract(
       return eventId ?? '';
     }
 
+    /** The command's single reply and the folded view read the moment it arrives. */
+    async function atReply<T>(
+      timeline: Watch,
+      command: Observable<EngineResult<T>>,
+    ) {
+      let view: TimelineView | null = null;
+      const result = await once(
+        command.pipe(tap(() => (view = timeline.view()))),
+      );
+      if (!result.ok) throw new Error(`Command failed: ${result.failure.code}`);
+      return view;
+    }
+
     const reaction = (view: TimelineView | null, eventId: string) =>
       byId(view, eventId)?.reactions.find((group) => group.key === '👍');
 
@@ -1071,7 +1084,8 @@ export function defineTimelineEngineContract(
         command: 'edit',
         run: async (roomId: string, timeline: Watch) => {
           const eventId = await ownMessage(roomId, timeline, 'tpyo');
-          await ok(
+          const view = await atReply(
+            timeline,
             engine.edit(
               alice,
               roomId,
@@ -1080,7 +1094,7 @@ export function defineTimelineEngineContract(
               NO_THREAD,
             ),
           );
-          const item = byId(timeline.view(), eventId);
+          const item = byId(view, eventId);
           expect(bodyOf(item)).toBe('typo');
           expect(item?.edited).toBe(true);
         },
@@ -1089,7 +1103,8 @@ export function defineTimelineEngineContract(
         command: 'toggleReaction on',
         run: async (roomId: string, timeline: Watch) => {
           const eventId = await ownMessage(roomId, timeline, 'like me');
-          await ok(
+          const view = await atReply(
+            timeline,
             engine.toggleReaction(
               alice,
               roomId,
@@ -1098,7 +1113,7 @@ export function defineTimelineEngineContract(
               NO_THREAD,
             ),
           );
-          expect(reaction(timeline.view(), eventId)?.reactedByMe).toBe(true);
+          expect(reaction(view, eventId)?.reactedByMe).toBe(true);
         },
       },
       {
@@ -1106,7 +1121,8 @@ export function defineTimelineEngineContract(
         run: async (roomId: string, timeline: Watch) => {
           const eventId = await ownMessage(roomId, timeline, 'like me');
           const toggle = () =>
-            ok(
+            atReply(
+              timeline,
               engine.toggleReaction(
                 alice,
                 roomId,
@@ -1116,16 +1132,18 @@ export function defineTimelineEngineContract(
               ),
             );
           await toggle();
-          await toggle();
-          expect(reaction(timeline.view(), eventId)).toBeUndefined();
+          expect(reaction(await toggle(), eventId)).toBeUndefined();
         },
       },
       {
         command: 'redact',
         run: async (roomId: string, timeline: Watch) => {
           const eventId = await ownMessage(roomId, timeline, 'oops');
-          await ok(engine.redact(alice, roomId, eventKey(eventId), NO_THREAD));
-          expect(byId(timeline.view(), eventId)?.content.kind).toBe('redacted');
+          const view = await atReply(
+            timeline,
+            engine.redact(alice, roomId, eventKey(eventId), NO_THREAD),
+          );
+          expect(byId(view, eventId)?.content.kind).toBe('redacted');
         },
       },
     ])(
@@ -1264,7 +1282,7 @@ export function defineTimelineEngineContract(
           expect(item?.content.kind).not.toBe('redacted'),
       },
     ])(
-      'G16 — a refused $command fails alone, and the room keeps sending',
+      'G16 — $command is refused alone, and the room keeps sending',
       async ({ run, unchanged }) => {
         const { roomId } = await roomWith();
         const timeline = watch(roomId);
@@ -1276,10 +1294,13 @@ export function defineTimelineEngineContract(
           };
           await context.asBob.setPowerLevels(roomId, levels);
 
-          const result = await once(run(roomId, eventId));
+          let view: TimelineView | null = null;
+          const result = await once(
+            run(roomId, eventId).pipe(tap(() => (view = timeline.view()))),
+          );
 
           expect(!result.ok && result.failure.code).toBe('request-failed');
-          unchanged(byId(timeline.view(), eventId));
+          unchanged(byId(view, eventId));
 
           await context.asBob.setPowerLevels(roomId, {
             events_default: 0,

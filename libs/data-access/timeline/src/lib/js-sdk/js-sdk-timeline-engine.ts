@@ -1193,7 +1193,7 @@ export class JsSdkTimelineEngine implements TimelineEngine {
         room.off(RoomEvent.Redaction, done);
         resolve();
       };
-      // shortcut: a sync slower than this replies before the redaction shows, when it needs a longer wait
+      // shortcut: a sync slower than this replies before the row shows, wait on the sync token when a slow homeserver is seen to do so
       const timer = setTimeout(() => {
         room.off(RoomEvent.Redaction, done);
         resolve();

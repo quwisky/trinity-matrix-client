@@ -416,6 +416,28 @@ describe('JsSdkTimelineEngine sending', () => {
     timeline.subscription.unsubscribe();
   });
 
+  it('redact replies ok after the wait when the sync never shows the redaction', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = sendingWorld([msg('$a')]);
+      const engine = engineFor(w.client);
+
+      const reply = firstValueFrom(
+        engine.redact(
+          ME,
+          ROOM,
+          { eventId: '$a', transactionId: null },
+          NO_THREAD,
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(ok(await reply)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a command settling while a page has landed replies after the page flush', async () => {
     const w = sendingWorld([msg('$b')], { token: 't1' });
     // The page's events are the harness's own fakes, not raw JSON.
