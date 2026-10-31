@@ -305,5 +305,15 @@ test.describe('Thread composer', () => {
     await expect(
       thread.getByRole('button', { name: 'Cancel edit' }),
     ).toBeVisible();
+
+    const toastBox = await page
+      .locator('[data-sonner-toast]', {
+        hasText: 'Could not edit the message.',
+      })
+      .boundingBox();
+    const composerBox = await threadInput.boundingBox();
+    expect(toastBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(composerBox!.y);
   });
 });

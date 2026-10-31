@@ -255,12 +255,11 @@
     );
   }
 
-  /* Sonner pins bottom toasts to the layout viewport, which the iOS keyboard covers; `translate`
-   * lifts them clear of it without touching Sonner's own `transform`. */
-  [data-sonner-toaster][data-y-position='bottom'] {
-    translate: 0 calc(-1 * var(--trinity-keyboard-shrink));
-    transition: translate var(--trinity-duration-keyboard)
-      var(--trinity-ease-keyboard);
+  /* Sonner places top toasts without the desktop title row, and at a fixed 20px on a phone, under
+   * the notch; `translate` moves them clear without touching Sonner's own `transform`. */
+  [data-sonner-toaster][data-y-position='top'] {
+    translate: 0
+      max(var(--trinity-title-row-inset, 0px), env(safe-area-inset-top, 0px));
   }
 
   /* Dialog and sheet entrances; the reduced-motion blanket in `overrides` shortens them. */
