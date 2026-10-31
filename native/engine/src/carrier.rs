@@ -55,7 +55,10 @@ impl CarrierSession {
 
     pub fn handle(&mut self, msg: Inbound) {
         match msg {
-            Inbound::Attach => self.abort_all(),
+            Inbound::Attach => {
+                self.abort_all();
+                self.engine.on_attach();
+            }
             Inbound::Open { id, method, args } => self.open(id, &method, args, Vec::new(), false),
             Inbound::OpenBytes {
                 id,
@@ -183,7 +186,7 @@ mod tests {
     };
 
     use futures_util::{StreamExt, future::ready, stream};
-    use matrix_sdk::{ruma::room_id, sleep::sleep, timeout::timeout};
+    use matrix_sdk::{bytes::Bytes, ruma::room_id, sleep::sleep, timeout::timeout};
     use serde_json::json;
     use tempfile::TempDir;
     use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
@@ -399,6 +402,29 @@ mod tests {
                 id: 8,
                 v: json!(42)
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn attach_purges_every_token() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let client = builder_on("http://127.0.0.1:1").build().await.unwrap();
+        let rt = live(&engine, &password("http://127.0.0.1:1"), client).await;
+        let mint = || (engine.media.tokens).mint(&rt, "image/png", Bytes::from_static(b"x"));
+        let tokens = [mint().unwrap(), mint().unwrap()];
+        assert!(
+            tokens
+                .iter()
+                .all(|token| engine.media_bytes(token).is_some())
+        );
+        let (out, _frames) = unbounded_channel();
+        let mut session = CarrierSession::new(Arc::clone(&engine), out);
+        session.handle(Inbound::Attach);
+        assert!(
+            tokens
+                .iter()
+                .all(|token| engine.media_bytes(token).is_none())
         );
     }
 

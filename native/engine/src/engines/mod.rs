@@ -7,6 +7,7 @@ pub mod contact_addresses;
 pub mod discovery;
 pub mod homeserver;
 pub mod identity;
+pub mod media;
 pub mod member;
 pub mod room_list;
 pub mod session;

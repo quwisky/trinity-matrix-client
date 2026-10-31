@@ -51,6 +51,7 @@ async fn main() {
             .map_or_else(|| data_dir.join("cache"), PathBuf::from),
         data_dir,
         store_key: Arc::new(move || Ok(key.clone())),
+        media_url_prefix: String::new(),
     };
     let engine = Engine::new(config)
         .unwrap_or_else(|err| exit(&format!("the engine cannot start: {err:?}")));

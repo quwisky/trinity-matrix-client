@@ -17,13 +17,16 @@ pub use crate::engines::session::runtime::AccountRuntime;
 use crate::{
     barrier::{Barrier, Subscribers, Tracked},
     config::EngineConfig,
-    engines::session::{
-        LiveAccountsDto, SessionAccessTokenDto, SessionAccountStatusDto, SessionSnapshotDto,
-        SessionStorageEffectDto, SessionSyncStateDto,
-        logout::{Holds, RawToken},
-        reads::live_token,
-        restore::StartState,
-        runtime::stop_sync,
+    engines::{
+        media::MediaState,
+        session::{
+            LiveAccountsDto, SessionAccessTokenDto, SessionAccountStatusDto, SessionSnapshotDto,
+            SessionStorageEffectDto, SessionSyncStateDto,
+            logout::{Holds, RawToken},
+            reads::live_token,
+            restore::StartState,
+            runtime::stop_sync,
+        },
     },
     failure::{EngineFailure, account_not_live},
 };
@@ -41,6 +44,7 @@ pub struct Engine {
     teardowns: Mutex<HashMap<String, Teardown>>,
     /// For the requests the engines send themselves rather than through the SDK.
     raw: reqwest::Client,
+    pub(crate) media: MediaState,
 }
 
 // Only the config: the session state holds every account's tokens.
@@ -138,6 +142,7 @@ impl Engine {
             starting: Mutex::default(),
             teardowns: Mutex::default(),
             raw: builder.build()?,
+            media: MediaState::default(),
         }))
     }
 
@@ -314,6 +319,8 @@ impl Engine {
         if let Some(runtime) = &runtime {
             runtime.set_retired();
         }
+        // After the retire, so a mint either sees it or is purged here.
+        self.media.tokens.purge_account(account_id);
         let mut teardowns = self.teardowns.lock();
         let previous = teardowns.remove(account_id);
         let (config, id) = (self.config.clone(), account_id.to_owned());
@@ -653,6 +660,47 @@ mod tests {
         assert_eq!(soft(), ["@w:y"]);
         engine.stop().await;
         assert!(soft().is_empty());
+    }
+
+    #[tokio::test]
+    async fn tear_down_purges_the_account_and_no_other() {
+        use matrix_sdk::bytes::Bytes;
+        use tempfile::TempDir;
+
+        use crate::testing::{builder_on, engine_in, live, password};
+
+        const OFFLINE: &str = "http://127.0.0.1:1";
+        // Each way an account goes, and whether "@c:d" goes with "@a:b".
+        for (name, both_go) in [
+            ("remove", false),
+            ("stop", true),
+            ("rollback", false),
+            ("none", false),
+        ] {
+            let root = TempDir::new().unwrap();
+            let engine = engine_in(&root);
+            let mut tokens = Vec::new();
+            for id in ["@a:b", "@c:d"] {
+                let client = builder_on(OFFLINE).build().await.unwrap();
+                let mut s = password(OFFLINE);
+                s.user_id = id.into();
+                let rt = live(&engine, &s, client).await;
+                let minted = engine
+                    .media
+                    .tokens
+                    .mint(&rt, "image/png", Bytes::from_static(b"x"));
+                tokens.push(minted.unwrap());
+            }
+            match name {
+                "remove" => engine.remove("@a:b").await,
+                "stop" => engine.stop().await,
+                "rollback" => engine.rollback_account_start("@a:b").await,
+                // An account with no runtime is purged too.
+                _ => drop(engine.tear_down("@a:b", None, Stores::Keep)),
+            }
+            assert!(engine.media_bytes(&tokens[0]).is_none(), "{name}");
+            assert_eq!(engine.media_bytes(&tokens[1]).is_none(), both_go, "{name}");
+        }
     }
 
     #[test]

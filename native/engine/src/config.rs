@@ -20,6 +20,9 @@ pub struct EngineConfig {
     /// Holds each account's event cache and media stores, which the OS may clear.
     pub cache_dir: PathBuf,
     pub store_key: StoreKey,
+    /// Prepended to a token to make a media URL: `http://127.0.0.1:<port>/`, or piece 3's
+    /// `trinity-media://localhost/`.
+    pub media_url_prefix: String,
 }
 
 impl Default for EngineConfig {
@@ -30,6 +33,7 @@ impl Default for EngineConfig {
             data_dir: PathBuf::new(),
             cache_dir: PathBuf::new(),
             store_key: Arc::new(|| Err(KeyUnavailable)),
+            media_url_prefix: String::new(),
         }
     }
 }

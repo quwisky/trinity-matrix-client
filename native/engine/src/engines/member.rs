@@ -1,10 +1,15 @@
 //! How an engine member runs on one account: commands, long-lived streams, and how they send.
 
-use std::{future::IntoFuture, sync::Arc, time::Duration};
+use std::{future::IntoFuture, pin::pin, sync::Arc, time::Duration};
 
-use futures_util::{StreamExt, stream};
+use futures_util::{
+    StreamExt,
+    future::{Either, select},
+    stream,
+};
 use matrix_sdk::{Client, Error, SendOutsideWasm, config::RequestConfig, timeout::timeout};
 use serde::Serialize;
+use tokio::sync::watch;
 
 use crate::{
     accounts::{AccountRuntime, Engine},
@@ -95,10 +100,29 @@ pub async fn bounded<T, E: Into<Error>>(
         .map_err(Into::into)
 }
 
+/// `work`, unless the account retires first: then `None`, with `work` and what it holds dropped.
+#[cfg_attr(not(test), expect(dead_code, reason = "M3 calls it"))]
+pub(crate) async fn until_retired<T>(
+    mut retired: watch::Receiver<bool>,
+    work: impl Future<Output = T>,
+) -> Option<T> {
+    // A closed channel ends the wait too: the runtime is gone.
+    let retire = async move {
+        let _ = retired.wait_for(|retired| *retired).await;
+    };
+    // Retire is polled first, so work that has not begun never begins. Both are locals, so `work`
+    // is dropped before this answers.
+    match select(pin!(retire), pin!(work)).await {
+        Either::Left(_) => None,
+        Either::Right((value, _)) => Some(value),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
         future::{Ready, pending, ready},
+        sync::atomic::{AtomicBool, Ordering},
         time::Duration,
     };
 
@@ -152,6 +176,64 @@ mod tests {
         let cut_off =
             json!({"kind": "timeout", "code": "request-failed", "diagnostic": {"kind": "timeout"}});
         assert_eq!(json!(request_failed(&err)), cut_off);
+    }
+
+    #[tokio::test]
+    async fn until_retired_returns_the_work() {
+        let (_tx, rx) = watch::channel(false);
+        assert_eq!(until_retired(rx, ready(7)).await, Some(7));
+    }
+
+    /// Sets its flag when dropped.
+    struct DropFlag(Arc<AtomicBool>);
+
+    impl Drop for DropFlag {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn until_retired_drops_the_work_on_retire() {
+        let (tx, rx) = watch::channel(false);
+        let (dropped, held) = (Arc::new(AtomicBool::new(false)), Arc::new(()));
+        let (flag, holds) = (DropFlag(Arc::clone(&dropped)), Arc::clone(&held));
+        let work = async move {
+            let _kept = (flag, holds);
+            pending::<()>().await;
+        };
+        let mut until = Box::pin(until_retired(rx, work));
+        assert!(
+            (&mut until).now_or_never().is_none(),
+            "it waits for the work"
+        );
+        assert!(!dropped.load(Ordering::SeqCst));
+        tx.send_replace(true);
+        // Awaited by reference: the work must be gone when it answers, not when it is dropped.
+        assert_eq!((&mut until).await, None);
+        assert!(dropped.load(Ordering::SeqCst));
+        assert_eq!(Arc::strong_count(&held), 1);
+    }
+
+    #[tokio::test]
+    async fn until_retired_never_starts_work_once_retired() {
+        let (tx, rx) = watch::channel(true);
+        let started = AtomicBool::new(false);
+        let work = async {
+            started.store(true, Ordering::SeqCst);
+        };
+        assert_eq!(until_retired(rx, work).await, None);
+        assert!(!started.load(Ordering::SeqCst));
+        drop(tx);
+    }
+
+    #[tokio::test]
+    async fn until_retired_ends_when_the_sender_is_gone() {
+        let (tx, rx) = watch::channel(false);
+        let mut until = Box::pin(until_retired(rx, pending::<()>()));
+        assert!((&mut until).now_or_never().is_none());
+        drop(tx);
+        assert_eq!(until.await, None);
     }
 
     #[tokio::test]
