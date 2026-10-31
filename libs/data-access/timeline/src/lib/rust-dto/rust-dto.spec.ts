@@ -8,6 +8,7 @@ import type {
   EventTimelineItem,
   InReplyTo,
   Profile,
+  ReactionDetailGroup,
   ReactionGroup,
   SendState,
   ShieldCode,
@@ -24,6 +25,7 @@ import type { InReplyToDto } from './InReplyToDto';
 import type { MediaPayloadDto } from './MediaPayloadDto';
 import type { PollViewDto } from './PollViewDto';
 import type { ProfileDto } from './ProfileDto';
+import type { ReactionDetailGroupDto } from './ReactionDetailGroupDto';
 import type { ReactionGroupDto } from './ReactionGroupDto';
 import type { SendStateDto } from './SendStateDto';
 import type { ShieldCodeDto } from './ShieldCodeDto';
@@ -70,6 +72,9 @@ describe('Rust timeline DTOs', () => {
     expectTypeOf<Same<SendStateDto, SendState>>().toEqualTypeOf<true>();
     expectTypeOf<Same<ProfileDto, Profile>>().toEqualTypeOf<true>();
     expectTypeOf<Same<ReactionGroupDto, ReactionGroup>>().toEqualTypeOf<true>();
+    expectTypeOf<
+      Same<ReactionDetailGroupDto, ReactionDetailGroup>
+    >().toEqualTypeOf<true>();
     expectTypeOf<Same<InReplyToDto, InReplyTo>>().toEqualTypeOf<true>();
     expectTypeOf<
       Same<TimelineRoomStateDto, TimelineRoomState>

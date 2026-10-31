@@ -1,7 +1,7 @@
 //! `TimelineEngine` (`libs/data-access/timeline/src/lib/timeline-engine.ts`): the `timeline`
 //! stream, over one [`hub::Hub`] per room and focus.
 
-use std::{pin::pin, sync::Arc};
+use std::{collections::HashSet, pin::pin, sync::Arc};
 
 use futures_util::{
     FutureExt, StreamExt,
@@ -9,7 +9,7 @@ use futures_util::{
 };
 use matrix_sdk::{
     BoxFuture, Client, Error, Room,
-    ruma::{EventId, OwnedEventId, RoomId, UserId},
+    ruma::{EventId, OwnedEventId, RoomId, events::fully_read::FullyReadEventContent},
     timeout::timeout,
 };
 use matrix_sdk_ui::{
@@ -35,6 +35,7 @@ mod dto;
 mod fold;
 pub(crate) mod hub;
 pub mod paging;
+pub mod reads;
 mod rows;
 
 use dto::{DTO, TimelineItemDto, TimelineRoomStateDto, TimelineUpdateDto};
@@ -42,6 +43,9 @@ use fold::{Fold, Marker};
 use hub::Hub;
 use paging::LANDING_LIMIT;
 use rows::{Pass, RowContext, is_hidden, is_message_row, room_state, row};
+
+/// The marker row's id, the one the SDK gives its own.
+const READ_MARKER_ID: &str = "__read_marker";
 
 /// `TimelineFocus`. The root stays a string: a malformed one is a thread that can't exist, which
 /// the members answer, and never a `bad-args` fault on a stream.
@@ -207,11 +211,12 @@ where
         let mut marker = Marker::default();
         let mut sdk_items = items.clone();
         let mut state = *hub.state.borrow();
-        let mut snapshot = marker.apply(fold.apply(VectorDiff::Reset { values: items }, is_virtual));
-        snapshot.extend(marker.place(marker_target(&sdk_items, &ctx.me, thread)));
+        let snapshot = fold.apply(VectorDiff::Reset { values: items }, is_virtual);
+        let mut snapshot = marker.apply(rows_of(snapshot, &ctx, &sdk_items).await);
+        snapshot.extend(marker.place(marker_row(&hub, &ctx, &sdk_items, thread).await));
         let mut shown = room_of(&room, &sdk_items, thread).await;
         yield TimelineUpdateDto::Items {
-            diffs: rows_of(snapshot, &ctx, &sdk_items).await,
+            diffs: snapshot,
             back_pagination: state,
             room: shown.clone(),
         };
@@ -255,9 +260,9 @@ where
                 .into_iter()
                 .flat_map(|diff| fold.apply(diff, is_virtual))
                 .collect();
-            let mut folded = marker.apply(folded);
-            folded.extend(marker.place(marker_target(&sdk_items, &ctx.me, thread)));
-            let mut framed = frames(rows_of(folded, &ctx, &sdk_items).await);
+            let mut rows = marker.apply(rows_of(folded, &ctx, &sdk_items).await);
+            rows.extend(marker.place(marker_row(&hub, &ctx, &sdk_items, thread).await));
+            let mut framed = frames(rows);
             let room_now = room_of(&room, &sdk_items, thread).await;
             if framed.is_empty() {
                 if end_state.is_none() && room_now == shown {
@@ -288,35 +293,61 @@ fn is_marker(item: &TimelineItem) -> bool {
     matches!(item.as_virtual(), Some(VirtualTimelineItem::ReadMarker))
 }
 
-/// Where js puts the marker: before the first message after the SDK's marker that is not our
-/// own, past any state items. With none, and always in a thread, there is no marker. The index
-/// counts the rows without the marker.
-fn marker_target(
-    items: &Vector<Arc<TimelineItem>>,
-    me: &UserId,
+/// The events after `m.fully_read` in the room's raw order, or `None` when it names no event the
+/// room has loaded. The SDK places no marker when it names one the list has no item for, such as
+/// a reaction, an edit or a power level change, so the raw order decides, as in js.
+// shortcut: a marker not loaded walks every loaded event per batch; keep it on the hub if piece 3
+// measures that in a room paged far back.
+async fn after_fully_read(room: &Room) -> Option<HashSet<OwnedEventId>> {
+    let read = room
+        .account_data_static::<FullyReadEventContent>()
+        .await
+        .ok()??
+        .deserialize()
+        .ok()?
+        .content
+        .event_id;
+    let (cache, _handles) = room.event_cache().await.ok()?;
+    let mut after = HashSet::new();
+    let found = cache.rfind_map_event_in_memory_by(|event| {
+        let id = event.event_id()?;
+        if id == read {
+            return Some(());
+        }
+        after.insert(id.to_owned());
+        None
+    });
+    found.await.ok()??;
+    Some(after)
+}
+
+/// Where js puts the marker, and the row: before the first message after `m.fully_read` that is
+/// not our own, past any state items. With none, and always in a thread, there is no marker; with
+/// one above `window`, none until a page reveals it. The index counts the rows without the marker.
+fn marker_row<'a>(
+    hub: &'a Hub,
+    ctx: &'a RowContext,
+    window: &'a Vector<Arc<TimelineItem>>,
     thread: bool,
-) -> Option<(usize, Arc<TimelineItem>)> {
-    if thread {
-        return None;
-    }
-    let (mut shown, mut sdk) = (0, None);
-    for item in items {
-        if is_marker(item) {
-            sdk = Some(item);
-            continue;
+) -> BoxFuture<'a, Option<(usize, TimelineItemDto)>> {
+    Box::pin(async move {
+        if thread {
+            return None;
         }
-        if is_virtual(item) {
-            continue;
-        }
-        let unread = item
-            .as_event()
-            .is_some_and(|event| is_message_row(event.content()) && event.sender() != me);
-        if let (true, Some(marker)) = (unread, sdk) {
-            return Some((shown, Arc::clone(marker)));
-        }
-        shown += 1;
-    }
-    None
+        let after = after_fully_read(&ctx.room).await?;
+        let all = hub.timeline.items().await;
+        let unread = all
+            .iter()
+            .filter(|item| !is_virtual(item))
+            .filter_map(|item| item.as_event())
+            .filter(|event| is_message_row(event.content()) && event.sender() != ctx.me)
+            .find_map(|event| event.event_id().filter(|id| after.contains(*id)))?;
+        let at = (window.iter())
+            .filter(|item| !is_virtual(item))
+            .position(|item| item.as_event().and_then(|event| event.event_id()) == Some(unread))?;
+        let unique_id = READ_MARKER_ID.to_owned();
+        Some((at, TimelineItemDto::ReadMarker { unique_id }))
+    })
 }
 
 /// What woke the stream.

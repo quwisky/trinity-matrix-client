@@ -60,11 +60,7 @@ pub fn paginate_backwards(
                 let start_reached = true;
                 return Ok(EngineResult::Ok(PageReplyDto { start_reached }));
             };
-            // An unknown encryption state makes the SDK's build ask the server.
-            let opened = bounded(async {
-                (rt.hubs.open(&room, focus.clone()).await).map_err(request_error)
-            });
-            let hub = engine.ruled(&rt, opened).await?;
+            let hub = hub_of(&engine, &rt, &room, &focus).await?;
             Ok(
                 match page(&engine, &rt, &room, &hub, &focus, count).await? {
                     Some(start_reached) => EngineResult::Ok(PageReplyDto { start_reached }),
@@ -73,6 +69,18 @@ pub fn paginate_backwards(
             )
         },
     ))
+}
+
+/// The hub a command pages on. An unknown encryption state makes the SDK's build ask the server.
+pub(super) async fn hub_of(
+    engine: &Arc<Engine>,
+    rt: &AccountRuntime,
+    room: &Room,
+    focus: &Focus,
+) -> Result<Arc<Hub>, Error> {
+    let opened =
+        bounded(async { (rt.hubs.open(room, focus.clone()).await).map_err(request_error) });
+    engine.ruled(rt, opened).await
 }
 
 /// The SDK's error, with the event cache's kept visible to the failure mapping and the token rule.
@@ -88,7 +96,7 @@ fn request_error(err: timeline::Error) -> Error {
 
 /// Whether the page reached the start, or `None` for an account that retired while it queued: a
 /// teardown waits for each holder, and pages queued on a stalled server would outlast its limit.
-async fn page(
+pub(super) async fn page(
     engine: &Arc<Engine>,
     rt: &AccountRuntime,
     room: &Room,

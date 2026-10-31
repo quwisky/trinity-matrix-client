@@ -680,12 +680,12 @@ async fn latest_confirmed(room: &Room) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use std::{pin::pin, time::Duration};
 
     use futures_util::StreamExt;
     use matrix_sdk::{
-        ruma::{MilliSecondsSinceUnixEpoch, UInt, owned_user_id, room_id, user_id},
+        ruma::{MilliSecondsSinceUnixEpoch, UInt, event_id, owned_user_id, room_id, user_id},
         timeout::timeout,
     };
     use matrix_sdk_ui::timeline::ReactionInfo;
@@ -693,9 +693,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        super::{
-            Focus, TimelineFocusDto, hub::Hub, is_marker, is_virtual, marker_target, timeline,
-        },
+        super::{Focus, TimelineFocusDto, hub::Hub, is_marker, is_virtual, marker_row, timeline},
         *,
     };
     use crate::{
@@ -1034,7 +1032,7 @@ mod tests {
         }
     }
 
-    fn hostile() -> Vec<(Value, Option<Value>)> {
+    pub(in super::super) fn hostile() -> Vec<(Value, Option<Value>)> {
         let unsupported =
             |body: &str| Some(json!({"kind": "unsupported", "body": body, "replyFallback": false}));
         let deleted = Some(json!({"kind": "redacted", "replyFallback": false}));
@@ -1187,6 +1185,30 @@ mod tests {
                 json!({"type": "m.room.message", "sender": "@b:b", "content": "x"}),
                 None,
             ),
+            (
+                event(
+                    "m.reaction",
+                    "$reacts-to-text",
+                    json!({"m.relates_to": "x"}),
+                ),
+                None,
+            ),
+            (
+                event(
+                    "m.reaction",
+                    "$reaction-key",
+                    json!({"m.relates_to": {"rel_type": "m.annotation", "event_id": "$sticker-text", "key": 7}}),
+                ),
+                None,
+            ),
+            (
+                event(
+                    "m.reaction",
+                    "$relates-to-itself",
+                    json!({"m.relates_to": {"rel_type": "m.annotation", "event_id": "$relates-to-itself", "key": "k"}}),
+                ),
+                None,
+            ),
         ]
     }
 
@@ -1318,16 +1340,16 @@ mod tests {
             Some("$read"),
         )
         .await;
-        let target = marker_target(&unread.items, me, false).expect("an unread message");
-        assert!(is_marker(&target.1));
+        let ctx = RowContext::new(unread.room.clone(), me.to_owned());
+        let target = marker_row(&unread._hub, &ctx, &unread.items, false).await;
+        let target = target.expect("an unread message");
+        assert!(matches!(target.1, TimelineItemDto::ReadMarker { .. }));
         assert_eq!(
             target.0, 3,
             "past our own and the state row, counting no hidden row"
         );
-        assert!(
-            marker_target(&unread.items, me, true).is_none(),
-            "a thread has none"
-        );
+        let in_thread = marker_row(&unread._hub, &ctx, &unread.items, true).await;
+        assert!(in_thread.is_none(), "a thread has none");
 
         let only_state = state("m.room.name", "$end", json!({"name": "m"}));
         let caught_up = listed(vec![], vec![text("$read"), only_state], Some("$read")).await;
@@ -1335,7 +1357,89 @@ mod tests {
             caught_up.items.iter().any(|item| is_marker(item)),
             "the SDK has one, before the state row"
         );
-        assert!(marker_target(&caught_up.items, me, false).is_none());
+        let ctx = RowContext::new(caught_up.room.clone(), me.to_owned());
+        let target = marker_row(&caught_up._hub, &ctx, &caught_up.items, false).await;
+        assert!(target.is_none());
+    }
+
+    /// The rows' kinds and ids of a room whose `m.fully_read` names `$read`, in the first frame.
+    async fn first_rows(events: Vec<Value>) -> Vec<String> {
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let bodies = vec![
+            joined(vec![], vec![encrypted()], None),
+            joined(events, vec![], Some("$read")),
+        ];
+        let rt = syncing(&engine, bodies).await;
+        sync(&rt.client).await;
+        sync(&rt.client).await;
+        let room = rt.client.get_room(room_id!("!r:b")).unwrap();
+        let (cache, _handles) = room.event_cache().await.unwrap();
+        let cached = async {
+            while cache.find_event(event_id!("$end")).await.unwrap().is_none() {
+                matrix_sdk::sleep::sleep(Duration::from_millis(5)).await;
+            }
+        };
+        timeout(cached, Duration::from_secs(5)).await.unwrap();
+        let live = TimelineFocusDto::Live;
+        let mut stream = timeline(Arc::clone(&engine), ME.into(), ROOM.into(), live);
+        let first = timeout(stream.next(), Duration::from_secs(5)).await;
+        let first = first.unwrap().unwrap().unwrap();
+        let mut rows = Vec::new();
+        for diff in first["diffs"].as_array().unwrap() {
+            match diff["op"].as_str().unwrap() {
+                "reset" => {
+                    rows = (diff["values"].as_array().unwrap().iter())
+                        .map(|row| row["eventId"].as_str().unwrap().to_owned())
+                        .collect();
+                }
+                "insert" => {
+                    let index = usize::try_from(diff["index"].as_u64().unwrap()).unwrap();
+                    assert_eq!(diff["value"]["kind"], "readMarker");
+                    rows.insert(index, "marker".to_owned());
+                }
+                other => panic!("{other}"),
+            }
+        }
+        rows
+    }
+
+    #[tokio::test]
+    async fn a_fully_read_event_no_row_shows_keeps_the_marker() {
+        let reaction = json!({"m.relates_to": {"rel_type": "m.annotation", "event_id": "$before", "key": "k"}});
+        let edit = json!({"msgtype": "m.text", "body": "* x",
+            "m.new_content": {"msgtype": "m.text", "body": "x"},
+            "m.relates_to": {"rel_type": "m.replace", "event_id": "$before"}});
+        let hidden = [
+            event("m.reaction", "$read", reaction),
+            event("m.room.message", "$read", edit),
+            state("m.room.power_levels", "$read", json!({"users": {}})),
+        ];
+        for hidden in hidden {
+            let rows = first_rows(vec![text("$before"), hidden.clone(), text("$end")]).await;
+            assert_eq!(rows, ["$before", "marker", "$end"], "{hidden}");
+        }
+
+        let hidden = state("m.room.power_levels", "$read", json!({"users": {}}));
+        let rows = first_rows(vec![text("$before"), hidden, own("$end")]).await;
+        assert_eq!(rows, ["$before", "$end"], "nothing unread, no marker");
+
+        let hidden = state("m.room.power_levels", "$read", json!({"users": {}}));
+        let rows = first_rows(vec![hidden, text("$end")]).await;
+        assert_eq!(rows, ["marker", "$end"], "before the first row");
+    }
+
+    #[tokio::test]
+    async fn a_marker_above_the_window_waits_for_its_page() {
+        let hidden = state("m.room.power_levels", "$read", json!({"users": {}}));
+        let mut events = vec![hidden];
+        events.extend((0..30).map(|n| text(&format!("$m{n}"))));
+        events.push(text("$end"));
+        let rows = first_rows(events).await;
+        assert!(
+            rows.len() <= 20 && !rows.contains(&"marker".to_owned()),
+            "{rows:?}"
+        );
     }
 
     #[tokio::test]

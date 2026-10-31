@@ -288,6 +288,43 @@ methods! {
         focus: timeline::TimelineFocusDto,
         count: u16,
     ),
+    "timeline.paginateUntil" => timeline::reads::paginate_until(
+        account_id: String,
+        room_id: String,
+        event_id: String,
+        max_pages: u32,
+    ),
+    "timeline.eventAt" => timeline::reads::event_at(
+        account_id: String,
+        room_id: String,
+        timestamp: f64,
+    ),
+    "timeline.eventSource" => timeline::reads::event_source(
+        account_id: String,
+        room_id: String,
+        event_id: String,
+    ),
+    "timeline.reactionDetails" => timeline::reads::reaction_details(
+        account_id: String,
+        room_id: String,
+        event_id: String,
+    ),
+    "timeline.sendReceipt" => timeline::reads::send_receipt(
+        account_id: String,
+        room_id: String,
+        event_id: String,
+        options: timeline::reads::ReceiptOptionsDto,
+    ),
+    "timeline.setTyping" => timeline::reads::set_typing(
+        account_id: String,
+        room_id: String,
+        typing: bool,
+    ),
+    "timeline.setRetention" => timeline::reads::set_retention(
+        account_id: String,
+        room_id: String,
+        hint: Value,
+    ),
 }
 
 /// A member with Blob arguments: decodes its args and takes its Blobs. `finish` runs after it

@@ -118,6 +118,16 @@ pub(super) struct ProfileDto {
     pub avatar_mxc: Option<String>,
 }
 
+/// `ReactionDetailGroup`.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = DTO)]
+pub(super) struct ReactionDetailGroupDto {
+    pub key: String,
+    pub senders: Vec<String>,
+    pub profiles: BTreeMap<String, ProfileDto>,
+}
+
 /// `SendState`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]

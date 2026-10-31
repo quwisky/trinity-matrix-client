@@ -530,7 +530,7 @@ fn profile_of(r: &get_profile::v3::Response) -> UserProfileDto {
 }
 
 /// js `isNotFound`: a 404 whatever its body, or `M_NOT_FOUND`.
-fn is_not_found(err: &Error) -> bool {
+pub(crate) fn is_not_found(err: &Error) -> bool {
     err.as_client_api_error().is_some_and(|e| {
         e.status_code.as_u16() == 404 || e.error_kind() == Some(&ErrorKind::NotFound)
     })

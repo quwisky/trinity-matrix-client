@@ -131,7 +131,6 @@ impl Hubs {
     }
 
     /// Only those already open; a command settles these and opens none.
-    #[expect(dead_code, reason = "T5 calls it")]
     pub(crate) fn of(&self, room_id: &RoomId) -> Vec<Arc<Hub>> {
         let open = self.open.lock();
         (open.iter())
