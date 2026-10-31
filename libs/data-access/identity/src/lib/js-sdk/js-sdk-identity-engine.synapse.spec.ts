@@ -1,43 +1,23 @@
 import { Injector } from '@angular/core';
-import { createHmac } from 'node:crypto';
 import {
   ClientEvent,
   type MatrixClient,
   SyncState,
   createClient,
 } from 'matrix-js-sdk';
-import { afterAll, beforeAll, describe } from 'vitest';
+import { filter, firstValueFrom, timeout } from 'rxjs';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { JS_SDK_CLIENTS } from '@trinity/data-access/matrix-client';
 import { defineIdentityEngineContract } from '../../contract/identity-engine.contract';
+import { identitySynapseFixture } from '../../contract/identity-synapse-fixture';
+import type { PresenceInfo } from '../identity-engine';
 import { JsSdkIdentityEngine } from './js-sdk-identity-engine';
 
 // Runs the engine contract against a live Synapse; skipped unless TRINITY_ENGINE_CONTRACT_HS is set.
 const baseUrl = process.env['TRINITY_ENGINE_CONTRACT_HS'];
 const serverName = process.env['TRINITY_ENGINE_CONTRACT_SERVER_NAME'] ?? '';
 const secret = process.env['TRINITY_ENGINE_CONTRACT_SHARED_SECRET'] ?? '';
-
-async function register(username: string): Promise<MatrixClient> {
-  const api = `${baseUrl}/_synapse/admin/v1/register`;
-  const nonceRes = await fetch(api);
-  if (!nonceRes.ok)
-    throw new Error(`Synapse nonce request failed: ${nonceRes.status}`);
-  const { nonce } = (await nonceRes.json()) as { nonce: string };
-  const password = `pw-${Math.random().toString(36).slice(2)}`;
-  const mac = createHmac('sha1', secret)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await fetch(api, {
-    method: 'POST',
-    body: JSON.stringify({ nonce, username, password, mac, admin: false }),
-  });
-  if (!res.ok) throw new Error(`Synapse registration failed: ${res.status}`);
-  const body = (await res.json()) as { user_id: string; access_token: string };
-  return createClient({
-    baseUrl: baseUrl as string,
-    userId: body.user_id,
-    accessToken: body.access_token,
-  });
-}
+const timing = { settleTimeoutMs: 20_000, testTimeoutMs: 60_000 };
 
 function startSyncing(client: MatrixClient): Promise<void> {
   const synced = new Promise<void>((resolve) => {
@@ -50,6 +30,49 @@ function startSyncing(client: MatrixClient): Promise<void> {
     client.on(ClientEvent.Sync, check);
   });
   return client.startClient({ initialSyncLimit: 1 }).then(() => synced);
+}
+
+async function setUpJs() {
+  const { alice, bob, ...fixture } = await identitySynapseFixture(
+    baseUrl as string,
+    serverName,
+    secret,
+  );
+  const jsClient = (user: typeof alice) =>
+    createClient({
+      baseUrl: baseUrl as string,
+      userId: user.userId,
+      accessToken: user.accessToken,
+      deviceId: user.deviceId,
+    });
+  const aliceClient = jsClient(alice);
+  const bobClient = jsClient(bob);
+  await Promise.all([startSyncing(aliceClient), startSyncing(bobClient)]);
+
+  const clients = new Map([
+    [alice.userId, aliceClient],
+    [bob.userId, bobClient],
+  ]);
+  const engine = Injector.create({
+    providers: [
+      {
+        provide: JS_SDK_CLIENTS,
+        useValue: { clientFor: (id: string) => clients.get(id) ?? null },
+      },
+      JsSdkIdentityEngine,
+    ],
+  }).get(JsSdkIdentityEngine);
+  return {
+    engine,
+    alice: alice.userId,
+    bob: bob.userId,
+    ...fixture,
+    dispose: () => {
+      aliceClient.stopClient();
+      bobClient.stopClient();
+      return Promise.resolve();
+    },
+  };
 }
 
 describe.skipIf(!baseUrl)('JsSdkIdentityEngine against Synapse', () => {
@@ -73,61 +96,48 @@ describe.skipIf(!baseUrl)('JsSdkIdentityEngine against Synapse', () => {
       process.on('unhandledRejection', listener);
   });
 
-  defineIdentityEngineContract(
-    async () => {
-      const unique = Date.now().toString(36);
-      const [alice, bob, carol] = await Promise.all([
-        register(`id-a-${unique}`),
-        register(`id-b-${unique}`),
-        register(`id-c-${unique}`),
-      ]);
-      const aliceId = alice.getUserId() as string;
-      const bobId = bob.getUserId() as string;
-      const knownUser = {
-        userId: carol.getUserId() as string,
-        displayName: `Carol ${unique}`,
-        avatarMxc: `mxc://${serverName}/id-c-${unique}`,
-      };
-      await carol.setDisplayName(knownUser.displayName);
-      await carol.setAvatarUrl(knownUser.avatarMxc);
-      // A shared room: Synapse sends presence only to users who share one. Carol's join
-      // carries her profile into alice's first sync.
-      const { room_id: roomId } = await alice.createRoom({
-        invite: [bobId, knownUser.userId],
-      });
-      await Promise.all([bob.joinRoom(roomId), carol.joinRoom(roomId)]);
-      await Promise.all([startSyncing(alice), startSyncing(bob)]);
+  defineIdentityEngineContract(setUpJs, timing);
 
-      const clients = new Map([
-        [aliceId, alice],
-        [bobId, bob],
-      ]);
-      const engine = Injector.create({
-        providers: [
-          {
-            provide: JS_SDK_CLIENTS,
-            useValue: { clientFor: (id: string) => clients.get(id) ?? null },
-          },
-          JsSdkIdentityEngine,
-        ],
-      }).get(JsSdkIdentityEngine);
-      return {
-        engine,
-        alice: aliceId,
-        bob: bobId,
-        unknownUser: `@id-ghost-${unique}:${serverName}`,
-        knownUser,
-        avatars: [
-          `mxc://${serverName}/id-a-${unique}`,
-          `mxc://${serverName}/id-b-${unique}`,
-        ] as const,
-        dispose: () => {
-          alice.stopClient();
-          bob.stopClient();
-          return Promise.resolve();
-        },
-      };
-    },
-    { settleTimeoutMs: 20_000, testTimeoutMs: 60_000 },
-  );
+  // Presence between accounts is the js engine's: the Rust engine reports an account's own only.
+  describe('JsSdkIdentityEngine presence between accounts', () => {
+    let context: Awaited<ReturnType<typeof setUpJs>>;
+    beforeAll(async () => {
+      context = await setUpJs();
+    }, 120_000);
+    afterAll(() => context?.dispose());
+
+    it(
+      'delivers the presence one account sets to the other',
+      async () => {
+        const { engine, alice, bob } = context;
+        const fromAlice = (users: readonly PresenceInfo[]) =>
+          users.filter((user) => user.userId === alice);
+        // The set's failure rejects the whole wait, so it never hides behind the timeout.
+        const [snapshot] = await Promise.all([
+          firstValueFrom(
+            engine.presence(bob).pipe(
+              filter((users) =>
+                fromAlice(users).some(
+                  (user) =>
+                    user.presence === 'unavailable' &&
+                    user.statusMessage === 'Lunch',
+                ),
+              ),
+              timeout(timing.settleTimeoutMs),
+            ),
+          ),
+          firstValueFrom(
+            engine.setPresence(alice, 'unavailable', 'Lunch'),
+          ).then((set) => expect(set).toEqual({ ok: true, value: null })),
+        ]);
+        expect(fromAlice(snapshot)).toEqual([
+          expect.objectContaining({
+            presence: 'unavailable',
+            statusMessage: 'Lunch',
+          }),
+        ]);
+      },
+      timing.testTimeoutMs,
+    );
+  });
 });

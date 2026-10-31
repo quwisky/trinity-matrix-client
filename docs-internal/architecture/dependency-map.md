@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **82 Nx projects** and **324 dependencies**. No project cycles detected.
+This snapshot contains **82 Nx projects** and **326 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -142,12 +142,12 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-accounts`              | `libs/data-access/accounts`              | role:capability; capability:accounts            |                   4 |
 | `data-access-app-lock`              | `libs/data-access/app-lock`              | role:capability; capability:app-lock            |                   4 |
 | `data-access-auth`                  | `libs/data-access/auth`                  | role:capability; capability:accounts            |                   7 |
-| `data-access-contact-addresses`     | `libs/data-access/contact-addresses`     | role:capability; capability:accounts            |                   2 |
+| `data-access-contact-addresses`     | `libs/data-access/contact-addresses`     | role:capability; capability:accounts            |                   3 |
 | `data-access-diagnostic-log`        | `libs/data-access/diagnostic-log`        | role:capability; capability:diagnostics         |                   2 |
 | `data-access-discovery`             | `libs/data-access/discovery`             | role:capability; capability:discovery           |                   4 |
 | `data-access-gif`                   | `libs/data-access/gif`                   | role:capability; capability:conversations       |                   2 |
 | `data-access-homeserver`            | `libs/data-access/homeserver`            | role:capability; capability:discovery           |                   3 |
-| `data-access-identity`              | `libs/data-access/identity`              | role:capability; capability:identity            |                   4 |
+| `data-access-identity`              | `libs/data-access/identity`              | role:capability; capability:identity            |                   5 |
 | `data-access-matrix-client`         | `libs/data-access/matrix-client`         | role:adapter; capability:matrix-runtime         |                   4 |
 | `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   3 |
 | `data-access-notifications`         | `libs/data-access/notifications`         | role:capability; capability:notifications       |                   7 |

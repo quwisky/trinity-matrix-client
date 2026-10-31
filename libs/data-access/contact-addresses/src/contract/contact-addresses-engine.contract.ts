@@ -50,9 +50,15 @@ const NOBODY = '@nobody:invalid';
 
 export function defineContactAddressesEngineContract(
   setup: () => Promise<ContactAddressesContractSetup>,
-  options: { readonly identity: boolean; readonly mail: boolean },
+  options: {
+    readonly identity: boolean;
+    readonly mail: boolean;
+    /** A per-case timeout for an engine slower than the Vitest default. */
+    readonly testTimeoutMs?: number;
+  },
 ): void {
-  describe('ContactAddressesEngine contract', () => {
+  const { testTimeoutMs: timeout } = options;
+  describe('ContactAddressesEngine contract', { timeout }, () => {
     let context: ContactAddressesContractSetup;
     beforeAll(async () => {
       context = await setup();
