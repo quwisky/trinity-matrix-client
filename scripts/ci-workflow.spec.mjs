@@ -673,6 +673,7 @@ describe('MAS sign-in journeys', () => {
         'libs/util/matrix/src/lib/vector-diff.ts',
         'libs/testing/src/lib/engine-stdio-transport.ts',
         'libs/testing/src/lib/rust-account.ts',
+        'libs/testing/src/lib/homeserver-proxy.ts',
         'libs/testing/src/lib/synapse-admin.ts',
         'libs/testing/src/index.ts',
         'vite.base.config.ts',
