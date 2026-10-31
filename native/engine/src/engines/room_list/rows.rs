@@ -440,8 +440,8 @@ pub fn rooms(engine: Arc<Engine>, account_id: String) -> Stream {
                 if !fresh.is_empty() {
                     let latest = client.latest_events().await;
                     for id in &fresh {
-                        if let Err(err) = latest.listen_to_room(id).await {
-                            tracing::warn!("listening for the latest event of {id} failed: {err}");
+                        if latest.listen_to_room(id).await.is_err() {
+                            tracing::warn!("listening for a room's latest event failed");
                         }
                     }
                 }

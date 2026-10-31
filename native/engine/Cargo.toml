@@ -13,6 +13,7 @@ native = [
   "dep:matrix-sdk-sqlite",
   "dep:hex",
   "dep:sha2",
+  "tokio/rt",
 ]
 
 [dependencies]

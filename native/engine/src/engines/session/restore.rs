@@ -493,7 +493,7 @@ mod tests {
     use std::{path::Path, sync::Mutex as StdMutex, time::Duration};
 
     use futures_util::{StreamExt, future::join};
-    use matrix_sdk::{HttpError, RefreshTokenError, timeout::timeout};
+    use matrix_sdk::{HttpError, RefreshTokenError, ruma::room_id, sleep::sleep, timeout::timeout};
     use serde_json::json;
     use tempfile::TempDir;
     use zeroize::Zeroizing;
@@ -505,6 +505,7 @@ mod tests {
             self as session, LiveAccountsDto, SessionSnapshotDto, SessionSyncStateDto,
         },
         failure::account_not_live,
+        testing::scripted,
     };
 
     fn session(oidc: bool, refresh_token: Option<&str>) -> MatrixSessionDto {
@@ -848,6 +849,69 @@ mod tests {
         assert!(ids(&second).is_empty());
     }
 
+    struct Marker;
+
+    /// `@a:b` restored on real stores, with a marker its client owns, after its `SyncService` and
+    /// room list have synced a room, so the SDK's `LatestEvents` tasks run.
+    async fn synced_account(engine: &Arc<Engine>) -> Arc<Marker> {
+        let sliding = "POST /_matrix/client/unstable/org.matrix.simplified_msc3575/sync*";
+        let room = json!({"pos": "1", "rooms": {"!r:b": {"initial": true, "name": "R"}}});
+        let mut answers: Vec<_> = (0..6).map(|_| (sliding, 200, room.clone())).collect();
+        answers.extend((0..2).map(|_| (sliding, 0, json!(null))));
+        let (base, _) = scripted(answers);
+        let mut s = offline("@a:b");
+        s.base_url = base;
+        let restored = engine.restore(s, ACTIVATE).await;
+        assert!(matches!(restored, Ok(EngineResult::Ok(()))));
+        let rt = engine.account("@a:b").unwrap();
+        let marker = Arc::new(Marker);
+        rt.client.add_event_handler_context(Arc::clone(&marker));
+        let room = async {
+            while rt.client.get_room(room_id!("!r:b")).is_none() {
+                sleep(Duration::from_millis(10)).await;
+            }
+        };
+        timeout(room, Duration::from_secs(10))
+            .await
+            .expect("a room");
+        marker
+    }
+
+    /// Whether the marker's client lets go of it soon: the `LatestEvents` tasks end on their own
+    /// thread, so the client's last drop can follow its teardown.
+    async fn released(marker: &Arc<Marker>) -> bool {
+        for _ in 0..500 {
+            if Arc::strong_count(marker) == 1 {
+                return true;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+        false
+    }
+
+    #[tokio::test]
+    async fn removing_a_synced_account_releases_its_client_and_deletes_its_stores() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_on(root.path(), 1);
+        let marker = synced_account(&engine).await;
+        engine.remove("@a:b").await;
+        assert!(released(&marker).await, "the client outlived its teardown");
+        let paths = StorePaths::new(&engine.config, "@a:b", "DEV");
+        assert!(!paths.data.exists() && !paths.cache.exists());
+    }
+
+    #[tokio::test]
+    async fn a_restart_of_a_synced_account_releases_the_old_client() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_on(root.path(), 1);
+        let marker = synced_account(&engine).await;
+        restored(&engine, "@a:b", ACTIVATE).await;
+        assert!(
+            released(&marker).await,
+            "the old client outlived its teardown"
+        );
+    }
+
     /// The log writer of [`a_failed_start_logs_its_step_but_not_its_error`].
     #[derive(Clone, Default)]
     struct Log(Arc<StdMutex<Vec<u8>>>);
@@ -946,6 +1010,17 @@ mod tests {
         drop(held);
         assert!(matches!(restart.await, Ok(EngineResult::Ok(()))));
         assert_eq!(engine.account("@a:b").unwrap().generation, 2);
+    }
+
+    #[tokio::test]
+    async fn a_restart_closes_the_stores_of_an_old_client_something_still_holds() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_on(root.path(), 1);
+        restored(&engine, "@a:b", ACTIVATE).await;
+        let held = engine.account("@a:b").unwrap().client.clone();
+        assert!(held.state_store().get_custom_value(b"k").await.is_ok());
+        restored(&engine, "@a:b", ACTIVATE).await;
+        assert!(held.state_store().get_custom_value(b"k").await.is_err());
     }
 
     #[tokio::test]

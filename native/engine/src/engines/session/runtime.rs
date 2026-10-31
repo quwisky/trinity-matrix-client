@@ -32,6 +32,12 @@ use tokio::sync::{
     broadcast::{self, error::RecvError},
     watch,
 };
+#[cfg(feature = "native")]
+use {
+    futures_util::FutureExt,
+    std::{io, mem::ManuallyDrop, thread},
+    tokio::{runtime::Builder, sync::oneshot, task::unconstrained},
+};
 
 use super::{MatrixSessionDto, SessionSyncStateDto, restore::refreshable};
 use crate::engines::identity::IdentitySignals;
@@ -63,6 +69,9 @@ pub struct AccountRuntime {
     retired: watch::Sender<bool>,
     /// Keeps the room list's loading task, which `roomsPrepared` follows.
     _all_rooms: RoomList,
+    /// Dropping it ends the SDK's `LatestEvents` tasks, which keep the client alive until then.
+    #[cfg(feature = "native")]
+    _latest_events: Option<oneshot::Sender<()>>,
     _tasks: [AbortOnDrop<()>; 3],
     /// The open room list streams a command must reach before it replies.
     nudges: Mutex<Subscribers<Option<OwnedRoomId>>>,
@@ -102,6 +111,12 @@ impl AccountRuntime {
         let expiry = s.oidc.as_ref().and(s.access_token_expires_at);
         let identity = IdentitySignals::new(&client, &s.user_id);
         let typing = Typing::start(&client);
+        #[cfg(feature = "native")]
+        let latest_events = own_latest_events(&client)
+            .inspect_err(|err| {
+                tracing::warn!(kind = ?err.kind(), "the latest events runtime did not start");
+            })
+            .ok();
         Self {
             account_id: s.user_id.clone(),
             generation,
@@ -115,6 +130,8 @@ impl AccountRuntime {
             alive: Arc::new(watch::Sender::new(())),
             retired: watch::Sender::new(false),
             _all_rooms: all_rooms,
+            #[cfg(feature = "native")]
+            _latest_events: latest_events,
             _tasks: [
                 AbortOnDrop::new(spawn(status)),
                 AbortOnDrop::new(spawn(session)),
@@ -175,6 +192,31 @@ impl fmt::Debug for AccountRuntime {
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
+}
+
+/// Runs the SDK's `LatestEvents` tasks on a runtime of their own until the sender drops. In
+/// matrix-sdk 0.19.1 the client owns their handles and one of them holds the client, so no call
+/// ends them and the client and its stores would outlive every other holder; ending their runtime
+/// drops them. `latest_events()` spawns them on the entered runtime in its first poll, and this
+/// runs before the sync and every stream make that call. A failure leaves them where they were.
+// shortcut: a thread per account and reliance on how `latest_events()` spawns; upgrade when
+// matrix-sdk lets the client end without its `LatestEvents` tasks ending first.
+#[cfg(feature = "native")]
+fn own_latest_events(client: &Client) -> io::Result<oneshot::Sender<()>> {
+    let runtime = Builder::new_current_thread().enable_all().build()?;
+    let handle = runtime.handle().clone();
+    let (stop, stopped) = oneshot::channel();
+    // A failed spawn drops its closure right here, and dropping a runtime in async code panics.
+    let runtime = ManuallyDrop::new(runtime);
+    thread::Builder::new()
+        .name("latest-events".to_owned())
+        .spawn(move || {
+            let runtime = ManuallyDrop::into_inner(runtime);
+            drop(runtime.block_on(stopped));
+        })?;
+    let _entered = handle.enter();
+    let _ = unconstrained(client.latest_events()).now_or_never();
+    Ok(stop)
 }
 
 /// What a long-lived account stream holds instead of the runtime.
@@ -246,7 +288,8 @@ async fn restart_on_error(
 /// list's stop is sent again until `stop()` returns.
 // shortcut: matrix-sdk-ui 0.19.1 can also lose an early stop of the encryption sync, which has
 // no stop to send again: a stop that times out leaves it running and holding the client, and
-// after a restart it can keep running on the crypto store; upgrade when SyncService::stop no
+// after a restart it meets a closed store, or the crypto store itself if the close also timed
+// out; upgrade when SyncService::stop no
 // longer loses a stop sent before a child task's first poll.
 pub(crate) async fn stop_sync(service: &SyncService) {
     let rooms = service.room_list_service();
