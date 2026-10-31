@@ -82,12 +82,10 @@ public final class PushHandoffStore: HandoffReading {
     let keychainGroup: String
     private let roomsURL: URL
     private let settingsURL: URL
-    private let containerURL: URL
     let queue = DispatchQueue(label: "dev.trinityproject.trinity.push-handoff")
 
     public init(keychainGroup: String, containerURL: URL) {
         self.keychainGroup = keychainGroup
-        self.containerURL = containerURL
         let directory = containerURL.appendingPathComponent("push-handoff", isDirectory: true)
         roomsURL = directory.appendingPathComponent("rooms.json")
         settingsURL = directory.appendingPathComponent("settings.json")
@@ -147,7 +145,6 @@ public final class PushHandoffStore: HandoffReading {
     public func clear() throws {
         try queue.sync {
             let status = SecItemDelete(baseQuery(nil) as CFDictionary)
-            AppGroupTokenLease(containerURL: containerURL).discardAll()
             for url in [roomsURL, settingsURL] where FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
             }

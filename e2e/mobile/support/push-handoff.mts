@@ -135,6 +135,7 @@ export interface TokenRoundTrip {
   readonly currentAfter: unknown;
   readonly sweepOfAll: unknown;
   readonly currentSwept: unknown;
+  readonly currentAfterAll: unknown;
 }
 
 /**
@@ -188,6 +189,9 @@ export async function tokenRoundTrip(
         await handoff.migrateTokens({ ...tokens, userId: id });
         const sweepOfAll = await handoff.removeTokensExcept({ userIds: [] });
         const currentSwept = await handoff.currentTokens(account);
+        await handoff.migrateTokens({ ...tokens, userId: id });
+        await handoff.removeTokens({ all: true });
+        const currentAfterAll = await handoff.currentTokens(account);
         return {
           stored,
           current,
@@ -197,6 +201,7 @@ export async function tokenRoundTrip(
           currentAfter,
           sweepOfAll,
           currentSwept,
+          currentAfterAll,
         };
       } catch (error: unknown) {
         return String(error);

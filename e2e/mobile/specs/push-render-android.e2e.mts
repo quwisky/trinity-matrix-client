@@ -226,5 +226,6 @@ describe('device-rendered push on Android', () => {
     expect(answers.currentAfter).toEqual({ kind: 'gone' });
     expect(answers.sweepOfAll).toEqual({ removed: 1 });
     expect(answers.currentSwept).toEqual({ kind: 'gone' });
+    expect(answers.currentAfterAll).toEqual({ kind: 'gone' });
   });
 });
