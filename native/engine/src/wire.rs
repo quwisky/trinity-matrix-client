@@ -1,5 +1,8 @@
 //! The carrier-neutral frames between the TypeScript transport and the engine.
 
+use std::fmt;
+
+use matrix_sdk::ruma::serde::{Base64, base64::Standard};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
@@ -7,7 +10,7 @@ use ts_rs::TS;
 const DTO: &str = "util/matrix/src/lib/engine-transport/rust-dto/";
 
 /// A message from TypeScript to the engine.
-#[derive(Debug, PartialEq, Deserialize, TS)]
+#[derive(PartialEq, Deserialize, TS)]
 #[serde(tag = "t", rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
 pub enum Inbound {
@@ -18,9 +21,67 @@ pub enum Inbound {
         #[ts(type = "Array<unknown>")]
         args: Vec<Value>,
     },
+    /// `open` with Blob arguments: `args` name each Blob as a [`BlobRefDto`], an index into
+    /// `bytes`. `bytes` is base64 only in this enum's JSON form.
+    OpenBytes {
+        id: u32,
+        method: String,
+        #[ts(type = "Array<unknown>")]
+        args: Vec<Value>,
+        #[serde(with = "base64_blobs")]
+        #[ts(type = "Array<string>")]
+        bytes: Vec<Vec<u8>>,
+    },
     Close {
         id: u32,
     },
+}
+
+// The ids, the methods and the Blobs' lengths only: `args` hold tokens and `bytes` hold content.
+impl fmt::Debug for Inbound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Attach => f.write_str("Attach"),
+            Self::Open { id, method, .. } => f
+                .debug_struct("Open")
+                .field("id", id)
+                .field("method", method)
+                .finish_non_exhaustive(),
+            Self::OpenBytes {
+                id, method, bytes, ..
+            } => f
+                .debug_struct("OpenBytes")
+                .field("id", id)
+                .field("method", method)
+                .field("bytes", &bytes.iter().map(Vec::len).collect::<Vec<_>>())
+                .finish_non_exhaustive(),
+            Self::Close { id } => f.debug_struct("Close").field("id", id).finish(),
+        }
+    }
+}
+
+/// A Blob's place in `args`: `{ "$blob": n }`, an index into `OpenBytes::bytes`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
+#[ts(export, export_to = DTO)]
+pub struct BlobRefDto {
+    #[serde(rename = "$blob")]
+    pub index: u32,
+}
+
+mod base64_blobs {
+    use super::{Base64, Standard};
+    use serde::{Deserialize, Deserializer, de::Error};
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<Vec<u8>>, D::Error> {
+        Vec::<String>::deserialize(d)?
+            .iter()
+            .map(|text| {
+                let bytes: Base64<Standard, Vec<u8>> =
+                    Base64::parse(text).map_err(|_| D::Error::custom("a blob is not base64"))?;
+                Ok(bytes.into_inner())
+            })
+            .collect()
+    }
 }
 
 /// A message from the engine to TypeScript about the stream `id`.
@@ -168,5 +229,27 @@ mod tests {
             decode(json!({"t": "close", "id": 1})),
             Inbound::Close { id: 1 }
         );
+    }
+
+    #[test]
+    fn an_open_bytes_line_decodes_each_blob() {
+        let line = r#"{"t":"openBytes","id":1,"method":"m.n","args":[{"$blob":0}],"bytes":["AQID","","BA==","BA"]}"#;
+        let Inbound::OpenBytes { bytes, .. } = serde_json::from_str(line).unwrap() else {
+            panic!("not an openBytes");
+        };
+        assert_eq!(bytes, [vec![1, 2, 3], vec![], vec![4], vec![4]]);
+    }
+
+    #[test]
+    fn bad_base64_fails_the_line_and_quotes_nothing() {
+        let line = r#"{"t":"openBytes","id":1,"method":"m.n","args":[],"bytes":["!!secret!!"]}"#;
+        let err = serde_json::from_str::<Inbound>(line).unwrap_err();
+        assert!(!err.to_string().contains("secret"), "{err}");
+    }
+
+    #[test]
+    fn a_blob_ref_reads_its_index_from_the_dollar_key() {
+        let blob: BlobRefDto = serde_json::from_str(r#"{"$blob":2}"#).unwrap();
+        assert_eq!(blob, BlobRefDto { index: 2 });
     }
 }

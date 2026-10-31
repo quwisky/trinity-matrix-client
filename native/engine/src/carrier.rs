@@ -17,12 +17,14 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     accounts::Engine,
-    dispatch::{Stream, dispatch},
+    dispatch::{Stream, dispatch, dispatch_bytes},
     wire::{Fault, FaultCode, Frame, Inbound},
 };
 
-/// Methods a host serves before the engine's own, such as the test host's `testhost.*`.
-pub type LocalMethods = fn(&Arc<Engine>, &str, &[Value]) -> Option<Result<Stream, Fault>>;
+/// Methods a host serves before the engine's own, such as the test host's `testhost.*`. They may
+/// take Blobs, and leave `blobs` alone if `method` is not theirs.
+pub type LocalMethods =
+    fn(&Arc<Engine>, &str, &[Value], &mut Vec<Vec<u8>>) -> Option<Result<Stream, Fault>>;
 
 /// The running streams by id. The serial tells a stream from a later one under the same id.
 type Live = Arc<Mutex<HashMap<u32, (u64, AbortHandle)>>>;
@@ -54,7 +56,13 @@ impl CarrierSession {
     pub fn handle(&mut self, msg: Inbound) {
         match msg {
             Inbound::Attach => self.abort_all(),
-            Inbound::Open { id, method, args } => self.open(id, &method, args),
+            Inbound::Open { id, method, args } => self.open(id, &method, args, Vec::new(), false),
+            Inbound::OpenBytes {
+                id,
+                method,
+                args,
+                bytes,
+            } => self.open(id, &method, args, bytes, true),
             Inbound::Close { id } => {
                 if let Some((_, task)) = self.live.lock().remove(&id) {
                     task.abort();
@@ -63,13 +71,21 @@ impl CarrierSession {
         }
     }
 
-    fn open(&mut self, id: u32, method: &str, args: Vec<Value>) {
+    fn open(
+        &mut self,
+        id: u32,
+        method: &str,
+        args: Vec<Value>,
+        mut blobs: Vec<Vec<u8>>,
+        bytes: bool,
+    ) {
         let opened = catch_unwind(AssertUnwindSafe(|| {
             match self
                 .local
-                .and_then(|local| local(&self.engine, method, &args))
+                .and_then(|local| local(&self.engine, method, &args, &mut blobs))
             {
                 Some(opened) => opened,
+                None if bytes => dispatch_bytes(&self.engine, method, args, blobs),
                 None => dispatch(&self.engine, method, args),
             }
         }))
@@ -177,7 +193,7 @@ mod tests {
         config::EngineConfig,
         dispatch::{Args, reply, stream},
         testing::{builder_on, engine_in, live, password},
-        wire::FaultKind,
+        wire::{BlobRefDto, FaultKind},
     };
 
     static SEQUENCE: AtomicU32 = AtomicU32::new(0);
@@ -189,8 +205,29 @@ mod tests {
         }))
     }
 
-    fn local(_: &Arc<Engine>, method: &str, args: &[Value]) -> Option<Result<Stream, Fault>> {
+    fn local(
+        _: &Arc<Engine>,
+        method: &str,
+        args: &[Value],
+        blobs: &mut Vec<Vec<u8>>,
+    ) -> Option<Result<Stream, Fault>> {
         Some(match method {
+            "test.blobs" | "test.blob-ticks" => {
+                let args = &mut Args::with_blobs(method, args.to_vec(), std::mem::take(blobs));
+                let ticking = method == "test.blob-ticks";
+                args.decode::<Vec<BlobRefDto>>().and_then(|refs| {
+                    let sizes = refs
+                        .into_iter()
+                        .map(|at| args.blob(at).map(|bytes| bytes.len()))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    args.finish()?;
+                    Ok(if ticking {
+                        ticks(|n| n)
+                    } else {
+                        stream(stream::once(ready(Ok(json!(sizes)))))
+                    })
+                })
+            }
             "test.once" => Ok(stream(stream::once(ready(Ok(json!(42)))))),
             "test.ticks" => Ok(ticks(|n| n)),
             // Emits a value shared by every open stream, in the order the streams take it.
@@ -213,7 +250,12 @@ mod tests {
     }
 
     /// The rooms of a nudged stream, after a first 0; a nudge waits for them to be written.
-    fn nudging(engine: &Arc<Engine>, method: &str, _: &[Value]) -> Option<Result<Stream, Fault>> {
+    fn nudging(
+        engine: &Arc<Engine>,
+        method: &str,
+        _: &[Value],
+        _: &mut Vec<Vec<u8>>,
+    ) -> Option<Result<Stream, Fault>> {
         let rt = engine.account("@a:b")?;
         Some(Ok(match method {
             "t.nudged" => {
@@ -517,5 +559,84 @@ mod tests {
         drain(&mut frames);
         // The output closes once the aborted tasks have let go of their senders.
         assert_eq!(recv(&mut frames).await, None);
+    }
+
+    fn open_bytes(id: u32, method: &str, args: Vec<Value>, bytes: Vec<Vec<u8>>) -> Inbound {
+        Inbound::OpenBytes {
+            id,
+            method: method.into(),
+            args,
+            bytes,
+        }
+    }
+
+    #[tokio::test]
+    async fn open_bytes_carries_each_blob_to_its_method() {
+        let (mut session, mut frames) = session();
+        let args = vec![json!([{"$blob": 0}, {"$blob": 1}])];
+        session.handle(open_bytes(
+            1,
+            "test.blobs",
+            args,
+            vec![vec![1, 2, 3], vec![4]],
+        ));
+        assert_eq!(
+            next_frame(&mut frames).await,
+            Frame::Next {
+                id: 1,
+                v: json!([3, 1])
+            }
+        );
+        assert_eq!(next_frame(&mut frames).await, Frame::Complete { id: 1 });
+    }
+
+    #[tokio::test]
+    async fn open_bytes_for_a_method_without_blobs_is_unknown() {
+        let (mut session, mut frames) = session();
+        session.handle(open_bytes(2, "session.session", vec![], vec![]));
+        assert_eq!(
+            fault_code(next_frame(&mut frames).await, 2),
+            FaultCode::UnknownMethod
+        );
+    }
+
+    #[tokio::test]
+    async fn a_bad_blob_ref_is_a_protocol_fault() {
+        let (mut session, mut frames) = session();
+        let args = vec![json!([{"$blob": 5}])];
+        session.handle(open_bytes(3, "test.blobs", args, vec![vec![1]]));
+        assert_eq!(
+            fault_code(next_frame(&mut frames).await, 3),
+            FaultCode::BadArgs
+        );
+    }
+
+    #[tokio::test]
+    async fn close_aborts_an_open_bytes_stream() {
+        let (mut session, mut frames) = session();
+        let args = vec![json!([{"$blob": 0}])];
+        session.handle(open_bytes(4, "test.blob-ticks", args, vec![vec![1]]));
+        next_frame(&mut frames).await;
+        session.handle(Inbound::Close { id: 4 });
+        drain(&mut frames);
+        assert_eq!(later_frames(&mut frames).await, vec![]);
+    }
+
+    #[test]
+    fn an_inbound_debug_prints_lengths_only() {
+        let msg = open_bytes(
+            7,
+            "m.n",
+            vec![json!("token-secret")],
+            vec![vec![9, 9, 9], vec![8]],
+        );
+        let text = format!("{msg:?}");
+        assert!(
+            text.contains('7') && text.contains("m.n") && text.contains("[3, 1]"),
+            "{text}"
+        );
+        assert!(!text.contains("secret") && !text.contains('9'), "{text}");
+        let open = format!("{:?}", open(8, "m.o", vec![json!("token-secret")]));
+        assert!(!open.contains("secret"), "{open}");
     }
 }
