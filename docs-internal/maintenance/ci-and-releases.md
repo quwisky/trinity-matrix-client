@@ -10,20 +10,20 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                             | Starts when                                                                | What it provides                                                                                                                                                |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)                           | A pull request, selected pushes, or its weekly schedule                    | Branch checks and browser, desktop, and Android evidence                                                                                                        |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)           | A `main` push, a published stable release, or a manual dispatch            | Validated user and developer sites deployed to GitHub Pages                                                                                                     |
-| [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR after a stable tag |
-| [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
-| [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)    | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                        |
-| [`testflight.yml`](../../.github/workflows/testflight.yml)           | A manual dispatch, then the `release-mobile` reviewer's approval           | Archives the signed iOS app and uploads it to TestFlight (see [TestFlight upload](#testflight-upload))                                                          |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                        |
-| [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
-| [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
-| [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository              | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
-| [`codeql.yml`](../../.github/workflows/codeql.yml)                   | A push to `main`, a pull request to `main`, or Mondays at 05:37 UTC        | CodeQL code scanning for GitHub Actions, Java/Kotlin, JavaScript/TypeScript and Swift (see [Code scanning](#code-scanning))                                     |
-| [`cache-cleanup.yml`](../../.github/workflows/cache-cleanup.yml)     | A pull request closes, merged or not                                       | Deletes the Actions caches saved under that pull request's `refs/pull/<n>/merge` ref                                                                            |
+| Workflow                                                             | Starts when                                                                                             | What it provides                                                                                                                                                |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                           | A pull request, selected pushes, or its weekly schedule                                                 | Branch checks and browser, desktop, and Android evidence                                                                                                        |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)           | A `main` push, a published stable release, or a manual dispatch                                         | Validated user and developer sites deployed to GitHub Pages                                                                                                     |
+| [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input                                 | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR after a stable tag |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input                                           | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
+| [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)                                 | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                        |
+| [`testflight.yml`](../../.github/workflows/testflight.yml)           | A manual dispatch from `main` with a `-next` `tag` input, then the `release-mobile` reviewer's approval | Archives the signed iOS app and uploads it to TestFlight (see [TestFlight upload](#testflight-upload))                                                          |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                                                 | Dependency update maintenance through a GitHub App token                                                                                                        |
+| [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                                                      | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
+| [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x`                              | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
+| [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository                                           | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
+| [`codeql.yml`](../../.github/workflows/codeql.yml)                   | A push to `main`, a pull request to `main`, or Mondays at 05:37 UTC                                     | CodeQL code scanning for GitHub Actions, Java/Kotlin, JavaScript/TypeScript and Swift (see [Code scanning](#code-scanning))                                     |
+| [`cache-cleanup.yml`](../../.github/workflows/cache-cleanup.yml)     | A pull request closes, merged or not                                                                    | Deletes the Actions caches saved under that pull request's `refs/pull/<n>/merge` ref                                                                            |
 
 The branch workflow accepts pushes to `main` and `release/**`; pull requests,
 Renovate updates included, are its usual review path. A newer run for
@@ -896,11 +896,24 @@ and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
 
 ## TestFlight upload
 
-[`testflight.yml`](../../.github/workflows/testflight.yml) archives the iOS app and uploads it
-to TestFlight. It runs only on a manual dispatch, and it is unproven: no upload has run yet,
-so expect to fix signing or export problems on the first dispatch.
+[`testflight.yml`](../../.github/workflows/testflight.yml) archives the iOS app at a `-next`
+release tag and uploads it to TestFlight. It runs only on a manual dispatch, and it is
+unproven: no upload has run yet, so expect to fix signing or export problems on the first
+dispatch.
 
-Run it with `gh workflow run testflight.yml --ref main` (or a `release/X.Y.x` ref). It has two
+Run it with `gh workflow run testflight.yml --ref main -f tag=vX.Y.Z-next.N`. The tag must match
+`vX.Y.Z-next.N` exactly: a stable tag, `-rc.N` or build metadata is refused, since stable
+versions live on `release/**`. The dispatch must come from `main`: the `release-mobile`
+environment also admits `release/**` for later, so the workflow itself refuses any other ref.
+The tag must exist, point at a commit contained in `main`, and equal `package.json`'s version at
+that commit, which gives the marketing version (`v0.6.0-next.6` gives `0.6.0`). A bad input
+fails in the first job, before any approval is requested. Both jobs build that commit, which
+the first job passes on by SHA, so a tag moved after the check cannot swap the code.
+
+A tag older than this workflow's merge lacks `ios/App/App/PrivacyInfo.xcprivacy`, so an upload
+from it would be refused by App Store Connect; the first job fails with a message saying so.
+The first usable tag is the first `-next` released after the workflow merges. The other build
+steps (`trinity-ios:sync-prebuilt`, the manifest checks) exist at older tags. The workflow has two
 jobs, split as `release.yml` splits `desktop-shell` from `sign-mac`, so the App Store Connect key
 never shares a runner with a full dependency install:
 
@@ -936,9 +949,7 @@ The job fails first, naming any missing secret. It passes secrets through step `
 checks that the plist and key decode (macOS `base64 --decode` accepts a raw PEM without error),
 uploads no xcodebuild log, and deletes the key and plist in an `always()` step.
 
-The marketing version is the root `package.json` version without its prerelease suffix
-(`0.6.0-next.6` gives `0.6.0`), and the build number is `github.run_number`, both written to
-the job summary. The run number grows per workflow and never resets, but a re-run keeps its
+The build number is `github.run_number`, and both numbers are written to the job summary. The run number grows per workflow and never resets, but a re-run keeps its
 number, so after an upload that went through, dispatch again rather than re-running. Renaming
 or deleting the workflow file would restart the count, and App Store Connect would refuse lower
 build numbers for the same version. The command-line `MARKETING_VERSION` and

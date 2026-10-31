@@ -846,7 +846,23 @@ describe('TestFlight upload workflow', () => {
   };
 
   it('runs only when dispatched by hand', () => {
-    expect(Object.keys(testflight().on)).toEqual(['workflow_dispatch']);
+    const { on } = testflight();
+    expect(Object.keys(on)).toEqual(['workflow_dispatch']);
+    expect(on.workflow_dispatch.inputs.tag).toMatchObject({
+      required: true,
+      type: 'string',
+    });
+  });
+
+  it('builds the tagged commit the first job verified, in both jobs', () => {
+    const checkout = (job) =>
+      job.steps.find((s) => s.uses?.startsWith('actions/checkout@')).with;
+    expect(checkout(build()).ref).toBe(
+      'refs/tags/${{ steps.tag.outputs.tag }}',
+    );
+    expect(checkout(upload()).ref).toBe('${{ needs.renderer.outputs.sha }}');
+    expect(build().outputs.sha).toBe('${{ steps.commit.outputs.sha }}');
+    expect(upload().needs).toContain('renderer');
   });
 
   it('builds without an environment or secret, then signs in release-mobile', () => {
@@ -931,6 +947,12 @@ describe('TestFlight upload workflow', () => {
       expect(run).not.toContain('${{ secrets.');
       expect(run).not.toMatch(/set -\w*x/);
     }
+    // The dispatch input and every other expression reach scripts through env.
+    for (const job of Object.values(workflow.jobs)) {
+      for (const { run = '' } of job.steps) expect(run).not.toContain('${{');
+    }
+    const tag = build().steps.find((s) => s.id === 'tag');
+    expect(tag.env.TAG).toBe('${{ inputs.tag }}');
     const read = JSON.stringify(upload().steps.map((s) => s.env ?? {}));
     for (const name of SECRETS) expect(read).toContain(`secrets.${name}`);
   });
@@ -1053,54 +1075,163 @@ describe('TestFlight upload workflow', () => {
     );
   });
 
-  describe('versions', () => {
-    const run = (version, runNumber = '42') =>
+  describe('the tag and the dispatch ref', () => {
+    const sh = (script, env, options = {}) =>
       inTempDir((dir) => {
-        writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
         const out = join(dir, 'output');
         const summary = join(dir, 'summary');
         writeFileSync(out, '');
         writeFileSync(summary, '');
-        const result = bash(step(upload(), 'id', 'version').run, {
+        const result = bash(script, {
           cwd: dir,
+          ...options,
           env: {
             ...process.env,
-            RUN_NUMBER: runNumber,
             GITHUB_OUTPUT: out,
             GITHUB_STEP_SUMMARY: summary,
+            ...env,
           },
         });
         return {
           status: result.status,
+          text: result.stdout + result.stderr,
           output: readFileSync(out, 'utf8'),
           summary: readFileSync(summary, 'utf8'),
         };
       });
+    const tagStep = () => step(build(), 'id', 'tag').run;
+    const run = (tag, runNumber = '42') =>
+      sh(tagStep(), { TAG: tag, RUN_NUMBER: runNumber });
 
-    it('strips the prerelease suffix and takes the build number from the run number', () => {
-      const result = run('0.6.0-next.6');
+    it('runs the ref and tag checks first, before any checkout or build', () => {
+      const [first, second, third] = build().steps;
+      expect(first.env.REF).toBe('${{ github.ref }}');
+      expect(second.id).toBe('tag');
+      expect(third.uses).toMatch(/^actions\/checkout@/);
+      expect(third.with['fetch-depth']).toBe(0);
+    });
+
+    it('accepts only a dispatch from main', () => {
+      const script = build().steps[0].run;
+      expect(sh(script, { REF: 'refs/heads/main' }).status).toBe(0);
+      for (const ref of [
+        'refs/heads/release/0.6.x',
+        'refs/tags/v0.6.0-next.6',
+        'refs/heads/main\nx',
+      ]) {
+        const result = sh(script, { REF: ref });
+        expect(result.status, ref).not.toBe(0);
+        expect(result.text, ref).toContain('main');
+      }
+    });
+
+    it('takes the marketing version from the tag and the build number from the run number', () => {
+      const result = run('v0.6.0-next.6');
       expect(result.status).toBe(0);
+      expect(result.output).toContain('tag=v0.6.0-next.6\n');
       expect(result.output).toContain('marketing=0.6.0\n');
       expect(result.output).toContain('build=42\n');
       expect(result.summary).toContain('0.6.0');
       expect(result.summary).toContain('42');
     });
 
-    it('keeps a stable version, and drops build metadata', () => {
-      expect(run('1.2.3').output).toContain('marketing=1.2.3\n');
-      expect(run('1.2.3+meta').output).toContain('marketing=1.2.3\n');
-    });
-
-    it('fails on a version that is not three numeric parts', () => {
-      for (const bad of ['1.2', 'v1.2.3', 'abc', '1.2.x-next.1']) {
+    it('refuses everything but a next tag, naming the problem', () => {
+      for (const bad of [
+        '0.6.0-next.6',
+        'v1.2.3',
+        'v1.2.3+meta',
+        'v1.2.3-rc.1',
+        'v1.2.3-next.1;x',
+        'v1.2.3-next.1\n',
+        'v1.2.3-next.1\nv1.2.3-next.2',
+        '',
+        'junk',
+      ]) {
         const result = run(bad);
-        expect(result.status, bad).not.toBe(0);
-        expect(result.output, bad).toBe('');
+        expect(result.status, JSON.stringify(bad)).not.toBe(0);
+        expect(result.output, JSON.stringify(bad)).toBe('');
+        expect(result.text, JSON.stringify(bad)).toContain('-next.');
       }
     });
 
     it('fails on a run number that is not an integer', () => {
-      expect(run('1.2.3', 'abc').status).not.toBe(0);
+      expect(run('v0.6.0-next.6', 'abc').status).not.toBe(0);
+    });
+
+    it('requires package.json at the tagged commit to equal the tag', () => {
+      const script = step(build(), 'name', 'Tag matches package.json').run;
+      const at = (version, tag) =>
+        inTempDir((dir) => {
+          writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
+          return bash(script, { cwd: dir, env: { ...process.env, TAG: tag } })
+            .status;
+        });
+      expect(at('0.6.0-next.6', 'v0.6.0-next.6')).toBe(0);
+      expect(at('0.6.0-next.7', 'v0.6.0-next.6')).not.toBe(0);
+    });
+
+    it('refuses a tagged commit without the privacy manifest, which an older tag lacks', () => {
+      const script = step(
+        build(),
+        'name',
+        'Tagged commit has the iOS privacy manifest',
+      ).run;
+      const at = (create) =>
+        inTempDir((dir) => {
+          if (create) {
+            mkdirSync(join(dir, 'ios/App/App'), { recursive: true });
+            writeFileSync(join(dir, 'ios/App/App/PrivacyInfo.xcprivacy'), '');
+          }
+          const result = bash(script, {
+            cwd: dir,
+            env: { ...process.env, TAG: 'v0.6.0-next.5' },
+          });
+          return { status: result.status, text: result.stdout + result.stderr };
+        });
+      expect(at(true).status).toBe(0);
+      const missing = at(false);
+      expect(missing.status).not.toBe(0);
+      expect(missing.text).toContain('v0.6.0-next.5');
+      expect(missing.text).toContain('PrivacyInfo.xcprivacy');
+    });
+
+    describe('the tagged commit is on main', () => {
+      const script = () =>
+        step(build(), 'name', 'Tagged commit is on main').run;
+      const git = (cwd, ...args) =>
+        execFileSync(
+          'git',
+          ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args],
+          { cwd, encoding: 'utf8' },
+        );
+      const check = (onMain) =>
+        inTempDir((dir) => {
+          const origin = join(dir, 'origin');
+          const clone = join(dir, 'clone');
+          mkdirSync(origin);
+          git(origin, 'init', '-q', '-b', 'main');
+          git(origin, 'commit', '-q', '--allow-empty', '-m', 'base');
+          git(origin, 'checkout', '-q', '-b', 'side');
+          git(origin, 'commit', '-q', '--allow-empty', '-m', 'unmerged');
+          git(origin, 'tag', 'v0.6.0-next.9');
+          if (onMain)
+            (git(origin, 'checkout', '-q', 'main', '--'),
+              git(origin, 'merge', '-q', 'side'));
+          git(dir, 'clone', '-q', origin, clone);
+          git(clone, 'checkout', '-q', 'refs/tags/v0.6.0-next.9');
+          const result = bash(script(), {
+            cwd: clone,
+            env: { ...process.env, TAG: 'v0.6.0-next.9' },
+          });
+          return { status: result.status, text: result.stdout + result.stderr };
+        });
+
+      it('passes a tag on main and fails one that is not', () => {
+        expect(check(true).status).toBe(0);
+        const off = check(false);
+        expect(off.status).not.toBe(0);
+        expect(off.text).toContain('v0.6.0-next.9');
+      });
     });
   });
 });
