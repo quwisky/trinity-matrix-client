@@ -225,6 +225,15 @@ methods! {
         space_id: String,
         via: Vec<String>,
     ),
+    "roomList.inviteBlocking" => room_list::invites::invite_blocking(account_id: String),
+    "roomList.setInviteBlocking" => room_list::invites::set_invite_blocking(
+        account_id: String,
+        blocked: bool,
+    ),
+    "roomList.roomsInCommon" => room_list::invites::rooms_in_common(
+        account_id: String,
+        user_id: String,
+    ),
     "session.session" => session::session(),
     "session.restorePersisted" => session::restore_persisted(
         session: session::MatrixSessionDto,
