@@ -1,20 +1,22 @@
 //! `IdentityEngine` (`libs/data-access/identity/src/lib/identity-engine.ts`), member by member as
 //! its js-sdk adapter (`js-sdk-identity-engine.ts`) derives each value.
-// The tests use every item, so the expectation holds only outside them.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the streams that use the rest of the mappers and the DTOs come in the next commit"
-    )
-)]
 
-use std::{future::ready, sync::Arc};
+use std::{
+    future::{Future, ready},
+    pin::{Pin, pin},
+    sync::Arc,
+    time::Duration,
+};
 
+use futures_util::{
+    StreamExt,
+    future::{Either, select},
+    stream,
+};
 use matrix_sdk::{
-    Client, Error,
+    Client, Error, SendOutsideWasm,
     ruma::{
-        OwnedUserId, UserId,
+        MilliSecondsSinceUnixEpoch, OwnedUserId, UserId,
         api::{
             client::{
                 presence::{get_presence, set_presence},
@@ -29,6 +31,7 @@ use matrix_sdk::{
         presence::PresenceState,
         profile::ProfileFieldValue,
     },
+    sleep::sleep,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -37,19 +40,23 @@ use ts_rs::TS;
 
 use super::{
     account_data,
-    member::{on_account, sent_once},
+    member::{account_stream, on_account, sent_once},
 };
 use crate::{
-    accounts::Engine,
+    accounts::{AccountRuntime, Engine},
     dispatch::{Stream, detached, reply},
     failure::request_failed,
 };
 
 const IGNORED_USER_LIST: &str = "m.ignored_user_list";
+/// A snapshot whose read failed is read again after this, unless a change comes first.
+const RETRY_AFTER: Duration = Duration::from_secs(30);
+/// How long one ignored user's profile may take; past it the user has no name.
+const NAME_LOOKUP: Duration = Duration::from_secs(5);
 const DTO: &str = "data-access/identity/src/lib/rust-dto/";
 
 /// `UserProfile`.
-#[derive(Debug, PartialEq, Serialize, TS)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
 pub struct UserProfileDto {
@@ -58,7 +65,7 @@ pub struct UserProfileDto {
 }
 
 /// `PresenceInfo`.
-#[derive(Debug, PartialEq, Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
 pub struct PresenceInfoDto {
@@ -70,7 +77,7 @@ pub struct PresenceInfoDto {
 }
 
 /// `IgnoredUserInfo`.
-#[derive(Debug, PartialEq, Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = DTO)]
 pub struct IgnoredUserInfoDto {
@@ -278,6 +285,174 @@ pub fn set_ignored(
     })
 }
 
+/// The account's own profile, as the server has it.
+pub fn own_profile(engine: Arc<Engine>, account_id: String) -> Stream {
+    let profile = |rt: &AccountRuntime| rt.identity.profile.subscribe();
+    snapshots(
+        engine,
+        account_id,
+        UserProfileDto::default(),
+        profile,
+        read_own_profile,
+    )
+}
+
+/// The presence entries the account has received: its own, once the server has one.
+pub fn presence(engine: Arc<Engine>, account_id: String) -> Stream {
+    let presence = |rt: &AccountRuntime| rt.identity.presence.subscribe();
+    snapshots(engine, account_id, Vec::new(), presence, read_presence)
+}
+
+/// The account's `m.ignored_user_list`, each user with the name their profile carries.
+pub fn ignored_users(engine: Arc<Engine>, account_id: String) -> Stream {
+    let ignored = |rt: &AccountRuntime| rt.identity.ignored.subscribe();
+    snapshots(engine, account_id, Vec::new(), ignored, read_ignored)
+}
+
+/// An `account_stream` of `read`: `empty`, then what `read` answers at once and after each tick
+/// of the signal `subscribe` takes from the runtime. The body keeps neither the runtime nor its
+/// client; it reads through the lease's.
+fn snapshots<T, Fut>(
+    engine: Arc<Engine>,
+    account_id: String,
+    empty: T,
+    subscribe: fn(&AccountRuntime) -> watch::Receiver<u64>,
+    read: fn(Client) -> Fut,
+) -> Stream
+where
+    T: Clone + PartialEq + Serialize + SendOutsideWasm + 'static,
+    Fut: Future<Output = Option<T>> + SendOutsideWasm + 'static,
+{
+    account_stream(engine, account_id, empty.clone(), move |rt, client| {
+        let triggers = ticks(subscribe(rt));
+        follow(empty, triggers, RETRY_AFTER, move || read(client.clone()))
+    })
+}
+
+/// A tick for each change to the signal, until its sender is dropped. A change that arrives
+/// while nobody waits for a tick is kept for the next wait.
+fn ticks(changes: watch::Receiver<u64>) -> impl futures_util::Stream<Item = ()> {
+    stream::unfold(changes, |mut changes| async {
+        changes.changed().await.ok()?;
+        Some(((), changes))
+    })
+}
+
+/// How `follow` waits before its next read.
+enum Wait {
+    Nothing,
+    Trigger,
+    TriggerOrRetry,
+}
+
+struct Following<Tr, R, T> {
+    triggers: Pin<Box<Tr>>,
+    read: R,
+    last: T,
+    wait: Wait,
+}
+
+/// `empty` at once, then `read()` at once and after each trigger, each time it differs from the
+/// last value emitted. A failed read (`None`) is read again after `retry_after` or on the next
+/// trigger, whichever comes first. A trigger that comes during a read brings one more read. Once
+/// `triggers` ends the loop ends and the stream emits no more.
+fn follow<T, Fut>(
+    empty: T,
+    triggers: impl futures_util::Stream<Item = ()>,
+    retry_after: Duration,
+    read: impl FnMut() -> Fut,
+) -> impl futures_util::Stream<Item = T>
+where
+    T: Clone + PartialEq,
+    Fut: Future<Output = Option<T>>,
+{
+    let following = Following {
+        triggers: Box::pin(triggers),
+        read,
+        last: empty.clone(),
+        wait: Wait::Nothing,
+    };
+    let reads = stream::unfold(following, move |mut f| async move {
+        loop {
+            match f.wait {
+                Wait::Nothing => {}
+                Wait::Trigger => f.triggers.next().await?,
+                Wait::TriggerOrRetry => {
+                    let retry = pin!(sleep(retry_after));
+                    if let Either::Left((None, _)) = select(f.triggers.next(), retry).await {
+                        return None;
+                    }
+                }
+            }
+            let read = (f.read)().await;
+            f.wait = if read.is_some() {
+                Wait::Trigger
+            } else {
+                Wait::TriggerOrRetry
+            };
+            if let Some(value) = read
+                && value != f.last
+            {
+                f.last = value.clone();
+                return Some((value, f));
+            }
+        }
+    });
+    stream::once(ready(empty)).chain(reads)
+}
+
+async fn read_own_profile(client: Client) -> Option<UserProfileDto> {
+    let me = own_id(&client).ok()?;
+    let request = get_profile::v3::Request::new(me.clone());
+    let send = client
+        .send(request)
+        .with_request_config(sent_once().force_auth());
+    Some(own_profile_of(me.as_str(), &send.await.ok()?))
+}
+
+async fn read_presence(client: Client) -> Option<Vec<PresenceInfoDto>> {
+    let me = own_id(&client).ok()?;
+    let request = get_presence::v3::Request::new(me.clone());
+    let response = client
+        .send(request)
+        .with_request_config(sent_once())
+        .await
+        .ok()?;
+    let now = f64::from(MilliSecondsSinceUnixEpoch::now().get());
+    Some(own_entry(me.as_str(), &response, now).into_iter().collect())
+}
+
+async fn read_ignored(client: Client) -> Option<Vec<IgnoredUserInfoDto>> {
+    let list = account_data::get(&client, IGNORED_USER_LIST).await.ok()?;
+    let users = (list.as_ref())
+        .and_then(|content| content.get("ignored_users"))
+        .and_then(Value::as_object);
+    let ids: Vec<_> = users.map_or_else(Vec::new, |users| users.keys().cloned().collect());
+    let lookups = ids.into_iter().map(|id| ignored_info(&client, id));
+    Some(stream::iter(lookups).buffered(8).collect().await)
+}
+
+/// `user_id` with the name and avatar of its profile; one the server does not answer in time has
+/// none.
+async fn ignored_info(client: &Client, user_id: String) -> IgnoredUserInfoDto {
+    let looked_up = async {
+        let request = get_profile::v3::Request::new(UserId::parse(&user_id).ok()?);
+        let config = sent_once().force_auth().timeout(NAME_LOOKUP);
+        let response = client
+            .send(request)
+            .with_request_config(config)
+            .await
+            .ok()?;
+        Some(own_profile_of(&user_id, &response))
+    };
+    let profile = looked_up.await.unwrap_or_default();
+    IgnoredUserInfoDto {
+        user_id,
+        display_name: profile.display_name,
+        avatar_mxc: profile.avatar_mxc,
+    }
+}
+
 fn own_id(client: &Client) -> Result<OwnedUserId, Error> {
     client
         .user_id()
@@ -396,17 +571,28 @@ fn edit_ignored(content: Option<Value>, user_id: &str, ignored: bool) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{
+        collections::VecDeque,
+        future::Ready,
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
 
     use futures_util::{FutureExt, StreamExt, future::join};
-    use matrix_sdk::{config::SyncSettings, sleep::sleep, timeout::timeout};
+    use matrix_sdk::{
+        config::SyncSettings, executor::spawn, ruma::MilliSecondsSinceUnixEpoch, sleep::sleep,
+        timeout::timeout,
+    };
     use tempfile::TempDir;
+    use tokio::{sync::mpsc, time::Instant};
 
     use super::*;
     use crate::{
         config::EngineConfig,
         failure::http_error_from_response,
-        testing::{Seen, default_client, engine_in, live, password, requests, scripted},
+        testing::{
+            Seen, builder_on, default_client, engine_in, live, password, requests, scripted,
+        },
     };
 
     const SYNC: &str = "GET /_matrix/client/v3/sync?timeout=0&use_state_after=true";
@@ -417,8 +603,12 @@ mod tests {
     const PRESENCE_SET: &str = "PUT /_matrix/client/v3/presence/@a:b/status";
     const IGNORED_GET: &str = "GET /_matrix/client/v3/user/@a:b/account_data/m.ignored_user_list";
     const IGNORED_PUT: &str = "PUT /_matrix/client/v3/user/@a:b/account_data/m.ignored_user_list";
+    const OWN_PROFILE: &str = "GET /_matrix/client/v3/profile/@a:b";
+    const IGNORED_PROFILE: &str = "GET /_matrix/client/v3/profile/@x:y";
+    const OFFLINE: &str = "http://127.0.0.1:1";
 
     type Command = fn(Arc<Engine>) -> Stream;
+    type Opener = fn(Arc<Engine>, String) -> Stream;
     type Answers = Vec<(&'static str, u16, Value)>;
 
     /// A profile response of `fields`, an object.
@@ -924,5 +1114,259 @@ mod tests {
         let engine = Engine::new(EngineConfig::default()).unwrap();
         let reply = first(profile(engine, "@x:y".into(), "not a user id".into())).await;
         assert_eq!(reply["failure"]["code"], json!("account-not-live"));
+    }
+
+    /// `read` answers `reads` in order.
+    fn answering<T>(
+        reads: impl IntoIterator<Item = Option<T>>,
+    ) -> impl FnMut() -> Ready<Option<T>> {
+        let mut reads = VecDeque::from_iter(reads);
+        move || ready(reads.pop_front().expect("read more often than scripted"))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn follow_emits_empty_then_each_distinct_read() {
+        let read = answering([Some(1), Some(2), Some(3)]);
+        let items = follow(0, stream::iter([(), ()]), RETRY_AFTER, read);
+        assert_eq!(items.collect::<Vec<_>>().await, [0, 1, 2, 3]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn follow_skips_a_read_equal_to_the_last_value() {
+        let read = answering([Some(0), Some(1), Some(1), Some(2)]);
+        let items = follow(0, stream::iter([(), (), ()]), RETRY_AFTER, read);
+        assert_eq!(items.collect::<Vec<_>>().await, [0, 1, 2]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_tick_during_a_read_triggers_one_more_read() {
+        let signal = watch::Sender::new(0);
+        let reads = Arc::new(AtomicUsize::new(0));
+        let read = {
+            let (signal, reads) = (signal.clone(), Arc::clone(&reads));
+            move || {
+                let n = reads.fetch_add(1, Ordering::SeqCst) + 1;
+                if n == 1 {
+                    tick(&signal);
+                }
+                ready(Some(n))
+            }
+        };
+        let mut items = pin!(follow(0, ticks(signal.subscribe()), RETRY_AFTER, read));
+        let seen: Vec<_> = items.by_ref().take(3).collect().await;
+        assert_eq!(seen, [0, 1, 2]);
+        let more = timeout(items.next(), Duration::from_secs(60)).await;
+        assert!(more.is_err(), "the tick brought one read, not a loop");
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_read_is_read_again_after_the_retry_delay_or_on_a_tick() {
+        let signal = watch::Sender::new(0);
+        let read = answering([None, Some(1), None, Some(2)]);
+        let mut items = pin!(follow(0, ticks(signal.subscribe()), RETRY_AFTER, read));
+        let secs = Duration::from_secs;
+        assert_eq!(items.next().await, Some(0));
+        // The first read fails; the stream is quiet until the delay has passed.
+        assert!(timeout(items.next(), RETRY_AFTER - secs(1)).await.is_err());
+        let start = Instant::now();
+        assert_eq!(timeout(items.next(), secs(2)).await, Ok(Some(1)));
+        assert_eq!(start.elapsed(), secs(1));
+        // A tick reads at once, and the next one cuts the new delay short.
+        let start = Instant::now();
+        tick(&signal);
+        assert!(timeout(items.next(), secs(1)).await.is_err());
+        tick(&signal);
+        assert_eq!(timeout(items.next(), secs(1)).await, Ok(Some(2)));
+        assert_eq!(start.elapsed(), secs(1));
+    }
+
+    async fn next_item(items: &mut Stream) -> Value {
+        let item = timeout(items.next(), Duration::from_secs(5)).await;
+        item.expect("no item in 5 s").unwrap().unwrap()
+    }
+
+    /// Nothing arrives in a while: no item, no error frame and no end.
+    async fn is_quiet(items: &mut Stream) -> bool {
+        timeout(items.next(), Duration::from_millis(200))
+            .await
+            .is_err()
+    }
+
+    /// Forwards the stream's items from a task of its own, as the carrier polls it.
+    fn forward(mut items: Stream) -> mpsc::UnboundedReceiver<Value> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        spawn(async move {
+            while let Some(item) = items.next().await {
+                let _ = tx.send(item.unwrap());
+            }
+        });
+        rx
+    }
+
+    fn no_profile() -> Value {
+        json!({"displayName": null, "avatarMxc": null})
+    }
+
+    /// The three streams with their empty snapshots.
+    fn streams() -> [(Opener, Value); 3] {
+        [
+            (own_profile, no_profile()),
+            (super::presence, json!([])),
+            (ignored_users, json!([])),
+        ]
+    }
+
+    #[tokio::test]
+    async fn a_stream_emits_empty_first_and_keeps_retrying_a_failed_read() {
+        let ann = json!({"displayname": "Ann"});
+        let answers = vec![
+            (OWN_PROFILE, 502, unavailable()),
+            (OWN_PROFILE, 502, unavailable()),
+            (OWN_PROFILE, 200, ann),
+        ];
+        let root = TempDir::new().unwrap();
+        let (engine, seen) = live_on(&root, answers).await;
+        let mut items = own_profile(Arc::clone(&engine), "@a:b".into());
+        assert_eq!(next_item(&mut items).await, no_profile());
+        for _ in 0..2 {
+            assert!(is_quiet(&mut items).await, "a failed read is not an item");
+            tick(&engine.account("@a:b").unwrap().identity.profile);
+        }
+        let named = json!({"displayName": "Ann", "avatarMxc": null});
+        assert_eq!(next_item(&mut items).await, named);
+        assert_eq!(requests(&seen).len(), 3);
+    }
+
+    #[tokio::test]
+    async fn own_profile_emits_empty_then_the_server_profile() {
+        let answers = vec![
+            (OWN_PROFILE, 200, json!({"displayname": "@a:b"})),
+            (
+                OWN_PROFILE,
+                200,
+                json!({"displayname": "Ann", "avatar_url": "mxc://b/c"}),
+            ),
+        ];
+        let root = TempDir::new().unwrap();
+        let (engine, seen) = live_on(&root, answers).await;
+        let mut items = own_profile(Arc::clone(&engine), "@a:b".into());
+        assert_eq!(next_item(&mut items).await, no_profile());
+        assert!(is_quiet(&mut items).await, "the user id is no name");
+        tick(&engine.account("@a:b").unwrap().identity.profile);
+        let named = json!({"displayName": "Ann", "avatarMxc": "mxc://b/c"});
+        assert_eq!(next_item(&mut items).await, named);
+        let sent = vec![(OWN_PROFILE.to_owned(), Some("Bearer t1".to_owned())); 2];
+        assert_eq!(requests(&seen), sent);
+    }
+
+    #[tokio::test]
+    async fn presence_asks_only_about_the_account() {
+        let there = json!({
+            "presence": "online",
+            "status_msg": "here",
+            "last_active_ago": 1500,
+            "currently_active": true,
+        });
+        let answers = vec![
+            (PRESENCE_GET, 200, json!({"presence": "offline"})),
+            (PRESENCE_GET, 200, there),
+        ];
+        let root = TempDir::new().unwrap();
+        let (engine, seen) = live_on(&root, answers).await;
+        let mut items = super::presence(Arc::clone(&engine), "@a:b".into());
+        assert_eq!(next_item(&mut items).await, json!([]));
+        assert!(is_quiet(&mut items).await, "no presence set is no entry");
+        tick(&engine.account("@a:b").unwrap().identity.presence);
+        let entry = next_item(&mut items).await;
+        let now = f64::from(MilliSecondsSinceUnixEpoch::now().get());
+        let at = entry[0]["lastActiveAt"].as_f64().unwrap();
+        assert!(
+            (now - 1500.0 - at).abs() < 10_000.0,
+            "{at} is not 1.5 s ago"
+        );
+        let expected = json!([{
+            "userId": "@a:b",
+            "presence": "online",
+            "statusMessage": "here",
+            "lastActiveAt": at,
+            "currentlyActive": true,
+        }]);
+        assert_eq!(entry, expected);
+        let routes: Vec<_> = requests(&seen)
+            .into_iter()
+            .map(|(route, _)| route)
+            .collect();
+        assert_eq!(routes, [PRESENCE_GET; 2]);
+    }
+
+    #[tokio::test]
+    async fn ignored_users_take_names_from_profiles() {
+        let list = json!({"ignored_users": {"@x:y": {}}});
+        let profile = json!({"displayname": "Xavier", "avatar_url": "mxc://x/y"});
+        let answers = vec![(IGNORED_GET, 200, list), (IGNORED_PROFILE, 200, profile)];
+        let root = TempDir::new().unwrap();
+        let (engine, seen) = live_on(&root, answers).await;
+        let mut items = ignored_users(Arc::clone(&engine), "@a:b".into());
+        assert_eq!(next_item(&mut items).await, json!([]));
+        let named = json!([{"userId": "@x:y", "displayName": "Xavier", "avatarMxc": "mxc://x/y"}]);
+        assert_eq!(next_item(&mut items).await, named);
+        let bearer = Some("Bearer t1".to_owned());
+        let sent = [
+            (IGNORED_GET.to_owned(), bearer.clone()),
+            (IGNORED_PROFILE.to_owned(), bearer),
+        ];
+        assert_eq!(requests(&seen), sent);
+    }
+
+    #[tokio::test]
+    async fn an_ignored_user_without_a_profile_has_no_name() {
+        let list = json!({"ignored_users": {"@x:y": {}}});
+        let answers = vec![
+            (IGNORED_GET, 200, list),
+            (IGNORED_PROFILE, 404, unavailable()),
+        ];
+        let root = TempDir::new().unwrap();
+        let (engine, _) = live_on(&root, answers).await;
+        let mut items = ignored_users(Arc::clone(&engine), "@a:b".into());
+        assert_eq!(next_item(&mut items).await, json!([]));
+        let unnamed = json!([{"userId": "@x:y", "displayName": null, "avatarMxc": null}]);
+        assert_eq!(next_item(&mut items).await, unnamed);
+    }
+
+    #[tokio::test]
+    async fn identity_streams_on_an_account_that_is_not_live_emit_the_empty_snapshot() {
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        for (open, empty) in streams() {
+            let mut items = open(Arc::clone(&engine), "@x:y".into());
+            assert_eq!(items.next().await, Some(Ok(empty)));
+            assert!(
+                items.next().now_or_never().is_none(),
+                "the stream stays open"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn identity_streams_do_not_delay_a_remove() {
+        let root = TempDir::new().unwrap();
+        let engine = engine_in(&root);
+        let client = builder_on(OFFLINE).build().await.unwrap();
+        drop(live(&engine, &password(OFFLINE), client).await);
+        let mut feeds = Vec::new();
+        for (open, empty) in streams() {
+            let mut feed = forward(open(Arc::clone(&engine), "@a:b".into()));
+            assert_eq!(feed.recv().await, Some(empty));
+            feeds.push(feed);
+        }
+        let rt = engine.account("@a:b").unwrap();
+        assert_eq!(Arc::strong_count(&rt), 2, "only the registry and this read");
+        drop(rt);
+        let removed = timeout(engine.remove("@a:b"), Duration::from_secs(5)).await;
+        assert!(removed.is_ok(), "the teardown waited for a stream");
+        for feed in &mut feeds {
+            let quiet = timeout(feed.recv(), Duration::from_millis(200)).await;
+            assert!(quiet.is_err(), "no item and no completion");
+        }
     }
 }

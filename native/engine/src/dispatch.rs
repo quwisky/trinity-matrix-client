@@ -109,15 +109,18 @@ methods! {
         limit: u64,
     ),
     "homeserver.probe" => homeserver::probe(account_id: String),
+    "identity.ownProfile" => identity::own_profile(account_id: String),
     "identity.profile" => identity::profile(account_id: String, user_id: String),
     "identity.setDisplayName" => identity::set_display_name(account_id: String, name: String),
     "identity.setAvatar" => identity::set_avatar(account_id: String, mxc: String),
+    "identity.presence" => identity::presence(account_id: String),
     "identity.ownPresence" => identity::own_presence(account_id: String),
     "identity.setPresence" => identity::set_presence(
         account_id: String,
         presence: identity::PresenceStateDto,
         status_message: Option<String>,
     ),
+    "identity.ignoredUsers" => identity::ignored_users(account_id: String),
     "identity.setIgnored" => identity::set_ignored(
         account_id: String,
         user_id: String,
@@ -373,6 +376,24 @@ mod tests {
         let short = vec![json!("@x:y"), json!("online")];
         let short = dispatch(&engine, "identity.setPresence", short);
         assert_eq!(code(short), FaultCode::BadArgs);
+    }
+
+    #[tokio::test]
+    async fn the_identity_streams_dispatch_and_open_with_their_empty_snapshot() {
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        let streams = [
+            (
+                "identity.ownProfile",
+                json!({"displayName": null, "avatarMxc": null}),
+            ),
+            ("identity.presence", json!([])),
+            ("identity.ignoredUsers", json!([])),
+        ];
+        for (method, empty) in streams {
+            let mut opened = dispatch(&engine, method, vec![json!("@x:y")]).unwrap();
+            assert_eq!(opened.next().await, Some(Ok(empty)), "{method}");
+            assert_eq!(code(dispatch(&engine, method, vec![])), FaultCode::BadArgs);
+        }
     }
 
     #[test]
