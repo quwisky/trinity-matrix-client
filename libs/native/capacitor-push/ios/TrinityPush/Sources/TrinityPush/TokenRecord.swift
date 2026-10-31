@@ -157,9 +157,10 @@ public enum TokenRefreshResult: Equatable, CustomStringConvertible {
 
     private static func tokens(_ kind: String, _ record: TokenRecord) -> [String: Any] {
         var wire: [String: Any] = ["kind": kind, "accessToken": record.accessToken]
-        // A value no Int holds (huge or non-finite) is left out: the app reads that as no expiry.
+        // Outside 1...2^53 - 1, JavaScript can't hold it or it is no instant: the app reads no expiry.
         if let expiresAt = record.expiresAt,
-           let milliseconds = Int(exactly: (expiresAt.timeIntervalSince1970 * 1000).rounded()) {
+           let milliseconds = Int(exactly: (expiresAt.timeIntervalSince1970 * 1000).rounded()),
+           (1...9_007_199_254_740_991).contains(milliseconds) {
             wire["accessTokenExpiresAt"] = milliseconds
         }
         return wire

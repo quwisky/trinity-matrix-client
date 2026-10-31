@@ -62,6 +62,40 @@ final class TokenVaultTests: XCTestCase {
         }
     }
 
+    func testAnExpiryOutsideWhatJavaScriptHoldsIsOmitted() {
+        for seconds in [-1e15, -1e12, -1, 0, 0.0001, 9_007_199_254_741] {
+            let record = r0.rotated("a1", nil, expiresAt: Date(timeIntervalSince1970: seconds))
+            XCTAssertNil(TokenRefreshResult.current(record).wire["accessTokenExpiresAt"], "\(seconds)")
+        }
+        for (seconds, milliseconds) in [(0.001, 1), (9_007_199_254_740, 9_007_199_254_740_000)] {
+            let record = r0.rotated("a1", nil, expiresAt: Date(timeIntervalSince1970: seconds))
+            XCTAssertEqual(TokenRefreshResult.current(record).wire["accessTokenExpiresAt"] as? Int, milliseconds)
+        }
+    }
+
+    func testTheItemStaysOnThisDeviceAndAwayFromTheHandoffAccounts() throws {
+        let store = PushHandoffStore(keychainGroup: "group", containerURL: FileManager.default.temporaryDirectory)
+        let update = try XCTUnwrap(store.tokenAttributes(r0))
+        let add = store.tokenItem("@a:hs", update)
+
+        for (name, item) in [("update", update), ("add", add)] {
+            XCTAssertEqual(
+                item[kSecAttrAccessible as String] as? String,
+                kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String, name)
+            XCTAssertNil(item[kSecAttrSynchronizable as String], name)
+        }
+        XCTAssertNotNil(add[kSecValueData as String])
+        XCTAssertEqual(add[kSecAttrAccount as String] as? String, "@a:hs")
+
+        XCTAssertNotEqual(PushHandoffStore.tokenService, PushHandoffStore.service)
+        for query in [store.tokenQuery("@a:hs"), store.tokenQuery(nil), add] {
+            XCTAssertEqual(query[kSecAttrService as String] as? String, PushHandoffStore.tokenService)
+            XCTAssertEqual(query[kSecAttrAccessGroup as String] as? String, "group")
+            XCTAssertNil(query[kSecAttrSynchronizable as String])
+        }
+        XCTAssertNil(store.tokenQuery(nil)[kSecAttrAccount as String], "removeAll takes every account")
+    }
+
     func testTheRevocationWire() {
         XCTAssertEqual(TokenRevokeResult.revoked.wire as NSDictionary, ["kind": "revoked"] as NSDictionary)
         XCTAssertEqual(TokenRevokeResult.gone.wire as NSDictionary, ["kind": "gone"] as NSDictionary)

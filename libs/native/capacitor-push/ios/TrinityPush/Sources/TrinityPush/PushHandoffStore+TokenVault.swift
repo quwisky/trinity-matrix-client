@@ -24,7 +24,7 @@ extension PushHandoffStore: TokenVault {
             let query = tokenQuery(userId)
             var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
             if status == errSecItemNotFound {
-                status = SecItemAdd(query.merging(attributes) { $1 } as CFDictionary, nil)
+                status = SecItemAdd(tokenItem(userId, attributes) as CFDictionary, nil)
             }
             return status == errSecSuccess
         }
@@ -52,7 +52,7 @@ extension PushHandoffStore: TokenVault {
         }
     }
 
-    private func tokenAttributes(_ record: TokenRecord) -> [String: Any]? {
+    func tokenAttributes(_ record: TokenRecord) -> [String: Any]? {
         guard let data = try? JSONEncoder().encode(record) else { return nil }
         return [
             kSecValueData as String: data,
@@ -60,7 +60,12 @@ extension PushHandoffStore: TokenVault {
         ]
     }
 
-    private func tokenQuery(_ userId: String?) -> [String: Any] {
+    /// What `SecItemAdd` gets.
+    func tokenItem(_ userId: String, _ attributes: [String: Any]) -> [String: Any] {
+        tokenQuery(userId).merging(attributes) { $1 }
+    }
+
+    func tokenQuery(_ userId: String?) -> [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.tokenService,
