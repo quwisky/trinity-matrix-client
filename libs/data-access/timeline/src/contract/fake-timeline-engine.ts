@@ -231,6 +231,12 @@ export class FakeTimelineEngine implements TimelineEngine {
       userId: string,
     ): Promise<string | null> =>
       this.rooms.get(roomId)?.readReceipts.get(userId) ?? null,
+    setPowerLevels: async (): Promise<void> => {
+      throw new Error('The fake models no power levels');
+    },
+    sendEvent: async (): Promise<string> => {
+      throw new Error('The fake sends only text, reactions and edits');
+    },
   };
 
   private bobSends(

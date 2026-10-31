@@ -51,6 +51,18 @@ export interface TimelineContractSetup {
     edit(roomId: string, eventId: string, body: string): Promise<void>;
     /** The event `userId`'s public `m.read` receipt names, as bob's sync reports it. */
     readReceipt(roomId: string, userId: string): Promise<string | null>;
+    /** Merges `patch` into the room's `m.room.power_levels`; `events` and `users` merge per key. */
+    setPowerLevels(
+      roomId: string,
+      patch: {
+        readonly events_default?: number;
+        readonly events?: Readonly<Record<string, number>>;
+        readonly users?: Readonly<Record<string, number>>;
+        readonly redact?: number;
+      },
+    ): Promise<void>;
+    /** Sends an event of any type and returns its event id. */
+    sendEvent(roomId: string, type: string, content: object): Promise<string>;
   };
   /**
    * Makes alice's crypto answer that rooms are unencrypted until the returned restore runs, for
