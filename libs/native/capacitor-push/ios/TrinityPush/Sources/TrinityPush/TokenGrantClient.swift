@@ -15,20 +15,20 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
         let body: Data
     }
 
-    /// Ends the read at the cap or the deadline. Past the deadline, or on a failed read, what
-    /// arrived decides: the provider has already spent the old refresh token, so a complete answer
-    /// must be used however late, and an unfinished one does not parse.
+    /// Ends the read at the cap, or once the deadline and its grace are over. Then, or on a failed
+    /// read, what arrived decides: the provider has already spent the old refresh token, so a
+    /// complete answer is used and an unfinished one does not parse. Anything later is lost.
     private final class CappedRead: RefusingRedirects, URLSessionDataDelegate, @unchecked Sendable {
         private static let maxBodyBytes = 64 * 1024
 
-        private let deadline: Date
+        private let readsUntil: Date
         private let now: @Sendable () -> Date
         private let continuation: CheckedContinuation<Answer?, Never>
         private var body = Data()
         private var overCap = false
 
-        init(deadline: Date, now: @escaping @Sendable () -> Date, continuation: CheckedContinuation<Answer?, Never>) {
-            self.deadline = deadline
+        init(readsUntil: Date, now: @escaping @Sendable () -> Date, continuation: CheckedContinuation<Answer?, Never>) {
+            self.readsUntil = readsUntil
             self.now = now
             self.continuation = continuation
         }
@@ -40,7 +40,17 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
                 return
             }
             body.append(data)
-            if now() >= deadline { dataTask.cancel() }
+            if now() >= readsUntil { dataTask.cancel() }
+        }
+
+        // Answering a challenge sends the POST again, refresh token and all. So a real refusal that
+        // carries one reads as failed and never reaches soft logout, which stays signed in.
+        func urlSession(
+            _ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+            completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+        ) {
+            let method = challenge.protectionSpace.authenticationMethod
+            completionHandler(URLSessionTokenGrantClient.disposition(for: method), nil)
         }
 
         func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -57,8 +67,6 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
         "invalid_request", "invalid_client", "invalid_grant", "unauthorized_client", "unsupported_grant_type",
         "invalid_scope",
     ]
-
-    private static let maxNesting = 64
 
     private let configuration: URLSessionConfiguration
     private let now: @Sendable () -> Date
@@ -89,13 +97,24 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
         return copy
     }
 
+    /// Clamped, so a clock stepped back cannot make a huge timeout.
+    static func window(until deadline: Date, from now: Date) -> TimeInterval {
+        min(deadline.timeIntervalSince(now), TokenBudgets.longestLifetime)
+    }
+
+    /// ServerTrust stays with the system, so TLS validation is untouched.
+    static func disposition(for authenticationMethod: String) -> URLSession.AuthChallengeDisposition {
+        authenticationMethod == NSURLAuthenticationMethodServerTrust
+            ? .performDefaultHandling : .cancelAuthenticationChallenge
+    }
+
     public func grant(_ record: TokenRecord, deadline: Date) async -> TokenGrantAnswer {
         guard let endpoint = record.tokenEndpoint, let refreshToken = record.refreshToken,
               let clientId = record.clientId,
               let answer = await post(
                   endpoint,
                   [("grant_type", "refresh_token"), ("client_id", clientId), ("refresh_token", refreshToken)],
-                  deadline: deadline)
+                  deadline: deadline, grace: TokenBudgets.grace)
         else { return .failed }
         switch answer.status {
         case 200: return Self.tokens(answer.body)
@@ -106,13 +125,15 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
 
     public func revoke(_ record: TokenRecord, deadline: Date) async -> Bool {
         guard let endpoint = record.revocationEndpoint, let clientId = record.clientId else { return false }
-        var tokens = [("access_token", record.accessToken)]
-        if let refreshToken = record.refreshToken { tokens.append(("refresh_token", refreshToken)) }
+        // The refresh token first, so a stall on the shared deadline cannot leave it live.
+        let tokens = [("refresh_token", record.refreshToken), ("access_token", record.accessToken)]
+            .compactMap { hint, token in token.map { (hint, $0) } }
         var revoked = true
         // Every token is tried: one failing must not leave the other unrevoked.
         for (hint, token) in tokens {
             let answer = await post(
-                endpoint, [("token", token), ("token_type_hint", hint), ("client_id", clientId)], deadline: deadline)
+                endpoint, [("token", token), ("token_type_hint", hint), ("client_id", clientId)],
+                deadline: deadline, grace: 0)
             if answer.map({ !(200..<300).contains($0.status) }) ?? true { revoked = false }
         }
         return revoked
@@ -136,32 +157,6 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
         return (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
     }
 
-    /// JSONSerialization recurses on nested objects with no limit: 15 KB of `{"a":` overflows a
-    /// task's stack, which is a SIGBUS nothing can catch. A NUL means UTF-16 or UTF-32, which the
-    /// parser accepts and this byte scan cannot follow, and no token answer needs either.
-    private static func isSafeToParse(_ body: Data) -> Bool {
-        var depth = 0
-        var inString = false
-        var escaped = false
-        for byte in body {
-            if byte == 0 { return false }
-            if escaped {
-                escaped = false
-            } else if inString {
-                if byte == UInt8(ascii: "\\") { escaped = true }
-                if byte == UInt8(ascii: "\"") { inString = false }
-            } else if byte == UInt8(ascii: "\"") {
-                inString = true
-            } else if byte == UInt8(ascii: "{") || byte == UInt8(ascii: "[") {
-                depth += 1
-                if depth > maxNesting { return false }
-            } else if byte == UInt8(ascii: "}") || byte == UInt8(ascii: "]") {
-                depth -= 1
-            }
-        }
-        return true
-    }
-
     private static func nonEmpty(_ value: Any?) -> String? {
         (value as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
@@ -175,30 +170,65 @@ public struct URLSessionTokenGrantClient: TokenGrantClient, @unchecked Sendable 
 
     /// Waits for the session's answer even if the caller's task is cancelled: the provider may
     /// have spent the old refresh token, and the deadline still bounds the wait.
-    private func post(_ endpoint: String, _ form: [(String, String)], deadline: Date) async -> Answer? {
-        let remaining = deadline.timeIntervalSince(now())
+    private func post(
+        _ endpoint: String, _ form: [(String, String)], deadline: Date, grace: TimeInterval
+    ) async -> Answer? {
+        let remaining = Self.window(until: deadline, from: now())
         guard let url = URL(string: endpoint),
-              let session = Self.sessionConfiguration(from: configuration, timeout: remaining)
+              let session = Self.sessionConfiguration(from: configuration, timeout: remaining + grace)
         else { return nil }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: remaining)
+        var request = URLRequest(
+            url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: remaining + grace)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = Data(Self.encoded(form).utf8)
         return await withCheckedContinuation { continuation in
-            let read = CappedRead(deadline: deadline, now: now, continuation: continuation)
+            let read = CappedRead(readsUntil: deadline.addingTimeInterval(grace), now: now, continuation: continuation)
             let urlSession = URLSession(configuration: session, delegate: read, delegateQueue: nil)
             guard now() < deadline else {
                 urlSession.invalidateAndCancel()
                 continuation.resume(returning: nil)
                 return
             }
-            urlSession.dataTask(with: request).resume()
+            let task = urlSession.dataTask(with: request)
+            task.resume()
             urlSession.finishTasksAndInvalidate()
+            // The grace is for an answer on its way, not for a send that has yet to start.
+            DispatchQueue.global().asyncAfter(deadline: .now() + remaining) { [weak task] in
+                if task?.countOfBytesSent == 0 { task?.cancel() }
+            }
         }
     }
 
     private static func encoded(_ form: [(String, String)]) -> String {
         form.map { "\($0)=\(URLSessionMatrixPushAPI.segment($1))" }.joined(separator: "&")
     }
+}
+
+/// JSONSerialization recurses on nested objects with no limit: 15 KB of `{"a":` overflows a
+/// task's stack, which is a SIGBUS nothing can catch. A NUL means UTF-16 or UTF-32, which the
+/// parser accepts and this byte scan cannot follow, and no token answer needs either.
+func isSafeToParse(_ body: Data) -> Bool {
+    let maxNesting = 64
+    var depth = 0
+    var inString = false
+    var escaped = false
+    for byte in body {
+        if byte == 0 { return false }
+        if escaped {
+            escaped = false
+        } else if inString {
+            if byte == UInt8(ascii: "\\") { escaped = true }
+            if byte == UInt8(ascii: "\"") { inString = false }
+        } else if byte == UInt8(ascii: "\"") {
+            inString = true
+        } else if byte == UInt8(ascii: "{") || byte == UInt8(ascii: "[") {
+            depth += 1
+            if depth > maxNesting { return false }
+        } else if byte == UInt8(ascii: "}") || byte == UInt8(ascii: "]") {
+            depth -= 1
+        }
+    }
+    return true
 }

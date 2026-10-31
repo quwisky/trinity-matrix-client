@@ -155,26 +155,34 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
     /// False means nothing was stored. A record of this lineage that has a refresh token stays:
     /// it may be newer.
     public func migrate(_ record: TokenRecord, for account: String) async -> Bool {
+        await migrateRevokingOverwritten(record, for: account).stored
+    }
+
+    /// `revocation` is the unawaited revoke of an overwritten pair, if one started.
+    func migrateRevokingOverwritten(
+        _ record: TokenRecord, for account: String
+    ) async -> (stored: Bool, revocation: Task<Void, Never>?) {
         guard case .taken(let ticket) = await lease.take(
             account, lifetime: TokenBudgets.appGrant + TokenBudgets.leaseMargin, wait: TokenBudgets.appGrant)
-        else { return false }
+        else { return (false, nil) }
         let overwritten: TokenRecord?
         do {
             defer { lease.release(ticket) }
             switch vault.read(account) {
-            case .unavailable: return false
+            case .unavailable: return (false, nil)
             case .absent: overwritten = nil
             case .record(let stored):
-                if stored.lineage == record.lineage && stored.refreshToken != nil { return true }
+                if stored.lineage == record.lineage && stored.refreshToken != nil { return (true, nil) }
                 overwritten = stored
             }
-            guard vault.write(record, for: account) else { return false }
+            guard vault.write(record, for: account) else { return (false, nil) }
         }
-        if let overwritten, overwritten.refreshToken != nil, overwritten.deviceId != record.deviceId {
+        if let overwritten, overwritten.refreshToken != nil, overwritten.deviceId != record.deviceId,
+           !overwritten.samePair(as: record) {
             let deadline = now().addingTimeInterval(TokenBudgets.revokeRequest)
-            Task { [client] in _ = await client.revoke(overwritten, deadline: deadline) }
+            return (true, Task { [client] in _ = await client.revoke(overwritten, deadline: deadline) })
         }
-        return true
+        return (true, nil)
     }
 
     public func revoke(account: String, lineage: String) async -> TokenRevokeResult {
@@ -182,6 +190,7 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
             account, lifetime: TokenBudgets.revokeRequest + TokenBudgets.leaseMargin, wait: TokenBudgets.revokeWait)
         else { return .transient }
         defer { lease.release(ticket) }
+        flushPending(account)
         var record: TokenRecord
         switch vault.read(account) {
         case .absent: return .gone
@@ -223,7 +232,8 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
     private func retake(_ ticket: LeaseTicket, _ account: String, _ deadline: Date) async -> LeaseTicket? {
         if lease.holds(ticket) { return ticket }
         let wait = max(deadline.timeIntervalSince(now()), Self.retakeFloor)
-        guard case .taken(let retaken) = await lease.take(account, lifetime: wait + TokenBudgets.leaseMargin, wait: wait)
+        guard case .taken(let retaken) = await lease.take(
+            account, lifetime: wait + TokenBudgets.leaseMargin, wait: wait)
         else { return nil }
         return retaken
     }

@@ -116,5 +116,6 @@ final class TokenVaultTests: XCTestCase {
         XCTAssertEqual(TokenBudgets.removalWait, 1)
         XCTAssertEqual(TokenBudgets.revokeWait, 1)
         XCTAssertEqual(TokenBudgets.revokeRequest, 2)
+        XCTAssertEqual(TokenBudgets.grace, 3)
     }
 }

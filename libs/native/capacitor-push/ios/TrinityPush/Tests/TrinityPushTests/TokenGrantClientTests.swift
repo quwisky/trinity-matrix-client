@@ -136,6 +136,8 @@ private final class LoopbackServer: @unchecked Sendable {
 final class TokenGrantClientTests: XCTestCase {
     private var server: LoopbackServer!
     private let client = URLSessionTokenGrantClient()
+    /// Well under the servers' 30 s stalls and the real timeouts, and far over a loaded runner's delay.
+    private let stallBound: TimeInterval = 10
 
     override func setUpWithError() throws {
         server = try LoopbackServer { _ in
@@ -327,10 +329,36 @@ final class TokenGrantClientTests: XCTestCase {
         let answer = await client.grant(record(), deadline: deadline(0.3))
 
         XCTAssertEqual(answer, .failed)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+        XCTAssertLessThan(Date().timeIntervalSince(started), stallBound)
     }
 
     // MARK: No second send
+
+    /// URLSession answers these by sending the POST again, refresh token and all.
+    func test401WithAnAuthChallengeIsSentOnce() async {
+        let challenges = [#"Basic realm="x""#, #"Digest realm="x", nonce="n", qop="auth""#, "Negotiate"]
+        for challenge in challenges {
+            let before = server.requests.count
+            server.answer { _ in
+                LoopbackServer.answer(401, #"{"error":"invalid_grant"}"#, headers: ["WWW-Authenticate: \(challenge)"])
+            }
+
+            let answer = await client.grant(record(), deadline: deadline())
+
+            XCTAssertEqual(answer, .failed, challenge)
+            XCTAssertEqual(server.requests.count, before + 1, challenge)
+        }
+    }
+
+    func testOnlyServerTrustKeepsDefaultHandling() {
+        XCTAssertEqual(
+            URLSessionTokenGrantClient.disposition(for: NSURLAuthenticationMethodServerTrust), .performDefaultHandling)
+        for method in [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest,
+                       NSURLAuthenticationMethodNegotiate, NSURLAuthenticationMethodNTLM,
+                       NSURLAuthenticationMethodClientCertificate, NSURLAuthenticationMethodDefault] {
+            XCTAssertEqual(URLSessionTokenGrantClient.disposition(for: method), .cancelAuthenticationChallenge, method)
+        }
+    }
 
     func testARedirectIsRefusedAndNeverCarriesTheRefreshToken() async throws {
         let target = try LoopbackServer { _ in LoopbackServer.answer(200, #"{"access_token":"stolen"}"#) }
@@ -380,7 +408,7 @@ final class TokenGrantClientTests: XCTestCase {
         XCTAssertEqual(answer, .failed)
     }
 
-    func testATricklingBodyStopsAtTheDeadline() async {
+    func testATricklingBodyStopsWhenTheGraceEnds() async {
         server.answer { _ in
             [LoopbackServer.openEnded()] + Array(repeating: [.send(" "), .wait(0.1)], count: 100).flatMap { $0 }
                 + [.send(#"{"access_token":"a1"}"#)]
@@ -390,40 +418,88 @@ final class TokenGrantClientTests: XCTestCase {
         let answer = await client.grant(record(), deadline: deadline(0.3))
 
         XCTAssertEqual(answer, .failed)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+        XCTAssertLessThan(Date().timeIntervalSince(started), stallBound)
     }
 
-    func testASlowCompleteBodyPastTheDeadlineIsUsed() async {
+    func testASlowCompleteBodyPastTheGraceIsUsed() async {
         let start = Date()
         let spent = LockedState(false)
         let lateClient = URLSessionTokenGrantClient(configuration: .ephemeral, now: {
-            spent.withLock { $0 } ? start.addingTimeInterval(9) : start
+            spent.withLock { $0 } ? start.addingTimeInterval(24) : start
         })
         server.answer { _ in
-            [LoopbackServer.openEnded(), .send(#"{"access_token":"a1","#), .wait(0.3),
+            [LoopbackServer.openEnded(), .send(#"{"access_token":"a1","#), .wait(1),
              .run { spent.withLock { $0 = true } }, .send(#" "refresh_token":"r1"}"#), .wait(30)]
         }
 
-        let answer = await lateClient.grant(record(), deadline: start.addingTimeInterval(8))
+        let answer = await lateClient.grant(record(), deadline: start.addingTimeInterval(20))
 
         XCTAssertEqual(answer, .tokens(accessToken: "a1", refreshToken: "r1", expiresIn: nil))
-        XCTAssertLessThan(Date().timeIntervalSince(start), 5, "the deadline ends the read, not the server")
+        XCTAssertLessThan(Date().timeIntervalSince(start), stallBound, "the clock ends the read, not the server")
     }
 
-    func testABodyUnfinishedAtTheDeadlineIsTransient() async {
+    func testABodyUnfinishedPastTheGraceIsTransient() async {
         let start = Date()
         let spent = LockedState(false)
         let lateClient = URLSessionTokenGrantClient(configuration: .ephemeral, now: {
-            spent.withLock { $0 } ? start.addingTimeInterval(9) : start
+            spent.withLock { $0 } ? start.addingTimeInterval(24) : start
         })
         server.answer { _ in
             [.run { spent.withLock { $0 = true } }, LoopbackServer.openEnded(), .send(#"{"access_token":"a1","#), .wait(30)]
         }
 
-        let answer = await lateClient.grant(record(), deadline: start.addingTimeInterval(8))
+        let answer = await lateClient.grant(record(), deadline: start.addingTimeInterval(20))
 
         XCTAssertEqual(answer, .failed)
-        XCTAssertLessThan(Date().timeIntervalSince(start), 5, "the deadline ends the read, not the server")
+        XCTAssertLessThan(Date().timeIntervalSince(start), stallBound, "the clock ends the read, not the server")
+    }
+
+    /// The real clock: the answer's bytes straddle the deadline, and all of them still count.
+    func testAnAnswerPastTheDeadlineIsUsedWithinTheGrace() async {
+        server.answer { _ in
+            [LoopbackServer.openEnded(), .send(#"{"access_token":"#), .wait(2), .send(#""a1","#), .wait(0.3),
+             .send(#""refresh_token":"r1"}"#)]
+        }
+        let started = Date()
+
+        let answer = await client.grant(record(), deadline: deadline(1))
+
+        XCTAssertEqual(answer, .tokens(accessToken: "a1", refreshToken: "r1", expiresIn: nil))
+        XCTAssertGreaterThan(Date().timeIntervalSince(started), 1)
+    }
+
+    /// A request URLProtocol never answers reports no bytes sent, as a connection still being made
+    /// would, so the grace is not for it.
+    func testNothingSentByTheDeadlineGetsNoGrace() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        StubURLProtocol.reset()
+        let started = Date()
+
+        let answer = await URLSessionTokenGrantClient(configuration: configuration).grant(record(), deadline: deadline(0.3))
+
+        XCTAssertEqual(answer, .failed)
+        XCTAssertLessThan(Date().timeIntervalSince(started), TokenBudgets.grace - 0.5)
+    }
+
+    func testARevocationGetsNoGraceAndAStallCannotLeaveTheRefreshTokenLive() async throws {
+        server.answer { _ in [.wait(30)] }
+        let started = Date()
+
+        let revoked = await client.revoke(record(), deadline: deadline(0.3))
+
+        XCTAssertFalse(revoked)
+        XCTAssertLessThan(Date().timeIntervalSince(started), TokenBudgets.grace - 0.5)
+        XCTAssertEqual(server.requests.count, 1)
+        XCTAssertTrue(try XCTUnwrap(server.requests.first).form.contains("token=r0"))
+    }
+
+    func testAClockStepBackCannotMakeAHugeTimeout() {
+        let now = Date()
+
+        XCTAssertEqual(URLSessionTokenGrantClient.window(until: now.addingTimeInterval(3_600), from: now), TokenBudgets.longestLifetime)
+        XCTAssertEqual(URLSessionTokenGrantClient.window(until: now.addingTimeInterval(8), from: now), 8)
+        XCTAssertLessThan(URLSessionTokenGrantClient.window(until: now.addingTimeInterval(-1), from: now), 0)
     }
 
     func testACompleteBodyWhoseEndNeverArrivesIsUsed() async {
@@ -432,10 +508,10 @@ final class TokenGrantClientTests: XCTestCase {
         }
         let started = Date()
 
-        let answer = await client.grant(record(), deadline: deadline(1))
+        let answer = await client.grant(record(), deadline: deadline(2))
 
         XCTAssertEqual(answer, .tokens(accessToken: "a1", refreshToken: nil, expiresIn: nil))
-        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+        XCTAssertLessThan(Date().timeIntervalSince(started), stallBound)
     }
 
     func testARefusalWhoseEndNeverArrivesIsStillARefusal() async {
@@ -443,7 +519,7 @@ final class TokenGrantClientTests: XCTestCase {
             [LoopbackServer.openEnded(400), .send(#"{"error":"invalid_grant"}"#), .wait(30)]
         }
 
-        let answer = await client.grant(record(), deadline: deadline(1))
+        let answer = await client.grant(record(), deadline: deadline(2))
 
         XCTAssertEqual(answer, .refused)
     }
@@ -492,6 +568,11 @@ final class TokenGrantClientTests: XCTestCase {
         XCTAssertEqual(answer, .failed)
     }
 
+    func testTheNestingGuardIsOpenToThePackage() {
+        XCTAssertTrue(isSafeToParse(Data(#"{"a":[1]}"#.utf8)))
+        XCTAssertFalse(isSafeToParse(Data(String(repeating: #"{"a":"#, count: 65).utf8)))
+    }
+
     // MARK: Revocation
 
     func testRevokeSendsBothTokensWithHints() async throws {
@@ -501,10 +582,10 @@ final class TokenGrantClientTests: XCTestCase {
         XCTAssertEqual(server.requests.map(\.requestLine), ["POST /revoke HTTP/1.1", "POST /revoke HTTP/1.1"])
         XCTAssertEqual(
             try XCTUnwrap(server.requests.first).form.sorted(),
-            ["client_id=c", "token=a0", "token_type_hint=access_token"])
+            ["client_id=c", "token=r0", "token_type_hint=refresh_token"])
         XCTAssertEqual(
             try XCTUnwrap(server.requests.last).form.sorted(),
-            ["client_id=c", "token=r0", "token_type_hint=refresh_token"])
+            ["client_id=c", "token=a0", "token_type_hint=access_token"])
     }
 
     func testAnyTwoHundredAnswerIsRevoked() async {

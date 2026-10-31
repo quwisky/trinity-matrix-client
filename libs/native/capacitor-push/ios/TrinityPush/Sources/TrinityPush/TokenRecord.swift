@@ -145,6 +145,8 @@ public enum TokenBudgets {
     public static let removalWait: TimeInterval = 1
     public static let revokeWait: TimeInterval = 1
     public static let revokeRequest: TimeInterval = 2
+    /// How long a sent grant's answer may still arrive after its deadline. No send starts in it.
+    public static let grace: TimeInterval = 3
 }
 
 public protocol TokenVault {

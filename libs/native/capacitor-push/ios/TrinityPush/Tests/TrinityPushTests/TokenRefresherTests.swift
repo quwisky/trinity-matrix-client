@@ -1008,20 +1008,41 @@ final class TokenRefresherTests: XCTestCase {
         XCTAssertEqual(vault.stored, newer)
     }
 
-    func testMigrationOverAnotherDeviceWithNoRefreshTokenRevokesNothing() async throws {
+    func testMigrationOverAnotherDeviceWithNoRefreshTokenRevokesNothing() async {
         vault.stored = tokenRecord(refreshToken: nil, deviceId: "OLD", lineage: "L1")
 
-        _ = await refresher.migrate(tokenRecord(lineage: "L2"), for: user)
+        let (stored, revocation) = await refresher.migrateRevokingOverwritten(tokenRecord(lineage: "L2"), for: user)
 
-        try await Task.sleep(nanoseconds: 200_000_000)
-        XCTAssertEqual(client.revokes.count, 0)
+        XCTAssertTrue(stored)
+        XCTAssertNil(revocation)
     }
 
-    func testMigrationOverTheSameDeviceRevokesNothing() async throws {
-        _ = await refresher.migrate(tokenRecord(lineage: "L2"), for: user)
+    func testMigrationOverTheSameDeviceRevokesNothing() async {
+        let (stored, revocation) = await refresher.migrateRevokingOverwritten(tokenRecord(lineage: "L2"), for: user)
 
-        try await Task.sleep(nanoseconds: 200_000_000)
-        XCTAssertEqual(client.revokes.count, 0)
+        XCTAssertTrue(stored)
+        XCTAssertNil(revocation)
+    }
+
+    /// Revoking the old record would revoke the pair just stored.
+    func testMigrationOfTheSamePairOverAnotherDeviceRevokesNothing() async {
+        vault.stored = tokenRecord(deviceId: "OLD", lineage: "L1")
+
+        let (stored, revocation) = await refresher.migrateRevokingOverwritten(tokenRecord(lineage: "L2"), for: user)
+
+        XCTAssertTrue(stored)
+        XCTAssertNil(revocation)
+    }
+
+    func testMigrationOverAnotherDeviceWithADifferentPairHandsBackItsRevocation() async {
+        let old = tokenRecord(accessToken: "a8", refreshToken: "r8", deviceId: "OLD", lineage: "L1")
+        vault.stored = old
+
+        let (stored, revocation) = await refresher.migrateRevokingOverwritten(tokenRecord(lineage: "L2"), for: user)
+
+        XCTAssertTrue(stored)
+        await revocation?.value
+        XCTAssertEqual(client.revokes, [old])
     }
 
     func testMigrationWhileTheKeychainIsUnavailableIsNotStored() async {
@@ -1034,16 +1055,15 @@ final class TokenRefresherTests: XCTestCase {
         XCTAssertEqual(lease.released, ["ticket1"])
     }
 
-    func testAMigrationWhoseWriteFailsIsNotStoredAndRevokesNothing() async throws {
-        vault.stored = tokenRecord(deviceId: "OLD", lineage: "L1")
+    func testAMigrationWhoseWriteFailsIsNotStoredAndRevokesNothing() async {
+        vault.stored = tokenRecord(accessToken: "a8", refreshToken: "r8", deviceId: "OLD", lineage: "L1")
         vault.writesFail = true
 
-        let stored = await refresher.migrate(tokenRecord(lineage: "L2"), for: user)
+        let (stored, revocation) = await refresher.migrateRevokingOverwritten(tokenRecord(lineage: "L2"), for: user)
 
         XCTAssertFalse(stored)
+        XCTAssertNil(revocation)
         XCTAssertEqual(lease.released, ["ticket1"])
-        try await Task.sleep(nanoseconds: 200_000_000)
-        XCTAssertEqual(client.revokes.count, 0)
     }
 
     func testMigrationOnABusyLeaseIsNotStored() async {
@@ -1112,13 +1132,24 @@ final class TokenRefresherTests: XCTestCase {
         XCTAssertEqual(vault.stored, r0)
     }
 
-    func testRevokeUsesAnUnsavedPair() async {
+    func testRevokeFlushesAnUnsavedPairFirst() async {
         await leaveAnUnsavedPair()
-        vault.failedUpdates = 0
 
         let result = await refresher.revoke(account: user, lineage: "L")
 
         XCTAssertEqual(result, .revoked)
+        XCTAssertEqual(vault.stored, a1r1)
+        XCTAssertEqual(client.revokes, [a1r1])
+    }
+
+    func testRevokeUsesAnUnsavedPairThatStillCannotBeWritten() async {
+        await leaveAnUnsavedPair()
+        vault.failedUpdates = 1
+
+        let result = await refresher.revoke(account: user, lineage: "L")
+
+        XCTAssertEqual(result, .revoked)
+        XCTAssertEqual(vault.stored, r0)
         XCTAssertEqual(client.revokes, [a1r1])
     }
 
