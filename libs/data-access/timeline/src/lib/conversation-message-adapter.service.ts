@@ -1,5 +1,11 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
-import { EventStatus, EventType, ReceiptType, type Room } from 'matrix-js-sdk';
+import {
+  EventStatus,
+  EventType,
+  ReceiptType,
+  type MatrixClient,
+  type Room,
+} from 'matrix-js-sdk';
 import {
   catchError,
   defer,
@@ -34,6 +40,24 @@ const unavailablePolicy: ConversationMessagePolicy = {
   }),
 };
 
+/**
+ * The SDK takes the thread overload only for a `$` event id; any other id (a pending local echo,
+ * `~!room:txn`) shifts the arguments and redacts the thread root instead. So only a server id
+ * gets the thread scope. A pending id takes the two-argument form, where the SDK throws
+ * synchronously instead of sending a request; callers must not let that throw escape, and
+ * `toggleReaction` skips pending ids altogether.
+ */
+function redactById(
+  client: MatrixClient,
+  roomId: string,
+  threadRootId: string | undefined,
+  eventId: string,
+) {
+  return threadRootId && eventId.startsWith('$')
+    ? client.redactEvent(roomId, threadRootId, eventId)
+    : client.redactEvent(roomId, eventId);
+}
+
 export const CONVERSATION_MESSAGE_POLICY =
   new InjectionToken<ConversationMessagePolicy>(
     'conversation-runtime.room-administration-message-policy',
@@ -63,11 +87,11 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       const mine = myReactionIds(client, room, request.messageId, reaction);
       const action = mine.length
         ? Promise.all(
-            mine.map((id) =>
-              request.threadRootId
-                ? client.redactEvent(room.roomId, request.threadRootId, id)
-                : client.redactEvent(room.roomId, id),
-            ),
+            mine
+              .filter((id) => id.startsWith('$'))
+              .map((id) =>
+                redactById(client, room.roomId, request.threadRootId, id),
+              ),
           )
         : request.threadRootId
           ? client.sendEvent(
@@ -102,14 +126,14 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       if (!context) {
         return of(this.rejected('redaction', 'conversation-unavailable'));
       }
-      const action = request.threadRootId
-        ? context.client.redactEvent(
-            context.room.roomId,
-            request.threadRootId,
-            request.messageId,
-          )
-        : context.client.redactEvent(context.room.roomId, request.messageId);
-      return from(action).pipe(
+      return defer(() =>
+        redactById(
+          context.client,
+          context.room.roomId,
+          request.threadRootId,
+          request.messageId,
+        ),
+      ).pipe(
         map(() => this.applied('redaction')),
         catchError((error: unknown) =>
           of(this.requestRejected('redaction', error)),

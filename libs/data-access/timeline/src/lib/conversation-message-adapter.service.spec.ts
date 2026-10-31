@@ -26,6 +26,8 @@ function setup(
   options: {
     readonly eventStatus?: EventStatus | null;
     readonly existingReaction?: boolean;
+    /** Id of the own reaction; a local echo's is `~!room:txn` until the server answers. */
+    readonly reactionId?: string;
     /** A second own reaction with the same key, as another device can race one in. */
     readonly duplicateReaction?: boolean;
     readonly privateReceipt?: boolean;
@@ -44,7 +46,7 @@ function setup(
       [
         '👍',
         new Set([
-          fakeReaction(KEY.accountId, '$mine'),
+          fakeReaction(KEY.accountId, options.reactionId ?? '$mine'),
           ...(options.duplicateReaction
             ? [fakeReaction(KEY.accountId, '$mine2')]
             : []),
@@ -316,5 +318,88 @@ describe('MatrixConversationMessageAdapter', () => {
       ReceiptType.Read,
     );
     expect(client.setRoomReadMarkers).not.toHaveBeenCalled();
+  });
+
+  it('redacts a thread reaction with a server id through the thread overload', async () => {
+    const { adapter, client } = setup({ existingReaction: true });
+
+    await firstValueFrom(
+      adapter.toggleReaction({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+        reaction: '👍',
+      }),
+    );
+
+    expect(client.redactEvent.mock.calls).toEqual([
+      [KEY.roomId, '$thread-root', '$mine'],
+    ]);
+  });
+
+  it('does nothing on a double-tap while the first reaction is still pending', async () => {
+    const { adapter, client } = setup({
+      existingReaction: true,
+      reactionId: '~!shared:hs:txn1',
+    });
+
+    const outcome = await firstValueFrom(
+      adapter.toggleReaction({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+        reaction: '👍',
+      }),
+    );
+
+    expect(outcome).toEqual({ kind: 'applied', operation: 'reaction' });
+    expect(client.redactEvent).not.toHaveBeenCalled();
+    expect(client.sendEvent).not.toHaveBeenCalled();
+  });
+
+  it('redacts only the server id when own reactions are pending and sent', async () => {
+    const { adapter, client } = setup({
+      existingReaction: true,
+      reactionId: '~!shared:hs:txn1',
+      duplicateReaction: true,
+    });
+
+    const outcome = await firstValueFrom(
+      adapter.toggleReaction({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+        reaction: '👍',
+      }),
+    );
+
+    expect(outcome).toEqual({ kind: 'applied', operation: 'reaction' });
+    expect(client.redactEvent.mock.calls).toEqual([
+      [KEY.roomId, '$thread-root', '$mine2'],
+    ]);
+  });
+
+  it('refuses to delete a pending thread message without redacting the thread root', async () => {
+    const pending = '~!shared:hs:txn2';
+    const { adapter, client } = setup();
+    // The SDK throws synchronously for a pending id in the two-argument form.
+    client.redactEvent.mockImplementation(() => {
+      throw new Error('pending events are unavailable');
+    });
+
+    const outcome = await firstValueFrom(
+      adapter.redact({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: pending,
+      }),
+    );
+
+    expect(outcome).toMatchObject({
+      kind: 'rejected',
+      operation: 'redaction',
+      failure: 'request-rejected',
+    });
+    expect(client.redactEvent.mock.calls).toEqual([[KEY.roomId, pending]]);
   });
 });
