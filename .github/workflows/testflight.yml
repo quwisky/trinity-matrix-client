@@ -10,24 +10,63 @@ concurrency:
   group: testflight
   cancel-in-progress: false
 jobs:
-  testflight:
-    name: Archive and upload to TestFlight
-    # The only job that can read the mobile secrets, which live in this environment (limited
-    # to `main` and `release/**`, with a required reviewer). No other workflow references them.
-    environment: release-mobile
-    runs-on: macos-26
-    timeout-minutes: 60
-    env:
-      ASC_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
-      ARCHIVE_PATH: ${{ runner.temp }}/Trinity.xcarchive
-      EXPORT_PATH: ${{ runner.temp }}/export
-      EXPORT_OPTIONS: ${{ runner.temp }}/ExportOptions.plist
-      PLIST_PATH: ios/App/App/GoogleService-Info.plist
+  # Builds the production renderer for the signing job without a secret, so the App Store
+  # Connect key never shares a runner with the workspace install, the Nx build or their
+  # dependencies. The renderer is the same on every host, so Linux builds it.
+  renderer:
+    name: Build the production renderer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Before the long build, so a missing secret fails in seconds.
+      - uses: ./.github/actions/setup
+      # The configuration is explicit: it swaps in environment.prod.ts. The release notes
+      # are fetched from the published releases, as in release.yml; without them the build
+      # bundles none and testers see no What's New.
+      - run: pnpm nx build trinity --configuration=production --skipNxCache
+        env:
+          TRINITY_RELEASE_NOTES: required
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: node scripts/web-bundle-manifest.mjs write www
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: testflight-renderer
+          path: |
+            www/
+            dist/web-bundle-manifest.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+  # The only job that can read the mobile secrets, which live in the release-mobile
+  # environment (limited to `main` and `release/**`, with a required reviewer); no other
+  # workflow references them. It installs with --ignore-scripts and runs nothing from the
+  # workspace but `cap sync`, which finishes before the key is written: no renderer build.
+  testflight:
+    name: Archive and upload to TestFlight
+    needs: [renderer]
+    environment: release-mobile
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      # The runner context is not available in job-level env, so the paths are set here.
+      - name: Set the file paths
+        run: |
+          {
+            echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8"
+            echo "ARCHIVE_PATH=$RUNNER_TEMP/Trinity.xcarchive"
+            echo "EXPORT_PATH=$RUNNER_TEMP/export"
+            echo "EXPORT_OPTIONS=$RUNNER_TEMP/ExportOptions.plist"
+            echo "RENDERER_DIR=$RUNNER_TEMP/renderer"
+            echo "PLIST_PATH=ios/App/App/GoogleService-Info.plist"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Before the install, so a missing secret fails in seconds.
       - name: Mobile secrets are complete
         env:
           GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
@@ -44,11 +83,35 @@ jobs:
             fi
           done
           exit "$missing"
-      - uses: ./.github/actions/setup
-      # trinity-ios:sync builds the production renderer (trinity:build, whose default
-      # configuration swaps in environment.prod.ts) and runs `cap sync ios`.
-      - name: Build the production renderer and sync Capacitor
-        run: pnpm nx run trinity-ios:sync --skipNxCache
+      # The setup action's pinned pnpm and Node, without its workspace install.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # No package's install script runs.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Outside the checkout, so the artifact can never land on the files the install made.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: testflight-renderer
+          path: ${{ runner.temp }}/renderer
+      - name: Copy the built renderer
+        run: |
+          # Exactly the two directories and no symbolic link, or nothing is copied.
+          entries=$(find "$RENDERER_DIR" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | paste -s -d ' ' -)
+          if [ "$entries" != 'dist www' ] || [ ! -d "$RENDERER_DIR/dist" ] || [ ! -d "$RENDERER_DIR/www" ]; then
+            echo "::error::The renderer artifact must hold exactly dist and www; it holds: $entries"
+            exit 1
+          fi
+          if [ -n "$(find "$RENDERER_DIR" -type l)" ]; then
+            echo '::error::The renderer artifact holds a symbolic link.'
+            exit 1
+          fi
+          mkdir -p dist
+          cp -R "$RENDERER_DIR/www" .
+          cp "$RENDERER_DIR/dist/web-bundle-manifest.json" dist/
+      # Verifies the copied renderer against its manifest, then runs `cap sync ios`.
+      - run: pnpm nx run trinity-ios:sync-prebuilt
       - name: Record selected Xcode
         run: xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
       # The marketing version is package.json's without any prerelease suffix. The build number
@@ -72,6 +135,8 @@ jobs:
           echo "marketing=$marketing" >> "$GITHUB_OUTPUT"
           echo "build=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
           echo "TestFlight version $marketing, build $RUN_NUMBER" | tee -a "$GITHUB_STEP_SUMMARY"
+      # macOS base64 --decode exits 0 on input that is not base64 (a raw PEM pasted in place of
+      # its encoding), so the decoded files are checked, and only by shape: nothing is printed.
       - name: Write the Firebase plist and the App Store Connect key
         env:
           GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
@@ -80,7 +145,14 @@ jobs:
           umask 077
           printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$PLIST_PATH"
           printf '%s' "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
-          chmod 600 "$ASC_KEY_PATH"
+          if ! plutil -lint "$PLIST_PATH" > /dev/null 2>&1; then
+            echo '::error::GOOGLE_SERVICE_INFO_PLIST does not decode to a valid plist.'
+            exit 1
+          fi
+          if ! head -n 1 "$ASC_KEY_PATH" | grep -qx -- '-----BEGIN PRIVATE KEY-----'; then
+            echo '::error::ASC_KEY_P8 does not decode to a PEM private key.'
+            exit 1
+          fi
       # The build settings on the command line apply to every target of the scheme, so the
       # NotificationService extension gets the same versions as the app, as App Store Connect
       # requires.
@@ -106,7 +178,8 @@ jobs:
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
             CODE_SIGN_STYLE=Automatic
-      # `destination` upload sends the build to App Store Connect from this command.
+      # `destination` upload sends the build to App Store Connect from this command, and
+      # manageAppVersionAndBuildNumber keeps Xcode from rewriting the build number.
       - name: Export and upload
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -123,6 +196,7 @@ jobs:
             <key>signingStyle</key><string>automatic</string>
             <key>teamID</key><string>$APPLE_TEAM_ID</string>
             <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
           </dict>
           </plist>
           PLIST

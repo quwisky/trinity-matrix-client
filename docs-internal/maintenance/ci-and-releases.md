@@ -900,48 +900,74 @@ and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
 to TestFlight. It runs only on a manual dispatch, and it is unproven: no upload has run yet,
 so expect to fix signing or export problems on the first dispatch.
 
-Run it with `gh workflow run testflight.yml --ref main` (or a `release/X.Y.x` ref). The
-`release-mobile` environment, limited to `main` and `release/**`, waits for the maintainer's
-approval. The job builds the production renderer and syncs Capacitor with
-`pnpm nx run trinity-ios:sync`, then runs `xcodebuild archive` and `xcodebuild -exportArchive`
-with `destination` set to `upload` and automatic signing through an App Store Connect API key.
+Run it with `gh workflow run testflight.yml --ref main` (or a `release/X.Y.x` ref). It has two
+jobs, split as `release.yml` splits `desktop-shell` from `sign-mac`, so the App Store Connect key
+never shares a runner with a full dependency install:
 
-Only that job reads these `release-mobile` secrets, and no other workflow references them:
+- `renderer` has no environment and no secret. It builds the production renderer with
+  `TRINITY_RELEASE_NOTES=required`, so the app bundles its What's New notes from the published
+  releases, writes the web bundle manifest and uploads `www` with it.
+- `testflight` runs in the `release-mobile` environment, limited to `main` and `release/**`,
+  which waits for the maintainer's approval. It installs with `--ignore-scripts`, downloads the
+  renderer outside the checkout, runs `pnpm nx run trinity-ios:sync-prebuilt` (it verifies the
+  manifest, then `cap sync ios`), and only then writes the key. It runs `xcodebuild archive` and
+  `xcodebuild -exportArchive` with `destination` set to `upload` and automatic signing through
+  an App Store Connect API key.
 
-| Secret                      | Value                                                        |
-| --------------------------- | ------------------------------------------------------------ |
-| `GOOGLE_SERVICE_INFO_PLIST` | base64 of the Firebase `GoogleService-Info.plist`            |
-| `ASC_KEY_ID`                | the API key's ID                                             |
-| `ASC_ISSUER_ID`             | the App Store Connect issuer ID                              |
-| `ASC_KEY_P8`                | base64 of the API key's `.p8` file                           |
-| `APPLE_TEAM_ID`             | the Apple Developer team ID (a separate copy from `release`) |
+Only the `testflight` job reads these `release-mobile` secrets, and no other workflow references
+them. `APPLE_TEAM_ID` is a separate copy from the `release` environment's.
 
-The job fails first, naming any missing secret. It writes the plist and the key under
-`$RUNNER_TEMP` or the git-ignored plist path, passes secrets through step `env` only, uploads
-no xcodebuild log, and deletes both files in an `always()` step.
+| Secret                      | Value                                             |
+| --------------------------- | ------------------------------------------------- |
+| `GOOGLE_SERVICE_INFO_PLIST` | base64 of the Firebase `GoogleService-Info.plist` |
+| `ASC_KEY_ID`                | the API key's ID                                  |
+| `ASC_ISSUER_ID`             | the App Store Connect issuer ID                   |
+| `ASC_KEY_P8`                | base64 of the API key's `.p8` file                |
+| `APPLE_TEAM_ID`             | the Apple Developer team ID                       |
+
+The job fails first, naming any missing secret. It passes secrets through step `env` only,
+checks that the plist and key decode (macOS `base64 --decode` accepts a raw PEM without error),
+uploads no xcodebuild log, and deletes the key and plist in an `always()` step.
 
 The marketing version is the root `package.json` version without its prerelease suffix
 (`0.6.0-next.6` gives `0.6.0`), and the build number is `github.run_number`, both written to
 the job summary. The run number grows per workflow and never resets, but a re-run keeps its
 number, so after an upload that went through, dispatch again rather than re-running. Renaming
-or deleting the workflow file would restart the count and App Store Connect would refuse lower
+or deleting the workflow file would restart the count, and App Store Connect would refuse lower
 build numbers for the same version. The command-line `MARKETING_VERSION` and
-`CURRENT_PROJECT_VERSION` reach the NotificationService extension too, so the two match.
+`CURRENT_PROJECT_VERSION` reach the NotificationService extension too, so the two match, and
+`manageAppVersionAndBuildNumber` is `false` so Xcode cannot change the number.
 
-These must exist before the first run:
+`ios/App/App/PrivacyInfo.xcprivacy` declares the required-reason APIs the app target uses, from
+[Apple's list](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api):
+user defaults for the app alone (`CA92.1`, the Preferences and Badge plugins), system boot time
+to measure elapsed time (`35F9.1`, `PushHandoffPlugin`) and file metadata inside the app
+container (`C617.1`, the Filesystem plugin's `stat`). The NotificationService extension's binary
+references none of them, so it has no manifest. Add a reason when new code uses one of these APIs.
 
-- The Apple Developer setup tracked in [#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152):
-  App IDs for `dev.trinityproject.trinity` and its NotificationService extension, the App
-  Group and Keychain Sharing capabilities, and the Firebase and APNs key.
-- An App Store Connect app record for `dev.trinityproject.trinity`.
-- An App Store Connect API key with access to cloud-managed distribution certificates (the
-  Admin role, unverified), so automatic signing can create the certificate and
-  profiles on a runner with none.
-- The five secrets above in `release-mobile`, and the environment's reviewer.
+Before the first run:
 
-The app declares no `ITSAppUsesNonExemptEncryption` key, so App Store Connect asks the export
-compliance question for each build before TestFlight testing. The owner decides the answer and
-whether to add the key later.
+- The Apple Developer setup tracked in [#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152)
+  is finished, and an App Store Connect app record exists for `dev.trinityproject.trinity`.
+- The App Store Connect API key has the Admin role, because cloud signing with an API key has no
+  narrower option: this is reported in Apple's developer forums
+  ([698117](https://developer.apple.com/forums/thread/698117),
+  [690676](https://developer.apple.com/forums/thread/690676)), not stated by Apple.
+- All five secrets are set in `release-mobile`, with the environment's reviewer.
+
+Watch these on the first run:
+
+- Archive signing uses a development identity (`project.pbxproj`, `CODE_SIGN_IDENTITY`), so a
+  team with no registered device may fail, and each runner may create a new development
+  certificate until the team's limit.
+- Both App IDs, the app and the extension, need their capabilities (App Group, Keychain Sharing,
+  push).
+- Apple emails ITMS warnings and errors for an uploaded build; read them even when the upload
+  succeeds.
+- The app declares no `ITSAppUsesNonExemptEncryption` key, so App Store Connect asks the export
+  compliance question for each build before testing. The owner decides the answer and whether
+  to add the key.
+- A `0.6.0` build is refused once that version's train has been approved for the App Store.
 
 ## Homebrew tap
 

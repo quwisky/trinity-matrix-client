@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -823,48 +824,107 @@ describe('TestFlight upload workflow', () => {
     'APPLE_TEAM_ID',
   ];
   const testflight = () => loadWorkflow(FILE);
-  const job = () => Object.values(testflight().jobs)[0];
-  const step = (id) => job().steps.find((candidate) => candidate.id === id);
+  const build = () => testflight().jobs.renderer;
+  const upload = () => testflight().jobs.testflight;
+  const step = (job, key, value = key) =>
+    job.steps.find((candidate) =>
+      key === 'name' ? candidate.name === value : candidate.id === value,
+    );
+  const bash = (script, options) =>
+    spawnSync(
+      'bash',
+      ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script],
+      { encoding: 'utf8', ...options },
+    );
+  const inTempDir = (action) => {
+    const dir = mkdtempSync(join(tmpdir(), 'testflight-'));
+    try {
+      return action(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
 
   it('runs only when dispatched by hand', () => {
     expect(Object.keys(testflight().on)).toEqual(['workflow_dispatch']);
   });
 
-  it('is one job, gated by release-mobile, with least privilege and no cancelled upload', () => {
+  it('builds without an environment or secret, then signs in release-mobile', () => {
     const { jobs, permissions, concurrency } = testflight();
-    expect(Object.keys(jobs)).toHaveLength(1);
-    expect(job().environment).toBe('release-mobile');
-    expect(job()['runs-on']).toBe('macos-26');
+    expect(Object.keys(jobs)).toEqual(['renderer', 'testflight']);
+    expect(build().environment).toBeUndefined();
+    expect(JSON.stringify(build())).not.toContain('secrets.');
+    expect(upload().environment).toBe('release-mobile');
+    expect(upload().needs).toEqual(['renderer']);
+    expect(upload()['runs-on']).toBe('macos-26');
     expect(permissions).toEqual({ contents: 'read' });
     expect(concurrency['cancel-in-progress']).toBe(false);
-    expect(job()['timeout-minutes']).toBeGreaterThan(0);
-    const checkout = job().steps.find((s) =>
-      s.uses?.startsWith('actions/checkout@'),
-    );
-    expect(checkout.with['persist-credentials']).toBe(false);
-    for (const { uses } of job().steps.filter((s) => s.uses)) {
-      expect(uses).toMatch(/^(\.\/|[\w./-]+@[0-9a-f]{40}$)/);
+    for (const job of Object.values(jobs)) {
+      expect(job['timeout-minutes']).toBeGreaterThan(0);
+      const checkout = job.steps.find((s) =>
+        s.uses?.startsWith('actions/checkout@'),
+      );
+      expect(checkout.with['persist-credentials']).toBe(false);
+      for (const { uses } of job.steps.filter((s) => s.uses)) {
+        expect(uses).toMatch(/^(\.\/|[\w./-]+@[0-9a-f]{40}$)/);
+      }
     }
   });
 
-  it('reads secrets only through step env, never inside a script', () => {
-    const { env: _env, ...rest } = testflight();
+  it('bundles the release notes in the production renderer build', () => {
+    const renderer = build().steps.find((s) =>
+      s.run?.includes('nx build trinity'),
+    );
+    expect(renderer.run).toContain('--configuration=production');
+    expect(renderer.env.TRINITY_RELEASE_NOTES).toBe('required');
+    expect(renderer.env.GITHUB_TOKEN).toBe('${{ github.token }}');
+  });
+
+  it('installs without lifecycle scripts and syncs the downloaded renderer', () => {
+    const runs = upload().steps.map((s) => s.run ?? '');
+    expect(
+      runs.some((r) =>
+        r.includes('install --frozen-lockfile --ignore-scripts'),
+      ),
+    ).toBe(true);
+    expect(
+      runs.some((r) => r.includes('nx run trinity-ios:sync-prebuilt')),
+    ).toBe(true);
+    expect(runs.join('\n')).not.toMatch(/trinity-ios:sync\b(?!-)/);
+    expect(runs.join('\n')).not.toContain('nx build');
+    expect(
+      upload()
+        .steps.map((s) => s.uses ?? '')
+        .join('\n'),
+    ).not.toContain('upload-artifact');
+  });
+
+  it('reads secrets only through the signing job step env, never inside a script', () => {
+    const workflow = testflight();
     const withoutStepEnv = {
-      ...rest,
-      jobs: {
-        job: {
-          ...job(),
-          steps: job().steps.map(({ env: _stepEnv, ...s }) => s),
-        },
-      },
+      ...workflow,
+      jobs: Object.fromEntries(
+        Object.entries(workflow.jobs).map(([id, job]) => [
+          id,
+          { ...job, steps: job.steps.map(({ env: _env, ...s }) => s) },
+        ]),
+      ),
     };
     expect(JSON.stringify(withoutStepEnv)).not.toContain('secrets.');
-    for (const { run = '' } of job().steps) {
+    for (const { run = '' } of upload().steps) {
       expect(run).not.toContain('${{ secrets.');
       expect(run).not.toMatch(/set -\w*x/);
     }
-    const read = JSON.stringify(job().steps.map((s) => s.env ?? {}));
+    const read = JSON.stringify(upload().steps.map((s) => s.env ?? {}));
     for (const name of SECRETS) expect(read).toContain(`secrets.${name}`);
+  });
+
+  it('keeps the runner context out of workflow and job env, where it is not allowed', () => {
+    const workflow = testflight();
+    expect(JSON.stringify(workflow.env ?? {})).not.toContain('runner.');
+    for (const job of Object.values(workflow.jobs)) {
+      expect(JSON.stringify(job.env ?? {})).not.toContain('runner.');
+    }
   });
 
   it('is the only workflow that reads the mobile secrets', () => {
@@ -880,55 +940,126 @@ describe('TestFlight upload workflow', () => {
     }
   });
 
-  it('removes the key and the decoded plist even when the upload fails', () => {
-    const last = job().steps.at(-1);
+  it('sets the file paths from RUNNER_TEMP first, and removes the files even when the upload fails', () => {
+    const [first] = upload().steps;
+    expect(first.run).toContain('$RUNNER_TEMP/AuthKey.p8');
+    expect(first.run).toContain('$GITHUB_ENV');
+    expect(first.run).toContain('ASC_KEY_PATH=');
+    expect(first.run).toContain('PLIST_PATH=');
+    const last = upload().steps.at(-1);
     expect(last.if).toBe('always()');
     expect(last.run).toContain('$ASC_KEY_PATH');
     expect(last.run).toContain('$PLIST_PATH');
-    expect(job().env.ASC_KEY_PATH).toContain('AuthKey.p8');
-    expect(job().env.PLIST_PATH).toBe('ios/App/App/GoogleService-Info.plist');
+  });
+
+  it('names every missing secret and fails, without printing a value', () => {
+    const check = step(upload(), 'name', 'Mobile secrets are complete');
+    for (const name of SECRETS) expect(check.run).toContain(name);
+    const env = Object.fromEntries(SECRETS.map((name) => [name, 'x']));
+    delete env.ASC_KEY_ID;
+    const result = bash(check.run, {
+      env: { PATH: process.env.PATH, ...env, ASC_KEY_P8: 'do-not-print' },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('ASC_KEY_ID');
+    expect(result.stdout + result.stderr).not.toContain('do-not-print');
+  });
+
+  it('writes the key and plist with a private umask and checks they decode', () => {
+    const write = step(
+      upload(),
+      'name',
+      'Write the Firebase plist and the App Store Connect key',
+    );
+    expect(write.run).toMatch(/^umask 077$/m);
+    expect(write.run).toContain('plutil -lint "$PLIST_PATH"');
+    expect(write.run).toContain('-----BEGIN PRIVATE KEY-----');
+  });
+
+  describe.skipIf(spawnSync('plutil', ['-help']).error)(
+    'decoding the secrets',
+    () => {
+      const PLIST =
+        '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>';
+      const PEM =
+        '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n';
+      const b64 = (text) => Buffer.from(text).toString('base64');
+      const decode = (plist, key) =>
+        inTempDir((dir) => {
+          const env = {
+            PATH: process.env.PATH,
+            PLIST_PATH: join(dir, 'GoogleService-Info.plist'),
+            ASC_KEY_PATH: join(dir, 'AuthKey.p8'),
+            GOOGLE_SERVICE_INFO_PLIST: plist,
+            ASC_KEY_P8: key,
+          };
+          const script = step(
+            upload(),
+            'name',
+            'Write the Firebase plist and the App Store Connect key',
+          ).run;
+          const result = bash(script, { env });
+          return {
+            status: result.status,
+            output: result.stdout + result.stderr,
+            mode:
+              result.status === 0
+                ? statSync(env.ASC_KEY_PATH).mode & 0o777
+                : null,
+          };
+        });
+
+      it('accepts a base64 plist and key, leaving the key readable by its owner only', () => {
+        const result = decode(b64(PLIST), b64(PEM));
+        expect(result.status).toBe(0);
+        expect(result.mode).toBe(0o600);
+      });
+
+      it('rejects a raw PEM pasted in place of its base64, which macOS would decode silently', () => {
+        const result = decode(b64(PLIST), PEM);
+        expect(result.status).not.toBe(0);
+        expect(result.output).not.toContain('abc');
+      });
+
+      it('rejects a plist that is not a plist', () => {
+        expect(decode(b64('not a plist'), b64(PEM)).status).not.toBe(0);
+      });
+    },
+  );
+
+  it('exports with an upload that cannot rewrite the build number', () => {
+    const exportStep = step(upload(), 'name', 'Export and upload');
+    expect(exportStep.run).toContain(
+      '<key>destination</key><string>upload</string>',
+    );
+    expect(exportStep.run).toMatch(
+      /<key>manageAppVersionAndBuildNumber<\/key><false\/>/,
+    );
   });
 
   describe('versions', () => {
-    const run = (version, runNumber = '42') => {
-      const dir = mkdtempSync(join(tmpdir(), 'testflight-version-'));
-      try {
+    const run = (version, runNumber = '42') =>
+      inTempDir((dir) => {
         writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
         const out = join(dir, 'output');
         const summary = join(dir, 'summary');
         writeFileSync(out, '');
         writeFileSync(summary, '');
-        const result = spawnSync(
-          'bash',
-          [
-            '--noprofile',
-            '--norc',
-            '-eo',
-            'pipefail',
-            '-c',
-            step('version').run,
-          ],
-          {
-            cwd: dir,
-            encoding: 'utf8',
-            env: {
-              ...process.env,
-              RUN_NUMBER: runNumber,
-              GITHUB_OUTPUT: out,
-              GITHUB_STEP_SUMMARY: summary,
-            },
+        const result = bash(step(upload(), 'id', 'version').run, {
+          cwd: dir,
+          env: {
+            ...process.env,
+            RUN_NUMBER: runNumber,
+            GITHUB_OUTPUT: out,
+            GITHUB_STEP_SUMMARY: summary,
           },
-        );
+        });
         return {
           status: result.status,
-          stderr: result.stderr,
           output: readFileSync(out, 'utf8'),
           summary: readFileSync(summary, 'utf8'),
         };
-      } finally {
-        rmSync(dir, { recursive: true, force: true });
-      }
-    };
+      });
 
     it('strips the prerelease suffix and takes the build number from the run number', () => {
       const result = run('0.6.0-next.6');
@@ -939,8 +1070,9 @@ describe('TestFlight upload workflow', () => {
       expect(result.summary).toContain('42');
     });
 
-    it('keeps a stable version as it is', () => {
+    it('keeps a stable version, and drops build metadata', () => {
       expect(run('1.2.3').output).toContain('marketing=1.2.3\n');
+      expect(run('1.2.3+meta').output).toContain('marketing=1.2.3\n');
     });
 
     it('fails on a version that is not three numeric parts', () => {
