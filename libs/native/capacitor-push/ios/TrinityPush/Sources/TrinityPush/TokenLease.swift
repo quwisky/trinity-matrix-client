@@ -59,7 +59,7 @@ public final class AppGroupTokenLease: TokenLease {
         case unavailable
     }
 
-    /// Odd: a taker left alone ends with the live lease back in the name, even if it cannot read.
+    /// Odd: a lone taker whose path holds the live file ends with it back in the name, even if it cannot read.
     private static let putBackSwaps = 15
 
     private let directory: URL

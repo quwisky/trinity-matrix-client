@@ -282,7 +282,7 @@ final class TokenLeaseTests: XCTestCase {
                 calls.value! += 1
                 return code
             })
-            let answer = await refused.take(account, lifetime: 30, wait: 30)
+            let answer = await refused.take(account, lifetime: 30, wait: 1)
             XCTAssertEqual(answer, .unavailable, "errno \(code)")
             XCTAssertEqual(calls.value, 1, "errno \(code)")
             XCTAssertEqual(try allFiles().count, 0, "errno \(code)")
@@ -293,7 +293,7 @@ final class TokenLeaseTests: XCTestCase {
         _ = try await held(lifetime: 0)
         let before = try Data(contentsOf: leaseFile)
         let refused = AppGroupTokenLease(containerURL: container, rename: { _, _, _ in EPERM })
-        let answer = await refused.take(account, lifetime: 30, wait: 30)
+        let answer = await refused.take(account, lifetime: 30, wait: 1)
         XCTAssertEqual(answer, .unavailable)
         XCTAssertEqual(try Data(contentsOf: leaseFile), before)
         XCTAssertEqual(try allFiles().count, 1)
@@ -302,7 +302,7 @@ final class TokenLeaseTests: XCTestCase {
     func testACandidateThatCannotBeWrittenEndsTheWaitAtOnce() async throws {
         try FileManager.default.createDirectory(at: leasesDirectory, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: leasesDirectory.path)
-        let answer = await lease.take(account, lifetime: 30, wait: 30)
+        let answer = await lease.take(account, lifetime: 30, wait: 1)
         XCTAssertEqual(answer, .unavailable)
     }
 
@@ -312,7 +312,7 @@ final class TokenLeaseTests: XCTestCase {
     func testAReadErrorIsNeverTakenForAStaleLease() async throws {
         let ticket = try await held()
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: leaseFile.path)
-        let answer = await lease.take(account, lifetime: 30, wait: 30)
+        let answer = await lease.take(account, lifetime: 30, wait: 1)
         XCTAssertEqual(answer, .unavailable)
         XCTAssertFalse(lease.holds(ticket))
         lease.release(ticket)
