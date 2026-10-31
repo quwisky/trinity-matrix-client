@@ -27,12 +27,14 @@ use serde_json::{Value, json, value::to_raw_value};
 use super::{
     HierarchyEntryDto, HierarchyOptionsDto, SpaceChildLinkDto, SpaceChildLinkInputDto,
     rows::saturated,
-    settle::{room_changes, settle},
 };
 use crate::{
     accounts::{AccountRuntime, Engine},
     dispatch::{Stream, reply},
-    engines::member::{account_stream, on_account, sent_once},
+    engines::{
+        member::{account_stream, on_account, sent_once},
+        settle::{room_changes, settle},
+    },
     failure::request_failed,
 };
 

@@ -1,6 +1,6 @@
 //! Routes an `"engine.member"` call with positional args to the engine method that serves it.
 
-use std::{any::type_name, fmt};
+use std::{any::type_name, fmt, sync::Arc};
 
 use futures_util::stream;
 use matrix_sdk::{SendOutsideWasm, executor::spawn};
@@ -8,8 +8,9 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use crate::{
+    accounts::Engine,
     engines::{contact_addresses, discovery, homeserver, identity, room_list, session},
-    wire::{Fault, FaultCode},
+    wire::{BlobRefDto, Fault, FaultCode},
 };
 
 /// An engine method's output: a `BoxStream`, but a `LocalBoxStream` on wasm, where the SDK's
@@ -278,21 +279,73 @@ methods! {
     ),
 }
 
+/// A member with Blob arguments: decodes its args and takes its Blobs. `finish` runs after it
+/// returns, so a member must stay cold until polled or call `args.finish()?` before `detached`:
+/// `detached` spawns at call time, and a late `bad-args` would answer while the work still runs.
+pub type BytesMember = fn(Arc<Engine>, &mut Args<'_>) -> Result<Stream, Fault>;
+
+/// The members `openBytes` reaches, sorted by name, one per line.
+const BYTES_MEMBERS: &[(&str, BytesMember)] = &[];
+
+/// Like `dispatch`, for a call that carries `blobs`: `bad-args` unless the member takes them all.
+pub(crate) fn dispatch_bytes(
+    engine: &Arc<Engine>,
+    method: &str,
+    args: Vec<Value>,
+    blobs: Vec<Vec<u8>>,
+) -> Result<Stream, Fault> {
+    serve_bytes(BYTES_MEMBERS, engine, method, args, blobs)
+}
+
+fn serve_bytes(
+    table: &[(&str, BytesMember)],
+    engine: &Arc<Engine>,
+    method: &str,
+    args: Vec<Value>,
+    blobs: Vec<Vec<u8>>,
+) -> Result<Stream, Fault> {
+    let Some((_, member)) = table.iter().find(|(name, _)| *name == method) else {
+        return Err(Fault::new(
+            FaultCode::UnknownMethod,
+            format!("no method {method}"),
+        ));
+    };
+    let args = &mut Args::with_blobs(method, args, blobs);
+    let stream = member(Arc::clone(engine), args)?;
+    args.finish()?;
+    Ok(stream)
+}
+
 /// Decodes positional args in order. Its `bad-args` faults name the position and the type
 /// classes but never quote a value: args carry access tokens and passwords.
 pub struct Args<'a> {
     method: &'a str,
     values: std::vec::IntoIter<Value>,
     position: usize,
+    blobs: Vec<Option<Vec<u8>>>,
 }
 
 impl<'a> Args<'a> {
     pub fn new(method: &'a str, args: Vec<Value>) -> Self {
+        Self::with_blobs(method, args, Vec::new())
+    }
+
+    pub fn with_blobs(method: &'a str, args: Vec<Value>, blobs: Vec<Vec<u8>>) -> Self {
         Self {
             method,
             values: args.into_iter(),
             position: 0,
+            blobs: blobs.into_iter().map(Some).collect(),
         }
+    }
+
+    /// The Blob `at` names, once. Out of range or already taken: a `bad-args` fault.
+    pub fn blob(&mut self, at: BlobRefDto) -> Result<Vec<u8>, Fault> {
+        let taken = usize::try_from(at.index)
+            .ok()
+            .and_then(|index| self.blobs.get_mut(index))
+            .and_then(Option::take);
+        taken.ok_or_else(|| self.bad(format!("blob {}: missing or already taken", at.index)))
     }
 
     pub fn decode<T: DeserializeOwned>(&mut self) -> Result<T, Fault> {
@@ -311,8 +364,11 @@ impl<'a> Args<'a> {
         })
     }
 
-    /// Fails if args are left over.
+    /// Fails if args or Blobs are left over.
     pub fn finish(&self) -> Result<(), Fault> {
+        if self.blobs.iter().any(Option::is_some) {
+            return Err(self.bad("a blob was not taken".into()));
+        }
         match self.values.len() {
             0 => Ok(()),
             extra => Err(self.bad(format!(
@@ -351,7 +407,7 @@ fn type_class(value: &Value) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::time::Duration;
 
     use futures_util::{FutureExt, StreamExt, future::ready, stream};
     use matrix_sdk::timeout::timeout;
@@ -359,7 +415,7 @@ mod tests {
     use tokio::sync::oneshot;
 
     use super::*;
-    use crate::{accounts::Engine, config::EngineConfig, wire::FaultKind};
+    use crate::{config::EngineConfig, wire::FaultKind};
 
     fn pair(_: Arc<Engine>, text: String, count: u32) -> Stream {
         stream(stream::once(ready(Ok(json!([text, count])))))
@@ -515,5 +571,72 @@ mod tests {
             code(table::dispatch(&engine, "nope.nothing", vec![])),
             FaultCode::UnknownMethod
         );
+    }
+
+    fn blob(index: u32) -> BlobRefDto {
+        BlobRefDto { index }
+    }
+
+    fn with_blobs(blobs: Vec<Vec<u8>>) -> Args<'static> {
+        Args::with_blobs("test.blobs", vec![], blobs)
+    }
+
+    #[test]
+    fn a_blob_ref_takes_its_blob_once() {
+        let mut args = with_blobs(vec![vec![1, 2], vec![3]]);
+        assert_eq!(args.blob(blob(0)).unwrap(), vec![1, 2]);
+        for index in [0, 9] {
+            let fault = args.blob(blob(index)).unwrap_err();
+            assert_eq!(fault.code, FaultCode::BadArgs);
+            assert!(!fault.diagnostic.contains('1'), "{}", fault.diagnostic);
+        }
+    }
+
+    #[test]
+    fn an_untaken_blob_fails_finish() {
+        let mut args = with_blobs(vec![vec![1], vec![2]]);
+        args.blob(blob(0)).unwrap();
+        assert_eq!(args.finish().unwrap_err().code, FaultCode::BadArgs);
+        args.blob(blob(1)).unwrap();
+        assert!(args.finish().is_ok());
+    }
+
+    #[test]
+    fn args_without_blobs_refuse_a_ref() {
+        let mut args = Args::new("test.blobs", vec![]);
+        assert_eq!(args.blob(blob(0)).unwrap_err().code, FaultCode::BadArgs);
+    }
+
+    fn sizes(_: Arc<Engine>, args: &mut Args<'_>) -> Result<Stream, Fault> {
+        let refs: Vec<BlobRefDto> = args.decode()?;
+        let sizes = refs
+            .into_iter()
+            .map(|at| args.blob(at).map(|bytes| bytes.len()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(stream(stream::once(ready(Ok(json!(sizes))))))
+    }
+
+    fn leaves_one(_: Arc<Engine>, _: &mut Args<'_>) -> Result<Stream, Fault> {
+        Ok(stream(stream::empty()))
+    }
+
+    #[tokio::test]
+    async fn serve_bytes_reaches_its_member_and_finishes() {
+        let engine = Engine::new(EngineConfig::default()).unwrap();
+        let table: &[(&str, BytesMember)] = &[("test.sizes", sizes), ("test.leaves", leaves_one)];
+        let refs = vec![json!([{"$blob": 1}, {"$blob": 0}])];
+        let mut s = serve_bytes(
+            table,
+            &engine,
+            "test.sizes",
+            refs,
+            vec![vec![1, 2, 3], vec![4]],
+        )
+        .unwrap();
+        assert_eq!(s.next().await, Some(Ok(json!([1, 3]))));
+        let untaken = serve_bytes(table, &engine, "test.leaves", vec![], vec![vec![1]]);
+        assert_eq!(code(untaken), FaultCode::BadArgs);
+        let outside = serve_bytes(table, &engine, "test.other", vec![], vec![]);
+        assert_eq!(code(outside), FaultCode::UnknownMethod);
     }
 }

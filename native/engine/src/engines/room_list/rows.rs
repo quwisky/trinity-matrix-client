@@ -34,10 +34,11 @@ use super::{
     RoomMembershipDto, UnencryptedMarkDto,
 };
 use crate::{
-    accounts::Engine, dispatch::Stream, engines::member::account_stream, vector_diff::VectorDiffDto,
+    accounts::Engine,
+    dispatch::Stream,
+    engines::member::account_stream,
+    vector_diff::{VectorDiffDto, frames},
 };
-
-pub(crate) const MAX_BATCH: usize = 256;
 
 /// What makes `room_rows` read again.
 #[derive(Debug, PartialEq, Eq)]
@@ -130,18 +131,6 @@ pub(crate) fn update(
         }
         _ => None,
     }
-}
-
-/// At most `MAX_BATCH` diffs per frame, in order (O8: a reset counts as one and is never split).
-pub(crate) fn frames(
-    diffs: Vec<VectorDiffDto<RoomInfoDto>>,
-) -> Vec<Vec<VectorDiffDto<RoomInfoDto>>> {
-    let mut diffs = diffs.into_iter().peekable();
-    let mut frames = Vec::new();
-    while diffs.peek().is_some() {
-        frames.push(diffs.by_ref().take(MAX_BATCH).collect());
-    }
-    frames
 }
 
 pub(super) fn saturated(n: impl TryInto<u32>) -> u32 {
@@ -489,8 +478,6 @@ mod tests {
     use super::*;
     use crate::{config::EngineConfig, engines::room_list::RoomEncryptionDto};
 
-    type Diffs = Vec<VectorDiffDto<RoomInfoDto>>;
-
     fn id(room_id: &str) -> OwnedRoomId {
         OwnedRoomId::try_from(room_id).unwrap()
     }
@@ -516,23 +503,6 @@ mod tests {
             low_priority: false,
             inviter: None,
         }
-    }
-
-    /// `rows` after `diffs`, as `applyVectorDiffs` folds them.
-    fn fold(mut rows: Vec<RoomInfoDto>, diffs: Diffs) -> Vec<RoomInfoDto> {
-        for diff in diffs {
-            match diff {
-                VectorDiffDto::Reset { values } => rows = values,
-                VectorDiffDto::PushBack { value } => rows.push(value),
-                VectorDiffDto::Set { index, value } => {
-                    rows[usize::try_from(index).unwrap()] = value;
-                }
-                VectorDiffDto::Remove { index } => {
-                    rows.remove(usize::try_from(index).unwrap());
-                }
-            }
-        }
-        rows
     }
 
     /// Items fed by hand.
@@ -595,31 +565,6 @@ mod tests {
         let mut rows = vec![info("!a:x", "A")];
         assert_eq!(update(&mut rows, "!a:x", Some(info("!a:x", "A"))), None);
         assert_eq!(rows, [info("!a:x", "A")]);
-    }
-
-    #[test]
-    fn frames_hold_at_most_256_diffs_and_every_prefix_folds() {
-        let named = |n: u32, name: &str| info(&format!("!{n}:x"), name);
-        let start: Vec<_> = (0..600).map(|n| named(n, "old")).collect();
-        let diffs: Diffs = (0..600)
-            .map(|n| VectorDiffDto::Set {
-                index: n,
-                value: named(n, "new"),
-            })
-            .collect();
-        let framed = frames(diffs.clone());
-        let lengths: Vec<_> = framed.iter().map(Vec::len).collect();
-        assert_eq!(lengths, [256, 256, 88]);
-        let one_by_one = framed.into_iter().fold(start.clone(), fold);
-        assert_eq!(one_by_one, fold(start, diffs));
-    }
-
-    #[test]
-    fn a_reset_is_one_item_whatever_its_length() {
-        let values = (0..600).map(|n| info(&format!("!{n}:x"), "A")).collect();
-        let framed = frames(vec![VectorDiffDto::Reset { values }]);
-        assert_eq!(framed.len(), 1);
-        assert_eq!(framed[0].len(), 1);
     }
 
     #[tokio::test]

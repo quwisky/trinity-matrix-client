@@ -36,8 +36,10 @@ pub(crate) type Seen = Arc<StdMutex<Vec<(String, Option<String>)>>>;
 /// A homeserver on loopback that answers the scripted requests in order, and records each
 /// one's method and path and its `Authorization`. It names its versions for a client that
 /// asks, and any other request, such as the client's own background ones, gets a 404. A 3xx
-/// answer's body is the `location` it redirects to. A connection that breaks off gets no answer
-/// and costs none, so the script goes on for the requests after it.
+/// answer's body is the `location` it redirects to. An expected target ending in `*` matches
+/// any suffix, and status `0` accepts the request and holds the connection open with no answer. A
+/// connection that breaks off gets no answer and costs none, so the script goes on for the
+/// requests after it.
 pub(crate) fn scripted(answers: Vec<(&'static str, u16, Value)>) -> (String, Seen) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
@@ -80,9 +82,20 @@ fn answer(
         }
     }
     reader.read_exact(&mut vec![0; length])?;
-    let (status, body) = match answers.next_if(|(expected, ..)| *expected == target) {
+    let matches = |expected: &str| {
+        expected == target
+            || expected
+                .strip_suffix('*')
+                .is_some_and(|p| target.starts_with(p))
+    };
+    let (status, body) = match answers.next_if(|(expected, ..)| matches(expected)) {
         Some((_, status, body)) => {
             log.lock().unwrap().push((target, authorization));
+            if status == 0 {
+                // Never closed: the client keeps waiting for an answer that does not come.
+                std::mem::forget(stream);
+                return Ok(());
+            }
             (status, body)
         }
         None if target == "GET /_matrix/client/versions" => (200, json!({"versions": ["v1.15"]})),
@@ -223,4 +236,49 @@ pub(crate) async fn live(
     state.runtimes.insert(s.user_id.clone(), Arc::clone(&rt));
     let _ = state.publish_snapshot();
     rt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn get(base: &str, path: &str) -> TcpStream {
+        let mut stream = TcpStream::connect(base.trim_start_matches("http://")).unwrap();
+        write!(stream, "GET {path} HTTP/1.1\r\nhost: x\r\n\r\n").unwrap();
+        stream
+    }
+
+    #[test]
+    fn a_star_target_matches_by_prefix() {
+        let (base, seen) = scripted(vec![("PUT /send/*", 200, json!({}))]);
+        let mut stream = TcpStream::connect(base.trim_start_matches("http://")).unwrap();
+        write!(
+            stream,
+            "PUT /send/txn-42 HTTP/1.1\r\ncontent-length: 0\r\n\r\n"
+        )
+        .unwrap();
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).unwrap();
+        assert!(reply.starts_with("HTTP/1.1 200"), "{reply}");
+        assert_eq!(requests(&seen), [("PUT /send/txn-42".to_owned(), None)]);
+    }
+
+    #[test]
+    fn status_zero_accepts_and_never_answers() {
+        let (base, seen) = scripted(vec![("GET /held", 0, json!(null))]);
+        let mut stream = get(&base, "/held");
+        stream
+            .set_read_timeout(Some(Duration::from_millis(300)))
+            .unwrap();
+        let mut byte = [0];
+        let err = stream.read(&mut byte).unwrap_err();
+        assert!(
+            matches!(
+                err.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            ),
+            "{err}"
+        );
+        assert_eq!(requests(&seen), [("GET /held".to_owned(), None)]);
+    }
 }

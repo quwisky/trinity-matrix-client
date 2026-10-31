@@ -1,7 +1,7 @@
 //! The engine over stdio for the contract suites: one `Inbound` JSON per stdin line in, one `Frame`
 //! JSON per stdout line out. Logs go to stderr, so stdout carries nothing but frames.
 
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{mem, path::PathBuf, sync::Arc, time::Duration};
 
 use futures_util::{StreamExt, future::ready, stream};
 use serde_json::{Value, json};
@@ -15,7 +15,7 @@ use trinity_engine::{
     carrier::CarrierSession,
     config::EngineConfig,
     dispatch::{Args, Stream, stream},
-    wire::Fault,
+    wire::{BlobRefDto, Fault},
 };
 use zeroize::Zeroizing;
 
@@ -115,20 +115,40 @@ fn exit(message: &str) -> ! {
 }
 
 /// The test host's own methods, served before the engine's.
-fn local(engine: &Arc<Engine>, method: &str, args: &[Value]) -> Option<Result<Stream, Fault>> {
+fn local(
+    engine: &Arc<Engine>,
+    method: &str,
+    args: &[Value],
+    blobs: &mut Vec<Vec<u8>>,
+) -> Option<Result<Stream, Fault>> {
     let serve: fn(Arc<Engine>, &mut Args<'_>) -> Result<Stream, Fault> = match method {
         "testhost.echo" => echo,
         "testhost.ticks" => ticks,
         "testhost.serverLogout" => server_logout,
+        "testhost.blobSizes" => blob_sizes,
         _ => return None,
     };
-    let args = &mut Args::new(method, args.to_vec());
+    let args = &mut Args::with_blobs(method, args.to_vec(), mem::take(blobs));
     Some(serve(Arc::clone(engine), args).and_then(|stream| args.finish().map(|()| stream)))
 }
 
 fn echo(_: Arc<Engine>, args: &mut Args<'_>) -> Result<Stream, Fault> {
     let value: Value = args.decode()?;
     Ok(stream(stream::once(ready(Ok(value)))))
+}
+
+/// Replies with each Blob's `size` and wrapping `u32` `sum`, in the order of `refs`.
+fn blob_sizes(_: Arc<Engine>, args: &mut Args<'_>) -> Result<Stream, Fault> {
+    let refs: Vec<BlobRefDto> = args.decode()?;
+    let mut sizes = Vec::with_capacity(refs.len());
+    for at in refs {
+        let bytes = args.blob(at)?;
+        let sum = bytes
+            .iter()
+            .fold(0u32, |sum, b| sum.wrapping_add(u32::from(*b)));
+        sizes.push(json!({"size": bytes.len(), "sum": sum}));
+    }
+    Ok(stream(stream::once(ready(Ok(Value::Array(sizes))))))
 }
 
 /// Emits 0, 1, 2… one per `intervalMs` until closed.

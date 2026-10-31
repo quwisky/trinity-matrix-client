@@ -17,7 +17,12 @@ use trinity_engine::{
     wire::{Fault, FaultCode, Frame, Inbound},
 };
 
-fn echo(_: &Arc<Engine>, method: &str, args: &[Value]) -> Option<Result<Stream, Fault>> {
+fn echo(
+    _: &Arc<Engine>,
+    method: &str,
+    args: &[Value],
+    _: &mut Vec<Vec<u8>>,
+) -> Option<Result<Stream, Fault>> {
     let args = &mut Args::new(method, args.to_vec());
     Some(args.decode::<u32>().and_then(|value| {
         args.finish()?;

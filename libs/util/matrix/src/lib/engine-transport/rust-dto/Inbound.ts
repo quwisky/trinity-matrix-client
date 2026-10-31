@@ -3,4 +3,4 @@
 /**
  * A message from TypeScript to the engine.
  */
-export type Inbound = { "t": "attach" } | { "t": "open", id: number, method: string, args: Array<unknown>, } | { "t": "close", id: number, };
+export type Inbound = { "t": "attach" } | { "t": "open", id: number, method: string, args: Array<unknown>, } | { "t": "openBytes", id: number, method: string, args: Array<unknown>, bytes: Array<string>, } | { "t": "close", id: number, };

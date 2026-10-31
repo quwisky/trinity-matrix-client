@@ -158,6 +158,58 @@ describe.skipIf(!testhostBinaryAvailable())('StdioTransport', () => {
     }
   });
 
+  it('carries nested Blobs to the host in order', async () => {
+    transport = StdioTransport.start();
+
+    const sizes = await firstValueFrom(
+      transport.open('testhost.blobSizes', [
+        [
+          new Blob([Uint8Array.of(1, 2, 3)]),
+          new Blob([]),
+          new Blob([Uint8Array.of(4)]),
+        ],
+      ]),
+    );
+
+    expect(sizes).toEqual([
+      { size: 3, sum: 6 },
+      { size: 0, sum: 0 },
+      { size: 1, sum: 4 },
+    ]);
+  });
+
+  it('refuses a method without Blobs through openBytes', async () => {
+    transport = StdioTransport.start();
+
+    const error = await failure(
+      transport.open('session.session', [new Blob([Uint8Array.of(1)])]),
+    );
+
+    expect(error).toMatchObject({
+      fault: { kind: 'protocol', code: 'unknown-method' },
+    });
+  });
+
+  it(
+    'carries a Blob past the upload limit in one line',
+    { timeout: 120_000 },
+    async () => {
+      transport = StdioTransport.start();
+      const bytes = new Uint8Array(52_428_801);
+      bytes[0] = 5;
+      bytes[bytes.length - 1] = 7;
+
+      const sizes = await firstValueFrom(
+        transport.open('testhost.blobSizes', [[new Blob([bytes])]]),
+      );
+
+      expect(sizes).toEqual([{ size: 52_428_801, sum: 12 }]);
+      expect(
+        await lastValueFrom(transport.open('testhost.echo', ['after'])),
+      ).toBe('after');
+    },
+  );
+
   it('unsubscribing after complete sends no close', async () => {
     transport = StdioTransport.start();
     const open = transport.open('testhost.echo', ['once']);
@@ -264,6 +316,115 @@ done
     await expect(startTesthostAccount('https://hs', user)).rejects.toThrow(
       'session.restorePersisted failed: {"ok":false,"failure":{}}',
     );
+  });
+
+  describe('with Blob arguments', () => {
+    function start() {
+      transport = StdioTransport.start({
+        binary: host,
+        env: { ...process.env, FRAME: '{"k":"complete","id":99}' },
+      });
+      return vi.spyOn(transport.child.stdin, 'write');
+    }
+
+    /** The messages written so far. */
+    const sent = (write: ReturnType<typeof start>) =>
+      write.mock.calls.map(([line]) => JSON.parse(String(line)) as unknown);
+
+    /** A Blob-like that reads only once `release` is called. */
+    function slowBlob() {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const blob = {
+        arrayBuffer: async () => {
+          await gate;
+          return Uint8Array.of(1).buffer;
+        },
+      };
+      return { blob, release };
+    }
+
+    it('writes one openBytes line for a call with Blobs', async () => {
+      const write = start();
+
+      const subscription = transport
+        ?.open('any.method', [{ a: new Blob([Uint8Array.of(1, 2, 3)]) }])
+        .subscribe();
+
+      await vi.waitFor(() =>
+        expect(sent(write)).toContainEqual({
+          t: 'openBytes',
+          id: 1,
+          method: 'any.method',
+          args: [{ a: { $blob: 0 } }],
+          bytes: ['AQID'],
+        }),
+      );
+      subscription?.unsubscribe();
+    });
+
+    it('writes a plain open for a call without Blobs', () => {
+      const write = start();
+
+      const subscription = transport
+        ?.open('any.method', [{ a: 1 }])
+        .subscribe();
+
+      expect(sent(write)).toContainEqual({
+        t: 'open',
+        id: 1,
+        method: 'any.method',
+        args: [{ a: 1 }],
+      });
+      subscription?.unsubscribe();
+    });
+
+    it('writes no openBytes once unsubscribed during the read', async () => {
+      const write = start();
+      const { blob, release } = slowBlob();
+
+      transport?.open('any.method', [blob]).subscribe().unsubscribe();
+      release();
+      await sleep(20);
+
+      expect(
+        sent(write).filter((m) => (m as { t: string }).t !== 'close'),
+      ).toEqual([]);
+    });
+
+    it('writes nothing after a dispose during the read', async () => {
+      const write = start();
+      const { blob, release } = slowBlob();
+      const subscription = transport?.open('any.method', [blob]).subscribe();
+      const before = write.mock.calls.length;
+
+      await transport?.dispose();
+      release();
+      await sleep(20);
+
+      expect(write.mock.calls).toHaveLength(before);
+      subscription?.unsubscribe();
+    });
+
+    it('fails only its own stream when a Blob cannot be read', async () => {
+      start();
+      const unreadable = { arrayBuffer: () => Promise.reject(new Error('x')) };
+      const later = transport?.open('any.method', []).subscribe();
+
+      const error = await failure(
+        transport?.open('any.method', [unreadable]) as Observable<unknown>,
+      );
+
+      expect(error).toBeInstanceOf(EngineFaultError);
+      expect(error).toMatchObject({ fault: { code: 'blob-unreadable' } });
+      expect(later?.closed).toBe(false);
+      expect(
+        await failure(
+          transport?.open('any.method', [unreadable]) as Observable<unknown>,
+        ),
+      ).toMatchObject({ fault: { code: 'blob-unreadable' } });
+      later?.unsubscribe();
+    });
   });
 
   it('settles dispose when the host fails to start', async () => {

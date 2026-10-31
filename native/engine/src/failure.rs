@@ -142,6 +142,17 @@ pub enum FailureCode {
     InviteBlocked,
     Unsupported,
     Forbidden,
+    MessageUnavailable,
+    NotCancellable,
+    NotForwardable,
+    MediaUnavailable,
+    TooLarge,
+    ConversationUnavailable,
+    RoomUnavailable,
+    AlreadyEncrypted,
+    EncryptionNotApplied,
+    Conflict,
+    StateKeyTaken,
 }
 
 /// A failure as plain data: a code and parameters, never text.
@@ -189,6 +200,17 @@ enum WireCode {
     InviteBlocked,
     Unsupported,
     Forbidden,
+    MessageUnavailable,
+    NotCancellable,
+    NotForwardable,
+    MediaUnavailable,
+    TooLarge,
+    ConversationUnavailable,
+    RoomUnavailable,
+    AlreadyEncrypted,
+    EncryptionNotApplied,
+    Conflict,
+    StateKeyTaken,
 }
 
 #[derive(Serialize, TS)]
@@ -246,6 +268,17 @@ impl From<EngineFailure> for WireFailure {
             FailureCode::InviteBlocked => WireCode::InviteBlocked,
             FailureCode::Unsupported => WireCode::Unsupported,
             FailureCode::Forbidden => WireCode::Forbidden,
+            FailureCode::MessageUnavailable => WireCode::MessageUnavailable,
+            FailureCode::NotCancellable => WireCode::NotCancellable,
+            FailureCode::NotForwardable => WireCode::NotForwardable,
+            FailureCode::MediaUnavailable => WireCode::MediaUnavailable,
+            FailureCode::TooLarge => WireCode::TooLarge,
+            FailureCode::ConversationUnavailable => WireCode::ConversationUnavailable,
+            FailureCode::RoomUnavailable => WireCode::RoomUnavailable,
+            FailureCode::AlreadyEncrypted => WireCode::AlreadyEncrypted,
+            FailureCode::EncryptionNotApplied => WireCode::EncryptionNotApplied,
+            FailureCode::Conflict => WireCode::Conflict,
+            FailureCode::StateKeyTaken => WireCode::StateKeyTaken,
         };
         Self {
             kind: failure.kind,
@@ -279,22 +312,23 @@ impl<T: Serialize> Serialize for EngineResult<T> {
     }
 }
 
-/// `NOT_SIGNED_IN`.
-pub fn not_signed_in() -> EngineFailure {
+/// A failure the engine decides itself, as js `localFailure`: kind and diagnostic `unexpected`.
+pub fn local_failure(code: FailureCode) -> EngineFailure {
     EngineFailure {
         kind: FailureKind::Unexpected,
         diagnostic: Diagnostic::new(FailureKind::Unexpected),
-        code: FailureCode::NotSignedIn,
+        code,
     }
+}
+
+/// `NOT_SIGNED_IN`.
+pub fn not_signed_in() -> EngineFailure {
+    local_failure(FailureCode::NotSignedIn)
 }
 
 /// `ACCOUNT_NOT_LIVE` in the js adapter.
 pub fn account_not_live() -> EngineFailure {
-    EngineFailure {
-        kind: FailureKind::Unexpected,
-        diagnostic: Diagnostic::new(FailureKind::Unexpected),
-        code: FailureCode::AccountNotLive,
-    }
+    local_failure(FailureCode::AccountNotLive)
 }
 
 pub fn account_start_failed(
@@ -633,6 +667,32 @@ mod tests {
                 server_message: server_message.map(Into::into),
             },
         })
+    }
+
+    #[test]
+    fn local_failures_write_their_code_and_no_params() {
+        let table = [
+            (FailureCode::MessageUnavailable, "message-unavailable"),
+            (FailureCode::NotCancellable, "not-cancellable"),
+            (FailureCode::NotForwardable, "not-forwardable"),
+            (FailureCode::MediaUnavailable, "media-unavailable"),
+            (FailureCode::TooLarge, "too-large"),
+            (
+                FailureCode::ConversationUnavailable,
+                "conversation-unavailable",
+            ),
+            (FailureCode::RoomUnavailable, "room-unavailable"),
+            (FailureCode::AlreadyEncrypted, "already-encrypted"),
+            (FailureCode::EncryptionNotApplied, "encryption-not-applied"),
+            (FailureCode::Conflict, "conflict"),
+            (FailureCode::StateKeyTaken, "state-key-taken"),
+        ];
+        for (code, name) in table {
+            assert_eq!(
+                to_json(local_failure(code)),
+                json!({"kind": "unexpected", "code": name, "diagnostic": {"kind": "unexpected"}})
+            );
+        }
     }
 
     #[test]
