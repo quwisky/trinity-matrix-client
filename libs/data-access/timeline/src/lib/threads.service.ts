@@ -8,7 +8,6 @@ import {
 } from '@angular/core';
 import {
   Direction,
-  EventStatus,
   EventType,
   MatrixEvent,
   MatrixEventEvent,
@@ -64,6 +63,7 @@ import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import type { ThreadSummary } from './conversation-threads';
 import { DraftStoreService } from '@trinity/platform-native';
 import { threadDraftKey } from './conversation-draft-key';
+import { sendEdit } from './edit-echo';
 import { keepWhileWaiting } from './waiting-draft';
 import {
   participantsOf,
@@ -620,37 +620,12 @@ export class ThreadsService {
         mentions,
       );
       const txnId = client.makeTxnId();
-      const accepted = room.findEventById(messageId)?.replacingEvent();
       return from(
-        // On the promise, not the pipe: closing the panel mid-send must not keep the echo.
-        client
-          .sendMessage(roomId, threadId, content as never, txnId)
-          .catch((error: unknown) => {
-            this.dropEditEcho(client, room, txnId, accepted);
-            throw error;
-          }),
+        sendEdit(client, room, messageId, txnId, () =>
+          client.sendMessage(roomId, threadId, content as never, txnId),
+        ),
       );
     }).pipe(map(() => void 0));
-  }
-
-  /**
-   * Back to what the server accepted: the SDK leaves a failed edit attached to its message. Only
-   * NOT_SENT is dropped: a rejected send always ends there, and a landed one must stay.
-   */
-  private dropEditEcho(
-    client: MatrixClient,
-    room: Room,
-    txnId: string,
-    accepted: MatrixEvent | null | undefined,
-  ): void {
-    const echo = room.getEventForTxnId(txnId);
-    if (echo?.status !== EventStatus.NOT_SENT) return;
-    // An edit known only as bundled on the message is in no Relations, so the SDK's
-    // re-aggregation would otherwise fall back to the message's original text.
-    if (accepted && !accepted.status) {
-      room.relations.aggregateChildEvent(accepted);
-    }
-    client.cancelPendingEvent(echo);
   }
 
   /**

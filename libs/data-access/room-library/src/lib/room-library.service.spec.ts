@@ -1515,6 +1515,32 @@ describe('RoomLibraryService', () => {
     expect(svc.totalUnread()).toBe(1);
   });
 
+  it('rebuilds on MatrixEventEvent.Replaced, which is all a cancelled edit echo fires', async () => {
+    const events = [
+      timelineEvent({ body: 'server text' }),
+      timelineEvent({ body: '* refused text' }),
+    ];
+    const room = fakeRoom({ roomId: '!a:hs', name: 'a', events });
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [room],
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const { svc } = provideRooms(client);
+    svc.runProjection().subscribe();
+    await vi.waitFor(() =>
+      expect(svc.rooms()[0]?.lastMessage).toBe('* refused text'),
+    );
+
+    events.pop();
+    handlers.get(MatrixEventEvent.Replaced)?.();
+    await Promise.resolve();
+
+    expect(svc.rooms()[0]?.lastMessage).toBe('server text');
+  });
+
   it('recomputes totalUnread when a room is added to the synced list', async () => {
     let currentRooms = [fakeRoom({ roomId: '!a:hs', name: 'a', unread: 2 })];
     const handlers = new Map<string, () => void>();
