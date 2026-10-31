@@ -63,8 +63,12 @@ interface FakeRoom {
   /** Public `m.read` receipts by user. */
   readonly readReceipts: Map<string, string>;
   readonly invited: Set<string>;
-  /** Each voter's answers, per poll event id. */
-  readonly votes: Map<string, Map<string, readonly string[]>>;
+  /** Poll responses and ends in arrival order: the poll views are derived from them. */
+  readonly pollEvents: PollEvent[];
+  /** Explicit power levels by user; bob, the room's creator, holds 100 unless set. */
+  readonly powerUsers: Map<string, number>;
+  /** The level that lets a member end another member's poll. */
+  redactLevel: number;
   /** The thread root of each thread reply, by the reply's `uniqueId`. */
   readonly threads: Map<string, string>;
   /** The newest event each member has read in a thread, by `member` and root. */
@@ -73,6 +77,19 @@ interface FakeRoom {
   readonly wire: Map<string, WireEvent>;
   name: string | null;
 }
+
+interface PollEvent {
+  readonly pollId: string;
+  readonly kind: 'response' | 'end';
+  readonly sender: string;
+  readonly answers: readonly string[];
+  readonly ts: number;
+}
+
+const POLL_START = 'org.matrix.msc3381.poll.start';
+const POLL_RESPONSE = 'org.matrix.msc3381.poll.response';
+const POLL_END = 'org.matrix.msc3381.poll.end';
+const POLL_TEXT = 'org.matrix.msc1767.text';
 
 interface WireEvent {
   readonly type: string;
@@ -243,6 +260,34 @@ function forwardedWire(
   return { ...kept, 'm.mentions': {} };
 }
 
+/** A poll start as matrix-js-sdk reads it: one option per answer, `max_selections` cut to a whole number in range. */
+function pollFromWire(
+  content: Readonly<Record<string, unknown>>,
+): TimelineItemContent {
+  const start = asRecord(content[POLL_START]);
+  const answers = Array.isArray(start['answers']) ? start['answers'] : [];
+  const max = start['max_selections'];
+  return {
+    kind: 'poll',
+    poll: {
+      id: '',
+      question: String(asRecord(start['question'])[POLL_TEXT] ?? ''),
+      options: answers.map((answer) => ({
+        id: String(asRecord(answer)['id'] ?? ''),
+        text: String(asRecord(answer)[POLL_TEXT] ?? ''),
+        votes: 0,
+        chosen: false,
+      })),
+      totalVotes: 0,
+      maxSelections:
+        Number.isInteger(max) && (max as number) > 0
+          ? Math.min(max as number, Math.max(answers.length, 1))
+          : 1,
+      ended: false,
+    },
+  };
+}
+
 /** The item content an event of `type` shows, for `viewer`. */
 function contentFromWire(
   type: string,
@@ -273,6 +318,7 @@ function contentFromWire(
     ...(typeof info['w'] === 'number' && { width: info['w'] }),
     ...(typeof info['h'] === 'number' && { height: info['h'] }),
   });
+  if (type === POLL_START) return pollFromWire(content);
   if (type === 'm.sticker') {
     return {
       kind: 'sticker',
@@ -458,14 +504,22 @@ export class FakeTimelineEngine implements TimelineEngine {
       userId: string,
     ): Promise<string | null> =>
       this.rooms.get(roomId)?.readReceipts.get(userId) ?? null,
-    // The fake models one level: whether `events_default` (or a per-type level) refuses alice's writes.
+    // Writes are refused when `events_default` (or a per-type level) is above 0; `users` and
+    // `redact` decide who may end another member's poll.
     setPowerLevels: async (
       roomId: string,
       patch: {
         readonly events_default?: number;
         readonly events?: Readonly<Record<string, number>>;
+        readonly users?: Readonly<Record<string, number>>;
+        readonly redact?: number;
       },
     ): Promise<void> => {
+      const room = this.room(roomId);
+      for (const [user, level] of Object.entries(patch.users ?? {}))
+        room.powerUsers.set(user, level);
+      if (patch.redact !== undefined) room.redactLevel = patch.redact;
+      this.publish(roomId);
       const levels = [
         patch.events_default,
         ...Object.values(patch.events ?? {}),
@@ -486,11 +540,27 @@ export class FakeTimelineEngine implements TimelineEngine {
         room.threads.set(`ev:${eventId}`, String(relation['event_id']));
       const quoted = asRecord(relation['m.in_reply_to'])['event_id'];
       this.clock += 1;
+      if (type === POLL_RESPONSE || type === POLL_END) {
+        const answers = asRecord(wire[POLL_RESPONSE])['answers'];
+        room.pollEvents.push({
+          pollId: String(relation['event_id']),
+          kind: type === POLL_END ? 'end' : 'response',
+          sender: this.bob,
+          answers: Array.isArray(answers) ? answers.map(String) : [],
+          ts: this.clock,
+        });
+        this.publish(roomId);
+        return eventId;
+      }
+      const shown = contentFromWire(type, wire, this.alice);
       this.append(
         roomId,
         fakeEventItem(eventId, this.bob, {
           timestamp: this.clock,
-          content: contentFromWire(type, wire, this.alice),
+          content:
+            shown.kind === 'poll'
+              ? { kind: 'poll', poll: { ...shown.poll, id: eventId } }
+              : shown,
           inReplyTo:
             typeof quoted === 'string' && relation['is_falling_back'] !== true
               ? this.inReplyTo(room, quoted)
@@ -849,23 +919,15 @@ export class FakeTimelineEngine implements TimelineEngine {
         const poll = this.event(room, message.pollId);
         if (poll?.content.kind !== 'poll')
           return engineFail(MESSAGE_UNAVAILABLE);
-        if (message.kind === 'poll-end') {
-          this.patchEvent(roomId, message.pollId, () => ({
-            content: {
-              kind: 'poll',
-              poll: { ...this.pollOf(poll), ended: true },
-            },
-          }));
-        } else {
-          const votes =
-            room.votes.get(message.pollId) ??
-            new Map<string, readonly string[]>();
-          room.votes.set(
-            message.pollId,
-            votes.set(accountId, message.answerIds),
-          );
-          this.publish(roomId);
-        }
+        this.clock += 1;
+        room.pollEvents.push({
+          pollId: message.pollId,
+          kind: message.kind === 'poll-end' ? 'end' : 'response',
+          sender: accountId,
+          answers: message.kind === 'poll-end' ? [] : message.answerIds,
+          ts: this.clock,
+        });
+        this.publish(roomId);
         return engineOk({ transactionId, eventId });
       }
       if (options.threadRootId)
@@ -1219,27 +1281,56 @@ export class FakeTimelineEngine implements TimelineEngine {
     }
   }
 
-  private pollOf(item: EventTimelineItem): PollView {
-    if (item.content.kind !== 'poll') throw new Error('not a poll');
-    return item.content.poll;
-  }
-
-  private tally(
+  /**
+   * The poll as matrix-js-sdk tallies it: each voter's latest response cast before the earliest
+   * valid end counts, a response naming an unknown answer or none withdraws the vote, and one
+   * is de-duplicated and cut to `max_selections`. Only the poll's sender, or a member who may
+   * redact, can end it.
+   */
+  private pollView(
+    room: FakeRoom,
+    start: EventTimelineItem,
     poll: PollView,
-    votes: ReadonlyMap<string, readonly string[]>,
     viewer: string,
   ): PollView {
-    const voters = [...votes].filter(([, answers]) => answers.length > 0);
+    const events = room.pollEvents.filter((e) => e.pollId === poll.id);
+    const endTs = Math.min(
+      Number.POSITIVE_INFINITY,
+      ...events
+        .filter(
+          (e) =>
+            e.kind === 'end' &&
+            (e.sender === start.sender ||
+              this.powerOf(room, e.sender) >= room.redactLevel),
+        )
+        .map((e) => e.ts),
+    );
+    const latest = new Map<string, readonly string[]>();
+    for (const e of events)
+      if (e.kind === 'response' && e.ts <= endTs)
+        latest.set(e.sender, e.answers);
+    const known = new Set(poll.options.map((option) => option.id));
+    const chosenBy = new Map<string, ReadonlySet<string>>();
+    for (const [voter, answers] of latest)
+      if (answers.length > 0 && answers.every((id) => known.has(id)))
+        chosenBy.set(
+          voter,
+          new Set([...new Set(answers)].slice(0, poll.maxSelections)),
+        );
     return {
       ...poll,
-      totalVotes: voters.length,
+      ended: endTs !== Number.POSITIVE_INFINITY,
+      totalVotes: chosenBy.size,
       options: poll.options.map((option) => ({
         ...option,
-        votes: voters.filter(([, answers]) => answers.includes(option.id))
-          .length,
-        chosen: votes.get(viewer)?.includes(option.id) ?? false,
+        votes: [...chosenBy.values()].filter((c) => c.has(option.id)).length,
+        chosen: chosenBy.get(viewer)?.has(option.id) ?? false,
       })),
     };
+  }
+
+  private powerOf(room: FakeRoom, userId: string): number {
+    return room.powerUsers.get(userId) ?? (userId === this.bob ? 100 : 0);
   }
 
   private append(roomId: string, item: EventTimelineItem): void {
@@ -1422,17 +1513,13 @@ export class FakeTimelineEngine implements TimelineEngine {
       .filter((item) => !room.threads.has(item.uniqueId));
     return shown.map((shownItem) => {
       const item = this.withReaders(accountId, room, shownItem);
-      const votes =
-        item.kind === 'event' && item.content.kind === 'poll'
-          ? room.votes.get(item.content.poll.id)
-          : undefined;
       // Tallied per viewer: `chosen` is the viewing account's own vote.
-      return votes && item.kind === 'event' && item.content.kind === 'poll'
+      return item.kind === 'event' && item.content.kind === 'poll'
         ? {
             ...item,
             content: {
               kind: 'poll' as const,
-              poll: this.tally(item.content.poll, votes, accountId),
+              poll: this.pollView(room, item, item.content.poll, accountId),
             },
           }
         : item;
@@ -1607,7 +1694,9 @@ export class FakeTimelineEngine implements TimelineEngine {
         fullyRead: new Map(),
         readReceipts: new Map(),
         invited: new Set(),
-        votes: new Map(),
+        pollEvents: [],
+        powerUsers: new Map(),
+        redactLevel: 50,
         threads: new Map(),
         threadReads: new Map(),
         wire: new Map(),

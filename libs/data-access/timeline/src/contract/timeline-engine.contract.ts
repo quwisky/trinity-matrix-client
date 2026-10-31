@@ -149,6 +149,45 @@ function threadRelation(rootId: string) {
   };
 }
 
+const POLL_START = 'org.matrix.msc3381.poll.start';
+const POLL_RESPONSE = 'org.matrix.msc3381.poll.response';
+const POLL_END = 'org.matrix.msc3381.poll.end';
+const POLL_TEXT = 'org.matrix.msc1767.text';
+
+function pollStartContent(
+  question: string,
+  answers: readonly string[],
+  maxSelections: number,
+): object {
+  return {
+    [POLL_START]: {
+      question: { [POLL_TEXT]: question, body: question },
+      kind: 'org.matrix.msc3381.poll.undisclosed',
+      max_selections: maxSelections,
+      answers: answers.map((answer) => ({
+        id: answer.toLowerCase(),
+        [POLL_TEXT]: answer,
+      })),
+    },
+    [POLL_TEXT]: question,
+  };
+}
+
+function pollResponseContent(pollId: string, answerIds: readonly string[]) {
+  return {
+    [POLL_RESPONSE]: { answers: answerIds },
+    'm.relates_to': { rel_type: 'm.reference', event_id: pollId },
+  };
+}
+
+function pollEndContent(pollId: string) {
+  return {
+    [POLL_END]: {},
+    [POLL_TEXT]: 'The poll has ended.',
+    'm.relates_to': { rel_type: 'm.reference', event_id: pollId },
+  };
+}
+
 function unique(): string {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -977,6 +1016,197 @@ export function defineTimelineEngineContract(
             engine.send(alice, roomId, { kind: 'poll-end', pollId }, MAIN),
           );
           await timeline.until((v) => poll(v)?.ended === true);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    /** Bob's poll with answers a, b and c in a room alice has joined, watched by alice. */
+    async function pollRoom(maxSelections = 1) {
+      const { roomId } = await roomWith();
+      const timeline = watch(roomId);
+      await timeline.until(() => true);
+      const pollId = await context.asBob.sendEvent(
+        roomId,
+        POLL_START,
+        pollStartContent('Lunch?', ['A', 'B', 'C'], maxSelections),
+      );
+      const poll = (v: TimelineView) => {
+        const content = byId(v, pollId)?.content;
+        return content?.kind === 'poll' ? content.poll : null;
+      };
+      await timeline.until((v) => poll(v) !== null);
+      const vote = (answerIds: readonly string[]) =>
+        context.asBob.sendEvent(
+          roomId,
+          POLL_RESPONSE,
+          pollResponseContent(pollId, answerIds),
+        );
+      const votes = (v: TimelineView) =>
+        poll(v)?.options.map((option) => option.votes);
+      return { roomId, timeline, pollId, poll, vote, votes };
+    }
+
+    it(
+      'G13 — a poll end from a member who may not redact does not end it',
+      async () => {
+        const { roomId, timeline, pollId, poll } = await pollRoom();
+        try {
+          await ok(
+            engine.send(alice, roomId, { kind: 'poll-end', pollId }, MAIN),
+          );
+          // Bob's marker follows alice's end in sync, so the end has been applied by now.
+          const marker = await context.asBob.send(roomId, 'after the end');
+          const seen = await timeline.until((v) => !!byId(v, marker));
+          expect(poll(seen)?.ended).toBe(false);
+
+          await context.asBob.setPowerLevels(roomId, {
+            users: { [alice]: 50 },
+          });
+          await timeline.until((v) => poll(v)?.ended === true);
+
+          await context.asBob.setPowerLevels(roomId, {
+            users: { [alice]: 0 },
+          });
+          await timeline.until((v) => poll(v)?.ended === false);
+
+          await context.asBob.sendEvent(
+            roomId,
+            POLL_END,
+            pollEndContent(pollId),
+          );
+          await timeline.until((v) => poll(v)?.ended === true);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "G13 — the poll's sender can end it at any power level",
+      async () => {
+        const { roomId } = await roomWith();
+        const timeline = watch(roomId);
+        try {
+          await timeline.until(() => true);
+          const started = await ok(
+            engine.send(
+              alice,
+              roomId,
+              {
+                kind: 'poll-start',
+                question: 'Lunch?',
+                answers: ['A', 'B'],
+                maxSelections: 1,
+              },
+              MAIN,
+            ),
+          );
+          const pollId = started.eventId;
+          expect(pollId).toBeTruthy();
+          if (!pollId) return;
+
+          await ok(
+            engine.send(alice, roomId, { kind: 'poll-end', pollId }, MAIN),
+          );
+
+          await timeline.until((v) => {
+            const content = byId(v, pollId)?.content;
+            return content?.kind === 'poll' && content.poll.ended;
+          });
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      "G13 — a voter's latest response counts",
+      async () => {
+        const { timeline, poll, vote, votes } = await pollRoom();
+        try {
+          await vote(['a']);
+          await timeline.until((v) => poll(v)?.totalVotes === 1);
+
+          await vote(['b']);
+          const view = await timeline.until((v) => votes(v)?.[1] === 1);
+
+          expect(votes(view)).toEqual([0, 1, 0]);
+          expect(poll(view)?.totalVotes).toBe(1);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G13 — a spoiled or empty latest response withdraws the vote',
+      async () => {
+        const { timeline, poll, vote, votes } = await pollRoom();
+        try {
+          await vote(['a']);
+          await timeline.until((v) => poll(v)?.totalVotes === 1);
+          await vote(['nope']);
+          const spoiled = await timeline.until(
+            (v) => poll(v)?.totalVotes === 0,
+          );
+          expect(votes(spoiled)).toEqual([0, 0, 0]);
+
+          await vote(['a']);
+          await timeline.until((v) => poll(v)?.totalVotes === 1);
+          await vote([]);
+          const empty = await timeline.until((v) => poll(v)?.totalVotes === 0);
+          expect(votes(empty)).toEqual([0, 0, 0]);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G13 — a vote after the end does not count',
+      async () => {
+        const { roomId, timeline, pollId, poll, vote, votes } =
+          await pollRoom();
+        try {
+          await vote(['a']);
+          await context.asBob.sendEvent(
+            roomId,
+            POLL_END,
+            pollEndContent(pollId),
+          );
+          await timeline.until((v) => poll(v)?.ended === true);
+
+          await vote(['b']);
+          const marker = await context.asBob.send(roomId, 'after the vote');
+          const view = await timeline.until((v) => !!byId(v, marker));
+
+          expect(votes(view)).toEqual([1, 0, 0]);
+          expect(poll(view)?.totalVotes).toBe(1);
+        } finally {
+          timeline.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G13 — a response is cut to max_selections and de-duplicated',
+      async () => {
+        const { timeline, poll, vote, votes } = await pollRoom(2);
+        try {
+          await vote(['a', 'a', 'b', 'c']);
+
+          const view = await timeline.until((v) => poll(v)?.totalVotes === 1);
+
+          expect(poll(view)?.maxSelections).toBe(2);
+          expect(votes(view)).toEqual([1, 1, 0]);
         } finally {
           timeline.close();
         }

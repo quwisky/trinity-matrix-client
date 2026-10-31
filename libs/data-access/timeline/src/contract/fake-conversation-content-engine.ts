@@ -49,6 +49,8 @@ interface FakeRoom {
 }
 
 const MAX_PINS = 100;
+/** Hits per search page, as a homeserver's default. */
+const SEARCH_PAGE = 10;
 const NO_PINS: PinnedEvents = { eventIds: [], allEventIds: [], entries: [] };
 
 function failure(code: FailNextCode): EngineFailure {
@@ -135,8 +137,9 @@ export class FakeConversationContentEngine implements ConversationContentEngine 
       this.send(this.bob, roomId, body, null),
     edit: async (roomId: string, eventId: string, body: string) =>
       this.send(this.bob, roomId, body, eventId),
-    setPinned: async (roomId: string, eventIds: readonly string[]) =>
+    setPinned: async (roomId: string, eventIds: readonly unknown[]) =>
       this.setPinned(roomId, [...eventIds]),
+    pinnedList: async (roomId: string) => this.pinnedList(roomId),
   };
 
   /** Fails the next command with `code`. */
@@ -204,7 +207,7 @@ export class FakeConversationContentEngine implements ConversationContentEngine 
     accountId: string,
     roomId: string,
     term: string,
-    _nextBatch: string | null,
+    nextBatch: string | null,
   ): Observable<
     EngineResult<
       | {
@@ -235,7 +238,13 @@ export class FakeConversationContentEngine implements ConversationContentEngine 
               profiles: profilesOf(sender),
             }))
         : [];
-      return { hits, count: hits.length, nextBatch: null };
+      const start = nextBatch === null ? 0 : Number(nextBatch);
+      const end = start + SEARCH_PAGE;
+      return {
+        hits: hits.slice(start, end),
+        count: hits.length,
+        nextBatch: end < hits.length ? String(end) : null,
+      };
     });
   }
 

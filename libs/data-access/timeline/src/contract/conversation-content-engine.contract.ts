@@ -44,7 +44,9 @@ export interface ConversationContentContractSetup {
     /** Sends an `m.replace` edit and returns its event id. */
     edit(roomId: string, eventId: string, body: string): Promise<string>;
     /** Replaces the room's `m.room.pinned_events` list. */
-    setPinned(roomId: string, eventIds: readonly string[]): Promise<void>;
+    setPinned(roomId: string, eventIds: readonly unknown[]): Promise<void>;
+    /** The room's `m.room.pinned_events` list exactly as the server holds it. */
+    pinnedList(roomId: string): Promise<readonly unknown[]>;
   };
   dispose(): Promise<void>;
 }
@@ -218,6 +220,103 @@ export function defineConversationContentEngineContract(
     );
 
     it(
+      'G9 — a bad pin id is unavailable beside a loaded one, and retryFailedPins keeps it so',
+      async () => {
+        const {
+          roomId,
+          eventIds: [real],
+        } = await roomWith(['real']);
+        const missing = 'not-an-event-id';
+        await context.asBob.setPinned(roomId, [missing, real]);
+        const pins = watchPins(roomId);
+        try {
+          const state = await pins.until(
+            (s) =>
+              s.entries.length === 2 &&
+              s.entries.every((e) => e.status !== 'loading'),
+          );
+          const entry = state.entries.find((e) => e.eventId === missing);
+          expect(entry).toBeDefined();
+          expect(entry?.status).toBe('unavailable');
+          expect(entry).toMatchObject({ sender: '', body: '', ts: 0 });
+
+          await ok(engine.retryFailedPins(alice, roomId));
+
+          const after = await pins.until(
+            (s) =>
+              s.entries.length === 2 &&
+              s.entries.every((e) => e.status !== 'loading'),
+          );
+          expect(after.eventIds).toEqual([missing, real]);
+          expect(after.entries.find((e) => e.eventId === real)?.status).toBe(
+            'loaded',
+          );
+          expect(after.entries.find((e) => e.eventId === missing)?.status).toBe(
+            'unavailable',
+          );
+        } finally {
+          pins.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G9 — non-string pins stay in the list and are written back by pin and unpin',
+      async () => {
+        const {
+          roomId,
+          eventIds: [first, second],
+        } = await roomWith(['first', 'second'], { admin: true });
+        await context.asBob.setPinned(roomId, [42, first, null]);
+        const pins = watchPins(roomId);
+        try {
+          const state = await pins.until((s) => s.eventIds.includes(first));
+          expect(state.eventIds).toEqual([first]);
+          expect(state.allEventIds).toEqual([first]);
+          expect(state.entries.map((e) => e.eventId)).toEqual([first]);
+
+          await ok(engine.pin(alice, roomId, second));
+          expect(await context.asBob.pinnedList(roomId)).toEqual([
+            42,
+            first,
+            null,
+            second,
+          ]);
+
+          await ok(engine.unpin(alice, roomId, first));
+          expect(await context.asBob.pinnedList(roomId)).toEqual([
+            42,
+            null,
+            second,
+          ]);
+        } finally {
+          pins.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G9 — allEventIds lists every pin beyond the newest 100',
+      async () => {
+        const { roomId } = await roomWith([]);
+        const ids = Array.from({ length: 105 }, (_, i) => `$p${i}${unique()}`);
+        await context.asBob.setPinned(roomId, ids);
+        const pins = watchPins(roomId);
+        try {
+          const state = await pins.until((s) => s.allEventIds.length > 0);
+
+          expect(state.allEventIds).toEqual(ids);
+          expect(state.eventIds).toEqual(ids.slice(5));
+        } finally {
+          pins.close();
+        }
+      },
+      testTimeoutMs,
+    );
+
+    it(
       "searchMessages finds bob's message",
       async () => {
         const term = `needle${unique()}`;
@@ -240,6 +339,69 @@ export function defineConversationContentEngineContract(
             body: `a ${term} here`,
           }),
         ]);
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G10 — searchMessages pages with nextBatch, newest first',
+      async () => {
+        const term = `pager${unique()}`;
+        const bodies = Array.from({ length: 12 }, (_, i) => `${term} ${i}`);
+        const { roomId, eventIds } = await roomWith(bodies);
+
+        const first = await eventually(
+          () => engine.searchMessages(alice, roomId, term, null),
+          (value) => 'hits' in value && value.count === 12,
+        );
+        if (!('hits' in first)) throw new Error('room reported as encrypted');
+        expect(first.nextBatch).toEqual(expect.any(String));
+        expect(first.hits.length).toBeGreaterThan(0);
+        expect(first.hits.length).toBeLessThan(12);
+
+        const second = await ok(
+          engine.searchMessages(alice, roomId, term, first.nextBatch),
+        );
+        if (!('hits' in second)) throw new Error('room reported as encrypted');
+
+        expect(second.nextBatch).toBeNull();
+        expect(
+          [...first.hits, ...second.hits].map((hit) => hit.eventId),
+        ).toEqual([...eventIds].reverse());
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G10 — searchMessages with an empty term replies with no hits',
+      async () => {
+        const { roomId } = await roomWith(['something']);
+
+        const result = await once(
+          engine.searchMessages(alice, roomId, '  ', null),
+        );
+
+        expect(result).toEqual({
+          ok: true,
+          value: { hits: [], count: 0, nextBatch: null },
+        });
+      },
+      testTimeoutMs,
+    );
+
+    it(
+      'G10 — searchMessages in an unknown room is message-unavailable',
+      async () => {
+        const result = await once(
+          engine.searchMessages(
+            alice,
+            `!unknown${unique()}:invalid`,
+            'x',
+            null,
+          ),
+        );
+
+        expect(!result.ok && result.failure.code).toBe('message-unavailable');
       },
       testTimeoutMs,
     );

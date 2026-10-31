@@ -389,6 +389,15 @@ export async function conversationContentSynapseFixture(
           { pinned: eventIds },
         );
       },
+      pinnedList: async (roomId) =>
+        (
+          await synapseRequest<{ pinned?: unknown[] }>(
+            baseUrl,
+            bob.accessToken,
+            'GET',
+            `${room(roomId)}/state/m.room.pinned_events/`,
+          )
+        ).pinned ?? [],
     },
   };
 }
