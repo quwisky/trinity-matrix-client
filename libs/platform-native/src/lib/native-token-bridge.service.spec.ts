@@ -15,6 +15,7 @@ import {
 import { SessionStorageService } from './session-storage.service';
 
 const TIMEOUT_MS = 13_000;
+const READ_TIMEOUT_MS = 3_000;
 const USER = '@me:hs';
 const LINEAGE = 'L';
 
@@ -265,9 +266,11 @@ describe('NativeTokenBridge', () => {
       const next = vi.fn();
 
       tokens.prepare(SESSION).subscribe(next);
-      await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
-      expect(bridge.currentTokens).toHaveBeenCalledOnce();
       await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      expect(bridge.currentTokens).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(bridge.currentTokens).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
       expect(next).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
 
@@ -310,7 +313,9 @@ describe('NativeTokenBridge', () => {
       const next = vi.fn();
 
       tokens.prepare(SESSION).subscribe(next);
-      await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      expect(next).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
 
       expect(next).toHaveBeenCalledOnce();
     });
@@ -389,6 +394,23 @@ describe('NativeTokenBridge', () => {
       ).toBeUndefined();
     });
 
+    it('a read that never answers gives up at the step budget and starts on the stored copy', async () => {
+      vi.useFakeTimers();
+      const { tokens, bridge } = setup(R2);
+      bridge.currentTokens.mockReturnValue(NEVER);
+      const next = vi.fn();
+
+      tokens.prepare(NO_COPY).subscribe(next);
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
+      expect(next).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(next).toHaveBeenCalledExactlyOnceWith({
+        kind: 'ready',
+        session: { ...NO_COPY, refreshToken: NATIVE_REFRESH_MARKER },
+      });
+    });
+
     it('soft-logs out a refused record and invalidates its tokens', async () => {
       const { tokens, storage, state } = setup(R2);
       state.refused = true;
@@ -409,6 +431,21 @@ describe('NativeTokenBridge', () => {
       await expect(firstValueFrom(tokens.prepare(NO_COPY))).resolves.toEqual({
         kind: 'refused',
       });
+    });
+
+    it('still reports a refused record when invalidating it never answers', async () => {
+      vi.useFakeTimers();
+      const { tokens, storage, state } = setup(R2);
+      state.refused = true;
+      storage.invalidateToken.mockReturnValue(NEVER);
+      const next = vi.fn();
+
+      tokens.prepare(NO_COPY).subscribe(next);
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      expect(next).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(next).toHaveBeenCalledExactlyOnceWith({ kind: 'refused' });
     });
 
     it.each([
@@ -569,10 +606,27 @@ describe('NativeTokenBridge', () => {
       const completed = vi.fn();
 
       tokens.removeUnreadableRecord(SIGN_IN).subscribe({ complete: completed });
-      await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
+      expect(completed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
 
       expect(completed).toHaveBeenCalledOnce();
       expect(bridge.removeTokens).not.toHaveBeenCalled();
+    });
+
+    it('a removal that never answers gives up at the step budget', async () => {
+      vi.useFakeTimers();
+      const { tokens, bridge, state } = setup(R2);
+      state.unreadable = true;
+      bridge.removeTokens.mockReturnValue(NEVER);
+      const completed = vi.fn();
+
+      tokens.removeUnreadableRecord(SIGN_IN).subscribe({ complete: completed });
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
+      expect(completed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(completed).toHaveBeenCalledOnce();
     });
 
     it('does nothing with no refresh token, no endpoint, off native or for a password account', async () => {

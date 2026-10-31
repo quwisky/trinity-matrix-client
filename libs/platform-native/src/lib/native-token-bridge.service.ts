@@ -25,6 +25,8 @@ export const NATIVE_REFRESH_MARKER = 'trinity-native-vault';
 
 /** Native's 8 s app grant budget plus 5 s, so a call that can still answer does. */
 const NATIVE_CALL_TIMEOUT_MS = 13_000;
+/** A vault read or removal makes no grant: native waits 1 s on the lease, then one keychain call. */
+const NATIVE_VAULT_STEP_TIMEOUT_MS = 3_000;
 
 export type PreparedSession =
   | { readonly kind: 'ready'; readonly session: MatrixSession }
@@ -76,6 +78,7 @@ export class NativeTokenBridge {
         bounded(
           this.handoff.currentTokens(session.userId, session.lineage ?? ''),
           null,
+          NATIVE_VAULT_STEP_TIMEOUT_MS,
         ).pipe(switchMap((answer) => this.started(session, migration, answer))),
       ),
     );
@@ -95,13 +98,18 @@ export class NativeTokenBridge {
     return bounded(
       this.handoff.currentTokens(userId, session.lineage ?? ''),
       null,
+      NATIVE_VAULT_STEP_TIMEOUT_MS,
     ).pipe(
       switchMap((answer) =>
         answer?.kind === 'transient'
           ? // shortcut: a removal still running natively past this timeout can delete the record
             // prepare just wrote; that needs a hung keychain and ends in a soft logout a new
             // sign-in recovers, so wait for the removal to settle if it is ever seen.
-            bounded(this.handoff.removeTokens(userId), void 0)
+            bounded(
+              this.handoff.removeTokens(userId),
+              void 0,
+              NATIVE_VAULT_STEP_TIMEOUT_MS,
+            )
           : of(void 0),
       ),
     );
@@ -241,9 +249,13 @@ export class NativeTokenBridge {
   }
 }
 
-function bounded<T>(call: Observable<T>, onFailure: T): Observable<T> {
+function bounded<T>(
+  call: Observable<T>,
+  onFailure: T,
+  timeoutMs = NATIVE_CALL_TIMEOUT_MS,
+): Observable<T> {
   return call.pipe(
-    timeout(NATIVE_CALL_TIMEOUT_MS),
+    timeout(timeoutMs),
     catchError(() => of(onFailure)),
   );
 }
