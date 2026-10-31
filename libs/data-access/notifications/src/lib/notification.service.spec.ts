@@ -2,10 +2,12 @@ import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ClientEvent,
+  MatrixEvent,
   MatrixEventEvent,
   RoomEvent,
   SyncState,
   type MatrixClient,
+  type Room,
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { NEVER, Subject, Subscription, defer, lastValueFrom, of } from 'rxjs';
@@ -962,6 +964,68 @@ describe('NotificationService', () => {
 
       timelineHandler(client)(enc, room, false, false, live);
       decryptedHandler(client)(event({ id: '$e2', failure: true }));
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    // The SDK's setClearData puts the type and body back when a decrypt outlasts the deletion.
+    it('does not present the text of a message deleted while it was decrypting', async () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const deleted = new MatrixEvent({
+        type: 'm.room.encrypted',
+        event_id: '$e3',
+        sender: '@alice:hs',
+        room_id: '!r:hs',
+        content: { algorithm: 'm.megolm.v1.aes-sha2', ciphertext: 'opaque' },
+      });
+      let answer: (result: { clearEvent: object }) => void = () => undefined;
+      const decrypting = deleted.attemptDecryption({
+        decryptEvent: () => new Promise((resolve) => (answer = resolve)),
+      } as unknown as Parameters<MatrixEvent['attemptDecryption']>[0]);
+      await Promise.resolve();
+      timelineHandler(client)(deleted, room, false, false, live);
+      deleted.makeRedacted(
+        new MatrixEvent({ type: 'm.room.redaction', content: {} }),
+        {} as Room,
+      );
+      answer({
+        clearEvent: {
+          type: 'm.room.message',
+          content: { msgtype: 'm.text', body: 'deleted words' },
+        },
+      });
+      await decrypting;
+      expect(deleted.getOriginalContent()['body']).toBe('deleted words');
+
+      decryptedHandler(client)(deleted);
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('does not present a message that arrives already deleted', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const deleted = new MatrixEvent({
+        type: 'm.room.message',
+        event_id: '$e4',
+        sender: '@alice:hs',
+        room_id: '!r:hs',
+        content: {},
+        unsigned: {
+          redacted_because: {
+            type: 'm.room.redaction',
+            event_id: '$redaction',
+            sender: '@alice:hs',
+            room_id: '!r:hs',
+            origin_server_ts: 1,
+            content: {},
+            unsigned: {},
+          },
+        },
+      });
+
+      timelineHandler(client)(deleted, room, false, false, live);
 
       expect(MockNotification.instances).toHaveLength(0);
     });

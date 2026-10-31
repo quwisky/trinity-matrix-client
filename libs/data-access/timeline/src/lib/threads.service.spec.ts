@@ -1944,6 +1944,53 @@ describe('ThreadsService', () => {
       expect(svc.canPaginateThread()).toBe(true);
     });
 
+    it('shows a reply deleted in an encrypted room as deleted, without counting it', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      // A real event: redacted, its only type is the encrypted wire type.
+      const redacted = new MatrixEvent({
+        type: 'm.room.encrypted',
+        event_id: '$r2',
+        sender: '@b:hs',
+        room_id: '!r:hs',
+        origin_server_ts: 2000,
+        content: {},
+        unsigned: {
+          redacted_because: {
+            type: 'm.room.redaction',
+            event_id: '$redaction',
+            sender: '@b:hs',
+            room_id: '!r:hs',
+            origin_server_ts: 2500,
+            content: {},
+            unsigned: {},
+          },
+        },
+      });
+      const newest = fakeEvent({
+        id: '$r3',
+        sender: '@b:hs',
+        body: 'three',
+        ts: 3000,
+      });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, redacted as unknown as FakeEvent, newest],
+          length: 2,
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      expect(svc.threadMessages().map((m) => [m.id, m.kind])).toEqual([
+        ['$root', 'text'],
+        ['$r2', 'redacted'],
+        ['$r3', 'text'],
+      ]);
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
     it('pages older replies into the thread, then re-maps + clears the token', async () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const newer = fakeEvent({

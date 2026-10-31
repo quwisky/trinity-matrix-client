@@ -1,8 +1,10 @@
 import {
   EventStatus,
   EventType,
+  MatrixEventEvent,
   MsgType,
   RelationType,
+  RoomEvent,
   type MatrixClient,
   type MatrixEvent,
   type Room,
@@ -123,22 +125,59 @@ export function readReceiptsFor(
   });
 }
 
+/** Events a client decrypted or sent as a non-message, which is unknowable once redacted. */
+const encryptedNonMessages = new WeakSet<MatrixEvent>();
+
+function isMessageRow(event: MatrixEvent): boolean {
+  return (
+    isPollStart(event) ||
+    ((event.getType() === EventType.RoomMessage ||
+      event.getType() === EventType.Sticker) &&
+      !event.isRelation(RelationType.Replace))
+  );
+}
+
 /**
  * True when an event should render as a message row (message, sticker, or poll). A state
  * event never is, whatever its type: it is room state, not a turn in the conversation.
+ *
+ * Redaction leaves an encrypted event with only its wire type, whatever it decrypted to, so
+ * it counts as a deleted message unless {@link trackEncryptedNonMessages} heard otherwise.
+ * shortcut: a reaction, edit or vote not heard on this object (a restart, history paged back in)
+ * shows as a deleted message; upgrade if redaction starts keeping relations (MSC3389).
  */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
   if (event.isState()) {
     return false;
   }
-  if (isPollStart(event)) {
-    return true;
+  if (event.getType() === EventType.RoomMessageEncrypted) {
+    return event.isRedacted() && !encryptedNonMessages.has(event);
   }
-  return (
-    (event.getType() === EventType.RoomMessage ||
-      event.getType() === EventType.Sticker) &&
-    !event.isRelation(RelationType.Replace)
-  );
+  return isMessageRow(event);
+}
+
+/**
+ * Remember every non-message `client` decrypts or sends, for {@link isDisplayableMessage}, which
+ * only needs the encrypted ones; a plain echo is recorded too and never read. Start before the
+ * client syncs, as nothing else sees an event from a closed room or unopened thread before it is
+ * deleted. Returns the call that stops listening.
+ */
+export function trackEncryptedNonMessages(client: MatrixClient): () => void {
+  const note = (event: MatrixEvent): void => {
+    if (
+      event.getType() !== EventType.RoomMessageEncrypted &&
+      !isMessageRow(event)
+    ) {
+      encryptedNonMessages.add(event);
+    }
+  };
+  // The echo of your own event stays in the timeline but never decrypts: its remote copy does.
+  client.on(RoomEvent.LocalEchoUpdated, note);
+  client.on(MatrixEventEvent.Decrypted, note);
+  return () => {
+    client.off(RoomEvent.LocalEchoUpdated, note);
+    client.off(MatrixEventEvent.Decrypted, note);
+  };
 }
 
 /**

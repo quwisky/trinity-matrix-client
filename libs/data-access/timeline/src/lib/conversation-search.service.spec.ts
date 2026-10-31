@@ -4,6 +4,7 @@ import {
   RelationType,
   SearchOrderBy,
   type MatrixClient,
+  type Room,
 } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -103,6 +104,82 @@ describe('ConversationSearchController', () => {
 
     expect(result.hits.map((hit) => hit.eventId)).toEqual(['$new', '$old']);
     expect(result.scanned).toBe(2);
+  });
+
+  it('neither finds nor counts a message deleted in an encrypted room', async () => {
+    const deleted = new MatrixEvent({
+      type: 'm.room.encrypted',
+      event_id: '$deleted',
+      sender: '@alice:hs',
+      room_id: '!r:hs',
+      content: { algorithm: 'm.megolm.v1.aes-sha2', ciphertext: 'opaque' },
+    });
+    await deleted.attemptDecryption({
+      decryptEvent: () =>
+        Promise.resolve({
+          clearEvent: {
+            type: 'm.room.message',
+            content: { msgtype: 'm.text', body: 'hello deleted' },
+          },
+        }),
+    } as unknown as Parameters<MatrixEvent['attemptDecryption']>[0]);
+    deleted.makeRedacted(
+      new MatrixEvent({ type: 'm.room.redaction', content: {} }),
+      {} as Room,
+    );
+    getRoom.mockReturnValue(
+      room({
+        encrypted: true,
+        events: [
+          message({ id: '$kept', body: 'hello kept', ts: 1, encrypted: true }),
+          deleted as unknown as ReturnType<typeof message>,
+        ],
+      }),
+    );
+
+    const result = service.searchLoaded('hello');
+
+    expect(result.hits.map((hit) => hit.eventId)).toEqual(['$kept']);
+    expect(result.scanned).toBe(1);
+  });
+
+  // The SDK's setClearData puts the type and body back when a decrypt outlasts the deletion.
+  it('does not find a message deleted while it was decrypting', async () => {
+    const deleted = new MatrixEvent({
+      type: 'm.room.encrypted',
+      event_id: '$deleted',
+      sender: '@alice:hs',
+      room_id: '!r:hs',
+      content: { algorithm: 'm.megolm.v1.aes-sha2', ciphertext: 'opaque' },
+    });
+    let answer: (result: { clearEvent: object }) => void = () => undefined;
+    const decrypting = deleted.attemptDecryption({
+      decryptEvent: () => new Promise((resolve) => (answer = resolve)),
+    } as unknown as Parameters<MatrixEvent['attemptDecryption']>[0]);
+    await Promise.resolve();
+    deleted.makeRedacted(
+      new MatrixEvent({ type: 'm.room.redaction', content: {} }),
+      {} as Room,
+    );
+    answer({
+      clearEvent: {
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body: 'hello deleted' },
+      },
+    });
+    await decrypting;
+    expect(deleted.getContent()['body']).toBe('hello deleted');
+    getRoom.mockReturnValue(
+      room({
+        encrypted: true,
+        events: [deleted as unknown as ReturnType<typeof message>],
+      }),
+    );
+
+    const result = service.searchLoaded('hello');
+
+    expect(result.hits).toEqual([]);
+    expect(result.scanned).toBe(0);
   });
 
   it('marks a hit that arrived unencrypted in an encrypted room', () => {

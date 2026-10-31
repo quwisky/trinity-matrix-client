@@ -431,13 +431,13 @@ export function normalizeTimelineEvent(
     applyEdit ? displayContent(event) : event.getOriginalContent();
   const type = read(() => event.getType(), '');
   // Redaction first: the SDK keeps the failure reason on an event it redacts after a
-  // failed decryption, and a removed message has nothing left to read or fix.
+  // failed decryption, and a removed message has nothing left to read, fix or vouch for.
   if (read(() => event.isRedacted(), false)) {
     return unsupported(
       client,
       room,
       event,
-      projection,
+      { ...projection, shield: null },
       'redacted-message',
       false,
     );

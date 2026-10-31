@@ -98,7 +98,11 @@ export class ConversationSearchController {
     );
     let scanned = 0;
     for (const event of room.getLiveTimeline().getEvents()) {
-      if (!isDisplayableMessage(event) || event.isDecryptionFailure()) {
+      if (
+        !isDisplayableMessage(event) ||
+        event.isRedacted() ||
+        event.isDecryptionFailure()
+      ) {
         continue;
       }
       scanned++;
