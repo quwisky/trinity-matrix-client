@@ -262,11 +262,15 @@
       max(var(--trinity-title-row-inset, 0px), env(safe-area-inset-top, 0px));
   }
 
-  /* A long toast scrolls rather than growing down to the composer. Sonner's toast refuses touch
-   * panning, so its content has to ask for it. */
+  /* A long toast scrolls rather than growing down to the composer. */
   [data-sonner-toast] [data-content] {
     overflow-y: auto;
     max-height: calc((100dvh - var(--trinity-keyboard-shrink)) / 5);
+  }
+
+  /* Sonner's toast refuses touch panning, so a toast that stays asks for it: it has time to be
+   * read, and a close button to replace the swipe this gives up. Other toasts keep their swipe. */
+  [data-sonner-toast]:has([data-close-button]) [data-content] {
     touch-action: pan-y;
   }
 

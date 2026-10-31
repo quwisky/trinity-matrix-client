@@ -9,10 +9,23 @@ import { HlmToaster } from '@trinity/helm/sonner';
   selector: 'trn-toaster',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmToaster],
-  host: { class: 'contents' },
+  host: { class: 'contents', '(pointercancel)': 'endGesture($event)' },
   template: `<hlm-toaster position="top-center" [style]="toastStyle" />`,
 })
 export class TrnToasterComponent {
+  /**
+   * Sonner ends a gesture only on `pointerup`, but a browser that takes a drag over to scroll
+   * sends `pointercancel`. Unended, the toast stays offset and every auto-dismiss timer stops.
+   */
+  protected endGesture(event: PointerEvent): void {
+    event.target?.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: event.pointerId,
+      }),
+    );
+  }
+
   /** Keep Sonner's runtime-injected portal on Trinity's governed surface tokens. */
   protected readonly toastStyle = {
     '--normal-bg': 'var(--trinity-surface-raised)',
