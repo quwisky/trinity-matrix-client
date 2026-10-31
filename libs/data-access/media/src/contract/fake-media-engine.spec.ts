@@ -22,9 +22,8 @@ defineMediaEngineContract(
         engine.dropNextSendResponse = true;
       },
       uploads: () => engine.uploads,
-      withoutCrypto: () => {
-        engine.crypto = false;
-      },
+      refuseNextSend: () => engine.refuseNextSend(),
+      holdUploads: () => engine.holdUploads(),
       dispose: async () => undefined,
     };
   },
@@ -70,6 +69,36 @@ describe('FakeMediaEngine', () => {
     await Promise.resolve();
 
     expect(engine.liveUrls()).toEqual([]);
+  });
+
+  it('fails closed with encryption-unavailable in an encrypted room without crypto', async () => {
+    const engine = new FakeMediaEngine();
+    const roomId = engine.addRoom(true);
+    engine.crypto = false;
+
+    const { progress, result } = await assertProgressThenResult(
+      engine.sendAttachment(engine.alice, roomId, {
+        attachmentKey: 'k',
+        threadRootId: null,
+        file: new Blob(['x']),
+        filename: 'x.bin',
+        mimeType: 'application/octet-stream',
+        msgtype: 'm.file',
+        info: { w: null, h: null, durationMs: null },
+        thumbnail: null,
+        caption: '',
+        captionFields: { body: 'x.bin' },
+        metadata: 'kept',
+      }),
+    );
+
+    expect(progress).toEqual([]);
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { code: 'encryption-unavailable' },
+    });
+    expect(engine.uploads).toBe(0);
+    expect(engine.messages(roomId)).toEqual([]);
   });
 
   it('withdraws an echo still waiting to send when unsubscribed', async () => {

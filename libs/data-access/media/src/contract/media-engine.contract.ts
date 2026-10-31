@@ -2,7 +2,6 @@ import {
   type Observable,
   type Subscription,
   firstValueFrom,
-  takeWhile,
   toArray,
 } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -39,8 +38,10 @@ export interface MediaContractSetup {
   dropNextSendResponse(): void;
   /** Uploads (files and thumbnails) that reached the media repository so far in this test. */
   uploads(): number;
-  /** Takes alice's crypto away, as for an account whose crypto store could not start. */
-  withoutCrypto(): void;
+  /** The next message send is refused: no event is stored. One-shot. */
+  refuseNextSend(): void;
+  /** Holds uploads unforwarded and uncounted. The release forwards those not aborted by then. */
+  holdUploads(): () => void;
   dispose(): Promise<void>;
 }
 
@@ -414,22 +415,17 @@ export function defineMediaEngineContract(
       );
     }
 
-    /** Sends until the engine reports the upload done, then unsubscribes before the send. */
-    async function uploadOnly(
+    /** Uploads, then the send is refused: the upload and its echo stay retained under the key. */
+    async function refused(
       roomId: string,
       request: AttachmentRequest,
     ): Promise<void> {
-      const seen = await firstValueFrom(
-        engine.sendAttachment(alice, roomId, request).pipe(
-          takeWhile(
-            (update) =>
-              !(update.kind === 'progress' && update.phase === 'sending'),
-            true,
-          ),
-          toArray(),
-        ),
-      );
-      expect(seen.at(-1)).toMatchObject({ kind: 'progress', phase: 'sending' });
+      context.refuseNextSend();
+      const { result } = await send(roomId, request);
+      expect(result).toMatchObject({
+        ok: false,
+        failure: { code: 'request-failed' },
+      });
     }
 
     it(
@@ -466,7 +462,7 @@ export function defineMediaEngineContract(
         const roomId = await context.room(false);
         const request = attachment();
 
-        await uploadOnly(roomId, request);
+        await refused(roomId, request);
         const { result } = await send(roomId, request);
 
         expect(result.ok && result.value.kind).toBe('sent');
@@ -482,8 +478,8 @@ export function defineMediaEngineContract(
         const roomId = await context.room(false);
         const request = attachment({ caption: 'first' });
 
-        await uploadOnly(roomId, request);
-        await send(roomId, { ...request, caption: 'second' });
+        await refused(roomId, request);
+        await send(roomId, attachment({ ...request, caption: 'second' }));
 
         expect(context.uploads()).toBe(1);
         expect(await context.messages(roomId)).toEqual([
@@ -499,8 +495,8 @@ export function defineMediaEngineContract(
         const roomId = await context.room(false);
         const first = attachment({ metadata: 'kept' });
 
-        await uploadOnly(roomId, first);
-        await uploadOnly(roomId, attachment());
+        await refused(roomId, first);
+        await refused(roomId, attachment());
         const { result } = await send(
           roomId,
           attachment({ supersedes: first.attachmentKey }),
@@ -519,7 +515,7 @@ export function defineMediaEngineContract(
         const roomId = await context.room(false);
         const request = attachment();
 
-        await uploadOnly(roomId, request);
+        await refused(roomId, request);
         const forgotten = await firstValueFrom(
           engine.forgetAttachment(request.attachmentKey).pipe(toArray()),
         );
@@ -532,12 +528,13 @@ export function defineMediaEngineContract(
     );
 
     // Withdrawing an echo on unsubscribe needs a send caught between its start and the
-    // server's answer, which Synapse does not let a test hold; fake-media-engine.spec.ts and
-    // js-sdk-media-engine.attachments.spec.ts cover it.
+    // server's answer; fake-media-engine.spec.ts and js-sdk-media-engine.attachments.spec.ts
+    // cover it.
     it(
       'emits nothing more, uploads nothing more and sends nothing once unsubscribed after its first progress',
       async () => {
         const roomId = await context.room(false);
+        const release = context.holdUploads();
         const seen: unknown[] = [];
         let firstProgress!: () => void;
         const progressed = new Promise<void>((resolve) => {
@@ -554,11 +551,12 @@ export function defineMediaEngineContract(
           });
         await progressed;
         subscription.unsubscribe();
-        const uploaded = context.uploads();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        release();
         await new Promise((resolve) => setTimeout(resolve, 200));
 
         expect(seen).toEqual(['progress']);
-        expect(context.uploads()).toBe(uploaded);
+        expect(context.uploads()).toBe(0);
         expect(await context.messages(roomId)).toEqual([]);
       },
       testTimeoutMs,
@@ -613,25 +611,6 @@ export function defineMediaEngineContract(
         expect(await context.messages(roomId)).toEqual([
           { msgtype: 'm.image', body: 'once', hasThumbnail: false },
         ]);
-      },
-      testTimeoutMs,
-    );
-
-    it(
-      'fails closed with encryption-unavailable in an encrypted room without crypto',
-      async () => {
-        const roomId = await context.room(true);
-        context.withoutCrypto();
-
-        const { progress, result } = await send(roomId, attachment());
-
-        expect(progress).toEqual([]);
-        expect(result).toMatchObject({
-          ok: false,
-          failure: { code: 'encryption-unavailable' },
-        });
-        expect(context.uploads()).toBe(0);
-        expect(await context.messages(roomId)).toEqual([]);
       },
       testTimeoutMs,
     );

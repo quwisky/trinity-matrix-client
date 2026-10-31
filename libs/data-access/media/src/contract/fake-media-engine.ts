@@ -88,6 +88,7 @@ export class FakeMediaEngine implements MediaEngine {
   private nextUrl = 0;
   private nextRoom = 0;
   private nextEvent = 0;
+  private uploadGate: Promise<void> | null = null;
 
   readonly alice = '@alice:example.org';
   /** `m.upload.size`; null states no limit. */
@@ -105,6 +106,21 @@ export class FakeMediaEngine implements MediaEngine {
   dropNextSendResponse = false;
   /** Retained echoes withdrawn (a caption change, a superseding key, an unsubscribe). */
   withdrawn = 0;
+
+  /** The next send is refused: no event is stored. */
+  refuseNextSend(): void {
+    this.sendFailures = 1;
+  }
+
+  /** Holds uploads before they reach the repository; the release lets those not aborted by then through. */
+  holdUploads(): () => void {
+    let release!: () => void;
+    this.uploadGate = new Promise<void>((resolve) => (release = resolve));
+    return () => {
+      this.uploadGate = null;
+      release();
+    };
+  }
 
   /** The bytes behind a URL from {@link content}; rejects once released. */
   async read(url: string): Promise<Uint8Array> {
@@ -426,6 +442,7 @@ export class FakeMediaEngine implements MediaEngine {
       return engineFail(failure('too-large'));
     }
     const plaintext = await file.arrayBuffer();
+    if (this.uploadGate) await this.uploadGate;
     // An aborted upload never reaches the repository.
     if (aborted()) return engineFail(REFUSED);
     this.uploads++;
