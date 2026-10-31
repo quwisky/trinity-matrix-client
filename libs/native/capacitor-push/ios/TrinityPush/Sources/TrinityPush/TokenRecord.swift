@@ -82,10 +82,12 @@ public enum TokenVaultWrite: Equatable {
     case failed
 }
 
-public enum TokenGrantAnswer: CustomStringConvertible {
+public enum TokenGrantAnswer: CustomStringConvertible, CustomReflectable {
     case tokens(accessToken: String, refreshToken: String?, expiresIn: TimeInterval?)
     case refused
     case failed
+
+    public var customMirror: Mirror { Mirror(self, children: []) }
 
     public var description: String {
         switch self {
@@ -119,8 +121,10 @@ public enum TokenRefreshResult: CustomStringConvertible {
 
     private static func tokens(_ kind: String, _ record: TokenRecord) -> [String: Any] {
         var wire: [String: Any] = ["kind": kind, "accessToken": record.accessToken]
-        if let expiresAt = record.expiresAt {
-            wire["accessTokenExpiresAt"] = Int((expiresAt.timeIntervalSince1970 * 1000).rounded())
+        // A value no Int holds (huge or non-finite) is left out: the app reads that as no expiry.
+        if let expiresAt = record.expiresAt,
+           let milliseconds = Int(exactly: (expiresAt.timeIntervalSince1970 * 1000).rounded()) {
+            wire["accessTokenExpiresAt"] = milliseconds
         }
         return wire
     }

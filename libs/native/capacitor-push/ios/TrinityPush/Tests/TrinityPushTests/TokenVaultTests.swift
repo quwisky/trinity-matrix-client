@@ -51,6 +51,17 @@ final class TokenVaultTests: XCTestCase {
         XCTAssertEqual(TokenRefreshResult.busy.wire as NSDictionary, ["kind": "busy"] as NSDictionary)
     }
 
+    func testAnExpiryThatDoesNotFitAnIntIsOmittedNotATrap() {
+        for seconds in [1e16, -1e16, Double.infinity, -Double.infinity, Double.nan] {
+            let record = r0.rotated("a1", nil, expiresAt: Date(timeIntervalSince1970: seconds))
+            for result in [TokenRefreshResult.current(record), .rotated(record, unsaved: false)] {
+                XCTAssertEqual(result.wire["accessToken"] as? String, "a1")
+                XCTAssertNil(result.wire["accessTokenExpiresAt"], "\(seconds)")
+                XCTAssertFalse(result.description.isEmpty)
+            }
+        }
+    }
+
     func testTheRevocationWire() {
         XCTAssertEqual(TokenRevokeResult.revoked.wire as NSDictionary, ["kind": "revoked"] as NSDictionary)
         XCTAssertEqual(TokenRevokeResult.gone.wire as NSDictionary, ["kind": "gone"] as NSDictionary)
@@ -65,6 +76,9 @@ final class TokenVaultTests: XCTestCase {
         ]
         var dumped = ""
         dump(r0, to: &dumped)
+        let answer = TokenGrantAnswer.tokens(accessToken: "a1", refreshToken: "r1", expiresIn: 60)
+        dump(answer, to: &dumped)
+        XCTAssertTrue(Mirror(reflecting: answer).children.isEmpty)
         for text in outputs + [dumped] {
             for secret in ["a0", "r0", "a1", "r1"] { XCTAssertFalse(text.contains(secret), text) }
         }
