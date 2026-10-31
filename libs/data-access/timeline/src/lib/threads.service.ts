@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import {
   Direction,
+  EventStatus,
   EventType,
   MatrixEvent,
   MatrixEventEvent,
@@ -170,7 +171,7 @@ export class ThreadsService {
   >();
 
   private readonly onSummariesChanged = (): void => this.refreshSummaries();
-  private readonly onSummariesDecrypted = (event: MatrixEvent): void => {
+  private readonly onSummaryEventChanged = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.summariesRoomId) {
       this.refreshSummaries();
     }
@@ -243,7 +244,7 @@ export class ThreadsService {
   };
 
   private readonly onThreadChanged = (): void => this.refreshThread();
-  private readonly onThreadDecrypted = (event: MatrixEvent): void => {
+  private readonly onThreadEventChanged = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.threadRoomId) {
       this.refreshThread();
     }
@@ -290,9 +291,9 @@ export class ThreadsService {
 
   resources(): { listenerCount: number; retainedBytes: number } {
     const summaryListeners = this.summariesRoom ? 7 : 0;
-    const summaryClientListeners = this.summariesClient ? 1 : 0;
+    const summaryClientListeners = this.summariesClient ? 2 : 0;
     const threadRoomListeners = this.threadRoom ? 4 : 0;
-    const threadClientListeners = this.threadClient ? 4 : 0;
+    const threadClientListeners = this.threadClient ? 5 : 0;
     const threadListeners = this.thread ? 3 : 0;
     const threadFocusListeners = this.stopThreadFocusListener ? 1 : 0;
     return {
@@ -345,7 +346,9 @@ export class ThreadsService {
     room.on(RoomEvent.Receipt, this.onSummariesChanged);
     // Participant names/avatars resolve from membership, which can load/change late.
     room.on(RoomStateEvent.Members, this.onSummariesMember);
-    client.on(MatrixEventEvent.Decrypted, this.onSummariesDecrypted);
+    client.on(MatrixEventEvent.Decrypted, this.onSummaryEventChanged);
+    // Which edit a message resolves to can change with no new event: a cancelled echo.
+    client.on(MatrixEventEvent.Replaced, this.onSummaryEventChanged);
     this.refreshSummaries();
   }
 
@@ -364,7 +367,11 @@ export class ThreadsService {
     // Detach from the exact Account client attach() bound.
     this.summariesClient?.off(
       MatrixEventEvent.Decrypted,
-      this.onSummariesDecrypted,
+      this.onSummaryEventChanged,
+    );
+    this.summariesClient?.off(
+      MatrixEventEvent.Replaced,
+      this.onSummaryEventChanged,
     );
     this.summariesClient = null;
     this.conversationKey = null;
@@ -409,7 +416,9 @@ export class ThreadsService {
     // thread-level events above; the summaries and main timeline bind it too. Without it a
     // receipt surfaces only when an unrelated event re-refreshes.
     room.on(RoomEvent.Receipt, this.onThreadChanged);
-    client.on(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
+    client.on(MatrixEventEvent.Decrypted, this.onThreadEventChanged);
+    // A cancelled echo or a redaction re-aggregates without a thread event of its own to follow.
+    client.on(MatrixEventEvent.Replaced, this.onThreadEventChanged);
     client.on(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
     client.on(CryptoEvent.DevicesUpdated, this.onThreadTrust);
     client.on(CryptoEvent.KeysChanged, this.onThreadTrust);
@@ -436,7 +445,8 @@ export class ThreadsService {
     // Detach from the exact Account client attachThreadRoot() inherited.
     const client = this.threadClient;
     if (client) {
-      client.off(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
+      client.off(MatrixEventEvent.Decrypted, this.onThreadEventChanged);
+      client.off(MatrixEventEvent.Replaced, this.onThreadEventChanged);
       client.off(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
       client.off(CryptoEvent.DevicesUpdated, this.onThreadTrust);
       client.off(CryptoEvent.KeysChanged, this.onThreadTrust);
@@ -602,15 +612,45 @@ export class ThreadsService {
       if (!ctx || !text) {
         return of(void 0);
       }
-      const { client, roomId, threadId } = ctx;
+      const { client, room, roomId, threadId } = ctx;
       const content = editMessageContent(
         messageId,
         text,
         renderMarkdown(text, this.packs.emoticons()),
         mentions,
       );
-      return from(client.sendMessage(roomId, threadId, content as never));
+      const txnId = client.makeTxnId();
+      const accepted = room.findEventById(messageId)?.replacingEvent();
+      return from(
+        // On the promise, not the pipe: closing the panel mid-send must not keep the echo.
+        client
+          .sendMessage(roomId, threadId, content as never, txnId)
+          .catch((error: unknown) => {
+            this.dropEditEcho(client, room, txnId, accepted);
+            throw error;
+          }),
+      );
     }).pipe(map(() => void 0));
+  }
+
+  /**
+   * Back to what the server accepted: the SDK leaves a failed edit attached to its message. Only
+   * NOT_SENT is dropped: a rejected send always ends there, and a landed one must stay.
+   */
+  private dropEditEcho(
+    client: MatrixClient,
+    room: Room,
+    txnId: string,
+    accepted: MatrixEvent | null | undefined,
+  ): void {
+    const echo = room.getEventForTxnId(txnId);
+    if (echo?.status !== EventStatus.NOT_SENT) return;
+    // An edit known only as bundled on the message is in no Relations, so the SDK's
+    // re-aggregation would otherwise fall back to the message's original text.
+    if (accepted && !accepted.status) {
+      room.relations.aggregateChildEvent(accepted);
+    }
+    client.cancelPendingEvent(echo);
   }
 
   /**

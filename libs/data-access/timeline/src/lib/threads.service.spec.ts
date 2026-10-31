@@ -1311,10 +1311,11 @@ describe('ThreadsService', () => {
     const off = vi.spyOn(client, 'off');
 
     svc.attachThreadRoot('$root');
-    // Only the final four calls belong to the exact thread child under test.
-    const attached = on.mock.calls.slice(-4);
+    // Only the final five calls belong to the exact thread child under test.
+    const attached = on.mock.calls.slice(-5);
     expect(attached.map(([event]) => event)).toEqual([
       MatrixEventEvent.Decrypted,
+      MatrixEventEvent.Replaced,
       CryptoEvent.UserTrustStatusChanged,
       CryptoEvent.DevicesUpdated,
       CryptoEvent.KeysChanged,
@@ -1400,6 +1401,7 @@ describe('ThreadsService', () => {
     svc.attachThreadRoot('$b');
 
     expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(0);
+    expect(clientA.listenerCount(MatrixEventEvent.Replaced)).toBe(0);
     expect(clientA.listenerCount(CryptoEvent.UserTrustStatusChanged)).toBe(0);
     expect(clientA.listenerCount(CryptoEvent.DevicesUpdated)).toBe(0);
     expect(clientA.listenerCount(CryptoEvent.KeysChanged)).toBe(0);
@@ -1551,6 +1553,51 @@ describe('ThreadsService', () => {
       expect(
         (content['m.new_content'] as Record<string, unknown>)['body'],
       ).toBe('fixed text');
+    });
+
+    /** The send fails with its echo in `status`, as the SDK reports it to the rejection. */
+    function failingEdit(status: EventStatus) {
+      const out = openedThread();
+      const echo = new MatrixEvent({ type: 'm.room.message' });
+      echo.setStatus(status);
+      const refused = new MatrixError({ errcode: 'M_FORBIDDEN' }, 403);
+      const cancel = vi.fn();
+      Object.assign(out.client, { cancelPendingEvent: cancel });
+      out.room.getEventForTxnId = (txnId) =>
+        txnId === 'txn-1' ? echo : undefined;
+      out.client.sendMessage = () => Promise.reject(refused);
+      return { ...out, echo, refused, cancel };
+    }
+
+    it('cancels the echo of a refused edit and still fails it', async () => {
+      const { svc, echo, refused, cancel } = failingEdit(EventStatus.NOT_SENT);
+
+      await expect(
+        firstValueFrom(svc.editInThread('$r1', 'fixed text')),
+      ).rejects.toBe(refused);
+
+      expect(cancel).toHaveBeenCalledExactlyOnceWith(echo);
+    });
+
+    it('leaves an echo the SDK would refuse to cancel', async () => {
+      const { svc, refused, cancel } = failingEdit(EventStatus.SENDING);
+
+      await expect(
+        firstValueFrom(svc.editInThread('$r1', 'fixed text')),
+      ).rejects.toBe(refused);
+
+      expect(cancel).not.toHaveBeenCalled();
+    });
+
+    it('still fails the edit when cancelling its echo throws', async () => {
+      const { svc, cancel } = failingEdit(EventStatus.NOT_SENT);
+      cancel.mockImplementation(() => {
+        throw new Error('cannot cancel');
+      });
+
+      await expect(
+        firstValueFrom(svc.editInThread('$r1', 'fixed text')),
+      ).rejects.toThrow();
     });
 
     it('replies to a thread message with an in_reply_to + quote fallback', async () => {
@@ -2238,7 +2285,7 @@ describe('ThreadsService', () => {
       expect(() => window.dispatchEvent(new Event('focus'))).not.toThrow();
 
       expect(acknowledge).not.toHaveBeenCalled();
-      expect(svc.resources().listenerCount).toBe(8); // summaries only
+      expect(svc.resources().listenerCount).toBe(9); // summaries only
     });
 
     it('acks only the thread open now when focus returns after a switch (#1356)', () => {

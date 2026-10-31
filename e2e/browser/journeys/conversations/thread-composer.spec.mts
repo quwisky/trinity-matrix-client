@@ -279,11 +279,15 @@ test.describe('Thread composer', () => {
     await expect(threadInput).toBeVisible({ timeout: 15_000 });
     await threadInput.fill(reply);
     await threadInput.press('Enter');
-    const replyRow = thread
+    const sentReply = thread
       .locator('.msg[data-mid]', { hasText: reply })
       .first();
-    await expect(replyRow).toBeVisible({ timeout: 20_000 });
-    await waitForSent(replyRow);
+    await expect(sentReply).toBeVisible({ timeout: 20_000 });
+    await waitForSent(sentReply);
+    // By id, as the row's text is what this journey is about.
+    const replyRow = thread.locator(
+      `.msg[data-mid="${await sentReply.getAttribute('data-mid')}"]`,
+    );
 
     // The homeserver refuses every send from here on, so the edit is refused.
     await page.route('**/_matrix/client/**/send/m.room.message/**', (route) =>
@@ -302,9 +306,16 @@ test.describe('Thread composer', () => {
       timeout: 15_000,
     });
     await expect(threadInput).toHaveValue(fixed);
-    await expect(
-      thread.getByRole('button', { name: 'Cancel edit' }),
-    ).toBeVisible();
+    const cancelEdit = thread.getByRole('button', { name: 'Cancel edit' });
+    await expect(cancelEdit).toBeVisible();
+
+    // Nothing reached the server, so the row and the room's preview stay on what it has.
+    await expect(replyRow.getByText(reply)).toBeVisible();
+    await expect(replyRow.getByText(fixed)).toHaveCount(0);
+    await expect(replyRow.getByTestId('msg-edited')).toHaveCount(0);
+    await expect(rootRow.locator('trn-message-thread-summary')).toContainText(
+      reply,
+    );
 
     const toastBox = await page
       .locator('[data-sonner-toast]', {
@@ -315,5 +326,20 @@ test.describe('Thread composer', () => {
     expect(toastBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
     expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(composerBox!.y);
+
+    // Cancelling keeps the row, and editing again starts from the server's text.
+    await cancelEdit.click();
+    await expect(replyRow.getByText(reply)).toBeVisible();
+    await expect(replyRow.getByTestId('msg-edited')).toHaveCount(0);
+    await clickRowMenuItem(replyRow, page.getByTestId('msg-edit'));
+    await expect(threadInput).toHaveValue(reply);
+
+    // The server takes the retry.
+    await page.unroute('**/_matrix/client/**/send/m.room.message/**');
+    await threadInput.fill(fixed);
+    await threadInput.press('Enter');
+    await expect(replyRow.getByText(fixed)).toBeVisible({ timeout: 15_000 });
+    await expect(replyRow.getByTestId('msg-edited')).toBeVisible();
+    await expect(cancelEdit).toHaveCount(0);
   });
 });
