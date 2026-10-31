@@ -1172,7 +1172,9 @@ export class JsSdkTimelineEngine implements TimelineEngine {
           client,
           room,
           transactionId,
-          threadRootId
+          // A pending `~!room:txn` id is not an event id: the thread overload would shift it into
+          // the transaction slot and redact the root.
+          threadRootId && eventId.startsWith('$')
             ? client.redactEvent(
                 room.roomId,
                 threadRootId,

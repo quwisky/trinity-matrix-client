@@ -576,6 +576,38 @@ describe('JsSdkTimelineEngine sending', () => {
     expect(failureCode(missing)).toBe('message-unavailable');
   });
 
+  it('toggleReaction in a thread never passes a pending reaction id as the thread overload', async () => {
+    const w = sendingWorld();
+    const pending = '~!room:txn-9';
+    w.room.relations.getChildEventsForEvent = (() => ({
+      getSortedAnnotationsByKey: () => [
+        [
+          '👍',
+          new Set([
+            {
+              getId: () => pending,
+              getSender: () => ME,
+              isRedacted: () => false,
+            },
+          ]),
+        ],
+      ],
+    })) as never;
+    const engine = engineFor(w.client);
+
+    await firstValueFrom(
+      engine.toggleReaction(
+        ME,
+        ROOM,
+        { eventId: '$a', transactionId: null },
+        '👍',
+        { threadRootId: '$root' },
+      ),
+    );
+
+    expect(w.client.redactEvent.mock.calls).toEqual([[ROOM, pending, 'txn-1']]);
+  });
+
   it('retrySend resends an unsent echo; anything else is message-unavailable', async () => {
     const w = sendingWorld();
     const engine = engineFor(w.client);
