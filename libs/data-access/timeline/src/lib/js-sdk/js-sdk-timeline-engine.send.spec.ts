@@ -422,6 +422,7 @@ describe('JsSdkTimelineEngine sending', () => {
       const w = sendingWorld([msg('$a')]);
       const engine = engineFor(w.client);
 
+      let settled = false;
       const reply = firstValueFrom(
         engine.redact(
           ME,
@@ -429,8 +430,10 @@ describe('JsSdkTimelineEngine sending', () => {
           { eventId: '$a', transactionId: null },
           NO_THREAD,
         ),
-      );
-      await vi.advanceTimersByTimeAsync(5_000);
+      ).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
 
       expect(ok(await reply)).toBeNull();
     } finally {
