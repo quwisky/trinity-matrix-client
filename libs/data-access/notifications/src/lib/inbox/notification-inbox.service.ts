@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal, untracked } from '@angular/core';
 import {
   MatrixClientService,
   isServerSync,
@@ -6,7 +6,7 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import { latestGuard, type LatestToken } from '@trinity/util/ui';
-import type { MatrixClient, Room } from 'matrix-js-sdk';
+import { KnownMembership, type MatrixClient, type Room } from 'matrix-js-sdk';
 import {
   EMPTY,
   Observable,
@@ -40,8 +40,10 @@ import {
 import {
   checkInboxEvent,
   fetchNotificationsPage,
+  hasReadOnDevice,
   lookUpIndexedEvent,
   mapInboxEvent,
+  withinStepLimit,
   type IndexedEventLookup,
 } from './matrix-inbox.adapter';
 import { MentionInboxPreferences } from './mention-inbox.preferences';
@@ -192,6 +194,11 @@ export class NotificationInboxService {
     this.serverFailed.set(false);
     this.lastLoadState.set(null);
     this.statusState.set('idle');
+    // A computed keeps its last value until it's next read, and those rows hold decrypted text.
+    untracked(() => {
+      this.all();
+      this.mentions();
+    });
   }
 
   private begin(): Load | null {
@@ -243,21 +250,21 @@ export class NotificationInboxService {
     ).pipe(
       switchMap((count) => {
         if (!this.guard.isCurrent(load.token)) return of(null);
-        if (rows().length > before) return of({ kind: 'found' as const });
+        if (rows().length > before) return of({ kind: 'found' as const, tab });
         if (this.serverFailed()) return of(null);
         const more = tab === 'all' ? this.serverHasMore() : this.hasMore();
-        if (!more) return of({ kind: 'end' as const });
+        if (!more) return of({ kind: 'end' as const, tab });
         const total = checked + count;
         return pagesLeft > 1
           ? this.takePages(load, tab, pagesLeft - 1, total)
-          : of({ kind: 'limit' as const, checked: total });
+          : of({ kind: 'limit' as const, checked: total, tab });
       }),
     );
   }
 
   /**
    * Each source lands as soon as it's judged, so neither waits for the other's answer. Judging
-   * one page at a time keeps the decryption limit across the two. Emits how many were checked.
+   * one page at a time keeps the decryption limit across the two. Emits the server rows checked.
    */
   private fetch(
     ...pages: readonly Observable<Observable<number>>[]
@@ -328,7 +335,7 @@ export class NotificationInboxService {
                 last && records.length >= INDEX_PAGE_SIZE ? last : null,
               );
             }
-            return records.length;
+            return 0;
           }),
         ),
       ),
@@ -364,7 +371,12 @@ export class NotificationInboxService {
     const flags = new RoomEncryptionFlags();
     const crypto = load.client.getCrypto();
     const rooms = new Set(items.map((item) => item.roomId));
-    await Promise.all([...rooms].map((id) => flags.refresh(crypto, id)));
+    await Promise.all(
+      [...rooms].map((id) =>
+        // An unanswered room stays unanswered in `flags`, which previews no clear text.
+        withinStepLimit(flags.refresh(crypto, id)).catch(() => false),
+      ),
+    );
     return flags;
   }
 
@@ -373,16 +385,11 @@ export class NotificationInboxService {
     flags: RoomEncryptionFlags,
     entry: NotificationEntry,
   ): Promise<Judged> {
-    return this.judge(
-      load,
-      flags,
-      entry,
-      () => !entry.read,
-      () =>
-        Promise.resolve({
-          kind: 'found',
-          event: mapInboxEvent(load.client, entry.raw, entry.roomId),
-        }),
+    return this.judge(load, flags, entry, entry.read, () =>
+      Promise.resolve({
+        kind: 'found',
+        event: mapInboxEvent(load.client, entry.raw, entry.roomId),
+      }),
     );
   }
 
@@ -395,12 +402,8 @@ export class NotificationInboxService {
     if (!isPlainEventId(record.eventId)) {
       return Promise.resolve({ kind: 'skipped' });
     }
-    return this.judge(
-      load,
-      flags,
-      record,
-      (room) => !room?.hasUserReadEvent(load.accountId, record.eventId),
-      () => lookUpIndexedEvent(load.client, record.roomId, record.eventId),
+    return this.judge(load, flags, record, false, () =>
+      lookUpIndexedEvent(load.client, record.roomId, record.eventId),
     );
   }
 
@@ -412,7 +415,7 @@ export class NotificationInboxService {
       readonly roomId: string;
       readonly ts: number;
     },
-    unread: (room: Room | null) => boolean,
+    serverRead: boolean,
     read: () => Promise<IndexedEventLookup>,
   ): Promise<Judged> {
     const { client, accountId } = load;
@@ -436,7 +439,8 @@ export class NotificationInboxService {
         senderName,
         ts,
         preview,
-        unread: unread(room),
+        // The server's flag can be stale in a room with threads, so the device has a say too.
+        unread: !serverRead && !hasReadOnDevice(room, accountId, eventId, ts),
         threadRootId,
       },
     });
@@ -449,7 +453,13 @@ export class NotificationInboxService {
       synced() ? { kind: 'dropped', eventId } : unavailable();
 
     try {
-      if (synced() && client.getRoom(roomId)?.getMyMembership() !== 'join') {
+      const membership = client.getRoom(roomId)?.getMyMembership();
+      if (
+        synced() &&
+        (!membership ||
+          membership === KnownMembership.Leave ||
+          membership === KnownMembership.Ban)
+      ) {
         return gone();
       }
       const found = await read();
@@ -470,7 +480,7 @@ export class NotificationInboxService {
       const senderName = room?.getMember(senderId)?.name ?? (senderId || null);
       if (check.kind === 'undecryptable') {
         return shown(
-          { kind: 'encrypted' },
+          check.editOnly ? { kind: 'unavailable' } : { kind: 'encrypted' },
           room,
           senderName,
           threadRootId,

@@ -1,9 +1,13 @@
 import {
   Method,
+  ReceiptType,
   RelationType,
   type MatrixClient,
   type MatrixEvent,
+  type Room,
 } from 'matrix-js-sdk';
+import { firstValueFrom, from, timeout } from 'rxjs';
+import { STEP_LIMIT_MS } from './mention-index.service';
 import {
   parseNotificationsPage,
   type NotificationsPage,
@@ -22,15 +26,56 @@ export function fetchNotificationsPage(
     .then(parseNotificationsPage);
 }
 
+/** Past the limit a wedged crypto call rejects, and its late answer is ignored. */
+export function withinStepLimit<T>(work: Promise<T>): Promise<T> {
+  return firstValueFrom(from(work).pipe(timeout(STEP_LIMIT_MS)));
+}
+
+/** A copy left on a thread stays in the thread's listeners, and its text with it. */
+function releaseFromThread(copy: MatrixEvent): void {
+  const rootId = copy.threadRootId;
+  copy.setThread(undefined);
+  copy.setThreadId(rootId);
+}
+
 export function mapInboxEvent(
   client: MatrixClient,
   raw: Readonly<Record<string, unknown>>,
   roomId: string,
 ): MatrixEvent {
-  return client.getEventMapper({ preventReEmit: true, decrypt: false })({
+  const room = client.getRoom(roomId);
+  // Given an event the room holds, the mapper merges the server's `unsigned` into the room's own.
+  const known = room?.findEventById(String(raw['event_id']));
+  if (known) return known;
+  const event = client.getEventMapper({ preventReEmit: true, decrypt: false })({
     ...raw,
     room_id: roomId,
   } as Parameters<ReturnType<MatrixClient['getEventMapper']>>[0]);
+  for (const copy of [event, event.replacingEvent()]) {
+    if (copy && room?.findEventById(copy.getId() ?? '') !== copy) {
+      releaseFromThread(copy);
+    }
+  }
+  return event;
+}
+
+/** Whether this device knows the person has read this event. */
+export function hasReadOnDevice(
+  room: Room | null,
+  userId: string,
+  eventId: string,
+  ts: number,
+): boolean {
+  if (!room) return false;
+  if (room.findEventById(eventId))
+    return room.hasUserReadEvent(userId, eventId);
+  // shortcut: compares times, so an old unread thread mention or a late federated one loses its dot; upgrade if the SDK can place an unloaded event.
+  const readAt = Math.max(
+    ...[ReceiptType.Read, ReceiptType.ReadPrivate].map(
+      (type) => room.getReadReceiptForUserId(userId, false, type)?.data.ts ?? 0,
+    ),
+  );
+  return ts <= readAt;
 }
 
 export type IndexedEventLookup =
@@ -50,8 +95,9 @@ export async function lookUpIndexedEvent(
     if (raw.room_id && raw.room_id !== roomId) return { kind: 'gone' };
     return { kind: 'found', event: mapInboxEvent(client, raw, roomId) };
   } catch (error) {
-    const status = (error as { httpStatus?: number } | null)?.httpStatus;
-    return status === 403 || status === 404
+    // A status alone may be a proxy's or a server limit's, and this deletes the record.
+    const errcode = (error as { errcode?: unknown } | null)?.errcode;
+    return errcode === 'M_FORBIDDEN' || errcode === 'M_NOT_FOUND'
       ? { kind: 'gone' }
       : { kind: 'unreachable' };
   }
@@ -59,7 +105,12 @@ export async function lookUpIndexedEvent(
 
 export type InboxEventCheck =
   | { readonly kind: 'dropped' }
-  | { readonly kind: 'undecryptable'; readonly event: MatrixEvent }
+  | {
+      readonly kind: 'undecryptable';
+      readonly event: MatrixEvent;
+      /** The message reads, but its latest edit doesn't: its text is what the sender replaced. */
+      readonly editOnly: boolean;
+    }
   | {
       readonly kind: 'checked';
       readonly event: MatrixEvent;
@@ -75,24 +126,32 @@ function isRoomsOwn(client: MatrixClient, event: MatrixEvent): boolean {
   );
 }
 
+async function decrypts(
+  client: MatrixClient,
+  event: MatrixEvent,
+): Promise<boolean> {
+  if (!event.isEncrypted()) return true;
+  if (event.getClearContent() === null && !client.getCrypto()) return false;
+  try {
+    await withinStepLimit(client.decryptEventIfNeeded(event));
+  } catch {
+    return false;
+  }
+  return !event.isDecryptionFailure() && event.getClearContent() !== null;
+}
+
 export async function checkInboxEvent(
   client: MatrixClient,
   event: MatrixEvent,
 ): Promise<InboxEventCheck> {
   if (event.isRedacted()) return { kind: 'dropped' };
-  if (event.isEncrypted()) {
-    if (event.getClearContent() === null && !client.getCrypto()) {
-      return { kind: 'undecryptable', event };
-    }
-    try {
-      await client.decryptEventIfNeeded(event);
-    } catch {
-      return { kind: 'undecryptable', event };
-    }
-    if (event.isDecryptionFailure() || event.getClearContent() === null) {
-      return { kind: 'undecryptable', event };
-    }
-    if (event.isRedacted()) return { kind: 'dropped' };
+  if (!(await decrypts(client, event))) {
+    return { kind: 'undecryptable', event, editOnly: false };
+  }
+  if (event.isRedacted()) return { kind: 'dropped' };
+  const edit = event.replacingEvent();
+  if (edit && !(await decrypts(client, edit))) {
+    return { kind: 'undecryptable', event, editOnly: true };
   }
   // A legacy edit highlights by display name again, so it never counts. Own messages never do.
   const highlighted =

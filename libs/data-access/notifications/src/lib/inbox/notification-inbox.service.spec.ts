@@ -1,7 +1,13 @@
-import { signal } from '@angular/core';
+import { signal, type Signal } from '@angular/core';
+import { SIGNAL } from '@angular/core/primitives/signals';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MatrixEvent, SyncState, type MatrixClient } from 'matrix-js-sdk';
+import {
+  MatrixError,
+  MatrixEvent,
+  SyncState,
+  type MatrixClient,
+} from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, defer, firstValueFrom, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -56,6 +62,7 @@ function fakeRoom(overrides: Raw = {}) {
     getMember: (id: string) => (id === ALICE ? { name: 'Alice' } : null),
     hasEncryptionStateEvent: () => false,
     hasUserReadEvent: vi.fn(() => false),
+    getReadReceiptForUserId: vi.fn((): unknown => null),
     findEventById: vi.fn((): MatrixEvent | undefined => undefined),
     ...overrides,
   };
@@ -98,7 +105,7 @@ function fakeClient(pages: Pages = { [FIRST]: { rows: [] } }, userId = ME) {
     fetchRoomEvent: vi.fn((_room: string, id: string): Promise<Raw> =>
       events.has(id)
         ? Promise.resolve(events.get(id) as Raw)
-        : Promise.reject(Object.assign(new Error('x'), { httpStatus: 404 })),
+        : Promise.reject(new MatrixError({ errcode: 'M_NOT_FOUND' }, 404)),
     ),
     http: {
       authedRequest: vi.fn(
@@ -232,7 +239,11 @@ describe('NotificationInboxService', () => {
         { limit: '50', from: 't2' },
         { limit: '50', from: 't3' },
       ]);
-      expect(inbox.lastLoad()).toEqual({ kind: 'limit', checked: 150 });
+      expect(inbox.lastLoad()).toEqual({
+        kind: 'limit',
+        checked: 150,
+        tab: 'mentions',
+      });
       expect(inbox.hasMore()).toBe(true);
 
       client.http.authedRequest.mockClear();
@@ -249,7 +260,7 @@ describe('NotificationInboxService', () => {
       await firstValueFrom(inbox.loadMore('mentions'));
 
       expect(client.http.authedRequest).toHaveBeenCalledTimes(2);
-      expect(inbox.lastLoad()).toEqual({ kind: 'found' });
+      expect(inbox.lastLoad()).toEqual({ kind: 'found', tab: 'mentions' });
       expect(ids(inbox.mentions())).toEqual(['$e120']);
     });
 
@@ -262,7 +273,7 @@ describe('NotificationInboxService', () => {
       await firstValueFrom(inbox.loadMore('all'));
 
       expect(client.http.authedRequest).toHaveBeenCalledTimes(1);
-      expect(inbox.lastLoad()).toEqual({ kind: 'found' });
+      expect(inbox.lastLoad()).toEqual({ kind: 'found', tab: 'all' });
       expect(inbox.all()).toHaveLength(100);
     });
 
@@ -287,7 +298,35 @@ describe('NotificationInboxService', () => {
       await firstValueFrom(inbox.loadMore('all'));
 
       expect(client.http.authedRequest).toHaveBeenCalledTimes(1);
-      expect(inbox.lastLoad()).toEqual({ kind: 'limit', checked: 1 });
+      expect(inbox.lastLoad()).toEqual({
+        kind: 'limit',
+        checked: 1,
+        tab: 'all',
+      });
+    });
+
+    it('counts only server rows as checked', async () => {
+      const client = fakeClient(longList());
+      client.ignored.add(ALICE);
+      const { inbox, store, open } = setup({ client });
+      const now = Date.now();
+      for (let i = 0; i < 200; i++) {
+        client.events.set(`$i${i}`, message(`$i${i}`, now - i));
+        await store.put(
+          ME,
+          { eventId: `$i${i}`, roomId: ROOM, ts: now - i },
+          now,
+        );
+      }
+      await open();
+
+      await firstValueFrom(inbox.loadMore('mentions'));
+
+      expect(inbox.lastLoad()).toEqual({
+        kind: 'limit',
+        checked: 150,
+        tab: 'mentions',
+      });
     });
 
     it('clears the last result when the next load starts', async () => {
@@ -346,7 +385,7 @@ describe('NotificationInboxService', () => {
       await firstValueFrom(inbox.loadMore('mentions'));
 
       expect(client.http.authedRequest).toHaveBeenCalledTimes(2);
-      expect(inbox.lastLoad()).toEqual({ kind: 'end' });
+      expect(inbox.lastLoad()).toEqual({ kind: 'end', tab: 'mentions' });
       expect(inbox.hasMore()).toBe(false);
     });
 
@@ -381,7 +420,7 @@ describe('NotificationInboxService', () => {
 
       await firstValueFrom(inbox.loadMore('mentions'));
       expect(inbox.mentions()).toHaveLength(60);
-      expect(inbox.lastLoad()).toEqual({ kind: 'found' });
+      expect(inbox.lastLoad()).toEqual({ kind: 'found', tab: 'mentions' });
     });
 
     it('tells whether the server alone has more, for All', async () => {
@@ -400,7 +439,7 @@ describe('NotificationInboxService', () => {
       expect(inbox.serverHasMore()).toBe(false);
 
       await firstValueFrom(inbox.loadMore('all'));
-      expect(inbox.lastLoad()).toEqual({ kind: 'end' });
+      expect(inbox.lastLoad()).toEqual({ kind: 'end', tab: 'all' });
       expect(client.http.authedRequest).toHaveBeenCalledTimes(1);
     });
 
@@ -677,6 +716,39 @@ describe('NotificationInboxService', () => {
       expect(client.fetchRoomEvent).not.toHaveBeenCalled();
     });
 
+    it('removes a row when banned, once synced', async () => {
+      const client = fakeClient({
+        [FIRST]: { rows: [entry(message('$s', 2))] },
+      });
+      client.room = fakeRoom({ getMyMembership: () => 'ban' });
+      const { inbox, open } = setup({ client });
+
+      await open();
+
+      expect(inbox.all()).toEqual([]);
+    });
+
+    it.each(['invite', 'knock'])(
+      "keeps a row when the membership is %s: that isn't leaving",
+      async (membership) => {
+        const client = fakeClient({
+          [FIRST]: { rows: [entry(message('$s', 2))] },
+        });
+        client.room = fakeRoom({ getMyMembership: () => membership });
+        client.events.set('$i', message('$i', 1));
+        const { inbox, store, remove, open } = setup({ client });
+        await store.put(ME, { eventId: '$i', roomId: ROOM, ts: 1 }, 1);
+        vi.spyOn(Date, 'now').mockReturnValue(100);
+
+        await open();
+        await flush();
+
+        expect(ids(inbox.all())).toEqual(['$s']);
+        expect(ids(inbox.mentions())).toEqual(['$i']);
+        expect(remove).not.toHaveBeenCalled();
+      },
+    );
+
     it('removes a row for a room no longer known, once synced', async () => {
       const client = fakeClient();
       client.room = null;
@@ -689,12 +761,16 @@ describe('NotificationInboxService', () => {
 
       expect(inbox.mentions()).toEqual([]);
       expect(store.rows(ME)).toEqual([]);
+      expect(client.fetchRoomEvent).not.toHaveBeenCalled();
     });
 
-    it.each([403, 404])('removes a row on %i', async (httpStatus) => {
+    it.each([
+      ['M_FORBIDDEN', 403],
+      ['M_NOT_FOUND', 404],
+    ])('removes a row on %s', async (errcode, httpStatus) => {
       const client = fakeClient();
       client.fetchRoomEvent.mockRejectedValue(
-        Object.assign(new Error('x'), { httpStatus }),
+        new MatrixError({ errcode }, httpStatus),
       );
       const { inbox, store, open } = setup({ client });
       await store.put(ME, { eventId: '$i', roomId: ROOM, ts: 1 }, 1);
@@ -924,6 +1000,55 @@ describe('NotificationInboxService', () => {
       expect(inbox.hasMore()).toBe(false);
     });
 
+    it('shows plain rows within the limit when one decrypt hangs', async () => {
+      vi.useFakeTimers();
+      const client = fakeClient({
+        [FIRST]: {
+          rows: [entry(encrypted('$wedged', 2)), entry(encrypted('$fine', 1))],
+        },
+      });
+      const decrypt = client.decryptEventIfNeeded.getMockImplementation();
+      client.decryptEventIfNeeded.mockImplementation((event: MatrixEvent) =>
+        event.getId() === '$wedged'
+          ? NEVER_RESOLVES
+          : (decrypt as (event: MatrixEvent) => Promise<void>)(event),
+      );
+      client.events.set('$i', message('$i', 1));
+      const { inbox, store } = setup({ client });
+      const now = Date.now();
+      await store.put(ME, { eventId: '$i', roomId: ROOM, ts: now }, now);
+
+      const done = firstValueFrom(inbox.refresh());
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(inbox.status()).toBe('loading');
+
+      await vi.advanceTimersByTimeAsync(1);
+      await done;
+
+      expect(inbox.status()).toBe('ready');
+      expect(inbox.all().map((row) => row.preview.kind)).toEqual([
+        'encrypted',
+        'text',
+      ]);
+      expect(inbox.uncheckedCount()).toBe(1);
+      expect(ids(inbox.mentions())).toContain('$i');
+    });
+
+    it('previews no clear text when the encryption flag hangs', async () => {
+      vi.useFakeTimers();
+      const client = fakeClient({
+        [FIRST]: { rows: [entry(message('$a', 1, 'planted'))] },
+      });
+      client.crypto?.isEncryptionEnabledInRoom.mockReturnValue(NEVER_RESOLVES);
+      const { inbox } = setup({ client });
+
+      const done = firstValueFrom(inbox.refresh());
+      await vi.advanceTimersByTimeAsync(10_000);
+      await done;
+
+      expect(inbox.all()[0]?.preview).toEqual({ kind: 'hidden' });
+    });
+
     it('keeps a row whose check throws, preview unavailable', async () => {
       const client = fakeClient({
         [FIRST]: { rows: [entry(message('$s', 1))] },
@@ -1080,7 +1205,7 @@ describe('NotificationInboxService', () => {
       await flush();
 
       switchTo(fakeClient(undefined, '@other:hs'));
-      refuse(Object.assign(new Error('x'), { httpStatus: 404 }));
+      refuse(new MatrixError({ errcode: 'M_NOT_FOUND' }, 404));
       await flush();
 
       expect(remove).not.toHaveBeenCalled();
@@ -1108,6 +1233,24 @@ describe('NotificationInboxService', () => {
       switchTo(fakeClient(undefined, '@other:hs'));
       expect(inbox.all()).toEqual([]);
       expect(inbox.status()).toBe('idle');
+    });
+
+    it('holds no rows in its computed signals after disconnect', async () => {
+      const client = fakeClient({
+        [FIRST]: { rows: [entry(message('$a', 1, 'secret @me'))] },
+      });
+      const { inbox, open } = setup({ client });
+      await open();
+      expect(inbox.all()).toHaveLength(1);
+      expect(inbox.mentions()).toHaveLength(1);
+
+      inbox.disconnect();
+
+      // Read from the node: a read through the signal would itself recompute it.
+      const held = (rows: Signal<unknown>): unknown =>
+        (rows[SIGNAL] as { value: unknown }).value;
+      expect(held(inbox.all)).toEqual([]);
+      expect(held(inbox.mentions)).toEqual([]);
     });
 
     it('reads the new account after a switch, under its own account ID', async () => {
@@ -1273,25 +1416,32 @@ describe('NotificationInboxService', () => {
       expect(addLiveEvents).not.toHaveBeenCalled();
     });
 
-    it('reads the unread dot from read for server rows, hasUserReadEvent for index rows', async () => {
+    it('reads the unread dot from read and the room for server rows, hasUserReadEvent for loaded index rows', async () => {
       const client = fakeClient({
         [FIRST]: {
           rows: [
             entry(message('$unread', 4), false),
             entry(message('$read', 3), true),
-            // Held by the index too, where the room says otherwise: the server's flag wins.
+            // Held by the index too, where the room says otherwise: the server's flag counts.
             entry(message('$both', 2), true),
           ],
         },
       });
+      const loaded = new Map(
+        ['$seen', '$unseen'].map((id) => [
+          id,
+          new MatrixEvent(message(id, 1) as never),
+        ]),
+      );
       const hasUserReadEvent = vi.fn(
         (_me: string, id: string) => id === '$seen',
       );
-      client.room = fakeRoom({ hasUserReadEvent });
+      client.room = fakeRoom({
+        hasUserReadEvent,
+        findEventById: (id: string) => loaded.get(id),
+      });
+      client.events.set('$both', message('$both', 1));
       const now = 1000;
-      for (const eventId of ['$seen', '$unseen', '$both']) {
-        client.events.set(eventId, message(eventId, 1));
-      }
       const { inbox, store, open } = setup({ client });
       for (const eventId of ['$seen', '$unseen', '$both']) {
         await store.put(ME, { eventId, roomId: ROOM, ts: 1 }, now);

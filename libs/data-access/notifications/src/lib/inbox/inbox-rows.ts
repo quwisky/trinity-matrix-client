@@ -25,10 +25,13 @@ export interface InboxRow {
   readonly threadRootId: string | null;
 }
 
-export type InboxLoadResult =
+/** The tab that asked: a result's wording is for that tab only. */
+export type InboxLoadResult = { readonly tab: InboxTab } & (
   | { readonly kind: 'found' }
   | { readonly kind: 'end' }
-  | { readonly kind: 'limit'; readonly checked: number };
+  /** `checked` counts server rows. */
+  | { readonly kind: 'limit'; readonly checked: number }
+);
 
 /** Newest first, ordered as the index orders them. The first list holding an event wins. */
 export function mergeInboxRows(

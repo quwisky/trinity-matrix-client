@@ -1,4 +1,9 @@
-import { MatrixEvent, type MatrixClient } from 'matrix-js-sdk';
+import {
+  HTTPError,
+  MatrixError,
+  MatrixEvent,
+  type MatrixClient,
+} from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import {
   checkInboxEvent,
@@ -94,7 +99,7 @@ describe('lookUpIndexedEvent', () => {
     expect(fetchRoomEvent).not.toHaveBeenCalled();
   });
 
-  it('reads 403 and 404 as gone, anything else as unreachable', async () => {
+  it('reads only a Matrix refusal as gone, anything else as unreachable', async () => {
     const kind = async (error: unknown) =>
       (
         await lookUpIndexedEvent(
@@ -103,9 +108,20 @@ describe('lookUpIndexedEvent', () => {
           '$e',
         )
       ).kind;
-    expect(await kind({ httpStatus: 403 })).toBe('gone');
-    expect(await kind({ httpStatus: 404 })).toBe('gone');
-    expect(await kind({ httpStatus: 500 })).toBe('unreachable');
+    const matrix = (errcode: string, status: number) =>
+      new MatrixError({ errcode }, status);
+    expect(await kind(matrix('M_FORBIDDEN', 403))).toBe('gone');
+    expect(await kind(matrix('M_NOT_FOUND', 404))).toBe('gone');
+    expect(await kind(matrix('M_RESOURCE_LIMIT_EXCEEDED', 403))).toBe(
+      'unreachable',
+    );
+    expect(await kind(new HTTPError('Server returned 403 error', 403))).toBe(
+      'unreachable',
+    );
+    expect(await kind(new HTTPError('Server returned 404 error', 404))).toBe(
+      'unreachable',
+    );
+    expect(await kind(matrix('M_UNKNOWN', 500))).toBe('unreachable');
     expect(await kind(new Error('offline'))).toBe('unreachable');
   });
 
@@ -198,6 +214,14 @@ describe('checkInboxEvent', () => {
   it('drops a redacted event', async () => {
     const event = message();
     vi.spyOn(event, 'isRedacted').mockReturnValue(true);
+    expect((await checkInboxEvent(clientOf({}), event)).kind).toBe('dropped');
+  });
+
+  it('drops an event redacted while it decrypted', async () => {
+    const event = message();
+    vi.spyOn(event, 'isRedacted')
+      .mockReturnValueOnce(false)
+      .mockReturnValue(true);
     expect((await checkInboxEvent(clientOf({}), event)).kind).toBe('dropped');
   });
 
