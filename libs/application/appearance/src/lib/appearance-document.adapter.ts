@@ -115,6 +115,8 @@ export function seedSystemColourMode(
   doc: Document = document,
   win: Window = window,
 ): void {
+  // This runs before bootstrap, so a throw here would leave a blank app.
+  if (typeof win.matchMedia !== 'function') return;
   doc.documentElement.classList.toggle(
     DARK_CLASS,
     win.matchMedia('(prefers-color-scheme: dark)').matches,
