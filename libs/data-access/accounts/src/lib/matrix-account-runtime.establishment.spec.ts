@@ -635,6 +635,81 @@ describe('replacing a stored device', () => {
     expect(order).toEqual(['persist', 'start', 'logout']);
   });
 
+  it('forgets mention history for a new device once its client is ready', async () => {
+    const test = setup();
+    const order: string[] = [];
+    saved(test, OLD_SESSION);
+    vi.mocked(test.matrix.detachedClient).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(test.lifecycle.forgetMentionHistory).mockReturnValue(
+      defer(() => {
+        order.push('forget');
+        return of(void 0);
+      }),
+    );
+
+    await expect(establish(test, order)).resolves.toEqual({ kind: 'ready' });
+
+    expect(test.lifecycle.forgetMentionHistory).toHaveBeenCalledExactlyOnceWith(
+      '@new:hs',
+    );
+    expect(order).toEqual(['persist', 'start', 'forget']);
+  });
+
+  it('forgets mention history for a new device whose old record had no token', async () => {
+    const test = setup();
+    const { accessToken: _access, ...tokenless } = OLD_SESSION;
+    vi.mocked(test.storage.record).mockReturnValue(of(tokenless));
+    vi.mocked(test.storage.load).mockReturnValue(of(null));
+
+    await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+
+    expect(test.lifecycle.forgetMentionHistory).toHaveBeenCalledOnce();
+  });
+
+  it('still signs in when forgetting mention history fails', async () => {
+    const test = setup();
+    saved(test, OLD_SESSION);
+    vi.mocked(test.matrix.detachedClient).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(test.lifecycle.forgetMentionHistory).mockReturnValue(
+      throwError(() => new Error('store blocked')),
+    );
+
+    await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+  });
+
+  it('forgets no mention history when the new session does not start', async () => {
+    const test = setup();
+    saved(test, OLD_SESSION);
+    vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+      of(session),
+    );
+    vi.mocked(test.matrix.restorePersisted).mockReturnValue(
+      of({ kind: 'failed' as const, failure: 'transient-network' as const }),
+    );
+
+    await firstValueFrom(
+      test.adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    );
+
+    expect(test.lifecycle.forgetMentionHistory).not.toHaveBeenCalled();
+  });
+
+  it('forgets no mention history for a sign-in from the same device', async () => {
+    const test = setup();
+    saved(test, session);
+
+    await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+
+    expect(test.lifecycle.forgetMentionHistory).not.toHaveBeenCalled();
+  });
+
   it('signs nothing out when the replaced device has no token', async () => {
     const test = setup();
     const { accessToken: _access, ...tokenless } = OLD_SESSION;

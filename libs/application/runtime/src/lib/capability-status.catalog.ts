@@ -51,6 +51,7 @@ export const CAPABILITY_STATUS_CATALOG = {
   'preferences:hydrate-privacy': preferenceCopy('privacy settings'),
   'preferences:hydrate-account-scope': preferenceCopy('Account scope'),
   'preferences:hydrate-rail-unread': preferenceCopy('space rail settings'),
+  'preferences:hydrate-mention-inbox': preferenceCopy('inbox settings'),
   'preferences:hydrate-shortcuts': preferenceCopy('keyboard shortcuts'),
   'preferences:hydrate-system-lines': preferenceCopy('system-message settings'),
   'room-library:hydrate-order': {
@@ -194,6 +195,9 @@ const CAPABILITY_DIAGNOSTIC_REASONS = {
   ]),
   'preferences:hydrate-rail-unread': preferenceReasons('rail-unread', [
     'rail-unread-preference-hydration-partial',
+  ]),
+  'preferences:hydrate-mention-inbox': preferenceReasons('mention-inbox', [
+    'mention-inbox-preference-hydration-partial',
   ]),
   'preferences:hydrate-shortcuts': preferenceReasons('shortcuts'),
   'preferences:hydrate-system-lines': preferenceReasons('system-lines'),

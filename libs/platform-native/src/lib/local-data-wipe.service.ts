@@ -7,6 +7,7 @@ import {
 } from '@trinity/util/matrix';
 import { WRAPPING_KEY_DB_NAME } from './crypto-store-wrapping-keys';
 import { DIAGNOSTIC_LOG_DB_NAME } from './diagnostic-log-db-name';
+import { MENTION_INDEX_DB_NAME } from './mention-index-db-name';
 import { firstValueFrom } from 'rxjs';
 import { beginDatabaseDeletion, listDatabaseNames } from './indexed-db-wipe';
 import { SecureStorageService } from './secure-storage.service';
@@ -113,6 +114,8 @@ export class LocalDataWipeService {
     names.add(WRAPPING_KEY_DB_NAME);
     // The on-device diagnostic log keeps the removed accounts' identifiers until export.
     names.add(DIAGNOSTIC_LOG_DB_NAME);
+    // The mention index keeps which messages mentioned each removed account.
+    names.add(MENTION_INDEX_DB_NAME);
 
     // Everything else on this origin: an unrecognised database is residue from a version
     // or account we no longer track, which a registry-derived list cannot reach.

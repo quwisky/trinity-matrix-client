@@ -100,7 +100,10 @@ export class InstallationResetWorkflow {
               ),
               concatMap((records) => {
                 this.clearDrafts(attempt);
-                return this.stopDiagnosticLog().pipe(map(() => records));
+                return this.stopDiagnosticLog().pipe(
+                  concatMap(() => this.stopMentionIndex()),
+                  map(() => records),
+                );
               }),
               concatMap((records) => this.wipeIndexedDb(attempt, records)),
               concatMap(() =>
@@ -298,7 +301,16 @@ export class InstallationResetWorkflow {
    * and reports any residue.
    */
   private stopDiagnosticLog(): Observable<void> {
-    return defer(() => this.lifecycle.stopDiagnosticLog()).pipe(
+    return this.bounded(defer(() => this.lifecycle.stopDiagnosticLog()));
+  }
+
+  /** Stop recording before the wipe, or a pending write would recreate the store. */
+  private stopMentionIndex(): Observable<void> {
+    return this.bounded(defer(() => this.lifecycle.stopMentionIndex()));
+  }
+
+  private bounded(source: Observable<void>): Observable<void> {
+    return source.pipe(
       take(1),
       timeout({
         first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,

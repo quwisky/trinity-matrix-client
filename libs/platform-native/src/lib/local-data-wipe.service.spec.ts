@@ -142,6 +142,15 @@ describe('LocalDataWipeService', () => {
       expect(deleted).toContain('trinity-diagnostic-log');
     });
 
+    it('deletes the mention index even where the browser cannot enumerate', async () => {
+      const { factory, deleted } = fakeIdb(); // no `databases` member
+      vi.stubGlobal('indexedDB', factory);
+
+      await setup().wipeIndexedDb([ALICE]);
+
+      expect(deleted).toContain('trinity-mention-index');
+    });
+
     it('deletes an orphan no account record names, when enumeration is available', async () => {
       const { factory, deleted } = fakeIdb([
         'matrix-js-sdk:trinity-sync:@ghost:hs',

@@ -339,6 +339,24 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'value already means off.',
   },
 
+  // — data-access/notifications —
+  {
+    disposition: 'excluded',
+    key: 'trinity.inbox.show',
+    owner: 'data-access/notifications',
+    reason:
+      "A per-installation privacy choice. An imported document can't ask first, and turning a " +
+      'switch off deletes history.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.inbox.keep-record',
+    owner: 'data-access/notifications',
+    reason:
+      "A per-installation privacy choice. An imported document can't ask first, and turning a " +
+      'switch off deletes history.',
+  },
+
   // — data-access/app-lock —
   {
     disposition: 'excluded',

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { AppearancePreferences } from '@trinity/application/appearance';
 import { GifSettingsService } from '@trinity/data-access/gif';
+import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import {
   AccountScopeService,
   RailUnreadChatsPreference,
@@ -37,6 +38,7 @@ export class TrinityPreferenceStartupSources {
   private readonly gifs = inject(GifSettingsService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly railUnread = inject(RailUnreadChatsPreference);
+  private readonly mentionInbox = inject(MentionInboxPreferences);
 
   sources(): PreferenceStartupSources {
     const initialized = (
@@ -152,6 +154,28 @@ export class TrinityPreferenceStartupSources {
                           : {
                               kind: 'defaulted',
                               code: 'rail-unread-preference-hydration-partial',
+                            },
+                      ),
+                    ),
+                },
+          ),
+        ),
+      'mention-inbox': () =>
+        this.mentionInbox.init().pipe(
+          map((outcome): PreferencePreparationEvidence =>
+            outcome.kind === 'ready'
+              ? { kind: 'ready' }
+              : {
+                  kind: 'defaulted',
+                  code: 'mention-inbox-preference-hydration-partial',
+                  recover: () =>
+                    this.mentionInbox.recoverHydration(outcome.failures).pipe(
+                      map((recovered): PreferencePreparationEvidence =>
+                        recovered.kind === 'ready'
+                          ? { kind: 'ready' }
+                          : {
+                              kind: 'defaulted',
+                              code: 'mention-inbox-preference-hydration-partial',
                             },
                       ),
                     ),

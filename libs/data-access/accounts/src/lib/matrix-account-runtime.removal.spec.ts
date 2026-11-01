@@ -1,4 +1,4 @@
-import { Subject, firstValueFrom, of, throwError } from 'rxjs';
+import { Subject, defer, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import type { MatrixSession } from '@trinity/util/matrix';
 import type { AccountSignOutOutcome } from './account-runtime.models';
@@ -106,6 +106,30 @@ describe('MatrixAccountRuntimeAdapter', () => {
       expect(test.storage.remove).toHaveBeenCalledWith('@deleted:hs');
     });
 
+    it('forgets its mention history after its client stops', async () => {
+      const test = deletedAccount(['@deleted:hs', '@survivor:hs']);
+      const order: string[] = [];
+      vi.mocked(test.matrix.remove).mockReturnValue(
+        defer(() => {
+          order.push('remove');
+          return of(void 0);
+        }),
+      );
+      vi.mocked(test.lifecycle.forgetMentionHistory).mockReturnValue(
+        defer(() => {
+          order.push('forget');
+          return of(void 0);
+        }),
+      );
+
+      await firstValueFrom(test.adapter.removeDeletedAccount('@deleted:hs'));
+
+      expect(
+        test.lifecycle.forgetMentionHistory,
+      ).toHaveBeenCalledExactlyOnceWith('@deleted:hs');
+      expect(order).toEqual(['remove', 'forget']);
+    });
+
     it('fails for an account the registry does not hold', async () => {
       const test = deletedAccount(['@survivor:hs'], setup('@survivor:hs'));
 
@@ -188,6 +212,74 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(matrix.remove).toHaveBeenCalledWith('@last:hs');
     expect(lifecycle.releaseSharedCaches).toHaveBeenCalledOnce();
     expect(storage.clear).toHaveBeenCalledOnce();
+  });
+
+  describe('forgetting mention history on sign-out', () => {
+    function signingOut(accountIds: readonly string[]) {
+      const test = setup(accountIds[0]);
+      vi.mocked(test.matrix.clientFor).mockReturnValue({
+        logout: vi.fn(() => Promise.resolve()),
+      } as never);
+      vi.mocked(test.storage.list).mockReturnValue(
+        of(
+          accountIds.map((userId, index) => ({
+            userId,
+            baseUrl: 'https://hs',
+            deviceId: `D${index}`,
+          })),
+        ),
+      );
+      vi.mocked(test.storage.load).mockReturnValue(
+        of({ userId: accountIds[0], baseUrl: 'https://hs' } as never),
+      );
+      vi.mocked(test.storage.remove).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.setActive).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.clear).mockReturnValue(of(void 0));
+      return test;
+    }
+
+    it.each([
+      ['the last account', ['@out:hs']],
+      ['one of several', ['@out:hs', '@other:hs']],
+    ])('forgets it after the client stops for %s', async (_case, ids) => {
+      const test = signingOut(ids);
+      const order: string[] = [];
+      vi.mocked(test.matrix.remove).mockReturnValue(
+        defer(() => {
+          order.push('remove');
+          return of(void 0);
+        }),
+      );
+      vi.mocked(test.lifecycle.forgetMentionHistory).mockReturnValue(
+        defer(() => {
+          order.push('forget');
+          return of(void 0);
+        }),
+      );
+
+      await firstValueFrom(test.adapter.signOutAccount('@out:hs'));
+
+      expect(
+        test.lifecycle.forgetMentionHistory,
+      ).toHaveBeenCalledExactlyOnceWith('@out:hs');
+      expect(order).toEqual(['remove', 'forget']);
+    });
+
+    it('reports a failed forget as an indexed-db issue that asks for a restart', async () => {
+      const test = signingOut(['@out:hs', '@other:hs']);
+      vi.mocked(test.matrix.remove).mockReturnValue(of(void 0));
+      vi.mocked(test.lifecycle.forgetMentionHistory).mockReturnValue(
+        throwError(() => new Error('store blocked')),
+      );
+
+      await expect(
+        firstValueFrom(test.adapter.signOutAccount('@out:hs')),
+      ).resolves.toMatchObject({
+        kind: 'partial-cleanup',
+        issues: [{ scope: 'indexed-db', recovery: 'restart-application' }],
+      });
+      expect(test.storage.remove).toHaveBeenCalledWith('@out:hs');
+    });
   });
 
   it('forgets the push handoff before sign-out reads the session or contacts the homeserver', async () => {

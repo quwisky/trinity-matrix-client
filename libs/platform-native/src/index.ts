@@ -32,6 +32,7 @@ export * from './lib/shortcuts/keyboard-shortcuts.service';
 export * from './lib/trinity-error-handler';
 export * from './lib/build-info';
 export * from './lib/diagnostic-log-db-name';
+export * from './lib/mention-index-db-name';
 export * from './lib/bug-report-launcher';
 export * from './lib/account-removal-launcher';
 export * from './lib/account-deletion-launcher';
