@@ -210,9 +210,12 @@
       color: var(--trinity-text-muted);
       opacity: 1;
 
-      // A disabled button takes no press, which would blur the field and close the keyboard;
-      // letting the press through to the field (see `onFieldPress`) keeps focus there.
-      pointer-events: none;
+      // On touch, a disabled button takes the press itself, which would blur the field and close
+      // the keyboard; letting it through to the field (see `onFieldPress`) keeps focus there.
+      // A mouse keeps its tooltip and arrow cursor.
+      @media (hover: none) {
+        pointer-events: none;
+      }
     }
   }
 
