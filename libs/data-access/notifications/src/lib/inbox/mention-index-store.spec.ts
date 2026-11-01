@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { IndexedDbMentionStore } from './indexed-db-mention-store';
+import { describe, expect, it, vi } from 'vitest';
+import { IndexedDbMentionStore, pageRange } from './indexed-db-mention-store';
 import { FakeMentionStore } from './mention-index.spec-harness';
 import {
   MENTION_MAX_AGE_MS,
@@ -127,4 +127,42 @@ describe('FakeMentionStore', () => {
     store.failReads();
     await expect(store.count()).rejects.toThrow('read failed');
   });
+});
+
+describe('pageRange', () => {
+  const floor = NOW - MENTION_MAX_AGE_MS;
+
+  it('is null when the cursor lies under the age floor', () => {
+    expect(pageRange('a', { ts: floor - 1, eventId: '$x' }, NOW)).toBeNull();
+  });
+
+  it('is a range when the cursor is at or above the floor, or absent', () => {
+    vi.stubGlobal('IDBKeyRange', { bound: (...args: unknown[]) => args });
+    expect(pageRange('a', { ts: floor, eventId: '$x' }, NOW)).not.toBeNull();
+    expect(pageRange('a', null, NOW)).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('put validation', () => {
+  const bad = [
+    { eventId: '$1', roomId: '!r', ts: Number.NaN },
+    { eventId: '$1', roomId: '!r', ts: '5' as unknown as number },
+    { eventId: '$1', roomId: '!r', ts: undefined as unknown as number },
+    { eventId: '', roomId: '!r', ts: NOW },
+    { eventId: '$1', roomId: '', ts: NOW },
+  ];
+
+  it.each(bad)(
+    'rejects %o with a TypeError, before opening the database',
+    async (record) => {
+      const open = vi.fn();
+      const real = new IndexedDbMentionStore({ open } as unknown as IDBFactory);
+      await expect(real.put('a', record, NOW)).rejects.toThrow(TypeError);
+      expect(open).not.toHaveBeenCalled();
+      await expect(
+        new FakeMentionStore().put('a', record, NOW),
+      ).rejects.toThrow(TypeError);
+    },
+  );
 });

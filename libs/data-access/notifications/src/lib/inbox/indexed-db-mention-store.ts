@@ -22,6 +22,41 @@ interface StoredMention extends MentionRecord {
 }
 
 /** Every `byTime` key of one account, from `[accountId]` up to any ts and eventId. */
+const firstErrors = new WeakMap<IDBTransaction, unknown>();
+
+/**
+ * The `byTime` range a page reads, or null when nothing can be in it: `before` already
+ * lies under the age floor, where `IDBKeyRange.bound` would throw a `DataError`.
+ */
+export function pageRange(
+  accountId: string,
+  before: MentionCursor | null,
+  now: number,
+): IDBKeyRange | null {
+  const floor = now - MENTION_MAX_AGE_MS;
+  if (before && before.ts < floor) {
+    return null;
+  }
+  return IDBKeyRange.bound(
+    [accountId, floor],
+    before ? [accountId, before.ts, before.eventId] : [accountId, Infinity, []],
+    false,
+    before !== null,
+  );
+}
+
+/** Throws a `TypeError` for a record the index could never page or prune. */
+export function assertStorable(record: MentionRecord): void {
+  if (
+    typeof record.ts !== 'number' ||
+    !Number.isFinite(record.ts) ||
+    !record.eventId ||
+    !record.roomId
+  ) {
+    throw new TypeError('Invalid mention record');
+  }
+}
+
 function accountTimes(accountId: string): IDBKeyRange {
   return IDBKeyRange.bound([accountId], [accountId, Infinity, []]);
 }
@@ -38,21 +73,32 @@ export class IndexedDbMentionStore implements MentionIndexStore {
   ) {}
 
   put(accountId: string, record: MentionRecord, now: number): Promise<void> {
+    try {
+      assertStorable(record);
+    } catch (error) {
+      return Promise.reject(error);
+    }
     return this.withDb(async (db) => {
       const transaction = db.transaction(MENTIONS, 'readwrite');
       const completed = done(transaction);
       const store = transaction.objectStore(MENTIONS);
-      store.put({
-        accountId,
-        eventId: record.eventId,
-        roomId: record.roomId,
-        ts: record.ts,
-      } satisfies StoredMention);
-      const rows = await request<StoredMention[]>(
-        store.index(BY_TIME).getAll(accountTimes(accountId)),
-      );
-      for (const eventId of rowsPastLimits(rows, now)) {
-        store.delete([accountId, eventId]);
+      try {
+        store.put({
+          accountId,
+          eventId: record.eventId,
+          roomId: record.roomId,
+          ts: record.ts,
+        } satisfies StoredMention);
+        const rows = await request<StoredMention[]>(
+          store.index(BY_TIME).getAll(accountTimes(accountId)),
+        );
+        for (const eventId of rowsPastLimits(rows, now)) {
+          store.delete([accountId, eventId]);
+        }
+      } catch (error) {
+        // The put's own failure (quota) aborts the transaction; the later request only
+        // reports an AbortError.
+        throw firstErrors.get(transaction) ?? error;
       }
       await completed;
     });
@@ -67,14 +113,11 @@ export class IndexedDbMentionStore implements MentionIndexStore {
     return this.withDb(async (db) => {
       const transaction = db.transaction(MENTIONS, 'readonly');
       const completed = done(transaction);
-      const range = IDBKeyRange.bound(
-        [accountId, now - MENTION_MAX_AGE_MS],
-        before
-          ? [accountId, before.ts, before.eventId]
-          : [accountId, Infinity, []],
-        false,
-        before !== null,
-      );
+      const range = pageRange(accountId, before, now);
+      if (!range) {
+        await completed;
+        return [];
+      }
       const found: MentionRecord[] = [];
       const cursorRequest = transaction
         .objectStore(MENTIONS)
@@ -244,9 +287,18 @@ function request<T>(pending: IDBRequest): Promise<T> {
 function done(transaction: IDBTransaction): Promise<void> {
   const completed = new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
+    // A request error bubbles here while `transaction.error` is still null; keep it.
+    transaction.addEventListener('error', (event) => {
+      if (!firstErrors.has(transaction)) {
+        firstErrors.set(transaction, (event.target as IDBRequest).error);
+      }
+    });
     transaction.onabort = () =>
-      reject(transaction.error ?? new Error('IndexedDB transaction aborted'));
+      reject(
+        firstErrors.get(transaction) ??
+          transaction.error ??
+          new Error('IndexedDB transaction aborted'),
+      );
   });
   // Created before the work it covers: when that work fails first nothing awaits this yet.
   completed.catch(() => undefined);

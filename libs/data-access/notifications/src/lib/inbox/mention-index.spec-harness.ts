@@ -1,3 +1,4 @@
+import { assertStorable } from './indexed-db-mention-store';
 import {
   MENTION_MAX_AGE_MS,
   rowsPastLimits,
@@ -26,6 +27,11 @@ export class FakeMentionStore implements MentionIndexStore {
   }
 
   put(accountId: string, record: MentionRecord, now: number): Promise<void> {
+    try {
+      assertStorable(record);
+    } catch (error) {
+      return Promise.reject(error);
+    }
     if (this.putError !== null) {
       const error = this.putError;
       this.putError = null;
