@@ -318,6 +318,40 @@ describe('NotificationInboxComponent', () => {
       expect(screen.getByRole('status').textContent?.trim()).toBe(words);
     });
 
+    it('announces the unchecked messages, not "No mentions", when the screen does', async () => {
+      await renderInbox((fake) => fake.uncheckedCount.set(2));
+
+      expect(screen.getByRole('status').textContent?.trim()).toBe(
+        "2 messages couldn't be checked because this device doesn't have their keys.",
+      );
+    });
+
+    it.each<[string, (fake: FakeInbox) => void, string]>([
+      [
+        'there are rows',
+        (fake) => {
+          fake.uncheckedCount.set(2);
+          fake.mentions.set([row('$m')]);
+        },
+        '1 mention.',
+      ],
+      [
+        'Load more can still find some',
+        (fake) => {
+          fake.uncheckedCount.set(2);
+          fake.hasMore.set(true);
+        },
+        'No mentions so far.',
+      ],
+    ])(
+      'announces the count, not the unchecked messages, when %s',
+      async (_name, arrange, words) => {
+        await renderInbox(arrange);
+
+        expect(screen.getByRole('status').textContent?.trim()).toBe(words);
+      },
+    );
+
     it('counts notifications on All', async () => {
       const { settle } = await renderInbox((fake) => {
         fake.all.set([row('$a'), row('$b')]);
@@ -666,7 +700,9 @@ describe('NotificationInboxComponent', () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
 
-      within(line).getByRole('button', { name: 'Try again.' }).click();
+      within(line)
+        .getByRole('button', { name: 'Try again loading more' })
+        .click();
 
       expect(inbox.loadMore).toHaveBeenCalledExactlyOnceWith('all');
       expect(inbox.refresh).not.toHaveBeenCalled();
@@ -676,6 +712,7 @@ describe('NotificationInboxComponent', () => {
       [
         'the list has not failed',
         (fake) => {
+          fake.serverHasMore.set(true);
           fake.hasMore.set(true);
           fake.mentions.set([row('$m')]);
         },
@@ -691,13 +728,52 @@ describe('NotificationInboxComponent', () => {
         'there are no rows',
         (fake) => {
           fake.serverListFailed.set(true);
+          fake.serverHasMore.set(true);
           fake.hasMore.set(true);
+        },
+      ],
+      [
+        'only the index has more, so Load more would not ask the server',
+        (fake) => {
+          fake.serverListFailed.set(true);
+          fake.hasMore.set(true);
+          fake.mentions.set([row('$m')]);
         },
       ],
     ])('does not repeat the server line when %s', async (_name, arrange) => {
       await renderInbox(arrange);
 
       expect(screen.queryByTestId('inbox-more-failed')).toBeNull();
+    });
+
+    it('keeps the top line and Load more when only the index has more', async () => {
+      await renderInbox((fake) => {
+        fake.serverListFailed.set(true);
+        fake.hasMore.set(true);
+        fake.mentions.set([row('$m')]);
+      });
+
+      expect(byId('inbox-server-failed')).toBeTruthy();
+      expect(byId('inbox-load-more')).toBeTruthy();
+    });
+
+    it('keeps the visible words on the bottom retry', async () => {
+      await renderInbox((fake) => {
+        fake.serverListFailed.set(true);
+        fake.serverHasMore.set(true);
+        fake.hasMore.set(true);
+        fake.mentions.set([row('$m')]);
+      });
+
+      const retry = within(byId('inbox-more-failed')).getByRole('button', {
+        name: 'Try again loading more',
+      });
+      expect(retry.textContent?.trim()).toBe('Try again.');
+      expect(
+        within(byId('inbox-server-failed')).getByRole('button', {
+          name: 'Try again.',
+        }),
+      ).toBeTruthy();
     });
 
     it('shows the server line when Load more failed, and keeps the rows', async () => {
@@ -977,7 +1053,7 @@ describe('NotificationInboxComponent on the real service', () => {
     expect(byId('inbox-server-failed')).toBeTruthy();
 
     within(byId('inbox-more-failed'))
-      .getByRole('button', { name: 'Try again.' })
+      .getByRole('button', { name: 'Try again loading more' })
       .click();
     await settle();
 

@@ -60,6 +60,8 @@ export class NotificationInboxComponent {
   private readonly lastOpenedId = signal<string | null>(null);
   private readonly summary = computed(() => {
     const count = this.rows().length;
+    const unchecked = this.uncheckedNote();
+    if (count === 0 && unchecked && !this.canLoadMore()) return unchecked;
     const noun = this.tab() === 'all' ? 'notification' : 'mention';
     const found =
       count === 0

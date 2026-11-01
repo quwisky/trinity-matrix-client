@@ -146,7 +146,9 @@
               </p>
             }
             <!-- The list may be scrolled far from the line above, and Refresh would drop its pages. -->
-            @if (inbox.serverListFailed() && canLoadMore() && rows().length) {
+            @if (
+              inbox.serverListFailed() && inbox.serverHasMore() && rows().length
+            ) {
               <p class="inbox__note" data-testid="inbox-more-failed">
                 <trn-icon name="cloud-off" />
                 <span
@@ -158,6 +160,7 @@
                     presentation="link"
                     shape="inline"
                     size="xs"
+                    aria-label="Try again loading more"
                     (click)="loadMore()"
                   >
                     Try again.
