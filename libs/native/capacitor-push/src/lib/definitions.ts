@@ -87,6 +87,74 @@ export interface PushHandoffPlugin {
   }): Promise<void>;
   /** Removes every notification Trinity delivered (the text became more private). */
   clearDelivered(): Promise<void>;
+  /** Failures resolve as a {@link NativeTokenResult}; only bad arguments reject. */
+  refreshTokens(options: {
+    userId: string;
+    lineage: string;
+    tokenSeen: string;
+  }): Promise<NativeTokenResult>;
+  /** Failures resolve as a {@link NativeTokenResult}; only bad arguments reject. */
+  currentTokens(options: {
+    userId: string;
+    lineage: string;
+  }): Promise<NativeTokenResult>;
+  /** A failure resolves `stored: false`; only bad arguments reject. */
+  migrateTokens(options: NativeTokenRecord): Promise<{ stored: boolean }>;
+  /** Failures resolve as a {@link NativeTokenRevocation}; only bad arguments reject. */
+  revokeTokens(options: {
+    userId: string;
+    lineage: string;
+  }): Promise<NativeTokenRevocation>;
+  /**
+   * One account, or every record with `all: true`. Rejects on anything but exactly one of those
+   * (an empty or non-string id included), or on a store failure.
+   */
+  removeTokens(options: { userId: string } | { all: true }): Promise<void>;
+  /**
+   * Removes every record whose user id is not listed, each under its lease: an empty list removes
+   * them all. Rejects and removes nothing on a missing or malformed list or when the store cannot
+   * list its records; also rejects when a removal failed, after trying the others.
+   */
+  removeTokensExcept(options: {
+    userIds: string[];
+  }): Promise<{ removed: number }>;
+}
+
+/**
+ * What the native token refresher answers. The refresh token never crosses back to the app.
+ * `accessTokenExpiresAt` is epoch ms; its absence means no known expiry.
+ */
+export type NativeTokenResult =
+  | { readonly kind: 'busy' | 'gone' | 'refused' | 'transient' | 'unavailable' }
+  | {
+      readonly kind: 'current';
+      readonly accessToken: string;
+      readonly accessTokenExpiresAt?: number;
+    }
+  | {
+      readonly kind: 'rotated';
+      readonly accessToken: string;
+      readonly accessTokenExpiresAt?: number;
+      readonly unsaved?: true;
+    };
+
+export type NativeTokenRevocation = {
+  readonly kind: 'revoked' | 'gone' | 'transient';
+};
+
+/** One account's tokens as the app hands them to the native vault once, during migration. */
+export interface NativeTokenRecord {
+  readonly userId: string;
+  /** `''` for a session saved before lineages existed. */
+  readonly lineage: string;
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  /** Epoch ms; absent when the token has no known expiry. */
+  readonly accessTokenExpiresAt?: number;
+  readonly tokenEndpoint: string;
+  readonly revocationEndpoint?: string;
+  readonly clientId: string;
+  readonly deviceId: string;
 }
 
 /** App lock's Notification text, as the renderers read it. */

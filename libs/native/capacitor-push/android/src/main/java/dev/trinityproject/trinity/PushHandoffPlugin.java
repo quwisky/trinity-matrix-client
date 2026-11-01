@@ -15,24 +15,38 @@ import dev.trinityproject.trinity.push.PushHandoffStore;
 import dev.trinityproject.trinity.push.PushHandoffStoreKt;
 import dev.trinityproject.trinity.push.PushTapKt;
 import dev.trinityproject.trinity.push.RoomNotificationKey;
+import dev.trinityproject.trinity.push.TokenRecord;
+import dev.trinityproject.trinity.push.TokenRecordKt;
+import dev.trinityproject.trinity.push.TokenRefresher;
+import dev.trinityproject.trinity.push.TokenRemoval;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import kotlin.Pair;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
  * Writes the push handoff store TrinityMessagingService reads while the app is closed: each
  * account's homeserver, access token (with its expiry, when it has one) and sound choice, and
- * its room names. PushHandoffService in data-access/notifications is the only caller. Never
- * logs what it stores.
+ * its room names. PushHandoffService in data-access/notifications is the only caller of those.
+ * Also exposes the native token refresher, whose calls answer the access token and expiry only:
+ * the refresh token never crosses back to the app. Never logs what it stores.
  */
 @CapacitorPlugin(name = "PushHandoff")
 public class PushHandoffPlugin extends Plugin {
+    // A grant and a wait for the lease both block, so no token call runs on the plugin thread.
+    private final ExecutorService tokenWork = Executors.newCachedThreadPool();
     private PushHandoffStore store;
+    private TokenRefresher tokens;
 
     @Override
     public void load() {
         store = new PushHandoffStore(getContext());
+        tokens = TokenRefresher.fromContext(getContext());
     }
 
     @PluginMethod
@@ -179,5 +193,121 @@ public class PushHandoffPlugin extends Plugin {
     @PluginMethod
     public void endBackgroundWork(PluginCall call) {
         call.resolve();
+    }
+
+    @PluginMethod
+    public void refreshTokens(PluginCall call) {
+        String userId = call.getString("userId");
+        String lineage = call.getString("lineage");
+        String tokenSeen = call.getString("tokenSeen");
+        if (userId == null || lineage == null || tokenSeen == null) {
+            call.reject("Must provide userId, lineage and tokenSeen");
+            return;
+        }
+        answerOnWorker(call, transientAnswer(), () -> tokens.refresh(userId, lineage, tokenSeen, TokenRefresher.appDeadline()).wire());
+    }
+
+    @PluginMethod
+    public void currentTokens(PluginCall call) {
+        String userId = call.getString("userId");
+        String lineage = call.getString("lineage");
+        if (userId == null || lineage == null) {
+            call.reject("Must provide userId and lineage");
+            return;
+        }
+        answerOnWorker(call, transientAnswer(), () -> tokens.current(userId, lineage).wire());
+    }
+
+    @PluginMethod
+    public void migrateTokens(PluginCall call) {
+        Pair<String, TokenRecord> parsed = TokenRecordKt.tokenRecordFromPluginCall(call.getData());
+        if (parsed == null) {
+            call.reject("Must provide userId, lineage, accessToken, refreshToken, tokenEndpoint, clientId and deviceId");
+            return;
+        }
+        answerOnWorker(call, new JSObject().put("stored", false), () ->
+            new JSObject().put("stored", tokens.migrate(parsed.getSecond(), parsed.getFirst()))
+        );
+    }
+
+    @PluginMethod
+    public void revokeTokens(PluginCall call) {
+        String userId = call.getString("userId");
+        String lineage = call.getString("lineage");
+        if (userId == null || lineage == null) {
+            call.reject("Must provide userId and lineage");
+            return;
+        }
+        answerOnWorker(call, transientAnswer(), () -> tokens.revoke(userId, lineage).wire());
+    }
+
+    /**
+     * One account, or every record with all: true. Rejects on anything but exactly one of those, or
+     * on a store failure.
+     */
+    @PluginMethod
+    public void removeTokens(PluginCall call) {
+        TokenRemoval removal = TokenRecordKt.tokenRemovalFromPluginCall(call.getData());
+        if (removal == null) {
+            call.reject("Must provide a userId or all: true");
+            return;
+        }
+        tokenWork.execute(() -> {
+            boolean removed;
+            try {
+                removed = tokens.remove(removal.getAccount());
+            } catch (RuntimeException error) {
+                removed = false;
+            }
+            if (removed) {
+                call.resolve();
+            } else {
+                call.reject("Could not remove the tokens");
+            }
+        });
+    }
+
+    /**
+     * Every record whose user id is not listed; an empty list removes them all. Rejects and removes
+     * nothing on a missing or malformed list or when the store cannot list its records; also
+     * rejects when a removal failed, after trying the others.
+     */
+    @PluginMethod
+    public void removeTokensExcept(PluginCall call) {
+        Set<String> keeping = TokenRecordKt.keptUserIdsFromPluginCall(call.getData());
+        if (keeping == null) {
+            call.reject("Must provide userIds as a list of user ids");
+            return;
+        }
+        tokenWork.execute(() -> {
+            Integer removed;
+            try {
+                removed = tokens.removeExcept(keeping);
+            } catch (RuntimeException error) {
+                removed = null;
+            }
+            if (removed != null) {
+                call.resolve(new JSObject().put("removed", removed));
+            } else {
+                call.reject("Could not remove the tokens");
+            }
+        });
+    }
+
+    /** Failures are answers: whatever `work` throws resolves `failed`, never crossing the bridge. */
+    private void answerOnWorker(PluginCall call, JSObject failed, Callable<JSONObject> work) {
+        tokenWork.execute(() -> {
+            JSObject answer;
+            try {
+                answer = JSObject.fromJSONObject(work.call());
+            } catch (Exception error) {
+                answer = failed;
+            }
+            call.resolve(answer);
+        });
+    }
+
+    private static JSObject transientAnswer() {
+        return new JSObject().put("kind", "transient");
     }
 }

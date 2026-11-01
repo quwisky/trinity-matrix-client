@@ -15,6 +15,12 @@ const plugin = vi.hoisted(() => ({
   endBackgroundWork: vi.fn(),
   setNotificationText: vi.fn(),
   clearDelivered: vi.fn(),
+  refreshTokens: vi.fn(),
+  currentTokens: vi.fn(),
+  migrateTokens: vi.fn(),
+  revokeTokens: vi.fn(),
+  removeTokens: vi.fn(),
+  removeTokensExcept: vi.fn(),
 }));
 // Recorded outside the mock: the registration happens once at import, and the runner clears
 // mock call history before each test.
@@ -268,6 +274,187 @@ describe('PushHandoffBridge', () => {
       await expect(
         firstValueFrom(bridge().setNotificationText('show')),
       ).rejects.toThrow('refused');
+    });
+  });
+
+  describe('native tokens', () => {
+    function onNative(): PushHandoffBridge {
+      isNative.mockReturnValue(true);
+      isAvailable.mockReturnValue(true);
+      return bridge();
+    }
+
+    it('passes refreshTokens through and answers unavailable off native', async () => {
+      const rotated = {
+        kind: 'rotated',
+        accessToken: 'a1',
+        accessTokenExpiresAt: 1_760_000_000_000,
+        unsaved: true,
+      };
+      expect(
+        await firstValueFrom(bridge().refreshTokens('@me:hs', 'L', 'a0')),
+      ).toEqual({ kind: 'unavailable' });
+      expect(plugin.refreshTokens).not.toHaveBeenCalled();
+
+      TestBed.resetTestingModule();
+      plugin.refreshTokens.mockResolvedValue(rotated);
+      const answer = onNative().refreshTokens('@me:hs', 'L', 'a0');
+
+      expect(plugin.refreshTokens).not.toHaveBeenCalled();
+      expect(await firstValueFrom(answer)).toEqual(rotated);
+      expect(plugin.refreshTokens).toHaveBeenCalledWith({
+        userId: '@me:hs',
+        lineage: 'L',
+        tokenSeen: 'a0',
+      });
+    });
+
+    it('passes currentTokens through and answers unavailable off native', async () => {
+      const current = { kind: 'current', accessToken: 'a0' };
+      expect(
+        await firstValueFrom(bridge().currentTokens('@me:hs', '')),
+      ).toEqual({ kind: 'unavailable' });
+      expect(plugin.currentTokens).not.toHaveBeenCalled();
+
+      TestBed.resetTestingModule();
+      plugin.currentTokens.mockResolvedValue(current);
+      const answer = onNative().currentTokens('@me:hs', '');
+
+      expect(plugin.currentTokens).not.toHaveBeenCalled();
+      expect(await firstValueFrom(answer)).toEqual(current);
+      expect(plugin.currentTokens).toHaveBeenCalledWith({
+        userId: '@me:hs',
+        lineage: '',
+      });
+    });
+
+    it('answers false for migrateTokens off native and the stored flag on native', async () => {
+      const record = {
+        userId: '@me:hs',
+        lineage: 'L',
+        accessToken: 'a0',
+        refreshToken: 'r0',
+        accessTokenExpiresAt: 1_760_000_000_000,
+        tokenEndpoint: 'https://op.example/token',
+        revocationEndpoint: 'https://op.example/revoke',
+        clientId: 'c',
+        deviceId: 'D',
+      };
+      expect(await firstValueFrom(bridge().migrateTokens(record))).toBe(false);
+      expect(plugin.migrateTokens).not.toHaveBeenCalled();
+
+      TestBed.resetTestingModule();
+      const handoff = onNative();
+      plugin.migrateTokens.mockResolvedValue({ stored: true });
+      const answer = handoff.migrateTokens(record);
+
+      expect(plugin.migrateTokens).not.toHaveBeenCalled();
+      expect(await firstValueFrom(answer)).toBe(true);
+      expect(plugin.migrateTokens).toHaveBeenCalledWith(record);
+
+      plugin.migrateTokens.mockResolvedValue({ stored: false });
+      expect(await firstValueFrom(handoff.migrateTokens(record))).toBe(false);
+    });
+
+    it('answers gone for revokeTokens off native', async () => {
+      expect(
+        await firstValueFrom(bridge().revokeTokens('@me:hs', 'L')),
+      ).toEqual({ kind: 'gone' });
+      expect(plugin.revokeTokens).not.toHaveBeenCalled();
+
+      TestBed.resetTestingModule();
+      plugin.revokeTokens.mockResolvedValue({ kind: 'revoked' });
+      const answer = onNative().revokeTokens('@me:hs', 'L');
+
+      expect(plugin.revokeTokens).not.toHaveBeenCalled();
+      expect(await firstValueFrom(answer)).toEqual({ kind: 'revoked' });
+      expect(plugin.revokeTokens).toHaveBeenCalledWith({
+        userId: '@me:hs',
+        lineage: 'L',
+      });
+    });
+
+    it('removes one account by name and every account only by asking', async () => {
+      const offNative = bridge();
+      await firstValueFrom(offNative.removeTokens('@me:hs'));
+      await firstValueFrom(offNative.removeAllTokens());
+      expect(plugin.removeTokens).not.toHaveBeenCalled();
+
+      TestBed.resetTestingModule();
+      const handoff = onNative();
+      const answer = handoff.removeTokens('@me:hs');
+
+      expect(plugin.removeTokens).not.toHaveBeenCalled();
+      await firstValueFrom(answer);
+      expect(plugin.removeTokens).toHaveBeenCalledWith({ userId: '@me:hs' });
+
+      const every = handoff.removeAllTokens();
+      expect(plugin.removeTokens).toHaveBeenCalledTimes(1);
+      await firstValueFrom(every);
+      expect(plugin.removeTokens).toHaveBeenLastCalledWith({ all: true });
+
+      plugin.removeTokens.mockRejectedValue(new Error('store failed'));
+      await expect(firstValueFrom(handoff.removeAllTokens())).rejects.toThrow(
+        'store failed',
+      );
+    });
+
+    it('sweeps every account but the listed ones, and an empty list sweeps all', async () => {
+      const offNative = bridge();
+      await expect(
+        firstValueFrom(offNative.removeTokensExcept(['@me:hs'])),
+      ).resolves.toEqual({ removed: 0 });
+      expect(plugin.removeTokensExcept).not.toHaveBeenCalled();
+
+      TestBed.resetTestingModule();
+      const handoff = onNative();
+      plugin.removeTokensExcept.mockResolvedValue({ removed: 2 });
+      const answer = handoff.removeTokensExcept(['@me:hs']);
+
+      expect(plugin.removeTokensExcept).not.toHaveBeenCalled();
+      await expect(firstValueFrom(answer)).resolves.toEqual({ removed: 2 });
+      expect(plugin.removeTokensExcept).toHaveBeenCalledWith({
+        userIds: ['@me:hs'],
+      });
+
+      await firstValueFrom(handoff.removeTokensExcept([]));
+      expect(plugin.removeTokensExcept).toHaveBeenLastCalledWith({
+        userIds: [],
+      });
+    });
+
+    it('never turns a malformed list into a sweep', async () => {
+      for (const bad of [
+        undefined,
+        null,
+        '@me:hs',
+        [7],
+        [''],
+        ['@me:hs', undefined],
+      ]) {
+        TestBed.resetTestingModule();
+        await expect(
+          firstValueFrom(onNative().removeTokensExcept(bad as string[])),
+        ).rejects.toThrow('removeTokensExcept');
+      }
+      expect(plugin.removeTokensExcept).not.toHaveBeenCalled();
+    });
+
+    it('never turns a stray user id into a wipe', async () => {
+      const session = undefined as { userId: string } | undefined;
+      // @ts-expect-error A possibly missing user id must not compile.
+      const missing = () => onNative().removeTokens(session?.userId);
+
+      for (const call of [
+        missing,
+        () => onNative().removeTokens(''),
+        () => onNative().removeTokens(7 as unknown as string),
+        () => onNative().removeTokens(null as unknown as string),
+      ]) {
+        TestBed.resetTestingModule();
+        await expect(firstValueFrom(call())).rejects.toThrow('removeTokens');
+      }
+      expect(plugin.removeTokens).not.toHaveBeenCalled();
     });
   });
 });

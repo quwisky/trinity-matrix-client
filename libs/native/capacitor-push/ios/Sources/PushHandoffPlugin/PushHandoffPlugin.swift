@@ -6,14 +6,17 @@ import UserNotifications
 /**
  * Writes the push handoff store the NotificationService extension reads: each account's
  * homeserver, access token (with its expiry, when it has one) and sound choice, and its room
- * names. PushHandoffService in data-access/notifications is the only caller (debug builds add
- * renderProbe for the e2e suite), and it also holds background run time through it while a
- * token refresh reaches the store. Never logs what it stores.
+ * names. PushHandoffService in data-access/notifications is the only caller of those (debug
+ * builds add renderProbe for the e2e suite), and it also holds background run time through it
+ * while a token refresh reaches the store. Also exposes the native token refresher, whose calls
+ * answer the access token and expiry only: the refresh token never crosses back to the app.
+ * Never logs what it stores.
  *
  * Without a store (a build lacking the app group), removing and clearing resolve, since there
- * is nothing to remove, so sign-out and clear-all-data never wait on it; writes reject.
- * Removing an account also removes its delivered pushes, and clearing removes every delivered
- * push, so no message text outlives a sign-out; that removal never rejects.
+ * is nothing to remove, so sign-out and clear-all-data never wait on it; writes reject, and the
+ * token calls answer as though no refresher could run. Removing an account also removes its
+ * delivered pushes, and clearing removes every delivered push, so no message text outlives a
+ * sign-out; that removal never rejects.
  *
  * `cap sync` registers this class from the @trinity/capacitor-push package, so it is a public
  * CAPPlugin: Capacitor's automatic registration skips CAPInstancePlugin subclasses.
@@ -34,6 +37,12 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             CAPPluginMethod(name: "endBackgroundWork", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "setNotificationText", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "clearDelivered", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "refreshTokens", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "currentTokens", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "migrateTokens", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "revokeTokens", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "removeTokens", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "removeTokensExcept", returnType: CAPPluginReturnPromise),
         ]
         #if DEBUG
         methods.append(CAPPluginMethod(name: "renderProbe", returnType: CAPPluginReturnPromise))
@@ -45,6 +54,7 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
     /// about 10 s after the lock.
     private static let lockingWindow: TimeInterval = 10
     private let store = PushHandoffStore.fromMainBundle()
+    private let tokens = TokenRefresher.fromMainBundle()
     /// Background tasks begun and not yet ended. Main thread only.
     private var backgroundTasks = Set<UIBackgroundTaskIdentifier>()
     /// System uptime when iOS last announced that protected data will become unavailable, until
@@ -243,13 +253,7 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
     /// thread, after every notification delivered before this call ran.
     @objc func beginBackgroundWork(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            var task = UIBackgroundTaskIdentifier.invalid
-            task = UIApplication.shared.beginBackgroundTask(withName: "Trinity token refresh") {
-                self.endBackgroundTask(task)
-            }
-            if task != .invalid {
-                self.backgroundTasks.insert(task)
-            }
+            let task = self.beginBackgroundTask()
             let locking = self.protectedDataLockingSince.map {
                 ProcessInfo.processInfo.systemUptime - $0 < Self.lockingWindow
             } ?? false
@@ -274,10 +278,131 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// Main thread only. iOS ending the granted time ends the task.
+    private func beginBackgroundTask() -> UIBackgroundTaskIdentifier {
+        var task = UIBackgroundTaskIdentifier.invalid
+        task = UIApplication.shared.beginBackgroundTask(withName: "Trinity token refresh") {
+            self.endBackgroundTask(task)
+        }
+        if task != .invalid {
+            backgroundTasks.insert(task)
+        }
+        return task
+    }
+
     /// Main thread only. Ends `task` once, whether the app or iOS asks first.
     private func endBackgroundTask(_ task: UIBackgroundTaskIdentifier) {
         guard backgroundTasks.remove(task) != nil else { return }
         UIApplication.shared.endBackgroundTask(task)
+    }
+
+    /// `resolve` queues its delivery to JS on the main queue: suspending before that runs would
+    /// hold the answer until the app resumes.
+    private func endBackgroundTaskAfterQueuedWork(_ task: UIBackgroundTaskIdentifier) {
+        DispatchQueue.main.async { self.endBackgroundTask(task) }
+    }
+
+    /// Holds background run time until it answers or iOS ends the granted time: suspended
+    /// mid-grant, the app loses the answer after the provider has spent the refresh token.
+    @objc func refreshTokens(_ call: CAPPluginCall) {
+        guard let userId = call.getString("userId"), let lineage = call.getString("lineage"),
+              let tokenSeen = call.getString("tokenSeen")
+        else {
+            call.reject("Must provide userId, lineage and tokenSeen")
+            return
+        }
+        guard let tokens else {
+            call.resolve(TokenRefreshResult.unavailable.wire)
+            return
+        }
+        Task { @MainActor in
+            let task = self.beginBackgroundTask()
+            guard TokenRefresher.mayStartAppGrant(
+                hasBackgroundTime: task != .invalid,
+                appIsActive: UIApplication.shared.applicationState == .active
+            ) else {
+                call.resolve(TokenRefreshResult.transient.wire)
+                return
+            }
+            let result = await tokens.refresh(
+                account: userId, lineage: lineage, tokenSeen: tokenSeen, budget: TokenBudgets.appGrant)
+            call.resolve(result.wire)
+            self.endBackgroundTaskAfterQueuedWork(task)
+        }
+    }
+
+    @objc func currentTokens(_ call: CAPPluginCall) {
+        guard let userId = call.getString("userId"), let lineage = call.getString("lineage") else {
+            call.reject("Must provide userId and lineage")
+            return
+        }
+        guard let tokens else {
+            call.resolve(TokenRefreshResult.unavailable.wire)
+            return
+        }
+        Task { call.resolve(await tokens.current(account: userId, lineage: lineage).wire) }
+    }
+
+    @objc func migrateTokens(_ call: CAPPluginCall) {
+        guard let (userId, record) = TokenRecord.fromPluginCall(call.jsObjectRepresentation) else {
+            call.reject("Must provide userId, lineage, accessToken, refreshToken, tokenEndpoint, clientId and deviceId")
+            return
+        }
+        guard let tokens else {
+            call.resolve(["stored": false])
+            return
+        }
+        Task { call.resolve(["stored": await tokens.migrate(record, for: userId)]) }
+    }
+
+    @objc func revokeTokens(_ call: CAPPluginCall) {
+        guard let userId = call.getString("userId"), let lineage = call.getString("lineage") else {
+            call.reject("Must provide userId and lineage")
+            return
+        }
+        guard let tokens else {
+            call.resolve(TokenRevokeResult.gone.wire)
+            return
+        }
+        Task { call.resolve(await tokens.revoke(account: userId, lineage: lineage).wire) }
+    }
+
+    @objc func removeTokens(_ call: CAPPluginCall) {
+        guard let options = call.options as? [String: Any], let removal = TokenRemoval.fromPluginCall(options) else {
+            call.reject("Must provide a userId or all: true")
+            return
+        }
+        guard let tokens else {
+            call.resolve()
+            return
+        }
+        Task {
+            if await tokens.remove(account: removal.account) {
+                call.resolve()
+            } else {
+                call.reject("Could not remove the tokens")
+            }
+        }
+    }
+
+    @objc func removeTokensExcept(_ call: CAPPluginCall) {
+        guard let options = call.options as? [String: Any],
+              let keeping = TokenRemoval.keptUserIds(fromPluginCall: options)
+        else {
+            call.reject("Must provide userIds as a list of user ids")
+            return
+        }
+        guard let tokens else {
+            call.resolve(["removed": 0])
+            return
+        }
+        Task {
+            if let removed = await tokens.remove(except: keeping) {
+                call.resolve(["removed": removed])
+            } else {
+                call.reject("Could not remove the tokens")
+            }
+        }
     }
 
     #if DEBUG

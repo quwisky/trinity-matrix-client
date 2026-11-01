@@ -1,9 +1,12 @@
 import { Injectable } from '@angular/core';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Observable, defer, from, map, of } from 'rxjs';
+import { Observable, defer, from, map, of, throwError } from 'rxjs';
 import {
   PUSH_HANDOFF_PLUGIN_NAME,
   type BackgroundWork,
+  type NativeTokenRecord,
+  type NativeTokenResult,
+  type NativeTokenRevocation,
   type PushHandoffAccount,
   type PushHandoffNotificationText,
   type PushHandoffPlugin,
@@ -112,7 +115,88 @@ export class PushHandoffBridge {
     return this.call(() => pushHandoff.clearDelivered());
   }
 
+  /**
+   * Cold. Grants new tokens natively if the stored access token is still `tokenSeen`; answers
+   * unavailable off native. Errors only when the native side failed to answer.
+   */
+  refreshTokens(
+    userId: string,
+    lineage: string,
+    tokenSeen: string,
+  ): Observable<NativeTokenResult> {
+    return this.ask(
+      () => pushHandoff.refreshTokens({ userId, lineage, tokenSeen }),
+      { kind: 'unavailable' },
+    );
+  }
+
+  /** Cold. Reads the stored access token; answers unavailable off native. */
+  currentTokens(
+    userId: string,
+    lineage: string,
+  ): Observable<NativeTokenResult> {
+    return this.ask(() => pushHandoff.currentTokens({ userId, lineage }), {
+      kind: 'unavailable',
+    });
+  }
+
+  /** Cold. Emits whether the native vault holds the record; false off native. */
+  migrateTokens(record: NativeTokenRecord): Observable<boolean> {
+    return this.ask(
+      async () =>
+        (await pushHandoff.migrateTokens({ ...record })).stored === true,
+      false,
+    );
+  }
+
+  /** Cold. Revokes the account's tokens at the provider; answers gone off native. */
+  revokeTokens(
+    userId: string,
+    lineage: string,
+  ): Observable<NativeTokenRevocation> {
+    return this.ask(() => pushHandoff.revokeTokens({ userId, lineage }), {
+      kind: 'gone',
+    });
+  }
+
+  /**
+   * Cold. Removes one account's tokens; inert off native. Errors on any host for an empty or
+   * non-string id, which must never reach native as a wipe.
+   */
+  removeTokens(userId: string): Observable<void> {
+    return typeof userId === 'string' && userId !== ''
+      ? this.call(() => pushHandoff.removeTokens({ userId }))
+      : throwError(() => new Error('removeTokens needs a user id'));
+  }
+
+  /** Cold. Removes every account's tokens; inert off native. */
+  removeAllTokens(): Observable<void> {
+    return this.call(() => pushHandoff.removeTokens({ all: true }));
+  }
+
+  /**
+   * Cold. Removes every account's tokens but the listed ones', and emits how many went; an empty
+   * list removes them all. Emits 0 off native. Errors on any host unless given a list of user ids.
+   */
+  removeTokensExcept(
+    userIds: readonly string[],
+  ): Observable<{ readonly removed: number }> {
+    return Array.isArray(userIds) &&
+      userIds.every((id) => typeof id === 'string' && id !== '')
+      ? this.ask(
+          () => pushHandoff.removeTokensExcept({ userIds: [...userIds] }),
+          { removed: 0 },
+        )
+      : throwError(
+          () => new Error('removeTokensExcept needs a list of user ids'),
+        );
+  }
+
   private call(command: () => Promise<void>): Observable<void> {
-    return defer(() => (this.available ? from(command()) : of(void 0)));
+    return this.ask(command, void 0);
+  }
+
+  private ask<T>(command: () => Promise<T>, inert: T): Observable<T> {
+    return defer(() => (this.available ? from(command()) : of(inert)));
   }
 }

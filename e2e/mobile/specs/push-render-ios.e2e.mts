@@ -17,7 +17,11 @@ import {
   resetApp,
 } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
-import { storeExpiredPushAccount } from '../support/push-handoff.mts';
+import {
+  storeExpiredPushAccount,
+  tokenAnswersForUnknownAccount,
+  tokenRoundTrip,
+} from '../support/push-handoff.mts';
 
 /** What the NotificationService extension would show, as the debug render probe reports it. */
 interface RenderedPush {
@@ -192,5 +196,57 @@ describe('device-rendered push on iOS', () => {
       body: 'Open Trinity to read this message',
       threadIdentifier: room.roomId,
     });
+  });
+
+  it('answers the token calls for an account with no tokens through the installed plugin', async () => {
+    const answers = await tokenAnswersForUnknownAccount(
+      `@${uniqueId('nobody')}:unknown.invalid`,
+    );
+
+    expect(answers.current).toEqual({ kind: 'gone' });
+    expect(answers.refresh).toEqual({ kind: 'gone' });
+    expect(answers.malformedRemovals).toEqual(
+      Array.from({ length: 6 }, () =>
+        expect.stringContaining('Must provide a userId or all: true'),
+      ),
+    );
+    expect(answers.malformedSweeps).toEqual(
+      Array.from({ length: 4 }, () =>
+        expect.stringContaining('Must provide userIds'),
+      ),
+    );
+  });
+
+  it('stores, reads and removes tokens through the installed plugin, with no network', async () => {
+    const accessTokenExpiresAt = 4_102_444_800_000;
+    const answers = await tokenRoundTrip(
+      `@${uniqueId('vault')}:unknown.invalid`,
+      `@${uniqueId('nobody')}:unknown.invalid`,
+      {
+        lineage: 'L',
+        accessToken: 'synthetic-access',
+        refreshToken: 'synthetic-refresh',
+        accessTokenExpiresAt,
+        tokenEndpoint: 'https://unreachable.invalid/token',
+        revocationEndpoint: 'https://unreachable.invalid/revoke',
+        clientId: 'synthetic-client',
+        deviceId: 'SYNTHETIC',
+      },
+    );
+
+    expect(answers.stored).toEqual({ stored: true });
+    expect(answers.current).toEqual({
+      kind: 'current',
+      accessToken: 'synthetic-access',
+      accessTokenExpiresAt,
+    });
+    expect(answers.current).not.toHaveProperty('refreshToken');
+    expect(answers.revokedUnknown).toEqual({ kind: 'gone' });
+    expect(answers.sweepKeeping).toEqual({ removed: expect.any(Number) });
+    expect(answers.currentKept).toEqual(answers.current);
+    expect(answers.currentAfter).toEqual({ kind: 'gone' });
+    expect(answers.sweepOfAll).toEqual({ removed: 1 });
+    expect(answers.currentSwept).toEqual({ kind: 'gone' });
+    expect(answers.currentAfterAll).toEqual({ kind: 'gone' });
   });
 });
