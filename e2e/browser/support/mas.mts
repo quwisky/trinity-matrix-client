@@ -144,10 +144,14 @@ export async function completeMasSignIn(
   );
   // MAS 1.28.0 templates: pages/login.html (inputs `username`, `password`) and
   // pages/consent.html at /consent/{grant_id}; both submit with "Continue".
-  await provider.locator('input[name="username"]').fill(account.user);
-  await provider.locator('input[name="password"]').fill(account.pass);
-  await provider.getByRole('button', { name: 'Continue' }).click();
-  await provider.waitForURL(/\/consent\//, { timeout: 30_000 });
+  // MAS keeps its own browser session, so a re-auth goes straight to consent.
+  await provider.waitForURL(/\/(login|consent\/)/, { timeout: 30_000 });
+  if (!/\/consent\//.test(provider.url())) {
+    await provider.locator('input[name="username"]').fill(account.user);
+    await provider.locator('input[name="password"]').fill(account.pass);
+    await provider.getByRole('button', { name: 'Continue' }).click();
+    await provider.waitForURL(/\/consent\//, { timeout: 30_000 });
+  }
   await provider.getByRole('button', { name: 'Continue' }).click();
   await settleSignIn(page, 'skip-if-shown', 90_000);
 }
