@@ -717,7 +717,8 @@ jobs:
               ./specs/session.e2e.mts,
               ./specs/share.e2e.mts,
               ./specs/smoke.e2e.mts,
-              ./specs/sso.e2e.mts
+              ./specs/sso.e2e.mts,
+              ./specs/token-refresh-dex.e2e.mts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

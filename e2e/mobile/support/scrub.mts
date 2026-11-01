@@ -24,7 +24,7 @@ function scrubLine(text: string, keepTyped: boolean): string {
     .replace(/syt_[A-Za-z0-9_]+/g, '<token>')
     // Tokens by key, whatever the homeserver's format (Tuwunel's are not syt_-prefixed).
     .replace(
-      /(\\?"(?:access_?token|refresh_?token)\\?"\s*:\s*\\?")[^"\\]*/gi,
+      /(\\?"(?:access_?token|refresh_?token|token_?seen)\\?"\s*:\s*\\?")[^"\\]*/gi,
       '$1<token>',
     )
     // ...and in query strings and form bodies (legacy media URLs carry access_token=).

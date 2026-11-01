@@ -26,10 +26,10 @@ describe('mobile E2E artifact scrub', () => {
     );
     expect(
       scrub(
-        '{\\"access_token\\":\\"abc123\\",\\"refresh_token\\":\\"def456\\",\\"refreshToken\\":\\"ghi\\"}',
+        '{\\"access_token\\":\\"abc123\\",\\"refresh_token\\":\\"def456\\",\\"refreshToken\\":\\"ghi\\",\\"tokenSeen\\":\\"jkl\\"}',
       ),
     ).toBe(
-      '{\\"access_token\\":\\"<token>\\",\\"refresh_token\\":\\"<token>\\",\\"refreshToken\\":\\"<token>\\"}',
+      '{\\"access_token\\":\\"<token>\\",\\"refresh_token\\":\\"<token>\\",\\"refreshToken\\":\\"<token>\\",\\"tokenSeen\\":\\"<token>\\"}',
     );
     expect(
       scrub(
