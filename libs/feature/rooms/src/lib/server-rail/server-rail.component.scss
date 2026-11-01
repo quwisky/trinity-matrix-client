@@ -88,13 +88,20 @@
     height: var(--trinity-rail-indicator-unread);
   }
 
-  .item:hover .indicator {
-    height: var(--trinity-rail-indicator-hover);
+  @media (hover: hover) {
+    .item:hover .indicator {
+      height: var(--trinity-rail-indicator-hover);
+    }
   }
 
-  .item .indicator--selected,
-  .item:hover .indicator--selected {
+  .item .indicator--selected {
     height: var(--trinity-rail-indicator-selected);
+  }
+
+  @media (hover: hover) {
+    .item:hover .indicator--selected {
+      height: var(--trinity-rail-indicator-selected);
+    }
   }
 
   // Unread count (or dot): always top-right of the icon, so it sits in the same place on
@@ -156,19 +163,27 @@
     font-weight: 400;
   }
 
-  .pill.add:hover {
-    background: var(--trinity-success-solid);
-    color: var(--trinity-success-solid-foreground);
+  @media (hover: hover) {
+    .pill.add:hover {
+      background: var(--trinity-success-solid);
+      color: var(--trinity-success-solid-foreground);
+    }
   }
 
   // Home + Rooms pills: accent-filled on hover and while their view is active
   // (`.item.active`), the quieter treatment against Recent's always-filled pill.
-  .pill.home:hover,
   .item.active .pill.home,
-  .pill.rooms:hover,
   .item.active .pill.rooms {
     background: var(--trinity-accent);
     color: var(--trinity-accent-foreground);
+  }
+
+  @media (hover: hover) {
+    .pill.home:hover,
+    .pill.rooms:hover {
+      background: var(--trinity-accent);
+      color: var(--trinity-accent-foreground);
+    }
   }
 
   // Unread chats sit between Rooms and the separator, spaced like the rest of the rail.

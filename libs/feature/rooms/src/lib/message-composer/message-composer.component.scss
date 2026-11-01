@@ -177,9 +177,11 @@
     font-size: var(--trinity-text-lg);
     cursor: pointer;
 
-    &:hover:where(:not(:disabled)) {
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
+    @media (hover: hover) {
+      &:hover:where(:not(:disabled)) {
+        background: var(--trinity-state-hover-surface);
+        color: var(--trinity-state-hover-foreground);
+      }
     }
 
     &:active:where(:not(:disabled)) {

@@ -58,8 +58,10 @@
     height: auto;
     text-align: left;
 
-    &:hover {
-      text-decoration: none;
+    @media (hover: hover) {
+      &:hover {
+        text-decoration: none;
+      }
     }
   }
 
@@ -119,8 +121,10 @@
     min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
 
-    &:hover {
-      color: var(--trinity-text-bright);
+    @media (hover: hover) {
+      &:hover {
+        color: var(--trinity-text-bright);
+      }
     }
   }
 

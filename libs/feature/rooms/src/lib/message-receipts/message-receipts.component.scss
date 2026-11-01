@@ -23,8 +23,10 @@
     opacity: 0.85;
     cursor: pointer;
 
-    &:hover {
-      background: var(--trinity-state-hover-surface);
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-state-hover-surface);
+      }
     }
   }
 

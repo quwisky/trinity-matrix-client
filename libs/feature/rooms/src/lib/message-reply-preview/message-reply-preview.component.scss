@@ -21,9 +21,14 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover,
     &:focus-visible {
       background: var(--trinity-state-hover-surface);
+    }
+
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-state-hover-surface);
+      }
     }
 
     &::before {
@@ -38,9 +43,11 @@
       border-top-left-radius: 8px;
     }
 
-    &:hover .msg__reply-author,
-    &:hover .msg__reply-body {
-      color: var(--trinity-text);
+    @media (hover: hover) {
+      &:hover .msg__reply-author,
+      &:hover .msg__reply-body {
+        color: var(--trinity-text);
+      }
     }
   }
 

@@ -95,9 +95,11 @@ $below-md: '(max-width: 767.98px)';
 
   // `:where()` keeps the disabled guard specificity-neutral, so a specialized state
   // declared by the consumer (Join, Accept, Decline) can still override this recipe.
-  &:hover:where(:not(:disabled)) {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
+  @media (hover: hover) {
+    &:hover:where(:not(:disabled)) {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
   }
 
   &:active:where(:not(:disabled)) {

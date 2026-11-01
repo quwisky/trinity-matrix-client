@@ -79,8 +79,10 @@
     font-size: 14px;
     color: var(--trinity-danger);
 
-    &:hover {
-      color: var(--trinity-text);
+    @media (hover: hover) {
+      &:hover {
+        color: var(--trinity-text);
+      }
     }
   }
 
@@ -165,8 +167,10 @@
     font-size: 14px;
     color: var(--trinity-text-muted);
 
-    &:hover {
-      color: var(--trinity-text);
+    @media (hover: hover) {
+      &:hover {
+        color: var(--trinity-text);
+      }
     }
   }
 

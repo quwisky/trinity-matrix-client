@@ -365,7 +365,7 @@ describe('ServerRailComponent', () => {
     // Specificity of the unread rule is (item, indicator) = 2 classes; the selected rule
     // must have at least that many and come after it, or the 8px dot wins.
     const unreadAt = css.indexOf('.item--unread .indicator {');
-    const selectedAt = css.indexOf('.item .indicator--selected,');
+    const selectedAt = css.indexOf('.item .indicator--selected {');
     expect(unreadAt).toBeGreaterThan(-1);
     expect(selectedAt).toBeGreaterThan(unreadAt);
     expect(css.indexOf('.item:hover .indicator--selected')).toBeGreaterThan(

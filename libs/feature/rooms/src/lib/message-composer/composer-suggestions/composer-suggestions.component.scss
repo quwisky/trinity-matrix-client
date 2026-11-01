@@ -30,9 +30,14 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover,
     &--active {
       background: var(--trinity-hover);
+    }
+
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-hover);
+      }
     }
   }
 

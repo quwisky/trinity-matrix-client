@@ -13,7 +13,6 @@
 
     // Reveal the kebab on hover/focus and keep it visible while its menu is open (the CDK menu overlay
     // lives outside this row, so focus-within won't cover it).
-    &:hover .channel__menu,
     &:focus-within .channel__menu,
     .channel__menu[aria-expanded='true'] {
       opacity: 1;
@@ -58,12 +57,14 @@
         color: var(--trinity-state-selected-foreground);
       }
 
-      &:hover {
-        background: var(--trinity-state-selected-hover-surface);
-        color: var(--trinity-state-selected-hover-foreground);
-
-        .channel__preview {
+      @media (hover: hover) {
+        &:hover {
+          background: var(--trinity-state-selected-hover-surface);
           color: var(--trinity-state-selected-hover-foreground);
+
+          .channel__preview {
+            color: var(--trinity-state-selected-hover-foreground);
+          }
         }
       }
     }
@@ -162,8 +163,16 @@
     font-size: 1.125rem;
     opacity: 0;
 
-    &:hover {
-      color: var(--trinity-text-bright);
+    @media (hover: hover) {
+      &:hover {
+        color: var(--trinity-text-bright);
+      }
+    }
+  }
+
+  @media (hover: hover) {
+    .channel-row:hover .channel__menu {
+      opacity: 1;
     }
   }
 
