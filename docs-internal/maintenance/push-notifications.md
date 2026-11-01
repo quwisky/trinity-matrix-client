@@ -364,7 +364,9 @@ refresh gets a fresh 5 s, so the worst case is about 29 s against the extension'
 limit, which is reasoned and not measured on a device. Android gives the refresh and the
 reads 8 s together. Android enforces the budget with a watchdog that falls back without the
 network; iOS shares one deadline across each set of reads and also answers
-`serviceExtensionTimeWillExpire`. Redirects are refused, so the
+`serviceExtensionTimeWillExpire`. Android also ends a Matrix read that passes 256 KiB or its
+deadline and treats it as failed. Swift has no byte cap on Matrix reads: URLSession's timeouts,
+set from the deadline, are its only bound. Redirects are refused, so the
 token never follows one. Both apply the shared text rules (including the 200 code point
 limit and Unicode `White_Space` trimming) pinned by
 [`push-render-cases.json`](../../native/push-render/push-render-cases.json), which JUnit and
@@ -390,7 +392,11 @@ A refresh takes the account's lease first and reads the vault again under it, so
 a renderer that need a token at the same time make one grant, and the second takes the pair the
 first stored. iOS's lease is a file in the app group; Android's is a table in the process with a
 21 s expiry (twice the 8 s budget plus a 5 s margin), so it can lapse while its holder is
-frozen and is not a plain mutex. A refresh is tried once per push: a 401 on the second read
+frozen and is not a plain mutex. On both platforms, once the compare under the lease finds a
+grant is needed, a refresh with under 3 s of its budget left answers `transient` and sends
+nothing: the answer could be lost after the provider spends the token, and the app's next refresh
+would then be refused. An app refresh that waits most of its 8 s on the lease ends this way too. A
+refresh is tried once per push: a 401 on the second read
 does not refresh again. These are the results, shared by both renderers through the
 `tokenFlows` rows of `push-render-cases.json`:
 

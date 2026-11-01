@@ -191,6 +191,8 @@ public enum TokenBudgets {
     public static let revokeRequest: TimeInterval = 2
     /// How long a sent grant's answer may still arrive after its deadline. No send starts in it.
     public static let grace: TimeInterval = 3
+    /// The least budget a grant may start with.
+    public static let grantFloor: TimeInterval = 3
 }
 
 public protocol TokenVault {

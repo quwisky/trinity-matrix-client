@@ -96,6 +96,9 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
         }
         // A grant spends the refresh token: once it is sent, the answer is waited for regardless.
         if Task.isCancelled { return .transient }
+        // With less left the answer can be lost after the provider spends the token, and the next
+        // refresh is then refused, which ends a live session.
+        if deadline.timeIntervalSince(now()) < TokenBudgets.grantFloor { return .transient }
         let started = now()
         switch await client.grant(record, deadline: deadline) {
         case .failed:

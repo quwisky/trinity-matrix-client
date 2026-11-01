@@ -341,6 +341,46 @@ final class TokenRefresherTests: XCTestCase {
         XCTAssertEqual(vault.stored, tokenRecord())
     }
 
+    func testAGrantNeedsThreeSecondsOfBudget() async {
+        let justUnder = await refresher.refresh(account: user, lineage: "L", tokenSeen: "a0", budget: 2.999)
+        let pushJustUnder = await refresher.refreshForPush(account: user, tokenSeen: "a0", budget: 2.999)
+
+        XCTAssertEqual(justUnder, .transient)
+        XCTAssertEqual(pushJustUnder, .transient)
+        XCTAssertTrue(client.grants.isEmpty)
+        XCTAssertEqual(vault.stored, tokenRecord())
+
+        let atTheFloor = await refresher.refreshForPush(account: user, tokenSeen: "a0", budget: 3)
+
+        XCTAssertEqual(atTheFloor, .rotated(a1r1, unsaved: false))
+        XCTAssertEqual(client.grants.count, 1)
+    }
+
+    func testTimeWaitedOnTheLeaseCountsAgainstTheGrantFloor() async {
+        lease.onTake = { [clock = clock!, budget] in clock.advance(budget - 2.999) }
+        let justUnder = await refresh()
+        XCTAssertEqual(justUnder, .transient)
+        XCTAssertTrue(client.grants.isEmpty)
+    }
+
+    func testAGrantStartsAtTheFloorAfterWaitingOnTheLease() async {
+        lease.onTake = { [clock = clock!, budget] in clock.advance(budget - 3) }
+        _ = await refresh()
+        XCTAssertEqual(client.grants.count, 1)
+        XCTAssertEqual(vault.stored?.accessToken, "a1")
+    }
+
+    /// Reading what is stored costs no token, so it needs no time left for an answer.
+    func testTheCompareComesBeforeTheGrantFloor() async {
+        let rotatedElsewhere = await refresher.refresh(account: user, lineage: "L", tokenSeen: "older", budget: 1)
+        XCTAssertEqual(rotatedElsewhere, .current(tokenRecord()))
+
+        vault.stored = tokenRecord(state: .refused)
+        let refused = await refresher.refresh(account: user, lineage: "L", tokenSeen: "a0", budget: 1)
+        XCTAssertEqual(refused, .refused)
+        XCTAssertTrue(client.grants.isEmpty)
+    }
+
     func testBusyPastTheBudgetSendsNothing() async {
         lease.answer = .busy
 

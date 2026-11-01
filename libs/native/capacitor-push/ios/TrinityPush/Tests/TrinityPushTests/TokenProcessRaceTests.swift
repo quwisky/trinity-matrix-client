@@ -5,7 +5,8 @@ import XCTest
 
 /// The app and the notification process as two real processes (`token-lease-probe`) over one
 /// account's lease and vault, against a local provider with no reuse tolerance. Two stand-ins:
-/// `FileVault` for the keychain, and `FileHandoff` for `PushHandoffStore.account`. Modelled on matrix-rust-sdk's `test_cross_process_concurrent_refresh`,
+/// `FileVault` for the keychain, and `FileHandoff` for `PushHandoffStore.account`. Modelled on
+/// matrix-rust-sdk's `test_cross_process_concurrent_refresh`,
 /// `test_refresh_interrupted_by_suspension_does_not_sign_out` and the NSE's shared-store test.
 final class TokenProcessRaceTests: XCTestCase {
     private let account = "@a:hs"
