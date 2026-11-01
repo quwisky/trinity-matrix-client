@@ -14,9 +14,13 @@ import {
   type IRoomTimelineData,
   type MatrixClient,
   type MatrixEvent,
+  type SyncStateData,
   type Room,
 } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  isServerSync,
+} from '@trinity/data-access/matrix-client';
 import { injectHostAppName } from '@trinity/runtime/host';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import {
@@ -62,7 +66,11 @@ interface AccountNotifier {
     data?: IRoomTimelineData,
   ) => void;
   readonly onDecrypted: (event: MatrixEvent) => void;
-  readonly onSync: (state: SyncState) => void;
+  readonly onSync: (
+    state: SyncState,
+    prevState?: SyncState | null,
+    data?: SyncStateData,
+  ) => void;
   readonly reactions: ReactionNotificationBatch;
 }
 
@@ -101,7 +109,8 @@ function copyRetiredAccountData(client: MatrixClient): void {
  * On desktop the main process presents them: Electron renderer `Notification`s are
  * unreliably surfaced and attributed by the OS, notably on macOS.
  *
- * Only live events after the account's first sync notify, from someone else, when the
+ * Only live events after the account's first sync with the homeserver (not the SDK's cache
+ * replay) notify, from someone else, when the
  * user isn't viewing that room, and when push rules say `notify`. Opted-in reactions use
  * client-side ownership checks instead, but keep the master rule and room mutes.
  *
@@ -384,10 +393,12 @@ export class NotificationService {
   }
 
   private buildNotifier(userId: string, client: MatrixClient): AccountNotifier {
-    const currentSyncState = client.getSyncState();
-    let firstSyncCompleted =
-      currentSyncState === SyncState.Prepared ||
-      currentSyncState === SyncState.Syncing;
+    // Only a sync with the homeserver opens the gate. The SDK's cache replay also emits
+    // Prepared, and the catch-up batch after it would notify every missed message.
+    let firstSyncCompleted = isServerSync(
+      client.getSyncState(),
+      client.getSyncStateData(),
+    );
     // A room counts as encrypted by its state OR by the crypto store. The store's answer is
     // async, so ask it once per room up front; a room first seen later is covered next sync.
     const encryption = new RoomEncryptionFlags();
@@ -405,16 +416,19 @@ export class NotificationService {
         void encryption.refresh(crypto, room.roomId);
       }
     };
-    if (firstSyncCompleted) {
+    if (
+      client.getSyncState() === SyncState.Prepared ||
+      client.getSyncState() === SyncState.Syncing
+    ) {
       warmEncryption();
     }
     return {
       userId,
       client,
       reactions,
-      onSync: (state): void => {
+      onSync: (state, _prev, data): void => {
         if (state === SyncState.Prepared || state === SyncState.Syncing) {
-          firstSyncCompleted = true;
+          firstSyncCompleted ||= isServerSync(state, data);
           warmEncryption();
         }
       },

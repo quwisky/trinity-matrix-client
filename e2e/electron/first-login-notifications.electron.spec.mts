@@ -8,41 +8,13 @@ import {
 } from '../support/app.mts';
 import { passwordLogin, registerUser } from '../support/account.mts';
 import { createElectronProfile, launchApp } from './support/launch.mts';
+import {
+  grantNotifications,
+  installNotificationCounter,
+  notificationBodies,
+} from './support/notifications.mts';
 
 const session = homeserverSession();
-
-async function installRejectedNotificationCounter(
-  app: Awaited<ReturnType<typeof launchApp>>,
-): Promise<void> {
-  await app.evaluate(({ ipcMain }) => {
-    const channel = 'trinity:host:v1:notification-presentation:present';
-    ipcMain.removeHandler(channel);
-    (
-      globalThis as typeof globalThis & { __e2eNotificationCalls?: number }
-    ).__e2eNotificationCalls = 0;
-    ipcMain.handle(channel, () => {
-      const state = globalThis as typeof globalThis & {
-        __e2eNotificationCalls?: number;
-      };
-      state.__e2eNotificationCalls = (state.__e2eNotificationCalls ?? 0) + 1;
-      return {
-        kind: 'rejected',
-        diagnostic: { code: 'e2e-notification-rejected' },
-      };
-    });
-  });
-}
-
-async function notificationCallCount(
-  app: Awaited<ReturnType<typeof launchApp>>,
-): Promise<number> {
-  return app.evaluate(() => {
-    const state = globalThis as typeof globalThis & {
-      __e2eNotificationCalls?: number;
-    };
-    return state.__e2eNotificationCalls ?? -1;
-  });
-}
 
 const electronNavigate: Navigate = async (page: Page, path: string) => {
   const baseUrl = page.url() === 'about:blank' ? 'trinity://app/' : page.url();
@@ -110,13 +82,12 @@ test.describe('Electron first-login notifications', () => {
     const userDataDir = createElectronProfile();
     let app = await launchApp(userDataDir);
     try {
-      // A rejected presentation made each historical event surface as the generic
-      // capability warning from #490. Keeping the rejection deterministic makes
-      // this journey independent of the host OS notification service, while the
-      // counter proves restored history never invokes the presenter.
-      await installRejectedNotificationCounter(app);
+      // Rejecting every presentation is the #490 failure path: a historical event that
+      // reached the presenter would surface as the capability warning checked below.
+      await installNotificationCounter(app, 'rejected');
 
       const page = await app.firstWindow();
+      await grantNotifications(page);
       await login(
         page,
         {
@@ -130,18 +101,61 @@ test.describe('Electron first-login notifications', () => {
       await expect(
         page.getByText(roomName, { exact: true }).first(),
       ).toBeVisible({ timeout: 30_000 });
-      expect(await notificationCallCount(app)).toBe(0);
+      expect(await notificationBodies(app)).toEqual([]);
       await expect(page.getByTestId('app-capability-summary')).toHaveCount(0);
 
       await app.close();
+      // Sent while the app is closed: the next start's catch-up sync brings it in as a
+      // live event, but it must only raise the unread badge, never a notification.
+      const missed = await request.put(
+        `${homeserver}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${matrixResources.namespace.role('closed-event')}`,
+        {
+          headers: senderHeaders,
+          data: { msgtype: 'm.text', body: 'Sent while the app was closed' },
+        },
+      );
+      expect(missed.ok()).toBe(true);
       app = await launchApp(userDataDir);
-      await installRejectedNotificationCounter(app);
+      // Hold /sync until presentation is ready, or the catch-up batch would be dropped for
+      // lack of a presenter and the 0 below would prove nothing. The route is set before
+      // the reload, so every /sync the app sends afterwards waits here; the room list
+      // renders from the stored cache without it.
+      let releaseSync!: () => void;
+      const syncHeld = new Promise<void>((resolve) => (releaseSync = resolve));
+      await app
+        .context()
+        .route(/\/_matrix\/client\/v3\/sync\?/, async (route) => {
+          await syncHeld;
+          await route.continue().catch(() => undefined);
+        });
+      await installNotificationCounter(app);
       const restartedPage = await app.firstWindow();
+      await grantNotifications(restartedPage);
       await waitForRooms(restartedPage);
-      expect(await notificationCallCount(app)).toBe(0);
+      releaseSync();
+      await expect(
+        restartedPage.getByText('Sent while the app was closed').first(),
+      ).toBeVisible({ timeout: 30_000 });
       await expect(
         restartedPage.getByTestId('app-capability-summary'),
       ).toHaveCount(0);
+
+      // The preview shows only once the catch-up batch landed, so the live message
+      // cannot share a batch with it.
+      const live = await request.put(
+        `${homeserver}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${matrixResources.namespace.role('live-event')}`,
+        {
+          headers: senderHeaders,
+          data: { msgtype: 'm.text', body: 'Sent after startup' },
+        },
+      );
+      expect(live.ok()).toBe(true);
+      // The catch-up batch is processed before this message's sync, so a catch-up
+      // notification would still be in the list next to this one.
+      await expect
+        .poll(() => notificationBodies(app), { timeout: 45_000 })
+        .toContain('Sent after startup');
+      expect(await notificationBodies(app)).toEqual(['Sent after startup']);
     } finally {
       await app.close();
     }

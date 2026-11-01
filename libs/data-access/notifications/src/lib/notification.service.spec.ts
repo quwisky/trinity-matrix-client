@@ -77,6 +77,7 @@ function fakeClient(userId: string, soundEnabled?: boolean) {
     getRooms: vi.fn((): unknown[] => []),
     getCrypto: vi.fn((): unknown => undefined),
     getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
+    getSyncStateData: vi.fn((): { fromCache?: boolean } | null => null),
     on: vi.fn(),
     off: vi.fn(),
   };
@@ -369,7 +370,11 @@ function decryptedHandler(client: { on: { mock: { calls: unknown[][] } } }) {
 /** Grab the ClientEvent.Sync handler registered via client.on. */
 function syncHandler(client: { on: { mock: { calls: unknown[][] } } }) {
   const call = client.on.mock.calls.find((c) => c[0] === ClientEvent.Sync);
-  return call?.[1] as (state: SyncState) => void;
+  return call?.[1] as (
+    state: SyncState,
+    prev?: SyncState | null,
+    data?: { fromCache?: boolean },
+  ) => void;
 }
 
 /** The event types bound via client.on, in order. */
@@ -571,6 +576,66 @@ describe('NotificationService', () => {
     );
 
     expect(MockNotification.instances).toHaveLength(1);
+  });
+
+  describe('catch-up after the app opens', () => {
+    const fromCache = { fromCache: true };
+
+    it('notifies nothing from the cached replay or the catch-up batch', () => {
+      const { svc, client } = setup();
+      client.getSyncState.mockReturnValue(null);
+      svc.connect();
+
+      syncHandler(client)(SyncState.Prepared, null, fromCache);
+      timelineHandler(client)(
+        event({ id: '$catchup' }),
+        room,
+        false,
+        false,
+        live,
+      );
+      expect(MockNotification.instances).toHaveLength(0);
+
+      syncHandler(client)(SyncState.Prepared, null, {});
+      syncHandler(client)(SyncState.Syncing, SyncState.Prepared);
+      timelineHandler(client)(event({ id: '$new' }), room, false, false, live);
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('does not notify an encrypted catch-up event once it decrypts', () => {
+      const { svc, client } = setup();
+      client.getSyncState.mockReturnValue(null);
+      svc.connect();
+
+      syncHandler(client)(SyncState.Prepared, null, fromCache);
+      timelineHandler(client)(
+        event({ id: '$catchup', encrypted: true }),
+        room,
+        false,
+        false,
+        live,
+      );
+      decryptedHandler(client)(event({ id: '$catchup', decrypted: true }));
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('does not open the gate when attaching during the cached replay', () => {
+      const { svc, client } = setup();
+      client.getSyncState.mockReturnValue(SyncState.Prepared);
+      client.getSyncStateData.mockReturnValue(fromCache);
+      svc.connect();
+
+      timelineHandler(client)(
+        event({ id: '$catchup' }),
+        room,
+        false,
+        false,
+        live,
+      );
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
   });
 
   it('is audible by default — sound is on unless the account says otherwise', () => {
