@@ -1,11 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  afterRenderEffect,
   computed,
+  effect,
   inject,
   input,
   linkedSignal,
   output,
+  signal,
+  untracked,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map, shareReplay, timer } from 'rxjs';
@@ -31,6 +37,8 @@ const clock = timer(60_000, 60_000).pipe(
   shareReplay({ bufferSize: 1, refCount: true }),
 );
 
+let nextSessionsPanelId = 0;
+
 /** The member card's Profile tab: quick actions, then the Status, Global name and Sessions rows. */
 @Component({
   selector: 'trn-member-profile-tab',
@@ -46,6 +54,14 @@ const clock = timer(60_000, 60_000).pipe(
 export class MemberProfileTabComponent {
   private readonly toast = inject(TrnToastService);
   private readonly now = toSignal(clock, { initialValue: Date.now() });
+  private readonly sessionsToggle =
+    viewChild<ElementRef<HTMLElement>>('sessionsToggle');
+  private readonly sessionsRetry =
+    viewChild<ElementRef<HTMLElement>>('sessionsRetry');
+  private readonly sessionsList =
+    viewChild<ElementRef<HTMLElement>>('sessionsList');
+  /** A retry took focus from Try again; a repeat failure gives it back. */
+  private refocusRetry = false;
 
   readonly member = input.required<MemberSummary>();
   readonly isSelf = input.required<boolean>();
@@ -63,13 +79,25 @@ export class MemberProfileTabComponent {
   readonly copyFailed = output<void>();
   /** The Sessions row opened: the moment a network read is allowed. */
   readonly sessionsOpened = output<void>();
+  readonly sessionsClosed = output<void>();
   readonly sessionsRetried = output<void>();
+
+  readonly sessionsPanelId = `member-info-sessions-${nextSessionsPanelId++}`;
 
   /** Follows the member, because a settings card shows the next person without being rebuilt. */
   readonly sessionsOpen = linkedSignal({
     source: () => this.member().userId,
     computation: () => false,
   });
+
+  /** An open row with nothing to list yet. */
+  readonly sessionsLoading = computed(() => {
+    const kind = this.sessions()?.kind;
+    return this.sessionsOpen() && (kind === 'loading' || kind === 'unknown');
+  });
+
+  /** Set after a render: a list that fits has nothing to scroll, so no keyboard stop. */
+  readonly sessionsListScrolls = signal(false);
 
   readonly sessionsCount = computed(() => {
     const sessions = this.sessions();
@@ -116,10 +144,45 @@ export class MemberProfileTabComponent {
       : state;
   });
 
+  constructor() {
+    // An Account switch can rebuild the state behind a row left open, and only an open row loads.
+    effect(() => {
+      if (this.sessionsOpen() && this.sessions()?.kind === 'unknown') {
+        untracked(() => this.sessionsOpened.emit());
+      }
+    });
+    effect(() => {
+      const kind = this.sessions()?.kind;
+      const retry = this.sessionsRetry()?.nativeElement;
+      if (!this.refocusRetry || kind === 'loading') return;
+      if (kind !== 'failed') {
+        this.refocusRetry = false;
+      } else if (retry) {
+        this.refocusRetry = false;
+        retry.focus();
+      }
+    });
+    afterRenderEffect(() => {
+      this.sessions();
+      const list = this.sessionsList()?.nativeElement;
+      this.sessionsListScrolls.set(
+        !!list && list.scrollHeight > list.clientHeight,
+      );
+    });
+  }
+
   toggleSessions(): void {
     const open = !this.sessionsOpen();
     this.sessionsOpen.set(open);
     if (open) this.sessionsOpened.emit();
+    else this.sessionsClosed.emit();
+  }
+
+  /** Try again leaves the page while loading, so focus waits on the row rather than the body. */
+  retrySessions(): void {
+    this.refocusRetry = true;
+    this.sessionsToggle()?.nativeElement.focus();
+    this.sessionsRetried.emit();
   }
 
   /**

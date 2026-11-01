@@ -42,6 +42,7 @@ async function build(
   const verify = vi.fn();
   const copyFailed = vi.fn();
   const sessionsOpened = vi.fn();
+  const sessionsClosed = vi.fn();
   const sessionsRetried = vi.fn();
   const { fixture, container } = await render(MemberProfileTabComponent, {
     inputs: {
@@ -58,6 +59,7 @@ async function build(
       verify,
       copyFailed,
       sessionsOpened,
+      sessionsClosed,
       sessionsRetried,
     },
     providers: [
@@ -74,6 +76,7 @@ async function build(
     verify,
     copyFailed,
     sessionsOpened,
+    sessionsClosed,
     sessionsRetried,
   };
 }
@@ -246,6 +249,11 @@ describe('MemberProfileTabComponent', () => {
       ],
     };
     const PROMPT = 'Verify Bob to check their sessions';
+    const prompt = () =>
+      screen
+        .queryByTestId('member-info-sessions-prompt')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim() ?? null;
 
     it('is hidden when there is nothing to show', async () => {
       const { container } = await build({ sessions: null });
@@ -319,10 +327,10 @@ describe('MemberProfileTabComponent', () => {
       await screen.findByRole('list', { name: 'Sessions' });
 
       expect(sessionItems().map((item) => item.textContent?.trim())).toEqual([
-        expect.stringMatching(/^Phone\s*⚠ Not verified$/),
-        expect.stringMatching(/^Laptop\s*✓ Verified$/),
+        expect.stringMatching(/^Phone\s*PHONE\s*⚠ Not verified$/),
+        expect.stringMatching(/^Laptop\s*LAPTOP\s*✓ Verified$/),
       ]);
-      expect(screen.queryByText(PROMPT)).toBeNull();
+      expect(prompt()).toBeNull();
     });
 
     it.each([
@@ -340,13 +348,13 @@ describe('MemberProfileTabComponent', () => {
         await screen.findByRole('list', { name: 'Sessions' });
 
         expect(sessionItems().map((item) => item.textContent?.trim())).toEqual([
-          'Phone',
-          'Laptop',
+          expect.stringMatching(/^Phone\s*PHONE$/),
+          expect.stringMatching(/^Laptop\s*LAPTOP$/),
         ]);
         expect(
           container.querySelector('[data-testid="member-info-session-state"]'),
         ).toBeNull();
-        expect(screen.getByText(PROMPT)).toBeTruthy();
+        expect(prompt()).toBe(PROMPT);
       },
     );
 
@@ -368,7 +376,9 @@ describe('MemberProfileTabComponent', () => {
       openSessions();
       await screen.findByRole('list', { name: 'Sessions' });
 
-      expect(sessionItems()[0]?.textContent?.trim()).toBe(name);
+      expect(screen.getByTestId('member-info-session-name').textContent).toBe(
+        name,
+      );
       expect(container.querySelector('img')).toBeNull();
     });
 
@@ -376,18 +386,20 @@ describe('MemberProfileTabComponent', () => {
       await build({ sessions: { kind: 'loading' } });
       openSessions();
 
-      expect((await screen.findByRole('status')).textContent).toContain(
-        'Loading sessions',
+      await waitFor(() =>
+        expect(
+          screen.getByTestId('member-info-sessions-status').textContent,
+        ).toContain('Loading sessions'),
       );
       expect(screen.queryByRole('list', { name: 'Sessions' })).toBeNull();
-      expect(screen.queryByText(PROMPT)).toBeNull();
+      expect(prompt()).toBeNull();
     });
 
     it('says so when the server lists none', async () => {
       await build({ sessions: unchecked() });
       openSessions();
       expect(await screen.findByText('No sessions to show')).toBeTruthy();
-      expect(screen.queryByText(PROMPT)).toBeNull();
+      expect(prompt()).toBeNull();
     });
 
     it('shows an error with Try again', async () => {
@@ -404,24 +416,261 @@ describe('MemberProfileTabComponent', () => {
       expect(sessionsOpened).toHaveBeenCalledOnce();
     });
 
-    it('scrolls a long list within a fixed height, by keyboard too', async () => {
-      await build({ sessions: unchecked(PHONE, LAPTOP) });
+    it('takes a keyboard stop only when the list overflows', async () => {
+      const heights = (scroll: number) => {
+        vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockReturnValue(
+          scroll,
+        );
+        vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(192);
+      };
+      heights(192);
+      const { fixture } = await build({ sessions: unchecked(PHONE) });
       openSessions();
       const list = await screen.findByRole('list', { name: 'Sessions' });
+      await fixture.whenStable();
+      expect(list).not.toHaveAttribute('tabindex');
 
-      expect(list.className).toContain('max-h-');
-      expect(list.className).toContain('overflow-y-auto');
-      expect(list).toHaveAttribute('tabindex', '0');
+      heights(400);
+      fixture.componentRef.setInput('sessions', unchecked(PHONE, LAPTOP));
+      await waitFor(() => expect(list).toHaveAttribute('tabindex', '0'));
+      vi.restoreAllMocks();
     });
 
-    it('wraps untrusted names and ids rather than overflowing', async () => {
+    it('keeps list semantics for Safari, and controls its panel', async () => {
+      await build({ sessions: unchecked(PHONE) });
+      const panelId = sessionsRow().getAttribute('aria-controls') as string;
+      const panel = document.getElementById(panelId) as HTMLElement;
+      expect(panel.tagName).toBe('DD');
+      expect(panel).not.toHaveAttribute('hidden');
+      expect(panel.querySelector('ul')).toBeNull();
+
+      openSessions();
+      const list = await screen.findByRole('list', { name: 'Sessions' });
+      expect(list).toHaveAttribute('role', 'list');
+      expect(panel.contains(list)).toBe(true);
+    });
+
+    it('shows the id beneath a name, so a name cannot pose as anything', async () => {
       await build({ sessions: unchecked(PHONE) });
       openSessions();
       await screen.findByRole('list', { name: 'Sessions' });
 
-      expect(screen.getByText('Phone').className).toContain(
-        '[overflow-wrap:anywhere]',
+      expect(screen.getByTestId('member-info-session-name').textContent).toBe(
+        'Phone',
       );
+      expect(screen.getByTestId('member-info-session-id').textContent).toBe(
+        'PHONE',
+      );
+    });
+
+    it('a name posing as a state reads as a name, with its id, and no badge', async () => {
+      await build({
+        trust: 'unverified',
+        sessions: unchecked({ deviceId: 'ID', name: '✓ Verified' }),
+      });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(screen.queryByTestId('member-info-session-state')).toBeNull();
+      expect(screen.getByTestId('member-info-session-name').textContent).toBe(
+        '✓ Verified',
+      );
+      expect(screen.getByTestId('member-info-session-id').textContent).toBe(
+        'ID',
+      );
+    });
+
+    it('a name that is the id takes one line', async () => {
+      await build({ sessions: unchecked({ deviceId: 'ID', name: 'ID' }) });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(screen.getByTestId('member-info-session-name').textContent).toBe(
+        'ID',
+      );
+      expect(screen.queryByTestId('member-info-session-id')).toBeNull();
+    });
+
+    it('isolates untrusted text from what sits around it', async () => {
+      await build({ sessions: unchecked(PHONE) });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(screen.getByTestId('member-info-session-name').tagName).toBe(
+        'BDI',
+      );
+      expect(screen.getByTestId('member-info-session-id').tagName).toBe('BDI');
+      expect(
+        screen.getByTestId('member-info-sessions-prompt').querySelector('bdi')
+          ?.textContent,
+      ).toBe('Bob');
+    });
+
+    it('announces loading through a region that was already there', async () => {
+      const { fixture } = await build({ sessions: unchecked(PHONE) });
+      const region = screen.getByTestId('member-info-sessions-status');
+      expect(region).toHaveAttribute('role', 'status');
+      expect(region.textContent).toBe('');
+
+      fixture.componentRef.setInput('sessions', { kind: 'loading' });
+      openSessions();
+
+      await waitFor(() =>
+        expect(region.textContent).toContain('Loading sessions'),
+      );
+      expect(screen.getByTestId('member-info-sessions-status')).toBe(region);
+    });
+
+    it.each(['loading', 'unknown'] as const)(
+      'a closed row says nothing while %s',
+      async (kind) => {
+        await build({ sessions: { kind } });
+        expect(
+          screen.getByTestId('member-info-sessions-status').textContent,
+        ).toBe('');
+      },
+    );
+
+    it('follows trust with the list open', async () => {
+      const { fixture } = await build({
+        trust: 'unverified',
+        sessions: unchecked(PHONE),
+      });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+      expect(prompt()).toBe(PROMPT);
+
+      fixture.componentRef.setInput('sessions', {
+        kind: 'checked',
+        notVerified: 1,
+        sessions: [{ ...PHONE, verified: false }],
+      });
+      await fixture.whenStable();
+
+      expect(prompt()).toBeNull();
+      expect(
+        screen.getByTestId('member-info-session-state').textContent,
+      ).toContain('Not verified');
+
+      fixture.componentRef.setInput('sessions', unchecked(PHONE));
+      await fixture.whenStable();
+
+      expect(screen.queryByTestId('member-info-session-state')).toBeNull();
+      expect(prompt()).toBe(PROMPT);
+    });
+
+    describe('focus around Try again', () => {
+      const failed = async () => {
+        const built = await build({ sessions: { kind: 'failed' } });
+        openSessions();
+        const retry = await screen.findByRole('button', { name: 'Try again' });
+        retry.focus();
+        return { ...built, retry };
+      };
+      const set = async (
+        fixture: Awaited<ReturnType<typeof build>>['fixture'],
+        sessions: UserSessions,
+      ) => {
+        fixture.componentRef.setInput('sessions', sessions);
+        await fixture.whenStable();
+      };
+
+      it('moves to the row while loading, so it does not fall to the body', async () => {
+        const { fixture, retry } = await failed();
+
+        fireEvent.click(retry);
+        await set(fixture, { kind: 'loading' });
+
+        expect(document.activeElement).toBe(sessionsRow());
+      });
+
+      it('returns to Try again when the retry fails too', async () => {
+        const { fixture, retry } = await failed();
+
+        fireEvent.click(retry);
+        await set(fixture, { kind: 'loading' });
+        await set(fixture, { kind: 'failed' });
+
+        await waitFor(() =>
+          expect(document.activeElement).toBe(
+            screen.getByRole('button', { name: 'Try again' }),
+          ),
+        );
+      });
+
+      it('stays on the row when the retry works, even if a later read fails', async () => {
+        const { fixture, retry } = await failed();
+
+        fireEvent.click(retry);
+        await set(fixture, { kind: 'loading' });
+        await set(fixture, unchecked(PHONE));
+        expect(document.activeElement).toBe(sessionsRow());
+
+        sessionsRow().blur();
+        await set(fixture, { kind: 'failed' });
+
+        expect(document.activeElement).toBe(document.body);
+      });
+    });
+
+    describe('the row and the state behind it', () => {
+      it('says when it closes, so a closed row stops using the network', async () => {
+        const { sessionsClosed } = await build({ sessions: unchecked(PHONE) });
+        openSessions();
+        await screen.findByRole('list', { name: 'Sessions' });
+        expect(sessionsClosed).not.toHaveBeenCalled();
+
+        openSessions();
+
+        expect(sessionsClosed).toHaveBeenCalledOnce();
+      });
+
+      it('asks again when an open row comes back with its state rebuilt', async () => {
+        const { fixture, sessionsOpened } = await build({
+          sessions: unchecked(PHONE),
+        });
+        openSessions();
+        await screen.findByRole('list', { name: 'Sessions' });
+        expect(sessionsOpened).toHaveBeenCalledOnce();
+
+        fixture.componentRef.setInput('sessions', null);
+        await fixture.whenStable();
+        fixture.componentRef.setInput('sessions', { kind: 'unknown' });
+        await fixture.whenStable();
+
+        expect(sessionsOpened).toHaveBeenCalledTimes(2);
+      });
+
+      it('does not ask when a closed row comes back', async () => {
+        const { fixture, sessionsOpened } = await build({
+          sessions: { kind: 'unknown' },
+        });
+        fixture.componentRef.setInput('sessions', null);
+        await fixture.whenStable();
+        fixture.componentRef.setInput('sessions', { kind: 'unknown' });
+        await fixture.whenStable();
+
+        expect(sessionsOpened).not.toHaveBeenCalled();
+      });
+
+      it('a card reused for someone else starts closed, and asks nothing', async () => {
+        const { fixture, sessionsOpened } = await build({
+          sessions: unchecked(PHONE),
+        });
+        openSessions();
+        await screen.findByRole('list', { name: 'Sessions' });
+        expect(sessionsOpened).toHaveBeenCalledOnce();
+
+        fixture.componentRef.setInput('member', {
+          ...BOB,
+          userId: '@carol:hs',
+        });
+        fixture.componentRef.setInput('sessions', { kind: 'unknown' });
+        await fixture.whenStable();
+
+        expect(sessionsRow()).toHaveAttribute('aria-expanded', 'false');
+        expect(sessionsOpened).toHaveBeenCalledOnce();
+      });
     });
   });
 

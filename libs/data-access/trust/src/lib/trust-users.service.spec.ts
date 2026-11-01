@@ -6,7 +6,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrustOperationError } from './trust-operation-error';
-import { TrustUsersService } from './trust-users.service';
+import { TrustUsersService, type UserSession } from './trust-users.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 const ALICE = '@alice:hs';
@@ -562,7 +562,200 @@ describe('TrustUsersService', () => {
       lifetime.unsubscribe();
     });
 
+    describe('text a session chose for itself', () => {
+      const firstSession = async (device: FakeDevice) => {
+        const client = fakeClient(undefined, true, {
+          devices: async () => deviceMap(ALICE, [device]),
+        });
+        const { sessions, lifetime } = start(client);
+        await settle();
+        const first = (sessions() as { sessions: readonly UserSession[] })
+          .sessions[0];
+        lifetime.unsubscribe();
+        return { client, first };
+      };
+
+      it.each([
+        ['a bidi override', 'evil\u202Egnp.exe', 'evilgnp.exe'],
+        ['an isolate', '\u2067Phone\u2069', 'Phone'],
+        ['a zero-width space', 'Pho\u200Bne', 'Phone'],
+        ['a control character', 'Pho\u0007ne', 'Phone'],
+        ['surrounding space', '  Phone  ', 'Phone'],
+      ])('removes %s from a name', async (_case, displayName, name) => {
+        const { first } = await firstSession({ deviceId: 'ID', displayName });
+        expect(first).toMatchObject({ deviceId: 'ID', name });
+      });
+
+      it.each([
+        ['zero-width characters only', '\u200B\u200D'],
+        ['bidi controls only', '\u202E\u202C'],
+        ['spaces only', '   '],
+      ])(
+        'falls back to the id for a name of %s',
+        async (_case, displayName) => {
+          const { first } = await firstSession({ deviceId: 'ID', displayName });
+          expect(first?.name).toBe('ID');
+        },
+      );
+
+      it('keeps a name that only looks like a state, for the card to show with its id', async () => {
+        const { first } = await firstSession({
+          deviceId: 'ID',
+          displayName: '✓ Verified',
+        });
+        expect(first).toEqual({ deviceId: 'ID', name: '✓ Verified' });
+      });
+
+      it('shows a clean id, and still asks the SDK about the real one', async () => {
+        const { client, first } = await firstSession({
+          deviceId: 'ID\u202E1',
+          displayName: 'Phone',
+        });
+        expect(first?.deviceId).toBe('ID1');
+        expect(client.getDeviceVerificationStatus).toHaveBeenCalledWith(
+          ALICE,
+          'ID\u202E1',
+        );
+      });
+
+      it('keeps an id made only of format characters rather than show nothing', async () => {
+        const { first } = await firstSession({ deviceId: '\u200B' });
+        expect(first).toEqual({ deviceId: '\u200B', name: '\u200B' });
+      });
+    });
+
+    describe('only an open row uses the network', () => {
+      const downloads = (client: ReturnType<typeof fakeClient>) =>
+        client.getUserDeviceInfo.mock.calls.filter(([, download]) => download)
+          .length;
+
+      it.each([
+        [
+          'a device update',
+          (client: ReturnType<typeof fakeClient>) =>
+            devicesHandler(client)([ALICE], false),
+        ],
+        [
+          'a trust change',
+          (client: ReturnType<typeof fakeClient>) =>
+            trustHandler(client)(ALICE, status(true, true)),
+        ],
+      ])('a closed row re-reads locally after %s', async (_case, fire) => {
+        const client = fakeClient(undefined, true, {
+          devices: async () => deviceMap(ALICE, [PHONE]),
+        });
+        const { svc, lifetime } = start(client);
+        await settle();
+        svc.loadUserSessions(ALICE);
+        await settle();
+        expect(downloads(client)).toBe(1);
+
+        svc.closeUserSessions(ALICE);
+        fire(client);
+        await settle();
+
+        expect(downloads(client)).toBe(1);
+        expect(client.getUserDeviceInfo).toHaveBeenLastCalledWith(
+          [ALICE],
+          false,
+        );
+        lifetime.unsubscribe();
+      });
+
+      it('a closed row re-reads locally when the projection rebuilds', async () => {
+        const client = fakeClient(undefined, true, {
+          devices: async () => deviceMap(ALICE, [PHONE]),
+        });
+        const { svc, matrix, lifetime } = start(client);
+        await settle();
+        svc.loadUserSessions(ALICE);
+        await settle();
+        svc.closeUserSessions(ALICE);
+
+        const next = fakeClient(undefined, true, {
+          devices: async () => deviceMap(ALICE, [PHONE]),
+        });
+        ngMocks.stubMember(matrix, 'instance', next as unknown as MatrixClient);
+        activeUserId.set('@b:hs');
+        TestBed.inject(ApplicationRef).tick();
+        await settle();
+
+        expect(downloads(next)).toBe(0);
+        lifetime.unsubscribe();
+      });
+
+      it("a closed row keeps an untracked member's list when the local read is empty", async () => {
+        const client = fakeClient(undefined, true, {
+          devices: async (_ids, download) =>
+            deviceMap(ALICE, download ? [PHONE] : []),
+        });
+        const { sessions, svc, lifetime } = start(client);
+        await settle();
+        svc.loadUserSessions(ALICE);
+        await settle();
+
+        svc.closeUserSessions(ALICE);
+        devicesHandler(client)([ALICE], false);
+        await settle();
+
+        expect(sessions()).toMatchObject({ kind: 'unchecked' });
+        lifetime.unsubscribe();
+      });
+
+      it('a closed row keeps the list when a local re-read fails', async () => {
+        const client = fakeClient(undefined, true, {
+          devices: async () => deviceMap(ALICE, [PHONE]),
+        });
+        const { sessions, svc, lifetime } = start(client);
+        await settle();
+        svc.loadUserSessions(ALICE);
+        await settle();
+        svc.closeUserSessions(ALICE);
+
+        client.getUserDeviceInfo.mockRejectedValue(new Error('store closed'));
+        devicesHandler(client)([ALICE], false);
+        await settle();
+
+        expect(sessions()).toMatchObject({ kind: 'unchecked' });
+        lifetime.unsubscribe();
+      });
+
+      it('opening again reads again, keeping the list on show meanwhile', async () => {
+        const client = fakeClient(undefined, true, {
+          devices: async () => deviceMap(ALICE, [PHONE]),
+        });
+        const { sessions, svc, lifetime } = start(client);
+        await settle();
+        svc.loadUserSessions(ALICE);
+        await settle();
+        svc.closeUserSessions(ALICE);
+
+        svc.loadUserSessions(ALICE);
+
+        expect(sessions()).toMatchObject({ kind: 'unchecked' });
+        await settle();
+        expect(downloads(client)).toBe(2);
+        lifetime.unsubscribe();
+      });
+    });
+
     describe('what the row may claim', () => {
+      it("no badges while the member's trust is still unknown", async () => {
+        const client = fakeClient(() => new Promise(() => undefined), true, {
+          devices: async () => deviceMap(ALICE, [PHONE]),
+          device: async () => deviceStatus(true, true),
+        });
+        const { svc, sessions, lifetime } = start(client);
+        await settle();
+
+        expect(svc.userTrust(ALICE)()).toBeNull();
+        expect(sessions()).toEqual({
+          kind: 'unchecked',
+          sessions: [{ deviceId: 'PHONE', name: 'Phone' }],
+        });
+        lifetime.unsubscribe();
+      });
+
       it('a verified member: local trust alone reads as not verified', async () => {
         const client = fakeClient(async () => status(true, true), true, {
           devices: async () => deviceMap(ALICE, [PHONE, LAPTOP]),

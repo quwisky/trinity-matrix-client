@@ -325,6 +325,11 @@ export class MemberInfoComponent {
     if (userId) this.trustUsers.loadUserSessions(userId);
   }
 
+  closeSessions(): void {
+    const userId = this.sessionsUserId();
+    if (userId) this.trustUsers.closeUserSessions(userId);
+  }
+
   /** Start (or reuse) a direct message with this member — the host does the navigation. */
   message(): void {
     this.finish(this.member().userId);

@@ -103,6 +103,7 @@
         [showIdentityActions]="showIdentityActions()"
         [sessions]="sessions()"
         (sessionsOpened)="loadSessions()"
+        (sessionsClosed)="closeSessions()"
         (sessionsRetried)="loadSessions()"
         (messageUser)="message()"
         (verify)="verify()"

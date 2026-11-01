@@ -77,49 +77,65 @@
     }
     @if (sessions(); as sessions) {
       <div
-        class="border-t border-[var(--trinity-border-overlay)] px-1.5 py-1 text-sm"
+        class="border-t border-[var(--trinity-border-overlay)] text-sm"
         data-testid="member-info-sessions"
       >
         <dt>
+          <!-- shortcut: a hand-built disclosure, as no shared primitive exists; move to one if it lands. -->
           <button
-            trnBtn
+            #sessionsToggle
             type="button"
-            variant="secondary"
-            presentation="ghost"
-            shape="row"
+            class="flex w-full cursor-pointer items-baseline justify-between gap-4 px-4 py-2.5 text-start hover:bg-[var(--trinity-state-hover-surface)] pointer-coarse:min-h-11"
             [attr.aria-expanded]="sessionsOpen()"
+            [attr.aria-controls]="sessionsPanelId"
             (click)="toggleSessions()"
             data-testid="member-info-sessions-toggle"
           >
-            <span class="text-muted-foreground">Sessions</span>&ngsp;
-            @if (sessionsCount(); as count) {
-              <span
-                class="ms-auto min-w-0 text-end [overflow-wrap:anywhere]"
-                data-testid="member-info-sessions-count"
-                >{{ count }}</span
-              >
-            }
-            <trn-icon
-              [class.ms-auto]="!sessionsCount()"
-              [class.rotate-180]="sessionsOpen()"
-              name="chevron-down"
-            />
+            <span class="shrink-0 text-muted-foreground">Sessions</span>&ngsp;
+            <span
+              class="flex min-w-0 items-baseline gap-2"
+              [class.self-center]="!sessionsCount()"
+            >
+              @if (sessionsCount(); as count) {
+                <span
+                  class="min-w-0 text-end [overflow-wrap:anywhere]"
+                  data-testid="member-info-sessions-count"
+                  >{{ count }}</span
+                >
+              }
+              <trn-icon
+                class="shrink-0 self-center"
+                [class.rotate-180]="sessionsOpen()"
+                name="chevron-down"
+              />
+            </span>
           </button>
         </dt>
-        <dd class="m-0" [hidden]="!sessionsOpen()">
-          @if (sessionsOpen()) {
-            <div class="flex flex-col gap-2 px-2.5 pt-1 pb-2">
+        <dd class="m-0" [id]="sessionsPanelId">
+          <!-- Always present, so screen readers hear it as it arrives. -->
+          <p
+            class="m-0 px-4 text-muted-foreground not-empty:pb-2.5"
+            role="status"
+            data-testid="member-info-sessions-status"
+          >
+            @if (sessionsLoading()) {
+              Loading sessions…
+            }
+          </p>
+          @if (sessionsOpen() && !sessionsLoading()) {
+            <div class="flex flex-col gap-2 px-4 pb-2.5">
               @if (sessions.kind === 'failed') {
                 <p class="m-0 text-danger" role="alert">
                   Couldn't load sessions
                 </p>
                 <div>
                   <button
+                    #sessionsRetry
                     trnBtn
                     type="button"
                     size="sm"
                     presentation="outline"
-                    (click)="sessionsRetried.emit()"
+                    (click)="retrySessions()"
                     data-testid="member-info-sessions-retry"
                   >
                     Try again
@@ -131,9 +147,12 @@
                 @if (sessions.sessions.length === 0) {
                   <p class="m-0 text-muted-foreground">No sessions to show</p>
                 } @else {
+                  <!-- role="list": Safari drops list semantics from a bullet-less list without it. -->
                   <ul
+                    #sessionsList
+                    role="list"
                     class="m-0 flex max-h-48 list-none flex-col gap-2 overflow-y-auto p-0"
-                    tabindex="0"
+                    [attr.tabindex]="sessionsListScrolls() ? 0 : null"
                     aria-label="Sessions"
                     data-testid="member-info-sessions-list"
                   >
@@ -145,9 +164,20 @@
                         class="flex items-baseline justify-between gap-3"
                         data-testid="member-info-session"
                       >
-                        <span class="min-w-0 [overflow-wrap:anywhere]">{{
-                          session.name
-                        }}</span>
+                        <span class="flex min-w-0 flex-col">
+                          <bdi
+                            class="[overflow-wrap:anywhere]"
+                            data-testid="member-info-session-name"
+                            >{{ session.name }}</bdi
+                          >
+                          @if (session.name !== session.deviceId) {
+                            <bdi
+                              class="text-13 [overflow-wrap:anywhere] text-muted-foreground"
+                              data-testid="member-info-session-id"
+                              >{{ session.deviceId }}</bdi
+                            >
+                          }
+                        </span>
                         @if (session.verified === true) {
                           <span
                             trnBadge
@@ -172,15 +202,11 @@
                       class="m-0 [overflow-wrap:anywhere] text-muted-foreground"
                       data-testid="member-info-sessions-prompt"
                     >
-                      Verify {{ member().roomDisplayName }} to check their
-                      sessions
+                      Verify <bdi>{{ member().roomDisplayName }}</bdi> to check
+                      their sessions
                     </p>
                   }
                 }
-              } @else {
-                <p class="m-0 text-muted-foreground" role="status">
-                  Loading sessions…
-                </p>
               }
             </div>
           }

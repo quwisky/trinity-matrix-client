@@ -114,6 +114,7 @@ async function build(
     return releaseSessions;
   });
   const loadUserSessions = vi.fn();
+  const closeUserSessions = vi.fn();
   const { fixture, container } = await render(MemberInfoComponent, {
     inputs: {
       member: m,
@@ -189,6 +190,7 @@ async function build(
         userSessions: () => signal(opts.sessions ?? null).asReadonly(),
         retainUserSessions,
         loadUserSessions,
+        closeUserSessions,
       }),
       MockProvider(RoomsInCommonService, {
         roomsInCommon: () => signal(opts.commonRooms ?? null).asReadonly(),
@@ -218,6 +220,7 @@ async function build(
     retainedState,
     releaseSessions,
     loadUserSessions,
+    closeUserSessions,
   };
 }
 
@@ -843,6 +846,16 @@ describe('MemberInfoComponent', () => {
       fireEvent.click(row() as HTMLElement);
 
       expect(loadUserSessions).toHaveBeenCalledExactlyOnceWith('@bob:hs');
+    });
+
+    it('tells the service when the row closes', async () => {
+      const { closeUserSessions } = await build(member(), { sessions: LISTED });
+      fireEvent.click(row() as HTMLElement);
+      expect(closeUserSessions).not.toHaveBeenCalled();
+
+      fireEvent.click(row() as HTMLElement);
+
+      expect(closeUserSessions).toHaveBeenCalledExactlyOnceWith('@bob:hs');
     });
 
     it('asks again on Try again', async () => {

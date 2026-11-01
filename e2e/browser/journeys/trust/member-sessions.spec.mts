@@ -17,6 +17,9 @@ import {
 const session = homeserverSession();
 const STAGE_TIMEOUT = 60_000;
 const SPARE_SESSION = 'Spare phone';
+const LONG_NAME = 'pixel-9-pro-fold-with-a-very-long-unbroken-device-name-'
+  .repeat(2)
+  .slice(0, 96);
 
 function stageOf(page: Page): Promise<string | null> {
   return page
@@ -124,6 +127,10 @@ test.describe('Sessions on a member card', () => {
     await openMemberCard(page, bobName);
     const toggle = page.getByTestId('member-info-sessions-toggle');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('member-info-sessions-count')).toHaveText(
+      '2 sessions',
+      { timeout: 30_000 },
+    );
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     const sessions = page.getByTestId('member-info-session');
@@ -187,5 +194,62 @@ test.describe('Sessions on a member card', () => {
     await expect(page.getByTestId('member-info-sessions-prompt')).toHaveCount(
       0,
     );
+  });
+
+  test('a long list scrolls inside the card and an unbroken name wraps, at phone width', async ({
+    page,
+    request,
+  }) => {
+    test.slow();
+    await page.setViewportSize({ width: 390, height: 844 });
+    const hs = session.hs as string;
+    const alice = await freshAccount(request, hs, 'sessions-alice');
+    const dana = await freshAccount(request, hs, 'sessions-dana');
+    const aliceApi = await apiLogin(request, hs, alice.user, alice.pass);
+    const danaApi = await apiLogin(request, hs, dana.user, dana.pass);
+    const roomName = `Sessions ${dana.user}`;
+    const roomId = await createEncryptedRoom(request, hs, aliceApi, roomName);
+    const roomUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}`;
+    await request.post(`${roomUrl}/invite`, {
+      headers: aliceApi.headers,
+      data: { user_id: danaApi.userId },
+    });
+    await request.post(`${roomUrl}/join`, { headers: danaApi.headers });
+    await addUnsignedSession(request, hs, dana.user, dana.pass, LONG_NAME);
+    for (let i = 1; i <= 8; i++) {
+      await addUnsignedSession(
+        request,
+        hs,
+        dana.user,
+        dana.pass,
+        `Tablet ${i}`,
+      );
+    }
+
+    await login(page, alice.asSession);
+    await openNamedRoom(page, roomName);
+    await openMemberCard(page, dana.user);
+    await page.getByTestId('member-info-sessions-toggle').click();
+    await expect(page.getByTestId('member-info-session')).toHaveCount(9, {
+      timeout: 30_000,
+    });
+
+    const list = page.getByTestId('member-info-sessions-list');
+    await expect
+      .poll(() =>
+        list.evaluate((el) => ({
+          scrollsInside: el.scrollHeight > el.clientHeight,
+          fitsAcross: el.scrollWidth <= el.clientWidth,
+        })),
+      )
+      .toEqual({ scrollsInside: true, fitsAcross: true });
+    await page.getByTestId('member-info-sessions-toggle').focus();
+    await page.keyboard.press('Tab');
+    await expect(list).toBeFocused();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
   });
 });

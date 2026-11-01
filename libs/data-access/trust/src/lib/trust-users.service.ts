@@ -20,6 +20,7 @@ import {
   recoverTrustOperation,
   type TrustOperation,
 } from './trust-operation-error';
+import { displayText } from './trust-display-text';
 
 /**
  * Another person's cross-signing identity as this Account sees it. A changed identity is
@@ -43,7 +44,10 @@ const toUserTrust = (
         ? 'identity-changed'
         : 'unverified';
 
-/** One session of another person: its device name, or its id when the server hides the name. */
+/**
+ * One session of another person: its device name, or its id when the server hides the name.
+ * Both are safe to show. A name can say anything, so the card always shows the id beside it.
+ */
 export interface UserSession {
   readonly deviceId: string;
   readonly name: string;
@@ -82,7 +86,7 @@ interface SessionsEntry {
   readonly read: WritableSignal<SessionsRead | null>;
   readonly view: Signal<UserSessions | null>;
   generation: number;
-  /** Set by the first open: from then on reads may use the network for an untracked user. */
+  /** The row is open: only then may a read use the network for an untracked user. */
   opened: boolean;
   holders: number;
 }
@@ -212,8 +216,8 @@ export class TrustUsersService {
   }
 
   /**
-   * Read a user's sessions over the network if the device has no copy: `getUserDeviceInfo` makes
-   * a request for an untracked user, so this waits for an open. Also the retry after a failure.
+   * The row opened: read a user's sessions over the network if the device has no copy, since
+   * `getUserDeviceInfo` makes a request for an untracked user. Also the retry after a failure.
    */
   loadUserSessions(userId: string): void {
     const entry = this.sessions.get(userId);
@@ -223,6 +227,12 @@ export class TrustUsersService {
     entry.opened = true;
     if (entry.read()?.kind !== 'read') entry.read.set({ kind: 'loading' });
     void this.readSessions(userId, entry, client);
+  }
+
+  /** The row closed: later reads stay on the device's own copy until it opens again. */
+  closeUserSessions(userId: string): void {
+    const entry = this.sessions.get(userId);
+    if (entry) entry.opened = false;
   }
 
   /** Accept a changed identity as this person's own (pin it). Cold; runs as the active Account. */
@@ -311,6 +321,11 @@ export class TrustUsersService {
     const settle = (read: SessionsRead): void => {
       if (entry.generation === generation) entry.read.set(read);
     };
+    // A closed row's local read knows nothing about an untracked user, so it keeps their list.
+    const noAnswer = (): SessionsRead => {
+      const current = entry.read();
+      return current?.kind === 'read' ? current : { kind: 'unknown' };
+    };
     return crypto
       .getUserDeviceInfo([userId], opened)
       .then((devices) =>
@@ -319,17 +334,20 @@ export class TrustUsersService {
             // shortcut: the SDK's read for an untracked user drops `dehydrated`, so such a device
             // counts as a session; filter there too once the SDK passes the flag on.
             .filter((device) => !device.dehydrated)
-            .map(async (device) => ({
-              deviceId: device.deviceId,
-              name: device.displayName?.trim() || device.deviceId,
-              // Not isVerified(): an emoji check's local trust outlives the owner's identity.
-              verified:
-                (
-                  await crypto
-                    .getDeviceVerificationStatus(userId, device.deviceId)
-                    .catch(() => null)
-                )?.crossSigningVerified ?? false,
-            })),
+            .map(async (device) => {
+              const shownId = displayText(device.deviceId) ?? device.deviceId;
+              return {
+                deviceId: shownId,
+                name: displayText(device.displayName) ?? shownId,
+                // Not isVerified(): an emoji check's local trust outlives the owner's identity.
+                verified:
+                  (
+                    await crypto
+                      .getDeviceVerificationStatus(userId, device.deviceId)
+                      .catch(() => null)
+                  )?.crossSigningVerified ?? false,
+              };
+            }),
         ),
       )
       .then(
@@ -337,9 +355,9 @@ export class TrustUsersService {
           settle(
             sessions.length > 0 || opened
               ? { kind: 'read', sessions }
-              : { kind: 'unknown' },
+              : noAnswer(),
           ),
-        () => settle({ kind: opened ? 'failed' : 'unknown' }),
+        () => settle(opened ? { kind: 'failed' } : noAnswer()),
       );
   }
 
