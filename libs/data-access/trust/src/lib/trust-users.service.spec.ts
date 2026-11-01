@@ -679,8 +679,8 @@ describe('TrustUsersService', () => {
         const printable = Array.from({ length: 94 }, (_, i) =>
           String.fromCharCode(0x21 + i),
         )
-          .join('')
-          .replace('\\', '');
+          .filter((char) => char !== '\\')
+          .join('');
         const { first } = await firstSession({ deviceId: printable });
         expect(first?.shownId).toBe(printable);
       });
