@@ -1,7 +1,11 @@
 import { browser, expect } from '@wdio/globals';
-import { readSession } from '../../support/session.mts';
 import { waitForDurableActiveAccount } from '../support/app.mts';
-import { startOwnDex, unusedPort, type OwnDex } from '../support/own-dex.mts';
+import {
+  dexOnPath,
+  startOwnDex,
+  unusedPort,
+  type OwnDex,
+} from '../support/own-dex.mts';
 import { onlyOn } from '../support/platform.mts';
 import { pluginCall } from '../support/push-handoff.mts';
 import { resetApp, restartApp, webview } from '../support/session.mts';
@@ -102,7 +106,7 @@ describe('native token refresh against Dex', () => {
       'ios',
       "Mobile E2E's only Dex is Docker's, whose 2.46.1 hangs on a refresh grant (dexidp/dex#5017)",
     ).call(this);
-    if (!readSession().homeserver?.sso) {
+    if (!(await dexOnPath())) {
       console.log(
         `[mobile] skipped: ${this.test?.parent?.fullTitle() ?? ''} — no dex on PATH, so no provider to grant tokens`,
       );
@@ -128,10 +132,17 @@ describe('native token refresh against Dex', () => {
 
   after(async () => {
     if (!dex) return;
-    dex.stop();
-    await webview();
-    await removeAll();
-    await pluginCall('Preferences', 'remove', { key: REGISTRY_KEY });
+    try {
+      // First: if a call below hangs until the hook times out, nothing after it runs.
+      dex.stop();
+      await webview();
+    } finally {
+      try {
+        await removeAll();
+      } finally {
+        await pluginCall('Preferences', 'remove', { key: REGISTRY_KEY });
+      }
+    }
     for (const userId of [...REGISTERED_ACCOUNTS, UNLISTED_ACCOUNT]) {
       expect((await currentTokens(userId)).kind).toBe('gone');
     }

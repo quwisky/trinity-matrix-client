@@ -1,12 +1,14 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 
 const CLIENT_ID = 'trinity-native-refresh-e2e';
 // Dex takes any http://localhost redirect from a public client; nothing ever listens on it.
 const REDIRECT_URI = 'http://localhost/callback';
+const STDERR_TAIL_CHARS = 2_000;
 
 export interface DexTokens {
   readonly accessToken: string;
@@ -28,6 +30,14 @@ export interface OwnDex {
   mint(): Promise<DexTokens>;
   refresh(refreshToken: string): Promise<DexRefreshAnswer>;
   stop(): void;
+}
+
+/** False only for a missing binary: a `dex` that is there but broken should fail, not skip. */
+export function dexOnPath(): Promise<boolean> {
+  return promisify(execFile)('dex', ['version']).then(
+    () => true,
+    (error: NodeJS.ErrnoException) => error.code !== 'ENOENT',
+  );
 }
 
 /** A loopback port nothing listens on once this returns. */
@@ -75,12 +85,17 @@ export async function startOwnDex(): Promise<OwnDex> {
   );
   const dex = spawn('dex', ['serve', configFile], {
     env: { ...process.env, DEX_SESSIONS_ENABLED: 'true' },
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let stderrTail = '';
+  dex.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+    stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CHARS);
   });
   const exited = new Promise<never>((_, reject) => {
     dex.once('error', reject);
-    dex.once('exit', (code) => {
-      reject(new Error(`Dex exited early with ${String(code)}`));
+    // `close`, not `exit`: it waits for stderr, which says why.
+    dex.once('close', (code) => {
+      reject(new Error(`Dex exited early with ${String(code)}: ${stderrTail}`));
     });
   });
   exited.catch(() => undefined);
@@ -108,14 +123,17 @@ export async function startOwnDex(): Promise<OwnDex> {
     const deadline = Date.now() + 15_000;
     for (;;) {
       const answered = await Promise.race([
-        fetch(`${issuer}/.well-known/openid-configuration`).then(
+        fetch(`${issuer}/.well-known/openid-configuration`, {
+          signal: AbortSignal.timeout(Math.max(deadline - Date.now(), 1)),
+        }).then(
           (response) => response.ok,
           () => false,
         ),
         exited,
       ]);
       if (answered) break;
-      if (Date.now() > deadline) throw new Error('Dex never became ready');
+      if (Date.now() >= deadline)
+        throw new Error(`Dex never became ready: ${stderrTail}`);
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
   } catch (error) {
