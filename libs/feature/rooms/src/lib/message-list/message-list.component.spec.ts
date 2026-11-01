@@ -1693,6 +1693,63 @@ describe('MessageListComponent', () => {
       expect(await pillText('$20', false)).toBe('↑ New messages');
     });
 
+    it('points down when a collapsed run is the first rendered row', async () => {
+      // A run carries `data-mid="group:…"`, an id no message has.
+      const { fixture, container } = await renderList({ messages: many(200) });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      setScrollGeometry(scroll, {
+        scrollTop: { get: () => 100, set: () => undefined },
+        clientHeight: 600,
+        scrollHeight: 200 * EST,
+      });
+      cmp.onScroll();
+      fixture.detectChanges();
+      const run = document.createElement('div');
+      run.dataset['mid'] = 'group:$0';
+      scroll.prepend(run);
+      fixture.componentRef.setInput('firstUnreadId', '$190');
+      fixture.detectChanges();
+
+      (cmp as unknown as { updateJumpToUnread(): void }).updateJumpToUnread();
+      fixture.detectChanges();
+
+      expect(
+        container
+          .querySelector('[data-testid=jump-to-unread]')
+          ?.textContent?.trim(),
+      ).toBe('↓ New messages');
+    });
+
+    it.each([
+      ['below the viewport', 5000, '↓ New messages'],
+      ['above the viewport', 10, '↑ New messages'],
+    ])('uses the rendered divider when it is %s', async (_where, top, text) => {
+      const { fixture, container } = await renderList({ messages: many(10) });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      setScrollGeometry(scroll, {
+        scrollTop: { get: () => 1000, set: () => undefined },
+        clientHeight: 600,
+        scrollHeight: 10_000,
+      });
+      fixture.componentRef.setInput('firstUnreadId', '$5');
+      fixture.detectChanges();
+      const divider = scroll.querySelector(
+        '[data-testid=new-messages-divider]',
+      ) as HTMLElement;
+      Object.defineProperty(divider, 'offsetTop', { value: top });
+
+      (cmp as unknown as { updateJumpToUnread(): void }).updateJumpToUnread();
+      fixture.detectChanges();
+
+      expect(
+        container
+          .querySelector('[data-testid=jump-to-unread]')
+          ?.textContent?.trim(),
+      ).toBe(text);
+    });
+
     it('points down when you scrolled up and the first unread is below', async () => {
       // Reading near the top of history, so a message that just arrived is far below.
       expect(await pillText('$190', true)).toBe('↓ New messages');
