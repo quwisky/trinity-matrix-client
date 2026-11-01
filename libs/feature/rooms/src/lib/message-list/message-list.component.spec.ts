@@ -1722,6 +1722,45 @@ describe('MessageListComponent', () => {
     });
 
     it.each([
+      ['below', '$190', '↓ New messages'],
+      ['above', '$20', '↑ New messages'],
+    ])(
+      'points %s when only a collapsed run is rendered',
+      async (_where, unread, text) => {
+        const { fixture, container } = await renderList({
+          messages: many(200),
+        });
+        const cmp = fixture.componentInstance;
+        const scroll = container.querySelector('.scroll') as HTMLElement;
+        setScrollGeometry(scroll, {
+          scrollTop: { get: () => 100, set: () => undefined },
+          clientHeight: 600,
+          scrollHeight: 200 * EST,
+        });
+        cmp.onScroll();
+        fixture.detectChanges();
+        for (const row of scroll.querySelectorAll('[data-mid]')) row.remove();
+        const run = document.createElement('div');
+        run.dataset['mid'] = 'group:$100';
+        scroll.prepend(run);
+        fixture.componentRef.setInput('firstUnreadId', unread);
+        fixture.detectChanges();
+        for (const row of scroll.querySelectorAll('[data-mid]')) {
+          if (row !== run) row.remove();
+        }
+
+        (cmp as unknown as { updateJumpToUnread(): void }).updateJumpToUnread();
+        fixture.detectChanges();
+
+        expect(
+          container
+            .querySelector('[data-testid=jump-to-unread]')
+            ?.textContent?.trim(),
+        ).toBe(text);
+      },
+    );
+
+    it.each([
       ['below the viewport', 5000, '↓ New messages'],
       ['above the viewport', 10, '↑ New messages'],
     ])('uses the rendered divider when it is %s', async (_where, top, text) => {
