@@ -8,16 +8,23 @@ import {
   type PreferenceStorageReadOutcome,
 } from '@trinity/runtime/preferences';
 import {
+  FeatureSupport,
   MatrixEvent,
   MatrixEventEvent,
+  Room,
   RoomEvent,
   SyncState,
+  THREAD_RELATION_TYPE,
+  Thread,
+  createClient,
   type IEvent,
+  type MatrixClient,
 } from 'matrix-js-sdk';
 import {
   Observable,
   Subject,
   Subscription,
+  TimeoutError,
   firstValueFrom,
   of,
   throwError,
@@ -55,7 +62,7 @@ function fakeClient(userId: string) {
         tweaks: { highlight: true },
       }),
     ),
-    getSyncState: () => SyncState.Prepared,
+    getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
     getSyncStateData: () => ({ fromCache: true }),
     on: vi.fn((type: string, handler: Handler) => {
       listeners.set(type, (listeners.get(type) ?? new Set()).add(handler));
@@ -112,8 +119,58 @@ let subscriptions = new Subscription();
 
 /** Drains the store's promises and the reconcile effect. */
 async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve));
+  if (vi.isFakeTimers()) {
+    await vi.advanceTimersByTimeAsync(0);
+  } else {
+    await new Promise((resolve) => setTimeout(resolve));
+  }
   TestBed.tick();
+}
+
+/** A real SDK client and room, with the client re-emitting the room as `sync.js` does. */
+function realRoom() {
+  const client = createClient({
+    baseUrl: 'http://127.0.0.1:9',
+    userId: ME,
+    accessToken: 't',
+    deviceId: 'D',
+  });
+  client.supportsThreads = () => true;
+  client.http.authedRequest = (() =>
+    Promise.resolve({
+      chunk: [],
+      state: [],
+      start: 't',
+      end: null,
+    })) as never;
+  vi.spyOn(client, 'getPushActionsForEvent').mockReturnValue({
+    notify: true,
+    tweaks: { highlight: true },
+  });
+  const room = new Room('!r:hs', client, ME);
+  client.store.storeRoom(room);
+  const liveIds: (string | undefined)[] = [];
+  room.on(RoomEvent.Timeline, (event, eventRoom, toStart, removed, data) => {
+    if (data.liveEvent) {
+      liveIds.push(event.getId());
+    }
+    client.emit(RoomEvent.Timeline, event, eventRoom, toStart, removed, data);
+  });
+  return { client, room, liveIds };
+}
+
+function threadReply(
+  id: string,
+  root: string,
+  overrides: Partial<IEvent> = {},
+): MatrixEvent {
+  return message(id, {
+    content: {
+      body: 'hi @me',
+      'm.relates_to': { rel_type: THREAD_RELATION_TYPE.name, event_id: root },
+    },
+    ...overrides,
+  });
 }
 
 function setup(
@@ -125,6 +182,8 @@ function setup(
     registry?: Observable<{ userId: string }[]>;
     /** Holds every preference read until it emits. */
     readsHeld?: Subject<void>;
+    /** A real SDK client for the first account, in place of the fake. */
+    realClient?: MatrixClient;
   } = {},
 ) {
   const accounts = opts.accounts ?? [ME];
@@ -160,6 +219,9 @@ function setup(
   const clients = new Map<string, FakeClient>(
     accounts.map((id) => [id, fakeClient(id)]),
   );
+  if (opts.realClient) {
+    clients.set(accounts[0] ?? ME, opts.realClient as never);
+  }
   const accountIds = signal<readonly string[]>(accounts);
   const store = new FakeMentionStore();
   TestBed.resetTestingModule();
@@ -227,14 +289,99 @@ describe('MentionIndexService', () => {
     ]);
   });
 
-  it('records during catch-up, an old event and a cached sync alike', async () => {
+  it('has no age or sync-state gate on a live event after replay', async () => {
     const { client, store, run } = setup();
     await run();
 
-    client.live(message('$old', { unsigned: { age: 3 * 60 * 60 * 1000 } }));
+    const states = [
+      SyncState.Prepared,
+      SyncState.Syncing,
+      SyncState.Catchup,
+      SyncState.Reconnecting,
+    ];
+    for (const state of states) {
+      client.getSyncState.mockReturnValue(state);
+      client.live(
+        message(`$${state}`, { unsigned: { age: 3 * 60 * 60 * 1000 } }),
+      );
+    }
     await flush();
 
-    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$old']);
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(
+      states.map((state) => `$${state}`),
+    );
+  });
+
+  it('records nothing from a cached replay on a real room, threads included', async () => {
+    Thread.setServerSideSupport(FeatureSupport.Stable);
+    try {
+      const { client, room, liveIds } = realRoom();
+      const { store, run } = setup({ realClient: client });
+      await run();
+      expect(client.getSyncState()).toBeNull();
+      const held = threadReply('$held', '$root', {
+        type: 'm.room.encrypted',
+      });
+
+      await room.addLiveEvents(
+        [
+          message('$plain'),
+          message('$root'),
+          threadReply('$reply', '$root'),
+          held,
+        ],
+        { fromCache: true, addToState: false },
+      );
+      // `sync.js` sets Prepared as soon as the replay has been processed.
+      vi.spyOn(client, 'getSyncState').mockReturnValue(SyncState.Prepared);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flush();
+      expect(liveIds).toEqual(expect.arrayContaining(['$root', '$reply']));
+      expect(store.rows(ME)).toEqual([]);
+
+      // A decrypt finishing after the replay doesn't record what the replay held.
+      await decrypt(held);
+      client.emit(MatrixEventEvent.Decrypted, held);
+      await flush();
+      expect(store.rows(ME)).toEqual([]);
+
+      await room.addLiveEvents(
+        [message('$new'), threadReply('$new-reply', '$root')],
+        { fromCache: false, addToState: false },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flush();
+      expect(store.rows(ME).map((row) => row.eventId)).toEqual(
+        expect.arrayContaining(['$new', '$new-reply']),
+      );
+      expect(store.rows(ME).map((row) => row.eventId)).not.toContain('$reply');
+      client.stopClient();
+    } finally {
+      Thread.setServerSideSupport(FeatureSupport.None);
+    }
+  });
+
+  it('skips m.replace edits, after decryption too, and keeps other relations', async () => {
+    const { client, store, run } = setup();
+    await run();
+    const relatesTo = { rel_type: 'm.replace', event_id: '$original' };
+    const held = message('$held', {
+      type: 'm.room.encrypted',
+      content: { 'm.relates_to': relatesTo },
+    });
+
+    client.live(
+      message('$edit', {
+        content: { body: '* hi', 'm.relates_to': relatesTo },
+      }),
+    );
+    client.live(held);
+    await decrypt(held);
+    client.decrypted(held);
+    client.live(threadReply('$reply', '$root'));
+    await flush();
+
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$reply']);
   });
 
   it('waits for Decrypted, then re-checks with force', async () => {
@@ -440,6 +587,8 @@ describe('MentionIndexService', () => {
     client.live(message('$text-ts', { origin_server_ts: 'soon' as never }));
     client.live(message('$no-room', { room_id: undefined }));
     client.live(message('', { event_id: undefined }));
+    client.live(message('$object-room', { room_id: {} as never }));
+    client.live(message('', { event_id: {} as never }));
     client.live(message('$good'));
     await flush();
 
@@ -598,8 +747,11 @@ describe('MentionIndexService', () => {
   it('at start with an unreadable registry, skips the sweep and records', async () => {
     for (const registry of [
       throwError(() => new Error('registry down')),
-      // A registry blob without its list answers, but says nothing about the accounts.
+      // A corrupt blob answers, but says nothing about the accounts.
       of(undefined) as unknown as Observable<{ userId: string }[]>,
+      of([{}]) as unknown as Observable<{ userId: string }[]>,
+      of([{ userId: ME }, { userId: '' }]),
+      of([{ userId: ME }, { userId: 7 }]) as never,
     ]) {
       const { client, store, run, service } = setup({ registry });
       const sweep = vi.spyOn(store, 'keepOnlyAccounts');
@@ -630,6 +782,19 @@ describe('MentionIndexService', () => {
 
     expect(service.recording()).toBe(true);
     expect(store.rows(ME)).toHaveLength(1);
+  });
+
+  it('a stop while the registry is read leaves the sweep out', async () => {
+    const registry = new Subject<{ userId: string }[]>();
+    const { store, run, service } = setup({ registry });
+    const sweep = vi.spyOn(store, 'keepOnlyAccounts');
+    await run();
+
+    service.stop().subscribe();
+    registry.next([]);
+    await flush();
+
+    expect(sweep).not.toHaveBeenCalled();
   });
 
   it('reads the switches before the first write and the start-up work', async () => {
@@ -789,6 +954,168 @@ describe('MentionIndexService', () => {
     await firstValueFrom(service.forgetAccount(ME));
     expect(store.rows(ME)).toEqual([]);
     expect(store.rows('@two:hs')).toHaveLength(1);
+  });
+
+  describe('a hung store', () => {
+    const LIMIT = 10_000;
+    const never = (): Promise<never> => new Promise(() => undefined);
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('fails a delete at the limit; Try again runs and stop settles', async () => {
+      vi.useFakeTimers();
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const { store, run, service, client } = setup();
+      await run();
+      vi.spyOn(store, 'deleteAll').mockImplementationOnce(never);
+
+      const failed = expect(
+        firstValueFrom(service.deleteAll()),
+      ).rejects.toBeInstanceOf(TimeoutError);
+      await vi.advanceTimersByTimeAsync(LIMIT - 1);
+      expect(service.deleteFailed()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await failed;
+
+      expect(service.deleteFailed()).toBe(true);
+      expect(service.recording()).toBe(false);
+      TestBed.tick();
+      expect(client.bound(RoomEvent.Timeline)).toBe(0);
+      expect(warn).toHaveBeenCalledExactlyOnceWith(STOPPED);
+
+      await firstValueFrom(service.deleteAll());
+      expect(service.deleteFailed()).toBe(false);
+      expect(store.deleted).toBe(true);
+
+      await firstValueFrom(service.stop());
+    });
+
+    it('stops recording at a hung write, and what queued behind it runs', async () => {
+      vi.useFakeTimers();
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const { store, run, service, client } = setup();
+      await run();
+      const put = vi.spyOn(store, 'put').mockImplementationOnce(never);
+
+      client.live(message('$hung'));
+      client.live(message('$queued'));
+      const deleted = firstValueFrom(service.deleteAll());
+      await vi.advanceTimersByTimeAsync(LIMIT);
+      await deleted;
+
+      expect(service.recording()).toBe(false);
+      expect(put).toHaveBeenCalledOnce();
+      expect(service.deleteFailed()).toBe(false);
+      expect(warn).toHaveBeenCalledExactlyOnceWith(STOPPED);
+    });
+
+    it('warns once when several steps hang', async () => {
+      vi.useFakeTimers();
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const { store, run, service } = setup();
+      await run();
+      vi.spyOn(store, 'clearAccount').mockImplementation(never);
+
+      const one = expect(
+        firstValueFrom(service.forgetAccount(ME)),
+      ).rejects.toBeInstanceOf(TimeoutError);
+      const two = expect(
+        firstValueFrom(service.forgetAccount(ME)),
+      ).rejects.toBeInstanceOf(TimeoutError);
+      await vi.advanceTimersByTimeAsync(2 * LIMIT);
+      await Promise.all([one, two]);
+
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it('a stop waits for a hung step only up to the limit', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { store, run, service, client } = setup();
+      await run();
+      vi.spyOn(store, 'put').mockImplementationOnce(never);
+      client.live(message('$hung'));
+      await vi.advanceTimersByTimeAsync(0);
+
+      const stopped = vi.fn();
+      service.stop().subscribe({ complete: stopped });
+      await vi.advanceTimersByTimeAsync(LIMIT - 1);
+      expect(stopped).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(stopped).toHaveBeenCalledOnce();
+    });
+
+    it('a new run gets past a hung step', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { store, run, client } = setup();
+      const first = await run();
+      vi.spyOn(store, 'put').mockImplementationOnce(never);
+      client.live(message('$hung'));
+      await vi.advanceTimersByTimeAsync(0);
+      first.unsubscribe();
+      const sweep = vi.spyOn(store, 'keepOnlyAccounts');
+
+      await run();
+      expect(sweep).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(LIMIT);
+
+      expect(sweep).toHaveBeenCalledOnce();
+    });
+
+    it('ignores a late answer from a timed-out write', async () => {
+      vi.useFakeTimers();
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const { store, run, service, client } = setup();
+      await run();
+      let fail: (error: Error) => void = () => undefined;
+      vi.spyOn(store, 'put').mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            fail = reject;
+          }),
+      );
+      client.live(message('$hung'));
+      await vi.advanceTimersByTimeAsync(LIMIT);
+      warn.mockClear();
+
+      fail(new Error('late'));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(warn).not.toHaveBeenCalled();
+      expect(service.recording()).toBe(false);
+    });
+
+    it('a hung registry read stops recording and a late answer sweeps nothing', async () => {
+      vi.useFakeTimers();
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const registry = new Subject<{ userId: string }[]>();
+      const { store, run, service } = setup({ registry });
+      const sweep = vi.spyOn(store, 'keepOnlyAccounts');
+      await store.put(ME, { eventId: '$a', roomId: '!r:hs', ts: TS }, TS);
+
+      await run();
+      await vi.advanceTimersByTimeAsync(LIMIT);
+      expect(service.recording()).toBe(false);
+      expect(warn).toHaveBeenCalledExactlyOnceWith(STOPPED);
+
+      registry.next([]);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sweep).not.toHaveBeenCalled();
+      expect(store.rows(ME)).toHaveLength(1);
+    });
   });
 
   it('is cold: nothing runs until subscribed', () => {

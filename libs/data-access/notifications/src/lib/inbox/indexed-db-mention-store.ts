@@ -50,7 +50,9 @@ export function assertStorable(record: MentionRecord): void {
   if (
     typeof record.ts !== 'number' ||
     !Number.isFinite(record.ts) ||
+    typeof record.eventId !== 'string' ||
     !record.eventId ||
+    typeof record.roomId !== 'string' ||
     !record.roomId
   ) {
     throw new TypeError('Invalid mention record');

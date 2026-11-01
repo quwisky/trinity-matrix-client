@@ -151,6 +151,8 @@ describe('put validation', () => {
     { eventId: '$1', roomId: '!r', ts: undefined as unknown as number },
     { eventId: '', roomId: '!r', ts: NOW },
     { eventId: '$1', roomId: '', ts: NOW },
+    { eventId: {} as unknown as string, roomId: '!r', ts: NOW },
+    { eventId: '$1', roomId: 7 as unknown as string, ts: NOW },
   ];
 
   it.each(bad)(

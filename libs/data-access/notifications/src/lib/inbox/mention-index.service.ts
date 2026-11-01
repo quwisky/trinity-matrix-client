@@ -10,13 +10,22 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 import {
   MatrixEventEvent,
+  RelationType,
   RoomEvent,
   type IRoomTimelineData,
   type MatrixClient,
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
-import { Observable, defer, firstValueFrom, from } from 'rxjs';
+import {
+  Observable,
+  TimeoutError,
+  defer,
+  firstValueFrom,
+  from,
+  timeout,
+  type ObservableInput,
+} from 'rxjs';
 import { MentionInboxPreferences } from './mention-inbox.preferences';
 import {
   MENTION_INDEX_STORE,
@@ -39,6 +48,9 @@ interface AccountRecorder {
 
 /** Permanent UTDs stay pending for a later retry, so the set needs a cap. */
 const PENDING_DECRYPTION_CAP = 500;
+
+/** A hung store would otherwise hold every delete and stop queued behind it for good. */
+const STEP_LIMIT_MS = 10_000;
 
 /**
  * Records which messages mentioned the person, for every signed-in account at once, which is
@@ -137,7 +149,7 @@ export class MentionIndexService {
       // Also how a delete that failed earlier is retried; `deleteFailed` reports this one.
       await this.wipe().catch(() => undefined);
     } else if (this.preferences.recordAllowed()) {
-      await this.sweep();
+      await this.sweep(session);
     } else {
       // A setting that couldn't be read may be either answer: a failed read deletes nothing.
       this.stopForSession();
@@ -145,12 +157,19 @@ export class MentionIndexService {
   }
 
   /** Forgets accounts removed while no client could. The next start retries a failure. */
-  private sweep(): Promise<void> {
-    return this.enqueue(async () => {
+  private async sweep(session: symbol): Promise<void> {
+    try {
       // A registry that can't be read must throw here: an empty list deletes every row.
-      const accounts = await firstValueFrom(this.sessions.list());
-      await this.store.keepOnlyAccounts(accounts.map((a) => a.userId));
-    }).catch(() => undefined);
+      const accounts = await this.enqueue(() => this.sessions.list());
+      const ids = accounts.map((account) => account.userId);
+      // So must a corrupt record: an `undefined` ID matches no row, and deletes them all.
+      const valid = ids.every((id: unknown) => typeof id === 'string' && id);
+      if (valid && this.session === session) {
+        await this.enqueue(() => this.store.keepOnlyAccounts(ids));
+      }
+    } catch {
+      /* the next start retries */
+    }
   }
 
   private async wipe(): Promise<void> {
@@ -170,12 +189,25 @@ export class MentionIndexService {
   }
 
   private stopForSession(): void {
+    if (this.stopped()) {
+      return;
+    }
     this.stopped.set(true);
     console.warn('mention index: recording stopped for this session');
   }
 
-  private enqueue<T>(work: () => Promise<T>): Promise<T> {
-    const result = this.writes.then(work);
+  /** Past the limit a step counts as a storage failure, and its late answer is ignored. */
+  private enqueue<T>(work: () => ObservableInput<T>): Promise<T> {
+    const result = this.writes.then(() =>
+      firstValueFrom(defer(work).pipe(timeout(STEP_LIMIT_MS))).catch(
+        (error: unknown) => {
+          if (error instanceof TimeoutError) {
+            this.stopForSession();
+          }
+          throw error;
+        },
+      ),
+    );
     this.writes = result.then(
       () => undefined,
       () => undefined,
@@ -218,7 +250,10 @@ export class MentionIndexService {
       onTimeline: (event, _room, _toStart, _removed, data): void => {
         // Both listeners run inside the SDK's emit loop: a throw must never disrupt it.
         try {
-          if (data?.liveEvent !== true) {
+          // A cached replay reports thread events as live, and the sync state is null until it
+          // ends. Scrolling back in a thread reads as live too and can record a real old mention,
+          // which we accept.
+          if (data?.liveEvent !== true || client.getSyncState() === null) {
             return;
           }
           const id = event.getId();
@@ -261,6 +296,8 @@ export class MentionIndexService {
     if (
       event.getSender() === client.getUserId() ||
       event.isRedacted() ||
+      // A legacy edit highlights by display name again, so a bot's edits could use up the cap.
+      event.getRelation()?.rel_type === RelationType.Replace ||
       client.getPushActionsForEvent(event, true)?.tweaks?.highlight !== true
     ) {
       return;
@@ -270,18 +307,15 @@ export class MentionIndexService {
       roomId: event.getRoomId() ?? '',
       ts: event.getTs(),
     };
-    void this.enqueue(async () => {
+    void this.enqueue(() =>
       // Checked here, not at the emit: a failure or a switch going off also drops queued writes.
-      if (!this.recording()) {
-        return;
-      }
-      try {
-        await this.store.put(accountId, record, Date.now());
-      } catch (error) {
-        // A TypeError is one malformed event from a server, which is no reason to stop.
-        if (!(error instanceof TypeError)) {
-          this.stopForSession();
-        }
+      this.recording()
+        ? this.store.put(accountId, record, Date.now())
+        : Promise.resolve(),
+    ).catch((error: unknown) => {
+      // A TypeError is one malformed event from a server, which is no reason to stop.
+      if (!(error instanceof TypeError)) {
+        this.stopForSession();
       }
     });
   }
