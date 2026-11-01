@@ -25,6 +25,21 @@
     outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
     outline-offset: var(--trinity-focus-ring-offset);
   }
+
+  /* A non-control with tabindex="-1" (dialog container, heading) takes only script focus,
+   * which WebKit shows as :focus-visible after typing even when the last gesture was a touch
+   * (a long press sends no mouse event). Tab never reaches it, so draw no ring on it. */
+  [tabindex='-1']:not(
+      button,
+      a,
+      input,
+      select,
+      textarea,
+      [role='button'],
+      [role='link']
+    ):focus-visible {
+    outline: none;
+  }
 }
 
 @layer components {
