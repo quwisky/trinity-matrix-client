@@ -1,5 +1,5 @@
 import { browser, expect } from '@wdio/globals';
-import { login, tap } from '../support/app.mts';
+import { login, signInPageShown, tap } from '../support/app.mts';
 import { roomWithSender, sendMessage, uniqueId } from '../support/matrix.mts';
 import {
   APP_PACKAGE,
@@ -197,6 +197,8 @@ describe('device-rendered push on Android', () => {
   });
 
   it('stores, reads and removes tokens through the installed plugin, with no network', async () => {
+    // The launch sweep removes any record with no account, so it must have finished first.
+    await signInPageShown();
     const accessTokenExpiresAt = 4_102_444_800_000;
     const answers = await tokenRoundTrip(
       `@${uniqueId('vault')}:unknown.invalid`,
