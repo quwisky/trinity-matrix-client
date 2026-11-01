@@ -27,8 +27,7 @@ export class WorkspaceAvailability {
   }
 
   /**
-   * The Inbox view may be named while the device shows the Inbox. A switch whose read
-   * failed holds its default, on.
+   * The Inbox view may be named while the device shows the Inbox. A switch not yet read, or whose read failed, holds its default, on.
    * Reactive: read it in a `computed` to follow it.
    */
   inboxShown(): boolean {
