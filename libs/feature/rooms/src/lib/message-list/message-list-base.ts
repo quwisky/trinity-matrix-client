@@ -703,6 +703,7 @@ export abstract class MessageListBase {
       this.rowCaps(row),
       (action) => this.onRowAction(row, action),
       context,
+      row.timestamp,
     );
   }
 
