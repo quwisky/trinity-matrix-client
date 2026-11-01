@@ -43,6 +43,7 @@ import { MockComponent, MockProvider } from 'ng-mocks';
 import { NEVER, of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
+import { NotificationInboxComponent } from '../inbox/notification-inbox.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
@@ -253,6 +254,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
       imports: [
         ServerRailComponent,
         ChannelSidebarComponent,
+        NotificationInboxComponent,
         SidebarUserPanelComponent,
         PaneHandleComponent,
         MessageListComponent,
@@ -309,6 +311,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
       imports: [
         realRail ? ServerRailComponent : MockComponent(ServerRailComponent),
         MockComponent(ChannelSidebarComponent),
+        MockComponent(NotificationInboxComponent),
         MockComponent(SidebarUserPanelComponent),
         MockComponent(PaneHandleComponent),
         MockComponent(MessageListComponent),
@@ -820,18 +823,18 @@ describe('RoomsPage rail unread chat focus', () => {
 });
 
 describe('RoomsPage rendered inbox', () => {
-  it('swaps the sidebar list for the inbox slot, keeping the rail and user panel', () => {
+  it('swaps the sidebar list for the inbox, keeping the rail and user panel', () => {
     const { fixture, inboxView } = buildPage();
     fixture.detectChanges();
     const root: HTMLElement = fixture.nativeElement;
     expect(root.querySelector('trn-channel-sidebar')).not.toBeNull();
-    expect(root.querySelector('[data-testid=inbox-slot]')).toBeNull();
+    expect(root.querySelector('trn-notification-inbox')).toBeNull();
 
     inboxView.set(true);
     fixture.detectChanges();
 
     expect(root.querySelector('trn-channel-sidebar')).toBeNull();
-    expect(root.querySelector('[data-testid=inbox-slot]')).not.toBeNull();
+    expect(root.querySelector('trn-notification-inbox')).not.toBeNull();
     expect(root.querySelector('trn-server-rail')).not.toBeNull();
     expect(root.querySelector('trn-sidebar-user-panel')).not.toBeNull();
   });

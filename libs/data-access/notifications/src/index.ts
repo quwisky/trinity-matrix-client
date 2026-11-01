@@ -41,7 +41,6 @@ export {
   provideMentionInboxPreferences,
 } from './lib/inbox/mention-inbox.preferences';
 export { MentionIndexService } from './lib/inbox/mention-index.service';
-export { mergeInboxRows } from './lib/inbox/inbox-rows';
 export type {
   InboxLoadResult,
   InboxPreview,

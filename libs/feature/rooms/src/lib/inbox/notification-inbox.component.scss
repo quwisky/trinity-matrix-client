@@ -1,0 +1,103 @@
+@use '../styles/mixins' as *;
+
+@layer components {
+  :host {
+    @include column(var(--trinity-surface-sidebar));
+
+    min-width: 0;
+  }
+
+  // In line with the sidebar's header, which this view stands in for.
+  .inbox__header {
+    height: 48px;
+    flex: 0 0 48px;
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-density-shell-gap);
+    padding: 0 var(--trinity-density-shell-padding-inline);
+    font-weight: 600;
+    color: var(--trinity-text-bright);
+    background: var(--trinity-surface-navigation-header);
+    box-shadow: inset 0 -1px 0 var(--trinity-border-subtle);
+  }
+
+  .inbox__title {
+    @include ellipsis;
+
+    flex: 1;
+    min-width: 0;
+  }
+
+  .inbox__actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-space-1);
+  }
+
+  .inbox__action {
+    @include interactive-row;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
+    font-size: var(--trinity-text-lg);
+
+    &:hover {
+      color: var(--trinity-text-bright);
+    }
+  }
+
+  .inbox__tabs {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .inbox__scroll {
+    @include scrollable;
+
+    flex: 1;
+    min-height: 0;
+    padding: var(--trinity-space-3) var(--trinity-density-shell-padding-inline);
+
+    // The desktop identity dock floats over this scroller, as it does over the room list.
+    @media #{$md} {
+      padding-block-end: calc(
+        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      );
+      scroll-padding-block-end: calc(
+        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      );
+    }
+  }
+
+  .inbox__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .inbox__note {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--trinity-space-3);
+    margin: var(--trinity-space-2) 0;
+    padding: var(--trinity-space-3);
+    border-radius: var(--trinity-shape-control-radius);
+    background: var(--trinity-surface-raised);
+    font-size: var(--trinity-text-xs);
+    color: var(--trinity-text-muted);
+  }
+
+  .inbox__more {
+    display: flex;
+    justify-content: center;
+    margin-block: var(--trinity-space-3);
+  }
+}

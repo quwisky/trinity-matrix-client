@@ -1,0 +1,38 @@
+@let r = row();
+<button
+  type="button"
+  class="row"
+  [class.row--current]="current()"
+  [class.row--unread]="unread()"
+  [attr.aria-current]="current() ? 'true' : null"
+  data-testid="inbox-row"
+  (click)="opened.emit()"
+>
+  <trn-avatar
+    class="row__avatar"
+    aria-hidden="true"
+    [initial]="initial()"
+    [name]="r.roomName"
+    size="lg"
+    shape="place"
+  />
+  <span class="row__room">{{ r.roomName }}</span>
+  @if (unread()) {
+    <span class="row__dot" data-testid="inbox-row-dot"></span>
+  }
+  <span class="sr-only">, </span>
+  <span
+    class="row__preview"
+    [class.row__preview--stand-in]="r.preview.kind !== 'text'"
+  >
+    @if (r.senderName; as sender) {
+      <span class="row__sender">{{ sender }}:</span>
+    }
+    {{ previewText() }}
+  </span>
+  <span class="sr-only">, </span>
+  <span class="row__time">{{ fmt.dateTime(r.ts) }}</span>
+  @if (unread()) {
+    <span class="sr-only">, unread</span>
+  }
+</button>

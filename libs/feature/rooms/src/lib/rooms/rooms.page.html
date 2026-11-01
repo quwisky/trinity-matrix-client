@@ -42,7 +42,12 @@
         (openUnreadChat)="openRailUnreadChat($event)"
       />
       @if (store.inboxView()) {
-        <div class="shell-side__rooms" data-testid="inbox-slot"></div>
+        <trn-notification-inbox
+          class="shell-side__rooms"
+          [showSwitcher]="!titleBar.active()"
+          [activeRoomId]="store.activeRoomId()"
+          (openSwitcher)="shortcutActions.openSwitcher()"
+        />
       } @else {
         <trn-channel-sidebar
           class="shell-side__rooms"

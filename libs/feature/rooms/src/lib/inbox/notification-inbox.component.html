@@ -1,0 +1,165 @@
+<header class="inbox__header">
+  <span class="inbox__title">Inbox</span>
+  <div class="inbox__actions">
+    @if (showSwitcher()) {
+      <button
+        trnIconButton
+        class="inbox__action"
+        (click)="openSwitcher.emit()"
+        aria-label="Search (Ctrl/Cmd+K)"
+        trnTooltip="Search (Ctrl/Cmd+K)"
+        data-testid="open-switcher"
+      >
+        <trn-icon name="command" motion="pop" />
+      </button>
+    }
+    <button
+      trnIconButton
+      class="inbox__action"
+      (click)="refresh()"
+      aria-label="Refresh"
+      trnTooltip="Refresh"
+      data-testid="inbox-refresh"
+    >
+      <trn-icon name="rotate-ccw" motion="rotate" />
+    </button>
+  </div>
+</header>
+
+<!-- Stays in the page and only its text changes, so each change is announced once. -->
+<p class="sr-only" role="status" aria-live="polite" data-testid="inbox-status">
+  {{ announcement() }}
+</p>
+
+<div
+  trnTabs
+  appearance="underline"
+  activation="manual"
+  class="inbox__tabs"
+  [value]="tab()"
+  (valueChange)="selectTab($event)"
+>
+  <div trnTabList aria-label="Inbox sections">
+    <button trnTab="mentions" data-testid="inbox-tab-mentions">Mentions</button>
+    <button trnTab="all" data-testid="inbox-tab-all">All</button>
+  </div>
+
+  <div #scroller class="inbox__scroll" data-testid="inbox-scroll">
+    @for (panel of tabs; track panel) {
+      <div [trnTabPanel]="panel" [focusable]="!rows().length">
+        @if (panel === tab()) {
+          @if (inbox.status() === 'failed') {
+            <trn-empty-state
+              icon="cloud-off"
+              title="Couldn't load your inbox"
+              data-testid="inbox-failed"
+            >
+              <button
+                trnEmptyStateActions
+                trnBtn
+                size="sm"
+                type="button"
+                (click)="refresh()"
+              >
+                Try again
+              </button>
+            </trn-empty-state>
+          } @else {
+            @if (tab() === 'all') {
+              <p class="inbox__note">
+                <trn-icon name="clock" />
+                <span>Your server may only keep these for a short time.</span>
+              </p>
+            } @else if (!recording()) {
+              <p class="inbox__note">
+                <trn-icon name="clock" />
+                <span
+                  >Older mentions and mentions in encrypted rooms may be
+                  missing.</span
+                >
+              </p>
+            }
+            @if (inbox.serverListFailed()) {
+              <p class="inbox__note" data-testid="inbox-server-failed">
+                <trn-icon name="cloud-off" />
+                <span
+                  >Couldn't load your server's list.
+                  <button
+                    trnBtn
+                    type="button"
+                    variant="secondary"
+                    presentation="link"
+                    shape="inline"
+                    size="xs"
+                    (click)="refresh()"
+                  >
+                    Try again.
+                  </button></span
+                >
+              </p>
+            }
+            @if (rows().length) {
+              <ul class="inbox__list">
+                @for (row of rows(); track row.eventId) {
+                  <li>
+                    <trn-inbox-row
+                      [row]="row"
+                      [unread]="isUnread(row)"
+                      [current]="isCurrent(row)"
+                      (opened)="onRowOpened(row)"
+                    />
+                  </li>
+                }
+              </ul>
+            } @else if (inbox.status() === 'loading') {
+              <trn-empty-state
+                layout="line"
+                body="Loading your inbox…"
+                data-testid="inbox-loading"
+              />
+            } @else if (
+              inbox.status() === 'ready' && !inbox.serverListFailed()
+            ) {
+              <trn-empty-state
+                icon="inbox"
+                [body]="
+                  tab() === 'all'
+                    ? 'No notifications.'
+                    : 'No mentions. When someone mentions you, it shows up here.'
+                "
+                data-testid="inbox-empty"
+              />
+            }
+            @if (uncheckedNote(); as note) {
+              <p class="inbox__note">
+                <trn-icon name="lock" />
+                <span>{{ note }}</span>
+              </p>
+            }
+            @if (limitNote(); as note) {
+              <p class="inbox__note" data-testid="inbox-limit">
+                <trn-icon name="search" />
+                <span>{{ note }}</span>
+              </p>
+            }
+            @if (canLoadMore()) {
+              <div class="inbox__more">
+                <button
+                  trnBtn
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  [disabled]="inbox.status() === 'loading'"
+                  data-testid="inbox-load-more"
+                  (click)="loadMore()"
+                >
+                  Load more
+                </button>
+              </div>
+            }
+          }
+        }
+      </div>
+    }
+  </div>
+</div>
