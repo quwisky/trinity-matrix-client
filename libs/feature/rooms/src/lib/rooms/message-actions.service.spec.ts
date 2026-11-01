@@ -85,7 +85,10 @@ describe('MessageActionsService', () => {
   const setTyping = vi.fn();
   const setDraft = vi.fn();
   const draft = signal('');
-  const timelineMessages = signal<{ id: string; body: string }[]>([]);
+  const cancelIntent = vi.fn();
+  const timelineMessages = signal<
+    { id: string; body: string; status: 'failed' | null; isOwn: boolean }[]
+  >([]);
   const submitText = vi.fn<() => Observable<ConversationTextSendOutcome>>(() =>
     of({ kind: 'sent', eventId: '$sent' }),
   );
@@ -94,7 +97,20 @@ describe('MessageActionsService', () => {
   });
   const toastShow = vi.fn();
   const mediaSend = vi.fn<() => Observable<MediaTransferEvent>>();
-  const conversation = { media: { send: mediaSend } };
+  const compose = {
+    setDraft,
+    draft,
+    submit: submitText,
+    setTyping,
+    intent,
+    cancelIntent,
+  };
+  const conversation = {
+    media: { send: mediaSend },
+    compose,
+    messages: { redact, toggleReaction, retry, cancel },
+    timeline: { messages: timelineMessages },
+  };
   let roomEncrypted = false;
 
   const MOCKS: Provider[] = [
@@ -115,7 +131,7 @@ describe('MessageActionsService', () => {
       useFactory: () => ({
         timeline: inject(ConversationTimelineStub),
         focused: () => conversation,
-        compose: { setDraft, draft, submit: submitText, setTyping, intent },
+        compose,
         messages: { redact, toggleReaction, retry, cancel },
         pins: { isPinned, pin, unpin },
       }),
@@ -185,6 +201,7 @@ describe('MessageActionsService', () => {
     roomEncrypted = false;
     draft.set('');
     timelineMessages.set([]);
+    intent.set({ kind: 'message' });
   });
 
   describe('sending', () => {
@@ -403,22 +420,44 @@ describe('MessageActionsService', () => {
   });
 
   describe('retrying a failed send', () => {
-    // A failed send puts its text back in the composer and leaves the row offering Retry, so
-    // the same words sit in two places and sending both would post them twice.
-    beforeEach(() => timelineMessages.set([{ id: '$1', body: 'hello' }]));
+    // A failed send puts its text (and a reply target) back in the composer and leaves the row
+    // offering Retry, so the same words sit in two places and sending both posts them twice.
+    const failedRow = (id: string, body: string) =>
+      ({ id, body, status: 'failed', isOwn: true }) as const;
 
-    it('clears the composer when it still holds exactly the restored text', () => {
+    /** Send `text`, rejected: the runtime restores it to the box and the echo shows as failed. */
+    function failSend(
+      actions: MessageActionsService,
+      text: string,
+      echo = failedRow('$1', 'echo body differs'),
+    ): void {
+      submitText.mockImplementationOnce(() => {
+        draft.set(text);
+        timelineMessages.set([echo]);
+        return of({
+          kind: 'rejected',
+          failure: 'send-rejected',
+          retryable: true,
+        } satisfies ConversationTextSendOutcome);
+      });
+      actions.onSend({ body: text, mentions: [] });
+      setDraft.mockClear();
+    }
+
+    it('clears the box on the Retry tap, before the retry settles, for any kind of text', () => {
       const { actions } = build();
-      draft.set('hello');
+      failSend(actions, '/me waves **hard**');
+      draft.set('/me waves **hard**');
+      retry.mockReturnValueOnce(new Subject<ConversationMessageOutcome>());
 
       actions.onRetry('$1');
 
-      expect(retry).toHaveBeenCalledWith('$1');
       expect(setDraft).toHaveBeenCalledWith('');
     });
 
-    it('leaves the composer alone when the person has edited it', () => {
+    it('leaves the box alone when the person has edited the restored text', () => {
       const { actions } = build();
+      failSend(actions, 'hello');
       draft.set('hello there');
 
       actions.onRetry('$1');
@@ -427,29 +466,76 @@ describe('MessageActionsService', () => {
       expect(setDraft).not.toHaveBeenCalled();
     });
 
-    it('leaves the composer alone on a second Retry once it holds a new message', () => {
+    it('puts the text back when the retry fails again', () => {
       const { actions } = build();
+      failSend(actions, 'hello');
+      draft.set('hello');
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      retry.mockReturnValueOnce(throwError(() => new Error('nope')));
+
+      actions.onRetry('$1');
+
+      expect(draft()).toBe('hello');
+      setDraft.mockReset();
+    });
+
+    it('does not clear again on a second Retry once the box holds a new message', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
       draft.set('hello');
       actions.onRetry('$1');
       draft.set('something new');
-
-      actions.onRetry('$1');
-
-      expect(setDraft).toHaveBeenCalledTimes(1);
-    });
-
-    it('keeps the text when the retry could not start', () => {
-      const { actions } = build();
-      draft.set('hello');
-      retry.mockReturnValueOnce(throwError(() => new Error('nope')));
+      setDraft.mockClear();
 
       actions.onRetry('$1');
 
       expect(setDraft).not.toHaveBeenCalled();
     });
 
-    it('does not touch the composer when a failed message is deleted', () => {
+    it('cancels the reply the failed send restored', () => {
       const { actions } = build();
+      intent.set({ kind: 'reply', eventId: '$parent' });
+      failSend(actions, 'hello');
+      draft.set('hello');
+
+      actions.onRetry('$1');
+
+      expect(cancelIntent).toHaveBeenCalledTimes(1);
+    });
+
+    it('never touches an edit in progress', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      intent.set({ kind: 'edit', eventId: '$other' });
+      draft.set('hello');
+
+      actions.onRetry('$1');
+
+      expect(setDraft).not.toHaveBeenCalled();
+      expect(cancelIntent).not.toHaveBeenCalled();
+    });
+
+    it('acts on the failed message\u2019s own room when the person has moved on', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      draft.set('hello');
+      const otherRoomDraft = vi.fn();
+      const room = conversation.compose;
+      const subject = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(subject);
+
+      actions.onRetry('$1');
+      // The runtime now follows another room whose box holds identical text.
+      Object.assign(room, { setDraft: otherRoomDraft });
+      subject.next({ kind: 'applied', operation: 'retry' });
+
+      expect(otherRoomDraft).not.toHaveBeenCalled();
+      Object.assign(room, { setDraft });
+    });
+
+    it('does not touch the box when a failed message is deleted', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
       draft.set('hello');
 
       actions.onDelete('$1');
