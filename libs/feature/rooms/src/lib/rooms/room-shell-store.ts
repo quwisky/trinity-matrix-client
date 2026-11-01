@@ -1,4 +1,4 @@
-import { Injectable, inject, linkedSignal } from '@angular/core';
+import { Injectable, effect, inject, linkedSignal } from '@angular/core';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 
 /**
@@ -17,6 +17,15 @@ import { WorkspaceNavigationService } from '@trinity/application/workspace';
 export class RoomShellStore {
   private readonly workspace = inject(WorkspaceNavigationService);
 
+  /**
+   * A linked signal only notices a view change when it is read. The Inbox hides the sidebar,
+   * so nothing reads the filter there and a query typed in Home would come back after
+   * Home, Inbox, Home. This read keeps it current whichever list is on screen.
+   */
+  private readonly resetFilterOnViewChange = effect(() => {
+    this.roomFilter();
+  });
+
   readonly activeAccountId = this.workspace.activeAccountId;
   readonly activeSpaceId = this.workspace.activeSpaceId;
 
@@ -26,6 +35,9 @@ export class RoomShellStore {
    * Home/Rooms/space scoping. Cleared by selecting Home, Rooms, or a space.
    */
   readonly recentView = this.workspace.recentView;
+
+  /** Whether the Inbox view is active: it replaces the sidebar list, so no room list shows. */
+  readonly inboxView = this.workspace.inboxView;
 
   /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (no
    * space) shows direct messages only; Recent, a space, or this view clears the others. */
@@ -64,7 +76,7 @@ export class RoomShellStore {
    */
   readonly roomFilter = linkedSignal<string, string>({
     source: () =>
-      `${this.workspace.activeAccountId() ?? ''}|${this.recentView()}|${this.roomsView()}|${this.activeSpaceId() ?? ''}`,
+      `${this.workspace.activeAccountId() ?? ''}|${this.recentView()}|${this.inboxView()}|${this.roomsView()}|${this.activeSpaceId() ?? ''}`,
     computation: () => '',
   });
 }

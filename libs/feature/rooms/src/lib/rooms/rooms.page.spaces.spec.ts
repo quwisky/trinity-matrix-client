@@ -667,6 +667,95 @@ describe('RoomsPage space filtering', () => {
     expect(shell.store.roomFilter()).toBe('');
   });
 
+  it('opens the inbox as its own view, leaving Recent', async () => {
+    const shell = build();
+
+    shell.nav.onShowInbox();
+    await settleWorkspace();
+
+    expect(shell.store.inboxView()).toBe(true);
+    expect(shell.store.recentView()).toBe(false);
+  });
+
+  it.each([
+    ['Recent', (shell: ReturnType<typeof build>) => shell.nav.onShowRecent()],
+    ['Rooms', (shell: ReturnType<typeof build>) => shell.nav.onShowRooms()],
+    [
+      'Home',
+      (shell: ReturnType<typeof build>) =>
+        shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' }),
+    ],
+    [
+      'a space',
+      (shell: ReturnType<typeof build>) =>
+        shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' }),
+    ],
+  ])('leaves the inbox when %s is chosen on the rail', async (_name, leave) => {
+    const shell = build();
+    shell.nav.onShowInbox();
+    await settleWorkspace();
+
+    leave(shell);
+    await settleWorkspace();
+
+    expect(shell.store.inboxView()).toBe(false);
+  });
+
+  it('resets the room filter when the inbox opens', async () => {
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
+    await settleWorkspace();
+    shell.store.roomFilter.set('alpha');
+
+    shell.nav.onShowInbox();
+    await settleWorkspace();
+    expect(shell.store.roomFilter()).toBe('');
+
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
+    await settleWorkspace();
+    expect(shell.store.roomFilter()).toBe('');
+  });
+
+  it('keeps text typed in Home out of Home, Inbox, Home', async () => {
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
+    await settleWorkspace();
+    shell.store.roomFilter.set('alpha');
+    shell.nav.onShowInbox();
+    await settleWorkspace();
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
+    await settleWorkspace();
+
+    expect(shell.store.roomFilter()).toBe('');
+  });
+
+  it('stops the Alt+Arrow walk while the inbox shows, though every room stays known', async () => {
+    const shell = build();
+    shell.nav.onSelectRoom({ roomId: '!c:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    shell.nav.onShowInbox();
+    await settleWorkspace();
+    expect(shell.vm.filteredRooms()).toEqual([]);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!c:hs',
+      '!a:hs',
+      '!b:hs',
+    ]);
+
+    shell.shortcuts.onGlobalKeydown({
+      key: 'ArrowDown',
+      code: '',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: true,
+      shiftKey: false,
+      preventDefault: vi.fn(),
+    } as unknown as KeyboardEvent);
+    await settleWorkspace();
+
+    expect(shell.store.activeRoomId()).toBe('!c:hs');
+  });
+
   it('treats an all-whitespace query as no filter', () => {
     const shell = build();
 

@@ -142,6 +142,7 @@ function renderHeader(
     spaceOrderOwnerName: signal(null),
     defaultSpaceSortMode: signal('recent'),
     filteredRooms: signal<RoomSummary[]>([]),
+    inboxShown: signal(false),
     members: signal<MemberSummary[]>([BOB]),
     membersView: signal({
       availability: 'coherent' as const,
@@ -308,6 +309,7 @@ function renderHeader(
             activeSpaceId: signal<string | null>(null),
             recentView: signal(true),
             roomsView: signal(false),
+            inboxView: signal(false),
             activeRoomId: signal<string | null>(opts.routeRoom ?? '!r:hs'),
             pane: signal<'list' | 'conversation'>('conversation'),
             placement: signal<'list' | 'conversation' | 'split'>('split'),

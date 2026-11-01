@@ -114,7 +114,9 @@ interface BuildOptions {
 
 function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
   const memberActions = { onSelectMember: vi.fn() };
+  const inboxView = signal(false);
   const vm = {
+    inboxShown: signal(true),
     accountBadges: signal(new Map()),
     accounts: signal([]),
     activeAccountId: signal<string | null>('@me:hs'),
@@ -273,6 +275,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
             activeSpaceId: signal<string | null>(null),
             recentView: signal(true),
             roomsView: signal(false),
+            inboxView,
             activeRoomId: signal<string | null>('!r:hs'),
             pane: signal<'list' | 'conversation'>('conversation'),
             placement: signal<'list' | 'conversation' | 'split'>('split'),
@@ -318,7 +321,12 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
     },
   });
   setRouteRoom('!r:hs');
-  return { fixture: TestBed.createComponent(RoomsPage), vm, memberActions };
+  return {
+    fixture: TestBed.createComponent(RoomsPage),
+    vm,
+    memberActions,
+    inboxView,
+  };
 }
 
 function showSurface(
@@ -808,5 +816,23 @@ describe('RoomsPage rail unread chat focus', () => {
     TestBed.tick();
 
     expect(document.activeElement).toBe(recent);
+  });
+});
+
+describe('RoomsPage rendered inbox', () => {
+  it('swaps the sidebar list for the inbox slot, keeping the rail and user panel', () => {
+    const { fixture, inboxView } = buildPage();
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector('trn-channel-sidebar')).not.toBeNull();
+    expect(root.querySelector('[data-testid=inbox-slot]')).toBeNull();
+
+    inboxView.set(true);
+    fixture.detectChanges();
+
+    expect(root.querySelector('trn-channel-sidebar')).toBeNull();
+    expect(root.querySelector('[data-testid=inbox-slot]')).not.toBeNull();
+    expect(root.querySelector('trn-server-rail')).not.toBeNull();
+    expect(root.querySelector('trn-sidebar-user-panel')).not.toBeNull();
   });
 });

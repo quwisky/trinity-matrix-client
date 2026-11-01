@@ -30,6 +30,7 @@ import {
   buildRailUnreadChats,
   type RailUnreadChats,
 } from '../server-rail/rail-unread-chats';
+import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import { TrustAccountStatusService } from '@trinity/data-access/trust';
 import { type RailUnread } from '../server-rail/server-rail.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -59,6 +60,9 @@ export class RoomShellViewModel {
   private readonly matrix = inject(MatrixClientService);
   private readonly identities = inject(AccountIdentitiesService);
   private readonly accountTrust = inject(TrustAccountStatusService);
+  private readonly inboxPreferences = inject(MentionInboxPreferences);
+
+  readonly inboxShown = this.inboxPreferences.showInbox;
 
   /** Whether a row is filed under one of its selected owner's spaces. A shared Room uses
    * the hierarchy of the Account that won the selected-view row, just as its actions do. */
@@ -85,7 +89,7 @@ export class RoomShellViewModel {
   readonly visibleRooms = computed<readonly RoomSummary[]>(() => {
     const view = this.selectedLibrary.view();
     // Recent activity is already ordered by the selected projection and is used unfiltered.
-    if (this.store.recentView()) {
+    if (this.store.recentView() || this.store.inboxView()) {
       return view.rooms;
     }
     const all = view.rooms;
@@ -148,6 +152,7 @@ export class RoomShellViewModel {
    * unfiltered {@link visibleRooms}.
    */
   readonly filteredRooms = computed<readonly RoomSummary[]>(() => {
+    if (this.store.inboxView()) return [];
     return filterRoomLibraryItems(this.visibleRooms(), this.store.roomFilter());
   });
 

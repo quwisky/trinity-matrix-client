@@ -46,6 +46,7 @@ export const TRN_ICON_NAMES = [
   'forward',
   'house',
   'image',
+  'inbox',
   'italic',
   'key-round',
   'keyboard',

@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import {
   type MemberSummary,
   RoomActionPermissionsService,
@@ -97,6 +98,8 @@ function build(
   const placement = signal<'list' | 'conversation' | 'split'>('split');
   const recentView = signal(true);
   const roomsView = signal(false);
+  const inboxView = signal(false);
+  const showInbox = signal(true);
   const activeSpaceId = signal<string | null>(null);
   const selectedView = signal<SelectedRoomLibraryView>(
     opts.selectedView ?? {
@@ -168,10 +171,14 @@ function build(
           activeRoomId: activeRoomId.asReadonly(),
           recentView: recentView.asReadonly(),
           roomsView: roomsView.asReadonly(),
+          inboxView: inboxView.asReadonly(),
           pane: signal<'list' | 'conversation'>('list').asReadonly(),
           placement: placement.asReadonly(),
         },
       },
+      MockProvider(MentionInboxPreferences, {
+        showInbox: showInbox.asReadonly(),
+      }),
       MockProvider(AccountIdentitiesService, {
         identities: profiles.asReadonly(),
         identityOf: (userId: string) =>
@@ -197,6 +204,11 @@ function build(
     rosters,
     membersFor,
     selectedView,
+    showInbox,
+    openInbox: () => {
+      recentView.set(false);
+      inboxView.set(true);
+    },
     showRooms: () => {
       recentView.set(false);
       roomsView.set(true);
@@ -222,6 +234,40 @@ function room(
     memberCount: 2,
   });
 }
+
+describe('RoomShellViewModel inbox', () => {
+  const rooms = [
+    room('!a:hs', '@me:hs'),
+    { ...room('!b:hs', '@me:hs'), name: 'bravo' },
+  ];
+  const view = (): SelectedRoomLibraryView => ({
+    accountIds: new Set(['@me:hs']),
+    mode: 'active',
+    rooms,
+    spaces: [],
+    spaceChildRoomIdsByAccount: new Map(),
+    invitations: [],
+  });
+
+  it('follows the show-the-inbox switch', () => {
+    const { vm, showInbox } = build();
+    expect(vm.inboxShown()).toBe(true);
+
+    showInbox.set(false);
+
+    expect(vm.inboxShown()).toBe(false);
+  });
+
+  it('keeps every room for name lookups but walks none while the inbox shows', () => {
+    const { vm, openInbox } = build({ selectedView: view() });
+    expect(vm.filteredRooms()).toHaveLength(2);
+
+    openInbox();
+
+    expect(vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
+    expect(vm.filteredRooms()).toEqual([]);
+  });
+});
 
 describe('RoomShellViewModel selected space', () => {
   const team = spaceSummary({

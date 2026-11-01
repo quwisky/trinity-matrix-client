@@ -74,6 +74,7 @@ function build(roomId: string | null = '!room:example.org') {
           activeRoomId: activeRoomId.asReadonly(),
           recentView: signal(true).asReadonly(),
           roomsView: signal(false).asReadonly(),
+          inboxView: signal(false).asReadonly(),
           pane: pane.asReadonly(),
           placement: signal<'list' | 'conversation' | 'split'>(
             'split',

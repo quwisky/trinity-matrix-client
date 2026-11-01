@@ -57,6 +57,10 @@ export class RoomShellNavigationService {
     this.openScope({ kind: 'recent' });
   }
 
+  onShowInbox(): void {
+    this.openScope({ kind: 'inbox' });
+  }
+
   onSelectSpace({ spaceId, accountId }: ExactSpaceSelection): void {
     this.openScope(
       spaceId ? { kind: 'space', spaceId } : { kind: 'home' },
