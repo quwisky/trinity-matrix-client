@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **80 Nx projects** and **317 dependencies**. No project cycles detected.
+This snapshot contains **80 Nx projects** and **318 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -150,7 +150,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-identity`              | `libs/data-access/identity`              | role:capability; capability:identity            |                   4 |
 | `data-access-matrix-client`         | `libs/data-access/matrix-client`         | role:adapter; capability:matrix-runtime         |                   5 |
 | `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   2 |
-| `data-access-notifications`         | `libs/data-access/notifications`         | role:capability; capability:notifications       |                   8 |
+| `data-access-notifications`         | `libs/data-access/notifications`         | role:capability; capability:notifications       |                   9 |
 | `data-access-room-administration`   | `libs/data-access/room-administration`   | role:capability; capability:room-administration |                   4 |
 | `data-access-room-library`          | `libs/data-access/room-library`          | role:capability; capability:room-library        |                   6 |
 | `data-access-timeline`              | `libs/data-access/timeline`              | role:capability; capability:conversations       |                   7 |
