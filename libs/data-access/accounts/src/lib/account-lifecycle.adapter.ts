@@ -22,6 +22,7 @@ import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
 import { accountSignOutSettlement } from './account-sign-out-outcome';
 import {
   AccountSignOutRetryWorkflow,
+  providerRevocationUnresolved,
   remoteLogout,
   remoteLogoutScope,
   type SignOutRetryContext,
@@ -357,7 +358,11 @@ export class AccountLifecycleAdapter {
         tap(() => this.clearSharedAccountState(attempt)),
         concatMap(() =>
           attempt.capture(
-            this.storage.clear(),
+            defer(() =>
+              providerRevocationUnresolved(attempt)
+                ? this.storage.clear({ keepNativeTokens: true })
+                : this.storage.clear(),
+            ),
             'account-registry',
             'retry-sign-out',
             ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
@@ -383,7 +388,11 @@ export class AccountLifecycleAdapter {
         tap(() => this.clearDrafts(attempt)),
         concatMap(() =>
           attempt.capture(
-            this.storage.remove(accountId),
+            defer(() =>
+              providerRevocationUnresolved(attempt)
+                ? this.storage.remove(accountId, { keepNativeTokens: true })
+                : this.storage.remove(accountId),
+            ),
             'account-registry',
             'retry-sign-out',
             ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,

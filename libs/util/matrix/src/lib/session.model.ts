@@ -8,6 +8,8 @@ export interface MatrixSession {
    * OIDC refresh token (OAuth 2.0 `refresh_token` grant), present only for OIDC-native
    * accounts. A long-lived, bearer-equivalent credential: persisted through the platform
    * secure store alongside {@link accessToken}, **never** in the plaintext account registry.
+   * On a phone native code takes it over when the client starts, so a stored session then has
+   * none and a live client holds a non-secret marker in its place.
    */
   refreshToken?: string;
   /**

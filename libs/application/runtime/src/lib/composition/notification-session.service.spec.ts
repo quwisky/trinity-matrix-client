@@ -106,6 +106,7 @@ describe('NotificationSessionService', () => {
       (_userId: string, _roomId: string): Observable<void> => of(void 0),
     );
     const refreshBeforeBackground = vi.fn((): Observable<void> => of(void 0));
+    const adoptOnResume = vi.fn((): Observable<void> => of(void 0));
     const bringForward = vi
       .spyOn(window, 'focus')
       .mockImplementation(() => undefined);
@@ -120,6 +121,7 @@ describe('NotificationSessionService', () => {
           run: () => EMPTY,
           clearRoom,
           refreshBeforeBackground,
+          adoptOnResume,
           writeNotificationText,
           clearDelivered,
           notificationTextLost: options.notificationTextLost ?? EMPTY,
@@ -154,6 +156,7 @@ describe('NotificationSessionService', () => {
       lifecycle,
       clearRoom,
       refreshBeforeBackground,
+      adoptOnResume,
       open,
       lifetime,
       appLock,
@@ -389,6 +392,45 @@ describe('NotificationSessionService', () => {
     expect(refreshBeforeBackground).toHaveBeenCalledTimes(2);
     expect(clearRoom.mock.calls).toEqual([['@me:hs', '!a:hs']]);
   });
+
+  it('adopts native tokens when the app returns to the foreground', () => {
+    const { lifecycle, adoptOnResume, lifetime } = setup();
+
+    lifecycle.next({ kind: 'background' });
+    expect(adoptOnResume).not.toHaveBeenCalled();
+    lifecycle.next({ kind: 'active' });
+    lifecycle.next({ kind: 'active' });
+    expect(adoptOnResume).toHaveBeenCalledTimes(2);
+
+    lifetime.unsubscribe();
+    lifecycle.next({ kind: 'active' });
+    expect(adoptOnResume).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not start a second adoption while the first is still running', () => {
+    const { lifecycle, adoptOnResume } = setup();
+    const pending = new Subject<void>();
+    adoptOnResume.mockReturnValueOnce(pending);
+
+    lifecycle.next({ kind: 'active' });
+    lifecycle.next({ kind: 'active' });
+    expect(adoptOnResume).toHaveBeenCalledOnce();
+
+    pending.complete();
+    lifecycle.next({ kind: 'active' });
+    expect(adoptOnResume).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps adopting after an adoption fails', () => {
+    const { lifecycle, adoptOnResume } = setup();
+    adoptOnResume.mockReturnValueOnce(throwError(() => new Error('offline')));
+
+    lifecycle.next({ kind: 'active' });
+    lifecycle.next({ kind: 'active' });
+
+    expect(adoptOnResume).toHaveBeenCalledTimes(2);
+  });
+
   describe('while App lock covers the app', () => {
     it('opens a tapped notification only once App lock is unlocked', () => {
       const { appLock, navigate, bringForward, tap } = setup({

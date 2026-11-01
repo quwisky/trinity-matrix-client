@@ -35,6 +35,7 @@ interface TestAdapter {
   readonly adapter: AccountRuntimeAdapter;
   readonly activeAccountId: ReturnType<typeof signal<string | null>>;
   readonly readSavedAccounts: ReturnType<typeof vi.fn>;
+  readonly sweepNativeTokens: ReturnType<typeof vi.fn>;
   readonly restoreAccount: ReturnType<typeof vi.fn>;
   readonly establishAccount: ReturnType<typeof vi.fn>;
   readonly prepareActiveAccount: ReturnType<typeof vi.fn>;
@@ -51,6 +52,7 @@ function testAdapter(
 ): TestAdapter {
   const activeAccountId = signal<string | null>(null);
   const readSavedAccounts = vi.fn(() => of(snapshot));
+  const sweepNativeTokens = vi.fn(() => of(void 0));
   const restoreAccount = vi.fn((accountId: string, role: AccountRestoreRole) =>
     restore(accountId, role).pipe(
       tap((outcome) => {
@@ -103,6 +105,7 @@ function testAdapter(
     activeAccountId,
     newDevices,
     readSavedAccounts,
+    sweepNativeTokens,
     restoreAccount,
     establishAccount,
     prepareActiveAccount,
@@ -110,6 +113,7 @@ function testAdapter(
     adapter: {
       activeAccountId: activeAccountId.asReadonly(),
       sweepOrphanedStores: () => of(void 0),
+      sweepNativeTokens,
       readSavedAccounts,
       restoreAccount,
       establishAccount,
@@ -755,6 +759,129 @@ describe('AccountRuntimeService', () => {
 
     expect(result.kind).toBe('local-state-unavailable');
     expect(test.restoreAccount).not.toHaveBeenCalled();
+  });
+
+  describe('sweeping native tokens at the start', () => {
+    const SNAPSHOT: SavedAccountsSnapshot = {
+      kind: 'available',
+      activeAccountId: '@me:hs',
+      accountIds: ['@me:hs'],
+    };
+
+    it('a record left by an offline sign-out is swept at the next start', async () => {
+      const test = testAdapter({
+        kind: 'available',
+        activeAccountId: null,
+        accountIds: [],
+      });
+
+      const result = await firstValueFrom(setup(test).restoreSavedAccounts());
+
+      expect(result.kind).toBe('no-accounts');
+      expect(test.sweepNativeTokens).toHaveBeenCalledOnce();
+    });
+
+    it('sweeps once every Account has restored, and refuses a sign-in until it has', async () => {
+      const restored = new Subject<AdapterAccountRestoreOutcome>();
+      const test = testAdapter(SNAPSHOT, () => restored);
+      const sweep = new Subject<void>();
+      test.sweepNativeTokens.mockReturnValue(sweep);
+      const service = setup(test);
+      const settled = vi.fn();
+
+      service.restoreSavedAccounts().subscribe(settled);
+      expect(test.sweepNativeTokens).not.toHaveBeenCalled();
+      restored.next({ kind: 'ready' });
+      restored.complete();
+      expect(test.sweepNativeTokens).toHaveBeenCalledOnce();
+      expect(settled).not.toHaveBeenCalled();
+
+      const signIn = await firstValueFrom(
+        service.establishAuthenticatedAccount(
+          AuthenticatedAccountGrant.issue({
+            baseUrl: 'https://hs',
+            userId: '@new:hs',
+            deviceId: 'DEVICE',
+            accessToken: 'token',
+          }),
+          {
+            placement: 'active',
+            liveAccounts: 'replace',
+            accountRecord: 'upsert',
+          },
+        ),
+      );
+      expect(signIn.kind).toBe('transition-in-progress');
+      expect(test.establishAccount).not.toHaveBeenCalled();
+
+      sweep.next();
+      sweep.complete();
+      expect(settled).toHaveBeenCalledOnce();
+    });
+
+    it('restoring twice sweeps once', async () => {
+      const test = testAdapter({
+        kind: 'available',
+        activeAccountId: null,
+        accountIds: [],
+      });
+      const service = setup(test);
+
+      await firstValueFrom(service.restoreSavedAccounts());
+      await firstValueFrom(service.restoreSavedAccounts());
+
+      expect(test.readSavedAccounts).toHaveBeenCalledTimes(2);
+      expect(test.sweepNativeTokens).toHaveBeenCalledOnce();
+    });
+
+    it('a later restore sweeps nothing though the first one could not', async () => {
+      const test = testAdapter({
+        kind: 'available',
+        activeAccountId: null,
+        accountIds: [],
+      });
+      test.readSavedAccounts.mockReturnValueOnce(
+        of({ kind: 'corrupt-local-state' }),
+      );
+      const service = setup(test);
+
+      await firstValueFrom(service.restoreSavedAccounts());
+      await firstValueFrom(service.restoreSavedAccounts());
+
+      expect(test.readSavedAccounts).toHaveBeenCalledTimes(2);
+      expect(test.sweepNativeTokens).not.toHaveBeenCalled();
+    });
+
+    it('a failed registry read sweeps nothing', async () => {
+      const test = testAdapter({ kind: 'corrupt-local-state' });
+
+      await firstValueFrom(setup(test).restoreSavedAccounts());
+
+      expect(test.sweepNativeTokens).not.toHaveBeenCalled();
+    });
+
+    it('an inconsistent registry sweeps nothing', async () => {
+      const test = testAdapter({
+        kind: 'available',
+        activeAccountId: '@missing:hs',
+        accountIds: ['@me:hs'],
+      });
+
+      await firstValueFrom(setup(test).restoreSavedAccounts());
+
+      expect(test.sweepNativeTokens).not.toHaveBeenCalled();
+    });
+
+    it('a failed sweep leaves the restore as it was', async () => {
+      const test = testAdapter(SNAPSHOT);
+      test.sweepNativeTokens.mockReturnValue(
+        throwError(() => new Error('refused')),
+      );
+
+      const result = await firstValueFrom(setup(test).restoreSavedAccounts());
+
+      expect(result.kind).toBe('restored');
+    });
   });
 
   it('bounds every Account with one terminal timeout outcome', async () => {

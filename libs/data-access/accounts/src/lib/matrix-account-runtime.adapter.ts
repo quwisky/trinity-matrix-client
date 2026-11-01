@@ -6,6 +6,7 @@ import {
 import {
   AccountAlreadyStoredError,
   AccountHomeserverMismatchError,
+  NativeTokenBridge,
   SessionStorageService,
   sameHomeserver,
 } from '@trinity/platform-native';
@@ -54,6 +55,7 @@ type DeviceNovelty = 'new' | 'existing' | 'unknown';
 export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly nativeTokens = inject(NativeTokenBridge);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly lifecycleAdapter = inject(AccountLifecycleAdapter);
   private readonly unprotectedStorage = inject(UnprotectedStorageGate);
@@ -72,6 +74,10 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
 
   sweepOrphanedStores(): Observable<void> {
     return this.storage.sweepOrphanedCryptoStores();
+  }
+
+  sweepNativeTokens(): Observable<void> {
+    return this.storage.sweepNativeTokens();
   }
 
   readSavedAccounts(): Observable<SavedAccountsSnapshot> {
@@ -188,6 +194,11 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   });
                 }
               }),
+              switchMap((stored) =>
+                this.nativeTokens
+                  .removeUnreadableRecord(stored)
+                  .pipe(map(() => stored)),
+              ),
             );
       const prepare$ =
         intent.liveAccounts === 'replace'
@@ -446,14 +457,21 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
    * starting it detached any old live client for this account, so that client's logout
    * handling never sees this sign-out, and a failed save never leaves the account without
    * any session. Best-effort with the old token on a detached client (for OAuth,
-   * `logout(true)` revokes at the provider); it never delays or fails the sign-in.
+   * `logout(true)` revokes at the provider), then drops its native tokens; it never delays
+   * or fails the sign-in.
    */
   private signOutReplacedDevice(stored: MatrixSession): void {
     defer(() =>
       this.matrix
         .detachedClient(stored, { persistRefreshedTokens: false })
         .logout(true),
-    ).subscribe({ error: () => undefined });
+    )
+      .pipe(
+        catchError(() => of(void 0)),
+        // The sign-in left the old device's native tokens for this logout to revoke.
+        switchMap(() => this.storage.removeNativeTokens(stored.userId)),
+      )
+      .subscribe({ error: () => undefined });
   }
 
   private toAdapterOutcome(

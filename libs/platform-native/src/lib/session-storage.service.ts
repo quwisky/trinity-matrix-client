@@ -1,6 +1,15 @@
 import { Injectable, inject } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
-import { Observable, defer, from, map } from 'rxjs';
+import { PushHandoffBridge } from '@trinity/capacitor-push';
+import {
+  Observable,
+  defer,
+  firstValueFrom,
+  from,
+  map,
+  of,
+  timeout,
+} from 'rxjs';
 import {
   MatrixSession,
   type OidcSessionBinding,
@@ -15,7 +24,8 @@ import { CryptoStoreKeyService } from './crypto-store-key.service';
 
 /**
  * Non-secret per-account record. Both credentials (access token and OIDC refresh token)
- * live in {@link SecureStorageService}; everything else is kept here.
+ * live in {@link SecureStorageService}, and on a phone the native token vault holds the
+ * OIDC pair too; everything else is kept here.
  */
 export type AccountRecord = Omit<MatrixSession, 'accessToken' | 'refreshToken'>;
 
@@ -52,6 +62,25 @@ export interface AccountRegistrySnapshot {
 
 export type AccountPersistenceConstraint = 'upsert' | 'new';
 
+/**
+ * How long a native vault call may hold the write queue. A call that never answers fails
+ * like a refusal, so one stuck plugin cannot hang every sign-in and removal behind it.
+ */
+const NATIVE_VAULT_TIMEOUT_MS = 5000;
+
+/** Whether a removal leaves the native vault record for a pending provider revocation. */
+export interface NativeTokenRetention {
+  readonly keepNativeTokens?: boolean;
+}
+
+/**
+ * Whether a readable record says this is a password account, so a hung plugin needn't hold up
+ * its sign-out. A missing or unreadable record may have left a vault record, so it says nothing.
+ */
+function hasNoVaultRecord(record: AccountRecord | undefined): boolean {
+  return record !== undefined && !record.oidc;
+}
+
 const ACCOUNTS_KEY = 'matrix.accounts';
 /** Secure-storage key prefixes; the full key is the prefix plus the user id. */
 const TOKEN_KEY_PREFIX = 'matrix.accessToken:';
@@ -76,6 +105,7 @@ const CRYPTO_PREFIX = 'trinity-crypto:';
 export class SessionStorageService {
   private readonly secure = inject(SecureStorageService);
   private readonly storeKeys = inject(CryptoStoreKeyService);
+  private readonly handoff = inject(PushHandoffBridge);
 
   /**
    * Serializes registry read-modify-write cycles. The OIDC token refresher calls
@@ -214,8 +244,54 @@ export class SessionStorageService {
   }
 
   /** Remove one account (its record + token); repoint active if it was active. */
-  remove(userId: string): Observable<void> {
-    return defer(() => from(this.serialize(() => this.removeInternal(userId))));
+  remove(userId: string, options?: NativeTokenRetention): Observable<void> {
+    return defer(() =>
+      from(this.serialize(() => this.removeInternal(userId, options))),
+    );
+  }
+
+  /**
+   * Remove a vault record left behind by {@link remove} with `keepNativeTokens`, once its
+   * revocation resolved or was given up, and one a replaced device's sign-out has used.
+   * A no-op while the account is stored with an OIDC binding: that sign-in owns the record.
+   */
+  removeNativeTokens(userId: string): Observable<void> {
+    return defer(() =>
+      from(
+        this.serialize(async () => {
+          const registry = await this.readRegistry();
+          const record = registry.accounts.find((a) => a.userId === userId);
+          if (!record?.oidc) {
+            await this.nativeVault(this.handoff.removeTokens(userId));
+          }
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Remove every vault record but those of accounts stored with an OIDC binding: what an offline
+   * sign-out kept for a retry that never came. In one serialized turn, so a sign-in saved
+   * meanwhile is on the list; rejects, removing nothing, when the registry can't be read.
+   */
+  sweepNativeTokens(): Observable<void> {
+    return defer(() =>
+      this.handoff.available
+        ? from(
+            this.serialize(async () => {
+              const { accounts } = await this.readRegistry();
+              // shortcut: a sweep still running natively past this timeout can remove a sign-in
+              // landing on an orphaned id; that needs a hung keychain and ends in a soft logout a
+              // new sign-in recovers, so hold new sign-ins back longer if it is ever seen.
+              await this.nativeVault(
+                this.handoff.removeTokensExcept(
+                  accounts.filter((a) => a.oidc).map((a) => a.userId),
+                ),
+              );
+            }),
+          )
+        : of(void 0),
+    );
   }
 
   /**
@@ -227,10 +303,49 @@ export class SessionStorageService {
     return defer(() =>
       from(
         this.serialize(async () => {
-          await Promise.all([
+          const record = await this.readRegistry().then(
+            ({ accounts }) => accounts.find((a) => a.userId === userId),
+            () => undefined,
+          );
+          // Every removal settles before one failing releases the queue.
+          const results = await Promise.allSettled([
             this.secure.remove(this.tokenKey(userId)),
             this.secure.remove(this.refreshTokenKey(userId)),
+            ...(hasNoVaultRecord(record)
+              ? []
+              : [this.nativeVault(this.handoff.removeTokens(userId))]),
           ]);
+          const refused = results.find(
+            (result) => result.status === 'rejected',
+          );
+          if (refused) {
+            throw refused.reason;
+          }
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Delete the refresh token copy kept here once native holds it, only while the record
+   * still holds `lineage`; a no-op for another sign-in or an account no longer stored.
+   */
+  dropRefreshToken(
+    userId: string,
+    lineage: string | undefined,
+  ): Observable<void> {
+    return defer(() =>
+      from(
+        this.serialize(async () => {
+          const registry = await this.readRegistry();
+          const record = registry.accounts.find((a) => a.userId === userId);
+          if (
+            !record ||
+            (record.lineage !== undefined && record.lineage !== lineage)
+          ) {
+            return;
+          }
+          await this.secure.remove(this.refreshTokenKey(userId));
         }),
       ),
     );
@@ -304,11 +419,11 @@ export class SessionStorageService {
     );
   }
 
-  /** Remove every account and token (full sign-out / reset). */
-  clear(): Observable<void> {
-    return defer(() => from(this.serialize(() => this.clearInternal()))).pipe(
-      map(() => undefined),
-    );
+  /** Remove every stored account and its tokens: the last account's sign-out. */
+  clear(options?: NativeTokenRetention): Observable<void> {
+    return defer(() =>
+      from(this.serialize(() => this.clearInternal('registered', options))),
+    ).pipe(map(() => undefined));
   }
 
   /**
@@ -321,7 +436,9 @@ export class SessionStorageService {
    * already accounted for.
    */
   clearAll(): Observable<readonly AccountRecord[]> {
-    return defer(() => from(this.serialize(() => this.clearInternal())));
+    return defer(() =>
+      from(this.serialize(() => this.clearInternal('everything'))),
+    );
   }
 
   /**
@@ -332,6 +449,10 @@ export class SessionStorageService {
    */
   sweepOrphanedCryptoStores(): Observable<void> {
     return defer(() => from(this.sweepOrphans()));
+  }
+
+  private async nativeVault(call: Observable<unknown>): Promise<void> {
+    await firstValueFrom(call.pipe(timeout(NATIVE_VAULT_TIMEOUT_MS)));
   }
 
   private tokenKey(userId: string): string {
@@ -430,6 +551,16 @@ export class SessionStorageService {
         await this.secure.remove(this.refreshTokenKey(incoming.userId));
       }
       await this.writeRegistry(registry);
+      // A new device's sign-in leaves the old record: the replaced device's sign-out still has
+      // to revoke it, and removes it afterwards. After the write, so the old client's refresh
+      // meeting `gone` finds this sign-in stored and doesn't read it as a refusal.
+      if (refreshToken === undefined && existing?.oidc && !deviceChanged) {
+        // A refusal leaves a record the next removal of this account or a startup sweep
+        // can clear; until then it is unused residue.
+        await this.nativeVault(
+          this.handoff.removeTokens(incoming.userId),
+        ).catch(() => undefined);
+      }
     } catch (error) {
       // No record names the new store yet. Its key would make a retry of this same
       // sign-in refuse, since a store key is never replaced.
@@ -612,7 +743,10 @@ export class SessionStorageService {
     }
   }
 
-  private async removeInternal(userId: string): Promise<void> {
+  private async removeInternal(
+    userId: string,
+    options?: NativeTokenRetention,
+  ): Promise<void> {
     const registry = await this.readRegistry();
     const removed = registry.accounts.find((a) => a.userId === userId);
     registry.accounts = registry.accounts.filter((a) => a.userId !== userId);
@@ -621,13 +755,19 @@ export class SessionStorageService {
     }
     await this.secure.remove(this.tokenKey(userId));
     await this.secure.remove(this.refreshTokenKey(userId));
+    if (!options?.keepNativeTokens && !hasNoVaultRecord(removed)) {
+      await this.nativeVault(this.handoff.removeTokens(userId));
+    }
     await this.writeRegistry(registry);
     if (removed) {
       await this.removeStoreKey(removed);
     }
   }
 
-  private async clearInternal(): Promise<readonly AccountRecord[]> {
+  private async clearInternal(
+    vault: 'registered' | 'everything',
+    options?: NativeTokenRetention,
+  ): Promise<readonly AccountRecord[]> {
     const registry = await this.readRegistry();
     const removals: Promise<void>[] = [];
     for (const account of registry.accounts) {
@@ -635,6 +775,17 @@ export class SessionStorageService {
       removals.push(this.secure.remove(this.refreshTokenKey(account.userId)));
     }
     await Promise.all(removals);
+    if (vault === 'everything') {
+      await this.nativeVault(this.handoff.removeAllTokens());
+    } else if (!options?.keepNativeTokens) {
+      // Only these accounts' records: another account's kept record still awaits its
+      // retry's revocation.
+      for (const account of registry.accounts) {
+        if (!hasNoVaultRecord(account)) {
+          await this.nativeVault(this.handoff.removeTokens(account.userId));
+        }
+      }
+    }
     await Preferences.remove({ key: ACCOUNTS_KEY });
     // Retire any legacy single-slot residue too.
     await Preferences.remove({ key: LEGACY_SESSION_KEY });

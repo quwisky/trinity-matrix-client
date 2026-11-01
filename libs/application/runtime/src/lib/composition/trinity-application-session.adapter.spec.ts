@@ -165,6 +165,7 @@ function setup({
         recover: () => of({ kind: 'success' as const }),
       }),
       MockProvider(PushHandoffService, {
+        adoptOnResume: () => EMPTY,
         run: () => EMPTY,
         clearRoom: () => of(void 0),
         writeNotificationText: () => of(void 0),

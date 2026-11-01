@@ -122,6 +122,66 @@ it('persists, starts in the background, then commits Active placement', async ()
   expect(matrix.activateAccount).toHaveBeenCalledWith('@new:hs', 'replace');
 });
 
+describe('a sign-in over an unreadable native record', () => {
+  it('removes the record once the sign-in is saved, before its client starts', async () => {
+    const { adapter, matrix, storage, nativeTokens } = setup();
+    const order: string[] = [];
+    vi.mocked(storage.persistForEstablishment).mockReturnValue(
+      defer(() => {
+        order.push('persist');
+        return of(session);
+      }),
+    );
+    vi.mocked(nativeTokens.removeUnreadableRecord).mockReturnValue(
+      defer(() => {
+        order.push('remove');
+        return of(void 0);
+      }),
+    );
+    vi.mocked(matrix.restorePersisted).mockReturnValue(
+      defer(() => {
+        order.push('start');
+        return of({ kind: 'ready' as const });
+      }),
+    );
+    vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+
+    await firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    );
+
+    expect(order).toEqual(['persist', 'remove', 'start']);
+    expect(nativeTokens.removeUnreadableRecord).toHaveBeenCalledWith(session);
+  });
+
+  it('leaves the record to a retried first establishment, whose pair native may have rotated', async () => {
+    const { adapter, matrix, storage, nativeTokens } = setup();
+    const grant = AuthenticatedAccountGrant.issue(session);
+    const intent = {
+      ...activeIntent,
+      accountRecord: 'new',
+    } satisfies AccountEstablishmentIntent;
+    vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+    vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+    vi.mocked(matrix.restorePersisted).mockReturnValueOnce(
+      of({ kind: 'failed' as const, failure: 'transient-network' as const }),
+    );
+    vi.mocked(matrix.restorePersisted).mockReturnValue(
+      of({ kind: 'ready' as const }),
+    );
+
+    await firstValueFrom(adapter.establishAccount(grant, intent));
+    await firstValueFrom(adapter.establishAccount(grant, intent));
+
+    expect(matrix.restorePersisted).toHaveBeenCalledTimes(2);
+    expect(storage.persistForEstablishment).toHaveBeenCalledOnce();
+    expect(nativeTokens.removeUnreadableRecord).toHaveBeenCalledOnce();
+  });
+});
+
 describe('without a usable keychain', () => {
   function withoutKeychain(test: AdapterTest): void {
     vi.mocked(test.secure.withoutKeychain).mockResolvedValue(true);
@@ -569,6 +629,30 @@ describe('replacing a stored device', () => {
     // The old record is read before the save overwrites it; the sign-out waits until the
     // new session is saved and started, which also detached any old live client.
     expect(order).toEqual(['persist', 'start', 'logout']);
+  });
+
+  it("removes the replaced device's native tokens after its sign-out ran", async () => {
+    const test = setup();
+    const order: string[] = [];
+    saved(test, OLD_SESSION);
+    vi.mocked(test.matrix.detachedClient).mockReturnValue({
+      logout: vi.fn(() => {
+        order.push('logout');
+        return Promise.reject(new Error('offline'));
+      }),
+    } as never);
+    vi.mocked(test.storage.removeNativeTokens).mockImplementation(() => {
+      order.push('removeNativeTokens');
+      return of(void 0);
+    });
+
+    await expect(establish(test, order)).resolves.toEqual({ kind: 'ready' });
+    await settled();
+
+    expect(test.storage.removeNativeTokens).toHaveBeenCalledExactlyOnceWith(
+      '@new:hs',
+    );
+    expect(order).toEqual(['persist', 'start', 'logout', 'removeNativeTokens']);
   });
 
   it('keeps the replaced device signed in when saving the new session fails', async () => {

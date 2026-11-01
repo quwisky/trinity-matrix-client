@@ -162,6 +162,11 @@ export class AccountCleanupAttempt<TOutcome> {
     return [...this.issueMap.values()];
   }
 
+  /** Scopes with a step past its observation bound and still running. */
+  pendingScopes(): readonly AccountCleanupScope[] {
+    return [...this.pendingCounts.keys()];
+  }
+
   finish(terminal: () => TOutcome): void {
     this.dispatchComplete = true;
     this.terminal = terminal;

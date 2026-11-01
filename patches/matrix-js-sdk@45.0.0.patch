@@ -1,8 +1,8 @@
 diff --git a/lib/http-api/fetch.d.ts b/lib/http-api/fetch.d.ts
-index 70dc3337d28e22f122bb05b221ed9d1823c25f75..89832c91b4b510df3c7248f7d74f09f50b2cbdda 100644
+index 70dc3337d28e22f122bb05b221ed9d1823c25f75..b6b1f630027dc6e39b02864f0310fcd894989088 100644
 --- a/lib/http-api/fetch.d.ts
 +++ b/lib/http-api/fetch.d.ts
-@@ -15,6 +15,15 @@ export declare class FetchHttpApi<O extends IHttpOpts> {
+@@ -15,6 +15,24 @@ export declare class FetchHttpApi<O extends IHttpOpts> {
       * @throws when discovery of the auth server metadata, or revocation of either token, fails
       */
      revokeOAuthTokens(): Promise<void>;
@@ -11,18 +11,27 @@ index 70dc3337d28e22f122bb05b221ed9d1823c25f75..89832c91b4b510df3c7248f7d74f09f5
 +     * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
 +     * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut. With
 +     * `timeoutMs`, a grant this call starts is aborted unless it answers within that time.
++     * A {@link IHttpOpts.tokenHost} ignores `timeoutMs`: it bounds its own exchange.
 +     */
 +    refreshOAuthTokens(opts?: {
 +        timeoutMs?: number;
 +    }): Promise<boolean>;
++    /**
++     * Trinity patch: use a pair the session's {@link IHttpOpts.tokenHost} holds, moving the access
++     * token and its expiry together.
++     */
++    adoptOAuthTokens(tokens: {
++        accessToken: string;
++        expiry?: Date;
++    }): Promise<void>;
      fetch(resource: URL | string, options?: RequestInit): ReturnType<typeof globalThis.fetch>;
      /**
       * Sets the base URL for the identity server
 diff --git a/lib/http-api/fetch.js b/lib/http-api/fetch.js
-index 0beec8077ebcfd57ec96e30765874c25c2d9fb7f..57e524bbaeb4cf1492ec039a7a2373a614f16e19 100644
+index 0beec8077ebcfd57ec96e30765874c25c2d9fb7f..4580d9e7e994b368511e2044ac00347b0ebc73d3 100644
 --- a/lib/http-api/fetch.js
 +++ b/lib/http-api/fetch.js
-@@ -56,6 +56,16 @@ export class FetchHttpApi {
+@@ -56,6 +56,24 @@ export class FetchHttpApi {
    async revokeOAuthTokens() {
      return this.tokenManager.revokeTokens();
    }
@@ -32,18 +41,85 @@ index 0beec8077ebcfd57ec96e30765874c25c2d9fb7f..57e524bbaeb4cf1492ec039a7a2373a6
 +   * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
 +   * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut. With
 +   * `timeoutMs`, a grant this call starts is aborted unless it answers within that time.
++   * A {@link IHttpOpts.tokenHost} ignores `timeoutMs`: it bounds its own exchange.
 +   */
 +  async refreshOAuthTokens(opts) {
 +    return this.tokenManager.refreshNow(opts?.timeoutMs);
 +  }
++  /**
++   * Trinity patch: use a pair the session's {@link IHttpOpts.tokenHost} holds, moving the access
++   * token and its expiry together.
++   */
++  adoptOAuthTokens(tokens) {
++    return this.tokenManager.adoptTokens(tokens);
++  }
    fetch(resource, options) {
      if (this.opts.fetchFn) {
        return this.opts.fetchFn(resource, options);
+diff --git a/lib/http-api/interface.d.ts b/lib/http-api/interface.d.ts
+index 4deeb944dae165002f1f7c34a2c811e2dde169f5..8a8888711b4f3017c0b7ed530a9d16de0d4da1f9 100644
+--- a/lib/http-api/interface.d.ts
++++ b/lib/http-api/interface.d.ts
+@@ -25,6 +25,25 @@ export type AccessTokens = {
+  * the refreshed ones.
+  */
+ export type TokenRefreshCallback = (newTokens: AccessTokens) => void;
++/**
++ * Trinity patch: what a host that owns a session's token exchange answers. `tokens` is the pair to
++ * use, `refused` ends the session, `transient` leaves it for the next trigger. `granted` says an
++ * exchange made this pair just now, not that the host already held it.
++ */
++export type HostTokenAnswer =
++    | { kind: "tokens"; accessToken: string; expiry?: Date; granted: boolean }
++    | { kind: "refused" }
++    | { kind: "transient" };
++
++/** Trinity patch: a host that holds this session's refresh token and makes every token exchange. */
++export interface TokenHost {
++    /** Exchange the refresh token it holds; `accessToken` is the one this client last saw. */
++    refresh(accessToken: string): Promise<HostTokenAnswer>;
++    /** The pair it holds now, or undefined when it can't say. Never exchanges anything. */
++    current(): Promise<{ accessToken: string; expiry?: Date } | undefined>;
++    /** Revoke the tokens it holds. False when it holds none, so the SDK revokes what it has. */
++    revoke(): Promise<boolean>;
++}
+ /**
+  * Configuration required for {@link IHttpOpts} to allow the SDK to manage the full lifecycle of tokens for an
+  * OAuth2-native session (as per MSC2965/MSC3861): discovering the delegated auth server's metadata, refreshing
+@@ -59,6 +78,11 @@ export interface IHttpOpts {
+      * Callback called when tokens are refreshed. Must be supplied if refreshToken is supplied.
+      */
+     onTokenRefresh?: TokenRefreshCallback;
++    /**
++     * Trinity patch: when set, this host makes every token exchange and `refreshToken` is only a
++     * non-secret marker saying one is possible.
++     */
++    tokenHost?: TokenHost;
+     /**
+      * Configuration needed to refresh (given refreshToken) and revoke (e.g. on logout) tokens for an
+      * OAuth2-native session. Optional; if omitted, tokens will not be refreshed or revoked by the SDK.
 diff --git a/lib/http-api/refresh.d.ts b/lib/http-api/refresh.d.ts
-index 7561cea4dd1ea743c8d84125d4e799f2deb35b72..e2658f086f22934d85307dd88ef9cf2852914cca 100644
+index 7561cea4dd1ea743c8d84125d4e799f2deb35b72..ecd2f9a66ef30697794321f4136ebd101fb5753d 100644
 --- a/lib/http-api/refresh.d.ts
 +++ b/lib/http-api/refresh.d.ts
-@@ -47,6 +47,14 @@ export declare class TokenManager {
+@@ -7,7 +7,7 @@ export declare const enum TokenRefreshOutcome {
+     Failure = "failure",
+     Logout = "logout"
+ }
+-type Opts = Pick<IHttpOpts, "onTokenRefresh" | "logger" | "refreshToken" | "accessToken" | "oauth2ClientConfig" | "authMetadataCallback" | "fetchFn">;
++type Opts = Pick<IHttpOpts, "onTokenRefresh" | "logger" | "refreshToken" | "accessToken" | "oauth2ClientConfig" | "authMetadataCallback" | "fetchFn" | "tokenHost">;
+ /**
+  * This class is responsible for managing the access token and refresh token for authenticated requests.
+  * It will automatically refresh the tokens when the access token is about to expire and can handle
+@@ -30,6 +30,7 @@ export declare class TokenManager {
+      */
+     private tokenRefreshPromise?;
+     private latestTokenRefreshExpiry?;
++    private hostRefreshed?;
+     private tokenRefresher?;
+     private tokenRefresherPromise?;
+     /**
+@@ -47,6 +48,25 @@ export declare class TokenManager {
       * @returns a TokenRefreshOutcome indicating the result of the refresh attempt
       */
      handleUnknownToken(snapshot: AccessTokens, attempt: number): Promise<TokenRefreshOutcome>;
@@ -52,17 +128,49 @@ index 7561cea4dd1ea743c8d84125d4e799f2deb35b72..e2658f086f22934d85307dd88ef9cf28
 +     * flight. Never signs out: a refusal is left to the next request, which meets it as
 +     * M_UNKNOWN_TOKEN and takes the usual path. With `timeoutMs`, a grant this call starts is
 +     * aborted unless it answers within that time.
++     * A {@link IHttpOpts.tokenHost} ignores `timeoutMs`: it bounds its own exchange.
 +     * @returns true when new tokens were adopted
 +     */
 +    refreshNow(timeoutMs?: number): Promise<boolean>;
++    /**
++     * Trinity patch: use a pair a host holds, in place of this client's. A changed token moves the
++     * access token and its expiry together and is reported through `onTokenRefresh`, whose failure
++     * changes nothing here: the host is the authority. The same token only learns an unknown expiry,
++     * and never replaces a known one, whose identity the expiry shortcut compares.
++     */
++    adoptTokens(tokens: {
++        accessToken: string;
++        expiry?: Date;
++    }): Promise<void>;
      private _handleUnknownToken;
      /**
       * Attempt to refresh access tokens.
 diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
-index 33663e12c92d0f2edebc32c26651ba109a5023b5..2f4f6cc45486efbaab8624415f8c14b2b102d872 100644
+index 33663e12c92d0f2edebc32c26651ba109a5023b5..35adfa45d010543c9ef3e93e7f83ec84ac248b99 100644
 --- a/lib/http-api/refresh.js
 +++ b/lib/http-api/refresh.js
-@@ -103,8 +103,37 @@ export class TokenManager {
+@@ -36,6 +36,10 @@ const REFRESH_IF_TOKEN_EXPIRES_WITHIN_MS = 500;
+ // If we get an unknown token error and the token expires in less than this time amount of time, we will refresh it before making the intended request.
+ // Otherwise, we will error as the token should not have expired yet and we need to avoid retrying indefinitely.
+ const REFRESH_ON_ERROR_IF_TOKEN_EXPIRES_WITHIN_MS = 60 * 1000;
++// Trinity patch: how many attempts a request makes with a host. Nothing else ends a run of rejected
++// tokens with no far expiry. Each attempt can ask the host for a grant while every request queues
++// behind it, and a token already past its expiry adds one before the first send: 4 calls in all.
++const HOST_MAX_ATTEMPTS = 3;
+ /**
+  * This class is responsible for managing the access token and refresh token for authenticated requests.
+  * It will automatically refresh the tokens when the access token is about to expire and can handle
+@@ -56,6 +60,9 @@ export class TokenManager {
+      */
+     _defineProperty(this, "tokenRefreshPromise", void 0);
+     _defineProperty(this, "latestTokenRefreshExpiry", void 0);
++    // Trinity patch: the last token a host's exchange granted, the only one whose rejection can mean
++    // the session is gone. One another process left may simply have been revoked by its provider.
++    _defineProperty(this, "hostRefreshed", void 0);
+     // The object at the OAuth API layer that actually does the refreshing
+     // This needs OAuth params to be fetched before it can be constructed so it starts
+     // off as undefined and is constructed once we are able to do so.
+@@ -103,8 +110,72 @@ export class TokenManager {
    async handleUnknownToken(snapshot, attempt) {
      return this._handleUnknownToken(snapshot, attempt);
    }
@@ -72,6 +180,7 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..2f4f6cc45486efbaab8624415f8c14b2
 +   * flight. Never signs out: a refusal is left to the next request, which meets it as
 +   * M_UNKNOWN_TOKEN and takes the usual path. With `timeoutMs`, a grant this call starts is
 +   * aborted unless it answers within that time.
++   * A {@link IHttpOpts.tokenHost} ignores `timeoutMs`: it bounds its own exchange.
 +   * @returns true when new tokens were adopted
 +   */
 +  async refreshNow(timeoutMs) {
@@ -88,8 +197,40 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..2f4f6cc45486efbaab8624415f8c14b2
 +      this.tokenRefreshPromise = undefined;
 +    }
 +  }
++  /**
++   * Trinity patch: use a pair a host holds, in place of this client's. A changed token moves the
++   * access token and its expiry together and is reported through `onTokenRefresh`, whose failure
++   * changes nothing here: the host is the authority. The same token only learns an unknown expiry,
++   * and never replaces a known one, whose identity the expiry shortcut compares.
++   */
++  async adoptTokens(tokens) {
++    if (tokens.accessToken === this.opts.accessToken) {
++      this.latestTokenRefreshExpiry ??= tokens.expiry;
++      return;
++    }
++    this.opts.accessToken = tokens.accessToken;
++    this.latestTokenRefreshExpiry = tokens.expiry;
++    try {
++      await this.opts.onTokenRefresh?.(tokens);
++    } catch (error) {
++      this.opts.logger?.warn("Failed to persist adopted tokens", error);
++    }
++  }
    async _handleUnknownToken(snapshot, attempt) {
 -    if (snapshot?.expiry) {
++    // Trinity patch: another process may have rotated this token. Take its pair before anything
++    // below reads this client's token or expiry.
++    if (snapshot && this.opts.tokenHost) {
++      if ((attempt ?? 1) > HOST_MAX_ATTEMPTS) return TokenRefreshOutcome.Failure;
++      const before = this.opts.accessToken;
++      const held = await this.opts.tokenHost.current().catch(() => undefined);
++      // a pair read before a rotation and delivered after it must not undo it
++      if (held && this.opts.accessToken === before) await this.adoptTokens(held);
++      // A host failure never signs out: the next request's first attempt asks the host again.
++      if (!held && (attempt ?? 1) > 1 && snapshot.accessToken === this.opts.accessToken) {
++        return TokenRefreshOutcome.Failure;
++      }
++    }
 +    // Trinity patch: a token rotated behind this request (say by refreshNow) was revoked by that
 +    // rotation, not by the server; retry with the current one before the expiry shortcut below.
 +    if (snapshot && snapshot.accessToken !== this.opts.accessToken) {
@@ -97,11 +238,13 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..2f4f6cc45486efbaab8624415f8c14b2
 +    }
 +    // Trinity patch: trust the expiry shortcut only while nothing superseded it: not during a refresh
 +    // in flight (it may already have revoked this token), nor once refreshNow has cleared the expiry.
-+    if (snapshot?.expiry && snapshot.expiry === this.latestTokenRefreshExpiry && !this.tokenRefreshPromise) {
++    // Trinity patch: with a host, only a retried request's rejection of what a grant returned
++    // reaches the shortcut, ending a run of far-expiry tokens the server refuses. Others refresh.
++    if (snapshot?.expiry && snapshot.expiry === this.latestTokenRefreshExpiry && !this.tokenRefreshPromise && (!this.opts.tokenHost || (attempt ?? 1) > 1 && snapshot.accessToken === this.hostRefreshed)) {
        // If our token is unknown, but it should not have expired yet, then we should not refresh
        const expiresIn = snapshot.expiry.getTime() - Date.now();
        // If it still has plenty of time left on the clock, we assume something else must be wrong and
-@@ -133,7 +162,7 @@ export class TokenManager {
+@@ -133,7 +204,7 @@ export class TokenManager {
     * On success, sets new access and refresh tokens in opts.
     * @returns Promise that resolves to a boolean - true when token was refreshed successfully
     */
@@ -110,7 +253,29 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..2f4f6cc45486efbaab8624415f8c14b2
      if (!this.opts.refreshToken || !this.opts.oauth2ClientConfig) {
        this.opts.logger?.error("Unable to refresh token - no refresh token or OAuth2 client config");
        return TokenRefreshOutcome.Logout;
-@@ -154,7 +183,8 @@ export class TokenManager {
+@@ -144,6 +215,21 @@ export class TokenManager {
+     }
+     try {
+       this.opts.logger?.debug("Attempting to refresh token");
++      // Trinity patch: no discovery and no grant here; a thrown host call is transient below.
++      if (this.opts.tokenHost) {
++        const before = this.opts.accessToken;
++        const answer = await this.opts.tokenHost.refresh(before);
++        // a late answer says nothing about a pair adopted while it was awaited: retry on that
++        if (this.opts.accessToken !== before) return TokenRefreshOutcome.Success;
++        if (answer.kind === "refused") return TokenRefreshOutcome.Logout;
++        if (answer.kind === "transient") return TokenRefreshOutcome.Failure;
++        if (answer.granted) this.hostRefreshed = answer.accessToken;
++        await this.adoptTokens({
++          accessToken: answer.accessToken,
++          expiry: answer.expiry
++        });
++        return TokenRefreshOutcome.Success;
++      }
+       const tokenRefresher = await this.ensureTokenRefresher();
+       if (!tokenRefresher) {
+         // We already checked `oauth2ClientConfig` is set above, so this should be unreachable.
+@@ -154,7 +240,8 @@ export class TokenManager {
          refreshToken,
          expiry
        } = await tokenRefresher.refreshTokens(this.opts.refreshToken, {
@@ -120,7 +285,7 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..2f4f6cc45486efbaab8624415f8c14b2
        });
        this.opts.accessToken = accessToken;
        this.opts.refreshToken = refreshToken;
-@@ -164,8 +194,10 @@ export class TokenManager {
+@@ -164,8 +251,10 @@ export class TokenManager {
        // successfully got new tokens
        return TokenRefreshOutcome.Success;
      } catch (error) {
@@ -133,6 +298,22 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..2f4f6cc45486efbaab8624415f8c14b2
          this.opts.logger?.error("Failed to refresh token", error);
          return TokenRefreshOutcome.Logout;
        }
+@@ -181,12 +270,14 @@ export class TokenManager {
+    * @throws when discovery of the auth server metadata, or revocation of either token, fails
+    */
+   async revokeTokens() {
++    // Trinity patch: with a host, `refreshToken` is only a marker and must never be sent.
++    if (this.opts.tokenHost && (await this.opts.tokenHost.revoke())) return;
+     const tokenRefresher = await this.ensureTokenRefresher();
+     if (!tokenRefresher) return;
+     const requestOpts = {
+       abortSignal: this.getAbortSignal?.()
+     };
+-    await Promise.all([this.opts.accessToken ? tokenRefresher.revokeToken(this.opts.accessToken, "access_token", requestOpts) : undefined, this.opts.refreshToken ? tokenRefresher.revokeToken(this.opts.refreshToken, "refresh_token", requestOpts) : undefined].filter(p => p !== undefined));
++    await Promise.all([this.opts.accessToken ? tokenRefresher.revokeToken(this.opts.accessToken, "access_token", requestOpts) : undefined, this.opts.refreshToken && !this.opts.tokenHost ? tokenRefresher.revokeToken(this.opts.refreshToken, "refresh_token", requestOpts) : undefined].filter(p => p !== undefined));
+   }
+ 
+   /**
 diff --git a/lib/matrix.d.ts b/lib/matrix.d.ts
 index 847c2910715bb7d6b12f11872beb4102f39b1b10..171239d83a1af802292a3a3b4d0e07b438ee1ec5 100644
 --- a/lib/matrix.d.ts
@@ -367,10 +548,10 @@ index 97a01598f3c0328fd6b8684e2879719e9461f7e0..ab8b12b181a58e3d5fba221a9b2d29b3
      this.importKeyBackup({
        rooms: {
 diff --git a/src/http-api/fetch.ts b/src/http-api/fetch.ts
-index f52b7d4b31298925ff8c51ae0579131da69562c9..a94d9eb5d4883b22ba943b90843ce6c789ed5e72 100644
+index f52b7d4b31298925ff8c51ae0579131da69562c9..b0bd31ed2090671be267084199b26cd936366eca 100644
 --- a/src/http-api/fetch.ts
 +++ b/src/http-api/fetch.ts
-@@ -68,6 +68,16 @@ export class FetchHttpApi<O extends IHttpOpts> {
+@@ -68,6 +68,25 @@ export class FetchHttpApi<O extends IHttpOpts> {
          return this.tokenManager.revokeTokens();
      }
  
@@ -379,19 +560,100 @@ index f52b7d4b31298925ff8c51ae0579131da69562c9..a94d9eb5d4883b22ba943b90843ce6c7
 +     * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
 +     * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut. With
 +     * `timeoutMs`, a grant this call starts is aborted unless it answers within that time.
++     * A {@link IHttpOpts.tokenHost} ignores `timeoutMs`: it bounds its own exchange.
 +     */
 +    public async refreshOAuthTokens(opts?: { timeoutMs?: number }): Promise<boolean> {
 +        return this.tokenManager.refreshNow(opts?.timeoutMs);
 +    }
 +
++    /**
++     * Trinity patch: use a pair the session's {@link IHttpOpts.tokenHost} holds, moving the access
++     * token and its expiry together.
++     */
++    public adoptOAuthTokens(tokens: { accessToken: string; expiry?: Date }): Promise<void> {
++        return this.tokenManager.adoptTokens(tokens);
++    }
++
      public fetch(resource: URL | string, options?: RequestInit): ReturnType<typeof globalThis.fetch> {
          if (this.opts.fetchFn) {
              return this.opts.fetchFn(resource, options);
+diff --git a/src/http-api/interface.ts b/src/http-api/interface.ts
+index bc71d861a8364199e7351d65896424afef498515..b759274b50c87376feb99d00743ef81f870a82c8 100644
+--- a/src/http-api/interface.ts
++++ b/src/http-api/interface.ts
+@@ -44,6 +44,25 @@ export type AccessTokens = {
+  * the refreshed ones.
+  */
+ export type TokenRefreshCallback = (newTokens: AccessTokens) => void;
++/**
++ * Trinity patch: what a host that owns a session's token exchange answers. `tokens` is the pair to
++ * use, `refused` ends the session, `transient` leaves it for the next trigger. `granted` says an
++ * exchange made this pair just now, not that the host already held it.
++ */
++export type HostTokenAnswer =
++    | { kind: "tokens"; accessToken: string; expiry?: Date; granted: boolean }
++    | { kind: "refused" }
++    | { kind: "transient" };
++
++/** Trinity patch: a host that holds this session's refresh token and makes every token exchange. */
++export interface TokenHost {
++    /** Exchange the refresh token it holds; `accessToken` is the one this client last saw. */
++    refresh(accessToken: string): Promise<HostTokenAnswer>;
++    /** The pair it holds now, or undefined when it can't say. Never exchanges anything. */
++    current(): Promise<{ accessToken: string; expiry?: Date } | undefined>;
++    /** Revoke the tokens it holds. False when it holds none, so the SDK revokes what it has. */
++    revoke(): Promise<boolean>;
++}
+ 
+ /**
+  * Configuration required for {@link IHttpOpts} to allow the SDK to manage the full lifecycle of tokens for an
+@@ -82,6 +101,11 @@ export interface IHttpOpts {
+      * Callback called when tokens are refreshed. Must be supplied if refreshToken is supplied.
+      */
+     onTokenRefresh?: TokenRefreshCallback;
++    /**
++     * Trinity patch: when set, this host makes every token exchange and `refreshToken` is only a
++     * non-secret marker saying one is possible.
++     */
++    tokenHost?: TokenHost;
+     /**
+      * Configuration needed to refresh (given refreshToken) and revoke (e.g. on logout) tokens for an
+      * OAuth2-native session. Optional; if omitted, tokens will not be refreshed or revoked by the SDK.
 diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
-index 04cc1c46c80490248d9602d3dabfbb23405faa94..606ef7e3810e550ea5e88d4d51c0e32f38d9d392 100644
+index 04cc1c46c80490248d9602d3dabfbb23405faa94..a854a7a12bb65c366c491e41bee2943e28e26b70 100644
 --- a/src/http-api/refresh.ts
 +++ b/src/http-api/refresh.ts
-@@ -123,10 +123,39 @@ export class TokenManager {
+@@ -35,6 +35,10 @@ const REFRESH_IF_TOKEN_EXPIRES_WITHIN_MS = 500;
+ // If we get an unknown token error and the token expires in less than this time amount of time, we will refresh it before making the intended request.
+ // Otherwise, we will error as the token should not have expired yet and we need to avoid retrying indefinitely.
+ const REFRESH_ON_ERROR_IF_TOKEN_EXPIRES_WITHIN_MS = 60 * 1000;
++// Trinity patch: how many attempts a request makes with a host. Nothing else ends a run of rejected
++// tokens with no far expiry. Each attempt can ask the host for a grant while every request queues
++// behind it, and a token already past its expiry adds one before the first send: 4 calls in all.
++const HOST_MAX_ATTEMPTS = 3;
+ 
+ type Opts = Pick<
+     IHttpOpts,
+@@ -45,6 +49,7 @@ type Opts = Pick<
+     | "oauth2ClientConfig"
+     | "authMetadataCallback"
+     | "fetchFn"
++    | "tokenHost"
+ >;
+ 
+ /**
+@@ -73,6 +78,10 @@ export class TokenManager {
+ 
+     private latestTokenRefreshExpiry?: Date;
+ 
++    // Trinity patch: the last token a host's exchange granted, the only one whose rejection can mean
++    // the session is gone. One another process left may simply have been revoked by its provider.
++    private hostRefreshed?: string;
++
+     // The object at the OAuth API layer that actually does the refreshing
+     // This needs OAuth params to be fetched before it can be constructed so it starts
+     // off as undefined and is constructed once we are able to do so.
+@@ -123,10 +132,80 @@ export class TokenManager {
          return this._handleUnknownToken(snapshot, attempt);
      }
  
@@ -400,6 +662,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..606ef7e3810e550ea5e88d4d51c0e32f
 +     * flight. Never signs out: a refusal is left to the next request, which meets it as
 +     * M_UNKNOWN_TOKEN and takes the usual path. With `timeoutMs`, a grant this call starts is
 +     * aborted unless it answers within that time.
++     * A {@link IHttpOpts.tokenHost} ignores `timeoutMs`: it bounds its own exchange.
 +     * @returns true when new tokens were adopted
 +     */
 +    public async refreshNow(timeoutMs?: number): Promise<boolean> {
@@ -417,10 +680,43 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..606ef7e3810e550ea5e88d4d51c0e32f
 +        }
 +    }
 +
++    /**
++     * Trinity patch: use a pair a host holds, in place of this client's. A changed token moves the
++     * access token and its expiry together and is reported through `onTokenRefresh`, whose failure
++     * changes nothing here: the host is the authority. The same token only learns an unknown expiry,
++     * and never replaces a known one, whose identity the expiry shortcut compares.
++     */
++    public async adoptTokens(tokens: { accessToken: string; expiry?: Date }): Promise<void> {
++        if (tokens.accessToken === this.opts.accessToken) {
++            this.latestTokenRefreshExpiry ??= tokens.expiry;
++            return;
++        }
++        this.opts.accessToken = tokens.accessToken;
++        this.latestTokenRefreshExpiry = tokens.expiry;
++        try {
++            await this.opts.onTokenRefresh?.(tokens);
++        } catch (error) {
++            this.opts.logger?.warn("Failed to persist adopted tokens", error);
++        }
++    }
++
      private async _handleUnknownToken(): Promise<TokenRefreshOutcome>;
      private async _handleUnknownToken(snapshot: AccessTokens, attempt: number): Promise<TokenRefreshOutcome>;
      private async _handleUnknownToken(snapshot?: AccessTokens, attempt?: number): Promise<TokenRefreshOutcome> {
 -        if (snapshot?.expiry) {
++        // Trinity patch: another process may have rotated this token. Take its pair before anything
++        // below reads this client's token or expiry.
++        if (snapshot && this.opts.tokenHost) {
++            if ((attempt ?? 1) > HOST_MAX_ATTEMPTS) return TokenRefreshOutcome.Failure;
++            const before = this.opts.accessToken;
++            const held = await this.opts.tokenHost.current().catch(() => undefined);
++            // a pair read before a rotation and delivered after it must not undo it
++            if (held && this.opts.accessToken === before) await this.adoptTokens(held);
++            // A host failure never signs out: the next request's first attempt asks the host again.
++            if (!held && (attempt ?? 1) > 1 && snapshot.accessToken === this.opts.accessToken) {
++                return TokenRefreshOutcome.Failure;
++            }
++        }
 +        // Trinity patch: a token rotated behind this request (say by refreshNow) was revoked by that
 +        // rotation, not by the server; retry with the current one before the expiry shortcut below.
 +        if (snapshot && snapshot.accessToken !== this.opts.accessToken) {
@@ -428,11 +724,18 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..606ef7e3810e550ea5e88d4d51c0e32f
 +        }
 +        // Trinity patch: trust the expiry shortcut only while nothing superseded it: not during a refresh
 +        // in flight (it may already have revoked this token), nor once refreshNow has cleared the expiry.
-+        if (snapshot?.expiry && snapshot.expiry === this.latestTokenRefreshExpiry && !this.tokenRefreshPromise) {
++        // Trinity patch: with a host, only a retried request's rejection of what a grant returned
++        // reaches the shortcut, ending a run of far-expiry tokens the server refuses. Others refresh.
++        if (
++            snapshot?.expiry &&
++            snapshot.expiry === this.latestTokenRefreshExpiry &&
++            !this.tokenRefreshPromise &&
++            (!this.opts.tokenHost || ((attempt ?? 1) > 1 && snapshot.accessToken === this.hostRefreshed))
++        ) {
              // If our token is unknown, but it should not have expired yet, then we should not refresh
              const expiresIn = snapshot.expiry.getTime() - Date.now();
              // If it still has plenty of time left on the clock, we assume something else must be wrong and
-@@ -157,7 +186,7 @@ export class TokenManager {
+@@ -157,7 +236,7 @@ export class TokenManager {
       * On success, sets new access and refresh tokens in opts.
       * @returns Promise that resolves to a boolean - true when token was refreshed successfully
       */
@@ -441,7 +744,26 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..606ef7e3810e550ea5e88d4d51c0e32f
          if (!this.opts.refreshToken || !this.opts.oauth2ClientConfig) {
              this.opts.logger?.error("Unable to refresh token - no refresh token or OAuth2 client config");
              return TokenRefreshOutcome.Logout;
-@@ -178,6 +207,7 @@ export class TokenManager {
+@@ -170,6 +249,18 @@ export class TokenManager {
+ 
+         try {
+             this.opts.logger?.debug("Attempting to refresh token");
++            // Trinity patch: no discovery and no grant here; a thrown host call is transient below.
++            if (this.opts.tokenHost) {
++                const before = this.opts.accessToken;
++                const answer = await this.opts.tokenHost.refresh(before!);
++                // a late answer says nothing about a pair adopted while it was awaited: retry on that
++                if (this.opts.accessToken !== before) return TokenRefreshOutcome.Success;
++                if (answer.kind === "refused") return TokenRefreshOutcome.Logout;
++                if (answer.kind === "transient") return TokenRefreshOutcome.Failure;
++                if (answer.granted) this.hostRefreshed = answer.accessToken;
++                await this.adoptTokens({ accessToken: answer.accessToken, expiry: answer.expiry });
++                return TokenRefreshOutcome.Success;
++            }
+             const tokenRefresher = await this.ensureTokenRefresher();
+             if (!tokenRefresher) {
+                 // We already checked `oauth2ClientConfig` is set above, so this should be unreachable.
+@@ -178,6 +269,7 @@ export class TokenManager {
  
              const { accessToken, refreshToken, expiry } = await tokenRefresher.refreshTokens(this.opts.refreshToken, {
                  abortSignal: this.getAbortSignal?.(),
@@ -449,7 +771,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..606ef7e3810e550ea5e88d4d51c0e32f
              });
              this.opts.accessToken = accessToken;
              this.opts.refreshToken = refreshToken;
-@@ -187,8 +217,10 @@ export class TokenManager {
+@@ -187,8 +279,10 @@ export class TokenManager {
              // successfully got new tokens
              return TokenRefreshOutcome.Success;
          } catch (error) {
@@ -462,6 +784,24 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..606ef7e3810e550ea5e88d4d51c0e32f
                  this.opts.logger?.error("Failed to refresh token", error);
                  return TokenRefreshOutcome.Logout;
              }
+@@ -205,6 +299,8 @@ export class TokenManager {
+      * @throws when discovery of the auth server metadata, or revocation of either token, fails
+      */
+     public async revokeTokens(): Promise<void> {
++        // Trinity patch: with a host, `refreshToken` is only a marker and must never be sent.
++        if (this.opts.tokenHost && (await this.opts.tokenHost.revoke())) return;
+         const tokenRefresher = await this.ensureTokenRefresher();
+         if (!tokenRefresher) return;
+ 
+@@ -214,7 +310,7 @@ export class TokenManager {
+                 this.opts.accessToken
+                     ? tokenRefresher.revokeToken(this.opts.accessToken, "access_token", requestOpts)
+                     : undefined,
+-                this.opts.refreshToken
++                this.opts.refreshToken && !this.opts.tokenHost
+                     ? tokenRefresher.revokeToken(this.opts.refreshToken, "refresh_token", requestOpts)
+                     : undefined,
+             ].filter((p): p is Promise<void> => p !== undefined),
 diff --git a/src/matrix.ts b/src/matrix.ts
 index 249d5156ad098720a05b3f2a53e1dd59290fa8ae..9c6773947ae7ed78ff971152e4b1702c8f13a88a 100644
 --- a/src/matrix.ts

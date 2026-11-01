@@ -70,6 +70,7 @@ export class AccountRuntimeService {
     phase: 'idle',
   });
   private establishment: InFlightAccountEstablishment | null = null;
+  private restoredOnce = false;
 
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
@@ -95,6 +96,10 @@ export class AccountRuntimeService {
       if (operation) {
         return of(accountRestoreTransitionResult(operation));
       }
+      // Only a process's first restore: a later one can run after an offline sign-out, whose
+      // kept record still awaits its retry. What it skips waits for the next start.
+      const sweepsNativeTokens = !this.restoredOnce;
+      this.restoredOnce = true;
       let termination: 'pending' | 'settled' | 'failed' = 'pending';
       let activeAccountId: string | null = null;
       let totalAccounts = 0;
@@ -117,7 +122,17 @@ export class AccountRuntimeService {
           activeAccountId = snapshot.activeAccountId;
           totalAccounts = snapshot.accountIds.length;
           this.publishProgress(activeAccountId, totalAccounts, outcomes);
-          return this.restoreSnapshot(snapshot, outcomes);
+          return this.restoreSnapshot(snapshot, outcomes).pipe(
+            // Still restoring, so no sign-in can start until the sweep has read its list.
+            switchMap((result) =>
+              !sweepsNativeTokens || result.kind === 'local-state-unavailable'
+                ? of(result)
+                : this.adapter.sweepNativeTokens().pipe(
+                    catchError(() => of(void 0)),
+                    map(() => result),
+                  ),
+            ),
+          );
         }),
         tap((result) => {
           termination = 'settled';
