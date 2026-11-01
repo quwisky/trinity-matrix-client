@@ -1,8 +1,15 @@
 import Foundation
 
-/// The client-server reads the renderer makes; every failure reads as nil.
+/// What reading an event answered. Only a 401 says the token itself was rejected.
+public enum PushEventRead {
+    case event([String: Any])
+    case unauthorized
+    case failed
+}
+
+/// The client-server reads the renderer makes. Every failed name read is nil.
 public protocol MatrixPushAPI {
-    func event(account: HandoffAccount, roomId: String, eventId: String, deadline: Date) async -> [String: Any]?
+    func event(account: HandoffAccount, roomId: String, eventId: String, deadline: Date) async -> PushEventRead
     func memberDisplayName(account: HandoffAccount, roomId: String, userId: String, deadline: Date) async -> String?
     func roomName(account: HandoffAccount, roomId: String, deadline: Date) async -> String?
 }
@@ -38,40 +45,47 @@ public struct URLSessionMatrixPushAPI: MatrixPushAPI {
         value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
     }
 
-    public func event(account: HandoffAccount, roomId: String, eventId: String, deadline: Date) async -> [String: Any]? {
+    public func event(account: HandoffAccount, roomId: String, eventId: String, deadline: Date) async -> PushEventRead {
         await get(account, path: "\(room(roomId))/event/\(Self.segment(eventId))", deadline: deadline)
     }
 
     public func memberDisplayName(account: HandoffAccount, roomId: String, userId: String, deadline: Date) async -> String? {
-        let member = await get(account, path: "\(room(roomId))/state/m.room.member/\(Self.segment(userId))", deadline: deadline)
-        return PushRenderRules.nonBlank(member?["displayname"] as? String)
+        let path = "\(room(roomId))/state/m.room.member/\(Self.segment(userId))"
+        guard case .event(let member) = await get(account, path: path, deadline: deadline) else { return nil }
+        return PushRenderRules.nonBlank(member["displayname"] as? String)
     }
 
     public func roomName(account: HandoffAccount, roomId: String, deadline: Date) async -> String? {
-        let state = await get(account, path: "\(room(roomId))/state/m.room.name", deadline: deadline)
-        return PushRenderRules.nonBlank(state?["name"] as? String)
+        let path = "\(room(roomId))/state/m.room.name"
+        guard case .event(let state) = await get(account, path: path, deadline: deadline) else { return nil }
+        return PushRenderRules.nonBlank(state["name"] as? String)
     }
 
     private func room(_ roomId: String) -> String {
         "/_matrix/client/v3/rooms/\(Self.segment(roomId))"
     }
 
-    private func get(_ account: HandoffAccount, path: String, deadline: Date) async -> [String: Any]? {
+    private func get(_ account: HandoffAccount, path: String, deadline: Date) async -> PushEventRead {
         let remaining = deadline.timeIntervalSinceNow
         var base = account.homeserverUrl
         while base.hasSuffix("/") { base.removeLast() }
         guard remaining > 0,
               let url = URL(string: base + path),
               let session = session(timeout: remaining)
-        else { return nil }
+        else { return .failed }
         defer { session.finishTasksAndInvalidate() }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: remaining)
         request.setValue("Bearer \(account.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         guard let (data, response) = try? await session.data(for: request, delegate: RefusingRedirects()),
-              (response as? HTTPURLResponse)?.statusCode == 200
-        else { return nil }
-        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+              let status = (response as? HTTPURLResponse)?.statusCode
+        else { return .failed }
+        if status == 401 { return .unauthorized }
+        // Event JSON comes from any room member: see `isSafeToParse`.
+        guard status == 200, isSafeToParse(data),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return .failed }
+        return .event(object)
     }
 
     private func session(timeout: TimeInterval) -> URLSession? {

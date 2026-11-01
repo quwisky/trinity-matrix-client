@@ -15,28 +15,47 @@ private final class FakeAPI: MatrixPushAPI, @unchecked Sendable {
     private let lock = NSLock()
     private var recordedAccounts: [HandoffAccount] = []
     private var recordedRoomNameDeadlines: [Date] = []
-    let event: [String: Any]?
+    private var recordedMemberDeadlines: [Date] = []
+    private var recordedEventDeadlines: [Date] = []
+    private var eventReads: [PushEventRead]
     let memberName: String?
     let roomName: String?
     var eventDelay: UInt64 = 0
 
     var accounts: [HandoffAccount] { lock.withLock { recordedAccounts } }
     var roomNameDeadlines: [Date] { lock.withLock { recordedRoomNameDeadlines } }
+    var memberDeadlines: [Date] { lock.withLock { recordedMemberDeadlines } }
+    var eventDeadlines: [Date] { lock.withLock { recordedEventDeadlines } }
+    var eventCalls: Int { eventDeadlines.count }
 
     init(event: [String: Any]? = nil, memberName: String? = nil, roomName: String? = nil) {
-        self.event = event
+        eventReads = [event.map { .event($0) } ?? .failed]
         self.memberName = memberName
         self.roomName = roomName
     }
 
-    func event(account: HandoffAccount, roomId: String, eventId: String, deadline: Date) async -> [String: Any]? {
-        lock.withLock { recordedAccounts.append(account) }
+    /// Answers each read in turn, then keeps giving the last.
+    init(eventReads: [PushEventRead], memberName: String? = nil) {
+        self.eventReads = eventReads
+        self.memberName = memberName
+        roomName = nil
+    }
+
+    func event(account: HandoffAccount, roomId: String, eventId: String, deadline: Date) async -> PushEventRead {
+        let read = lock.withLock { () -> PushEventRead in
+            recordedAccounts.append(account)
+            recordedEventDeadlines.append(deadline)
+            return eventReads.count > 1 ? eventReads.removeFirst() : eventReads.first ?? .failed
+        }
         if eventDelay > 0 { try? await Task.sleep(nanoseconds: eventDelay) }
-        return event
+        return read
     }
 
     func memberDisplayName(account: HandoffAccount, roomId: String, userId: String, deadline: Date) async -> String? {
-        lock.withLock { recordedAccounts.append(account) }
+        lock.withLock {
+            recordedAccounts.append(account)
+            recordedMemberDeadlines.append(deadline)
+        }
         return memberName
     }
 
@@ -46,6 +65,32 @@ private final class FakeAPI: MatrixPushAPI, @unchecked Sendable {
             recordedRoomNameDeadlines.append(deadline)
         }
         return roomName
+    }
+}
+
+private final class FakeTokens: PushTokenRefreshing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [String] = []
+    private var budgets: [TimeInterval] = []
+    private let answer: TokenRefreshResult
+    private let delay: Duration
+
+    var tokensSeen: [String] { lock.withLock { seen } }
+    var calls: Int { tokensSeen.count }
+    var lastBudget: TimeInterval? { lock.withLock { budgets.last } }
+
+    init(answer: TokenRefreshResult, delay: Duration = .zero) {
+        self.answer = answer
+        self.delay = delay
+    }
+
+    func refreshForPush(account: String, tokenSeen: String, budget: TimeInterval) async -> TokenRefreshResult {
+        lock.withLock {
+            seen.append(tokenSeen)
+            budgets.append(budget)
+        }
+        try? await Task.sleep(for: delay)
+        return answer
     }
 }
 
@@ -196,6 +241,202 @@ final class PushContentResolverTests: XCTestCase {
         XCTAssertEqual(resolution, .rendered(RenderedNotification(title: "Bob's room", subtitle: "Carol", body: "hello"), sound: false))
     }
 
+    // MARK: Tokens
+
+    private let team = ["@alice:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false, encrypted: false)]]
+    private let longPast = Date(timeIntervalSince1970: 1_000)
+
+    private func entry(token: String = "old", expired: Bool) -> HandoffAccount {
+        HandoffAccount(
+            homeserverUrl: "https://a.example", accessToken: token, sound: true,
+            accessTokenExpiresAt: expired ? longPast : nil)
+    }
+
+    private func body(_ resolution: PushResolution) -> String? {
+        if case .rendered(let rendered, _) = resolution { return rendered.body }
+        return nil
+    }
+
+    private func refreshAnswer(_ name: String?) throws -> TokenRefreshResult {
+        let renewed = tokenRecord(accessToken: "new")
+        switch name {
+        case nil: return .gone // A row with no refresh must never ask for one.
+        case "rotated": return .rotated(renewed, unsaved: false)
+        case "unsaved": return .rotated(renewed, unsaved: true)
+        case "current": return .current(renewed)
+        case "busy": return .busy
+        case "transient": return .transient
+        case "unavailable": return .unavailable
+        case "refused": return .refused
+        case "gone": return .gone
+        default: throw CocoaError(.coderInvalidValue)
+        }
+    }
+
+    private func eventRead(_ name: String) throws -> PushEventRead {
+        switch name {
+        case "ok": return .event(message(sender: "@alice:hs"))
+        case "unauthorized": return .unauthorized
+        case "failed": return .failed
+        default: throw CocoaError(.coderInvalidValue)
+        }
+    }
+
+    /// The `tokenFlows` of native/push-render/push-render-cases.json, which the Android suite runs too.
+    func testEverySharedTokenFlow() async throws {
+        let fixture = try XCTUnwrap(PushRenderRulesTests.sharedFixture())
+        let document = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
+        let flows = try XCTUnwrap(document["tokenFlows"] as? [[String: Any]])
+        XCTAssertEqual(flows.count, 18)
+        for row in flows {
+            let name = try XCTUnwrap(row["name"] as? String)
+            let refresh = row["refresh"] as? String
+            let reads = try [row["firstFetch"], row["secondFetch"]].compactMap { $0 as? String }.map(eventRead)
+            let answer = try refreshAnswer(refresh)
+            let api = FakeAPI(eventReads: reads, memberName: "Alice")
+            let tokens = FakeTokens(answer: answer)
+            let store = FakeStore(
+                accounts: ["@alice:hs": entry(expired: try XCTUnwrap(row["tokenExpired"] as? Bool))], rooms: team)
+
+            let resolution = await PushContentResolver(store: store, api: api, tokens: tokens).resolve(payload())
+
+            guard case .rendered(let rendered, let sound) = resolution else {
+                XCTFail("\(name): \(resolution)")
+                continue
+            }
+            XCTAssertEqual(rendered.body, row["body"] as? String, name)
+            XCTAssertEqual(rendered.title, "Team", name)
+            XCTAssertTrue(sound, name)
+            XCTAssertEqual(api.eventCalls, row["fetches"] as? Int, name)
+            XCTAssertEqual(tokens.calls, refresh == nil ? 0 : 1, name)
+            XCTAssertEqual(tokens.tokensSeen, refresh == nil ? [] : ["old"], name)
+            switch answer {
+            case .current, .rotated:
+                XCTAssertEqual(api.accounts.last?.accessToken, "new", name)
+            default:
+                XCTAssertTrue(api.accounts.allSatisfy { $0.accessToken == "old" }, name)
+            }
+        }
+    }
+
+    func testATokenlessEntryShowsTheOpenTrinityTextWithoutAFetch() async {
+        let tokenless = HandoffAccount(homeserverUrl: "https://a.example", accessToken: "", sound: true)
+            .overlaid(by: .absent)
+        let store = FakeStore(accounts: ["@alice:hs": tokenless], rooms: team)
+        let api = FakeAPI(event: message())
+        let client = FakeClient()
+        let refresher = TokenRefresher(vault: FakeVault(nil), lease: FakeLease(), client: client)
+
+        let resolver = PushContentResolver(store: store, api: api, tokens: refresher)
+        let resolution = await resolver.resolve(payload())
+
+        XCTAssertEqual(body(resolution), "Open Trinity to read this message")
+        XCTAssertEqual(resolver.fallback(for: payload())?.body, "Open Trinity to read this message")
+        XCTAssertEqual(api.eventCalls, 0)
+        XCTAssertTrue(client.grants.isEmpty)
+    }
+
+    func testAVaultRecordWithNoHandoffEntryIsNotRefreshed() async {
+        let vault = FakeVault(tokenRecord(expiresAt: longPast))
+        let client = FakeClient()
+        let api = FakeAPI(event: message())
+        let refresher = TokenRefresher(vault: vault, lease: FakeLease(), client: client)
+        let store = FakeStore(accounts: [:])
+
+        let resolution = await PushContentResolver(store: store, api: api, tokens: refresher).resolve(payload())
+
+        XCTAssertEqual(resolution, .unchanged)
+        XCTAssertNil(PushRender(
+            userInfo: ["trinity_user_id": "@alice:hs", "room_id": "!r:hs", "event_id": "$e"],
+            store: store, api: api, tokens: refresher))
+        XCTAssertTrue(client.grants.isEmpty)
+        XCTAssertEqual(vault.stored?.accessToken, "a0")
+        XCTAssertTrue(api.accounts.isEmpty)
+    }
+
+    func testABurstSharesOneRotation() async throws {
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent("burst-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: container) }
+        let client = FakeClient()
+        client.onGrant = { try? await Task.sleep(for: .milliseconds(100)) }
+        let refresher = TokenRefresher(
+            vault: FakeVault(tokenRecord(expiresAt: longPast)), lease: AppGroupTokenLease(containerURL: container),
+            client: client)
+        let store = FakeStore(accounts: ["@alice:hs": entry(token: "a0", expired: true)], rooms: team)
+        let api = FakeAPI(event: message(), memberName: "Carol")
+        let resolver = PushContentResolver(store: store, api: api, tokens: refresher)
+
+        async let first = resolver.resolve(payload())
+        async let second = resolver.resolve(payload())
+        let answers = await [first, second]
+
+        XCTAssertEqual(client.grants.count, 1)
+        XCTAssertEqual(answers.map(body), ["hello", "hello"])
+        XCTAssertEqual(api.eventCalls, 2)
+        XCTAssertTrue(api.accounts.allSatisfy { $0.accessToken == "a1" })
+    }
+
+    func testAnExpiredEntryShowsTheFallbackWhenRefreshIsGone() async {
+        let store = FakeStore(accounts: ["@alice:hs": entry(expired: true)], rooms: team)
+        let api = FakeAPI(event: message())
+        let tokens = FakeTokens(answer: .gone)
+
+        let resolution = await PushContentResolver(store: store, api: api, tokens: tokens).resolve(payload())
+
+        XCTAssertEqual(
+            resolution,
+            .rendered(RenderedNotification(title: "Team", subtitle: "", body: "Open Trinity to read this message"), sound: true))
+        XCTAssertTrue(api.accounts.isEmpty)
+    }
+
+    func testTheRefreshGetsFifteenSeconds() async {
+        let store = FakeStore(accounts: ["@alice:hs": entry(expired: true)], rooms: team)
+        let tokens = FakeTokens(answer: .gone)
+
+        _ = await PushContentResolver(store: store, api: FakeAPI(), tokens: tokens).resolve(payload())
+
+        XCTAssertEqual(tokens.lastBudget, 15)
+    }
+
+    func testNoRefreshWithNoTokensDependency() async {
+        let expired = FakeStore(accounts: ["@alice:hs": entry(expired: true)], rooms: team)
+        let rejected = FakeStore(accounts: ["@alice:hs": entry(expired: false)], rooms: team)
+        let unusedAPI = FakeAPI(event: message())
+        let oneRead = FakeAPI(eventReads: [.unauthorized])
+
+        let shown = await PushContentResolver(store: expired, api: unusedAPI).resolve(payload())
+        let afterA401 = await PushContentResolver(store: rejected, api: oneRead).resolve(payload())
+
+        XCTAssertEqual(body(shown), "Open Trinity to read this message")
+        XCTAssertEqual(unusedAPI.eventCalls, 0)
+        XCTAssertEqual(body(afterA401), "New message")
+        XCTAssertEqual(oneRead.eventCalls, 1)
+    }
+
+    func testTheFetchAfterARefreshGetsItsOwnDeadline() async throws {
+        let store = FakeStore(accounts: ["@alice:hs": entry(expired: false)], rooms: [:])
+        let api = FakeAPI(eventReads: [.unauthorized, .event(message())], memberName: "Carol")
+        let tokens = FakeTokens(answer: .current(tokenRecord(accessToken: "new")), delay: .milliseconds(200))
+
+        _ = await PushContentResolver(store: store, api: api, tokens: tokens, budget: 0.1).resolve(payload())
+
+        XCTAssertEqual(api.eventDeadlines.count, 2)
+        XCTAssertGreaterThan(api.eventDeadlines[1].timeIntervalSince(api.eventDeadlines[0]), 0.15)
+        XCTAssertEqual(api.roomNameDeadlines, [api.eventDeadlines[1]])
+        XCTAssertEqual(api.memberDeadlines, [api.eventDeadlines[1]])
+    }
+
+    func testEveryReadAfterARefreshUsesTheNewToken() async throws {
+        let store = FakeStore(accounts: ["@alice:hs": entry(expired: false)], rooms: [:])
+        let api = FakeAPI(eventReads: [.unauthorized, .event(message())], memberName: "Carol")
+        let tokens = FakeTokens(answer: .rotated(tokenRecord(accessToken: "new"), unsaved: false))
+
+        _ = await PushContentResolver(store: store, api: api, tokens: tokens).resolve(payload())
+
+        XCTAssertEqual(api.accounts.map(\.accessToken), ["old", "new", "new", "new"])
+    }
+
     func testPayloadNeedsAccountRoomAndEvent() {
         XCTAssertNil(PushPayload(userInfo: ["room_id": "!r:hs", "event_id": "$e"]))
         XCTAssertNil(PushPayload(userInfo: ["trinity_user_id": "@a:hs", "room_id": "!r:hs", "unread": "0"]))
@@ -254,6 +495,22 @@ final class PushRenderTests: XCTestCase {
         XCTAssertEqual(render.fallback, expected)
         XCTAssertEqual(resolved, expected)
         XCTAssertTrue(api.accounts.isEmpty)
+    }
+
+    func testResolvesThroughItsTokensAndStartsFromTheOpenTrinityText() async throws {
+        let expired = HandoffAccount(
+            homeserverUrl: "https://b.example", accessToken: "old", sound: false,
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 0))
+        let store = FakeStore(accounts: ["@bob:hs": expired], rooms: ["@bob:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false, encrypted: false)]])
+        let api = FakeAPI(event: ["type": "m.room.message", "sender": "@carol:hs", "content": ["msgtype": "m.text", "body": "hello"]], memberName: "Carol")
+        let tokens = FakeTokens(answer: .rotated(tokenRecord(accessToken: "new"), unsaved: false))
+
+        let render = try XCTUnwrap(PushRender(userInfo: userInfo(), store: store, api: api, tokens: tokens))
+        let resolved = await render.resolve()
+
+        XCTAssertEqual(render.fallback.body, "Open Trinity to read this message")
+        XCTAssertEqual(resolved.body, "hello")
+        XCTAssertEqual(tokens.calls, 1)
     }
 
     func testLeavesOtherPushesAndUnknownAccountsToTheGatewaysAlert() {

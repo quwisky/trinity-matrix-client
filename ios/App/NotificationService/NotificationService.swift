@@ -3,10 +3,11 @@ import TrinityPush
 import UserNotifications
 
 /// Rewrites Trinity's device-render pushes (`mutable-content: 1`) with the room name, the
-/// sender and the message text, read through the push handoff store the app keeps. It edits a
-/// copy of the delivered content, so the gateway's badge and `trinity_user_id` (which
-/// `PushHandoff.clearRoom` matches on) stay. Each request has its own delivery, since iOS may
-/// hand one instance overlapping requests. Logs nothing.
+/// sender and the message text, read through the push handoff store the app keeps, refreshing an
+/// OAuth account's token when it has expired or is rejected. It edits a copy of the delivered
+/// content, so the gateway's badge and `trinity_user_id` (which `PushHandoff.clearRoom` matches
+/// on) stay. Each request has its own delivery, since iOS may hand one instance overlapping
+/// requests. Logs nothing.
 final class NotificationService: UNNotificationServiceExtension {
     private let deliveries = PushDeliveries<UNMutableNotificationContent>()
 
@@ -22,7 +23,9 @@ final class NotificationService: UNNotificationServiceExtension {
         let present: (UNMutableNotificationContent) -> Void =
             PushRenderRules.presenting(store: store, handler: contentHandler)
         guard PushRenderRules.rendersMessage(store: store),
-              let render = PushRender(userInfo: request.content.userInfo, store: store, api: URLSessionMatrixPushAPI())
+              let render = PushRender(
+                  userInfo: request.content.userInfo, store: store, api: URLSessionMatrixPushAPI(),
+                  tokens: TokenRefresher.fromMainBundle())
         else {
             // Always hide (no fallback naming the room, no fetch), or an unknown account or
             // another kind of push: the gateway's alert, which carries no message text.

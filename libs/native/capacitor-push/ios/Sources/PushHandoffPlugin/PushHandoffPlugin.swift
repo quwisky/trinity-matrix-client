@@ -424,7 +424,7 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(probe.result)
         }
         guard PushRenderRules.rendersMessage(store: store),
-              let render = PushRender(userInfo: userInfo, store: store, api: URLSessionMatrixPushAPI())
+              let render = PushRender(userInfo: userInfo, store: store, api: URLSessionMatrixPushAPI(), tokens: tokens)
         else {
             let aps = payload["aps"] as? JSObject
             let alert = aps?["alert"] as? JSObject

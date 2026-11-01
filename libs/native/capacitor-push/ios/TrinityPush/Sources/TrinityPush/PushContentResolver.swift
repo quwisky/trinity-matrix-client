@@ -6,24 +6,32 @@ public enum PushResolution: Equatable {
     case rendered(RenderedNotification, sound: Bool)
 }
 
-/// Turns a gateway push into the notification to show. Never refreshes a token. A token the
-/// store marks expired is not sent at all, because only the app can renew it: the push shows
-/// the room name with the expired-token text. Any other failed read shows "New message".
+/// Turns a gateway push into the notification to show. A token the store marks expired is not
+/// sent: it is refreshed first, and a 401 refreshes once too. The push shows the room name with
+/// the expired-token text when an expired token could not be refreshed. Any other failed read
+/// shows "New message". Worst case 5 s + 15 s + 3 s grace + 1 s retake + 5 s, inside the
+/// extension's 30 s, and the extension's fallback still covers running out of it.
 public struct PushContentResolver {
     private let store: HandoffReading
     private let api: MatrixPushAPI
+    private let tokens: PushTokenRefreshing?
     private let budget: TimeInterval
+    private let refreshBudget: TimeInterval
     private let now: () -> Date
 
     public init(
         store: HandoffReading,
         api: MatrixPushAPI,
+        tokens: PushTokenRefreshing? = nil,
         budget: TimeInterval = 5,
+        refreshBudget: TimeInterval = TokenBudgets.serviceRefresh,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
         self.api = api
+        self.tokens = tokens
         self.budget = budget
+        self.refreshBudget = refreshBudget
         self.now = now
     }
 
@@ -35,14 +43,29 @@ public struct PushContentResolver {
         return fallback(for: payload, tokenExpired: account.tokenExpired(at: now()))
     }
 
-    /// One deadline covers every read of the push; an expired token makes no read.
+    /// Only an account with a handoff entry can refresh: a vault record may outlive sign-out while
+    /// its revocation is pending. One deadline covers every read made with the same token.
     public func resolve(_ payload: PushPayload) async -> PushResolution {
-        guard let account = store.account(payload.accountId) else { return .unchanged }
-        if account.tokenExpired(at: now()) {
-            return .rendered(fallback(for: payload, tokenExpired: true), sound: account.sound)
+        guard var account = store.account(payload.accountId) else { return .unchanged }
+        let expired = account.tokenExpired(at: now())
+        if expired {
+            guard let renewed = await refreshed(account, payload) else {
+                return .rendered(fallback(for: payload, tokenExpired: true), sound: account.sound)
+            }
+            account = renewed
         }
-        let deadline = Date().addingTimeInterval(budget)
-        let event = await api.event(account: account, roomId: payload.roomId, eventId: payload.eventId, deadline: deadline)
+        var deadline = Date().addingTimeInterval(budget)
+        var read = await api.event(account: account, roomId: payload.roomId, eventId: payload.eventId, deadline: deadline)
+        if case .unauthorized = read, !expired {
+            guard let renewed = await refreshed(account, payload) else {
+                return .rendered(fallback(for: payload, tokenExpired: false), sound: account.sound)
+            }
+            account = renewed
+            deadline = Date().addingTimeInterval(budget)
+            read = await api.event(account: account, roomId: payload.roomId, eventId: payload.eventId, deadline: deadline)
+        }
+        var event: [String: Any]?
+        if case .event(let object) = read { event = object }
         let storedRoom = store.room(payload.accountId, payload.roomId)
         var stateRoomName: String?
         if storedRoom == nil {
@@ -59,6 +82,16 @@ public struct PushContentResolver {
             senderName: senderName
         )
         return .rendered(rendered, sound: account.sound)
+    }
+
+    /// The account with a usable token; nil for every other answer, which shows the fallback.
+    private func refreshed(_ account: HandoffAccount, _ payload: PushPayload) async -> HandoffAccount? {
+        let answer = await tokens?.refreshForPush(
+            account: payload.accountId, tokenSeen: account.accessToken, budget: refreshBudget)
+        switch answer {
+        case .current(let record), .rotated(let record, _): return account.with(record: record)
+        default: return nil
+        }
     }
 
     /// The notification from what the store holds alone, without reading anything.

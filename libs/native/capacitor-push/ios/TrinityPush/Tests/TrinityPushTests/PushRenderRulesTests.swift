@@ -151,7 +151,7 @@ final class PushRenderRulesTests: XCTestCase {
 
     /// The repository's shared fixture, found by walking up from this file, so moving the
     /// package cannot point the suite at a path that does not exist.
-    private static func sharedFixture(from file: String = #filePath) -> URL? {
+    static func sharedFixture(from file: String = #filePath) -> URL? {
         var directory = URL(fileURLWithPath: file).deletingLastPathComponent()
         while directory.path != "/" {
             let candidate = directory.appendingPathComponent("native/push-render/push-render-cases.json")

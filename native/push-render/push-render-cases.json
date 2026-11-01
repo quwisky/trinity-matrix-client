@@ -931,5 +931,169 @@
         "body": "New message"
       }
     }
+  ],
+  "tokenFlows": [
+    {
+      "name": "valid token",
+      "tokenExpired": false,
+      "firstFetch": "ok",
+      "refresh": null,
+      "secondFetch": null,
+      "body": "hello",
+      "fetches": 1
+    },
+    {
+      "name": "expired, rotated",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "rotated",
+      "secondFetch": "ok",
+      "body": "hello",
+      "fetches": 1
+    },
+    {
+      "name": "expired, rotated but unsaved",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "unsaved",
+      "secondFetch": "ok",
+      "body": "hello",
+      "fetches": 1
+    },
+    {
+      "name": "expired, another process rotated",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "current",
+      "secondFetch": "ok",
+      "body": "hello",
+      "fetches": 1
+    },
+    {
+      "name": "401, rotated",
+      "tokenExpired": false,
+      "firstFetch": "unauthorized",
+      "refresh": "rotated",
+      "secondFetch": "ok",
+      "body": "hello",
+      "fetches": 2
+    },
+    {
+      "name": "401, rotated, second fetch fails",
+      "tokenExpired": false,
+      "firstFetch": "unauthorized",
+      "refresh": "rotated",
+      "secondFetch": "failed",
+      "body": "New message",
+      "fetches": 2
+    },
+    {
+      "name": "expired, rotated, second fetch 401",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "rotated",
+      "secondFetch": "unauthorized",
+      "body": "New message",
+      "fetches": 1
+    },
+    {
+      "name": "other failure makes no refresh",
+      "tokenExpired": false,
+      "firstFetch": "failed",
+      "refresh": null,
+      "secondFetch": null,
+      "body": "New message",
+      "fetches": 1
+    },
+    {
+      "name": "expired, busy",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "busy",
+      "secondFetch": null,
+      "body": "Open Trinity to read this message",
+      "fetches": 0
+    },
+    {
+      "name": "expired, transient",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "transient",
+      "secondFetch": null,
+      "body": "Open Trinity to read this message",
+      "fetches": 0
+    },
+    {
+      "name": "expired, unavailable",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "unavailable",
+      "secondFetch": null,
+      "body": "Open Trinity to read this message",
+      "fetches": 0
+    },
+    {
+      "name": "expired, refused",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "refused",
+      "secondFetch": null,
+      "body": "Open Trinity to read this message",
+      "fetches": 0
+    },
+    {
+      "name": "expired, gone",
+      "tokenExpired": true,
+      "firstFetch": null,
+      "refresh": "gone",
+      "secondFetch": null,
+      "body": "Open Trinity to read this message",
+      "fetches": 0
+    },
+    {
+      "name": "401, busy",
+      "tokenExpired": false,
+      "firstFetch": "unauthorized",
+      "refresh": "busy",
+      "secondFetch": null,
+      "body": "New message",
+      "fetches": 1
+    },
+    {
+      "name": "401, transient",
+      "tokenExpired": false,
+      "firstFetch": "unauthorized",
+      "refresh": "transient",
+      "secondFetch": null,
+      "body": "New message",
+      "fetches": 1
+    },
+    {
+      "name": "401, unavailable",
+      "tokenExpired": false,
+      "firstFetch": "unauthorized",
+      "refresh": "unavailable",
+      "secondFetch": null,
+      "body": "New message",
+      "fetches": 1
+    },
+    {
+      "name": "401, refused",
+      "tokenExpired": false,
+      "firstFetch": "unauthorized",
+      "refresh": "refused",
+      "secondFetch": null,
+      "body": "New message",
+      "fetches": 1
+    },
+    {
+      "name": "401, gone",
+      "tokenExpired": false,
+      "firstFetch": "unauthorized",
+      "refresh": "gone",
+      "secondFetch": null,
+      "body": "New message",
+      "fetches": 1
+    }
   ]
 }

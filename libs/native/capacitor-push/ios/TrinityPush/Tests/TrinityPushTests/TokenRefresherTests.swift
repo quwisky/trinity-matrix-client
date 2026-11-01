@@ -25,7 +25,7 @@ private final class FakeClock: @unchecked Sendable {
     }
 }
 
-private final class FakeVault: TokenVault, @unchecked Sendable {
+final class FakeVault: TokenVault, @unchecked Sendable {
     private struct State {
         var stored: TokenRecord?
         var unavailable = false
@@ -118,7 +118,7 @@ private final class FakeVault: TokenVault, @unchecked Sendable {
     func removeAll() -> Bool { remove("") }
 }
 
-private final class FakeLease: TokenLease, @unchecked Sendable {
+final class FakeLease: TokenLease, @unchecked Sendable {
     private struct State {
         var answer: LeaseAnswer = .taken
         var lapsed = false
@@ -185,7 +185,7 @@ private final class FakeLease: TokenLease, @unchecked Sendable {
     }
 }
 
-private final class FakeClient: TokenGrantClient, @unchecked Sendable {
+final class FakeClient: TokenGrantClient, @unchecked Sendable {
     private struct State {
         var answer = TokenGrantAnswer.tokens(accessToken: "a1", refreshToken: "r1", expiresIn: 300)
         var revokeAnswer = true
