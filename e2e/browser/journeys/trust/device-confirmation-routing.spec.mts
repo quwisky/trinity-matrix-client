@@ -1,5 +1,6 @@
 import { test, expect, type Route } from '../../../fixtures.mts';
 import {
+  deviceKeysPublished,
   fillLabeledInput,
   homeserverSession,
   login,
@@ -93,12 +94,15 @@ test.describe('The new-device check in the app', () => {
     );
     await publishIdentityWithoutRecovery(request, hs, user, pass);
 
+    const published = deviceKeysPublished(page);
     await login(page, asSession, webNavigate, 'expect');
     await page.getByTestId('device-confirmation-skip').click();
     await waitForRooms(page);
     const userId = (
       (await page.locator('.userbar__handle').textContent()) ?? ''
     ).trim();
+    // The re-auth checks the device still has its keys; one that hasn't published yet has none.
+    await published;
 
     await page.goto(`/login?reauth=${encodeURIComponent(userId)}`, {
       waitUntil: 'domcontentloaded',

@@ -1,6 +1,7 @@
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
   databaseNames,
+  deviceKeysPublished,
   fillLabeledInput,
   login,
   preferenceKeys,
@@ -385,11 +386,14 @@ test.describe('Multiple accounts', () => {
     page,
   }) => {
     const handleA = `@${session.user}:`;
+    const published = deviceKeysPublished(page);
     await login(page, session);
     await expect(page.locator('.userbar__handle')).toContainText(handleA);
     const userId = (
       (await page.locator('.userbar__handle').textContent()) ?? ''
     ).trim();
+    // The re-auth checks the device still has its keys; one that hasn't published yet has none.
+    await published;
 
     // Go straight to the re-auth login for the account (as the switcher's re-auth row
     // does). The homeserver step is skipped and the username is prefilled + locked.
