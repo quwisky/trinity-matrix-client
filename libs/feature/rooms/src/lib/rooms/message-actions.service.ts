@@ -40,9 +40,10 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 
-/** The text a rejected send put back in the box. */
+/** What a rejected send put back for its failed row: the text, and the reply it was aimed at. */
 interface Restored {
   readonly text: string;
+  readonly replyTo: string | null;
 }
 
 /**
@@ -268,15 +269,23 @@ export class MessageActionsService {
     const handle = this.conversations.focused();
     this.compose.setDraft(body);
     const editing = this.compose.intent().kind === 'edit';
+    // Failures that predate this send, so a rejection that left no echo pairs with none of them.
+    const failedBefore = new Set(
+      handle?.timeline
+        .messages()
+        .filter((m) => m.status === 'failed')
+        .map((m) => m.id),
+    );
     this.compose
       .submit(mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
         if (
+          !editing &&
           outcome.kind === 'rejected' &&
           outcome.failure === 'send-rejected'
         ) {
-          this.rememberRestoredText(handle);
+          this.rememberRestoredText(handle, body, failedBefore);
         }
         // A failed message keeps its echo to retry from; a failed edit's echo is gone. A second
         // Enter while one is pending, or an empty draft, tried nothing.
@@ -296,15 +305,26 @@ export class MessageActionsService {
    * can tell the restored text from anything typed since, whatever the echo's body became
    * (`/me`, markdown, trimming).
    */
-  private rememberRestoredText(handle: ConversationHandle | null): void {
-    if (!handle) return;
+  private rememberRestoredText(
+    handle: ConversationHandle | null,
+    body: string,
+    failedBefore: ReadonlySet<string>,
+  ): void {
+    // The runtime leaves text typed during the send alone; that is not the restored text.
+    if (!handle || handle.compose.draft() !== body) return;
     const known = this.restored.get(handle) ?? new Map<string, Restored>();
     const echo = handle.timeline
       .messages()
-      .filter((m) => m.isOwn && m.status === 'failed' && !known.has(m.id))
+      .filter(
+        (m) => m.isOwn && m.status === 'failed' && !failedBefore.has(m.id),
+      )
       .at(-1);
     if (!echo) return;
-    known.set(echo.id, { text: handle.compose.draft() });
+    const intent = handle.compose.intent();
+    known.set(echo.id, {
+      text: body,
+      replyTo: intent.kind === 'reply' ? intent.eventId : null,
+    });
     this.restored.set(handle, known);
   }
 
@@ -413,6 +433,8 @@ export class MessageActionsService {
   // Delete/react have no visible local echo, so a failure would otherwise be
   // silent — surface it as a toast.
   onDelete(messageId: string): void {
+    const handle = this.conversations.focused();
+    if (handle) this.restored.get(handle)?.delete(messageId);
     this.runMessageAction(
       this.messageCommands.redact(messageId),
       'Could not delete the message.',
@@ -430,12 +452,14 @@ export class MessageActionsService {
     // The runtime's `compose` follows the focused room, which can change before a slow retry
     // settles; the handle pinned here is the failed message's own account and room.
     const handle = this.conversations.focused();
-    const restored = handle && this.restored.get(handle)?.get(messageId);
+    const records = handle && this.restored.get(handle);
+    const restored = records?.get(messageId);
     const compose = handle?.compose;
     // The restored text sits in the box beside the row's Retry; once the retry goes out, leaving
     // it there lets Send post it twice. Edited text is the person's and stays.
     let cleared = false;
     if (
+      handle &&
       compose &&
       restored &&
       compose.intent().kind !== 'edit' &&
@@ -446,14 +470,17 @@ export class MessageActionsService {
       cleared = true;
     }
     const undo = () => {
-      if (cleared && compose && compose.draft() === '') {
-        compose.setDraft(restored?.text ?? '');
+      if (!cleared || !handle || !compose || !restored) return;
+      if (compose.draft() === '') compose.setDraft(restored.text);
+      if (restored.replyTo && compose.intent().kind === 'message') {
+        handle.messages.beginReply(restored.replyTo);
       }
     };
     this.runMessageAction(
       this.messageCommands.retry(messageId).pipe(
         tap((outcome) => {
           if (outcome.kind === 'rejected') undo();
+          else records?.delete(messageId);
         }),
         catchError((error: unknown) => {
           undo();
