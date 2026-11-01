@@ -37,7 +37,12 @@
         }
       </p>
     } @else {
-      <p trnCardDescription class="login-card__subtitle">
+      <p
+        #subtitle
+        trnCardDescription
+        tabindex="-1"
+        class="login-card__subtitle"
+      >
         @if (reauthUserId() && reauthAsNewDevice()) {
           Sign in again to reconnect this account. This device will need to be
           verified again.

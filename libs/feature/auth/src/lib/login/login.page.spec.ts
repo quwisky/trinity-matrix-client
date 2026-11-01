@@ -1865,6 +1865,12 @@ describe('LoginPage', () => {
       );
       // The router keeps this page, so the page itself moves on to the new device.
       expect(subtitle(fixture)).toBe(NEW_DEVICE_COPY);
+      await fixture.whenStable();
+      expect(document.activeElement).toBe(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '.login-card__subtitle',
+        ),
+      );
       cmp.loginPassword();
       expect(auth.loginWithPassword).toHaveBeenLastCalledWith(
         'https://hs.example',
@@ -1890,6 +1896,46 @@ describe('LoginPage', () => {
         replaceUrl: true,
       });
       expect(cmp.reauthAsNewDevice()).toBe(false);
+    });
+  });
+
+  describe('a re-auth whose account is no longer stored', () => {
+    const notStored = (liveAccount: boolean) =>
+      renderLogin(
+        {
+          getSupportedFlows: vi.fn(() => of([])),
+          getDelegatedAuthConfig: vi.fn(() => of(null)),
+        } as unknown as Partial<AuthService>,
+        { reauth: '@gone:hs', record: null, liveAccount },
+      );
+
+    it('falls back to the plain login with no live account', async () => {
+      const { fixture, cmp, router } = await notStored(false);
+      fixture.detectChanges();
+
+      expect(router.navigateByUrl).toHaveBeenCalledExactlyOnceWith('/login', {
+        replaceUrl: true,
+      });
+      expect(cmp.reauthUserId()).toBeNull();
+      expect(cmp.error()).toBe('That account is no longer stored.');
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('#homeserver'),
+      ).not.toBeNull();
+      // Nothing of the missing account carries over into a sign-in on this page.
+      expect(cmp.credentialsForm.username().value()).toBe('');
+    });
+
+    it('stays put with a live account, whose Cancel returns to it', async () => {
+      const { fixture, cmp, router } = await notStored(true);
+      fixture.detectChanges();
+
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+      expect(cmp.reauthUserId()).toBe('@gone:hs');
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="cancel-add"]',
+        ),
+      ).not.toBeNull();
     });
   });
 

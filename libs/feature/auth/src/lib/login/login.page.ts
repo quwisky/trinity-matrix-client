@@ -174,6 +174,7 @@ export class LoginPage {
   >('passwordResetNotice');
   private readonly otherSiteNotice =
     viewChild<ElementRef<HTMLElement>>('otherSiteNotice');
+  private readonly subtitle = viewChild<ElementRef<HTMLElement>>('subtitle');
   private readonly deletion = inject(ACCOUNT_DELETION_LAUNCHER, {
     optional: true,
   });
@@ -251,6 +252,12 @@ export class LoginPage {
         this.storage.record(reauth).pipe(
           switchMap((record) => {
             if (!record) {
+              // With no live account there is no Cancel, so this page would offer only Erase.
+              if (!this.accounts.hasActiveAccount()) {
+                this.reauthUserId.set(null);
+                this.credentials.update((c) => ({ ...c, username: '' }));
+                void this.router.navigateByUrl('/login', { replaceUrl: true });
+              }
               return throwError(() => new Error(ACCOUNT_NOT_STORED));
             }
             this.baseUrl.set(record.baseUrl);
@@ -508,6 +515,10 @@ export class LoginPage {
         // The router keeps this page across `/login` URLs, so it won't read the new one.
         this.reauthAsNewDevice.set(true);
         this.reauthDeviceId = null;
+        // The same form stays on screen, so only focus tells a screen reader what changed.
+        afterNextRender(() => this.subtitle()?.nativeElement.focus(), {
+          injector: this.injector,
+        });
       }
       void this.router.navigateByUrl(signInDestination(outcome), {
         replaceUrl: true,
