@@ -360,7 +360,7 @@ plugin's messaging service with `TrinityMessagingService`, which treats the app 
 foreground, and leaves the notification to the app, while an activity is visible. Both
 fetch the event, the sender's member state and, for a room the store does not know, its
 `m.room.name` state, without retries. iOS gives the reads 5 s, and a refresh 15 s of its own; the read that follows a
-refresh gets a fresh 5 s, so the worst case is about 29 s against the extension's roughly 30 s
+refresh gets a fresh 5 s, and a stalled lease put-back adds up to 0.5 s, so the worst case is about 29.5 s against the extension's roughly 30 s
 limit, which is reasoned and not measured on a device. Android gives the refresh and the
 reads 8 s together. Android enforces the budget with a watchdog that falls back without the
 network; iOS shares one deadline across each set of reads and also answers
