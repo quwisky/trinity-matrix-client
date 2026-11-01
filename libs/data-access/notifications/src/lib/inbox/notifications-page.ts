@@ -20,6 +20,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Event IDs reach a CSS selector later, so only a plain `$id` passes. */
+export function isPlainEventId(id: unknown): id is string {
+  return typeof id === 'string' && id.startsWith('$') && !/["'\\\s\]]/.test(id);
+}
+
 function parseEntry(item: unknown): NotificationEntry | null {
   if (!isRecord(item)) return null;
   const { event, room_id: roomId, read, ts } = item;
@@ -27,11 +32,8 @@ function parseEntry(item: unknown): NotificationEntry | null {
     return null;
   }
   const eventId = event['event_id'];
-  // Event IDs reach a CSS selector later, so only a plain `$id` passes.
   if (
-    typeof eventId !== 'string' ||
-    !eventId.startsWith('$') ||
-    /["'\\\s\]]/.test(eventId) ||
+    !isPlainEventId(eventId) ||
     UNSAFE_NAMES.has(roomId) ||
     UNSAFE_NAMES.has(String(event['sender']))
   ) {

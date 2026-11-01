@@ -5,8 +5,8 @@ import type {
   NotificationPolicyInput,
 } from './notification-intent';
 
-const PREVIEW_LIMIT = 140;
-const GENERIC_BODY = 'New message';
+export const PREVIEW_LIMIT = 140;
+export const GENERIC_BODY = 'New message';
 
 /** Pure notification policy: no Router, SDK, DOM, or host dependency. */
 @Injectable({ providedIn: 'root' })
