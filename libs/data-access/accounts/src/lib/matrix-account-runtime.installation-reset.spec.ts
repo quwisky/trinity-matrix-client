@@ -570,6 +570,32 @@ it('classifies a provider-revocation timeout as provider residue', async () => {
   }
 });
 
+it('records a failed provider revocation as residue and still finishes the reset', async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.list).mockReturnValue(
+    of([{ userId: '@oidc:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+  );
+  vi.mocked(storage.load).mockReturnValue(
+    of({
+      userId: '@oidc:hs',
+      baseUrl: 'https://hs',
+      oidc: { issuer: 'https://issuer' },
+    } as never),
+  );
+  vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
+  vi.mocked(lifecycle.revokeProviderSession).mockReturnValue(
+    throwError(() => new Error('refresh token still live')),
+  );
+  vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+  vi.mocked(storage.clearAll).mockReturnValue(of([]));
+
+  await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+    kind: 'partial-cleanup',
+    issues: [{ scope: 'provider-session', recovery: 'restart-application' }],
+  });
+  expect(storage.clearAll).toHaveBeenCalledOnce();
+});
+
 it('reconciles an IndexedDB deletion that completes after its reported timeout', async () => {
   vi.useFakeTimers();
   try {

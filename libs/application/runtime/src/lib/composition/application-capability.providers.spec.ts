@@ -32,8 +32,8 @@ const OIDC_SESSION: MatrixSession = {
   oidc: { issuer: 'https://op.example/', clientId: 'client-1' },
 };
 
-function lifecyclePort(revokedByNative: boolean) {
-  const revokeStored = vi.fn(() => of(revokedByNative));
+function lifecyclePort(nativeAnswer: 'revoked' | 'gone' | 'transient') {
+  const revokeStored = vi.fn(() => of(nativeAnswer));
   const revokeTokens = vi.fn(() => of(void 0));
   const lifecycle = applicationCapabilityProviders({
     buildInfo: {} as BuildInfo,
@@ -65,7 +65,7 @@ describe('revokeProviderSession', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   it('revokes natively and not again at the provider when native revoked', async () => {
-    const { port, revokeStored, revokeTokens } = lifecyclePort(true);
+    const { port, revokeStored, revokeTokens } = lifecyclePort('revoked');
 
     await firstValueFrom(port.revokeProviderSession(OIDC_SESSION));
 
@@ -73,10 +73,12 @@ describe('revokeProviderSession', () => {
     expect(revokeTokens).not.toHaveBeenCalled();
   });
 
-  it('revokes at the provider when native did not', async () => {
-    const { port, revokeStored, revokeTokens } = lifecyclePort(false);
+  it('revokes at the provider and reports clean when native holds nothing', async () => {
+    const { port, revokeStored, revokeTokens } = lifecyclePort('gone');
 
-    await firstValueFrom(port.revokeProviderSession(OIDC_SESSION));
+    await expect(
+      firstValueFrom(port.revokeProviderSession(OIDC_SESSION)),
+    ).resolves.toBeUndefined();
 
     expect(revokeStored).toHaveBeenCalledOnce();
     expect(revokeTokens).toHaveBeenCalledExactlyOnceWith(
@@ -86,8 +88,22 @@ describe('revokeProviderSession', () => {
     );
   });
 
+  it('still revokes what it can, then fails the step, when native could not answer', async () => {
+    const { port, revokeTokens } = lifecyclePort('transient');
+
+    await expect(
+      firstValueFrom(port.revokeProviderSession(OIDC_SESSION)),
+    ).rejects.toThrow();
+
+    expect(revokeTokens).toHaveBeenCalledExactlyOnceWith(
+      OIDC_SESSION.baseUrl,
+      OIDC_SESSION.oidc,
+      { accessToken: 'at-1', refreshToken: 'rt-1' },
+    );
+  });
+
   it('asks neither for a password account', async () => {
-    const { port, revokeStored, revokeTokens } = lifecyclePort(false);
+    const { port, revokeStored, revokeTokens } = lifecyclePort('gone');
 
     await firstValueFrom(
       port.revokeProviderSession({ ...OIDC_SESSION, oidc: undefined }),

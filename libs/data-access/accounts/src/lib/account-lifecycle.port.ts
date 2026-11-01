@@ -11,6 +11,7 @@ export interface AccountLifecyclePort {
   forgetPushHandoff(accountId?: string): Observable<void>;
   registerNotifications(): Observable<void>;
   unregisterNotifications(accountId?: string): Observable<void>;
+  /** Errors when a token may stay live at the provider, which a reset records as residue. */
   revokeProviderSession(session: MatrixSession): Observable<void>;
   /**
    * Stop the on-device diagnostic log for the rest of the session and delete it, ahead of

@@ -85,7 +85,7 @@ import {
 } from '@trinity/platform-native';
 import { HostBadgeService } from '@trinity/runtime/host';
 import { PreferenceStoreService } from '@trinity/runtime/preferences';
-import { map, of, switchMap } from 'rxjs';
+import { map, of, switchMap, tap } from 'rxjs';
 import { appLockCovers, visibilityWhileLocked } from './app-lock.providers';
 import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
 import { UnprotectedStorageConsentPresenter } from './unprotected-storage.presenter';
@@ -220,14 +220,25 @@ export function applicationCapabilityProviders(
             const { oidc: binding } = session;
             return binding
               ? nativeTokens.revokeStored(session).pipe(
-                  // Not again here: the shared 3 s step can't afford a second request.
-                  switchMap((revoked) =>
-                    revoked
+                  // A live client's logout(true) runs alongside this in a reset: a harmless repeat.
+                  switchMap((answer) =>
+                    answer === 'revoked'
                       ? of(void 0)
-                      : oidc.revokeTokens(session.baseUrl, binding, {
-                          accessToken: session.accessToken,
-                          refreshToken: session.refreshToken,
-                        }),
+                      : oidc
+                          .revokeTokens(session.baseUrl, binding, {
+                            accessToken: session.accessToken,
+                            refreshToken: session.refreshToken,
+                          })
+                          .pipe(
+                            tap(() => {
+                              // Native may still hold a refresh token this can't reach.
+                              if (answer === 'transient') {
+                                throw new Error(
+                                  'The native token revocation did not finish.',
+                                );
+                              }
+                            }),
+                          ),
                   ),
                 )
               : of(void 0);

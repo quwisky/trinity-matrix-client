@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import {
   PushHandoffBridge,
   type NativeTokenRecord,
+  type NativeTokenRevocation,
   type NativeTokenResult,
 } from '@trinity/capacitor-push';
 import type { MatrixSession } from '@trinity/util/matrix';
@@ -180,12 +181,14 @@ export class NativeTokenBridge {
     };
   }
 
-  /** Never errors. True when native revoked the tokens. */
-  revokeStored(session: MatrixSession): Observable<boolean> {
-    return bounded(
+  /** Never errors. A call that fails or times out answers `transient`. */
+  revokeStored(
+    session: MatrixSession,
+  ): Observable<NativeTokenRevocation['kind']> {
+    return bounded<NativeTokenRevocation>(
       this.handoff.revokeTokens(session.userId, session.lineage ?? ''),
       { kind: 'transient' },
-    ).pipe(map(({ kind }) => kind === 'revoked'));
+    ).pipe(map(({ kind }) => kind));
   }
 
   /**
