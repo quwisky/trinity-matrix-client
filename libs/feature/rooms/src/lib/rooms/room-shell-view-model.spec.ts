@@ -249,6 +249,15 @@ describe('RoomShellViewModel inbox', () => {
     invitations: [],
   });
 
+  it('labels the back arrow by where it goes: the inbox, else the rooms', () => {
+    const { vm, openInbox } = build();
+    expect(vm.backLabel()).toBe('Back to rooms');
+
+    openInbox();
+
+    expect(vm.backLabel()).toBe('Back to inbox');
+  });
+
   it('follows the show-the-inbox switch', () => {
     const { vm, showInbox } = build();
     expect(vm.inboxShown()).toBe(true);

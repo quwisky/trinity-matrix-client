@@ -1,11 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  afterNextRender,
   computed,
   DestroyRef,
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   output,
   signal,
@@ -53,11 +55,16 @@ import { InboxRowComponent } from './inbox-row/inbox-row.component';
 })
 export class NotificationInboxComponent {
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private savedScrollTop = 0;
   private readonly scroller =
     viewChild.required<ElementRef<HTMLElement>>('scroller');
   /** The server's `read` lags and the list isn't live, so an opened row is held here. */
   private readonly openedIds = signal<ReadonlySet<string>>(new Set());
-  private readonly lastOpenedId = signal<string | null>(null);
+  /** By room: a tap on a room since left opens nothing, so the open room's row stays current. */
+  private readonly lastOpenedByRoom = signal<ReadonlyMap<string, string>>(
+    new Map(),
+  );
   private readonly summary = computed(() => {
     const count = this.rows().length;
     const unchecked = this.uncheckedNote();
@@ -110,6 +117,8 @@ export class NotificationInboxComponent {
 
   readonly activeRoomId = input<string | null>(null);
   readonly showSwitcher = input(false);
+  /** The phone's room fills the screen, hiding this pane with `display: none`. */
+  readonly paneHidden = input(false);
   readonly openRow = output<InboxRow>();
   readonly openSwitcher = output<void>();
 
@@ -118,6 +127,16 @@ export class NotificationInboxComponent {
     this.destroyRef.onDestroy(() => this.inbox.disconnect());
     effect(() => {
       if (this.inbox.status() === 'idle') untracked(() => this.refresh());
+    });
+    // Not every engine keeps a scroll position through `display: none`.
+    effect(() => {
+      if (this.paneHidden()) return;
+      afterNextRender(
+        () => {
+          this.scroller().nativeElement.scrollTop = this.savedScrollTop;
+        },
+        { injector: this.injector },
+      );
     });
   }
 
@@ -138,6 +157,13 @@ export class NotificationInboxComponent {
   protected selectTab(tab: string | undefined): void {
     this.tab.set(tab === 'all' ? 'all' : 'mentions');
     this.scroller().nativeElement.scrollTop = 0;
+    this.savedScrollTop = 0;
+  }
+
+  protected onScroll(): void {
+    if (!this.paneHidden()) {
+      this.savedScrollTop = this.scroller().nativeElement.scrollTop;
+    }
   }
 
   protected isUnread(row: InboxRow): boolean {
@@ -146,13 +172,16 @@ export class NotificationInboxComponent {
 
   protected isCurrent(row: InboxRow): boolean {
     return (
-      row.eventId === this.lastOpenedId() && row.roomId === this.activeRoomId()
+      row.roomId === this.activeRoomId() &&
+      this.lastOpenedByRoom().get(row.roomId) === row.eventId
     );
   }
 
   protected onRowOpened(row: InboxRow): void {
     this.openedIds.update((ids) => new Set(ids).add(row.eventId));
-    this.lastOpenedId.set(row.eventId);
+    this.lastOpenedByRoom.update((rooms) =>
+      new Map(rooms).set(row.roomId, row.eventId),
+    );
     this.openRow.emit(row);
   }
 

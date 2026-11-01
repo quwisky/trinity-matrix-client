@@ -11,6 +11,7 @@ import {
   inject,
   input,
   output,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { POST_UNAVAILABLE_COPY } from '../message-composer/post-unavailable-copy';
@@ -145,6 +146,9 @@ export class ThreadViewComponent implements OnDestroy {
   readonly roomId = input.required<string>();
   readonly accountId = input<string | null>(null);
   readonly rootEventId = input.required<string>();
+  /** A message to scroll to once it is in the thread, paging older replies to reach it. */
+  readonly revealEventId = input<string | null>(null);
+  readonly revealFailed = output<void>();
   /** The user closed the thread. There is nothing to pick here, so no `selected`. */
   readonly dismissed = output<void>();
 
@@ -163,6 +167,7 @@ export class ThreadViewComponent implements OnDestroy {
   readonly editSending = this.commands.sending;
   readonly replyingToId = this.commands.replyingToId;
   readonly uploadProgress = this.commands.uploadProgress;
+  private revealedEventId: string | null = null;
   private readonly threadBinding = effect(() => {
     const roomId = this.roomId();
     const rootEventId = this.rootEventId();
@@ -225,6 +230,19 @@ export class ThreadViewComponent implements OnDestroy {
   readonly loadingOlder = computed(
     () => this.openedThread()?.loadingOlder() ?? false,
   );
+
+  private readonly revealBinding = effect(() => {
+    const id = this.revealEventId();
+    if (!id || id === this.revealedEventId) return;
+    if (this.rows().some((row) => row.id === id)) {
+      this.revealedEventId = id;
+      afterNextRender(() => this.jumpToRequested(id), {
+        injector: this.injector,
+      });
+    } else if (this.canLoadOlder() && !this.loadingOlder()) {
+      untracked(() => this.pageToReveal(id));
+    }
+  });
 
   constructor() {
     // Otherwise a thread closed by a press or key inside it stays in memory, detached, as
@@ -304,6 +322,18 @@ export class ThreadViewComponent implements OnDestroy {
       ?.loadOlder()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  private pageToReveal(id: string): void {
+    this.openedThread()
+      ?.loadOlder()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((outcome) => {
+        if (outcome.kind === 'rejected') {
+          this.revealedEventId = id;
+          this.revealFailed.emit();
+        }
+      });
   }
 
   onBatchCaption(caption: ComposerSubmit): void {

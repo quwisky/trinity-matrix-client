@@ -46,6 +46,8 @@
           class="shell-side__rooms"
           [showSwitcher]="!titleBar.active()"
           [activeRoomId]="store.activeRoomId()"
+          [paneHidden]="store.placement() === 'conversation'"
+          (openRow)="routing.openInboxRow($event)"
           (openSwitcher)="shortcutActions.openSwitcher()"
         />
       } @else {
@@ -142,6 +144,7 @@
           !!store.activeRoomId() && timeline.loadState().kind === 'loading'
         "
         [compact]="mobileMasterDetail()"
+        [backLabel]="vm.backLabel()"
         [actingAs]="actingAs()"
         [surfaceKind]="surfaceKind()"
         [pinnedCount]="pinned.messages().length"
@@ -321,6 +324,10 @@
                     [accountId]="store.activeAccountId()"
                     [roomId]="room.id"
                     [rootEventId]="panel.rootEventId"
+                    [revealEventId]="panel.revealEventId ?? null"
+                    (revealFailed)="
+                      status.showError('Could not load that message.')
+                    "
                     (dismissed)="closeRightPanel()"
                   />
                 }

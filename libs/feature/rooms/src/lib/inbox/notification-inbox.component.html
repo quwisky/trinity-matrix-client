@@ -44,7 +44,12 @@
     <button trnTab="all" data-testid="inbox-tab-all">All</button>
   </div>
 
-  <div #scroller class="inbox__scroll" data-testid="inbox-scroll">
+  <div
+    #scroller
+    class="inbox__scroll"
+    data-testid="inbox-scroll"
+    (scroll)="onScroll()"
+  >
     @for (panel of tabs; track panel) {
       <div #tabPanel [trnTabPanel]="panel" [focusable]="!rows().length">
         @if (panel === tab()) {

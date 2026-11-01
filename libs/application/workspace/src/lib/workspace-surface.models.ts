@@ -76,7 +76,12 @@ export type WorkspaceRoomSurface =
     }
   | { readonly kind: 'members' }
   | { readonly kind: 'threads' }
-  | { readonly kind: 'thread'; readonly rootEventId: string }
+  | {
+      readonly kind: 'thread';
+      readonly rootEventId: string;
+      /** A message to scroll to; presentation only, not part of the identity. */
+      readonly revealEventId?: string;
+    }
   | { readonly kind: 'pinned' }
   | { readonly kind: 'search' };
 

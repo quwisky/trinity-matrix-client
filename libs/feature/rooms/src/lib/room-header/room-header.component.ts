@@ -85,6 +85,7 @@ export class RoomHeaderComponent {
   readonly loading = input(false);
   /** Below md: the topic is dropped and the back button is shown. */
   readonly compact = input(false);
+  readonly backLabel = input('Back to rooms');
   readonly actingAs = input<RoomHeaderActingAs | null>(null);
   /** Kind of the surface open in the right-hand slot, for the pressed toggles. */
   readonly surfaceKind = input<RenderedRoomSurface['kind'] | null>(null);

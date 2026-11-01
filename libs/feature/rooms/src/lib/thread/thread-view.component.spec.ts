@@ -109,6 +109,7 @@ async function build(
   messages: MessageView[] = [],
   state: {
     canPaginate?: boolean;
+    pageRefused?: boolean;
     loadingOlder?: boolean;
     canRedactOthers?: boolean;
     canSendMessages?: boolean;
@@ -199,7 +200,14 @@ async function build(
                   media: { send: sendMediaToThread },
                   loadOlder: vi.fn(() => {
                     paginateOpenThread();
-                    return applied('paginate');
+                    return state.pageRefused
+                      ? of({
+                          kind: 'rejected' as const,
+                          operation: 'paginate' as const,
+                          failure: 'request-rejected' as const,
+                          retryable: true,
+                        })
+                      : applied('paginate');
                   }),
                   send: vi.fn((body: string, mentions: readonly unknown[]) => {
                     sentRoots(rootEventId);
@@ -298,6 +306,145 @@ async function build(
     dismissals: () => dismissals,
   };
 }
+
+describe('ThreadViewComponent reveal', () => {
+  async function revealing(
+    messages: MessageView[],
+    state: Parameters<typeof build>[1] = {},
+  ) {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const built = await build(messages, state);
+    const settle = (): void => {
+      TestBed.tick();
+      built.fixture.detectChanges();
+    };
+    const reveal = (id: string): void => {
+      built.fixture.componentRef.setInput('revealEventId', id);
+      settle();
+    };
+    return { ...built, scrollIntoView, settle, reveal };
+  }
+  const a = msg('$a', '@a:hs', 'first');
+  const b = msg('$b', '@a:hs', 'second');
+
+  it('scrolls nothing without a message to reveal', async () => {
+    const { settle, scrollIntoView } = await revealing([a, b]);
+    settle();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('scrolls to the message, on the row it asked for', async () => {
+    const { reveal, scrollIntoView, container } = await revealing([a, b]);
+
+    reveal('$a');
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      container.querySelector('[data-mid="$a"]'),
+    );
+  });
+
+  it('waits for the row, rendered, when the message comes later', async () => {
+    const {
+      reveal,
+      settle,
+      threadMessages,
+      scrollIntoView,
+      container,
+      paginateOpenThread,
+    } = await revealing([a]);
+
+    reveal('$b');
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(paginateOpenThread).not.toHaveBeenCalled();
+
+    threadMessages.set([a, b]);
+    settle();
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      container.querySelector('[data-mid="$b"]'),
+    );
+  });
+
+  it('reveals only once, however the rows change after', async () => {
+    const { reveal, settle, threadMessages, scrollIntoView } = await revealing([
+      a,
+    ]);
+
+    reveal('$a');
+    threadMessages.set([a, b]);
+    settle();
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves to another message when asked', async () => {
+    const { reveal, scrollIntoView } = await revealing([a, b]);
+
+    reveal('$a');
+    reveal('$b');
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it('pages older replies until the message is there', async () => {
+    const {
+      reveal,
+      settle,
+      threadMessages,
+      paginateOpenThread,
+      loadingOlderThread,
+      canPaginateThread,
+      scrollIntoView,
+    } = await revealing([b], { canPaginate: true });
+
+    reveal('$a');
+    expect(paginateOpenThread).toHaveBeenCalledTimes(1);
+
+    loadingOlderThread.set(true);
+    settle();
+    expect(paginateOpenThread).toHaveBeenCalledTimes(1);
+
+    loadingOlderThread.set(false);
+    settle();
+    expect(paginateOpenThread).toHaveBeenCalledTimes(2);
+
+    threadMessages.set([a, b]);
+    canPaginateThread.set(false);
+    settle();
+
+    expect(paginateOpenThread).toHaveBeenCalledTimes(2);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('pages nothing for a message already there', async () => {
+    const { reveal, paginateOpenThread } = await revealing([a, b], {
+      canPaginate: true,
+    });
+
+    reveal('$a');
+
+    expect(paginateOpenThread).not.toHaveBeenCalled();
+  });
+
+  it('stops paging, and says so, when a page is refused', async () => {
+    const { fixture, reveal, settle, paginateOpenThread, loadingOlderThread } =
+      await revealing([b], { canPaginate: true, pageRefused: true });
+    const failed = vi.fn();
+    fixture.componentInstance.revealFailed.subscribe(failed);
+
+    reveal('$a');
+    loadingOlderThread.set(true);
+    settle();
+    loadingOlderThread.set(false);
+    settle();
+
+    expect(failed).toHaveBeenCalledTimes(1);
+    expect(paginateOpenThread).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('ThreadViewComponent', () => {
   // A thread closed with a press on its close button left the CDK's input-modality detector

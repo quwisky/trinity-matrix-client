@@ -1,7 +1,9 @@
 import { RoomModerationService } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
 import { BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import type { InboxRow } from '@trinity/data-access/notifications';
 import { Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
@@ -111,12 +113,19 @@ interface BuildOptions {
   /** Render the real space rail instead of a mock, so its entries can be activated. */
   readonly realRail?: boolean;
   readonly routing?: Partial<Record<keyof AccountRoutingService, unknown>>;
+  readonly shortcuts?: Partial<Record<keyof ShellShortcutsService, unknown>>;
 }
 
-function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
+function buildPage({
+  realRail = false,
+  routing = {},
+  shortcuts = {},
+}: BuildOptions = {}) {
   const memberActions = { onSelectMember: vi.fn() };
   const inboxView = signal(false);
+  const placement = signal<'list' | 'conversation' | 'split'>('split');
   const vm = {
+    backLabel: signal<'Back to inbox' | 'Back to rooms'>('Back to rooms'),
     inboxShown: signal(true),
     accountBadges: signal(new Map()),
     accounts: signal([]),
@@ -280,7 +289,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
             inboxView,
             activeRoomId: signal<string | null>('!r:hs'),
             pane: signal<'list' | 'conversation'>('conversation'),
-            placement: signal<'list' | 'conversation' | 'split'>('split'),
+            placement,
             eventTarget: signal(null),
           },
         },
@@ -304,7 +313,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
         },
         {
           provide: ShellShortcutsService,
-          useValue: { bindSearchFocus: vi.fn() },
+          useValue: { bindSearchFocus: vi.fn(), ...shortcuts },
         },
         { provide: SessionActionsService, useValue: {} },
       ],
@@ -329,6 +338,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
     vm,
     memberActions,
     inboxView,
+    placement,
   };
 }
 
@@ -837,5 +847,62 @@ describe('RoomsPage rendered inbox', () => {
     expect(root.querySelector('trn-notification-inbox')).not.toBeNull();
     expect(root.querySelector('trn-server-rail')).not.toBeNull();
     expect(root.querySelector('trn-sidebar-user-panel')).not.toBeNull();
+  });
+
+  function inboxFrom(fixture: ComponentFixture<RoomsPage>) {
+    return fixture.debugElement.query(By.directive(NotificationInboxComponent))
+      .componentInstance as NotificationInboxComponent;
+  }
+
+  it('opens the row the inbox emits, at its account and message', () => {
+    const openInboxRow = vi.fn();
+    const { fixture, inboxView } = buildPage({ routing: { openInboxRow } });
+    inboxView.set(true);
+    fixture.detectChanges();
+    const row = { eventId: '$e', roomId: '!r:hs', accountId: '@me:hs' };
+
+    inboxFrom(fixture).openRow.emit(row as InboxRow);
+
+    expect(openInboxRow).toHaveBeenCalledExactlyOnceWith(row);
+  });
+
+  it('tells the inbox the open room, and hands its switcher to the shell', () => {
+    const openSwitcher = vi.fn();
+    const { fixture, inboxView } = buildPage({ shortcuts: { openSwitcher } });
+    inboxView.set(true);
+    fixture.detectChanges();
+    const inbox = inboxFrom(fixture);
+
+    expect(inbox.activeRoomId()).toBe('!r:hs');
+    expect(inbox.showSwitcher()).toBe(true);
+    inbox.openSwitcher.emit();
+    expect(openSwitcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the inbox only while a compact Conversation hides its pane', () => {
+    const { fixture, inboxView, placement } = buildPage();
+    inboxView.set(true);
+    fixture.detectChanges();
+    const inbox = inboxFrom(fixture);
+    expect(inbox.paneHidden()).toBe(false);
+
+    placement.set('conversation');
+    fixture.detectChanges();
+    expect(inbox.paneHidden()).toBe(true);
+
+    placement.set('list');
+    fixture.detectChanges();
+    expect(inbox.paneHidden()).toBe(false);
+  });
+
+  it("labels the header back arrow with the view model's label", () => {
+    const { fixture, vm } = buildPage();
+    vm.backLabel.set('Back to inbox');
+    fixture.detectChanges();
+    const arrow = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="back-to-rooms"]',
+    );
+
+    expect(arrow?.getAttribute('aria-label')).toBe('Back to inbox');
   });
 });

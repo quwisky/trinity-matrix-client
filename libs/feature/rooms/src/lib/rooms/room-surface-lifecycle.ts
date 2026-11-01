@@ -46,7 +46,11 @@ interface RoomSurfaceState {
 
 export type RoomSurfaceTransition =
   | { readonly kind: 'open-threads' }
-  | { readonly kind: 'open-thread'; readonly rootEventId: string }
+  | {
+      readonly kind: 'open-thread';
+      readonly rootEventId: string;
+      readonly revealEventId?: string;
+    }
   | { readonly kind: 'open-pinned' }
   | { readonly kind: 'open-search' }
   | { readonly kind: 'open-members' }
@@ -161,7 +165,11 @@ export class RoomSurfaceLifecycle {
           ...state,
           surface:
             intent.kind === 'open-thread'
-              ? { kind: 'thread', rootEventId: intent.rootEventId }
+              ? {
+                  kind: 'thread',
+                  rootEventId: intent.rootEventId,
+                  revealEventId: intent.revealEventId,
+                }
               : {
                   kind:
                     intent.kind === 'open-threads'

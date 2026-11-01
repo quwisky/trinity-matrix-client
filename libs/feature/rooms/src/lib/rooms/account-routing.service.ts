@@ -15,6 +15,7 @@ import {
 } from '@trinity/application/workspace';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import type { InboxRow } from '@trinity/data-access/notifications';
 import {
   ROOM_READINESS_TIMEOUT_MS,
   RoomReadinessService,
@@ -63,6 +64,7 @@ export class AccountRoutingService {
   private readonly injector = inject(Injector);
   private readonly conversations = inject(ConversationRuntime);
   private readonly destroyRef = inject(DestroyRef);
+  private inboxReveal = Subscription.EMPTY;
   /**
    * A sync from the server has completed. Not PREPARED: the SDK also reports that for the
    * sync it restores from its cache, whose timelines a gappy live sync later replaces.
@@ -224,6 +226,52 @@ export class AccountRoutingService {
       });
   }
 
+  /**
+   * Open an inbox row at its message, as the exact Account the row names. A link resolves its
+   * Account from the selected view instead, which in the mixed view can pick another. A thread
+   * opens once its root is in the room, as one the room hasn't loaded reads as having no replies.
+   */
+  openInboxRow(
+    row: Pick<InboxRow, 'accountId' | 'roomId' | 'eventId' | 'threadRootId'>,
+  ): void {
+    const { accountId, roomId, eventId, threadRootId } = row;
+    const listed = this.selected
+      .view()
+      .rooms.some(
+        (room) => room.id === roomId && room.accountIds.includes(accountId),
+      );
+    if (!listed) {
+      void this.status.showError(
+        this.firstSyncDone()
+          ? "You're not in that room."
+          : 'Could not open that room yet. Try again once Trinity has connected.',
+      );
+      return;
+    }
+    const selection = { accountId, roomId };
+    const reveal = (): void => {
+      this.inboxReveal.unsubscribe();
+      this.inboxReveal = threadRootId
+        ? this.revealLoadedEvent(selection, threadRootId, () =>
+            this.roomSurfaces.transition({
+              kind: 'open-thread',
+              rootEventId: threadRootId,
+              revealEventId: eventId,
+            }),
+          )
+        : this.revealLoadedEvent(selection, eventId);
+    };
+    if (
+      roomId === this.store.activeRoomId() &&
+      accountId === this.store.activeAccountId() &&
+      this.store.pane() === 'conversation'
+    ) {
+      reveal();
+    } else {
+      this.openRoom(selection, 'room-list', reveal);
+    }
+  }
+
   private isListed(roomId: string): boolean {
     return this.selected.view().rooms.some((room) => room.id === roomId);
   }
@@ -275,6 +323,8 @@ export class AccountRoutingService {
   private revealLoadedEvent(
     room: ExactRoomSelection,
     eventId: string,
+    reveal: () => unknown = () =>
+      this.roomSurfaces.transition({ kind: 'reveal-message', eventId }),
   ): Subscription {
     const focusedKey = this.conversations.focused()?.key;
     const isFocused =
@@ -285,7 +335,7 @@ export class AccountRoutingService {
       isFocused &&
       this.conversations.timeline.messages().some((m) => m.id === eventId)
     ) {
-      this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+      reveal();
       return Subscription.EMPTY;
     }
     // The watcher only signals a change; the live state is re-read, since its replayed value
@@ -320,13 +370,18 @@ export class AccountRoutingService {
       )
       .subscribe({
         next: (loaded) => {
+          if (!isActive()) return;
           if (loaded) {
-            this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+            reveal();
           } else {
             void this.status.showError('Could not load that message.');
           }
         },
-        error: () => void this.status.showError('Could not load that message.'),
+        error: () => {
+          if (isActive()) {
+            void this.status.showError('Could not load that message.');
+          }
+        },
       });
   }
 

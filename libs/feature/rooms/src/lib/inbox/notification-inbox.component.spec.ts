@@ -137,6 +137,91 @@ describe('NotificationInboxComponent', () => {
     });
   });
 
+  describe('leaving and returning', () => {
+    it('restores scroll when the list pane returns', async () => {
+      const { fixture, settle } = await renderInbox();
+      const scroller = byId('inbox-scroll');
+      scroller.scrollTop = 400;
+      fireEvent.scroll(scroller);
+
+      fixture.componentRef.setInput('paneHidden', true);
+      scroller.scrollTop = 0;
+      settle();
+      expect(scroller.scrollTop).toBe(0);
+
+      fixture.componentRef.setInput('paneHidden', false);
+      settle();
+
+      expect(scroller.scrollTop).toBe(400);
+    });
+
+    it('takes no position from an engine resetting the hidden list', async () => {
+      const { fixture, settle } = await renderInbox();
+      const scroller = byId('inbox-scroll');
+      scroller.scrollTop = 400;
+      fireEvent.scroll(scroller);
+
+      fixture.componentRef.setInput('paneHidden', true);
+      settle();
+      scroller.scrollTop = 0;
+      fireEvent.scroll(scroller);
+      fixture.componentRef.setInput('paneHidden', false);
+      settle();
+
+      expect(scroller.scrollTop).toBe(400);
+    });
+
+    it('returns to the top after a tab change, not to the old position', async () => {
+      const { fixture, settle } = await renderInbox();
+      const scroller = byId('inbox-scroll');
+      scroller.scrollTop = 400;
+      fireEvent.scroll(scroller);
+      byId('inbox-tab-all').click();
+      settle();
+
+      fixture.componentRef.setInput('paneHidden', true);
+      settle();
+      fixture.componentRef.setInput('paneHidden', false);
+      settle();
+
+      expect(scroller.scrollTop).toBe(0);
+    });
+
+    it('keeps the tab across the pane leaving and returning', async () => {
+      const { fixture, settle } = await renderInbox();
+      byId('inbox-tab-all').click();
+      settle();
+
+      fixture.componentRef.setInput('paneHidden', true);
+      settle();
+      fixture.componentRef.setInput('paneHidden', false);
+      settle();
+
+      expect(byId('inbox-tab-all').getAttribute('aria-selected')).toBe('true');
+    });
+
+    it("keeps the open room's row current when a tap on another room opens nothing", async () => {
+      const { settle } = await renderInbox(
+        (inbox) => {
+          inbox.mentions.set([
+            row('$open', { roomId: '!open:hs' }),
+            row('$left', { roomId: '!left:hs' }),
+          ]);
+        },
+        { activeRoomId: '!open:hs' },
+      );
+      rowsShown()[0].click();
+      settle();
+
+      rowsShown()[1].click();
+      settle();
+
+      expect(
+        rowsShown().map((shown) => shown.getAttribute('aria-current')),
+      ).toEqual(['true', null]);
+    });
+  });
+
   describe('loading', () => {
     it('connects and refreshes on open, and disconnects on destroy', async () => {
       const { inbox, fixture } = await renderInbox((fake) => {

@@ -7,8 +7,8 @@
     shape="icon"
     class="md:hidden"
     (click)="action.emit({ type: 'back' })"
-    trnTooltip="Back to rooms"
-    aria-label="Back to rooms"
+    [trnTooltip]="backLabel()"
+    [attr.aria-label]="backLabel()"
     data-testid="back-to-rooms"
   >
     <trn-icon size="lg" name="arrow-left" motion="nudge-left" />

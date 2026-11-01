@@ -63,6 +63,10 @@ export class RoomShellViewModel {
   private readonly inboxPreferences = inject(MentionInboxPreferences);
 
   readonly inboxShown = this.inboxPreferences.showInbox;
+  /** Follows where the arrow goes, so it also holds for a link followed from such a room. */
+  readonly backLabel = computed<'Back to inbox' | 'Back to rooms'>(() =>
+    this.store.inboxView() ? 'Back to inbox' : 'Back to rooms',
+  );
 
   /** Whether a row is filed under one of its selected owner's spaces. A shared Room uses
    * the hierarchy of the Account that won the selected-view row, just as its actions do. */
