@@ -13,8 +13,10 @@
     gap: 4px;
     border-radius: var(--trinity-radius);
 
-    &:hover {
-      background: var(--trinity-hover);
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-hover);
+      }
     }
   }
 

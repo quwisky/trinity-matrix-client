@@ -47,8 +47,10 @@
       pointer-events: none;
     }
 
-    &:hover {
-      background: var(--trinity-state-hover-surface);
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-state-hover-surface);
+      }
     }
   }
 

@@ -405,6 +405,13 @@ describe('sidebar-room-row.component.scss', () => {
   // Whitespace-normalised: prettier wraps the long compound selector.
   const scss = scssText();
 
+  // A long press on a room row would select its name and offer Copy / Look Up / Translate.
+  it('keeps a long press on a room row from selecting its name', () => {
+    const row = scss.match(/ \.channel \{ @include interactive-row; ([^}]*)\}/);
+    expect(row?.[1]).toContain('user-select: none;');
+    expect(row?.[1]).toContain('-webkit-touch-callout: none;');
+  });
+
   it('hides the preview in compact rows and restores it in Spacious', () => {
     expect(scss).toContain(
       ":host-context(html[data-room-list='compact']) .channel__preview { display: none;",

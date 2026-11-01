@@ -27,9 +27,11 @@
     text-align: center;
     cursor: pointer;
 
-    &:hover {
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-state-hover-surface);
+        color: var(--trinity-state-hover-foreground);
+      }
     }
 
     &:focus-visible {

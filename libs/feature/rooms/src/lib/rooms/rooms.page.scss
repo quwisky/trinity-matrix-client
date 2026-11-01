@@ -40,11 +40,17 @@
     background-clip: content-box;
     touch-action: none;
 
-    &:hover,
     &:focus-visible,
     &.pane-handle--dragging {
       background: var(--trinity-focus-ring);
       background-clip: content-box;
+    }
+
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-focus-ring);
+        background-clip: content-box;
+      }
     }
 
     &:focus-visible {

@@ -94,8 +94,10 @@
       var(--trinity-ease-standard);
   }
 
-  .media--poster:hover .media__play {
-    background: var(--trinity-accent-hover);
+  @media (hover: hover) {
+    .media--poster:hover .media__play {
+      background: var(--trinity-accent-hover);
+    }
   }
 
   // Opaque surface tokens rather than a tint over the poster: the label must stay readable
@@ -134,9 +136,11 @@
       background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
       color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-    &:hover:not(:disabled, .media--error) {
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
+    @media (hover: hover) {
+      &:hover:not(:disabled, .media--error) {
+        background: var(--trinity-state-hover-surface);
+        color: var(--trinity-state-hover-foreground);
+      }
     }
 
     &:active:not(:disabled, .media--error) {
@@ -152,8 +156,10 @@
     // this treatment stays stable on every surface and never reaches through to Helm tokens.
     background: var(--trinity-danger-tint-10);
 
-    &:hover:not(:disabled) {
-      background: var(--trinity-danger-tint-20);
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background: var(--trinity-danger-tint-20);
+      }
     }
 
     &:active:not(:disabled) {

@@ -23,9 +23,11 @@
       border-color var(--trinity-duration-fast) var(--trinity-ease-standard),
       color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-    &:hover {
-      border-color: var(--trinity-border-strong);
-      background: var(--trinity-state-hover-surface);
+    @media (hover: hover) {
+      &:hover {
+        border-color: var(--trinity-border-strong);
+        background: var(--trinity-state-hover-surface);
+      }
     }
 
     &:active {
@@ -47,10 +49,12 @@
     background: none;
     color: var(--trinity-text-muted);
 
-    &:hover {
-      border-color: transparent;
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
+    @media (hover: hover) {
+      &:hover {
+        border-color: transparent;
+        background: var(--trinity-state-hover-surface);
+        color: var(--trinity-state-hover-foreground);
+      }
     }
   }
 

@@ -38,8 +38,10 @@
     cursor: pointer;
     overflow: hidden;
 
-    &:hover:not(:disabled) {
-      border-color: var(--trinity-accent);
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        border-color: var(--trinity-accent);
+      }
     }
 
     &:disabled {

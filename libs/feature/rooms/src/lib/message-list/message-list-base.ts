@@ -263,6 +263,9 @@ export abstract class MessageListBase {
   /** True while unread exist and the "New messages" divider is outside the viewport. */
   readonly showJumpToUnread = signal(false);
 
+  /** True when the unread divider is below the viewport, so the pill's arrow must point down. */
+  readonly unreadIsBelow = signal(false);
+
   /** Files dragged onto the conversation; the drop directive is a host directive on both lists. */
   protected readonly fileDrop = inject(TrnFileDropDirective);
   protected readonly alert = inject(TrnAlertService);
@@ -408,13 +411,25 @@ export abstract class MessageListBase {
       '[data-testid="new-messages-divider"]',
     );
     if (!divider) {
-      // Not rendered (outside the windowed viewport), so off-screen: offer the jump.
+      // Not rendered (outside the windowed viewport), so off-screen: offer the jump. It lies
+      // before the rendered rows when its message sorts before the first one on screen.
+      const ids = this.messages().map((m) => m.id);
+      // A collapsed run is a `group:…` row no message carries, so skip to the first real one.
+      const firstRendered = [
+        ...scroll.querySelectorAll<HTMLElement>('[data-mid]'),
+      ]
+        .map((el) => ids.indexOf(el.dataset['mid'] ?? ''))
+        .find((index) => index >= 0);
+      this.unreadIsBelow.set(
+        firstRendered !== undefined && ids.indexOf(id) > firstRendered,
+      );
       this.showJumpToUnread.set(true);
       return;
     }
     const viewTop = scroll.scrollTop;
     const viewBottom = viewTop + scroll.clientHeight;
     const pos = divider.offsetTop;
+    this.unreadIsBelow.set(pos > viewBottom);
     this.showJumpToUnread.set(pos < viewTop || pos > viewBottom);
   }
 
@@ -690,6 +705,7 @@ export abstract class MessageListBase {
       this.rowCaps(row),
       (action) => this.onRowAction(row, action),
       context,
+      row.timestamp,
     );
   }
 
