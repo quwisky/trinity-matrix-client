@@ -536,5 +536,29 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
 
       expect(event.defaultPrevented).toBe(false);
     });
+
+    // A mouse or touch press on Send would otherwise move focus to the button and close the
+    // on-screen keyboard; the click still fires, so Send works with or without field focus.
+    it('keeps focus in the field when Send is pressed, and still sends on click', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const sent: string[] = [];
+      cmp.submitText.subscribe((e) => sent.push(e.text));
+      const send = container.querySelector<HTMLButtonElement>(
+        '[data-testid="composer-send"]',
+      );
+      cmp.text.set('hello');
+      fixture.detectChanges();
+
+      const press = new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+      });
+      send?.dispatchEvent(press);
+      send?.click();
+
+      expect(press.defaultPrevented).toBe(true);
+      expect(sent).toEqual(['hello']);
+    });
   });
 });
