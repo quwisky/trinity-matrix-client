@@ -7,7 +7,6 @@ export type ConfigOwner =
   | 'data-access/whats-new'
   | 'data-access/notifications'
   | 'data-access/room-library'
-  | 'data-access/notifications'
   | 'data-access/diagnostic-log'
   | 'data-access/app-lock'
   | 'data-access/trust'
