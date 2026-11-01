@@ -375,11 +375,13 @@ test.describe('MAS session lifecycle', () => {
       return route.continue();
     });
 
-    await completeMasSignIn(page, authPlatform, account);
+    await continueThroughMas(page, authPlatform, account);
+    // Both refusals land on the check, before any client starts and sends its own queries.
+    await expect.poll(() => refused, { timeout: 60_000 }).toBe(2);
+    await settleSignIn(page, 'skip-if-shown', 90_000);
     await waitForRooms(page, 60_000);
 
     // The check ran and failed, and a failed check is no proof the keys are gone.
-    expect(refused).toBe(2);
     expect(page.url()).not.toContain('device=new');
     expect(
       (await whoami(request, account, await traffic.latestAccessToken()))
@@ -427,8 +429,21 @@ test.describe('MAS session lifecycle', () => {
     await expect(page.locator('.userbar__handle')).toContainText(
       `@${second.user}:`,
     );
-    // The second sign-in's grant is the last one MAS issued.
-    const refreshToken = traffic.tokenResponses.at(-1)?.refresh_token;
+    // The grant that belongs to the second account: the first may have refreshed since.
+    let refreshToken: string | undefined;
+    for (const grant of [...traffic.tokenResponses].reverse()) {
+      const owner = await request.get(
+        `${first.hs}/_matrix/client/v3/account/whoami`,
+        { headers: { authorization: `Bearer ${grant.access_token}` } },
+      );
+      if (
+        owner.ok() &&
+        ((await owner.json()) as { user_id: string }).user_id === secondId
+      ) {
+        refreshToken = grant.refresh_token;
+        break;
+      }
+    }
     expect(refreshToken, 'MAS issued a refresh token').toBeDefined();
     expect(traffic.clientId, 'the app sent its client id').toBeDefined();
     // A restart would drop this.
