@@ -3,12 +3,14 @@ import type { ElectronApplication, Page } from 'playwright';
 /**
  * Replace host notification presentation with a counter. The fake owns support too:
  * without libnotify (Linux CI under xvfb) main reports notifications unsupported, so the
- * renderer is never granted the operation and never presents anything.
+ * renderer is never granted the operation and never presents anything. `rejected` makes
+ * every presentation fail, the #490 path where history surfaced as a capability warning.
  */
 export async function installNotificationCounter(
   app: ElectronApplication,
+  outcome: 'completed' | 'rejected' = 'completed',
 ): Promise<void> {
-  await app.evaluate(({ ipcMain, Notification }) => {
+  await app.evaluate(({ ipcMain, Notification }, answer) => {
     Notification.isSupported = () => true;
     const channel = 'trinity:host:v1:notification-presentation:present';
     const state = globalThis as typeof globalThis & {
@@ -19,9 +21,14 @@ export async function installNotificationCounter(
     ipcMain.handle(channel, (_event: unknown, raw: unknown) => {
       const { body } = raw as { body?: unknown };
       state.__e2eNotificationBodies?.push(typeof body === 'string' ? body : '');
-      return { kind: 'completed' };
+      return answer === 'completed'
+        ? { kind: 'completed' }
+        : {
+            kind: 'rejected',
+            diagnostic: { code: 'e2e-notification-rejected' },
+          };
     });
-  });
+  }, outcome);
 }
 
 /** Reload so the renderer negotiates its host operations again with the fakes in place. */

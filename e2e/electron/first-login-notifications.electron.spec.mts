@@ -82,9 +82,9 @@ test.describe('Electron first-login notifications', () => {
     const userDataDir = createElectronProfile();
     let app = await launchApp(userDataDir);
     try {
-      // The counter keeps this journey independent of the host OS notification service
-      // and proves restored history never invokes the presenter.
-      await installNotificationCounter(app);
+      // Rejecting every presentation is the #490 failure path: a historical event that
+      // reached the presenter would surface as the capability warning checked below.
+      await installNotificationCounter(app, 'rejected');
 
       const page = await app.firstWindow();
       await grantNotifications(page);
@@ -134,12 +134,14 @@ test.describe('Electron first-login notifications', () => {
       await waitForRooms(restartedPage);
       releaseSync();
       await expect(
-        restartedPage.getByText(roomName, { exact: true }).first(),
+        restartedPage.getByText('Sent while the app was closed').first(),
       ).toBeVisible({ timeout: 30_000 });
       await expect(
         restartedPage.getByTestId('app-capability-summary'),
       ).toHaveCount(0);
 
+      // The preview shows only once the catch-up batch landed, so the live message
+      // cannot share a batch with it.
       const live = await request.put(
         `${homeserver}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${matrixResources.namespace.role('live-event')}`,
         {
