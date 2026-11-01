@@ -35,12 +35,18 @@ function target(sender = ACCOUNT): MatrixEvent {
   });
 }
 
-function reaction(id: string, sender = '@alice:hs', key = '👍'): MatrixEvent {
+function reaction(
+  id: string,
+  sender = '@alice:hs',
+  key = '👍',
+  age?: number,
+): MatrixEvent {
   return new MatrixEvent({
     event_id: id,
     room_id: ROOM,
     sender,
     type: EventType.Reaction,
+    unsigned: age === undefined ? undefined : { age },
     content: {
       'm.relates_to': {
         rel_type: RelationType.Annotation,
@@ -292,6 +298,19 @@ describe('reaction notifications integration', () => {
     client.getSyncState.mockReturnValue(SyncState.Prepared);
     handlers.get(ClientEvent.Sync)?.(SyncState.Prepared);
     emit(reaction('$after-ready'), true);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(present).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips an old reaction after a wake but keeps a recent one', async () => {
+    settings.isOn.mockReturnValue(true);
+
+    vi.setSystemTime(Date.now() + 10 * 60_000);
+    emit(reaction('$old', '@alice:hs', '👍', 10 * 60_000));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(present).not.toHaveBeenCalled();
+
+    emit(reaction('$recent', '@alice:hs', '👍', 30_000));
     await vi.advanceTimersByTimeAsync(2_000);
     expect(present).toHaveBeenCalledTimes(1);
   });

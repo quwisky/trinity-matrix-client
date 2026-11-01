@@ -271,6 +271,8 @@ function event(
     failure?: boolean;
     /** An edit attached to the message: its sender and the text it would show. */
     editedBy?: { sender: string; body: string; encrypted?: boolean };
+    /** The server's `unsigned.age` in ms; omitted means the server sent none. */
+    age?: number;
   } = {},
 ) {
   const isEncrypted = !!(opts.encrypted || opts.decrypted || opts.failure);
@@ -306,6 +308,7 @@ function event(
     getClearContent: () =>
       hasClear ? { body: opts.body ?? 'hello there' } : null,
     isDecryptionFailure: () => !!opts.failure,
+    getAge: () => opts.age,
   };
 }
 const room = {
@@ -635,6 +638,189 @@ describe('NotificationService', () => {
       );
 
       expect(MockNotification.instances).toHaveLength(0);
+    });
+  });
+
+  describe('old messages after an interrupted sync', () => {
+    const SECOND = 1_000;
+    const MINUTE = 60 * SECOND;
+
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    function connected() {
+      const { svc, client } = setup();
+      svc.connect();
+      return {
+        client,
+        sync: syncHandler(client),
+        deliver: (id: string, age?: number, encrypted = false): void =>
+          timelineHandler(client)(
+            event({ id, age, encrypted }),
+            room,
+            false,
+            false,
+            live,
+          ),
+      };
+    }
+
+    it('keeps only the recent messages when a dead socket fails on waking', () => {
+      const { sync, deliver } = connected();
+
+      vi.advanceTimersByTime(10 * MINUTE);
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      sync(SyncState.Error, SyncState.Reconnecting);
+      sync(SyncState.Catchup, SyncState.Error);
+      deliver('$old', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(0);
+      deliver('$recent', 30 * SECOND);
+      expect(MockNotification.instances).toHaveLength(1);
+
+      sync(SyncState.Syncing, SyncState.Catchup);
+      deliver('$next-batch', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(1);
+
+      sync(SyncState.Syncing, SyncState.Syncing);
+      deliver('$after-the-batch', 5 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(2);
+    });
+
+    it('treats a long silence with no state change as a wake', () => {
+      const { deliver } = connected();
+
+      vi.advanceTimersByTime(10 * MINUTE);
+      deliver('$old', 10 * MINUTE);
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('covers the catch-up batch when a poll held through the sleep answers empty', () => {
+      const { sync, deliver } = connected();
+
+      vi.advanceTimersByTime(10 * MINUTE);
+      sync(SyncState.Syncing, SyncState.Syncing);
+      vi.advanceTimersByTime(SECOND);
+      deliver('$old', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(0);
+
+      sync(SyncState.Syncing, SyncState.Syncing);
+      deliver('$slow-federated', 5 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('covers the catch-up batch when the first sync was held through a sleep', () => {
+      const { svc, client } = setup();
+      client.getSyncState.mockReturnValue(null);
+      svc.connect();
+      const sync = syncHandler(client);
+      const deliver = (id: string, age: number): void =>
+        timelineHandler(client)(event({ id, age }), room, false, false, live);
+
+      vi.advanceTimersByTime(10 * MINUTE);
+      sync(SyncState.Prepared, null, {});
+      sync(SyncState.Syncing, SyncState.Prepared);
+      deliver('$old', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(0);
+
+      sync(SyncState.Syncing, SyncState.Syncing);
+      deliver('$slow-federated', 5 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('still notifies a slow federated message during normal sync', () => {
+      const { sync, deliver } = connected();
+
+      vi.advanceTimersByTime(30 * SECOND);
+      sync(SyncState.Syncing, SyncState.Syncing);
+      vi.advanceTimersByTime(30 * SECOND);
+      deliver('$slow-federated', 5 * MINUTE);
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('still notifies across a short network drop', () => {
+      const { sync, deliver } = connected();
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      vi.advanceTimersByTime(30 * SECOND);
+      deliver('$during-the-drop', 20 * SECOND);
+      deliver('$slow-federated', 5 * MINUTE);
+
+      expect(MockNotification.instances).toHaveLength(2);
+    });
+
+    it('judges an encrypted message by the batch it came in, not by its decryption', () => {
+      const { client, sync, deliver } = connected();
+
+      vi.advanceTimersByTime(10 * MINUTE);
+      deliver('$old', 10 * MINUTE, true);
+      deliver('$recent', 30 * SECOND, true);
+      sync(SyncState.Syncing, SyncState.Syncing);
+      vi.advanceTimersByTime(SECOND);
+      sync(SyncState.Syncing, SyncState.Syncing);
+
+      decryptedHandler(client)(
+        event({ id: '$old', decrypted: true, age: 10 * MINUTE }),
+      );
+      expect(MockNotification.instances).toHaveLength(0);
+      decryptedHandler(client)(
+        event({ id: '$recent', decrypted: true, age: 30 * SECOND }),
+      );
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('notifies when the server sent no age', () => {
+      const { deliver } = connected();
+
+      vi.advanceTimersByTime(10 * MINUTE);
+      deliver('$unknown');
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('allows a message of exactly two minutes and skips an older one', () => {
+      const { deliver } = connected();
+
+      vi.advanceTimersByTime(10 * MINUTE);
+      deliver('$older', 2 * MINUTE + 1);
+      expect(MockNotification.instances).toHaveLength(0);
+      deliver('$at-the-limit', 2 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('needs more than two minutes of silence to call it an interruption', () => {
+      const { deliver } = connected();
+
+      vi.advanceTimersByTime(2 * MINUTE);
+      deliver('$at-the-limit', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(1);
+
+      vi.advanceTimersByTime(1);
+      deliver('$past-the-limit', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('tracks the interruption per account', () => {
+      const { svc, clients } = setup({ accounts: ['@a:hs', '@b:hs'] });
+      svc.connect();
+      const [a, b] = ['@a:hs', '@b:hs'].map((id) => clients.get(id)!);
+
+      for (let minute = 0; minute < 10; minute++) {
+        vi.advanceTimersByTime(MINUTE);
+        syncHandler(b)(SyncState.Syncing, SyncState.Syncing);
+      }
+      for (const client of [a, b]) {
+        timelineHandler(client)(
+          event({ id: '$old', age: 10 * MINUTE }),
+          room,
+          false,
+          false,
+          live,
+        );
+      }
+
+      expect(MockNotification.instances).toHaveLength(1);
     });
   });
 

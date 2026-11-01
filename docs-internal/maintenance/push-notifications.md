@@ -46,6 +46,33 @@ previously delivered events. Encrypted events wait for their decrypted form so
 rule scoring and previews do not use ciphertext; pending and delivered state is
 each capped at 500 entries.
 
+A message that arrives after an interrupted sync gets only its unread badge when it is more
+than two minutes old. An interruption is more than two minutes since the last completed sync,
+measured on the wall clock because a wake need not pass through `Reconnecting` or `Error`. It
+lasts through the batch after the one that ended the gap, since a long-poll held through the
+sleep can answer before the catch-up. Age is the server's `unsigned.age`; without one the message
+notifies. The check runs when the timeline event arrives, so it covers messages awaiting
+decryption and reactions. A slow federated message still notifies outside an interruption.
+
+The gap runs from the last completed sync, which can be up to 30 s before a drop starts, and the
+SDK waits 2-7 s before its first keepalive. So after a drop of about 85 s or more, a slow federated
+message gets only its badge. A recent message notifies after a drop of any length.
+
+Two cases still notify: a response held through the sleep carries the age from when the server
+answered, so its messages read as recent, and a message queued for decryption before the sleep
+notifies when its key arrives afterwards.
+
+Three cases lose notifications:
+
+- Web delivery is page-driven, so a browser that freezes a hidden tab and thaws it periodically
+  leaves every message over two minutes old at each thaw with only its badge.
+- A stall on an awake machine can pass two minutes: the 110 s `/sync` abort, the keepalive delay
+  and one failed `/versions` retry are enough. Messages stuck for over two minutes then get only
+  their badge.
+- A first sync over two minutes counts as a gap even on an awake machine, such as a large account
+  signing in. A message sent four minutes earlier that arrives in the second batch gets only its
+  badge, a recent one notifies, and the third batch is clear.
+
 Host presentation is a separate capability. Electron requests native display
 through its main-process bridge, Capacitor uses the native presentation adapter,
 and the web adapter uses the browser or controlling service worker. A host result
