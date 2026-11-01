@@ -13,7 +13,7 @@
     data-testid="jump-to-unread"
     (click)="jumpToUnread()"
   >
-    ↑ New messages
+    {{ unreadIsBelow() ? '↓' : '↑' }} New messages
   </button>
 }
 

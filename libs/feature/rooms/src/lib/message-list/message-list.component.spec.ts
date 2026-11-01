@@ -1664,6 +1664,41 @@ describe('MessageListComponent', () => {
     ).not.toBeNull();
   });
 
+  describe('jump-to-unread pill arrow', () => {
+    async function pillText(unreadId: string, scrolledUp: boolean) {
+      const { fixture, container } = await renderList({ messages: many(200) });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      let st = 100;
+      setScrollGeometry(scroll, {
+        scrollTop: { get: () => st, set: (v: number) => (st = v) },
+        clientHeight: 600,
+        scrollHeight: 200 * EST,
+      });
+      if (scrolledUp) {
+        cmp.onScroll();
+        fixture.detectChanges();
+      }
+      fixture.componentRef.setInput('firstUnreadId', unreadId);
+      fixture.detectChanges();
+      (cmp as unknown as { updateJumpToUnread(): void }).updateJumpToUnread();
+      fixture.detectChanges();
+      return container
+        .querySelector('[data-testid=jump-to-unread]')
+        ?.textContent?.trim();
+    }
+
+    it('points up when the first unread is above the viewport', async () => {
+      // Pinned to the newest rows, so $20 is far above.
+      expect(await pillText('$20', false)).toBe('↑ New messages');
+    });
+
+    it('points down when you scrolled up and the first unread is below', async () => {
+      // Reading near the top of history, so a message that just arrived is far below.
+      expect(await pillText('$190', true)).toBe('↓ New messages');
+    });
+  });
+
   describe('windowed input', () => {
     it('renders every row, with empty spacers, when windowing is off', async () => {
       const { fixture, container } = await renderList({
