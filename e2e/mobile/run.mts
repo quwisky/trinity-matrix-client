@@ -3,10 +3,13 @@ import {
   closeSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -25,11 +28,14 @@ import {
 } from './health.mts';
 import { e2eArtifactPath } from '../support/playwright-config.mts';
 import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
+import { PORTS } from '../support/homeserver/constants.mjs';
+import { resolveMasEnabled } from '../support/homeserver/kind.mts';
 import {
   CLOSE_SYSTEM_DIALOGS_COMMAND,
   HIDE_ERROR_DIALOGS_SETTING,
   SYSTEM_ERROR_DIALOGS_COMMAND,
   parseSystemErrorDialogs,
+  trustSystemCaCommand,
 } from './support/android-shell.mts';
 import { appiumLogPath } from './support/artifacts.mts';
 import {
@@ -70,7 +76,16 @@ let spawnedEmulator: ChildProcess | undefined;
 let emulatorSpawnError: Error | undefined;
 let emulatorExit:
   { code: number | null; signal: NodeJS.Signals | null } | undefined;
-const requiredReversePorts = ['8448', '5556', '8449'] as const;
+const CHROME_PACKAGE = 'com.android.chrome';
+/** Chrome reads its flags from here while it is the debug app. */
+const CHROME_FLAGS_FILE = '/data/local/tmp/chrome-command-line';
+const masEnabled = resolveMasEnabled();
+const requiredReversePorts = [
+  '8448',
+  '5556',
+  '8449',
+  ...(masEnabled ? [PORTS.masHomeserver, PORTS.masIssuer].map(String) : []),
+];
 const changedReverseMappings: Array<{
   local: string;
   previous: string | undefined;
@@ -386,6 +401,62 @@ async function configureReverse(): Promise<void> {
   }
 }
 
+/** Restart adbd as root or as the shell user; adb reverse mappings don't survive it. */
+async function restartAdbd(command: 'root' | 'unroot'): Promise<void> {
+  await adbRun(command);
+  const uid = command === 'root' ? '0' : '2000';
+  await waitUntil(
+    `adbd to run as uid ${uid}`,
+    async () => (await adbRun('shell', 'id', '-u')) === uid,
+    60_000,
+  );
+}
+
+/**
+ * What the MAS spec needs of the device and no other spec does, so only its run changes them.
+ * The app's native grant client trusts the system store alone, so the run's Caddy root goes
+ * there, as run-ios.mts puts it in the Simulator keychain, and no build of the app changes.
+ * Chrome keeps its own root store, and its first-run screens would cover the Custom Tab.
+ */
+async function prepareDeviceForMas(): Promise<void> {
+  const directory = mkdtempSync(join(tmpdir(), 'trinity-caddy-root-'));
+  try {
+    const { stdout: root } = await exec(
+      'docker',
+      [
+        'exec',
+        'trinity-e2e-caddy',
+        'cat',
+        '/data/caddy/pki/authorities/local/root.crt',
+      ],
+      { signal: commandSignal() },
+    );
+    const certificate = join(directory, 'root.crt');
+    writeFileSync(certificate, root);
+    const { stdout: hash } = await exec(
+      'openssl',
+      ['x509', '-subject_hash_old', '-noout', '-in', certificate],
+      { signal: commandSignal() },
+    );
+    const file = `${hash.trim()}.0`;
+    await restartAdbd('root');
+    try {
+      await adbRun('push', certificate, `/data/local/tmp/${file}`);
+      await adbRun('shell', trustSystemCaCommand(file));
+    } finally {
+      await restartAdbd('unroot');
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  await adbRun(
+    'shell',
+    `echo "_ --disable-fre --no-first-run --no-default-browser-check --ignore-certificate-errors" > ${CHROME_FLAGS_FILE}`,
+  );
+  await adbRun('shell', 'am', 'set-debug-app', '--persistent', CHROME_PACKAGE);
+  await adbRun('shell', 'am', 'force-stop', CHROME_PACKAGE);
+}
+
 async function captureDiagnostics(): Promise<void> {
   if (!serial) return;
   const outputDirectory = artifactsDir();
@@ -515,6 +586,12 @@ async function releaseDevice(): Promise<void> {
         () => undefined,
       );
       await restoreSystemErrorDialogs().catch(() => undefined);
+      if (masEnabled) {
+        await adbRun('shell', 'am', 'clear-debug-app').catch(() => undefined);
+        await adbRun('shell', 'rm', '-f', CHROME_FLAGS_FILE).catch(
+          () => undefined,
+        );
+      }
       for (const { local, previous } of changedReverseMappings.reverse()) {
         await adbRun('reverse', '--remove', local).catch(() => undefined);
         if (previous) {
@@ -582,6 +659,7 @@ async function main(): Promise<void> {
     'android',
     'assembleSecondaryDebug',
   ]);
+  if (masEnabled) await prepareDeviceForMas();
   await configureReverse();
   await adbRun(
     'install',

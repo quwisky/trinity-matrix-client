@@ -22,6 +22,8 @@ function scrubLine(text: string, keepTyped: boolean): string {
     .replace(/%21[^%\s/"&]+%3A[a-z0-9.\-]+(%3A\d+)?/gi, '%21<room>')
     .replace(/\$[A-Za-z0-9_\-]{20,}/g, '$<event>')
     .replace(/syt_[A-Za-z0-9_]+/g, '<token>')
+    // MAS's access, refresh and compatibility tokens, which a seeded session passes as bare values.
+    .replace(/\bm(?:at|ar|ct|cr)_[A-Za-z0-9_]+/g, '<token>')
     // Tokens by key, whatever the homeserver's format (Tuwunel's are not syt_-prefixed).
     .replace(
       /(\\?"(?:access_?token|refresh_?token|token_?seen)\\?"\s*:\s*\\?")[^"\\]*/gi,

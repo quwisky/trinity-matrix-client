@@ -1,6 +1,33 @@
 /** Device-side shell probes the mobile suite runs through `mobile: shell`, and their parsers. */
 
 /**
+ * Add a CA pushed to /data/local/tmp to the system store of every app started from now on, as
+ * root. Android 14+ reads it from the Conscrypt APEX, read-only and per mount namespace, so a
+ * tmpfs copy is bind-mounted over it in the zygotes' namespaces, which apps inherit. Until the
+ * emulator reboots. No failure of a step passes: `set -e`, and the last `ls` checks the result.
+ */
+export function trustSystemCaCommand(certificateFile: string): string {
+  const apex = '/apex/com.android.conscrypt/cacerts';
+  const copy = '/system/etc/security/cacerts';
+  const saved = '/data/local/tmp/trinity-cacerts';
+  return [
+    'set -e',
+    `mkdir -p -m 700 ${saved}`,
+    `cp ${apex}/* ${saved}/`,
+    `mount -t tmpfs tmpfs ${copy}`,
+    `cp ${saved}/* /data/local/tmp/${certificateFile} ${copy}/`,
+    `rm -rf ${saved}`,
+    `chown root:root ${copy} ${copy}/*`,
+    `chmod 755 ${copy}`,
+    `chmod 644 ${copy}/*`,
+    `chcon u:object_r:system_file:s0 ${copy} ${copy}/*`,
+    'pids=$(pidof zygote zygote64)',
+    `for pid in $pids; do nsenter --mount=/proc/$pid/ns/mnt -- /system/bin/mount --bind ${copy} ${apex}; done`,
+    `for pid in $pids; do nsenter --mount=/proc/$pid/ns/mnt -- /system/bin/ls ${apex}/${certificateFile}; done`,
+  ].join('; ');
+}
+
+/**
  * UiAutomator2 lists contexts by opening every `webview_devtools_remote_<pid>` socket in
  * /proc/net/unix. Android's cached-app freezer freezes background WebView processes (the
  * Google app, or Trinity behind another app); a frozen owner keeps a socket that accepts but

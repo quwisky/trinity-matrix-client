@@ -340,9 +340,9 @@ describe('MAS sign-in journeys', () => {
     expect(uploads[1].if).toContain("steps.qr.outputs.started == 'true'");
   });
 
-  it('is the only job that opts into the MAS stack', () => {
+  it('leaves every other job off the MAS stack, but the Android MAS job', () => {
     for (const [id, other] of Object.entries(jobs)) {
-      if (id === 'mas-e2e') continue;
+      if (id === 'mas-e2e' || id === 'mobile-mas-e2e') continue;
       expect(JSON.stringify(other), id).not.toContain('TRINITY_E2E_MAS');
     }
   });
@@ -583,6 +583,7 @@ describe('MAS sign-in journeys', () => {
 });
 
 describe('Android E2E split', () => {
+  const MAS_SPEC = './specs/mas-native-tokens.e2e.mts';
   const job = workflow.jobs['mobile-e2e'];
   const steps = job.steps;
   const specsOf = ({ specs }) => specs.split(',').map((spec) => spec.trim());
@@ -594,11 +595,85 @@ describe('Android E2E split', () => {
     const selected = include.flatMap(specsOf);
     const files = readdirSync(resolve(root, 'e2e/mobile/specs'))
       .filter((file) => file.endsWith('.e2e.mts'))
-      .map((file) => `./specs/${file}`);
+      .map((file) => `./specs/${file}`)
+      .filter((file) => file !== MAS_SPEC);
     expect([...selected].sort()).toEqual(files.sort());
     expect(new Set(selected).size).toBe(selected.length);
     for (const entry of include)
       expect(specsOf(entry).length).toBeGreaterThan(0);
+  });
+
+  it('runs the MAS spec alone, on the same steps, in a non-blocking job', () => {
+    const mas = workflow.jobs['mobile-mas-e2e'];
+    expect(mas.strategy.matrix.include).toEqual([
+      { shard: 'mas', specs: MAS_SPEC },
+    ]);
+    expect(mas.steps).toEqual(steps);
+    expect(mas.env).toEqual({ ...job.env, TRINITY_E2E_MAS: '1' });
+    expect(mas.if).toContain("needs.classify.outputs.android-mas == 'true'");
+    expect(mas['continue-on-error']).toBe(true);
+    // No result job may need it: a failure reports on its own and blocks nothing.
+    for (const other of Object.values(workflow.jobs)) {
+      expect([other.needs].flat()).not.toContain('mobile-mas-e2e');
+    }
+  });
+
+  it.each([
+    ['libs/platform-native/src/lib/native-token-bridge.service.ts', 'true'],
+    ['libs/native/capacitor-push/android/build.gradle', 'true'],
+    ['e2e/mobile/specs/mas-native-tokens.e2e.mts', 'true'],
+    ['e2e/mobile/run.mts', 'true'],
+    ['libs/data-access/media/src/index.ts', 'false'],
+    ['e2e/mobile/specs/smoke.e2e.mts', 'false'],
+  ])('the classifier answers for a change to %s: run=%s', (path, expected) => {
+    const repo = mkdtempSync(join(tmpdir(), 'trinity-android-mas-detect-'));
+    try {
+      const git = (...args) =>
+        execFileSync('git', ['-C', repo, ...args], {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_SYSTEM: '/dev/null',
+            GIT_AUTHOR_NAME: 'test',
+            GIT_AUTHOR_EMAIL: 'test@example.invalid',
+            GIT_COMMITTER_NAME: 'test',
+            GIT_COMMITTER_EMAIL: 'test@example.invalid',
+          },
+        });
+      git('init', '-q', '-b', 'main');
+      git('commit', '-q', '--allow-empty', '-m', 'base');
+      const base = git('rev-parse', 'HEAD').trim();
+      mkdirSync(dirname(join(repo, path)), { recursive: true });
+      writeFileSync(join(repo, path), 'changed\n');
+      git('add', '-A');
+      git('commit', '-q', '-m', 'change');
+      const output = join(repo, '.output');
+      const result = spawnSync(
+        'bash',
+        [
+          '-e',
+          '-c',
+          workflow.jobs.classify.steps.find(({ id }) => id === 'android-mas')
+            .run,
+        ],
+        {
+          cwd: repo,
+          env: {
+            ...process.env,
+            BASE: base,
+            MAS: 'false',
+            GITHUB_EVENT_NAME: 'pull_request',
+            GITHUB_OUTPUT: output,
+          },
+          encoding: 'utf8',
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(output, 'utf8').trim()).toBe(`run=${expected}`);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it('selects the shard specs and names the artifact by shard', () => {
