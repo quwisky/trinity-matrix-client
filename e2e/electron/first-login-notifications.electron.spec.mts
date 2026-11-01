@@ -134,14 +134,40 @@ test.describe('Electron first-login notifications', () => {
       await expect(page.getByTestId('app-capability-summary')).toHaveCount(0);
 
       await app.close();
+      // Sent while the app is closed: the next start's catch-up sync brings it in as a
+      // live event, but it must only raise the unread badge, never a notification.
+      const missed = await request.put(
+        `${homeserver}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${matrixResources.namespace.role('closed-event')}`,
+        {
+          headers: senderHeaders,
+          data: { msgtype: 'm.text', body: 'Sent while the app was closed' },
+        },
+      );
+      expect(missed.ok()).toBe(true);
       app = await launchApp(userDataDir);
       await installRejectedNotificationCounter(app);
       const restartedPage = await app.firstWindow();
       await waitForRooms(restartedPage);
+      await expect(
+        restartedPage.getByText(roomName, { exact: true }).first(),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        restartedPage.getByText('Sent while the app was closed').first(),
+      ).toBeVisible({ timeout: 30_000 });
       expect(await notificationCallCount(app)).toBe(0);
       await expect(
         restartedPage.getByTestId('app-capability-summary'),
       ).toHaveCount(0);
+
+      const live = await request.put(
+        `${homeserver}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${matrixResources.namespace.role('live-event')}`,
+        {
+          headers: senderHeaders,
+          data: { msgtype: 'm.text', body: 'Sent after startup' },
+        },
+      );
+      expect(live.ok()).toBe(true);
+      await expect.poll(() => notificationCallCount(app)).toBe(1);
     } finally {
       await app.close();
     }

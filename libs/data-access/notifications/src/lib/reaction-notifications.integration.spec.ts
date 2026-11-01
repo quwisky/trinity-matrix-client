@@ -76,6 +76,7 @@ describe('reaction notifications integration', () => {
     const value = {
       getUserId: () => userId,
       getSyncState: vi.fn(() => SyncState.Prepared),
+      getSyncStateData: vi.fn(() => null),
       getRoom: () => room,
       getRooms: () => [],
       getCrypto: () => undefined,
