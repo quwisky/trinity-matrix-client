@@ -63,7 +63,7 @@ describe('icon wiring', () => {
     );
     const styles = read(`${RES}/values/styles.xml`);
     expect(styles).toContain(
-      '<item name="windowSplashScreenBackground">@android:color/white</item>',
+      '<item name="windowSplashScreenBackground">@color/launch_background</item>',
     );
     expect(styles).toContain(
       '<item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>',

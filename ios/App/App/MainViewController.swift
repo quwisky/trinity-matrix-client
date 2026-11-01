@@ -18,6 +18,14 @@ class MainViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         webView?.allowsBackForwardNavigationGestures = false
+        // Capacitor paints the WebView with systemBackground (black in dark mode) until the first
+        // page paint. The launch screen's colour set follows the system appearance, which
+        // capacitor.config.ts's single `backgroundColor` can't.
+        if let launchBackground = UIColor(named: "LaunchBackground") {
+            webView?.isOpaque = false
+            webView?.backgroundColor = launchBackground
+            webView?.scrollView.backgroundColor = launchBackground
+        }
         bridge?.registerPluginInstance(NativeNavigationPlugin())
         bridge?.registerPluginInstance(AppSettingsPlugin())
     }

@@ -43,12 +43,11 @@ describe('generated icons', () => {
   const find = (path) => icons.find((i) => i.path === path);
   const alphaAt = (icon, x, y) => icon.rgba[(y * icon.width + x) * 4 + 3];
 
-  it('renders the iOS splash once and copies it for the other scales', () => {
-    const splashes = OUTPUTS.filter((o) => o.path.includes('Splash.imageset/'));
-    expect(splashes.filter((o) => o.width).map((o) => o.path)).toEqual([
-      'ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png',
-    ]);
-    expect(splashes.filter((o) => o.copyOf)).toHaveLength(2);
+  it('renders the iOS launch logo at 1x, 2x and 3x of 120 pt', () => {
+    const logos = OUTPUTS.filter((o) =>
+      o.path.includes('LaunchLogo.imageset/'),
+    );
+    expect(logos.map((o) => o.width)).toEqual([120, 240, 360]);
   });
 
   it('keeps the Android notification mark within the 20 dp live area', () => {
