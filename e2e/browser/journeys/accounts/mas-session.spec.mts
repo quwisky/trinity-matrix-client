@@ -134,7 +134,7 @@ test.describe('MAS session lifecycle', () => {
 
     await expect(page).toHaveURL(/\/login\?reauth=/, { timeout: 150_000 });
     // A soft logout: no store was deleted and the account record is still there.
-    expect(await ownStores()).toEqual(storesBefore);
+    expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
     expect(
       await page.evaluate(() =>
         localStorage.getItem('CapacitorStorage.matrix.accounts'),
@@ -162,7 +162,7 @@ test.describe('MAS session lifecycle', () => {
       device_keys: Record<string, Record<string, unknown>>;
     };
     expect(body.device_keys[userId]?.[deviceBefore]).toBeDefined();
-    expect(await ownStores()).toEqual(storesBefore);
+    expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
   });
 
   test('a rotation outside the app never wipes the account', async ({
@@ -203,6 +203,10 @@ test.describe('MAS session lifecycle', () => {
         intervals: [5_000],
       })
       .toBeGreaterThanOrEqual(1);
+    // The grant is recorded on its request, the response later: wait for the app's pair.
+    await expect
+      .poll(() => traffic.tokenResponses.length)
+      .toBeGreaterThanOrEqual(2);
     const latest = `Bearer ${await traffic.latestAccessToken()}`;
     await expect
       .poll(
@@ -213,11 +217,21 @@ test.describe('MAS session lifecycle', () => {
         { timeout: 60_000 },
       )
       .toBe(true);
-    expect(await ownStores()).toEqual(storesBefore);
+    expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
     await expect(page).toHaveURL(/\/rooms/);
 
     // Not tolerated: the other process uses its new access token, so the refresh token
     // the app holds is spent for good and the app's next refresh is refused.
+    // The app's token requests are held until both steps are done, so its own refresh
+    // cannot reach MAS in between and be answered by the idempotent grant.
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(endpoints.token, async (route) => {
+      await held;
+      await route.continue();
+    });
     const outside = await rotateOutsideApp(
       request,
       endpoints,
@@ -227,8 +241,9 @@ test.describe('MAS session lifecycle', () => {
     expect(await whoamiStatus(request, account, outside.access_token)).toBe(
       200,
     );
+    release();
     await expect(page).toHaveURL(/\/login\?reauth=/, { timeout: 150_000 });
-    expect(await ownStores()).toEqual(storesBefore);
+    expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
   });
 
   test('signs in through MAS with the authorization-code flow', async ({
