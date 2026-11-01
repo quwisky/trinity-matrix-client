@@ -37,6 +37,7 @@ import {
   IdentityLifetime,
   type IdentityLifetimeEvent,
 } from '@trinity/data-access/identity';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   NotificationLifetime,
   NativePushLifetime,
@@ -890,6 +891,61 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       recovery: 'retry-startup',
       secondaryRecovery: 'reauthenticate',
       diagnostic: { code: 'account-secure-storage-unavailable' },
+    });
+  });
+
+  describe('an active account that cannot start', () => {
+    function restored(
+      account:
+        | { readonly kind: 'reauthentication-required' }
+        | {
+            readonly kind: 'failed';
+            readonly failure: 'crypto-store-key-lost';
+          },
+    ) {
+      restoreAccounts.mockReturnValueOnce(
+        of<AccountRestoreResult>({
+          kind: 'active-account-unavailable',
+          activeAccountId: '@me:hs',
+          accounts: [{ ...account, accountId: '@me:hs', role: 'active' }],
+        }),
+      );
+      return firstValueFrom(adapter.restoreAccounts());
+    }
+    const MUST_SIGN_IN = { kind: 'reauthentication-required' } as const;
+    const REMOVAL_BLOCKER = {
+      kind: 'blocked',
+      recovery: 'reauthenticate',
+      diagnostic: { code: 'active-account-unavailable' },
+    };
+
+    it('opens routed content for an OAuth account that must sign in again', async () => {
+      const matrix = TestBed.inject(MatrixClientService);
+      matrix.requireReauthentication('@other:hs', true);
+      matrix.requireReauthentication('@me:hs', true);
+
+      await expect(restored(MUST_SIGN_IN)).resolves.toEqual({
+        kind: 'ready',
+      });
+    });
+
+    it('keeps the removal blocker for a password account', async () => {
+      await expect(restored(MUST_SIGN_IN)).resolves.toEqual(REMOVAL_BLOCKER);
+    });
+
+    it('keeps the removal blocker for a lost store key', async () => {
+      await expect(
+        restored({ kind: 'failed', failure: 'crypto-store-key-lost' }),
+      ).resolves.toEqual(REMOVAL_BLOCKER);
+    });
+
+    it('keeps the removal blocker when only another account must sign in again', async () => {
+      TestBed.inject(MatrixClientService).requireReauthentication(
+        '@other:hs',
+        true,
+      );
+
+      await expect(restored(MUST_SIGN_IN)).resolves.toEqual(REMOVAL_BLOCKER);
     });
   });
 

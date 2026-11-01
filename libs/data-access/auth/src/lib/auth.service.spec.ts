@@ -1644,6 +1644,255 @@ describe('AuthService', () => {
     });
   });
 
+  describe('a sign-in that reused a stored device', () => {
+    const STORED = {
+      baseUrl: 'https://hs',
+      userId: '@me:hs',
+      deviceId: 'DEV',
+      cryptoPrefix: 'trinity-crypto:@me:hs:DEV',
+    };
+    const grant = {
+      homeserverUrl: 'https://hs',
+      userId: '@me:hs',
+      deviceId: 'DEV',
+      accessToken: 'atok',
+      refreshToken: 'rtok',
+      oidc: { issuer: 'https://op', clientId: 'c1' },
+    };
+    const context: OidcGrantContext = {
+      baseUrl: 'https://hs',
+      redirectUri: 'https://app/cb',
+      clientId: 'c1',
+      deviceId: 'DEV',
+      codeVerifier: 'verifier',
+      issuer: 'https://op',
+      authorizationEndpoint: 'https://op/authorize',
+      tokenEndpoint: 'https://op/token',
+    };
+    const hasKeys = { device_keys: { '@me:hs': { DEV: { keys: {} } } } };
+    const noKeys = { device_keys: { '@me:hs': {} } };
+    const downloadKeysForUsers = vi.fn();
+    const logout = vi.fn().mockResolvedValue({});
+    const loginRequest = vi.fn();
+
+    /** A re-auth through the OAuth provider, for an account stored on `record`'s device. */
+    function reauth(record: object | null = STORED) {
+      createClientMock.mockReturnValue({
+        downloadKeysForUsers,
+        logout,
+        loginRequest,
+      } as never);
+      vi.mocked(TestBed.inject(SessionStorageService).record).mockReturnValue(
+        of(record) as never,
+      );
+      const oidc = TestBed.inject(OidcClientService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
+      vi.mocked(oidc.revokeTokens).mockReturnValue(of(undefined));
+      return firstValueFrom(
+        auth.completeOidcLogin('CODE', context, 'add', '@me:hs'),
+      );
+    }
+
+    beforeEach(() => {
+      downloadKeysForUsers.mockReset();
+      loginRequest.mockReset();
+      logout.mockClear();
+    });
+
+    it('keeps the device when the server still has its keys', async () => {
+      downloadKeysForUsers.mockResolvedValue(hasKeys);
+
+      await expect(reauth()).resolves.toMatchObject({ kind: 'ready' });
+
+      expect(createClientMock).toHaveBeenCalledWith({
+        baseUrl: 'https://hs',
+        accessToken: 'atok',
+      });
+      expect(downloadKeysForUsers).toHaveBeenCalledExactlyOnceWith(['@me:hs']);
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).toHaveBeenCalledOnce();
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('reads another device of the account as this one having no keys', async () => {
+      downloadKeysForUsers.mockResolvedValue({
+        device_keys: { '@me:hs': { OTHER: { keys: {} } } },
+      });
+
+      await expect(reauth()).resolves.toMatchObject({
+        kind: 'new-device-required',
+      });
+    });
+
+    it('starts no client and saves no session when the device has no keys', async () => {
+      downloadKeysForUsers.mockResolvedValue(noKeys);
+
+      await reauth();
+
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).not.toHaveBeenCalled();
+      const matrix = TestBed.inject(MatrixClientService);
+      expect(matrix.roomKeysBackedUp).not.toHaveBeenCalled();
+      expect(
+        TestBed.inject(UnprotectedStorageGate).allowed,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('revokes the tokens it just received when the device has no keys', async () => {
+      downloadKeysForUsers.mockResolvedValue(noKeys);
+
+      await reauth();
+
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).toHaveBeenCalledExactlyOnceWith('https://hs', grant.oidc, {
+        accessToken: 'atok',
+        refreshToken: 'rtok',
+      });
+    });
+
+    it('signs a password session out when the device has no keys', async () => {
+      downloadKeysForUsers.mockResolvedValue(noKeys);
+      createClientMock.mockReturnValue({
+        downloadKeysForUsers,
+        logout,
+        loginRequest,
+      } as never);
+      loginRequest.mockResolvedValue({
+        user_id: '@me:hs',
+        device_id: 'DEV',
+        access_token: 'tok',
+      });
+      vi.mocked(TestBed.inject(SessionStorageService).record).mockReturnValue(
+        of(STORED) as never,
+      );
+
+      await expect(
+        firstValueFrom(
+          auth.loginWithPassword(
+            'https://hs',
+            '@me:hs',
+            'pw',
+            'add',
+            'DEV',
+            '@me:hs',
+          ),
+        ),
+      ).resolves.toEqual({
+        kind: 'new-device-required',
+        accountId: '@me:hs',
+      });
+
+      expect(logout).toHaveBeenCalledWith(true);
+    });
+
+    it('sends the person to the new-device sign-in', async () => {
+      downloadKeysForUsers.mockResolvedValue(noKeys);
+
+      await expect(reauth()).resolves.toEqual({
+        kind: 'new-device-required',
+        accountId: '@me:hs',
+      });
+    });
+
+    it('still sends the person on when the revocation never answers', async () => {
+      downloadKeysForUsers.mockResolvedValue(noKeys);
+      createClientMock.mockReturnValue({ downloadKeysForUsers } as never);
+      vi.mocked(TestBed.inject(SessionStorageService).record).mockReturnValue(
+        of(STORED) as never,
+      );
+      const oidc = TestBed.inject(OidcClientService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
+      vi.mocked(oidc.revokeTokens).mockReturnValue(NEVER);
+
+      await expect(
+        firstValueFrom(
+          auth.completeOidcLogin('CODE', context, 'add', '@me:hs'),
+        ),
+      ).resolves.toMatchObject({ kind: 'new-device-required' });
+    });
+
+    it.each([
+      ['a network error', () => Promise.reject(new ConnectionError('offline'))],
+      [
+        'a refused request',
+        () => Promise.reject(new HTTPError('Bad gateway', 502)),
+      ],
+      ['a body that is no object', () => Promise.resolve('<html>')],
+      ['a body without device keys', () => Promise.resolve({})],
+      [
+        'a body without this account',
+        () => Promise.resolve({ device_keys: {} }),
+      ],
+      [
+        'a device list that is no map',
+        () => Promise.resolve({ device_keys: { '@me:hs': [] } }),
+      ],
+      [
+        'a device entry that is no object',
+        () => Promise.resolve({ device_keys: { '@me:hs': { DEV: 'x' } } }),
+      ],
+    ])(
+      'keeps the device when the check fails, after one retry: %s',
+      async (_name, answer) => {
+        downloadKeysForUsers.mockImplementation(answer);
+
+        await expect(reauth()).resolves.toMatchObject({ kind: 'ready' });
+
+        expect(downloadKeysForUsers).toHaveBeenCalledTimes(2);
+        expect(
+          TestBed.inject(OidcClientService).revokeTokens,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it('believes the retry when the first check failed', async () => {
+      downloadKeysForUsers
+        .mockRejectedValueOnce(new ConnectionError('offline'))
+        .mockResolvedValueOnce(noKeys);
+
+      await expect(reauth()).resolves.toMatchObject({
+        kind: 'new-device-required',
+      });
+    });
+
+    it('keeps the device when the check never answers', async () => {
+      vi.useFakeTimers();
+      try {
+        downloadKeysForUsers.mockReturnValue(new Promise(() => undefined));
+
+        const attempt = reauth();
+        await vi.runAllTimersAsync();
+
+        await expect(attempt).resolves.toMatchObject({ kind: 'ready' });
+        expect(downloadKeysForUsers).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not check a sign-in that did not reuse a device', async () => {
+      vi.mocked(
+        TestBed.inject(MatrixClientService).roomKeysBackedUp,
+      ).mockReturnValue(of(true));
+
+      await reauth({ ...STORED, deviceId: 'OLD' });
+      await reauth(null);
+
+      expect(downloadKeysForUsers).not.toHaveBeenCalled();
+    });
+
+    it('leaves an account stored through another server to the save, which refuses it', async () => {
+      await reauth({ ...STORED, baseUrl: 'https://other' });
+
+      expect(downloadKeysForUsers).not.toHaveBeenCalled();
+    });
+  });
+
   describe('a sign-in that gets a new device for a stored account', () => {
     // Persisting the new device deletes the stored device's crypto store (session-storage
     // upsert). The stored account's live client is asked about key backup first.

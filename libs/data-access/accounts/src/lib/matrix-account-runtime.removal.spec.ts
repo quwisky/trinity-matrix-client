@@ -349,6 +349,96 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
+  describe('a signed-out OAuth account', () => {
+    it('marks a token-less OAuth record for the prefilled re-auth', async () => {
+      const { adapter, matrix, storage } = setup(null);
+      vi.mocked(storage.load).mockReturnValue(of(null));
+      vi.mocked(storage.record).mockReturnValue(of(OIDC_RECORD));
+
+      await expect(
+        firstValueFrom(adapter.restoreAccount('@oidc:hs', 'active')),
+      ).resolves.toEqual({ kind: 'reauthentication-required' });
+      expect(matrix.requireReauthentication).toHaveBeenCalledExactlyOnceWith(
+        '@oidc:hs',
+        true,
+      );
+    });
+
+    it('still requires a sign-in when the record cannot be read', async () => {
+      const { adapter, matrix, storage } = setup(null);
+      vi.mocked(storage.load).mockReturnValue(of(null));
+      vi.mocked(storage.record).mockReturnValue(
+        throwError(() => new Error('registry unreadable')),
+      );
+
+      await expect(
+        firstValueFrom(adapter.restoreAccount('@oidc:hs', 'active')),
+      ).resolves.toEqual({ kind: 'reauthentication-required' });
+      expect(matrix.requireReauthentication).toHaveBeenCalledExactlyOnceWith(
+        '@oidc:hs',
+        false,
+      );
+    });
+
+    it('removing a signed-out OAuth account reports no provider residue', async () => {
+      const { adapter, matrix, storage, softLoggedOut, reauthTargets } =
+        setup(null);
+      softLoggedOut.set(['@oidc:hs']);
+      reauthTargets.set(['@oidc:hs']);
+      vi.mocked(matrix.clientFor).mockReturnValue(null as never);
+      vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+      vi.mocked(storage.load).mockReturnValue(of(null));
+      vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+      vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+      await expect(
+        firstValueFrom(adapter.signOutAccount('@oidc:hs')),
+      ).resolves.toEqual({
+        kind: 'ready',
+        accountId: '@oidc:hs',
+        activeAccountId: null,
+        remainingAccountIds: [],
+      });
+    });
+  });
+
+  it('keeps a lost-store-key OAuth account owing its provider a revocation', async () => {
+    // Signed out in the UI, but not a re-auth target: its tokens are still live.
+    const { adapter, matrix, storage, softLoggedOut } = setup(null);
+    softLoggedOut.set(['@oidc:hs']);
+    const client = {
+      logout: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('provider unreachable'))
+        .mockResolvedValue(undefined),
+    };
+    vi.mocked(matrix.clientFor).mockReturnValue(null as never);
+    vi.mocked(matrix.detachedClient).mockReturnValue(client as never);
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@oidc:hs'));
+
+    expect(first).toMatchObject({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
+    });
+    expect(storage.clear).toHaveBeenCalledExactlyOnceWith({
+      keepNativeTokens: true,
+    });
+    await expect(
+      firstValueFrom(
+        adapter.retrySignOutCleanup(
+          '@oidc:hs',
+          first.kind === 'partial-cleanup' ? first.issues : [],
+        ),
+      ),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(client.logout).toHaveBeenCalledTimes(2);
+  });
+
   it('reports a failed OIDC revocation as provider residue and retries it through the client', async () => {
     const { adapter, matrix, storage, lifecycle, active } = setup('@oidc:hs');
     const client = {

@@ -71,11 +71,15 @@ it('types Active pointer failures without publishing the target client', async (
 it('keeps a tokenless saved Account visible to reauthentication surfaces', async () => {
   const { adapter, matrix, storage } = setup(null);
   vi.mocked(storage.load).mockReturnValue(of(null));
+  vi.mocked(storage.record).mockReturnValue(of(null));
 
   await expect(
     firstValueFrom(adapter.restoreAccount('@reauth:hs', 'inactive')),
   ).resolves.toEqual({ kind: 'reauthentication-required' });
-  expect(matrix.requireReauthentication).toHaveBeenCalledWith('@reauth:hs');
+  expect(matrix.requireReauthentication).toHaveBeenCalledWith(
+    '@reauth:hs',
+    false,
+  );
   expect(matrix.restorePersisted).not.toHaveBeenCalled();
 });
 
@@ -629,6 +633,18 @@ describe('replacing a stored device', () => {
     // The old record is read before the save overwrites it; the sign-out waits until the
     // new session is saved and started, which also detached any old live client.
     expect(order).toEqual(['persist', 'start', 'logout']);
+  });
+
+  it('signs nothing out when the replaced device has no token', async () => {
+    const test = setup();
+    const { accessToken: _access, ...tokenless } = OLD_SESSION;
+    vi.mocked(test.storage.record).mockReturnValue(of(tokenless));
+    vi.mocked(test.storage.load).mockReturnValue(of(null));
+
+    await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+
+    expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    expect(test.storage.removeNativeTokens).not.toHaveBeenCalled();
   });
 
   it("removes the replaced device's native tokens after its sign-out ran", async () => {

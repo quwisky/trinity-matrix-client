@@ -35,6 +35,8 @@ export const activeIntent = {
 
 export function setup(activeAccountId: string | null = '@old:hs') {
   const active = signal(activeAccountId);
+  const softLoggedOut = signal<readonly string[]>([]);
+  const reauthTargets = signal<readonly string[]>([]);
   const wipeIndexedDb = vi.fn((_records: readonly never[]) =>
     Promise.resolve({ blocked: [], failed: [], enumerated: true }),
   );
@@ -76,6 +78,8 @@ export function setup(activeAccountId: string | null = '@old:hs') {
       MatrixAccountRuntimeAdapter,
       MockProvider(MatrixClientService, {
         activeUserId: active.asReadonly(),
+        softLoggedOut: softLoggedOut.asReadonly(),
+        reauthTargets: reauthTargets.asReadonly(),
         clientFor: vi.fn(() => ({}) as never),
         rollbackAccountStart: vi.fn(() => of(void 0)),
       }),
@@ -106,6 +110,8 @@ export function setup(activeAccountId: string | null = '@old:hs') {
     consent: TestBed.inject(UNPROTECTED_STORAGE_CONSENT),
     lifecycle,
     active,
+    softLoggedOut,
+    reauthTargets,
   };
 }
 

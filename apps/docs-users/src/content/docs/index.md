@@ -319,3 +319,25 @@ expires. Trinity keeps the account and its encryption keys on the device. Before
 update, turn on key backup, or ask your server's admin to upgrade Synapse first. If an
 account has already stopped connecting, export your room keys, then remove the account
 and sign in again.
+
+## If your server ends a session {#session-ended}
+
+This applies to an account that signs in through your server's own sign-in page (OAuth
+2.0). If your server stops accepting its session, Trinity keeps the account and its
+encryption keys on this device and shows the sign-in page with the message "Sign in again
+to reconnect this account". Sign in again to carry on. You can also remove the account from
+that page. If another account is signed in, you stay in your rooms instead, and the account
+menu lists this account as signed out, with **Sign in** beside it.
+
+An account that signs in with a password is different: if your server says its session
+was ended and its device removed, Trinity removes the account and its keys from this device.
+Turn on key backup so you can read older encrypted messages after you sign in again.
+
+If an OAuth 2.0 session was ended for good, for example because you signed out on another device or
+an admin ended it, your server has deleted this device. After you sign in, Trinity asks you
+to sign in once more, with the message "Sign in again to reconnect this account. This device
+will need to be verified again. Messages that aren't in key backup won't be readable on this
+device afterwards." Your provider may ask for your consent again. That sign-in
+makes a new device and clears the old one's keys from this device, so you can read older
+encrypted messages only with key backup or another signed-in device. Until you finish it,
+nothing is cleared.

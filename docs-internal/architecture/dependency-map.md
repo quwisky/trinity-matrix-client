@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **80 Nx projects** and **314 dependencies**. No project cycles detected.
+This snapshot contains **80 Nx projects** and **316 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -148,7 +148,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-gif`                   | `libs/data-access/gif`                   | role:capability; capability:conversations       |                   2 |
 | `data-access-homeserver`            | `libs/data-access/homeserver`            | role:capability; capability:discovery           |                   2 |
 | `data-access-identity`              | `libs/data-access/identity`              | role:capability; capability:identity            |                   4 |
-| `data-access-matrix-client`         | `libs/data-access/matrix-client`         | role:adapter; capability:matrix-runtime         |                   4 |
+| `data-access-matrix-client`         | `libs/data-access/matrix-client`         | role:adapter; capability:matrix-runtime         |                   5 |
 | `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   2 |
 | `data-access-notifications`         | `libs/data-access/notifications`         | role:capability; capability:notifications       |                   7 |
 | `data-access-room-administration`   | `libs/data-access/room-administration`   | role:capability; capability:room-administration |                   4 |
@@ -162,7 +162,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `docs-site`                         | `tools/docs`                             | unmanaged tooling/test                          |                   0 |
 | `docs-users`                        | `apps/docs-users`                        | unmanaged tooling/test                          |                   1 |
 | `dropdown-menu`                     | `libs/spartan/dropdown-menu`             | role:design-system; capability:design-system    |                   1 |
-| `feature-auth`                      | `libs/feature/auth`                      | role:capability; capability:accounts            |                  11 |
+| `feature-auth`                      | `libs/feature/auth`                      | role:capability; capability:accounts            |                  12 |
 | `feature-crypto`                    | `libs/feature/crypto`                    | role:capability; capability:trust               |                  11 |
 | `feature-rooms`                     | `libs/feature/rooms`                     | role:application; capability:workspace          |                  26 |
 | `feature-settings`                  | `libs/feature/settings`                  | role:application; capability:settings           |                  28 |

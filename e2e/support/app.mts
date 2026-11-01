@@ -317,6 +317,27 @@ export async function waitForRooms(
   );
 }
 
+/**
+ * Resolves once the app's device has published its keys: the first `/keys/upload` the
+ * homeserver accepted with `device_keys`. Call it before the sign-in so the response
+ * can't be missed, and await it before a same-device re-auth, whose device check would
+ * otherwise find no keys and move the account to a new device.
+ */
+export function deviceKeysPublished(page: Page): Promise<void> {
+  const published = page
+    .waitForResponse(
+      (response) =>
+        response.url().includes('/_matrix/client/v3/keys/upload') &&
+        response.ok() &&
+        (response.request().postData() ?? '').includes('"device_keys"'),
+      { timeout: 90_000 },
+    )
+    .then(() => undefined);
+  // A sign-in that fails first reports its own error, not this one.
+  published.catch(() => undefined);
+  return published;
+}
+
 /** Type a word into the "Erase all Trinity data" confirmation and press its confirm button. */
 export async function confirmErase(page: Page, word: string): Promise<void> {
   const dialog = page.locator('trn-alert-dialog', {

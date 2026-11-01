@@ -17,8 +17,12 @@ import {
   SsoStateStore,
   type OidcGrantContext,
 } from '@trinity/data-access/auth';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
-import { accountEstablishmentError } from '../account-establishment-outcome';
+import {
+  accountEstablishmentError,
+  signInDestination,
+} from '../account-establishment-outcome';
 
 /**
  * Landing route for the auth redirect, for both login flows: legacy SSO returns
@@ -39,6 +43,7 @@ import { accountEstablishmentError } from '../account-establishment-outcome';
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly location = inject(Location);
@@ -137,7 +142,9 @@ export class SsoCallbackPage implements OnInit {
             this.error.set(error);
             return;
           }
-          void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+          void this.router.navigateByUrl(signInDestination(outcome), {
+            replaceUrl: true,
+          });
         },
         error: (err) =>
           this.error.set(err instanceof Error ? err.message : String(err)),
@@ -213,7 +220,9 @@ export class SsoCallbackPage implements OnInit {
             this.error.set(error);
             return;
           }
-          void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+          void this.router.navigateByUrl(signInDestination(outcome), {
+            replaceUrl: true,
+          });
         },
         error: (err) => {
           // A provider that pruned our dynamic registration fails with invalid_client
@@ -247,6 +256,13 @@ export class SsoCallbackPage implements OnInit {
   }
 
   back(): void {
-    this.router.navigateByUrl('/login', { replaceUrl: true });
+    // Someone adding an account beside a live one isn't sent to another account's re-auth.
+    const target = this.matrix.activeUserId()
+      ? undefined
+      : this.matrix.reauthTargets()[0];
+    this.router.navigateByUrl(
+      target ? `/login?reauth=${encodeURIComponent(target)}` : '/login',
+      { replaceUrl: true },
+    );
   }
 }

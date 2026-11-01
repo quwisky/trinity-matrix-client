@@ -202,13 +202,18 @@ export class InstallationResetWorkflow {
     sessions: readonly (MatrixSession | null)[];
   }> {
     if (records.length === 0) return of({ records, sessions: [] });
+    // Read here, not in the callbacks: a late read settles after stop() has emptied the targets.
+    const signedOut = this.matrix.reauthTargets();
     return forkJoin(
-      records.map((record) =>
-        attempt.step(
+      records.map((record) => {
+        // A re-auth target's tokens are already gone.
+        const providerExpected =
+          record.oidc && !signedOut.includes(record.userId);
+        return attempt.step(
           this.storage.load(record.userId).pipe(
             catchError(() => {
               attempt.addIssue('secure-storage', 'retry-installation-reset');
-              if (record.oidc) {
+              if (providerExpected) {
                 attempt.addIssue('provider-session', 'restart-application');
               }
               return of(null);
@@ -220,18 +225,18 @@ export class InstallationResetWorkflow {
             recovery: 'retry-installation-reset',
             fallback: null,
             onTimeout: () => {
-              if (record.oidc) {
+              if (providerExpected) {
                 attempt.addIssue('provider-session', 'restart-application');
               }
             },
             onSettled: (session) => {
-              if (record.oidc && !session?.oidc) {
+              if (providerExpected && !session?.oidc) {
                 attempt.addIssue('provider-session', 'restart-application');
               }
             },
           },
-        ),
-      ),
+        );
+      }),
     ).pipe(map((sessions) => ({ records, sessions })));
   }
 

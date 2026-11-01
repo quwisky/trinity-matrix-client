@@ -2,6 +2,7 @@ import { inject } from '@angular/core';
 import { CanActivateFn, Router, UrlTree } from '@angular/router';
 import { Observable, catchError, map, of } from 'rxjs';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
  * Allows navigation only when an Active Account is live, restoring persisted Accounts
@@ -9,13 +10,20 @@ import { AccountRuntimeService } from '@trinity/data-access/accounts';
  */
 export const authGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
   const accounts = inject(AccountRuntimeService);
+  const matrix = inject(MatrixClientService);
   const router = inject(Router);
+  const login = (): UrlTree => {
+    const target = matrix.reauthTargets()[0];
+    return target
+      ? router.createUrlTree(['/login'], { queryParams: { reauth: target } })
+      : router.createUrlTree(['/login']);
+  };
 
   if (accounts.hasActiveAccount()) {
     return of(true);
   }
   if (accounts.state().phase === 'settled') {
-    return of(router.createUrlTree(['/login']));
+    return of(login());
   }
 
   return accounts.restoreSavedAccounts().pipe(
@@ -23,8 +31,8 @@ export const authGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
       result.kind === 'restored' ||
       result.kind === 'restored-with-inactive-failures'
         ? true
-        : router.createUrlTree(['/login']),
+        : login(),
     ),
-    catchError(() => of(router.createUrlTree(['/login']))),
+    catchError(() => of(login())),
   );
 };

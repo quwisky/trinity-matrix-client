@@ -400,7 +400,11 @@ export class RoomsPage {
         !this.matrix.activeUserId() &&
         this.sessionLock.state() !== 'releasing'
       ) {
-        void this.router.navigateByUrl('/login', { replaceUrl: true });
+        const target = untracked(this.matrix.reauthTargets)[0];
+        void this.router.navigateByUrl(
+          target ? `/login?reauth=${encodeURIComponent(target)}` : '/login',
+          { replaceUrl: true },
+        );
       }
     });
     // A link handed over by the host (cold start or warm) opens like a tapped matrix.to link.

@@ -914,30 +914,30 @@ describe('NativeTokenBridge', () => {
   });
 
   describe('revokeStored', () => {
-    it('emits true when native revoked and false on gone, a throw or a timeout', async () => {
+    it('answers as native did, and transient on a throw or a timeout', async () => {
       vi.useFakeTimers();
       const { tokens, bridge } = setup();
 
       bridge.revokeTokens.mockReturnValue(of({ kind: 'revoked' }));
       await expect(firstValueFrom(tokens.revokeStored(SESSION))).resolves.toBe(
-        true,
+        'revoked',
       );
 
       bridge.revokeTokens.mockReturnValue(of({ kind: 'gone' }));
       await expect(firstValueFrom(tokens.revokeStored(SESSION))).resolves.toBe(
-        false,
+        'gone',
       );
 
       bridge.revokeTokens.mockReturnValue(of({ kind: 'transient' }));
       await expect(firstValueFrom(tokens.revokeStored(SESSION))).resolves.toBe(
-        false,
+        'transient',
       );
 
       bridge.revokeTokens.mockReturnValue(
         throwError(() => new Error('rejected')),
       );
       await expect(firstValueFrom(tokens.revokeStored(SESSION))).resolves.toBe(
-        false,
+        'transient',
       );
 
       bridge.revokeTokens.mockReturnValue(NEVER);
@@ -946,7 +946,7 @@ describe('NativeTokenBridge', () => {
       await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
       expect(next).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
-      expect(next).toHaveBeenCalledExactlyOnceWith(false);
+      expect(next).toHaveBeenCalledExactlyOnceWith('transient');
     });
   });
 

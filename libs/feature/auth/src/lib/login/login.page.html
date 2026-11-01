@@ -37,8 +37,17 @@
         }
       </p>
     } @else {
-      <p trnCardDescription class="login-card__subtitle">
-        @if (reauthUserId()) {
+      <p
+        #subtitle
+        trnCardDescription
+        tabindex="-1"
+        class="login-card__subtitle"
+      >
+        @if (reauthUserId() && reauthAsNewDevice()) {
+          Sign in again to reconnect this account. This device will need to be
+          verified again. Messages that aren't in key backup won't be readable
+          on this device afterwards.
+        } @else if (reauthUserId()) {
           Sign in again to reconnect this account
         } @else {
           {{
@@ -48,6 +57,14 @@
           }}
         }
       </p>
+      @if (reauthRemovable()) {
+        <p
+          class="login-card__subtitle [overflow-wrap:anywhere]"
+          data-testid="reauth-account"
+        >
+          {{ reauthUserId() }}
+        </p>
+      }
       <p class="login-card__homeserver">{{ baseUrl() }}</p>
     }
   </ng-container>
@@ -298,7 +315,7 @@
     </p>
   }
 
-  @if (addMode || reauthUserId()) {
+  @if (canCancel()) {
     <button
       trnBtn
       presentation="ghost"
@@ -308,6 +325,20 @@
       data-testid="cancel-add"
     >
       Cancel
+    </button>
+  }
+
+  @if (reauthRemovable()) {
+    <button
+      trnBtn
+      presentation="ghost"
+      type="button"
+      class="login-card__cancel w-full"
+      [disabled]="removing() || erasing()"
+      (click)="removeReauthAccount()"
+      data-testid="remove-reauth-account"
+    >
+      Remove this account
     </button>
   }
 

@@ -1,13 +1,15 @@
-import type { AccountEstablishmentOutcome } from '@trinity/data-access/auth';
+import type { SignInOutcome } from '@trinity/data-access/auth';
 
 const SECURE_STORAGE_UNAVAILABLE =
   'Your system keychain is locked or unavailable. Unlock it and try again.';
 
 /** Convert an expected Account Runtime outcome into safe sign-in copy. */
 export function accountEstablishmentError(
-  outcome: AccountEstablishmentOutcome,
+  outcome: SignInOutcome,
 ): string | null {
-  if (outcome.kind === 'ready') return null;
+  if (outcome.kind === 'ready' || outcome.kind === 'new-device-required') {
+    return null;
+  }
   if (outcome.kind === 'transition-in-progress') {
     return 'Another account change is already in progress. Please try again.';
   }
@@ -37,4 +39,11 @@ export function accountEstablishmentError(
     case 'crypto-store-key-lost':
       return 'This device can no longer unlock this account’s stored keys. Sign in again to set it up as a new session.';
   }
+}
+
+/** Where a sign-in without an error goes; the new-device page waits for the person. */
+export function signInDestination(outcome: SignInOutcome): string {
+  return outcome.kind === 'new-device-required'
+    ? `/login?reauth=${encodeURIComponent(outcome.accountId)}&device=new`
+    : '/rooms';
 }

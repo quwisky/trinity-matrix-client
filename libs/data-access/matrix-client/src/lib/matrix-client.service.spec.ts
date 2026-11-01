@@ -199,6 +199,18 @@ describe('MatrixClientService', () => {
       expect(svc.softLoggedOut()).toEqual(['@me:hs']);
     });
 
+    it('never offers the same device again when an OAuth store key is lost', async () => {
+      const { svc, storeKeys } = setup(fakeClient());
+      vi.mocked(storeKeys.read).mockResolvedValue({ kind: 'missing' });
+
+      await firstValueFrom(
+        svc.restorePersisted({ ...KEYED, oidc: OIDC_SESSION.oidc }, 'activate'),
+      );
+
+      expect(svc.softLoggedOut()).toEqual(['@me:hs']);
+      expect(svc.reauthTargets()).toEqual([]);
+    });
+
     it.each([
       [
         'an unavailable keychain',
@@ -1460,6 +1472,93 @@ describe('MatrixClientService', () => {
 
     expect(svc.softLoggedOut()).not.toContain('@me:hs');
     expect(svc.isInitialized).toBe(true);
+  });
+
+  describe('accounts offered the prefilled re-auth', () => {
+    const OIDC_SESSION_B = { ...SESSION_B, oidc: OIDC_SESSION.oidc };
+
+    async function twoSignedOut() {
+      const a = fakeClient();
+      const b = fakeClient();
+      const again = fakeClient();
+      const ctx = setup(a, b, again);
+      vi.mocked(ctx.storage.invalidateToken).mockReturnValue(of(undefined));
+      vi.mocked(ctx.storage.setActive).mockReturnValue(of(undefined));
+      await firstValueFrom(ctx.svc.init(OIDC_SESSION));
+      await firstValueFrom(ctx.svc.add(OIDC_SESSION_B));
+      loggedOutHandler(a)({ data: { soft_logout: false } });
+      loggedOutHandler(b)({ data: { soft_logout: false } });
+      return ctx;
+    }
+
+    it('offers the first signed-out OAuth account, and clearing it keeps the other offered', async () => {
+      const { svc } = await twoSignedOut();
+      expect(svc.reauthTargets()).toEqual(['@me:hs', '@you:other']);
+
+      await firstValueFrom(svc.add(OIDC_SESSION));
+
+      expect(svc.reauthTargets()).toEqual(['@you:other']);
+      expect(svc.softLoggedOut()).toEqual(['@you:other']);
+    });
+
+    it('stops offering an account once it is removed', async () => {
+      const { svc } = await twoSignedOut();
+
+      await firstValueFrom(svc.remove('@me:hs'));
+
+      expect(svc.reauthTargets()).toEqual(['@you:other']);
+    });
+
+    it('forgets every offer when the clients are torn down', async () => {
+      const { svc } = await twoSignedOut();
+
+      await firstValueFrom(svc.stop());
+
+      expect(svc.reauthTargets()).toEqual([]);
+    });
+
+    it('does not offer a password account the server soft-logged-out', async () => {
+      const client = fakeClient();
+      const { svc, storage } = setup(client);
+      vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
+      await firstValueFrom(svc.init(SESSION));
+
+      loggedOutHandler(client)({ data: { soft_logout: true } });
+
+      expect(svc.softLoggedOut()).toEqual(['@me:hs']);
+      expect(svc.reauthTargets()).toEqual([]);
+    });
+
+    it('lists an account once however often it is asked for', () => {
+      const { svc } = setup(fakeClient());
+
+      svc.requireReauthentication('@me:hs', true);
+      svc.requireReauthentication('@me:hs', true);
+      svc.requireReauthentication('@you:other');
+
+      expect(svc.reauthTargets()).toEqual(['@me:hs']);
+      expect(svc.softLoggedOut()).toEqual(['@me:hs', '@you:other']);
+    });
+
+    it.each([
+      ['an OAuth account', OIDC_SESSION, ['@me:hs']],
+      ['a password account', SESSION, []],
+    ] as const)(
+      'on a restore the server refuses, offers %s only if OAuth',
+      async (_case, session, targets) => {
+        const client = fakeClient();
+        client.startClient.mockRejectedValue({
+          errcode: 'M_UNKNOWN_TOKEN',
+          httpStatus: 401,
+        });
+        const { svc } = setup(client);
+
+        await firstValueFrom(svc.restorePersisted(session, 'activate'));
+
+        expect(svc.softLoggedOut()).toEqual(['@me:hs']);
+        expect(svc.reauthTargets()).toEqual(targets);
+      },
+    );
   });
 
   describe('a held server logout', () => {

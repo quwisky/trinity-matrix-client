@@ -21,6 +21,7 @@ import {
   AccountRuntimeService,
   type AccountRestoreResult,
 } from '@trinity/data-access/accounts';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RetiredPushGatewayCleanup } from '@trinity/data-access/notifications';
 import {
   AppConfigService,
@@ -96,6 +97,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly location = inject(Location);
   private readonly host = inject(HostCapabilitiesService);
   private readonly accounts = inject(AccountRuntimeService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly drafts = inject(DraftStoreService);
   private readonly retiredPushGateway = inject(RetiredPushGatewayCleanup);
@@ -239,6 +241,10 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
                 secondaryRecovery: 'reauthenticate',
                 diagnostic: { code: 'account-secure-storage-unavailable' },
               } as const;
+            }
+            // Its sign-in page brings it back with its keys; a removal blocker would not.
+            if (this.matrix.reauthTargets().includes(result.activeAccountId)) {
+              return ready();
             }
             return {
               kind: 'blocked',

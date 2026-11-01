@@ -583,6 +583,44 @@ describe('a session whose token exchanges a host makes', () => {
     },
   );
 
+  it('leaves the token alone when a request fails for another reason', async () => {
+    fakeNetwork('rotate');
+    const host = fakeHost();
+    const { svc, client, loggedOut, storage } = await startWithHost(host);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json(
+          { errcode: 'M_NOT_FOUND', error: 'Not found' },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    await expect(client.whoami()).rejects.toMatchObject({
+      errcode: 'M_NOT_FOUND',
+    });
+
+    expect(host.refresh).not.toHaveBeenCalled();
+    expect(loggedOut).not.toHaveBeenCalled();
+    expect(svc.softLoggedOut()).toEqual([]);
+    expect(storage.invalidateToken).not.toHaveBeenCalled();
+  });
+
+  it('a refusal through the host lands soft', async () => {
+    fakeNetwork('rotate');
+    const host = fakeHost({ kind: 'refused' });
+    const { svc, client, storage } = await startWithHost(host);
+
+    await expect(client.whoami()).rejects.toMatchObject({
+      errcode: 'M_UNKNOWN_TOKEN',
+    });
+
+    expect(svc.softLoggedOut()).toContain('@me:hs');
+    expect(client.clearStores).not.toHaveBeenCalled();
+    expect(storage.remove).not.toHaveBeenCalled();
+  });
+
   it('a refused host answer signs out with a far expiry too', async () => {
     fakeNetwork('rotate');
     const host = fakeHost({ kind: 'refused' });
@@ -598,7 +636,7 @@ describe('a session whose token exchanges a host makes', () => {
     expect(svc.accountIds()).not.toContain('@me:hs');
   });
 
-  it('wipes once for a burst of requests that a refused host answer signs out', async () => {
+  it('signs out once for a burst of requests that a refused host answer ends', async () => {
     fakeNetwork('rotate');
     const host = fakeHost();
     const { svc, client, storage, loggedOut } = await startWithHost(host);
@@ -621,8 +659,8 @@ describe('a session whose token exchanges a host makes', () => {
     ]);
     // The SDK emits once per request; the service acts on the first and has left by the next.
     expect(loggedOut).toHaveBeenCalledTimes(3);
-    expect(client.clearStores).toHaveBeenCalledOnce();
-    expect(storage.remove).toHaveBeenCalledExactlyOnceWith('@me:hs');
+    expect(storage.invalidateToken).toHaveBeenCalledOnce();
+    expect(client.clearStores).not.toHaveBeenCalled();
     expect(svc.accountIds()).not.toContain('@me:hs');
   });
 

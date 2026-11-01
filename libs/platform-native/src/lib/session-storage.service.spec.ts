@@ -1300,6 +1300,21 @@ describe('SessionStorageService', () => {
         expect(bridge.removeTokensExcept).not.toHaveBeenCalled();
       });
 
+      // Known limit: a registry that won't parse names no account, so the removal and the sweep
+      // stop before native and a vault record stays until the registry reads again.
+      it('leaves a vault record in place while the registry is unreadable', async () => {
+        const { svc, bridge } = nativeSetup();
+        prefs.set('matrix.accounts', '{not json');
+
+        await expect(firstValueFrom(svc.remove('@alice:hs'))).rejects.toThrow();
+        await expect(firstValueFrom(svc.clear())).rejects.toThrow();
+        await expect(firstValueFrom(svc.sweepNativeTokens())).rejects.toThrow();
+
+        expect(bridge.removeTokens).not.toHaveBeenCalled();
+        expect(bridge.removeTokensExcept).not.toHaveBeenCalled();
+        expect(bridge.removeAllTokens).not.toHaveBeenCalled();
+      });
+
       it('lists a sign-in saved while the sweep waits its turn', async () => {
         const { svc, bridge } = nativeSetup();
 
@@ -1657,6 +1672,25 @@ describe('SessionStorageService', () => {
       expect(deleteDatabase).toHaveBeenCalledWith(
         'trinity-crypto:@alice:hs:DEV1::matrix-sdk-crypto-meta',
       );
+    });
+
+    it('clears the old store only when the new device signs in', async () => {
+      const deleteDatabase = stubIndexedDb();
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      // A server-ended session: its token is dropped, and a same-device sign-in changes nothing.
+      await firstValueFrom(svc.invalidateToken(ALICE.userId));
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.invalidateToken(ALICE.userId));
+      expect(deleteDatabase).not.toHaveBeenCalled();
+
+      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+
+      expect(deleteDatabase).toHaveBeenCalledWith(
+        'trinity-crypto:@alice:hs:DEV1::matrix-sdk-crypto',
+      );
+      const [record] = await firstValueFrom(svc.list());
+      expect(record.deviceId).toBe('DEV1b');
     });
 
     it('gives a store without a key an encrypted successor when the device changes', async () => {

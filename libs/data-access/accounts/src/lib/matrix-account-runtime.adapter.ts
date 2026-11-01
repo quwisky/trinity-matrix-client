@@ -109,8 +109,13 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         }
         const { session } = loaded;
         if (!session) {
-          this.matrix.requireReauthentication(accountId);
-          return of({ kind: 'reauthentication-required' as const });
+          return this.storage.record(accountId).pipe(
+            catchError(() => of(null)),
+            map((record) => {
+              this.matrix.requireReauthentication(accountId, !!record?.oidc);
+              return { kind: 'reauthentication-required' as const };
+            }),
+          );
         }
         return this.matrix
           .restorePersisted(
