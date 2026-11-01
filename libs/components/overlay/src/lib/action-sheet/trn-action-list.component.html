@@ -3,7 +3,7 @@
     trnDropdownMenu
     class="max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1rem-var(--trinity-keyboard-shrink,0px))] min-w-56 overflow-y-auto"
     data-testid="action-list-menu"
-    [attr.aria-label]="data().header ?? label() ?? null"
+    [attr.aria-label]="label() ?? data().header ?? null"
   >
     @if (data().header) {
       <div trnDropdownMenuLabel>{{ data().header }}</div>
