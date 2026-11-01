@@ -283,7 +283,8 @@ jobs:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
     name: E2E (renderer, styling, QR)
-    runs-on: ubuntu-latest
+    # shortcut: Playwright's WebKit needs libicu the ubuntu-26.04 image lacks; move back once it runs.
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read
@@ -462,7 +463,8 @@ jobs:
     needs: classify
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: E2E Storybook
-    runs-on: ubuntu-latest
+    # shortcut: Playwright's WebKit needs libicu the ubuntu-26.04 image lacks; move back once it runs.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -602,7 +604,8 @@ jobs:
     needs: classify
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.scrollbars == 'true' }}
     name: E2E scrollbars
-    runs-on: ubuntu-latest
+    # shortcut: Playwright's WebKit needs libicu the ubuntu-26.04 image lacks; move back once it runs.
+    runs-on: ubuntu-24.04
     # Hang containment. Setup, browsers and the development build take most of it.
     timeout-minutes: 35
     steps:
@@ -1016,7 +1019,8 @@ jobs:
   scheduled-e2e:
     name: Scheduled E2E
     if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
+    # shortcut: Playwright's WebKit needs libicu the ubuntu-26.04 image lacks; move back once it runs.
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
