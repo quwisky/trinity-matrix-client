@@ -48,8 +48,8 @@ public protocol TokenLease: Sendable {
 ///
 /// A taker that answers `.busy` claims nothing, has removed its own file, and has left the name
 /// holding the file it found, however its swaps interleaved with other takers'. The exception is a
-/// taker that dies, has a swap back refused, or stalls past the put-back limit: about 3 s, or the
-/// caller's remaining wait if that is shorter, but at least 0.5 s. Other takers then cannot get
+/// taker that dies, has a swap back refused, or stalls past the put-back limit: 201 swaps, or the
+/// caller's remaining wait if that comes first, but at least 0.5 s. Other takers then cannot get
 /// their files back either, so the live lease can be stranded in a leftover file. What is left in
 /// the name decides what comes next: a taker's file blocks the lease until it expires, but a
 /// release's has already expired, so the next taker takes the lease at once.

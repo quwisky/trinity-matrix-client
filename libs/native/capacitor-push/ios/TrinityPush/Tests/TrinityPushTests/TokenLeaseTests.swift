@@ -65,7 +65,7 @@ final class TokenLeaseTests: XCTestCase {
     /// `RENAME_SWAP` hands the stale file to one process only: the others find something else.
     func testOnlyOneOfManyProcessesTakesAnExpiredLease() async throws {
         _ = try await held(lifetime: 0)
-        // Long enough for a put-back's full limit, so that a stall on a busy runner cannot fail this.
+        // Far more than the floor, so that a stall on a busy runner cannot fail this.
         let probes = try (0..<8).map { _ in try startProbe(wait: 3) }
         let answers = probes.map(finish)
         XCTAssertEqual(answers.filter { $0 == "taken" }.count, 1, "\(answers)")
@@ -263,9 +263,9 @@ final class TokenLeaseTests: XCTestCase {
     }
 
     /// With no time from its caller, a put-back still gets the floor, which covers a short stall.
+    /// Kept short: each swap takes about 40 ms on a CI runner, and all of this must fit in the floor.
     func testATakerStallingMidPutBackWithNoTimeLeftLeavesTheFreshLease() async throws {
-        let cAlone = Array(repeating: "C", count: 6), eAlone = Array(repeating: "E", count: 5)
-        try await twoTakersWithOldReads(order: ["C", "E", "C", "E", "E"] + cAlone + eAlone, wait: 0)
+        try await twoTakersWithOldReads(order: ["C", "E", "C", "E", "E", "C", "C", "E"], wait: 0)
     }
 
     /// By default a long wait, so that the takers' time to put back outlasts any stall a busy runner adds.
