@@ -656,7 +656,7 @@ describe('unread chats', () => {
       /padding-block:\s*var\(--trinity-density-shell-gap\)/,
     );
     expect(body('\\.rail-scroll')).toContain(
-      'scroll-padding-block-start: var(--trinity-density-shell-gap)',
+      'scroll-padding-block: var(--trinity-density-shell-gap)',
     );
     expect(body('\\.rail-fixed')).not.toContain('padding-block-end');
   });

@@ -37,19 +37,12 @@
 
     // Room above the first row inside the clip box, so its top badge and focus ring are not
     // cut at scrollTop 0. The rail's last row is `.add`, so the column closes at the bottom.
-    padding-block: var(--trinity-density-shell-gap) var(--trinity-space-4);
-    scroll-padding-block-start: var(--trinity-density-shell-gap);
-
-    @media #{$md} {
-      // The identity dock spans this rail and the room list at desktop widths; the last
-      // Space needs the same visual and focus clearance as the room scroller.
-      padding-block-end: calc(
-        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
-      );
-      scroll-padding-block-end: calc(
-        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
-      );
-    }
+    // The identity dock spans this rail and the room list; the last Space needs the same
+    // visual and focus clearance as the room scroller.
+    padding-block: var(--trinity-density-shell-gap)
+      calc(var(--trinity-navigation-dock-height) + var(--trinity-space-5));
+    scroll-padding-block: var(--trinity-density-shell-gap)
+      calc(var(--trinity-navigation-dock-height) + var(--trinity-space-5));
   }
 
   // `--trinity-divider` is near-invisible on the darker rail, so use `--trinity-active`,
