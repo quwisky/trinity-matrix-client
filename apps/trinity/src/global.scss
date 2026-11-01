@@ -28,7 +28,9 @@
 
   /* A non-control with tabindex="-1" (dialog container, heading) takes only script focus,
    * which WebKit shows as :focus-visible after typing even when the last gesture was a touch
-   * (a long press sends no mouse event). Tab never reaches it, so draw no ring on it. */
+   * (a long press sends no mouse event). Tab never reaches it, so draw no ring on it. Widgets
+   * that take arrow-key focus keep theirs. The forced-colors rule below still outlines every
+   * :focus-visible element. */
   [tabindex='-1']:not(
       button,
       a,
@@ -36,7 +38,19 @@
       select,
       textarea,
       [role='button'],
-      [role='link']
+      [role='link'],
+      [role='menuitem'],
+      [role='menuitemradio'],
+      [role='menuitemcheckbox'],
+      [role='tab'],
+      [role='option'],
+      [role='row'],
+      [role='gridcell'],
+      [role='treeitem'],
+      [role='radio'],
+      [role='checkbox'],
+      [role='switch'],
+      [role='combobox']
     ):focus-visible {
     outline: none;
   }
