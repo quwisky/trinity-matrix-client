@@ -17,6 +17,7 @@ export interface MentionCursor {
 }
 
 export interface MentionIndexStore {
+  /** Rejects with a `TypeError` for a record it can't index; otherwise storage failed. */
   put(accountId: string, record: MentionRecord, now: number): Promise<void>;
   /** Newest first, strictly before `before`, never older than the age limit. */
   page(

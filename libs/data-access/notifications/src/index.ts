@@ -40,3 +40,8 @@ export {
   SHOW_INBOX_PREFERENCE,
   provideMentionInboxPreferences,
 } from './lib/inbox/mention-inbox.preferences';
+export { MentionIndexService } from './lib/inbox/mention-index.service';
+export type {
+  MentionCursor,
+  MentionRecord,
+} from './lib/inbox/mention-index-store';
