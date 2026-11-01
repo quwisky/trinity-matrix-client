@@ -115,9 +115,6 @@ describe('modern room shell layout contracts', () => {
     expect(ruleBody(headerCss, '.sidebar__header')).toContain(
       'background: var(--trinity-surface-navigation-header)',
     );
-    expect(ruleBody(userPanelCss, '.userbar')).toContain(
-      'background: var(--trinity-surface-navigation-header)',
-    );
     // Rail tiles must read against the rail ground, so never paint them with it.
     expect(ruleBody(railCss, '.pill')).toContain(
       'background: var(--trinity-state-hover-surface)',
@@ -209,16 +206,16 @@ describe('modern room shell layout contracts', () => {
       /<trn-server-rail[\s\S]*class="shell-side__rail"[\s\S]*<trn-channel-sidebar[\s\S]*class="shell-side__rooms"[\s\S]*<trn-sidebar-user-panel[\s\S]*class="shell-side__dock"/,
     );
     expect(sidebarCss).toMatch(
-      /\.sidebar__scroll\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,
+      /\.sidebar__scroll\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,
     );
     expect(railCss).toMatch(
-      /\.rail-scroll\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,
+      /\.rail-scroll\s*\{[\s\S]*?padding-block:[^;]*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block:[^;]*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,
     );
     expect(userPanelCss).toMatch(
-      /:host\s*\{[\s\S]*?height:\s*var\(--trinity-navigation-dock-height\);[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?position:\s*absolute;[\s\S]*?inset-inline:[^;]+;[\s\S]*?inset-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-safe-area-bottom\)/,
+      /:host\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?position:\s*absolute;[\s\S]*?inset-inline:[^;]+;[\s\S]*?inset-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-safe-area-bottom\)[\s\S]*?height:\s*var\(--trinity-navigation-dock-height\)/,
     );
     expect(userPanelCss).toMatch(
-      /\.userbar\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-overlay-radius\);[\s\S]*?background:\s*var\(--trinity-surface-floating-card\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
+      /\.userbar\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-overlay-radius\);[\s\S]*?background:\s*var\(--trinity-surface-floating-card\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
     );
   });
 

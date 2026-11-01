@@ -1,47 +1,36 @@
 @use '../../styles/mixins' as *;
 
 @layer components {
-  // Narrow layouts keep the panel in the room-list column of the navigation grid. At desktop width the
-  // host floats across both the Space rail and room list, leaving `.userbar` only the dock's visual surface.
+  // The host floats across both the Space rail and room list, leaving `.userbar` only the
+  // dock's visual surface.
   :host {
     display: block;
-    grid-column: 2;
+    grid-column: 1 / -1;
     grid-row: 2;
+    position: absolute;
+    inset-inline: var(--trinity-space-3);
+    inset-block-end: calc(
+      var(--trinity-space-3) + var(--trinity-navigation-safe-area-bottom)
+    );
+    z-index: var(--trinity-z-sticky);
     height: var(--trinity-navigation-dock-height);
-
-    @media #{$md} {
-      grid-column: 1 / -1;
-      position: absolute;
-      inset-inline: var(--trinity-space-3);
-      inset-block-end: calc(
-        var(--trinity-space-3) + var(--trinity-navigation-safe-area-bottom)
-      );
-      z-index: var(--trinity-z-sticky);
-    }
   }
 
   .userbar {
     box-sizing: border-box;
-    height: var(--trinity-navigation-dock-height);
-    flex: 0 0 var(--trinity-navigation-dock-height);
+    height: 100%;
     display: flex;
     align-items: center;
     gap: var(--trinity-density-shell-gap);
     padding: 0 var(--trinity-density-shell-padding-inline);
-    background: var(--trinity-surface-navigation-header);
-    box-shadow: inset 0 1px 0 var(--trinity-border-subtle);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-overlay-radius);
+    background: var(--trinity-surface-floating-card);
+    box-shadow: var(--trinity-shadow-floating);
 
     // Keep the three actions visually related while letting the identity carry the weight.
     // The trigger owns the flexible space; the icon actions stay stable at the target floor.
     color: var(--trinity-text-muted);
-
-    @media #{$md} {
-      height: 100%;
-      border: 1px solid var(--trinity-border-subtle);
-      border-radius: var(--trinity-shape-overlay-radius);
-      background: var(--trinity-surface-floating-card);
-      box-shadow: var(--trinity-shadow-floating);
-    }
   }
 
   .userbar__trigger {

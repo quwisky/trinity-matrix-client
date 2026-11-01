@@ -92,25 +92,11 @@ test.describe('Sidebar on a touch device', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('user-menu-trigger')).toBeFocused();
 
-    // Phones keep the identity dock in normal flow rather than letting a desktop overlay
-    // cover the last room or duplicate the shell's safe-area ownership.
+    // Phones float the identity dock as desktop does; mobile-account-bar.spec.mts owns its geometry.
     await expect(page.locator('trn-sidebar-user-panel')).toHaveCSS(
       'position',
-      'static',
+      'absolute',
     );
-    await expect(page.locator('trn-sidebar-user-panel')).toHaveCSS(
-      'display',
-      'block',
-    );
-    const mobileDockFlow = await page.evaluate(() => {
-      const scroller = document.querySelector<HTMLElement>('.sidebar__scroll');
-      const dock = document.querySelector<HTMLElement>('.userbar');
-      if (!scroller || !dock) throw new Error('missing mobile identity dock');
-      const scrollerBox = scroller.getBoundingClientRect();
-      const dockBox = dock.getBoundingClientRect();
-      return scrollerBox.bottom <= dockBox.top + 1;
-    });
-    expect(mobileDockFlow).toBe(true);
 
     const targets = [
       page.getByTestId('rail-rooms'),

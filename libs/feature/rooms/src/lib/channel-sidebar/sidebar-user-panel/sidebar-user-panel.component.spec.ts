@@ -377,8 +377,8 @@ describe('SidebarUserPanelComponent', () => {
       'utf8',
     );
 
-    it('floats the raised card from md and ellipsises the name', () => {
-      expect(scss).toMatch(/@media #\{\$md\} \{[^}]*position: absolute/);
+    it('floats the raised card and ellipsises the name', () => {
+      expect(scss).toMatch(/:host \{[^}]*position: absolute/);
       for (const token of [
         'var(--trinity-surface-floating-card)',
         'var(--trinity-shape-overlay-radius)',
