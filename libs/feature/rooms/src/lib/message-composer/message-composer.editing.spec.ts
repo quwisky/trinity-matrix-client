@@ -506,6 +506,24 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
       expect(event.defaultPrevented).toBe(true);
     });
 
+    // iOS WebKit still sends the compatibility `mousedown` after a cancelled `pointerdown`, and
+    // its default moves focus off the textarea: a tap on the field's padding, or on a disabled
+    // Send that lets the tap through, closed the keyboard.
+    it('also cancels the mousedown that follows a press on the field itself', async () => {
+      const { fixture, container } = await renderComposer();
+      const { field, input } = parts(container);
+
+      const event = new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+      });
+      field.dispatchEvent(event);
+      fixture.detectChanges();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(input);
+    });
+
     it('leaves a press that started on the input alone', async () => {
       // The guard is what keeps the browser's own caret placement and drag-selection working:
       // cancel the press that lands IN the textarea and clicking mid-draft stops moving the

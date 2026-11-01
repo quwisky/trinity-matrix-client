@@ -179,6 +179,7 @@
       #composerField
       data-testid="composer-field"
       (pointerdown)="onFieldPress($event)"
+      (mousedown)="onFieldPress($event)"
     >
       <trn-composer-insert-menu
         [contextKey]="roomId()"
