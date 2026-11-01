@@ -986,8 +986,8 @@ jobs:
     permissions:
       contents: read
       actions: read
-    # Hang containment. Expected ~30 min: the app build and the emulator ~15, the stack ~2 and
-    # the spec ~12, most of it waiting out MAS's 60 s tokens. The run itself stops at 45 min.
+    # Hang containment, as for `mobile-e2e`: its cold-cache steps set the limit. Measured ~9 min
+    # with warm caches (run 41275075863), ~3 of them the spec, mostly MAS's 60 s tokens.
     timeout-minutes: 75
     env:
       TRINITY_EMULATOR_API_LEVEL: '36'
