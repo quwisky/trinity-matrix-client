@@ -2,8 +2,10 @@ package dev.trinityproject.trinity.push
 
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -50,18 +52,38 @@ class HttpMatrixApiTest {
     fun fetchesTheEventWithTheAccountsToken() {
         respond(200, """{"type":"m.room.message","sender":"@a:hs"}""")
 
-        val event = HttpMatrixApi().event(account(), "!room:hs", "\$abc+def/ghi", Deadline.start())
+        val read = HttpMatrixApi().event(account(), "!room:hs", "\$abc+def/ghi", Deadline.start())
 
-        assertEquals("@a:hs", event?.getString("sender"))
+        assertEquals("@a:hs", (read as PushEventRead.Event).json.getString("sender"))
         assertEquals(listOf("/_matrix/client/v3/rooms/%21room%3Ahs/event/%24abc%2Bdef%2Fghi"), paths)
         assertEquals(listOf<String?>("Bearer secret"), authorizations)
     }
 
     @Test
-    fun readsUnauthorizedAsNoEvent() {
+    fun aFetchSeparatesUnauthorizedFromFailed() {
+        fun readAfter(status: Int, body: String = """{"errcode":"M_X"}"""): PushEventRead {
+            respond(status, body)
+            return HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()).also { server.removeContext("/") }
+        }
+
+        assertEquals(PushEventRead.Unauthorized, readAfter(401))
+        assertEquals(PushEventRead.Failed, readAfter(403))
+        assertEquals(PushEventRead.Failed, readAfter(404))
+        assertEquals(PushEventRead.Failed, readAfter(500))
+        assertEquals(PushEventRead.Failed, readAfter(200, "<html>captive portal</html>"))
+    }
+
+    @Test
+    fun aRejectedNameReadIsNoName() {
         respond(401, """{"errcode":"M_UNKNOWN_TOKEN"}""")
 
-        assertNull(HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()))
+        assertNull(HttpMatrixApi().memberDisplayName(account(), "!r:hs", "@a:hs", Deadline.start()))
+        assertNull(HttpMatrixApi().roomName(account(), "!r:hs", Deadline.start()))
+    }
+
+    @Test
+    fun aReadEventNeverPrintsItsContent() {
+        assertFalse(PushEventRead.Event(JSONObject().put("body", "Secret plans")).toString().contains("Secret"))
     }
 
     @Test
@@ -69,9 +91,9 @@ class HttpMatrixApiTest {
         respond(200, """{"type":"m.room.message"}""", delayMillis = 2_000)
         val started = monotonicMillis()
 
-        val event = HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline(started + 300, ::monotonicMillis))
+        val read = HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline(started + 300, ::monotonicMillis))
 
-        assertNull(event)
+        assertEquals(PushEventRead.Failed, read)
         assertTrue(monotonicMillis() - started < 1_500)
     }
 
@@ -109,7 +131,7 @@ class HttpMatrixApiTest {
                 exchange.close()
             }
 
-            assertNull(HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()))
+            assertEquals(PushEventRead.Failed, HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()))
             assertEquals(1, paths.size)
             assertTrue(targetPaths.isEmpty())
         } finally {

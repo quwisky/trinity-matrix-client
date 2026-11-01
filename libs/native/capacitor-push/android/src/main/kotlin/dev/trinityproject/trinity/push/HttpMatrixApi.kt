@@ -17,30 +17,31 @@ fun encodePathSegment(value: String): String =
  * event IDs and headers carry the token.
  */
 class HttpMatrixApi : MatrixApi {
-    override fun event(account: HandoffAccount, roomId: String, eventId: String, deadline: Deadline): JSONObject? =
+    override fun event(account: HandoffAccount, roomId: String, eventId: String, deadline: Deadline): PushEventRead =
         get(account, "${room(roomId)}/event/${encodePathSegment(eventId)}", deadline)
 
     override fun memberDisplayName(account: HandoffAccount, roomId: String, userId: String, deadline: Deadline): String? =
-        get(account, "${room(roomId)}/state/m.room.member/${encodePathSegment(userId)}", deadline)
-            ?.let { PushRenderRules.stringOrNull(it, "displayname") }
-            ?.takeIf(PushRenderRules::hasText)
+        name(get(account, "${room(roomId)}/state/m.room.member/${encodePathSegment(userId)}", deadline), "displayname")
 
     override fun roomName(account: HandoffAccount, roomId: String, deadline: Deadline): String? =
-        get(account, "${room(roomId)}/state/m.room.name", deadline)
-            ?.let { PushRenderRules.stringOrNull(it, "name") }
+        name(get(account, "${room(roomId)}/state/m.room.name", deadline), "name")
+
+    private fun name(read: PushEventRead, key: String): String? =
+        (read as? PushEventRead.Event)?.json
+            ?.let { PushRenderRules.stringOrNull(it, key) }
             ?.takeIf(PushRenderRules::hasText)
 
     private fun room(roomId: String) = "/_matrix/client/v3/rooms/${encodePathSegment(roomId)}"
 
-    private fun get(account: HandoffAccount, path: String, deadline: Deadline): JSONObject? {
+    private fun get(account: HandoffAccount, path: String, deadline: Deadline): PushEventRead {
         val remaining = deadline.remainingMillis()
-        if (remaining <= 0) return null
+        if (remaining <= 0) return PushEventRead.Failed
         val connection = try {
             URI.create(account.homeserverUrl.trimEnd('/') + path).toURL().openConnection() as HttpURLConnection
         } catch (error: IllegalArgumentException) {
-            return null
+            return PushEventRead.Failed
         } catch (error: IOException) {
-            return null
+            return PushEventRead.Failed
         }
         return try {
             // The token is a header: never let a redirect carry it to another host.
@@ -49,15 +50,16 @@ class HttpMatrixApi : MatrixApi {
             connection.readTimeout = remaining.toInt()
             connection.setRequestProperty("Authorization", "Bearer ${account.accessToken}")
             connection.setRequestProperty("Accept", "application/json")
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                null
-            } else {
-                JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            when (connection.responseCode) {
+                HttpURLConnection.HTTP_UNAUTHORIZED -> PushEventRead.Unauthorized
+                HttpURLConnection.HTTP_OK ->
+                    PushEventRead.Event(JSONObject(connection.inputStream.bufferedReader().use { it.readText() }))
+                else -> PushEventRead.Failed
             }
         } catch (error: IOException) {
-            null
+            PushEventRead.Failed
         } catch (error: JSONException) {
-            null
+            PushEventRead.Failed
         } finally {
             connection.disconnect()
         }

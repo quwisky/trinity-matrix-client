@@ -42,9 +42,20 @@ interface HandoffReader {
     fun notificationText(): String
 }
 
-/** The client-server reads the renderer makes; every failure reads as null. */
+/** What reading an event answered. Only a 401 says the token itself was rejected. */
+sealed interface PushEventRead {
+    data class Event(val json: JSONObject) : PushEventRead {
+        override fun toString(): String = "Event"
+    }
+
+    data object Unauthorized : PushEventRead
+
+    data object Failed : PushEventRead
+}
+
+/** The client-server reads the renderer makes. Every failed name read is null. */
 interface MatrixApi {
-    fun event(account: HandoffAccount, roomId: String, eventId: String, deadline: Deadline): JSONObject?
+    fun event(account: HandoffAccount, roomId: String, eventId: String, deadline: Deadline): PushEventRead
     fun memberDisplayName(account: HandoffAccount, roomId: String, userId: String, deadline: Deadline): String?
     fun roomName(account: HandoffAccount, roomId: String, deadline: Deadline): String?
 }
@@ -69,7 +80,7 @@ class Deadline(private val endsAtMillis: Long, private val clock: () -> Long) {
     fun remainingMillis(): Long = endsAtMillis - clock()
 
     companion object {
-        const val BUDGET_MILLIS = 5_000L
+        const val BUDGET_MILLIS = 8_000L
 
         fun start(clock: () -> Long = ::monotonicMillis): Deadline =
             Deadline(clock() + BUDGET_MILLIS, clock)
@@ -98,18 +109,23 @@ sealed interface PushOutcome {
 
 /**
  * Turns a gateway push (`event_id`, `room_id`, `trinity_user_id`, `unread`) into what to
- * post. Never refreshes a token. A token the store marks expired is not sent at all, because
- * only the app can renew it: the push shows the room name with the expired-token text. Any
- * other failed read shows the room-name fallback.
+ * post. A token the store marks expired is not sent: it is refreshed first, and a 401 refreshes
+ * once too. The push shows the room name with the expired-token text when an expired token could
+ * not be refreshed. Any other failed read shows the room-name fallback.
+ *
+ * Only an account with a handoff entry can refresh: a vault record may outlive sign-out while its
+ * revocation is pending.
  */
 class PushResolver(
     private val store: HandoffReader,
     private val api: MatrixApi,
     private val wallClock: WallClock = WallClock.SYSTEM,
+    private val tokens: PushTokenRefreshing? = null,
     /** Monotonic milliseconds for the read budget. Last, so a trailing lambda still sets it. */
     private val clock: () -> Long = ::monotonicMillis,
 ) {
-    fun resolve(data: Map<String, String>): PushOutcome {
+    /** [deadline] covers every read and the refresh. */
+    fun resolve(data: Map<String, String>, deadline: Deadline = Deadline.start(clock)): PushOutcome {
         val accountId = data["trinity_user_id"]
         val roomId = data["room_id"]
         val eventId = data["event_id"]
@@ -119,7 +135,7 @@ class PushResolver(
                 accountId != null && data["unread"] == "0" -> PushOutcome.CancelAccount(accountId)
                 else -> PushOutcome.Ignore
             }
-        val account = accountId?.let(store::account)
+        var account = accountId?.let(store::account)
         if (accountId == null || account == null || roomId == null) {
             return PushOutcome.Post(
                 accountId,
@@ -130,19 +146,18 @@ class PushResolver(
                 sound = true,
             )
         }
-        if (account.tokenExpired(wallClock.nowMillis())) {
-            val storedRoom = store.room(accountId, roomId)
-            return PushOutcome.Post(
-                accountId,
-                roomId,
-                eventId,
-                PushRenderRules.render(null, storedRoom, null, null, tokenExpired = true),
-                direct = storedRoom?.direct == true,
-                sound = account.sound,
-            )
+        val expired = account.tokenExpired(wallClock.nowMillis())
+        if (expired) {
+            account = refreshed(account, accountId, deadline)
+                ?: return fallback(account, accountId, roomId, eventId, tokenExpired = true)
         }
-        val deadline = Deadline.start(clock)
-        val event = api.event(account, roomId, eventId, deadline)
+        var read = api.event(account, roomId, eventId, deadline)
+        if (read == PushEventRead.Unauthorized && !expired) {
+            account = refreshed(account, accountId, deadline)
+                ?: return fallback(account, accountId, roomId, eventId, tokenExpired = false)
+            read = api.event(account, roomId, eventId, deadline)
+        }
+        val event = (read as? PushEventRead.Event)?.json
         val storedRoom = store.room(accountId, roomId)
         val stateRoomName = if (storedRoom == null) api.roomName(account, roomId, deadline) else null
         val senderName = event
@@ -153,6 +168,38 @@ class PushResolver(
             roomId,
             eventId,
             PushRenderRules.render(event, storedRoom, stateRoomName, senderName),
+            direct = storedRoom?.direct == true,
+            sound = account.sound,
+        )
+    }
+
+    /**
+     * The account with a usable token; null for every other answer, which shows the fallback. Always
+     * hide shows no text, so it spends no refresh token.
+     */
+    private fun refreshed(account: HandoffAccount, accountId: String, deadline: Deadline): HandoffAccount? {
+        if (tokens == null || store.notificationText() == NotificationTextMode.ALWAYS_HIDE) return null
+        return when (val answer = tokens.refreshForPush(accountId, account.accessToken, deadline)) {
+            is TokenRefreshResult.Current -> account.with(answer.record)
+            is TokenRefreshResult.Rotated -> account.with(answer.record)
+            else -> null
+        }
+    }
+
+    /** The notification from what the store holds alone, without reading anything. */
+    private fun fallback(
+        account: HandoffAccount,
+        accountId: String,
+        roomId: String,
+        eventId: String,
+        tokenExpired: Boolean,
+    ): PushOutcome.Post {
+        val storedRoom = store.room(accountId, roomId)
+        return PushOutcome.Post(
+            accountId,
+            roomId,
+            eventId,
+            PushRenderRules.render(null, storedRoom, null, null, tokenExpired = tokenExpired),
             direct = storedRoom?.direct == true,
             sound = account.sound,
         )
