@@ -86,6 +86,9 @@ export function workspaceUrlOf(
     case 'rooms':
       queryParams['view'] = 'rooms';
       break;
+    case 'inbox':
+      queryParams['view'] = 'inbox';
+      break;
     case 'space':
       queryParams['space'] = encodeRoomSegment(destination.scope.spaceId);
       break;
@@ -124,7 +127,7 @@ function parseScope(query: WorkspaceParameters): {
   if (view === 'recent') {
     return { scope: RECENT_WORKSPACE_SCOPE, canonical: false, valid: true };
   }
-  if (view === 'home' || view === 'rooms') {
+  if (view === 'home' || view === 'rooms' || view === 'inbox') {
     return { scope: { kind: view }, canonical: true, valid: true };
   }
   return { scope: RECENT_WORKSPACE_SCOPE, canonical: false, valid: false };

@@ -24,7 +24,7 @@ import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 
 /**
- * Package-internal: which committed views need their Space repaired to Recent.
+ * Package-internal: which committed views need their Space, or the Inbox once switched off, repaired to Recent.
  *
  * A view qualifies once its Space is unavailable: the Account has synced without it,
  * or it disappeared (removed, left elsewhere, or its holder unticked in the mixed view).
@@ -49,18 +49,25 @@ export class WorkspaceSpaceRepair {
   unavailableViews(view: Signal<WorkspaceView>): Observable<WorkspaceView> {
     const unavailable = computed(() => {
       const current = view();
-      if (current.scope.kind !== 'space' || !current.accountId) return null;
+      const scope = current.scope;
+      if (
+        (scope.kind !== 'space' && scope.kind !== 'inbox') ||
+        !current.accountId
+      ) {
+        return null;
+      }
       // A transition owns the view; a Router navigation in flight may be the person
       // leaving for another page, which a repair would cancel. Check again once it settles.
       if (this.workflow.busy() || this.location.navigating()) return null;
       if (current.accountId !== this.accounts.activeAccountId()) return null;
-      if (this.spaces.isLeaving(current.accountId, current.scope.spaceId)) {
+      if (scope.kind === 'inbox') {
+        return this.availability.inboxShown() ? null : current;
+      }
+      if (this.spaces.isLeaving(current.accountId, scope.spaceId)) {
         return null;
       }
-      return this.availability.space(
-        current.accountId,
-        current.scope.spaceId,
-      ) === 'unavailable'
+      return this.availability.space(current.accountId, scope.spaceId) ===
+        'unavailable'
         ? current
         : null;
     });

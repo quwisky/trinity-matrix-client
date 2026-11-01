@@ -161,4 +161,26 @@ describe('Workspace URL projection', () => {
       canonical: false,
     });
   });
+
+  it('round-trips view=inbox as canonical', () => {
+    const destination = {
+      accountId: '@alice:example.org',
+      scope: { kind: 'inbox' },
+      roomId: null,
+      pane: 'list',
+    } as const;
+    const projected = workspaceUrlOf(destination);
+
+    expect(projected.queryParams).toEqual({
+      account: '@alice:example.org',
+      view: 'inbox',
+    });
+    expect(
+      parseWorkspaceUrl(
+        convertToParamMap({}),
+        convertToParamMap(projected.queryParams),
+        '@alice:example.org',
+      ),
+    ).toEqual({ destination, canonical: true });
+  });
 });

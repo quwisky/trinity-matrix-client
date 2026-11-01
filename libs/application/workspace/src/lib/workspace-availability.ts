@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import {
   RoomLibraryService,
   SelectedRoomLibraryService,
@@ -14,6 +15,7 @@ import {
 export class WorkspaceAvailability {
   private readonly rooms = inject(RoomLibraryService);
   private readonly selectedRooms = inject(SelectedRoomLibraryService);
+  private readonly inbox = inject(MentionInboxPreferences);
 
   /**
    * A Space scope must be held by the Account, or listed in the mixed view it is part of.
@@ -22,6 +24,15 @@ export class WorkspaceAvailability {
    */
   space(accountId: string, spaceId: string): RoomLibrarySelectionAvailability {
     return this.selectedRooms.spaceAvailability(accountId, spaceId);
+  }
+
+  /**
+   * The Inbox view may be named while the device shows the Inbox. Until the switch is read
+   * it holds its default, on, so a restored `?view=inbox` is kept rather than repaired.
+   * Reactive: read it in a `computed` to follow it.
+   */
+  inboxShown(): boolean {
+    return this.inbox.showInbox();
   }
 
   /** A Room the live client has not synced yet is kept; the Conversation decides. */

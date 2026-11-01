@@ -82,7 +82,11 @@ export function resolveWorkspaceNavigation(
             current.accountId === intent.accountId ? current.roomId : null,
           pane: current.accountId === intent.accountId ? current.pane : 'list',
         },
-        options: { source: 'user', history: 'push' },
+        // The inbox is a view over the list, not a place to return to.
+        options: {
+          source: 'user',
+          history: intent.scope.kind === 'inbox' ? 'replace' : 'push',
+        },
       };
     case 'room':
       return {

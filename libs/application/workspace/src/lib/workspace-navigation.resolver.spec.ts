@@ -285,3 +285,44 @@ describe('resolveWorkspaceNavigation — a room picked from the list on screen',
     ).toEqual({ kind: 'rooms' });
   });
 });
+
+describe('resolveWorkspaceNavigation — the inbox scope', () => {
+  const inbox = { kind: 'inbox' } as const;
+  const choose = (scope: WorkspaceNavigationScope) =>
+    resolveWorkspaceNavigation(
+      { kind: 'scope', accountId: '@a:hs', scope },
+      view({ scope: { kind: 'recent' } }),
+    );
+
+  it('replaces history when the inbox is chosen', () => {
+    expect(choose(inbox)?.options).toEqual({
+      source: 'user',
+      history: 'replace',
+    });
+  });
+
+  it('still pushes history when Recent is chosen', () => {
+    expect(choose({ kind: 'recent' })?.options.history).toBe('push');
+  });
+
+  it('keeps the inbox for a room picked from it, over the compact list', () => {
+    const resolved = resolveWorkspaceNavigation(
+      {
+        kind: 'room',
+        accountId: '@a:hs',
+        roomId: '!chat:hs',
+        origin: 'room-list',
+      },
+      view({ scope: inbox }),
+      { listBelow: false, compact: true },
+    );
+    expect(resolved?.destination.scope).toEqual(inbox);
+    expect(resolved?.options.overList).toBe(true);
+  });
+
+  it('opens a rail unread chat in Recent, as the inbox lists no chats', () => {
+    expect(scopeOf(view({ scope: inbox }), ['recent', 'home'])).toEqual({
+      kind: 'recent',
+    });
+  });
+});
