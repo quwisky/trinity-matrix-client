@@ -15,10 +15,12 @@ import {
   from,
   map,
   of,
+  retry,
   switchMap,
   take,
   tap,
   throwError,
+  timeout,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
@@ -70,6 +72,37 @@ import { QrAccountAlreadyStoredError } from './qr-sign-in/qr-sign-in.model';
 
 export type { LoginMode } from './account-establishment';
 export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
+
+/**
+ * How a sign-in ended. `new-device-required`: it reused a stored device the server no longer
+ * has keys for, so nothing was saved and only a sign-in as a new device can restore the account.
+ */
+export type SignInOutcome =
+  | AccountEstablishmentOutcome
+  | { readonly kind: 'new-device-required'; readonly accountId: string };
+
+/** One attempt at the device-key check; a hung answer must not hold up the sign-in. */
+const DEVICE_KEYS_CHECK_TIMEOUT_MS = 10_000;
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Whether a `/keys/query` answer lists the device; throws on one that is not an answer. */
+function listsDeviceKeys(
+  body: unknown,
+  userId: string,
+  deviceId: string,
+): boolean {
+  const users = isObject(body) ? body['device_keys'] : undefined;
+  const devices = isObject(users) ? users[userId] : undefined;
+  if (!isObject(devices)) throw new Error('Malformed device keys.');
+  const keys = devices[deviceId];
+  if (keys !== undefined && !isObject(keys)) {
+    throw new Error('Malformed device keys.');
+  }
+  return keys !== undefined;
+}
 
 /**
  * Handles homeserver discovery and authentication exchanges. Successful login methods
@@ -131,7 +164,7 @@ export class AuthService implements QrSignInCompletion {
     deviceId?: string,
     expectedUserId?: string,
     serverName?: string,
-  ): Observable<AccountEstablishmentOutcome> {
+  ): Observable<SignInOutcome> {
     return defer(() =>
       from(
         createClient({ baseUrl }).loginRequest({
@@ -171,7 +204,7 @@ export class AuthService implements QrSignInCompletion {
     mode: LoginMode = 'replace',
     deviceId?: string,
     expectedUserId?: string,
-  ): Observable<AccountEstablishmentOutcome> {
+  ): Observable<SignInOutcome> {
     return defer(() =>
       from(
         createClient({ baseUrl }).loginRequest({
@@ -220,7 +253,7 @@ export class AuthService implements QrSignInCompletion {
     context: OidcGrantContext,
     mode: LoginMode = 'replace',
     expectedUserId: string | null = null,
-  ): Observable<AccountEstablishmentOutcome> {
+  ): Observable<SignInOutcome> {
     return this.oidc.completeGrant(code, context).pipe(
       switchMap((grant) => this.rejectMismatchedGrant(grant, expectedUserId)),
       switchMap((grant) =>
@@ -497,7 +530,7 @@ export class AuthService implements QrSignInCompletion {
     expectedUserId?: string | null,
     requestedDeviceId?: string,
     enteredServerName?: string,
-  ): Observable<AccountEstablishmentOutcome> {
+  ): Observable<SignInOutcome> {
     // Every login method converges here, so this one check covers password, legacy SSO
     // and OIDC re-auth alike.
     if (expectedUserId && response.user_id !== expectedUserId) {
@@ -542,18 +575,29 @@ export class AuthService implements QrSignInCompletion {
         return throwError(() => error);
       }),
       switchMap((command) =>
-        this.confirmNewDevice(
-          baseUrl,
-          response,
-          requestedDeviceId,
-          device,
-        ).pipe(
-          switchMap(() =>
-            this.accounts.establishAuthenticatedAccount(
-              command.grant,
-              command.intent,
-            ),
-          ),
+        this.reusedDeviceHasKeys(baseUrl, response).pipe(
+          switchMap((hasKeys) => {
+            if (!hasKeys) {
+              this.signOutNewDevice(baseUrl, response);
+              return of({
+                kind: 'new-device-required',
+                accountId: response.user_id,
+              } as const);
+            }
+            return this.confirmNewDevice(
+              baseUrl,
+              response,
+              requestedDeviceId,
+              device,
+            ).pipe(
+              switchMap(() =>
+                this.accounts.establishAuthenticatedAccount(
+                  command.grant,
+                  command.intent,
+                ),
+              ),
+            );
+          }),
         ),
       ),
       tap((outcome) => {
@@ -587,6 +631,43 @@ export class AuthService implements QrSignInCompletion {
     return this.storage.record(userId).pipe(
       map((record) => !!record && sameHomeserver(record.baseUrl, baseUrl)),
       catchError(() => of(false)),
+    );
+  }
+
+  /**
+   * False when this sign-in reused the stored device and the server no longer has its keys.
+   * A session ended at the provider deletes the device and its keys; signing in with the same
+   * id restores only a bare device, and the crypto SDK never publishes keys twice, so that
+   * device could never be used. Asked before anything is saved or any client is touched.
+   * A sign-in on any other device has nothing to check.
+   */
+  private reusedDeviceHasKeys(
+    baseUrl: string,
+    response: AuthenticatedSessionResponse,
+  ): Observable<boolean> {
+    return this.storage.record(response.user_id).pipe(
+      // An unreadable record fails the sign-in in `confirmNewDevice`, which hands its session back.
+      catchError(() => of(null)),
+      switchMap((record) =>
+        record?.deviceId === response.device_id &&
+        sameHomeserver(record.baseUrl, baseUrl)
+          ? defer(() =>
+              createClient({
+                baseUrl,
+                accessToken: response.access_token,
+              }).downloadKeysForUsers([response.user_id]),
+            ).pipe(
+              map((body) =>
+                listsDeviceKeys(body, response.user_id, response.device_id),
+              ),
+              timeout(DEVICE_KEYS_CHECK_TIMEOUT_MS),
+              retry(1),
+              // shortcut: a deleted device plus a failed check gives a keyless device until the
+              // next re-auth; a guess must never clear a store, so re-check at startup if seen.
+              catchError(() => of(true)),
+            )
+          : of(true),
+      ),
     );
   }
 
@@ -654,7 +735,10 @@ export class AuthService implements QrSignInCompletion {
     );
   }
 
-  /** Hand back a session this sign-in created but will not use. Detached and best-effort. */
+  /**
+   * Hand back a session this sign-in created but will not use. Detached and best-effort: a
+   * failure leaves the session live at the server, unknown to this device.
+   */
   private signOutNewDevice(
     baseUrl: string,
     response: AuthenticatedSessionResponse,

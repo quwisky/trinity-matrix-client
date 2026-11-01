@@ -322,7 +322,15 @@ and sign in again.
 
 ## If your server ends a session {#session-ended}
 
-If your server ends a session, for example because you signed out on another device or
-an admin ended it, Trinity keeps the account and its encryption keys on this device and
-shows the sign-in page with the message "Sign in again to reconnect this account".
-Sign in again to carry on. You can also remove the account from that page.
+If your server stops accepting a session, Trinity keeps the account and its encryption
+keys on this device and shows the sign-in page with the message "Sign in again to
+reconnect this account". Sign in again to carry on. You can also remove the account from
+that page.
+
+If the session was ended for good, for example because you signed out on another device or
+an admin ended it, your server has deleted this device. After you sign in, Trinity asks you
+to sign in once more, with the message "Sign in again to reconnect this account. This device
+will need to be verified again." Your provider may ask for your consent again. That sign-in
+makes a new device and clears the old one's keys from this device, so you can read older
+encrypted messages only with key backup or another signed-in device. Until you finish it,
+nothing is cleared.

@@ -1799,6 +1799,100 @@ describe('LoginPage', () => {
     });
   });
 
+  describe('a re-auth as a new device', () => {
+    const NEW_DEVICE_COPY =
+      'Sign in again to reconnect this account. This device will need to be verified again.';
+    const RECORD = {
+      baseUrl: 'https://hs.example',
+      userId: '@bob:hs',
+      deviceId: 'OLDDEV',
+    };
+    const subtitle = (
+      fixture: Awaited<ReturnType<typeof renderLogin>>['fixture'],
+    ): string => {
+      fixture.detectChanges();
+      return (fixture.nativeElement as HTMLElement)
+        .querySelector('.login-card__subtitle')!
+        .textContent!.replace(/\s+/g, ' ')
+        .trim();
+    };
+    const passwordAuth = (outcome: unknown) =>
+      ({
+        getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+        getDelegatedAuthConfig: vi.fn(() => of(null)),
+        loginWithPassword: vi.fn(() => of(outcome)),
+      }) as unknown as Partial<AuthService>;
+    const NO_KEYS = { kind: 'new-device-required', accountId: '@bob:hs' };
+
+    it('shows that the device will need verifying on a new-device re-auth only', async () => {
+      const auth = passwordAuth(READY_OUTCOME);
+      const newDevice = await renderLogin(auth, {
+        reauth: '@bob:hs',
+        newDevice: true,
+        record: RECORD,
+      });
+      expect(subtitle(newDevice.fixture)).toBe(NEW_DEVICE_COPY);
+      TestBed.resetTestingModule();
+
+      const sameDevice = await renderLogin(auth, {
+        reauth: '@bob:hs',
+        record: RECORD,
+      });
+      expect(subtitle(sameDevice.fixture)).toBe(
+        'Sign in again to reconnect this account',
+      );
+      TestBed.resetTestingModule();
+
+      // The parameter means nothing outside a re-auth.
+      const plain = await renderLogin(auth, { newDevice: true });
+      plain.cmp.baseUrl.set('https://hs.example');
+      expect(subtitle(plain.fixture)).toBe('Sign in to your account');
+    });
+
+    it('sends the person to the new-device sign-in after a password re-auth', async () => {
+      const auth = passwordAuth(NO_KEYS);
+      const { fixture, cmp, router } = await renderLogin(auth, {
+        reauth: '@bob:hs',
+        record: RECORD,
+      });
+      const navigate = vi.spyOn(router, 'navigateByUrl');
+
+      cmp.loginPassword();
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(
+        '/login?reauth=%40bob%3Ahs&device=new',
+        { replaceUrl: true },
+      );
+      // The router keeps this page, so the page itself moves on to the new device.
+      expect(subtitle(fixture)).toBe(NEW_DEVICE_COPY);
+      cmp.loginPassword();
+      expect(auth.loginWithPassword).toHaveBeenLastCalledWith(
+        'https://hs.example',
+        '@bob:hs',
+        '',
+        'add',
+        undefined,
+        '@bob:hs',
+        undefined,
+      );
+    });
+
+    it('opens the rooms after a sign-in that kept its device', async () => {
+      const { cmp, router } = await renderLogin(passwordAuth(READY_OUTCOME), {
+        reauth: '@bob:hs',
+        record: RECORD,
+      });
+      const navigate = vi.spyOn(router, 'navigateByUrl');
+
+      cmp.loginPassword();
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith('/rooms', {
+        replaceUrl: true,
+      });
+      expect(cmp.reauthAsNewDevice()).toBe(false);
+    });
+  });
+
   describe('removing the account from its re-auth', () => {
     const OIDC_RECORD = {
       baseUrl: 'https://hs.example',
@@ -1904,7 +1998,7 @@ describe('LoginPage', () => {
     });
 
     it('stays disabled while the removal runs on in the background', async () => {
-      const { fixture } = await renderLogin(OIDC_AUTH, {
+      const { fixture, cmp } = await renderLogin(OIDC_AUTH, {
         reauth: '@bob:hs',
         record: OIDC_RECORD,
         removal: of({ kind: 'still-running' }),
@@ -1913,6 +2007,9 @@ describe('LoginPage', () => {
       removeButton(fixture)?.click();
 
       expect(removeButton(fixture)?.disabled).toBe(true);
+      expect(cmp.error()).toBe(
+        'Removal is still running. If this page doesn’t change, restart Trinity.',
+      );
     });
 
     it('can not start a second removal while one is running', async () => {

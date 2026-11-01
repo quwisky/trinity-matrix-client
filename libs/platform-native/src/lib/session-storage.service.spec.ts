@@ -1659,6 +1659,25 @@ describe('SessionStorageService', () => {
       );
     });
 
+    it('clears the old store only when the new device signs in', async () => {
+      const deleteDatabase = stubIndexedDb();
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      // A server-ended session: its token is dropped, and a same-device sign-in changes nothing.
+      await firstValueFrom(svc.invalidateToken(ALICE.userId));
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.invalidateToken(ALICE.userId));
+      expect(deleteDatabase).not.toHaveBeenCalled();
+
+      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+
+      expect(deleteDatabase).toHaveBeenCalledWith(
+        'trinity-crypto:@alice:hs:DEV1::matrix-sdk-crypto',
+      );
+      const [record] = await firstValueFrom(svc.list());
+      expect(record.deviceId).toBe('DEV1b');
+    });
+
     it('gives a store without a key an encrypted successor when the device changes', async () => {
       stubIndexedDb();
       const { svc, secure, keys } = setup();

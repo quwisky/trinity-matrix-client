@@ -19,7 +19,10 @@ import {
 } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
-import { accountEstablishmentError } from '../account-establishment-outcome';
+import {
+  accountEstablishmentError,
+  signInDestination,
+} from '../account-establishment-outcome';
 
 /**
  * Landing route for the auth redirect, for both login flows: legacy SSO returns
@@ -139,7 +142,9 @@ export class SsoCallbackPage implements OnInit {
             this.error.set(error);
             return;
           }
-          void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+          void this.router.navigateByUrl(signInDestination(outcome), {
+            replaceUrl: true,
+          });
         },
         error: (err) =>
           this.error.set(err instanceof Error ? err.message : String(err)),
@@ -215,7 +220,9 @@ export class SsoCallbackPage implements OnInit {
             this.error.set(error);
             return;
           }
-          void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+          void this.router.navigateByUrl(signInDestination(outcome), {
+            replaceUrl: true,
+          });
         },
         error: (err) => {
           // A provider that pruned our dynamic registration fails with invalid_client

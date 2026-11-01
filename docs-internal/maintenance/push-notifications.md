@@ -306,7 +306,9 @@ refresh can leave three things behind, and a refresh that outlasts a lock a four
   the app keeps the spent refresh token in memory and in storage, and the next refresh
   reuses it. A provider that rejects reused refresh tokens answers `invalid_grant`, and the
   SDK reports the session as refused, which is a soft logout on every platform: the keys
-  stay and the `reauth` flow is offered. MAS deployments that
+  stay and the `reauth` flow is offered. A refusal alone leaves the device and its keys on the
+  server, so that sign-in keeps them; a session ended at the provider has deleted them, and
+  the sign-in moves the account to a new device. MAS deployments that
   include its idempotent refresh-token grant (matrix-authentication-service PR #3650)
   accept the reuse while neither the new access token nor the new refresh token has been
   used, which is the lost-response case. Other providers may not; the device check in

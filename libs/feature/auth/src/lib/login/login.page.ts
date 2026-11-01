@@ -76,7 +76,10 @@ import {
   installationResetFailureMessage,
 } from './clear-all-data';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
-import { accountEstablishmentError } from '../account-establishment-outcome';
+import {
+  accountEstablishmentError,
+  signInDestination,
+} from '../account-establishment-outcome';
 import { QrSignInPanelComponent } from './qr-sign-in-panel/qr-sign-in-panel.component';
 
 const ACCOUNT_NOT_STORED = 'That account is no longer stored.';
@@ -84,6 +87,8 @@ const DISCOVERY_FALLBACK =
   "We couldn't find a homeserver at that address. Check it and try again.";
 const SIGN_IN_FALLBACK = "We couldn't sign you in. Try again.";
 const REMOVAL_FAILED = 'Unable to remove this account right now.';
+const REMOVAL_STILL_RUNNING =
+  'Removal is still running. If this page doesn’t change, restart Trinity.';
 
 /**
  * Plain-language text for a failed discovery or sign-in request. A 401/403 from the
@@ -207,11 +212,13 @@ export class LoginPage {
   private enteredServerName: string | null = null;
   /**
    * `&device=new` on a re-auth: sign in as a new device even when the stored one could be
-   * reused. A store created without a key stays unencrypted on its own device; a new device
-   * gets an encrypted store, and saving it removes the old one.
+   * reused. A store created without a key stays unencrypted on its own device, and a device
+   * the server deleted can't publish its keys again; a new device gets a new store, and saving
+   * it removes the old one.
    */
-  private readonly reauthAsNewDevice =
-    this.route.snapshot.queryParamMap.get('device') === 'new';
+  readonly reauthAsNewDevice = signal(
+    this.route.snapshot.queryParamMap.get('device') === 'new',
+  );
 
   /**
    * Accounts stored on this device, for the erase confirmation to name: `/login?add` is
@@ -251,7 +258,7 @@ export class LoginPage {
             this.reauthRemovable.set(!!record.oidc);
             // Reuse the device unless its stored keys can no longer be unlocked here:
             // then only a new device, with a new store and key, can sign back in.
-            const reusable = this.reauthAsNewDevice
+            const reusable = this.reauthAsNewDevice()
               ? of(null)
               : this.storage.reusableDeviceId(record);
             return reusable.pipe(
@@ -497,7 +504,14 @@ export class LoginPage {
         this.credentialsError.set(error);
         return;
       }
-      void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+      if (outcome.kind === 'new-device-required') {
+        // The router keeps this page across `/login` URLs, so it won't read the new one.
+        this.reauthAsNewDevice.set(true);
+        this.reauthDeviceId = null;
+      }
+      void this.router.navigateByUrl(signInDestination(outcome), {
+        replaceUrl: true,
+      });
     });
   }
 
@@ -555,6 +569,8 @@ export class LoginPage {
         running = outcome.kind === 'still-running';
         if (outcome.kind === 'failed') {
           this.error.set(REMOVAL_FAILED);
+        } else if (running) {
+          this.error.set(REMOVAL_STILL_RUNNING);
         } else if (outcome.kind === 'removed') {
           if (this.accounts.hasActiveAccount()) {
             void this.router.navigateByUrl('/rooms', { replaceUrl: true });

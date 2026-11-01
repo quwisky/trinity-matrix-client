@@ -119,6 +119,58 @@ async function renderPage(opts: {
 }
 
 describe('SsoCallbackPage', () => {
+  describe('a re-auth whose device the server no longer has', () => {
+    const NO_KEYS = {
+      kind: 'new-device-required',
+      accountId: '@me:hs',
+    } as const;
+
+    it('sends the person to the new-device sign-in after OIDC', async () => {
+      const { cmp, navigateByUrl } = await renderPage({
+        auth: { completeOidcLogin: vi.fn(() => of(NO_KEYS)) },
+        params: { code: 'c', state: 's' },
+        oidcStash: {
+          state: 's',
+          baseUrl: 'https://hs',
+          mode: 'add',
+          redirectUri: 'https://app/cb',
+          issuer: 'https://op',
+          authorizationEndpoint: 'https://op/authorize',
+          tokenEndpoint: 'https://op/token',
+          clientId: 'c1',
+          deviceId: 'DEV',
+          codeVerifier: 'v',
+          expectedUserId: '@me:hs',
+        },
+      });
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+        '/login?reauth=%40me%3Ahs&device=new',
+        { replaceUrl: true },
+      );
+      expect(cmp.error()).toBeNull();
+    });
+
+    it('sends the person to the new-device sign-in after legacy SSO', async () => {
+      const { navigateByUrl } = await renderPage({
+        auth: { completeSsoLogin: vi.fn(() => of(NO_KEYS)) },
+        params: { loginToken: 't', sso_state: 's' },
+        ssoStash: {
+          state: 's',
+          baseUrl: 'https://hs',
+          mode: 'add',
+          deviceId: 'DEV',
+          expectedUserId: '@me:hs',
+        },
+      });
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+        '/login?reauth=%40me%3Ahs&device=new',
+        { replaceUrl: true },
+      );
+    });
+  });
+
   describe('Back to sign in', () => {
     it('offers the first signed-out OAuth account its same device again', async () => {
       const { cmp, navigateByUrl } = await renderPage({

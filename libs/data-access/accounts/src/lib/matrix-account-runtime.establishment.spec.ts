@@ -635,6 +635,18 @@ describe('replacing a stored device', () => {
     expect(order).toEqual(['persist', 'start', 'logout']);
   });
 
+  it('signs nothing out when the replaced device has no token', async () => {
+    const test = setup();
+    const { accessToken: _access, ...tokenless } = OLD_SESSION;
+    vi.mocked(test.storage.record).mockReturnValue(of(tokenless));
+    vi.mocked(test.storage.load).mockReturnValue(of(null));
+
+    await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+
+    expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    expect(test.storage.removeNativeTokens).not.toHaveBeenCalled();
+  });
+
   it("removes the replaced device's native tokens after its sign-out ran", async () => {
     const test = setup();
     const order: string[] = [];
