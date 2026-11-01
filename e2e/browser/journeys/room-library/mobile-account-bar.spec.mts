@@ -10,8 +10,8 @@ import { createRoom } from '../../support/space-journey.mts';
 //
 // Needs a homeserver (Docker or native) and self-skips otherwise.
 const session = homeserverSession();
-const SPACES = 16;
-const ROOMS = 30;
+const SPACES = 13;
+const ROOMS = 18;
 
 async function seedAccount(
   page: Page,
@@ -32,14 +32,16 @@ async function seedAccount(
     })
     .then((r) => r.json())
     .then((j) => j.access_token as string);
-  for (let i = 0; i < SPACES; i++) {
-    await createRoom(request, hs, { accessToken }, `Space ${runId} ${i}`, {
-      space: true,
-    });
-  }
-  for (let i = 0; i < ROOMS; i++) {
-    await createRoom(request, hs, { accessToken }, `Room ${runId} ${i}`);
-  }
+  await Promise.all([
+    ...Array.from({ length: SPACES }, (_, i) =>
+      createRoom(request, hs, { accessToken }, `Space ${runId} ${i}`, {
+        space: true,
+      }),
+    ),
+    ...Array.from({ length: ROOMS }, (_, i) =>
+      createRoom(request, hs, { accessToken }, `Room ${runId} ${i}`),
+    ),
+  ]);
   await login(page, { available: true, hs, user, pass });
   await page.getByTestId('rail-rooms').click();
   await expect(page.locator('.sidebar__scroll .channel').first()).toBeVisible({
@@ -56,24 +58,49 @@ async function expectBarClearsEverything(page: Page): Promise<void> {
     };
     const rail = q('.rail-scroll');
     const rooms = q('.sidebar__scroll');
-    // The windowed list renders a slice, so scroll until the end is real.
+    // The room list is windowed, so scroll until the end is real.
     for (let i = 0; i < 6; i++) {
       rail.scrollTop = rail.scrollHeight;
       rooms.scrollTop = rooms.scrollHeight;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    const atEnd = (e: HTMLElement) =>
+      e.scrollTop + e.clientHeight >= e.scrollHeight - 1;
     const bar = q('.userbar').getBoundingClientRect();
     const shell = q('.shell-side').getBoundingClientRect();
-    const lastSpace = rail.lastElementChild as HTMLElement;
-    const lastRoom = rooms.querySelector<HTMLElement>(
-      '.channel-row:last-of-type, .channel:last-of-type',
-    );
-    const rows = [...rooms.querySelectorAll<HTMLElement>('.channel')];
-    const lastRow = rows[rows.length - 1] ?? lastRoom;
-    // The rail's final child is the add button, so test the last real space as well.
-    const spaces = [...rail.querySelectorAll<HTMLElement>('button, a')];
-    const lastIcon = spaces[spaces.length - 1] ?? lastSpace;
-    const doc = document.documentElement;
+    const bottomOf = (e: Element | null) =>
+      (e as HTMLElement).getBoundingClientRect().bottom;
+    const host = q('trn-sidebar-user-panel');
+    // The real final items, with each scroller proven to sit at its end.
+    const lastIcon = rail.lastElementChild;
+    const lastRoom = rooms.lastElementChild;
+    const bottomClearance = (safe: string) => {
+      q('.shell-side').style.setProperty(
+        '--trinity-navigation-safe-area-bottom',
+        safe,
+      );
+      return {
+        distance:
+          window.innerHeight - q('.userbar').getBoundingClientRect().bottom,
+        space3: parseFloat(getComputedStyle(host).insetInlineStart),
+      };
+    };
+    const edges = {
+      lastIconBottom: bottomOf(lastIcon),
+      lastRoomBottom: bottomOf(lastRoom),
+      railRight: q('.rail').getBoundingClientRect().right,
+      roomLeft: q('.sidebar').getBoundingClientRect().left,
+    };
+    const state = {
+      railOverflows: rail.scrollHeight > rail.clientHeight,
+      roomsOverflow: rooms.scrollHeight > rooms.clientHeight,
+      railAtEnd: atEnd(rail),
+      roomsAtEnd: atEnd(rooms),
+      sideways: [rail, rooms, document.documentElement].map(
+        (e) => e.scrollWidth - e.clientWidth,
+      ),
+    };
+    const forced = bottomClearance('34px');
     return {
       bar: {
         left: bar.left,
@@ -82,16 +109,24 @@ async function expectBarClearsEverything(page: Page): Promise<void> {
         bottom: bar.bottom,
       },
       shell: { left: shell.left, right: shell.right, bottom: shell.bottom },
-      railRight: q('.rail').getBoundingClientRect().right,
-      roomLeft: q('.sidebar').getBoundingClientRect().left,
-      lastIconBottom: lastIcon.getBoundingClientRect().bottom,
-      lastRoomBottom: lastRow.getBoundingClientRect().bottom,
-      position: getComputedStyle(q('trn-sidebar-user-panel')).position,
-      sideways: [rail, rooms, doc].map((e) => e.scrollWidth - e.clientWidth),
-      viewport: window.innerWidth,
+      ...edges,
+      ...state,
+      position: getComputedStyle(host).position,
+      forced,
     };
   });
   expect(geometry.position).toBe('absolute');
+  expect({
+    railOverflows: geometry.railOverflows,
+    roomsOverflow: geometry.roomsOverflow,
+    railAtEnd: geometry.railAtEnd,
+    roomsAtEnd: geometry.roomsAtEnd,
+  }).toEqual({
+    railOverflows: true,
+    roomsOverflow: true,
+    railAtEnd: true,
+    roomsAtEnd: true,
+  });
   expect(geometry.lastIconBottom).toBeLessThanOrEqual(geometry.bar.top - 1);
   expect(geometry.lastRoomBottom).toBeLessThanOrEqual(geometry.bar.top - 1);
   expect(geometry.bar.left - geometry.shell.left).toBeGreaterThanOrEqual(8);
@@ -99,6 +134,8 @@ async function expectBarClearsEverything(page: Page): Promise<void> {
   expect(geometry.bar.left).toBeLessThan(geometry.railRight);
   expect(geometry.bar.right).toBeGreaterThan(geometry.roomLeft);
   expect(geometry.shell.bottom - geometry.bar.bottom).toBeGreaterThanOrEqual(8);
+  // The safe area is counted once: card bottom to viewport bottom is the safe area plus space-3.
+  expect(geometry.forced.distance).toBe(34 + geometry.forced.space3);
   expect(geometry.sideways).toEqual([0, 0, 0]);
 }
 
@@ -117,5 +154,11 @@ test.describe('Account bar on a phone', () => {
     await page.locator('.sidebar__scroll .channel').first().click();
     await expect(page.getByTestId('back-to-rooms')).toBeVisible();
     await expect(page.locator('.userbar')).toBeHidden();
+  });
+
+  test('keeps the same geometry on desktop', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await seedAccount(page, request);
+    await expectBarClearsEverything(page);
   });
 });

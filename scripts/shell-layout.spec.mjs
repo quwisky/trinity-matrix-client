@@ -115,6 +115,9 @@ describe('modern room shell layout contracts', () => {
     expect(ruleBody(headerCss, '.sidebar__header')).toContain(
       'background: var(--trinity-surface-navigation-header)',
     );
+    expect(ruleBody(userPanelCss, '.userbar')).toContain(
+      'background: var(--trinity-surface-floating-card)',
+    );
     // Rail tiles must read against the rail ground, so never paint them with it.
     expect(ruleBody(railCss, '.pill')).toContain(
       'background: var(--trinity-state-hover-surface)',
