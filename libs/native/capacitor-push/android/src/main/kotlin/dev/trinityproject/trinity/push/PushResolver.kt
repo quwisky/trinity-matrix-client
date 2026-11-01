@@ -157,6 +157,10 @@ class PushResolver(
                 ?: return fallback(account, accountId, roomId, eventId, tokenExpired = false)
             read = api.event(account, roomId, eventId, deadline)
         }
+        // A state read would carry the token the homeserver just rejected.
+        if (read == PushEventRead.Unauthorized) {
+            return fallback(account, accountId, roomId, eventId, tokenExpired = false)
+        }
         val event = (read as? PushEventRead.Event)?.json
         val storedRoom = store.room(accountId, roomId)
         val stateRoomName = if (storedRoom == null) api.roomName(account, roomId, deadline) else null

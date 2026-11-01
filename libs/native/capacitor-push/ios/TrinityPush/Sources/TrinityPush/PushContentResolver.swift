@@ -64,6 +64,10 @@ public struct PushContentResolver {
             deadline = Date().addingTimeInterval(budget)
             read = await api.event(account: account, roomId: payload.roomId, eventId: payload.eventId, deadline: deadline)
         }
+        // A state read would carry the token the homeserver just rejected.
+        if case .unauthorized = read {
+            return .rendered(fallback(for: payload, tokenExpired: false), sound: account.sound)
+        }
         var event: [String: Any]?
         if case .event(let object) = read { event = object }
         let storedRoom = store.room(payload.accountId, payload.roomId)
@@ -84,8 +88,10 @@ public struct PushContentResolver {
         return .rendered(rendered, sound: account.sound)
     }
 
-    /// The account with a usable token; nil for every other answer, which shows the fallback.
+    /// The account with a usable token; nil for every other answer, which shows the fallback. Always
+    /// hide shows no text, so it spends no refresh token.
     private func refreshed(_ account: HandoffAccount, _ payload: PushPayload) async -> HandoffAccount? {
+        guard store.notificationText() != .alwaysHide else { return nil }
         let answer = await tokens?.refreshForPush(
             account: payload.accountId, tokenSeen: account.accessToken, budget: refreshBudget)
         switch answer {

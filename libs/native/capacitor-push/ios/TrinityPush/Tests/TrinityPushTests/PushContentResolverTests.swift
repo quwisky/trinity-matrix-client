@@ -7,8 +7,8 @@ private struct FakeStore: HandoffReading {
     var rooms: [String: [String: HandoffRoom]] = [:]
     func account(_ userId: String) -> HandoffAccount? { accounts[userId] }
     func room(_ userId: String, _ roomId: String) -> HandoffRoom? { rooms[userId]?[roomId] }
-    /// The resolver doesn't read the mirror yet; the fake answers explicitly.
-    func notificationText() -> NotificationTextMode { .show }
+    var text = NotificationTextMode.show
+    func notificationText() -> NotificationTextMode { text }
 }
 
 private final class FakeAPI: MatrixPushAPI, @unchecked Sendable {
@@ -331,6 +331,36 @@ final class PushContentResolverTests: XCTestCase {
         XCTAssertEqual(body(resolution), "New message")
         XCTAssertEqual(tokens.calls, 1)
         XCTAssertEqual(api.eventCalls, 2)
+    }
+
+    func testASecond401ReadsNoRoomStateWithTheRejectedToken() async {
+        let afterA401 = FakeAPI(eventReads: [.unauthorized, .unauthorized])
+        let afterExpiry = FakeAPI(eventReads: [.unauthorized])
+        let tokens = FakeTokens(answer: .rotated(tokenRecord(accessToken: "new"), unsaved: false))
+        let valid = FakeStore(accounts: ["@alice:hs": entry(expired: false)])
+        let expired = FakeStore(accounts: ["@alice:hs": entry(expired: true)])
+
+        let first = await PushContentResolver(store: valid, api: afterA401, tokens: tokens).resolve(payload())
+        let second = await PushContentResolver(store: expired, api: afterExpiry, tokens: tokens).resolve(payload())
+
+        let shown = RenderedNotification(title: "Trinity", subtitle: "", body: "New message")
+        XCTAssertEqual(first, .rendered(shown, sound: true))
+        XCTAssertEqual(second, .rendered(shown, sound: true))
+        XCTAssertEqual(afterA401.accounts.map(\.accessToken), ["old", "new"])
+        XCTAssertEqual(afterExpiry.accounts.map(\.accessToken), ["new"])
+    }
+
+    func testAlwaysHideSpendsNoRefreshToken() async {
+        let expired = FakeStore(accounts: ["@alice:hs": entry(expired: true)], rooms: team, text: .alwaysHide)
+        let valid = FakeStore(accounts: ["@alice:hs": entry(expired: false)], rooms: team, text: .alwaysHide)
+        let tokens = FakeTokens(answer: .rotated(tokenRecord(accessToken: "new"), unsaved: false))
+        let oneRead = FakeAPI(eventReads: [.unauthorized])
+
+        _ = await PushContentResolver(store: expired, api: FakeAPI(), tokens: tokens).resolve(payload())
+        _ = await PushContentResolver(store: valid, api: oneRead, tokens: tokens).resolve(payload())
+
+        XCTAssertEqual(tokens.calls, 0)
+        XCTAssertEqual(oneRead.eventCalls, 1)
     }
 
     func testATokenlessEntryShowsTheOpenTrinityTextWithoutAFetch() async {

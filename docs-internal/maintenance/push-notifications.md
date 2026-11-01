@@ -224,7 +224,7 @@ the notification-sound choice, plus App lock's effective Notification text (`set
 iOS app-group `push-handoff/settings.json`, Android `settings:notification-text`; missing reads as
 Show and unreadable as Always hide), room display names, DM flags and whether each room counts
 as encrypted (`RoomEncryptionFlags`; unknown until the crypto store answers, which counts as
-encrypted) written in one batch per sync or rename. An OAuth account's entry holds its homeserver URL and sound choice. Its tokens are in the token
+encrypted) written in one batch per sync or rename. An OAuth account moved to the vault has an entry holding only its homeserver URL and sound choice. Its tokens are in the token
 vault beside the store (iOS keychain service `dev.trinityproject.trinity.push-tokens`, Android the
 preferences file `trinity_push_tokens`), readable after first unlock, and native code overlays
 them on the entry at every read. The entry never holds a refresh token: the vault does. Neither holds crypto
@@ -385,8 +385,8 @@ message" while Show Previews hides previews, and `VISIBILITY_PRIVATE` with a gen
 version on Android, which is used where the lock-screen setting hides sensitive content. Always
 hide renders only "New message" with no title (the system shows the app's name); on iOS without
 reading the event or making any network request, while on Android the renderer still fetches it
-and drops the text before posting. Both renderers read the mode just before
-posting (iOS a second time); with no store, iOS hides everything.
+and drops the text before posting. Neither platform refreshes a token under Always hide. Both
+renderers read the mode just before posting (iOS a second time); with no store, iOS hides everything.
 
 A refresh takes the account's lease first and reads the vault again under it, so the app and
 a renderer that need a token at the same time make one grant, and the second takes the pair the
@@ -409,6 +409,7 @@ does not refresh again. These are the results, shared by both renderers through 
 | Read answers 401                               | `busy`, `transient`, `unavailable`, `refused` or `gone`                     | "New message"                                                                           |
 | Any other failed read                          | none                                                                        | "New message", no refresh                                                               |
 | Entry with no token (signed-out OAuth account) | none                                                                        | "Open Trinity to read this message", no read                                            |
+| Before first unlock (iOS)                      | none                                                                        | The gateway's alert as delivered: the keychain can't be read yet                        |
 
 **Who presents in the background.** Once Android push is registered,
 `PushService.backgroundDelivery` is `push`, and the notification policy stops the running
@@ -435,6 +436,8 @@ Nothing here has run on a device or against matrix.org; the suites above use loc
 - Keychain availability around a lock.
 - Doze and FCM priority on Android.
 - Real token lifetimes and reuse on matrix.org.
+- The 29 s worst case against the extension's real limit, measured on a device.
+- An FCM burst behind a stalled 8 s refresh, since a queued push waits its turn.
 - Android's freezer lapsing the 21 s lease mid-grant: the app's late grant and a push's grant
   can both reach the provider, and one send uses a spent token.
 - A frozen app with N pushes: each push past the lapsed lease sends the spent refresh token, so

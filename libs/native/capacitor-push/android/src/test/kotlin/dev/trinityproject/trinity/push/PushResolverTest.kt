@@ -336,6 +336,24 @@ class PushResolverTest {
     }
 
     @Test
+    fun aSecondUnauthorizedReadReadsNoRoomStateWithTheRejectedToken() {
+        val afterAnUnauthorizedRead = FakeApi(reads = listOf(PushEventRead.Unauthorized), roomName = "Lobby")
+        val afterExpiry = FakeApi(reads = listOf(PushEventRead.Unauthorized), roomName = "Lobby")
+        val tokens = FakeTokens(TokenRefreshResult.Rotated(R0.copy(accessToken = "new"), unsaved = false))
+        val valid = FakeStore(mapOf("@alice:hs" to entry(expired = false)))
+        val expired = FakeStore(mapOf("@alice:hs" to entry(expired = true)))
+
+        val first = post(PushResolver(valid, afterAnUnauthorizedRead, tokens = tokens).resolve(push()))
+        val second = post(PushResolver(expired, afterExpiry, tokens = tokens).resolve(push()))
+
+        val shown = RenderedNotification("Trinity", "", "New message")
+        assertEquals(shown, first.notification)
+        assertEquals(shown, second.notification)
+        assertEquals(listOf("old", "new"), afterAnUnauthorizedRead.accounts.map { it.accessToken })
+        assertEquals(listOf("new"), afterExpiry.accounts.map { it.accessToken })
+    }
+
+    @Test
     fun aTokenlessEntryShowsTheOpenTrinityTextWithoutAFetch() {
         val tokenless = HandoffAccount("https://a.example", "", sound = true).overlaidBy(TokenVaultRead.Absent)
         val api = FakeApi(event = message())

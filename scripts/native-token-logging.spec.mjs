@@ -26,7 +26,21 @@ const kotlinNames = [
   'TokenLeases.kt',
 ];
 
-const files = [
+const renderers = [
+  join(swift, 'PushContentResolver.swift'),
+  join(swift, 'MatrixPushAPI.swift'),
+  join(kotlin, 'PushResolver.kt'),
+  join(kotlin, 'HttpMatrixApi.kt'),
+  join(kotlin, 'BoundedPushResolver.kt'),
+  join(root, 'ios/App/NotificationService/NotificationService.swift'),
+  join(push, 'ios/Sources/PushHandoffPlugin/PushHandoffPlugin.swift'),
+  join(
+    push,
+    'android/src/main/java/dev/trinityproject/trinity/PushHandoffPlugin.java',
+  ),
+];
+
+const tokenFiles = [
   ...readdirSync(swift)
     .filter(
       (n) =>
@@ -37,14 +51,17 @@ const files = [
     .filter((n) => /Token.*\.kt$/.test(n) || n === 'TokenLeases.kt')
     .map((n) => join(kotlin, n)),
 ];
+const files = [...tokenFiles, ...renderers];
 
-const logging = /print\(|NSLog|os_log|Logger\(|\bLog\.|println/;
+const logging =
+  /print\(|NSLog|os_log|Logger\(|\bLog\.|println|printStackTrace|System\.(out|err)/;
 
 describe('native token sources', () => {
   it('found every known file, so an empty glob cannot pass', () => {
-    expect(files.map((f) => f.split('/').pop()).sort()).toEqual(
+    expect(tokenFiles.map((f) => f.split('/').pop()).sort()).toEqual(
       [...swiftNames, ...kotlinNames].sort(),
     );
+    expect(files).toHaveLength(18);
   });
 
   it.each(files)('%s writes nothing to a log', (file) => {
