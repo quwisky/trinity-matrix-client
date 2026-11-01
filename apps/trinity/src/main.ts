@@ -1,5 +1,6 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideServiceWorker } from '@angular/service-worker';
+import { seedSystemColourMode } from '@trinity/application/appearance';
 import {
   ApplicationRootComponent,
   provideTrinityApplication,
@@ -22,6 +23,8 @@ const serviceWorkerEnabled =
   environment.production &&
   !isInstalledNativePlatform() &&
   !isElectronRenderer();
+
+seedSystemColourMode();
 
 void bootstrapApplication(ApplicationRootComponent, {
   providers: [

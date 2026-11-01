@@ -106,6 +106,23 @@ export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapt
   }
 }
 
+/**
+ * Appearance stamps the Mode only after preferences load, seconds into a cold start. Until
+ * then the app would render light over the dark boot splash, so startup seeds it from the
+ * system, the default preference. Appearance overrides it once the stored Mode is known.
+ */
+export function seedSystemColourMode(
+  doc: Document = document,
+  win: Window = window,
+): void {
+  // This runs before bootstrap, so a throw here would leave a blank app.
+  if (typeof win.matchMedia !== 'function') return;
+  doc.documentElement.classList.toggle(
+    DARK_CLASS,
+    win.matchMedia('(prefers-color-scheme: dark)').matches,
+  );
+}
+
 export const APPEARANCE_DOCUMENT_ADAPTER =
   new InjectionToken<AppearanceDocumentAdapter>('APPEARANCE_DOCUMENT_ADAPTER', {
     providedIn: 'root',

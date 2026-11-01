@@ -255,19 +255,16 @@ export const OUTPUTS = [
     () => markOnly(1024, TINT_MARK, 0.66),
     { rule: 'mark-on-transparent' },
   ),
-  out(
-    `${IOS}/Splash.imageset/splash-2732x2732.png`,
-    2732,
-    2732,
-    () => splash(2732, 2732),
-    { alpha: false },
+  // The launch screen logo: the plated icon at 120 pt on a solid colour set (LaunchBackground).
+  ...[
+    ['launch-logo.png', 1],
+    ['launch-logo@2x.png', 2],
+    ['launch-logo@3x.png', 3],
+  ].map(([name, k]) =>
+    out(`${IOS}/LaunchLogo.imageset/${name}`, 120 * k, 120 * k, () =>
+      plated(120 * k),
+    ),
   ),
-  // The other two scales are the same image; copy it instead of rendering it again.
-  ...['splash-2732x2732-1.png', 'splash-2732x2732-2.png'].map((name) => ({
-    path: `${IOS}/Splash.imageset/${name}`,
-    copyOf: `${IOS}/Splash.imageset/splash-2732x2732.png`,
-    fromOutput: true,
-  })),
   // Copied, not rendered: the transparent mark as an SVG favicon.
   { path: `${ICON_DIR}/favicon.svg`, copyOf: `${ICON_DIR}/icon.svg` },
 ];
