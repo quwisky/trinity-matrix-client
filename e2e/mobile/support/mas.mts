@@ -298,30 +298,38 @@ export function documentNow(): Promise<number> {
 }
 
 /**
- * The statuses of this document's finished requests to the homeserver that started after `since`,
- * read after {@link recordRequests}. Only `path` when given. These are the app's own requests,
- * unlike {@link whoamiWithVaultToken}, as long as a test sends none of its own in the window.
+ * This document's finished requests to the homeserver that started after `since`, read after
+ * {@link recordRequests}. These are the app's own, unlike {@link whoamiWithVaultToken}, as long
+ * as a test sends none of its own in the window.
  */
-export function homeserverStatusesSince(
+export function homeserverRequestsSince(
   baseUrl: string,
   since: number,
-  path = '',
-): Promise<number[]> {
+): Promise<{ path: string; status: number }[]> {
   return browser.execute(
-    (origin: string, after: number, suffix: string): number[] =>
+    (origin: string, after: number) =>
       performance
         .getEntriesByType('resource')
         .filter(
-          (entry) =>
-            entry.startTime > after &&
-            entry.name.startsWith(origin) &&
-            new URL(entry.name).pathname.endsWith(suffix),
+          (entry) => entry.startTime > after && entry.name.startsWith(origin),
         )
-        .map((entry) => (entry as PerformanceResourceTiming).responseStatus),
+        .map((entry) => ({
+          path: new URL(entry.name).pathname,
+          status: (entry as PerformanceResourceTiming).responseStatus,
+        })),
     baseUrl,
     since,
-    path,
   );
+}
+
+/** The paths the homeserver refused with 401 since `since`, an expired or bad token's answer. */
+export async function homeserverRefusalsSince(
+  baseUrl: string,
+  since: number,
+): Promise<string[]> {
+  return (await homeserverRequestsSince(baseUrl, since))
+    .filter(({ status }) => status === 401)
+    .map(({ path }) => path);
 }
 
 /** Wait for the app's client to finish a `/sync` with 200 that started after `since`. */
@@ -333,11 +341,9 @@ export async function waitForAppSync(
   await browser
     .waitUntil(
       async () => {
-        statuses = await homeserverStatusesSince(
-          account.baseUrl,
-          since,
-          '/sync',
-        );
+        statuses = (await homeserverRequestsSince(account.baseUrl, since))
+          .filter(({ path }) => path.endsWith('/sync'))
+          .map(({ status }) => status);
         return statuses.includes(200);
       },
       // A long poll holds its answer for up to 30 s, and one may be waiting on a refresh.

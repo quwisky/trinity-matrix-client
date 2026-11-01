@@ -16,7 +16,7 @@ import {
   accessTokenDigest,
   accountDatabases,
   documentNow,
-  homeserverStatusesSince,
+  homeserverRefusalsSince,
   jsStoreHasRefreshToken,
   masTokenPair,
   overwriteJsAccessToken,
@@ -150,7 +150,9 @@ describe('an OAuth account through the native token vault', () => {
     this.timeout(420_000);
     const account = signedInAccount(this);
     await waitForDurableActiveAccount(account.userId);
-    // Enough life left that the digest below can only change if the start refused its token.
+    // Enough life left that a 401 below can't be the token expiring. A start that used the JS
+    // copy would get one for the junk, then recover from the vault with no grant, so an unchanged
+    // digest and a later 200 alone don't show which token it started from.
     await waitForVaultTokenLife(account, 40_000);
     const { accessTokenDigest: before } = await vaultAnswer(account);
     await overwriteJsAccessToken(account.userId);
@@ -161,6 +163,7 @@ describe('an OAuth account through the native token vault', () => {
     await waitForAppSync(account, 0);
 
     expect((await vaultAnswer(account)).accessTokenDigest).toBe(before);
+    expect(await homeserverRefusalsSince(account.baseUrl, 0)).toEqual([]);
     await expectSignedInFromVault(account);
     expect(await tokenEndpointRequests(account.tokenEndpoint)).toBe(0);
   });
@@ -196,9 +199,9 @@ describe('an OAuth account through the native token vault', () => {
       false,
     );
     // MAS answers 200 for a dead token too: this is what shows the revocation took.
-    expect(await homeserverStatusesSince(account.baseUrl, revoked)).toContain(
-      401,
-    );
+    expect(
+      (await homeserverRefusalsSince(account.baseUrl, revoked)).length,
+    ).toBeGreaterThan(0);
     await expectUntouched();
 
     // The first sign-in finds the device without keys: it saves nothing and moves on.
@@ -217,6 +220,7 @@ describe('an OAuth account through the native token vault', () => {
     await signInOnProviderPage(provider as MasAccount);
     const replace = $('[data-testid="alert-confirm"]');
     await expect(replace).toBeDisplayed({ wait: 60_000 });
+    const replaced = await documentNow();
     await replace.click();
     await settleOnRooms();
 
@@ -225,6 +229,7 @@ describe('an OAuth account through the native token vault', () => {
     expect(moved.deviceId).not.toBe(account.deviceId);
     expect(moved.lineage).not.toBe(account.lineage);
     await expectSignedInFromVault(moved);
+    await waitForAppSync(moved, replaced);
     expect(await vaultAnswer(account)).toEqual({ kind: 'gone' });
   });
 
