@@ -5,7 +5,8 @@ export const PUSH_HANDOFF_PLUGIN_NAME = 'PushHandoff';
 export interface PushHandoffAccount {
   readonly userId: string;
   readonly homeserverUrl: string;
-  readonly accessToken: string;
+  /** Absent for an account whose token lives in the native token vault. */
+  readonly accessToken?: string;
   /** The account's "play a sound" notification preference. */
   readonly sound: boolean;
   /**

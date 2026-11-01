@@ -15,6 +15,19 @@ data class HandoffAccount(
 ) {
     /** Whether the token had expired at [nowMillis]. A token without an expiry never has. */
     fun tokenExpired(nowMillis: Long): Boolean = accessTokenExpiresAt != null && nowMillis >= accessTokenExpiresAt
+
+    fun with(record: TokenRecord): HandoffAccount =
+        copy(accessToken = record.accessToken, accessTokenExpiresAt = record.expiresAtMillis)
+
+    /**
+     * The account as the vault says it is. A record replaces the stored token and expiry. With none,
+     * a stored token stays (password and unmigrated accounts); an entry with no token reads as expired.
+     */
+    fun overlaidBy(read: TokenVaultRead): HandoffAccount = when {
+        read is TokenVaultRead.Record -> with(read.record)
+        accessToken.isEmpty() -> copy(accessTokenExpiresAt = 1L)
+        else -> this
+    }
 }
 
 /** Read side of the push handoff store. */

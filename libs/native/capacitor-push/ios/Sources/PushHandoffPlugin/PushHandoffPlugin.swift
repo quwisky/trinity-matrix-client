@@ -5,8 +5,9 @@ import UserNotifications
 
 /**
  * Writes the push handoff store the NotificationService extension reads: each account's
- * homeserver, access token (with its expiry, when it has one) and sound choice, and its room
- * names. PushHandoffService in data-access/notifications is the only caller of those (debug
+ * homeserver, sound choice and, for a password account, access token (with its expiry, when it
+ * has one), and its room names; an OAuth account's token lives in the token vault.
+ * PushHandoffService in data-access/notifications is the only caller of those (debug
  * builds add renderProbe for the e2e suite), and it also holds background run time through it
  * while a token refresh reaches the store. Also exposes the native token refresher, whose calls
  * answer the access token and expiry only: the refresh token never crosses back to the app.
@@ -93,12 +94,13 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         guard let userId = call.getString("userId"),
               let homeserverUrl = call.getString("homeserverUrl"),
-              let accessToken = call.getString("accessToken"),
               let sound = call.getBool("sound")
         else {
-            call.reject("Must provide userId, homeserverUrl, accessToken and sound")
+            call.reject("Must provide userId, homeserverUrl and sound")
             return
         }
+        // Absent for an account whose token lives in the token vault.
+        let accessToken = call.getString("accessToken") ?? ""
         // Epoch milliseconds from the app; absent for a token that does not expire on a schedule.
         let expiresAt = HandoffAccount.expiry(fromEpochMilliseconds: call.getValue("accessTokenExpiresAt"))
         do {

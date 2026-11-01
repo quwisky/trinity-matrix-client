@@ -9,6 +9,7 @@ import {
 import {
   PushHandoffBridge,
   type BackgroundWork,
+  type PushHandoffAccount,
 } from '@trinity/capacitor-push';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -116,7 +117,9 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
   const rotations = new Subject<AccessTokenRotation>();
   const bridge = {
     available: opts.available ?? true,
-    setAccount: vi.fn((): Observable<void> => of(void 0)),
+    setAccount: vi.fn((_account: PushHandoffAccount): Observable<void> =>
+      of(void 0),
+    ),
     setRooms: vi.fn((): Observable<void> => of(void 0)),
     removeAccount: vi.fn((): Observable<void> => of(void 0)),
     clear: vi.fn((): Observable<void> => of(void 0)),
@@ -138,6 +141,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
   );
   const refreshable = vi.fn((_userId: string): boolean => true);
   const adoptNativeTokens = vi.fn((): Observable<void> => of(void 0));
+  const nativeOwned = vi.fn((_userId: string): boolean => false);
   TestBed.configureTestingModule({
     providers: [
       PushHandoffService,
@@ -149,6 +153,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
         refreshAccessToken: refresh,
         canRefreshAccessToken: refreshable,
         adoptNativeTokens,
+        nativeOwned,
       }),
       { provide: PushHandoffBridge, useValue: bridge },
       { provide: NotificationSoundService, useValue: sound },
@@ -165,6 +170,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     refresh,
     refreshable,
     adoptNativeTokens,
+    nativeOwned,
   };
 }
 
@@ -284,6 +290,41 @@ describe('PushHandoffService', () => {
       homeserverUrl: 'https://hs.example',
       accessToken: 'token-@me:hs',
       sound: true,
+    });
+  });
+
+  it('writes no token or expiry for a natively owned account', async () => {
+    const h = setup();
+    h.nativeOwned.mockReturnValue(true);
+    h.expiry.mockReturnValue(1_800_000_000_000);
+    await start(h);
+
+    h.rotations.next({ userId: '@me:hs', accessToken: 'fresh' });
+    await flush();
+
+    const written = h.bridge.setAccount.mock.calls.map((call) => call[0]);
+    expect(written.length).toBeGreaterThan(0);
+    for (const account of written) {
+      expect(account).toStrictEqual({
+        userId: '@me:hs',
+        homeserverUrl: 'https://hs.example',
+        sound: true,
+      });
+    }
+  });
+
+  it('still writes the token for a password account and for an unmigrated OAuth account', async () => {
+    const h = setup();
+    h.nativeOwned.mockReturnValue(false);
+    h.expiry.mockReturnValue(1_800_000_000_000);
+    await start(h);
+
+    expect(h.bridge.setAccount).toHaveBeenCalledWith({
+      userId: '@me:hs',
+      homeserverUrl: 'https://hs.example',
+      accessToken: 'token-@me:hs',
+      sound: true,
+      accessTokenExpiresAt: 1_800_000_000_000,
     });
   });
 

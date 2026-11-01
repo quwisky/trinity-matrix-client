@@ -429,6 +429,11 @@ export class MatrixClientService {
     return this.clients.get(userId)?.client ?? null;
   }
 
+  /** Whether the account's refresh token lives in the native vault, so the push handoff holds no token. */
+  nativeOwned(userId: string): boolean {
+    return !!this.clients.get(userId)?.client.http.opts.tokenHost;
+  }
+
   /**
    * When `accessToken` stops working (epoch ms), if it is the token Trinity last saw this
    * account's client start with or persist and the server gave it a lifetime. Undefined
