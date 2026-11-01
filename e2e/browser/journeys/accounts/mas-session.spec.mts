@@ -120,6 +120,25 @@ test.describe('MAS session lifecycle', () => {
       await whoami(request, account, await traffic.latestAccessToken())
     ).device_id;
     const storesBefore = await ownStores();
+    const deviceHasKeys = async (accessToken: string): Promise<boolean> => {
+      const query = await request.post(
+        `${account.hs}/_matrix/client/v3/keys/query`,
+        {
+          headers: { authorization: `Bearer ${accessToken}` },
+          data: { device_keys: { [userId]: [] } },
+        },
+      );
+      const body = (await query.json()) as {
+        device_keys: Record<string, Record<string, unknown>>;
+      };
+      return body.device_keys[userId]?.[deviceBefore] !== undefined;
+    };
+    await expect
+      .poll(async () => deviceHasKeys(await traffic.latestAccessToken()), {
+        message: 'the device published its keys before the refusal',
+        timeout: 60_000,
+      })
+      .toBe(true);
 
     // Revoking the refresh token ends the session at MAS, so the app's next refresh is refused.
     expect(traffic.clientId, 'the app sent its client id').toBeDefined();
@@ -150,18 +169,12 @@ test.describe('MAS session lifecycle', () => {
     expect((await whoami(request, account, accessToken)).device_id).toBe(
       deviceBefore,
     );
-    const query = await request.post(
-      `${account.hs}/_matrix/client/v3/keys/query`,
-      {
-        headers: { authorization: `Bearer ${accessToken}` },
-        data: { device_keys: { [userId]: [] } },
-      },
-    );
-    expect(query.ok()).toBe(true);
-    const body = (await query.json()) as {
-      device_keys: Record<string, Record<string, unknown>>;
-    };
-    expect(body.device_keys[userId]?.[deviceBefore]).toBeDefined();
+    await expect
+      .poll(() => deviceHasKeys(accessToken), {
+        message: 'the reclaimed device has its keys on the server',
+        timeout: 60_000,
+      })
+      .toBe(true);
     expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
   });
 
