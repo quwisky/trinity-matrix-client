@@ -87,6 +87,20 @@ private final class ProbeLease: TokenLease {
     func discardAll() { lease.discardAll() }
 }
 
+/// waiter <container> <account> <lifetime> <wait>: prints `waiting` only after finding the lease
+/// held, so a test knows this process really waits, then the answer. Exits without releasing.
+func runWaiter(_ arguments: [String]) async {
+    let lease = AppGroupTokenLease(containerURL: URL(fileURLWithPath: arguments[0]))
+    let lifetime = Double(arguments[2])!
+    guard await lease.take(arguments[1], lifetime: lifetime, wait: 0) == .busy else { return say("taken") }
+    say("waiting")
+    if case .taken = await lease.take(arguments[1], lifetime: lifetime, wait: Double(arguments[3])!) {
+        say("taken")
+    } else {
+        say("busy")
+    }
+}
+
 /// app <container> <account> <tokenSeen> [<lease lifetime> [stop]]: one refresh, and its answer.
 func runApp(_ arguments: [String]) async {
     let refresher = TokenRefresher(

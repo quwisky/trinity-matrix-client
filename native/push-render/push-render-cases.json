@@ -988,6 +988,15 @@
       "fetches": 2
     },
     {
+      "name": "401, rotated, second fetch 401",
+      "tokenExpired": false,
+      "firstFetch": "unauthorized",
+      "refresh": "rotated",
+      "secondFetch": "unauthorized",
+      "body": "New message",
+      "fetches": 2
+    },
+    {
       "name": "expired, rotated, second fetch 401",
       "tokenExpired": true,
       "firstFetch": null,

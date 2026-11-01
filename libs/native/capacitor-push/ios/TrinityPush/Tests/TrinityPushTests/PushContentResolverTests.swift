@@ -34,9 +34,9 @@ private final class FakeAPI: MatrixPushAPI, @unchecked Sendable {
         self.roomName = roomName
     }
 
-    /// Answers each read in turn, then keeps giving the last.
+    /// Answers each read in turn, then fails, so a resolver that keeps retrying still ends.
     init(eventReads: [PushEventRead], memberName: String? = nil) {
-        self.eventReads = eventReads
+        self.eventReads = eventReads + [.failed]
         self.memberName = memberName
         roomName = nil
     }
@@ -288,7 +288,7 @@ final class PushContentResolverTests: XCTestCase {
         let document = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
         let flows = try XCTUnwrap(document["tokenFlows"] as? [[String: Any]])
-        XCTAssertEqual(flows.count, 18)
+        XCTAssertEqual(flows.count, 19)
         for row in flows {
             let name = try XCTUnwrap(row["name"] as? String)
             let refresh = row["refresh"] as? String
@@ -318,6 +318,19 @@ final class PushContentResolverTests: XCTestCase {
                 XCTAssertTrue(api.accounts.allSatisfy { $0.accessToken == "old" }, name)
             }
         }
+    }
+
+    /// The third read would succeed: only the one-retry rule keeps it from being made.
+    func testASecond401MakesNoSecondRefreshOrThirdFetch() async {
+        let store = FakeStore(accounts: ["@alice:hs": entry(expired: false)], rooms: team)
+        let api = FakeAPI(eventReads: [.unauthorized, .unauthorized, .event(message())], memberName: "Carol")
+        let tokens = FakeTokens(answer: .rotated(tokenRecord(accessToken: "new"), unsaved: false))
+
+        let resolution = await PushContentResolver(store: store, api: api, tokens: tokens).resolve(payload())
+
+        XCTAssertEqual(body(resolution), "New message")
+        XCTAssertEqual(tokens.calls, 1)
+        XCTAssertEqual(api.eventCalls, 2)
     }
 
     func testATokenlessEntryShowsTheOpenTrinityTextWithoutAFetch() async {

@@ -94,6 +94,8 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
         guard record.refreshToken != nil, record.tokenEndpoint != nil, record.clientId != nil else {
             return .unavailable
         }
+        // A grant spends the refresh token: once it is sent, the answer is waited for regardless.
+        if Task.isCancelled { return .transient }
         let started = now()
         switch await client.grant(record, deadline: deadline) {
         case .failed:

@@ -57,10 +57,11 @@ final class TokenLeaseTests: XCTestCase {
     /// matrix-rust-sdk's `test_multiple_processes`: the waiter gets it, and the old holder then can't.
     func testAWaitingProcessTakesAReleasedLeaseAndTheOldHolderThenWaitsInVain() async throws {
         let ticket = try await held()
-        let waiter = try startProbe(wait: 10)
-        try await Task.sleep(for: .milliseconds(100))
+        let waiter = try Probe(role: "waiter", container: container, arguments: [account, "30", "10"])
+        XCTAssertEqual(waiter.line(), "waiting", "the probe must find the lease held")
         lease.release(ticket)
-        XCTAssertEqual(finish(waiter), "taken")
+        XCTAssertEqual(waiter.line(), "taken")
+        _ = waiter.finish()
         let answer = await lease.take(account, lifetime: 30, wait: 0.2)
         XCTAssertEqual(answer, .busy)
     }

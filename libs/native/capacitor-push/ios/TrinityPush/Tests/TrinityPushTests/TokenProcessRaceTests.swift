@@ -4,8 +4,8 @@ import XCTest
 @testable import TrinityPush
 
 /// The app and the notification process as two real processes (`token-lease-probe`) over one
-/// account's lease and vault, against a local provider with no reuse tolerance. Only the keychain
-/// is a stand-in. Modelled on matrix-rust-sdk's `test_cross_process_concurrent_refresh`,
+/// account's lease and vault, against a local provider with no reuse tolerance. Two stand-ins:
+/// `FileVault` for the keychain, and `FileHandoff` for `PushHandoffStore.account`. Modelled on matrix-rust-sdk's `test_cross_process_concurrent_refresh`,
 /// `test_refresh_interrupted_by_suspension_does_not_sign_out` and the NSE's shared-store test.
 final class TokenProcessRaceTests: XCTestCase {
     private let account = "@a:hs"
@@ -87,9 +87,11 @@ final class TokenProcessRaceTests: XCTestCase {
         XCTAssertEqual(try stored().accessToken, "race-access-1")
     }
 
-    /// The app froze after its grant reached the provider. The push then can't know the token is
-    /// spent, and sending it is the one spent send there is: the refusal must cost nothing. It is
-    /// not recorded, the app's late answer is still kept, and the next push shows the text.
+    /// The app froze after its grant reached the provider. A push can't know the token is spent,
+    /// and sends it. This test has one push, but an app frozen for an hour with N pushes makes N
+    /// spent sends. An app holding an unsaved pair leaves a spent pair in the vault, so pushes spend
+    /// that too. Each refusal must cost nothing here: it is not recorded, the app's late answer is
+    /// still kept, and the next push shows the text. A provider that revokes on reuse is untested.
     func testAnAppSuspendedMidGrantKeepsTheAccountSignedIn() throws {
         provider.holdAnswers()
         let app = try start("app", account, firstAccess, "0.2")
@@ -168,7 +170,7 @@ final class TokenProcessRaceTests: XCTestCase {
 }
 
 /// One `token-lease-probe` process, spoken to a line at a time.
-private final class Probe {
+final class Probe {
     private let process = Process()
     private let input = Pipe()
     private let output = Pipe()

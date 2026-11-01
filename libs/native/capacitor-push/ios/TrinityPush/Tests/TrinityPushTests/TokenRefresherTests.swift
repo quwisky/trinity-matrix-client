@@ -328,6 +328,19 @@ final class TokenRefresherTests: XCTestCase {
 
     // MARK: Taking the lease
 
+    func testACancelledRefreshSendsNoGrant() async {
+        lease.onTake = { withUnsafeCurrentTask { $0?.cancel() } }
+        let refresher = makeRefresher(lease: lease)
+
+        let answer = await refresher.refresh(account: user, lineage: "L", tokenSeen: "a0", budget: budget)
+        let pushAnswer = await refresher.refreshForPush(account: user, tokenSeen: "a0", budget: budget)
+
+        XCTAssertEqual(answer, .transient)
+        XCTAssertEqual(pushAnswer, .transient)
+        XCTAssertTrue(client.grants.isEmpty)
+        XCTAssertEqual(vault.stored, tokenRecord())
+    }
+
     func testBusyPastTheBudgetSendsNothing() async {
         lease.answer = .busy
 
