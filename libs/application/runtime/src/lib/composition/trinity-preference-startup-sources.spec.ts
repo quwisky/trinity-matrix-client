@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { AppearancePreferences } from '@trinity/application/appearance';
 import { GifSettingsService } from '@trinity/data-access/gif';
+import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import {
   AccountScopeService,
   RailUnreadChatsPreference,
@@ -52,6 +53,13 @@ describe('TrinityPreferenceStartupSources', () => {
           useValue: { init: () => of({ kind: 'ready' as const }) },
         },
         {
+          provide: MentionInboxPreferences,
+          useValue: {
+            init: () =>
+              of({ kind: 'partial' as const, hydrated: 0, failures: [] }),
+          },
+        },
+        {
           provide: RailUnreadChatsPreference,
           useValue: {
             init: () =>
@@ -90,6 +98,20 @@ describe('TrinityPreferenceStartupSources', () => {
     expect(evidence).toMatchObject({
       kind: 'defaulted',
       code: 'rail-unread-preference-hydration-partial',
+    });
+    expect(evidence.kind === 'defaulted' && typeof evidence.recover).toBe(
+      'function',
+    );
+  });
+
+  it('reports a partial inbox-switch hydration as defaulted with a recovery', async () => {
+    const sources = TestBed.inject(TrinityPreferenceStartupSources).sources();
+
+    const evidence = await firstValueFrom(sources['mention-inbox']());
+
+    expect(evidence).toMatchObject({
+      kind: 'defaulted',
+      code: 'mention-inbox-preference-hydration-partial',
     });
     expect(evidence.kind === 'defaulted' && typeof evidence.recover).toBe(
       'function',

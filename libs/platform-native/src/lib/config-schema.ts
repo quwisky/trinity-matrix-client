@@ -7,6 +7,7 @@ export type ConfigOwner =
   | 'data-access/whats-new'
   | 'data-access/notifications'
   | 'data-access/room-library'
+  | 'data-access/notifications'
   | 'data-access/diagnostic-log'
   | 'data-access/app-lock'
   | 'data-access/trust'
@@ -337,6 +338,24 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'A per-installation privacy choice about what this device records. A pasted or ' +
       'imported document must not switch logging on for another device, and an unreadable ' +
       'value already means off.',
+  },
+
+  // — data-access/notifications —
+  {
+    disposition: 'excluded',
+    key: 'trinity.inbox.show',
+    owner: 'data-access/notifications',
+    reason:
+      "A per-installation privacy choice. An imported document can't ask first, and turning a " +
+      'switch off deletes history.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.inbox.keep-record',
+    owner: 'data-access/notifications',
+    reason:
+      "A per-installation privacy choice. An imported document can't ask first, and turning a " +
+      'switch off deletes history.',
   },
 
   // — data-access/app-lock —

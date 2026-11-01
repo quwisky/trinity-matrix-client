@@ -38,6 +38,7 @@ import {
   PushService,
   type NotificationVisibilityPort,
   type PushConfig,
+  provideMentionInboxPreferences,
 } from '@trinity/data-access/notifications';
 import {
   RoomActionPermissionsService,
@@ -105,6 +106,7 @@ export function applicationCapabilityProviders(
     provideAppearanceConfigEntries(),
     provideConversationPrivacyPreferences(),
     provideRoomLibraryPreferences(),
+    provideMentionInboxPreferences(),
     providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
     {
       provide: APPEARANCE_NATIVE_CHROME_ADAPTER,

@@ -111,6 +111,7 @@ describe('CapabilityStatusService', () => {
         'preferences:hydrate-gestures',
         'preferences:hydrate-gifs',
         'preferences:hydrate-privacy',
+        'preferences:hydrate-mention-inbox',
         'preferences:hydrate-rail-unread',
         'preferences:hydrate-shell-layout',
         'preferences:hydrate-shortcuts',
