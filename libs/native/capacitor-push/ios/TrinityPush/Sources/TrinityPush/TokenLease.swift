@@ -42,13 +42,17 @@ public protocol TokenLease: Sendable {
 /// - A holder is suspended past its expiry and carries on when it wakes.
 /// - A taker with an old read is killed, or stuck, after swapping out a live lease. Its candidate
 ///   then keeps the name until that candidate expires, which can be before the holder's own expiry.
+/// - A holder releases a lease that has expired, and a taker takes it over between the holder's read
+///   and its swap. The holder's expired file is then in the name for a moment, and a third process
+///   that reads it there takes it too. This needs no long stall, only that narrow timing.
 ///
 /// A taker that answers `.busy` claims nothing, has removed its own file, and has left the name
 /// holding the file it found, however its swaps interleaved with other takers'. The exception is a
 /// taker that dies, has a swap back refused, or stalls past the put-back limit: about 3 s, or the
-/// caller's remaining wait if that is shorter, but at least 0.25 s. Other takers then cannot get
-/// their files back either, so the live lease can be stranded in a leftover file until the file in
-/// the name expires.
+/// caller's remaining wait if that is shorter, but at least 0.5 s. Other takers then cannot get
+/// their files back either, so the live lease can be stranded in a leftover file. What is left in
+/// the name decides what comes next: a taker's file blocks the lease until it expires, but a
+/// release's has already expired, so the next taker takes the lease at once.
 public final class AppGroupTokenLease: TokenLease {
     private struct Body: Codable {
         let owner: String
@@ -76,8 +80,10 @@ public final class AppGroupTokenLease: TokenLease {
     private static let putBackSwaps = 201
     private static let putBackPause: useconds_t = 10_000
     /// What a put-back may take past its caller's deadline, and all a release may take. A refresh
-    /// can spend it twice, and its 12 s worst case must stay under JavaScript's 13 s call timeout.
-    private static let putBackFloor: Duration = .milliseconds(250)
+    /// spends it once, barring a second stall past it: a retake that wins has no put-back, and one
+    /// that answers busy has lost the name, so its release has nothing to swap. That 12.5 s worst
+    /// case must stay under JavaScript's 13 s call timeout.
+    private static let putBackFloor: Duration = .milliseconds(500)
 
     private let directory: URL
     private let now: @Sendable () -> Date
@@ -217,10 +223,10 @@ public final class AppGroupTokenLease: TokenLease {
             // runs. Without a pause the swaps run out while it is off the CPU for about 2 ms.
             usleep(Self.putBackPause)
         }
-        // shortcut: a taker dead or stalled past the limit can strand the live lease until the file
-        // in the name expires, and what is in this path stays behind as one small file. If devices
-        // show that, move to generation-named files made with `RENAME_EXCL`, which never swap a
-        // live lease out.
+        // shortcut: a taker dead or stalled past the limit can strand the live lease, what is in
+        // this path stays behind as one small file, and a release's expired file can be taken while
+        // it is in the name. If devices show any of these, move to generation-named files made with
+        // `RENAME_EXCL`, which never swap a live lease out or put an expired file in its place.
     }
 
     private func writeCandidate(_ body: Body, beside lease: URL) -> Candidate? {

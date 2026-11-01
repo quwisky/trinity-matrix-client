@@ -262,15 +262,21 @@ final class TokenLeaseTests: XCTestCase {
         try await twoTakersWithOldReads(order: ["C", "E", "C", "E", "E"] + cAlone + eAlone)
     }
 
-    private func twoTakersWithOldReads(order: [String]) async throws {
+    /// With no time from its caller, a put-back still gets the floor, which covers a short stall.
+    func testATakerStallingMidPutBackWithNoTimeLeftLeavesTheFreshLease() async throws {
+        let cAlone = Array(repeating: "C", count: 6), eAlone = Array(repeating: "E", count: 5)
+        try await twoTakersWithOldReads(order: ["C", "E", "C", "E", "E"] + cAlone + eAlone, wait: 0)
+    }
+
+    /// By default a long wait, so that the takers' time to put back outlasts any stall a busy runner adds.
+    private func twoTakersWithOldReads(order: [String], wait: TimeInterval = 30) async throws {
         _ = try await held(lifetime: 0)
         let container = container!, account = account
         let turns = Turns(order: order)
         let c = AppGroupTokenLease(containerURL: container, rename: turns.rename("C"))
         let e = AppGroupTokenLease(containerURL: container, rename: turns.rename("E"))
-        // A long wait, so that the takers' time to put back outlasts any stall a busy runner adds.
-        let first = Task.detached { await c.take(account, lifetime: 30, wait: 30) }
-        let second = Task.detached { await e.take(account, lifetime: 30, wait: 30) }
+        let first = Task.detached { await c.take(account, lifetime: 30, wait: wait) }
+        let second = Task.detached { await e.take(account, lifetime: 30, wait: wait) }
         try await turns.waitForBothToHaveRead()
         XCTAssertEqual(try runProbe(), "taken")
         let fresh = try Data(contentsOf: leaseFile)
@@ -298,7 +304,20 @@ final class TokenLeaseTests: XCTestCase {
         })
         let answer = await taker.take(account, lifetime: 30, wait: 0)
         XCTAssertEqual(answer, .busy)
-        XCTAssertLessThan(try XCTUnwrap(swaps.value), 40)
+        XCTAssertLessThan(try XCTUnwrap(swaps.value), 100)
+        XCTAssertEqual(try runProbe(), "busy", "the new holder's lease is back")
+    }
+
+    /// The floor passes during the second swap back, which leaves the new holder's lease out of the
+    /// name: only an odd count of swaps back returns it, so this has to swap once more.
+    func testAPutBackPastItsLimitAfterAnEvenSwapSwapsOnceMore() async throws {
+        _ = try await held(lifetime: 0)
+        let container = container!, account = account
+        let swaps = Box<Int>(0)
+        let taker = AppGroupTokenLease(containerURL: container, rename: losingOwnFile(swaps, stallBeforeSwap: 3) {
+            XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "taken")
+        })
+        _ = await taker.take(account, lifetime: 30, wait: 0)
         XCTAssertEqual(try runProbe(), "busy", "the new holder's lease is back")
     }
 
@@ -312,7 +331,7 @@ final class TokenLeaseTests: XCTestCase {
         let answer = await releasing.take(account, lifetime: 30, wait: 0)
         guard case .taken(let ticket) = answer else { return XCTFail("\(answer)") }
         releasing.release(ticket)
-        XCTAssertLessThan(try XCTUnwrap(swaps.value), 40)
+        XCTAssertLessThan(try XCTUnwrap(swaps.value), 100)
         XCTAssertEqual(try runProbe(), "busy", "the new holder's lease is back")
     }
 
@@ -505,9 +524,9 @@ final class TokenLeaseTests: XCTestCase {
     }
 
     /// The real system call, counting swaps. The first swap runs `action` and overwrites this taker's
-    /// file, which then never comes back, as if a dead taker held it.
+    /// file, which then never comes back, as if a dead taker held it. A stall outlasts the floor.
     private func losingOwnFile(
-        _ swaps: Box<Int>, _ action: @escaping @Sendable () -> Void
+        _ swaps: Box<Int>, stallBeforeSwap stalled: Int? = nil, _ action: @escaping @Sendable () -> Void
     ) -> @Sendable (String, String, UInt32) -> Int32 {
         { from, to, flags in
             if flags == UInt32(RENAME_SWAP) {
@@ -516,6 +535,7 @@ final class TokenLeaseTests: XCTestCase {
                     action()
                 }
                 swaps.value! += 1
+                if swaps.value == stalled { usleep(600_000) }
             }
             return AppGroupTokenLease.systemRename(from, to, flags)
         }
