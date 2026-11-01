@@ -243,7 +243,7 @@ export class MentionIndexService {
     accountId: string,
     client: MatrixClient,
   ): AccountRecorder {
-    // Live events only, so scrollback that later decrypts is never recorded.
+    // Live events only; room scrollback that later decrypts is never recorded (see the thread gate).
     const pending = new Set<string>();
     return {
       client,

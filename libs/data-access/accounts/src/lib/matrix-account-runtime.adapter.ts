@@ -228,8 +228,15 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             ? of(persisted)
             : this.matrix.restorePersisted(persisted.stored, 'background').pipe(
                 tap((started) => {
-                  if (started.kind === 'ready' && replaced) {
+                  if (started.kind !== 'ready') {
+                    return;
+                  }
+                  if (replaced) {
                     this.signOutReplacedDevice(replaced);
+                  }
+                  // `novelty`, not `replaced`: that is null when the old record has no token.
+                  if (novelty === 'new') {
+                    this.forgetMentionHistory(session.userId);
                   }
                 }),
               ),
@@ -477,6 +484,13 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         switchMap(() => this.storage.removeNativeTokens(stored.userId)),
       )
       .subscribe({ error: () => undefined });
+  }
+
+  /** A new device has no history to keep; best-effort, so it never delays the sign-in. */
+  private forgetMentionHistory(accountId: string): void {
+    defer(() => this.lifecycle.forgetMentionHistory(accountId)).subscribe({
+      error: () => undefined,
+    });
   }
 
   private toAdapterOutcome(

@@ -105,6 +105,51 @@ it('resets only the approved installation storage scopes in order', async () => 
   ]);
 });
 
+it('stops the mention index after the diagnostic log and before the database wipe', async () => {
+  const test = setup();
+  prepareSuccessfulReset(test);
+  const order: string[] = [];
+  vi.mocked(test.lifecycle.stopDiagnosticLog).mockReturnValue(
+    defer(() => {
+      order.push('diagnostic-log');
+      return of(void 0);
+    }),
+  );
+  vi.mocked(test.lifecycle.stopMentionIndex).mockReturnValue(
+    defer(() => {
+      order.push('mention-index');
+      return of(void 0);
+    }),
+  );
+  vi.mocked(test.wipe.wipeIndexedDb).mockImplementation(() => {
+    order.push('indexed-db');
+    return Promise.resolve({ blocked: [], failed: [], enumerated: true });
+  });
+
+  await firstValueFrom(test.adapter.resetInstallation());
+
+  expect(order).toEqual(['diagnostic-log', 'mention-index', 'indexed-db']);
+});
+
+it('wipes after its budget when stopping the mention index never settles', async () => {
+  vi.useFakeTimers();
+  try {
+    const test = setup();
+    prepareSuccessfulReset(test);
+    vi.mocked(test.lifecycle.stopMentionIndex).mockReturnValue(NEVER);
+
+    const outcome = firstValueFrom(test.adapter.resetInstallation());
+    await vi.advanceTimersByTimeAsync(
+      ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,
+    );
+
+    await expect(outcome).resolves.toEqual({ kind: 'ready' });
+    expect(test.wipe.beginIndexedDbWipe).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it('settles ready when the diagnostic log cannot be resumed, or never answers', async () => {
   vi.useFakeTimers();
   try {

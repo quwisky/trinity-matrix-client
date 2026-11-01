@@ -8,6 +8,7 @@ import { OidcClientService } from '@trinity/data-access/auth';
 import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
 import {
+  MentionIndexService,
   PushHandoffService,
   PushService,
 } from '@trinity/data-access/notifications';
@@ -19,7 +20,7 @@ import {
 import { PreferenceStoreService } from '@trinity/runtime/preferences';
 import type { MatrixSession } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { NEVER, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applicationCapabilityProviders } from './application-capability.providers';
 
@@ -32,7 +33,10 @@ const OIDC_SESSION: MatrixSession = {
   oidc: { issuer: 'https://op.example/', clientId: 'client-1' },
 };
 
-function lifecyclePort(nativeAnswer: 'revoked' | 'gone' | 'transient') {
+function lifecyclePort(
+  nativeAnswer: 'revoked' | 'gone' | 'transient' = 'gone',
+  mentionIndex: Partial<MentionIndexService> = {},
+) {
   const revokeStored = vi.fn(() => of(nativeAnswer));
   const revokeTokens = vi.fn(() => of(void 0));
   const lifecycle = applicationCapabilityProviders({
@@ -55,6 +59,7 @@ function lifecyclePort(nativeAnswer: 'revoked' | 'gone' | 'transient') {
       MockProvider(NativeTokenBridge, { revokeStored }),
       MockProvider(DiagnosticLogService),
       MockProvider(PreferenceStoreService),
+      MockProvider(MentionIndexService, mentionIndex),
     ],
   });
   const port: AccountLifecyclePort = TestBed.inject(ACCOUNT_LIFECYCLE_PORT);
@@ -111,5 +116,43 @@ describe('revokeProviderSession', () => {
 
     expect(revokeStored).not.toHaveBeenCalled();
     expect(revokeTokens).not.toHaveBeenCalled();
+  });
+});
+
+describe('hasMentionHistory', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    TestBed.resetTestingModule();
+  });
+
+  it.each([
+    [3, true],
+    [0, false],
+  ])('answers for a count of %i', async (count, expected) => {
+    const { port } = lifecyclePort('gone', { count: () => of(count) });
+
+    await expect(
+      firstValueFrom(port.hasMentionHistory('@me:hs')),
+    ).resolves.toBe(expected);
+  });
+
+  it('reads as false when the count fails', async () => {
+    const { port } = lifecyclePort('gone', {
+      count: () => throwError(() => new Error('store blocked')),
+    });
+
+    await expect(
+      firstValueFrom(port.hasMentionHistory('@me:hs')),
+    ).resolves.toBe(false);
+  });
+
+  it('reads as false when the count never answers', async () => {
+    vi.useFakeTimers();
+    const { port } = lifecyclePort('gone', { count: () => NEVER });
+
+    const answer = firstValueFrom(port.hasMentionHistory('@me:hs'));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(answer).resolves.toBe(false);
   });
 });

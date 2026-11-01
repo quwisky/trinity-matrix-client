@@ -345,6 +345,18 @@ export class AccountLifecycleAdapter {
       );
   }
 
+  private forgetMentionHistory(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+    accountId: string,
+  ): Observable<void> {
+    return attempt.capture(
+      this.lifecycle.forgetMentionHistory(accountId),
+      'indexed-db',
+      'restart-application',
+      ACCOUNT_CLEANUP_STEP_BUDGET_MS.databaseWipe,
+    );
+  }
+
   private clearLastAccount(
     attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
     accountId: string,
@@ -357,6 +369,8 @@ export class AccountLifecycleAdapter {
         ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
       )
       .pipe(
+        // After the client stops, so no late write follows; the next start's sweep covers a failure.
+        concatMap(() => this.forgetMentionHistory(attempt, accountId)),
         tap(() => this.clearSharedAccountState(attempt)),
         concatMap(() =>
           attempt.capture(
@@ -387,6 +401,8 @@ export class AccountLifecycleAdapter {
         ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
       )
       .pipe(
+        // After the client stops, so no late write follows; the next start's sweep covers a failure.
+        concatMap(() => this.forgetMentionHistory(attempt, accountId)),
         tap(() => this.clearDrafts(attempt)),
         concatMap(() =>
           attempt.capture(

@@ -38,6 +38,7 @@ import {
   PushService,
   type NotificationVisibilityPort,
   type PushConfig,
+  MentionIndexService,
   provideMentionInboxPreferences,
 } from '@trinity/data-access/notifications';
 import {
@@ -86,10 +87,13 @@ import {
 } from '@trinity/platform-native';
 import { HostBadgeService } from '@trinity/runtime/host';
 import { PreferenceStoreService } from '@trinity/runtime/preferences';
-import { map, of, switchMap, tap } from 'rxjs';
+import { catchError, map, of, switchMap, tap, timeout } from 'rxjs';
 import { appLockCovers, visibilityWhileLocked } from './app-lock.providers';
 import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
 import { UnprotectedStorageConsentPresenter } from './unprotected-storage.presenter';
+
+/** `count` has no limit of its own, and a stuck read must not hold the deletion dialog. */
+const MENTION_HISTORY_READ_MS = 1_000;
 
 interface ApplicationCapabilityProviderOptions {
   readonly buildInfo: BuildInfo;
@@ -214,6 +218,7 @@ export function applicationCapabilityProviders(
         const nativeTokens = inject(NativeTokenBridge);
         const diagnosticLog = inject(DiagnosticLogService);
         const preferences = inject(PreferenceStoreService);
+        const mentionIndex = inject(MentionIndexService);
         return {
           forgetPushHandoff: (accountId) => handoff.forget(accountId),
           registerNotifications: () => push.register(),
@@ -246,6 +251,15 @@ export function applicationCapabilityProviders(
               : of(void 0);
           },
           stopDiagnosticLog: () => diagnosticLog.discard(),
+          forgetMentionHistory: (accountId) =>
+            mentionIndex.forgetAccount(accountId),
+          hasMentionHistory: (accountId) =>
+            mentionIndex.count(accountId).pipe(
+              map((count) => count > 0),
+              timeout(MENTION_HISTORY_READ_MS),
+              catchError(() => of(false)),
+            ),
+          stopMentionIndex: () => mentionIndex.stop(),
           resumeDiagnosticLog: () => diagnosticLog.resumeAfterReset(),
           releaseSharedCaches: () => {
             avatars.releaseAll();

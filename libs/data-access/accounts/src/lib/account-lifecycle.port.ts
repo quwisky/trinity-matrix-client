@@ -25,6 +25,12 @@ export interface AccountLifecyclePort {
    * app that keeps running after the reset logs again as a fresh installation would.
    */
   resumeDiagnosticLog(): Observable<void>;
+  /** Delete one account's recorded mention history, after its client has stopped. */
+  forgetMentionHistory(accountId: string): Observable<void>;
+  /** Whether an account has recorded mentions; a read that fails answers false. */
+  hasMentionHistory(accountId: string): Observable<boolean>;
+  /** Stop recording mentions and settle once no write is under way, ahead of a database wipe. */
+  stopMentionIndex(): Observable<void>;
   releaseSharedCaches(): void;
   clearDrafts(): void;
   /** Forget a deleted account's account- and conversation-scoped device preferences. */
@@ -38,6 +44,9 @@ const NOOP_ACCOUNT_LIFECYCLE_PORT: AccountLifecyclePort = {
   revokeProviderSession: () => of(void 0),
   stopDiagnosticLog: () => of(void 0),
   resumeDiagnosticLog: () => of(void 0),
+  forgetMentionHistory: () => of(void 0),
+  hasMentionHistory: () => of(false),
+  stopMentionIndex: () => of(void 0),
   releaseSharedCaches: () => undefined,
   clearDrafts: () => undefined,
   forgetAccountPreferences: () => of(void 0),
