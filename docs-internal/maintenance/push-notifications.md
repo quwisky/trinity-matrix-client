@@ -62,9 +62,16 @@ Two cases still notify: a response held through the sleep carries the age from w
 answered, so its messages read as recent, and a message queued for decryption before the sleep
 notifies when its key arrives afterwards.
 
-One case loses notifications. Web delivery is page-driven, so a browser that freezes a hidden tab
-and thaws it periodically leaves every message over two minutes old at each thaw with only its
-badge.
+Three cases lose notifications:
+
+- Web delivery is page-driven, so a browser that freezes a hidden tab and thaws it periodically
+  leaves every message over two minutes old at each thaw with only its badge.
+- A stall on an awake machine can pass two minutes: the 110 s `/sync` abort, the keepalive delay
+  and one failed `/versions` retry are enough. Messages stuck for over two minutes then get only
+  their badge.
+- A first sync over two minutes counts as a gap even on an awake machine, such as a large account
+  signing in. A message sent four minutes earlier that arrives in the second batch gets only its
+  badge, a recent one notifies, and the third batch is clear.
 
 Host presentation is a separate capability. Electron requests native display
 through its main-process bridge, Capacitor uses the native presentation adapter,
