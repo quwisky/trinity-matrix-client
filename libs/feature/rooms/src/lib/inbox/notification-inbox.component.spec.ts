@@ -9,7 +9,7 @@ import {
   type InboxLoadResult,
   type InboxRow,
 } from '@trinity/data-access/notifications';
-import { fireEvent, render, screen } from '@trinity/testing';
+import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, Subject, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -178,14 +178,36 @@ describe('NotificationInboxComponent', () => {
       expect(inbox.refresh).toHaveBeenCalledOnce();
     });
 
-    it('does not loop with no client, where a refresh leaves it idle', async () => {
+    it('fires once as a load moves through its statuses', async () => {
       const { inbox, settle } = await renderInbox((fake) => {
         fake.status.set('idle');
+        fake.refresh.mockImplementation(() => {
+          fake.status.set('loading');
+          return of(undefined);
+        });
       });
 
-      settle();
+      for (const status of ['ready', 'failed', 'loading', 'ready'] as const) {
+        inbox.status.set(status);
+        settle();
+      }
+
+      expect(inbox.refresh).toHaveBeenCalledOnce();
+    });
+
+    it('stays out of what a refresh reads, so nothing else re-fires it', async () => {
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.status.set('idle');
+        fake.refresh.mockImplementation(() => {
+          fake.hasMore();
+          return of(undefined);
+        });
+      });
+
+      inbox.hasMore.set(true);
       settle();
 
+      expect(inbox.status()).toBe('idle');
       expect(inbox.refresh).toHaveBeenCalledOnce();
     });
 
@@ -199,6 +221,23 @@ describe('NotificationInboxComponent', () => {
       screen.getByRole('button', { name: 'Try again' }).click();
 
       expect(inbox.refresh).toHaveBeenCalledOnce();
+    });
+
+    it('keeps focus in the panel when Try again removes itself', async () => {
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.status.set('failed');
+      });
+      const tryAgain = screen.getByRole('button', { name: 'Try again' });
+      tryAgain.focus();
+
+      tryAgain.click();
+      inbox.status.set('loading');
+      settle();
+
+      expect(tryAgain.isConnected).toBe(false);
+      expect(document.activeElement).toBe(
+        screen.getByRole('tabpanel', { name: 'Mentions' }),
+      );
     });
 
     it('loads again when an account switch leaves it idle', async () => {
@@ -225,9 +264,15 @@ describe('NotificationInboxComponent', () => {
     });
 
     it('announces loading and failure in a region that stays', async () => {
-      const { inbox, settle } = await renderInbox();
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.status.set('loading');
+        fake.refresh.mockReturnValue(of(undefined));
+      });
       const region = screen.getByRole('status');
-      expect(region.textContent?.trim()).toBe('');
+      inbox.status.set('idle');
+      settle();
+      inbox.status.set('ready');
+      settle();
 
       inbox.status.set('loading');
       settle();
@@ -237,6 +282,83 @@ describe('NotificationInboxComponent', () => {
       inbox.status.set('failed');
       settle();
       expect(region.textContent).toContain("Couldn't load your inbox");
+    });
+
+    it.each<[string, (fake: FakeInbox) => void, string]>([
+      ['one row', (fake) => fake.mentions.set([row('$m')]), '1 mention.'],
+      [
+        'more rows',
+        (fake) => fake.mentions.set([row('$m'), row('$n')]),
+        '2 mentions.',
+      ],
+      [
+        'rows and more to load',
+        (fake) => {
+          fake.mentions.set([row('$m')]);
+          fake.hasMore.set(true);
+        },
+        '1 mention so far.',
+      ],
+      ['nothing', () => undefined, 'No mentions.'],
+      [
+        'nothing yet and more to load',
+        (fake) => fake.hasMore.set(true),
+        'No mentions so far.',
+      ],
+    ])('announces a finished load with %s', async (_name, arrange, words) => {
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.status.set('loading');
+        arrange(fake);
+      });
+      expect(screen.getByRole('status').textContent).toContain('Loading');
+
+      inbox.status.set('ready');
+      settle();
+
+      expect(screen.getByRole('status').textContent?.trim()).toBe(words);
+    });
+
+    it('counts notifications on All', async () => {
+      const { settle } = await renderInbox((fake) => {
+        fake.all.set([row('$a'), row('$b')]);
+      });
+
+      byId('inbox-tab-all').click();
+      settle();
+
+      expect(screen.getByRole('status').textContent?.trim()).toBe(
+        '2 notifications.',
+      );
+    });
+
+    it('says nothing new as rows land or a row opens', async () => {
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.status.set('loading');
+      });
+      const region = screen.getByRole('status');
+      const changes = vi.fn();
+      const observer = new MutationObserver(changes);
+      observer.observe(region, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+
+      inbox.mentions.set([row('$m')]);
+      settle();
+      inbox.mentions.set([row('$m'), row('$n')]);
+      settle();
+      expect(observer.takeRecords()).toHaveLength(0);
+
+      inbox.status.set('ready');
+      settle();
+      expect(observer.takeRecords()).not.toHaveLength(0);
+
+      rowsShown()[0].click();
+      inbox.uncheckedCount.set(1);
+      settle();
+      expect(observer.takeRecords()).toHaveLength(0);
+      observer.disconnect();
     });
 
     it('shows a loading line when there is nothing else to show', async () => {
@@ -344,6 +466,31 @@ describe('NotificationInboxComponent', () => {
       expect(text()).toContain(
         'No mentions. When someone mentions you, it shows up here.',
       );
+    });
+
+    it('does not say "No mentions" while Load more can still find some', async () => {
+      await renderInbox((fake) => fake.hasMore.set(true));
+
+      expect(screen.queryByTestId('inbox-empty')).toBeNull();
+      expect(byId('inbox-load-more')).toBeTruthy();
+    });
+
+    it('does not say "No notifications." while Load more can still find some', async () => {
+      const { settle } = await renderInbox((fake) => {
+        fake.serverHasMore.set(true);
+      });
+
+      byId('inbox-tab-all').click();
+      settle();
+
+      expect(screen.queryByTestId('inbox-empty')).toBeNull();
+    });
+
+    it('does not say "No mentions" beside messages it could not check', async () => {
+      await renderInbox((fake) => fake.uncheckedCount.set(2));
+
+      expect(screen.queryByTestId('inbox-empty')).toBeNull();
+      expect(text()).toContain("couldn't be checked");
     });
 
     it('shows "No notifications." when All is empty', async () => {
@@ -498,6 +645,61 @@ describe('NotificationInboxComponent', () => {
       expect(text()).not.toContain('Checked');
     });
 
+    it('repeats the server line above Load more, retrying that page', async () => {
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.serverListFailed.set(true);
+        fake.serverHasMore.set(true);
+        fake.all.set([row('$a')]);
+      });
+
+      byId('inbox-tab-all').click();
+      settle();
+
+      const line = byId('inbox-more-failed');
+      expect(line.textContent?.replace(/\s+/g, ' ').trim()).toBe(SERVER_LINE);
+      expect(
+        rowsShown()[0].compareDocumentPosition(line) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        line.compareDocumentPosition(byId('inbox-load-more')) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+
+      within(line).getByRole('button', { name: 'Try again.' }).click();
+
+      expect(inbox.loadMore).toHaveBeenCalledExactlyOnceWith('all');
+      expect(inbox.refresh).not.toHaveBeenCalled();
+    });
+
+    it.each<[string, (fake: FakeInbox) => void]>([
+      [
+        'the list has not failed',
+        (fake) => {
+          fake.hasMore.set(true);
+          fake.mentions.set([row('$m')]);
+        },
+      ],
+      [
+        'there is nothing more to load',
+        (fake) => {
+          fake.serverListFailed.set(true);
+          fake.mentions.set([row('$m')]);
+        },
+      ],
+      [
+        'there are no rows',
+        (fake) => {
+          fake.serverListFailed.set(true);
+          fake.hasMore.set(true);
+        },
+      ],
+    ])('does not repeat the server line when %s', async (_name, arrange) => {
+      await renderInbox(arrange);
+
+      expect(screen.queryByTestId('inbox-more-failed')).toBeNull();
+    });
+
     it('shows the server line when Load more failed, and keeps the rows', async () => {
       const { inbox, settle } = await renderInbox((fake) => {
         fake.hasMore.set(true);
@@ -610,7 +812,11 @@ describe('NotificationInboxComponent', () => {
   });
 });
 
-const PAGE = (roomId: string, eventId: string) => ({
+const PAGE = (
+  roomId: string,
+  eventId: string,
+  nextToken: string | null = null,
+) => ({
   notifications: [
     {
       room_id: roomId,
@@ -626,7 +832,7 @@ const PAGE = (roomId: string, eventId: string) => ({
       },
     },
   ],
-  next_token: null,
+  next_token: nextToken,
 });
 
 interface FakeClient {
@@ -711,15 +917,78 @@ describe('NotificationInboxComponent on the real service', () => {
     ]);
   });
 
-  it('stays idle with no client, without looping', async () => {
+  it('stays idle with no client, asking once', async () => {
+    const refresh = vi.spyOn(NotificationInboxService.prototype, 'refresh');
     const { inbox, settle } = await renderReal(null);
-    const refresh = vi.spyOn(inbox, 'refresh');
 
     await settle();
     await settle();
 
     expect(inbox.status()).toBe('idle');
-    expect(refresh).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledOnce();
+    refresh.mockRestore();
+  });
+
+  it('asks once for a load that finishes', async () => {
+    const refresh = vi.spyOn(NotificationInboxService.prototype, 'refresh');
+    const a = fakeClient('@a:hs', () => Promise.resolve(PAGE('!a:hs', '$a')));
+    const { inbox, settle } = await renderReal(a);
+
+    await settle();
+
+    expect(inbox.status()).toBe('ready');
+    expect(refresh).toHaveBeenCalledOnce();
+    refresh.mockRestore();
+  });
+
+  it('does not say "No mentions" when the first page held none but more remain', async () => {
+    const a = fakeClient('@a:hs', () =>
+      Promise.resolve(PAGE('!a:hs', '$a', 'next')),
+    );
+    const { inbox } = await renderReal(a);
+
+    expect(inbox.status()).toBe('ready');
+    expect(inbox.mentions()).toHaveLength(0);
+    expect(inbox.hasMore()).toBe(true);
+    expect(screen.queryByTestId('inbox-empty')).toBeNull();
+    expect(byId('inbox-load-more')).toBeTruthy();
+    expect(screen.getByRole('status').textContent?.trim()).toBe(
+      'No mentions so far.',
+    );
+  });
+
+  it('keeps the loaded pages when Load more fails, and retries that page', async () => {
+    const answers = [
+      () => Promise.resolve(PAGE('!a:hs', '$a', 'second')),
+      () => Promise.reject(new Error('down')),
+      () => Promise.resolve(PAGE('!b:hs', '$b')),
+    ];
+    const a = fakeClient('@a:hs', () => answers.shift()!());
+    const { inbox, settle } = await renderReal(a);
+    byId('inbox-tab-all').click();
+    await settle();
+
+    byId('inbox-load-more').click();
+    await settle();
+
+    expect(inbox.status()).toBe('ready');
+    expect(inbox.serverListFailed()).toBe(true);
+    expect(rowsShown()).toHaveLength(1);
+    expect(byId('inbox-server-failed')).toBeTruthy();
+
+    within(byId('inbox-more-failed'))
+      .getByRole('button', { name: 'Try again.' })
+      .click();
+    await settle();
+
+    expect(a.http.authedRequest).toHaveBeenLastCalledWith(
+      'GET',
+      '/notifications',
+      expect.objectContaining({ from: 'second' }),
+    );
+    expect(rowsShown()).toHaveLength(2);
+    expect(screen.queryByTestId('inbox-more-failed')).toBeNull();
+    expect(screen.queryByTestId('inbox-server-failed')).toBeNull();
   });
 
   it('shows the failure once, and retries only when asked', async () => {

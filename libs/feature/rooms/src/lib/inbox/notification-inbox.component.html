@@ -46,7 +46,7 @@
 
   <div #scroller class="inbox__scroll" data-testid="inbox-scroll">
     @for (panel of tabs; track panel) {
-      <div [trnTabPanel]="panel" [focusable]="!rows().length">
+      <div #tabPanel [trnTabPanel]="panel" [focusable]="!rows().length">
         @if (panel === tab()) {
           @if (inbox.status() === 'failed') {
             <trn-empty-state
@@ -59,7 +59,7 @@
                 trnBtn
                 size="sm"
                 type="button"
-                (click)="refresh()"
+                (click)="tryAgain(tabPanel)"
               >
                 Try again
               </button>
@@ -118,7 +118,10 @@
                 data-testid="inbox-loading"
               />
             } @else if (
-              inbox.status() === 'ready' && !inbox.serverListFailed()
+              inbox.status() === 'ready' &&
+              !inbox.serverListFailed() &&
+              !canLoadMore() &&
+              !uncheckedNote()
             ) {
               <trn-empty-state
                 icon="inbox"
@@ -140,6 +143,26 @@
               <p class="inbox__note" data-testid="inbox-limit">
                 <trn-icon name="search" />
                 <span>{{ note }}</span>
+              </p>
+            }
+            <!-- The list may be scrolled far from the line above, and Refresh would drop its pages. -->
+            @if (inbox.serverListFailed() && canLoadMore() && rows().length) {
+              <p class="inbox__note" data-testid="inbox-more-failed">
+                <trn-icon name="cloud-off" />
+                <span
+                  >Couldn't load your server's list.
+                  <button
+                    trnBtn
+                    type="button"
+                    variant="secondary"
+                    presentation="link"
+                    shape="inline"
+                    size="xs"
+                    (click)="loadMore()"
+                  >
+                    Try again.
+                  </button></span
+                >
               </p>
             }
             @if (canLoadMore()) {

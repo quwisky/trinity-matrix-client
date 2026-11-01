@@ -10,6 +10,8 @@
   .row {
     @include interactive-row;
 
+    // Holds the absolute `.sr-only` spans, which would otherwise escape the scroller.
+    position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: var(--trinity-space-1) var(--trinity-space-3);
@@ -83,11 +85,11 @@
   }
 
   // Its own line: the date and time would leave a narrow sidebar no room for the room's name.
+  // It wraps rather than truncates, which would lose AM or PM.
   .row__time {
-    @include ellipsis;
-
     grid-column: 2 / 4;
     min-width: 0;
+    overflow-wrap: anywhere;
     font-size: var(--trinity-text-xs);
     color: var(--trinity-text-muted);
   }

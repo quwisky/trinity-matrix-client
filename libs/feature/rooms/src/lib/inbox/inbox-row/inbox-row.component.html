@@ -16,7 +16,7 @@
     size="lg"
     shape="place"
   />
-  <span class="row__room">{{ r.roomName }}</span>
+  <span class="row__room" dir="auto">{{ r.roomName }}</span>
   @if (unread()) {
     <span class="row__dot" data-testid="inbox-row-dot"></span>
   }
@@ -26,9 +26,9 @@
     [class.row__preview--stand-in]="r.preview.kind !== 'text'"
   >
     @if (r.senderName; as sender) {
-      <span class="row__sender">{{ sender }}:</span>
+      <span class="row__sender" dir="auto">{{ sender }}:</span>&ngsp;
     }
-    {{ previewText() }}
+    <span dir="auto">{{ previewText() }}</span>
   </span>
   <span class="sr-only">, </span>
   <span class="row__time">{{ fmt.dateTime(r.ts) }}</span>

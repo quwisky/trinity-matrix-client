@@ -58,6 +58,17 @@ export class NotificationInboxComponent {
   /** The server's `read` lags and the list isn't live, so an opened row is held here. */
   private readonly openedIds = signal<ReadonlySet<string>>(new Set());
   private readonly lastOpenedId = signal<string | null>(null);
+  private readonly summary = computed(() => {
+    const count = this.rows().length;
+    const noun = this.tab() === 'all' ? 'notification' : 'mention';
+    const found =
+      count === 0
+        ? `No ${noun}s`
+        : count === 1
+          ? `1 ${noun}`
+          : `${count} ${noun}s`;
+    return this.canLoadMore() ? `${found} so far.` : `${found}.`;
+  });
 
   protected readonly inbox = inject(NotificationInboxService);
   protected readonly recording = inject(MentionIndexService).recording;
@@ -89,9 +100,10 @@ export class NotificationInboxComponent {
     const status = this.inbox.status();
     if (status === 'loading') return 'Loading your inbox…';
     if (status === 'failed') return "Couldn't load your inbox";
+    if (status === 'idle') return '';
     if (this.inbox.serverListFailed())
       return "Couldn't load your server's list.";
-    return this.limitNote() ?? '';
+    return this.limitNote() ?? this.summary();
   });
 
   readonly activeRoomId = input<string | null>(null);
@@ -109,6 +121,12 @@ export class NotificationInboxComponent {
 
   protected refresh(): void {
     this.run(this.inbox.refresh());
+  }
+
+  /** Try again goes away as the load starts, which would drop focus to the page. */
+  protected tryAgain(panel: HTMLElement): void {
+    panel.focus();
+    this.refresh();
   }
 
   protected loadMore(): void {

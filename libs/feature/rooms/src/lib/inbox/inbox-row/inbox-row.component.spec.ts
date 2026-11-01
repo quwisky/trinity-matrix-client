@@ -57,6 +57,18 @@ describe('InboxRowComponent', () => {
     expect(screen.getByRole('button').textContent).toContain(words);
   });
 
+  it('lets room, sender and preview each take their own direction', async () => {
+    await renderRow({
+      roomName: 'غرفة',
+      senderName: 'سارة',
+      preview: { kind: 'text', text: 'مرحبا' },
+    });
+
+    for (const words of ['غرفة', 'سارة:', 'مرحبا']) {
+      expect(screen.getByText(words).getAttribute('dir')).toBe('auto');
+    }
+  });
+
   it('renders a hostile body, sender and room as text', async () => {
     const hostile = '<img src=x onerror=alert(1)>';
     const { container } = await renderRow({
