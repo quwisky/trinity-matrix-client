@@ -1,5 +1,6 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideServiceWorker } from '@angular/service-worker';
+import { seedSystemColourMode } from '@trinity/application/appearance';
 import {
   ApplicationRootComponent,
   provideTrinityApplication,
@@ -23,12 +24,7 @@ const serviceWorkerEnabled =
   !isInstalledNativePlatform() &&
   !isElectronRenderer();
 
-// Appearance stamps `.dark` only after preferences load, seconds into a cold start. Until then
-// the app would render in light colours over the dark boot splash, so seed it from the system.
-document.documentElement.classList.toggle(
-  'dark',
-  matchMedia('(prefers-color-scheme: dark)').matches,
-);
+seedSystemColourMode();
 
 void bootstrapApplication(ApplicationRootComponent, {
   providers: [
