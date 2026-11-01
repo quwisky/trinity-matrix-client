@@ -24,7 +24,7 @@ export type {
   NotificationPolicyInput,
   NotificationRuntimeEvent,
 } from './lib/notification-intent';
-export { NotificationPolicy } from './lib/notification-policy';
+export { GENERIC_BODY, NotificationPolicy } from './lib/notification-policy';
 export {
   NOTIFICATION_TEXT,
   type NotificationTextMode,
@@ -41,6 +41,14 @@ export {
   provideMentionInboxPreferences,
 } from './lib/inbox/mention-inbox.preferences';
 export { MentionIndexService } from './lib/inbox/mention-index.service';
+export { mergeInboxRows } from './lib/inbox/inbox-rows';
+export type {
+  InboxLoadResult,
+  InboxPreview,
+  InboxRow,
+  InboxTab,
+} from './lib/inbox/inbox-rows';
+export { NotificationInboxService } from './lib/inbox/notification-inbox.service';
 export type {
   MentionCursor,
   MentionRecord,

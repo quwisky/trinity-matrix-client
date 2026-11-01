@@ -50,7 +50,7 @@ interface AccountRecorder {
 const PENDING_DECRYPTION_CAP = 500;
 
 /** A hung store would otherwise hold every delete and stop queued behind it for good. */
-const STEP_LIMIT_MS = 10_000;
+export const STEP_LIMIT_MS = 10_000;
 
 /**
  * Records which messages mentioned the person, for every signed-in account at once, which is
