@@ -42,6 +42,8 @@
   .invite__open {
     @include interactive-row;
 
+    -webkit-touch-callout: none;
+    user-select: none;
     display: flex;
     flex: 1;
     min-width: 0;

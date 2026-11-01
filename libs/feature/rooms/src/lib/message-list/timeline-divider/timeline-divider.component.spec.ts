@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { render } from '@trinity/testing';
 import { TimelineDividerComponent } from './timeline-divider.component';
 
@@ -49,4 +51,14 @@ describe('TimelineDividerComponent', () => {
   // The testids above are not decoration: `MessageListBase.updateJumpToUnread()` finds the
   // unread mark with `querySelector('[data-testid="new-messages-divider"]')`, and both are
   // queried by the Playwright suite. Renaming one breaks the jump pill silently.
+
+  it('keeps a long press on the New messages divider from selecting its text', () => {
+    const scss = readFileSync(
+      join(__dirname, 'timeline-divider.component.scss'),
+      'utf8',
+    ).replace(/\s+/g, ' ');
+    const rule = scss.match(/\.new-divider \{([^}]*)\}/);
+    expect(rule?.[1]).toContain('user-select: none;');
+    expect(rule?.[1]).toContain('-webkit-touch-callout: none;');
+  });
 });

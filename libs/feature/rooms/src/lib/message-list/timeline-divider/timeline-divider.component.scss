@@ -42,6 +42,8 @@
 
   .new-divider {
     position: relative;
+    -webkit-touch-callout: none;
+    user-select: none;
     display: flex;
     align-items: center;
     gap: 8px;

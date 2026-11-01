@@ -22,6 +22,8 @@
   .channel {
     @include interactive-row;
 
+    -webkit-touch-callout: none;
+    user-select: none;
     flex: 1;
     min-width: 0;
     display: flex;
