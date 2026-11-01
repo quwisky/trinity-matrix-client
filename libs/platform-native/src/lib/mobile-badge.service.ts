@@ -12,6 +12,7 @@ import {
   catchError,
   defer,
   finalize,
+  firstValueFrom,
   from,
   map,
   of,
@@ -22,6 +23,12 @@ import {
 } from 'rxjs';
 
 const NATIVE_BADGE_OPERATION_TIMEOUT_MS = 5_000;
+
+function withinTimeout<T>(call: Promise<T>): Promise<T> {
+  return firstValueFrom(
+    from(call).pipe(timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS })),
+  );
+}
 
 /**
  * iOS / Android app-icon badge sink, called by {@link AppBadgeService} only on a native
@@ -91,7 +98,6 @@ export class MobileBadgeService implements HostBadgeOperation {
     if (this.readiness) return this.readiness;
 
     const readiness = defer(() => from(this.probe())).pipe(
-      timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS }),
       tap((ready) => (this.ready = ready)),
       finalize(() => {
         if (this.readiness === readiness) this.readiness = undefined;
@@ -109,12 +115,15 @@ export class MobileBadgeService implements HostBadgeOperation {
     ) {
       return false;
     }
-    const { isSupported } = await Badge.isSupported();
+    const { isSupported } = await withinTimeout(Badge.isSupported());
     if (!isSupported) {
       return false;
     }
+    const { display: current } = await withinTimeout(Badge.checkPermissions());
+    if (current === 'granted') return true;
+    if (current === 'denied') return false;
     // iOS prompts for the `badge` authorization once; Android resolves granted without a
-    // prompt. Request rather than only check so first use can grant it.
+    // prompt. The request waits on the person, so it is the one call with no time limit.
     const { display } = await Badge.requestPermissions();
     return display === 'granted';
   }

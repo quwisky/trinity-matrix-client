@@ -9,6 +9,7 @@ import { MobileBadgeService } from './mobile-badge.service';
 vi.mock('@capawesome/capacitor-badge', () => ({
   Badge: {
     isSupported: vi.fn(),
+    checkPermissions: vi.fn(),
     requestPermissions: vi.fn(),
     set: vi.fn(),
     clear: vi.fn(),
@@ -28,6 +29,7 @@ describe('MobileBadgeService', () => {
     vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
     vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
     badge.isSupported.mockResolvedValue({ isSupported: true });
+    badge.checkPermissions.mockResolvedValue({ display: 'prompt' });
     badge.requestPermissions.mockResolvedValue({ display: 'granted' });
     badge.set.mockResolvedValue();
     badge.clear.mockResolvedValue();
@@ -133,9 +135,9 @@ describe('MobileBadgeService', () => {
     expect(badge.isSupported).toHaveBeenCalledTimes(2);
   });
 
-  it('bounds a stalled permission request', async () => {
+  it('bounds a stalled permission check', async () => {
     vi.useFakeTimers();
-    badge.requestPermissions.mockImplementation(
+    badge.checkPermissions.mockImplementation(
       () => new Promise<never>(() => undefined),
     );
     const support = firstValueFrom(makeService().support());
@@ -148,6 +150,39 @@ describe('MobileBadgeService', () => {
       kind: 'unavailable',
       reason: 'host-rejected',
       diagnostic: { code: 'badge-probe-timeout' },
+    });
+  });
+
+  it('waits as long as the person takes to answer the permission prompt', async () => {
+    vi.useFakeTimers();
+    let answer: (result: { display: 'granted' }) => void = () => undefined;
+    badge.requestPermissions.mockImplementation(
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    const support = firstValueFrom(makeService().support());
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    answer({ display: 'granted' });
+
+    await expect(support).resolves.toEqual({ kind: 'supported' });
+  });
+
+  it('does not prompt again once permission is already decided', async () => {
+    badge.checkPermissions.mockResolvedValue({ display: 'granted' });
+
+    await expect(firstValueFrom(makeService().support())).resolves.toEqual({
+      kind: 'supported',
+    });
+    expect(badge.requestPermissions).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed permission request without the timeout code', async () => {
+    badge.requestPermissions.mockRejectedValue(new Error('boom'));
+
+    await expect(firstValueFrom(makeService().support())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'host-rejected',
+      diagnostic: { code: 'badge-probe-failed' },
     });
   });
 
