@@ -1820,6 +1820,35 @@ describe('LoginPage', () => {
       );
     }
 
+    it('names the account on an OAuth re-auth, which has no username field', async () => {
+      const { fixture } = await renderLogin(OIDC_AUTH, {
+        reauth: '@bob:hs',
+        record: OIDC_RECORD,
+      });
+      fixture.detectChanges();
+
+      expect(
+        fixture.nativeElement
+          .querySelector('[data-testid="reauth-account"]')
+          ?.textContent?.trim(),
+      ).toBe('@bob:hs');
+    });
+
+    it('leaves a password re-auth to its username field', async () => {
+      const { fixture } = await renderLogin(
+        {
+          getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+          getDelegatedAuthConfig: vi.fn(() => of(null)),
+        } as unknown as Partial<AuthService>,
+        { reauth: '@bob:hs', record: { ...OIDC_RECORD, oidc: undefined } },
+      );
+      fixture.detectChanges();
+
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="reauth-account"]'),
+      ).toBeNull();
+    });
+
     it('offers Remove this account on an OAuth re-auth', async () => {
       const { fixture } = await renderLogin(OIDC_AUTH, {
         reauth: '@bob:hs',
@@ -1870,6 +1899,20 @@ describe('LoginPage', () => {
 
       expect(removal.remove).toHaveBeenCalledExactlyOnceWith('@bob:hs');
       expect(restart.restart).not.toHaveBeenCalled();
+      // Kept: nothing is running, so it can be pressed again.
+      expect(removeButton(fixture)?.disabled).toBe(false);
+    });
+
+    it('stays disabled while the removal runs on in the background', async () => {
+      const { fixture } = await renderLogin(OIDC_AUTH, {
+        reauth: '@bob:hs',
+        record: OIDC_RECORD,
+        removal: of({ kind: 'still-running' }),
+      });
+
+      removeButton(fixture)?.click();
+
+      expect(removeButton(fixture)?.disabled).toBe(true);
     });
 
     it('can not start a second removal while one is running', async () => {

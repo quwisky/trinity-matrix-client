@@ -543,13 +543,16 @@ export class LoginPage {
     if (!accountId) return;
     this.error.set(null);
     this.removing.set(true);
+    // Still running: a second press would only find the account gone.
+    let running = false;
     this.accountRemoval
       .remove(accountId)
       .pipe(
-        finalize(() => this.removing.set(false)),
+        finalize(() => this.removing.set(running)),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((outcome) => {
+        running = outcome.kind === 'still-running';
         if (outcome.kind === 'failed') {
           this.error.set(REMOVAL_FAILED);
         } else if (outcome.kind === 'removed') {

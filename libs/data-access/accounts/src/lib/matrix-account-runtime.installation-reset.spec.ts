@@ -1,10 +1,11 @@
 import { NEVER, Subject, defer, firstValueFrom, of, throwError } from 'rxjs';
-import { expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AccountRecord } from '@trinity/platform-native';
 import type { MatrixSession } from '@trinity/util/matrix';
 import type { InstallationResetOutcome } from './account-runtime.models';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import {
+  OIDC_RECORD,
   deferred,
   prepareSuccessfulReset,
   setup,
@@ -568,6 +569,84 @@ it('classifies a provider-revocation timeout as provider residue', async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+describe('a signed-out OAuth account, whose tokens are already gone', () => {
+  function signedOut() {
+    const test = setup(null);
+    test.reauthTargets.set(['@oidc:hs']);
+    vi.mocked(test.storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(test.matrix.signOutAll).mockReturnValue(of(void 0));
+    // As the real service: stopping the clients empties the targets.
+    vi.mocked(test.matrix.stop).mockImplementation(() => {
+      test.reauthTargets.set([]);
+      return of(void 0);
+    });
+    vi.mocked(test.storage.clearAll).mockReturnValue(of([]));
+    return test;
+  }
+
+  it('leaves no provider residue when its record has no session', async () => {
+    const { adapter, storage } = signedOut();
+    vi.mocked(storage.load).mockReturnValue(of(null));
+
+    await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+      kind: 'ready',
+    });
+  });
+
+  it('leaves no provider residue when its session cannot be read', async () => {
+    const { adapter, storage } = signedOut();
+    vi.mocked(storage.load).mockReturnValue(
+      throwError(() => new Error('secure read failed')),
+    );
+
+    // The secure-storage wipe that follows resolves the failed read.
+    await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+      kind: 'ready',
+    });
+  });
+
+  it('leaves no provider residue when its read answers after the clients stopped', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, storage } = signedOut();
+      const late = new Subject<null>();
+      vi.mocked(storage.load).mockReturnValue(late);
+      const outcomes: InstallationResetOutcome[] = [];
+      adapter
+        .resetInstallation()
+        .subscribe((outcome) => outcomes.push(outcome));
+
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+      );
+      await vi.runOnlyPendingTimersAsync();
+      expect(storage.clearAll).toHaveBeenCalledOnce();
+
+      late.next(null);
+      late.complete();
+      await vi.runAllTimersAsync();
+
+      expect(outcomes.at(-1)).toEqual({ kind: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+it('still records provider residue for an OAuth record that is no re-auth target', async () => {
+  const { adapter, matrix, storage } = setup(null);
+  vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+  vi.mocked(storage.load).mockReturnValue(of(null));
+  vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
+  vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+  vi.mocked(storage.clearAll).mockReturnValue(of([]));
+
+  await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+    kind: 'partial-cleanup',
+    issues: [{ scope: 'provider-session', recovery: 'restart-application' }],
+  });
 });
 
 it('records a failed provider revocation as residue and still finishes the reset', async () => {

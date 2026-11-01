@@ -1,4 +1,5 @@
 import { Location } from '@angular/common';
+import { signal } from '@angular/core';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { render } from '@trinity/testing';
 import {
@@ -9,6 +10,7 @@ import {
   type OidcStateStash,
   type SsoStateStash,
 } from '@trinity/data-access/auth';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
 import { from, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -56,6 +58,8 @@ async function renderPage(opts: {
   oidcPeek?: () => Promise<OidcStateStash>;
   /** Per-call legacy-SSO peek behaviour, same purpose. */
   ssoPeek?: () => Promise<SsoStateStash>;
+  reauthTargets?: readonly string[];
+  activeUserId?: string;
 }): Promise<{
   fixture: Awaited<ReturnType<typeof render<SsoCallbackPage>>>['fixture'];
   cmp: SsoCallbackPage;
@@ -79,6 +83,10 @@ async function renderPage(opts: {
   const { fixture } = await render(SsoCallbackPage, {
     providers: [
       MockProvider(AuthService, opts.auth),
+      MockProvider(MatrixClientService, {
+        activeUserId: signal(opts.activeUserId ?? null).asReadonly(),
+        reauthTargets: signal(opts.reauthTargets ?? []).asReadonly(),
+      }),
       MockProvider(Router, { navigateByUrl }),
       MockProvider(Location, { replaceState }),
       MockProvider(SsoStateStore, { peek: ssoPeek, clear: ssoClear }),
@@ -111,6 +119,46 @@ async function renderPage(opts: {
 }
 
 describe('SsoCallbackPage', () => {
+  describe('Back to sign in', () => {
+    it('offers the first signed-out OAuth account its same device again', async () => {
+      const { cmp, navigateByUrl } = await renderPage({
+        auth: {},
+        reauthTargets: ['@me:hs', '@you:other'],
+      });
+
+      cmp.back();
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+        '/login?reauth=%40me%3Ahs',
+        { replaceUrl: true },
+      );
+    });
+
+    it('keeps the plain login with an account live, whatever else is signed out', async () => {
+      const { cmp, navigateByUrl } = await renderPage({
+        auth: {},
+        activeUserId: '@live:hs',
+        reauthTargets: ['@me:hs'],
+      });
+
+      cmp.back();
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/login', {
+        replaceUrl: true,
+      });
+    });
+
+    it('goes to the blank login with no such account', async () => {
+      const { cmp, navigateByUrl } = await renderPage({ auth: {} });
+
+      cmp.back();
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/login', {
+        replaceUrl: true,
+      });
+    });
+  });
+
   it('renders its page title as the first and only heading', async () => {
     const { fixture } = await renderPage({
       auth: {} as unknown as Partial<AuthService>,

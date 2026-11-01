@@ -17,6 +17,7 @@ import {
   SsoStateStore,
   type OidcGrantContext,
 } from '@trinity/data-access/auth';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { accountEstablishmentError } from '../account-establishment-outcome';
 
@@ -39,6 +40,7 @@ import { accountEstablishmentError } from '../account-establishment-outcome';
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly location = inject(Location);
@@ -247,6 +249,13 @@ export class SsoCallbackPage implements OnInit {
   }
 
   back(): void {
-    this.router.navigateByUrl('/login', { replaceUrl: true });
+    // Someone adding an account beside a live one isn't sent to another account's re-auth.
+    const target = this.matrix.activeUserId()
+      ? undefined
+      : this.matrix.reauthTargets()[0];
+    this.router.navigateByUrl(
+      target ? `/login?reauth=${encodeURIComponent(target)}` : '/login',
+      { replaceUrl: true },
+    );
   }
 }

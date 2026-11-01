@@ -1501,6 +1501,14 @@ describe('MatrixClientService', () => {
       expect(svc.softLoggedOut()).toEqual(['@you:other']);
     });
 
+    it('stops offering an account once it is removed', async () => {
+      const { svc } = await twoSignedOut();
+
+      await firstValueFrom(svc.remove('@me:hs'));
+
+      expect(svc.reauthTargets()).toEqual(['@you:other']);
+    });
+
     it('forgets every offer when the clients are torn down', async () => {
       const { svc } = await twoSignedOut();
 

@@ -48,6 +48,14 @@
           }}
         }
       </p>
+      @if (reauthRemovable()) {
+        <p
+          class="login-card__subtitle [overflow-wrap:anywhere]"
+          data-testid="reauth-account"
+        >
+          {{ reauthUserId() }}
+        </p>
+      }
       <p class="login-card__homeserver">{{ baseUrl() }}</p>
     }
   </ng-container>

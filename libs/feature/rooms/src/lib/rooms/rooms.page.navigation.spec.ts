@@ -1214,70 +1214,6 @@ describe('RoomsPage keyboard room switching', () => {
 // the real route parameter through to `activeRoomId` and the projections behind it — the
 // producer side was already asserted against a mocked Router in the notifications lib, which
 // stayed green for the whole time nothing consumed what it sent.
-describe('RoomsPage when the last account is gone', () => {
-  function lastAccountGone(reauthTargets: readonly string[]): Router {
-    const activeUserId = signal<string | null>('@me:hs');
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsPage,
-        ...SHARED_MOCKS,
-        MockProvider(RoomLibraryService, {
-          selectionAvailability: () => 'available',
-          clearMarkedUnread: () => of(void 0),
-          rooms: signal<RoomSummary[]>([]),
-        }),
-        MockProvider(SpacesService, {
-          openSpace: () => of(void 0),
-          spaces: signal([]),
-        }),
-        MockProvider(ConversationRuntime),
-        MockProvider(TimelineActionsService),
-        MockProvider(MediaPipeline),
-        matrixClientProvider({
-          activeUserId: activeUserId.asReadonly(),
-          reauthTargets,
-        }),
-        UNREAD_AGGREGATOR_PROVIDER,
-        invitesProvider(),
-        MockProvider(UserPickerService),
-        MockProvider(QuickSwitcherService),
-        MockProvider(TrnSurfaceService),
-        MockProvider(TrnToastService),
-      ],
-    });
-    shellFrom();
-    activeUserId.set(null);
-    TestBed.tick();
-    return TestBed.inject(Router);
-  }
-
-  it('goes to the prefilled re-auth when the last account is an OAuth account the server signed out', () => {
-    const router = lastAccountGone(['@me:hs']);
-
-    expect(router.navigateByUrl).toHaveBeenCalledExactlyOnceWith(
-      '/login?reauth=%40me%3Ahs',
-      { replaceUrl: true },
-    );
-  });
-
-  it('offers the first of several signed-out OAuth accounts', () => {
-    const router = lastAccountGone(['@me:hs', '@you:other']);
-
-    expect(router.navigateByUrl).toHaveBeenCalledExactlyOnceWith(
-      '/login?reauth=%40me%3Ahs',
-      { replaceUrl: true },
-    );
-  });
-
-  it('goes to the blank login when the last account was signed out by the person', () => {
-    const router = lastAccountGone([]);
-
-    expect(router.navigateByUrl).toHaveBeenCalledExactlyOnceWith('/login', {
-      replaceUrl: true,
-    });
-  });
-});
-
 describe('RoomsPage room-in-URL deep link', () => {
   let conversationFocus: Mock;
   let conversationBlur: Mock;
@@ -1455,5 +1391,69 @@ describe('RoomsPage room-in-URL deep link', () => {
 
     expect(conversationBlur).toHaveBeenCalled();
     expect(media.releaseAll).toHaveBeenCalled();
+  });
+});
+
+describe('RoomsPage when the last account is gone', () => {
+  function lastAccountGone(reauthTargets: readonly string[]): Router {
+    const activeUserId = signal<string | null>('@me:hs');
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        ...SHARED_MOCKS,
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
+          rooms: signal<RoomSummary[]>([]),
+        }),
+        MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
+          spaces: signal([]),
+        }),
+        MockProvider(ConversationRuntime),
+        MockProvider(TimelineActionsService),
+        MockProvider(MediaPipeline),
+        matrixClientProvider({
+          activeUserId: activeUserId.asReadonly(),
+          reauthTargets,
+        }),
+        UNREAD_AGGREGATOR_PROVIDER,
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(TrnSurfaceService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    shellFrom();
+    activeUserId.set(null);
+    TestBed.tick();
+    return TestBed.inject(Router);
+  }
+
+  it('goes to the prefilled re-auth when the last account is an OAuth account the server signed out', () => {
+    const router = lastAccountGone(['@me:hs']);
+
+    expect(router.navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+      '/login?reauth=%40me%3Ahs',
+      { replaceUrl: true },
+    );
+  });
+
+  it('offers the first of several signed-out OAuth accounts', () => {
+    const router = lastAccountGone(['@me:hs', '@you:other']);
+
+    expect(router.navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+      '/login?reauth=%40me%3Ahs',
+      { replaceUrl: true },
+    );
+  });
+
+  it('goes to the blank login when the last account was signed out by the person', () => {
+    const router = lastAccountGone([]);
+
+    expect(router.navigateByUrl).toHaveBeenCalledExactlyOnceWith('/login', {
+      replaceUrl: true,
+    });
   });
 });
