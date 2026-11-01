@@ -98,11 +98,13 @@ export class AccountLifecycleAdapter {
                   accountId,
                   remainingAccountIds,
                   client: this.matrix.clientFor(accountId),
-                  providerExpected: Boolean(
-                    registry.accounts.find(
-                      (entry) => entry.userId === accountId,
-                    )?.oidc,
-                  ),
+                  // A re-auth target's tokens are already gone; a lost store key's are not.
+                  providerExpected:
+                    Boolean(
+                      registry.accounts.find(
+                        (entry) => entry.userId === accountId,
+                      )?.oidc,
+                    ) && !this.matrix.reauthTargets().includes(accountId),
                   session: null,
                 };
                 return this.runSignOut(attempt, retryContext);

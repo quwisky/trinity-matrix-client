@@ -19,6 +19,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   Observable,
   catchError,
+  finalize,
   forkJoin,
   map,
   of,
@@ -54,6 +55,7 @@ import {
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   ACCOUNT_DELETION_LAUNCHER,
+  ACCOUNT_REMOVAL_LAUNCHER,
   AppRestartService,
   BUG_REPORT_LAUNCHER,
   SessionStorageService,
@@ -81,6 +83,7 @@ const ACCOUNT_NOT_STORED = 'That account is no longer stored.';
 const DISCOVERY_FALLBACK =
   "We couldn't find a homeserver at that address. Check it and try again.";
 const SIGN_IN_FALLBACK = "We couldn't sign you in. Try again.";
+const REMOVAL_FAILED = 'Unable to remove this account right now.';
 
 /**
  * Plain-language text for a failed discovery or sign-in request. A 401/403 from the
@@ -151,6 +154,7 @@ export class LoginPage {
   private readonly alert = inject(TrnAlertService);
   private readonly accounts = inject(AccountRuntimeService);
   private readonly restart = inject(AppRestartService);
+  private readonly accountRemoval = inject(ACCOUNT_REMOVAL_LAUNCHER);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly bugReport = inject(BUG_REPORT_LAUNCHER, { optional: true });
@@ -185,6 +189,15 @@ export class LoginPage {
    * reusing its device so no re-verification is needed). */
   readonly reauthUserId = signal<string | null>(
     this.route.snapshot.queryParamMap.get('reauth'),
+  );
+  /** An OAuth re-auth may be the only page left with no live account: it offers removal. */
+  readonly reauthRemovable = signal(false);
+  readonly removing = signal(false);
+  /** Cancel opens `/rooms`, and with no live account the guard sends a re-auth straight back. */
+  readonly canCancel = computed(
+    () =>
+      this.addMode ||
+      (!!this.reauthUserId() && this.accounts.hasActiveAccount()),
   );
   /** In re-auth, the provider binding the account signed in with. */
   private reauthBinding: OidcSessionBinding | null = null;
@@ -235,6 +248,7 @@ export class LoginPage {
             }
             this.baseUrl.set(record.baseUrl);
             this.reauthBinding = record.oidc ?? null;
+            this.reauthRemovable.set(!!record.oidc);
             // Reuse the device unless its stored keys can no longer be unlocked here:
             // then only a new device, with a new store and key, can sign back in.
             const reusable = this.reauthAsNewDevice
@@ -521,6 +535,31 @@ export class LoginPage {
   /** Abandon adding an account and return to the app. */
   cancelAdd(): void {
     void this.router.navigateByUrl('/rooms');
+  }
+
+  /** With no live account left, restarts: the router keeps this page across `/login` URLs. */
+  removeReauthAccount(): void {
+    const accountId = this.reauthUserId();
+    if (!accountId) return;
+    this.error.set(null);
+    this.removing.set(true);
+    this.accountRemoval
+      .remove(accountId)
+      .pipe(
+        finalize(() => this.removing.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((outcome) => {
+        if (outcome.kind === 'failed') {
+          this.error.set(REMOVAL_FAILED);
+        } else if (outcome.kind === 'removed') {
+          if (this.accounts.hasActiveAccount()) {
+            void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+          } else {
+            this.restart.restart();
+          }
+        }
+      });
   }
 
   /** Step 2b: SSO — hand off to the homeserver's SSO page. */

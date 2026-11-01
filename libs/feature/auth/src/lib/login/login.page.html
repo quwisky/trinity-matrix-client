@@ -298,7 +298,7 @@
     </p>
   }
 
-  @if (addMode || reauthUserId()) {
+  @if (canCancel()) {
     <button
       trnBtn
       presentation="ghost"
@@ -308,6 +308,20 @@
       data-testid="cancel-add"
     >
       Cancel
+    </button>
+  }
+
+  @if (reauthRemovable()) {
+    <button
+      trnBtn
+      presentation="ghost"
+      type="button"
+      class="login-card__cancel w-full"
+      [disabled]="removing() || erasing()"
+      (click)="removeReauthAccount()"
+      data-testid="remove-reauth-account"
+    >
+      Remove this account
     </button>
   }
 

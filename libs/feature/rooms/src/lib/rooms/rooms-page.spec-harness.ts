@@ -502,6 +502,7 @@ export function matrixClientProvider(
   options: {
     readonly activeUserId?: Signal<string | null>;
     readonly accountIds?: readonly string[];
+    readonly reauthTargets?: readonly string[];
     readonly syncState?: SyncState;
   } = {},
 ): Provider {
@@ -517,6 +518,9 @@ export function matrixClientProvider(
       options.activeUserId ?? signal<string | null>('@me:hs').asReadonly(),
     accountIds: signal<readonly string[]>(
       options.accountIds ?? ['@me:hs'],
+    ).asReadonly(),
+    reauthTargets: signal<readonly string[]>(
+      options.reauthTargets ?? [],
     ).asReadonly(),
     clientFor: () => clientStub(),
   });

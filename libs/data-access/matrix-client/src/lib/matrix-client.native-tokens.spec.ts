@@ -681,6 +681,7 @@ describe('a phone account whose refresh token native code holds', () => {
       expect(createClient).not.toHaveBeenCalled();
       expect(storage.invalidateToken).toHaveBeenCalledExactlyOnceWith(ME);
       expect(svc.softLoggedOut()).toContain(ME);
+      expect(svc.reauthTargets()).toEqual([ME]);
       expect(svc.accountIds()).toEqual([]);
     });
 

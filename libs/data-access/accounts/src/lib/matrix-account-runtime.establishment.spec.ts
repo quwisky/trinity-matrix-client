@@ -71,11 +71,15 @@ it('types Active pointer failures without publishing the target client', async (
 it('keeps a tokenless saved Account visible to reauthentication surfaces', async () => {
   const { adapter, matrix, storage } = setup(null);
   vi.mocked(storage.load).mockReturnValue(of(null));
+  vi.mocked(storage.record).mockReturnValue(of(null));
 
   await expect(
     firstValueFrom(adapter.restoreAccount('@reauth:hs', 'inactive')),
   ).resolves.toEqual({ kind: 'reauthentication-required' });
-  expect(matrix.requireReauthentication).toHaveBeenCalledWith('@reauth:hs');
+  expect(matrix.requireReauthentication).toHaveBeenCalledWith(
+    '@reauth:hs',
+    false,
+  );
   expect(matrix.restorePersisted).not.toHaveBeenCalled();
 });
 

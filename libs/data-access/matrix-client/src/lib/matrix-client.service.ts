@@ -284,6 +284,13 @@ export class MatrixClientService {
    */
   readonly softLoggedOut = this._softLoggedOut.asReadonly();
 
+  private readonly _reauthTargets = signal<readonly string[]>([]);
+  /**
+   * The OAuth accounts in {@link softLoggedOut} a sign-in can restore on the same device, in
+   * the order they ended. Consumers read the first.
+   */
+  readonly reauthTargets = this._reauthTargets.asReadonly();
+
   private readonly _accessTokenRotations = new Subject<AccessTokenRotation>();
   /**
    * Access tokens the SDK refreshed (OAuth sessions only), each published once storage has
@@ -592,12 +599,16 @@ export class MatrixClientService {
         error instanceof MatrixClientStartupError
           ? defer(() => {
               // A lost store key also needs a sign-in as a new device, which the re-auth
-              // flow chooses when the key no longer reads back.
+              // flow chooses when the key no longer reads back, so it is no target.
               if (
                 error.failure === 'reauthentication-required' ||
                 error.failure === 'crypto-store-key-lost'
               ) {
-                this.requireReauthentication(session.userId);
+                this.requireReauthentication(
+                  session.userId,
+                  error.failure === 'reauthentication-required' &&
+                    !!session.oidc,
+                );
               }
               return of({ kind: 'failed' as const, failure: error.failure });
             })
@@ -607,8 +618,11 @@ export class MatrixClientService {
   }
 
   /** Keep legacy reauthentication surfaces coherent during the Account Runtime migration. */
-  requireReauthentication(userId: string): void {
+  requireReauthentication(userId: string, oauth = false): void {
     this.markSoftLoggedOut(userId);
+    if (oauth && !this._reauthTargets().includes(userId)) {
+      this._reauthTargets.set([...this._reauthTargets(), userId]);
+    }
   }
 
   /** Switch the active account (no-op if it isn't signed in). Cheap — it's already live. */
@@ -1458,6 +1472,7 @@ export class MatrixClientService {
     this.publishCorsOrigins();
     this._activeUserId.set(null);
     this._softLoggedOut.set([]);
+    this._reauthTargets.set([]);
     this.logoutHolds.clear();
   }
 
@@ -1588,7 +1603,7 @@ export class MatrixClientService {
       this.storage
         .invalidateToken(userId)
         .subscribe({ error: () => undefined });
-      this.markSoftLoggedOut(userId);
+      this.requireReauthentication(userId, oauth);
     } else {
       // The device is gone server-side: wipe locally and forget the account.
       this.removeInternal(userId, true);
@@ -1607,6 +1622,9 @@ export class MatrixClientService {
     if (this._softLoggedOut().includes(userId)) {
       this._softLoggedOut.set(
         this._softLoggedOut().filter((id) => id !== userId),
+      );
+      this._reauthTargets.set(
+        this._reauthTargets().filter((id) => id !== userId),
       );
     }
   }

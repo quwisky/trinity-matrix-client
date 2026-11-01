@@ -24,11 +24,14 @@ import {
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   ACCOUNT_DELETION_LAUNCHER,
+  ACCOUNT_REMOVAL_LAUNCHER,
   AppRestartService,
   BUG_REPORT_LAUNCHER,
   QrCodeService,
   SessionStorageService,
   provideHostCapabilities,
+  type AccountRemovalLauncher,
+  type AccountRemovalOutcome,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { fireEvent, render } from '@trinity/testing';
@@ -93,6 +96,10 @@ async function renderLogin(
     navigationState?: { passwordReset: true };
     /** `?homeserver=`, as the reset and registration pages hand back. */
     homeserver?: string;
+    /** How the removal flow ends; the person keeps the account unless a test says so. */
+    removal?: Observable<AccountRemovalOutcome>;
+    /** Whether another account is live; none is unless a test says so. */
+    liveAccount?: boolean;
   } = {},
 ): Promise<{
   fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
@@ -103,6 +110,7 @@ async function renderLogin(
   alert: TrnAlertService;
   reset: AccountRuntimeService;
   restart: AppRestartService;
+  removal: AccountRemovalLauncher;
 }> {
   const queryParamMap = {
     has: (key: string) => key === 'add' && !!opts.add,
@@ -179,6 +187,7 @@ async function renderLogin(
         prompt$: vi.fn(() => of(opts.typed ?? null)),
       }),
       MockProvider(AccountRuntimeService, {
+        hasActiveAccount: signal(opts.liveAccount ?? false).asReadonly(),
         resetInstallation: vi.fn(() =>
           of(
             (opts.report?.blocked.length ?? 0) +
@@ -222,6 +231,12 @@ async function renderLogin(
             },
           ]
         : []),
+      {
+        provide: ACCOUNT_REMOVAL_LAUNCHER,
+        useValue: {
+          remove: vi.fn(() => opts.removal ?? of({ kind: 'kept' as const })),
+        },
+      },
       { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap } } },
     ],
   });
@@ -234,6 +249,7 @@ async function renderLogin(
     alert: TestBed.inject(TrnAlertService),
     reset: TestBed.inject(AccountRuntimeService),
     restart: TestBed.inject(AppRestartService),
+    removal: TestBed.inject(ACCOUNT_REMOVAL_LAUNCHER),
   };
 }
 
@@ -1736,6 +1752,183 @@ describe('LoginPage', () => {
       cmp.startOidc();
 
       expect(redirect.startOidc).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Cancel', () => {
+    const AUTH = {
+      getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+      getDelegatedAuthConfig: vi.fn(() => of(null)),
+    } as unknown as Partial<AuthService>;
+    const RECORD = {
+      baseUrl: 'https://hs.example',
+      userId: '@bob:hs',
+      deviceId: 'OLDDEV',
+    };
+
+    function cancelButton(
+      fixture: Awaited<ReturnType<typeof renderLogin>>['fixture'],
+    ): HTMLButtonElement | null {
+      fixture.detectChanges();
+      return fixture.nativeElement.querySelector('[data-testid="cancel-add"]');
+    }
+
+    it('is hidden on a re-auth with no live account, where the guard would send it back', async () => {
+      const { fixture } = await renderLogin(AUTH, {
+        reauth: '@bob:hs',
+        record: RECORD,
+      });
+
+      expect(cancelButton(fixture)).toBeNull();
+    });
+
+    it('stays on a re-auth with another account live', async () => {
+      const { fixture } = await renderLogin(AUTH, {
+        reauth: '@bob:hs',
+        record: RECORD,
+        liveAccount: true,
+      });
+
+      expect(cancelButton(fixture)).not.toBeNull();
+    });
+
+    it('stays in add mode', async () => {
+      const { fixture } = await renderLogin(AUTH, { add: true });
+
+      expect(cancelButton(fixture)).not.toBeNull();
+    });
+  });
+
+  describe('removing the account from its re-auth', () => {
+    const OIDC_RECORD = {
+      baseUrl: 'https://hs.example',
+      userId: '@bob:hs',
+      deviceId: 'OLDDEV',
+      oidc: { issuer: 'https://hs.example/', clientId: 'client' },
+    };
+    const OIDC_AUTH = {
+      getSupportedFlows: vi.fn(() => of([])),
+      getDelegatedAuthConfig: vi.fn(() => of(null)),
+    } as unknown as Partial<AuthService>;
+
+    function removeButton(
+      fixture: Awaited<ReturnType<typeof renderLogin>>['fixture'],
+    ): HTMLButtonElement | null {
+      fixture.detectChanges();
+      return fixture.nativeElement.querySelector(
+        '[data-testid="remove-reauth-account"]',
+      );
+    }
+
+    it('offers Remove this account on an OAuth re-auth', async () => {
+      const { fixture } = await renderLogin(OIDC_AUTH, {
+        reauth: '@bob:hs',
+        record: OIDC_RECORD,
+      });
+
+      expect(removeButton(fixture)?.textContent?.trim()).toBe(
+        'Remove this account',
+      );
+    });
+
+    it('stays reachable while an unreachable homeserver keeps the page busy', async () => {
+      const { fixture, cmp } = await renderLogin(
+        {
+          getSupportedFlows: vi.fn(() => NEVER),
+          getDelegatedAuthConfig: vi.fn(() => NEVER),
+        } as unknown as Partial<AuthService>,
+        { reauth: '@bob:hs', record: OIDC_RECORD },
+      );
+
+      expect(cmp.busy()).toBe(true);
+      expect(removeButton(fixture)?.disabled).toBe(false);
+    });
+
+    it('does not offer it for a password re-auth or a plain login', async () => {
+      const auth = {
+        getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+        getDelegatedAuthConfig: vi.fn(() => of(null)),
+      } as unknown as Partial<AuthService>;
+      const reauth = await renderLogin(auth, {
+        reauth: '@bob:hs',
+        record: { ...OIDC_RECORD, oidc: undefined },
+      });
+      expect(removeButton(reauth.fixture)).toBeNull();
+      TestBed.resetTestingModule();
+
+      const plain = await renderLogin(auth);
+      expect(removeButton(plain.fixture)).toBeNull();
+    });
+
+    it('removes through the account removal flow', async () => {
+      const { fixture, removal, restart } = await renderLogin(OIDC_AUTH, {
+        reauth: '@bob:hs',
+        record: OIDC_RECORD,
+      });
+
+      removeButton(fixture)?.click();
+
+      expect(removal.remove).toHaveBeenCalledExactlyOnceWith('@bob:hs');
+      expect(restart.restart).not.toHaveBeenCalled();
+    });
+
+    it('can not start a second removal while one is running', async () => {
+      const { fixture } = await renderLogin(OIDC_AUTH, {
+        reauth: '@bob:hs',
+        record: OIDC_RECORD,
+        removal: NEVER,
+      });
+
+      removeButton(fixture)?.click();
+
+      expect(removeButton(fixture)?.disabled).toBe(true);
+    });
+
+    it('starts afresh once removed with no live account: this page is kept across /login URLs', async () => {
+      const { fixture, restart, router } = await renderLogin(OIDC_AUTH, {
+        reauth: '@bob:hs',
+        record: OIDC_RECORD,
+        removal: of({ kind: 'removed', remainingAccountIds: [] }),
+      });
+
+      removeButton(fixture)?.click();
+
+      expect(restart.restart).toHaveBeenCalledOnce();
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('returns to the app once removed with another account live', async () => {
+      const { fixture, restart, router } = await renderLogin(OIDC_AUTH, {
+        reauth: '@bob:hs',
+        record: OIDC_RECORD,
+        liveAccount: true,
+        removal: of({ kind: 'removed', remainingAccountIds: ['@me:hs'] }),
+      });
+
+      removeButton(fixture)?.click();
+
+      expect(router.navigateByUrl).toHaveBeenCalledExactlyOnceWith('/rooms', {
+        replaceUrl: true,
+      });
+      expect(restart.restart).not.toHaveBeenCalled();
+    });
+
+    it("shows the login page's error when the removal outcome is failed", async () => {
+      const { fixture, cmp, restart } = await renderLogin(OIDC_AUTH, {
+        reauth: '@bob:hs',
+        record: OIDC_RECORD,
+        removal: of({ kind: 'failed' }),
+      });
+
+      removeButton(fixture)?.click();
+      fixture.detectChanges();
+
+      expect(cmp.error()).toBe('Unable to remove this account right now.');
+      expect(
+        fixture.nativeElement.querySelector('[role="alert"]')?.textContent,
+      ).toContain('Unable to remove this account right now.');
+      expect(removeButton(fixture)?.disabled).toBe(false);
+      expect(restart.restart).not.toHaveBeenCalled();
     });
   });
 
