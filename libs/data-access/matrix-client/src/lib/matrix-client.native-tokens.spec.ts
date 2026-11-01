@@ -641,6 +641,7 @@ describe('a phone account whose refresh token native code holds', () => {
 
     expect(svc.canRefreshAccessToken(ME)).toBe(true);
     expect(client.getRefreshToken()).toBe(NATIVE_REFRESH_MARKER);
+    expect(svc.nativeOwned(ME)).toBe(true);
   });
 
   it('reports no refresh and no host for a lost vault with no JS copy', async () => {
@@ -653,6 +654,8 @@ describe('a phone account whose refresh token native code holds', () => {
     expect(svc.canRefreshAccessToken(ME)).toBe(false);
     expect(client.getRefreshToken()).toBeNull();
     expect(client.http.opts.tokenHost).toBeUndefined();
+    expect(svc.nativeOwned(ME)).toBe(false);
+    expect(svc.nativeOwned('@nobody:hs')).toBe(false);
   });
 
   it('publishes one rotation for one refresh', async () => {

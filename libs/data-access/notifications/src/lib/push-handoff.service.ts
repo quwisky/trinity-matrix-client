@@ -352,12 +352,15 @@ export class PushHandoffService {
     if (!binding || this.isRetired(userId, binding.client)) return;
     const token = accessToken ?? binding.client.getAccessToken();
     if (!token) return;
-    const expiresAt = this.matrix.accessTokenExpiry(userId, token);
+    const owned = this.matrix.nativeOwned(userId);
+    const expiresAt = owned
+      ? undefined
+      : this.matrix.accessTokenExpiry(userId, token);
     const account: PushHandoffAccount = {
       userId,
       homeserverUrl: binding.client.getHomeserverUrl(),
-      accessToken: token,
       sound: this.sound.isOn(userId),
+      ...(owned ? {} : { accessToken: token }),
       ...(expiresAt === undefined ? {} : { accessTokenExpiresAt: expiresAt }),
     };
     void this.schedule(() => this.bridge.setAccount(account)).catch(

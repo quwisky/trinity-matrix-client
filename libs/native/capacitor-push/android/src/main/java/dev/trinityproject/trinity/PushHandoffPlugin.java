@@ -53,10 +53,11 @@ public class PushHandoffPlugin extends Plugin {
     public void setAccount(PluginCall call) {
         String userId = call.getString("userId");
         String homeserverUrl = call.getString("homeserverUrl");
-        String accessToken = call.getString("accessToken");
+        // Absent for an account whose token lives in the token vault.
+        String accessToken = call.getString("accessToken", "");
         Boolean sound = call.getBoolean("sound");
-        if (userId == null || homeserverUrl == null || accessToken == null || sound == null) {
-            call.reject("Must provide userId, homeserverUrl, accessToken and sound");
+        if (userId == null || homeserverUrl == null || sound == null) {
+            call.reject("Must provide userId, homeserverUrl and sound");
             return;
         }
         // Epoch milliseconds; absent for a token that does not expire on a schedule.

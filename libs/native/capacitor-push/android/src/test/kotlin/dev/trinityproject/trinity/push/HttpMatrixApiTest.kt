@@ -2,8 +2,10 @@ package dev.trinityproject.trinity.push
 
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -50,18 +52,38 @@ class HttpMatrixApiTest {
     fun fetchesTheEventWithTheAccountsToken() {
         respond(200, """{"type":"m.room.message","sender":"@a:hs"}""")
 
-        val event = HttpMatrixApi().event(account(), "!room:hs", "\$abc+def/ghi", Deadline.start())
+        val read = HttpMatrixApi().event(account(), "!room:hs", "\$abc+def/ghi", Deadline.start())
 
-        assertEquals("@a:hs", event?.getString("sender"))
+        assertEquals("@a:hs", (read as PushEventRead.Event).json.getString("sender"))
         assertEquals(listOf("/_matrix/client/v3/rooms/%21room%3Ahs/event/%24abc%2Bdef%2Fghi"), paths)
         assertEquals(listOf<String?>("Bearer secret"), authorizations)
     }
 
     @Test
-    fun readsUnauthorizedAsNoEvent() {
+    fun aFetchSeparatesUnauthorizedFromFailed() {
+        fun readAfter(status: Int, body: String = """{"errcode":"M_X"}"""): PushEventRead {
+            respond(status, body)
+            return HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()).also { server.removeContext("/") }
+        }
+
+        assertEquals(PushEventRead.Unauthorized, readAfter(401))
+        assertEquals(PushEventRead.Failed, readAfter(403))
+        assertEquals(PushEventRead.Failed, readAfter(404))
+        assertEquals(PushEventRead.Failed, readAfter(500))
+        assertEquals(PushEventRead.Failed, readAfter(200, "<html>captive portal</html>"))
+    }
+
+    @Test
+    fun aRejectedNameReadIsNoName() {
         respond(401, """{"errcode":"M_UNKNOWN_TOKEN"}""")
 
-        assertNull(HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()))
+        assertNull(HttpMatrixApi().memberDisplayName(account(), "!r:hs", "@a:hs", Deadline.start()))
+        assertNull(HttpMatrixApi().roomName(account(), "!r:hs", Deadline.start()))
+    }
+
+    @Test
+    fun aReadEventNeverPrintsItsContent() {
+        assertFalse(PushEventRead.Event(JSONObject().put("body", "Secret plans")).toString().contains("Secret"))
     }
 
     @Test
@@ -69,10 +91,49 @@ class HttpMatrixApiTest {
         respond(200, """{"type":"m.room.message"}""", delayMillis = 2_000)
         val started = monotonicMillis()
 
-        val event = HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline(started + 300, ::monotonicMillis))
+        val read = HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline(started + 300, ::monotonicMillis))
 
-        assertNull(event)
+        assertEquals(PushEventRead.Failed, read)
         assertTrue(monotonicMillis() - started < 1_500)
+    }
+
+    @Test
+    fun aBodyPastTheCapIsFailed() {
+        fun bodyOf(size: Int): String {
+            val wrapper = """{"type":"m.room.message","pad":""}"""
+            return wrapper.replace("\"pad\":\"\"", "\"pad\":\"${"x".repeat(size - wrapper.length)}\"")
+        }
+        fun readOf(size: Int): PushEventRead {
+            respond(200, bodyOf(size))
+            return HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()).also { server.removeContext("/") }
+        }
+
+        assertTrue(readOf(HttpMatrixApi.MAX_BODY_BYTES) is PushEventRead.Event)
+        assertEquals(PushEventRead.Failed, readOf(HttpMatrixApi.MAX_BODY_BYTES + 1))
+    }
+
+    // Every byte arrives well inside the read timeout, so only the deadline check can end this.
+    @Test(timeout = 10_000L)
+    fun aDrippingBodyStopsAtTheDeadline() {
+        server.createContext("/") { exchange ->
+            exchange.sendResponseHeaders(200, 0)
+            try {
+                repeat(100) {
+                    exchange.responseBody.write(' '.code)
+                    exchange.responseBody.flush()
+                    Thread.sleep(50)
+                }
+            } catch (error: java.io.IOException) {
+                // The client gave up, which is what this test wants.
+            }
+            exchange.close()
+        }
+        val started = monotonicMillis()
+
+        val read = HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline(started + 300, ::monotonicMillis))
+
+        assertEquals(PushEventRead.Failed, read)
+        assertTrue("took ${monotonicMillis() - started} ms", monotonicMillis() - started < 2_000)
     }
 
     @Test
@@ -109,7 +170,7 @@ class HttpMatrixApiTest {
                 exchange.close()
             }
 
-            assertNull(HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()))
+            assertEquals(PushEventRead.Failed, HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()))
             assertEquals(1, paths.size)
             assertTrue(targetPaths.isEmpty())
         } finally {

@@ -493,25 +493,66 @@ class TokenRefresherTest {
     }
 
     @Test
-    fun aLapsedLeaseIsRetakenBeforeARefusalsCompare() {
+    fun aPushRefusalAfterALapsedLeaseIsRetakenBeforeTheCompare() {
         client.answer = TokenGrantAnswer.Refused
         client.onGrant = {
             lease.lapsed = true
             lease.onTake = { vault.stored = r2Stored }
         }
 
-        assertEquals(TokenRefreshResult.Current(r2Stored), refresh())
+        assertEquals(TokenRefreshResult.Current(r2Stored), refresher.refreshForPush(user, "a0", deadline()))
 
         assertEquals(r2Stored, vault.stored)
     }
 
     @Test
-    fun aRetakeWaitsAtLeastTheFloorOnceTheDeadlineIsSpent() {
+    fun anAppRefusalAfterALapsedLeaseIsTransient() {
+        client.answer = TokenGrantAnswer.Refused
         client.onGrant = { lease.lapsed = true }
 
-        refresher.refresh(user, "L", "a0", Deadline(0L, { 1L }))
+        assertEquals(TokenRefreshResult.Transient, refresh())
 
-        assertEquals(listOf(0L, 1_000L), lease.waits)
+        assertEquals(R0, vault.stored)
+        assertEquals("a lapse answers before any retake", 1, lease.waits.size)
+    }
+
+    @Test
+    fun anAppRefusalAfterALapseKeepsAnUnsavedPair() {
+        vault.failedUpdates = 2 // The write, then the flush before the next refresh.
+        assertEquals(TokenRefreshResult.Rotated(a1r1, true), refresh())
+        client.answer = TokenGrantAnswer.Refused
+        client.onGrant = { lease.lapsed = true }
+
+        assertEquals(TokenRefreshResult.Transient, refresh("a1"))
+
+        assertEquals(R0, vault.stored)
+        assertEquals(TokenRefreshResult.Current(a1r1), refresher.current(user, "L"))
+    }
+
+    @Test
+    fun aGrantNeedsThreeSecondsOfBudget() {
+        fun budget(millis: Long) = Deadline(millis, { 0L })
+
+        assertEquals(TokenRefreshResult.Transient, refresher.refresh(user, "L", "a0", budget(2_999L)))
+        assertEquals(TokenRefreshResult.Transient, refresher.refreshForPush(user, "a0", budget(2_999L)))
+        assertTrue(client.grants.isEmpty())
+        assertEquals(R0, vault.stored)
+
+        assertEquals(TokenRefreshResult.Rotated(a1r1, false), refresher.refreshForPush(user, "a0", budget(3_000L)))
+        assertEquals(1, client.grants.size)
+    }
+
+    @Test
+    fun aRetakeWaitsAtLeastTheFloorOnceTheDeadlineIsSpent() {
+        var now = 0L
+        client.onGrant = {
+            lease.lapsed = true
+            now = 100_000L
+        }
+
+        refresher.refresh(user, "L", "a0", Deadline(8_000L, { now }))
+
+        assertEquals(listOf(8_000L, 1_000L), lease.waits)
     }
 
     @Test
@@ -542,14 +583,14 @@ class TokenRefresherTest {
     }
 
     @Test
-    fun aRefusalWhoseLeaseCannotBeRetakenIsTransient() {
+    fun aPushRefusalWhoseLeaseCannotBeRetakenIsTransient() {
         client.answer = TokenGrantAnswer.Refused
         client.onGrant = {
             lease.lapsed = true
             lease.busy = true
         }
 
-        assertEquals(TokenRefreshResult.Transient, refresh())
+        assertEquals(TokenRefreshResult.Transient, refresher.refreshForPush(user, "a0", deadline()))
         assertEquals(R0, vault.stored)
     }
 

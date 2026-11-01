@@ -30,13 +30,13 @@ fun presentationFor(store: HandoffReader): DevicePresentation =
 /**
  * Posts, updates or cancels the notification for one device-rendered push: one
  * MessagingStyle notification per account and room on the `messages` channel, newer
- * messages appended to it. Resolution is bounded by one total 5 s budget (see
+ * messages appended to it. Resolution is bounded by one total 8 s budget (see
  * [BoundedPushResolver]). Logs nothing about the push.
  */
 class DevicePushHandler(
     private val context: Context,
     private val handoff: HandoffReader = PushHandoffStore(context),
-    private val resolver: BoundedPushResolver = BoundedPushResolver(handoff, HttpMatrixApi()),
+    private val resolver: BoundedPushResolver = BoundedPushResolver(handoff, HttpMatrixApi(), TokenRefresher.fromContext(context)),
 ) {
     fun handle(data: Map<String, String>, messageId: String?) {
         val compat = NotificationManagerCompat.from(context)

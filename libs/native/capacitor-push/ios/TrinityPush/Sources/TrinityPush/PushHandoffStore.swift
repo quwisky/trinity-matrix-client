@@ -1,7 +1,8 @@
 import Foundation
 import Security
 
-/// One account's credentials as the app stored them; never a refresh token.
+/// One account's credentials as the app stored them; never a refresh token. An OAuth account's
+/// entry holds no token: the token vault does.
 public struct HandoffAccount: Codable, Equatable {
     public let homeserverUrl: String
     public let accessToken: String
@@ -30,6 +31,22 @@ public struct HandoffAccount: Codable, Equatable {
         let milliseconds = number.doubleValue.rounded(.towardZero)
         guard milliseconds.isFinite, milliseconds >= 1 else { return nil }
         return Date(timeIntervalSince1970: milliseconds / 1000)
+    }
+
+    public func with(record: TokenRecord) -> HandoffAccount {
+        HandoffAccount(
+            homeserverUrl: homeserverUrl, accessToken: record.accessToken, sound: sound,
+            accessTokenExpiresAt: record.expiresAt)
+    }
+
+    /// The account as the vault says it is. A record replaces the stored token and expiry. With none,
+    /// a stored token stays (password and unmigrated accounts); an entry with no token reads as expired.
+    public func overlaid(by read: TokenVaultRead) -> HandoffAccount {
+        if case .record(let record) = read { return with(record: record) }
+        guard accessToken.isEmpty else { return self }
+        return HandoffAccount(
+            homeserverUrl: homeserverUrl, accessToken: accessToken, sound: sound,
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 1))
     }
 
     /// Whether the token had expired at `now`. A token without an expiry never has.
@@ -170,7 +187,13 @@ public final class PushHandoffStore: HandoffReading {
         }
     }
 
+    /// An OAuth account's token and expiry come from the token vault; see ``HandoffAccount/overlaid(by:)``.
     public func account(_ userId: String) -> HandoffAccount? {
+        // The vault read takes the queue too, so it runs after the entry's read has left it.
+        storedAccount(userId)?.overlaid(by: read(userId))
+    }
+
+    private func storedAccount(_ userId: String) -> HandoffAccount? {
         queue.sync {
             var query = baseQuery(userId)
             query[kSecReturnData as String] = true

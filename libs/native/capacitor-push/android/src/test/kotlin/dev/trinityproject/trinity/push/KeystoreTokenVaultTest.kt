@@ -175,7 +175,7 @@ class KeystoreTokenVaultTest {
         assertEquals("trinity_push_tokens", KeystoreTokenVault.FILE)
         val files = mutableMapOf<String, MemoryPreferences>()
         val tokens = KeystoreTokenVault(files.getOrPut(KeystoreTokenVault.FILE) { MemoryPreferences() }, crypto)
-        val handoff = PushHandoffStore(files.getOrPut(PushHandoffStore.FILE) { MemoryPreferences() }, crypto)
+        val handoff = PushHandoffStore(files.getOrPut(PushHandoffStore.FILE) { MemoryPreferences() }, crypto, tokens)
         assertTrue(tokens.write(user, R0))
         assertTrue(handoff.setAccount(user, HandoffAccount("https://hs.example", "token", sound = false)))
 

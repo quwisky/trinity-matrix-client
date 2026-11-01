@@ -70,7 +70,7 @@ let spawnedEmulator: ChildProcess | undefined;
 let emulatorSpawnError: Error | undefined;
 let emulatorExit:
   { code: number | null; signal: NodeJS.Signals | null } | undefined;
-const requiredReversePorts = ['8448', '5556'] as const;
+const requiredReversePorts = ['8448', '5556', '8449'] as const;
 const changedReverseMappings: Array<{
   local: string;
   previous: string | undefined;

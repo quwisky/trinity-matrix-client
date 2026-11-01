@@ -30,7 +30,7 @@ object NotificationTextMode {
 /**
  * The push handoff store: per account its homeserver URL, access token (with its expiry,
  * when it has one) and sound choice, its room names and DM flags, and App lock's
- * Notification text. Written by
+ * Notification text; an OAuth account's token and expiry come from the token vault instead. Written by
  * PushHandoffPlugin, read by TrinityMessagingService while the app is closed.
  *
  * Every value is AES-256-GCM encrypted with a non-exportable Android Keystore key before it
@@ -40,10 +40,12 @@ object NotificationTextMode {
 class PushHandoffStore internal constructor(
     private val preferences: SharedPreferences,
     private val crypto: ValueCrypto,
+    private val tokens: TokenVault,
 ) : HandoffReader {
     constructor(context: Context) : this(
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE),
         KeystoreCrypto(KEY_ALIAS),
+        KeystoreTokenVault(context),
     )
 
     @Synchronized
@@ -97,13 +99,13 @@ class PushHandoffStore internal constructor(
     override fun account(userId: String): HandoffAccount? {
         val json = read(accountKey(userId)) ?: return null
         val homeserverUrl = PushRenderRules.stringOrNull(json, "homeserverUrl") ?: return null
-        val accessToken = PushRenderRules.stringOrNull(json, "accessToken") ?: return null
+        val accessToken = PushRenderRules.stringOrNull(json, "accessToken") ?: ""
         return HandoffAccount(
             homeserverUrl,
             accessToken,
             json.optBoolean("sound", true),
             accessTokenExpiryFrom(json.opt("accessTokenExpiresAt")),
-        )
+        ).overlaidBy(tokens.read(userId))
     }
 
     @Synchronized

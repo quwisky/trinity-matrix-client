@@ -7,6 +7,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+private fun handoffStore(
+    preferences: MemoryPreferences,
+    crypto: FakeCrypto,
+    tokens: TokenVault = KeystoreTokenVault(MemoryPreferences(), FakeCrypto()),
+) = PushHandoffStore(preferences, crypto, tokens)
+
 class PushHandoffStoreTest {
     private val account = HandoffAccount("https://hs.example", "token", sound = false)
 
@@ -14,7 +20,7 @@ class PushHandoffStoreTest {
     fun notificationTextIsShowUntilWrittenAndFailsClosed() {
         val preferences = MemoryPreferences()
         val crypto = FakeCrypto()
-        val store = PushHandoffStore(preferences, crypto)
+        val store = handoffStore(preferences, crypto)
         assertEquals(NotificationTextMode.SHOW, store.notificationText())
         assertTrue(store.setNotificationText(NotificationTextMode.ALWAYS_HIDE))
         assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
@@ -31,7 +37,7 @@ class PushHandoffStoreTest {
     fun aDamagedNotificationTextHidesEverything() {
         val preferences = MemoryPreferences()
         val crypto = FakeCrypto()
-        val store = PushHandoffStore(preferences, crypto)
+        val store = handoffStore(preferences, crypto)
         preferences.values["settings:notification-text"] = crypto.encrypt("{ not json")
         assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
         preferences.values["settings:notification-text"] = crypto.encrypt("""{"notificationText":"sideways"}""")
@@ -42,7 +48,7 @@ class PushHandoffStoreTest {
 
     @Test
     fun clearRemovesTheNotificationText() {
-        val store = PushHandoffStore(MemoryPreferences(), FakeCrypto())
+        val store = handoffStore(MemoryPreferences(), FakeCrypto())
         assertTrue(store.setNotificationText(NotificationTextMode.ALWAYS_HIDE))
         assertTrue(store.clear())
         assertEquals(NotificationTextMode.SHOW, store.notificationText())
@@ -52,7 +58,7 @@ class PushHandoffStoreTest {
     fun aMissingMirrorShowsTextAndADamagedOrUnknownOneHidesEverything() {
         val preferences = MemoryPreferences()
         val crypto = FakeCrypto()
-        val store = PushHandoffStore(preferences, crypto)
+        val store = handoffStore(preferences, crypto)
         assertEquals(NotificationTextMode.SHOW, store.notificationText())
         for (damaged in listOf("", "null", "[]", """{"notificationText":null}""", """{"notificationText":"Show"}""")) {
             preferences.values["settings:notification-text"] = crypto.encrypt(damaged)
@@ -68,7 +74,7 @@ class PushHandoffStoreTest {
 
     @Test
     fun storedValuesRoundTrip() {
-        val store = PushHandoffStore(MemoryPreferences(), FakeCrypto())
+        val store = handoffStore(MemoryPreferences(), FakeCrypto())
 
         assertTrue(store.setAccount("@a:hs", account))
         assertTrue(store.mergeRooms("@a:hs", mapOf("!r:hs" to HandoffRoom("Team", true))))
@@ -81,7 +87,7 @@ class PushHandoffStoreTest {
     fun theEncryptedFlagIsStoredAndAnEntryWithoutItCountsAsEncrypted() {
         val preferences = MemoryPreferences()
         val crypto = FakeCrypto()
-        val store = PushHandoffStore(preferences, crypto)
+        val store = handoffStore(preferences, crypto)
 
         assertTrue(store.mergeRooms("@a:hs", mapOf("!r:hs" to HandoffRoom("Team", false, encrypted = false))))
         assertEquals(false, store.room("@a:hs", "!r:hs")?.encrypted)
@@ -92,7 +98,7 @@ class PushHandoffStoreTest {
 
     @Test
     fun theTokenExpiryRoundTrips() {
-        val store = PushHandoffStore(MemoryPreferences(), FakeCrypto())
+        val store = handoffStore(MemoryPreferences(), FakeCrypto())
         val expiring = HandoffAccount("https://hs.example", "token", sound = true, accessTokenExpiresAt = 1_760_000_000_000L)
 
         assertTrue(store.setAccount("@a:hs", expiring))
@@ -107,7 +113,7 @@ class PushHandoffStoreTest {
         preferences.values["account:@a:hs"] =
             crypto.encrypt("""{"homeserverUrl":"https://hs.example","accessToken":"token","sound":false}""")
 
-        val stored = PushHandoffStore(preferences, crypto).account("@a:hs")
+        val stored = handoffStore(preferences, crypto).account("@a:hs")
 
         assertEquals(account, stored)
         assertNull(stored?.accessTokenExpiresAt)
@@ -145,7 +151,7 @@ class PushHandoffStoreTest {
 
     @Test
     fun aKeystoreProviderFaultFailsWritesInsteadOfThrowing() {
-        val store = PushHandoffStore(MemoryPreferences(), FakeCrypto(failing = true))
+        val store = handoffStore(MemoryPreferences(), FakeCrypto(failing = true))
 
         assertFalse(store.setAccount("@a:hs", account))
         assertFalse(store.mergeRooms("@a:hs", mapOf("!r:hs" to HandoffRoom("Team", false))))
@@ -154,7 +160,7 @@ class PushHandoffStoreTest {
     @Test
     fun aKeystoreProviderFaultReadsAsNothingStored() {
         val crypto = FakeCrypto()
-        val store = PushHandoffStore(MemoryPreferences(), crypto)
+        val store = handoffStore(MemoryPreferences(), crypto)
         store.setAccount("@a:hs", account)
         store.mergeRooms("@a:hs", mapOf("!r:hs" to HandoffRoom("Team", false)))
 
@@ -162,5 +168,72 @@ class PushHandoffStoreTest {
 
         assertNull(store.account("@a:hs"))
         assertNull(store.room("@a:hs", "!r:hs"))
+    }
+
+    private val stored = HandoffAccount("https://hs.example", "token", sound = true, accessTokenExpiresAt = 5_000L)
+
+    private class ReadOnlyVault(private val answer: TokenVaultRead) : TokenVault {
+        override fun read(userId: String) = answer
+        override fun write(userId: String, record: TokenRecord) = false
+        override fun update(userId: String, record: TokenRecord) = TokenVaultWrite.FAILED
+        override fun remove(userId: String) = false
+        override fun removeAll() = false
+        override fun accounts(): List<String>? = null
+    }
+
+    @Test
+    fun aRecordsTokenAndExpiryReplaceTheEntrys() {
+        val overlaid = stored.overlaidBy(TokenVaultRead.Record(R0))
+
+        assertEquals(stored.copy(accessToken = "a0", accessTokenExpiresAt = R0.expiresAtMillis), overlaid)
+    }
+
+    @Test
+    fun anEntryWithATokenAndNoRecordIsUnchanged() {
+        assertEquals(stored, stored.overlaidBy(TokenVaultRead.Absent))
+        assertEquals(stored, stored.overlaidBy(TokenVaultRead.Unavailable))
+    }
+
+    @Test
+    fun anEmptyTokenWithNoRecordReadsAsExpired() {
+        val tokenless = stored.copy(accessToken = "", accessTokenExpiresAt = null)
+
+        for (read in listOf(TokenVaultRead.Absent, TokenVaultRead.Unavailable)) {
+            val overlaid = tokenless.overlaidBy(read)
+            assertEquals("", overlaid.accessToken)
+            assertTrue(overlaid.tokenExpired(System.currentTimeMillis()))
+        }
+    }
+
+    @Test
+    fun accountOverlaysTheVaultRecord() {
+        val store = handoffStore(MemoryPreferences(), FakeCrypto(), ReadOnlyVault(TokenVaultRead.Record(R0)))
+        store.setAccount("@a:hs", account.copy(accessToken = ""))
+
+        assertEquals(account.copy(accessToken = "a0", accessTokenExpiresAt = R0.expiresAtMillis), store.account("@a:hs"))
+    }
+
+    @Test
+    fun anEntryStoredWithoutATokenReads() {
+        val preferences = MemoryPreferences()
+        val crypto = FakeCrypto()
+        val store = handoffStore(preferences, crypto, ReadOnlyVault(TokenVaultRead.Absent))
+        preferences.values["account:@a:hs"] =
+            crypto.encrypt("""{"homeserverUrl":"https://hs.example","sound":true}""")
+        store.setAccount("@b:hs", account.copy(accessToken = ""))
+
+        for (id in listOf("@a:hs", "@b:hs")) {
+            val read = store.account(id)!!
+            assertEquals("", read.accessToken)
+            assertTrue(read.tokenExpired(System.currentTimeMillis()))
+        }
+    }
+
+    @Test
+    fun anEntryStoredWithATokenAndNoRecordReadsUnchanged() {
+        val store = handoffStore(MemoryPreferences(), FakeCrypto(), ReadOnlyVault(TokenVaultRead.Unavailable))
+        store.setAccount("@a:hs", account)
+
+        assertEquals(account, store.account("@a:hs"))
     }
 }

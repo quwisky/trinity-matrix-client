@@ -6,17 +6,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Runs native/push-render/push-render-cases.json, the fixture the iOS XCTest suite runs too. */
+/** native/push-render/push-render-cases.json, the fixture the iOS XCTest suite runs too. */
+internal fun sharedFixture(): JSONObject = JSONObject(
+    // build.gradle passes the fixture's path; the module is no fixed distance from the root.
+    File(
+        checkNotNull(System.getProperty("trinity.pushRenderCases")) {
+            "trinity.pushRenderCases is unset: run this test through Gradle"
+        },
+    ).readText(),
+)
+
 class PushRenderRulesTest {
     @Test
     fun everySharedFixtureCaseRendersAsExpected() {
-        // build.gradle passes the fixture's path; the module is no fixed distance from the root.
-        val fixture = File(
-            checkNotNull(System.getProperty("trinity.pushRenderCases")) {
-                "trinity.pushRenderCases is unset: run this test through Gradle"
-            },
-        )
-        val cases = JSONObject(fixture.readText()).getJSONArray("cases")
+        val cases = sharedFixture().getJSONArray("cases")
         assertTrue("the fixture has cases", cases.length() > 0)
         for (index in 0 until cases.length()) {
             val case = cases.getJSONObject(index)

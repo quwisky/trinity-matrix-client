@@ -57,6 +57,22 @@ class TokenLeasesTest {
         assertNull(ticket)
     }
 
+    @Test(timeout = 10_000L)
+    fun aWaitingCallerTakesAReleasedLeaseAndTheOldHolderThenWaitsInVain() {
+        val realClock = LeaseTable()
+        val first = held(realClock, lifetimeMillis = 60_000)
+        val second = AtomicReference<LeaseTicket?>()
+        val waiter = Thread { second.set(realClock.take("@a:hs", 60_000, 5_000)) }
+        waiter.start()
+        Thread.sleep(100)
+
+        realClock.release(first)
+        waiter.join()
+
+        assertTrue(realClock.holds(second.get()!!))
+        assertNull(realClock.take("@a:hs", 60_000, 100))
+    }
+
     @Test
     fun aReleasedLeaseIsFree() {
         val first = held()

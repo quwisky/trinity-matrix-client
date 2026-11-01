@@ -134,6 +134,42 @@ final class PushHandoffStoreTests: XCTestCase {
 
 /// The stored account record: items written before expiries existed must still decode.
 final class HandoffAccountTests: XCTestCase {
+    private let stored = HandoffAccount(
+        homeserverUrl: "https://hs.example", accessToken: "token", sound: true,
+        accessTokenExpiresAt: Date(timeIntervalSince1970: 5))
+    private let record = TokenRecord(
+        accessToken: "a0", refreshToken: "r0", expiresAt: Date(timeIntervalSince1970: 1_760_000_300),
+        tokenEndpoint: "https://op.example/token", revocationEndpoint: "https://op.example/revoke",
+        clientId: "c", deviceId: "D", lineage: "L", state: .active)
+
+    func testARecordsTokenAndExpiryReplaceTheEntrys() {
+        let overlaid = stored.overlaid(by: .record(record))
+
+        XCTAssertEqual(overlaid, HandoffAccount(
+            homeserverUrl: "https://hs.example", accessToken: "a0", sound: true,
+            accessTokenExpiresAt: record.expiresAt))
+    }
+
+    func testAnEntryWithATokenAndNoRecordIsUnchanged() {
+        XCTAssertEqual(stored.overlaid(by: .absent), stored)
+        XCTAssertEqual(stored.overlaid(by: .unavailable), stored)
+    }
+
+    func testAnEmptyTokenWithNoRecordReadsAsExpired() {
+        let overlaid = HandoffAccount(homeserverUrl: "https://hs.example", accessToken: "", sound: true)
+            .overlaid(by: .absent)
+
+        XCTAssertEqual(overlaid.accessToken, "")
+        XCTAssertTrue(overlaid.tokenExpired(at: Date()))
+    }
+
+    func testAnEmptyTokenWithAnUnavailableVaultReadsAsExpired() {
+        let overlaid = HandoffAccount(homeserverUrl: "https://hs.example", accessToken: "", sound: true)
+            .overlaid(by: .unavailable)
+
+        XCTAssertTrue(overlaid.tokenExpired(at: Date()))
+    }
+
     func testAnAccountStoredBeforeExpiriesExistedDecodesWithoutOne() throws {
         let legacy = Data(#"{"homeserverUrl":"https://hs.example","accessToken":"token","sound":false}"#.utf8)
 

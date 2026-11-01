@@ -74,6 +74,23 @@ final class LockedState<Value>: @unchecked Sendable {
     }
 }
 
+private extension PushEventRead {
+    var object: [String: Any]? {
+        if case .event(let object) = self { return object }
+        return nil
+    }
+
+    var isUnauthorized: Bool {
+        if case .unauthorized = self { return true }
+        return false
+    }
+
+    var isFailed: Bool {
+        if case .failed = self { return true }
+        return false
+    }
+}
+
 final class URLSessionMatrixPushAPITests: XCTestCase {
     private let account = HandoffAccount(homeserverUrl: "https://hs.example/", accessToken: "secret", sound: true)
 
@@ -99,7 +116,7 @@ final class URLSessionMatrixPushAPITests: XCTestCase {
 
         let event = await api().event(account: account, roomId: "!room:hs", eventId: "$abc+def/ghi", deadline: Date().addingTimeInterval(5))
 
-        XCTAssertEqual(event?["sender"] as? String, "@a:hs")
+        XCTAssertEqual(event.object?["sender"] as? String, "@a:hs")
         XCTAssertEqual(
             StubURLProtocol.requests.first?.url?.absoluteString,
             "https://hs.example/_matrix/client/v3/rooms/%21room%3Ahs/event/%24abc%2Bdef%2Fghi"
@@ -107,12 +124,37 @@ final class URLSessionMatrixPushAPITests: XCTestCase {
         XCTAssertEqual(StubURLProtocol.requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
     }
 
-    func testReadsUnauthorizedAsNoEvent() async {
-        StubURLProtocol.reset { _ in .init(401, #"{"errcode":"M_UNKNOWN_TOKEN"}"#) }
+    func testAFetchSeparatesUnauthorizedFromFailed() async {
+        for body in [#"{"errcode":"M_UNKNOWN_TOKEN"}"#, "<html>Unauthorized</html>"] {
+            StubURLProtocol.reset { _ in .init(401, body) }
+            let event = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: Date().addingTimeInterval(5))
+            XCTAssertTrue(event.isUnauthorized, body)
+        }
+        for status in [403, 404, 500] {
+            StubURLProtocol.reset { _ in .init(status, #"{"errcode":"M_FORBIDDEN"}"#) }
+            let event = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: Date().addingTimeInterval(5))
+            XCTAssertTrue(event.isFailed, "\(status)")
+        }
+        StubURLProtocol.reset { _ in .init(200, "not json") }
+        let unreadable = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: Date().addingTimeInterval(5))
+        XCTAssertTrue(unreadable.isFailed)
+        StubURLProtocol.reset { _ in nil }
+        let noAnswer = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: Date().addingTimeInterval(0.3))
+        XCTAssertTrue(noAnswer.isFailed)
+    }
 
-        let event = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: Date().addingTimeInterval(5))
+    /// A room member can send this, and JSONSerialization would die of it with a SIGBUS.
+    func testADeeplyNestedEventFallsBackInsteadOfCrashing() async {
+        StubURLProtocol.reset { _ in .init(200, String(repeating: #"{"a":"#, count: 20_000)) }
+        let deadline = Date().addingTimeInterval(5)
 
-        XCTAssertNil(event)
+        let event = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: deadline)
+        let member = await api().memberDisplayName(account: account, roomId: "!r:hs", userId: "@a:hs", deadline: deadline)
+        let room = await api().roomName(account: account, roomId: "!r:hs", deadline: deadline)
+
+        XCTAssertTrue(event.isFailed)
+        XCTAssertNil(member)
+        XCTAssertNil(room)
     }
 
     func testGivesUpWhenTheBudgetRunsOut() async {
@@ -121,7 +163,7 @@ final class URLSessionMatrixPushAPITests: XCTestCase {
 
         let event = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: Date().addingTimeInterval(0.3))
 
-        XCTAssertNil(event)
+        XCTAssertTrue(event.isFailed)
         XCTAssertLessThan(Date().timeIntervalSince(started), 3)
     }
 
@@ -151,7 +193,7 @@ final class URLSessionMatrixPushAPITests: XCTestCase {
 
         let event = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: Date().addingTimeInterval(5))
 
-        XCTAssertNil(event)
+        XCTAssertTrue(event.isFailed)
         XCTAssertEqual(StubURLProtocol.requests.map { $0.url?.host }, ["hs.example"])
     }
 
@@ -180,7 +222,7 @@ final class URLSessionMatrixPushAPITests: XCTestCase {
         let event = await api().event(account: account, roomId: "!r:hs", eventId: "$e", deadline: deadline)
         let name = await api().roomName(account: account, roomId: "!r:hs", deadline: deadline)
 
-        XCTAssertNil(event)
+        XCTAssertTrue(event.isFailed)
         XCTAssertNil(name)
         XCTAssertLessThan(Date().timeIntervalSince(started), 3)
         XCTAssertEqual(StubURLProtocol.requests.count, 1)
