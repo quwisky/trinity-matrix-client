@@ -424,6 +424,8 @@ test.describe('MAS session lifecycle', () => {
       );
 
     await signInWithMas(page, authPlatform, first);
+    // MAS's own session would otherwise offer the first account again.
+    await page.context().clearCookies();
     await signInWithMas(page, authPlatform, second, 'add');
     await waitForRooms(page, 60_000);
     await expect(page.locator('.userbar__handle')).toContainText(
