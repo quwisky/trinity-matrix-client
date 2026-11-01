@@ -114,7 +114,10 @@ export class WorkspaceNavigationService {
     const scope = this.view().scope;
     return scope.kind === 'space' ? scope.spaceId : null;
   });
-  readonly inboxView = computed(() => this.view().scope.kind === 'inbox');
+  /** False as soon as the Inbox is switched off, before any repair commits. */
+  readonly inboxView = computed(
+    () => this.view().scope.kind === 'inbox' && this.availability.inboxShown(),
+  );
   readonly recentView = computed(() => this.view().scope.kind === 'recent');
   readonly roomsView = computed(() => this.view().scope.kind === 'rooms');
   readonly activeRoomId = computed(() => this.view().roomId);
