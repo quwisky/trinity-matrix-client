@@ -324,6 +324,169 @@ test.describe('MAS session lifecycle', () => {
     await expect(page).toHaveURL(/\/rooms/);
   });
 
+  test('a failed device check keeps the device and its stores', async ({
+    page,
+    authPlatform,
+    request,
+  }) => {
+    // Up to one 60 s access-token lifetime before the refusal, plus two sign-ins.
+    test.setTimeout(360_000);
+    const account = await registerMasUser(
+      masAccount(),
+      `mas-check-${testResourceId('run')}`,
+    );
+    const userId = `@${account.user}:${account.serverName}`;
+    const endpoints = await masEndpoints(request, account);
+    const traffic = trackMasTraffic(page, account, endpoints);
+    const ownStores = async (): Promise<string[]> =>
+      (await databaseNames(page))
+        .filter((name) => name.includes(userId))
+        .sort();
+
+    await signInWithMas(page, authPlatform, account);
+    await expect
+      .poll(async () => (await ownStores()).length)
+      .toBeGreaterThanOrEqual(2);
+    const deviceBefore = (
+      await whoami(request, account, await traffic.latestAccessToken())
+    ).device_id;
+    const storesBefore = await ownStores();
+    await expect
+      .poll(
+        () => deviceHasKeys(request, account, traffic, userId, deviceBefore),
+        {
+          message: 'the device published its keys before the refusal',
+          timeout: 60_000,
+        },
+      )
+      .toBe(true);
+
+    await spendAppRefreshToken(page, request, account, endpoints, traffic);
+    await expect(page).toHaveURL(/\/login\?reauth=/, { timeout: 150_000 });
+
+    // With the account signed out no client is running, so the first two key queries are the
+    // device check and its one retry. Later ones, the new client's own, go through.
+    let refused = 0;
+    await page.route(`${account.hs}/_matrix/client/v3/keys/query`, (route) => {
+      if (refused < 2) {
+        refused += 1;
+        return route.fulfill({ status: 502, body: 'Bad Gateway' });
+      }
+      return route.continue();
+    });
+
+    await completeMasSignIn(page, authPlatform, account);
+    await waitForRooms(page, 60_000);
+
+    // The check ran and failed, and a failed check is no proof the keys are gone.
+    expect(refused).toBe(2);
+    expect(page.url()).not.toContain('device=new');
+    expect(
+      (await whoami(request, account, await traffic.latestAccessToken()))
+        .device_id,
+    ).toBe(deviceBefore);
+    await expect
+      .poll(
+        () => deviceHasKeys(request, account, traffic, userId, deviceBefore),
+        {
+          message: 'the device still has its keys on the server',
+          timeout: 60_000,
+        },
+      )
+      .toBe(true);
+    expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
+  });
+
+  test('re-authenticating one account leaves another live account reachable', async ({
+    page,
+    authPlatform,
+    request,
+  }) => {
+    // Two sign-ins and a provider round for each of Cancel and Remove.
+    test.setTimeout(360_000);
+    const first = await registerMasUser(
+      masAccount(),
+      `mas-live-a-${testResourceId('run')}`,
+    );
+    const second = await registerMasUser(
+      masAccount(),
+      `mas-live-b-${testResourceId('run')}`,
+    );
+    const firstId = `@${first.user}:${first.serverName}`;
+    const secondId = `@${second.user}:${second.serverName}`;
+    const endpoints = await masEndpoints(request, first);
+    const traffic = trackMasTraffic(page, first, endpoints);
+    const accountsRecord = (): Promise<string | null> =>
+      page.evaluate(() =>
+        localStorage.getItem('CapacitorStorage.matrix.accounts'),
+      );
+
+    await signInWithMas(page, authPlatform, first);
+    await signInWithMas(page, authPlatform, second, 'add');
+    await waitForRooms(page, 60_000);
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${second.user}:`,
+    );
+    // The second sign-in's grant is the last one MAS issued.
+    const refreshToken = traffic.tokenResponses.at(-1)?.refresh_token;
+    expect(refreshToken, 'MAS issued a refresh token').toBeDefined();
+    expect(traffic.clientId, 'the app sent its client id').toBeDefined();
+    // A restart would drop this.
+    await page.evaluate(() => Reflect.set(window, '__runningSince', true));
+
+    const revoked = await request.post(endpoints.revocation, {
+      form: {
+        token: refreshToken ?? '',
+        token_type_hint: 'refresh_token',
+        client_id: traffic.clientId as string,
+      },
+    });
+    expect(revoked.ok()).toBe(true);
+
+    // The other account stays in the rooms, and the menu offers the signed-out one.
+    await page.getByTestId('user-menu-trigger').click();
+    const reauthRow = page.getByTestId('reauth-row');
+    await expect(reauthRow).toContainText(secondId, { timeout: 150_000 });
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${first.user}:`,
+    );
+    await expect(page).toHaveURL(/\/rooms/);
+
+    await reauthRow.click();
+    await expect(page).toHaveURL(/\/login\?reauth=/);
+    await expect(page.getByTestId('cancel-add')).toBeVisible();
+    await expect(page.getByTestId('remove-reauth-account')).toBeVisible();
+    await page.getByTestId('cancel-add').click();
+    await expect(page).toHaveURL(/\/rooms/);
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${first.user}:`,
+    );
+    expect(await accountsRecord()).toContain(secondId);
+
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('reauth-row').click();
+    await expect(page.getByTestId('remove-reauth-account')).toBeVisible();
+    await page.getByTestId('remove-reauth-account').click();
+    await page.getByTestId('alert-confirm').click();
+    await page.getByRole('button', { name: 'Remove anyway' }).click();
+
+    await expect(page).toHaveURL(/\/rooms/);
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${first.user}:`,
+    );
+    await expect
+      .poll(async () => await accountsRecord(), { timeout: 30_000 })
+      .not.toContain(secondId);
+    expect(await accountsRecord()).toContain(firstId);
+    await page.getByTestId('user-menu-trigger').click();
+    await expect(page.getByTestId('account-row')).toHaveCount(1);
+    await expect(page.getByTestId('reauth-row')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    expect(
+      await page.evaluate(() => Reflect.get(window, '__runningSince')),
+    ).toBe(true);
+  });
+
   test('a rotation outside the app never wipes the account', async ({
     page,
     authPlatform,

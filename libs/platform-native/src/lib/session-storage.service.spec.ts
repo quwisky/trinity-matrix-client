@@ -1300,6 +1300,21 @@ describe('SessionStorageService', () => {
         expect(bridge.removeTokensExcept).not.toHaveBeenCalled();
       });
 
+      // Known limit: a registry that won't parse names no account, so the removal and the sweep
+      // stop before native and a vault record stays until the registry reads again.
+      it('leaves a vault record in place while the registry is unreadable', async () => {
+        const { svc, bridge } = nativeSetup();
+        prefs.set('matrix.accounts', '{not json');
+
+        await expect(firstValueFrom(svc.remove('@alice:hs'))).rejects.toThrow();
+        await expect(firstValueFrom(svc.clear())).rejects.toThrow();
+        await expect(firstValueFrom(svc.sweepNativeTokens())).rejects.toThrow();
+
+        expect(bridge.removeTokens).not.toHaveBeenCalled();
+        expect(bridge.removeTokensExcept).not.toHaveBeenCalled();
+        expect(bridge.removeAllTokens).not.toHaveBeenCalled();
+      });
+
       it('lists a sign-in saved while the sweep waits its turn', async () => {
         const { svc, bridge } = nativeSetup();
 

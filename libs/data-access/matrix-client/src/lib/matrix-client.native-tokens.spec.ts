@@ -685,6 +685,27 @@ describe('a phone account whose refresh token native code holds', () => {
       expect(svc.accountIds()).toEqual([]);
     });
 
+    it('stops a live client that native then refuses and wipes nothing', async () => {
+      const { svc, client, vault, storage } = await started();
+      const stopClient = vi.spyOn(client, 'stopClient');
+      vault.state.record = { accessToken: 'at-1', refused: true };
+
+      await expect(
+        firstValueFrom(svc.restorePersisted(STORED, 'activate')),
+      ).resolves.toEqual({
+        kind: 'failed',
+        failure: 'reauthentication-required',
+      });
+
+      expect(stopClient).toHaveBeenCalledOnce();
+      expect(client.clearStores).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
+      expect(vault.revokeTokens).not.toHaveBeenCalled();
+      expect(svc.accountIds()).toEqual([]);
+      expect(svc.softLoggedOut()).toContain(ME);
+      expect(svc.reauthTargets()).toEqual([ME]);
+    });
+
     it('stops the old client before it reads the vault', async () => {
       const { svc, client, vault } = await started();
       const order: string[] = [];
