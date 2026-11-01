@@ -22,6 +22,7 @@ export type TrustCryptoApi = Pick<
   | 'getCrossSigningStatus'
   | 'getDeviceVerificationStatus'
   | 'getKeyBackupInfo'
+  | 'getUserDeviceInfo'
   | 'getUserVerificationStatus'
   | 'getVerificationRequestsToDeviceInProgress'
   | 'importRoomKeysAsJson'

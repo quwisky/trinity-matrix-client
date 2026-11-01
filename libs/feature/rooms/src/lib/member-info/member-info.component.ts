@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -233,6 +234,23 @@ export class MemberInfoComponent {
     return untracked(() => this.trustUsers.userTrust(userId))();
   });
 
+  /** Whose sessions the card may show: on the same terms as {@link trust}, and never your own. */
+  private readonly sessionsUserId = computed(() => {
+    const active = this.identity.activeUserId();
+    if (this.isSelf() || (this.commandAccountId() ?? active) !== active) {
+      return null;
+    }
+    return this.member().userId;
+  });
+
+  readonly sessions = computed(() => {
+    const userId = this.sessionsUserId();
+    // untracked: the service may settle its signal synchronously, which a computed forbids.
+    return userId
+      ? untracked(() => this.trustUsers.userSessions(userId))()
+      : null;
+  });
+
   /** Joined rooms shared with the member besides this one; null while unknown. */
   readonly commonRooms = computed(() => {
     // A client restart orphans a held view, so ask again when the accounts change.
@@ -290,6 +308,27 @@ export class MemberInfoComponent {
         memberRole(this.liveMember(), { direct: this.direct() })
       ],
   );
+
+  constructor() {
+    effect((onCleanup) => {
+      const userId = this.sessionsUserId();
+      // untracked: holding may create the state, and following it would release and rebuild it.
+      if (userId) {
+        onCleanup(untracked(() => this.trustUsers.retainUserSessions(userId)));
+      }
+    });
+  }
+
+  /** The Sessions row opened, or its Try again: read the list now. */
+  loadSessions(): void {
+    const userId = this.sessionsUserId();
+    if (userId) this.trustUsers.loadUserSessions(userId);
+  }
+
+  closeSessions(): void {
+    const userId = this.sessionsUserId();
+    if (userId) this.trustUsers.closeUserSessions(userId);
+  }
 
   /** Start (or reuse) a direct message with this member — the host does the navigation. */
   message(): void {

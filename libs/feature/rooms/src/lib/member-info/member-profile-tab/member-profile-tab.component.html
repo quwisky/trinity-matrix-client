@@ -47,7 +47,7 @@
   </div>
 }
 
-@if (status() || globalName()) {
+@if (status() || globalName() || sessions()) {
   <dl class="m-0 mt-3 flex flex-col">
     @if (status(); as status) {
       <div
@@ -72,6 +72,144 @@
           data-testid="member-info-global-name"
         >
           {{ globalName }}
+        </dd>
+      </div>
+    }
+    @if (sessions(); as sessions) {
+      <div
+        class="border-t border-[var(--trinity-border-overlay)] text-sm"
+        data-testid="member-info-sessions"
+      >
+        <dt>
+          <!-- shortcut: a hand-built disclosure, as no shared primitive exists; move to one if it lands. -->
+          <button
+            #sessionsToggle
+            type="button"
+            class="flex w-full cursor-pointer items-baseline justify-between gap-4 px-4 py-2.5 text-start hover:bg-[var(--trinity-state-hover-surface)] focus-visible:outline-offset-[calc(-1*var(--trinity-focus-ring-width))] pointer-coarse:min-h-11"
+            [attr.aria-expanded]="sessionsOpen()"
+            [attr.aria-controls]="sessionsPanelId"
+            (click)="toggleSessions()"
+            data-testid="member-info-sessions-toggle"
+          >
+            <span class="shrink-0 text-muted-foreground">Sessions</span>&ngsp;
+            <span
+              class="flex min-w-0 items-baseline gap-2"
+              [class.self-center]="!sessionsCount()"
+            >
+              @if (sessionsCount(); as count) {
+                <span
+                  class="min-w-0 text-end [overflow-wrap:anywhere]"
+                  data-testid="member-info-sessions-count"
+                  >{{ count }}</span
+                >
+              }
+              <trn-icon
+                class="shrink-0 self-center"
+                [class.rotate-180]="sessionsOpen()"
+                name="chevron-down"
+              />
+            </span>
+          </button>
+        </dt>
+        <dd class="m-0" [id]="sessionsPanelId">
+          <!-- Always present, so screen readers hear it as it arrives. -->
+          <p
+            class="m-0 px-4 text-muted-foreground not-empty:pb-2.5"
+            role="status"
+            data-testid="member-info-sessions-status"
+          >
+            @if (sessionsLoading()) {
+              Loading sessions…
+            }
+          </p>
+          @if (sessionsOpen() && !sessionsLoading()) {
+            <div class="flex flex-col gap-2 px-4 pb-2.5">
+              @if (sessions.kind === 'failed') {
+                <p class="m-0 text-danger" role="alert">
+                  Couldn't load sessions
+                </p>
+                <div>
+                  <button
+                    #sessionsRetry
+                    trnBtn
+                    type="button"
+                    size="sm"
+                    presentation="outline"
+                    (click)="retrySessions()"
+                    data-testid="member-info-sessions-retry"
+                  >
+                    Try again
+                  </button>
+                </div>
+              } @else if (
+                sessions.kind === 'checked' || sessions.kind === 'unchecked'
+              ) {
+                @if (sessions.sessions.length === 0) {
+                  <p class="m-0 text-muted-foreground">No sessions to show</p>
+                } @else {
+                  <!-- role="list": Safari drops list semantics from a bullet-less list without it. -->
+                  <ul
+                    #sessionsList
+                    role="list"
+                    class="m-0 flex max-h-48 list-none flex-col gap-2 overflow-y-auto p-0"
+                    [attr.tabindex]="sessionsListScrolls() ? 0 : null"
+                    aria-label="Sessions"
+                    data-testid="member-info-sessions-list"
+                  >
+                    @for (
+                      session of sessions.sessions;
+                      track session.deviceId
+                    ) {
+                      <li
+                        class="flex items-baseline justify-between gap-3"
+                        data-testid="member-info-session"
+                      >
+                        <span class="flex min-w-0 flex-col">
+                          <bdi
+                            class="[overflow-wrap:anywhere]"
+                            data-testid="member-info-session-name"
+                            >{{ session.name }}</bdi
+                          >
+                          @if (session.name !== session.shownId) {
+                            <bdi
+                              class="text-13 [overflow-wrap:anywhere] text-muted-foreground"
+                              data-testid="member-info-session-id"
+                              >{{ session.shownId }}</bdi
+                            >
+                          }
+                        </span>
+                        @if (session.verified === true) {
+                          <span
+                            trnBadge
+                            variant="success"
+                            data-testid="member-info-session-state"
+                            ><span aria-hidden="true">✓</span> Verified</span
+                          >
+                        } @else if (session.verified === false) {
+                          <span
+                            trnBadge
+                            variant="warning"
+                            data-testid="member-info-session-state"
+                            ><span aria-hidden="true">⚠</span> Not
+                            verified</span
+                          >
+                        }
+                      </li>
+                    }
+                  </ul>
+                  @if (sessions.kind === 'unchecked') {
+                    <p
+                      class="m-0 [overflow-wrap:anywhere] text-muted-foreground"
+                      data-testid="member-info-sessions-prompt"
+                    >
+                      Verify <bdi>{{ member().roomDisplayName }}</bdi> to check
+                      their sessions
+                    </p>
+                  }
+                }
+              }
+            </div>
+          }
         </dd>
       </div>
     }

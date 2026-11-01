@@ -100,6 +100,7 @@ const compositeIconFiles = new Set([
   'libs/feature/rooms/src/lib/shared/add-images-tile/add-images-tile.component.html',
   'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.html',
   'libs/components/overlay/src/lib/action-sheet/trn-action-list.component.html',
+  'libs/feature/rooms/src/lib/member-info/member-profile-tab/member-profile-tab.component.html',
 ]);
 
 const filesOutside = (controls, allowed) => [

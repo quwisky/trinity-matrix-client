@@ -37,6 +37,7 @@ import {
   TrustOperationError,
   recoverTrustOperation,
 } from './trust-operation-error';
+import { displayText } from './trust-display-text';
 
 /** UI-facing stage of the active verification (maps the SDK's numeric phase). */
 export type VerificationStage =
@@ -103,15 +104,6 @@ export interface VerificationView {
   /** The other device can show a code for this one to scan. */
   qrScanAvailable: boolean;
   cancelReason: string | null;
-}
-
-/**
- * Text a session chose for itself (its name, its device ID), made safe to show: control and
- * format characters, which include bidi overrides and zero-width characters, are removed,
- * and nothing left over means no text.
- */
-function displayText(value: string | null | undefined): string | null {
-  return value?.replace(/[\p{Cc}\p{Cf}]/gu, '').trim() || null;
 }
 
 const SAS_METHOD = 'm.sas.v1';
