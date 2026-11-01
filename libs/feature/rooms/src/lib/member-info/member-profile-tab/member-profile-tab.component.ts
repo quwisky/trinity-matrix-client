@@ -4,16 +4,18 @@ import {
   computed,
   inject,
   input,
+  linkedSignal,
   output,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map, shareReplay, timer } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { TrnBadge } from '@trinity/components/generic-content';
 import { TrnToastService } from '@trinity/components/overlay';
 import { type PresenceDetails } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
-import { type UserTrust } from '@trinity/data-access/trust';
+import { type UserSessions, type UserTrust } from '@trinity/data-access/trust';
 import { relativeTimeLabel } from '../../shared/relative-time';
 import { IdentityChangeActionsComponent } from '../../identity-change/identity-change-actions.component';
 
@@ -29,11 +31,16 @@ const clock = timer(60_000, 60_000).pipe(
   shareReplay({ bufferSize: 1, refCount: true }),
 );
 
-/** The member card's Profile tab: quick actions, then the Status and Global name rows. */
+/** The member card's Profile tab: quick actions, then the Status, Global name and Sessions rows. */
 @Component({
   selector: 'trn-member-profile-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IdentityChangeActionsComponent, TrnButton, TrnIconComponent],
+  imports: [
+    IdentityChangeActionsComponent,
+    TrnBadge,
+    TrnButton,
+    TrnIconComponent,
+  ],
   templateUrl: './member-profile-tab.component.html',
 })
 export class MemberProfileTabComponent {
@@ -47,11 +54,35 @@ export class MemberProfileTabComponent {
   /** Null unless the person's global display name differs from their name in this room. */
   readonly globalName = input.required<string | null>();
   readonly showIdentityActions = input.required<boolean>();
+  /** Null hides the Sessions row: no crypto, your own card, or another Account's card. */
+  readonly sessions = input.required<UserSessions | null>();
 
   readonly messageUser = output<void>();
   readonly verify = output<void>();
   /** The clipboard refused the id; the host selects its user id handle for a manual copy. */
   readonly copyFailed = output<void>();
+  /** The Sessions row opened: the moment a network read is allowed. */
+  readonly sessionsOpened = output<void>();
+  readonly sessionsRetried = output<void>();
+
+  /** Follows the member, because a settings card shows the next person without being rebuilt. */
+  readonly sessionsOpen = linkedSignal({
+    source: () => this.member().userId,
+    computation: () => false,
+  });
+
+  readonly sessionsCount = computed(() => {
+    const sessions = this.sessions();
+    if (sessions?.kind !== 'checked' && sessions?.kind !== 'unchecked') {
+      return null;
+    }
+    const total = sessions.sessions.length;
+    if (total === 0) return null;
+    const count = total === 1 ? '1 session' : `${total} sessions`;
+    return sessions.kind === 'checked' && sessions.notVerified > 0
+      ? `${count} · ${sessions.notVerified} not verified`
+      : count;
+  });
 
   readonly canVerify = computed(
     () =>
@@ -84,6 +115,12 @@ export class MemberProfileTabComponent {
       ? `${state} · ${presence.statusMessage}`
       : state;
   });
+
+  toggleSessions(): void {
+    const open = !this.sessionsOpen();
+    this.sessionsOpen.set(open);
+    if (open) this.sessionsOpened.emit();
+  }
 
   /**
    * Copy the member's user id, confirming with a toast only once the write has resolved:

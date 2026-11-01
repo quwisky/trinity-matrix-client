@@ -47,7 +47,7 @@
   </div>
 }
 
-@if (status() || globalName()) {
+@if (status() || globalName() || sessions()) {
   <dl class="m-0 mt-3 flex flex-col">
     @if (status(); as status) {
       <div
@@ -72,6 +72,118 @@
           data-testid="member-info-global-name"
         >
           {{ globalName }}
+        </dd>
+      </div>
+    }
+    @if (sessions(); as sessions) {
+      <div
+        class="border-t border-[var(--trinity-border-overlay)] px-1.5 py-1 text-sm"
+        data-testid="member-info-sessions"
+      >
+        <dt>
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="ghost"
+            shape="row"
+            [attr.aria-expanded]="sessionsOpen()"
+            (click)="toggleSessions()"
+            data-testid="member-info-sessions-toggle"
+          >
+            <span class="text-muted-foreground">Sessions</span>&ngsp;
+            @if (sessionsCount(); as count) {
+              <span
+                class="ms-auto min-w-0 text-end [overflow-wrap:anywhere]"
+                data-testid="member-info-sessions-count"
+                >{{ count }}</span
+              >
+            }
+            <trn-icon
+              [class.ms-auto]="!sessionsCount()"
+              [class.rotate-180]="sessionsOpen()"
+              name="chevron-down"
+            />
+          </button>
+        </dt>
+        <dd class="m-0" [hidden]="!sessionsOpen()">
+          @if (sessionsOpen()) {
+            <div class="flex flex-col gap-2 px-2.5 pt-1 pb-2">
+              @if (sessions.kind === 'failed') {
+                <p class="m-0 text-danger" role="alert">
+                  Couldn't load sessions
+                </p>
+                <div>
+                  <button
+                    trnBtn
+                    type="button"
+                    size="sm"
+                    presentation="outline"
+                    (click)="sessionsRetried.emit()"
+                    data-testid="member-info-sessions-retry"
+                  >
+                    Try again
+                  </button>
+                </div>
+              } @else if (
+                sessions.kind === 'checked' || sessions.kind === 'unchecked'
+              ) {
+                @if (sessions.sessions.length === 0) {
+                  <p class="m-0 text-muted-foreground">No sessions to show</p>
+                } @else {
+                  <ul
+                    class="m-0 flex max-h-48 list-none flex-col gap-2 overflow-y-auto p-0"
+                    tabindex="0"
+                    aria-label="Sessions"
+                    data-testid="member-info-sessions-list"
+                  >
+                    @for (
+                      session of sessions.sessions;
+                      track session.deviceId
+                    ) {
+                      <li
+                        class="flex items-baseline justify-between gap-3"
+                        data-testid="member-info-session"
+                      >
+                        <span class="min-w-0 [overflow-wrap:anywhere]">{{
+                          session.name
+                        }}</span>
+                        @if (session.verified === true) {
+                          <span
+                            trnBadge
+                            variant="success"
+                            data-testid="member-info-session-state"
+                            ><span aria-hidden="true">✓</span> Verified</span
+                          >
+                        } @else if (session.verified === false) {
+                          <span
+                            trnBadge
+                            variant="warning"
+                            data-testid="member-info-session-state"
+                            ><span aria-hidden="true">⚠</span> Not
+                            verified</span
+                          >
+                        }
+                      </li>
+                    }
+                  </ul>
+                  @if (sessions.kind === 'unchecked') {
+                    <p
+                      class="m-0 [overflow-wrap:anywhere] text-muted-foreground"
+                      data-testid="member-info-sessions-prompt"
+                    >
+                      Verify {{ member().roomDisplayName }} to check their
+                      sessions
+                    </p>
+                  }
+                }
+              } @else {
+                <p class="m-0 text-muted-foreground" role="status">
+                  Loading sessions…
+                </p>
+              }
+            </div>
+          }
         </dd>
       </div>
     }

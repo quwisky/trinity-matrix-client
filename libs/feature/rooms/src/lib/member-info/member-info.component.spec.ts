@@ -26,6 +26,7 @@ import {
   TrustOperationError,
   TrustUsersService,
   TrustVerificationService,
+  type UserSessions,
   type UserTrust,
 } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
@@ -68,6 +69,7 @@ async function build(
     startUserVerification?: Mock;
     reportsOffered?: boolean;
     trust?: UserTrust | null;
+    sessions?: UserSessions | null;
     commonRooms?: readonly CommonRoom[] | null;
     presence?: PresenceDetails | null;
     presenceAvailable?: boolean;
@@ -104,6 +106,14 @@ async function build(
     opts.createDirectMessage ?? vi.fn(() => of('!dm:hs'));
   const startUserVerification =
     opts.startUserVerification ?? vi.fn(() => of(undefined));
+  const releaseSessions = vi.fn();
+  // Reads state as the real service does when it creates a user's entry on this call.
+  const retainedState = signal(0);
+  const retainUserSessions = vi.fn(() => {
+    retainedState();
+    return releaseSessions;
+  });
+  const loadUserSessions = vi.fn();
   const { fixture, container } = await render(MemberInfoComponent, {
     inputs: {
       member: m,
@@ -176,6 +186,9 @@ async function build(
       MockProvider(ReportService, { reportUser$ }),
       MockProvider(TrustUsersService, {
         userTrust: () => signal(opts.trust ?? null).asReadonly(),
+        userSessions: () => signal(opts.sessions ?? null).asReadonly(),
+        retainUserSessions,
+        loadUserSessions,
       }),
       MockProvider(RoomsInCommonService, {
         roomsInCommon: () => signal(opts.commonRooms ?? null).asReadonly(),
@@ -201,6 +214,10 @@ async function build(
     reportUser$,
     createDirectMessage,
     startUserVerification,
+    retainUserSessions,
+    retainedState,
+    releaseSessions,
+    loadUserSessions,
   };
 }
 
@@ -255,6 +272,8 @@ async function buildPanel(m: MemberSummary = member()) {
       MockProvider(TrnAlertService),
       MockProvider(TrustUsersService, {
         userTrust: () => signal(null).asReadonly(),
+        userSessions: () => signal(null).asReadonly(),
+        retainUserSessions: () => () => undefined,
       }),
       MockProvider(RoomsInCommonService, {
         roomsInCommon: () => signal(null).asReadonly(),
@@ -805,5 +824,87 @@ describe('MemberInfoComponent', () => {
     expect(
       container.querySelector('[data-testid="member-info-ignore"]'),
     ).toBeNull();
+  });
+
+  describe('Sessions row', () => {
+    const LISTED: UserSessions = {
+      kind: 'unchecked',
+      sessions: [{ deviceId: 'PHONE', name: 'Phone' }],
+    };
+    const row = () => screen.queryByRole('button', { name: /^Sessions/ });
+
+    it("shows while the card's Account is active, and asks for the list on open", async () => {
+      const { loadUserSessions, retainUserSessions } = await build(member(), {
+        sessions: LISTED,
+      });
+      expect(retainUserSessions).toHaveBeenCalledExactlyOnceWith('@bob:hs');
+      expect(loadUserSessions).not.toHaveBeenCalled();
+
+      fireEvent.click(row() as HTMLElement);
+
+      expect(loadUserSessions).toHaveBeenCalledExactlyOnceWith('@bob:hs');
+    });
+
+    it('asks again on Try again', async () => {
+      const { loadUserSessions } = await build(member(), {
+        sessions: { kind: 'failed' },
+      });
+      fireEvent.click(row() as HTMLElement);
+      fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+
+      expect(loadUserSessions).toHaveBeenCalledTimes(2);
+    });
+
+    it('is hidden without crypto', async () => {
+      await build(member(), { sessions: null });
+      expect(row()).toBeNull();
+    });
+
+    it('is hidden on your own card, without holding a list', async () => {
+      const { retainUserSessions } = await build(member(), {
+        activeUserId: '@bob:hs',
+        sessions: LISTED,
+      });
+      expect(row()).toBeNull();
+      expect(retainUserSessions).not.toHaveBeenCalled();
+    });
+
+    it.each(['owningAccountId', 'accountId'] as const)(
+      'is hidden and let go once %s is not the active Account',
+      async (input) => {
+        const { fixture, releaseSessions } = await build(member(), {
+          sessions: LISTED,
+        });
+        expect(row()).not.toBeNull();
+
+        fixture.componentRef.setInput(input, '@other:hs');
+        await fixture.whenStable();
+
+        expect(row()).toBeNull();
+        expect(releaseSessions).toHaveBeenCalledOnce();
+      },
+    );
+
+    it('does not hold again when state the service read on the way changes', async () => {
+      const { fixture, retainUserSessions, retainedState, releaseSessions } =
+        await build(member(), { sessions: LISTED });
+
+      retainedState.set(1);
+      await fixture.whenStable();
+
+      expect(retainUserSessions).toHaveBeenCalledOnce();
+      expect(releaseSessions).not.toHaveBeenCalled();
+    });
+
+    it('lets the list go when the card closes', async () => {
+      const { fixture, releaseSessions } = await build(member(), {
+        sessions: LISTED,
+      });
+      expect(releaseSessions).not.toHaveBeenCalled();
+
+      fixture.destroy();
+
+      expect(releaseSessions).toHaveBeenCalledOnce();
+    });
   });
 });

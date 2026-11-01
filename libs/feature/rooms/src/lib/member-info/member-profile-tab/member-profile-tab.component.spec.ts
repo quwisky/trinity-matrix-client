@@ -1,8 +1,8 @@
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type PresenceDetails } from '@trinity/data-access/identity';
-import { type UserTrust } from '@trinity/data-access/trust';
+import { type UserSessions, type UserTrust } from '@trinity/data-access/trust';
 import { TrnToastService } from '@trinity/components/overlay';
-import { render, screen } from '@trinity/testing';
+import { fireEvent, render, screen, waitFor, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { IdentityChangeActionsService } from '../../identity-change/identity-change-actions.service';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -34,12 +34,15 @@ async function build(
     presence?: PresenceDetails | null;
     globalName?: string | null;
     showIdentityActions?: boolean;
+    sessions?: UserSessions | null;
   } = {},
 ) {
   const toastShow = vi.fn();
   const message = vi.fn();
   const verify = vi.fn();
   const copyFailed = vi.fn();
+  const sessionsOpened = vi.fn();
+  const sessionsRetried = vi.fn();
   const { fixture, container } = await render(MemberProfileTabComponent, {
     inputs: {
       member: BOB,
@@ -48,8 +51,15 @@ async function build(
       presence: inputs.presence ?? null,
       globalName: inputs.globalName ?? null,
       showIdentityActions: inputs.showIdentityActions ?? true,
+      sessions: inputs.sessions ?? null,
     },
-    on: { messageUser: message, verify, copyFailed },
+    on: {
+      messageUser: message,
+      verify,
+      copyFailed,
+      sessionsOpened,
+      sessionsRetried,
+    },
     providers: [
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(IdentityChangeActionsService, { pending: () => null }),
@@ -63,8 +73,25 @@ async function build(
     message,
     verify,
     copyFailed,
+    sessionsOpened,
+    sessionsRetried,
   };
 }
+
+const PHONE = { deviceId: 'PHONE', name: 'Phone' };
+const LAPTOP = { deviceId: 'LAPTOP', name: 'Laptop' };
+
+const unchecked = (...sessions: (typeof PHONE)[]): UserSessions => ({
+  kind: 'unchecked',
+  sessions,
+});
+
+const sessionsRow = () => screen.getByRole('button', { name: /^Sessions/ });
+const openSessions = () => fireEvent.click(sessionsRow());
+const sessionItems = () =>
+  within(screen.getByRole('list', { name: 'Sessions' })).getAllByRole(
+    'listitem',
+  );
 
 const byTestId = (container: Element, id: string) =>
   container.querySelector<HTMLElement>(`[data-testid="${id}"]`);
@@ -207,6 +234,195 @@ describe('MemberProfileTabComponent', () => {
     expect(
       byTestId(container, 'member-info-global-name')?.textContent?.trim(),
     ).toBe('Robert');
+  });
+
+  describe('Sessions row', () => {
+    const CHECKED: UserSessions = {
+      kind: 'checked',
+      notVerified: 1,
+      sessions: [
+        { ...PHONE, verified: false },
+        { ...LAPTOP, verified: true },
+      ],
+    };
+    const PROMPT = 'Verify Bob to check their sessions';
+
+    it('is hidden when there is nothing to show', async () => {
+      const { container } = await build({ sessions: null });
+      expect(screen.queryByRole('button', { name: /^Sessions/ })).toBeNull();
+      expect(container.querySelector('dl')).toBeNull();
+    });
+
+    it.each<[string, UserSessions, string]>([
+      ['nothing is known yet', { kind: 'unknown' }, 'Sessions'],
+      ['the list is loading', { kind: 'loading' }, 'Sessions'],
+      ['the read failed', { kind: 'failed' }, 'Sessions'],
+      ['the server lists none', unchecked(), 'Sessions'],
+      ['one session', unchecked(PHONE), 'Sessions 1 session'],
+      ['two sessions', unchecked(PHONE, LAPTOP), 'Sessions 2 sessions'],
+      [
+        'one of two not verified',
+        CHECKED,
+        'Sessions 2 sessions · 1 not verified',
+      ],
+      [
+        'all verified',
+        {
+          kind: 'checked',
+          notVerified: 0,
+          sessions: [{ ...PHONE, verified: true }],
+        },
+        'Sessions 1 session',
+      ],
+    ])('reads right when %s', async (_case, sessions, name) => {
+      await build({ sessions });
+      expect(sessionsRow()).toHaveAccessibleName(name);
+    });
+
+    it('is a real button that reports its state and asks for the list only when opening', async () => {
+      const { sessionsOpened } = await build({ sessions: unchecked(PHONE) });
+      expect(sessionsRow().tagName).toBe('BUTTON');
+      expect(sessionsRow()).toHaveAttribute('aria-expanded', 'false');
+      expect(sessionsOpened).not.toHaveBeenCalled();
+      expect(screen.queryByRole('list', { name: 'Sessions' })).toBeNull();
+
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+      expect(sessionsRow()).toHaveAttribute('aria-expanded', 'true');
+      expect(sessionsOpened).toHaveBeenCalledOnce();
+
+      openSessions();
+      await waitFor(() =>
+        expect(screen.queryByRole('list', { name: 'Sessions' })).toBeNull(),
+      );
+      expect(sessionsRow()).toHaveAttribute('aria-expanded', 'false');
+      expect(sessionsOpened).toHaveBeenCalledOnce();
+    });
+
+    it('closes when the card moves to another member', async () => {
+      const { fixture, sessionsOpened } = await build({
+        sessions: unchecked(PHONE),
+      });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      fixture.componentRef.setInput('member', { ...BOB, userId: '@carol:hs' });
+      await fixture.whenStable();
+
+      expect(sessionsRow()).toHaveAttribute('aria-expanded', 'false');
+      expect(sessionsOpened).toHaveBeenCalledOnce();
+    });
+
+    it('a verified member: each session says Verified or Not verified, in text', async () => {
+      await build({ trust: 'verified', sessions: CHECKED });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(sessionItems().map((item) => item.textContent?.trim())).toEqual([
+        expect.stringMatching(/^Phone\s*⚠ Not verified$/),
+        expect.stringMatching(/^Laptop\s*✓ Verified$/),
+      ]);
+      expect(screen.queryByText(PROMPT)).toBeNull();
+    });
+
+    it.each([
+      'unverified',
+      'identity-changed',
+      'verified-identity-changed',
+    ] as const)(
+      'a %s member: no badges, and the prompt in the room name',
+      async (trust) => {
+        const { container } = await build({
+          trust,
+          sessions: unchecked(PHONE, LAPTOP),
+        });
+        openSessions();
+        await screen.findByRole('list', { name: 'Sessions' });
+
+        expect(sessionItems().map((item) => item.textContent?.trim())).toEqual([
+          'Phone',
+          'Laptop',
+        ]);
+        expect(
+          container.querySelector('[data-testid="member-info-session-state"]'),
+        ).toBeNull();
+        expect(screen.getByText(PROMPT)).toBeTruthy();
+      },
+    );
+
+    it('keeps the identity-change action beside the list', async () => {
+      const { container } = await build({
+        trust: 'identity-changed',
+        sessions: unchecked(PHONE),
+      });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+      expect(byTestId(container, 'member-info-identity-change')).not.toBeNull();
+    });
+
+    it('renders a hostile name as text', async () => {
+      const name = '<img src=x onerror=alert(1)>';
+      const { container } = await build({
+        sessions: unchecked({ deviceId: 'X', name }),
+      });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(sessionItems()[0]?.textContent?.trim()).toBe(name);
+      expect(container.querySelector('img')).toBeNull();
+    });
+
+    it('announces loading, with no list and no prompt', async () => {
+      await build({ sessions: { kind: 'loading' } });
+      openSessions();
+
+      expect((await screen.findByRole('status')).textContent).toContain(
+        'Loading sessions',
+      );
+      expect(screen.queryByRole('list', { name: 'Sessions' })).toBeNull();
+      expect(screen.queryByText(PROMPT)).toBeNull();
+    });
+
+    it('says so when the server lists none', async () => {
+      await build({ sessions: unchecked() });
+      openSessions();
+      expect(await screen.findByText('No sessions to show')).toBeTruthy();
+      expect(screen.queryByText(PROMPT)).toBeNull();
+    });
+
+    it('shows an error with Try again', async () => {
+      const { sessionsRetried, sessionsOpened } = await build({
+        sessions: { kind: 'failed' },
+      });
+      openSessions();
+
+      expect((await screen.findByRole('alert')).textContent).toContain(
+        "Couldn't load sessions",
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(sessionsRetried).toHaveBeenCalledOnce();
+      expect(sessionsOpened).toHaveBeenCalledOnce();
+    });
+
+    it('scrolls a long list within a fixed height, by keyboard too', async () => {
+      await build({ sessions: unchecked(PHONE, LAPTOP) });
+      openSessions();
+      const list = await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(list.className).toContain('max-h-');
+      expect(list.className).toContain('overflow-y-auto');
+      expect(list).toHaveAttribute('tabindex', '0');
+    });
+
+    it('wraps untrusted names and ids rather than overflowing', async () => {
+      await build({ sessions: unchecked(PHONE) });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(screen.getByText('Phone').className).toContain(
+        '[overflow-wrap:anywhere]',
+      );
+    });
   });
 
   it('copies the user id and toasts once the write resolves', async () => {
