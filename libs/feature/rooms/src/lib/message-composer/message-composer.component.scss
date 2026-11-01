@@ -209,6 +209,10 @@
     &:disabled {
       color: var(--trinity-text-muted);
       opacity: 1;
+
+      // A disabled button takes no press, which would blur the field and close the keyboard;
+      // letting the press through to the field (see `onFieldPress`) keeps focus there.
+      pointer-events: none;
     }
   }
 
