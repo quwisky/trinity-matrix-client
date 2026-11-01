@@ -46,6 +46,19 @@ previously delivered events. Encrypted events wait for their decrypted form so
 rule scoring and previews do not use ciphertext; pending and delivered state is
 each capped at 500 entries.
 
+A message that arrives after an interrupted sync gets only its unread badge when it is more
+than two minutes old. An interruption is more than two minutes since the last completed sync,
+measured on the wall clock because a wake need not pass through `Reconnecting` or `Error`. It
+lasts through the batch after the one that ended the gap, since a long-poll held through the
+sleep can answer before the catch-up. Age is the server's `unsigned.age`; without one the message
+notifies. The check runs when the timeline event arrives, so it covers messages awaiting
+decryption and reactions. A slow federated message still notifies outside an interruption, and
+so does everything after a drop under two minutes.
+
+Two cases still notify: a response held through the sleep carries the age from when the server
+answered, so its messages read as recent, and a message queued for decryption before the sleep
+notifies when its key arrives afterwards.
+
 Host presentation is a separate capability. Electron requests native display
 through its main-process bridge, Capacitor uses the native presentation adapter,
 and the web adapter uses the browser or controlling service worker. A host result

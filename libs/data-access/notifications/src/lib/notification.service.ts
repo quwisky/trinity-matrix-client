@@ -114,6 +114,9 @@ function copyRetiredAccountData(client: MatrixClient): void {
  * user isn't viewing that room, and when push rules say `notify`. Opted-in reactions use
  * client-side ownership checks instead, but keep the master rule and room mutes.
  *
+ * After more than two minutes without a completed sync, a message older than two minutes is
+ * left to its unread badge. A sleep need not change the sync state, so the clock decides.
+ *
  * In E2EE rooms the timeline emit carries ciphertext, so the preview would be generic and
  * push rules would miss mentions. Those events wait for `MatrixEventEvent.Decrypted` and
  * are rescored with `getPushActionsForEvent(event, true)`.
@@ -158,6 +161,12 @@ export class NotificationService {
 
   /** Permanent UTDs stay pending for a later retry, so the set needs a cap. */
   private static readonly PENDING_DECRYPTION_CAP = 500;
+
+  /**
+   * Outlasts the SDK's 110 s /sync abort, so only a sleep or an outage leaves a gap this long;
+   * after a shorter gap anything older is a slow federated message, which still notifies.
+   */
+  private static readonly INTERRUPTION_MS = 2 * 60_000;
 
   constructor() {
     effect(() => {
@@ -399,6 +408,11 @@ export class NotificationService {
       client.getSyncState(),
       client.getSyncStateData(),
     );
+    let lastSyncAt = Date.now();
+    // A poll held through a sleep can answer empty on waking; the batch after it is the catch-up.
+    let catchingUp = false;
+    const syncOverdue = (): boolean =>
+      Date.now() - lastSyncAt > NotificationService.INTERRUPTION_MS;
     // A room counts as encrypted by its state OR by the crypto store. The store's answer is
     // async, so ask it once per room up front; a room first seen later is covered next sync.
     const encryption = new RoomEncryptionFlags();
@@ -427,6 +441,10 @@ export class NotificationService {
       client,
       reactions,
       onSync: (state, _prev, data): void => {
+        if (isServerSync(state, data)) {
+          catchingUp = syncOverdue();
+          lastSyncAt = Date.now();
+        }
         if (state === SyncState.Prepared || state === SyncState.Syncing) {
           firstSyncCompleted ||= isServerSync(state, data);
           warmEncryption();
@@ -441,6 +459,14 @@ export class NotificationService {
           if (!firstSyncCompleted) {
             // matrix-js-sdk labels the first /sync batch as live while it is still
             // applying stored room state and history. PREPARED is emitted afterwards.
+            return;
+          }
+          // Here, not on decryption: the sync has recovered by then. A missing `age` notifies,
+          // because trusting the device clock instead could silence current messages.
+          if (
+            (catchingUp || syncOverdue()) &&
+            (event.getAge() ?? 0) > NotificationService.INTERRUPTION_MS
+          ) {
             return;
           }
           if (this.isReaction(event) && room) {
