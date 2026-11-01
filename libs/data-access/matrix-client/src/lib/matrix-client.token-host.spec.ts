@@ -583,6 +583,30 @@ describe('a session whose token exchanges a host makes', () => {
     },
   );
 
+  it('leaves the token alone when a request fails for another reason', async () => {
+    fakeNetwork('rotate');
+    const host = fakeHost();
+    const { svc, client, loggedOut, storage } = await startWithHost(host);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json(
+          { errcode: 'M_NOT_FOUND', error: 'Not found' },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    await expect(client.whoami()).rejects.toMatchObject({
+      errcode: 'M_NOT_FOUND',
+    });
+
+    expect(host.refresh).not.toHaveBeenCalled();
+    expect(loggedOut).not.toHaveBeenCalled();
+    expect(svc.softLoggedOut()).toEqual([]);
+    expect(storage.invalidateToken).not.toHaveBeenCalled();
+  });
+
   it('a refusal through the host lands soft', async () => {
     fakeNetwork('rotate');
     const host = fakeHost({ kind: 'refused' });
