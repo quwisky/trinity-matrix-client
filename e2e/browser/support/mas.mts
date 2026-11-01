@@ -125,6 +125,18 @@ export async function signInWithMas(
   }
   await fillLabeledInput(page, 'Homeserver', account.hs);
   await page.getByText('Continue', { exact: true }).click();
+  await completeMasSignIn(page, authPlatform, account);
+}
+
+/**
+ * From a page that offers the provider step (the sign-in form after discovery, or a
+ * re-auth), continue to MAS, sign in and consent there, and wait for the app to settle.
+ */
+export async function completeMasSignIn(
+  page: Page,
+  authPlatform: AuthPlatform,
+  account: MasAccount,
+): Promise<void> {
   const start = page.getByTestId('oidc-continue');
   await expect(start).toBeVisible({ timeout: 30_000 });
   const provider = await authPlatform.waitForExternalPage(page, () =>
@@ -151,6 +163,8 @@ export interface MasTraffic {
   readonly logoutCalls: string[];
   /** The `/sync` responses: the bearer token each request carried, and its status. */
   readonly syncs: { authorization: string | undefined; status: number }[];
+  /** The OAuth client id, read from the first POST to the token endpoint. */
+  readonly clientId: string | undefined;
   /** The access token MAS issued last (code exchange or refresh). */
   latestAccessToken(): Promise<string>;
 }
@@ -169,10 +183,13 @@ export function trackMasTraffic(
   const revocations: string[] = [];
   const logoutCalls: string[] = [];
   const syncs: { authorization: string | undefined; status: number }[] = [];
+  let clientId: string | undefined;
   page.on('request', (request) => {
     if (request.method() !== 'POST') return;
     const url = request.url();
     const form = new URLSearchParams(request.postData() ?? '');
+    if (url === endpoints.token)
+      clientId ??= form.get('client_id') ?? undefined;
     if (url === endpoints.token && form.get('grant_type') === 'refresh_token') {
       refreshGrants.push(form);
     }
@@ -210,7 +227,9 @@ export function trackMasTraffic(
     revocations,
     logoutCalls,
     syncs,
-    /** The access token MAS issued last (code exchange or refresh). */
+    get clientId() {
+      return clientId;
+    },
     async latestAccessToken(): Promise<string> {
       await expect.poll(() => tokenResponses.length).toBeGreaterThan(0);
       return tokenResponses[tokenResponses.length - 1].access_token;

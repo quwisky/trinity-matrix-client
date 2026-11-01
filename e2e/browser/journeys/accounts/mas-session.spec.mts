@@ -14,12 +14,15 @@ import {
 } from '../../../support/app.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import {
+  completeMasSignIn,
   masEndpoints,
   openAddAccount,
   registerMasUser,
   signInWithMas,
   trackMasTraffic,
   type MasAccount,
+  type MasEndpoints,
+  type MasTokenResponse,
 } from '../../support/mas.mts';
 
 // Next-gen auth (MSC3861) against a REAL matrix-authentication-service: the provider most
@@ -53,8 +56,180 @@ async function whoamiStatus(
   return response.status();
 }
 
+/** `whoami` body for an access token, which names the device the token belongs to. */
+async function whoami(
+  request: APIRequestContext,
+  account: MasAccount,
+  accessToken: string,
+): Promise<{ user_id: string; device_id: string }> {
+  const response = await request.get(
+    `${account.hs}/_matrix/client/v3/account/whoami`,
+    { headers: { authorization: `Bearer ${accessToken}` } },
+  );
+  expect(response.ok()).toBe(true);
+  return (await response.json()) as { user_id: string; device_id: string };
+}
+
+/** A refresh grant sent from outside the app, as another process holding the token would. */
+async function rotateOutsideApp(
+  request: APIRequestContext,
+  endpoints: MasEndpoints,
+  refreshToken: string | undefined,
+  clientId: string | undefined,
+): Promise<MasTokenResponse> {
+  expect(refreshToken, 'MAS issued a refresh token').toBeDefined();
+  expect(clientId, 'the app sent its client id').toBeDefined();
+  const response = await request.post(endpoints.token, {
+    form: {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken as string,
+      client_id: clientId as string,
+    },
+  });
+  expect(response.ok()).toBe(true);
+  return (await response.json()) as MasTokenResponse;
+}
+
 test.describe('MAS session lifecycle', () => {
   test.skip(!mas, 'needs the opt-in MAS stack (TRINITY_E2E_MAS=1)');
+
+  test('a refused refresh keeps the keys and signing in again reclaims the device', async ({
+    page,
+    authPlatform,
+    request,
+  }) => {
+    // Up to one 60 s access-token lifetime before the refusal, plus two sign-ins.
+    test.setTimeout(360_000);
+    const account = await registerMasUser(
+      masAccount(),
+      `mas-refused-${testResourceId('run')}`,
+    );
+    const userId = `@${account.user}:${account.serverName}`;
+    const endpoints = await masEndpoints(request, account);
+    const traffic = trackMasTraffic(page, account, endpoints);
+    const ownStores = async (): Promise<string[]> =>
+      (await databaseNames(page))
+        .filter((name) => name.includes(userId))
+        .sort();
+
+    await signInWithMas(page, authPlatform, account);
+    await expect
+      .poll(async () => (await ownStores()).length)
+      .toBeGreaterThanOrEqual(2);
+    const deviceBefore = (
+      await whoami(request, account, await traffic.latestAccessToken())
+    ).device_id;
+    const storesBefore = await ownStores();
+
+    // Revoking the refresh token ends the session at MAS, so the app's next refresh is refused.
+    expect(traffic.clientId, 'the app sent its client id').toBeDefined();
+    const revoked = await request.post(endpoints.revocation, {
+      form: {
+        token: traffic.tokenResponses.at(-1)?.refresh_token ?? '',
+        token_type_hint: 'refresh_token',
+        client_id: traffic.clientId as string,
+      },
+    });
+    expect(revoked.ok()).toBe(true);
+
+    await expect(page).toHaveURL(/\/login\?reauth=/, { timeout: 150_000 });
+    // A soft logout: no store was deleted and the account record is still there.
+    expect(await ownStores()).toEqual(storesBefore);
+    expect(
+      await page.evaluate(() =>
+        localStorage.getItem('CapacitorStorage.matrix.accounts'),
+      ),
+    ).toContain(userId);
+    await expect(page.getByTestId('remove-reauth-account')).toBeVisible();
+
+    await completeMasSignIn(page, authPlatform, account);
+    await waitForRooms(page, 60_000);
+
+    // Signing in again must land on the same device, or the kept keys would not match it.
+    const accessToken = await traffic.latestAccessToken();
+    expect((await whoami(request, account, accessToken)).device_id).toBe(
+      deviceBefore,
+    );
+    const query = await request.post(
+      `${account.hs}/_matrix/client/v3/keys/query`,
+      {
+        headers: { authorization: `Bearer ${accessToken}` },
+        data: { device_keys: { [userId]: [] } },
+      },
+    );
+    expect(query.ok()).toBe(true);
+    const body = (await query.json()) as {
+      device_keys: Record<string, Record<string, unknown>>;
+    };
+    expect(body.device_keys[userId]?.[deviceBefore]).toBeDefined();
+    expect(await ownStores()).toEqual(storesBefore);
+  });
+
+  test('a rotation outside the app never wipes the account', async ({
+    page,
+    authPlatform,
+    request,
+  }) => {
+    // Two 60 s access-token lifetimes: the tolerated refresh, then the refused one.
+    test.setTimeout(420_000);
+    const account = await registerMasUser(
+      masAccount(),
+      `mas-rotated-${testResourceId('run')}`,
+    );
+    const userId = `@${account.user}:${account.serverName}`;
+    const endpoints = await masEndpoints(request, account);
+    const traffic = trackMasTraffic(page, account, endpoints);
+    const ownStores = async (): Promise<string[]> =>
+      (await databaseNames(page))
+        .filter((name) => name.includes(userId))
+        .sort();
+
+    await signInWithMas(page, authPlatform, account);
+    await expect
+      .poll(async () => (await ownStores()).length)
+      .toBeGreaterThanOrEqual(2);
+    const storesBefore = await ownStores();
+
+    // Tolerated: the new pair stays unused, so MAS still accepts the app's refresh.
+    await rotateOutsideApp(
+      request,
+      endpoints,
+      traffic.tokenResponses.at(-1)?.refresh_token,
+      traffic.clientId,
+    );
+    await expect
+      .poll(() => traffic.refreshGrants.length, {
+        timeout: 150_000,
+        intervals: [5_000],
+      })
+      .toBeGreaterThanOrEqual(1);
+    const latest = `Bearer ${await traffic.latestAccessToken()}`;
+    await expect
+      .poll(
+        () =>
+          traffic.syncs.some(
+            (s) => s.authorization === latest && s.status === 200,
+          ),
+        { timeout: 60_000 },
+      )
+      .toBe(true);
+    expect(await ownStores()).toEqual(storesBefore);
+    await expect(page).toHaveURL(/\/rooms/);
+
+    // Not tolerated: the other process uses its new access token, so the refresh token
+    // the app holds is spent for good and the app's next refresh is refused.
+    const outside = await rotateOutsideApp(
+      request,
+      endpoints,
+      traffic.tokenResponses.at(-1)?.refresh_token,
+      traffic.clientId,
+    );
+    expect(await whoamiStatus(request, account, outside.access_token)).toBe(
+      200,
+    );
+    await expect(page).toHaveURL(/\/login\?reauth=/, { timeout: 150_000 });
+    expect(await ownStores()).toEqual(storesBefore);
+  });
 
   test('signs in through MAS with the authorization-code flow', async ({
     page,
