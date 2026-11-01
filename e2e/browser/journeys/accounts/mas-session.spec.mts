@@ -283,7 +283,7 @@ test.describe('MAS session lifecycle', () => {
     });
     await expect(
       page.getByText(
-        'Sign in again to reconnect this account. This device will need to be verified again.',
+        "Sign in again to reconnect this account. This device will need to be verified again. Messages that aren't in key backup won't be readable on this device afterwards.",
       ),
     ).toBeVisible();
     expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));

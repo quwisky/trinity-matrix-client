@@ -45,7 +45,8 @@
       >
         @if (reauthUserId() && reauthAsNewDevice()) {
           Sign in again to reconnect this account. This device will need to be
-          verified again.
+          verified again. Messages that aren't in key backup won't be readable
+          on this device afterwards.
         } @else if (reauthUserId()) {
           Sign in again to reconnect this account
         } @else {

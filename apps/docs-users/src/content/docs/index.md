@@ -336,7 +336,8 @@ Turn on key backup so you can read older encrypted messages after you sign in ag
 If an OAuth 2.0 session was ended for good, for example because you signed out on another device or
 an admin ended it, your server has deleted this device. After you sign in, Trinity asks you
 to sign in once more, with the message "Sign in again to reconnect this account. This device
-will need to be verified again." Your provider may ask for your consent again. That sign-in
+will need to be verified again. Messages that aren't in key backup won't be readable on this
+device afterwards." Your provider may ask for your consent again. That sign-in
 makes a new device and clears the old one's keys from this device, so you can read older
 encrypted messages only with key backup or another signed-in device. Until you finish it,
 nothing is cleared.

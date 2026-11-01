@@ -1801,7 +1801,7 @@ describe('LoginPage', () => {
 
   describe('a re-auth as a new device', () => {
     const NEW_DEVICE_COPY =
-      'Sign in again to reconnect this account. This device will need to be verified again.';
+      "Sign in again to reconnect this account. This device will need to be verified again. Messages that aren't in key backup won't be readable on this device afterwards.";
     const RECORD = {
       baseUrl: 'https://hs.example',
       userId: '@bob:hs',
