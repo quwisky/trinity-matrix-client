@@ -137,6 +137,16 @@ export async function completeMasSignIn(
   authPlatform: AuthPlatform,
   account: MasAccount,
 ): Promise<void> {
+  await continueThroughMas(page, authPlatform, account);
+  await settleSignIn(page, 'skip-if-shown', 90_000);
+}
+
+/** The provider step alone, for a sign-in that doesn't end in the app straight away. */
+export async function continueThroughMas(
+  page: Page,
+  authPlatform: AuthPlatform,
+  account: MasAccount,
+): Promise<void> {
   const start = page.getByTestId('oidc-continue');
   await expect(start).toBeVisible({ timeout: 30_000 });
   const provider = await authPlatform.waitForExternalPage(page, () =>
@@ -153,7 +163,6 @@ export async function completeMasSignIn(
     await provider.waitForURL(/\/consent\//, { timeout: 30_000 });
   }
   await provider.getByRole('button', { name: 'Continue' }).click();
-  await settleSignIn(page, 'skip-if-shown', 90_000);
 }
 
 export interface MasTraffic {

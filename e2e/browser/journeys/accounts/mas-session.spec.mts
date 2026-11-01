@@ -10,11 +10,13 @@ import {
   homeserverSession,
   login,
   preferenceKeys,
+  settleSignIn,
   waitForRooms,
 } from '../../../support/app.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import {
   completeMasSignIn,
+  continueThroughMas,
   masEndpoints,
   openAddAccount,
   registerMasUser,
@@ -23,6 +25,7 @@ import {
   type MasAccount,
   type MasEndpoints,
   type MasTokenResponse,
+  type MasTraffic,
 } from '../../support/mas.mts';
 
 // Next-gen auth (MSC3861) against a REAL matrix-authentication-service: the provider most
@@ -90,10 +93,69 @@ async function rotateOutsideApp(
   return (await response.json()) as MasTokenResponse;
 }
 
+/**
+ * Whether the homeserver lists keys for a device. Reads the latest token on each call, since
+ * one lives 60 s; an answer that isn't ok is no answer, so a poll just tries again.
+ */
+async function deviceHasKeys(
+  request: APIRequestContext,
+  account: MasAccount,
+  traffic: MasTraffic,
+  userId: string,
+  deviceId: string,
+): Promise<boolean> {
+  const query = await request.post(
+    `${account.hs}/_matrix/client/v3/keys/query`,
+    {
+      headers: {
+        authorization: `Bearer ${await traffic.latestAccessToken()}`,
+      },
+      data: { device_keys: { [userId]: [] } },
+    },
+  );
+  if (!query.ok()) return false;
+  const body = (await query.json()) as {
+    device_keys: Record<string, Record<string, unknown>>;
+  };
+  return body.device_keys[userId]?.[deviceId] !== undefined;
+}
+
+/**
+ * Spend the refresh token the app holds from outside, leaving the session alive: another
+ * process rotates and uses its new access token, so the app's next refresh is refused. The
+ * app's token requests wait until both steps are done, so its own refresh cannot reach MAS
+ * in between and be answered by the idempotent grant.
+ */
+async function spendAppRefreshToken(
+  page: Page,
+  request: APIRequestContext,
+  account: MasAccount,
+  endpoints: MasEndpoints,
+  traffic: MasTraffic,
+): Promise<void> {
+  let release = (): void => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(endpoints.token, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const outside = await rotateOutsideApp(
+    request,
+    endpoints,
+    traffic.tokenResponses.at(-1)?.refresh_token,
+    traffic.clientId,
+  );
+  expect(await whoamiStatus(request, account, outside.access_token)).toBe(200);
+  release();
+  await page.unroute(endpoints.token);
+}
+
 test.describe('MAS session lifecycle', () => {
   test.skip(!mas, 'needs the opt-in MAS stack (TRINITY_E2E_MAS=1)');
 
-  test('a refused refresh keeps the keys and signing in again reclaims the device', async ({
+  test('a refused refresh leaves the device alone and signing in again keeps its keys', async ({
     page,
     authPlatform,
     request,
@@ -120,36 +182,17 @@ test.describe('MAS session lifecycle', () => {
       await whoami(request, account, await traffic.latestAccessToken())
     ).device_id;
     const storesBefore = await ownStores();
-    const deviceHasKeys = async (accessToken: string): Promise<boolean> => {
-      const query = await request.post(
-        `${account.hs}/_matrix/client/v3/keys/query`,
-        {
-          headers: { authorization: `Bearer ${accessToken}` },
-          data: { device_keys: { [userId]: [] } },
-        },
-      );
-      const body = (await query.json()) as {
-        device_keys: Record<string, Record<string, unknown>>;
-      };
-      return body.device_keys[userId]?.[deviceBefore] !== undefined;
-    };
     await expect
-      .poll(async () => deviceHasKeys(await traffic.latestAccessToken()), {
-        message: 'the device published its keys before the refusal',
-        timeout: 60_000,
-      })
+      .poll(
+        () => deviceHasKeys(request, account, traffic, userId, deviceBefore),
+        {
+          message: 'the device published its keys before the refusal',
+          timeout: 60_000,
+        },
+      )
       .toBe(true);
 
-    // Revoking the refresh token ends the session at MAS, so the app's next refresh is refused.
-    expect(traffic.clientId, 'the app sent its client id').toBeDefined();
-    const revoked = await request.post(endpoints.revocation, {
-      form: {
-        token: traffic.tokenResponses.at(-1)?.refresh_token ?? '',
-        token_type_hint: 'refresh_token',
-        client_id: traffic.clientId as string,
-      },
-    });
-    expect(revoked.ok()).toBe(true);
+    await spendAppRefreshToken(page, request, account, endpoints, traffic);
 
     await expect(page).toHaveURL(/\/login\?reauth=/, { timeout: 150_000 });
     // A soft logout: no store was deleted and the account record is still there.
@@ -164,18 +207,121 @@ test.describe('MAS session lifecycle', () => {
     await completeMasSignIn(page, authPlatform, account);
     await waitForRooms(page, 60_000);
 
-    // Signing in again must land on the same device, or the kept keys would not match it.
-    const accessToken = await traffic.latestAccessToken();
-    expect((await whoami(request, account, accessToken)).device_id).toBe(
-      deviceBefore,
-    );
+    // The session was never ended, so the same device comes back with its keys.
+    expect(
+      (await whoami(request, account, await traffic.latestAccessToken()))
+        .device_id,
+    ).toBe(deviceBefore);
     await expect
-      .poll(() => deviceHasKeys(accessToken), {
-        message: 'the reclaimed device has its keys on the server',
-        timeout: 60_000,
-      })
+      .poll(
+        () => deviceHasKeys(request, account, traffic, userId, deviceBefore),
+        {
+          message: 'the device still has its keys on the server',
+          timeout: 60_000,
+        },
+      )
       .toBe(true);
     expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
+  });
+
+  test('a session ended at the provider moves the account to a new device', async ({
+    page,
+    authPlatform,
+    request,
+  }) => {
+    // Up to one 60 s access-token lifetime before the refusal, plus three sign-ins.
+    test.setTimeout(420_000);
+    const account = await registerMasUser(
+      masAccount(),
+      `mas-ended-${testResourceId('run')}`,
+    );
+    const userId = `@${account.user}:${account.serverName}`;
+    const endpoints = await masEndpoints(request, account);
+    const traffic = trackMasTraffic(page, account, endpoints);
+    const ownStores = async (): Promise<string[]> =>
+      (await databaseNames(page))
+        .filter((name) => name.includes(userId))
+        .sort();
+
+    await signInWithMas(page, authPlatform, account);
+    await expect
+      .poll(async () => (await ownStores()).length)
+      .toBeGreaterThanOrEqual(2);
+    const deviceBefore = (
+      await whoami(request, account, await traffic.latestAccessToken())
+    ).device_id;
+    await expect
+      .poll(
+        () => deviceHasKeys(request, account, traffic, userId, deviceBefore),
+        {
+          message: 'the device published its keys before the session ended',
+          timeout: 60_000,
+        },
+      )
+      .toBe(true);
+    const storesBefore = await ownStores();
+
+    // Revoking the refresh token ends the session at MAS, which deletes the device and its
+    // keys, so the app's next request is refused.
+    expect(traffic.clientId, 'the app sent its client id').toBeDefined();
+    const revoked = await request.post(endpoints.revocation, {
+      form: {
+        token: traffic.tokenResponses.at(-1)?.refresh_token ?? '',
+        token_type_hint: 'refresh_token',
+        client_id: traffic.clientId as string,
+      },
+    });
+    expect(revoked.ok()).toBe(true);
+
+    await expect(page).toHaveURL(/\/login\?reauth=/, { timeout: 150_000 });
+    expect(new URL(page.url()).searchParams.has('device')).toBe(false);
+
+    // The first sign-in finds the device without keys: it saves nothing and moves on.
+    await continueThroughMas(page, authPlatform, account);
+    await expect(page).toHaveURL(/\/login\?reauth=.*device=new/, {
+      timeout: 60_000,
+    });
+    await expect(
+      page.getByText(
+        'Sign in again to reconnect this account. This device will need to be verified again.',
+      ),
+    ).toBeVisible();
+    expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
+
+    // A reload keeps the offer; the second sign-in is the person's own.
+    await page.reload();
+    await expect(page).toHaveURL(/device=new/);
+    await continueThroughMas(page, authPlatform, account);
+    // Nothing is live to check for a key backup, so replacing the old device asks first.
+    await page
+      .locator('trn-alert-dialog', { hasText: 'Sign in anyway' })
+      .getByTestId('alert-confirm')
+      .click({ timeout: 60_000 });
+    await settleSignIn(page, 'skip-if-shown', 90_000);
+    await waitForRooms(page, 60_000);
+
+    const deviceAfter = (
+      await whoami(request, account, await traffic.latestAccessToken())
+    ).device_id;
+    expect(deviceAfter).not.toBe(deviceBefore);
+    await expect
+      .poll(
+        () => deviceHasKeys(request, account, traffic, userId, deviceAfter),
+        {
+          message: 'the new device published its keys',
+          timeout: 60_000,
+        },
+      )
+      .toBe(true);
+    expect(
+      await deviceHasKeys(request, account, traffic, userId, deviceBefore),
+    ).toBe(false);
+    expect(
+      await page.evaluate(() =>
+        localStorage.getItem('CapacitorStorage.matrix.accounts'),
+      ),
+    ).toContain(userId);
+    await expect(page).toHaveURL(/\/rooms/);
   });
 
   test('a rotation outside the app never wipes the account', async ({
@@ -233,28 +379,8 @@ test.describe('MAS session lifecycle', () => {
     expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
     await expect(page).toHaveURL(/\/rooms/);
 
-    // Not tolerated: the other process uses its new access token, so the refresh token
-    // the app holds is spent for good and the app's next refresh is refused.
-    // The app's token requests are held until both steps are done, so its own refresh
-    // cannot reach MAS in between and be answered by the idempotent grant.
-    let release = (): void => undefined;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await page.route(endpoints.token, async (route) => {
-      await held;
-      await route.continue();
-    });
-    const outside = await rotateOutsideApp(
-      request,
-      endpoints,
-      traffic.tokenResponses.at(-1)?.refresh_token,
-      traffic.clientId,
-    );
-    expect(await whoamiStatus(request, account, outside.access_token)).toBe(
-      200,
-    );
-    release();
+    // Not tolerated: the refresh token the app holds is spent for good.
+    await spendAppRefreshToken(page, request, account, endpoints, traffic);
     await expect(page).toHaveURL(/\/login\?reauth=/, { timeout: 150_000 });
     expect(await ownStores()).toEqual(expect.arrayContaining(storesBefore));
   });
