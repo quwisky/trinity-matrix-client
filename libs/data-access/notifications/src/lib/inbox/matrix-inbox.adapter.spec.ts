@@ -227,4 +227,61 @@ describe('checkInboxEvent', () => {
     );
     expect(result).toMatchObject({ highlighted: false });
   });
+
+  it('forces for an event that is not the room’s own', async () => {
+    const event = message();
+    const getPushActionsForEvent = highlight();
+    await checkInboxEvent(
+      clientOf({
+        getPushActionsForEvent,
+        getRoom: vi.fn(() => ({ findEventById: () => message() })),
+      }),
+      event,
+    );
+    expect(getPushActionsForEvent).toHaveBeenCalledWith(event, true);
+  });
+
+  it('takes the cached answer for the room’s own event', async () => {
+    const event = message();
+    const getPushActionsForEvent = highlight();
+    const result = await checkInboxEvent(
+      clientOf({
+        getPushActionsForEvent,
+        getRoom: vi.fn(() => ({ findEventById: () => event })),
+      }),
+      event,
+    );
+    expect(getPushActionsForEvent).toHaveBeenCalledWith(event, false);
+    expect(result).toMatchObject({ highlighted: true });
+  });
+
+  it('counts an original later edited to mention the person', async () => {
+    const original = new MatrixEvent({
+      event_id: '$o',
+      room_id: '!r:hs',
+      sender: '@a:hs',
+      type: 'm.room.message',
+      content: { body: 'hi' },
+      unsigned: {
+        'm.relations': {
+          'm.replace': {
+            event_id: '$edit',
+            sender: '@a:hs',
+            type: 'm.room.message',
+            origin_server_ts: 2,
+            content: {
+              body: '* @me',
+              'm.new_content': { body: '@me' },
+              'm.relates_to': { rel_type: 'm.replace', event_id: '$o' },
+            },
+          },
+        },
+      },
+    });
+    const result = await checkInboxEvent(
+      clientOf({ getPushActionsForEvent: highlight() }),
+      original,
+    );
+    expect(result).toMatchObject({ kind: 'checked', highlighted: true });
+  });
 });

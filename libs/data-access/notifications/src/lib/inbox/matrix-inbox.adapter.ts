@@ -66,6 +66,15 @@ export type InboxEventCheck =
       readonly highlighted: boolean;
     };
 
+/** Forcing a recalculation would overwrite the cached details the room's counts read. */
+function isRoomsOwn(client: MatrixClient, event: MatrixEvent): boolean {
+  const id = event.getId();
+  return (
+    id !== undefined &&
+    client.getRoom(event.getRoomId() ?? '')?.findEventById(id) === event
+  );
+}
+
 export async function checkInboxEvent(
   client: MatrixClient,
   event: MatrixEvent,
@@ -89,6 +98,7 @@ export async function checkInboxEvent(
   const highlighted =
     event.getRelation()?.rel_type !== RelationType.Replace &&
     event.getSender() !== client.getUserId() &&
-    client.getPushActionsForEvent(event, true)?.tweaks?.highlight === true;
+    client.getPushActionsForEvent(event, !isRoomsOwn(client, event))?.tweaks
+      ?.highlight === true;
   return { kind: 'checked', event, highlighted };
 }

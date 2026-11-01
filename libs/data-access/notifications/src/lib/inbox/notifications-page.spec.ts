@@ -46,4 +46,28 @@ describe('parseNotificationsPage', () => {
       parseNotificationsPage({ notifications: [], next_token: 't' }).nextToken,
     ).toBe('t');
   });
+
+  it('prefers the event time over the receive time', () => {
+    const page = parseNotificationsPage({
+      notifications: [
+        good('$a', { ts: 9, event: { event_id: '$a', origin_server_ts: 3 } }),
+        good('$b', { ts: 9, event: { event_id: '$b', origin_server_ts: 'x' } }),
+      ],
+    });
+    expect(page.entries.map((e) => e.ts)).toEqual([3, 9]);
+  });
+
+  it('caps a page at 500 entries', () => {
+    const notifications = Array.from({ length: 600 }, (_, i) => good(`$e${i}`));
+    expect(parseNotificationsPage({ notifications }).entries).toHaveLength(500);
+  });
+
+  it('skips an unsafe sender', () => {
+    const page = parseNotificationsPage({
+      notifications: [
+        good('$a', { event: { event_id: '$a', sender: '__proto__' } }),
+      ],
+    });
+    expect(page.entries).toEqual([]);
+  });
 });
