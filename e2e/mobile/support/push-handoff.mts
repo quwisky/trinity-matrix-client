@@ -46,6 +46,44 @@ export async function storeExpiredPushAccount(userId: string): Promise<void> {
   if (typeof result === 'string') throw new Error(result);
 }
 
+/** One call on an installed Capacitor plugin, as it resolved. Run in the WebView context. */
+export async function pluginCall(
+  plugin: string,
+  method: string,
+  options: unknown,
+): Promise<unknown> {
+  const result = await browser.execute(
+    async (
+      pluginName: string,
+      name: string,
+      argument: unknown,
+    ): Promise<{ answer: unknown } | { failure: string }> => {
+      const installed = (
+        window as typeof window & {
+          Capacitor?: {
+            Plugins?: Record<
+              string,
+              Record<string, (options: unknown) => Promise<unknown>>
+            >;
+          };
+        }
+      ).Capacitor?.Plugins?.[pluginName];
+      if (!installed) return { failure: `${pluginName} is unavailable` };
+      try {
+        return { answer: await installed[name]?.(argument) };
+      } catch (error: unknown) {
+        return { failure: String(error) };
+      }
+    },
+    plugin,
+    method,
+    options,
+  );
+  if ('failure' in result)
+    throw new Error(`${plugin}.${method}: ${result.failure}`);
+  return result.answer;
+}
+
 /** What the installed PushHandoff plugin answers for an account it has no tokens for. */
 export interface UnknownAccountTokenAnswers {
   readonly current: unknown;

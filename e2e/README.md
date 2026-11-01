@@ -118,6 +118,13 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   "Open Trinity to read this message", which needs no network. Neither shows a real FCM token,
   the extension launching, locked-phone rendering or closed-app delivery through
   `push.trinityproject.dev`, and the iOS spec does not cover tap-to-open.
+- Native token refresh: `token-refresh-dex.e2e.mts` (iOS only, skips without `dex` on `PATH`) sends
+  real refresh grants from the plugin's native refresher to a Dex of its own: rotation, the rotated
+  token surviving a relaunch and its launch sweep in the keychain, a refused grant and a network
+  failure. It calls the PushHandoff plugin from the WebView and does not drive a Matrix session,
+  because Synapse does not accept Dex's tokens; it seeds token-less OAuth registry entries, which
+  keep the records through the sweep and start no client. It starts its own Dex because the stack's 2.46.1 hangs on a refresh grant
+  ([dexidp/dex#5017](https://github.com/dexidp/dex/issues/5017)).
 - CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.
 
 ## MSC2545 image-pack management
