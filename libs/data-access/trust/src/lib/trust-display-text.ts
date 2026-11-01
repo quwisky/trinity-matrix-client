@@ -8,17 +8,13 @@ export function displayText(value: string | null | undefined): string | null {
 }
 
 /**
- * A device ID to show, with anything invisible spelled out, so two different IDs never look the
- * same. Unlike {@link displayText} it hides nothing: a clone of `ABC` reads `ABC​`. The
- * backslash is escaped too, so typing that text out cannot match it.
+ * A device ID to show, with everything but printable ASCII spelled out as `\u{...}`. Different IDs
+ * always read differently: invisible characters and lookalikes such as Cyrillic `А` cannot pass
+ * for another ID, and the backslash is escaped so typing the escaped form out cannot match it.
  */
 export function visibleId(value: string): string {
-  return value.replace(/[\p{Cc}\p{Cf}\\]|^\s+|\s+$/gu, (match) =>
-    [...match]
-      .map(
-        (char) =>
-          `\\u${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`,
-      )
-      .join(''),
+  return value.replace(
+    /[^\x21-\x5B\x5D-\x7E]/gu,
+    (char) => `\\u{${(char.codePointAt(0) ?? 0).toString(16).toUpperCase()}}`,
   );
 }

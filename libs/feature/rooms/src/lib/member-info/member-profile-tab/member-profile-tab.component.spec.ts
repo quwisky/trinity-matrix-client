@@ -501,15 +501,15 @@ describe('MemberProfileTabComponent', () => {
       await build({
         sessions: unchecked({
           deviceId: '\u200B',
-          shownId: '\\u200B',
-          name: '\\u200B',
+          shownId: '\\u{200B}',
+          name: '\\u{200B}',
         }),
       });
       openSessions();
       await screen.findByRole('list', { name: 'Sessions' });
 
       expect(screen.getByTestId('member-info-session-name').textContent).toBe(
-        '\\u200B',
+        '\\u{200B}',
       );
       expect(screen.queryByTestId('member-info-session-id')).toBeNull();
     });
@@ -518,7 +518,7 @@ describe('MemberProfileTabComponent', () => {
       await build({
         sessions: unchecked(
           { deviceId: 'ABC', shownId: 'ABC', name: 'ABC' },
-          { deviceId: 'ABC\u200B', shownId: 'ABC\\u200B', name: 'ABC' },
+          { deviceId: 'ABC\u200B', shownId: 'ABC\\u{200B}', name: 'ABC' },
         ),
       });
       openSessions();
@@ -529,7 +529,7 @@ describe('MemberProfileTabComponent', () => {
         screen
           .getAllByTestId('member-info-session-id')
           .map((id) => id.textContent),
-      ).toEqual(['ABC\\u200B']);
+      ).toEqual(['ABC\\u{200B}']);
     });
 
     it('isolates untrusted text from what sits around it', async () => {

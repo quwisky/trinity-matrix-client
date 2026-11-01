@@ -634,7 +634,7 @@ describe('TrustUsersService', () => {
         });
         expect(first).toEqual({
           deviceId: 'ID\u202E1',
-          shownId: 'ID\\u202E1',
+          shownId: 'ID\\u{202E}1',
           name: 'Phone',
         });
         expect(client.getDeviceVerificationStatus).toHaveBeenCalledWith(
@@ -647,19 +647,42 @@ describe('TrustUsersService', () => {
         const { first } = await firstSession({ deviceId: '\u200B' });
         expect(first).toEqual({
           deviceId: '\u200B',
-          shownId: '\\u200B',
-          name: '\\u200B',
+          shownId: '\\u{200B}',
+          name: '\\u{200B}',
         });
       });
 
       it.each([
-        ['leading space', ' ABC', '\\u0020ABC'],
-        ['trailing no-break space', 'ABC\u00A0', 'ABC\\u00A0'],
-        ['a character outside the basic plane', 'ABC\u{E0041}', 'ABC\\uE0041'],
-        ['only spaces', '  ', '\\u0020\\u0020'],
-      ])('escapes %s in an id', async (_case, deviceId, shownId) => {
+        ['a leading space', ' ABC', '\\u{20}ABC'],
+        ['an inner space', 'A B', 'A\\u{20}B'],
+        ['only spaces', '  ', '\\u{20}\\u{20}'],
+        ['a backslash', 'A\\B', 'A\\u{5C}B'],
+        ['a control character', 'ABC\u0007', 'ABC\\u{7}'],
+        ['a variation selector', 'ABC️', 'ABC\\u{FE0F}'],
+        ['a combining grapheme joiner', 'ABC͏', 'ABC\\u{34F}'],
+        ['a Hangul filler', 'ABCㅤ', 'ABC\\u{3164}'],
+        ['a braille blank', 'ABC⠀', 'ABC\\u{2800}'],
+        ['a no-break space', 'A B', 'A\\u{A0}B'],
+        ['an em space', 'A B', 'A\\u{2003}B'],
+        ['Cyrillic lookalikes', 'АВС', '\\u{410}\\u{412}\\u{421}'],
+        [
+          'a character outside the basic plane',
+          'ABC\u{E0041}',
+          'ABC\\u{E0041}',
+        ],
+      ])('spells out %s in an id', async (_case, deviceId, shownId) => {
         const { first } = await firstSession({ deviceId });
         expect(first?.shownId).toBe(shownId);
+      });
+
+      it('leaves every printable ASCII character but the backslash as it is', async () => {
+        const printable = Array.from({ length: 94 }, (_, i) =>
+          String.fromCharCode(0x21 + i),
+        )
+          .join('')
+          .replace('\\', '');
+        const { first } = await firstSession({ deviceId: printable });
+        expect(first?.shownId).toBe(printable);
       });
 
       describe('a session cloning another one', () => {
@@ -682,7 +705,7 @@ describe('TrustUsersService', () => {
           );
 
           expect(result.map((s) => s.deviceId)).toEqual(['ABC', 'ABC\u200B']);
-          expect(result.map((s) => s.shownId)).toEqual(['ABC', 'ABC\\u200B']);
+          expect(result.map((s) => s.shownId)).toEqual(['ABC', 'ABC\\u{200B}']);
         });
 
         it("a name copying a real id still shows the clone's own id", async () => {
@@ -693,22 +716,48 @@ describe('TrustUsersService', () => {
 
           expect(result.find((s) => s.deviceId === 'ABC\u200B')).toEqual({
             deviceId: 'ABC\u200B',
-            shownId: 'ABC\\u200B',
+            shownId: 'ABC\\u{200B}',
             name: 'ABC',
           });
         });
 
         it('typing the escaped form out cannot match an escaped id', async () => {
           const result = await read(
-            { deviceId: 'ABC\u200B' },
-            { deviceId: 'ABC\\u200B' },
+            { deviceId: 'ABC​' },
+            { deviceId: 'ABC\\u{200B}' },
           );
 
           const shown = result.map((s) => s.shownId);
           expect(new Set(shown).size).toBe(2);
-          expect(shown).toContain('ABC\\u200B');
-          expect(shown).toContain('ABC\\u005Cu200B');
+          expect(shown).toContain('ABC\\u{200B}');
+          expect(shown).toContain('ABC\\u{5C}u{200B}');
         });
+
+        it('a code point followed by a digit cannot pass for a longer code point', async () => {
+          const result = await read(
+            { deviceId: '1' },
+            { deviceId: '\u{E0041}' },
+          );
+
+          expect(result.map((s) => s.shownId).sort()).toEqual([
+            '\\u{E0041}',
+            '\\u{E004}1',
+          ]);
+        });
+
+        it.each([
+          ['a Cyrillic lookalike', 'ABC', 'АВС'],
+          ['a Hangul filler', 'ABC', 'ABCㅤ'],
+          ['a braille blank', 'ABC', 'ABC⠀'],
+          ['a variation selector', 'ABC', 'ABC️'],
+          ['a no-break space for a space', 'A B', 'A B'],
+        ])(
+          '%s reads differently from the id it copies',
+          async (_c, real, clone) => {
+            const result = await read({ deviceId: real }, { deviceId: clone });
+            expect(new Set(result.map((s) => s.shownId)).size).toBe(2);
+          },
+        );
       });
     });
 
