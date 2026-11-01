@@ -15,7 +15,10 @@ import {
   switchMap,
   timeout,
 } from 'rxjs';
-import { SessionStorageService } from './session-storage.service';
+import {
+  SessionStorageService,
+  type AccountRecord,
+} from './session-storage.service';
 
 /**
  * Stands in for the refresh token in a live client once native code holds the real one. It
@@ -145,9 +148,9 @@ export class NativeTokenBridge {
           case 'refused':
             return { kind: 'refused' };
           case 'gone':
-            return this.unconfirmedCopies.has(userId)
-              ? { kind: 'transient' }
-              : { kind: 'refused' };
+            return (await this.goneForGood(userId, lineage))
+              ? { kind: 'refused' }
+              : { kind: 'transient' };
           default:
             return { kind: 'transient' };
         }
@@ -183,6 +186,28 @@ export class NativeTokenBridge {
       this.handoff.revokeTokens(session.userId, session.lineage ?? ''),
       { kind: 'transient' },
     ).pipe(map(({ kind }) => kind === 'revoked'));
+  }
+
+  /**
+   * False while the JS copy is unconfirmed, and once a new sign-in holds the account: its save
+   * removes this client's record before its start stops this client, and a logout here would
+   * wipe the new sign-in. The registry write comes first, so this read can't miss it.
+   */
+  private async goneForGood(userId: string, lineage: string): Promise<boolean> {
+    if (this.unconfirmedCopies.has(userId)) {
+      return false;
+    }
+    const stored = await firstValueFrom(
+      bounded<AccountRecord | null | undefined>(
+        this.storage.record(userId),
+        undefined,
+        NATIVE_VAULT_STEP_TIMEOUT_MS,
+      ),
+    );
+    return (
+      stored === null ||
+      (stored !== undefined && (stored.lineage ?? '') === lineage)
+    );
   }
 
   private migrate(session: MatrixSession): Observable<Migration> {

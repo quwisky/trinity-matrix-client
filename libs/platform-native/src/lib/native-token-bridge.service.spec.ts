@@ -12,7 +12,10 @@ import {
   NATIVE_REFRESH_MARKER,
   NativeTokenBridge,
 } from './native-token-bridge.service';
-import { SessionStorageService } from './session-storage.service';
+import {
+  SessionStorageService,
+  type AccountRecord,
+} from './session-storage.service';
 
 const TIMEOUT_MS = 13_000;
 const READ_TIMEOUT_MS = 3_000;
@@ -90,6 +93,7 @@ function setup(stored?: VaultRecord) {
       state.jsCopy = false;
       return of(undefined);
     }),
+    record: vi.fn<SessionStorageService['record']>(() => of(null)),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -943,6 +947,78 @@ describe('NativeTokenBridge', () => {
       expect(next).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(next).toHaveBeenCalledExactlyOnceWith(false);
+    });
+  });
+
+  describe('a record gone from under a live host', () => {
+    const storedAs = (lineage: string | undefined) =>
+      of({ userId: USER, lineage } as AccountRecord);
+
+    function goneHost() {
+      const test = setup();
+      test.bridge.refreshTokens.mockReturnValue(of({ kind: 'gone' }));
+      return { ...test, host: test.tokens.host(SESSION) };
+    }
+
+    it('reads as transient once a new sign-in holds the account', async () => {
+      const { host, storage } = goneHost();
+      storage.record.mockReturnValue(storedAs('L2'));
+
+      await expect(host.refresh('a0')).resolves.toEqual({ kind: 'transient' });
+      expect(storage.record).toHaveBeenCalledExactlyOnceWith(USER);
+    });
+
+    it('is a refusal while this sign-in is still the stored one', async () => {
+      const { host, storage } = goneHost();
+      storage.record.mockReturnValue(storedAs(LINEAGE));
+
+      await expect(host.refresh('a0')).resolves.toEqual({ kind: 'refused' });
+    });
+
+    it('is a refusal for a session saved before lineages existed', async () => {
+      const { tokens, bridge, storage } = setup();
+      bridge.refreshTokens.mockReturnValue(of({ kind: 'gone' }));
+      storage.record.mockReturnValue(storedAs(undefined));
+
+      await expect(
+        tokens.host({ ...SESSION, lineage: undefined }).refresh('a0'),
+      ).resolves.toEqual({ kind: 'refused' });
+    });
+
+    it('is a refusal when no account is stored', async () => {
+      const { host } = goneHost();
+
+      await expect(host.refresh('a0')).resolves.toEqual({ kind: 'refused' });
+    });
+
+    it('reads as transient when the stored sign-in cannot be read', async () => {
+      const { host, storage } = goneHost();
+      storage.record.mockReturnValue(throwError(() => new Error('corrupt')));
+
+      await expect(host.refresh('a0')).resolves.toEqual({ kind: 'transient' });
+    });
+
+    it('reads as transient when that read never answers, at the step limit', async () => {
+      vi.useFakeTimers();
+      const { host, storage } = goneHost();
+      storage.record.mockReturnValue(NEVER);
+      const answered = vi.fn();
+
+      void host.refresh('a0').then(answered);
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
+      expect(answered).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(answered).toHaveBeenCalledExactlyOnceWith({ kind: 'transient' });
+    });
+
+    it('does not read the stored sign-in for any other answer', async () => {
+      const { tokens, bridge, storage } = setup();
+      bridge.refreshTokens.mockReturnValue(of({ kind: 'refused' }));
+
+      await tokens.host(SESSION).refresh('a0');
+
+      expect(storage.record).not.toHaveBeenCalled();
     });
   });
 });

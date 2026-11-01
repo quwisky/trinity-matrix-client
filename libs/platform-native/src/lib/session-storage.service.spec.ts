@@ -1100,7 +1100,7 @@ describe('SessionStorageService', () => {
     it('removes the vault record when it removes an account', async () => {
       const { svc, bridge } = setup();
       await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(BOB));
+      await firstValueFrom(svc.save({ ...BOB, oidc: OIDC_BINDING }));
 
       await firstValueFrom(svc.remove('@bob:other'));
 
@@ -1109,8 +1109,8 @@ describe('SessionStorageService', () => {
 
     it('removes only its own records when the last account signs out, and empties the vault on a clear-all', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(BOB));
+      await firstValueFrom(svc.save({ ...ALICE, oidc: OIDC_BINDING }));
+      await firstValueFrom(svc.save({ ...BOB, oidc: OIDC_BINDING }));
       await firstValueFrom(svc.remove('@alice:hs', { keepNativeTokens: true }));
 
       await firstValueFrom(svc.clear());
@@ -1239,10 +1239,10 @@ describe('SessionStorageService', () => {
       vi.useFakeTimers();
       try {
         const { svc, bridge } = setup();
-        await firstValueFrom(svc.save(ALICE));
+        await firstValueFrom(svc.save(CAROL));
         bridge.removeTokens.mockReturnValueOnce(NEVER);
 
-        const stuck = firstValueFrom(svc.remove('@alice:hs')).catch(
+        const stuck = firstValueFrom(svc.remove('@carol:hs')).catch(
           (error: unknown) => error,
         );
         const next = firstValueFrom(svc.save(BOB));
@@ -1322,13 +1322,132 @@ describe('SessionStorageService', () => {
       });
     });
 
-    it('removes the vault record on a soft logout and keeps the registry entry', async () => {
+    describe('a password account, which never had a vault record', () => {
+      it.each([
+        ['a removal', (svc: SessionStorageService) => svc.remove('@alice:hs')],
+        ['a clear', (svc: SessionStorageService) => svc.clear()],
+        [
+          'a soft logout',
+          (svc: SessionStorageService) => svc.invalidateToken('@alice:hs'),
+        ],
+      ])('%s makes no native call', async (_name, act) => {
+        const { svc, bridge } = setup();
+        await firstValueFrom(svc.save(ALICE));
+
+        await firstValueFrom(act(svc), { defaultValue: undefined });
+
+        expect(bridge.removeTokens).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['a removal', (svc: SessionStorageService) => svc.remove('@alice:hs')],
+        ['a clear', (svc: SessionStorageService) => svc.clear()],
+        [
+          'a soft logout',
+          (svc: SessionStorageService) => svc.invalidateToken('@alice:hs'),
+        ],
+      ])('a hung plugin does not delay %s', async (_name, act) => {
+        vi.useFakeTimers();
+        try {
+          const { svc, bridge } = setup();
+          await firstValueFrom(svc.save(ALICE));
+          bridge.removeTokens.mockReturnValue(NEVER);
+
+          const settled = vi.fn();
+          firstValueFrom(act(svc), { defaultValue: undefined }).then(
+            settled,
+            settled,
+          );
+          // Nothing past the microtasks: a wait on the plugin would need the 5 s to pass.
+          await vi.advanceTimersByTimeAsync(0);
+
+          expect(settled).toHaveBeenCalledOnce();
+          expect(settled.mock.calls[0][0]).toBeUndefined();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it('a clear removes only the OAuth accounts of a mixed registry', async () => {
+        const { svc, bridge } = setup();
+        await firstValueFrom(svc.save(ALICE));
+        await firstValueFrom(svc.save(CAROL));
+
+        await firstValueFrom(svc.clear());
+
+        expect(bridge.removeTokens.mock.calls).toEqual([['@carol:hs']]);
+      });
+    });
+
+    describe('an account with no readable record, whose orphan must not stay', () => {
+      it('a removal still asks native', async () => {
+        const { svc, bridge } = setup();
+
+        await firstValueFrom(svc.remove('@nobody:hs'));
+
+        expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith(
+          '@nobody:hs',
+        );
+      });
+
+      it('a soft logout still asks native', async () => {
+        const { svc, bridge } = setup();
+
+        await firstValueFrom(svc.invalidateToken('@nobody:hs'));
+
+        expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith(
+          '@nobody:hs',
+        );
+      });
+
+      it('a soft logout over an unreadable registry still asks native', async () => {
+        const { svc, bridge } = setup();
+        prefs.set('matrix.accounts', '{not json');
+
+        await firstValueFrom(svc.invalidateToken('@alice:hs'));
+
+        expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith(
+          '@alice:hs',
+        );
+      });
+    });
+
+    it('still empties the whole vault on a clear-all of password accounts', async () => {
       const { svc, bridge } = setup();
       await firstValueFrom(svc.save(ALICE));
 
-      await firstValueFrom(svc.invalidateToken('@alice:hs'));
+      await firstValueFrom(svc.clearAll());
 
-      expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith('@alice:hs');
+      expect(bridge.removeAllTokens).toHaveBeenCalledExactlyOnceWith();
+    });
+
+    it('stores the new sign-in before it removes the old one from the vault', async () => {
+      const { svc, bridge } = setup();
+      const { lineage: first } = await firstValueFrom(svc.save(CAROL));
+      let storedAtRemoval: string | undefined;
+      bridge.removeTokens.mockImplementation(() => {
+        const { accounts } = JSON.parse(
+          prefs.get('matrix.accounts') ?? '{}',
+        ) as { accounts: AccountRecord[] };
+        storedAtRemoval = accounts[0].lineage;
+        return of(undefined);
+      });
+
+      const { lineage: second } = await firstValueFrom(
+        svc.save({ ...CAROL, refreshToken: undefined }),
+      );
+
+      expect(second).not.toBe(first);
+      expect(storedAtRemoval).toBe(second);
+    });
+
+    it('removes the vault record on a soft logout and keeps the registry entry', async () => {
+      const { svc, bridge } = setup();
+      await firstValueFrom(svc.save(CAROL));
+
+      await firstValueFrom(svc.invalidateToken('@carol:hs'));
+
+      expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith('@carol:hs');
       expect(await firstValueFrom(svc.list())).toHaveLength(1);
     });
 
@@ -1357,17 +1476,17 @@ describe('SessionStorageService', () => {
 
     it('rejects remove() when the native removal is refused, so the residue is retried', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(CAROL));
       bridge.removeTokens.mockReturnValueOnce(
         throwError(() => new Error('no')),
       );
 
-      await expect(firstValueFrom(svc.remove('@alice:hs'))).rejects.toThrow(
+      await expect(firstValueFrom(svc.remove('@carol:hs'))).rejects.toThrow(
         'no',
       );
       expect(await firstValueFrom(svc.list())).toHaveLength(1);
 
-      await firstValueFrom(svc.remove('@alice:hs'));
+      await firstValueFrom(svc.remove('@carol:hs'));
       expect(await firstValueFrom(svc.list())).toEqual([]);
     });
 

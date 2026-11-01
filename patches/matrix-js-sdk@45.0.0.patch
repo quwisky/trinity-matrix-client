@@ -146,20 +146,21 @@ index 7561cea4dd1ea743c8d84125d4e799f2deb35b72..ecd2f9a66ef30697794321f4136ebd10
      /**
       * Attempt to refresh access tokens.
 diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
-index 33663e12c92d0f2edebc32c26651ba109a5023b5..abc01561573b4e704aca86415bb482c1436f35ec 100644
+index 33663e12c92d0f2edebc32c26651ba109a5023b5..35adfa45d010543c9ef3e93e7f83ec84ac248b99 100644
 --- a/lib/http-api/refresh.js
 +++ b/lib/http-api/refresh.js
-@@ -36,6 +36,9 @@ const REFRESH_IF_TOKEN_EXPIRES_WITHIN_MS = 500;
+@@ -36,6 +36,10 @@ const REFRESH_IF_TOKEN_EXPIRES_WITHIN_MS = 500;
  // If we get an unknown token error and the token expires in less than this time amount of time, we will refresh it before making the intended request.
  // Otherwise, we will error as the token should not have expired yet and we need to avoid retrying indefinitely.
  const REFRESH_ON_ERROR_IF_TOKEN_EXPIRES_WITHIN_MS = 60 * 1000;
 +// Trinity patch: how many attempts a request makes with a host. Nothing else ends a run of rejected
-+// tokens with no far expiry, and each attempt is a real grant while every request queues behind it.
++// tokens with no far expiry. Each attempt can ask the host for a grant while every request queues
++// behind it, and a token already past its expiry adds one before the first send: 4 calls in all.
 +const HOST_MAX_ATTEMPTS = 3;
  /**
   * This class is responsible for managing the access token and refresh token for authenticated requests.
   * It will automatically refresh the tokens when the access token is about to expire and can handle
-@@ -56,6 +59,9 @@ export class TokenManager {
+@@ -56,6 +60,9 @@ export class TokenManager {
       */
      _defineProperty(this, "tokenRefreshPromise", void 0);
      _defineProperty(this, "latestTokenRefreshExpiry", void 0);
@@ -169,7 +170,7 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..abc01561573b4e704aca86415bb482c1
      // The object at the OAuth API layer that actually does the refreshing
      // This needs OAuth params to be fetched before it can be constructed so it starts
      // off as undefined and is constructed once we are able to do so.
-@@ -103,8 +109,72 @@ export class TokenManager {
+@@ -103,8 +110,72 @@ export class TokenManager {
    async handleUnknownToken(snapshot, attempt) {
      return this._handleUnknownToken(snapshot, attempt);
    }
@@ -243,7 +244,7 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..abc01561573b4e704aca86415bb482c1
        // If our token is unknown, but it should not have expired yet, then we should not refresh
        const expiresIn = snapshot.expiry.getTime() - Date.now();
        // If it still has plenty of time left on the clock, we assume something else must be wrong and
-@@ -133,7 +203,7 @@ export class TokenManager {
+@@ -133,7 +204,7 @@ export class TokenManager {
     * On success, sets new access and refresh tokens in opts.
     * @returns Promise that resolves to a boolean - true when token was refreshed successfully
     */
@@ -252,7 +253,7 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..abc01561573b4e704aca86415bb482c1
      if (!this.opts.refreshToken || !this.opts.oauth2ClientConfig) {
        this.opts.logger?.error("Unable to refresh token - no refresh token or OAuth2 client config");
        return TokenRefreshOutcome.Logout;
-@@ -144,6 +214,21 @@ export class TokenManager {
+@@ -144,6 +215,21 @@ export class TokenManager {
      }
      try {
        this.opts.logger?.debug("Attempting to refresh token");
@@ -274,7 +275,7 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..abc01561573b4e704aca86415bb482c1
        const tokenRefresher = await this.ensureTokenRefresher();
        if (!tokenRefresher) {
          // We already checked `oauth2ClientConfig` is set above, so this should be unreachable.
-@@ -154,7 +239,8 @@ export class TokenManager {
+@@ -154,7 +240,8 @@ export class TokenManager {
          refreshToken,
          expiry
        } = await tokenRefresher.refreshTokens(this.opts.refreshToken, {
@@ -284,7 +285,7 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..abc01561573b4e704aca86415bb482c1
        });
        this.opts.accessToken = accessToken;
        this.opts.refreshToken = refreshToken;
-@@ -164,8 +250,10 @@ export class TokenManager {
+@@ -164,8 +251,10 @@ export class TokenManager {
        // successfully got new tokens
        return TokenRefreshOutcome.Success;
      } catch (error) {
@@ -297,7 +298,7 @@ index 33663e12c92d0f2edebc32c26651ba109a5023b5..abc01561573b4e704aca86415bb482c1
          this.opts.logger?.error("Failed to refresh token", error);
          return TokenRefreshOutcome.Logout;
        }
-@@ -181,12 +269,14 @@ export class TokenManager {
+@@ -181,12 +270,14 @@ export class TokenManager {
     * @throws when discovery of the auth server metadata, or revocation of either token, fails
     */
    async revokeTokens() {
@@ -619,20 +620,21 @@ index bc71d861a8364199e7351d65896424afef498515..b759274b50c87376feb99d00743ef81f
       * Configuration needed to refresh (given refreshToken) and revoke (e.g. on logout) tokens for an
       * OAuth2-native session. Optional; if omitted, tokens will not be refreshed or revoked by the SDK.
 diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
-index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd3eabf314 100644
+index 04cc1c46c80490248d9602d3dabfbb23405faa94..a854a7a12bb65c366c491e41bee2943e28e26b70 100644
 --- a/src/http-api/refresh.ts
 +++ b/src/http-api/refresh.ts
-@@ -35,6 +35,9 @@ const REFRESH_IF_TOKEN_EXPIRES_WITHIN_MS = 500;
+@@ -35,6 +35,10 @@ const REFRESH_IF_TOKEN_EXPIRES_WITHIN_MS = 500;
  // If we get an unknown token error and the token expires in less than this time amount of time, we will refresh it before making the intended request.
  // Otherwise, we will error as the token should not have expired yet and we need to avoid retrying indefinitely.
  const REFRESH_ON_ERROR_IF_TOKEN_EXPIRES_WITHIN_MS = 60 * 1000;
 +// Trinity patch: how many attempts a request makes with a host. Nothing else ends a run of rejected
-+// tokens with no far expiry, and each attempt is a real grant while every request queues behind it.
++// tokens with no far expiry. Each attempt can ask the host for a grant while every request queues
++// behind it, and a token already past its expiry adds one before the first send: 4 calls in all.
 +const HOST_MAX_ATTEMPTS = 3;
  
  type Opts = Pick<
      IHttpOpts,
-@@ -45,6 +48,7 @@ type Opts = Pick<
+@@ -45,6 +49,7 @@ type Opts = Pick<
      | "oauth2ClientConfig"
      | "authMetadataCallback"
      | "fetchFn"
@@ -640,7 +642,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd
  >;
  
  /**
-@@ -73,6 +77,10 @@ export class TokenManager {
+@@ -73,6 +78,10 @@ export class TokenManager {
  
      private latestTokenRefreshExpiry?: Date;
  
@@ -651,7 +653,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd
      // The object at the OAuth API layer that actually does the refreshing
      // This needs OAuth params to be fetched before it can be constructed so it starts
      // off as undefined and is constructed once we are able to do so.
-@@ -123,10 +131,80 @@ export class TokenManager {
+@@ -123,10 +132,80 @@ export class TokenManager {
          return this._handleUnknownToken(snapshot, attempt);
      }
  
@@ -733,7 +735,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd
              // If our token is unknown, but it should not have expired yet, then we should not refresh
              const expiresIn = snapshot.expiry.getTime() - Date.now();
              // If it still has plenty of time left on the clock, we assume something else must be wrong and
-@@ -157,7 +235,7 @@ export class TokenManager {
+@@ -157,7 +236,7 @@ export class TokenManager {
       * On success, sets new access and refresh tokens in opts.
       * @returns Promise that resolves to a boolean - true when token was refreshed successfully
       */
@@ -742,7 +744,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd
          if (!this.opts.refreshToken || !this.opts.oauth2ClientConfig) {
              this.opts.logger?.error("Unable to refresh token - no refresh token or OAuth2 client config");
              return TokenRefreshOutcome.Logout;
-@@ -170,6 +248,18 @@ export class TokenManager {
+@@ -170,6 +249,18 @@ export class TokenManager {
  
          try {
              this.opts.logger?.debug("Attempting to refresh token");
@@ -761,7 +763,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd
              const tokenRefresher = await this.ensureTokenRefresher();
              if (!tokenRefresher) {
                  // We already checked `oauth2ClientConfig` is set above, so this should be unreachable.
-@@ -178,6 +268,7 @@ export class TokenManager {
+@@ -178,6 +269,7 @@ export class TokenManager {
  
              const { accessToken, refreshToken, expiry } = await tokenRefresher.refreshTokens(this.opts.refreshToken, {
                  abortSignal: this.getAbortSignal?.(),
@@ -769,7 +771,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd
              });
              this.opts.accessToken = accessToken;
              this.opts.refreshToken = refreshToken;
-@@ -187,8 +278,10 @@ export class TokenManager {
+@@ -187,8 +279,10 @@ export class TokenManager {
              // successfully got new tokens
              return TokenRefreshOutcome.Success;
          } catch (error) {
@@ -782,7 +784,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd
                  this.opts.logger?.error("Failed to refresh token", error);
                  return TokenRefreshOutcome.Logout;
              }
-@@ -205,6 +298,8 @@ export class TokenManager {
+@@ -205,6 +299,8 @@ export class TokenManager {
       * @throws when discovery of the auth server metadata, or revocation of either token, fails
       */
      public async revokeTokens(): Promise<void> {
@@ -791,7 +793,7 @@ index 04cc1c46c80490248d9602d3dabfbb23405faa94..8b4e22d4eb1c6e1b5b4915297e0a24dd
          const tokenRefresher = await this.ensureTokenRefresher();
          if (!tokenRefresher) return;
  
-@@ -214,7 +309,7 @@ export class TokenManager {
+@@ -214,7 +310,7 @@ export class TokenManager {
                  this.opts.accessToken
                      ? tokenRefresher.revokeToken(this.opts.accessToken, "access_token", requestOpts)
                      : undefined,

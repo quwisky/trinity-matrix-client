@@ -224,7 +224,7 @@ the notification-sound choice, plus App lock's effective Notification text (`set
 iOS app-group `push-handoff/settings.json`, Android `settings:notification-text`; missing reads as
 Show and unreadable as Always hide), room display names, DM flags and whether each room counts
 as encrypted (`RoomEncryptionFlags`; unknown until the crypto store answers, which counts as
-encrypted) written in one batch per sync or rename. It never holds refresh tokens, crypto keys or message history. An account's
+encrypted) written in one batch per sync or rename. Its account entries never hold refresh tokens, crypto keys or message history. The token vault beside them (iOS keychain service `dev.trinityproject.trinity.push-tokens`, Android the same preferences file) holds each migrated account's token pair, readable after first unlock. An account's
 entry is removed as the first step of its sign-out, together with that account's delivered
 pushes, and the store is emptied, with
 every delivered push, by clear-all-data and before a replace sign-in. A handoff failure

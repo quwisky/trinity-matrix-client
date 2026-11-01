@@ -3,7 +3,7 @@ import {
   SessionStorageService,
 } from '@trinity/platform-native';
 import type { MatrixSession } from '@trinity/util/matrix';
-import { createClient } from 'matrix-js-sdk';
+import { HttpApiEvent, TokenRefreshError, createClient } from 'matrix-js-sdk';
 import { NEVER, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -699,6 +699,82 @@ describe('a phone account whose refresh token native code holds', () => {
 
       expect(order).toEqual(['stopped', 'read']);
     });
+  });
+
+  describe('a token already past its expiry', () => {
+    async function expired() {
+      const ctx = await started({
+        arrange: (v) => {
+          v.state.record = {
+            accessToken: 'at-1',
+            accessTokenExpiresAt: Date.now() - 1,
+          };
+        },
+      });
+      const loggedOut = vi.fn();
+      ctx.client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+      return { ...ctx, loggedOut };
+    }
+
+    it('a transient answer emits no SessionLoggedOut', async () => {
+      const { svc, client, net, vault, loggedOut, storage } = await expired();
+      net.live.delete('at-1');
+      vault.refreshTokens.mockResolvedValue({ kind: 'transient' });
+
+      await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+      expect(vault.refreshTokens).toHaveBeenCalledTimes(2);
+      expect(loggedOut).not.toHaveBeenCalled();
+      expect(svc.accountIds()).toContain(ME);
+      expect(storage.remove).not.toHaveBeenCalled();
+    });
+
+    it('a refused answer emits exactly one SessionLoggedOut', async () => {
+      const { client, net, vault, loggedOut, storage } = await expired();
+      net.live.delete('at-1');
+      vault.state.record = { accessToken: 'at-1', refused: true };
+
+      await expect(client.whoami()).rejects.toMatchObject({
+        errcode: 'M_UNKNOWN_TOKEN',
+      });
+
+      expect(vault.refreshTokens).toHaveBeenCalledTimes(2);
+      expect(loggedOut).toHaveBeenCalledOnce();
+      expect(storage.remove).toHaveBeenCalledExactlyOnceWith(ME);
+    });
+
+    it('makes 4 native refreshes at most for one request the server keeps refusing', async () => {
+      const { client, net, vault, loggedOut } = await expired();
+      vi.spyOn(net.live, 'has').mockReturnValue(false);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+      const request = client.whoami();
+      request.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      await expect(request).rejects.toBeInstanceOf(TokenRefreshError);
+      expect(vault.refreshTokens).toHaveBeenCalledTimes(4);
+      expect(loggedOut).not.toHaveBeenCalled();
+    });
+  });
+
+  it('a refresh during a re-login does not sign the new sign-in out', async () => {
+    const { svc, client, net, vault, storage } = await started();
+    const loggedOut = vi.fn();
+    client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+    // As a same-device sign-in with no refresh token leaves it before the old client stops.
+    net.live.delete('at-1');
+    vault.state.record = null;
+    vi.mocked(storage.record).mockReturnValue(
+      of({ userId: ME, lineage: 'L2' } as never),
+    );
+
+    await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+    expect(loggedOut).not.toHaveBeenCalled();
+    expect(storage.remove).not.toHaveBeenCalled();
+    expect(svc.accountIds()).toContain(ME);
+    expect(client.clearStores).not.toHaveBeenCalled();
   });
 
   describe('off native', () => {

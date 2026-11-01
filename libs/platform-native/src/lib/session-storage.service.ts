@@ -73,6 +73,14 @@ export interface NativeTokenRetention {
   readonly keepNativeTokens?: boolean;
 }
 
+/**
+ * Whether a readable record says this is a password account, so a hung plugin needn't hold up
+ * its sign-out. A missing or unreadable record may have left a vault record, so it says nothing.
+ */
+function hasNoVaultRecord(record: AccountRecord | undefined): boolean {
+  return record !== undefined && !record.oidc;
+}
+
 const ACCOUNTS_KEY = 'matrix.accounts';
 /** Secure-storage key prefixes; the full key is the prefix plus the user id. */
 const TOKEN_KEY_PREFIX = 'matrix.accessToken:';
@@ -295,11 +303,17 @@ export class SessionStorageService {
     return defer(() =>
       from(
         this.serialize(async () => {
+          const record = await this.readRegistry().then(
+            ({ accounts }) => accounts.find((a) => a.userId === userId),
+            () => undefined,
+          );
           // Every removal settles before one failing releases the queue.
           const results = await Promise.allSettled([
             this.secure.remove(this.tokenKey(userId)),
             this.secure.remove(this.refreshTokenKey(userId)),
-            this.nativeVault(this.handoff.removeTokens(userId)),
+            ...(hasNoVaultRecord(record)
+              ? []
+              : [this.nativeVault(this.handoff.removeTokens(userId))]),
           ]);
           const refused = results.find(
             (result) => result.status === 'rejected',
@@ -535,17 +549,18 @@ export class SessionStorageService {
         );
       } else {
         await this.secure.remove(this.refreshTokenKey(incoming.userId));
-        // A new device's sign-in leaves the old record: the replaced device's sign-out
-        // still has to revoke it, and removes it afterwards.
-        if (existing?.oidc && !deviceChanged) {
-          // A refusal leaves a record the next removal of this account or a startup sweep
-          // can clear; until then it is unused residue.
-          await this.nativeVault(
-            this.handoff.removeTokens(incoming.userId),
-          ).catch(() => undefined);
-        }
       }
       await this.writeRegistry(registry);
+      // A new device's sign-in leaves the old record: the replaced device's sign-out still has
+      // to revoke it, and removes it afterwards. After the write, so the old client's refresh
+      // meeting `gone` finds this sign-in stored and doesn't read it as a refusal.
+      if (refreshToken === undefined && existing?.oidc && !deviceChanged) {
+        // A refusal leaves a record the next removal of this account or a startup sweep
+        // can clear; until then it is unused residue.
+        await this.nativeVault(
+          this.handoff.removeTokens(incoming.userId),
+        ).catch(() => undefined);
+      }
     } catch (error) {
       // No record names the new store yet. Its key would make a retry of this same
       // sign-in refuse, since a store key is never replaced.
@@ -740,7 +755,7 @@ export class SessionStorageService {
     }
     await this.secure.remove(this.tokenKey(userId));
     await this.secure.remove(this.refreshTokenKey(userId));
-    if (!options?.keepNativeTokens) {
+    if (!options?.keepNativeTokens && !hasNoVaultRecord(removed)) {
       await this.nativeVault(this.handoff.removeTokens(userId));
     }
     await this.writeRegistry(registry);
@@ -766,7 +781,9 @@ export class SessionStorageService {
       // Only these accounts' records: another account's kept record still awaits its
       // retry's revocation.
       for (const account of registry.accounts) {
-        await this.nativeVault(this.handoff.removeTokens(account.userId));
+        if (!hasNoVaultRecord(account)) {
+          await this.nativeVault(this.handoff.removeTokens(account.userId));
+        }
       }
     }
     await Preferences.remove({ key: ACCOUNTS_KEY });
