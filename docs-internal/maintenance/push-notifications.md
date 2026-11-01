@@ -217,16 +217,21 @@ app-owned `push_notification_appearance.xml` notification icon and accent.
 **Push handoff store.** `PushHandoffService` (data-access/notifications) keeps a native
 store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `removeAccount`,
 `clear`, `clearRoom`, `setNotificationText`, `clearDelivered`). Per signed-in account it holds
-the homeserver URL, the access token (rewritten when the SDK refreshes it), the token's expiry when the account signed in through
+the homeserver URL, the access token (rewritten when the SDK refreshes it; an OAuth account's lives in the token vault instead, below), the token's expiry when the account signed in through
 OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes;
 `MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
 the notification-sound choice, plus App lock's effective Notification text (`setNotificationText`;
 iOS app-group `push-handoff/settings.json`, Android `settings:notification-text`; missing reads as
 Show and unreadable as Always hide), room display names, DM flags and whether each room counts
 as encrypted (`RoomEncryptionFlags`; unknown until the crypto store answers, which counts as
-encrypted) written in one batch per sync or rename. Its account entries never hold refresh tokens, crypto keys or message history. The token vault beside them (iOS keychain service `dev.trinityproject.trinity.push-tokens`, Android the same preferences file) holds each migrated account's token pair, readable after first unlock. An account's
+encrypted) written in one batch per sync or rename. An OAuth account's entry holds its homeserver URL and sound choice. Its tokens are in the token
+vault beside the store (iOS keychain service `dev.trinityproject.trinity.push-tokens`, Android the
+preferences file `trinity_push_tokens`), readable after first unlock, and native code overlays
+them on the entry at every read. The entry never holds a refresh token: the vault does. Neither holds crypto
+keys or message history. An account's
 entry is removed as the first step of its sign-out, together with that account's delivered
-pushes, and the store is emptied, with
+pushes. Its vault record goes later, at the registry step of the sign-out, after the token
+revocation has resolved or been given up, and also when the server ends the session. The store is emptied, with
 every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
 never blocks sign-in or sign-out; the replace sign-in waits for it for at most the
 notification cleanup budget. On iOS the accounts live in the shared keychain
@@ -237,7 +242,9 @@ class move over when the app next writes them, at its next start), and the rooms
 app-group file
 `push-handoff/rooms.json`. On Android each value is AES-GCM encrypted with a non-exportable
 Android Keystore key and stored in the private preferences file `trinity_push_handoff`
-(`EncryptedSharedPreferences` is deprecated).
+(`EncryptedSharedPreferences` is deprecated). The vault record is a second Keystore-encrypted
+file, `trinity_push_tokens`, and on iOS the lease files that serialize a refresh are in the app
+group under `push-handoff/leases/`. Android's lease is held in the process's memory, with no file.
 
 **Refresh before the background.** Each time the app goes to the background,
 `NotificationSessionService` asks `PushHandoffService.refreshBeforeBackground` to refresh
@@ -252,8 +259,7 @@ result, and the SDK adopts the answer (`NativeTokenBridge.host`, the client's `t
 JavaScript holds a non-secret marker in place of the refresh token, and its copy of the access
 token is best effort, given 3 s. An account not yet moved to native, like every account on web
 and Electron, stays on the SDK's own grant, which persists the pair before the SDK adopts it.
-The app stays the only process that rotates tokens; the renderers refreshing tokens themselves
-is [#1210](https://github.com/quwisky/trinity-matrix-client/issues/1210). Each return to the
+Each return to the
 foreground also adopts the pair native holds (`PushHandoffService.adoptOnResume`). A refused
 refresh signs nothing out at that moment; the account's next request meets the refusal and
 takes the usual path.
@@ -353,17 +359,19 @@ refresh can leave three things behind, and a refresh that outlasts a lock a four
 plugin's messaging service with `TrinityMessagingService`, which treats the app as
 foreground, and leaves the notification to the app, while an activity is visible. Both
 fetch the event, the sender's member state and, for a room the store does not know, its
-`m.room.name` state, within one 5 s budget and without retries. Android enforces the budget
-with a watchdog that falls back without the network; iOS shares one deadline across the
-reads and also answers `serviceExtensionTimeWillExpire`. Redirects are refused, so the
+`m.room.name` state, without retries. iOS gives the reads 5 s, and a refresh 15 s of its own; the read that follows a
+refresh gets a fresh 5 s, so the worst case is about 29 s against the extension's roughly 30 s
+limit, which is reasoned and not measured on a device. Android gives the refresh and the
+reads 8 s together. Android enforces the budget with a watchdog that falls back without the
+network; iOS shares one deadline across each set of reads and also answers
+`serviceExtensionTimeWillExpire`. Redirects are refused, so the
 token never follows one. Both apply the shared text rules (including the 200 code point
 limit and Unicode `White_Space` trimming) pinned by
 [`push-render-cases.json`](../../native/push-render/push-render-cases.json), which JUnit and
 XCTest both run. A push for an account the store does not know keeps the gateway's
-"Trinity" / "New message". The renderers never refresh a token. Once the stored expiry has
-passed they read nothing and show the room name (or "Trinity") with "Open Trinity to read this
-message", because only the running app can renew the token; any other failed read shows
-"New message". A message that arrived unencrypted shows "New message" unless the store holds
+"Trinity" / "New message". For an OAuth account the renderers refresh the token themselves
+when they need one, through the native refresher the app uses, and the table below says what
+each answer shows. A message that arrived unencrypted shows "New message" unless the store holds
 its room as not encrypted: a room missing from the store, or stored without the flag, counts as
 encrypted. Password and SSO tokens carry no expiry and are always read. The renderers
 never log tokens, expiries, IDs, room names or message text. Android posts
@@ -377,6 +385,24 @@ hide renders only "New message" with no title (the system shows the app's name);
 reading the event or making any network request, while on Android the renderer still fetches it
 and drops the text before posting. Both renderers read the mode just before
 posting (iOS a second time); with no store, iOS hides everything.
+
+A refresh takes the account's lease first and reads the vault again under it, so the app and
+a renderer that need a token at the same time make one grant, and the second takes the pair the
+first stored. iOS's lease is a file in the app group; Android's is a table in the process with a
+21 s expiry (twice the 8 s budget plus a 5 s margin), so it can lapse while its holder is
+frozen and is not a plain mutex. A refresh is tried once per push: a 401 on the second read
+does not refresh again. These are the results, shared by both renderers through the
+`tokenFlows` rows of `push-render-cases.json`:
+
+| Situation                                      | Refresh answers                                                             | Shows                                                                                   |
+| ---------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Token not expired, read succeeds               | none                                                                        | The message text                                                                        |
+| Stored expiry passed                           | `rotated`, `rotated` but unsaved, or `current` (another process rotated it) | The text, read once with the new token; "New message" if that read fails or answers 401 |
+| Stored expiry passed                           | `busy`, `transient`, `unavailable`, `refused` or `gone`                     | Room name (or "Trinity") with "Open Trinity to read this message", no read              |
+| Read answers 401                               | `rotated`                                                                   | The text from one more read; "New message" if that read fails or answers 401            |
+| Read answers 401                               | `busy`, `transient`, `unavailable`, `refused` or `gone`                     | "New message"                                                                           |
+| Any other failed read                          | none                                                                        | "New message", no refresh                                                               |
+| Entry with no token (signed-out OAuth account) | none                                                                        | "Open Trinity to read this message", no read                                            |
 
 **Who presents in the background.** Once Android push is registered,
 `PushService.backgroundDelivery` is `push`, and the notification policy stops the running
@@ -392,6 +418,26 @@ focused Conversation, and again for the focused room when the app returns to the
 account; iOS removes notifications whose `threadIdentifier` is the room and whose
 `trinity_user_id` is that account, or absent.
 
+## Device checks for refreshing in the renderers
+
+Nothing here has run on a device or against matrix.org; the suites above use local stand-ins.
+#1211 (part C) tracks these checks, which need a real phone ([#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152)):
+
+- The notification process launches for a real push and refreshes an expired token.
+- Suspension mid-refresh and `0xdead10cc` on iOS.
+- Memory under a refresh in the iOS extension.
+- Keychain availability around a lock.
+- Doze and FCM priority on Android.
+- Real token lifetimes and reuse on matrix.org.
+- Android's freezer lapsing the 21 s lease mid-grant: the app's late grant and a push's grant
+  can both reach the provider, and one send uses a spent token.
+- A frozen app with N pushes: each push past the lapsed lease sends the spent refresh token, so
+  N pushes make N spent sends, not one. A provider that revokes the session on reuse ends it.
+- `keepUnsaved`: when a grant worked and the vault write failed, the vault keeps the spent
+  pair and pushes can spend it for as long as the app holds the unsaved one.
+- A grant in flight after Android's fallback fires keeps running without an interrupt; if the
+  process dies before it stores the answer, the token is spent and the next refresh is refused.
+
 ## Verify the boundary you changed
 
 - Use notification and push-service unit tests for rule translation,
@@ -401,7 +447,14 @@ account; iOS removes notifications whose `threadIdentifier` is the room and whos
 - Use a real native host, token, gateway, and credentials before claiming mobile
   delivery. Record unavailable platform or operator prerequisites plainly.
 - Run `pnpm nx run trinity-ios:test-push` and `pnpm nx run trinity-android:verify-native` (the
-  Android unit tests; CI runs them) for the text rules and the bounded reads.
+  Android unit tests; CI runs them) for the text rules and the bounded reads. They also run the
+  `TokenRefresher*` suites (`TokenRefresherTests`, `TokenProcessRaceTests`; `TokenRefresherTest`,
+  `TokenRefresherRaceTest`, `TokenPushRaceTest`) and the `tokenFlows` rows of
+  `native/push-render/push-render-cases.json`. The race suites stand in for the keychain and the
+  Keystore, so neither is covered across processes.
+- `pnpm nx test scripts` runs `native-token-logging`, which fails when a token source logs or
+  `NativeTokenResult` gains a `refreshToken`. It does not see a logging call hidden in a
+  dependency.
 - `e2e/mobile/specs/push-render-ios.e2e.mts` and `push-render-android.e2e.mts` drive the
   renderers through debug-only probes; the Android spec also taps the notification it posted
   with the app terminated and checks that the room opens. Both also store an already expired

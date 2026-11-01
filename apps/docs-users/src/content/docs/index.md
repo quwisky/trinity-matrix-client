@@ -180,7 +180,7 @@ the new device opens your rooms.
 App lock hides the desktop or mobile app behind a lock screen until you unlock it. It's a
 privacy screen for when someone else uses your computer or phone: it doesn't encrypt Trinity's
 data on disk, and it doesn't sign you out. Sync and notifications keep working while Trinity is
-locked. App lock isn't available in the web app. Trinity Next has its own App lock, with its
+locked. On a phone, after you first unlock it, Trinity's notification service can refresh an OAuth account's session while the phone is locked. App lock isn't available in the web app. Trinity Next has its own App lock, with its
 own PIN.
 
 **Turn it on.** Open Settings › Security and turn on **Lock Trinity**. On a Mac with Touch ID,
