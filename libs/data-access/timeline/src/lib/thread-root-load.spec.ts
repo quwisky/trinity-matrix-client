@@ -120,6 +120,7 @@ describe('ThreadsService.loadThreadRoot, on a real SDK room', () => {
     expect(thread?.rootEvent?.getId()).toBe(ROOT);
     expect(room.findEventById(ROOT)).toBeUndefined();
     fetchRoot.mockClear();
+    fetchRoot.mockRejectedValue(new Error('offline'));
 
     await expect(firstValueFrom(threads.loadThreadRoot(ROOT))).resolves.toBe(
       true,
@@ -171,6 +172,23 @@ describe('ThreadsService.loadThreadRoot, on a real SDK room', () => {
       false,
     );
 
+    expect(room.getThread(ROOT)).toBeNull();
+  });
+
+  it('makes no thread on a room closed while its root was being fetched', async () => {
+    const { threads, room, fetchRoot } = build();
+    let answer: (root: IRoomEvent) => void = () => undefined;
+    fetchRoot.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const loading = firstValueFrom(threads.loadThreadRoot(ROOT));
+
+    threads.close();
+    answer(rootEvent());
+
+    await expect(loading).resolves.toBe(false);
     expect(room.getThread(ROOT)).toBeNull();
   });
 

@@ -6,6 +6,7 @@ import {
   type SyncState,
 } from '@trinity/data-access/matrix-client';
 import {
+  ROOM_READINESS_TIMEOUT_MS,
   RoomReadinessService,
   SelectedRoomLibraryService,
   type SelectedRoomLibraryView,
@@ -15,7 +16,7 @@ import {
   type ConversationHandle,
 } from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of, throwError } from 'rxjs';
+import { NEVER, Subject, of, throwError } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -437,6 +438,8 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 });
 
 describe('AccountRoutingService.openInboxRow', () => {
+  afterEach(() => vi.useRealTimers());
+
   const row = {
     accountId: '@me:hs',
     roomId: '!r:hs',
@@ -665,10 +668,9 @@ describe('AccountRoutingService.openInboxRow', () => {
     });
   });
 
-  it('waits for focus and a live sync before loading the root', () => {
-    const { routing, loadRoot, syncState, focused } = build({
+  it('waits for focus before loading the root', () => {
+    const { routing, loadRoot, focused } = build({
       activeRoomId: '!r:hs',
-      syncState: 'PREPARED',
       focused: null,
     });
 
@@ -680,11 +682,75 @@ describe('AccountRoutingService.openInboxRow', () => {
       key: { accountId: row.accountId, roomId: row.roomId },
     } as ConversationHandle);
     TestBed.tick();
-    expect(loadRoot).not.toHaveBeenCalled();
+
+    expect(loadRoot).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a thread offline when its root needs no fetch', () => {
+    const { routing, transition, showError } = build({
+      activeRoomId: '!r:hs',
+      syncState: 'RECONNECTING',
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+    expect(showError).not.toHaveBeenCalled();
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$e',
+    });
+  });
+
+  it('says so offline when a fetch for the root fails', () => {
+    const { routing, transition, showError } = build({
+      activeRoomId: '!r:hs',
+      syncState: 'RECONNECTING',
+      loadRoot: vi.fn(() => of(false)),
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+    expect(transition).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not load that message.',
+    );
+  });
+
+  it('says so offline within the limit when a fetch for the root never answers', () => {
+    vi.useFakeTimers();
+    const { routing, transition, showError } = build({
+      activeRoomId: '!r:hs',
+      syncState: 'RECONNECTING',
+      loadRoot: vi.fn(() => NEVER),
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+    vi.advanceTimersByTime(ROOM_READINESS_TIMEOUT_MS - 1);
+    expect(showError).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+
+    expect(transition).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not load that message.',
+    );
+  });
+
+  it('still waits for a live sync before paging for an event', () => {
+    const { routing, loadEvent, syncState } = build({
+      activeRoomId: '!r:hs',
+      syncState: 'RECONNECTING',
+    });
+
+    routing.openInboxRow(row);
+    TestBed.tick();
+    expect(loadEvent).not.toHaveBeenCalled();
 
     syncState.set('SYNCING' as SyncState);
     TestBed.tick();
-    expect(loadRoot).toHaveBeenCalledTimes(1);
+
+    expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$e');
   });
 
   it.each([

@@ -252,16 +252,17 @@ export class AccountRoutingService {
     const reveal = (): void => {
       this.inboxReveal.unsubscribe();
       this.inboxReveal = threadRootId
-        ? this.whenRoomCanLoad(
-            selection,
-            () => this.conversations.threads.loadRoot(threadRootId),
-            () =>
+        ? this.whenRoomCanLoad(selection, {
+            // A gappy sync keeps the room's Thread objects, so offline this needn't wait.
+            needsLiveSync: false,
+            load: () => this.conversations.threads.loadRoot(threadRootId),
+            reveal: () =>
               this.roomSurfaces.transition({
                 kind: 'open-thread',
                 rootEventId: threadRootId,
                 revealEventId: eventId,
               }),
-          )
+          })
         : this.revealLoadedEvent(selection, eventId);
     };
     if (
@@ -341,17 +342,24 @@ export class AccountRoutingService {
       reveal();
       return Subscription.EMPTY;
     }
-    return this.whenRoomCanLoad(
-      room,
-      () => this.conversations.timeline.loadEvent(eventId),
+    return this.whenRoomCanLoad(room, {
+      needsLiveSync: true,
+      load: () => this.conversations.timeline.loadEvent(eventId),
       reveal,
-    );
+    });
   }
 
   private whenRoomCanLoad(
     room: ExactRoomSelection,
-    load: () => Observable<boolean>,
-    reveal: () => unknown,
+    {
+      needsLiveSync,
+      load,
+      reveal,
+    }: {
+      readonly needsLiveSync: boolean;
+      readonly load: () => Observable<boolean>;
+      readonly reveal: () => unknown;
+    },
   ): Subscription {
     // The watcher only signals a change; the live state is re-read, since its replayed value
     // can be one effect-flush stale. The room must be open (ready or empty): an unavailable
@@ -362,12 +370,12 @@ export class AccountRoutingService {
       this.store.activeAccountId() === room.accountId;
     const isReady = (): boolean => {
       const key = this.conversations.focused()?.key;
-      const load = this.conversations.timeline.loadState().kind;
+      const state = this.conversations.timeline.loadState().kind;
       return (
-        this.firstSyncDone() &&
+        (!needsLiveSync || this.firstSyncDone()) &&
         key?.roomId === room.roomId &&
         key.accountId === room.accountId &&
-        (load === 'ready' || load === 'empty')
+        (state === 'ready' || state === 'empty')
       );
     };
     // Navigating to another room or account drops the reveal, from any navigation source.
