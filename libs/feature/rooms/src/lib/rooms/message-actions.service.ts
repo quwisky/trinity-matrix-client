@@ -11,7 +11,7 @@ import {
 import { type Mention } from '@trinity/util/matrix';
 import { latestGuard } from '@trinity/util/ui';
 import type { ImagePackImage } from '@trinity/data-access/media';
-import { Observable, filter, switchMap, throwError } from 'rxjs';
+import { Observable, filter, switchMap, tap, throwError } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import {
@@ -386,8 +386,21 @@ export class MessageActionsService {
   }
 
   onRetry(messageId: string): void {
+    const failed = this.timeline.messages().find((m) => m.id === messageId);
     this.runMessageAction(
-      this.messageCommands.retry(messageId),
+      this.messageCommands.retry(messageId).pipe(
+        // A failed send restores its text to the composer; once the retry goes out, the same text
+        // there would send it twice. Edited text is the person's and stays.
+        tap((outcome) => {
+          if (
+            outcome.kind === 'applied' &&
+            failed &&
+            this.compose.draft().trim() === failed.body
+          ) {
+            this.compose.setDraft('');
+          }
+        }),
+      ),
       'Could not retry the message.',
     );
   }

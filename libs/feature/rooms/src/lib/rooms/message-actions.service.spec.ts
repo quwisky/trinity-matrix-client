@@ -84,6 +84,8 @@ describe('MessageActionsService', () => {
   const loadOlder = vi.fn(() => of(undefined));
   const setTyping = vi.fn();
   const setDraft = vi.fn();
+  const draft = signal('');
+  const timelineMessages = signal<{ id: string; body: string }[]>([]);
   const submitText = vi.fn<() => Observable<ConversationTextSendOutcome>>(() =>
     of({ kind: 'sent', eventId: '$sent' }),
   );
@@ -101,6 +103,7 @@ describe('MessageActionsService', () => {
       useValue: {
         loadOlder,
         setTyping,
+        messages: timelineMessages,
         openRoomId: null,
         get roomEncrypted() {
           return roomEncrypted;
@@ -112,7 +115,7 @@ describe('MessageActionsService', () => {
       useFactory: () => ({
         timeline: inject(ConversationTimelineStub),
         focused: () => conversation,
-        compose: { setDraft, submit: submitText, setTyping, intent },
+        compose: { setDraft, draft, submit: submitText, setTyping, intent },
         messages: { redact, toggleReaction, retry, cancel },
         pins: { isPinned, pin, unpin },
       }),
@@ -180,6 +183,8 @@ describe('MessageActionsService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     roomEncrypted = false;
+    draft.set('');
+    timelineMessages.set([]);
   });
 
   describe('sending', () => {
@@ -394,6 +399,62 @@ describe('MessageActionsService', () => {
         'Could not delete the message.',
         expect.objectContaining({ variant: 'danger' }),
       );
+    });
+  });
+
+  describe('retrying a failed send', () => {
+    // A failed send puts its text back in the composer and leaves the row offering Retry, so
+    // the same words sit in two places and sending both would post them twice.
+    beforeEach(() => timelineMessages.set([{ id: '$1', body: 'hello' }]));
+
+    it('clears the composer when it still holds exactly the restored text', () => {
+      const { actions } = build();
+      draft.set('hello');
+
+      actions.onRetry('$1');
+
+      expect(retry).toHaveBeenCalledWith('$1');
+      expect(setDraft).toHaveBeenCalledWith('');
+    });
+
+    it('leaves the composer alone when the person has edited it', () => {
+      const { actions } = build();
+      draft.set('hello there');
+
+      actions.onRetry('$1');
+
+      expect(retry).toHaveBeenCalledWith('$1');
+      expect(setDraft).not.toHaveBeenCalled();
+    });
+
+    it('leaves the composer alone on a second Retry once it holds a new message', () => {
+      const { actions } = build();
+      draft.set('hello');
+      actions.onRetry('$1');
+      draft.set('something new');
+
+      actions.onRetry('$1');
+
+      expect(setDraft).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the text when the retry could not start', () => {
+      const { actions } = build();
+      draft.set('hello');
+      retry.mockReturnValueOnce(throwError(() => new Error('nope')));
+
+      actions.onRetry('$1');
+
+      expect(setDraft).not.toHaveBeenCalled();
+    });
+
+    it('does not touch the composer when a failed message is deleted', () => {
+      const { actions } = build();
+      draft.set('hello');
+
+      actions.onDelete('$1');
+
+      expect(setDraft).not.toHaveBeenCalled();
     });
   });
 
