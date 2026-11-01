@@ -459,6 +459,7 @@ describe('AccountRoutingService.openInboxRow', () => {
       readonly focused?: string | null;
       readonly loaded?: readonly string[];
       readonly loadEvent?: Mock;
+      readonly loadRoot?: Mock;
     } = {},
   ) {
     const activeAccountId = options.activeAccountId ?? '@me:hs';
@@ -471,6 +472,18 @@ describe('AccountRoutingService.openInboxRow', () => {
     const showError = vi.fn();
     const transition = vi.fn();
     const loadEvent = options.loadEvent ?? vi.fn(() => of(true));
+    const loadRoot = options.loadRoot ?? vi.fn(() => of(true));
+    const syncState = signal((options.syncState ?? 'SYNCING') as SyncState);
+    const focused = signal(
+      options.focused === null
+        ? null
+        : ({
+            key: {
+              accountId: row.accountId,
+              roomId: options.focused ?? row.roomId,
+            },
+          } as ConversationHandle),
+    );
     TestBed.configureTestingModule({
       providers: [
         AccountRoutingService,
@@ -488,16 +501,8 @@ describe('AccountRoutingService.openInboxRow', () => {
         }),
         MockProvider(RoomSurfaceLifecycle, { transition }),
         MockProvider(ConversationRuntime, {
-          focused: signal(
-            options.focused === null
-              ? null
-              : ({
-                  key: {
-                    accountId: row.accountId,
-                    roomId: options.focused ?? row.roomId,
-                  },
-                } as ConversationHandle),
-          ),
+          focused,
+          threads: { loadRoot } as never,
           timeline: {
             loadEvent,
             messages: signal(
@@ -513,7 +518,7 @@ describe('AccountRoutingService.openInboxRow', () => {
         }),
         MockProvider(RoomReadinessService),
         MockProvider(MatrixClientService, {
-          syncState: signal((options.syncState ?? 'SYNCING') as SyncState),
+          syncState,
         }),
       ],
     });
@@ -523,7 +528,10 @@ describe('AccountRoutingService.openInboxRow', () => {
       showError,
       transition,
       loadEvent,
+      loadRoot,
       roomId,
+      syncState,
+      focused,
     };
   }
 
@@ -614,16 +622,14 @@ describe('AccountRoutingService.openInboxRow', () => {
     });
   });
 
-  it('opens the thread alone when its room is open and holds the root', () => {
-    const { routing, navigate, transition, loadEvent } = build({
+  it('opens the thread alone when its room is already open', () => {
+    const { routing, navigate, transition } = build({
       activeRoomId: '!r:hs',
-      loaded: ['$root'],
     });
 
     routing.openInboxRow({ ...row, threadRootId: '$root' });
 
     expect(navigate).not.toHaveBeenCalled();
-    expect(loadEvent).not.toHaveBeenCalled();
     expect(transition).toHaveBeenCalledExactlyOnceWith({
       kind: 'open-thread',
       rootEventId: '$root',
@@ -631,16 +637,23 @@ describe('AccountRoutingService.openInboxRow', () => {
     });
   });
 
-  it('pages in a thread root it does not hold before opening the thread', () => {
-    const page = new Subject<boolean>();
-    const { routing, transition, loadEvent } = build({
-      activeRoomId: '!r:hs',
-      loadEvent: vi.fn(() => page),
-    });
+  it('never pages the room for a thread root, which it may not hold however long it pages', () => {
+    const { routing, loadEvent, loadRoot } = build({ activeRoomId: '!r:hs' });
 
     routing.openInboxRow({ ...row, threadRootId: '$root' });
 
-    expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$root');
+    expect(loadEvent).not.toHaveBeenCalled();
+    expect(loadRoot).toHaveBeenCalledExactlyOnceWith('$root');
+  });
+
+  it('opens the thread once its root has loaded', () => {
+    const page = new Subject<boolean>();
+    const { routing, transition } = build({
+      activeRoomId: '!r:hs',
+      loadRoot: vi.fn(() => page),
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
     expect(transition).not.toHaveBeenCalled();
 
     page.next(true);
@@ -652,19 +665,47 @@ describe('AccountRoutingService.openInboxRow', () => {
     });
   });
 
-  it('says it could not load a thread whose root is out of reach, opening no panel', () => {
-    const { routing, transition, showError } = build({
+  it('waits for focus and a live sync before loading the root', () => {
+    const { routing, loadRoot, syncState, focused } = build({
       activeRoomId: '!r:hs',
-      loadEvent: vi.fn(() => of(false)),
+      syncState: 'PREPARED',
+      focused: null,
     });
 
     routing.openInboxRow({ ...row, threadRootId: '$root' });
+    TestBed.tick();
+    expect(loadRoot).not.toHaveBeenCalled();
 
-    expect(transition).not.toHaveBeenCalled();
-    expect(showError).toHaveBeenCalledExactlyOnceWith(
-      'Could not load that message.',
-    );
+    focused.set({
+      key: { accountId: row.accountId, roomId: row.roomId },
+    } as ConversationHandle);
+    TestBed.tick();
+    expect(loadRoot).not.toHaveBeenCalled();
+
+    syncState.set('SYNCING' as SyncState);
+    TestBed.tick();
+    expect(loadRoot).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ['cannot be fetched', () => of(false)],
+    ['fails', () => throwError(() => new Error('down'))],
+  ])(
+    'says it could not load a thread whose root %s, opening no panel',
+    (_name, answer) => {
+      const { routing, transition, showError } = build({
+        activeRoomId: '!r:hs',
+        loadRoot: vi.fn(answer),
+      });
+
+      routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+      expect(transition).not.toHaveBeenCalled();
+      expect(showError).toHaveBeenCalledExactlyOnceWith(
+        'Could not load that message.',
+      );
+    },
+  );
 
   it('says it could not load an event the room cannot page to', () => {
     const { routing, transition, showError, navigate } = build({
@@ -817,7 +858,7 @@ describe('AccountRoutingService.openInboxRow', () => {
     const page = new Subject<boolean>();
     const { routing, transition, showError, roomId } = build({
       activeRoomId: '!r:hs',
-      loadEvent: vi.fn(() => page),
+      loadRoot: vi.fn(() => page),
     });
 
     routing.openInboxRow({ ...row, threadRootId: '$root' });

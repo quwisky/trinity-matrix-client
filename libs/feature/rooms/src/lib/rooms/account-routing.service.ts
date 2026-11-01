@@ -229,7 +229,7 @@ export class AccountRoutingService {
   /**
    * Open an inbox row at its message, as the exact Account the row names. A link resolves its
    * Account from the selected view instead, which in the mixed view can pick another. A thread
-   * opens once its root is in the room, as one the room hasn't loaded reads as having no replies.
+   * loads its root first, as one the room hasn't seen would read as having no replies.
    */
   openInboxRow(
     row: Pick<InboxRow, 'accountId' | 'roomId' | 'eventId' | 'threadRootId'>,
@@ -252,12 +252,15 @@ export class AccountRoutingService {
     const reveal = (): void => {
       this.inboxReveal.unsubscribe();
       this.inboxReveal = threadRootId
-        ? this.revealLoadedEvent(selection, threadRootId, () =>
-            this.roomSurfaces.transition({
-              kind: 'open-thread',
-              rootEventId: threadRootId,
-              revealEventId: eventId,
-            }),
+        ? this.whenRoomCanLoad(
+            selection,
+            () => this.conversations.threads.loadRoot(threadRootId),
+            () =>
+              this.roomSurfaces.transition({
+                kind: 'open-thread',
+                rootEventId: threadRootId,
+                revealEventId: eventId,
+              }),
           )
         : this.revealLoadedEvent(selection, eventId);
     };
@@ -323,9 +326,9 @@ export class AccountRoutingService {
   private revealLoadedEvent(
     room: ExactRoomSelection,
     eventId: string,
-    reveal: () => unknown = () =>
-      this.roomSurfaces.transition({ kind: 'reveal-message', eventId }),
   ): Subscription {
+    const reveal = (): unknown =>
+      this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
     const focusedKey = this.conversations.focused()?.key;
     const isFocused =
       focusedKey?.roomId === room.roomId &&
@@ -338,6 +341,18 @@ export class AccountRoutingService {
       reveal();
       return Subscription.EMPTY;
     }
+    return this.whenRoomCanLoad(
+      room,
+      () => this.conversations.timeline.loadEvent(eventId),
+      reveal,
+    );
+  }
+
+  private whenRoomCanLoad(
+    room: ExactRoomSelection,
+    load: () => Observable<boolean>,
+    reveal: () => unknown,
+  ): Subscription {
     // The watcher only signals a change; the live state is re-read, since its replayed value
     // can be one effect-flush stale. The room must be open (ready or empty): an unavailable
     // or still-loading room waits silently, however long its sync takes, and the timeout
@@ -362,9 +377,7 @@ export class AccountRoutingService {
     return ready$
       .pipe(
         switchMap(() =>
-          this.conversations.timeline
-            .loadEvent(eventId)
-            .pipe(timeout({ first: ROOM_READINESS_TIMEOUT_MS })),
+          load().pipe(timeout({ first: ROOM_READINESS_TIMEOUT_MS })),
         ),
         takeUntilDestroyed(this.destroyRef),
       )

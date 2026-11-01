@@ -563,6 +563,32 @@ export class ThreadsService {
     );
   }
 
+  /**
+   * Give a thread that is about to open its SDK Thread, so it shows its replies. A thread
+   * with replies holds no root in its timeline, so only `getThread` can find it: paging the
+   * room for the root could fail on a thread that opens fine. Emits whether it now can open.
+   */
+  loadThreadRoot(rootEventId: string): Observable<boolean> {
+    return defer(() => {
+      const room = this.summariesRoom;
+      const client = this.summariesClient;
+      if (!room || !client) return of(false);
+      if (room.getThread(rootEventId)) return of(true);
+      const local = room.findEventById(rootEventId);
+      if (local) {
+        room.createThread(rootEventId, local, [], false);
+        return of(true);
+      }
+      return from(client.fetchRoomEvent(room.roomId, rootEventId)).pipe(
+        map((raw) => {
+          room.createThread(rootEventId, new MatrixEvent(raw), [], false);
+          return true;
+        }),
+        catchError(() => of(false)),
+      );
+    });
+  }
+
   /** Create a Thread from its root event and attach it, unless a concurrent
    * `ThreadEvent.New` already did (createThread can emit it synchronously). */
   private createThreadFromRoot(

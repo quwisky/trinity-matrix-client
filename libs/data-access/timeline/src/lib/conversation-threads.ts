@@ -110,4 +110,6 @@ export interface ConversationThreads {
   readonly summaries: Signal<Readonly<Record<string, ThreadSummary>>>;
   readonly list: Signal<readonly ThreadSummary[]>;
   forRoot(rootEventId: string): ConversationThread | null;
+  /** Make a thread ready to open at its replies. Emits false if it can't be reached. */
+  loadRoot(rootEventId: string): Observable<boolean>;
 }

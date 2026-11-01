@@ -74,6 +74,12 @@ export function createConversationThreadChildren(
   const threads: ConversationThreads = Object.freeze({
     summaries: options.projection.summaries,
     list: options.projection.threadList,
+    loadRoot: (rootEventId: string): Observable<boolean> =>
+      defer(() =>
+        options.isFocused()
+          ? options.projection.loadThreadRoot(rootEventId)
+          : of(false),
+      ),
     forRoot: (rootEventId: string): ConversationThread | null => {
       if (!options.isFocused() || !rootEventId) return null;
       if (active?.handle.key.rootEventId === rootEventId) return active.handle;

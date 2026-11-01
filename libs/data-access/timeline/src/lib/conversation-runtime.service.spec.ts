@@ -1284,6 +1284,30 @@ describe('ConversationRuntime', () => {
     });
   });
 
+  it('loads a thread root only through the focused Conversation', async () => {
+    const { runtime, controller } = setup();
+    await expect(
+      firstValueFrom(runtime.threads.loadRoot('$root')),
+    ).resolves.toBe(false);
+
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const projection = controller('!room:example.org').threads;
+    projection.loadThreadRoot = vi.fn(() => of(true));
+
+    await expect(
+      firstValueFrom(runtime.threads.loadRoot('$root')),
+    ).resolves.toBe(true);
+    expect(projection.loadThreadRoot).toHaveBeenCalledExactlyOnceWith('$root');
+
+    runtime.blur();
+    await expect(
+      firstValueFrom(conversation.threads.loadRoot('$root')),
+    ).resolves.toBe(false);
+  });
+
   it('routes a thread cancel to the adapter with the thread root', async () => {
     const { runtime, messageAdapter } = setup();
     const conversation = runtime.focus({

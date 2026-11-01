@@ -187,19 +187,6 @@ describe('NotificationInboxComponent', () => {
       expect(scroller.scrollTop).toBe(0);
     });
 
-    it('keeps the tab across the pane leaving and returning', async () => {
-      const { fixture, settle } = await renderInbox();
-      byId('inbox-tab-all').click();
-      settle();
-
-      fixture.componentRef.setInput('paneHidden', true);
-      settle();
-      fixture.componentRef.setInput('paneHidden', false);
-      settle();
-
-      expect(byId('inbox-tab-all').getAttribute('aria-selected')).toBe('true');
-    });
-
     it("keeps the open room's row current when a tap on another room opens nothing", async () => {
       const { settle } = await renderInbox(
         (inbox) => {

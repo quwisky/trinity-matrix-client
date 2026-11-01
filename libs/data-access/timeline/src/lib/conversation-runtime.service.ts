@@ -644,6 +644,8 @@ export class ConversationRuntime {
       summaries: computed(() => focused()?.threads.summaries() ?? {}),
       list: computed(() => focused()?.threads.list() ?? []),
       forRoot: (rootEventId) => focused()?.threads.forRoot(rootEventId) ?? null,
+      loadRoot: (rootEventId) =>
+        defer(() => focused()?.threads.loadRoot(rootEventId) ?? of(false)),
     };
   }
 
