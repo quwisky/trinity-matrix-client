@@ -22,7 +22,6 @@ class MainViewController: CAPBridgeViewController {
         // page paint. The launch screen's colour set follows the system appearance, which
         // capacitor.config.ts's single `backgroundColor` can't.
         if let launchBackground = UIColor(named: "LaunchBackground") {
-            webView?.isOpaque = false
             webView?.backgroundColor = launchBackground
             webView?.scrollView.backgroundColor = launchBackground
         }
