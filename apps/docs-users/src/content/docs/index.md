@@ -319,3 +319,10 @@ expires. Trinity keeps the account and its encryption keys on the device. Before
 update, turn on key backup, or ask your server's admin to upgrade Synapse first. If an
 account has already stopped connecting, export your room keys, then remove the account
 and sign in again.
+
+## If your server ends a session {#session-ended}
+
+If your server ends a session, for example because you signed out on another device or
+an admin ended it, Trinity keeps the account and its encryption keys on this device and
+shows the sign-in page with the message "Sign in again to reconnect this account".
+Sign in again to carry on. You can also remove the account from that page.
