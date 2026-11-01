@@ -97,6 +97,13 @@ async function discoveryDiagnostics(): Promise<string> {
   return `host ${v6}; host ${v4}; webview ${webview}`;
 }
 
+/** Waits for the sign-in page. Startup restore, the vault sweep included, has settled by then. */
+export async function signInPageShown(): Promise<void> {
+  await expect($('//label[normalize-space()="Homeserver"]')).toBeDisplayed({
+    wait: 30_000,
+  });
+}
+
 export async function login(user: string, pass: string): Promise<void> {
   await fillByLabel('Homeserver', HS_TLS);
   const next = $('//button[normalize-space()="Continue"]');

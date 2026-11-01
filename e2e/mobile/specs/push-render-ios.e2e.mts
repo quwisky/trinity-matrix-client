@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { browser, expect } from '@wdio/globals';
-import { login } from '../support/app.mts';
+import { login, signInPageShown } from '../support/app.mts';
 import {
   createRoom,
   inviteUser,
@@ -218,6 +218,8 @@ describe('device-rendered push on iOS', () => {
   });
 
   it('stores, reads and removes tokens through the installed plugin, with no network', async () => {
+    // The launch sweep removes any record with no account, so it must have finished first.
+    await signInPageShown();
     const accessTokenExpiresAt = 4_102_444_800_000;
     const answers = await tokenRoundTrip(
       `@${uniqueId('vault')}:unknown.invalid`,
