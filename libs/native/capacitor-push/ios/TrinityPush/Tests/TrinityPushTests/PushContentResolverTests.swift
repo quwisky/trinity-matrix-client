@@ -348,6 +348,8 @@ final class PushContentResolverTests: XCTestCase {
         XCTAssertEqual(second, .rendered(shown, sound: true))
         XCTAssertEqual(afterA401.accounts.map(\.accessToken), ["old", "new"])
         XCTAssertEqual(afterExpiry.accounts.map(\.accessToken), ["new"])
+        XCTAssertTrue(afterA401.roomNameDeadlines.isEmpty)
+        XCTAssertTrue(afterExpiry.roomNameDeadlines.isEmpty)
     }
 
     func testAlwaysHideSpendsNoRefreshToken() async {
