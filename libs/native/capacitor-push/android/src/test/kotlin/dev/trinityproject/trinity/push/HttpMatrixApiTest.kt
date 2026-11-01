@@ -98,6 +98,45 @@ class HttpMatrixApiTest {
     }
 
     @Test
+    fun aBodyPastTheCapIsFailed() {
+        fun bodyOf(size: Int): String {
+            val wrapper = """{"type":"m.room.message","pad":""}"""
+            return wrapper.replace("\"pad\":\"\"", "\"pad\":\"${"x".repeat(size - wrapper.length)}\"")
+        }
+        fun readOf(size: Int): PushEventRead {
+            respond(200, bodyOf(size))
+            return HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()).also { server.removeContext("/") }
+        }
+
+        assertTrue(readOf(HttpMatrixApi.MAX_BODY_BYTES) is PushEventRead.Event)
+        assertEquals(PushEventRead.Failed, readOf(HttpMatrixApi.MAX_BODY_BYTES + 1))
+    }
+
+    // Every byte arrives well inside the read timeout, so only the deadline check can end this.
+    @Test(timeout = 10_000L)
+    fun aDrippingBodyStopsAtTheDeadline() {
+        server.createContext("/") { exchange ->
+            exchange.sendResponseHeaders(200, 0)
+            try {
+                repeat(100) {
+                    exchange.responseBody.write(' '.code)
+                    exchange.responseBody.flush()
+                    Thread.sleep(50)
+                }
+            } catch (error: java.io.IOException) {
+                // The client gave up, which is what this test wants.
+            }
+            exchange.close()
+        }
+        val started = monotonicMillis()
+
+        val read = HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline(started + 300, ::monotonicMillis))
+
+        assertEquals(PushEventRead.Failed, read)
+        assertTrue("took ${monotonicMillis() - started} ms", monotonicMillis() - started < 2_000)
+    }
+
+    @Test
     fun sendsNothingOnceTheBudgetIsSpent() {
         respond(200, """{"name":"Lobby"}""")
 

@@ -140,9 +140,25 @@ class TokenRefresherRaceTest {
     }
 
     @Test(timeout = 30_000L)
-    fun aRefusalRacingARotationIsCurrent() {
+    fun anAppRefusalRacingARotationIsTransient() {
         val clientA = gated(TokenGrantAnswer.Refused)
         val a = refresher(manualLease, clientA).refreshOnThread()
+        assertTrue(clientA.entered.await(WAIT_SECONDS, TimeUnit.SECONDS))
+
+        lapseTheManualLease()
+        refresher(manualLease, ScriptedClient(a2r2)).refreshOnThread().get(WAIT_SECONDS, TimeUnit.SECONDS)
+        release.countDown()
+
+        assertEquals(TokenRefreshResult.Transient, a.get(WAIT_SECONDS, TimeUnit.SECONDS))
+        assertEquals("a2", stored().accessToken)
+        assertEquals(TokenState.ACTIVE, stored().state)
+    }
+
+    @Test(timeout = 30_000L)
+    fun aPushRefusalRacingARotationIsCurrent() {
+        val clientA = gated(TokenGrantAnswer.Refused)
+        val push = refresher(manualLease, clientA)
+        val a = onThread { push.refreshForPush(user, "a0", TokenRefresher.appDeadline()) }
         assertTrue(clientA.entered.await(WAIT_SECONDS, TimeUnit.SECONDS))
 
         lapseTheManualLease()

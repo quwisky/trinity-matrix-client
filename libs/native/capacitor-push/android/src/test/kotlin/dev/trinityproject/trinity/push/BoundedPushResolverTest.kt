@@ -64,22 +64,14 @@ class BoundedPushResolverTest {
         override fun notificationText() = NotificationTextMode.SHOW
     }
 
-    /** Answers once [release] opens, recording what it saw. */
+    /** Answers once [release] opens. */
     private class StalledTokens : PushTokenRefreshing {
         val release = CountDownLatch(1)
-        val finished = CountDownLatch(1)
         val calls = AtomicInteger()
-        val interrupted = AtomicBoolean()
 
         override fun refreshForPush(account: String, tokenSeen: String, deadline: Deadline): TokenRefreshResult {
             calls.incrementAndGet()
-            try {
-                release.await(30, TimeUnit.SECONDS)
-            } catch (error: InterruptedException) {
-                interrupted.set(true)
-            }
-            interrupted.compareAndSet(false, Thread.currentThread().isInterrupted)
-            finished.countDown()
+            release.await(30, TimeUnit.SECONDS)
             return TokenRefreshResult.Gone
         }
     }
@@ -170,17 +162,62 @@ class BoundedPushResolverTest {
         )
     }
 
-    // The provider may have spent the old token by now. On Android's HTTP stack an interrupt can end
-    // the read that would have carried the new one, and the next refresh is then refused.
+    // The provider has spent the old token by now, so the answer must still reach the vault. On
+    // Android's HTTP stack an interrupt can end the read carrying it. The budget has to clear the
+    // grant floor, so this takes just over 3 s.
+    @Test(timeout = 30_000L)
+    fun aGrantOutlastingTheBudgetStillWritesItsAnswer() {
+        val vault = KeystoreTokenVault(MemoryPreferences(), FakeCrypto())
+        assertTrue(vault.write("@a:hs", R0.copy(expiresAtMillis = 1L)))
+        val store = object : HandoffReader by expired {
+            override fun account(userId: String) =
+                HandoffAccount("https://hs.example", "a0", sound = false, accessTokenExpiresAt = 1_000L)
+        }
+        val answerArrives = CountDownLatch(1)
+        val interrupted = AtomicBoolean()
+        val client = object : TokenGrantClient {
+            override fun grant(record: TokenRecord, deadline: Deadline): TokenGrantAnswer {
+                try {
+                    answerArrives.await(20, TimeUnit.SECONDS)
+                } catch (error: InterruptedException) {
+                    interrupted.set(true)
+                    return TokenGrantAnswer.Failed
+                }
+                return TokenGrantAnswer.Tokens("a1", "r1", 300L)
+            }
+
+            override fun revoke(record: TokenRecord, deadline: Deadline): Boolean = true
+        }
+        val refresher = TokenRefresher(vault, LeaseTable(), client)
+
+        val outcome = BoundedPushResolver(store, BlockingApi(), refresher, budgetMillis = 3_100, wallClock = { 1_000L })
+            .resolve(push) as PushOutcome.Post
+
+        assertEquals("Open Trinity to read this message", outcome.notification.body)
+        answerArrives.countDown()
+        val giveUpAt = monotonicMillis() + 10_000
+        while ((vault.read("@a:hs") as TokenVaultRead.Record).record.accessToken != "a1" && monotonicMillis() < giveUpAt) {
+            Thread.sleep(10)
+        }
+        assertFalse(interrupted.get())
+        assertEquals("r1", (vault.read("@a:hs") as TokenVaultRead.Record).record.refreshToken)
+    }
+
+    // Android's JSON parser recurses, and any room member can send an event nested deeply enough.
     @Test
-    fun theBudgetFallbackLeavesARefreshInFlightToFinish() {
-        val tokens = StalledTokens()
+    fun aStackOverflowReadingAnEventFallsBack() {
+        val api = object : MatrixApi {
+            override fun event(account: HandoffAccount, roomId: String, eventId: String, deadline: Deadline): PushEventRead =
+                throw StackOverflowError()
 
-        BoundedPushResolver(expired, BlockingApi(), tokens, budgetMillis = 100, wallClock = { 1_000L }).resolve(push)
-        tokens.release.countDown()
+            override fun memberDisplayName(account: HandoffAccount, roomId: String, userId: String, deadline: Deadline): String? = null
 
-        assertTrue(tokens.finished.await(5, TimeUnit.SECONDS))
-        assertFalse(tokens.interrupted.get())
+            override fun roomName(account: HandoffAccount, roomId: String, deadline: Deadline): String? = null
+        }
+
+        val outcome = BoundedPushResolver(store, api).resolve(push) as PushOutcome.Post
+
+        assertEquals(RenderedNotification("Team", "", "New message"), outcome.notification)
     }
 
     // After the fallback the process may die, and a grant's answer with it: no grant may start then.

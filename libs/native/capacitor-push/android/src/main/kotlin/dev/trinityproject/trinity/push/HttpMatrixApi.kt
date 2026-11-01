@@ -1,6 +1,8 @@
 package dev.trinityproject.trinity.push
 
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
@@ -12,9 +14,9 @@ fun encodePathSegment(value: String): String =
     URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
 
 /**
- * [MatrixApi] over HttpURLConnection. Each read gets what is left of the push's [Deadline]
- * as its connect and read timeout and is never retried. Logs nothing: URLs carry room and
- * event IDs and headers carry the token.
+ * [MatrixApi] over HttpURLConnection. Each request gets what is left of the push's [Deadline]
+ * as its connect and read timeout, its body must arrive within that deadline and a size cap, and
+ * it is never retried. Logs nothing: URLs carry room and event IDs and headers carry the token.
  */
 class HttpMatrixApi : MatrixApi {
     override fun event(account: HandoffAccount, roomId: String, eventId: String, deadline: Deadline): PushEventRead =
@@ -53,7 +55,9 @@ class HttpMatrixApi : MatrixApi {
             when (connection.responseCode) {
                 HttpURLConnection.HTTP_UNAUTHORIZED -> PushEventRead.Unauthorized
                 HttpURLConnection.HTTP_OK ->
-                    PushEventRead.Event(JSONObject(connection.inputStream.bufferedReader().use { it.readText() }))
+                    connection.inputStream.use { readCapped(it, deadline) }
+                        ?.let { PushEventRead.Event(JSONObject(it)) }
+                        ?: PushEventRead.Failed
                 else -> PushEventRead.Failed
             }
         } catch (error: IOException) {
@@ -63,5 +67,26 @@ class HttpMatrixApi : MatrixApi {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /**
+     * Null past the cap or the deadline. `readTimeout` bounds one socket read only, so a homeserver
+     * dripping bytes would otherwise hold this thread and a growing buffer after the push moved on.
+     */
+    private fun readCapped(stream: InputStream, deadline: Deadline): String? {
+        val bytes = ByteArrayOutputStream()
+        val chunk = ByteArray(READ_CHUNK_BYTES)
+        while (true) {
+            val read = stream.read(chunk)
+            if (read < 0) return bytes.toString(Charsets.UTF_8.name())
+            if (bytes.size() + read > MAX_BODY_BYTES) return null
+            bytes.write(chunk, 0, read)
+            if (deadline.remainingMillis() <= 0) return null
+        }
+    }
+
+    internal companion object {
+        const val MAX_BODY_BYTES = 256 * 1024
+        private const val READ_CHUNK_BYTES = 8 * 1024
     }
 }

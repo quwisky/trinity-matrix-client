@@ -228,6 +228,27 @@ class TokenPushRaceTest {
         assertEquals(firstAccess, stored().accessToken)
     }
 
+    // The app's grant failed late, so the provider spent nothing and the waiting push could still try.
+    // It has too little left to be sure of the answer, and sends nothing.
+    @Test(timeout = 60_000L)
+    fun aLeaseWaitBehindAFailedAppGrantSendsNoGrant() {
+        val refresher = refresher()
+        provider.failGrants()
+        provider.holdAnswers()
+        val app = background { refresher.asTheApp() }
+        assertTrue("the app's grant never arrived", provider.waitForGrant())
+        val budget = Deadline(monotonicMillis() + TokenBudgets.GRANT_FLOOR_MILLIS + 200, ::monotonicMillis)
+        val waiting = background { refresher.refreshForPush(user, firstAccess, budget) }
+
+        Thread.sleep(400)
+        provider.releaseAnswers()
+
+        assertEquals(TokenRefreshResult.Transient, app.get(WAIT_SECONDS, TimeUnit.SECONDS))
+        assertEquals(TokenRefreshResult.Transient, waiting.get(WAIT_SECONDS, TimeUnit.SECONDS))
+        assertEquals(FakeProvider.Counts(failedGrants = 1), provider.counts())
+        assertEquals(firstAccess, stored().accessToken)
+    }
+
     /** Stops the first caller right after its take, as a freeze there would. */
     private class FreezingLease(private val table: LeaseTable) : TokenLease by table {
         val holding = CountDownLatch(1)
@@ -245,7 +266,12 @@ class TokenPushRaceTest {
 
     /** Spends a refresh token the moment it arrives, and serves the reads a push makes. */
     private class FakeProvider {
-        data class Counts(val grants: Int = 0, val spentSends: Int = 0, val staleBearers: Int = 0)
+        data class Counts(
+            val grants: Int = 0,
+            val spentSends: Int = 0,
+            val staleBearers: Int = 0,
+            val failedGrants: Int = 0,
+        )
 
         private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         private val workers = Executors.newCachedThreadPool()
@@ -253,6 +279,7 @@ class TokenPushRaceTest {
         private var access = ""
         private var refresh = ""
         private var rejected: String? = null
+        private var failing = false
         private var generation = 0
         private var counts = Counts()
         private var heldAnswers: CountDownLatch? = null
@@ -280,6 +307,7 @@ class TokenPushRaceTest {
             this.access = access
             this.refresh = refresh
             rejected = null
+            failing = false
             generation = 0
             counts = Counts()
         }
@@ -288,6 +316,12 @@ class TokenPushRaceTest {
         @Synchronized
         fun rejectBearer(token: String) {
             rejected = token
+        }
+
+        /** Every grant answers 500 and spends nothing. */
+        @Synchronized
+        fun failGrants() {
+            failing = true
         }
 
         /** Grants are spent as usual, but their answers wait for [releaseAnswers]. */
@@ -307,9 +341,14 @@ class TokenPushRaceTest {
         private fun grant(exchange: HttpExchange) {
             val form = exchange.requestBody.readBytes().decodeToString().split("&")
             var hold: CountDownLatch?
+            var failed = false
             val body = synchronized(this) {
                 hold = heldAnswers
-                if ("refresh_token=$refresh" !in form) {
+                if (failing) {
+                    failed = true
+                    counts = counts.copy(failedGrants = counts.failedGrants + 1)
+                    """{"error":"server_error"}"""
+                } else if ("refresh_token=$refresh" !in form) {
                     counts = counts.copy(spentSends = counts.spentSends + 1)
                     null
                 } else {
@@ -324,7 +363,7 @@ class TokenPushRaceTest {
             grantArrived.release()
             // Long enough that the other side is waiting for the lease when it ends.
             hold?.await(WAIT_SECONDS, TimeUnit.SECONDS) ?: Thread.sleep(ANSWER_DELAY_MILLIS)
-            send(exchange, 200, body)
+            send(exchange, if (failed) 500 else 200, body)
         }
 
         private fun read(exchange: HttpExchange) {

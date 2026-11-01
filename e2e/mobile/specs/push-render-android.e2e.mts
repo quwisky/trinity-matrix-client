@@ -10,6 +10,8 @@ import {
 } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
 import {
+  startPushStub,
+  storeExpiredOAuthAccount,
   storeExpiredPushAccount,
   tokenAnswersForUnknownAccount,
   tokenRoundTrip,
@@ -175,6 +177,53 @@ describe('device-rendered push on Android', () => {
         'new UiSelector().textContains("Open Trinity to read this message")',
       ),
     ).toBeDisplayed({ wait: 30_000 });
+  });
+
+  // The case above has no vault record, so it reads the same with no refresher at all: only this
+  // one shows that the service's own wiring refreshes.
+  it('refreshes an expired OAuth token with the app closed and posts the message text', async () => {
+    const text = `refreshed ${uniqueId('msg')}`;
+    const stub = await startPushStub(text, 'Stub Sender');
+    try {
+      const userId = `@${uniqueId('oauth')}:unknown.invalid`;
+      const room = {
+        roomId: `!${uniqueId('room')}:unknown.invalid`,
+        name: `OAuth ${uniqueId('room')}`,
+      };
+      await signInPageShown();
+      await storeExpiredOAuthAccount(stub, userId, room);
+
+      await native();
+      await browser.terminateApp(APP_PACKAGE);
+      const sent = await shell('am', [
+        'broadcast',
+        '--include-stopped-packages',
+        '-n',
+        PROBE,
+        '--es',
+        'trinity_user_id',
+        quoted(userId),
+        '--es',
+        'room_id',
+        quoted(room.roomId),
+        '--es',
+        'event_id',
+        quoted('$stub-event'),
+      ]);
+      expect(sent).toContain('Broadcast completed');
+
+      await browser.execute('mobile: openNotifications');
+      await expect(
+        uiSelector(`new UiSelector().textContains("${text}")`),
+      ).toBeDisplayed({ wait: 30_000 });
+      expect(stub.counts()).toEqual({
+        grants: 1,
+        spentSends: 0,
+        staleBearers: 0,
+      });
+    } finally {
+      await stub.close();
+    }
   });
 
   it('answers the token calls for an account with no tokens through the installed plugin', async () => {

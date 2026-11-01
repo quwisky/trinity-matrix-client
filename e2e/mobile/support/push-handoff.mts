@@ -1,3 +1,4 @@
+import { createServer, type ServerResponse } from 'node:http';
 import { browser } from '@wdio/globals';
 
 /** `.invalid` never resolves, so a renderer that read anything would fail. */
@@ -82,6 +83,159 @@ export async function pluginCall(
   if ('failure' in result)
     throw new Error(`${plugin}.${method}: ${result.failure}`);
   return result.answer;
+}
+
+/** What {@link startPushStub}'s provider and homeserver saw. */
+export interface PushStubCounts {
+  readonly grants: number;
+  readonly spentSends: number;
+  readonly staleBearers: number;
+}
+
+/** A local token endpoint and homeserver that a push's refresh and reads reach. */
+export interface PushStub {
+  readonly url: string;
+  counts(): PushStubCounts;
+  close(): Promise<void>;
+}
+
+const STUB_PORT = 8449;
+const STUB_REFRESH_TOKEN = 'e2e-stub-refresh';
+const STUB_ROTATED_ACCESS_TOKEN = 'e2e-stub-rotated-access';
+
+/**
+ * A provider that spends its refresh token on receipt, and a homeserver that takes only the token
+ * it rotated to and answers every event read with `text`. Plain HTTP on loopback: Android's native
+ * code does not trust the run's Caddy CA, and reaches this port by ADB reverse (`run.mts`) under a
+ * debug-only network security config. The Simulator shares the host's loopback.
+ */
+export async function startPushStub(
+  text: string,
+  sender: string,
+): Promise<PushStub> {
+  const counts = { grants: 0, spentSends: 0, staleBearers: 0 };
+  let refreshToken: string | null = STUB_REFRESH_TOKEN;
+  const answer = (
+    response: ServerResponse,
+    status: number,
+    body: unknown,
+  ): void => {
+    response.writeHead(status, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(body));
+  };
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => {
+      if (request.method === 'POST') {
+        const form = new URLSearchParams(Buffer.concat(chunks).toString());
+        if (form.get('refresh_token') !== refreshToken) {
+          counts.spentSends += 1;
+          answer(response, 400, { error: 'invalid_grant' });
+          return;
+        }
+        refreshToken = null;
+        counts.grants += 1;
+        answer(response, 200, {
+          access_token: STUB_ROTATED_ACCESS_TOKEN,
+          refresh_token: 'e2e-stub-rotated-refresh',
+          expires_in: 300,
+        });
+      } else if (
+        request.headers.authorization !== `Bearer ${STUB_ROTATED_ACCESS_TOKEN}`
+      ) {
+        counts.staleBearers += 1;
+        answer(response, 401, { errcode: 'M_UNKNOWN_TOKEN' });
+      } else if (request.url?.includes('/state/m.room.member/')) {
+        answer(response, 200, { displayname: sender });
+      } else {
+        answer(response, 200, {
+          type: 'm.room.message',
+          sender: '@stub-sender:unknown.invalid',
+          content: { msgtype: 'm.text', body: text },
+        });
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(STUB_PORT, '127.0.0.1', resolve);
+  });
+  return {
+    url: `http://127.0.0.1:${STUB_PORT}`,
+    counts: () => ({ ...counts }),
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      }),
+  };
+}
+
+/**
+ * Give one synthetic account what an OAuth account has once Trinity has been closed for longer
+ * than a token lifetime: a tokenless handoff entry, an unencrypted stored room, and an expired vault
+ * record whose token endpoint is `stub`. No sign-in is needed, but wait for the sign-in page first:
+ * the startup sweep would remove this record. Run in the WebView context.
+ */
+export async function storeExpiredOAuthAccount(
+  stub: PushStub,
+  userId: string,
+  room: { readonly roomId: string; readonly name: string },
+): Promise<void> {
+  const result = await browser.execute(
+    async (
+      id: string,
+      url: string,
+      refreshToken: string,
+      stored: { readonly roomId: string; readonly name: string },
+    ): Promise<string | null> => {
+      const handoff = (
+        window as typeof window & {
+          Capacitor?: {
+            Plugins?: {
+              PushHandoff?: {
+                migrateTokens(options: unknown): Promise<{ stored: boolean }>;
+                setAccount(options: unknown): Promise<void>;
+                setRooms(options: unknown): Promise<void>;
+              };
+            };
+          };
+        }
+      ).Capacitor?.Plugins?.PushHandoff;
+      if (!handoff) return 'PushHandoff is unavailable';
+      try {
+        const { stored: migrated } = await handoff.migrateTokens({
+          userId: id,
+          lineage: 'L',
+          accessToken: 'e2e-stub-expired-access',
+          refreshToken,
+          accessTokenExpiresAt: Date.now() - 60_000,
+          tokenEndpoint: `${url}/token`,
+          clientId: 'e2e-stub-client',
+          deviceId: 'E2ESTUB',
+        });
+        if (!migrated) return 'the vault did not store the record';
+        await handoff.setAccount({
+          userId: id,
+          homeserverUrl: url,
+          sound: true,
+        });
+        await handoff.setRooms({
+          userId: id,
+          rooms: [{ ...stored, direct: false, encrypted: false }],
+        });
+        return null;
+      } catch (error: unknown) {
+        return String(error);
+      }
+    },
+    userId,
+    stub.url,
+    STUB_REFRESH_TOKEN,
+    room,
+  );
+  if (typeof result === 'string') throw new Error(result);
 }
 
 /** What the installed PushHandoff plugin answers for an account it has no tokens for. */

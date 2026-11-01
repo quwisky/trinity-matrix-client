@@ -146,6 +146,7 @@ enum class TokenRevokeResult {
 
 object TokenBudgets {
     const val APP_GRANT_MILLIS = 8_000L
+    const val GRANT_FLOOR_MILLIS = 3_000L
     const val LEASE_MARGIN_MILLIS = 5_000L
     const val LONGEST_LIFETIME_MILLIS = 30_000L
     const val REMOVAL_WAIT_MILLIS = 1_000L

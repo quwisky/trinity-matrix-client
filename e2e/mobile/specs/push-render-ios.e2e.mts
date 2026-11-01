@@ -18,6 +18,8 @@ import {
 } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
 import {
+  startPushStub,
+  storeExpiredOAuthAccount,
   storeExpiredPushAccount,
   tokenAnswersForUnknownAccount,
   tokenRoundTrip,
@@ -196,6 +198,38 @@ describe('device-rendered push on iOS', () => {
       body: 'Open Trinity to read this message',
       threadIdentifier: room.roomId,
     });
+  });
+
+  // Shows the plugin's probe refreshes. NotificationService.swift has its own wiring, which only a
+  // real push on a device runs: the Simulator does not launch the extension.
+  it('refreshes an expired OAuth token and renders the message text', async () => {
+    const text = `refreshed ${uniqueId('msg')}`;
+    const stub = await startPushStub(text, 'Stub Sender');
+    try {
+      const userId = `@${uniqueId('oauth')}:unknown.invalid`;
+      const room = {
+        roomId: `!${uniqueId('room')}:unknown.invalid`,
+        name: `OAuth ${uniqueId('room')}`,
+      };
+      await signInPageShown();
+      await storeExpiredOAuthAccount(stub, userId, room);
+
+      expect(
+        await renderProbe(gatewayPush(userId, room.roomId, '$stub-event')),
+      ).toMatchObject({
+        title: room.name,
+        subtitle: 'Stub Sender',
+        body: text,
+        threadIdentifier: room.roomId,
+      });
+      expect(stub.counts()).toEqual({
+        grants: 1,
+        spentSends: 0,
+        staleBearers: 0,
+      });
+    } finally {
+      await stub.close();
+    }
   });
 
   it('answers the token calls for an account with no tokens through the installed plugin', async () => {

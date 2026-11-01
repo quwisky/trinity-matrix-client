@@ -7,14 +7,15 @@ import java.util.concurrent.TimeoutException
 
 /**
  * Resolves a push within one total time budget. [HttpMatrixApi] bounds each read, which does
- * not cover a stalled DNS lookup or a trickling body, so the resolution runs on a worker
- * thread and, once the budget is spent, the push reads as if every fetch had failed: the
- * stored room name (or "Trinity") with "New message", without further network or a refresh.
+ * not cover a stalled DNS lookup, and one socket read can outlast the budget, so the resolution
+ * runs on a worker thread and, once the budget is spent, the push reads as if every fetch had
+ * failed: the stored room name (or "Trinity") with "New message", without further network or a
+ * refresh.
  *
- * The worker's reads share this budget, so nothing starts once the push has moved on, when the
- * process may die with a grant's answer. What is already in flight is not interrupted: on Android's
- * HTTP stack an interrupt can end the read that carries the rotated pair, after the provider has
- * spent the old one, and that gets the next refresh refused.
+ * The worker shares this budget, so no request starts once the push has moved on, when the process
+ * may die with a grant's answer, and a body read stops at its next chunk. The worker is not
+ * interrupted: on Android's HTTP stack that can end the read carrying the rotated pair, after the
+ * provider has spent the old one, and the next refresh is then refused.
  */
 class BoundedPushResolver(
     store: HandoffReader,

@@ -73,10 +73,15 @@ class TokenRefresher(
             if (record.refreshToken == null || record.tokenEndpoint == null || record.clientId == null) {
                 return TokenRefreshResult.Unavailable
             }
+            // With less left the answer can be lost after the provider spends the token, and the
+            // next refresh is then refused, which ends a live session.
+            if (deadline.remainingMillis() < TokenBudgets.GRANT_FLOOR_MILLIS) return TokenRefreshResult.Transient
             val started = wallClock.nowMillis()
             return when (val answer = client.grant(record, deadline)) {
                 TokenGrantAnswer.Failed -> TokenRefreshResult.Transient
                 TokenGrantAnswer.Refused -> {
+                    // After a lapse the refusal may be another caller's overlap: only the next try can tell.
+                    if (recordRefusal && !lease.holds(ticket)) return TokenRefreshResult.Transient
                     ticket = retake(ticket, account, deadline) ?: return TokenRefreshResult.Transient
                     when (val read = vault.read(account)) {
                         TokenVaultRead.Absent -> TokenRefreshResult.Gone

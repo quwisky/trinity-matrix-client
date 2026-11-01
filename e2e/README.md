@@ -115,7 +115,10 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   notification shade, then taps the notification and checks that its room opens; on CI the
   native code does not trust the run's Caddy CA, so the body there is the fallback "New
   message". Both specs also store an already expired token through the plugin and check for
-  "Open Trinity to read this message", which needs no network. Neither shows a real FCM token,
+  "Open Trinity to read this message", which needs no network. Both also migrate an expired token
+  whose endpoint is a stub on port 8449 (ADB reverse on Android, under a debug-only network security
+  config), and expect the stub's message text, so the renderer's refresh is exercised; on iOS that is
+  the probe's wiring, not the extension's. Neither shows a real FCM token,
   the extension launching, locked-phone rendering or closed-app delivery through
   `push.trinityproject.dev`, and the iOS spec does not cover tap-to-open.
 - Native token refresh: `token-refresh-dex.e2e.mts` (iOS only, skips without `dex` on `PATH`) sends

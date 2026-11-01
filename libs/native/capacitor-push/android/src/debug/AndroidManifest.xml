@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application>
+    <!-- Debug builds only: the installed-app suite's stub token server and homeserver, over ADB
+         reverse. Android refuses cleartext to every host by default, loopback included. -->
+    <application android:networkSecurityConfig="@xml/trinity_e2e_network_security">
         <!-- Debug builds only: lets the installed-app suite hand a gateway-shaped push to
              the renderer TrinityMessagingService uses, since FCM does not deliver on the
              emulator. Only the shell user (which holds DUMP) can send it. -->
