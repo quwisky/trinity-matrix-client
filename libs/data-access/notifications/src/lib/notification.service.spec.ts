@@ -665,23 +665,26 @@ describe('NotificationService', () => {
       };
     }
 
-    it.each([[SyncState.Reconnecting], [SyncState.Error], [SyncState.Catchup]])(
-      'keeps only the recent messages of the batch that ends a long %s',
-      (state) => {
-        const { sync, deliver } = connected();
+    it('keeps only the recent messages when a dead socket fails on waking', () => {
+      const { sync, deliver } = connected();
 
-        sync(state, SyncState.Syncing);
-        vi.advanceTimersByTime(10 * MINUTE);
-        deliver('$old', 10 * MINUTE);
-        expect(MockNotification.instances).toHaveLength(0);
-        deliver('$recent', 30 * SECOND);
-        expect(MockNotification.instances).toHaveLength(1);
+      vi.advanceTimersByTime(10 * MINUTE);
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      sync(SyncState.Error, SyncState.Reconnecting);
+      sync(SyncState.Catchup, SyncState.Error);
+      deliver('$old', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(0);
+      deliver('$recent', 30 * SECOND);
+      expect(MockNotification.instances).toHaveLength(1);
 
-        sync(SyncState.Syncing, state);
-        deliver('$after-the-batch', SECOND);
-        expect(MockNotification.instances).toHaveLength(2);
-      },
-    );
+      sync(SyncState.Syncing, SyncState.Catchup);
+      deliver('$next-batch', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(1);
+
+      sync(SyncState.Syncing, SyncState.Syncing);
+      deliver('$after-the-batch', 5 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(2);
+    });
 
     it('treats a long silence with no state change as a wake', () => {
       const { deliver } = connected();
@@ -698,6 +701,25 @@ describe('NotificationService', () => {
       vi.advanceTimersByTime(10 * MINUTE);
       sync(SyncState.Syncing, SyncState.Syncing);
       vi.advanceTimersByTime(SECOND);
+      deliver('$old', 10 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(0);
+
+      sync(SyncState.Syncing, SyncState.Syncing);
+      deliver('$slow-federated', 5 * MINUTE);
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('covers the catch-up batch when the first sync was held through a sleep', () => {
+      const { svc, client } = setup();
+      client.getSyncState.mockReturnValue(null);
+      svc.connect();
+      const sync = syncHandler(client);
+      const deliver = (id: string, age: number): void =>
+        timelineHandler(client)(event({ id, age }), room, false, false, live);
+
+      vi.advanceTimersByTime(10 * MINUTE);
+      sync(SyncState.Prepared, null, {});
+      sync(SyncState.Syncing, SyncState.Prepared);
       deliver('$old', 10 * MINUTE);
       expect(MockNotification.instances).toHaveLength(0);
 

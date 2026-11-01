@@ -52,12 +52,19 @@ measured on the wall clock because a wake need not pass through `Reconnecting` o
 lasts through the batch after the one that ended the gap, since a long-poll held through the
 sleep can answer before the catch-up. Age is the server's `unsigned.age`; without one the message
 notifies. The check runs when the timeline event arrives, so it covers messages awaiting
-decryption and reactions. A slow federated message still notifies outside an interruption, and
-so does everything after a drop under two minutes.
+decryption and reactions. A slow federated message still notifies outside an interruption.
+
+The gap runs from the last completed sync, which can be up to 30 s before a drop starts, and the
+SDK waits 2-7 s before its first keepalive. So after a drop of about 85 s or more, a slow federated
+message gets only its badge. A recent message notifies after a drop of any length.
 
 Two cases still notify: a response held through the sleep carries the age from when the server
 answered, so its messages read as recent, and a message queued for decryption before the sleep
 notifies when its key arrives afterwards.
+
+One case loses notifications. Web delivery is page-driven, so a browser that freezes a hidden tab
+and thaws it periodically leaves every message over two minutes old at each thaw with only its
+badge.
 
 Host presentation is a separate capability. Electron requests native display
 through its main-process bridge, Capacitor uses the native presentation adapter,

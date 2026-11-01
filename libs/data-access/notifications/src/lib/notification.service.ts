@@ -163,8 +163,9 @@ export class NotificationService {
   private static readonly PENDING_DECRYPTION_CAP = 500;
 
   /**
-   * Outlasts the SDK's 110 s /sync abort, so only a sleep or an outage leaves a gap this long;
-   * after a shorter gap anything older is a slow federated message, which still notifies.
+   * Past the SDK's 110 s /sync abort, so a gap this long is nearly always a sleep or an outage.
+   * A stall on an awake machine can reach it, but only messages stuck for over two minutes lose
+   * their notification. After a shorter gap such a message is slow federation, which notifies.
    */
   private static readonly INTERRUPTION_MS = 2 * 60_000;
 
@@ -441,7 +442,8 @@ export class NotificationService {
       client,
       reactions,
       onSync: (state, _prev, data): void => {
-        if (isServerSync(state, data)) {
+        // Not on Prepared: Syncing follows at once and would clear a gap the first /sync ended.
+        if (state === SyncState.Syncing) {
           catchingUp = syncOverdue();
           lastSyncAt = Date.now();
         }
