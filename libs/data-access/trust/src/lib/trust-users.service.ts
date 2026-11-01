@@ -20,7 +20,7 @@ import {
   recoverTrustOperation,
   type TrustOperation,
 } from './trust-operation-error';
-import { displayText } from './trust-display-text';
+import { displayText, visibleId } from './trust-display-text';
 
 /**
  * Another person's cross-signing identity as this Account sees it. A changed identity is
@@ -45,11 +45,12 @@ const toUserTrust = (
         : 'unverified';
 
 /**
- * One session of another person: its device name, or its id when the server hides the name.
- * Both are safe to show. A name can say anything, so the card always shows the id beside it.
+ * One session of another person. `deviceId` is the raw id, for keys only. `shownId` and `name` are
+ * safe to show: a name can say anything, so the card always shows the id beside it.
  */
 export interface UserSession {
   readonly deviceId: string;
+  readonly shownId: string;
   readonly name: string;
 }
 
@@ -104,7 +105,7 @@ const toUserSessions = (
     return {
       kind: 'unchecked',
       sessions: read.sessions
-        .map(({ deviceId, name }) => ({ deviceId, name }))
+        .map(({ deviceId, shownId, name }) => ({ deviceId, shownId, name }))
         .sort(byName),
     };
   }
@@ -335,9 +336,10 @@ export class TrustUsersService {
             // counts as a session; filter there too once the SDK passes the flag on.
             .filter((device) => !device.dehydrated)
             .map(async (device) => {
-              const shownId = displayText(device.deviceId) ?? device.deviceId;
+              const shownId = visibleId(device.deviceId);
               return {
-                deviceId: shownId,
+                deviceId: device.deviceId,
+                shownId,
                 name: displayText(device.displayName) ?? shownId,
                 // Not isVerified(): an emoji check's local trust outlives the owner's identity.
                 verified:

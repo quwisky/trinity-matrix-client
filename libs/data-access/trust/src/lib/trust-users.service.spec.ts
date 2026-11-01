@@ -270,7 +270,7 @@ describe('TrustUsersService', () => {
       );
       expect(sessions()).toEqual({
         kind: 'unchecked',
-        sessions: [{ deviceId: 'PHONE', name: 'Phone' }],
+        sessions: [{ deviceId: 'PHONE', shownId: 'PHONE', name: 'Phone' }],
       });
       expect(svc.userSessions(ALICE)).toBe(sessions);
       lifetime.unsubscribe();
@@ -426,7 +426,14 @@ describe('TrustUsersService', () => {
       expect(sessions()).toEqual({
         kind: 'checked',
         notVerified: 0,
-        sessions: [{ deviceId: 'PHONE', name: 'Phone', verified: true }],
+        sessions: [
+          {
+            deviceId: 'PHONE',
+            shownId: 'PHONE',
+            name: 'Phone',
+            verified: true,
+          },
+        ],
       });
       lifetime.unsubscribe();
     });
@@ -464,8 +471,18 @@ describe('TrustUsersService', () => {
         kind: 'checked',
         notVerified: 1,
         sessions: [
-          { deviceId: 'PHONE', name: 'Phone', verified: false },
-          { deviceId: 'LAPTOP', name: 'Laptop', verified: true },
+          {
+            deviceId: 'PHONE',
+            shownId: 'PHONE',
+            name: 'Phone',
+            verified: false,
+          },
+          {
+            deviceId: 'LAPTOP',
+            shownId: 'LAPTOP',
+            name: 'Laptop',
+            verified: true,
+          },
         ],
       });
       lifetime.unsubscribe();
@@ -524,8 +541,8 @@ describe('TrustUsersService', () => {
       expect(sessions()).toEqual({
         kind: 'unchecked',
         sessions: [
-          { deviceId: 'BLANK', name: 'BLANK' },
-          { deviceId: 'HIDDEN', name: 'HIDDEN' },
+          { deviceId: 'BLANK', shownId: 'BLANK', name: 'BLANK' },
+          { deviceId: 'HIDDEN', shownId: 'HIDDEN', name: 'HIDDEN' },
         ],
       });
       expect(client.getDeviceVerificationStatus).not.toHaveBeenCalledWith(
@@ -583,7 +600,7 @@ describe('TrustUsersService', () => {
         ['surrounding space', '  Phone  ', 'Phone'],
       ])('removes %s from a name', async (_case, displayName, name) => {
         const { first } = await firstSession({ deviceId: 'ID', displayName });
-        expect(first).toMatchObject({ deviceId: 'ID', name });
+        expect(first).toMatchObject({ deviceId: 'ID', shownId: 'ID', name });
       });
 
       it.each([
@@ -603,24 +620,95 @@ describe('TrustUsersService', () => {
           deviceId: 'ID',
           displayName: '✓ Verified',
         });
-        expect(first).toEqual({ deviceId: 'ID', name: '✓ Verified' });
+        expect(first).toEqual({
+          deviceId: 'ID',
+          shownId: 'ID',
+          name: '✓ Verified',
+        });
       });
 
-      it('shows a clean id, and still asks the SDK about the real one', async () => {
+      it('shows a changed id escaped, keeps the raw key, and asks the SDK about the raw id', async () => {
         const { client, first } = await firstSession({
           deviceId: 'ID\u202E1',
           displayName: 'Phone',
         });
-        expect(first?.deviceId).toBe('ID1');
+        expect(first).toEqual({
+          deviceId: 'ID\u202E1',
+          shownId: 'ID\\u202E1',
+          name: 'Phone',
+        });
         expect(client.getDeviceVerificationStatus).toHaveBeenCalledWith(
           ALICE,
           'ID\u202E1',
         );
       });
 
-      it('keeps an id made only of format characters rather than show nothing', async () => {
+      it('shows an id made only of format characters in escaped form, not blank', async () => {
         const { first } = await firstSession({ deviceId: '\u200B' });
-        expect(first).toEqual({ deviceId: '\u200B', name: '\u200B' });
+        expect(first).toEqual({
+          deviceId: '\u200B',
+          shownId: '\\u200B',
+          name: '\\u200B',
+        });
+      });
+
+      it.each([
+        ['leading space', ' ABC', '\\u0020ABC'],
+        ['trailing no-break space', 'ABC\u00A0', 'ABC\\u00A0'],
+        ['a character outside the basic plane', 'ABC\u{E0041}', 'ABC\\uE0041'],
+        ['only spaces', '  ', '\\u0020\\u0020'],
+      ])('escapes %s in an id', async (_case, deviceId, shownId) => {
+        const { first } = await firstSession({ deviceId });
+        expect(first?.shownId).toBe(shownId);
+      });
+
+      describe('a session cloning another one', () => {
+        const read = async (...devices: FakeDevice[]) => {
+          const client = fakeClient(undefined, true, {
+            devices: async () => deviceMap(ALICE, devices),
+          });
+          const { sessions, lifetime } = start(client);
+          await settle();
+          const result = (sessions() as { sessions: readonly UserSession[] })
+            .sessions;
+          lifetime.unsubscribe();
+          return result;
+        };
+
+        it('two ids that clean to the same text stay two keys, and read differently', async () => {
+          const result = await read(
+            { deviceId: 'ABC' },
+            { deviceId: 'ABC\u200B' },
+          );
+
+          expect(result.map((s) => s.deviceId)).toEqual(['ABC', 'ABC\u200B']);
+          expect(result.map((s) => s.shownId)).toEqual(['ABC', 'ABC\\u200B']);
+        });
+
+        it("a name copying a real id still shows the clone's own id", async () => {
+          const result = await read(
+            { deviceId: 'ABC' },
+            { deviceId: 'ABC\u200B', displayName: 'ABC' },
+          );
+
+          expect(result.find((s) => s.deviceId === 'ABC\u200B')).toEqual({
+            deviceId: 'ABC\u200B',
+            shownId: 'ABC\\u200B',
+            name: 'ABC',
+          });
+        });
+
+        it('typing the escaped form out cannot match an escaped id', async () => {
+          const result = await read(
+            { deviceId: 'ABC\u200B' },
+            { deviceId: 'ABC\\u200B' },
+          );
+
+          const shown = result.map((s) => s.shownId);
+          expect(new Set(shown).size).toBe(2);
+          expect(shown).toContain('ABC\\u200B');
+          expect(shown).toContain('ABC\\u005Cu200B');
+        });
       });
     });
 
@@ -751,7 +839,7 @@ describe('TrustUsersService', () => {
         expect(svc.userTrust(ALICE)()).toBeNull();
         expect(sessions()).toEqual({
           kind: 'unchecked',
-          sessions: [{ deviceId: 'PHONE', name: 'Phone' }],
+          sessions: [{ deviceId: 'PHONE', shownId: 'PHONE', name: 'Phone' }],
         });
         lifetime.unsubscribe();
       });
@@ -771,8 +859,18 @@ describe('TrustUsersService', () => {
           kind: 'checked',
           notVerified: 1,
           sessions: [
-            { deviceId: 'PHONE', name: 'Phone', verified: false },
-            { deviceId: 'LAPTOP', name: 'Laptop', verified: true },
+            {
+              deviceId: 'PHONE',
+              shownId: 'PHONE',
+              name: 'Phone',
+              verified: false,
+            },
+            {
+              deviceId: 'LAPTOP',
+              shownId: 'LAPTOP',
+              name: 'Laptop',
+              verified: true,
+            },
           ],
         });
         lifetime.unsubscribe();
@@ -794,7 +892,7 @@ describe('TrustUsersService', () => {
 
           expect(sessions()).toEqual({
             kind: 'unchecked',
-            sessions: [{ deviceId: 'PHONE', name: 'Phone' }],
+            sessions: [{ deviceId: 'PHONE', shownId: 'PHONE', name: 'Phone' }],
           });
           lifetime.unsubscribe();
         },
@@ -820,7 +918,7 @@ describe('TrustUsersService', () => {
         // The list re-read has not answered, and the row has already changed.
         expect(sessions()).toEqual({
           kind: 'unchecked',
-          sessions: [{ deviceId: 'PHONE', name: 'Phone' }],
+          sessions: [{ deviceId: 'PHONE', shownId: 'PHONE', name: 'Phone' }],
         });
         answer(reads);
         await settle();

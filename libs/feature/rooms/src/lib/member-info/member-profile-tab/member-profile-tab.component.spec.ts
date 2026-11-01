@@ -81,8 +81,8 @@ async function build(
   };
 }
 
-const PHONE = { deviceId: 'PHONE', name: 'Phone' };
-const LAPTOP = { deviceId: 'LAPTOP', name: 'Laptop' };
+const PHONE = { deviceId: 'PHONE', shownId: 'PHONE', name: 'Phone' };
+const LAPTOP = { deviceId: 'LAPTOP', shownId: 'LAPTOP', name: 'Laptop' };
 
 const unchecked = (...sessions: (typeof PHONE)[]): UserSessions => ({
   kind: 'unchecked',
@@ -371,7 +371,7 @@ describe('MemberProfileTabComponent', () => {
     it('renders a hostile name as text', async () => {
       const name = '<img src=x onerror=alert(1)>';
       const { container } = await build({
-        sessions: unchecked({ deviceId: 'X', name }),
+        sessions: unchecked({ deviceId: 'X', shownId: 'X', name }),
       });
       openSessions();
       await screen.findByRole('list', { name: 'Sessions' });
@@ -466,7 +466,11 @@ describe('MemberProfileTabComponent', () => {
     it('a name posing as a state reads as a name, with its id, and no badge', async () => {
       await build({
         trust: 'unverified',
-        sessions: unchecked({ deviceId: 'ID', name: '✓ Verified' }),
+        sessions: unchecked({
+          deviceId: 'ID',
+          shownId: 'ID',
+          name: '✓ Verified',
+        }),
       });
       openSessions();
       await screen.findByRole('list', { name: 'Sessions' });
@@ -481,7 +485,9 @@ describe('MemberProfileTabComponent', () => {
     });
 
     it('a name that is the id takes one line', async () => {
-      await build({ sessions: unchecked({ deviceId: 'ID', name: 'ID' }) });
+      await build({
+        sessions: unchecked({ deviceId: 'ID', shownId: 'ID', name: 'ID' }),
+      });
       openSessions();
       await screen.findByRole('list', { name: 'Sessions' });
 
@@ -489,6 +495,41 @@ describe('MemberProfileTabComponent', () => {
         'ID',
       );
       expect(screen.queryByTestId('member-info-session-id')).toBeNull();
+    });
+
+    it('a name that fell back to an escaped id takes one line, not blank', async () => {
+      await build({
+        sessions: unchecked({
+          deviceId: '\u200B',
+          shownId: '\\u200B',
+          name: '\\u200B',
+        }),
+      });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(screen.getByTestId('member-info-session-name').textContent).toBe(
+        '\\u200B',
+      );
+      expect(screen.queryByTestId('member-info-session-id')).toBeNull();
+    });
+
+    it('renders a clone beside the session it copies, each with its own id', async () => {
+      await build({
+        sessions: unchecked(
+          { deviceId: 'ABC', shownId: 'ABC', name: 'ABC' },
+          { deviceId: 'ABC\u200B', shownId: 'ABC\\u200B', name: 'ABC' },
+        ),
+      });
+      openSessions();
+      await screen.findByRole('list', { name: 'Sessions' });
+
+      expect(sessionItems()).toHaveLength(2);
+      expect(
+        screen
+          .getAllByTestId('member-info-session-id')
+          .map((id) => id.textContent),
+      ).toEqual(['ABC\\u200B']);
     });
 
     it('isolates untrusted text from what sits around it', async () => {

@@ -85,7 +85,7 @@
           <button
             #sessionsToggle
             type="button"
-            class="flex w-full cursor-pointer items-baseline justify-between gap-4 px-4 py-2.5 text-start hover:bg-[var(--trinity-state-hover-surface)] pointer-coarse:min-h-11"
+            class="flex w-full cursor-pointer items-baseline justify-between gap-4 px-4 py-2.5 text-start hover:bg-[var(--trinity-state-hover-surface)] focus-visible:outline-offset-[calc(-1*var(--trinity-focus-ring-width))] pointer-coarse:min-h-11"
             [attr.aria-expanded]="sessionsOpen()"
             [attr.aria-controls]="sessionsPanelId"
             (click)="toggleSessions()"
@@ -170,11 +170,11 @@
                             data-testid="member-info-session-name"
                             >{{ session.name }}</bdi
                           >
-                          @if (session.name !== session.deviceId) {
+                          @if (session.name !== session.shownId) {
                             <bdi
                               class="text-13 [overflow-wrap:anywhere] text-muted-foreground"
                               data-testid="member-info-session-id"
-                              >{{ session.deviceId }}</bdi
+                              >{{ session.shownId }}</bdi
                             >
                           }
                         </span>

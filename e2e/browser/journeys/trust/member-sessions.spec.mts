@@ -243,7 +243,17 @@ test.describe('Sessions on a member card', () => {
         })),
       )
       .toEqual({ scrollsInside: true, fitsAcross: true });
-    await page.getByTestId('member-info-sessions-toggle').focus();
+    // A flush row draws its focus ring inside, not over the dividers around it.
+    const row = page.getByTestId('member-info-sessions-toggle');
+    await row.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(row).toBeFocused();
+    expect(
+      await row.evaluate(
+        (el) => Number.parseFloat(getComputedStyle(el).outlineOffset) < 0,
+      ),
+    ).toBe(true);
     await page.keyboard.press('Tab');
     await expect(list).toBeFocused();
     expect(

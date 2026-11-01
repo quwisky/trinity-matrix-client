@@ -832,7 +832,7 @@ describe('MemberInfoComponent', () => {
   describe('Sessions row', () => {
     const LISTED: UserSessions = {
       kind: 'unchecked',
-      sessions: [{ deviceId: 'PHONE', name: 'Phone' }],
+      sessions: [{ deviceId: 'PHONE', shownId: 'PHONE', name: 'Phone' }],
     };
     const row = () => screen.queryByRole('button', { name: /^Sessions/ });
 
