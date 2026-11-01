@@ -47,6 +47,10 @@ describe('hover styles on touch screens', () => {
     ).toHaveLength(0);
   });
 
+  it('finds the rooms stylesheets', () => {
+    expect(stylesheets(ROOT).length).toBeGreaterThan(30);
+  });
+
   // `:hover` keeps matching after a finger lifts, so a row would stay shaded until the next touch.
   it.each(stylesheets(ROOT).map((path) => [path.slice(ROOT.length + 1), path]))(
     'keeps %s :hover behind (hover: hover)',
