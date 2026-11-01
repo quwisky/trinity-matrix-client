@@ -419,6 +419,13 @@ async function restartAdbd(command: 'root' | 'unroot'): Promise<void> {
  * Chrome keeps its own root store, and its first-run screens would cover the Custom Tab.
  */
 async function prepareDeviceForMas(): Promise<void> {
+  // Never a personal rooted phone: this adds a CA to its system store.
+  const qemu = await adbRun('shell', 'getprop', 'ro.kernel.qemu');
+  if (qemu !== '1') {
+    throw new Error(
+      `${serial} is not an emulator; refusing to trust a test CA`,
+    );
+  }
   const directory = mkdtempSync(join(tmpdir(), 'trinity-caddy-root-'));
   try {
     const { stdout: root } = await exec(

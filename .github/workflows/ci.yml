@@ -66,8 +66,8 @@ jobs:
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
       # Whether a pull request touches what `mobile-mas-e2e` checks: everything the `mas` step
-      # covers, and the native side of the path only this job drives. Pushes answer false, as
-      # for `mas`.
+      # covers, the native side of the path only this job drives, and a version bump of the
+      # Capacitor packages or secure storage plugin under it. Pushes answer false, as for `mas`.
       - id: android-mas
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -76,9 +76,10 @@ jobs:
           run=$MAS
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             : "${BASE:?pull request has no base sha}"
-            paths='^(libs/platform-native/src/lib/native-token-bridge\.service\.ts$|libs/native/capacitor-push/|libs/application/runtime/src/lib/composition/trinity-host-navigation\.adapter\.ts$|android/app/src/main/AndroidManifest\.xml$|e2e/mobile/specs/mas-native-tokens\.e2e\.mts$|e2e/mobile/support/(mas|session|app|android-shell)\.mts$|e2e/mobile/run\.mts$)'
+            paths='^(libs/platform-native/src/lib/native-token-bridge\.service\.ts$|libs/native/capacitor-push/|libs/application/runtime/src/lib/composition/trinity-host-navigation\.adapter\.ts$|capacitor\.config\.ts$|android/app/|e2e/mobile/specs/mas-native-tokens\.e2e\.mts$|e2e/mobile/support/(mas|session|app|android-shell)\.mts$|e2e/mobile/run\.mts$)'
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
-            if grep -qE "$paths" <<< "$changed"; then
+            manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
+            if grep -qE "$paths" <<< "$changed" || grep -qE '^[+-].*(@capacitor/|@aparajita/capacitor-secure-storage)' <<< "$manifests"; then
               run=true
             fi
           fi
@@ -974,13 +975,14 @@ jobs:
 
   # A real OAuth account through the installed app against MAS, whose refreshes native code
   # makes. Same steps as `mobile-e2e` on its own emulator, on the pull requests the `android-mas`
-  # step of `classify` picks. Non-blocking, like Element Android's Maestro job: it reports its
-  # own check and no result job needs it, so it never blocks a merge, but a failure stays red on
-  # the pull request and someone must read it (ci-and-releases.md says what to do).
+  # step of `classify` picks. Non-blocking, like Element Android's Maestro job: no result job
+  # needs it, so it never blocks a merge, and a failure must still be read (ci-and-releases.md
+  # says what to do). The owner's rule: non-blocking until about 10 green runs in a row, then
+  # required through a result job.
   mobile-mas-e2e:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.android-mas == 'true' && needs.renderer.result == 'success' }}
-    name: Mobile E2E (Android MAS, non-blocking)
+    name: Mobile E2E (Android ${{ matrix.shard }}, non-blocking)
     continue-on-error: true
     runs-on: ubuntu-latest
     permissions:

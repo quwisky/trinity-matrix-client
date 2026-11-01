@@ -4,6 +4,7 @@ import {
   registerMasUser,
   type MasAccount,
 } from '../../support/mas-account.mts';
+import { resolveMasEnabled } from '../../support/homeserver/kind.mts';
 import { readSession } from '../../support/session.mts';
 import {
   fillByLabel,
@@ -14,8 +15,11 @@ import {
 import {
   accessTokenDigest,
   accountDatabases,
+  documentNow,
+  homeserverStatusesSince,
   jsStoreHasRefreshToken,
   masTokenPair,
+  overwriteJsAccessToken,
   recordRequests,
   revokeSessionAtMas,
   seedAccountFromOlderBuild,
@@ -24,6 +28,8 @@ import {
   storedAccount,
   tokenEndpointRequests,
   vaultAnswer,
+  waitForAppSync,
+  waitForVaultTokenLife,
   whoamiWithVaultToken,
   type StoredAccount,
 } from '../support/mas.mts';
@@ -89,6 +95,12 @@ describe('an OAuth account through the native token vault', () => {
       'iOS has no CI runner that can run the MAS stack, and this drives Custom Tabs',
     ).call(this);
     if (!readSession().homeserver?.mas) {
+      // A run that asked for the stack must not go green with no test run.
+      if (resolveMasEnabled()) {
+        throw new Error(
+          'TRINITY_E2E_MAS=1, but the E2E session has no MAS account',
+        );
+      }
       console.log(
         `[mobile] skipped: ${this.test?.parent?.fullTitle() ?? ''} — needs the MAS stack (TRINITY_E2E_MAS=1)`,
       );
@@ -116,11 +128,12 @@ describe('an OAuth account through the native token vault', () => {
   });
 
   it('stays signed in through a refresh that native code made', async function (this: Mocha.Context) {
-    this.timeout(REFRESH_TIMEOUT_MS + 60_000);
+    this.timeout(REFRESH_TIMEOUT_MS + 150_000);
     const account = signedInAccount(this);
     const before = await vaultAnswer(account);
 
     await refreshedFrom(account, before.accessTokenDigest);
+    const rotated = await documentNow();
 
     expect((await vaultAnswer(account)).accessTokenExpiresAt).toBeGreaterThan(
       before.accessTokenExpiresAt ?? 0,
@@ -128,28 +141,47 @@ describe('an OAuth account through the native token vault', () => {
     await expectSignedInFromVault(account);
     // Only the code exchange: no refresh grant left the WebView.
     expect(await tokenEndpointRequests(account.tokenEndpoint)).toBe(1);
+    // The vault's token works, and the app's own client took it up.
+    await waitForAppSync(account, rotated);
     await settleOnRooms(10_000);
   });
 
   it('starts signed in from the vault after a restart', async function (this: Mocha.Context) {
-    this.timeout(180_000);
+    this.timeout(420_000);
     const account = signedInAccount(this);
     await waitForDurableActiveAccount(account.userId);
+    // Enough life left that the digest below can only change if the start refused its token.
+    await waitForVaultTokenLife(account, 40_000);
+    const { accessTokenDigest: before } = await vaultAnswer(account);
+    await overwriteJsAccessToken(account.userId);
 
     await restartApp();
     await recordRequests();
     await waitForRooms(90_000);
+    await waitForAppSync(account, 0);
 
+    expect((await vaultAnswer(account)).accessTokenDigest).toBe(before);
     await expectSignedInFromVault(account);
     expect(await tokenEndpointRequests(account.tokenEndpoint)).toBe(0);
   });
 
   it('keeps everything when MAS ends the session, and moves the account to a new device', async function (this: Mocha.Context) {
-    this.timeout(480_000);
+    this.timeout(720_000);
     const account = signedInAccount(this);
     const stores = await accountDatabases(account.userId);
     expect(stores.length).toBeGreaterThanOrEqual(2);
+    const expectUntouched = async (): Promise<void> => {
+      const stored = await storedAccount();
+      expect(stored.userId).toBe(account.userId);
+      expect(stored.deviceId).toBe(account.deviceId);
+      expect(stored.lineage).toBe(account.lineage);
+      expect(await accountDatabases(account.userId)).toEqual(
+        expect.arrayContaining(stores),
+      );
+    };
 
+    await waitForVaultTokenLife(account, 15_000);
+    const revoked = await documentNow();
     expect(await revokeSessionAtMas(account)).toBe(200);
 
     await browser.waitUntil(
@@ -163,10 +195,11 @@ describe('an OAuth account through the native token vault', () => {
     expect(new URL(await browser.getUrl()).searchParams.has('device')).toBe(
       false,
     );
-    expect((await storedAccount()).userId).toBe(account.userId);
-    expect(await accountDatabases(account.userId)).toEqual(
-      expect.arrayContaining(stores),
+    // MAS answers 200 for a dead token too: this is what shows the revocation took.
+    expect(await homeserverStatusesSince(account.baseUrl, revoked)).toContain(
+      401,
     );
+    await expectUntouched();
 
     // The first sign-in finds the device without keys: it saves nothing and moves on.
     await signInOnProviderPage(provider as MasAccount);
@@ -178,9 +211,7 @@ describe('an OAuth account through the native token vault', () => {
         timeoutMsg: 'the device check never offered a new device',
       },
     );
-    expect(await accountDatabases(account.userId)).toEqual(
-      expect.arrayContaining(stores),
-    );
+    await expectUntouched();
 
     // Nothing is live to check for a key backup, so replacing the old device asks first.
     await signInOnProviderPage(provider as MasAccount);
@@ -198,7 +229,7 @@ describe('an OAuth account through the native token vault', () => {
   });
 
   it('moves an older build’s tokens into the vault and refreshes them there', async function (this: Mocha.Context) {
-    this.timeout(420_000);
+    this.timeout(480_000);
     await resetApp();
     const older = await freshAccount('android-mas-upgrade');
     const pair = await masTokenPair(older);
@@ -213,16 +244,14 @@ describe('an OAuth account through the native token vault', () => {
     await recordRequests();
     await waitForRooms(90_000);
 
-    expect(await vaultAnswer(seeded)).toEqual(
-      expect.objectContaining({
-        kind: 'current',
-        accessTokenDigest: accessTokenDigest(pair.accessToken),
-      }),
-    );
+    // The vault answers for the seeded lineage. A slow start may already have rotated the
+    // 60 s token, so the digest is not compared here.
     await expectSignedInFromVault(seeded);
 
     await refreshedFrom(seeded, accessTokenDigest(pair.accessToken));
+    const rotated = await documentNow();
     await expectSignedInFromVault(seeded);
+    await waitForAppSync(seeded, rotated);
     expect(await tokenEndpointRequests(seeded.tokenEndpoint)).toBe(0);
     expect((await storedAccount()).lineage).toBe(lineage);
     await settleOnRooms(10_000);

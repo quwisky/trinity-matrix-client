@@ -33,6 +33,8 @@ export interface VaultAnswer {
   readonly kind: string;
   readonly accessTokenDigest?: string;
   readonly accessTokenExpiresAt?: number;
+  /** Read on the device's clock, which set the expiry. */
+  readonly expiresInMs?: number;
 }
 
 export interface WhoAmI {
@@ -136,10 +138,26 @@ export function vaultAnswer(
         kind: answer.kind,
         accessTokenDigest: btoa(String.fromCharCode(...new Uint8Array(digest))),
         accessTokenExpiresAt: answer.accessTokenExpiresAt,
+        expiresInMs: (answer.accessTokenExpiresAt ?? 0) - Date.now(),
       };
     },
     account.userId,
     account.lineage,
+  );
+}
+
+/** Wait until the vault's access token has at least `milliseconds` left, past any rotation. */
+export async function waitForVaultTokenLife(
+  account: Pick<StoredAccount, 'userId' | 'lineage'>,
+  milliseconds: number,
+): Promise<void> {
+  await browser.waitUntil(
+    async () => ((await vaultAnswer(account)).expiresInMs ?? 0) >= milliseconds,
+    {
+      timeout: 180_000,
+      interval: 1_000,
+      timeoutMsg: `the vault's access token never had ${milliseconds} ms left`,
+    },
   );
 }
 
@@ -154,6 +172,31 @@ export function jsStoreHasRefreshToken(userId: string): Promise<boolean> {
       .Plugins;
     return (await SecureStorage.get(key, false, false)) !== null;
   }, refreshTokenKey(userId));
+}
+
+/**
+ * Overwrite the JS secure store's access token with junk, on disk, so a start that used that
+ * copy instead of the vault's would be refused. Run with the app about to be terminated: a
+ * rotation meanwhile would write it again.
+ */
+export async function overwriteJsAccessToken(userId: string): Promise<void> {
+  const onDisk = (): Promise<string> =>
+    shell('run-as', [
+      APP_PACKAGE,
+      'cat',
+      'shared_prefs/WSSecureStorageSharedPreferences.xml',
+    ]);
+  const before = await onDisk();
+  await browser.execute(async (key: string): Promise<void> => {
+    const { SecureStorage } = (window as unknown as AppWindow).Capacitor
+      .Plugins;
+    await SecureStorage.set(key, 'junk-access-token', false, false);
+  }, `matrix.accessToken:${userId}`);
+  await browser.waitUntil(async () => (await onDisk()) !== before, {
+    timeout: 10_000,
+    interval: 100,
+    timeoutMsg: 'the junk access token never reached the disk',
+  });
 }
 
 /** Call `whoami` with the vault's access token, from the WebView, whose TLS the app uses. */
@@ -196,7 +239,9 @@ export function whoamiWithVaultToken(account: StoredAccount): Promise<WhoAmI> {
 /**
  * End the account's session at MAS's revocation endpoint with the vault's access token, the only
  * token native code hands out. MAS ends the whole session for either kind
- * (crates/handlers/src/oauth2/revoke.rs), so the refresh token dies too. Answers the HTTP status.
+ * (crates/handlers/src/oauth2/revoke.rs), so the refresh token dies too. MAS also answers 200 for
+ * an expired or unknown token, so the status says nothing: wait for a token with life left first
+ * ({@link waitForVaultTokenLife}), and check the homeserver then refuses the app.
  */
 export function revokeSessionAtMas(account: StoredAccount): Promise<number> {
   return browser.execute(
@@ -245,6 +290,65 @@ export function tokenEndpointRequests(endpoint: string): Promise<number> {
     (url: string) => performance.getEntriesByName(url, 'resource').length,
     endpoint,
   );
+}
+
+/** A point on this document's timeline, to compare request start times with. */
+export function documentNow(): Promise<number> {
+  return browser.execute(() => performance.now());
+}
+
+/**
+ * The statuses of this document's finished requests to the homeserver that started after `since`,
+ * read after {@link recordRequests}. Only `path` when given. These are the app's own requests,
+ * unlike {@link whoamiWithVaultToken}, as long as a test sends none of its own in the window.
+ */
+export function homeserverStatusesSince(
+  baseUrl: string,
+  since: number,
+  path = '',
+): Promise<number[]> {
+  return browser.execute(
+    (origin: string, after: number, suffix: string): number[] =>
+      performance
+        .getEntriesByType('resource')
+        .filter(
+          (entry) =>
+            entry.startTime > after &&
+            entry.name.startsWith(origin) &&
+            new URL(entry.name).pathname.endsWith(suffix),
+        )
+        .map((entry) => (entry as PerformanceResourceTiming).responseStatus),
+    baseUrl,
+    since,
+    path,
+  );
+}
+
+/** Wait for the app's client to finish a `/sync` with 200 that started after `since`. */
+export async function waitForAppSync(
+  account: Pick<StoredAccount, 'baseUrl'>,
+  since: number,
+): Promise<void> {
+  let statuses: number[] = [];
+  await browser
+    .waitUntil(
+      async () => {
+        statuses = await homeserverStatusesSince(
+          account.baseUrl,
+          since,
+          '/sync',
+        );
+        return statuses.includes(200);
+      },
+      // A long poll holds its answer for up to 30 s, and one may be waiting on a refresh.
+      { timeout: 90_000, interval: 1_000 },
+    )
+    .catch((error: unknown) => {
+      throw new Error(
+        `the app's client finished no /sync with 200 since ${since}; statuses: ${statuses.join(', ') || 'none'}`,
+        { cause: error },
+      );
+    });
 }
 
 /** Names of the IndexedDB databases that belong to an account. */

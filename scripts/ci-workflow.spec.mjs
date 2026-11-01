@@ -612,6 +612,7 @@ describe('Android E2E split', () => {
     expect(mas.env).toEqual({ ...job.env, TRINITY_E2E_MAS: '1' });
     expect(mas.if).toContain("needs.classify.outputs.android-mas == 'true'");
     expect(mas['continue-on-error']).toBe(true);
+    expect(mas.name).toContain('${{ matrix.shard }}');
     // No result job may need it: a failure reports on its own and blocks nothing.
     for (const other of Object.values(workflow.jobs)) {
       expect([other.needs].flat()).not.toContain('mobile-mas-e2e');
@@ -623,58 +624,67 @@ describe('Android E2E split', () => {
     ['libs/native/capacitor-push/android/build.gradle', 'true'],
     ['e2e/mobile/specs/mas-native-tokens.e2e.mts', 'true'],
     ['e2e/mobile/run.mts', 'true'],
+    ['capacitor.config.ts', 'true'],
+    ['android/app/build.gradle', 'true'],
+    ['package.json', 'true', '"@capacitor/android": "^8.1.0"\n'],
+    ['package.json', 'true', '"@aparajita/capacitor-secure-storage": "^8"\n'],
+    ['pnpm-lock.yaml', 'true', "'@capacitor/core@8.1.0':\n"],
+    ['package.json', 'false', '"rxjs": "^7.8.0"\n'],
     ['libs/data-access/media/src/index.ts', 'false'],
     ['e2e/mobile/specs/smoke.e2e.mts', 'false'],
-  ])('the classifier answers for a change to %s: run=%s', (path, expected) => {
-    const repo = mkdtempSync(join(tmpdir(), 'trinity-android-mas-detect-'));
-    try {
-      const git = (...args) =>
-        execFileSync('git', ['-C', repo, ...args], {
-          encoding: 'utf8',
-          env: {
-            ...process.env,
-            GIT_CONFIG_GLOBAL: '/dev/null',
-            GIT_CONFIG_SYSTEM: '/dev/null',
-            GIT_AUTHOR_NAME: 'test',
-            GIT_AUTHOR_EMAIL: 'test@example.invalid',
-            GIT_COMMITTER_NAME: 'test',
-            GIT_COMMITTER_EMAIL: 'test@example.invalid',
+  ])(
+    'the classifier answers for a change to %s: run=%s',
+    (path, expected, content = 'changed\n') => {
+      const repo = mkdtempSync(join(tmpdir(), 'trinity-android-mas-detect-'));
+      try {
+        const git = (...args) =>
+          execFileSync('git', ['-C', repo, ...args], {
+            encoding: 'utf8',
+            env: {
+              ...process.env,
+              GIT_CONFIG_GLOBAL: '/dev/null',
+              GIT_CONFIG_SYSTEM: '/dev/null',
+              GIT_AUTHOR_NAME: 'test',
+              GIT_AUTHOR_EMAIL: 'test@example.invalid',
+              GIT_COMMITTER_NAME: 'test',
+              GIT_COMMITTER_EMAIL: 'test@example.invalid',
+            },
+          });
+        git('init', '-q', '-b', 'main');
+        git('commit', '-q', '--allow-empty', '-m', 'base');
+        const base = git('rev-parse', 'HEAD').trim();
+        mkdirSync(dirname(join(repo, path)), { recursive: true });
+        writeFileSync(join(repo, path), content);
+        git('add', '-A');
+        git('commit', '-q', '-m', 'change');
+        const output = join(repo, '.output');
+        const result = spawnSync(
+          'bash',
+          [
+            '-e',
+            '-c',
+            workflow.jobs.classify.steps.find(({ id }) => id === 'android-mas')
+              .run,
+          ],
+          {
+            cwd: repo,
+            env: {
+              ...process.env,
+              BASE: base,
+              MAS: 'false',
+              GITHUB_EVENT_NAME: 'pull_request',
+              GITHUB_OUTPUT: output,
+            },
+            encoding: 'utf8',
           },
-        });
-      git('init', '-q', '-b', 'main');
-      git('commit', '-q', '--allow-empty', '-m', 'base');
-      const base = git('rev-parse', 'HEAD').trim();
-      mkdirSync(dirname(join(repo, path)), { recursive: true });
-      writeFileSync(join(repo, path), 'changed\n');
-      git('add', '-A');
-      git('commit', '-q', '-m', 'change');
-      const output = join(repo, '.output');
-      const result = spawnSync(
-        'bash',
-        [
-          '-e',
-          '-c',
-          workflow.jobs.classify.steps.find(({ id }) => id === 'android-mas')
-            .run,
-        ],
-        {
-          cwd: repo,
-          env: {
-            ...process.env,
-            BASE: base,
-            MAS: 'false',
-            GITHUB_EVENT_NAME: 'pull_request',
-            GITHUB_OUTPUT: output,
-          },
-          encoding: 'utf8',
-        },
-      );
-      expect(result.status, result.stderr).toBe(0);
-      expect(readFileSync(output, 'utf8').trim()).toBe(`run=${expected}`);
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
+        );
+        expect(result.status, result.stderr).toBe(0);
+        expect(readFileSync(output, 'utf8').trim()).toBe(`run=${expected}`);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('selects the shard specs and names the artifact by shard', () => {
     const emulator = steps.find((step) => step.id === 'mobile');
