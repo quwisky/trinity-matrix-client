@@ -9,7 +9,6 @@ import { login, homeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { focusWithKeyboard } from '../../support/keyboard-focus.mts';
 
-process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 const session = homeserverSession();
 
 /** Whether the focused element asks for a focus ring: `:focus-visible`, an outline or a ring-shaped shadow. */
