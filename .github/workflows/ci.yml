@@ -30,6 +30,7 @@ jobs:
       mode: ${{ steps.classify.outputs.mode }}
       classification: ${{ steps.classify.outputs.classification }}
       mas: ${{ steps.mas.outputs.run }}
+      android-mas: ${{ steps.android-mas.outputs.run }}
       scrollbars: ${{ steps.scrollbars.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,11 +56,30 @@ jobs:
           run=false
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             : "${BASE:?pull request has no base sha}"
-            paths='^(libs/data-access/(auth|matrix-client|accounts)/|libs/feature/auth/|libs/platform-native/src/lib/(session|secure)-storage\.service\.ts$|libs/util/matrix/src/lib/session\.model\.ts$|libs/application/runtime/src/lib/composition/application-capability\.providers\.ts$|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$|e2e/browser/journeys/accounts/qr-sign-in\.spec\.mts$|e2e/browser/support/qr-existing-device\.mts$|e2e/support/qr-camera\.mts$|e2e/support/homeserver/tuwunel-oauth/|libs/feature/settings/src/lib/devices/link-device/|libs/data-access/trust/|libs/feature/settings/src/lib/devices/devices-section\.component)'
+            paths='^(libs/data-access/(auth|matrix-client|accounts)/|libs/feature/auth/|libs/platform-native/src/lib/(session|secure)-storage\.service\.ts$|libs/util/matrix/src/lib/session\.model\.ts$|libs/application/runtime/src/lib/composition/application-capability\.providers\.ts$|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$|e2e/support/mas-account\.mts$|e2e/browser/journeys/accounts/qr-sign-in\.spec\.mts$|e2e/browser/support/qr-existing-device\.mts$|e2e/support/qr-camera\.mts$|e2e/support/homeserver/tuwunel-oauth/|libs/feature/settings/src/lib/devices/link-device/|libs/data-access/trust/|libs/feature/settings/src/lib/devices/devices-section\.component)'
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             # A version bump rewrites the matrix-js-sdk or crypto-wasm entries in these manifests.
             manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
             if grep -qE "$paths" <<< "$changed" || grep -qE '^[+-].*(matrix-js-sdk|@matrix-org/matrix-sdk-crypto-wasm)' <<< "$manifests"; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      # Whether a pull request touches what `mobile-mas-e2e` checks: everything the `mas` step
+      # covers, the native side of the path only this job drives, and a version bump of the
+      # Capacitor packages or secure storage plugin under it. Pushes answer false, as for `mas`.
+      - id: android-mas
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          MAS: ${{ steps.mas.outputs.run }}
+        run: |
+          run=$MAS
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            : "${BASE:?pull request has no base sha}"
+            paths='^(libs/platform-native/src/lib/native-token-bridge\.service\.ts$|libs/native/capacitor-push/|libs/application/runtime/src/lib/composition/trinity-host-navigation\.adapter\.ts$|capacitor\.config\.ts$|android/app/|e2e/mobile/specs/mas-native-tokens\.e2e\.mts$|e2e/mobile/support/(mas|session|app|android-shell)\.mts$|e2e/mobile/run\.mts$)'
+            changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
+            manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
+            if grep -qE "$paths" <<< "$changed" || grep -qE '^[+-].*(@capacitor/|@aparajita/capacitor-secure-storage)' <<< "$manifests"; then
               run=true
             fi
           fi
@@ -675,7 +695,8 @@ jobs:
   # Two jobs, each with its own emulator and homeserver, split the spec files by measured
   # duration (run 37659485183): navigation (~2:20) and deep-link (~1:30) are the slow ones
   # and sit in different shards, about 4:50 of specs each. Put a new spec in the lighter
-  # shard; scripts/ci-workflow.spec.mjs fails while a spec file is in neither.
+  # shard; scripts/ci-workflow.spec.mjs fails while a spec file is in neither, but for
+  # mas-native-tokens.e2e.mts, which `mobile-mas-e2e` runs.
   mobile-e2e:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
@@ -719,7 +740,7 @@ jobs:
               ./specs/smoke.e2e.mts,
               ./specs/sso.e2e.mts,
               ./specs/token-refresh-dex.e2e.mts
-    steps:
+    steps: &android-e2e-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -951,6 +972,36 @@ jobs:
         with:
           path: .appium
           key: ${{ steps.appium-cache.outputs.cache-primary-key }}
+
+  # A real OAuth account through the installed app against MAS, whose refreshes native code
+  # makes. Same steps as `mobile-e2e` on its own emulator, on the pull requests the `android-mas`
+  # step of `classify` picks. Non-blocking, like Element Android's Maestro job: no result job
+  # needs it, so it never blocks a merge, and a failure must still be read (ci-and-releases.md
+  # says what to do). The owner's rule: non-blocking until about 10 green runs in a row, then
+  # required through a result job.
+  mobile-mas-e2e:
+    needs: [classify, renderer]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.android-mas == 'true' && needs.renderer.result == 'success' }}
+    name: Mobile E2E (Android ${{ matrix.shard }}, non-blocking)
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    # Hang containment, as for `mobile-e2e`: its cold-cache steps set the limit. Measured ~11 min
+    # with warm caches (run 41277843937), ~6 of them the spec, mostly MAS's 60 s tokens.
+    timeout-minutes: 75
+    env:
+      TRINITY_EMULATOR_API_LEVEL: '36'
+      TRINITY_EMULATOR_TARGET: google_apis
+      TRINITY_EMULATOR_ARCH: x86_64
+      TRINITY_E2E_MAS: '1'
+    strategy:
+      matrix:
+        include:
+          - shard: mas
+            specs: ./specs/mas-native-tokens.e2e.mts
+    steps: *android-e2e-steps
 
   # Branch rules require the check "Mobile E2E (Android)"; both Android jobs report under
   # it through this job, which succeeds only when both succeeded.

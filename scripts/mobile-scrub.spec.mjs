@@ -15,6 +15,12 @@ describe('mobile E2E artifact scrub', () => {
     );
   });
 
+  it('removes MAS tokens passed as bare values', () => {
+    expect(scrub('"args":["mat_aBc_0x1","mar_dEf_0x2"] format_keep')).toBe(
+      '"args":["<token>","<token>"] format_keep',
+    );
+  });
+
   it('redacts tokens by key and bearer header, whatever their format', () => {
     // A Capacitor bridge log line: Tuwunel tokens are not syt_-prefixed.
     expect(

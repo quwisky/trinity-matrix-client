@@ -128,6 +128,17 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   because Synapse does not accept Dex's tokens; it seeds token-less OAuth registry entries, which
   keep the records through the sweep and start no client. It starts its own Dex because the stack's 2.46.1 hangs on a refresh grant
   ([dexidp/dex#5017](https://github.com/dexidp/dex/issues/5017)).
+- Native OAuth tokens: `mas-native-tokens.e2e.mts` (Android only, skips without the MAS stack)
+  signs a fresh account in on MAS's real pages in a Custom Tab, then waits through a real refresh
+  by the native vault, a restart, the upgrade from an older build's stored tokens, and a session
+  ended at MAS through re-auth to a new device. `TRINITY_E2E_MAS=1` adds the stack, and makes the
+  runner put this run's Caddy root in the emulator's system store (needs `adb root`, so a
+  `google_apis` image; gone at the next reboot), because native code trusts nothing else, and give
+  Chrome flags that skip its first-run screens and its certificate check. No app build changes.
+  It reads tokens on the device and compares digests. It sees that no token request left the
+  WebView through Resource Timing, which gives URLs, not bodies, and it revokes with the access
+  token, since the vault never hands out the refresh token. CI runs it in the non-blocking
+  `mobile-mas-e2e` job.
 - CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.
 
 ## MSC2545 image-pack management
