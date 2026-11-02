@@ -79,21 +79,26 @@ export async function seedInbox(
 
 /**
  * Collects what the page logs as errors, which includes CSP violations, and uncaught exceptions.
- * A failed homeserver request is part of the protocol (a 404 for absent account data, say), so only
- * a failed load from elsewhere counts.
+ * A homeserver answers 404 for absent data as part of the protocol, so only that status is let
+ * through; any other failed load fails the journey unless `allowed` names its URL.
  */
-export function watchConsoleErrors(page: Page): () => readonly string[] {
+export function watchConsoleErrors(
+  page: Page,
+  allowed: (url: string) => boolean = () => false,
+): () => readonly string[] {
   const problems: string[] = [];
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     const { url } = message.location();
-    if (
-      message.text().startsWith('Failed to load resource') &&
-      new URL(url || 'about:blank').pathname.startsWith('/_matrix/')
-    ) {
-      return;
+    const text = message.text();
+    if (text.startsWith('Failed to load resource')) {
+      const { pathname } = new URL(url || 'about:blank');
+      if (pathname.startsWith('/_matrix/') && text.includes('status of 404')) {
+        return;
+      }
+      if (allowed(url)) return;
     }
-    problems.push(`console: ${message.text()} ${url}`);
+    problems.push(`console: ${text} ${url}`);
   });
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
   return () => problems;

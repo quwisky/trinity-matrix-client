@@ -31,8 +31,16 @@ test.describe('Mentions inbox', () => {
   const hs = (): string => session.hs as string;
   let consoleErrors: () => readonly string[] = () => [];
 
+  // Only the failed journey expects a failing /notifications.
+  let notificationsMayFail = false;
   test.beforeEach(({ page }) => {
-    consoleErrors = watchConsoleErrors(page);
+    notificationsMayFail = false;
+    consoleErrors = watchConsoleErrors(
+      page,
+      (url) =>
+        notificationsMayFail &&
+        new URL(url).pathname.endsWith('/v3/notifications'),
+    );
   });
   test.afterEach(() => {
     expect(consoleErrors(), 'console errors and CSP violations').toEqual([]);
@@ -194,6 +202,7 @@ test.describe('Mentions inbox', () => {
     const seed = await seedInbox(request, hs(), matrixResources);
     await seed.post(`${KEYWORD} later`);
     let failing = true;
+    notificationsMayFail = true;
     await page.route('**/_matrix/client/v3/notifications**', (route) =>
       failing
         ? route.fulfill({ status: 500, json: { errcode: 'M_UNKNOWN' } })
@@ -283,7 +292,10 @@ test.describe('Mentions inbox', () => {
             const hidden = document.querySelector('.main');
             // After Back from any room focus rests on the routed page; it must not be left in
             // the conversation that is now hidden, nor lost.
-            return at?.checkVisibility() && !hidden?.contains(at)
+            return at &&
+              at !== document.body &&
+              at.checkVisibility() &&
+              !hidden?.contains(at)
               ? 'visible, outside the conversation'
               : `${at?.tagName}.${at?.className}`;
           }),
@@ -337,8 +349,15 @@ test.describe('Mentions inbox', () => {
       (el) => el.scrollWidth <= el.clientWidth,
     );
     expect(fits).toBe(true);
-    await expect(page.getByTestId('inbox-load-more')).toBeVisible();
-    await expect(page.getByTestId('inbox-refresh')).toBeVisible();
+    await expect(rows(page).first()).toContainText('W'.repeat(200));
+    for (const control of ['inbox-load-more', 'inbox-refresh']) {
+      await expect(page.getByTestId(control)).toBeVisible();
+      const box = await page.getByTestId(control).boundingBox();
+      expect(box?.x).toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
+        PHONE.width,
+      );
+    }
   });
 
   test('Load more says when it stops at its limit', async ({
@@ -351,9 +370,9 @@ test.describe('Mentions inbox', () => {
     let served = 0;
     await page.route('**/_matrix/client/v3/notifications**', async (route) => {
       // Three pages of 50 notifications, none of which mentions the reader.
-      const page = ++served;
+      const served_page = ++served;
       const notifications = Array.from({ length: 50 }, (_, i) => {
-        const n = page * 100 + i;
+        const n = served_page * 100 + i;
         return {
           actions: ['notify'],
           read: true,
@@ -370,7 +389,7 @@ test.describe('Mentions inbox', () => {
         };
       });
       await route.fulfill({
-        json: { notifications, next_token: `page${page}` },
+        json: { notifications, next_token: `page${served_page}` },
       });
     });
     await signInAndOpenInbox(page, seed);
