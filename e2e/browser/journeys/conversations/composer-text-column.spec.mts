@@ -64,7 +64,6 @@ test.describe('Composer text column on a phone', () => {
     const empty = await measure();
     await input.fill('Hello there');
     const typing = await measure();
-    console.log('MEASURE', JSON.stringify({ empty, typing }));
     // Format moved into the `+` sheet; Send only appears with something to send.
     await expect(page.getByTestId('composer-format')).toHaveCount(0);
     expect(empty.buttons).toHaveLength(2);
