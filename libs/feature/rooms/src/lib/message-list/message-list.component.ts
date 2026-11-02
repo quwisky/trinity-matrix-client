@@ -345,6 +345,8 @@ export class MessageListComponent extends MessageListBase {
           this.capturePrependAnchor(el);
           this.prependAnchorGeneration++;
           this.expectedProgrammaticScrollTop = null;
+          // Its scroll event must not move the anchor by this again.
+          this.scrollTop.set(el.scrollTop);
         }
         // Keep the viewport on what the user was reading, through the strip and the final prepend.
         this.pendingPrepend = this.loadingOlder();

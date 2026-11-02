@@ -23,6 +23,7 @@ import { createRoom } from '../../support/space-journey.mts';
  */
 const session = homeserverSession();
 const { defaultBrowserType: _browser, ...iPhone } = devices['iPhone 14'];
+// Rows stay one line on any font: a wrapped row leaves the gesture short of the load zone.
 const MESSAGE_COUNT = 60;
 
 test.describe('Older history under a finger on an iPhone', () => {
@@ -59,7 +60,7 @@ test.describe('Older history under a finger on an iPhone', () => {
         `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-${i}`,
         {
           headers: { Authorization: `Bearer ${token}` },
-          data: { msgtype: 'm.text', body: `line ${i} ${runId}` },
+          data: { msgtype: 'm.text', body: `line ${i}` },
         },
       );
     }
@@ -72,7 +73,7 @@ test.describe('Older history under a finger on an iPhone', () => {
     await openRoom(page, roomName);
     const scroll = page.locator('.scroll').first();
     await expect(
-      page.locator('.msg', { hasText: `line ${MESSAGE_COUNT - 1} ${runId}` }),
+      page.locator('.msg', { hasText: `line ${MESSAGE_COUNT - 1}` }),
     ).toBeVisible({ timeout: 30_000 });
 
     // Hold the page back until the finger is down and the row is read.
