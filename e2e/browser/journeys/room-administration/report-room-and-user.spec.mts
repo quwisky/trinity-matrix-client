@@ -85,14 +85,19 @@ test.describe('Report to your server admins', () => {
   test.skip(!session.available, 'needs a homeserver');
 
   test('reports a message', async ({ page, request }) => {
-    const { hs, runId, user, pass, me, roomName, room_id } = await setUp(
+    // Someone else's message: you cannot report your own.
+    const { hs, runId, user, pass, other, roomName, room_id } = await setUp(
       request,
       'm',
+      true,
     );
     const body = `report me ${runId}`;
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${runId}1`,
-      { headers: auth(me), data: { msgtype: 'm.text', body } },
+      {
+        headers: auth(other as AccountSession),
+        data: { msgtype: 'm.text', body },
+      },
     );
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
