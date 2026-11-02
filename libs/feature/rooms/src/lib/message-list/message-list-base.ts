@@ -36,7 +36,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { quoteBlock, type Mention } from '@trinity/util/matrix';
 import { HapticsService } from '@trinity/platform-native';
-import { MessageRowModel } from './message-row-model';
+import { MessageRowModel, newestMessageReaders } from './message-row-model';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { delayedBusy } from '@trinity/util/ui';
 import {
@@ -308,9 +308,7 @@ export abstract class MessageListBase {
   readonly rows = this.rowModel.rows;
 
   /** Who has read the newest message; readers further back aren't shown. */
-  readonly latestReceipts = computed(
-    () => this.rows().at(-1)?.readReceipts ?? [],
-  );
+  readonly latestReceipts = computed(() => newestMessageReaders(this.rows()));
 
   /** Member event id → the id of the group row that holds it. */
   readonly runOf = this.rowModel.runOf;

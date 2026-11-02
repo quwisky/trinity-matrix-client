@@ -7,6 +7,7 @@ import {
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import { MessageListBase } from './message-list-base';
+import { newestMessageReaders } from './message-row-model';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import {
   ConversationComposeStub,
@@ -226,6 +227,22 @@ describe('MessageListBase read receipts', () => {
     expect(
       fixture.componentInstance.latestReceipts().map((r) => r.name),
     ).toEqual(['caught-up']);
+  });
+});
+
+describe('MessageListBase read receipts past a system line', () => {
+  it('keeps the readers of the newest message when a system line follows it', () => {
+    const rows = [
+      {
+        ...msg('$newest'),
+        readReceipts: [
+          { userId: '@b:hs', name: 'Bob', initial: 'B', avatarMxc: null },
+        ],
+      },
+      { ...msg('$join'), kind: 'event', readReceipts: [] },
+    ] as never as Parameters<typeof newestMessageReaders>[0];
+
+    expect(newestMessageReaders(rows).map((r) => r.name)).toEqual(['Bob']);
   });
 });
 

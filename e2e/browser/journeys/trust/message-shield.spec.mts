@@ -228,26 +228,14 @@ test.describe('Message authenticity shields', () => {
     const runId = `${testResourceId('run')}st`;
     const user = `shield-tip-${runId}`;
     const pass = `${user}-pass`;
-    const seerUser = `shield-seer-${runId}`;
-    const seerPass = `${seerUser}-pass`;
-    const seerName = `Shield reader ${runId}`;
     const roomName = `Sealed ${runId}`;
     // Long enough to wrap to the row's right edge: the shield must reserve its own
     // column rather than let the text run underneath it.
     const body = `encrypted from an unsigned device ${runId} — long enough that this line wraps all the way across the message body and reaches the right-hand edge of the row`;
 
     await registerUser(request, user, pass);
-    await registerUser(request, seerUser, seerPass);
-    const ownerSession = await passwordLogin(request, hs, user, pass);
-    const seerSession = await passwordLogin(request, hs, seerUser, seerPass);
-    const seerAuth = {
-      Authorization: `Bearer ${seerSession.accessToken}`,
-    };
-    await request.put(
-      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(seerSession.userId)}/displayname`,
-      { headers: seerAuth, data: { displayname: seerName } },
-    );
 
+    const ownerSession = await passwordLogin(request, hs, user, pass);
     const { room_id } = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: { Authorization: `Bearer ${ownerSession.accessToken}` },
@@ -265,17 +253,6 @@ test.describe('Message authenticity shields', () => {
       })
       .then((r) => r.json());
     expect(room_id).toBeTruthy();
-    const ownerAuth = {
-      Authorization: `Bearer ${ownerSession.accessToken}`,
-    };
-    await request.post(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/invite`,
-      { headers: ownerAuth, data: { user_id: seerSession.userId } },
-    );
-    await request.post(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
-      { headers: seerAuth },
-    );
 
     // Device A: owns the cross-signing identity every other device is judged against.
     const asSession = { available: true, hs, user, pass } as HomeserverSession;

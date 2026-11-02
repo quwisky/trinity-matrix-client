@@ -51,6 +51,7 @@ import {
 import { RoomMembersService } from '@trinity/data-access/room-administration';
 import { quoteBlock } from '@trinity/util/matrix';
 import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
+import { newestMessageReaders } from '../message-list/message-row-model';
 import {
   MessageRowComponent,
   type MessageLongPressContext,
@@ -229,8 +230,8 @@ export class ThreadViewComponent implements OnDestroy {
   );
 
   /** Who has read the thread's newest message; readers further back aren't shown. */
-  protected readonly latestReceipts = computed(
-    () => this.rows().at(-1)?.readReceipts ?? [],
+  protected readonly latestReceipts = computed(() =>
+    newestMessageReaders(this.rows()),
   );
 
   /** Whether older thread replies remain to be paged in. */

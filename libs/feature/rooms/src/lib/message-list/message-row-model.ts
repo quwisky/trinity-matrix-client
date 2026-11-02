@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import {
   type MessageView,
+  type ReceiptView,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import {
@@ -196,4 +197,16 @@ export class MessageRowModel {
     this.groupCache = new Map();
     this.expandedRunIds.set(new Set());
   }
+}
+
+/** System lines carry no readers, so one arriving must not empty the strip. */
+export function newestMessageReaders(
+  rows: readonly MessageRow[],
+): readonly ReceiptView[] {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].kind !== 'event') {
+      return rows[i].readReceipts;
+    }
+  }
+  return [];
 }
