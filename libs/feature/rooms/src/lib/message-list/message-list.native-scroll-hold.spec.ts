@@ -252,6 +252,27 @@ describe('message list on iOS: older history under a finger', () => {
     expect(ctx.view.st).toBe(95);
   });
 
+  it('counts a move once when the page lands before its scroll event', () => {
+    const ctx = list();
+    const row = ctx.scroll.querySelector('[data-mid="$5"]') as Element;
+    touch(row, 'touchstart', 1);
+    askForPage(ctx);
+    // The landing effect reads the rows before they render, so the page counts only once it has.
+    Object.defineProperty(ctx.view, 'prepended', {
+      get: () => (ctx.scroll.querySelector('[data-mid="$p0"]') ? PAGE : 0),
+      set: () => undefined,
+    });
+
+    ctx.view.st = 52; // the list has moved; its scroll event is still to come
+    const before = ctx.anchorTop();
+    landPage(ctx);
+    ctx.cmp.onScroll();
+    measureRows(ctx.scroll, ['$p0', '$p1', '$p2', '$p3', '$p4'], 40);
+
+    expect(ctx.anchorTop()).toBe(before);
+    expect(held(ctx.scroll)).toBe(-PAGE);
+  });
+
   it('follows a row that grows above the anchor in the frame it grows', () => {
     const ctx = list();
     const row = ctx.scroll.querySelector('[data-mid="$5"]') as Element;
