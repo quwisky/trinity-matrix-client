@@ -544,6 +544,40 @@ describe('MessageListComponent', () => {
     expect(st).toBe(JUMPED);
   });
 
+  it('keeps a jump made as a loaded room opens, over the pin to its newest message', async () => {
+    const { fixture, container } = await renderList({
+      messages: many(30),
+      roomId: '!a:hs',
+    });
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 0;
+    Object.defineProperties(scroll, {
+      scrollTop: { get: () => st, set: (value: number) => (st = value) },
+      scrollHeight: { value: 3000 },
+      clientHeight: { value: 600 },
+    });
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+      frames.push(frame);
+      return frames.length;
+    });
+    const JUMPED = 40;
+    Element.prototype.scrollIntoView = vi.fn(() => (st = JUMPED));
+
+    fixture.componentRef.setInput('roomId', '!b:hs');
+    fixture.componentRef.setInput(
+      'messages',
+      Array.from({ length: 30 }, (_, i) =>
+        msg(`$b${i}`, '@a:hs', 'A', 1000 + i * 10_000),
+      ),
+    );
+    fixture.componentRef.setInput('jumpToId', '$b25');
+    fixture.detectChanges();
+    for (const frame of frames.splice(0)) frame(0);
+
+    expect(st).toBe(JUMPED);
+  });
+
   it('jumping to a system event hidden in a run expands the run and targets its row', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const event = (id: string, ts: number): MessageView => ({

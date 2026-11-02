@@ -161,6 +161,7 @@ export class MessageListComponent extends MessageListBase {
   private prependAnchorActive = false;
   // Scroll-anchor session token, bumped by every gesture that owns the anchor; not a latest-wins guard.
   private prependAnchorGeneration = 0;
+  private jumpsRequested = 0;
   /** Last scrollTop written by our own correction; distinguishes it from user movement. */
   private expectedProgrammaticScrollTop: number | null = null;
   /** Pending end of the current scroll; see {@link markScrolling}. */
@@ -407,9 +408,11 @@ export class MessageListComponent extends MessageListBase {
         // Content appeared or vanished above the rows: a pinned reader stays pinned.
         (chromeToggled && untracked(() => this.atBottomSig())) ||
         this.backfilling;
+      const jumpsBefore = this.jumpsRequested;
 
       requestAnimationFrame(() => {
-        if (stickToBottom) {
+        // A jump made as a loaded room opens lands before this frame, and the pin would undo it.
+        if (stickToBottom && jumpsBefore === this.jumpsRequested) {
           this.writeScrollTop(el, el.scrollHeight);
         }
 
@@ -1096,6 +1099,7 @@ export class MessageListComponent extends MessageListBase {
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);
+    this.jumpsRequested++;
     // A jump ends a fling and starts none while it scrolls. A target still shown as a placeholder
     // has no `data-mid` yet, so it takes the path below and is revealed after the render that mounts it.
     this.beginJump();
