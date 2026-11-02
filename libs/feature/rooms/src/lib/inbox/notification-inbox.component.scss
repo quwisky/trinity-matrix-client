@@ -66,15 +66,14 @@
     min-height: 0;
     padding: var(--trinity-space-3) var(--trinity-density-shell-padding-inline);
 
-    // The desktop identity dock floats over this scroller, as it does over the room list.
-    @media #{$md} {
-      padding-block-end: calc(
-        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
-      );
-      scroll-padding-block-end: calc(
-        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
-      );
-    }
+    // The identity dock floats over this scroller, as it does over the room list. Leave real
+    // content space for the last row and tell focus-driven scrolling about the same obstruction.
+    padding-block-end: calc(
+      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+    );
+    scroll-padding-block-end: calc(
+      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+    );
   }
 
   .inbox__list {
