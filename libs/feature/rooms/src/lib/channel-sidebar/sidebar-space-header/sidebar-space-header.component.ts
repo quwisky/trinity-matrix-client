@@ -29,6 +29,7 @@ import {
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
 } from '@trinity/data-access/room-library';
+import { isMobileOs } from '@trinity/platform-native';
 
 /**
  * What the header asks the sidebar to do. The sidebar maps each kind onto an existing output, so
@@ -81,6 +82,12 @@ export type SidebarSpaceAction =
   ],
 })
 export class SidebarSpaceHeaderComponent {
+  /** A phone has no Ctrl/Cmd+K, so it gets a plain search button. */
+  protected readonly searchLabel = isMobileOs()
+    ? 'Search'
+    : 'Search (Ctrl/Cmd+K)';
+  protected readonly searchIcon = isMobileOs() ? 'search' : 'command';
+
   /** The orderings offered in the "Order rooms" submenu. */
   protected readonly sortModes = TRINITY_ROOM_SORTS;
 

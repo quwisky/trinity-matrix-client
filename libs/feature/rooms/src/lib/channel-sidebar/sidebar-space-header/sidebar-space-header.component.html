@@ -23,11 +23,11 @@
         trnIconButton
         class="sidebar__action"
         (click)="spaceAction.emit({ kind: 'open-switcher' })"
-        aria-label="Search (Ctrl/Cmd+K)"
-        trnTooltip="Search (Ctrl/Cmd+K)"
+        [attr.aria-label]="searchLabel"
+        [trnTooltip]="searchLabel"
         data-testid="open-switcher"
       >
-        <trn-icon name="command" motion="pop" />
+        <trn-icon [name]="searchIcon" motion="pop" />
       </button>
     }
     <!-- A space keeps only its most-reached-for action out here; the rest live in the space-name menu.
