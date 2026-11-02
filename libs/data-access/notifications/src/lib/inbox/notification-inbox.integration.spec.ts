@@ -315,7 +315,7 @@ describe('NotificationInboxService against the real SDK', () => {
       setUp.client.stopClient();
     });
 
-    it("removes a room the first sync doesn't bring, as for a room the person left", async () => {
+    it("hides a room the first sync doesn't bring and keeps its record", async () => {
       const setUp = beforeSync([entry(message('$e', NOW))]);
       const { inbox, store, open } = await loadedWithoutRooms(setUp);
       await store.put(ME, { eventId: '$e', roomId: ROOM, ts: NOW }, NOW);
@@ -327,7 +327,9 @@ describe('NotificationInboxService against the real SDK', () => {
       await flush();
 
       expect(inbox.all()).toEqual([]);
-      expect(store.rows(ME)).toEqual([]);
+      expect(store.rows(ME)).toEqual([
+        expect.objectContaining({ eventId: '$e' }),
+      ]);
       setUp.client.stopClient();
     });
 
