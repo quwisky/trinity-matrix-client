@@ -5,7 +5,11 @@ import {
   testResourceId,
   type Page,
 } from '../../../fixtures.mts';
-import { login, type HomeserverSession } from '../../../support/app.mts';
+import {
+  login,
+  waitForRooms,
+  type HomeserverSession,
+} from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
   closeSettings,
@@ -147,6 +151,22 @@ test.describe('Settings', () => {
     await openSection(page, 'appearance');
     await page.getByTestId('mode-light').click();
     await expect.poll(() => hasDarkMode(page)).toBe(false);
+  });
+
+  test.describe('a saved Light mode on a dark system', () => {
+    test.use({ colorScheme: 'dark' });
+
+    test('ends without the dark class once preferences load', async ({
+      page,
+    }) => {
+      await openSection(page, 'appearance');
+      await page.getByTestId('mode-light').click();
+      await expect.poll(() => hasDarkMode(page)).toBe(false);
+
+      await page.reload();
+      await waitForRooms(page);
+      await expect.poll(() => hasDarkMode(page)).toBe(false);
+    });
   });
 
   test('compact density tightens the spacing scale itself', async ({
@@ -446,6 +466,68 @@ test.describe('Conversation density', () => {
           expect(height).toBeGreaterThanOrEqual(44);
         }
       }
+    });
+  });
+});
+
+/** Records `html.dark` whenever the document changes, and at the moment `.app-frame` appears. */
+async function recordDarkClass(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const record = { atFrame: null as boolean | null, everDark: false };
+    (window as unknown as { __darkRecord: typeof record }).__darkRecord =
+      record;
+    const observer = new MutationObserver(() => {
+      const dark = document.documentElement.classList.contains('dark');
+      record.everDark ||= dark;
+      if (record.atFrame === null && document.querySelector('.app-frame')) {
+        record.atFrame = dark;
+      }
+    });
+    observer.observe(document, {
+      attributes: true,
+      attributeFilter: ['class'],
+      childList: true,
+      subtree: true,
+    });
+  });
+}
+
+const darkRecord = (page: Page) =>
+  page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __darkRecord: { atFrame: boolean | null; everDark: boolean };
+        }
+      ).__darkRecord,
+  );
+
+test.describe('Appearance at startup', () => {
+  test.describe('on a dark system', () => {
+    test.use({ colorScheme: 'dark' });
+
+    test('the app is dark from the moment it first renders', async ({
+      page,
+    }) => {
+      await recordDarkClass(page);
+      await page.goto('/login');
+      await page.locator('.app-frame').waitFor();
+      expect((await darkRecord(page)).atFrame).toBe(true);
+    });
+  });
+
+  test.describe('on a light system', () => {
+    test.use({ colorScheme: 'light' });
+
+    test('the dark class never appears', async ({ page }) => {
+      await recordDarkClass(page);
+      await page.goto('/login');
+      await page.locator('.app-frame').waitFor();
+      await page.waitForTimeout(1_000);
+      expect(await darkRecord(page)).toEqual({
+        atFrame: false,
+        everDark: false,
+      });
     });
   });
 });
