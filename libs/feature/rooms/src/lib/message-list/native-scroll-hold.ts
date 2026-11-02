@@ -3,6 +3,9 @@ import { signal } from '@angular/core';
 /** How close to the old position a settled scroll must land to count as undone by the scroll view. */
 const UNDONE_WITHIN_PX = 8;
 
+/** How long a write can be undone for: the scroll view does it within a few frames. */
+const UNDONE_WITHIN_MS = 300;
+
 /**
  * iOS scrolls this list in a native scroll view that owns the position during a touch and through
  * momentum: a `scrollTop` written then is overwritten within a few frames, unless it lies past the
@@ -17,7 +20,11 @@ const UNDONE_WITHIN_PX = 8;
 export class NativeScrollHold {
   private touches = 0;
   /** A correction the scroll view may yet undo: where the list stood before it, and after. */
-  private written: { readonly from: number; readonly to: number } | null = null;
+  private written: {
+    readonly from: number;
+    readonly to: number;
+    readonly at: number;
+  } | null = null;
   /** The scroll view undid a write: wait for the reader to move before trying again. */
   private refused = false;
 
@@ -50,10 +57,15 @@ export class NativeScrollHold {
   }
 
   /** Note a correction just written, so {@link scrolled} can tell if the scroll view undoes it. */
-  wrote(from: number, to: number): void {
+  wrote(from: number, to: number, at: number): void {
     if (this.enabled && Math.abs(to - from) > UNDONE_WITHIN_PX * 2) {
-      this.written = { from, to };
+      this.written = { from, to, at };
     }
+  }
+
+  /** The list is about to go somewhere itself: arriving back at the old position is not an undo. */
+  forgetWrite(): void {
+    this.written = null;
   }
 
   /**
@@ -61,8 +73,11 @@ export class NativeScrollHold {
    * write can still land under a finger, and a few frames later the scroll view puts the old
    * position back. Returns true when it did, with the correction held again.
    */
-  scrolled(scrollTop: number): boolean {
-    const written = this.written;
+  scrolled(scrollTop: number, now: number): boolean {
+    const written =
+      this.written && now - this.written.at <= UNDONE_WITHIN_MS
+        ? this.written
+        : null;
     if (written && Math.abs(scrollTop - written.to) < 1) {
       return false; // the event for the write itself; it can still be undone
     }

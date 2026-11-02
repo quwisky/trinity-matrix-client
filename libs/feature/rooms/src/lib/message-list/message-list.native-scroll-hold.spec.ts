@@ -57,7 +57,10 @@ describe('message list on iOS: older history under a finger', () => {
     });
   });
 
+  const ownScrollIntoView = Element.prototype.scrollIntoView;
+
   afterEach(() => {
+    Element.prototype.scrollIntoView = ownScrollIntoView;
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -310,6 +313,89 @@ describe('message list on iOS: older history under a finger', () => {
     expect(held(ctx.scroll)).toBe(-PAGE);
     vi.advanceTimersByTime(60_000);
     expect(ctx.view.st).toBe(100);
+  });
+
+  it('gives up the hold for a jump to a message, and does not read the jump as an undo', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const ctx = list();
+    const row = ctx.scroll.querySelector('[data-mid="$5"]') as Element;
+    touch(row, 'touchstart', 1);
+    askForPage(ctx);
+    landPage(ctx);
+    expect(held(ctx.scroll)).toBe(-PAGE);
+
+    ctx.cmp.jumpTo('$5');
+
+    expect(held(ctx.scroll)).toBe(0);
+    expect(ctx.view.st).toBe(100 + PAGE);
+    expect(scrollIntoView).toHaveBeenCalled();
+
+    // A target near the top of history puts the list back about where the hold began.
+    ctx.view.st = 100;
+    ctx.cmp.onScroll();
+    TestBed.tick();
+
+    expect(held(ctx.scroll)).toBe(0);
+  });
+
+  it('drops the hold when the list moves to another room', () => {
+    const ctx = list();
+    const row = ctx.scroll.querySelector('[data-mid="$5"]') as Element;
+    touch(row, 'touchstart', 1);
+    askForPage(ctx);
+    landPage(ctx);
+    expect(held(ctx.scroll)).toBe(-PAGE);
+
+    ctx.fixture.componentRef.setInput('roomId', '!other:hs');
+    ctx.fixture.detectChanges();
+    TestBed.tick();
+
+    expect(held(ctx.scroll)).toBe(0);
+    expect(ctx.view.st).toBe(100);
+  });
+
+  it('settles when the system cancels the touch', () => {
+    const ctx = list();
+    const row = ctx.scroll.querySelector('[data-mid="$5"]') as Element;
+    touch(row, 'touchstart', 1);
+    askForPage(ctx);
+    landPage(ctx);
+
+    touch(row, 'touchcancel', 0);
+    vi.advanceTimersByTime(IDLE_MS);
+
+    expect(ctx.view.st).toBe(100 + PAGE);
+    expect(held(ctx.scroll)).toBe(0);
+  });
+
+  it('arms no timer for a touch that ends after the list has gone', () => {
+    const ctx = list();
+    const row = ctx.scroll.querySelector('[data-mid="$5"]') as Element;
+    touch(row, 'touchstart', 1);
+    ctx.fixture.destroy();
+    vi.clearAllTimers();
+
+    touch(row, 'touchend', 0);
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('corrects from a bounce above the top without counting the bounce as a correction', () => {
+    // WebKit reports the rubber band as a negative scrollTop. The hold can express that position,
+    // so clamping the target to 0 would pull the rows up by the bounce.
+    const ctx = list();
+    const row = ctx.scroll.querySelector('[data-mid="$5"]') as Element;
+    touch(row, 'touchstart', 1);
+    askForPage(ctx);
+    landPage(ctx);
+    expect(held(ctx.scroll)).toBe(-PAGE);
+
+    ctx.view.st = -84;
+    ctx.cmp.onScroll();
+    measureRows(ctx.scroll, ['$p0'], 40);
+
+    expect(held(ctx.scroll)).toBe(-PAGE);
   });
 
   it('gives up the hold for a jump to the latest message', () => {

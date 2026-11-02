@@ -556,7 +556,7 @@ export class MessageListComponent extends MessageListBase {
       return;
     }
     this.markScrolling();
-    if (this.scrollHold.scrolled(el.scrollTop)) {
+    if (this.scrollHold.scrolled(el.scrollTop, performance.now())) {
       this.showScrollHold(el);
     }
     // How fast the reader moves the list. The list's own writes are taken out as made
@@ -645,6 +645,7 @@ export class MessageListComponent extends MessageListBase {
   private watchTouches(el: HTMLElement): void {
     const passive = { passive: true } as const;
     const ended = (event: Event): void => {
+      if (this.destroyRef.destroyed) return;
       this.scrollHold.touched((event as TouchEvent).touches.length);
       this.markScrolling();
     };
@@ -664,7 +665,10 @@ export class MessageListComponent extends MessageListBase {
     el.style.setProperty('--scroll-hold', `${-this.scrollHold.shift()}px`);
   }
 
-  /** Move by a correction, or hold it while a write would be overwritten; see {@link NativeScrollHold}. */
+  /**
+   * Move by a correction, or hold it while a write would be overwritten; see {@link NativeScrollHold}.
+   * `top` is unclamped: WebKit reports a bounce as a negative scrollTop, which a hold can express.
+   */
   private correctScrollTop(el: HTMLElement, top: number): void {
     if (this.scrollHold.ownedByScrollView(this.scrollIdle !== null)) {
       this.scrollHold.shift.update((shift) => shift + top - el.scrollTop);
@@ -676,8 +680,8 @@ export class MessageListComponent extends MessageListBase {
 
   private writeCorrection(el: HTMLElement, top: number): void {
     const from = el.scrollTop;
-    this.writeScrollTop(el, top);
-    this.scrollHold.wrote(from, el.scrollTop);
+    this.writeScrollTop(el, Math.max(0, top));
+    this.scrollHold.wrote(from, el.scrollTop, performance.now());
   }
 
   private settleScrollHold(): void {
@@ -701,6 +705,7 @@ export class MessageListComponent extends MessageListBase {
    * off this is the plain `fling.end()` no-op and the scroll activity is left alone.
    */
   private beginJump(): void {
+    this.scrollHold.forgetWrite();
     this.fling.end();
     if (!this.flingPlaceholders()) return;
     this.jumping = true;
@@ -920,7 +925,7 @@ export class MessageListComponent extends MessageListBase {
         this.rowsRegionTop(el),
       );
       if (delta !== 0) {
-        this.correctScrollTop(el, Math.max(0, st + delta));
+        this.correctScrollTop(el, st + delta);
       }
     }
     this.revealFocusIn(resized);
@@ -973,7 +978,7 @@ export class MessageListComponent extends MessageListBase {
           ) {
             return;
           }
-          this.correctScrollTop(el, Math.max(0, el.scrollTop + delta));
+          this.correctScrollTop(el, el.scrollTop + delta);
         },
         { injector: this.injector },
       ),
@@ -1057,12 +1062,10 @@ export class MessageListComponent extends MessageListBase {
     if (anchor) {
       const currentOffset =
         anchor.getBoundingClientRect().top - el.getBoundingClientRect().top;
-      top = Math.max(0, el.scrollTop + currentOffset - anchorOffset);
+      top = el.scrollTop + currentOffset - anchorOffset;
     } else if (idx >= 0) {
-      top = Math.max(
-        0,
-        this.rowsRegionTop(el) + offsetOf(this.prefix(), idx) - anchorOffset,
-      );
+      top =
+        this.rowsRegionTop(el) + offsetOf(this.prefix(), idx) - anchorOffset;
     } else {
       top = el.scrollHeight - prevHeight + prevTop;
     }
