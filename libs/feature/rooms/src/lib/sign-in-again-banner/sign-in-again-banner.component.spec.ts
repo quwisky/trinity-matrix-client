@@ -2,6 +2,10 @@ import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { of } from 'rxjs';
 import { fireEvent, render, screen } from '@trinity/testing';
@@ -16,9 +20,13 @@ const dismissSignInAgain = vi.fn();
 const navigate = vi.fn(() => Promise.resolve(true));
 const confirm$ = vi.fn(() => of(true));
 
-function renderBanner() {
+function renderBanner(hasMentionHistory = false) {
   return render(SignInAgainBannerComponent, {
     providers: [
+      {
+        provide: ACCOUNT_LIFECYCLE_PORT,
+        useValue: { hasMentionHistory: () => of(hasMentionHistory) },
+      },
       MockProvider(MatrixClientService, {
         activeUserId: signal('@me:hs').asReadonly(),
       }),
@@ -47,6 +55,28 @@ beforeEach(() => {
 });
 
 describe('SignInAgainBannerComponent', () => {
+  it.each([
+    [true, true],
+    [false, false],
+  ])(
+    'the question says the mention history goes only with history (%s)',
+    async (hasHistory, says) => {
+      const { container } = await renderBanner(hasHistory);
+
+      fireEvent.click(
+        [...container.querySelectorAll('button')].find((button) =>
+          button.textContent?.includes('Sign in again'),
+        ) as HTMLButtonElement,
+      );
+
+      const { message } = (
+        confirm$.mock.calls as unknown as [{ message: string }][]
+      )[0]![0];
+      expect(message.includes(MENTION_HISTORY_LOSS)).toBe(says);
+      expect(navigate).toHaveBeenCalledOnce();
+    },
+  );
+
   it('shows only while it holds the global banner slot', async () => {
     const { fixture, container } = await renderBanner();
     expect(container.querySelector('trn-banner')).not.toBeNull();
