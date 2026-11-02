@@ -1,7 +1,8 @@
-import { signal } from '@angular/core';
+import { signal, type Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  ClientEvent,
   FeatureSupport,
   HTTPError,
   MatrixError,
@@ -74,7 +75,10 @@ function realClient(rows: readonly unknown[] = []) {
   return { client, room };
 }
 
-function setup(client: MatrixClient) {
+function setup(
+  client: MatrixClient,
+  serverSynced: Signal<boolean> = signal(true),
+) {
   const store = new FakeMentionStore();
   TestBed.configureTestingModule({
     providers: [
@@ -83,6 +87,8 @@ function setup(client: MatrixClient) {
         isInitialized: true,
         instance: client,
         activeUserId: signal<string | null>(ME).asReadonly(),
+        serverSynced: () => serverSynced(),
+        roomsPrepared: () => serverSynced(),
       }),
       MockProvider(MentionInboxPreferences, {
         recordAllowed: signal(true).asReadonly(),
@@ -174,6 +180,187 @@ describe('NotificationInboxService against the real SDK', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     Thread.setServerSideSupport(FeatureSupport.None);
+  });
+
+  describe('before the first sync', () => {
+    /** A signed-in client whose sync hasn't answered: the server lists a room it doesn't hold. */
+    function beforeSync(rows: readonly unknown[]) {
+      const { client, room } = realClient(rows);
+      client.store.removeRoom(ROOM);
+      room.name = 'Team';
+      vi.spyOn(room, 'getMember').mockReturnValue({ name: 'Alice' } as never);
+      const state = vi.spyOn(client, 'getSyncState').mockReturnValue(null);
+      const serverSynced = signal(false);
+      /** As the SDK does it: rooms first, then the state, then the projection's latched signal. */
+      const sync = (known = true): void => {
+        if (known) client.store.storeRoom(room);
+        state.mockReturnValue(SyncState.Prepared);
+        client.emit(ClientEvent.Sync, SyncState.Prepared, null);
+        serverSynced.set(true);
+      };
+      return { client, room, state, serverSynced, sync };
+    }
+
+    const NOW = Date.now();
+    const named = {
+      roomName: 'Team',
+      senderName: 'Alice',
+      preview: { kind: 'text', text: 'hello' },
+    };
+    const raw = {
+      roomName: ROOM,
+      senderName: ALICE,
+      preview: { kind: 'unavailable' },
+    };
+
+    it('waits for the rooms, and then shows the room, the sender and the message', async () => {
+      const { client, state, serverSynced, sync } = beforeSync([
+        entry(message('$e', NOW)),
+      ]);
+      const list = vi.mocked(client.http.authedRequest);
+      const { inbox } = setup(client, serverSynced);
+
+      const done = firstValueFrom(inbox.refresh());
+      await flush();
+      expect(inbox.status()).toBe('loading');
+      expect(list).not.toHaveBeenCalled();
+
+      // A failed sync request isn't a room list.
+      state.mockReturnValue(SyncState.Error);
+      client.emit(ClientEvent.Sync, SyncState.Error, null);
+      await flush();
+      expect(list).not.toHaveBeenCalled();
+
+      sync();
+      await done;
+
+      expect(inbox.all()[0]).toMatchObject(named);
+      expect(inbox.status()).toBe('ready');
+      expect(list).toHaveBeenCalledTimes(1);
+      client.stopClient();
+    });
+
+    /** The bound has passed, so the list is on screen with no room to name its rows. */
+    async function loadedWithoutRooms(setUp: ReturnType<typeof beforeSync>) {
+      vi.useFakeTimers();
+      const opened = setup(setUp.client, setUp.serverSynced);
+      const done = firstValueFrom(opened.inbox.refresh());
+      await vi.advanceTimersByTimeAsync(10_000);
+      await done;
+      return opened;
+    }
+
+    it('shows the list after 10 s, with no text, and asks to load again once the room arrives', async () => {
+      const setUp = beforeSync([entry(message('$e', NOW))]);
+      const { inbox, open } = await loadedWithoutRooms(setUp);
+
+      const before = inbox.all()[0];
+      expect(before).toMatchObject(raw);
+      expect(JSON.stringify(before)).not.toContain('hello');
+      expect(inbox.status()).toBe('ready');
+
+      setUp.sync();
+      expect(inbox.status()).toBe('idle');
+
+      await open();
+      expect(inbox.all()[0]).toMatchObject(named);
+      expect(inbox.status()).toBe('ready');
+      setUp.client.stopClient();
+    });
+
+    it('asks again for a row judged just before the sync lands', async () => {
+      const setUp = beforeSync([
+        entry(message('$plain', NOW)),
+        entry(
+          message('$slow', NOW + 1, {
+            type: 'm.room.encrypted',
+            content: ciphertext(),
+          }),
+        ),
+      ]);
+      setUp.state.mockReturnValue(SyncState.Prepared);
+      vi.spyOn(setUp.client, 'getSyncStateData').mockReturnValue({
+        fromCache: true,
+      });
+      vi.spyOn(setUp.client, 'decryptEventIfNeeded').mockImplementation(
+        async () => {
+          await flush();
+          setUp.sync();
+        },
+      );
+      const { inbox, open } = setup(setUp.client, setUp.serverSynced);
+
+      await open();
+
+      expect(inbox.all().map((row) => row.roomName)).toContain(ROOM);
+      expect(inbox.status()).toBe('idle');
+      setUp.client.stopClient();
+    });
+
+    it('names a row from a cached room list once the server sync brings its room', async () => {
+      const setUp = beforeSync([entry(message('$e', NOW))]);
+      setUp.state.mockReturnValue(SyncState.Prepared);
+      vi.spyOn(setUp.client, 'getSyncStateData').mockReturnValue({
+        fromCache: true,
+      });
+      const { inbox, open } = setup(setUp.client, setUp.serverSynced);
+
+      await open();
+      expect(inbox.all()[0]).toMatchObject(raw);
+
+      setUp.sync();
+      expect(inbox.status()).toBe('idle');
+      await open();
+      expect(inbox.all()[0]).toMatchObject(named);
+      setUp.client.stopClient();
+    });
+
+    it("removes a room the first sync doesn't bring, as for a room the person left", async () => {
+      const setUp = beforeSync([entry(message('$e', NOW))]);
+      const { inbox, store, open } = await loadedWithoutRooms(setUp);
+      await store.put(ME, { eventId: '$e', roomId: ROOM, ts: NOW }, NOW);
+
+      setUp.sync(false);
+      expect(inbox.status()).toBe('idle');
+      vi.useRealTimers();
+      await open();
+      await flush();
+
+      expect(inbox.all()).toEqual([]);
+      expect(store.rows(ME)).toEqual([]);
+      setUp.client.stopClient();
+    });
+
+    it("doesn't load again and again when a row stays unavailable after the first sync", async () => {
+      const setUp = beforeSync([]);
+      vi.spyOn(setUp.client, 'fetchRoomEvent').mockRejectedValue(
+        new Error('offline'),
+      );
+      const { inbox, store, open } = await loadedWithoutRooms(setUp);
+      setUp.sync();
+      expect(inbox.status()).toBe('ready');
+      vi.useRealTimers();
+      setUp.state.mockReturnValue(SyncState.Reconnecting);
+      await store.put(ME, { eventId: '$i', roomId: ROOM, ts: NOW }, NOW);
+
+      await open();
+
+      expect(inbox.mentions()[0]?.preview).toEqual({ kind: 'unavailable' });
+      expect(inbox.status()).toBe('ready');
+      setUp.client.stopClient();
+    });
+
+    it('reads failed after 10 s when no sync comes and the server fails too', async () => {
+      const setUp = beforeSync([]);
+      setUp.client.http.authedRequest = vi.fn(() =>
+        Promise.reject(new Error('offline')),
+      ) as never;
+
+      const { inbox } = await loadedWithoutRooms(setUp);
+
+      expect(inbox.status()).toBe('failed');
+      setUp.client.stopClient();
+    });
   });
 
   it("does not put a server's redaction on the room's own event", async () => {

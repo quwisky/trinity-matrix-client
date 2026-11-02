@@ -6,7 +6,13 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import { latestGuard, type LatestToken } from '@trinity/util/ui';
-import { KnownMembership, type MatrixClient, type Room } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  KnownMembership,
+  SyncState,
+  type MatrixClient,
+  type Room,
+} from 'matrix-js-sdk';
 import {
   EMPTY,
   Observable,
@@ -14,7 +20,9 @@ import {
   concatMap,
   defer,
   finalize,
+  first,
   from,
+  fromEvent,
   map,
   merge,
   mergeMap,
@@ -79,9 +87,13 @@ type Judged =
 const shownRows = (judged: readonly Judged[]): readonly ServerRow[] =>
   judged.flatMap((result) => (result.kind === 'shown' ? [result] : []));
 
+const hasRooms = (state: SyncState | null): boolean =>
+  state === SyncState.Prepared || state === SyncState.Syncing;
+
 /**
  * The inbox's rows for the active account, in memory only. Not live: rows change on `refresh`
- * and `loadMore`. `disconnect` drops them, which also drops decrypted text.
+ * and `loadMore`, and once when the first server sync can name rows built without it. `disconnect`
+ * drops them, which also drops decrypted text.
  */
 @Injectable({ providedIn: 'root' })
 export class NotificationInboxService {
@@ -102,6 +114,8 @@ export class NotificationInboxService {
   >('idle');
   private readonly serverFailed = signal(false);
   private readonly lastLoadState = signal<InboxLoadResult | null>(null);
+  /** The account that has a row its first server sync could still name or remove. */
+  private readonly awaitingSync = signal<string | null>(null);
 
   private readonly projection = projectFromClient({
     id: 'notifications.inbox',
@@ -129,7 +143,13 @@ export class NotificationInboxService {
       ({ row, undecryptable }) => undecryptable && !held.has(row.eventId),
     ).length;
   });
-  readonly status = this.statusState.asReadonly();
+  /** `idle` asks the view to load, which is also how rows waiting on the first sync get redone. */
+  readonly status = computed(() => {
+    const accountId = this.awaitingSync();
+    return accountId && this.matrix.serverSynced(accountId)
+      ? 'idle'
+      : this.statusState();
+  });
   readonly serverListFailed = this.serverFailed.asReadonly();
   readonly serverHasMore = computed(() => this.serverToken() !== null);
   readonly hasMore = computed(
@@ -150,15 +170,22 @@ export class NotificationInboxService {
     return defer(() => {
       const load = this.begin();
       if (!load) return of(undefined);
+      this.awaitingSync.set(null);
       if (!load.useIndex) {
         this.indexRows.set([]);
         this.indexCursor.set(null);
       }
       return this.finish(
         load,
-        this.fetch(
-          this.serverPage(load, null, true),
-          this.indexPage(load, null, true),
+        this.roomsPrepared(load).pipe(
+          switchMap(() =>
+            this.guard.isCurrent(load.token)
+              ? this.fetch(
+                  this.serverPage(load, null, true),
+                  this.indexPage(load, null, true),
+                )
+              : of(0),
+          ),
         ),
       );
     });
@@ -193,6 +220,7 @@ export class NotificationInboxService {
     this.indexCursor.set(null);
     this.serverFailed.set(false);
     this.lastLoadState.set(null);
+    this.awaitingSync.set(null);
     this.statusState.set('idle');
     // A computed keeps its last value until it's next read, and those rows hold decrypted text.
     untracked(() => {
@@ -213,6 +241,20 @@ export class NotificationInboxService {
       token: this.guard.next(),
       useIndex: this.preferences.recordAllowed(),
     };
+  }
+
+  /**
+   * A row judged before the room list exists has only raw IDs to show, so loading waits for the
+   * list. Not for good: an offline client still needs its list or the failed state.
+   */
+  private roomsPrepared({ client, accountId }: Load): Observable<unknown> {
+    return this.matrix.roomsPrepared(accountId) ||
+      hasRooms(client.getSyncState())
+      ? of(undefined)
+      : fromEvent(client, ClientEvent.Sync, (state: SyncState) => state).pipe(
+          first(hasRooms),
+          timeout({ first: STEP_LIMIT_MS, with: () => of(undefined) }),
+        );
   }
 
   /** Settles before answering, and also when the subscriber leaves early. */
@@ -427,23 +469,32 @@ export class NotificationInboxService {
       threadRootId: string | null = null,
       highlighted = false,
       undecryptable = false,
-    ): Judged => ({
-      kind: 'shown',
-      highlighted,
-      undecryptable,
-      row: {
-        accountId,
-        eventId,
-        roomId,
-        roomName: room?.name || roomId,
-        senderName,
-        ts,
-        preview,
-        // The server's flag can be stale in a room with threads, so the device has a say too.
-        unread: !serverRead && !hasReadOnDevice(room, accountId, eventId, ts),
-        threadRootId,
-      },
-    });
+    ): Judged => {
+      if (
+        (!room || preview.kind === 'unavailable') &&
+        !this.matrix.serverSynced(accountId) &&
+        this.guard.isCurrent(load.token)
+      ) {
+        this.awaitingSync.set(accountId);
+      }
+      return {
+        kind: 'shown',
+        highlighted,
+        undecryptable,
+        row: {
+          accountId,
+          eventId,
+          roomId,
+          roomName: room?.name || roomId,
+          senderName,
+          ts,
+          preview,
+          // The server's flag can be stale in a room with threads, so the device has a say too.
+          unread: !serverRead && !hasReadOnDevice(room, accountId, eventId, ts),
+          threadRootId,
+        },
+      };
+    };
     const unavailable = (): Judged =>
       shown({ kind: 'unavailable' }, client.getRoom(roomId));
     const synced = (): boolean =>

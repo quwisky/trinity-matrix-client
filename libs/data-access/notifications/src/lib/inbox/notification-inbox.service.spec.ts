@@ -1,8 +1,10 @@
+import { EventEmitter } from 'node:events';
 import { signal, type Signal } from '@angular/core';
 import { SIGNAL } from '@angular/core/primitives/signals';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  ClientEvent,
   MatrixError,
   MatrixEvent,
   SyncState,
@@ -831,7 +833,8 @@ describe('NotificationInboxService', () => {
       const client = fakeClient({
         [FIRST]: { rows: [entry(message('$s', 2))] },
       });
-      client.syncState = null;
+      client.syncState = SyncState.Prepared;
+      client.syncData = { fromCache: true };
       client.room = null;
       const { inbox, open } = setup({ client });
 
@@ -1065,6 +1068,30 @@ describe('NotificationInboxService', () => {
   });
 
   describe('lifetimes', () => {
+    it('loads nothing for an account switched away from while waiting for its rooms', async () => {
+      const waiting = fakeClient({
+        [FIRST]: { rows: [entry(message('$a', 1))] },
+      });
+      waiting.syncState = null;
+      const sync = new EventEmitter();
+      Object.assign(waiting, {
+        addListener: sync.addListener.bind(sync),
+        removeListener: sync.removeListener.bind(sync),
+      });
+      const { inbox, switchTo, open } = setup({ client: waiting });
+      inbox.refresh().subscribe();
+      expect(inbox.status()).toBe('loading');
+
+      switchTo(fakeClient());
+      sync.emit(ClientEvent.Sync, SyncState.Prepared);
+      await flush();
+
+      expect(waiting.http.authedRequest).not.toHaveBeenCalled();
+      expect(inbox.all()).toEqual([]);
+      await open();
+      expect(inbox.all()).toEqual([]);
+    });
+
     it('drops a late answer after an account switch', async () => {
       const client = fakeClient();
       let answer: (body: unknown) => void = () => undefined;

@@ -106,11 +106,38 @@ export function watchConsoleErrors(
   return () => problems;
 }
 
-/** Opens the inbox from the rail and waits for its list to leave loading. */
+/**
+ * Opens the inbox from the rail and waits for the first sync, then for its list to leave loading
+ * and for its rows to have their rooms. Without the sync an empty tab says nothing: the other tab
+ * can still hold rows with room IDs, from a first sync slower than the inbox's wait.
+ */
 export async function openInbox(page: Page): Promise<void> {
   await page.getByTestId('rail-inbox').click();
   await expect(page.getByTestId('inbox-scroll')).toBeVisible();
+  // Shown with no room open, also on a phone where its pane is hidden.
+  await expect(page.getByTestId('chat-empty')).toContainText(
+    'Welcome to Trinity',
+    { timeout: 30_000 },
+  );
   await expect(page.getByTestId('inbox-loading')).toHaveCount(0, {
     timeout: 30_000,
   });
+  await expect(page.locator('.row__room', { hasText: /^\s*!/ })).toHaveCount(
+    0,
+    {
+      timeout: 30_000,
+    },
+  );
+}
+
+/** Holds the page's /sync requests at the browser until the returned function is called. */
+export async function holdSync(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/_matrix/client/v3/sync*', async (route) => {
+    await released;
+    // The page may have reloaded or closed while this one waited.
+    await route.continue().catch(() => undefined);
+  });
+  return release;
 }
