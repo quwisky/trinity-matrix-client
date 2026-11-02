@@ -73,7 +73,11 @@ export class MentionIndexService {
   private writes: Promise<void> = Promise.resolve();
 
   readonly recording = computed(
-    () => this.started() && !this.stopped() && this.preferences.recordAllowed(),
+    () =>
+      this.started() &&
+      !this.stopped() &&
+      !this.deleteFailedState() &&
+      this.preferences.recordAllowed(),
   );
   readonly deleteFailed = this.deleteFailedState.asReadonly();
 
@@ -145,14 +149,14 @@ export class MentionIndexService {
     this.started.set(true);
     // A stop and this start can fall between two effect runs, which then see no change.
     this.reconcile(this.recording() ? this.matrix.accountIds() : []);
-    if (this.preferences.recordDeclined()) {
+    if (this.preferences.recordDeclined() || this.deleteFailedState()) {
       // Also how a delete that failed earlier is retried; `deleteFailed` reports this one.
       await this.wipe().catch(() => undefined);
     } else if (this.preferences.recordAllowed()) {
       await this.sweep(session);
     } else {
       // A setting that couldn't be read may be either answer: a failed read deletes nothing.
-      this.stopForSession();
+      this.stopForSession(session);
     }
   }
 
@@ -188,8 +192,9 @@ export class MentionIndexService {
     this.reconcile([]);
   }
 
-  private stopForSession(): void {
-    if (this.stopped()) {
+  /** A step queued by an earlier run says nothing about this one. */
+  private stopForSession(session: symbol | null): void {
+    if (this.session !== session || this.stopped()) {
       return;
     }
     this.stopped.set(true);
@@ -198,11 +203,12 @@ export class MentionIndexService {
 
   /** Past the limit a step counts as a storage failure, and its late answer is ignored. */
   private enqueue<T>(work: () => ObservableInput<T>): Promise<T> {
+    const session = this.session;
     const result = this.writes.then(() =>
       firstValueFrom(defer(work).pipe(timeout(STEP_LIMIT_MS))).catch(
         (error: unknown) => {
           if (error instanceof TimeoutError) {
-            this.stopForSession();
+            this.stopForSession(session);
           }
           throw error;
         },
@@ -307,6 +313,7 @@ export class MentionIndexService {
       roomId: event.getRoomId() ?? '',
       ts: event.getTs(),
     };
+    const session = this.session;
     void this.enqueue(() =>
       // Checked here, not at the emit: a failure or a switch going off also drops queued writes.
       this.recording()
@@ -315,7 +322,7 @@ export class MentionIndexService {
     ).catch((error: unknown) => {
       // A TypeError is one malformed event from a server, which is no reason to stop.
       if (!(error instanceof TypeError)) {
-        this.stopForSession();
+        this.stopForSession(session);
       }
     });
   }

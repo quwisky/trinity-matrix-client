@@ -41,6 +41,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   NotificationLifetime,
   NativePushLifetime,
+  MentionIndexService,
   NotificationService,
   RetiredPushGatewayCleanup,
   PushHandoffService,
@@ -123,6 +124,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let appearanceRecover: Mock<AppearancePreferences['recoverHydration']>;
   let badgeSession: Subject<HostOperationOutcome>;
   let appearanceSession: Subject<never>;
+  let mentionIndexRun: Subject<never>;
   let notificationSession: Subject<never>;
   let focusSession: Subject<void>;
   let routedSession: Subject<void>;
@@ -178,6 +180,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     badgeSession = new Subject<HostOperationOutcome>();
     appearanceSession = new Subject<never>();
+    mentionIndexRun = new Subject<never>();
     notificationSession = new Subject<never>();
     focusSession = new Subject<void>();
     routedSession = new Subject<void>();
@@ -315,6 +318,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
           run: () => surfaceSession,
         }),
+        MockProvider(MentionIndexService, { run: () => mentionIndexRun }),
         MockProvider(AppearanceEffects, {
           run: () => appearanceSession,
           applySaved: applySavedAppearance,
@@ -1237,6 +1241,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     lifetime.unsubscribe();
     facts.next({ accountId: '@third:example.org', deviceId: 'THIRD' });
     expect(require).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs the mention index for the session and releases it on teardown', () => {
+    const lifetime = adapter.runPreferenceLifetime().subscribe();
+    expect(mentionIndexRun.observed).toBe(true);
+
+    lifetime.unsubscribe();
+    expect(mentionIndexRun.observed).toBe(false);
   });
 
   it('owns Appearance effects in the post-hydration preference lifetime', () => {

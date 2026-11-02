@@ -97,7 +97,9 @@ export class MentionInboxPreferences {
     KEEP_MENTION_RECORD_PREFERENCE,
     INSTALLATION_PREFERENCE_CONTEXT,
   );
-  private readonly bothRead = computed(
+
+  /** Whether both stored answers are known; until then `showInbox` and `keepRecord` hold defaults. */
+  readonly bothRead = computed(
     () => this.show().kind === 'ready' && this.keep().kind === 'ready',
   );
 

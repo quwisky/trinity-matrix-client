@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
   KeywordRulesService,
+  MentionIndexService,
+  MentionInboxPreferences,
   NotificationSoundService,
   PushRulesService,
   ReactionNotificationSettingsService,
@@ -72,6 +74,14 @@ async function build(over: { setOn?: Mock } = {}) {
       // The section renders the keyword block, which would otherwise reach the real
       // MatrixClientService — harmless today only because it reports uninitialised.
       MockProvider(KeywordRulesService, { keywords: () => [] }),
+      MockProvider(MentionInboxPreferences, {
+        bothRead: signal(true).asReadonly(),
+        showInbox: signal(true).asReadonly(),
+        keepRecord: signal(true).asReadonly(),
+      }),
+      MockProvider(MentionIndexService, {
+        deleteFailed: signal(false).asReadonly(),
+      }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });

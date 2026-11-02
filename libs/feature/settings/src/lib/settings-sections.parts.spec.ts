@@ -34,9 +34,11 @@ import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { ImagePackManagementService } from '@trinity/data-access/media';
 import {
   KeywordRulesService,
+  MentionIndexService,
   NotificationSoundService,
   PushRulesService,
   ReactionNotificationSettingsService,
+  provideMentionInboxPreferences,
 } from '@trinity/data-access/notifications';
 import {
   InvitePermissionService,
@@ -228,6 +230,11 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(KeywordRulesService, {
         keywords: () => [],
         hasLoaded: () => true,
+      }),
+      provideMentionInboxPreferences(),
+      STORAGE,
+      MockProvider(MentionIndexService, {
+        deleteFailed: signal(false).asReadonly(),
       }),
       MockProvider(TrnToastService),
       MockProvider(TrnSurfaceService),

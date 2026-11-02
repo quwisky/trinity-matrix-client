@@ -910,6 +910,56 @@ describe('MentionIndexService', () => {
     expect(store.deleted).toBe(true);
   });
 
+  it('records nothing after a failed delete until a delete succeeds', async () => {
+    const { client, store, run, service } = setup();
+    await run();
+    vi.spyOn(store, 'deleteAll').mockRejectedValueOnce(new Error('blocked'));
+
+    await expect(firstValueFrom(service.deleteAll())).rejects.toThrow(
+      'blocked',
+    );
+    TestBed.tick();
+    expect(service.recording()).toBe(false);
+    expect(client.bound(RoomEvent.Timeline)).toBe(0);
+
+    await firstValueFrom(service.deleteAll());
+    TestBed.tick();
+    expect(service.recording()).toBe(true);
+    expect(client.bound(RoomEvent.Timeline)).toBe(1);
+  });
+
+  it('the next start retries a failed delete even with the switch back on', async () => {
+    const { client, store, run, service } = setup();
+    await store.put(ME, { eventId: '$old', roomId: '!r:hs', ts: TS }, TS);
+    const first = await run();
+    const deleteAll = vi
+      .spyOn(store, 'deleteAll')
+      .mockRejectedValueOnce(new Error('blocked'));
+    await expect(firstValueFrom(service.deleteAll())).rejects.toThrow(
+      'blocked',
+    );
+    first.unsubscribe();
+
+    // Still failing: no sweep, no recording.
+    deleteAll.mockRejectedValueOnce(new Error('blocked'));
+    const sweep = vi.spyOn(store, 'keepOnlyAccounts');
+    const second = await run();
+    expect(deleteAll).toHaveBeenCalledTimes(2);
+    expect(service.deleteFailed()).toBe(true);
+    expect(service.recording()).toBe(false);
+    expect(client.bound(RoomEvent.Timeline)).toBe(0);
+    expect(store.rows(ME)).toHaveLength(1);
+    second.unsubscribe();
+
+    await run();
+    expect(deleteAll).toHaveBeenCalledTimes(3);
+    expect(service.deleteFailed()).toBe(false);
+    expect(store.rows(ME)).toEqual([]);
+    expect(sweep).not.toHaveBeenCalled();
+    expect(service.recording()).toBe(true);
+    expect(client.bound(RoomEvent.Timeline)).toBe(1);
+  });
+
   it('runs a delete after the writes queued before it', async () => {
     const { client, store, run, service } = setup();
     await run();
@@ -1051,6 +1101,50 @@ describe('MentionIndexService', () => {
       expect(stopped).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(stopped).toHaveBeenCalledOnce();
+    });
+
+    it('a step that hung in an earlier run does not stop the next one', async () => {
+      vi.useFakeTimers();
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const { store, run, client, service } = setup();
+      const first = await run();
+      vi.spyOn(store, 'put').mockImplementationOnce(never);
+      client.live(message('$hung'));
+      await vi.advanceTimersByTimeAsync(0);
+      first.unsubscribe();
+
+      await run();
+      await vi.advanceTimersByTimeAsync(LIMIT);
+
+      expect(service.recording()).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('a write that fails after its run ended does not stop the next one', async () => {
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const { store, run, client, service } = setup();
+      const first = await run();
+      let fail: (error: Error) => void = () => undefined;
+      vi.spyOn(store, 'put').mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            fail = reject;
+          }),
+      );
+      client.live(message('$late'));
+      await new Promise((resolve) => setTimeout(resolve));
+      first.unsubscribe();
+
+      await run();
+      fail(new Error('storage'));
+      await flush();
+
+      expect(service.recording()).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('a new run gets past a hung step', async () => {
