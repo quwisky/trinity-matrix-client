@@ -33,6 +33,7 @@ import {
   type InboxTab,
 } from '@trinity/data-access/notifications';
 import type { Observable } from 'rxjs';
+import { searchAffordance } from '../shared/search-affordance';
 import { InboxRowComponent } from './inbox-row/inbox-row.component';
 
 /**
@@ -82,6 +83,7 @@ export class NotificationInboxComponent {
     return this.canLoadMore() ? `${found} so far.` : `${found}.`;
   });
 
+  protected readonly search = searchAffordance();
   protected readonly inbox = inject(NotificationInboxService);
   protected readonly recording = inject(MentionIndexService).recording;
   protected readonly tabs: readonly InboxTab[] = ['mentions', 'all'];

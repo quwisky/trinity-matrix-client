@@ -1,6 +1,6 @@
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { render } from '@trinity/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SidebarSpaceHeaderComponent,
   type SidebarSpaceAction,
@@ -12,6 +12,10 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isMobileOs: () => platform.mobile,
 }));
+
+afterEach(() => {
+  platform.mobile = false;
+});
 
 async function renderHeader(inputs: Record<string, unknown> = {}) {
   const rendered = await render(SidebarSpaceHeaderComponent, {
@@ -48,7 +52,6 @@ describe('SidebarSpaceHeaderComponent', () => {
         .querySelector('[data-testid="open-switcher"]')
         ?.getAttribute('aria-label'),
     ).toBe('Search');
-    platform.mobile = false;
   });
 
   it('shows the plain title with Home actions outside a space', async () => {
