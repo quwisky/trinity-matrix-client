@@ -2,6 +2,7 @@ import {
   expect,
   test,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '../../../fixtures.mts';
 import {
@@ -13,6 +14,8 @@ import {
   deviceKeysPublished,
   fillLabeledInput,
   login,
+  settleSignIn,
+  waitForRooms,
   waitForSent,
 } from '../../../support/app.mts';
 import {
@@ -53,6 +56,8 @@ const SYNC_PATH = /^\/_matrix\/client\/[^/]+\/sync$/;
 const SENTENCE =
   "This also deletes this account's mention history on this device.";
 const NOTIFICATIONS = '**/_matrix/client/v3/notifications**';
+/** A mention reaches the store through a /sync, which can be slow under load after a reload. */
+const SYNCED = { timeout: 30_000 };
 
 interface StoredRow {
   readonly accountId: string;
@@ -126,7 +131,7 @@ async function recordMention(
   body = `${KEYWORD} recorded`,
 ): Promise<string> {
   const id = await seed.post(body);
-  await expect.poll(() => storedIds(page)).toContain(id);
+  await expect.poll(() => storedIds(page), SYNCED).toContain(id);
   return id;
 }
 
@@ -183,6 +188,23 @@ async function setRemoteMentions(
   expect(added.ok()).toBe(true);
 }
 
+/** Posts over the API, unencrypted even in an encrypted room; returns the event id. */
+async function postPlain(
+  request: APIRequestContext,
+  sender: ApiUser,
+  roomId: string,
+  txn: string,
+  body: string,
+): Promise<string> {
+  const sent = await sendWithRetry(txn, () =>
+    request.put(
+      `${session.hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
+      { headers: sender.headers, data: { msgtype: 'm.text', body } },
+    ),
+  );
+  return ((await sent.json()) as { event_id: string }).event_id;
+}
+
 /** Sends from the sender's own app, so the reader has to decrypt it; returns the event id. */
 async function sendEncrypted(page: Page, body: string): Promise<string> {
   await sendComposerLines(page, [body]);
@@ -191,13 +213,46 @@ async function sendEncrypted(page: Page, body: string): Promise<string> {
   return (await sent.getAttribute('data-mid')) as string;
 }
 
+/** Fills in `/login?add` for an account already on this device; returns its Sign in button. */
+async function signInAgainToStored(
+  page: Page,
+  seed: InboxSeed,
+): Promise<Locator> {
+  await page.getByTestId('user-menu-trigger').click();
+  await page.getByTestId('add-account').click();
+  await expect(page.getByTestId('cancel-add')).toBeVisible();
+  await fillLabeledInput(page, 'Homeserver', session.hs as string);
+  await page.getByText('Continue', { exact: true }).click();
+  const submit = page.getByRole('button', { name: 'Sign in', exact: true });
+  await submit.waitFor({ timeout: 30_000 });
+  await fillLabeledInput(page, 'Username', seed.user);
+  await fillLabeledInput(page, 'Password', seed.pass);
+  return submit;
+}
+
+/** After "Sign in anyway": only a mention sent since is in the record. */
+async function expectOnlyLaterMentions(
+  page: Page,
+  seed: InboxSeed,
+): Promise<void> {
+  await settleSignIn(page);
+  // This lands in the new client's catch-up or after it, and behind the deleted mention in timeline
+  // order, so that one would be stored first if the catch-up brought it back.
+  const after = await seed.post(`${KEYWORD} on the new device`);
+  await expect.poll(() => storedIds(page), SYNCED).toEqual([after]);
+}
+
 test.describe('Mention record', () => {
   configureMultiAccountSuite();
   const hs = (): string => session.hs as string;
   let consoleErrors: () => readonly string[] = () => [];
 
   test.beforeEach(({ page }) => {
-    consoleErrors = watchConsoleErrors(page);
+    // Tuwunel asks for the password on the first cross-signing upload, which is how `setUpEncryption`
+    // gets there, so that request's 401 is part of the journey.
+    consoleErrors = watchConsoleErrors(page, (url) =>
+      new URL(url).pathname.endsWith('/keys/device_signing/upload'),
+    );
   });
   test.afterEach(() => {
     expect(consoleErrors(), 'console errors and CSP violations').toEqual([]);
@@ -244,15 +299,7 @@ test.describe('Mention record', () => {
 
     // Enough later messages that the mention is out of the room's first screen.
     for (let i = 0; i < 40; i++) {
-      await sendWithRetry(`filler ${i}`, () =>
-        request.put(
-          `${hs()}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/filler-${i}`,
-          {
-            headers: senderApi.headers,
-            data: { msgtype: 'm.text', body: `plain ${i}` },
-          },
-        ),
-      );
+      await postPlain(request, senderApi, roomId, `filler-${i}`, `plain ${i}`);
     }
 
     await openInbox(page);
@@ -261,9 +308,14 @@ test.describe('Mention record', () => {
     await expect(rows(page).first()).toContainText(roomName);
 
     await rows(page).first().click();
-    await expect(
-      page.locator('.scroll .msg', { hasText: mention }),
-    ).toBeInViewport({ timeout: 30_000 });
+    const target = page.locator('.scroll .msg', { hasText: mention });
+    const newest = page.locator('.scroll .msg', { hasText: 'plain 39' });
+    await expect(target).toBeInViewport({ timeout: 30_000 });
+    await expect(newest).not.toBeInViewport();
+    // The flash ends well after any frame that could pin the room to its newest message.
+    await expect(target).not.toHaveClass(/msg--flash/, { timeout: 10_000 });
+    await expect(target).toBeInViewport();
+    await expect(newest).not.toBeInViewport();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
       roomName,
     );
@@ -302,25 +354,37 @@ test.describe('Mention record', () => {
       .poll(() => storedIds(page), { timeout: 60_000 })
       .toContain(eventId);
 
-    // The server can't read the keyword and the room rule says not to notify, on any server.
-    const listed = await request.get(
-      `${hs()}/_matrix/client/v3/notifications?limit=50`,
-      { headers: seed.reader.headers },
+    // Sent later, and readable by the server, so its list has to hold this one: a server that lists
+    // nothing proves nothing about the encrypted mention. It can't read the keyword in that one,
+    // and the room rule says not to notify, on any server.
+    const readable = await postPlain(
+      request,
+      senderApi,
+      roomId,
+      'readable',
+      `${KEYWORD} the server can read this`,
     );
-    expect(listed.ok()).toBe(true);
-    const { notifications } = (await listed.json()) as {
-      notifications: { event: { event_id: string } }[];
+    const listedIds = async (): Promise<string[]> => {
+      const listed = await request.get(
+        `${hs()}/_matrix/client/v3/notifications?limit=50`,
+        { headers: seed.reader.headers },
+      );
+      expect(listed.ok()).toBe(true);
+      const { notifications } = (await listed.json()) as {
+        notifications: { event: { event_id: string } }[];
+      };
+      return notifications.map((n) => n.event.event_id);
     };
-    expect(notifications.map((n) => n.event.event_id)).not.toContain(eventId);
+    await expect.poll(listedIds, SYNCED).toContain(readable);
+    expect(await listedIds()).not.toContain(eventId);
 
+    const row = rows(page).filter({ hasText: mention });
     await openInbox(page);
-    await expect(rows(page)).toHaveCount(1);
-    await expect(rows(page).first()).toContainText(mention);
+    await expect(row).toHaveCount(1);
 
     // Still there from the store alone, with this session's memory gone.
     await page.reload();
-    await expect(rows(page)).toHaveCount(1, { timeout: 30_000 });
-    await expect(rows(page).first()).toContainText(mention);
+    await expect(row).toHaveCount(1, { timeout: 30_000 });
   });
 
   test('a mention sent while the app was closed is recorded on the next start', async ({
@@ -343,7 +407,7 @@ test.describe('Mention record', () => {
     await page.goto(url);
     // Strict on purpose: the mention must be in the very batch recording has to be up for.
     expect(await (await firstBatch).text()).toContain(closed);
-    await expect.poll(() => storedIds(page)).toEqual([closed]);
+    await expect.poll(() => storedIds(page), SYNCED).toEqual([closed]);
 
     await openInbox(page);
     await expect(rows(page).first()).toContainText(body);
@@ -406,7 +470,7 @@ test.describe('Mention record', () => {
     await expect(recordSwitch(page)).toBeChecked();
     await expect(question(page)).toHaveCount(0);
     const again = await seed.post(`${KEYWORD} again`);
-    await expect.poll(() => storedIds(page)).toEqual([again]);
+    await expect.poll(() => storedIds(page), SYNCED).toEqual([again]);
 
     // A restart catches up from its saved position, which must not bring the deleted rows back.
     await page.reload();
@@ -414,7 +478,7 @@ test.describe('Mention record', () => {
       timeout: 30_000,
     });
     const restarted = await seed.post(`${KEYWORD} restarted`);
-    await expect.poll(() => storedIds(page)).toContain(restarted);
+    await expect.poll(() => storedIds(page), SYNCED).toContain(restarted);
     expect((await storedIds(page)).sort()).toEqual([again, restarted].sort());
   });
 
@@ -475,7 +539,7 @@ test.describe('Mention record', () => {
 
     // Written after the one posted while off, so that one would show here if it had been kept.
     const again = await seed.post(`${KEYWORD} again`);
-    await expect.poll(() => storedIds(page)).toEqual([again]);
+    await expect.poll(() => storedIds(page), SYNCED).toEqual([again]);
   });
 
   test('the open inbox returns to Recent when turned off', async ({
@@ -546,7 +610,7 @@ test.describe('Mention record', () => {
     await expect(page.locator('.userbar__handle')).toContainText(
       `@${kept.user}:`,
     );
-    await expect.poll(() => storedIds(page)).toEqual([keptRow]);
+    await expect.poll(() => storedIds(page), SYNCED).toEqual([keptRow]);
   });
 
   test('the real store: limits, shape and clearing', async ({
@@ -600,7 +664,7 @@ test.describe('Mention record', () => {
 
     const newest = await seed.post(body);
 
-    await expect.poll(() => storedIds(page)).toContain(newest);
+    await expect.poll(() => storedIds(page), SYNCED).toContain(newest);
     const stored = await storedRows(page);
     expect(stored).toHaveLength(2_000);
     const ids = stored.map((row) => row.eventId);
@@ -676,11 +740,11 @@ test.describe('Mention record', () => {
       const first = `${KEYWORD} first`;
       await seed.post(first);
       await stopped;
-      await expect.poll(notified).toContainEqual(first);
+      await expect.poll(notified, SYNCED).toContainEqual(first);
 
       const second = `${KEYWORD} second`;
       await seed.post(second);
-      await expect.poll(notified).toContainEqual(second);
+      await expect.poll(notified, SYNCED).toContainEqual(second);
       expect(await storedRows(page)).toEqual([]);
 
       // The inbox falls back to the server's list.
@@ -711,15 +775,22 @@ test.describe('Mention record', () => {
       };
     });
     const { page: tab } = await openWaitingTab(page);
+    const tabPuts = (): Promise<number> =>
+      tab.evaluate(
+        () => (window as unknown as { mentionPuts: number }).mentionPuts,
+      );
 
     const second = await recordMention(page, seed, `${KEYWORD} with the tab`);
 
     expect((await storedIds(page)).sort()).toEqual([first, second].sort());
-    expect(
-      await tab.evaluate(
-        () => (window as unknown as { mentionPuts: number }).mentionPuts,
-      ),
-    ).toBe(0);
+    expect(await tabPuts()).toBe(0);
+
+    // Once it holds the lock the same tab does record, so that zero came from waiting.
+    await page.close();
+    await waitForRooms(tab, 60_000);
+    const third = await seed.post(`${KEYWORD} after the tab took over`);
+    await expect.poll(() => storedIds(tab), SYNCED).toContain(third);
+    expect(await tabPuts()).toBeGreaterThan(0);
     await tab.close();
   });
 
@@ -772,15 +843,7 @@ test.describe('Mention record', () => {
     await signIn(page, seed);
     const recorded = await recordMention(page, seed);
 
-    await page.getByTestId('user-menu-trigger').click();
-    await page.getByTestId('add-account').click();
-    await expect(page.getByTestId('cancel-add')).toBeVisible();
-    await fillLabeledInput(page, 'Homeserver', hs());
-    await page.getByText('Continue', { exact: true }).click();
-    const submit = page.getByRole('button', { name: 'Sign in', exact: true });
-    await submit.waitFor({ timeout: 30_000 });
-    await fillLabeledInput(page, 'Username', seed.user);
-    await fillLabeledInput(page, 'Password', seed.pass);
+    const submit = await signInAgainToStored(page, seed);
     await submit.click();
     const asked = page.locator('trn-alert-dialog', { hasText: SENTENCE });
 
@@ -793,12 +856,7 @@ test.describe('Mention record', () => {
     await expect(asked).toBeVisible({ timeout: 30_000 });
     await asked.getByRole('button', { name: 'Sign in anyway' }).click();
 
-    // Written after the new client's catch-up, which starts from the old device's saved position,
-    // so a deleted mention that catch-up brought back would be here by now.
-    const after = await seed.post(`${KEYWORD} on the new device`);
-    await expect
-      .poll(() => storedIds(page), { timeout: 30_000 })
-      .toEqual([after]);
+    await expectOnlyLaterMentions(page, seed);
   });
 
   test('with every key backed up, signing in to a stored account still asks, and only about the history', async ({
@@ -808,12 +866,7 @@ test.describe('Mention record', () => {
   }) => {
     test.slow();
     const seed = await seedInbox(request, hs(), matrixResources);
-    const published = deviceKeysPublished(page);
-    await signIn(page, seed);
-    await published;
-    await setUpEncryption(page, seed.pass);
-
-    // The client only reports a backup as complete once its upload loop has run for a real key.
+    // Made before sign-in, so that no state write needs fencing from a sync on Tuwunel.
     const roomName = matrixResources.namespace.role('backed-up-room');
     const roomId = await createEncryptedRoom(
       request,
@@ -822,6 +875,12 @@ test.describe('Mention record', () => {
       roomName,
     );
     registerRoomCleanup(matrixResources, request, hs(), roomId, [seed.reader]);
+    const published = deviceKeysPublished(page);
+    await signIn(page, seed);
+    await published;
+    await setUpEncryption(page, seed.pass);
+
+    // The client only reports a backup as complete once its upload loop has run for a real key.
     await openRoom(page, roomName);
     await sendEncrypted(page, 'a key for the backup');
     await expect
@@ -831,15 +890,7 @@ test.describe('Mention record', () => {
       .toBe(true);
     const recorded = await recordMention(page, seed);
 
-    await page.getByTestId('user-menu-trigger').click();
-    await page.getByTestId('add-account').click();
-    await expect(page.getByTestId('cancel-add')).toBeVisible();
-    await fillLabeledInput(page, 'Homeserver', hs());
-    await page.getByText('Continue', { exact: true }).click();
-    const submit = page.getByRole('button', { name: 'Sign in', exact: true });
-    await submit.waitFor({ timeout: 30_000 });
-    await fillLabeledInput(page, 'Username', seed.user);
-    await fillLabeledInput(page, 'Password', seed.pass);
+    const submit = await signInAgainToStored(page, seed);
     await submit.click();
     const asked = page.locator('trn-alert-dialog', { hasText: SENTENCE });
 
@@ -856,8 +907,6 @@ test.describe('Mention record', () => {
     await expect(asked).toBeVisible({ timeout: 30_000 });
     await asked.getByRole('button', { name: 'Sign in anyway' }).click();
 
-    await expect
-      .poll(() => storedIds(page), { timeout: 30_000 })
-      .not.toContain(recorded);
+    await expectOnlyLaterMentions(page, seed);
   });
 });
