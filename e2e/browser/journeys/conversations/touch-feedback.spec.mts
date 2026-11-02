@@ -64,6 +64,9 @@ test.describe('Touch feedback on a phone', () => {
     // With the box empty again Send is hidden on touch, so there is no disabled button left to
     // take the press: the keyboard stays up.
     await expect(send).toBeHidden();
+    // A tap on the input's own padding keeps the keyboard up.
+    const field = (await page.getByTestId('composer-field').boundingBox())!;
+    await page.touchscreen.tap(field.x + 60, field.y + field.height * 0.04);
     await expect(composer).toBeFocused();
 
     const row = page.locator('.msg', { hasText: 'first' }).first();
