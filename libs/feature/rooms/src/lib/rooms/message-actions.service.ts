@@ -17,6 +17,7 @@ import type { ImagePackImage } from '@trinity/data-access/media';
 import {
   Observable,
   catchError,
+  finalize,
   filter,
   switchMap,
   tap,
@@ -477,32 +478,43 @@ export class MessageActionsService {
       if (compose.intent().kind === 'reply') compose.cancelIntent();
       cleared = true;
     }
-    const settle = () => {
-      if (cleared && draftKey) this.drafts.releaseWaiting(draftKey, messageId);
+    const release = () => {
+      if (draftKey) this.drafts.releaseWaiting(draftKey, messageId);
     };
+    // Set once the retry has an answer; a page that goes away before it has not.
+    let answered = false;
     const undo = () => {
+      answered = true;
       if (!cleared || !handle || !compose || !restored) return;
-      // Text typed meanwhile is the person's; the reply goes back only with the text it belongs to.
-      if (compose.draft() === '') {
-        compose.setDraft(restored.text);
-        if (restored.replyTo && compose.intent().kind === 'message') {
-          handle.messages.beginReply(restored.replyTo);
-        }
+      // Text typed meanwhile is the person's, and the held copy stays with it: a refused resend
+      // keeps its record when the composer doesn't hold the text. The reply goes back only with
+      // the text it belongs to.
+      if (compose.draft() !== '') return;
+      compose.setDraft(restored.text);
+      release();
+      if (restored.replyTo && compose.intent().kind === 'message') {
+        handle.messages.beginReply(restored.replyTo);
       }
-      settle();
     };
     this.runMessageAction(
       this.messageCommands.retry(messageId).pipe(
         tap((outcome) => {
           if (outcome.kind === 'rejected') undo();
           else {
-            settle();
+            answered = true;
+            // Also frees a copy an earlier, refused attempt kept.
+            release();
             records?.delete(messageId);
           }
         }),
         catchError((error: unknown) => {
           undo();
           return throwError(() => error);
+        }),
+        // The page went away mid-retry, which still sends: the held copy would come back as a
+        // duplicate after a reload. An answered retry has settled its own copy.
+        finalize(() => {
+          if (!answered && cleared) release();
         }),
       ),
       'Could not retry the message.',

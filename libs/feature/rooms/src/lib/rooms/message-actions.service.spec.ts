@@ -224,6 +224,10 @@ describe('MessageActionsService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // `clearAllMocks` keeps implementations, which would leak between tests.
+    setDraft.mockReset();
+    cancelIntent.mockReset();
+    retry.mockReset().mockImplementation(() => applied('retry'));
     roomEncrypted = false;
     focusedConversation = conversation;
     draft.set('');
@@ -524,7 +528,6 @@ describe('MessageActionsService', () => {
       actions.onRetry('$1');
 
       expect(draft()).toBe('hello');
-      setDraft.mockReset();
     });
 
     it('puts the text back when the retry throws', () => {
@@ -536,7 +539,6 @@ describe('MessageActionsService', () => {
       actions.onRetry('$1');
 
       expect(draft()).toBe('hello');
-      setDraft.mockReset();
     });
 
     it('does not clear again on a second Retry, even if the same text is typed back', () => {
@@ -634,7 +636,6 @@ describe('MessageActionsService', () => {
 
       expect(draft()).toBe('hello');
       expect(otherSetDraft).not.toHaveBeenCalled();
-      setDraft.mockReset();
     });
 
     it('brings the reply back only when the text came back with it', () => {
@@ -681,6 +682,7 @@ describe('MessageActionsService', () => {
 
     it('lets go of the held text when the retry fails and the text returns to the box', () => {
       const { actions } = build();
+      setDraft.mockImplementation((text: string) => draft.set(text));
       failSend(actions, 'hello');
       retry.mockReturnValueOnce(throwError(() => new Error('nope')));
 
@@ -690,6 +692,83 @@ describe('MessageActionsService', () => {
         conversationDraftKey(key),
         '$1',
       );
+    });
+
+    it('keeps the held text when the retry is refused and the box holds something else', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      const subject = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(subject);
+      actions.onRetry('$1');
+      draft.set('x');
+
+      subject.next({
+        kind: 'rejected',
+        operation: 'retry',
+        failure: 'not-allowed',
+        retryable: true,
+      });
+
+      expect(draft()).toBe('x');
+      expect(releaseWaiting).not.toHaveBeenCalled();
+    });
+
+    it('lets go of a held text once a later retry of the same message goes out', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      const first = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(first);
+      actions.onRetry('$1');
+      draft.set('x');
+      first.next({
+        kind: 'rejected',
+        operation: 'retry',
+        failure: 'not-allowed',
+        retryable: true,
+      });
+
+      actions.onRetry('$1');
+
+      expect(releaseWaiting).toHaveBeenCalledWith(
+        conversationDraftKey(key),
+        '$1',
+      );
+    });
+
+    it('lets go of the held text when the page goes away mid-retry, but not after a refusal', () => {
+      const first = build();
+      failSend(first.actions, 'hello');
+      retry.mockReturnValueOnce(new Subject<ConversationMessageOutcome>());
+      first.actions.onRetry('$1');
+
+      first.destroy();
+
+      expect(releaseWaiting).toHaveBeenCalledWith(
+        conversationDraftKey(key),
+        '$1',
+      );
+
+      releaseWaiting.mockClear();
+      TestBed.resetTestingModule();
+      const second = build();
+      failSend(second.actions, 'hello');
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      const refused = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(refused);
+      second.actions.onRetry('$1');
+      draft.set('x');
+      refused.next({
+        kind: 'rejected',
+        operation: 'retry',
+        failure: 'not-allowed',
+        retryable: true,
+      });
+
+      second.destroy();
+
+      expect(releaseWaiting).not.toHaveBeenCalled();
     });
 
     it('does not touch the box when a failed message is deleted, and forgets it', () => {
