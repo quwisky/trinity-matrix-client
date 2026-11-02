@@ -171,6 +171,9 @@ Your messages themselves are never deleted by any of these.
   those mentions show only if your server still lists them.
 - **Closed apps on phones.** Recording needs Trinity to be running. A push notification doesn't
   record anything, so a mention is recorded when the app next syncs it.
+- **Keys that arrive late.** Trinity can only tell that an encrypted message mentions you once it
+  can read it. If the keys arrive after you've restarted Trinity, that mention isn't recorded. It
+  shows only if your server still lists it.
 - **Older messages in threads.** Scrolling back in a thread can add an older mention to the record.
 - **A missing room.** A row is hidden while its room is missing from this device. If you left the
   room but this device never learned that, the row stays in the record until the 2,000-mention or

@@ -21,8 +21,12 @@ states the behavior and limits people see.
 after that, so it hasn't been seen to miss a first batch. The closed-period journey in
 `e2e/browser/journeys/notifications/mention-record.spec.mts` checks this strictly.
 
-A write or quota failure stops recording for the session and logs a diagnostic with no IDs. It
-never affects sync or notifications, and the inbox falls back to the server's list.
+A write or quota failure stops recording and logs a diagnostic with no IDs, once per run. It never
+affects sync or notifications, and the inbox falls back to the server's list. A return to the
+foreground (`HostLifecycleService`, `active`) clears the stop, because a single error on a write cut
+off by suspending shouldn't silence a session that can last days. A store that fails again stops
+again. Mentions that arrive while stopped aren't recorded, and re-attaching saves the sync store, so
+a restart doesn't recover them either.
 
 ## Who clears it
 
@@ -87,6 +91,11 @@ restore history the person deleted, on any device.
 
 - A first-ever sync records nothing, and neither does a start whose saved-sync read failed, since
   the sync state stays null until that sync ends. Those mentions show only if the server lists them.
+- An encrypted mention whose keys arrive after a restart isn't recorded. `buildRecorder`'s `pending`
+  set, which waits for `MatrixEventEvent.Decrypted`, is per session, and on the next start the
+  event comes from the cached replay, which `onTimeline` skips while `getSyncState()` is null (or
+  `liveEvent` is false). It shows only if the server lists it, which an encrypted mention in a
+  mentions-only room never is.
 - Scrolling back in a thread reads as live, so it can record a real old mention. Room scrollback
   doesn't.
 - `limited` sync gaps, closed phone apps and browser eviction lose what the server doesn't list.
