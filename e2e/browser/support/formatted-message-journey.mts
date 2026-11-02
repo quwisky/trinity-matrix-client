@@ -82,18 +82,31 @@ export async function sendMessage(
   request: APIRequestContext,
   hs: string,
   room: FormattedRoom,
-  content: { readonly body: string; readonly html?: string },
+  content: {
+    readonly body: string;
+    readonly html?: string;
+    readonly threadRoot?: string;
+  },
   roomId: string = room.roomId,
 ): Promise<string> {
-  const data =
-    content.html === undefined
+  const data = {
+    ...(content.html === undefined
       ? { msgtype: 'm.text', body: content.body }
       : {
           msgtype: 'm.text',
           body: content.body,
           format: 'org.matrix.custom.html',
           formatted_body: content.html,
-        };
+        }),
+    ...(content.threadRoot === undefined
+      ? {}
+      : {
+          'm.relates_to': {
+            rel_type: 'm.thread',
+            event_id: content.threadRoot,
+          },
+        }),
+  };
   const response = await sendWithRetry('send message', () =>
     request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${nextTestResourceId('txn')}`,

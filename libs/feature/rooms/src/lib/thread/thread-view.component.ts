@@ -60,6 +60,7 @@ import {
 import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
 import { scrollToJumpTarget } from '../message-list/jump-scroll';
+import { observeScrollerHeight } from '../message-list/scroller-height-anchor';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
@@ -256,6 +257,14 @@ export class ThreadViewComponent implements OnDestroy {
     // Otherwise a thread closed by a press or key inside it stays in memory, detached, as
     // the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
+    // The composer shares this panel's height, so a growing draft or the keyboard would
+    // otherwise cover the newest replies.
+    afterNextRender(() => {
+      const el = this.scrollEl()?.nativeElement;
+      if (el) {
+        this.destroyRef.onDestroy(observeScrollerHeight(el));
+      }
+    });
   }
 
   ngOnDestroy(): void {
