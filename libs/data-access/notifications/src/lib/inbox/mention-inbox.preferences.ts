@@ -11,7 +11,6 @@ import {
   providePreferenceDescriptors,
   type PreferenceCommandOutcome,
   type PreferenceDescriptor,
-  type PreferenceFailure,
   type PreferenceHydrationOutcome,
   type PreferenceValidation,
   type StoredPreference,
@@ -136,15 +135,6 @@ export class MentionInboxPreferences {
     return this.preferences.hydrateDescriptors(
       INSTALLATION_PREFERENCE_CONTEXT,
       [SHOW_INBOX_PREFERENCE, KEEP_MENTION_RECORD_PREFERENCE],
-    );
-  }
-
-  recoverHydration(
-    failures: readonly PreferenceFailure[],
-  ): Observable<PreferenceHydrationOutcome> {
-    return this.preferences.recoverHydration(
-      INSTALLATION_PREFERENCE_CONTEXT,
-      failures,
     );
   }
 }
