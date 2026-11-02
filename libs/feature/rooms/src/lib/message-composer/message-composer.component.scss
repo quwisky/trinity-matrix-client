@@ -95,6 +95,15 @@
     &:not(:has(.composer__send)) {
       grid-template-columns: auto 1fr auto auto;
     }
+
+    // On a phone the four 44px buttons leave the text under half the field. A disabled Send does
+    // nothing, so an empty draft hides it (below) and the column gives its track back; typing
+    // brings it, and the track, back.
+    @media (pointer: coarse) {
+      &:not(:has(.composer__send:not(:disabled))) {
+        grid-template-columns: auto 1fr auto auto;
+      }
+    }
   }
 
   // Voice capture replaces the field rather than adding a row above it. The textarea stays in
@@ -271,6 +280,10 @@
   // Touch targets: 44px minimum on touch devices only (inert on a mouse, so desktop keeps its
   // 36/40px buttons).
   @media (pointer: coarse) {
+    .composer__send:disabled {
+      display: none;
+    }
+
     .composer__emoji,
     .composer__send {
       min-width: var(--trinity-interaction-target-min-size);
