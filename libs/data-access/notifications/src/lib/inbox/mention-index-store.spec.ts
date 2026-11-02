@@ -76,7 +76,8 @@ describe('IndexedDbMentionStore', () => {
   it('refuses where IndexedDB does not exist', async () => {
     const store = new IndexedDbMentionStore(undefined);
     await expect(store.count()).rejects.toThrow('IndexedDB is unavailable');
-    await expect(store.deleteAll()).rejects.toThrow('IndexedDB is unavailable');
+    // No store means nothing to delete, so Settings has no failure to report.
+    await expect(store.deleteAll()).resolves.toBeUndefined();
   });
 
   it('rejects when the browser refuses the database', async () => {
