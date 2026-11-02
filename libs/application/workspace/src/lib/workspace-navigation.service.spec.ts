@@ -213,13 +213,9 @@ function harness(options: HarnessOptions = {}) {
     readonly background?: boolean;
   }[] = [];
   const popHistory = vi.fn();
-  const traversal = { active: false };
   const location = {
     listBelow: listBelow.asReadonly(),
     navigating: routerNavigating.asReadonly(),
-    get traversingHistory() {
-      return traversal.active;
-    },
     get projecting() {
       return locationWrites > 0;
     },
@@ -314,7 +310,6 @@ function harness(options: HarnessOptions = {}) {
   return {
     service,
     listBelow,
-    traversal,
     projections,
     popHistory,
     activeAccountId,
@@ -669,36 +664,6 @@ describe('WorkspaceNavigationService', () => {
   });
 
   describe('semantic Room navigation', () => {
-    it('does not count a dismissal the Back guard makes during a popstate as in-app', async () => {
-      const h = harness({ routeAccountId: ALICE });
-
-      await go(h, {
-        kind: 'room',
-        accountId: ALICE,
-        roomId: ROOM,
-        origin: 'room-list',
-      });
-      expect(h.service.committedInApp).toBe(true);
-
-      // Only true while subscribing: projecting supersedes the popstate navigation.
-      h.traversal.active = true;
-      const dismissal = go(h, { kind: 'list', origin: 'workspace-back' });
-      h.traversal.active = false;
-      await dismissal;
-
-      expect(h.service.view().pane).toBe('list');
-      expect(h.service.committedInApp).toBe(false);
-
-      await go(h, {
-        kind: 'room',
-        accountId: ALICE,
-        roomId: ROOM,
-        origin: 'room-list',
-      });
-      await go(h, { kind: 'list', origin: 'workspace-back' });
-      expect(h.service.committedInApp).toBe(true);
-    });
-
     it('resolves an exact Room intent without exposing destination or history policy', async () => {
       const h = harness({ routeAccountId: ALICE });
       h.navigate.mockClear();

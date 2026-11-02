@@ -113,8 +113,8 @@ export class WorkspaceNavigationService {
 
   /**
    * The current view came from something done inside the app. A history traversal did not: a
-   * WebKit or phone browser edge swipe has already painted its own peek when its popstate lands
-   * here, whether it restores the view or the Back guard dismisses through Workspace.
+   * WebKit or phone browser edge swipe has already painted its own peek when its popstate
+   * restores the view here.
    */
   get committedInApp(): boolean {
     return this.lastCommitInApp;
@@ -200,8 +200,6 @@ export class WorkspaceNavigationService {
     options: WorkspaceOpenOptions,
   ): Observable<WorkspaceOpenOutcome> {
     return defer(() => {
-      // Read now: the projection below supersedes the popstate navigation that asked for this.
-      const fromHistory = this.location.traversingHistory;
       const attemptOptions = this.projectionsActive
         ? options
         : { ...options, force: true };
@@ -216,7 +214,6 @@ export class WorkspaceNavigationService {
           const changed = !sameWorkspaceDestination(this.view(), view);
           const needsProjection = changed || !this.projectionsActive;
           this.lastCommitInApp =
-            !fromHistory &&
             committedOptions.source !== 'restore' &&
             committedOptions.source !== 'repair';
           this.workspaceView.set(view);
