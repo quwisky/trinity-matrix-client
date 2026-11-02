@@ -55,4 +55,36 @@ describe('MessageReceiptsComponent', () => {
     fixture.detectChanges();
     expect(queryByTestId('seen-by-list')).toBeNull();
   });
+
+  it('closes the names when the readers change, on Escape and on a tap elsewhere', async () => {
+    const { getByTestId, queryByTestId, fixture } = await render(
+      MessageReceiptsComponent,
+      { inputs: { receipts } },
+    );
+    const open = () => {
+      getByTestId('read-receipts').click();
+      fixture.detectChanges();
+      expect(queryByTestId('seen-by-list')).not.toBeNull();
+    };
+
+    open();
+    fixture.componentRef.setInput('receipts', [receipts[0]]);
+    fixture.detectChanges();
+    expect(queryByTestId('seen-by-list')).toBeNull();
+
+    open();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(queryByTestId('seen-by-list')).toBeNull();
+
+    open();
+    getByTestId('read-receipts').dispatchEvent(
+      new Event('pointerdown', { bubbles: true }),
+    );
+    fixture.detectChanges();
+    expect(queryByTestId('seen-by-list')).not.toBeNull();
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    fixture.detectChanges();
+    expect(queryByTestId('seen-by-list')).toBeNull();
+  });
 });

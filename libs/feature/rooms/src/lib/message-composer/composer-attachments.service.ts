@@ -222,8 +222,18 @@ export class ComposerAttachmentsService {
       .subscribe();
   }
 
-  /** Attach button: native gallery picker on device, else the hidden file input. */
+  /** Whether the insert tray offers the native photo library as its own entry. */
+  get photoLibraryAvailable(): boolean {
+    return this.picker.available;
+  }
+
+  /** Attach a file: always the file input, so a device chooser can offer any file, not photos only. */
   attach(): void {
+    this.host.openFileDialog();
+  }
+
+  /** Photos: the native gallery picker on device, else the hidden file input. */
+  attachPhotos(): void {
     if (this.picker.available) {
       // The picker refuses an oversized photo by reported size before reading it; the limit may
       // still be resolving.

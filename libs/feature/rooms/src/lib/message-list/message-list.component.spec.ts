@@ -295,6 +295,35 @@ describe('MessageListComponent', () => {
     expect(cmp.topPad() + visible + cmp.bottomPad()).toBe(200 * EST);
   });
 
+  it('shows the readers of the newest message only while the newest rows are rendered', async () => {
+    const messages = many(200);
+    messages[199] = messageView({
+      ...messages[199],
+      readReceipts: [
+        { userId: '@r:hs', name: 'Rita', initial: 'R', avatarMxc: null },
+      ],
+    });
+    const { fixture, container } = await renderList({ messages });
+    const cmp = fixture.componentInstance;
+    const strip = () =>
+      container.querySelector('[data-testid=read-receipts]') !== null;
+
+    expect(cmp.bottomPad()).toBe(0);
+    expect(strip()).toBe(true);
+
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    setScrollGeometry(scroll, {
+      scrollTop: { get: () => 5000, set: () => undefined },
+      clientHeight: 600,
+      scrollHeight: 200 * EST,
+    });
+    cmp.onScroll();
+    fixture.detectChanges();
+
+    expect(cmp.bottomPad()).toBeGreaterThan(0);
+    expect(strip()).toBe(false);
+  });
+
   it('shows the jump-to-latest pill when scrolled up and returns to the bottom', async () => {
     const { fixture, container } = await renderList({ messages: many(200) });
     const cmp = fixture.componentInstance;

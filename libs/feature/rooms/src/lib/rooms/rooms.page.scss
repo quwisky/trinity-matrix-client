@@ -198,12 +198,79 @@
   // pages — show only the one matching the current view. At md+ this media query
   // doesn't apply, so both columns stay static and side by side.
   @media #{$below-md} {
-    [data-mobile-view='chat'] .shell-side {
+    [data-mobile-view='chat']:not([data-pane-slide]) .shell-side {
       display: none;
     }
 
-    [data-mobile-view='list'] .main {
+    [data-mobile-view='list']:not([data-pane-slide]) .main {
       display: none;
+    }
+
+    // A tapped switch, drawn like WebKit's edge swipe: the room moves over a list that shifts
+    // underneath. Only the transform moves. The pane leaving comes out of flow at the width it
+    // had, so the timeline's scroller never sees a width change that would re-aim its jump.
+    // `clip`, not `hidden`: focusing the off-screen pane must not be able to scroll this.
+    [data-pane-slide] {
+      position: relative;
+      overflow: clip;
+    }
+
+    [data-pane-slide='open'] .shell-side,
+    [data-pane-slide='close'] .main {
+      position: absolute;
+      inset: 0;
+    }
+
+    [data-pane-slide] .main {
+      box-shadow:
+        var(--trinity-shadow-overlay),
+        inset 1px 0 0 var(--trinity-border-subtle),
+        inset 0 1px 0 var(--trinity-border-subtle);
+    }
+
+    [data-pane-slide='open'] .main {
+      animation: pane-over-in var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-pane-slide='close'] .main {
+      animation: pane-over-out var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-pane-slide='open'] .shell-side {
+      animation: pane-under-out var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-pane-slide='close'] .shell-side {
+      animation: pane-under-in var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+  }
+
+  @keyframes pane-over-in {
+    from {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes pane-over-out {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  // UIKit's parallax: the page underneath travels 30% of the width.
+  @keyframes pane-under-out {
+    to {
+      transform: translateX(-30%);
+    }
+  }
+
+  @keyframes pane-under-in {
+    from {
+      transform: translateX(-30%);
     }
   }
 

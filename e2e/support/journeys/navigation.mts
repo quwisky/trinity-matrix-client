@@ -53,6 +53,8 @@ export async function closeSettings(page: Page): Promise<void> {
  * sidebar button (or the room overflow menu on a phone) is always reachable.
  */
 export async function openSystemStatusFromRooms(page: Page): Promise<void> {
+  // The list stays rendered while a phone's room slides over it.
+  await expect(page.locator('[data-pane-slide]')).toHaveCount(0);
   const sidebar = page.getByTestId('open-system-status');
   if (await sidebar.isVisible()) {
     await sidebar.click();

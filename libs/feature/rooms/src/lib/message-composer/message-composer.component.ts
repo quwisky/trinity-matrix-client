@@ -843,9 +843,14 @@ export class MessageComposerComponent {
     this.attachments.gifSelected(gif);
   }
 
-  /** Attach button: native gallery picker on device, else the hidden file input. */
+  /** Attach a file, from the insert menu or the plain attach button. */
   onAttach(): void {
     this.attachments.attach();
+  }
+
+  /** Photos, from the insert menu. */
+  onAttachPhotos(): void {
+    this.attachments.attachPhotos();
   }
 
   /** Hidden file input change → stage the picked file, then reset for re-picking. */

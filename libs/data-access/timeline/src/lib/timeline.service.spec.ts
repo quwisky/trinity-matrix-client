@@ -1022,6 +1022,60 @@ describe('TimelineService', () => {
       expect(second.readReceipts).toEqual([]);
     });
 
+    it('credits the newest message with readers marked on a later reaction', () => {
+      const svc = setupReceipts(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$r', sender: '@bob:hs', type: 'm.reaction' }),
+        ],
+        { $r: ['@carol:hs'] },
+      );
+
+      expect(svc.messages().map((m) => m.id)).toEqual(['$1']);
+      expect(svc.messages()[0].readReceipts.map((r) => r.userId)).toEqual([
+        '@carol:hs',
+      ]);
+    });
+
+    it('never gives readers to a system line that follows the newest message', () => {
+      const svc = setupReceipts(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({
+            id: '$n',
+            sender: '@alice:hs',
+            type: 'm.room.name',
+            stateKey: '',
+            content: { name: 'General' },
+          }),
+        ],
+        { $1: ['@carol:hs'], $n: ['@dan:hs'] },
+      );
+
+      const [message, line] = svc.messages();
+      expect(line.kind).toBe('event');
+      expect(line.readReceipts).toEqual([]);
+      expect(message.readReceipts.map((r) => r.userId)).toEqual([
+        '@carol:hs',
+        '@dan:hs',
+      ]);
+    });
+
+    it('keeps the newest message object while its readers are unchanged', () => {
+      const svc = setupReceipts(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$r', sender: '@bob:hs', type: 'm.reaction' }),
+        ],
+        { $r: ['@carol:hs'] },
+      );
+      const first = svc.messages()[0];
+
+      (svc as unknown as { refresh(): void }).refresh();
+
+      expect(svc.messages()[0]).toBe(first);
+    });
+
     it("refreshes a receipt avatar when the reader's member loads late", async () => {
       // A reader who has posted nothing in the window is nobody's sender, reply target
       // or reactor. Both defences used to miss them: the revision folded in receipt

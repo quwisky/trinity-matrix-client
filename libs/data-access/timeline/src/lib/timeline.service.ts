@@ -44,6 +44,7 @@ import { SystemLineSettingsService } from '@trinity/platform-native';
 import {
   collectMessageSenders,
   isDisplayableMessage,
+  readersFrom,
   reactionDetailsFor,
   RoomEncryptionFlags,
   TYPING_REFRESH_MS,
@@ -72,6 +73,7 @@ import type {
   MessageShield,
   MessageView,
   ReactionDetail,
+  ReceiptView,
   SystemLineCategory,
 } from './message-presentation';
 import {
@@ -392,6 +394,11 @@ export class TimelineService {
     this.rows.noteEvent(event, oldEventId);
     this.scheduleRefresh();
   };
+  private newestReaders: {
+    readonly base: MessageView;
+    readonly signature: string;
+    readonly view: MessageView;
+  } | null = null;
   // Others' read receipts moved — re-project so the "seen by" avatars follow them.
   private readonly onReceipt = (event?: MatrixEvent): void => {
     this.rows.noteReceipt(event);
@@ -1020,6 +1027,8 @@ export class TimelineService {
     // Rows this pass fingerprinted, whose shields may need resolving.
     const checked: MatrixEvent[] = [];
     const views: MessageView[] = [];
+    let newestMessageIndex = -1;
+    let newestMessageView = -1;
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
       // Edits (m.replace) are aggregated onto their target, so hidden. Threaded replies are
@@ -1065,12 +1074,24 @@ export class TimelineService {
       const shield = unencryptedShield(e, shown) ?? shownShield(shown);
       const reused = this.rows.reusable(id, e.replyEventId, shield, subjectId);
       if (reused) {
-        if (reused.view) views.push(reused.view);
+        if (reused.view) {
+          newestMessageIndex = i;
+          newestMessageView = views.push(reused.view) - 1;
+        }
         continue;
       }
       checked.push(e);
       const view = this.messageRow(client, room, e, id, shield, subjectId);
-      if (view) views.push(view);
+      if (view) {
+        newestMessageIndex = i;
+        newestMessageView = views.push(view) - 1;
+      }
+    }
+    if (newestMessageView >= 0) {
+      views[newestMessageView] = this.withNewestReaders(
+        views[newestMessageView],
+        readersFrom(client, room, events, newestMessageIndex),
+      );
     }
     const { pruned, rechecked } = this.rows.endPass();
     if (pruned || rechecked > 0) {
@@ -1262,6 +1283,27 @@ export class TimelineService {
     if (changed && this.roomId === room.roomId) {
       this.refresh();
     }
+  }
+
+  /** Keeps object identity across passes where the newest message's readers didn't change. */
+  private withNewestReaders(
+    view: MessageView,
+    readers: readonly ReceiptView[],
+  ): MessageView {
+    const wanted = JSON.stringify(readers);
+    if (JSON.stringify(view.readReceipts) === wanted) {
+      return view;
+    }
+    const kept = this.newestReaders;
+    if (kept?.base === view && kept.signature === wanted) {
+      return kept.view;
+    }
+    const merged: MessageView = {
+      ...view,
+      readReceipts: Object.freeze(readers.map((r) => Object.freeze({ ...r }))),
+    };
+    this.newestReaders = { base: view, signature: wanted, view: merged };
+    return merged;
   }
 
   /**
