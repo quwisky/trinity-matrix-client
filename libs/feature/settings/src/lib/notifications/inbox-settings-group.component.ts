@@ -93,6 +93,14 @@ export class InboxSettingsGroupComponent {
   readonly deleteFailed = this.index.deleteFailed;
   /** Only while the read is under way: one that failed must not stop the person refusing. */
   readonly unknown = computed(() => !this.preferences.settled());
+  /** The record switch reads on, from the default, but a failed read means nothing records. */
+  readonly notRecording = computed(
+    () =>
+      this.preferences.settled() &&
+      this.showInbox() &&
+      this.keepRecord() &&
+      !this.preferences.recordAllowed(),
+  );
   /** A change is under way. The controls stay focusable, and decline further changes. */
   readonly busy = signal(false);
 

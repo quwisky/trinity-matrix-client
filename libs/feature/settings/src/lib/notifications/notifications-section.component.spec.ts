@@ -76,6 +76,7 @@ async function build(over: { setOn?: Mock } = {}) {
       MockProvider(KeywordRulesService, { keywords: () => [] }),
       MockProvider(MentionInboxPreferences, {
         settled: signal(true).asReadonly(),
+        recordAllowed: signal(true).asReadonly(),
         showInbox: signal(true).asReadonly(),
         keepRecord: signal(true).asReadonly(),
       }),

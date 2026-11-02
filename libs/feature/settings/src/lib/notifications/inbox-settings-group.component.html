@@ -27,13 +27,26 @@
   >
     <trn-switch
       inputId="notif-keep-mention-record-switch"
-      aria-describedby="notif-keep-mention-record-switch-description"
+      [aria-describedby]="
+        notRecording()
+          ? 'notif-keep-mention-record-switch-description notif-mention-not-recording'
+          : 'notif-keep-mention-record-switch-description'
+      "
       [checked]="showInbox() && keepRecord()"
       [disabled]="unknown() || !showInbox()"
       [aria-disabled]="busy()"
       (checkedChange)="setKeepRecord($event)"
     />
   </trn-settings-row>
+  @if (notRecording()) {
+    <p
+      id="notif-mention-not-recording"
+      class="m-0 py-3 text-13 text-muted-foreground"
+    >
+      Trinity couldn't read this setting, so it isn't recording mentions right
+      now.
+    </p>
+  }
   @if (deleteFailed()) {
     <div #deleteFailure class="flex flex-wrap items-center gap-2 py-3">
       <p

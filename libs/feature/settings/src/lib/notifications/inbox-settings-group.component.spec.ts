@@ -730,6 +730,60 @@ describe('InboxSettingsGroupComponent', () => {
     });
   });
 
+  describe('the line for a switch that reads on while nothing records', () => {
+    const NOT_RECORDING =
+      "Trinity couldn't read this setting, so it isn't recording mentions right now.";
+
+    it('shows after a failed read, and describes the switch', async () => {
+      await setup({ unreadable: [KEEP] });
+
+      expect(recordSwitch().checked).toBe(true);
+      expect(screen.getByText(NOT_RECORDING).id).toBe(
+        'notif-mention-not-recording',
+      );
+      expect(recordSwitch().getAttribute('aria-describedby')).toBe(
+        'notif-keep-mention-record-switch-description notif-mention-not-recording',
+      );
+      expect(recordSwitch().disabled).toBe(false);
+    });
+
+    it('shows when it was the other switch that could not be read', async () => {
+      await setup({ unreadable: [SHOW] });
+
+      expect(screen.getByText(NOT_RECORDING)).toBeTruthy();
+    });
+
+    it('goes once the person sets the switch, which is then true', async () => {
+      const { settle } = await setup({ unreadable: [KEEP] });
+
+      recordSwitch().click();
+      await settle();
+
+      expect(screen.queryByText(NOT_RECORDING)).toBeNull();
+      expect(recordSwitch().getAttribute('aria-describedby')).toBe(
+        'notif-keep-mention-record-switch-description',
+      );
+    });
+
+    it('stays out while recording is allowed', async () => {
+      await setup();
+
+      expect(screen.queryByText(NOT_RECORDING)).toBeNull();
+    });
+
+    it('stays out while the read is under way', async () => {
+      await setup({ readsHeld: true });
+
+      expect(screen.queryByText(NOT_RECORDING)).toBeNull();
+    });
+
+    it('stays out when the record switch reads off, as nothing it says is false', async () => {
+      await setup({ unreadable: [SHOW], stored: { [KEEP]: false } });
+
+      expect(screen.queryByText(NOT_RECORDING)).toBeNull();
+    });
+  });
+
   it('holds the switches while the stored setting is unknown', async () => {
     const { prefs } = await setup({ readsHeld: true });
 
