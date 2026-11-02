@@ -18,6 +18,7 @@ import {
   reactionDetailsFor,
   reactionsFor,
   readReceiptsFor,
+  readersFrom,
   replyPreview,
   trackEncryptedNonMessages,
 } from './message-view';
@@ -304,6 +305,53 @@ describe('readReceiptsFor', () => {
     expect(readReceiptsFor(ME, room, message).map((r) => r.userId)).toEqual([
       '@reader:hs',
     ]);
+  });
+});
+
+describe('readersFrom', () => {
+  const event = (id: string, sender: string, state = false): MatrixEvent =>
+    ({
+      getId: () => id,
+      getSender: () => sender,
+      isState: () => state,
+    }) as unknown as MatrixEvent;
+  const events = [
+    event('$older', '@author:hs'),
+    event('$message', '@author:hs'),
+    event('$reaction', '@bob:hs'),
+    event('$join', '@carol:hs', true),
+    event('$later', '@dan:hs'),
+  ];
+  const roomWith = (readUpTo: Record<string, string[]>): Room =>
+    ({
+      ...reactedRoom({}),
+      getUsersReadUpTo: (e: MatrixEvent) => readUpTo[e.getId() ?? ''] ?? [],
+    }) as unknown as Room;
+  const readers = (readUpTo: Record<string, string[]>): string[] =>
+    readersFrom(ME, roomWith(readUpTo), events, 1).map((r) => r.userId);
+
+  it('counts a marker on a later event, including the reader who reacted', () => {
+    expect(
+      readers({
+        $message: ['@ann:hs'],
+        $reaction: ['@bob:hs'],
+        $later: ['@dan:hs'],
+      }),
+    ).toEqual(['@ann:hs', '@bob:hs', '@dan:hs']);
+  });
+
+  it('leaves out anyone whose marker is further back', () => {
+    expect(readers({ $older: ['@stopped:hs'] })).toEqual([]);
+  });
+
+  it('leaves out the author, yourself and a sender marked only by their own join', () => {
+    expect(
+      readers({ $later: ['@author:hs', '@me:hs'], $join: ['@carol:hs'] }),
+    ).toEqual([]);
+  });
+
+  it('keeps someone who read past their own join', () => {
+    expect(readers({ $later: ['@carol:hs'] })).toEqual(['@carol:hs']);
   });
 });
 

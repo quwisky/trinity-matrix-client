@@ -2,8 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  ElementRef,
+  inject,
   input,
-  signal,
+  linkedSignal,
 } from '@angular/core';
 import {
   AvatarComponent,
@@ -16,12 +18,15 @@ import { type ReceiptView } from '@trinity/data-access/timeline';
   selector: 'trn-message-receipts',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent, TrnTooltip],
+  host: {
+    '(document:pointerdown)': 'closeOutside($event)',
+    '(document:keydown.escape)': 'seenByOpen.set(false)',
+  },
   templateUrl: './message-receipts.component.html',
   styleUrl: './message-receipts.component.scss',
 })
 export class MessageReceiptsComponent {
-  /** Whether the "seen by" reader list is expanded. */
-  protected readonly seenByOpen = signal(false);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /** Accessible label for the receipt avatars (which are decorative). */
   protected readonly seenByLabel = computed(
@@ -32,4 +37,19 @@ export class MessageReceiptsComponent {
   );
 
   readonly receipts = input.required<readonly ReceiptView[]>();
+
+  /** Whether the "seen by" reader list is expanded; closes when the readers change. */
+  protected readonly seenByOpen = linkedSignal({
+    source: () =>
+      this.receipts()
+        .map((receipt) => receipt.userId)
+        .join(),
+    computation: () => false,
+  });
+
+  protected closeOutside(event: Event): void {
+    if (!this.host.nativeElement.contains(event.target as Node)) {
+      this.seenByOpen.set(false);
+    }
+  }
 }

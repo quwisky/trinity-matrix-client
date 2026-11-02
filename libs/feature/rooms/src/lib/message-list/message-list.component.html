@@ -101,7 +101,7 @@
     <div class="vpad" [style.height.px]="bottomPad()"></div>
 
     @if (windowedRows().length) {
-      <trn-message-receipts [receipts]="latestReceipts()" />
+      <trn-message-receipts [receipts]="stripReceipts()" />
     }
   </div>
 

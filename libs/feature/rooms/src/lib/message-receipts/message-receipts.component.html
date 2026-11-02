@@ -2,15 +2,17 @@
   <button
     type="button"
     class="msg__receipts msg__target"
+    animate.leave="msg__receipts--leaving"
     data-testid="read-receipts"
     [attr.aria-label]="seenByLabel()"
     [attr.aria-expanded]="seenByOpen()"
-    [trnTooltip]="seenByLabel()"
+    [trnTooltip]="seenByOpen() ? '' : seenByLabel()"
     (click)="seenByOpen.set(!seenByOpen())"
   >
     @for (receipt of receipts(); track receipt.userId) {
       <trn-avatar
         class="msg__receipt"
+        animate.leave="msg__receipt--leaving"
         aria-hidden="true"
         [mxc]="receipt.avatarMxc"
         [initial]="receipt.initial"
