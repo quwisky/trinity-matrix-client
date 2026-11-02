@@ -180,6 +180,8 @@ export class MentionIndexService {
     try {
       await this.enqueue(() => this.store.deleteAll());
       this.deleteFailedState.set(false);
+      // The store just answered, so an earlier failure is no reason to stay stopped.
+      this.stopped.set(false);
     } catch (error) {
       this.deleteFailedState.set(true);
       throw error;

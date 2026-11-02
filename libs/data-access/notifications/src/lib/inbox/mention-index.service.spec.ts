@@ -960,6 +960,50 @@ describe('MentionIndexService', () => {
     expect(client.bound(RoomEvent.Timeline)).toBe(1);
   });
 
+  it('a successful delete lets a session stopped by a storage failure record again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, prefs, service } = setup();
+    await run();
+    store.failNextPut(new Error('storage'));
+    client.live(message('$lost'));
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    await firstValueFrom(prefs.setKeepRecord(false));
+    vi.spyOn(store, 'deleteAll').mockRejectedValueOnce(new Error('blocked'));
+    await expect(firstValueFrom(service.deleteAll())).rejects.toThrow(
+      'blocked',
+    );
+    await firstValueFrom(prefs.setKeepRecord(true));
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    await firstValueFrom(service.deleteAll());
+    await flush();
+    expect(service.recording()).toBe(true);
+    client.live(message('$new'));
+    await flush();
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$new']);
+  });
+
+  it('turning a switch back on starts with an empty record', async () => {
+    const { client, store, run, prefs, service } = setup();
+    await run();
+    client.live(message('$old'));
+    await flush();
+    expect(store.rows(ME)).toHaveLength(1);
+
+    await firstValueFrom(prefs.setKeepRecord(false));
+    await firstValueFrom(service.deleteAll());
+    await firstValueFrom(prefs.setKeepRecord(true));
+    await flush();
+    expect(store.rows(ME)).toEqual([]);
+
+    client.live(message('$new'));
+    await flush();
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$new']);
+  });
+
   it('runs a delete after the writes queued before it', async () => {
     const { client, store, run, service } = setup();
     await run();
@@ -1055,13 +1099,12 @@ describe('MentionIndexService', () => {
 
       client.live(message('$hung'));
       client.live(message('$queued'));
-      const deleted = firstValueFrom(service.deleteAll());
+      const forgotten = firstValueFrom(service.forgetAccount(ME));
       await vi.advanceTimersByTimeAsync(LIMIT);
-      await deleted;
+      await forgotten;
 
       expect(service.recording()).toBe(false);
       expect(put).toHaveBeenCalledOnce();
-      expect(service.deleteFailed()).toBe(false);
       expect(warn).toHaveBeenCalledExactlyOnceWith(STOPPED);
     });
 
