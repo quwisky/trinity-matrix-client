@@ -375,8 +375,23 @@ export class MessageComposerComponent {
   );
   /** Send is disabled only because there is nothing to send, so a phone can hide it. */
   protected readonly sendIdle = computed(
-    () => !this.canSubmit() && !this.cannotSend() && !this.textSending(),
+    () =>
+      !this.canSubmit() &&
+      !this.cannotSend() &&
+      !this.textSending() &&
+      !this.justSent(),
   );
+  /**
+   * Send lingers, disabled, for a moment after a send: a quick second tap lands on it and does
+   * nothing, instead of on the emoji button that would slide into its place.
+   */
+  private readonly justSent = signal(false);
+  private justSentTimer: ReturnType<typeof setTimeout> | undefined;
+  private markSent(): void {
+    clearTimeout(this.justSentTimer);
+    this.justSent.set(true);
+    this.justSentTimer = setTimeout(() => this.justSent.set(false), 1000);
+  }
   protected openFormatSheet(): void {
     this.formatMenu()?.openMobileSheet();
   }
@@ -515,7 +530,10 @@ export class MessageComposerComponent {
         sheetOpen ? this.openPickerSheet() : this.closePickerSheet(),
       );
     });
-    this.destroyRef.onDestroy(() => this.closePickerSheet());
+    this.destroyRef.onDestroy(() => {
+      clearTimeout(this.justSentTimer);
+      this.closePickerSheet();
+    });
 
     // The voice bar is gone while the notice shows, so nothing could stop an open mic.
     effect(() => {
@@ -666,6 +684,7 @@ export class MessageComposerComponent {
       // The staged rows stay until their outcomes arrive: failed ones must remain to be retried.
       this.resetMenus();
       this.field.regrowAfterRender();
+      this.markSent();
       return;
     }
     if (this.textSending()) return;
@@ -678,6 +697,7 @@ export class MessageComposerComponent {
       mentions: this.menus.activeMentions(),
     });
     this.typing.emit(false); // a sent message ends the typing notification
+    this.markSent();
     this.resetMenus();
     // The saved Aa selection must not be applied to a later draft.
     this.formatting.clearSelection();
