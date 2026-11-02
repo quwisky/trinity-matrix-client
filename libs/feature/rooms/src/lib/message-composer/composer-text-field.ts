@@ -89,16 +89,23 @@ export class ComposerTextField {
     if (!el) {
       return;
     }
+    // A wrapping room-name placeholder is not draft content. Keep an empty input at rows=1.
+    if (el.value.length === 0) {
+      el.style.height = 'auto';
+      return;
+    }
+    // Hidden (the preview, a `display: none` ancestor): it reads 0, and writing that would show it
+    // collapsed. Its padding makes a rendered input's reading positive.
+    if (el.scrollHeight === 0) {
+      return;
+    }
     // Measuring forces a layout with the input collapsed. Were the composer to shrink with it, the
     // browser would clamp the timeline's scrollTop to the taller viewport and lose a bottom pin.
     const box = el.parentElement;
     if (box) box.style.minHeight = `${box.getBoundingClientRect().height}px`;
     el.style.height = 'auto';
-    // A wrapping room-name placeholder is not draft content. Keep an empty input at rows=1.
-    if (el.value.length > 0) {
-      el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
-    }
-    box?.style.removeProperty('min-height');
+    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
+    if (box) box.style.minHeight = '';
   }
 
   /**
@@ -106,9 +113,8 @@ export class ComposerTextField {
    *
    * `afterNextRender`, NOT `queueMicrotask`: the app is zoneless, so a signal write only
    * schedules change detection (a rAF/timeout race) and a microtask beats it. After leaving the
-   * preview, a microtask measures a textarea still `display: none`, `scrollHeight` reads 0, and
-   * the input is pinned to `height: 0px` (it has `min-height: 0` and `box-sizing: border-box`)
-   * until the next keystroke. Not reachable by a unit test: jsdom reports `scrollHeight: 0`.
+   * preview, a microtask finds a textarea still `display: none`, which {@link autoGrow} cannot
+   * measure. Not reachable by a unit test: jsdom reports `scrollHeight: 0`.
    */
   regrowAfterRender(): void {
     afterNextRender(() => this.autoGrow(), { injector: this.injector });
