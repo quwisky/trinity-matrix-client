@@ -1,5 +1,5 @@
 /** How far a finger must travel down the list before the keyboard goes: well past a tap's wobble. */
-export const DRAG_DISMISS_PX = 40;
+const DRAG_DISMISS_PX = 40;
 
 /**
  * Dismiss the software keyboard when the reader drags the list down, as phones do. Only blurs the
@@ -24,7 +24,7 @@ export function dismissKeyboardOnDrag(el: HTMLElement): () => void {
       const field = el.ownerDocument.activeElement;
       if (
         field instanceof HTMLElement &&
-        field.matches('input, textarea, [contenteditable]')
+        (field.matches('input, textarea') || field.isContentEditable)
       ) {
         field.blur();
       }

@@ -68,4 +68,38 @@ test.describe('Dragging the timeline with the keyboard up', () => {
       }
     });
   }
+
+  test('a downward drag in a thread dismisses the keyboard', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'drag-kb-thread');
+    const root = await sendMessage(request, hs, room, { body: 'Thread root' });
+    for (let i = 0; i < ROWS; i++) {
+      await sendMessage(request, hs, room, {
+        body: `Reply ${i} ${'lorem ipsum dolor sit amet '.repeat(6)}`,
+        threadRoot: root,
+      });
+    }
+    await login(page, room.session);
+    await page.locator('.channel', { hasText: room.roomName }).first().click();
+    const rootRow = page.locator('.scroll .msg[data-mid]', {
+      hasText: 'Thread root',
+    });
+    await expect(rootRow).toBeVisible({ timeout: 30_000 });
+    await rootRow.getByTestId('message-thread-summary').tap();
+    const thread = page.getByTestId('thread-view');
+    await expect(thread.locator('.msg__text').last()).toContainText(
+      `Reply ${ROWS - 1} `,
+      { timeout: 30_000 },
+    );
+    const field = thread.getByTestId('composer-input');
+    await field.click();
+    await expect(field).toBeFocused();
+    const box = (await thread.locator('.thread').boundingBox())!;
+    const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 - 60 };
+    await cdpSwipe(page, from, { x: from.x, y: from.y + 120 });
+    await expect(field).not.toBeFocused();
+  });
 });
