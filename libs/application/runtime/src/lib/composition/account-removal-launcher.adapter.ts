@@ -1,6 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, ReplaySubject, map, of, switchMap } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  ReplaySubject,
+  defaultIfEmpty,
+  defer,
+  finalize,
+  map,
+  of,
+  switchMap,
+  take,
+} from 'rxjs';
 import {
   TrnAlertService,
   TrnToastService,
@@ -48,9 +59,10 @@ export class AccountRemovalLauncherAdapter implements AccountRemovalLauncher {
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly router = inject(Router);
+  private reading = false;
 
   remove(accountId: string): Observable<AccountRemovalOutcome> {
-    return this.lifecycle.hasMentionHistory(accountId).pipe(
+    return this.readHistoryOnce(accountId).pipe(
       switchMap((hasHistory) =>
         this.alert.confirm$({
           header: 'Remove account',
@@ -79,7 +91,22 @@ export class AccountRemovalLauncherAdapter implements AccountRemovalLauncher {
           }
         }
       }),
+      defaultIfEmpty(KEPT),
     );
+  }
+
+  /** The question opens only after this read, so without the guard a second press could beat it. */
+  private readHistoryOnce(accountId: string): Observable<boolean> {
+    return defer(() => {
+      if (this.reading) {
+        return EMPTY;
+      }
+      this.reading = true;
+      return this.lifecycle.hasMentionHistory(accountId).pipe(
+        take(1),
+        finalize(() => (this.reading = false)),
+      );
+    });
   }
 
   /**

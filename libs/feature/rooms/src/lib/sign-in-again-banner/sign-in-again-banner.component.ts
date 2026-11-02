@@ -20,7 +20,7 @@ import {
   MENTION_HISTORY_LOSS,
 } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { filter, switchMap } from 'rxjs';
+import { filter, finalize, switchMap, take } from 'rxjs';
 
 /**
  * Asks the active account to sign in again on this device when its crypto store predates
@@ -41,6 +41,8 @@ export class SignInAgainBannerComponent {
   private readonly router = inject(Router);
   private readonly alert = inject(TrnAlertService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
+  /** The question opens only after the history is read, so a second press could beat it. */
+  private asking = false;
   private readonly destroyRef = inject(DestroyRef);
 
   readonly visible = computed(
@@ -57,10 +59,12 @@ export class SignInAgainBannerComponent {
    */
   signInAgain(): void {
     const userId = this.matrix.activeUserId();
-    if (!userId) return;
+    if (!userId || this.asking) return;
+    this.asking = true;
     this.lifecycle
       .hasMentionHistory(userId)
       .pipe(
+        take(1),
         switchMap((hasHistory) =>
           this.alert.confirm$({
             header: 'Sign in again?',
@@ -68,6 +72,7 @@ export class SignInAgainBannerComponent {
             confirmText: 'Continue',
           }),
         ),
+        finalize(() => (this.asking = false)),
         filter(Boolean),
         takeUntilDestroyed(this.destroyRef),
       )

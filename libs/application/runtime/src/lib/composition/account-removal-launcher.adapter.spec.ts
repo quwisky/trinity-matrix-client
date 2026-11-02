@@ -114,8 +114,8 @@ describe('AccountRemovalLauncherAdapter', () => {
     );
   });
 
-  // The port reads a failed or unanswered count as false; its own spec pins that, at 1 s.
-  it('removal still asks when the count cannot be read, without the sentence', async () => {
+  // The port answers no for a failed or unanswered count too; its own spec pins that, at 1 s.
+  it('removal still asks when the port answers no history, without the sentence', async () => {
     const { launcher, confirm, signOutAccount } = setup({ history: of(false) });
 
     await firstValueFrom(launcher.remove('@me:hs'));
@@ -137,6 +137,32 @@ describe('AccountRemovalLauncherAdapter', () => {
 
     history.next(false);
     expect(confirm).toHaveBeenCalledOnce();
+  });
+
+  it('a second press while the history is read opens no second question', async () => {
+    const history = new Subject<boolean>();
+    const { launcher, confirm } = setup({ history });
+    const second = vi.fn();
+
+    launcher.remove('@me:hs').subscribe();
+    launcher.remove('@me:hs').subscribe(second);
+    expect(second).toHaveBeenCalledExactlyOnceWith({ kind: 'kept' });
+
+    history.next(false);
+    history.complete();
+    expect(confirm).toHaveBeenCalledOnce();
+  });
+
+  it('asks again on a later press', async () => {
+    const { launcher, confirm } = setup({
+      confirm: [false, false],
+      history: of(false),
+    });
+
+    await firstValueFrom(launcher.remove('@me:hs'));
+    await firstValueFrom(launcher.remove('@me:hs'));
+
+    expect(confirm).toHaveBeenCalledTimes(2);
   });
 
   it('stays in the app when other accounts remain', async () => {

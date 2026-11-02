@@ -7,7 +7,7 @@ import {
   MENTION_HISTORY_LOSS,
 } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { of } from 'rxjs';
+import { Subject, of, type Observable } from 'rxjs';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,12 +20,19 @@ const dismissSignInAgain = vi.fn();
 const navigate = vi.fn(() => Promise.resolve(true));
 const confirm$ = vi.fn(() => of(true));
 
-function renderBanner(hasMentionHistory = false) {
+function renderBanner(
+  hasMentionHistory: boolean | Observable<boolean> = false,
+) {
   return render(SignInAgainBannerComponent, {
     providers: [
       {
         provide: ACCOUNT_LIFECYCLE_PORT,
-        useValue: { hasMentionHistory: () => of(hasMentionHistory) },
+        useValue: {
+          hasMentionHistory: () =>
+            typeof hasMentionHistory === 'boolean'
+              ? of(hasMentionHistory)
+              : hasMentionHistory,
+        },
       },
       MockProvider(MatrixClientService, {
         activeUserId: signal('@me:hs').asReadonly(),
@@ -55,6 +62,27 @@ beforeEach(() => {
 });
 
 describe('SignInAgainBannerComponent', () => {
+  it('a second press while the history is read opens no second question', async () => {
+    const history = new Subject<boolean>();
+    const { container } = await renderBanner(history);
+    const button = [...container.querySelectorAll('button')].find((candidate) =>
+      candidate.textContent?.includes('Sign in again'),
+    ) as HTMLButtonElement;
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    history.next(false);
+
+    expect(confirm$).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledOnce();
+
+    // Asked and answered, so a later press asks again.
+    fireEvent.click(button);
+    expect(confirm$).toHaveBeenCalledTimes(1);
+    history.next(false);
+    expect(confirm$).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     [true, true],
     [false, false],
