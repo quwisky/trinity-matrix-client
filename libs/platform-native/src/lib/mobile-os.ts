@@ -63,6 +63,20 @@ export function isNativeAndroid(): boolean {
   return Capacitor.getPlatform() === 'android';
 }
 
+/**
+ * Whether the web view is iOS or iPadOS WebKit, in the native shell or a browser. For behaviour
+ * of the engine rather than the shell; every browser on iOS uses it, so they all say iPhone or iPad.
+ */
+export function isIosWebKit(): boolean {
+  if (isNativeIos()) return true;
+  if (isElectronRenderer() || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return (
+    /iPhone|iPod|iPad/.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+  );
+}
+
 /** Whether this is the native iOS shell, not Safari/PWA or an iPad-like desktop UA. */
 export function isNativeIos(): boolean {
   return Capacitor.getPlatform() === 'ios';

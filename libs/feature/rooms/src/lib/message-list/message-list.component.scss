@@ -12,6 +12,13 @@
     // A body collapsing behind Show more must not toggle a classic scrollbar: the width it
     // takes back would rewrap the bodies, which could flip them between long and short.
     scrollbar-gutter: stable;
+
+    // Holds a position correction iOS would overwrite mid-gesture; see `NativeScrollHold`.
+    &::before {
+      content: '';
+      display: block;
+      margin-block-start: var(--scroll-hold, 0);
+    }
   }
 
   // Spacers for the off-screen rows above/below the window. Must not shrink in the flex column.

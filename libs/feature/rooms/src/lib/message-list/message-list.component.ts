@@ -24,6 +24,8 @@ import { scrollToJumpTarget } from './jump-scroll';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { TimelineMediaGate } from '../shared/timeline-media-gate';
 import { FlingRows } from './fling-rows';
+import { NativeScrollHold } from './native-scroll-hold';
+import { isIosWebKit } from '@trinity/platform-native';
 import { scrollBehavior } from '@trinity/util/ui';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
@@ -163,6 +165,8 @@ export class MessageListComponent extends MessageListBase {
   private expectedProgrammaticScrollTop: number | null = null;
   /** Pending end of the current scroll; see {@link markScrolling}. */
   private scrollIdle: ReturnType<typeof setTimeout> | null = null;
+  private readonly iosWebKit = isIosWebKit();
+  private readonly scrollHold = new NativeScrollHold(this.iosWebKit);
   /**
    * The height an unmeasured row is counted at: {@link ESTIMATED_ROW_HEIGHT_PX}, or with "Blank
    * rows while scrolling fast" on, the room's average measured row ({@link adaptEstimate}).
@@ -199,7 +203,7 @@ export class MessageListComponent extends MessageListBase {
       {
         ids: this.ids(),
         heights: { measured: this.measured, estimate: this.rowEstimate() },
-        scrollTop: this.scrollTop(),
+        scrollTop: this.scrollTop() + this.scrollHold.shift(),
         viewportHeight: this.viewportH(),
         overscanPx: OVERSCAN_PX,
         pinBottom: this.atBottomSig(),
@@ -486,6 +490,7 @@ export class MessageListComponent extends MessageListBase {
       );
       this.watchScrollerWidth();
       this.reconcileObserved(this.rowHosts());
+      if (this.iosWebKit) this.watchTouches(el);
     });
 
     this.destroyRef.onDestroy(() => {
@@ -505,6 +510,8 @@ export class MessageListComponent extends MessageListBase {
     this.prependAnchorActive = false;
     this.prependAnchorGeneration++;
     this.expectedProgrammaticScrollTop = null;
+    this.scrollHold.reset();
+    this.scrollEl()?.nativeElement.style.removeProperty('--scroll-hold');
     this.atBottomSig.set(true);
     // Forget the old room's measured heights and scroll position: the new room starts from the top.
     this.measured.clear();
@@ -549,6 +556,9 @@ export class MessageListComponent extends MessageListBase {
       return;
     }
     this.markScrolling();
+    if (this.scrollHold.scrolled(el.scrollTop, performance.now())) {
+      this.showScrollHold(el);
+    }
     // How fast the reader moves the list. The list's own writes are taken out as made
     // (`writeScrollTop`), so this is the reader's movement alone.
     this.scrollActivity.moved(el.scrollTop, performance.now());
@@ -557,7 +567,12 @@ export class MessageListComponent extends MessageListBase {
     } else {
       this.fling.moved(this.scrollActivity.speed);
     }
-    if (this.expectedProgrammaticScrollTop !== null) {
+    if (this.prependAnchorActive && this.scrollHold.shift() !== 0) {
+      // Under a hold the rows' first measurements are still to come while the reader moves. Keep
+      // the anchor, moved with them: let go, those measurements read as rows growing above the fold.
+      this.prependAnchorOffset -= el.scrollTop - this.scrollTop();
+      this.expectedProgrammaticScrollTop = null;
+    } else if (this.expectedProgrammaticScrollTop !== null) {
       if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
         this.expectedProgrammaticScrollTop = null;
       } else {
@@ -590,7 +605,9 @@ export class MessageListComponent extends MessageListBase {
       !this.settled() ||
       this.pendingPrepend ||
       this.loadingOlder() ||
-      !this.canLoadOlder()
+      !this.canLoadOlder() ||
+      // The last page is still held above the reader: it is what lies past this top.
+      this.scrollHold.shift() !== 0
     ) {
       return;
     }
@@ -617,7 +634,70 @@ export class MessageListComponent extends MessageListBase {
       this.scrollIdle = null;
       this.scrollActivity.settle();
       this.fling.end();
+      this.settleScrollHold();
     }, SCROLL_IDLE_MS);
+  }
+
+  /**
+   * Follow the touches on the list. An end goes to the element the touch began on and, once
+   * windowing has removed that row, stops there; a touch's next start resets a missed count.
+   */
+  private watchTouches(el: HTMLElement): void {
+    const passive = { passive: true } as const;
+    const ended = (event: Event): void => {
+      if (this.destroyRef.destroyed) return;
+      this.scrollHold.touched((event as TouchEvent).touches.length);
+      this.markScrolling();
+    };
+    el.addEventListener(
+      'touchstart',
+      (event) => {
+        this.scrollHold.touched(event.touches.length);
+        event.target?.addEventListener('touchend', ended, passive);
+        event.target?.addEventListener('touchcancel', ended, passive);
+      },
+      passive,
+    );
+  }
+
+  /** Show the held shift as the negative margin of `.scroll::before`. */
+  private showScrollHold(el: HTMLElement): void {
+    el.style.setProperty('--scroll-hold', `${-this.scrollHold.shift()}px`);
+  }
+
+  /**
+   * Move by a correction, or hold it while a write would be overwritten; see {@link NativeScrollHold}.
+   * `top` is unclamped: WebKit reports a bounce as a negative scrollTop, which a hold can express.
+   */
+  private correctScrollTop(el: HTMLElement, top: number): void {
+    if (this.scrollHold.ownedByScrollView(this.scrollIdle !== null)) {
+      this.scrollHold.shift.update((shift) => shift + top - el.scrollTop);
+      this.showScrollHold(el);
+    } else {
+      this.writeCorrection(el, top);
+    }
+  }
+
+  private writeCorrection(el: HTMLElement, top: number): void {
+    const from = el.scrollTop;
+    this.writeScrollTop(el, Math.max(0, top));
+    this.scrollHold.wrote(from, el.scrollTop, performance.now());
+  }
+
+  private settleScrollHold(): void {
+    const el = this.scrollEl()?.nativeElement;
+    if (el && this.scrollHold.canSettle()) this.releaseScrollHold(el);
+  }
+
+  /** Margin off and position on in one task, so no frame shows the rows between the two. */
+  private releaseScrollHold(el: HTMLElement): void {
+    if (this.scrollHold.shift() === 0) return;
+    // Read first: without a positive margin the content shrinks, and the browser may clamp this.
+    const top = el.scrollTop + this.scrollHold.settle();
+    el.style.removeProperty('--scroll-hold');
+    this.prependAnchorActive = false;
+    this.prependAnchorGeneration++;
+    this.writeCorrection(el, top);
   }
 
   /**
@@ -626,6 +706,7 @@ export class MessageListComponent extends MessageListBase {
    * off this is the plain `fling.end()` no-op and the scroll activity is left alone.
    */
   private beginJump(): void {
+    this.scrollHold.forgetWrite();
     this.fling.end();
     if (!this.flingPlaceholders()) return;
     this.jumping = true;
@@ -648,6 +729,7 @@ export class MessageListComponent extends MessageListBase {
     if (!el) {
       return;
     }
+    this.releaseScrollHold(el);
     // This explicit destination supersedes an in-flight history restore and any queued measurement correction.
     this.pendingPrepend = false;
     this.prependAnchorActive = false;
@@ -803,7 +885,7 @@ export class MessageListComponent extends MessageListBase {
       const anchorOffset = this.prependAnchorOffset;
       const prevHeight = this.prevScrollHeight;
       const prevTop = this.prevScrollTop;
-      requestAnimationFrame(() => {
+      const restore = (): void => {
         if (
           this.destroyRef.destroyed ||
           !this.prependAnchorActive ||
@@ -820,8 +902,14 @@ export class MessageListComponent extends MessageListBase {
           anchorGeneration,
         );
         this.revealFocusIn(resized);
-      });
+      };
       this.heightVersion.update((v) => v + 1);
+      // A hold corrects by margin, which lands in this frame; a frame later shows the row displaced.
+      if (this.scrollHold.ownedByScrollView(this.scrollIdle !== null)) {
+        restore();
+      } else {
+        requestAnimationFrame(restore);
+      }
       return;
     }
     if (atBottom) {
@@ -838,7 +926,7 @@ export class MessageListComponent extends MessageListBase {
         this.rowsRegionTop(el),
       );
       if (delta !== 0) {
-        this.writeScrollTop(el, Math.max(0, st + delta));
+        this.correctScrollTop(el, st + delta);
       }
     }
     this.revealFocusIn(resized);
@@ -891,7 +979,7 @@ export class MessageListComponent extends MessageListBase {
           ) {
             return;
           }
-          this.writeScrollTop(el, Math.max(0, el.scrollTop + delta));
+          this.correctScrollTop(el, el.scrollTop + delta);
         },
         { injector: this.injector },
       ),
@@ -975,16 +1063,14 @@ export class MessageListComponent extends MessageListBase {
     if (anchor) {
       const currentOffset =
         anchor.getBoundingClientRect().top - el.getBoundingClientRect().top;
-      top = Math.max(0, el.scrollTop + currentOffset - anchorOffset);
+      top = el.scrollTop + currentOffset - anchorOffset;
     } else if (idx >= 0) {
-      top = Math.max(
-        0,
-        this.rowsRegionTop(el) + offsetOf(this.prefix(), idx) - anchorOffset,
-      );
+      top =
+        this.rowsRegionTop(el) + offsetOf(this.prefix(), idx) - anchorOffset;
     } else {
       top = el.scrollHeight - prevHeight + prevTop;
     }
-    this.writeScrollTop(el, top);
+    this.correctScrollTop(el, top);
     this.expectedProgrammaticScrollTop = el.scrollTop;
     // A recent jump wins over the anchor: the page the jump's own scroll asked for keeps the anchored
     // row in place, which can leave a tall target half-hidden at the top. Re-aim; a no-op once old or the reader moved.
@@ -1006,6 +1092,7 @@ export class MessageListComponent extends MessageListBase {
     if (idx < 0) {
       return; // not loaded → no-op
     }
+    this.releaseScrollHold(el);
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);
