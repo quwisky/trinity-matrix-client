@@ -70,6 +70,24 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('opens the file input on attach even where the native photo picker exists', async () => {
+    const pickImages = vi.fn(() => of({ files: [], oversized: 0 }));
+    const { fixture, container } = await renderComposer({}, [
+      MockProvider(MediaPickerService, { available: true, pickImages }),
+    ]);
+    const input = container.querySelector(
+      '[data-testid=composer-file-input]',
+    ) as HTMLInputElement;
+    const clickSpy = vi
+      .spyOn(input, 'click')
+      .mockImplementation(() => undefined);
+
+    fixture.componentInstance.onAttach();
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(pickImages).not.toHaveBeenCalled();
+  });
+
   it('stages every photo the native gallery returns', async () => {
     // Only the ERROR branch of this subscription was ever exercised. Under jsdom
     // `isNativePlatform()` is false, so every other attach test takes the file-dialog
@@ -84,7 +102,7 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     ]);
     const cmp = fixture.componentInstance;
 
-    cmp.onAttach();
+    cmp.onAttachPhotos();
 
     expect(stagedFiles(cmp).map((f) => f.name)).toEqual([
       'holiday-1.jpg',
@@ -121,7 +139,7 @@ describe('MessageComposerComponent — staging files for the next send', () => {
       }),
     ]);
 
-    fixture.componentInstance.onAttach();
+    fixture.componentInstance.onAttachPhotos();
     await Promise.resolve(); // let the error handler's toast settle
 
     const toast = TestBed.inject(TrnToastService);
