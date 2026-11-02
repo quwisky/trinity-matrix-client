@@ -9,6 +9,8 @@ import {
   stubObjectUrls,
 } from './message-composer.spec-harness';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BatchItem } from '../shared/send-media-batch';
@@ -87,6 +89,21 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(pickImages).not.toHaveBeenCalled();
   });
+
+  it.each([true, false])(
+    'tells the insert menu whether the photo library exists (%s)',
+    async (available) => {
+      const { fixture } = await renderComposer({}, [
+        MockProvider(MediaPickerService, { available }),
+      ]);
+
+      const menu = fixture.debugElement.query(
+        By.directive(ComposerInsertMenuComponent),
+      ).componentInstance as ComposerInsertMenuComponent;
+
+      expect(menu.photoLibrary()).toBe(available);
+    },
+  );
 
   it('stages every photo the native gallery returns', async () => {
     // Only the ERROR branch of this subscription was ever exercised. Under jsdom
