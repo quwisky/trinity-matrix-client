@@ -24,11 +24,11 @@ function restingBox(
 }
 
 /**
- * One action sheet's temporary relationship with the timeline behind it. The modal blocks
- * user scrolling but its fixed overlay does not take part in timeline layout, so this
- * session adds the measured occluded band as tail range, moves the pressed row above the
- * sheet, and restores the row's original visual position on close. It owns every DOM
- * mutation it makes and is safe to release repeatedly.
+ * One action sheet's temporary relationship with the timeline behind it. The modal's fixed
+ * overlay does not take part in timeline layout, so this session freezes user scrolling, adds
+ * the measured occluded band as tail range, moves the pressed row above the sheet, and restores
+ * the row's original visual position on close. It owns every DOM mutation it makes and is safe
+ * to release repeatedly.
  */
 export class MessageSheetViewportSession {
   private readonly anchor: HTMLElement;

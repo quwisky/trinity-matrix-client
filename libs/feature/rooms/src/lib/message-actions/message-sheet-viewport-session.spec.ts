@@ -370,5 +370,8 @@ describe('MessageSheetViewportSession', () => {
 
     expect(scrollTop()).toBe(100);
     expect(scroller.querySelector('[data-message-sheet-clearance]')).toBeNull();
+
+    session.release();
+    expect(scroller.style.overflowY).toBe('');
   });
 });
