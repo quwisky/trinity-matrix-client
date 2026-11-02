@@ -7,6 +7,7 @@ This directory contains repository records and maintainer procedures that are in
 - `decisions/` preserves accepted architecture decision records.
 - `architecture/dependency-map.md` is generated from the current Nx graph.
 - `maintenance/ci-and-releases.md` covers private CI and release operations.
+- `maintenance/mention-index.md` covers the mention record's store, limits and cleanup.
 - `maintenance/push-notifications.md` covers push infrastructure and operator setup.
 - `maintenance/validation-warnings.md` records investigated tool warnings.
 
