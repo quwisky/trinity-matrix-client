@@ -118,7 +118,7 @@ describe('modern timeline layout contracts', () => {
     );
   });
 
-  it('reserves the shield column without narrowing read receipts', () => {
+  it('reserves the shield column and keeps read receipts out of the row', () => {
     expect(rowCss).toMatch(
       /\.msg__body\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/s,
     );
@@ -126,15 +126,13 @@ describe('modern timeline layout contracts', () => {
       /\.msg__shield\s*\{[^}]*grid-row:\s*1;[^}]*grid-column:\s*2;[^}]*margin-inline-start:\s*var\(--trinity-space-3\);/s,
     );
     expect(rowCss).not.toMatch(/\.msg__body\s*\{[^}]*column-gap:/s);
-    expect(receiptsCss).toMatch(
-      /\.msg__receipts\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*justify-self:\s*end;/s,
-    );
     expect(rowCss).not.toMatch(/\.msg__shield\s*\{[^}]*position:\s*absolute;/s);
-    expect(receiptsCss).not.toMatch(
-      /\.msg__receipts\s*\{[^}]*position:\s*absolute;/s,
-    );
     expect(rowHtml).toMatch(
-      /class="msg__content"[\s\S]*class="msg__shield msg__target"[\s\S]*<trn-message-receipts/,
+      /class="msg__content"[\s\S]*class="msg__shield msg__target"/,
+    );
+    expect(rowHtml).not.toContain('<trn-message-receipts');
+    expect(receiptsCss).toMatch(
+      /:host\s*\{[^}]*block-size:\s*var\(--trinity-space-6\);/s,
     );
   });
 

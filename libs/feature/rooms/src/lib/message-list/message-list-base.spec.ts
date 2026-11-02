@@ -209,6 +209,26 @@ describe('MessageListBase batch caption routing', () => {
   });
 });
 
+describe('MessageListBase read receipts', () => {
+  it('reports only the readers of the newest message', () => {
+    const reader = (name: string) => ({
+      userId: `@${name}:hs`,
+      name,
+      initial: name[0],
+      avatarMxc: null,
+    });
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$older'), readReceipts: [reader('stopped')] },
+      { ...msg('$newest'), readReceipts: [reader('caught-up')] },
+    ]);
+
+    expect(
+      fixture.componentInstance.latestReceipts().map((r) => r.name),
+    ).toEqual(['caught-up']);
+  });
+});
+
 describe('MessageListBase thread connectors', () => {
   it('connects intervening rows only as far as the last thread in each sender group', () => {
     const fixture = TestBed.createComponent(TestMessageListComponent);

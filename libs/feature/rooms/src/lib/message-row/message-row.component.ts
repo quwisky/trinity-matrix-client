@@ -47,7 +47,6 @@ import {
   type TrnIconName,
 } from '@trinity/components/foundations';
 import { MessageReplyPreviewComponent } from '../message-reply-preview/message-reply-preview.component';
-import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
 import { MessageTimeComponent } from '../message-time/message-time.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 import { TrnButton } from '@trinity/components/controls';
@@ -165,7 +164,6 @@ let nextBodyId = 0;
     TrnTooltip,
     MessageReplyPreviewComponent,
     MessageThreadSummaryComponent,
-    MessageReceiptsComponent,
     MessageTimeComponent,
     MessageSwipeDirective,
     TrnButton,

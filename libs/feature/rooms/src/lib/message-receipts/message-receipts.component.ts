@@ -11,11 +11,7 @@ import {
 } from '@trinity/components/generic-content';
 import { type ReceiptView } from '@trinity/data-access/timeline';
 
-/**
- * The read-receipt avatars at a message's trailing edge and, when the cluster is clicked, the
- * "seen by" names under it. Both are items of the row's body grid, so the host is
- * `display: contents`.
- */
+/** Who has read the newest message, in a strip under the conversation; a click names them. */
 @Component({
   selector: 'trn-message-receipts',
   changeDetection: ChangeDetectionStrategy.OnPush,

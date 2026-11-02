@@ -1,21 +1,18 @@
 @layer components {
+  // The height is reserved with or without readers, so a receipt arriving never moves a message.
+  // Nothing in here may add to it: the names and the touch target lie over the conversation.
   :host {
-    display: contents;
+    position: relative;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    block-size: var(--trinity-space-6);
   }
 
-  // "Seen by" read-receipt avatars at the message's trailing edge, kept IN FLOW. Do not take
-  // them out of flow: `bottom: 0` paints them ON TOP of the row's last line (`.msg` has 2px
-  // bottom padding, the cluster is ~16px), hiding text, and a float declared after the body
-  // (as reading order requires) lands below the text and saves no height. A permanent right
-  // gutter reserved on EVERY row would fix it, but that is a timeline-wide layout change.
-  // Never fold readers onto the group's LAST row: a Matrix receipt means "read up to THIS
-  // event", so moving it would claim someone read messages they had not.
   .msg__receipts {
-    grid-column: 1 / -1;
-    justify-self: end;
+    position: relative;
     display: flex;
     gap: 2px;
-    margin-top: 3px;
     padding: 0;
     border: none;
     border-radius: var(--trinity-radius-pill);
@@ -30,6 +27,19 @@
     }
   }
 
+  // Transform and opacity only, so a reader arriving can't move the conversation.
+  .msg__receipt {
+    animation: receipt-in var(--trinity-duration-base)
+      var(--trinity-ease-standard);
+  }
+
+  @keyframes receipt-in {
+    from {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+  }
+
   // Keep in sync with message-row.component.scss (the row's own `.msg__target`).
   .msg__target:focus-visible {
     outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
@@ -37,18 +47,32 @@
   }
 
   .msg__seen-by {
-    grid-column: 1 / -1;
-    margin-top: 2px;
+    position: absolute;
+    inset-block-end: 100%;
+    inset-inline-end: 0;
+    z-index: var(--trinity-z-sticky);
+    max-inline-size: 100%;
+    padding: var(--trinity-space-1) var(--trinity-space-2);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-control-radius);
+    background: var(--trinity-surface-raised);
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-metadata-size);
     line-height: var(--trinity-type-metadata-line-height);
-    text-align: end;
   }
 
+  // Grows upward over the end of the last message: the strip's own edge is the scroller's.
   @media (pointer: coarse) {
-    .msg__target {
-      min-width: var(--trinity-interaction-target-min-size);
-      min-height: var(--trinity-interaction-target-min-size);
+    .msg__receipts::after {
+      content: '';
+      position: absolute;
+      inset-block: calc(
+          var(--trinity-space-6) - var(--trinity-interaction-target-min-size)
+        )
+        calc((16px - var(--trinity-space-6)) / 2);
+      inset-inline-end: 0;
+      min-inline-size: var(--trinity-interaction-target-min-size);
+      inline-size: 100%;
     }
   }
 }

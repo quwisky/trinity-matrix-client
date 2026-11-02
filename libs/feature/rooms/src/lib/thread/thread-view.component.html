@@ -42,6 +42,10 @@
     } @empty {
       <trn-empty-state body="No replies in this thread yet." />
     }
+
+    @if (rows().length) {
+      <trn-message-receipts [receipts]="latestReceipts()" />
+    }
   </div>
 
   <div class="thread__footer">
