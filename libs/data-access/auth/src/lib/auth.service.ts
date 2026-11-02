@@ -24,6 +24,7 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
   AccountRuntimeService,
   UnprotectedStorageGate,
   type AccountEstablishmentOutcome,
@@ -122,6 +123,7 @@ export class AuthService implements QrSignInCompletion {
   private readonly storage = inject(SessionStorageService);
   private readonly oidc = inject(OidcClientService);
   private readonly accounts = inject(AccountRuntimeService);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly newDeviceSignIn = inject(NEW_DEVICE_SIGN_IN);
   private readonly unprotectedStorage = inject(UnprotectedStorageGate);
   private readonly handoff = inject(HostAuthenticationHandoffService);
@@ -589,6 +591,7 @@ export class AuthService implements QrSignInCompletion {
               response,
               requestedDeviceId,
               device,
+              expectedUserId,
             ).pipe(
               switchMap(() =>
                 this.accounts.establishAuthenticatedAccount(
@@ -672,6 +675,29 @@ export class AuthService implements QrSignInCompletion {
   }
 
   /**
+   * With every room key backed up only the mention history is at stake. A count that can't be
+   * read asks too, since this sign-in deletes whatever is there. A re-auth's page has already
+   * said so.
+   */
+  private confirmMentionHistoryLoss(
+    userId: string,
+    expectedUserId: string | null | undefined,
+  ): Observable<boolean> {
+    return expectedUserId
+      ? of(true)
+      : this.lifecycle.hasMentionHistory(userId, true).pipe(
+          switchMap((hasHistory) =>
+            hasHistory
+              ? this.newDeviceSignIn.confirm({
+                  userId,
+                  roomKeysBackedUp: true,
+                })
+              : of(true),
+          ),
+        );
+  }
+
+  /**
    * A sign-in without the stored device id gets a new device, and persisting it deletes
    * the stored device's crypto store (`SessionStorageService` upsert). Unless key backup
    * holds every room key, ask first, while the stored account's client can still answer.
@@ -686,6 +712,7 @@ export class AuthService implements QrSignInCompletion {
     response: AuthenticatedSessionResponse,
     requestedDeviceId: string | undefined,
     device: NewDeviceCheck,
+    expectedUserId: string | null | undefined,
   ): Observable<void> {
     const userId = response.user_id;
     let proceeded = false;
@@ -703,7 +730,7 @@ export class AuthService implements QrSignInCompletion {
           : this.matrix.roomKeysBackedUp(userId).pipe(
               switchMap((backedUp) =>
                 backedUp
-                  ? of(true)
+                  ? this.confirmMentionHistoryLoss(userId, expectedUserId)
                   : this.newDeviceSignIn.confirm({
                       userId,
                       roomKeysBackedUp: backedUp,

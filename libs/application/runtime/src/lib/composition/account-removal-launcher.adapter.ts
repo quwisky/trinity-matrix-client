@@ -1,14 +1,27 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, ReplaySubject, map, of, switchMap } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  ReplaySubject,
+  defaultIfEmpty,
+  defer,
+  finalize,
+  map,
+  of,
+  switchMap,
+  take,
+} from 'rxjs';
 import {
   TrnAlertService,
   TrnToastService,
   type TrnAlertChoice,
 } from '@trinity/components/overlay';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
   ACCOUNT_REMOVAL_CONSEQUENCES,
   AccountRuntimeService,
+  MENTION_HISTORY_LOSS,
   ROOM_KEYS_AT_RISK,
   ROOM_KEYS_MAY_BE_LOST,
   roomKeysAtRiskHeader,
@@ -41,41 +54,60 @@ const FAILED: AccountRemovalOutcome = Object.freeze({ kind: 'failed' });
 @Injectable({ providedIn: 'root' })
 export class AccountRemovalLauncherAdapter implements AccountRemovalLauncher {
   private readonly accounts = inject(AccountRuntimeService);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly matrix = inject(MatrixClientService);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly router = inject(Router);
+  private reading = false;
 
   remove(accountId: string): Observable<AccountRemovalOutcome> {
-    return this.alert
-      .confirm$({
-        header: 'Remove account',
-        message: `Account ${accountId}\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}`,
-        confirmText: 'Remove account',
-        variant: 'danger',
-      })
-      .pipe(
-        switchMap((confirmed) =>
-          confirmed
-            ? this.confirmRoomKeysLoss(accountId)
-            : of<TrnAlertChoice>('cancel'),
-        ),
-        switchMap((choice): Observable<AccountRemovalOutcome> => {
-          switch (choice) {
-            case 'confirm':
-              return this.signOut(accountId);
-            case 'alternative':
-              return of(EXPORT_KEYS);
-            case 'cancel':
-              return of(KEPT);
-            default: {
-              const unhandled: never = choice;
-              void unhandled;
-              return of(KEPT);
-            }
-          }
+    return this.readHistoryOnce(accountId).pipe(
+      switchMap((hasHistory) =>
+        this.alert.confirm$({
+          header: 'Remove account',
+          message: `Account ${accountId}\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}${hasHistory ? `\n\n${MENTION_HISTORY_LOSS}` : ''}`,
+          confirmText: 'Remove account',
+          variant: 'danger',
         }),
+      ),
+      switchMap((confirmed) =>
+        confirmed
+          ? this.confirmRoomKeysLoss(accountId)
+          : of<TrnAlertChoice>('cancel'),
+      ),
+      switchMap((choice): Observable<AccountRemovalOutcome> => {
+        switch (choice) {
+          case 'confirm':
+            return this.signOut(accountId);
+          case 'alternative':
+            return of(EXPORT_KEYS);
+          case 'cancel':
+            return of(KEPT);
+          default: {
+            const unhandled: never = choice;
+            void unhandled;
+            return of(KEPT);
+          }
+        }
+      }),
+      defaultIfEmpty(KEPT),
+    );
+  }
+
+  /** The question opens only after this read, so without the guard a second press could beat it. */
+  private readHistoryOnce(accountId: string): Observable<boolean> {
+    return defer(() => {
+      if (this.reading) {
+        return EMPTY;
+      }
+      this.reading = true;
+      // True on an unread count: the removal deletes whatever is there.
+      return this.lifecycle.hasMentionHistory(accountId, true).pipe(
+        take(1),
+        finalize(() => (this.reading = false)),
       );
+    });
   }
 
   /**

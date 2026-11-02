@@ -17,6 +17,7 @@ import {
   ReactionNotificationSettingsService,
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
+import { InboxSettingsGroupComponent } from './inbox-settings-group.component';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 import {
   TrnSettingsGroupComponent,
@@ -40,6 +41,7 @@ import { Subject, takeUntil } from 'rxjs';
     TrnSettingsGroupComponent,
     TrnSwitchComponent,
     KeywordRulesBlockComponent,
+    InboxSettingsGroupComponent,
   ],
 })
 export class NotificationsSectionComponent implements OnInit, OnDestroy {

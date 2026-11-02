@@ -8,7 +8,12 @@ import {
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { ROOM_KEYS_AT_RISK } from '@trinity/data-access/accounts';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
+  ROOM_KEYS_AT_RISK,
+  ROOM_KEYS_MAY_BE_LOST,
+} from '@trinity/data-access/accounts';
 import {
   AppLockService,
   type AppLockStatus,
@@ -20,11 +25,14 @@ const REPLACES =
 
 describe('NewDeviceSignInPresenter', () => {
   let lockStatus: ReturnType<typeof signal<AppLockStatus>>;
+  let hasMentionHistory: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     lockStatus = signal<AppLockStatus>('off');
+    hasMentionHistory = vi.fn(() => of(false));
     TestBed.configureTestingModule({
       providers: [
+        { provide: ACCOUNT_LIFECYCLE_PORT, useValue: { hasMentionHistory } },
         MockProvider(TrnAlertService),
         MockProvider(AppLockService, { status: lockStatus.asReadonly() }),
         MockProvider(WorkspaceNavigationService, {
@@ -45,6 +53,54 @@ describe('NewDeviceSignInPresenter', () => {
   });
 
   const presenter = () => TestBed.inject(NewDeviceSignInPresenter);
+
+  it('with every key backed up, the question is only about the mention history', async () => {
+    const alert = TestBed.inject(TrnAlertService);
+    vi.mocked(alert.confirm$).mockReturnValue(of(false));
+
+    await expect(
+      firstValueFrom(
+        presenter().confirm({ userId: '@me:hs', roomKeysBackedUp: true }),
+      ),
+    ).resolves.toBe(false);
+
+    // The caller only asks this variant once it has read the history.
+    expect(hasMentionHistory).not.toHaveBeenCalled();
+    expect(alert.choose$).not.toHaveBeenCalled();
+    expect(alert.confirm$).toHaveBeenCalledExactlyOnceWith({
+      header: "Delete this device's mention history?",
+      message: `${REPLACES}\n\n${MENTION_HISTORY_LOSS}`,
+      confirmText: 'Sign in anyway',
+      variant: 'danger',
+    });
+  });
+
+  it('adds the mention history sentence to either question when the account has any', async () => {
+    hasMentionHistory.mockReturnValue(of(true));
+    const alert = TestBed.inject(TrnAlertService);
+    vi.mocked(alert.choose$).mockReturnValue(of('confirm'));
+    vi.mocked(alert.confirm$).mockReturnValue(of(true));
+
+    await firstValueFrom(
+      presenter().confirm({ userId: '@me:hs', roomKeysBackedUp: false }),
+    );
+    await firstValueFrom(
+      presenter().confirm({ userId: '@me:hs', roomKeysBackedUp: null }),
+    );
+
+    // An unread count answers true here, since this path does delete and asks anyway.
+    expect(hasMentionHistory).toHaveBeenCalledWith('@me:hs', true);
+    expect(alert.choose$).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: `${REPLACES}\n\n${ROOM_KEYS_AT_RISK}\n\n${MENTION_HISTORY_LOSS}`,
+      }),
+    );
+    expect(alert.confirm$).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: `${REPLACES}\n\n${ROOM_KEYS_MAY_BE_LOST}\n\n${MENTION_HISTORY_LOSS}`,
+      }),
+    );
+  });
 
   it.each([
     ['confirm', true],

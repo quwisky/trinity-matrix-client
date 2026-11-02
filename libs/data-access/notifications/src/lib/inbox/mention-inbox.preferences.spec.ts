@@ -144,6 +144,29 @@ describe('MentionInboxPreferences', () => {
     }
   });
 
+  it('settled: false until both reads have answered, however they answered', async () => {
+    const before = setup();
+    expect(before.settled()).toBe(false);
+    await firstValueFrom(before.init());
+    expect(before.settled()).toBe(true);
+
+    const failed = setup({}, [KEEP]);
+    await firstValueFrom(failed.init());
+    expect(failed.settled()).toBe(true);
+    expect(failed.recordAllowed()).toBe(false);
+    expect(failed.recordDeclined()).toBe(false);
+  });
+
+  it('counts writes to either switch, so an older one can tell it was overtaken', () => {
+    const prefs = setup();
+    expect(prefs.writeCount()).toBe(0);
+
+    prefs.setKeepRecord(true).subscribe();
+    prefs.setShowInbox(true).subscribe();
+
+    expect(prefs.writeCount()).toBe(2);
+  });
+
   it('writes the switches', async () => {
     const prefs = setup();
     await firstValueFrom(prefs.init());

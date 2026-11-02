@@ -118,7 +118,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: 'bell',
     group: 'Preferences',
     component: NotificationsSectionComponent,
-    parts: [{ id: 'keywords', label: 'Keywords' }],
+    parts: [
+      { id: 'keywords', label: 'Keywords' },
+      { id: 'inbox', label: 'Inbox' },
+    ],
   },
   {
     path: 'privacy',

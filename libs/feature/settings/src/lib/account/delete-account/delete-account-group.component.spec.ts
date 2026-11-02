@@ -4,6 +4,10 @@ import { NEVER, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
+import {
   ACCOUNT_DELETION_LAUNCHER,
   type AccountDeletionLauncher,
   type AccountDeletionOutcome,
@@ -18,7 +22,11 @@ const ALICE = '@alice:example.org';
 async function setup(
   plan: AccountDeletionPlan,
   checked: AccountDeletionOutcome = { kind: 'kept', reason: 'still-active' },
+  hasHistory = false,
 ) {
+  const hasMentionHistory = vi.fn((_accountId?: string, _ifUnknown?: boolean) =>
+    of(hasHistory),
+  );
   const launcher: Partial<AccountDeletionLauncher> = {
     plan: vi.fn(() => of(plan)),
     openProvider: vi.fn(() => of(true)),
@@ -28,12 +36,14 @@ async function setup(
     inputs: { accountId: ALICE },
     providers: [
       { provide: ACCOUNT_DELETION_LAUNCHER, useValue: launcher },
+      { provide: ACCOUNT_LIFECYCLE_PORT, useValue: { hasMentionHistory } },
       MockProvider(TrnSurfaceService, { open: vi.fn() }),
     ],
   });
   return {
     ...rendered,
     launcher,
+    hasMentionHistory,
     surfaces: TestBed.inject(TrnSurfaceService),
   };
 }
@@ -98,6 +108,42 @@ describe('DeleteAccountGroupComponent', () => {
         'After you delete your account there, come back to Trinity. It removes the account from this device when it notices.',
       ),
     ).toBeTruthy();
+  });
+
+  it('at the provider, says the mention history goes too, with history or an unread count', async () => {
+    const provider = {
+      kind: 'provider',
+      url: 'https://auth.example.org/account/',
+    } as const;
+    const test = await setup(provider, undefined, true);
+    expect(
+      screen.queryByText(MENTION_HISTORY_LOSS, { exact: false }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByTestId('delete-account-provider'));
+    await test.fixture.whenStable();
+    test.fixture.detectChanges();
+
+    // True on an unread count: the removal that follows does delete it.
+    expect(test.hasMentionHistory).toHaveBeenCalledExactlyOnceWith(ALICE, true);
+    expect(
+      screen.getByText(MENTION_HISTORY_LOSS, { exact: false }),
+    ).toBeTruthy();
+  });
+
+  it('at the provider, leaves that out when the account has none', async () => {
+    const test = await setup({
+      kind: 'provider',
+      url: 'https://auth.example.org/account/',
+    });
+
+    fireEvent.click(screen.getByTestId('delete-account-provider'));
+    await test.fixture.whenStable();
+    test.fixture.detectChanges();
+
+    expect(
+      screen.queryByText(MENTION_HISTORY_LOSS, { exact: false }),
+    ).toBeNull();
   });
 
   it('reports an account that still exists after Check now', async () => {

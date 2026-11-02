@@ -21,7 +21,11 @@ import {
   UnprotectedStorageDeclinedError,
   type NewDeviceState,
 } from '@trinity/data-access/auth';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  AccountRuntimeService,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
 import {
   ACCOUNT_DELETION_LAUNCHER,
   ACCOUNT_REMOVAL_LAUNCHER,
@@ -73,6 +77,10 @@ async function renderLogin(
     record?: unknown;
     /** The device re-auth may reuse; defaults to the record's own. */
     reusableDevice?: string | null;
+    /** Whether the re-authenticating account has mention history here; absent reads as unknown. */
+    mentionHistory?: boolean;
+    /** Make the read of whether the stored device can be reused fail. */
+    reusableFails?: boolean;
     oidcStore?: Partial<OidcStateStore>;
     /** Overrides for the redirect handoff (cold Observables that complete). */
     redirect?: Partial<SignInRedirectService>;
@@ -129,6 +137,13 @@ async function renderLogin(
       provideHostCapabilities(),
       MockProvider(AuthService, auth),
       {
+        provide: ACCOUNT_LIFECYCLE_PORT,
+        useValue: {
+          hasMentionHistory: (_accountId?: string, ifUnknown = false) =>
+            of(opts.mentionHistory ?? ifUnknown),
+        },
+      },
+      {
         provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
         useValue: {
           discover: (input: string) =>
@@ -170,11 +185,13 @@ async function renderLogin(
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
         reusableDeviceId: vi.fn((record: { deviceId: string }) =>
-          of(
-            opts.reusableDevice === undefined
-              ? record.deviceId
-              : opts.reusableDevice,
-          ),
+          opts.reusableFails
+            ? throwError(() => new Error('store unreadable'))
+            : of(
+                opts.reusableDevice === undefined
+                  ? record.deviceId
+                  : opts.reusableDevice,
+              ),
         ),
         list: vi.fn(() =>
           opts.listFails
@@ -1830,6 +1847,7 @@ describe('LoginPage', () => {
         reauth: '@bob:hs',
         newDevice: true,
         record: RECORD,
+        mentionHistory: false,
       });
       expect(subtitle(newDevice.fixture)).toBe(NEW_DEVICE_COPY);
       TestBed.resetTestingModule();
@@ -1849,11 +1867,114 @@ describe('LoginPage', () => {
       expect(subtitle(plain.fixture)).toBe('Sign in to your account');
     });
 
+    describe('mention history', () => {
+      const WITH_LOSS = `${NEW_DEVICE_COPY} ${MENTION_HISTORY_LOSS}`;
+
+      it('device=new re-auth adds the sentence only with history', async () => {
+        const auth = passwordAuth(READY_OUTCOME);
+        const held = await renderLogin(auth, {
+          reauth: '@bob:hs',
+          newDevice: true,
+          record: RECORD,
+          mentionHistory: true,
+        });
+        expect(subtitle(held.fixture)).toBe(WITH_LOSS);
+        expect(held.cmp.reauthDeletesMentionHistory()).toBe(true);
+        TestBed.resetTestingModule();
+
+        const none = await renderLogin(auth, {
+          reauth: '@bob:hs',
+          newDevice: true,
+          record: RECORD,
+          mentionHistory: false,
+        });
+        expect(subtitle(none.fixture)).toBe(NEW_DEVICE_COPY);
+      });
+
+      it('a re-auth whose keys cannot be unlocked adds it too', async () => {
+        const { fixture, cmp } = await renderLogin(
+          passwordAuth(READY_OUTCOME),
+          {
+            reauth: '@bob:hs',
+            record: RECORD,
+            reusableDevice: null,
+            mentionHistory: true,
+          },
+        );
+
+        expect(cmp.reauthDeletesMentionHistory()).toBe(true);
+        expect(subtitle(fixture)).toBe(
+          `Sign in again to reconnect this account. ${MENTION_HISTORY_LOSS}`,
+        );
+      });
+
+      it('a re-auth that keeps its device does not', async () => {
+        const { fixture, cmp } = await renderLogin(
+          passwordAuth(READY_OUTCOME),
+          {
+            reauth: '@bob:hs',
+            record: RECORD,
+            mentionHistory: true,
+          },
+        );
+
+        expect(cmp.reauthDeletesMentionHistory()).toBe(false);
+        expect(subtitle(fixture)).toBe(
+          'Sign in again to reconnect this account',
+        );
+      });
+
+      it('the server deleting the device adds it, in what focus moves to', async () => {
+        const { fixture, cmp } = await renderLogin(passwordAuth(NO_KEYS), {
+          reauth: '@bob:hs',
+          record: RECORD,
+          mentionHistory: true,
+        });
+        expect(subtitle(fixture)).not.toContain(MENTION_HISTORY_LOSS);
+
+        cmp.loginPassword();
+
+        expect(subtitle(fixture)).toBe(WITH_LOSS);
+      });
+
+      it('an unread count shows the sentence on a re-auth that moves device', async () => {
+        const { fixture } = await renderLogin(passwordAuth(READY_OUTCOME), {
+          reauth: '@bob:hs',
+          newDevice: true,
+          record: RECORD,
+        });
+
+        expect(subtitle(fixture)).toBe(WITH_LOSS);
+      });
+
+      it('a device read that fails counts as moving, since a sign-in then would', async () => {
+        const { cmp } = await renderLogin(passwordAuth(READY_OUTCOME), {
+          reauth: '@bob:hs',
+          record: RECORD,
+          reusableFails: true,
+          mentionHistory: true,
+        });
+
+        expect(cmp.reauthDeletesMentionHistory()).toBe(true);
+      });
+
+      it('a plain sign-in has no sentence', async () => {
+        const { fixture, cmp } = await renderLogin(
+          passwordAuth(READY_OUTCOME),
+          { newDevice: true, mentionHistory: true },
+        );
+        cmp.baseUrl.set('https://hs.example');
+
+        expect(subtitle(fixture)).toBe('Sign in to your account');
+      });
+    });
+
     it('sends the person to the new-device sign-in after a password re-auth', async () => {
       const auth = passwordAuth(NO_KEYS);
       const { fixture, cmp, router } = await renderLogin(auth, {
         reauth: '@bob:hs',
         record: RECORD,
+        mentionHistory: false,
       });
       const navigate = vi.spyOn(router, 'navigateByUrl');
 

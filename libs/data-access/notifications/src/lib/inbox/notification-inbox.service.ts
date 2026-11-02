@@ -505,13 +505,16 @@ export class NotificationInboxService {
 
     try {
       const membership = client.getRoom(roomId)?.getMyMembership();
-      if (
-        synced() &&
-        (!membership ||
+      if (synced()) {
+        // The SDK swallows sync processing errors and still reads as synced, so a room missing
+        // from the client doesn't show the person left: hide its row and keep its record.
+        if (!membership) return { kind: 'skipped' };
+        if (
           membership === KnownMembership.Leave ||
-          membership === KnownMembership.Ban)
-      ) {
-        return gone();
+          membership === KnownMembership.Ban
+        ) {
+          return gone();
+        }
       }
       const found = await read();
       if (found.kind === 'gone') return gone();

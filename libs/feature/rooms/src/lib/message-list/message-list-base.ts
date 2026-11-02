@@ -537,7 +537,7 @@ export abstract class MessageListBase {
    */
   private pendingJumpId: string | null = null;
   private pendingJumpAt = 0;
-  private reaiming = false;
+  protected reaiming = false;
   private userScrollWatched = false;
   private lastScrollerWidth = 0;
   private widthRo?: ResizeObserver;

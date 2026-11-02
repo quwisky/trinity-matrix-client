@@ -28,6 +28,10 @@ The host selects the strongest available credential backend. Web storage is orig
 
 Diagnostics contain stable codes and recovery information only. Never include access tokens, recovery keys, private message content, preference values, raw server bodies, account identifiers, or unfiltered exception text.
 
+## Mention metadata at rest {#mention-metadata}
+
+The mention record decrypts messages only in memory and stores no plaintext: each row of the `trinity-mention-index` IndexedDB database holds `accountId`, `eventId`, `roomId` and `ts`, with no text, sender or key material. Those identifiers sit unencrypted, as the room list's sync data does, and say who was mentioned only by implication. Rows are keyed by account, so one account's removal leaves the others' rows. **Keep a record of mentions on this device** in Settings › Notifications turns it off and deletes it. The inbox decrypts the text again when it's opened, and only holds that in memory.
+
 ## Trust is a capability {#trust-capability}
 
 The Trust data-access library owns encryption health, device lists, cross-signing repair, recovery reset, and verification commands. Feature pages present those states and actions. They do not keep a second trust model or call SDK crypto methods directly.

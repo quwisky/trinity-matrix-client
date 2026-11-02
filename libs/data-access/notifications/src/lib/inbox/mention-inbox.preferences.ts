@@ -11,7 +11,6 @@ import {
   providePreferenceDescriptors,
   type PreferenceCommandOutcome,
   type PreferenceDescriptor,
-  type PreferenceFailure,
   type PreferenceHydrationOutcome,
   type PreferenceValidation,
   type StoredPreference,
@@ -97,8 +96,15 @@ export class MentionInboxPreferences {
     KEEP_MENTION_RECORD_PREFERENCE,
     INSTALLATION_PREFERENCE_CONTEXT,
   );
+
+  private writes = 0;
   private readonly bothRead = computed(
     () => this.show().kind === 'ready' && this.keep().kind === 'ready',
+  );
+
+  /** Both reads have answered, even if only to fail. Until then a change would race them. */
+  readonly settled = computed(
+    () => this.show().kind !== 'default' && this.keep().kind !== 'default',
   );
 
   readonly showInbox = computed(() => this.show().value);
@@ -114,7 +120,13 @@ export class MentionInboxPreferences {
     () => this.bothRead() && !(this.showInbox() && this.keepRecord()),
   );
 
+  /** Writes asked for so far, on either switch, so an older one can tell it was overtaken. */
+  writeCount(): number {
+    return this.writes;
+  }
+
   setShowInbox(on: boolean): Observable<PreferenceCommandOutcome> {
+    this.writes += 1;
     return this.preferences.setPreference(
       SHOW_INBOX_PREFERENCE,
       INSTALLATION_PREFERENCE_CONTEXT,
@@ -123,6 +135,7 @@ export class MentionInboxPreferences {
   }
 
   setKeepRecord(on: boolean): Observable<PreferenceCommandOutcome> {
+    this.writes += 1;
     return this.preferences.setPreference(
       KEEP_MENTION_RECORD_PREFERENCE,
       INSTALLATION_PREFERENCE_CONTEXT,
@@ -134,15 +147,6 @@ export class MentionInboxPreferences {
     return this.preferences.hydrateDescriptors(
       INSTALLATION_PREFERENCE_CONTEXT,
       [SHOW_INBOX_PREFERENCE, KEEP_MENTION_RECORD_PREFERENCE],
-    );
-  }
-
-  recoverHydration(
-    failures: readonly PreferenceFailure[],
-  ): Observable<PreferenceHydrationOutcome> {
-    return this.preferences.recoverHydration(
-      INSTALLATION_PREFERENCE_CONTEXT,
-      failures,
     );
   }
 }

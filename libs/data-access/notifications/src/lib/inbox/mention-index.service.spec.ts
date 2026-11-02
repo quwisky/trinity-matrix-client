@@ -37,6 +37,7 @@ import {
   provideMentionInboxPreferences,
 } from './mention-inbox.preferences';
 import { FakeMentionStore } from './mention-index.spec-harness';
+import { HostLifecycleService } from '@trinity/runtime/host';
 import { MENTION_INDEX_STORE } from './mention-index-store';
 import { MentionIndexService } from './mention-index.service';
 
@@ -44,7 +45,7 @@ const ME = '@me:hs';
 const TS = Date.UTC(2026, 9, 31);
 const SHOW = SHOW_INBOX_PREFERENCE.persistence.key;
 const KEEP = KEEP_MENTION_RECORD_PREFERENCE.persistence.key;
-const STOPPED = 'mention index: recording stopped for this session';
+const STOPPED = 'mention index: recording stopped';
 
 type Handler = (...args: unknown[]) => void;
 
@@ -62,6 +63,7 @@ function fakeClient(userId: string) {
         tweaks: { highlight: true },
       }),
     ),
+    store: { save: vi.fn((_force?: boolean) => Promise.resolve()) },
     getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
     getSyncStateData: () => ({ fromCache: true }),
     on: vi.fn((type: string, handler: Handler) => {
@@ -224,12 +226,17 @@ function setup(
   }
   const accountIds = signal<readonly string[]>(accounts);
   const store = new FakeMentionStore();
+  const lifecycle = new Subject<{ kind: 'active' | 'background' }>();
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
       provideMentionInboxPreferences(),
       { provide: PREFERENCE_STORAGE_ADAPTER, useValue: adapter },
       { provide: MENTION_INDEX_STORE, useValue: store },
+      {
+        provide: HostLifecycleService,
+        useValue: { events: lifecycle.asObservable() },
+      },
       {
         provide: MatrixClientService,
         useValue: {
@@ -256,6 +263,7 @@ function setup(
   return {
     service,
     store,
+    lifecycle,
     clients,
     accountIds,
     run,
@@ -578,6 +586,85 @@ describe('MentionIndexService', () => {
     expect(store.rows(ME)).toEqual([]);
   });
 
+  it('tries again on a return to the foreground after a store error', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, service, lifecycle } = setup();
+    await run();
+    store.failNextPut(new DOMException('', 'UnknownError'));
+    client.live(message('$a'));
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    lifecycle.next({ kind: 'background' });
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    lifecycle.next({ kind: 'active' });
+    await flush();
+    client.live(message('$b'));
+    await flush();
+
+    expect(service.recording()).toBe(true);
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$b']);
+  });
+
+  it('warns once when a full store fails again after each return', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, service, lifecycle } = setup();
+    await run();
+
+    for (const id of ['$a', '$b', '$c']) {
+      store.failNextPut(new DOMException('', 'QuotaExceededError'));
+      client.live(message(id));
+      await flush();
+      expect(service.recording()).toBe(false);
+      lifecycle.next({ kind: 'active' });
+      await flush();
+    }
+
+    expect(warn).toHaveBeenCalledExactlyOnceWith(STOPPED);
+  });
+
+  it('a return to the foreground starts nothing past a failed delete or an off switch', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, service, prefs, lifecycle } = setup();
+    await run();
+    vi.spyOn(store, 'deleteAll').mockRejectedValueOnce(new Error('blocked'));
+    await firstValueFrom(service.deleteAll()).catch(() => undefined);
+    expect(service.deleteFailed()).toBe(true);
+
+    lifecycle.next({ kind: 'active' });
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    await firstValueFrom(service.deleteAll());
+    expect(service.recording()).toBe(true);
+    await firstValueFrom(prefs.setKeepRecord(false));
+    lifecycle.next({ kind: 'active' });
+    await flush();
+    client.live(message('$a'));
+    await flush();
+
+    expect(service.recording()).toBe(false);
+    expect(store.rows(ME)).toEqual([]);
+  });
+
+  it('ignores a return to the foreground once its run has ended', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, service, lifecycle } = setup();
+    const subscription = await run();
+    store.failNextPut(new DOMException('', 'UnknownError'));
+    client.live(message('$a'));
+    await flush();
+
+    subscription.unsubscribe();
+    lifecycle.next({ kind: 'active' });
+    await flush();
+
+    expect(service.recording()).toBe(false);
+    expect(lifecycle.observed).toBe(false);
+  });
+
   it('skips a malformed event and keeps recording', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { client, store, run, service } = setup();
@@ -733,6 +820,23 @@ describe('MentionIndexService', () => {
     expect(store.rows('@gone:hs')).toEqual([]);
     expect(store.rows(ME)).toHaveLength(1);
     expect(deleteAll).not.toHaveBeenCalled();
+  });
+
+  it('at start with an empty registry, deletes the store rather than creating it', async () => {
+    const { store, run, service } = setup({ registry: of([]) });
+    const sweep = vi.spyOn(store, 'keepOnlyAccounts');
+    const deleteAll = vi
+      .spyOn(store, 'deleteAll')
+      .mockRejectedValueOnce(new Error('blocked'));
+
+    await run();
+
+    // Opening it would leave an empty database behind, even straight after Erase all data.
+    expect(sweep).not.toHaveBeenCalled();
+    expect(deleteAll).toHaveBeenCalledOnce();
+    // Nobody asked for this delete, so there's no failure to report, and the next start retries.
+    expect(service.deleteFailed()).toBe(false);
+    expect(service.recording()).toBe(true);
   });
 
   it('at start with an empty registry, forgets every account', async () => {
@@ -910,6 +1014,100 @@ describe('MentionIndexService', () => {
     expect(store.deleted).toBe(true);
   });
 
+  it('records nothing after a failed delete until a delete succeeds', async () => {
+    const { client, store, run, service } = setup();
+    await run();
+    vi.spyOn(store, 'deleteAll').mockRejectedValueOnce(new Error('blocked'));
+
+    await expect(firstValueFrom(service.deleteAll())).rejects.toThrow(
+      'blocked',
+    );
+    TestBed.tick();
+    expect(service.recording()).toBe(false);
+    expect(client.bound(RoomEvent.Timeline)).toBe(0);
+
+    await firstValueFrom(service.deleteAll());
+    TestBed.tick();
+    expect(service.recording()).toBe(true);
+    expect(client.bound(RoomEvent.Timeline)).toBe(1);
+  });
+
+  it('the next start retries a failed delete even with the switch back on', async () => {
+    const { client, store, run, service } = setup();
+    await store.put(ME, { eventId: '$old', roomId: '!r:hs', ts: TS }, TS);
+    const first = await run();
+    const deleteAll = vi
+      .spyOn(store, 'deleteAll')
+      .mockRejectedValueOnce(new Error('blocked'));
+    await expect(firstValueFrom(service.deleteAll())).rejects.toThrow(
+      'blocked',
+    );
+    first.unsubscribe();
+
+    // Still failing: no sweep, no recording.
+    deleteAll.mockRejectedValueOnce(new Error('blocked'));
+    const sweep = vi.spyOn(store, 'keepOnlyAccounts');
+    const second = await run();
+    expect(deleteAll).toHaveBeenCalledTimes(2);
+    expect(service.deleteFailed()).toBe(true);
+    expect(service.recording()).toBe(false);
+    expect(client.bound(RoomEvent.Timeline)).toBe(0);
+    expect(store.rows(ME)).toHaveLength(1);
+    second.unsubscribe();
+
+    await run();
+    expect(deleteAll).toHaveBeenCalledTimes(3);
+    expect(service.deleteFailed()).toBe(false);
+    expect(store.rows(ME)).toEqual([]);
+    expect(sweep).not.toHaveBeenCalled();
+    expect(service.recording()).toBe(true);
+    expect(client.bound(RoomEvent.Timeline)).toBe(1);
+  });
+
+  it('a successful delete lets a session stopped by a storage failure record again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, prefs, service } = setup();
+    await run();
+    store.failNextPut(new Error('storage'));
+    client.live(message('$lost'));
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    await firstValueFrom(prefs.setKeepRecord(false));
+    vi.spyOn(store, 'deleteAll').mockRejectedValueOnce(new Error('blocked'));
+    await expect(firstValueFrom(service.deleteAll())).rejects.toThrow(
+      'blocked',
+    );
+    await firstValueFrom(prefs.setKeepRecord(true));
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    await firstValueFrom(service.deleteAll());
+    await flush();
+    expect(service.recording()).toBe(true);
+    client.live(message('$new'));
+    await flush();
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$new']);
+  });
+
+  it('turning a switch back on starts with an empty record', async () => {
+    const { client, store, run, prefs, service } = setup();
+    await run();
+    client.live(message('$old'));
+    await flush();
+    expect(store.rows(ME)).toHaveLength(1);
+
+    await firstValueFrom(prefs.setKeepRecord(false));
+    await firstValueFrom(service.deleteAll());
+    await firstValueFrom(prefs.setKeepRecord(true));
+    await flush();
+    expect(store.rows(ME)).toEqual([]);
+
+    client.live(message('$new'));
+    await flush();
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$new']);
+  });
+
   it('runs a delete after the writes queued before it', async () => {
     const { client, store, run, service } = setup();
     await run();
@@ -954,6 +1152,80 @@ describe('MentionIndexService', () => {
     await firstValueFrom(service.forgetAccount(ME));
     expect(store.rows(ME)).toEqual([]);
     expect(store.rows('@two:hs')).toHaveLength(1);
+  });
+
+  it('keeps out what forgetAccount deleted when a new client catches up, and only that', async () => {
+    const { client, store, run, service } = setup();
+    await run();
+    client.live(message('$old'));
+    await flush();
+
+    await firstValueFrom(service.forgetAccount(ME));
+    client.live(message('$old'));
+    client.live(message('$new', { origin_server_ts: TS + 1 }));
+    await flush();
+
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$new']);
+  });
+
+  it('records mentions after a forget whatever time they carry', async () => {
+    const { client, store, run, service } = setup();
+    await run();
+    // Nothing caps a sender's timestamp.
+    client.live(message('$future', { origin_server_ts: TS + 1_000_000 }));
+    await flush();
+
+    await firstValueFrom(service.forgetAccount(ME));
+    client.live(message('$later'));
+    await flush();
+
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$later']);
+  });
+
+  it('keeps out a deleted mention arriving while its forget is queued', async () => {
+    const { client, store, run, service } = setup();
+    await run();
+    client.live(message('$old'));
+    await flush();
+
+    const forgotten = firstValueFrom(service.forgetAccount(ME));
+    client.live(message('$old'));
+    await forgotten;
+    await flush();
+
+    expect(store.rows(ME)).toEqual([]);
+  });
+
+  it('saves the sync position when turned on mid-session, so no restart replays what came before', async () => {
+    const { client, prefs, run } = setup();
+    await run();
+    // A start's own catch-up is still to come, and is meant to be recorded.
+    expect(client.store.save).not.toHaveBeenCalled();
+    client.getSyncState.mockReturnValue(SyncState.Syncing);
+
+    await firstValueFrom(prefs.setKeepRecord(false));
+    await flush();
+    expect(client.store.save).not.toHaveBeenCalled();
+
+    await firstValueFrom(prefs.setKeepRecord(true));
+    await flush();
+    expect(client.store.save).toHaveBeenCalledWith(true);
+  });
+
+  it('keeps recording when saving the sync position fails', async () => {
+    const { client, prefs, run, store } = setup();
+    await run();
+    client.getSyncState.mockReturnValue(SyncState.Syncing);
+    client.store.save.mockRejectedValue(new Error('quota'));
+
+    await firstValueFrom(prefs.setKeepRecord(false));
+    await flush();
+    await firstValueFrom(prefs.setKeepRecord(true));
+    await flush();
+    client.live(message('$a'));
+    await flush();
+
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$a']);
   });
 
   describe('a hung store', () => {
@@ -1005,13 +1277,12 @@ describe('MentionIndexService', () => {
 
       client.live(message('$hung'));
       client.live(message('$queued'));
-      const deleted = firstValueFrom(service.deleteAll());
+      const forgotten = firstValueFrom(service.forgetAccount(ME));
       await vi.advanceTimersByTimeAsync(LIMIT);
-      await deleted;
+      await forgotten;
 
       expect(service.recording()).toBe(false);
       expect(put).toHaveBeenCalledOnce();
-      expect(service.deleteFailed()).toBe(false);
       expect(warn).toHaveBeenCalledExactlyOnceWith(STOPPED);
     });
 
@@ -1051,6 +1322,50 @@ describe('MentionIndexService', () => {
       expect(stopped).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(stopped).toHaveBeenCalledOnce();
+    });
+
+    it('a step that hung in an earlier run does not stop the next one', async () => {
+      vi.useFakeTimers();
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const { store, run, client, service } = setup();
+      const first = await run();
+      vi.spyOn(store, 'put').mockImplementationOnce(never);
+      client.live(message('$hung'));
+      await vi.advanceTimersByTimeAsync(0);
+      first.unsubscribe();
+
+      await run();
+      await vi.advanceTimersByTimeAsync(LIMIT);
+
+      expect(service.recording()).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('a write that fails after its run ended does not stop the next one', async () => {
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      const { store, run, client, service } = setup();
+      const first = await run();
+      let fail: (error: Error) => void = () => undefined;
+      vi.spyOn(store, 'put').mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            fail = reject;
+          }),
+      );
+      client.live(message('$late'));
+      await new Promise((resolve) => setTimeout(resolve));
+      first.unsubscribe();
+
+      await run();
+      fail(new Error('storage'));
+      await flush();
+
+      expect(service.recording()).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('a new run gets past a hung step', async () => {

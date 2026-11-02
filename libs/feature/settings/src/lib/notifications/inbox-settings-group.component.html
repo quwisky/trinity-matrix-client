@@ -1,0 +1,76 @@
+<trn-settings-group
+  title="Inbox"
+  description="These apply to every account on this device."
+>
+  <trn-settings-row
+    label="Show the inbox"
+    description="Adds an Inbox button for catching up on mentions and notifications."
+    for="notif-show-inbox-switch"
+    [attr.aria-busy]="unknown() ? 'true' : null"
+    data-testid="notif-show-inbox"
+  >
+    <trn-switch
+      inputId="notif-show-inbox-switch"
+      [aria-describedby]="
+        notRecording()
+          ? 'notif-show-inbox-switch-description notif-mention-not-recording'
+          : 'notif-show-inbox-switch-description'
+      "
+      [checked]="showInbox()"
+      [disabled]="unknown()"
+      [aria-disabled]="busy()"
+      (checkedChange)="setShowInbox($event)"
+    />
+  </trn-settings-row>
+  <trn-settings-row
+    label="Keep a record of mentions on this device"
+    description="Lets the inbox show older mentions and mentions in encrypted rooms. Stores which messages mentioned you, not what they said. Keeps your newest 2,000 mentions."
+    for="notif-keep-mention-record-switch"
+    [attr.aria-busy]="unknown() ? 'true' : null"
+    data-testid="notif-keep-mention-record"
+  >
+    <trn-switch
+      inputId="notif-keep-mention-record-switch"
+      [aria-describedby]="
+        notRecording()
+          ? 'notif-keep-mention-record-switch-description notif-mention-not-recording'
+          : 'notif-keep-mention-record-switch-description'
+      "
+      [checked]="showInbox() && keepRecord()"
+      [disabled]="unknown() || !showInbox()"
+      [aria-disabled]="busy()"
+      (checkedChange)="setKeepRecord($event)"
+    />
+  </trn-settings-row>
+  @if (notRecording()) {
+    <p
+      id="notif-mention-not-recording"
+      class="m-0 py-3 text-13 text-muted-foreground"
+    >
+      Trinity couldn't read the inbox settings, so it isn't recording mentions
+      right now.
+    </p>
+  }
+  @if (deleteFailed()) {
+    <div #deleteFailure class="flex flex-wrap items-center gap-2 py-3">
+      <p
+        class="m-0 text-13 text-danger"
+        role="alert"
+        data-testid="notif-mention-delete-failed"
+      >
+        Couldn't delete the record. Try again.
+      </p>
+      <button
+        trnBtn
+        type="button"
+        presentation="outline"
+        size="sm"
+        [loading]="busy()"
+        (click)="retryDelete()"
+        data-testid="notif-mention-delete-retry"
+      >
+        Try again
+      </button>
+    </div>
+  }
+</trn-settings-group>

@@ -20,6 +20,10 @@ import {
   TrnSurfaceService,
 } from '@trinity/components/overlay';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
+import {
   ACCOUNT_DELETION_LAUNCHER,
   type AccountDeletionOutcome,
 } from '@trinity/platform-native';
@@ -42,6 +46,7 @@ import {
 })
 export class DeleteAccountGroupComponent {
   private readonly launcher = inject(ACCOUNT_DELETION_LAUNCHER);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly retries = new Subject<void>();
@@ -49,6 +54,8 @@ export class DeleteAccountGroupComponent {
   protected readonly announcement = signal('');
 
   protected readonly copy = DELETE_ACCOUNT_COPY;
+  protected readonly mentionHistoryLoss = MENTION_HISTORY_LOSS;
+  protected readonly mentionHistoryAtRisk = signal(false);
 
   readonly accountId = input.required<string>();
 
@@ -117,6 +124,11 @@ export class DeleteAccountGroupComponent {
     const plan = this.plan();
     if (plan?.kind !== 'provider' || !plan.url) return;
     this.providerOpened.set(true);
+    // True on an unread count: removing the deleted account deletes whatever is there.
+    this.lifecycle
+      .hasMentionHistory(this.accountId(), true)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((has) => this.mentionHistoryAtRisk.set(has));
     this.launcher
       .openProvider(this.accountId(), plan.url)
       .pipe(takeUntilDestroyed(this.destroyRef))

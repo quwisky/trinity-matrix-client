@@ -751,18 +751,22 @@ describe('NotificationInboxService', () => {
       },
     );
 
-    it('removes a row for a room no longer known, once synced', async () => {
-      const client = fakeClient();
+    it('hides a row for a room missing once synced, and keeps its record', async () => {
+      const client = fakeClient({
+        [FIRST]: { rows: [entry(message('$s', 2))] },
+      });
       client.room = null;
-      const { inbox, store, open } = setup({ client });
+      const { inbox, store, remove, open } = setup({ client });
       await store.put(ME, { eventId: '$i', roomId: ROOM, ts: 1 }, 1);
       vi.spyOn(Date, 'now').mockReturnValue(100);
 
       await open();
       await flush();
 
+      expect(inbox.all()).toEqual([]);
       expect(inbox.mentions()).toEqual([]);
-      expect(store.rows(ME)).toEqual([]);
+      expect(remove).not.toHaveBeenCalled();
+      expect(store.rows(ME)).toHaveLength(1);
       expect(client.fetchRoomEvent).not.toHaveBeenCalled();
     });
 

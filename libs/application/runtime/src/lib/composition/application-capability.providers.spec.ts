@@ -136,6 +136,14 @@ describe('hasMentionHistory', () => {
     ).resolves.toBe(expected);
   });
 
+  it('with no account, asks about every account on this device', async () => {
+    const count = vi.fn((_accountId?: string) => of(1));
+    const { port } = lifecyclePort('gone', { count });
+
+    await expect(firstValueFrom(port.hasMentionHistory())).resolves.toBe(true);
+    expect(count).toHaveBeenCalledExactlyOnceWith(undefined);
+  });
+
   it('reads as false when the count fails', async () => {
     const { port } = lifecyclePort('gone', {
       count: () => throwError(() => new Error('store blocked')),
@@ -144,6 +152,22 @@ describe('hasMentionHistory', () => {
     await expect(
       firstValueFrom(port.hasMentionHistory('@me:hs')),
     ).resolves.toBe(false);
+  });
+
+  it('can read a failed or unanswered count as true, for a path that deletes anyway', async () => {
+    vi.useFakeTimers();
+    for (const count of [
+      () => throwError(() => new Error('store blocked')),
+      () => NEVER,
+    ]) {
+      const { port } = lifecyclePort('gone', { count });
+
+      const answer = firstValueFrom(port.hasMentionHistory('@me:hs', true));
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(answer).resolves.toBe(true);
+      TestBed.resetTestingModule();
+    }
   });
 
   it('reads as false when the count never answers', async () => {

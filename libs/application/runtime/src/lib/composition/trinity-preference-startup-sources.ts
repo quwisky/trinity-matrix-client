@@ -160,6 +160,8 @@ export class TrinityPreferenceStartupSources {
                 },
           ),
         ),
+      // No `recover`, unlike its neighbours: that writes the default, on, over an "off" it
+      // couldn't read. Retry re-reads instead, and Settings is what repairs a corrupt value.
       'mention-inbox': () =>
         this.mentionInbox.init().pipe(
           map((outcome): PreferencePreparationEvidence =>
@@ -168,17 +170,6 @@ export class TrinityPreferenceStartupSources {
               : {
                   kind: 'defaulted',
                   code: 'mention-inbox-preference-hydration-partial',
-                  recover: () =>
-                    this.mentionInbox.recoverHydration(outcome.failures).pipe(
-                      map((recovered): PreferencePreparationEvidence =>
-                        recovered.kind === 'ready'
-                          ? { kind: 'ready' }
-                          : {
-                              kind: 'defaulted',
-                              code: 'mention-inbox-preference-hydration-partial',
-                            },
-                      ),
-                    ),
                 },
           ),
         ),

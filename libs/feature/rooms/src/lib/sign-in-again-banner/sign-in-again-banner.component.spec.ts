@@ -2,8 +2,12 @@ import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { of } from 'rxjs';
+import { Subject, of, type Observable } from 'rxjs';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,9 +20,20 @@ const dismissSignInAgain = vi.fn();
 const navigate = vi.fn(() => Promise.resolve(true));
 const confirm$ = vi.fn(() => of(true));
 
-function renderBanner() {
+function renderBanner(
+  hasMentionHistory: boolean | Observable<boolean> = false,
+) {
   return render(SignInAgainBannerComponent, {
     providers: [
+      {
+        provide: ACCOUNT_LIFECYCLE_PORT,
+        useValue: {
+          hasMentionHistory: () =>
+            typeof hasMentionHistory === 'boolean'
+              ? of(hasMentionHistory)
+              : hasMentionHistory,
+        },
+      },
       MockProvider(MatrixClientService, {
         activeUserId: signal('@me:hs').asReadonly(),
       }),
@@ -47,6 +62,49 @@ beforeEach(() => {
 });
 
 describe('SignInAgainBannerComponent', () => {
+  it('a second press while the history is read opens no second question', async () => {
+    const history = new Subject<boolean>();
+    const { container } = await renderBanner(history);
+    const button = [...container.querySelectorAll('button')].find((candidate) =>
+      candidate.textContent?.includes('Sign in again'),
+    ) as HTMLButtonElement;
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    history.next(false);
+
+    expect(confirm$).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledOnce();
+
+    // Asked and answered, so a later press asks again.
+    fireEvent.click(button);
+    expect(confirm$).toHaveBeenCalledTimes(1);
+    history.next(false);
+    expect(confirm$).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [true, true],
+    [false, false],
+  ])(
+    'the question says the mention history goes only with history (%s)',
+    async (hasHistory, says) => {
+      const { container } = await renderBanner(hasHistory);
+
+      fireEvent.click(
+        [...container.querySelectorAll('button')].find((button) =>
+          button.textContent?.includes('Sign in again'),
+        ) as HTMLButtonElement,
+      );
+
+      const { message } = (
+        confirm$.mock.calls as unknown as [{ message: string }][]
+      )[0]![0];
+      expect(message.includes(MENTION_HISTORY_LOSS)).toBe(says);
+      expect(navigate).toHaveBeenCalledOnce();
+    },
+  );
+
   it('shows only while it holds the global banner slot', async () => {
     const { fixture, container } = await renderBanner();
     expect(container.querySelector('trn-banner')).not.toBeNull();

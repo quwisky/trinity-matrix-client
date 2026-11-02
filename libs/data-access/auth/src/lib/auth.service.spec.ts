@@ -20,6 +20,7 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
   AccountRuntimeService,
   AuthenticatedAccountGrant,
   UnprotectedStorageGate,
@@ -89,6 +90,10 @@ describe('AuthService', () => {
         {
           provide: NEW_DEVICE_SIGN_IN,
           useValue: { confirm: vi.fn(() => of(true)) },
+        },
+        {
+          provide: ACCOUNT_LIFECYCLE_PORT,
+          useValue: { hasMentionHistory: vi.fn(() => of(false)) },
         },
       ],
     });
@@ -2016,6 +2021,92 @@ describe('AuthService', () => {
 
       expect(confirm).not.toHaveBeenCalled();
       expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledOnce();
+    });
+
+    describe('with every key backed up and mention history at stake', () => {
+      const withHistory = (choice: boolean) => {
+        const test = arrange({ backedUp: true, choice });
+        const hasMentionHistory = vi.mocked(
+          TestBed.inject(ACCOUNT_LIFECYCLE_PORT).hasMentionHistory,
+        );
+        hasMentionHistory.mockReturnValue(of(true));
+        return { ...test, hasMentionHistory };
+      };
+
+      it.each([['replace'], ['add']] as const)(
+        'a %s sign-in asks first, and Cancel leaves everything alone',
+        async (mode) => {
+          const { confirm, accounts, hasMentionHistory } = withHistory(false);
+
+          await expect(
+            firstValueFrom(
+              auth.loginWithPassword('https://hs', '@me:hs', 'pw', mode),
+            ),
+          ).rejects.toBeInstanceOf(NewDeviceSignInCancelledError);
+
+          // True on an unread count: asking is the safe side, since this sign-in deletes it.
+          expect(hasMentionHistory).toHaveBeenCalledExactlyOnceWith(
+            '@me:hs',
+            true,
+          );
+          expect(confirm).toHaveBeenCalledExactlyOnceWith({
+            userId: '@me:hs',
+            roomKeysBackedUp: true,
+          });
+          // Nothing saved, so nothing deletes; the device this sign-in made is signed out.
+          expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
+          expect(logout).toHaveBeenCalledWith(true);
+        },
+      );
+
+      it('goes ahead only after the person agrees', async () => {
+        const { confirm, accounts } = withHistory(true);
+
+        await firstValueFrom(
+          auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
+        );
+
+        expect(confirm.mock.invocationCallOrder[0]).toBeLessThan(
+          vi.mocked(accounts.establishAuthenticatedAccount).mock
+            .invocationCallOrder[0] as number,
+        );
+      });
+
+      it('adds no question to a re-auth, whose page has already said so', async () => {
+        const { confirm, accounts, hasMentionHistory } = withHistory(false);
+
+        await firstValueFrom(
+          auth.loginWithPassword(
+            'https://hs',
+            '@me:hs',
+            'pw',
+            'add',
+            undefined,
+            '@me:hs',
+          ),
+        );
+
+        expect(hasMentionHistory).not.toHaveBeenCalled();
+        expect(confirm).not.toHaveBeenCalled();
+        expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledOnce();
+      });
+
+      it('reads the history only when backup would otherwise skip the question', async () => {
+        const { hasMentionHistory, confirm } = withHistory(true);
+        vi.mocked(
+          TestBed.inject(MatrixClientService).roomKeysBackedUp,
+        ).mockReturnValue(of(false));
+
+        await firstValueFrom(
+          auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
+        );
+
+        expect(hasMentionHistory).not.toHaveBeenCalled();
+        expect(confirm).toHaveBeenCalledExactlyOnceWith({
+          userId: '@me:hs',
+          roomKeysBackedUp: false,
+        });
+      });
     });
 
     it('does not ask when the sign-in kept the stored device (re-auth)', async () => {

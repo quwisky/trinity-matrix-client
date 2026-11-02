@@ -114,6 +114,75 @@ The desktop app always runs in one window, so this doesn't apply to it.
 
 <!-- x-release-please-end -->
 
+## Catch up with the inbox {#inbox}
+
+The **Inbox** button in the side rail lists what asked for your attention, so you can catch up
+without opening every room that has an unread badge. Choose a row to open its room or thread at
+that message. On a phone, the back arrow returns you to the same tab and place in the list.
+
+- **Mentions** shows messages your notification rules highlight: @mentions, @room and your
+  keywords. It includes mentions in encrypted rooms, which your server can't read. If this device
+  doesn't have the keys for some messages, a line says how many couldn't be checked.
+- **All** shows your server's list of notifications. Your server may only keep these for a short
+  time.
+
+The inbox refreshes when you open it and when you choose its refresh button, not while it's open.
+
+**Settings › Notifications** has two switches. They apply to every account on this device, and
+both start on.
+
+- **Show the inbox** adds the Inbox button. With it off, there's no button, and Trinity doesn't
+  fetch or record anything for the inbox.
+- **Keep a record of mentions on this device** lets the inbox show older mentions and mentions in
+  encrypted rooms. With it off, the inbox uses only your server's list, and Mentions says that
+  older mentions and mentions in encrypted rooms may be missing.
+
+**What's stored.** For each mention, the record keeps the message's ID, its room's ID, its time
+and the account it belongs to. It doesn't keep the message's text or its sender, and the inbox
+fetches and decrypts the text when you open it. The record is stored unencrypted on this device,
+like the room list, and keeps your newest 2,000 mentions per account, for up to a year.
+
+**What deletes it.** Trinity asks first, or says so in its question, unless noted here.
+
+- Turning off either switch deletes the record for every account on this device. Turning a switch
+  back on starts an empty record, and can't bring back what was deleted.
+- Removing an account, or deleting it, deletes that account's record. If you delete it on your
+  sign-in provider's page, Trinity says so as it opens the page, and deletes the record when it
+  notices the account has gone.
+- Signing in again so that this device becomes a new device deletes that account's record, once
+  that sign-in succeeds. That includes signing in to an account already on this device, even when
+  key backup holds every key. Cancel leaves everything as it was.
+- **Erase all data on this device** deletes everything, including the record.
+- Without asking, the inbox deletes a single row when its message was redacted, when this device
+  shows you left or were banned from the room, or when your server answers that the message is
+  forbidden or doesn't exist (a 403 or 404).
+
+Your messages themselves are never deleted by any of these.
+
+**Known limits.**
+
+- **It's per device.** A new device or a fresh sign-in starts with an empty record, plus whatever
+  your server still lists. The record isn't synced between devices.
+- **It starts when you have this version.** Earlier mentions can't be recovered.
+- **The first sync records nothing.** That covers the first sync after you sign in, and a start
+  where Trinity can't read its saved sync data. Mentions from those show only if your server still
+  lists them.
+- **Gaps in sync.** If your server skips messages because too many arrived while you were away,
+  those mentions show only if your server still lists them.
+- **Closed apps on phones.** Recording needs Trinity to be running. A push notification doesn't
+  record anything, so a mention is recorded when the app next syncs it.
+- **Keys that arrive late.** Trinity can only tell that an encrypted message mentions you once it
+  can read it. If the keys arrive after you've restarted Trinity, that mention isn't recorded. It
+  shows only if your server still lists it.
+- **Older messages in threads.** Scrolling back in a thread can add an older mention to the record.
+- **A missing room.** A row is hidden while its room is missing from this device. If you left the
+  room but this device never learned that, the row stays in the record until the 2,000-mention or
+  one-year limit removes it. You won't see it, and it takes up one place in the record.
+- **A server can end a session first.** If your server ends a session by deleting this device,
+  Trinity can't ask first. That account's record goes at the next start or sign-in.
+- **Your browser can clear it.** Browser storage can be cleared without warning, so Trinity can't
+  tell you first.
+
 ## Sign in with a QR code {#qr-sign-in}
 
 You can sign in on a new device by scanning a QR code with Trinity on a device where you're

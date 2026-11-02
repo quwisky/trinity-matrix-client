@@ -208,8 +208,9 @@ export class IndexedDbMentionStore implements MentionIndexStore {
   }
 
   async deleteAll(): Promise<void> {
+    // No store means nothing to delete, and a failure here would show in Settings on every start.
     if (!this.idb) {
-      throw new Error('IndexedDB is unavailable');
+      return;
     }
     const outcome = await deleteDatabase(this.idb, this.name);
     if (outcome !== 'deleted') {

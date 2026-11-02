@@ -1,7 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { AppearancePreferences } from '@trinity/application/appearance';
 import { GifSettingsService } from '@trinity/data-access/gif';
-import { MentionInboxPreferences } from '@trinity/data-access/notifications';
+import {
+  KEEP_MENTION_RECORD_PREFERENCE,
+  MentionInboxPreferences,
+  provideMentionInboxPreferences,
+} from '@trinity/data-access/notifications';
 import {
   AccountScopeService,
   RailUnreadChatsPreference,
@@ -15,8 +19,13 @@ import {
   ShellLayoutService,
   SystemLineSettingsService,
 } from '@trinity/platform-native';
+import {
+  PREFERENCE_STORAGE_ADAPTER,
+  type PreferenceStorageReadOutcome,
+} from '@trinity/runtime/preferences';
 import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PreferencePreparationEvidence } from './preference-startup.policy';
 import { TrinityPreferenceStartupSources } from './trinity-preference-startup-sources';
 
 const preferences = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn() }));
@@ -104,17 +113,96 @@ describe('TrinityPreferenceStartupSources', () => {
     );
   });
 
-  it('reports a partial inbox-switch hydration as defaulted with a recovery', async () => {
-    const sources = TestBed.inject(TrinityPreferenceStartupSources).sources();
-
-    const evidence = await firstValueFrom(sources['mention-inbox']());
-
-    expect(evidence).toMatchObject({
-      kind: 'defaulted',
-      code: 'mention-inbox-preference-hydration-partial',
+  describe('Retry on the inbox switches, whose recovery must never write', () => {
+    const KEEP = KEEP_MENTION_RECORD_PREFERENCE.persistence.key;
+    const down = {
+      kind: 'unavailable',
+      diagnostic: { code: 'storage-down' },
+    } as const;
+    const found = (value: unknown): PreferenceStorageReadOutcome => ({
+      kind: 'found',
+      payload: JSON.stringify({ version: 1, value }),
     });
-    expect(evidence.kind === 'defaulted' && typeof evidence.recover).toBe(
-      'function',
-    );
+
+    function real(reads: PreferenceStorageReadOutcome[]) {
+      const write = vi.fn(() => of({ kind: 'completed' as const }));
+      TestBed.overrideProvider(MentionInboxPreferences, {
+        useFactory: () => new MentionInboxPreferences(),
+      });
+      TestBed.configureTestingModule({
+        providers: [
+          provideMentionInboxPreferences(),
+          {
+            provide: PREFERENCE_STORAGE_ADAPTER,
+            useValue: {
+              read: ({ key }: { key: string }) =>
+                of(
+                  key === KEEP ? (reads.shift() ?? down) : { kind: 'missing' },
+                ),
+              write,
+            },
+          },
+        ],
+      });
+      const source = TestBed.inject(TrinityPreferenceStartupSources).sources()[
+        'mention-inbox'
+      ];
+      /** What `PreferenceStartupHealthService` runs when the person presses Retry. */
+      const retry = (evidence: PreferencePreparationEvidence) =>
+        firstValueFrom(
+          (evidence.kind === 'defaulted' && evidence.recover
+            ? evidence.recover
+            : source)(),
+        );
+      return {
+        source,
+        retry,
+        write,
+        prefs: TestBed.inject(MentionInboxPreferences),
+      };
+    }
+
+    it('a stored "off" that a re-read finds stays off, with no question skipped', async () => {
+      const { source, retry, write, prefs } = real([down, found(false)]);
+
+      const evidence = await firstValueFrom(source());
+      expect(evidence).toEqual({
+        kind: 'defaulted',
+        code: 'mention-inbox-preference-hydration-partial',
+      });
+      expect(prefs.recordAllowed()).toBe(false);
+
+      await expect(retry(evidence)).resolves.toEqual({ kind: 'ready' });
+
+      expect(write).not.toHaveBeenCalled();
+      expect(prefs.keepRecord()).toBe(false);
+      expect(prefs.recordAllowed()).toBe(false);
+      expect(prefs.recordDeclined()).toBe(true);
+    });
+
+    it('a read that keeps failing stays not allowed, and writes nothing', async () => {
+      const { source, retry, write, prefs } = real([down, down]);
+
+      const evidence = await firstValueFrom(source());
+      const retried = await retry(evidence);
+
+      expect(retried.kind).toBe('defaulted');
+      expect(write).not.toHaveBeenCalled();
+      expect(prefs.recordAllowed()).toBe(false);
+    });
+
+    it('a corrupt value stays as it was on Retry: Settings is what repairs it', async () => {
+      const { source, retry, write, prefs } = real([
+        found('yes'),
+        found('yes'),
+      ]);
+
+      const evidence = await firstValueFrom(source());
+      const retried = await retry(evidence);
+
+      expect(retried.kind).toBe('defaulted');
+      expect(write).not.toHaveBeenCalled();
+      expect(prefs.recordAllowed()).toBe(false);
+    });
   });
 });

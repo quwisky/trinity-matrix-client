@@ -8,10 +8,12 @@ import {
 } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
+import { HostLifecycleService } from '@trinity/runtime/host';
 import {
   MatrixEventEvent,
   RelationType,
   RoomEvent,
+  SyncState,
   type IRoomTimelineData,
   type MatrixClient,
   type MatrixEvent,
@@ -21,6 +23,7 @@ import {
   Observable,
   TimeoutError,
   defer,
+  filter,
   firstValueFrom,
   from,
   timeout,
@@ -29,6 +32,7 @@ import {
 import { MentionInboxPreferences } from './mention-inbox.preferences';
 import {
   MENTION_INDEX_STORE,
+  MENTION_ROW_LIMIT,
   type MentionCursor,
   type MentionRecord,
 } from './mention-index-store';
@@ -63,17 +67,25 @@ export class MentionIndexService {
   private readonly preferences = inject(MentionInboxPreferences);
   private readonly sessions = inject(SessionStorageService);
   private readonly store = inject(MENTION_INDEX_STORE);
+  private readonly lifecycle = inject(HostLifecycleService);
 
   private readonly recorders = new Map<string, AccountRecorder>();
+  /** A new device's client catches up from the old one's saved position, replaying these as live. */
+  private readonly forgottenIds = new Map<string, Set<string>>();
   private readonly started = signal(false);
   private readonly stopped = signal(false);
   private readonly deleteFailedState = signal(false);
 
   private session: symbol | null = null;
+  private warnedStopped = false;
   private writes: Promise<void> = Promise.resolve();
 
   readonly recording = computed(
-    () => this.started() && !this.stopped() && this.preferences.recordAllowed(),
+    () =>
+      this.started() &&
+      !this.stopped() &&
+      !this.deleteFailedState() &&
+      this.preferences.recordAllowed(),
   );
   readonly deleteFailed = this.deleteFailedState.asReadonly();
 
@@ -90,8 +102,16 @@ export class MentionIndexService {
       this.stopped.set(false);
       const session = Symbol();
       this.session = session;
+      this.warnedStopped = false;
       void this.start(session);
+      // A phone's session can last days, and one error on a write cut off by suspending shouldn't
+      // silence it. A store that fails again stops again; the switches and a failed delete still
+      // hold recording off through `recording`.
+      const resumed = this.lifecycle.events
+        .pipe(filter((event) => event.kind === 'active'))
+        .subscribe(() => this.stopped.set(false));
       return () => {
+        resumed.unsubscribe();
         if (this.session === session) {
           this.halt();
         }
@@ -129,7 +149,17 @@ export class MentionIndexService {
 
   forgetAccount(accountId: string): Observable<void> {
     return defer(() =>
-      from(this.enqueue(() => this.store.clearAccount(accountId))),
+      from(
+        this.enqueue(async () => {
+          const rows = await this.store
+            .page(accountId, null, MENTION_ROW_LIMIT, Date.now())
+            .catch(() => []);
+          const forgotten = this.forgottenIds.get(accountId) ?? new Set();
+          rows.forEach((row) => forgotten.add(row.eventId));
+          this.forgottenIds.set(accountId, forgotten);
+          await this.store.clearAccount(accountId);
+        }),
+      ),
     );
   }
 
@@ -145,14 +175,14 @@ export class MentionIndexService {
     this.started.set(true);
     // A stop and this start can fall between two effect runs, which then see no change.
     this.reconcile(this.recording() ? this.matrix.accountIds() : []);
-    if (this.preferences.recordDeclined()) {
+    if (this.preferences.recordDeclined() || this.deleteFailedState()) {
       // Also how a delete that failed earlier is retried; `deleteFailed` reports this one.
       await this.wipe().catch(() => undefined);
     } else if (this.preferences.recordAllowed()) {
       await this.sweep(session);
     } else {
       // A setting that couldn't be read may be either answer: a failed read deletes nothing.
-      this.stopForSession();
+      this.stopForSession(session);
     }
   }
 
@@ -165,7 +195,12 @@ export class MentionIndexService {
       // So must a corrupt record: an `undefined` ID matches no row, and deletes them all.
       const valid = ids.every((id: unknown) => typeof id === 'string' && id);
       if (valid && this.session === session) {
-        await this.enqueue(() => this.store.keepOnlyAccounts(ids));
+        // With no accounts, opening the store would only leave an empty database behind.
+        await this.enqueue(() =>
+          ids.length === 0
+            ? this.store.deleteAll()
+            : this.store.keepOnlyAccounts(ids),
+        );
       }
     } catch {
       /* the next start retries */
@@ -176,6 +211,8 @@ export class MentionIndexService {
     try {
       await this.enqueue(() => this.store.deleteAll());
       this.deleteFailedState.set(false);
+      // The store just answered, so an earlier failure is no reason to stay stopped.
+      this.stopped.set(false);
     } catch (error) {
       this.deleteFailedState.set(true);
       throw error;
@@ -188,21 +225,26 @@ export class MentionIndexService {
     this.reconcile([]);
   }
 
-  private stopForSession(): void {
-    if (this.stopped()) {
+  /** A step queued by an earlier run says nothing about this one. */
+  private stopForSession(session: symbol | null): void {
+    if (this.session !== session || this.stopped()) {
       return;
     }
     this.stopped.set(true);
-    console.warn('mention index: recording stopped for this session');
+    if (!this.warnedStopped) {
+      this.warnedStopped = true;
+      console.warn('mention index: recording stopped');
+    }
   }
 
   /** Past the limit a step counts as a storage failure, and its late answer is ignored. */
   private enqueue<T>(work: () => ObservableInput<T>): Promise<T> {
+    const session = this.session;
     const result = this.writes.then(() =>
       firstValueFrom(defer(work).pipe(timeout(STEP_LIMIT_MS))).catch(
         (error: unknown) => {
           if (error instanceof TimeoutError) {
-            this.stopForSession();
+            this.stopForSession(session);
           }
           throw error;
         },
@@ -235,6 +277,11 @@ export class MentionIndexService {
         client.on(RoomEvent.Timeline, recorder.onTimeline);
         client.on(MatrixEventEvent.Decrypted, recorder.onDecrypted);
         this.recorders.set(accountId, recorder);
+        // Turned on mid-session. The saved position can predate what came while off or was deleted,
+        // and the next start would replay all of that as live.
+        if (client.getSyncState() === SyncState.Syncing) {
+          client.store.save(true).catch(() => undefined);
+        }
       }
     }
   }
@@ -307,15 +354,17 @@ export class MentionIndexService {
       roomId: event.getRoomId() ?? '',
       ts: event.getTs(),
     };
+    const session = this.session;
     void this.enqueue(() =>
-      // Checked here, not at the emit: a failure or a switch going off also drops queued writes.
-      this.recording()
+      // Checked here, not at the emit: a failure, a forget or a switch going off also drops queued
+      // writes.
+      this.recording() && !this.forgottenIds.get(accountId)?.has(record.eventId)
         ? this.store.put(accountId, record, Date.now())
         : Promise.resolve(),
     ).catch((error: unknown) => {
       // A TypeError is one malformed event from a server, which is no reason to stop.
       if (!(error instanceof TypeError)) {
-        this.stopForSession();
+        this.stopForSession(session);
       }
     });
   }

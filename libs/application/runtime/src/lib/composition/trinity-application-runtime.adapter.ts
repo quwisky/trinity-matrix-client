@@ -22,7 +22,10 @@ import {
   type AccountRestoreResult,
 } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RetiredPushGatewayCleanup } from '@trinity/data-access/notifications';
+import {
+  MentionIndexService,
+  RetiredPushGatewayCleanup,
+} from '@trinity/data-access/notifications';
 import {
   AppConfigService,
   DraftStoreService,
@@ -52,6 +55,7 @@ import {
   from,
   ignoreElements,
   map,
+  merge,
   of,
   switchMap,
   take,
@@ -106,6 +110,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly accountHealth = inject(AccountStartupHealthService);
   private readonly preferenceHealth = inject(PreferenceStartupHealthService);
   private readonly preferenceEffects = inject(PreferenceEffectHealthService);
+  private readonly mentionIndex = inject(MentionIndexService);
   private readonly roomOrderHealth = inject(RoomOrderHealthService);
   private readonly preferenceSources = inject(TrinityPreferenceStartupSources);
   private readonly hostHealth = inject(HostSessionHealthService);
@@ -474,7 +479,12 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   }
 
   runPreferenceLifetime(): Observable<never> {
-    return this.preferenceEffects.run();
+    return merge(
+      this.preferenceEffects.run(),
+      // Here, not with the session's lifetimes: those start after account restoration has
+      // started the clients syncing, and a catch-up batch landing first would be lost.
+      this.mentionIndex.run(),
+    );
   }
 
   private reportHostContract(protocolMismatch: boolean): void {

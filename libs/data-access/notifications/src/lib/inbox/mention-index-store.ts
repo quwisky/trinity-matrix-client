@@ -31,7 +31,7 @@ export interface MentionIndexStore {
   count(accountId?: string): Promise<number>;
   clearAccount(accountId: string): Promise<void>;
   keepOnlyAccounts(accountIds: readonly string[]): Promise<void>;
-  /** Rejects unless the database is gone. */
+  /** Rejects unless the database is gone, or never could exist. */
   deleteAll(): Promise<void>;
 }
 

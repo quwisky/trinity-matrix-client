@@ -23,6 +23,9 @@
             }
           </ul>
           <p class="m-0">{{ copy.othersUnaffected }}</p>
+          @if (hasMentionHistory()) {
+            <p class="m-0">{{ mentionHistoryLoss }}</p>
+          }
         </div>
 
         <div class="flex items-start gap-2">

@@ -253,11 +253,11 @@ export function applicationCapabilityProviders(
           stopDiagnosticLog: () => diagnosticLog.discard(),
           forgetMentionHistory: (accountId) =>
             mentionIndex.forgetAccount(accountId),
-          hasMentionHistory: (accountId) =>
+          hasMentionHistory: (accountId, ifUnknown = false) =>
             mentionIndex.count(accountId).pipe(
               map((count) => count > 0),
               timeout(MENTION_HISTORY_READ_MS),
-              catchError(() => of(false)),
+              catchError(() => of(ifUnknown)),
             ),
           stopMentionIndex: () => mentionIndex.stop(),
           resumeDiagnosticLog: () => diagnosticLog.resumeAfterReset(),

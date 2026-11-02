@@ -15,8 +15,12 @@ import {
 } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnAlertService } from '@trinity/components/overlay';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { filter } from 'rxjs';
+import { filter, finalize, switchMap, take } from 'rxjs';
 
 /**
  * Asks the active account to sign in again on this device when its crypto store predates
@@ -36,6 +40,9 @@ export class SignInAgainBannerComponent {
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
   private readonly alert = inject(TrnAlertService);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
+  /** The question opens only after the history is read, so a second press could beat it. */
+  private asking = false;
   private readonly destroyRef = inject(DestroyRef);
 
   readonly visible = computed(
@@ -52,15 +59,23 @@ export class SignInAgainBannerComponent {
    */
   signInAgain(): void {
     const userId = this.matrix.activeUserId();
-    if (!userId) return;
-    this.alert
-      .confirm$({
-        header: 'Sign in again?',
-        message:
-          'To read older encrypted messages here afterwards, you need this account’s recovery key or another signed-in device. Without either, they can’t be read on this device.',
-        confirmText: 'Continue',
-      })
-      .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+    if (!userId || this.asking) return;
+    this.asking = true;
+    this.lifecycle
+      .hasMentionHistory(userId)
+      .pipe(
+        take(1),
+        switchMap((hasHistory) =>
+          this.alert.confirm$({
+            header: 'Sign in again?',
+            message: `To read older encrypted messages here afterwards, you need this account’s recovery key or another signed-in device. Without either, they can’t be read on this device.${hasHistory ? `\n\n${MENTION_HISTORY_LOSS}` : ''}`,
+            confirmText: 'Continue',
+          }),
+        ),
+        finalize(() => (this.asking = false)),
+        filter(Boolean),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe(() => {
         void this.router.navigate(['/login'], {
           queryParams: { reauth: userId, device: 'new' },

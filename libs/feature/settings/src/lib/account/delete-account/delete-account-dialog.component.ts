@@ -12,7 +12,11 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  takeUntilDestroyed,
+  toObservable,
+  toSignal,
+} from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import {
   TrnButton,
@@ -27,6 +31,8 @@ import {
 } from '@trinity/components/overlay';
 import {
   ACCOUNT_DELETION_MISTYPED_MESSAGE,
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
   accountDeletionConsequences,
   accountEraseDescription,
   classifyAccountDeletionIntent,
@@ -37,6 +43,7 @@ import {
   type AccountDeletionOutcome,
   type AccountDeletionRefusal,
 } from '@trinity/platform-native';
+import { switchMap } from 'rxjs';
 import { ReauthBrowserStepComponent } from '../reauth/reauth-browser-step.component';
 import { ReauthPasswordStepComponent } from '../reauth/reauth-password-step.component';
 import { ReauthPrompts, type ReauthStep } from '../reauth/reauth-prompts';
@@ -84,6 +91,7 @@ export type DeleteAccountStep =
 export class DeleteAccountDialogComponent {
   private readonly launcher = inject(ACCOUNT_DELETION_LAUNCHER);
   private readonly removal = inject(ACCOUNT_REMOVAL_LAUNCHER);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly ref = inject(TrnDialogRef, { optional: true });
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
@@ -92,6 +100,7 @@ export class DeleteAccountDialogComponent {
 
   protected readonly copy = DELETE_ACCOUNT_COPY;
   protected readonly mistypedMessage = ACCOUNT_DELETION_MISTYPED_MESSAGE;
+  protected readonly mentionHistoryLoss = MENTION_HISTORY_LOSS;
 
   /** The account being deleted, fixed when the dialog opened. */
   readonly accountId = input.required<string>();
@@ -102,6 +111,16 @@ export class DeleteAccountDialogComponent {
 
   private readonly confirmation = signal({ typed: '' });
   readonly confirmForm = form(this.confirmation);
+
+  /** Removing a deleted account takes its record of mentions with it, even on an unread count. */
+  protected readonly hasMentionHistory = toSignal(
+    toObservable(this.accountId).pipe(
+      switchMap((accountId) =>
+        this.lifecycle.hasMentionHistory(accountId, true),
+      ),
+    ),
+    { initialValue: false },
+  );
 
   protected readonly server = computed(() => serverNameOf(this.accountId()));
   protected readonly consequences = computed(() =>
