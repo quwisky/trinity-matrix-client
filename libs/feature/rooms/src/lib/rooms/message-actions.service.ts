@@ -17,6 +17,7 @@ import type { ImagePackImage } from '@trinity/data-access/media';
 import {
   Observable,
   catchError,
+  defaultIfEmpty,
   finalize,
   filter,
   switchMap,
@@ -472,49 +473,42 @@ export class MessageActionsService {
       compose.draft() === restored.text
     ) {
       // A reload drops the failed row, and with it the only other copy of the text, so the saved
-      // drafts keep it (as for a message waiting offline) until the retry settles.
+      // drafts keep it (as for a message waiting offline) while this retry is in flight.
       this.drafts.holdWaiting(draftKey, messageId, restored.text);
       compose.setDraft('');
       if (compose.intent().kind === 'reply') compose.cancelIntent();
       cleared = true;
     }
-    const release = () => {
-      if (draftKey) this.drafts.releaseWaiting(draftKey, messageId);
-    };
-    // Set once the retry has an answer; a page that goes away before it has not.
-    let answered = false;
     const undo = () => {
-      answered = true;
       if (!cleared || !handle || !compose || !restored) return;
-      // Text typed meanwhile is the person's, and the held copy stays with it: a refused resend
-      // keeps its record when the composer doesn't hold the text. The reply goes back only with
-      // the text it belongs to.
+      // Text typed meanwhile is the person's; the reply goes back only with the text it belongs to.
       if (compose.draft() !== '') return;
       compose.setDraft(restored.text);
-      release();
       if (restored.replyTo && compose.intent().kind === 'message') {
         handle.messages.beginReply(restored.replyTo);
       }
     };
     this.runMessageAction(
       this.messageCommands.retry(messageId).pipe(
+        // A retry that ends without an answer sent nothing we know of: treat it as refused, so
+        // the box is never left silently cleared.
+        defaultIfEmpty<ConversationMessageOutcome, null>(null),
         tap((outcome) => {
-          if (outcome.kind === 'rejected') undo();
-          else {
-            answered = true;
-            // Also frees a copy an earlier, refused attempt kept.
-            release();
-            records?.delete(messageId);
-          }
+          if (outcome?.kind === 'applied') records?.delete(messageId);
+          else undo();
         }),
+        filter((outcome): outcome is ConversationMessageOutcome => !!outcome),
         catchError((error: unknown) => {
           undo();
           return throwError(() => error);
         }),
-        // The page went away mid-retry, which still sends: the held copy would come back as a
-        // duplicate after a reload. An answered retry has settled its own copy.
+        // The hold lasts while this one retry is in flight, and ends with it however it ends,
+        // the page going away included (the resend still goes out). Only the tap that took it
+        // lets it go.
         finalize(() => {
-          if (!answered && cleared) release();
+          if (cleared && draftKey) {
+            this.drafts.releaseWaiting(draftKey, messageId);
+          }
         }),
       ),
       'Could not retry the message.',
