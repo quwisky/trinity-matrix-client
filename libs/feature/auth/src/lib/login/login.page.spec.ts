@@ -77,8 +77,10 @@ async function renderLogin(
     record?: unknown;
     /** The device re-auth may reuse; defaults to the record's own. */
     reusableDevice?: string | null;
-    /** Whether the re-authenticating account has mention history here. */
+    /** Whether the re-authenticating account has mention history here; absent reads as unknown. */
     mentionHistory?: boolean;
+    /** Make the read of whether the stored device can be reused fail. */
+    reusableFails?: boolean;
     oidcStore?: Partial<OidcStateStore>;
     /** Overrides for the redirect handoff (cold Observables that complete). */
     redirect?: Partial<SignInRedirectService>;
@@ -136,7 +138,10 @@ async function renderLogin(
       MockProvider(AuthService, auth),
       {
         provide: ACCOUNT_LIFECYCLE_PORT,
-        useValue: { hasMentionHistory: () => of(opts.mentionHistory ?? false) },
+        useValue: {
+          hasMentionHistory: (_accountId?: string, ifUnknown = false) =>
+            of(opts.mentionHistory ?? ifUnknown),
+        },
       },
       {
         provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
@@ -180,11 +185,13 @@ async function renderLogin(
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
         reusableDeviceId: vi.fn((record: { deviceId: string }) =>
-          of(
-            opts.reusableDevice === undefined
-              ? record.deviceId
-              : opts.reusableDevice,
-          ),
+          opts.reusableFails
+            ? throwError(() => new Error('store unreadable'))
+            : of(
+                opts.reusableDevice === undefined
+                  ? record.deviceId
+                  : opts.reusableDevice,
+              ),
         ),
         list: vi.fn(() =>
           opts.listFails
@@ -1840,6 +1847,7 @@ describe('LoginPage', () => {
         reauth: '@bob:hs',
         newDevice: true,
         record: RECORD,
+        mentionHistory: false,
       });
       expect(subtitle(newDevice.fixture)).toBe(NEW_DEVICE_COPY);
       TestBed.resetTestingModule();
@@ -1878,6 +1886,7 @@ describe('LoginPage', () => {
           reauth: '@bob:hs',
           newDevice: true,
           record: RECORD,
+          mentionHistory: false,
         });
         expect(subtitle(none.fixture)).toBe(NEW_DEVICE_COPY);
       });
@@ -1928,6 +1937,27 @@ describe('LoginPage', () => {
         expect(subtitle(fixture)).toBe(WITH_LOSS);
       });
 
+      it('an unread count shows the sentence on a re-auth that moves device', async () => {
+        const { fixture } = await renderLogin(passwordAuth(READY_OUTCOME), {
+          reauth: '@bob:hs',
+          newDevice: true,
+          record: RECORD,
+        });
+
+        expect(subtitle(fixture)).toBe(WITH_LOSS);
+      });
+
+      it('a device read that fails counts as moving, since a sign-in then would', async () => {
+        const { cmp } = await renderLogin(passwordAuth(READY_OUTCOME), {
+          reauth: '@bob:hs',
+          record: RECORD,
+          reusableFails: true,
+          mentionHistory: true,
+        });
+
+        expect(cmp.reauthDeletesMentionHistory()).toBe(true);
+      });
+
       it('a plain sign-in has no sentence', async () => {
         const { fixture, cmp } = await renderLogin(
           passwordAuth(READY_OUTCOME),
@@ -1944,6 +1974,7 @@ describe('LoginPage', () => {
       const { fixture, cmp, router } = await renderLogin(auth, {
         reauth: '@bob:hs',
         record: RECORD,
+        mentionHistory: false,
       });
       const navigate = vi.spyOn(router, 'navigateByUrl');
 

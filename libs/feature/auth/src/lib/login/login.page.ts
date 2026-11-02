@@ -25,6 +25,7 @@ import {
   of,
   switchMap,
   take,
+  tap,
   throwError,
 } from 'rxjs';
 import {
@@ -266,7 +267,8 @@ export class LoginPage {
     if (reauth) {
       this.credentials.update((current) => ({ ...current, username: reauth }));
       this.lifecycle
-        .hasMentionHistory(reauth)
+        // True on an unread count: a move to a new device deletes whatever is there.
+        .hasMentionHistory(reauth, true)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe((has) => this.reauthHasMentionHistory.set(has));
       this.withBusy(
@@ -290,6 +292,8 @@ export class LoginPage {
               ? of(null)
               : this.storage.reusableDeviceId(record);
             return reusable.pipe(
+              // With no device to reuse, whatever signs in next gets a new one.
+              tap({ error: () => this.reauthMovesDevice.set(true) }),
               switchMap((deviceId) => {
                 this.reauthDeviceId = deviceId;
                 this.reauthMovesDevice.set(deviceId === null);
