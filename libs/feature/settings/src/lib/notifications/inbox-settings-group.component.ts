@@ -29,9 +29,11 @@ import {
   EMPTY,
   TimeoutError,
   catchError,
+  filter,
   finalize,
   map,
   of,
+  shareReplay,
   switchMap,
   tap,
   timeout,
@@ -172,20 +174,30 @@ export class InboxSettingsGroupComponent {
       ),
       takeUntilDestroyed(this.destroyRef),
       // Past here the person has decided, and leaving the page mustn't abandon it.
-      switchMap((confirmed) => (confirmed ? this.save(save, false) : EMPTY)),
+      switchMap((confirmed) =>
+        confirmed ? this.turnOffAndDelete(save) : EMPTY,
+      ),
+    );
+  }
+
+  private turnOffAndDelete(save: SaveSwitch): Observable<unknown> {
+    return this.save(save, false).pipe(
       switchMap((saved) => (saved ? this.deleteRecord() : EMPTY)),
     );
   }
 
   private save(save: SaveSwitch, on: boolean): Observable<boolean> {
-    return save(on).pipe(
+    // A turn-on stays subscribed past the limit, so withdrawing it can wait for it to end.
+    const write = on
+      ? save(on).pipe(shareReplay({ bufferSize: 1, refCount: false }))
+      : save(on);
+    const writes = this.preferences.writeCount();
+    return write.pipe(
       timeout(SAVE_LIMIT_MS),
       map((outcome) => outcome.kind === 'completed'),
       catchError((error: unknown) => {
-        // The hung write can't be called back. A late "on" would start recording at the next
-        // start, so "off" follows it. A late "off" is left alone: the person confirmed it.
         if (on && error instanceof TimeoutError) {
-          save(false).subscribe({ error: () => undefined });
+          this.withdrawWhenItEnds(write, save, writes);
         }
         return of(false);
       }),
@@ -198,6 +210,25 @@ export class InboxSettingsGroupComponent {
         }
       }),
     );
+  }
+
+  /**
+   * A hung "on" can't be called back, and could land after anything written alongside it. So
+   * "off" waits until it has ended either way, unless the person has changed a switch since. A
+   * late "off" isn't treated this way, because writing "on" over it could undo a refusal.
+   */
+  private withdrawWhenItEnds(
+    write: Observable<PreferenceCommandOutcome>,
+    save: SaveSwitch,
+    writes: number,
+  ): void {
+    write
+      .pipe(
+        catchError(() => of(null)),
+        filter(() => this.preferences.writeCount() === writes),
+        switchMap(() => this.turnOffAndDelete(save)),
+      )
+      .subscribe();
   }
 
   /** A failure reads from `deleteFailed`, which also covers the delete retried at start. */

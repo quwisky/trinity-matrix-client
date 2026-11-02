@@ -157,6 +157,16 @@ describe('MentionInboxPreferences', () => {
     expect(failed.recordDeclined()).toBe(false);
   });
 
+  it('counts writes to either switch, so an older one can tell it was overtaken', () => {
+    const prefs = setup();
+    expect(prefs.writeCount()).toBe(0);
+
+    prefs.setKeepRecord(true).subscribe();
+    prefs.setShowInbox(true).subscribe();
+
+    expect(prefs.writeCount()).toBe(2);
+  });
+
   it('writes the switches', async () => {
     const prefs = setup();
     await firstValueFrom(prefs.init());

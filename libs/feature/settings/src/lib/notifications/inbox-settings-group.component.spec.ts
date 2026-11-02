@@ -688,30 +688,145 @@ describe('InboxSettingsGroupComponent', () => {
       expect(confirm$).toHaveBeenCalledTimes(2);
     });
 
-    it('turning on gives up at the limit, and a late write cannot start recording', async () => {
+    const hungOn = async (options: Options = {}) => {
       const write = new Subject<PreferenceStorageWriteOutcome>();
-      const { fixture, prefs, show, writes } = await setup({
+      const group = await setup({
         stored: { [KEEP]: false },
         firstWrite: write,
+        ...options,
       });
       vi.useFakeTimers();
-
       recordSwitch().click();
       await vi.advanceTimersByTimeAsync(LIMIT);
-      fixture.detectChanges();
+      group.fixture.detectChanges();
+      return { ...group, write };
+    };
+    const ON = { key: KEEP, value: true };
+    const OFF = { key: KEEP, value: false };
 
-      expect(show).toHaveBeenCalledOnce();
+    it('turning on gives up at the limit, and writes nothing more while the write is hung', async () => {
+      const { deleteAll, prefs, show, writes } = await hungOn();
+
+      expect(show).toHaveBeenCalledExactlyOnceWith(SAVE_FAILED, {
+        duration: 4000,
+        variant: 'danger',
+      });
       expect(recordSwitch().checked).toBe(false);
-      // The hung "on" can't be called back and could land later, so "off" is queued behind it.
-      expect(writes).toEqual([
-        { key: KEEP, value: true },
-        { key: KEEP, value: false },
-      ]);
+      expect(recordSwitch().getAttribute('aria-disabled')).toBeNull();
+      expect(prefs.recordAllowed()).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(10 * LIMIT);
+      expect(writes).toEqual([ON]);
+      expect(deleteAll).not.toHaveBeenCalled();
+    });
+
+    it('a late "on" is followed by "off", then by a delete of anything it let in', async () => {
+      const { deleteAll, fixture, order, prefs, show, write, writes } =
+        await hungOn();
 
       write.next({ kind: 'completed' });
+      write.complete();
       await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+
+      expect(writes).toEqual([ON, OFF]);
+      expect(order).toEqual(['deleteAll']);
+      expect(deleteAll).toHaveBeenCalledOnce();
       expect(prefs.keepRecord()).toBe(false);
       expect(prefs.recordAllowed()).toBe(false);
+      expect(recordSwitch().checked).toBe(false);
+      expect(show).toHaveBeenCalledOnce();
+    });
+
+    it('a hung "on" that ends in failure is followed by "off" too', async () => {
+      for (const end of [
+        (write: Subject<PreferenceStorageWriteOutcome>) =>
+          write.next({
+            kind: 'unavailable',
+            diagnostic: { code: 'preference-storage-write-failed' },
+          }),
+        (write: Subject<PreferenceStorageWriteOutcome>) =>
+          write.error(new Error('write broke')),
+      ]) {
+        const { prefs, write, writes } = await hungOn();
+
+        end(write);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(writes).toEqual([ON, OFF]);
+        expect(prefs.keepRecord()).toBe(false);
+        vi.useRealTimers();
+        TestBed.resetTestingModule();
+      }
+    });
+
+    it('a person changing the switch meanwhile wins', async () => {
+      const { deleteAll, fixture, prefs, write, writes } = await hungOn();
+
+      recordSwitch().click();
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+      expect(writes).toEqual([ON, ON]);
+      expect(prefs.keepRecord()).toBe(true);
+
+      write.next({ kind: 'completed' });
+      write.complete();
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+
+      expect(writes).toEqual([ON, ON]);
+      expect(deleteAll).not.toHaveBeenCalled();
+      expect(prefs.keepRecord()).toBe(true);
+      expect(recordSwitch().checked).toBe(true);
+    });
+
+    it('a change to the other switch counts as well', async () => {
+      const { fixture, write, writes } = await hungOn();
+
+      showSwitch().click();
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+      expect(writes).toEqual([ON, { key: SHOW, value: false }]);
+
+      write.next({ kind: 'completed' });
+      write.complete();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(writes).toEqual([ON, { key: SHOW, value: false }]);
+    });
+
+    it('if that "off" fails it says so, deletes nothing, and the switch shows what is true', async () => {
+      const { deleteAll, fixture, prefs, show, write, writes } = await hungOn({
+        writesFail: true,
+      });
+
+      write.next({ kind: 'completed' });
+      write.complete();
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+
+      expect(writes).toEqual([ON, OFF]);
+      expect(show).toHaveBeenCalledTimes(2);
+      expect(show).toHaveBeenLastCalledWith(SAVE_FAILED, {
+        duration: 4000,
+        variant: 'danger',
+      });
+      expect(deleteAll).not.toHaveBeenCalled();
+      // The "on" landed and the "off" didn't: it reads on, because it is on.
+      expect(prefs.keepRecord()).toBe(true);
+      expect(recordSwitch().checked).toBe(true);
+    });
+
+    it('still follows a late "on" with "off" once the page has gone', async () => {
+      const { fixture, prefs, write, writes } = await hungOn();
+
+      fixture.destroy();
+      write.next({ kind: 'completed' });
+      write.complete();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(writes).toEqual([ON, OFF]);
+      expect(prefs.keepRecord()).toBe(false);
     });
 
     it('a turn-on under way when the page goes still lands in the setting', async () => {
