@@ -48,6 +48,27 @@ account and skips anything up to it, and a recorder attached to a client that's 
 saves the store's position. A crash before the new client's first batch is saved could bring a
 deleted row back. That's accepted.
 
+**Where a person is told first.** `MENTION_HISTORY_LOSS` is said only when there's history, and
+`hasMentionHistory(accountId, true)` also says it when the count can't be read, on paths that delete
+whatever is there:
+
+| Path                                                  | Where it's said                                               | On an unread count |
+| ----------------------------------------------------- | ------------------------------------------------------------- | ------------------ |
+| Remove account, every route                           | `AccountRemovalLauncherAdapter`'s question                    | Not said           |
+| Startup recovery                                      | `ApplicationRecoveryPresenter`'s question, the device's total | Not said           |
+| Delete account in the app                             | `DeleteAccountDialogComponent`'s first step                   | Not said           |
+| Delete account at an OAuth provider                   | `DeleteAccountGroupComponent`, once the page has been opened  | Said               |
+| Re-auth that moves device                             | The login page's subtitle                                     | Said               |
+| Sign in again banner                                  | Its question, ahead of that page                              | Not said           |
+| Sign-in to a stored account, keys not fully backed up | `NewDeviceSignInPresenter`'s question                         | Said               |
+| Sign-in to a stored account, every key backed up      | The same question, which appears only for this                | Asks anyway        |
+
+A server that ends a session by deleting the device can't be asked first. A password account's
+hard logout drops its registry entry, so the next start's sweep deletes the rows, or the next
+sign-in does, since with no record it reads as a new device and nothing asks. An OAuth re-auth where
+the server returns a different device than requested also deletes without the subtitle having said
+so.
+
 ## Why it isn't exported
 
 It's excluded from settings export, and so are both switches (`export: 'excluded'`). The record
@@ -61,6 +82,8 @@ restore history the person deleted, on any device.
 - Scrolling back in a thread reads as live, so it can record a real old mention. Room scrollback
   doesn't.
 - `limited` sync gaps, closed phone apps and browser eviction lose what the server doesn't list.
+- A server deleting a device, or returning a different device on an OAuth re-auth, deletes history
+  with no question first.
 - Rows are keyed by account, so the count in the question covers every account, and removal
   clears only its own.
 

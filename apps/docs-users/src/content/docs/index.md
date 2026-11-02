@@ -146,9 +146,12 @@ like the room list, and keeps your newest 2,000 mentions per account, for up to 
 
 - Turning off either switch deletes the record for every account on this device. Turning a switch
   back on starts an empty record, and can't bring back what was deleted.
-- Removing an account, or deleting it, deletes that account's record.
+- Removing an account, or deleting it, deletes that account's record. If you delete it on your
+  sign-in provider's page, Trinity says so as it opens the page, and deletes the record when it
+  notices the account has gone.
 - Signing in again so that this device becomes a new device deletes that account's record, once
-  that sign-in succeeds.
+  that sign-in succeeds. That includes signing in to an account already on this device, even when
+  key backup holds every key. Cancel leaves everything as it was.
 - **Erase all data on this device** deletes everything, including the record.
 
 Your messages themselves are never deleted by any of these.
@@ -169,6 +172,8 @@ Your messages themselves are never deleted by any of these.
 - **A missing room.** A row is hidden while its room is missing from this device. If you left the
   room but this device never learned that, the row stays in the record until the 2,000-mention or
   one-year limit removes it. You won't see it, and it takes up one place in the record.
+- **A server can end a session first.** If your server ends a session by deleting this device,
+  Trinity can't ask first. That account's record goes at the next start or sign-in.
 - **Your browser can clear it.** Browser storage can be cleared without warning, so Trinity can't
   tell you first.
 
