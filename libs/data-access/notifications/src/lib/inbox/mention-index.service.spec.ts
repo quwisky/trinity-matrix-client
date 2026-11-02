@@ -736,6 +736,23 @@ describe('MentionIndexService', () => {
     expect(deleteAll).not.toHaveBeenCalled();
   });
 
+  it('at start with an empty registry, deletes the store rather than creating it', async () => {
+    const { store, run, service } = setup({ registry: of([]) });
+    const sweep = vi.spyOn(store, 'keepOnlyAccounts');
+    const deleteAll = vi
+      .spyOn(store, 'deleteAll')
+      .mockRejectedValueOnce(new Error('blocked'));
+
+    await run();
+
+    // Opening it would leave an empty database behind, even straight after Erase all data.
+    expect(sweep).not.toHaveBeenCalled();
+    expect(deleteAll).toHaveBeenCalledOnce();
+    // Nobody asked for this delete, so there's no failure to report, and the next start retries.
+    expect(service.deleteFailed()).toBe(false);
+    expect(service.recording()).toBe(true);
+  });
+
   it('at start with an empty registry, forgets every account', async () => {
     const { store, run } = setup({ registry: of([]) });
     await store.put('@gone:hs', { eventId: '$g', roomId: '!r:hs', ts: TS }, TS);

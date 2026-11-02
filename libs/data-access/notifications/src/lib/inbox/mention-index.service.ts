@@ -182,7 +182,12 @@ export class MentionIndexService {
       // So must a corrupt record: an `undefined` ID matches no row, and deletes them all.
       const valid = ids.every((id: unknown) => typeof id === 'string' && id);
       if (valid && this.session === session) {
-        await this.enqueue(() => this.store.keepOnlyAccounts(ids));
+        // With no accounts, opening the store would only leave an empty database behind.
+        await this.enqueue(() =>
+          ids.length === 0
+            ? this.store.deleteAll()
+            : this.store.keepOnlyAccounts(ids),
+        );
       }
     } catch {
       /* the next start retries */
