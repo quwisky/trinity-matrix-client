@@ -112,10 +112,12 @@ export class DeleteAccountDialogComponent {
   private readonly confirmation = signal({ typed: '' });
   readonly confirmForm = form(this.confirmation);
 
-  /** Removing a deleted account from this device takes its record of mentions with it. */
+  /** Removing a deleted account takes its record of mentions with it, even on an unread count. */
   protected readonly hasMentionHistory = toSignal(
     toObservable(this.accountId).pipe(
-      switchMap((accountId) => this.lifecycle.hasMentionHistory(accountId)),
+      switchMap((accountId) =>
+        this.lifecycle.hasMentionHistory(accountId, true),
+      ),
     ),
     { initialValue: false },
   );

@@ -16,7 +16,9 @@ function setup(hasHistory: boolean) {
   const confirm$ = vi.fn(() => of(true));
   const prompt$ = vi.fn(() => of<string | null>(null));
   const recover = vi.fn(() => of({ kind: 'accepted' as const }));
-  const hasMentionHistory = vi.fn((_accountId?: string) => of(hasHistory));
+  const hasMentionHistory = vi.fn((_accountId?: string, _ifUnknown?: boolean) =>
+    of(hasHistory),
+  );
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
@@ -41,8 +43,8 @@ describe('ApplicationRecoveryPresenter', () => {
 
     await firstValueFrom(presenter.confirmAndRecover('reauthenticate'));
 
-    // No account ID is exposed here, so it asks about the whole device.
-    expect(hasMentionHistory).toHaveBeenCalledExactlyOnceWith();
+    // No account ID is exposed here, so it asks about the whole device. True on an unread count.
+    expect(hasMentionHistory).toHaveBeenCalledExactlyOnceWith(undefined, true);
     expect(confirm$).toHaveBeenCalledExactlyOnceWith({
       header: 'Remove account and sign in again',
       message: `${ACCOUNT_REMOVAL_CONSEQUENCES}\n\n${MENTION_HISTORY_LOSS}`,

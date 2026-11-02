@@ -21,7 +21,7 @@ import { DeleteAccountDialogComponent } from './delete-account-dialog.component'
 
 const ALICE = '@alice:example.org';
 
-async function setup(hasMentionHistory = false) {
+async function setup(hasMentionHistory: boolean | 'unread' = false) {
   const outcome = new Subject<AccountDeletionOutcome>();
   let prompts: AccountDeletionPrompts | null = null;
   const launcher: Partial<AccountDeletionLauncher> = {
@@ -40,7 +40,13 @@ async function setup(hasMentionHistory = false) {
       { provide: ACCOUNT_REMOVAL_LAUNCHER, useValue: removal },
       {
         provide: ACCOUNT_LIFECYCLE_PORT,
-        useValue: { hasMentionHistory: () => of(hasMentionHistory) },
+        useValue: {
+          // Answers as the port does: a count it can't read gives `ifUnknown`.
+          hasMentionHistory: (_id: string, ifUnknown?: boolean) =>
+            of(
+              hasMentionHistory === 'unread' ? !!ifUnknown : hasMentionHistory,
+            ),
+        },
       },
       MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
       { provide: TrnDialogRef, useValue: { close, titleId: 't' } },
@@ -415,6 +421,12 @@ describe('DeleteAccountDialogComponent', () => {
     });
     await test.settle();
     await expectNoAxeViolations(test.container);
+  });
+
+  it("says the mention history goes too when the count can't be read", async () => {
+    await setup('unread');
+
+    expect(screen.getByText(MENTION_HISTORY_LOSS)).toBeTruthy();
   });
 
   it('says the mention history goes too, only when the account has any', async () => {

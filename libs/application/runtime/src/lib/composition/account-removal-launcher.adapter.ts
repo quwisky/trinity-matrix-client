@@ -102,7 +102,8 @@ export class AccountRemovalLauncherAdapter implements AccountRemovalLauncher {
         return EMPTY;
       }
       this.reading = true;
-      return this.lifecycle.hasMentionHistory(accountId).pipe(
+      // True on an unread count: the removal deletes whatever is there.
+      return this.lifecycle.hasMentionHistory(accountId, true).pipe(
         take(1),
         finalize(() => (this.reading = false)),
       );

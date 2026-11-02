@@ -106,7 +106,8 @@ describe('AccountRemovalLauncherAdapter', () => {
 
     await firstValueFrom(launcher.remove('@me:hs'));
 
-    expect(hasMentionHistory).toHaveBeenCalledExactlyOnceWith('@me:hs');
+    // True on an unread count: this removal deletes whatever is there.
+    expect(hasMentionHistory).toHaveBeenCalledExactlyOnceWith('@me:hs', true);
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: `Account @me:hs\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}\n\n${MENTION_HISTORY_LOSS}`,
@@ -114,8 +115,8 @@ describe('AccountRemovalLauncherAdapter', () => {
     );
   });
 
-  // The port answers no for a failed or unanswered count too; its own spec pins that, at 1 s.
-  it('removal still asks when the port answers no history, without the sentence', async () => {
+  // A failed or unanswered count answers yes here, as asked for above; the port's spec pins that.
+  it('removal still asks when the account has no history, without the sentence', async () => {
     const { launcher, confirm, signOutAccount } = setup({ history: of(false) });
 
     await firstValueFrom(launcher.remove('@me:hs'));

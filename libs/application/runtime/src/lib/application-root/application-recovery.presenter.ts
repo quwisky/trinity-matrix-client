@@ -34,8 +34,9 @@ export class ApplicationRecoveryPresenter {
     recovery: ApplicationStartupRecovery,
   ): Observable<ApplicationRecoveryOutcome> {
     if (recovery === 'reauthenticate') {
-      // No account ID is exposed here, so this is the device's total: it can only over-warn.
-      return this.lifecycle.hasMentionHistory().pipe(
+      // No account ID is exposed here, so this is the device's total, and true on an unread count:
+      // it can only over-warn.
+      return this.lifecycle.hasMentionHistory(undefined, true).pipe(
         switchMap((hasHistory) =>
           this.alert.confirm$({
             header: 'Remove account and sign in again',
