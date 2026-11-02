@@ -298,6 +298,7 @@ export const SHARED_MOCKS: Provider[] = [
         summaries: summaries.asReadonly(),
         list: threadList.asReadonly(),
         forRoot: vi.fn(() => null),
+        loadRoot: vi.fn(() => of(true)),
       };
       const pins = {
         eventIds: pinnedEventIds.asReadonly(),

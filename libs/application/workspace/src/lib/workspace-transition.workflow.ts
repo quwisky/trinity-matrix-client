@@ -256,9 +256,10 @@ export class WorkspaceTransitionWorkflow {
     // repairs it once it turns out unavailable. Recent lists every Room, so the Room and
     // pane are judged on their own below.
     if (
-      scope.kind === 'space' &&
-      this.availability.space(requested.accountId, scope.spaceId) ===
-        'unavailable'
+      (scope.kind === 'space' &&
+        this.availability.space(requested.accountId, scope.spaceId) ===
+          'unavailable') ||
+      (scope.kind === 'inbox' && !this.availability.inboxShown())
     ) {
       scope = RECENT_WORKSPACE_SCOPE;
       repaired = true;

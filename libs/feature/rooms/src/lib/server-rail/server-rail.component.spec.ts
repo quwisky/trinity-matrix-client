@@ -87,6 +87,57 @@ describe('ServerRailComponent', () => {
     expect(shown).toBe(true);
   });
 
+  it('shows the Inbox button after Recent activity, only when shown', async () => {
+    const { fixture, container } = await renderRail();
+    expect(screen.queryByTestId('rail-inbox')).toBeNull();
+
+    fixture.componentRef.setInput('inboxShown', true);
+    fixture.detectChanges();
+
+    const items = container.querySelectorAll('.item');
+    expect(items[0].querySelector('.pill.recent')).toBeTruthy();
+    const inbox = items[1].querySelector('.pill.inbox');
+    expect(inbox).toBe(screen.getByTestId('rail-inbox'));
+    expect(inbox?.getAttribute('aria-label')).toBe('Inbox');
+    expect(items[2].querySelector('.pill.home')).toBeTruthy();
+  });
+
+  it('emits showInbox when the Inbox button is clicked', async () => {
+    const { fixture } = await renderRail({ inboxShown: true });
+    let shown = false;
+    fixture.componentInstance.showInbox.subscribe(() => (shown = true));
+
+    screen.getByTestId('rail-inbox').click();
+
+    expect(shown).toBe(true);
+  });
+
+  it('marks only Inbox as current when the inbox is open', async () => {
+    const { container } = await renderRail({
+      inboxShown: true,
+      inboxActive: true,
+    });
+
+    const current = [...container.querySelectorAll('[aria-current]')];
+    expect(current).toEqual([screen.getByTestId('rail-inbox')]);
+    expect(
+      screen.getByTestId('rail-inbox').closest('.item')?.classList,
+    ).toContain('active');
+    expect(container.querySelector('.item.active .pill.home')).toBeNull();
+  });
+
+  it('adds no count badge to Inbox', async () => {
+    const { container } = await renderRail({
+      inboxShown: true,
+      unread: unread({ recent: counts(4, 2), home: counts(4, 2) }),
+    });
+
+    const item = screen.getByTestId('rail-inbox').closest('.item')!;
+    expect(item.querySelector('.rail-count')).toBeNull();
+    expect(item.classList).not.toContain('item--unread');
+    expect(container.querySelectorAll('.rail-count').length).toBeGreaterThan(0);
+  });
+
   it('emits selectSpace(null) when Home is clicked', async () => {
     const { fixture, container } = await renderRail({
       activeAccountId: '@me:hs',

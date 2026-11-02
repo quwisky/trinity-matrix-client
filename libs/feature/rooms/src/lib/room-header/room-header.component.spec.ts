@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type RoomSummary } from '@trinity/data-access/room-library';
 import { render, type ComponentInput } from '@trinity/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import {
   RoomHeaderComponent,
@@ -449,5 +449,42 @@ describe('RoomHeaderComponent for a linked room the client does not hold yet', (
     const { root, byId } = await build({ room: null, loading: true });
     expect(root.querySelector('h1')?.textContent).toContain('Loading room…');
     for (const id of roomActions) expect(byId(id), id).toBeNull();
+  });
+});
+
+describe('RoomHeaderComponent back arrow', () => {
+  it('reads "Back to rooms" unless told otherwise, keeping its test id', async () => {
+    const { byId } = await build();
+    expect(byId('back-to-rooms')?.getAttribute('aria-label')).toBe(
+      'Back to rooms',
+    );
+  });
+
+  it('labels the back arrow Back to inbox from the inbox, else Back to rooms', async () => {
+    const { byId, fixture } = await build({ backLabel: 'Back to inbox' });
+    const arrow = byId('back-to-rooms');
+    expect(arrow?.getAttribute('aria-label')).toBe('Back to inbox');
+
+    fixture.componentRef.setInput('backLabel', 'Back to rooms');
+    fixture.detectChanges();
+
+    expect(arrow?.getAttribute('aria-label')).toBe('Back to rooms');
+  });
+
+  it('shows the same label as its tooltip', async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const { byId } = await build({ backLabel: 'Back to inbox' });
+    const hover = new Event('pointerenter');
+    Object.defineProperty(hover, 'pointerType', { value: 'mouse' });
+
+    byId('back-to-rooms')?.dispatchEvent(hover);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+      'Back to inbox',
+    );
   });
 });

@@ -536,44 +536,62 @@ export class ThreadsService {
    * reply would vanish. Creating it only on send avoids an empty 0-reply thread when a
    * thread is merely opened then abandoned. No-op once attached/aggregated.
    */
-  private ensureThread(room: Room, rootEventId: string): Observable<void> {
+  private ensureThread(
+    client: MatrixClient,
+    room: Room,
+    rootEventId: string,
+  ): Observable<void> {
     if (this.thread) {
       return of(void 0);
     }
-    const existing = room.getThread(rootEventId);
-    if (existing) {
-      this.attachThread(existing);
-      return of(void 0);
-    }
-    const local = room.findEventById(rootEventId);
-    if (local) {
-      this.createThreadFromRoot(room, rootEventId, local);
-      return of(void 0);
-    }
-    // The root isn't in memory (e.g. an old thread scrolled out of the live timeline). The
+    // The root may not be in memory (e.g. an old thread scrolled out of the live timeline). The
     // SDK would still route a threaded send, but with no local Thread the echo has nowhere
-    // to land and vanishes. Fetch the root to create the Thread; if that fails, surface the
-    // error rather than send a reply that won't show.
-    const client = this.threadClient;
-    if (!client) return of(void 0);
-    return from(client.fetchRoomEvent(room.roomId, rootEventId)).pipe(
-      map((raw) =>
-        this.createThreadFromRoot(room, rootEventId, new MatrixEvent(raw)),
-      ),
+    // to land and vanishes. If the root can't be fetched, surface the error rather than send
+    // a reply that won't show. `ThreadEvent.New` may already have attached a created Thread.
+    return this.findOrCreateThread(client, room, rootEventId).pipe(
+      map((thread) => {
+        if (thread && !this.thread) this.attachThread(thread);
+      }),
     );
   }
 
-  /** Create a Thread from its root event and attach it, unless a concurrent
-   * `ThreadEvent.New` already did (createThread can emit it synchronously). */
-  private createThreadFromRoot(
+  /**
+   * Give a thread that is about to open its SDK Thread, so it shows its replies. A thread
+   * with replies holds no root in its timeline, so only `getThread` can find it: paging the
+   * room for the root could fail on a thread that opens fine. Emits whether it now can open.
+   */
+  loadThreadRoot(rootEventId: string): Observable<boolean> {
+    return defer(() =>
+      this.summariesRoom && this.summariesClient
+        ? this.findOrCreateThread(
+            this.summariesClient,
+            this.summariesRoom,
+            rootEventId,
+          )
+        : of(null),
+    ).pipe(
+      map((thread) => thread !== null),
+      catchError(() => of(false)),
+    );
+  }
+
+  /** Null when the room closed while its root was being fetched. */
+  private findOrCreateThread(
+    client: MatrixClient,
     room: Room,
     rootEventId: string,
-    rootEvent: MatrixEvent,
-  ): void {
-    const created = room.createThread(rootEventId, rootEvent, [], false);
-    if (!this.thread) {
-      this.attachThread(created);
-    }
+  ): Observable<Thread | null> {
+    const existing = room.getThread(rootEventId);
+    if (existing) return of(existing);
+    const local = room.findEventById(rootEventId);
+    if (local) return of(room.createThread(rootEventId, local, [], false));
+    return from(client.fetchRoomEvent(room.roomId, rootEventId)).pipe(
+      map((raw) =>
+        this.summariesRoom === room
+          ? room.createThread(rootEventId, new MatrixEvent(raw), [], false)
+          : null,
+      ),
+    );
   }
 
   sendToThread(body: string, mentions: Mention[] = []): Observable<void> {
@@ -594,7 +612,7 @@ export class ThreadsService {
         textMessageContent(text, render(text), mentions);
       // Ensure a local Thread exists (fetching the root if needed) *before*
       // sending, so the threaded echo has a home; a fetch failure aborts the send.
-      return this.ensureThread(room, threadId).pipe(
+      return this.ensureThread(client, room, threadId).pipe(
         switchMap(() => this.sendText(client, room, threadId, content, text)),
       );
     }).pipe(map(() => void 0));

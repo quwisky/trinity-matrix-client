@@ -3,6 +3,7 @@ export type WorkspaceNavigationScope =
   | { readonly kind: 'recent' }
   | { readonly kind: 'home' }
   | { readonly kind: 'rooms' }
+  | { readonly kind: 'inbox' }
   | { readonly kind: 'space'; readonly spaceId: string };
 
 /** Why the Room shell is opening an exact Account-and-Room identity. */

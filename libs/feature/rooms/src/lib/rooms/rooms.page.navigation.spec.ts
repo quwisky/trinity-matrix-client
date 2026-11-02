@@ -14,16 +14,20 @@ import {
   stubLiveLayout,
   stubNarrowLayout,
 } from './rooms-page.spec-harness';
-import { signal, type WritableSignal } from '@angular/core';
+import { signal, type Provider, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { type PendingInvite } from '@trinity/data-access/room-library';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  type SyncState,
+} from '@trinity/data-access/matrix-client';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { MediaPipeline } from '@trinity/data-access/media';
+import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import {
   RoomLibraryService,
   RoomReadinessService,
@@ -395,7 +399,7 @@ describe('RoomsPage mobile navigation', () => {
   let timelineOpen: Mock;
   let releaseAll: Mock;
 
-  function build() {
+  function build(extraProviders: Provider[] = []) {
     timelineOpen = vi.fn();
     releaseAll = vi.fn();
     TestBed.configureTestingModule({
@@ -408,6 +412,7 @@ describe('RoomsPage mobile navigation', () => {
           // ng-mocks >= 14.18 no longer stubs signal fields; the selected-library
           // projection reads this one.
           rooms: signal<RoomSummary[]>([]),
+          directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
         }),
         MockProvider(SpacesService, {
           openSpace: () => of(void 0),
@@ -426,13 +431,14 @@ describe('RoomsPage mobile navigation', () => {
         },
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline, { releaseAll }),
-        matrixClientProvider(),
+        matrixClientProvider({ syncState: 'SYNCING' as SyncState }),
         UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(TrnSurfaceService),
         MockProvider(TrnToastService),
+        ...extraProviders,
       ],
     });
     return shellFrom();
@@ -465,6 +471,68 @@ describe('RoomsPage mobile navigation', () => {
       'room-list',
     );
     await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
+  });
+
+  describe('from the inbox', () => {
+    const row = {
+      accountId: '@me:hs',
+      roomId: '!r:hs',
+      eventId: '$e',
+      threadRootId: null,
+    };
+
+    function buildWithInbox(showInbox = signal(true)) {
+      const shell = build([
+        selectedRoomLibraryProvider(),
+        MockProvider(MentionInboxPreferences, {
+          showInbox: showInbox.asReadonly(),
+        }),
+      ]);
+      const rooms = TestBed.inject(RoomLibraryService).rooms as unknown as {
+        set(rooms: readonly RoomSummary[]): void;
+      };
+      rooms.set([
+        baseRoomSummary({ id: '!r:hs', accountId: '@me:hs', name: 'General' }),
+      ]);
+      return { shell, showInbox };
+    }
+
+    it('keeps the inbox behind the room, and the arrow says so', async () => {
+      const { shell } = buildWithInbox();
+      shell.nav.onShowInbox();
+      await settleWorkspace();
+      expect(shell.vm.backLabel()).toBe('Back to inbox');
+
+      shell.routing.openInboxRow(row);
+      await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
+      expect(shell.store.activeRoomId()).toBe('!r:hs');
+      expect(shell.store.inboxView()).toBe(true);
+      expect(shell.vm.backLabel()).toBe('Back to inbox');
+
+      shell.page.backToList();
+      await vi.waitFor(() => expect(shell.store.pane()).toBe('list'));
+      expect(shell.store.inboxView()).toBe(true);
+    });
+
+    it('stops saying Back to inbox the moment the inbox is turned off', async () => {
+      const { shell, showInbox } = buildWithInbox();
+      shell.nav.onShowInbox();
+      await settleWorkspace();
+      shell.routing.openInboxRow(row);
+      await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
+
+      showInbox.set(false);
+
+      expect(shell.vm.backLabel()).toBe('Back to rooms');
+      await settleWorkspace();
+      expect(shell.store.recentView()).toBe(true);
+      expect(shell.store.activeRoomId()).toBe('!r:hs');
+      expect(shell.store.pane()).toBe('conversation');
+
+      shell.page.backToList();
+      await vi.waitFor(() => expect(shell.store.pane()).toBe('list'));
+      expect(shell.store.recentView()).toBe(true);
+    });
   });
 
   it('offers nested Room surfaces before the compact Conversation to Workspace Back', async () => {

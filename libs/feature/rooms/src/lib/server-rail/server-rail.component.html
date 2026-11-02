@@ -27,8 +27,32 @@
       />
     </div>
 
+    @if (inboxShown()) {
+      <div class="item" [class.active]="inboxActive()">
+        <span
+          class="indicator"
+          [class.indicator--selected]="inboxActive()"
+        ></span>
+        <button
+          trnIconButton
+          class="pill inbox"
+          (click)="showInbox.emit()"
+          [attr.aria-current]="inboxActive() ? 'true' : null"
+          aria-label="Inbox"
+          trnTooltip="Inbox"
+          position="right"
+          data-testid="rail-inbox"
+        >
+          <trn-icon name="inbox" motion="pop" />
+        </button>
+      </div>
+    }
+
     @let homeActive =
-      activeSpaceId() === null && !roomsActive() && !recentActive();
+      activeSpaceId() === null &&
+      !roomsActive() &&
+      !recentActive() &&
+      !inboxActive();
     <div
       class="item"
       [class.active]="homeActive"

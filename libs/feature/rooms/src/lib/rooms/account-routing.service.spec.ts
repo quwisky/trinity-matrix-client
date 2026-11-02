@@ -6,6 +6,7 @@ import {
   type SyncState,
 } from '@trinity/data-access/matrix-client';
 import {
+  ROOM_READINESS_TIMEOUT_MS,
   RoomReadinessService,
   SelectedRoomLibraryService,
   type SelectedRoomLibraryView,
@@ -15,7 +16,7 @@ import {
   type ConversationHandle,
 } from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of } from 'rxjs';
+import { NEVER, Subject, of, throwError } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -432,6 +433,518 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     expect(navigate).not.toHaveBeenCalled();
     expect(showError).toHaveBeenCalledWith(
       'Joined, but the space is not ready yet.',
+    );
+  });
+});
+
+describe('AccountRoutingService.openInboxRow', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const row = {
+    accountId: '@me:hs',
+    roomId: '!r:hs',
+    eventId: '$e',
+    threadRootId: null,
+  };
+  const listedRoom = {
+    id: '!r:hs',
+    accountId: '@me:hs',
+    accountIds: ['@me:hs'],
+  };
+
+  function build(
+    options: {
+      readonly activeRoomId?: string | null;
+      readonly activeAccountId?: string;
+      readonly pane?: 'list' | 'conversation';
+      readonly rooms?: readonly unknown[];
+      readonly syncState?: string;
+      readonly focused?: string | null;
+      readonly loaded?: readonly string[];
+      readonly loadEvent?: Mock;
+      readonly loadRoot?: Mock;
+    } = {},
+  ) {
+    const activeAccountId = options.activeAccountId ?? '@me:hs';
+    const activeRoomId = options.activeRoomId ?? null;
+    const roomId = signal<string | null>(activeRoomId);
+    const navigate: Mock = vi.fn((intent: { readonly roomId: string }) => {
+      roomId.set(intent.roomId);
+      return of({ kind: 'ready' });
+    });
+    const showError = vi.fn();
+    const transition = vi.fn();
+    const loadEvent = options.loadEvent ?? vi.fn(() => of(true));
+    const loadRoot = options.loadRoot ?? vi.fn(() => of(true));
+    const syncState = signal((options.syncState ?? 'SYNCING') as SyncState);
+    const focused = signal(
+      options.focused === null
+        ? null
+        : ({
+            key: {
+              accountId: row.accountId,
+              roomId: options.focused ?? row.roomId,
+            },
+          } as ConversationHandle),
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        AccountRoutingService,
+        MockProvider(RoomShellStore, {
+          activeRoomId: roomId.asReadonly(),
+          activeAccountId: signal<string | null>(activeAccountId),
+          pane: signal(options.pane ?? 'conversation') as never,
+        }),
+        MockProvider(RoomShellViewModel),
+        MockProvider(ShellStatusService, { showError }),
+        MockProvider(WorkspaceNavigationService, {
+          navigate,
+          activeAccountId: signal<string | null>(activeAccountId),
+          eventTarget: signal(null),
+        }),
+        MockProvider(RoomSurfaceLifecycle, { transition }),
+        MockProvider(ConversationRuntime, {
+          focused,
+          threads: { loadRoot } as never,
+          timeline: {
+            loadEvent,
+            messages: signal(
+              (options.loaded ?? []).map((id) => ({ id })),
+            ).asReadonly(),
+            loadState: signal({ kind: 'ready' }).asReadonly(),
+          } as never,
+        }),
+        MockProvider(SelectedRoomLibraryService, {
+          view: signal({
+            rooms: options.rooms ?? [listedRoom],
+          } as unknown as SelectedRoomLibraryView),
+        }),
+        MockProvider(RoomReadinessService),
+        MockProvider(MatrixClientService, {
+          syncState,
+        }),
+      ],
+    });
+    return {
+      routing: TestBed.inject(AccountRoutingService),
+      navigate,
+      showError,
+      transition,
+      loadEvent,
+      loadRoot,
+      roomId,
+      syncState,
+      focused,
+    };
+  }
+
+  it('opens the room and reveals the event, keeping the inbox scope', () => {
+    const { routing, navigate, transition } = build({ pane: 'list' });
+
+    routing.openInboxRow(row);
+
+    expect(navigate).toHaveBeenCalledExactlyOnceWith({
+      kind: 'room',
+      accountId: '@me:hs',
+      roomId: '!r:hs',
+      origin: 'room-list',
+    });
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$e',
+    });
+  });
+
+  it('reveals at once when that room is already open', () => {
+    const { routing, navigate, transition, loadEvent } = build({
+      activeRoomId: '!r:hs',
+      loaded: ['$e'],
+    });
+
+    routing.openInboxRow(row);
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(loadEvent).not.toHaveBeenCalled();
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$e',
+    });
+  });
+
+  it("moves from the room open beside the inbox to the row's room", () => {
+    const { routing, navigate } = build({ activeRoomId: '!other:hs' });
+
+    routing.openInboxRow(row);
+
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ kind: 'room', roomId: '!r:hs' }),
+    );
+  });
+
+  it('reopens a remembered room on the phone, whose pane is the list', () => {
+    const { routing, navigate } = build({
+      activeRoomId: '!r:hs',
+      pane: 'list',
+    });
+
+    routing.openInboxRow(row);
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('never switches account in the mixed view', () => {
+    const shared = {
+      id: '!r:hs',
+      accountId: '@other:hs',
+      accountIds: ['@other:hs', '@me:hs'],
+    };
+    const { routing, navigate } = build({
+      activeRoomId: '!r:hs',
+      activeAccountId: '@other:hs',
+      rooms: [shared],
+      focused: null,
+    });
+
+    routing.openInboxRow(row);
+
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ accountId: '@me:hs', roomId: '!r:hs' }),
+    );
+  });
+
+  it('opens a thread message in its thread, and scrolls to it', () => {
+    const { routing, navigate, transition } = build({ pane: 'list' });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$e',
+    });
+  });
+
+  it('opens the thread alone when its room is already open', () => {
+    const { routing, navigate, transition } = build({
+      activeRoomId: '!r:hs',
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$e',
+    });
+  });
+
+  it('never pages the room for a thread root, which it may not hold however long it pages', () => {
+    const { routing, loadEvent, loadRoot } = build({ activeRoomId: '!r:hs' });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+    expect(loadEvent).not.toHaveBeenCalled();
+    expect(loadRoot).toHaveBeenCalledExactlyOnceWith('$root');
+  });
+
+  it('opens the thread once its root has loaded', () => {
+    const page = new Subject<boolean>();
+    const { routing, transition } = build({
+      activeRoomId: '!r:hs',
+      loadRoot: vi.fn(() => page),
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+    expect(transition).not.toHaveBeenCalled();
+
+    page.next(true);
+
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$e',
+    });
+  });
+
+  it('waits for focus before loading the root', () => {
+    const { routing, loadRoot, focused } = build({
+      activeRoomId: '!r:hs',
+      focused: null,
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+    TestBed.tick();
+    expect(loadRoot).not.toHaveBeenCalled();
+
+    focused.set({
+      key: { accountId: row.accountId, roomId: row.roomId },
+    } as ConversationHandle);
+    TestBed.tick();
+
+    expect(loadRoot).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a thread offline when its root needs no fetch', () => {
+    const { routing, transition, showError } = build({
+      activeRoomId: '!r:hs',
+      syncState: 'RECONNECTING',
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+    expect(showError).not.toHaveBeenCalled();
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$e',
+    });
+  });
+
+  it('says so offline when a fetch for the root fails', () => {
+    const { routing, transition, showError } = build({
+      activeRoomId: '!r:hs',
+      syncState: 'RECONNECTING',
+      loadRoot: vi.fn(() => of(false)),
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+    expect(transition).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not load that message.',
+    );
+  });
+
+  it('says so offline within the limit when a fetch for the root never answers', () => {
+    vi.useFakeTimers();
+    const { routing, transition, showError } = build({
+      activeRoomId: '!r:hs',
+      syncState: 'RECONNECTING',
+      loadRoot: vi.fn(() => NEVER),
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+    vi.advanceTimersByTime(ROOM_READINESS_TIMEOUT_MS - 1);
+    expect(showError).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+
+    expect(transition).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not load that message.',
+    );
+  });
+
+  it('still waits for a live sync before paging for an event', () => {
+    const { routing, loadEvent, syncState } = build({
+      activeRoomId: '!r:hs',
+      syncState: 'RECONNECTING',
+    });
+
+    routing.openInboxRow(row);
+    TestBed.tick();
+    expect(loadEvent).not.toHaveBeenCalled();
+
+    syncState.set('SYNCING' as SyncState);
+    TestBed.tick();
+
+    expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$e');
+  });
+
+  it.each([
+    ['cannot be fetched', () => of(false)],
+    ['fails', () => throwError(() => new Error('down'))],
+  ])(
+    'says it could not load a thread whose root %s, opening no panel',
+    (_name, answer) => {
+      const { routing, transition, showError } = build({
+        activeRoomId: '!r:hs',
+        loadRoot: vi.fn(answer),
+      });
+
+      routing.openInboxRow({ ...row, threadRootId: '$root' });
+
+      expect(transition).not.toHaveBeenCalled();
+      expect(showError).toHaveBeenCalledExactlyOnceWith(
+        'Could not load that message.',
+      );
+    },
+  );
+
+  it('says it could not load an event the room cannot page to', () => {
+    const { routing, transition, showError, navigate } = build({
+      pane: 'list',
+      loadEvent: vi.fn(() => of(false)),
+    });
+
+    routing.openInboxRow(row);
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(transition).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not load that message.',
+    );
+  });
+
+  it('reveals a thread root in the timeline, not the panel', () => {
+    const { routing, transition } = build({
+      activeRoomId: '!r:hs',
+      loaded: ['$root'],
+    });
+
+    routing.openInboxRow({ ...row, eventId: '$root', threadRootId: null });
+
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$root',
+    });
+  });
+
+  it('says "You\'re not in that room." for a room left since loading', () => {
+    const { routing, navigate, showError, transition } = build({ rooms: [] });
+
+    routing.openInboxRow(row);
+
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      "You're not in that room.",
+    );
+    expect(navigate).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+  });
+
+  it("doesn't take another account's membership of a shared room as this account's", () => {
+    const { routing, navigate, showError } = build({
+      rooms: [
+        { id: '!r:hs', accountId: '@other:hs', accountIds: ['@other:hs'] },
+      ],
+    });
+
+    routing.openInboxRow(row);
+
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      "You're not in that room.",
+    );
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("doesn't claim the room was left before the room list is known", () => {
+    const { routing, navigate, showError } = build({
+      rooms: [],
+      syncState: 'PREPARED',
+    });
+
+    routing.openInboxRow(row);
+
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not open that room yet. Try again once Trinity has connected.',
+    );
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('reveals once for a double tap, still paging the event in', () => {
+    const page = new Subject<boolean>();
+    const { routing, transition } = build({
+      activeRoomId: '!r:hs',
+      loadEvent: vi.fn(() => page),
+    });
+
+    routing.openInboxRow(row);
+    routing.openInboxRow(row);
+    page.next(true);
+
+    expect(transition).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the later of two rows tapped while their room is opening', () => {
+    const opened = new Subject<{ kind: 'ready' }>();
+    const page = new Subject<boolean>();
+    const { routing, transition, navigate, loadEvent } = build({
+      activeRoomId: '!r:hs',
+      pane: 'list',
+      loadEvent: vi.fn(() => page),
+    });
+    navigate.mockReturnValue(opened as never);
+
+    routing.openInboxRow(row);
+    routing.openInboxRow({ ...row, eventId: '$later' });
+    opened.next({ kind: 'ready' });
+    page.next(true);
+
+    expect(loadEvent).toHaveBeenLastCalledWith('$later');
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$later',
+    });
+  });
+
+  it('drops a running reveal when another row opens', () => {
+    const first = new Subject<boolean>();
+    const second = new Subject<boolean>();
+    const { routing, transition, showError } = build({
+      activeRoomId: '!r:hs',
+      loadEvent: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second),
+    });
+
+    routing.openInboxRow(row);
+    routing.openInboxRow({ ...row, eventId: '$later' });
+
+    expect(first.observed).toBe(false);
+    second.next(true);
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$later',
+    });
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('keeps a running reveal when the next row turns out to be left', () => {
+    const page = new Subject<boolean>();
+    const { routing, transition } = build({
+      activeRoomId: '!r:hs',
+      loadEvent: vi.fn(() => page),
+    });
+
+    routing.openInboxRow(row);
+    routing.openInboxRow({ ...row, roomId: '!left:hs' });
+    page.next(true);
+
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$e',
+    });
+  });
+
+  it.each([
+    ['found', (page: Subject<boolean>) => page.next(true)],
+    ['out of reach', (page: Subject<boolean>) => page.next(false)],
+    ['failing', (page: Subject<boolean>) => page.error(new Error('down'))],
+  ])('ignores a page %s after the person left that room', (_name, land) => {
+    const page = new Subject<boolean>();
+    const { routing, transition, showError, roomId } = build({
+      activeRoomId: '!r:hs',
+      loadRoot: vi.fn(() => page),
+    });
+
+    routing.openInboxRow({ ...row, threadRootId: '$root' });
+    roomId.set('!elsewhere:hs');
+    land(page);
+
+    expect(transition).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('says it could not load a message whose page fails', () => {
+    const { routing, showError } = build({
+      activeRoomId: '!r:hs',
+      loadEvent: vi.fn(() => throwError(() => new Error('down'))),
+    });
+
+    routing.openInboxRow(row);
+
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not load that message.',
     );
   });
 });

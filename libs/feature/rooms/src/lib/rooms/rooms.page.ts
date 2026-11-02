@@ -47,6 +47,7 @@ import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { type ExactRoomSelection } from '../shared/exact-selection';
 import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
+import { NotificationInboxComponent } from '../inbox/notification-inbox.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { AccountPickerService } from '../account-picker/account-picker.service';
 import { MemberListComponent } from '../member-list/member-list.component';
@@ -125,6 +126,7 @@ const PANEL_DRAWER_PX = 480;
     RoomHeaderComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
+    NotificationInboxComponent,
     SidebarUserPanelComponent,
     MemberListComponent,
     // The temporary surfaces the right-hand slot can show. Imported by the page rather

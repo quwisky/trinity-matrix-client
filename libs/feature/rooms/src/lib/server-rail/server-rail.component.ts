@@ -117,6 +117,10 @@ export class ServerRailComponent {
   readonly activeSpaceId = input<string | null>(null);
   /** Whether the Recent activity view is active (drives its pill's active state). */
   readonly recentActive = input(false);
+  /** Whether the device shows the Inbox button. */
+  readonly inboxShown = input(false);
+  /** Whether the Inbox view is active (drives its pill's active state). */
+  readonly inboxActive = input(false);
   /** Whether the Rooms view is active (drives the Rooms pill's active state). */
   readonly roomsActive = input(false);
   /** Unread notification counts for the Recent / Home / Rooms / per-space badges. */
@@ -138,6 +142,8 @@ export class ServerRailComponent {
   readonly createSpace = output<void>();
   /** Show the Recent activity view (all DMs + rooms, mixed by recency). */
   readonly showRecent = output<void>();
+  /** Show the Inbox view. */
+  readonly showInbox = output<void>();
   /** Show the Rooms view (non-DM rooms). */
   readonly showRooms = output<void>();
   /** Open one unread chat on the account that owns it. */

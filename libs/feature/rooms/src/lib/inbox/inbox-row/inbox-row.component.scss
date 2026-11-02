@@ -1,0 +1,105 @@
+@use '../../styles/mixins' as *;
+
+@layer components {
+  :host {
+    display: block;
+    min-width: 0;
+  }
+
+  // A list row, not a button control: it stays a semantic <button> styled by row tokens.
+  .row {
+    @include interactive-row;
+
+    // Holds the absolute `.sr-only` spans, which would otherwise escape the scroller.
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--trinity-space-1) var(--trinity-space-3);
+    align-items: start;
+    width: 100%;
+    min-height: var(--trinity-interaction-target-min-size);
+    padding: var(--trinity-density-channel-padding-block)
+      var(--trinity-density-shell-padding-inline);
+    text-align: start;
+
+    &.row--current {
+      background: var(--trinity-state-selected-surface);
+      color: var(--trinity-state-selected-foreground);
+
+      .row__time,
+      .row__preview {
+        color: var(--trinity-state-selected-foreground);
+      }
+
+      &:hover {
+        background: var(--trinity-state-selected-hover-surface);
+        color: var(--trinity-state-selected-hover-foreground);
+
+        .row__time,
+        .row__preview {
+          color: var(--trinity-state-selected-hover-foreground);
+        }
+      }
+    }
+
+    &.row--unread {
+      color: var(--trinity-text-bright);
+
+      .row__preview {
+        color: var(--trinity-text);
+      }
+    }
+  }
+
+  .row__avatar {
+    grid-row: 1 / 4;
+  }
+
+  .row__room {
+    @include ellipsis;
+
+    min-width: 0;
+    font-size: var(--trinity-text-base);
+    font-weight: 600;
+  }
+
+  .row__dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    align-self: center;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-text-bright);
+  }
+
+  .row__preview {
+    display: -webkit-box;
+    grid-column: 2 / 4;
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--trinity-text-xs);
+    color: var(--trinity-text-muted);
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  // Its own line: the date and time would leave a narrow sidebar no room for the room's name.
+  // It wraps rather than truncates, which would lose AM or PM.
+  .row__time {
+    grid-column: 2 / 4;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--trinity-text-xs);
+    color: var(--trinity-text-muted);
+  }
+
+  .row__preview--stand-in {
+    font-style: italic;
+  }
+
+  .row__sender {
+    color: var(--trinity-text);
+    font-weight: 500;
+  }
+}

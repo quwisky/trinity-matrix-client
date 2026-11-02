@@ -99,6 +99,8 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/encryption-banner/encryption-banner.component.scss',
   'libs/feature/rooms/src/lib/gif-picker/gif-picker.component.scss',
   'libs/feature/rooms/src/lib/gif-picker/gif-thumb.component.scss',
+  'libs/feature/rooms/src/lib/inbox/inbox-row/inbox-row.component.scss',
+  'libs/feature/rooms/src/lib/inbox/notification-inbox.component.scss',
   'libs/feature/rooms/src/lib/jump-to-date/jump-to-date.component.scss',
   'libs/feature/rooms/src/lib/link-preview/link-preview.component.scss',
   'libs/feature/rooms/src/lib/location-share/location.component.scss',

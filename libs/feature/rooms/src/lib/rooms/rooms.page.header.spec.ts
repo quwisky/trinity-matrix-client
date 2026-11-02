@@ -142,6 +142,8 @@ function renderHeader(
     spaceOrderOwnerName: signal(null),
     defaultSpaceSortMode: signal('recent'),
     filteredRooms: signal<RoomSummary[]>([]),
+    backLabel: signal('Back to rooms'),
+    inboxShown: signal(false),
     members: signal<MemberSummary[]>([BOB]),
     membersView: signal({
       availability: 'coherent' as const,
@@ -308,6 +310,7 @@ function renderHeader(
             activeSpaceId: signal<string | null>(null),
             recentView: signal(true),
             roomsView: signal(false),
+            inboxView: signal(false),
             activeRoomId: signal<string | null>(opts.routeRoom ?? '!r:hs'),
             pane: signal<'list' | 'conversation'>('conversation'),
             placement: signal<'list' | 'conversation' | 'split'>('split'),
@@ -394,6 +397,28 @@ describe('RoomsPage header actions and search field', () => {
   function surfaces() {
     return lastRender.fixture.debugElement.injector.get(RoomSurfaceLifecycle);
   }
+
+  it('hands the thread its message, and reports one it cannot reach', () => {
+    renderHeader(0);
+    surfaces().transition({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$reply',
+    });
+    lastRender.fixture.detectChanges();
+    const thread = ngMocks.find(
+      lastFixture.debugElement,
+      ThreadViewComponent,
+    ).componentInstance;
+    expect(thread.revealEventId()).toBe('$reply');
+
+    thread.revealFailed.emit();
+
+    expect(
+      lastRender.fixture.debugElement.injector.get(ShellStatusService)
+        .showError,
+    ).toHaveBeenCalledExactlyOnceWith('Could not load that message.');
+  });
 
   async function typeInHeader(root: HTMLElement, value: string) {
     const field = byId(root, 'header-search') as HTMLInputElement;

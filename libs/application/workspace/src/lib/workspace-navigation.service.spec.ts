@@ -7,6 +7,7 @@ import {
   type AccountSwitchOutcome,
 } from '@trinity/data-access/accounts';
 import { MediaPipeline } from '@trinity/data-access/media';
+import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import {
   InvitesService,
   RoomLibraryService,
@@ -63,6 +64,8 @@ interface HarnessOptions {
   readonly attentive?: WritableSignal<boolean>;
   /** Accounts whose client has synced with its homeserver; every live one unless named. */
   readonly synced?: readonly string[];
+  /** Whether the device shows the Inbox; on unless named. */
+  readonly inboxShown?: boolean;
 }
 
 function harness(options: HarnessOptions = {}) {
@@ -107,6 +110,7 @@ function harness(options: HarnessOptions = {}) {
     new Set(options.synced ?? clients.keys()),
   );
   const mixed = signal(options.mixed ?? null);
+  const inboxShown = signal(options.inboxShown ?? true);
   const leaving = signal<ReadonlySet<string>>(new Set());
   const navigate = vi.fn(
     (
@@ -287,6 +291,10 @@ function harness(options: HarnessOptions = {}) {
       },
       { provide: InvitesService, useValue: { acceptInvite } },
       { provide: SpacesService, useValue: spaces },
+      {
+        provide: MentionInboxPreferences,
+        useValue: { showInbox: inboxShown.asReadonly() },
+      },
       ...(options.attentive
         ? [
             {
@@ -321,6 +329,7 @@ function harness(options: HarnessOptions = {}) {
     mixed,
     leaving,
     routerNavigating,
+    inboxShown,
   };
 }
 
@@ -2046,5 +2055,302 @@ describe('WorkspaceNavigationService', () => {
     ).resolves.toMatchObject({ kind: 'ready' });
     expect(h.activeAccountId()).toBe(ALICE);
     expect(h.queryParamMap.value.get('account')).toBe(ALICE);
+  });
+});
+
+describe('the Inbox scope', () => {
+  const inbox = { kind: 'inbox' } as const;
+
+  it('restores view=inbox and keeps it while the Inbox is shown', async () => {
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox' });
+    await settle();
+
+    expect(h.service.view().scope).toEqual(inbox);
+    expect(h.service.inboxView()).toBe(true);
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
+
+  it('repairs a restored view=inbox to Recent when the Inbox is off', async () => {
+    const h = harness({
+      routeAccountId: ALICE,
+      routeView: 'inbox',
+      inboxShown: false,
+    });
+
+    await vi.waitFor(() =>
+      expect(h.service.view().scope).toEqual({ kind: 'recent' }),
+    );
+    expect(h.service.inboxView()).toBe(false);
+  });
+
+  it('never shows the inbox scope for a restored view=inbox while the Inbox is off', () => {
+    const h = harness({
+      routeAccountId: ALICE,
+      routeView: 'inbox',
+      inboxShown: false,
+    });
+
+    expect(h.service.view().scope).toEqual({ kind: 'recent' });
+  });
+
+  it('opens Recent when the inbox is chosen while the Inbox is off', async () => {
+    const h = harness({ routeAccountId: ALICE, inboxShown: false });
+    await settle();
+
+    await go(h, { kind: 'scope', accountId: ALICE, scope: inbox });
+
+    expect(h.service.view().scope).toEqual({ kind: 'recent' });
+  });
+
+  it('repairs a view=inbox from a later restoration when the Inbox is off', async () => {
+    const h = harness({ routeAccountId: ALICE, inboxShown: false });
+    await settle();
+    h.navigate.mockClear();
+
+    h.queryParamMap.next(convertToParamMap({ account: ALICE, view: 'inbox' }));
+
+    await vi.waitFor(() =>
+      expect(h.navigate).toHaveBeenCalledWith(['/rooms'], {
+        queryParams: { account: ALICE },
+        replaceUrl: true,
+      }),
+    );
+    expect(h.service.view().scope).toEqual({ kind: 'recent' });
+  });
+
+  it('choosing the inbox replaces history, choosing Recent still pushes', async () => {
+    const h = harness({ routeAccountId: ALICE });
+    await settle();
+    h.projections.length = 0;
+
+    await go(h, { kind: 'scope', accountId: ALICE, scope: inbox });
+    expect(h.projections.at(-1)).toMatchObject({ history: 'replace' });
+    expect(h.service.view().scope).toEqual(inbox);
+
+    await go(h, {
+      kind: 'scope',
+      accountId: ALICE,
+      scope: { kind: 'recent' },
+    });
+    expect(h.projections.at(-1)).toMatchObject({ history: 'push' });
+  });
+
+  it('opening a room from the inbox keeps the scope and pushes over the compact list', async () => {
+    const h = harness({
+      routeAccountId: ALICE,
+      routeView: 'inbox',
+      compact: true,
+    });
+    await settle();
+
+    await go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: ROOM,
+      origin: 'room-list',
+    });
+
+    expect(h.service.view()).toEqual({
+      accountId: ALICE,
+      scope: inbox,
+      roomId: ROOM,
+      pane: 'conversation',
+    });
+    expect(h.projections.at(-1)).toEqual({ history: 'push', overList: true });
+  });
+
+  it('opens a rail unread chat from the inbox in Recent', async () => {
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox' });
+    await settle();
+
+    await go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: ROOM,
+      origin: 'rail-unread',
+      listedIn: [{ kind: 'recent' }],
+    });
+
+    expect(h.service.view().scope).toEqual({ kind: 'recent' });
+  });
+
+  it('turning the Inbox off while open returns to Recent, keeping the room, as a background replace', async () => {
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox' });
+    await settle();
+    await go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: ROOM,
+      origin: 'room-list',
+    });
+    await settle();
+    h.navigate.mockClear();
+    const record = vi.spyOn(
+      TestBed.inject(WorkspaceVisitHistoryService),
+      'record',
+    );
+
+    h.inboxShown.set(false);
+
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(h.service.view()).toEqual({
+        accountId: ALICE,
+        scope: { kind: 'recent' },
+        roomId: ROOM,
+        pane: 'conversation',
+      });
+    });
+    expect(h.projections.at(-1)).toMatchObject({
+      history: 'replace',
+      background: true,
+    });
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('reports the inbox view off the moment the Inbox is switched off', () => {
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox' });
+    expect(h.service.inboxView()).toBe(true);
+
+    h.inboxShown.set(false);
+
+    expect(h.service.inboxView()).toBe(false);
+  });
+
+  it('repairs on return when the Inbox was switched off outside Workspace', async () => {
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox' });
+    await settle();
+    await go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: ROOM,
+      origin: 'room-list',
+    });
+    await settle();
+    h.navigate.mockClear();
+
+    h.locationMode.next('outside');
+    h.inboxShown.set(false);
+    await settle();
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.service.inboxView()).toBe(false);
+
+    h.locationMode.next('workspace');
+
+    await vi.waitFor(() =>
+      expect(h.service.view()).toEqual({
+        accountId: ALICE,
+        scope: { kind: 'recent' },
+        roomId: ROOM,
+        pane: 'conversation',
+      }),
+    );
+  });
+
+  it('keeps a held room through the destination repair of a chosen inbox', async () => {
+    const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+    await settle();
+    h.inboxShown.set(false);
+
+    await go(h, { kind: 'scope', accountId: ALICE, scope: inbox });
+
+    expect(h.service.view()).toEqual({
+      accountId: ALICE,
+      scope: { kind: 'recent' },
+      roomId: ROOM,
+      pane: 'conversation',
+    });
+  });
+
+  it('does not repair mid-transition, and checks the view it commits', async () => {
+    const rooms = { [ALICE]: [ROOM, '!other:example.org'], [BOB]: [ROOM] };
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox', rooms });
+    await settle();
+    const project = h.navigate.getMockImplementation()!;
+    let finish!: (navigated: boolean) => void;
+    h.navigate.mockImplementationOnce((commands, extras) => {
+      void project(commands, extras);
+      return new Promise<boolean>((resolve) => (finish = resolve));
+    });
+    h.navigate.mockClear();
+    const opened = go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: '!other:example.org',
+      origin: 'room-list',
+    });
+
+    h.inboxShown.set(false);
+    await settle();
+    expect(h.navigate).toHaveBeenCalledOnce();
+
+    finish(true);
+    await opened;
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(h.service.view()).toEqual({
+        accountId: ALICE,
+        scope: { kind: 'recent' },
+        roomId: '!other:example.org',
+        pane: 'conversation',
+      });
+    });
+    expect(h.navigate).toHaveBeenCalledTimes(2);
+  });
+
+  it('checks the inbox view again once a transition that did not commit settles', async () => {
+    const rooms = { [ALICE]: [ROOM, '!other:example.org'], [BOB]: [ROOM] };
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox', rooms });
+    await settle();
+    const project = h.navigate.getMockImplementation()!;
+    let finish!: (navigated: boolean) => void;
+    h.navigate.mockImplementationOnce((commands, extras) => {
+      void project(commands, extras);
+      return new Promise<boolean>((resolve) => (finish = resolve));
+    });
+    const opened = go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: '!other:example.org',
+      origin: 'room-list',
+    });
+
+    h.inboxShown.set(false);
+    await settle();
+    finish(false);
+    await opened;
+
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(h.service.view().scope).toEqual({ kind: 'recent' });
+    });
+  });
+
+  it('does not repair while a navigation the person started is in flight, and checks again once it settles', async () => {
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox' });
+    await settle();
+
+    h.routerNavigating.set(true);
+    h.inboxShown.set(false);
+    await settle();
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.service.view().scope).toEqual(inbox);
+
+    h.routerNavigating.set(false);
+
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(h.service.view().scope).toEqual({ kind: 'recent' });
+    });
+  });
+
+  it('does not repair another Account while a switch is under way', async () => {
+    const h = harness({ routeAccountId: ALICE, routeView: 'inbox' });
+    await settle();
+    h.activeAccountId.set(BOB);
+    h.inboxShown.set(false);
+    await settle();
+
+    expect(h.service.view().scope).toEqual(inbox);
   });
 });

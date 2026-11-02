@@ -74,6 +74,7 @@ function build(roomId: string | null = '!room:example.org') {
           activeRoomId: activeRoomId.asReadonly(),
           recentView: signal(true).asReadonly(),
           roomsView: signal(false).asReadonly(),
+          inboxView: signal(false).asReadonly(),
           pane: pane.asReadonly(),
           placement: signal<'list' | 'conversation' | 'split'>(
             'split',
@@ -93,6 +94,50 @@ function build(roomId: string | null = '!room:example.org') {
     back: TestBed.inject(WorkspaceBackService),
   };
 }
+
+describe('RoomSurfaceLifecycle thread reveal', () => {
+  it('carries the message to reveal on the thread surface', () => {
+    const { lifecycle } = build();
+
+    lifecycle.transition({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$reply',
+    });
+
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+      revealEventId: '$reply',
+    });
+  });
+
+  it('leaves a thread opened by hand with nothing to reveal', () => {
+    const { lifecycle } = build();
+
+    lifecycle.transition({ kind: 'open-thread', rootEventId: '$root' });
+
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+    });
+  });
+
+  it('dismisses a revealing thread from Workspace Back, as the same surface', async () => {
+    const { lifecycle, back } = build();
+    lifecycle.transition({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$reply',
+    });
+
+    await expect(firstValueFrom(back.back())).resolves.toMatchObject({
+      kind: 'dismissed',
+    });
+
+    expect(lifecycle.renderedSurface()).toBeNull();
+  });
+});
 
 describe('RoomSurfaceLifecycle', () => {
   it('exposes only read-only presentation signals and semantic transitions', () => {
