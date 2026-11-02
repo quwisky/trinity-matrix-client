@@ -190,6 +190,48 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
     await expect(page.getByTestId('back-to-rooms')).toBeHidden();
   });
 
+  // jsdom has no animations, and a slide that never ends would leave the old pane on screen.
+  test('a tap slides the room both ways, and history does not', async ({
+    page,
+  }) => {
+    const channel = page.locator('button.channel', { hasText: ROOM_NAME });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
+    await page.evaluate(() => {
+      const root = document.querySelector('[data-shell-root]') as HTMLElement;
+      const seen: string[] = [];
+      Object.assign(window, { paneSlides: seen });
+      new MutationObserver(() => {
+        const slide = root.getAttribute('data-pane-slide');
+        if (slide) seen.push(slide);
+      }).observe(root, {
+        attributes: true,
+        attributeFilter: ['data-pane-slide'],
+      });
+    });
+    const paneSlides = () =>
+      page.evaluate(
+        () => (window as unknown as { paneSlides: string[] }).paneSlides,
+      );
+
+    await channel.first().click();
+    await expect(page.getByTestId('back-to-rooms')).toBeVisible();
+    await expect(shellSide(page)).toBeHidden();
+    await expect(page.locator('.main')).not.toHaveAttribute('inert');
+
+    await page.getByTestId('back-to-rooms').click();
+    await expect(shellSide(page)).toBeVisible();
+    await expect(page.locator('.main')).toBeHidden();
+    expect(await paneSlides()).toEqual(['open', 'close']);
+
+    await channel.first().click();
+    await expect(shellSide(page)).toBeHidden();
+    await page.goBack();
+    await expect(page.locator('.main')).toBeHidden();
+    expect(await paneSlides()).toEqual(['open', 'close', 'open']);
+  });
+
   // #1113: a room opened from the list is one history entry on top of that list, so the
   // browser's (and iOS WebKit's edge-swipe) Back is the same step as the in-app button.
   test('browser Back returns to the list a room was opened from', async ({

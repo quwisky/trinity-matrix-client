@@ -16,7 +16,10 @@ import {
 } from './rooms-page.spec-harness';
 import { signal, type Provider, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { WorkspaceBackService } from '@trinity/application/workspace';
+import {
+  WorkspaceBackService,
+  WorkspaceNavigationService,
+} from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
@@ -471,6 +474,94 @@ describe('RoomsPage mobile navigation', () => {
       'room-list',
     );
     await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
+  });
+
+  describe('pane slide', () => {
+    const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+    const room = { roomId: '!r:hs', accountId: '@me:hs' };
+    type Shell = ReturnType<typeof build>;
+    const slide = (shell: Shell) => shell.page['paneSlide']();
+
+    /** Open a room by tap, with the slide read as the template would read it. */
+    async function openRoom(shell: Shell): Promise<void> {
+      slide(shell); // the page's template reads it on every render
+      shell.nav.onSelectRoom(room);
+      await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
+    }
+
+    function restoreList(): void {
+      TestBed.inject(WorkspaceNavigationService)
+        .navigate({
+          kind: 'restoration',
+          accountId: room.accountId,
+          scope: { kind: 'recent' },
+          roomId: room.roomId,
+          pane: 'list',
+          canonical: true,
+        })
+        .subscribe();
+    }
+
+    function animationEnd(ownAnimation: boolean): AnimationEvent {
+      const target = document.createElement('main');
+      return {
+        target: ownAnimation ? target : document.createElement('div'),
+        currentTarget: target,
+      } as unknown as AnimationEvent;
+    }
+
+    let restoreLayout: () => void;
+    afterEach(() => restoreLayout());
+
+    it('slides both ways for a tap, until .main lands', async () => {
+      restoreLayout = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+      const shell = build();
+
+      await openRoom(shell);
+      expect(slide(shell)).toBe('open');
+
+      shell.page['onMainAnimationEnd'](animationEnd(false));
+      expect(slide(shell)).toBe('open');
+      shell.page['onMainAnimationEnd'](animationEnd(true));
+      expect(slide(shell)).toBeNull();
+
+      shell.page.backToList();
+      await vi.waitFor(() => expect(shell.store.pane()).toBe('list'));
+      expect(slide(shell)).toBe('close');
+    });
+
+    it('leaves a history traversal to the native edge swipe that drew it', async () => {
+      restoreLayout = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+      const shell = build();
+      await openRoom(shell);
+      shell.page['onMainAnimationEnd'](animationEnd(true));
+
+      restoreList();
+      await vi.waitFor(() => expect(shell.store.pane()).toBe('list'));
+
+      expect(slide(shell)).toBeNull();
+    });
+
+    it('does not slide under Reduce Motion', async () => {
+      restoreLayout = stubLiveLayout({
+        [BELOW_MD_QUERY]: true,
+        [REDUCED_MOTION]: true,
+      });
+      const shell = build();
+
+      await openRoom(shell);
+
+      expect(slide(shell)).toBeNull();
+    });
+
+    it('does not slide at md and wider', async () => {
+      restoreLayout = stubLiveLayout({ [BELOW_MD_QUERY]: false });
+      const shell = build();
+
+      await openRoom(shell);
+
+      expect(slide(shell)).toBeNull();
+    });
   });
 
   describe('from the inbox', () => {

@@ -16,12 +16,18 @@
     [style.--shell-sidebar-w.px]="layout.sidebarWidth()"
     [style.--shell-right-panel-w.px]="layout.rightPanelWidth()"
     [attr.data-mobile-view]="store.pane() === 'conversation' ? 'chat' : 'list'"
+    [attr.data-pane-slide]="paneSlide()"
   >
     <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
          pages, shown one at a time from the Workspace pane coordinate (rooms.page.scss).
          At md+ both are static columns side by side. -->
     <!-- Width: --shell-sidebar-w, px not rem; see ShellLayoutService and text-scaling.spec.mts. -->
-    <aside #listView tabindex="-1" class="shell-side">
+    <aside
+      #listView
+      tabindex="-1"
+      class="shell-side"
+      [attr.inert]="paneSlide() === 'open' ? '' : null"
+    >
       <trn-server-rail
         class="shell-side__rail"
         [spaces]="vm.railSpaces()"
@@ -137,7 +143,13 @@
       (committed)="layout.setSidebarWidth($event)"
     />
 
-    <main #mainView tabindex="-1" class="main">
+    <main
+      #mainView
+      tabindex="-1"
+      class="main"
+      [attr.inert]="paneSlide() === 'close' ? '' : null"
+      (animationend)="onMainAnimationEnd($event)"
+    >
       <trn-room-header
         [room]="vm.activeRoom()"
         [loading]="
