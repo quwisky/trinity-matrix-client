@@ -37,7 +37,8 @@ import { InboxRowComponent } from './inbox-row/inbox-row.component';
 
 /**
  * The inbox that fills the sidebar. The service holds the rows only while this is on screen,
- * and doesn't load by itself: an open and an account switch both leave it `idle`.
+ * and doesn't load by itself: an open, an account switch and a first sync that can name its
+ * rows all leave it `idle`.
  */
 @Component({
   selector: 'trn-notification-inbox',

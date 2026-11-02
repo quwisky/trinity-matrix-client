@@ -8,6 +8,7 @@ import {
 } from '../../support/multi-account-journey.mts';
 import {
   KEYWORD,
+  holdSync,
   openInbox,
   seedInbox,
   watchConsoleErrors,
@@ -210,6 +211,92 @@ test.describe('Mentions inbox', () => {
     });
   }
 
+  test.describe('before the first sync', () => {
+    const expectNamed = async (
+      page: Page,
+      seed: InboxSeed,
+      mention: string,
+    ) => {
+      await expect(rows(page)).toHaveCount(1);
+      await expect(rows(page).first()).toContainText(seed.roomName);
+      await expect(rows(page).first()).toContainText(seed.senderName);
+      await expect(rows(page).first()).toContainText(mention);
+      await expect(rows(page).first()).not.toContainText(seed.roomId);
+      await expect(rows(page).first()).not.toContainText(seed.sender.userId);
+    };
+
+    test('opening the inbox waits for the rooms instead of listing raw IDs', async ({
+      page,
+      request,
+      matrixResources,
+    }) => {
+      const seed = await seedInbox(request, hs(), matrixResources);
+      const mention = `${KEYWORD} before sync`;
+      await seed.post(mention);
+      const release = await holdSync(page);
+      await login(page, { available: true, hs: session.hs, ...seed });
+
+      await page.getByTestId('rail-inbox').click();
+      await expect(page.getByTestId('inbox-loading')).toBeVisible();
+      await expect(rows(page)).toHaveCount(0);
+
+      release();
+      await expectNamed(page, seed, mention);
+    });
+
+    test('a first sync slower than the wait: the list shows, then names itself', async ({
+      page,
+      request,
+      matrixResources,
+    }) => {
+      const seed = await seedInbox(request, hs(), matrixResources);
+      const mention = `${KEYWORD} slow sync`;
+      await seed.post(mention);
+      const release = await holdSync(page);
+      await login(page, { available: true, hs: session.hs, ...seed });
+
+      await page.getByTestId('rail-inbox').click();
+      await expect(rows(page)).toHaveCount(1, { timeout: 30_000 });
+      await expect(rows(page).first()).toContainText(seed.roomId);
+      await expect(rows(page).first()).toContainText('Preview unavailable');
+      await expect(rows(page).first()).not.toContainText(mention);
+
+      release();
+      await expectNamed(page, seed, mention);
+    });
+
+    test('reloading at ?view=inbox with no cached rooms waits for them too', async ({
+      page,
+      request,
+      matrixResources,
+    }) => {
+      const seed = await seedInbox(request, hs(), matrixResources);
+      const mention = `${KEYWORD} reload before sync`;
+      await seed.post(mention);
+      await signInAndOpenInbox(page, seed);
+      await expect(rows(page)).toHaveCount(1);
+      await expect.poll(() => page.url()).toContain('view=inbox');
+      const release = await holdSync(page);
+      // Only the SDK's sync cache: the sign-in and this device's keys stay.
+      await page.evaluate(async () => {
+        const databases = await indexedDB.databases();
+        for (const { name } of databases) {
+          if (name?.startsWith('matrix-js-sdk:'))
+            indexedDB.deleteDatabase(name);
+        }
+      });
+
+      await page.reload();
+      await expect(page.getByTestId('inbox-loading')).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(rows(page)).toHaveCount(0);
+
+      release();
+      await expectNamed(page, seed, mention);
+    });
+  });
+
   test('empty: no mentions says so, and so does All', async ({
     page,
     request,
@@ -243,12 +330,14 @@ test.describe('Mentions inbox', () => {
     await login(page, { available: true, hs: session.hs, ...seed });
     await page.getByTestId('rail-inbox').click();
 
+    // Loading waits for the first sync, up to its limit.
     await expect(page.getByTestId('inbox-failed')).toContainText(
       "Couldn't load your inbox",
+      { timeout: 30_000 },
     );
     failing = false;
     await page.getByRole('button', { name: 'Try again' }).click();
-    await expect(rows(page)).toHaveCount(1);
+    await expect(rows(page)).toHaveCount(1, { timeout: 30_000 });
     await expect(page.getByTestId('inbox-failed')).toHaveCount(0);
   });
 
@@ -396,13 +485,13 @@ test.describe('Mentions inbox', () => {
     );
     for (let i = 0; i < 55; i++) await seed.post(`${KEYWORD} ${i}`);
     await signInAndOpenInbox(page, seed);
-    await expect(rows(page).first()).toBeVisible();
+    // Measured with the long name in place, not a room ID from before the first sync.
+    await expect(rows(page).first()).toContainText('W'.repeat(200));
 
     const fits = await scroller(page).evaluate(
       (el) => el.scrollWidth <= el.clientWidth,
     );
     expect(fits).toBe(true);
-    await expect(rows(page).first()).toContainText('W'.repeat(200));
     for (const control of ['inbox-load-more', 'inbox-refresh']) {
       await expect(page.getByTestId(control)).toBeVisible();
       const box = await page.getByTestId(control).boundingBox();

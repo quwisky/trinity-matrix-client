@@ -1064,10 +1064,14 @@ describe('NotificationInboxComponent on the real service', () => {
       isInitialized: boolean;
       instance: FakeClient | null;
       activeUserId: WritableSignal<string | null>;
+      serverSynced: WritableSignal<boolean>;
+      roomsPrepared: () => boolean;
     } = {
       isInitialized: first !== null,
       instance: first,
       activeUserId: signal(first?.getUserId() ?? null),
+      serverSynced: signal(false),
+      roomsPrepared: () => true,
     };
     const rendered = await render(NotificationInboxComponent, {
       providers: [
@@ -1137,6 +1141,19 @@ describe('NotificationInboxComponent on the real service', () => {
     expect(inbox.status()).toBe('ready');
     expect(refresh).toHaveBeenCalledOnce();
     refresh.mockRestore();
+  });
+
+  it('loads once more, unasked, when the first server sync can name its rows', async () => {
+    const a = fakeClient('@a:hs', () => Promise.resolve(PAGE('!a:hs', '$a')));
+    const { matrix, inbox, settle } = await renderReal(a);
+    expect(a.http.authedRequest).toHaveBeenCalledOnce();
+
+    matrix.serverSynced.set(true);
+    await settle();
+    await settle();
+
+    expect(a.http.authedRequest).toHaveBeenCalledTimes(2);
+    expect(inbox.status()).toBe('ready');
   });
 
   it('does not say "No mentions" when the first page held none but more remain', async () => {
