@@ -178,6 +178,38 @@ test.describe('Mentions inbox', () => {
     await expect(page.getByTestId('back-to-rooms')).toBeHidden();
   });
 
+  for (const [label, size] of [
+    ['desktop', { width: 1280, height: 720 }],
+    ['phone', PHONE],
+  ] as const) {
+    test(`${label}: reloading at ?view=inbox shows the inbox`, async ({
+      page,
+      request,
+      matrixResources,
+    }) => {
+      await page.setViewportSize(size);
+      const seed = await seedInbox(request, hs(), matrixResources);
+      await seed.post(`${KEYWORD} after a reload`);
+      await signInAndOpenInbox(page, seed);
+      await expect.poll(() => page.url()).toContain('view=inbox');
+
+      await page.reload();
+
+      await expect(page.locator('trn-notification-inbox')).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.locator('trn-channel-sidebar')).toHaveCount(0);
+      await expect(page.getByTestId('rail-inbox')).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+      await expect(rows(page)).toHaveCount(1);
+      await expect(rows(page).first()).toContainText(
+        `${KEYWORD} after a reload`,
+      );
+    });
+  }
+
   test('empty: no mentions says so, and so does All', async ({
     page,
     request,
