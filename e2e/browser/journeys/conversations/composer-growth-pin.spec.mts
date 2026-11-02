@@ -5,7 +5,11 @@ import {
   type Locator,
   type Page,
 } from '../../../fixtures.mts';
-import { homeserverSession, login } from '../../../support/app.mts';
+import {
+  clickRowToolbar,
+  homeserverSession,
+  login,
+} from '../../../support/app.mts';
 import { DESIGN_VIEWPORTS } from '../../support/design-viewports.mts';
 import {
   seedFormattedRoom,
@@ -138,5 +142,72 @@ test.describe('Composer growth at the bottom of a room', () => {
     await expect(field).toBeVisible();
     await expectPinned(page);
     expect((await settled(field)).height).toBe(writing.height);
+  });
+
+  test('keeps a pinned reader on the newest reply in a thread, and leaves one who scrolled up', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'thread-pin');
+    const root = await sendMessage(request, hs, room, { body: 'Thread root' });
+    for (let i = 0; i < ROWS; i++) {
+      await sendMessage(request, hs, room, {
+        body: `Reply ${i} ${BURST.repeat(6)}`,
+        threadRoot: root,
+      });
+    }
+    await login(page, room.session);
+    await page.locator('.channel', { hasText: room.roomName }).first().click();
+    const rootRow = page.locator('.scroll .msg[data-mid]', {
+      hasText: 'Thread root',
+    });
+    await expect(rootRow).toBeVisible({ timeout: 30_000 });
+    await clickRowToolbar(
+      rootRow,
+      rootRow.getByRole('button', { name: 'Reply in thread' }),
+    );
+    const thread = page.getByTestId('thread-view');
+    await expect(thread.locator('.msg__text').last()).toContainText(
+      `Reply ${ROWS - 1} `,
+      { timeout: 30_000 },
+    );
+    const scroller = thread.locator('.thread');
+    const gap = (): Promise<number> =>
+      scroller.evaluate(
+        (el) => el.scrollHeight - el.scrollTop - el.clientHeight,
+      );
+    const bottom = await scroller.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+      return el.scrollHeight > el.clientHeight;
+    });
+    expect(bottom).toBe(true);
+    await expect.poll(gap).toBeLessThan(1);
+
+    const field = thread.getByTestId('composer-input');
+    await field.click();
+    const resting = await field.evaluate(
+      (el) => (el as HTMLElement).offsetHeight,
+    );
+    for (let i = 0; i < BURSTS; i++) {
+      await field.pressSequentially(BURST);
+      await expect.poll(gap).toBeLessThan(1);
+    }
+    const grown = await field.evaluate(
+      (el) => (el as HTMLElement).offsetHeight,
+    );
+    expect(grown).toBeGreaterThan(resting + 40);
+
+    // Slightly up is a reading position: the draft grows, the reader does not move.
+    await field.fill('');
+    await expect.poll(gap).toBeLessThan(1);
+    const up = await scroller.evaluate((el) => {
+      el.scrollTop -= 3;
+      return el.scrollTop;
+    });
+    expect(up).toBeGreaterThan(0);
+    await field.pressSequentially(BURST.repeat(3));
+    await page.waitForTimeout(100);
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(up);
   });
 });
