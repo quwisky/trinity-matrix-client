@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
+import { HostLifecycleService } from '@trinity/runtime/host';
 import {
   MatrixEventEvent,
   RelationType,
@@ -22,6 +23,7 @@ import {
   Observable,
   TimeoutError,
   defer,
+  filter,
   firstValueFrom,
   from,
   timeout,
@@ -65,6 +67,7 @@ export class MentionIndexService {
   private readonly preferences = inject(MentionInboxPreferences);
   private readonly sessions = inject(SessionStorageService);
   private readonly store = inject(MENTION_INDEX_STORE);
+  private readonly lifecycle = inject(HostLifecycleService);
 
   private readonly recorders = new Map<string, AccountRecorder>();
   /** A new device's client catches up from the old one's saved position, replaying these as live. */
@@ -74,6 +77,7 @@ export class MentionIndexService {
   private readonly deleteFailedState = signal(false);
 
   private session: symbol | null = null;
+  private warnedStopped = false;
   private writes: Promise<void> = Promise.resolve();
 
   readonly recording = computed(
@@ -98,8 +102,16 @@ export class MentionIndexService {
       this.stopped.set(false);
       const session = Symbol();
       this.session = session;
+      this.warnedStopped = false;
       void this.start(session);
+      // A phone's session can last days, and one error on a write cut off by suspending shouldn't
+      // silence it. A store that fails again stops again; the switches and a failed delete still
+      // hold recording off through `recording`.
+      const resumed = this.lifecycle.events
+        .pipe(filter((event) => event.kind === 'active'))
+        .subscribe(() => this.stopped.set(false));
       return () => {
+        resumed.unsubscribe();
         if (this.session === session) {
           this.halt();
         }
@@ -219,7 +231,10 @@ export class MentionIndexService {
       return;
     }
     this.stopped.set(true);
-    console.warn('mention index: recording stopped for this session');
+    if (!this.warnedStopped) {
+      this.warnedStopped = true;
+      console.warn('mention index: recording stopped');
+    }
   }
 
   /** Past the limit a step counts as a storage failure, and its late answer is ignored. */

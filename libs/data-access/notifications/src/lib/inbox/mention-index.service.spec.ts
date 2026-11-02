@@ -37,6 +37,7 @@ import {
   provideMentionInboxPreferences,
 } from './mention-inbox.preferences';
 import { FakeMentionStore } from './mention-index.spec-harness';
+import { HostLifecycleService } from '@trinity/runtime/host';
 import { MENTION_INDEX_STORE } from './mention-index-store';
 import { MentionIndexService } from './mention-index.service';
 
@@ -44,7 +45,7 @@ const ME = '@me:hs';
 const TS = Date.UTC(2026, 9, 31);
 const SHOW = SHOW_INBOX_PREFERENCE.persistence.key;
 const KEEP = KEEP_MENTION_RECORD_PREFERENCE.persistence.key;
-const STOPPED = 'mention index: recording stopped for this session';
+const STOPPED = 'mention index: recording stopped';
 
 type Handler = (...args: unknown[]) => void;
 
@@ -225,12 +226,17 @@ function setup(
   }
   const accountIds = signal<readonly string[]>(accounts);
   const store = new FakeMentionStore();
+  const lifecycle = new Subject<{ kind: 'active' | 'background' }>();
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
       provideMentionInboxPreferences(),
       { provide: PREFERENCE_STORAGE_ADAPTER, useValue: adapter },
       { provide: MENTION_INDEX_STORE, useValue: store },
+      {
+        provide: HostLifecycleService,
+        useValue: { events: lifecycle.asObservable() },
+      },
       {
         provide: MatrixClientService,
         useValue: {
@@ -257,6 +263,7 @@ function setup(
   return {
     service,
     store,
+    lifecycle,
     clients,
     accountIds,
     run,
@@ -577,6 +584,85 @@ describe('MentionIndexService', () => {
     // The one argument is the fixed text, so it holds no event, room or user ID.
     expect(warn).toHaveBeenCalledExactlyOnceWith(STOPPED);
     expect(store.rows(ME)).toEqual([]);
+  });
+
+  it('tries again on a return to the foreground after a store error', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, service, lifecycle } = setup();
+    await run();
+    store.failNextPut(new DOMException('', 'UnknownError'));
+    client.live(message('$a'));
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    lifecycle.next({ kind: 'background' });
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    lifecycle.next({ kind: 'active' });
+    await flush();
+    client.live(message('$b'));
+    await flush();
+
+    expect(service.recording()).toBe(true);
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$b']);
+  });
+
+  it('warns once when a full store fails again after each return', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, service, lifecycle } = setup();
+    await run();
+
+    for (const id of ['$a', '$b', '$c']) {
+      store.failNextPut(new DOMException('', 'QuotaExceededError'));
+      client.live(message(id));
+      await flush();
+      expect(service.recording()).toBe(false);
+      lifecycle.next({ kind: 'active' });
+      await flush();
+    }
+
+    expect(warn).toHaveBeenCalledExactlyOnceWith(STOPPED);
+  });
+
+  it('a return to the foreground starts nothing past a failed delete or an off switch', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, service, prefs, lifecycle } = setup();
+    await run();
+    vi.spyOn(store, 'deleteAll').mockRejectedValueOnce(new Error('blocked'));
+    await firstValueFrom(service.deleteAll()).catch(() => undefined);
+    expect(service.deleteFailed()).toBe(true);
+
+    lifecycle.next({ kind: 'active' });
+    await flush();
+    expect(service.recording()).toBe(false);
+
+    await firstValueFrom(service.deleteAll());
+    expect(service.recording()).toBe(true);
+    await firstValueFrom(prefs.setKeepRecord(false));
+    lifecycle.next({ kind: 'active' });
+    await flush();
+    client.live(message('$a'));
+    await flush();
+
+    expect(service.recording()).toBe(false);
+    expect(store.rows(ME)).toEqual([]);
+  });
+
+  it('ignores a return to the foreground once its run has ended', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, store, run, service, lifecycle } = setup();
+    const subscription = await run();
+    store.failNextPut(new DOMException('', 'UnknownError'));
+    client.live(message('$a'));
+    await flush();
+
+    subscription.unsubscribe();
+    lifecycle.next({ kind: 'active' });
+    await flush();
+
+    expect(service.recording()).toBe(false);
+    expect(lifecycle.observed).toBe(false);
   });
 
   it('skips a malformed event and keeps recording', async () => {
