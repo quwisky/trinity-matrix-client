@@ -82,7 +82,7 @@ describe('mobile attachments', () => {
     await room.click();
 
     await tap('[data-testid="composer-insert"]');
-    await tap('[data-testid="insert-attach"]');
+    await tap('[data-testid="insert-photos"]');
 
     // Capacitor's gallery picker is the OS photo picker (no READ_MEDIA_* grant needed on
     // API 33+). The newest item is the file seeded above; multi-select confirms with "Done".
