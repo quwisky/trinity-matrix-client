@@ -40,6 +40,7 @@ export class MessageSheetViewportSession {
   private frameId: number | null = null;
   private surface: HTMLElement | null = null;
   private originalSurfaceMaxHeight = '';
+  private originalOverflowY = '';
   private surfaceHeightChanged = false;
   private surfaceAttempts = 0;
 
@@ -68,6 +69,10 @@ export class MessageSheetViewportSession {
       return;
     }
     this.active = true;
+    // The press that opened the sheet may still be down. If its finger moves, iOS gives it the
+    // scroll view, which overwrites every write here and drags the row under the sheet.
+    this.originalOverflowY = this.scroller.style.overflowY;
+    this.scroller.style.overflowY = 'hidden';
     this.schedule(() => this.position());
   }
 
@@ -83,6 +88,9 @@ export class MessageSheetViewportSession {
     }
 
     this.spacer.remove();
+    if (this.scroller) {
+      this.scroller.style.overflowY = this.originalOverflowY;
+    }
     if (this.surfaceHeightChanged && this.surface) {
       this.surface.style.maxHeight = this.originalSurfaceMaxHeight;
     }
@@ -155,25 +163,34 @@ export class MessageSheetViewportSession {
   }
 
   /**
-   * Keep the row clear of the sheet's edge where it is now, so the sliding edge pushes the row
-   * up: scrolling to the resting place at once would jump the timeline ahead of the sheet. One
-   * frame past the slide settles layout clamping and virtual-window re-rendering. Every read
-   * here revalidates connectivity.
+   * While the sheet slides, only its edge moves the row, and no further than the row must go at
+   * rest: scrolling there at once would jump the timeline ahead of the sheet. The write that lands
+   * the row can flip the list's window, so it gets one more look a frame later, and only one: the
+   * rounding `requiredScrollDelta` allows could otherwise keep it correcting. Every read here
+   * revalidates connectivity.
    */
-  private follow(): void {
+  private follow(lastLook = false): void {
     if (!this.valid() || !this.surface?.isConnected) {
       return;
     }
-    const delta = this.requiredScrollDelta(
-      this.anchor.getBoundingClientRect(),
+    const anchor = this.anchor.getBoundingClientRect();
+    const sliding = remainingSlide(this.surface) !== 0;
+    const toRest = this.requiredScrollDelta(
+      anchor,
       this.scroller!.getBoundingClientRect(),
-      this.surface.getBoundingClientRect(),
+      restingBox(this.surface),
     );
+    const edge = this.surface.getBoundingClientRect().top - SHEET_GAP_PX;
+    const delta = sliding
+      ? Math.min(Math.max(0, toRest), Math.max(0, anchor.bottom - edge))
+      : toRest;
     if (delta !== 0) {
       this.scroller!.scrollTop = Math.max(0, this.scroller!.scrollTop + delta);
     }
-    if (remainingSlide(this.surface) !== 0) {
+    if (sliding) {
       this.schedule(() => this.follow());
+    } else if (delta !== 0 && !lastLook) {
+      this.schedule(() => this.follow(true));
     }
   }
 

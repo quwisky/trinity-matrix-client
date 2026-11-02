@@ -166,7 +166,122 @@ describe('MessageSheetViewportSession', () => {
     slideTo(0);
     flushFrame();
     expect(anchor.getBoundingClientRect().bottom).toBe(92);
+    flushFrame();
     expect(frames.size).toBe(0);
+  });
+
+  it('takes the timeline from a finger still down for as long as the sheet is open', () => {
+    const { scroller, session } = build({
+      rowTop: 500,
+      rowHeight: 50,
+      pressY: 525,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+    scroller.style.overflowY = 'scroll';
+
+    session.start();
+    expect(scroller.style.overflowY).toBe('hidden');
+
+    session.release();
+    expect(scroller.style.overflowY).toBe('scroll');
+  });
+
+  it('re-measures once after the write that lands the row, and only once', () => {
+    const { anchor, session } = build({
+      rowTop: 500,
+      rowHeight: 50,
+      pressY: 525,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+    // The write that lands the row can flip the list's window, moving the row again.
+    let drift = 0;
+    const placed = anchor.getBoundingClientRect.bind(anchor);
+    anchor.getBoundingClientRect = () => {
+      const box = placed();
+      return rect(box.top + drift, box.height);
+    };
+
+    session.start();
+    flushFrame();
+    flushFrame();
+    expect(anchor.getBoundingClientRect().bottom).toBe(92);
+
+    drift = 30;
+    flushFrame();
+    expect(anchor.getBoundingClientRect().bottom).toBe(92);
+    expect(frames.size).toBe(0);
+  });
+
+  it('leaves a row the composer clips alone until the sliding edge reaches it', () => {
+    const { session, surface, scrollTop } = build({
+      rowTop: 580,
+      rowHeight: 50,
+      pressY: 590,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+    const slideTo = slideIn(surface, 600);
+
+    session.start();
+    flushFrame();
+    flushFrame();
+    expect(scrollTop()).toBe(100);
+
+    slideTo(530);
+    flushFrame();
+    expect(scrollTop()).toBe(108);
+  });
+
+  it('never moves a row taller than the resting band down during a slide', () => {
+    const { anchor, session, surface, scrollTop } = build({
+      rowTop: -20,
+      rowHeight: 540,
+      pressY: 300,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+    const slideTo = slideIn(surface, 600);
+
+    session.start();
+    flushFrame();
+    flushFrame();
+    for (const slide of [300, 100, 0]) {
+      slideTo(slide);
+      flushFrame();
+      expect(scrollTop()).toBe(100);
+    }
+    flushFrame();
+
+    expect(surface.style.maxHeight).toBe('88px');
+    expect(anchor.getBoundingClientRect().top).toBe(-20);
+    expect(scrollTop()).toBe(100);
+  });
+
+  it('pushes a tall row only until its pressed point clears the resting edge', () => {
+    const { session, surface, scrollTop } = build({
+      rowTop: 0,
+      rowHeight: 540,
+      pressY: 520,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+    const slideTo = slideIn(surface, 600);
+
+    session.start();
+    flushFrame();
+    flushFrame();
+    const seen = [scrollTop()];
+    for (const slide of [88, 60, 30, 0]) {
+      slideTo(slide);
+      flushFrame();
+      seen.push(scrollTop());
+    }
+    flushFrame();
+
+    expect(seen).toEqual([...seen].sort((a, b) => a - b));
+    expect(scrollTop()).toBe(116);
   });
 
   it('keeps a row whole when a sliding sheet shrunk to fit it reads a fraction short', () => {
