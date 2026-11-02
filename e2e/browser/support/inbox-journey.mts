@@ -107,12 +107,18 @@ export function watchConsoleErrors(
 }
 
 /**
- * Opens the inbox from the rail and waits for its list to leave loading and for its rows to have
- * their rooms: a first sync slower than the inbox's wait leaves room IDs until it lands.
+ * Opens the inbox from the rail and waits for the first sync, then for its list to leave loading
+ * and for its rows to have their rooms. Without the sync an empty tab says nothing: the other tab
+ * can still hold rows with room IDs, from a first sync slower than the inbox's wait.
  */
 export async function openInbox(page: Page): Promise<void> {
   await page.getByTestId('rail-inbox').click();
   await expect(page.getByTestId('inbox-scroll')).toBeVisible();
+  // Shown with no room open, also on a phone where its pane is hidden.
+  await expect(page.getByTestId('chat-empty')).toContainText(
+    'Welcome to Trinity',
+    { timeout: 30_000 },
+  );
   await expect(page.getByTestId('inbox-loading')).toHaveCount(0, {
     timeout: 30_000,
   });
