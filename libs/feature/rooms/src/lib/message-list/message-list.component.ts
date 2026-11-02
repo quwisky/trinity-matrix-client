@@ -1099,7 +1099,8 @@ export class MessageListComponent extends MessageListBase {
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);
-    this.jumpsRequested++;
+    // A re-aim goes back to a jump already made, so what came since still gets its pin.
+    if (!this.reaiming) this.jumpsRequested++;
     // A jump ends a fling and starts none while it scrolls. A target still shown as a placeholder
     // has no `data-mid` yet, so it takes the path below and is revealed after the render that mounts it.
     this.beginJump();

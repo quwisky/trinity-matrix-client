@@ -578,6 +578,43 @@ describe('MessageListComponent', () => {
     expect(st).toBe(JUMPED);
   });
 
+  it('lets a re-aim pass without cancelling the pin for a message just sent', async () => {
+    const { fixture, container } = await renderList({ messages: many(30) });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 0;
+    Object.defineProperties(scroll, {
+      scrollTop: { get: () => st, set: (value: number) => (st = value) },
+      scrollHeight: { value: 3000 },
+      clientHeight: { value: 600 },
+    });
+    Element.prototype.scrollIntoView = vi.fn();
+    cmp.jumpTo('$5');
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+      frames.push(frame);
+      return frames.length;
+    });
+
+    fixture.componentRef.setInput('messages', [
+      ...many(30),
+      messageView({
+        id: '$sent',
+        senderId: '@me:hs',
+        senderName: 'Me',
+        senderInitial: 'M',
+        body: 'sent',
+        timestamp: 999_000,
+        isOwn: true,
+      }),
+    ]);
+    fixture.detectChanges();
+    (cmp as unknown as { reapplyRecentJump(): void }).reapplyRecentJump();
+    for (const frame of frames.splice(0)) frame(0);
+
+    expect(st).toBe(3000);
+  });
+
   it('jumping to a system event hidden in a run expands the run and targets its row', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const event = (id: string, ts: number): MessageView => ({
