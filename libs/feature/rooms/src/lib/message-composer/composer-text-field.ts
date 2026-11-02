@@ -89,11 +89,16 @@ export class ComposerTextField {
     if (!el) {
       return;
     }
+    // Measuring forces a layout with the input collapsed. Were the composer to shrink with it, the
+    // browser would clamp the timeline's scrollTop to the taller viewport and lose a bottom pin.
+    const box = el.parentElement;
+    if (box) box.style.minHeight = `${box.getBoundingClientRect().height}px`;
     el.style.height = 'auto';
     // A wrapping room-name placeholder is not draft content. Keep an empty input at rows=1.
     if (el.value.length > 0) {
       el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
     }
+    box?.style.removeProperty('min-height');
   }
 
   /**
