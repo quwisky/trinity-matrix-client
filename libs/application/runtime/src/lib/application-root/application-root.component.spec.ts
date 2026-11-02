@@ -294,6 +294,23 @@ describe('ApplicationRootComponent', () => {
     expect(fixture.nativeElement.querySelector('router-outlet')).toBeTruthy();
   });
 
+  it('names the slow opening step in everyday words', async () => {
+    vi.useFakeTimers(TIMERS);
+    const { fixture, getByTestId } = await setup({
+      phase: 'starting',
+      attempt: 1,
+      stage: 'workspace-restoration',
+      settlements: [],
+    });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    fixture.detectChanges();
+
+    expect(getByTestId('app-booting').textContent).toContain(
+      'Opening your chats…',
+    );
+  });
+
   it('asks to unlock the keychain when it blocks startup', async () => {
     const { getByTestId } = await setup(
       blocked({
