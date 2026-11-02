@@ -179,6 +179,7 @@
       #composerField
       data-testid="composer-field"
       (pointerdown)="onFieldPress($event)"
+      (mousedown)="onFieldPress($event)"
     >
       <trn-composer-insert-menu
         [contextKey]="roomId()"
@@ -291,6 +292,7 @@
           aria-label="Send message"
           data-testid="composer-send"
           [disabled]="!canSubmit()"
+          (mousedown)="$event.preventDefault()"
           (click)="submit()"
         >
           <trn-icon name="send" motion="nudge-up-right" />

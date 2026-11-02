@@ -10,7 +10,9 @@ import {
 import { type MediaTransferEvent } from '@trinity/data-access/media';
 import { TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { Observable, Subject, of, throwError } from 'rxjs';
+import { EMPTY, Observable, Subject, of, throwError } from 'rxjs';
+import { DraftStoreService } from '@trinity/platform-native';
+import { conversationDraftKey } from '@trinity/data-access/timeline';
 import {
   afterEach,
   beforeEach,
@@ -27,6 +29,7 @@ import { RoomShellStore } from './room-shell-store';
 import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
+import type { Mention } from '@trinity/util/matrix';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 
 /**
@@ -84,6 +87,12 @@ describe('MessageActionsService', () => {
   const loadOlder = vi.fn(() => of(undefined));
   const setTyping = vi.fn();
   const setDraft = vi.fn();
+  const draft = signal('');
+  const cancelIntent = vi.fn();
+  const beginReply = vi.fn();
+  const timelineMessages = signal<
+    { id: string; body: string; status: 'failed' | null; isOwn: boolean }[]
+  >([]);
   const submitText = vi.fn<() => Observable<ConversationTextSendOutcome>>(() =>
     of({ kind: 'sent', eventId: '$sent' }),
   );
@@ -92,7 +101,28 @@ describe('MessageActionsService', () => {
   });
   const toastShow = vi.fn();
   const mediaSend = vi.fn<() => Observable<MediaTransferEvent>>();
-  const conversation = { media: { send: mediaSend } };
+  const compose = {
+    setDraft,
+    draft,
+    submit: submitText,
+    setTyping,
+    intent,
+    cancelIntent,
+  };
+  const key = { accountId: '@me:hs', roomId: '!r:hs' };
+  const holdWaiting = vi.fn();
+  const releaseWaiting = vi.fn();
+  const conversation = {
+    key,
+    media: { send: mediaSend },
+    compose,
+    messages: { redact, toggleReaction, retry, cancel, beginReply },
+    timeline: { messages: timelineMessages },
+  };
+  // The runtime's `focused()` follows the room the person is in; tests move it to another room.
+  let focusedConversation: unknown = conversation;
+  const currentCompose = () =>
+    (focusedConversation as typeof conversation).compose;
   let roomEncrypted = false;
 
   const MOCKS: Provider[] = [
@@ -101,6 +131,7 @@ describe('MessageActionsService', () => {
       useValue: {
         loadOlder,
         setTyping,
+        messages: timelineMessages,
         openRoomId: null,
         get roomEncrypted() {
           return roomEncrypted;
@@ -111,8 +142,21 @@ describe('MessageActionsService', () => {
       provide: ConversationRuntime,
       useFactory: () => ({
         timeline: inject(ConversationTimelineStub),
-        focused: () => conversation,
-        compose: { setDraft, submit: submitText, setTyping, intent },
+        focused: () => focusedConversation,
+        // Like the runtime's proxy, it follows whichever room is focused.
+        compose: {
+          draft: () => currentCompose().draft(),
+          intent: () => currentCompose().intent(),
+          setDraft: (text: string) => currentCompose().setDraft(text),
+          cancelIntent: () => currentCompose().cancelIntent(),
+          submit: (mentions?: Mention[]) =>
+            (
+              currentCompose().submit as (
+                m?: Mention[],
+              ) => ReturnType<typeof submitText>
+            )(mentions),
+          setTyping: (typing: boolean) => currentCompose().setTyping(typing),
+        },
         messages: { redact, toggleReaction, retry, cancel },
         pins: { isPinned, pin, unpin },
       }),
@@ -123,6 +167,7 @@ describe('MessageActionsService', () => {
       sendSticker,
     }),
     MockProvider(RoomLibraryService),
+    MockProvider(DraftStoreService, { holdWaiting, releaseWaiting }),
     MockProvider(TrnToastService, { show: toastShow }),
     MockProvider(AccountRoutingService),
     MockProvider(MemberActionsService),
@@ -179,7 +224,15 @@ describe('MessageActionsService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // `clearAllMocks` keeps implementations, which would leak between tests.
+    setDraft.mockReset();
+    cancelIntent.mockReset();
+    retry.mockReset().mockImplementation(() => applied('retry'));
     roomEncrypted = false;
+    focusedConversation = conversation;
+    draft.set('');
+    timelineMessages.set([]);
+    intent.set({ kind: 'message' });
   });
 
   describe('sending', () => {
@@ -394,6 +447,341 @@ describe('MessageActionsService', () => {
         'Could not delete the message.',
         expect.objectContaining({ variant: 'danger' }),
       );
+    });
+  });
+
+  describe('retrying a failed send', () => {
+    // A failed send puts its text (and a reply target) back in the composer and leaves the row
+    // offering Retry, so the same words sit in two places and sending both posts them twice.
+    const failedRow = (id: string, body = 'echo body differs') =>
+      ({ id, body, status: 'failed', isOwn: true }) as const;
+
+    /**
+     * Send `text` and have the runtime reject it. `restored` is what the runtime leaves in the
+     * box (it skips restoring over text typed meanwhile); `echo` is the failed row it leaves.
+     */
+    function failSend(
+      actions: MessageActionsService,
+      text: string,
+      {
+        restored = text,
+        echo = failedRow('$1'),
+      }: { restored?: string; echo?: ReturnType<typeof failedRow> | null } = {},
+    ): void {
+      submitText.mockImplementationOnce(() => {
+        draft.set(restored);
+        if (echo) timelineMessages.update((rows) => [...rows, echo]);
+        return of({
+          kind: 'rejected',
+          failure: 'send-rejected',
+          retryable: true,
+        } satisfies ConversationTextSendOutcome);
+      });
+      actions.onSend({ body: text, mentions: [] });
+      setDraft.mockClear();
+    }
+
+    const rejectedRetry = of({
+      kind: 'rejected',
+      operation: 'retry',
+      failure: 'not-allowed',
+      retryable: true,
+    } satisfies ConversationMessageOutcome);
+
+    it('clears the box on the Retry tap, before the retry settles, for any kind of text', () => {
+      const { actions } = build();
+      failSend(actions, '/me waves **hard**');
+      retry.mockReturnValueOnce(new Subject<ConversationMessageOutcome>());
+
+      actions.onRetry('$1');
+
+      expect(setDraft).toHaveBeenCalledWith('');
+    });
+
+    it('leaves the box alone when the person has edited the restored text', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      draft.set('hello there');
+
+      actions.onRetry('$1');
+
+      expect(retry).toHaveBeenCalledWith('$1');
+      expect(setDraft).not.toHaveBeenCalled();
+    });
+
+    it('keeps text typed while the send was in flight, which the runtime did not overwrite', () => {
+      const { actions } = build();
+      failSend(actions, 'hello', { restored: 'next message' });
+
+      actions.onRetry('$1');
+
+      expect(setDraft).not.toHaveBeenCalled();
+      expect(draft()).toBe('next message');
+    });
+
+    it('puts the text back when the retry fails again with a typed rejection', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      retry.mockReturnValueOnce(rejectedRetry);
+
+      actions.onRetry('$1');
+
+      expect(draft()).toBe('hello');
+    });
+
+    it('puts the text back when the retry throws', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      retry.mockReturnValueOnce(throwError(() => new Error('nope')));
+
+      actions.onRetry('$1');
+
+      expect(draft()).toBe('hello');
+    });
+
+    it('does not clear again on a second Retry, even if the same text is typed back', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      actions.onRetry('$1');
+      draft.set('hello');
+      setDraft.mockClear();
+
+      actions.onRetry('$1');
+
+      expect(setDraft).not.toHaveBeenCalled();
+    });
+
+    it('cancels the reply the failed send restored, and brings it back if the retry fails', () => {
+      const { actions } = build();
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      intent.set({ kind: 'reply', eventId: '$parent' });
+      failSend(actions, 'hello');
+      retry.mockReturnValueOnce(rejectedRetry);
+      cancelIntent.mockImplementationOnce(() =>
+        intent.set({ kind: 'message' }),
+      );
+
+      actions.onRetry('$1');
+
+      expect(cancelIntent).toHaveBeenCalledTimes(1);
+      expect(beginReply).toHaveBeenCalledWith('$parent');
+    });
+
+    it('does not bring the reply back when the retry goes out', () => {
+      const { actions } = build();
+      intent.set({ kind: 'reply', eventId: '$parent' });
+      failSend(actions, 'hello');
+
+      actions.onRetry('$1');
+
+      expect(beginReply).not.toHaveBeenCalled();
+    });
+
+    it('never touches an edit in progress', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      intent.set({ kind: 'edit', eventId: '$other' });
+      draft.set('hello');
+
+      actions.onRetry('$1');
+
+      expect(setDraft).not.toHaveBeenCalled();
+      expect(cancelIntent).not.toHaveBeenCalled();
+    });
+
+    it('does not pair a rejection that left no echo with an older failed row', () => {
+      const { actions } = build();
+      timelineMessages.set([failedRow('$old', 'older failure')]);
+      failSend(actions, 'unsent text', { echo: null });
+
+      actions.onRetry('$old');
+
+      expect(setDraft).not.toHaveBeenCalled();
+      expect(draft()).toBe('unsent text');
+    });
+
+    it('does not record a failed edit', () => {
+      const { actions } = build();
+      timelineMessages.set([failedRow('$old', 'older failure')]);
+      intent.set({ kind: 'edit', eventId: '$mine' });
+      failSend(actions, 'edited text', { echo: null });
+
+      actions.onRetry('$old');
+
+      expect(setDraft).not.toHaveBeenCalled();
+    });
+
+    it('acts on the failed message\u2019s own room when the person has moved on', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      const subject = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(subject);
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      actions.onRetry('$1');
+      expect(draft()).toBe('');
+
+      // The runtime now follows another room, whose box holds identical text.
+      const otherSetDraft = vi.fn();
+      focusedConversation = {
+        ...conversation,
+        compose: {
+          ...compose,
+          setDraft: otherSetDraft,
+          draft: signal('hello'),
+        },
+      };
+      subject.error(new Error('nope'));
+
+      expect(draft()).toBe('hello');
+      expect(otherSetDraft).not.toHaveBeenCalled();
+    });
+
+    it('brings the reply back only when the text came back with it', () => {
+      const { actions } = build();
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      intent.set({ kind: 'reply', eventId: '$parent' });
+      failSend(actions, 'hello');
+      const subject = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(subject);
+      cancelIntent.mockImplementationOnce(() =>
+        intent.set({ kind: 'message' }),
+      );
+      actions.onRetry('$1');
+      // The person starts a new message while the retry hangs, then it fails.
+      draft.set('new text');
+
+      subject.next({
+        kind: 'rejected',
+        operation: 'retry',
+        failure: 'not-allowed',
+        retryable: true,
+      });
+
+      expect(beginReply).not.toHaveBeenCalled();
+      expect(draft()).toBe('new text');
+    });
+
+    it('keeps the text in the saved drafts until the retry goes out', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      const subject = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(subject);
+
+      actions.onRetry('$1');
+
+      const draftKey = conversationDraftKey(key);
+      expect(holdWaiting).toHaveBeenCalledWith(draftKey, '$1', 'hello');
+      expect(releaseWaiting).not.toHaveBeenCalled();
+
+      subject.next({ kind: 'applied', operation: 'retry' });
+      subject.complete();
+
+      expect(releaseWaiting).toHaveBeenCalledWith(draftKey, '$1');
+    });
+
+    it('lets go of the held text when the retry fails and the text returns to the box', () => {
+      const { actions } = build();
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      failSend(actions, 'hello');
+      retry.mockReturnValueOnce(throwError(() => new Error('nope')));
+
+      actions.onRetry('$1');
+
+      expect(releaseWaiting).toHaveBeenCalledWith(
+        conversationDraftKey(key),
+        '$1',
+      );
+    });
+
+    it('lets go of the held text however the retry ends', () => {
+      const refusal = {
+        kind: 'rejected',
+        operation: 'retry',
+        failure: 'not-allowed',
+        retryable: true,
+      } satisfies ConversationMessageOutcome;
+      const endings: [string, () => Observable<ConversationMessageOutcome>][] =
+        [
+          ['applied', () => of({ kind: 'applied', operation: 'retry' })],
+          ['refused', () => of(refusal)],
+          ['thrown', () => throwError(() => new Error('nope'))],
+          ['completed empty', () => EMPTY],
+        ];
+      for (const [, ending] of endings) {
+        releaseWaiting.mockClear();
+        timelineMessages.set([]);
+        draft.set('');
+        const { actions } = build();
+        failSend(actions, 'hello');
+        retry.mockReturnValueOnce(ending());
+
+        actions.onRetry('$1');
+
+        expect(releaseWaiting).toHaveBeenCalledTimes(1);
+        expect(releaseWaiting).toHaveBeenCalledWith(
+          conversationDraftKey(key),
+          '$1',
+        );
+        TestBed.resetTestingModule();
+      }
+    });
+
+    it('lets go of the held text when the page goes away mid-retry', () => {
+      const { actions, destroy } = build();
+      failSend(actions, 'hello');
+      retry.mockReturnValueOnce(new Subject<ConversationMessageOutcome>());
+      actions.onRetry('$1');
+      expect(releaseWaiting).not.toHaveBeenCalled();
+
+      destroy();
+
+      expect(releaseWaiting).toHaveBeenCalledWith(
+        conversationDraftKey(key),
+        '$1',
+      );
+    });
+
+    it('puts the text back when a retry completes without an answer', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      retry.mockReturnValueOnce(EMPTY);
+
+      actions.onRetry('$1');
+
+      expect(draft()).toBe('hello');
+    });
+
+    it('takes no hold, and frees none, for a second Retry that cleared nothing', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      const first = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(first);
+      actions.onRetry('$1');
+      expect(holdWaiting).toHaveBeenCalledTimes(1);
+      // The box is empty now, so a second tap clears nothing; it ends before the first.
+      retry.mockReturnValueOnce(of({ kind: 'applied', operation: 'retry' }));
+
+      actions.onRetry('$1');
+
+      expect(holdWaiting).toHaveBeenCalledTimes(1);
+      expect(releaseWaiting).not.toHaveBeenCalled();
+      first.next({ kind: 'applied', operation: 'retry' });
+      first.complete();
+      expect(releaseWaiting).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not touch the box when a failed message is deleted, and forgets it', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+
+      actions.onDelete('$1');
+      actions.onRetry('$1');
+
+      expect(setDraft).not.toHaveBeenCalled();
     });
   });
 

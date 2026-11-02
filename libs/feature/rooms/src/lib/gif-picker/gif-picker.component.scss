@@ -45,9 +45,11 @@
     background: var(--trinity-surface-workspace);
     cursor: pointer;
 
-    &:hover {
-      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-      outline-offset: calc(-1 * var(--trinity-focus-ring-offset));
+    @media (hover: hover) {
+      &:hover {
+        outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+        outline-offset: calc(-1 * var(--trinity-focus-ring-offset));
+      }
     }
   }
 

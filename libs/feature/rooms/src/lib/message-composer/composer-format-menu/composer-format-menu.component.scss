@@ -18,9 +18,11 @@
     font-weight: 700;
   }
 
-  .composer__format:hover:where(:not(:disabled)) {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
+  @media (hover: hover) {
+    .composer__format:hover:where(:not(:disabled)) {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
   }
 
   .composer__format:focus-visible {

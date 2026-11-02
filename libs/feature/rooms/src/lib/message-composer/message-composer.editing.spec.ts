@@ -506,6 +506,24 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
       expect(event.defaultPrevented).toBe(true);
     });
 
+    // iOS WebKit still sends the compatibility `mousedown` after a cancelled `pointerdown`, and
+    // its default moves focus off the textarea: a tap on the field's padding, or on a disabled
+    // Send that lets the tap through, closed the keyboard.
+    it('also cancels the mousedown that follows a press on the field itself', async () => {
+      const { fixture, container } = await renderComposer();
+      const { field, input } = parts(container);
+
+      const event = new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+      });
+      field.dispatchEvent(event);
+      fixture.detectChanges();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(input);
+    });
+
     it('leaves a press that started on the input alone', async () => {
       // The guard is what keeps the browser's own caret placement and drag-selection working:
       // cancel the press that lands IN the textarea and clicking mid-draft stops moving the
@@ -535,6 +553,30 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
       fixture.detectChanges();
 
       expect(event.defaultPrevented).toBe(false);
+    });
+
+    // A mouse or touch press on Send would otherwise move focus to the button and close the
+    // on-screen keyboard; the click still fires, so Send works with or without field focus.
+    it('keeps focus in the field when Send is pressed, and still sends on click', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const sent: string[] = [];
+      cmp.submitText.subscribe((e) => sent.push(e.text));
+      const send = container.querySelector<HTMLButtonElement>(
+        '[data-testid="composer-send"]',
+      );
+      cmp.text.set('hello');
+      fixture.detectChanges();
+
+      const press = new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+      });
+      send?.dispatchEvent(press);
+      send?.click();
+
+      expect(press.defaultPrevented).toBe(true);
+      expect(sent).toEqual(['hello']);
     });
   });
 });

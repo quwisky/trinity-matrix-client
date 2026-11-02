@@ -1,5 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { RecentEmojiService } from '@trinity/data-access/media';
+import { DateTimeFormatService } from '@trinity/platform-native';
+import { hasUsableTimestamp } from '@trinity/util/matrix';
 import {
   TrnSurfaceService,
   type TrnActionSheetRef,
@@ -70,6 +72,7 @@ type PayloadFreeAction = Exclude<
 export class MessageActionSheetService {
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly recentEmoji = inject(RecentEmojiService);
+  private readonly fmt = inject(DateTimeFormatService);
   private ref: TrnActionSheetRef | null = null;
   private owner: object | null = null;
   private viewport: MessageSheetViewportSession | null = null;
@@ -86,6 +89,7 @@ export class MessageActionSheetService {
     caps: MessageRowCaps,
     dispatch: (action: MessageRowAction) => void,
     context?: MessageLongPressContext,
+    timestamp?: number,
   ): void {
     let viewport: MessageSheetViewportSession | null = null;
     const run = (action: MessageRowAction) => {
@@ -223,6 +227,12 @@ export class MessageActionSheetService {
     this.owner = owner;
     const ref = this.surfaces.openActions(
       {
+        // The row's time is hover-only on a grouped message, so a touch screen has no other way
+        // to read it.
+        header:
+          timestamp !== undefined && hasUsableTimestamp(timestamp)
+            ? this.fmt.dateTime(timestamp)
+            : undefined,
         buttons,
         reactions: (caps.canRespond ? QUICK_SHEET_REACTIONS : []).map(
           (key) => ({

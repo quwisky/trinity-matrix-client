@@ -4,14 +4,26 @@ import { type WorkspaceRoomNavigationOrigin } from '@trinity/application/workspa
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
+  type ConversationHandle,
+  conversationDraftKey,
   type ConversationMessageOutcome,
   ConversationRuntime,
   TimelineActionsService,
 } from '@trinity/data-access/timeline';
+import { DraftStoreService } from '@trinity/platform-native';
 import { type Mention } from '@trinity/util/matrix';
 import { latestGuard } from '@trinity/util/ui';
 import type { ImagePackImage } from '@trinity/data-access/media';
-import { Observable, filter, switchMap, throwError } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defaultIfEmpty,
+  finalize,
+  filter,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import {
@@ -32,6 +44,12 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 
+/** What a rejected send put back for its failed row: the text, and the reply it was aimed at. */
+interface Restored {
+  readonly text: string;
+  readonly replyTo: string | null;
+}
+
 /**
  * Everything done to or from a message: sending, editing, deleting, reacting, replying,
  * polls, attachments, threads, pins, in-room search, and following a matrix.to link.
@@ -46,6 +64,7 @@ export class MessageActionsService {
   private readonly routing = inject(AccountRoutingService);
   private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
+  private readonly drafts = inject(DraftStoreService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly jumpToDateSvc = inject(JumpToDateService);
   private readonly conversations = inject(ConversationRuntime);
@@ -66,6 +85,10 @@ export class MessageActionsService {
 
   /** Identity allocator and current owner for the progress signal shared by rooms. */
   private readonly uploads = latestGuard();
+  private readonly restored = new WeakMap<
+    ConversationHandle,
+    Map<string, Restored>
+  >();
 
   /**
    * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
@@ -248,12 +271,27 @@ export class MessageActionsService {
   onSend({ body, mentions }: { body: string; mentions: Mention[] }): void {
     // The runtime clears durable intent only after the SDK accepts the event and exposes
     // its authoritative local echo. Rejections and cancellation restore it for retry.
+    const handle = this.conversations.focused();
     this.compose.setDraft(body);
     const editing = this.compose.intent().kind === 'edit';
+    // Failures that predate this send, so a rejection that left no echo pairs with none of them.
+    const failedBefore = new Set(
+      handle?.timeline
+        .messages()
+        .filter((m) => m.status === 'failed')
+        .map((m) => m.id),
+    );
     this.compose
       .submit(mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
+        if (
+          !editing &&
+          outcome.kind === 'rejected' &&
+          outcome.failure === 'send-rejected'
+        ) {
+          this.rememberRestoredText(handle, body, failedBefore);
+        }
         // A failed message keeps its echo to retry from; a failed edit's echo is gone. A second
         // Enter while one is pending, or an empty draft, tried nothing.
         if (
@@ -265,6 +303,34 @@ export class MessageActionsService {
           void this.status.showError('Could not edit the message.');
         }
       });
+  }
+
+  /**
+   * A rejected send restores its text to the box and leaves a failed echo. Pair the two, so Retry
+   * can tell the restored text from anything typed since, whatever the echo's body became
+   * (`/me`, markdown, trimming).
+   */
+  private rememberRestoredText(
+    handle: ConversationHandle | null,
+    body: string,
+    failedBefore: ReadonlySet<string>,
+  ): void {
+    // The runtime leaves text typed during the send alone; that is not the restored text.
+    if (!handle || handle.compose.draft() !== body) return;
+    const known = this.restored.get(handle) ?? new Map<string, Restored>();
+    const echo = handle.timeline
+      .messages()
+      .filter(
+        (m) => m.isOwn && m.status === 'failed' && !failedBefore.has(m.id),
+      )
+      .at(-1);
+    if (!echo) return;
+    const intent = handle.compose.intent();
+    known.set(echo.id, {
+      text: body,
+      replyTo: intent.kind === 'reply' ? intent.eventId : null,
+    });
+    this.restored.set(handle, known);
   }
 
   onSendSticker(sticker: ImagePackImage): void {
@@ -372,6 +438,8 @@ export class MessageActionsService {
   // Delete/react have no visible local echo, so a failure would otherwise be
   // silent — surface it as a toast.
   onDelete(messageId: string): void {
+    const handle = this.conversations.focused();
+    if (handle) this.restored.get(handle)?.delete(messageId);
     this.runMessageAction(
       this.messageCommands.redact(messageId),
       'Could not delete the message.',
@@ -386,8 +454,63 @@ export class MessageActionsService {
   }
 
   onRetry(messageId: string): void {
+    // The runtime's `compose` follows the focused room, which can change before a slow retry
+    // settles; the handle pinned here is the failed message's own account and room.
+    const handle = this.conversations.focused();
+    const records = handle && this.restored.get(handle);
+    const restored = records?.get(messageId);
+    const compose = handle?.compose;
+    // The restored text sits in the box beside the row's Retry; once the retry goes out, leaving
+    // it there lets Send post it twice. Edited text is the person's and stays.
+    const draftKey = handle && conversationDraftKey(handle.key);
+    let cleared = false;
+    if (
+      handle &&
+      compose &&
+      restored &&
+      draftKey &&
+      compose.intent().kind !== 'edit' &&
+      compose.draft() === restored.text
+    ) {
+      // A reload drops the failed row, and with it the only other copy of the text, so the saved
+      // drafts keep it (as for a message waiting offline) while this retry is in flight.
+      this.drafts.holdWaiting(draftKey, messageId, restored.text);
+      compose.setDraft('');
+      if (compose.intent().kind === 'reply') compose.cancelIntent();
+      cleared = true;
+    }
+    const undo = () => {
+      if (!cleared || !handle || !compose || !restored) return;
+      // Text typed meanwhile is the person's; the reply goes back only with the text it belongs to.
+      if (compose.draft() !== '') return;
+      compose.setDraft(restored.text);
+      if (restored.replyTo && compose.intent().kind === 'message') {
+        handle.messages.beginReply(restored.replyTo);
+      }
+    };
     this.runMessageAction(
-      this.messageCommands.retry(messageId),
+      this.messageCommands.retry(messageId).pipe(
+        // A retry that ends without an answer sent nothing we know of: treat it as refused, so
+        // the box is never left silently cleared.
+        defaultIfEmpty<ConversationMessageOutcome, null>(null),
+        tap((outcome) => {
+          if (outcome?.kind === 'applied') records?.delete(messageId);
+          else undo();
+        }),
+        filter((outcome): outcome is ConversationMessageOutcome => !!outcome),
+        catchError((error: unknown) => {
+          undo();
+          return throwError(() => error);
+        }),
+        // The hold lasts while this one retry is in flight, and ends with it however it ends,
+        // the page going away included (the resend still goes out). Only the tap that took it
+        // lets it go.
+        finalize(() => {
+          if (cleared && draftKey) {
+            this.drafts.releaseWaiting(draftKey, messageId);
+          }
+        }),
+      ),
       'Could not retry the message.',
     );
   }

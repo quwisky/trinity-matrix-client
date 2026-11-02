@@ -290,6 +290,7 @@ export class ThreadViewComponent implements OnDestroy {
       this.rowCaps(row),
       (action) => this.onRowAction(row, action),
       context,
+      row.timestamp,
     );
   }
 

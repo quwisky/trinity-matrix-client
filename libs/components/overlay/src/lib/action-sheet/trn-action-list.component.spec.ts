@@ -144,6 +144,22 @@ describe('TrnActionListComponent', () => {
       ).toBeTruthy();
     });
 
+    it('keeps the ariaLabel as the menu name when a header is also shown', () => {
+      surfaces.openActions(
+        {
+          header: 'Today 3:41 PM',
+          buttons: [{ text: 'Reply', handler: vi.fn() }],
+        },
+        { anchor: opener, ariaLabel: 'Message actions' },
+      );
+      tick();
+
+      expect(
+        screen.getByRole('menu', { name: 'Message actions' }),
+      ).toBeTruthy();
+      expect(screen.getByText('Today 3:41 PM')).toBeTruthy();
+    });
+
     it('lets Tab walk from the reactions into the menu rows and back', () => {
       surfaces.openActions(data(), { anchor: opener });
       tick();

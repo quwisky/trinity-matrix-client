@@ -127,13 +127,15 @@
       color: var(--trinity-text-muted);
     }
 
-    &:hover {
-      trn-avatar {
-        opacity: 1;
-      }
+    @media (hover: hover) {
+      &:hover {
+        trn-avatar {
+          opacity: 1;
+        }
 
-      .member__name {
-        color: var(--trinity-text);
+        .member__name {
+          color: var(--trinity-text);
+        }
       }
     }
   }

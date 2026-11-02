@@ -4,6 +4,7 @@ import {
   type ActionSheetReaction,
 } from '@trinity/components/overlay';
 import { RecentEmojiService } from '@trinity/data-access/media';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -43,6 +44,36 @@ describe('MessageActionSheetService', () => {
 
     sheet.open({}, { addToEmoji: true } as SheetCaps, vi.fn());
     expect(testIds).toContain('sheet-add-to-emoji');
+  });
+
+  // A grouped message shows its time only on hover, which a touch screen never has.
+  it('headlines the sheet with the message time, and leaves a timeless message bare', () => {
+    const headers: (string | undefined)[] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        MockProvider(RecentEmojiService, { record: vi.fn() }),
+        MockProvider(DateTimeFormatService, {
+          dateTime: vi.fn((ts: number) => `time ${ts}`),
+        }),
+        MockProvider(TrnSurfaceService, {
+          openActions: vi.fn((options: { header?: string }) => {
+            headers.push(options.header);
+            return {
+              presentation: 'sheet',
+              closed: new Subject<void>(),
+              close: vi.fn(),
+            } as never;
+          }),
+        }),
+      ],
+    });
+    const sheet = TestBed.inject(MessageActionSheetService);
+
+    sheet.open({}, {} as SheetCaps, vi.fn(), undefined, 1_700_000_000_000);
+    sheet.open({}, {} as SheetCaps, vi.fn(), undefined, 0);
+    sheet.open({}, {} as SheetCaps, vi.fn());
+
+    expect(headers).toEqual(['time 1700000000000', undefined, undefined]);
   });
 
   it('offers no reply or reaction on an unsent message', () => {

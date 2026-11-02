@@ -12,6 +12,7 @@ import {
   catchError,
   defer,
   finalize,
+  firstValueFrom,
   from,
   map,
   of,
@@ -22,6 +23,14 @@ import {
 } from 'rxjs';
 
 const NATIVE_BADGE_OPERATION_TIMEOUT_MS = 5_000;
+
+type BadgeState = 'unsupported' | 'prompt' | 'granted' | 'denied';
+
+function withinTimeout<T>(call: Promise<T>): Promise<T> {
+  return firstValueFrom(
+    from(call).pipe(timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS })),
+  );
+}
 
 /**
  * iOS / Android app-icon badge sink, called by {@link AppBadgeService} only on a native
@@ -35,13 +44,18 @@ const NATIVE_BADGE_OPERATION_TIMEOUT_MS = 5_000;
 @Injectable({ providedIn: 'root' })
 export class MobileBadgeService implements HostBadgeOperation {
   /** Finite readiness results are memoized; a failed or timed-out attempt is retryable. */
-  private ready?: boolean;
-  private readiness?: Observable<boolean>;
+  private state?: BadgeState;
+  private readiness?: Observable<BadgeState>;
+  private prompting?: Observable<BadgeState>;
 
+  /**
+   * Whether badges can work, without asking the person: startup waits on this under a deadline,
+   * and the permission prompt waits on them. The prompt itself happens in {@link set}.
+   */
   support(): Observable<HostCapabilitySupport> {
     return defer(() => this.ensureReady()).pipe(
-      map((ready) =>
-        ready
+      map((state) =>
+        state === 'prompt' || state === 'granted'
           ? ({ kind: 'supported' } as const)
           : ({ kind: 'unavailable', reason: 'not-supported' } as const),
       ),
@@ -65,11 +79,33 @@ export class MobileBadgeService implements HostBadgeOperation {
       switchMap((support) =>
         support.kind === 'unavailable'
           ? of(support)
-          : defer(() =>
-              from(count > 0 ? Badge.set({ count }) : Badge.clear()),
-            ).pipe(
-              map(() => ({ kind: 'completed' }) as const),
-              timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS }),
+          : defer(() => this.ensureReady()).pipe(
+              // Nothing is showing before the first unread count, so there is nothing to clear
+              // and no reason to ask yet.
+              switchMap((state) =>
+                state === 'prompt' && count <= 0
+                  ? of(state)
+                  : state === 'prompt'
+                    ? this.requestPermission()
+                    : of(state),
+              ),
+              switchMap((state) =>
+                state === 'granted'
+                  ? defer(() =>
+                      from(count > 0 ? Badge.set({ count }) : Badge.clear()),
+                    ).pipe(
+                      map(() => ({ kind: 'completed' }) as const),
+                      timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS }),
+                    )
+                  : of(
+                      state === 'prompt'
+                        ? ({ kind: 'completed' } as const)
+                        : ({
+                            kind: 'unavailable',
+                            reason: 'not-supported',
+                          } as const),
+                    ),
+              ),
               catchError((error: unknown) =>
                 of({
                   kind: 'rejected',
@@ -86,13 +122,12 @@ export class MobileBadgeService implements HostBadgeOperation {
     );
   }
 
-  private ensureReady(): Observable<boolean> {
-    if (this.ready !== undefined) return of(this.ready);
+  private ensureReady(): Observable<BadgeState> {
+    if (this.state !== undefined) return of(this.state);
     if (this.readiness) return this.readiness;
 
     const readiness = defer(() => from(this.probe())).pipe(
-      timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS }),
-      tap((ready) => (this.ready = ready)),
+      tap((state) => (this.state = state)),
       finalize(() => {
         if (this.readiness === readiness) this.readiness = undefined;
       }),
@@ -102,20 +137,35 @@ export class MobileBadgeService implements HostBadgeOperation {
     return readiness;
   }
 
-  private async probe(): Promise<boolean> {
+  /** One system prompt at a time; it waits as long as the person takes, with no time limit. */
+  private requestPermission(): Observable<BadgeState> {
+    if (this.prompting) return this.prompting;
+    const prompting = defer(() => from(Badge.requestPermissions())).pipe(
+      map(({ display }): BadgeState =>
+        display === 'granted' ? 'granted' : 'denied',
+      ),
+      tap((state) => (this.state = state)),
+      finalize(() => (this.prompting = undefined)),
+      shareReplay({ bufferSize: 1, refCount: false }),
+    );
+    this.prompting = prompting;
+    return prompting;
+  }
+
+  private async probe(): Promise<BadgeState> {
     if (
       !Capacitor.isNativePlatform() ||
       !Capacitor.isPluginAvailable('Badge')
     ) {
-      return false;
+      return 'unsupported';
     }
-    const { isSupported } = await Badge.isSupported();
-    if (!isSupported) {
-      return false;
-    }
-    // iOS prompts for the `badge` authorization once; Android resolves granted without a
-    // prompt. Request rather than only check so first use can grant it.
-    const { display } = await Badge.requestPermissions();
-    return display === 'granted';
+    const { isSupported } = await withinTimeout(Badge.isSupported());
+    if (!isSupported) return 'unsupported';
+    const { display } = await withinTimeout(Badge.checkPermissions());
+    return display === 'granted'
+      ? 'granted'
+      : display === 'denied'
+        ? 'denied'
+        : 'prompt';
   }
 }

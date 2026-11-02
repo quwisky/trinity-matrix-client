@@ -43,9 +43,14 @@
     cursor: pointer;
   }
 
-  .picker__manage:hover,
   .picker__manage:focus-visible {
     background: var(--trinity-hover);
+  }
+
+  @media (hover: hover) {
+    .picker__manage:hover {
+      background: var(--trinity-hover);
+    }
   }
 
   .picker__search {
@@ -120,9 +125,14 @@
     cursor: pointer;
   }
 
-  .picker__item:hover,
   .picker__item:focus-visible {
     background: var(--trinity-state-hover-surface);
+  }
+
+  @media (hover: hover) {
+    .picker__item:hover {
+      background: var(--trinity-state-hover-surface);
+    }
   }
 
   .picker__item trn-sticker-image {

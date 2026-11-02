@@ -44,9 +44,11 @@
       background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
       color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-    &:hover:where(:not(:disabled)) {
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
+    @media (hover: hover) {
+      &:hover:where(:not(:disabled)) {
+        background: var(--trinity-state-hover-surface);
+        color: var(--trinity-state-hover-foreground);
+      }
     }
 
     &:active:where(:not(:disabled)) {
@@ -89,9 +91,11 @@
       background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
       color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-    &:hover:where(:not(:disabled)) {
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
+    @media (hover: hover) {
+      &:hover:where(:not(:disabled)) {
+        background: var(--trinity-state-hover-surface);
+        color: var(--trinity-state-hover-foreground);
+      }
     }
 
     &:active:where(:not(:disabled)) {
@@ -106,8 +110,10 @@
     }
   }
 
-  .toolbar__btn--danger:hover {
-    color: var(--trinity-danger);
+  @media (hover: hover) {
+    .toolbar__btn--danger:hover {
+      color: var(--trinity-danger);
+    }
   }
 
   // Touch targets: the shared interaction minimum becomes 44px wherever a finger can reach

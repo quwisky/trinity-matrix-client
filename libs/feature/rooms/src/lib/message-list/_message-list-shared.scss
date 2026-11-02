@@ -106,9 +106,11 @@
     cursor: pointer;
     box-shadow: var(--trinity-shadow-floating);
 
-    &:hover {
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-state-hover-surface);
+        color: var(--trinity-state-hover-foreground);
+      }
     }
 
     &:active {
