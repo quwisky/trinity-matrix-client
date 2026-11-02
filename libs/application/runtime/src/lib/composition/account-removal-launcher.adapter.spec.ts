@@ -9,8 +9,10 @@ import {
   type TrnAlertChoice,
 } from '@trinity/components/overlay';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
   ACCOUNT_REMOVAL_CONSEQUENCES,
   AccountRuntimeService,
+  MENTION_HISTORY_LOSS,
   ROOM_KEYS_AT_RISK,
   ROOM_KEYS_MAY_BE_LOST,
   type AccountSignOutOutcome,
@@ -32,6 +34,8 @@ interface Options {
   readonly signOut?: AccountSignOutOutcome;
   /** The sign-out's own stream, when a test settles it by hand. */
   readonly signOut$?: Observable<AccountSignOutOutcome>;
+  /** The answer to whether the account has mention history. */
+  readonly history?: Observable<boolean>;
 }
 
 function setup(options: Options = {}) {
@@ -46,9 +50,13 @@ function setup(options: Options = {}) {
   const roomKeysBackedUp = vi.fn(() =>
     of(options.backedUp === undefined ? true : options.backedUp),
   );
+  const hasMentionHistory = vi.fn(
+    (_accountId?: string) => options.history ?? of(false),
+  );
   TestBed.configureTestingModule({
     providers: [
       AccountRemovalLauncherAdapter,
+      { provide: ACCOUNT_LIFECYCLE_PORT, useValue: { hasMentionHistory } },
       MockProvider(TrnAlertService, { confirm$: confirm, choose$: choose }),
       MockProvider(TrnToastService, { show }),
       MockProvider(Router, { navigateByUrl }),
@@ -64,6 +72,7 @@ function setup(options: Options = {}) {
     navigateByUrl,
     signOutAccount,
     roomKeysBackedUp,
+    hasMentionHistory,
   };
 }
 
@@ -88,6 +97,46 @@ describe('AccountRemovalLauncherAdapter', () => {
     });
     // A clean removal says nothing.
     expect(test.show).not.toHaveBeenCalled();
+  });
+
+  it('removal adds the sentence only when the account has history', async () => {
+    const { launcher, confirm, hasMentionHistory } = setup({
+      history: of(true),
+    });
+
+    await firstValueFrom(launcher.remove('@me:hs'));
+
+    expect(hasMentionHistory).toHaveBeenCalledExactlyOnceWith('@me:hs');
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: `Account @me:hs\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}\n\n${MENTION_HISTORY_LOSS}`,
+      }),
+    );
+  });
+
+  // The port reads a failed or unanswered count as false; its own spec pins that, at 1 s.
+  it('removal still asks when the count cannot be read, without the sentence', async () => {
+    const { launcher, confirm, signOutAccount } = setup({ history: of(false) });
+
+    await firstValueFrom(launcher.remove('@me:hs'));
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: `Account @me:hs\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}`,
+      }),
+    );
+    expect(signOutAccount).toHaveBeenCalledOnce();
+  });
+
+  it('asks nothing until the history is known', () => {
+    const history = new Subject<boolean>();
+    const { launcher, confirm } = setup({ history });
+
+    launcher.remove('@me:hs').subscribe();
+    expect(confirm).not.toHaveBeenCalled();
+
+    history.next(false);
+    expect(confirm).toHaveBeenCalledOnce();
   });
 
   it('stays in the app when other accounts remain', async () => {

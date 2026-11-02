@@ -2,6 +2,10 @@
 export const ACCOUNT_REMOVAL_CONSEQUENCES =
   'Remove this account from Trinity on this device? Trinity will try to remove its push registration and sign out from its homeserver and identity provider, then delete its credentials, drafts, cached messages and local encryption keys. Other devices, the server account, rooms and messages are not deleted.';
 
+/** Added wherever an action deletes an account's mention history, and only when it has any. */
+export const MENTION_HISTORY_LOSS =
+  "This also deletes this account's mention history on this device.";
+
 /** The extra step before this device deletes room keys that key backup may not hold. */
 export const ROOM_KEYS_AT_RISK =
   'You’ll lose access to encrypted messages on this device. Export your room keys first?';

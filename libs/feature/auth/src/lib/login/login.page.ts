@@ -52,7 +52,11 @@ import {
   type AuthMetadata,
   type RegistrationAvailability,
 } from '@trinity/data-access/auth';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  AccountRuntimeService,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
 import {
   ACCOUNT_DELETION_LAUNCHER,
   ACCOUNT_REMOVAL_LAUNCHER,
@@ -160,6 +164,7 @@ export class LoginPage {
   private readonly accounts = inject(AccountRuntimeService);
   private readonly restart = inject(AppRestartService);
   private readonly accountRemoval = inject(ACCOUNT_REMOVAL_LAUNCHER);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly bugReport = inject(BUG_REPORT_LAUNCHER, { optional: true });
@@ -221,6 +226,18 @@ export class LoginPage {
     this.route.snapshot.queryParamMap.get('device') === 'new',
   );
 
+  private readonly reauthHasMentionHistory = signal(false);
+  /** The stored keys can't be unlocked here, so this re-auth moves to a new device silently. */
+  private readonly reauthMovesDevice = signal(false);
+  /** A sign-in on a new device replaces the old one's store, and its mention history with it. */
+  readonly reauthDeletesMentionHistory = computed(
+    () =>
+      !!this.reauthUserId() &&
+      this.reauthHasMentionHistory() &&
+      (this.reauthAsNewDevice() || this.reauthMovesDevice()),
+  );
+  protected readonly mentionHistoryLoss = MENTION_HISTORY_LOSS;
+
   /**
    * Accounts stored on this device, for the erase confirmation to name: `/login?add` is
    * reachable while accounts are live, so erasing would take them with it.
@@ -248,6 +265,10 @@ export class LoginPage {
     const reauth = this.reauthUserId();
     if (reauth) {
       this.credentials.update((current) => ({ ...current, username: reauth }));
+      this.lifecycle
+        .hasMentionHistory(reauth)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((has) => this.reauthHasMentionHistory.set(has));
       this.withBusy(
         this.storage.record(reauth).pipe(
           switchMap((record) => {
@@ -271,6 +292,7 @@ export class LoginPage {
             return reusable.pipe(
               switchMap((deviceId) => {
                 this.reauthDeviceId = deviceId;
+                this.reauthMovesDevice.set(deviceId === null);
                 return this.discoverCapabilities(record.baseUrl);
               }),
             );

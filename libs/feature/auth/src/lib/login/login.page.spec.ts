@@ -21,7 +21,11 @@ import {
   UnprotectedStorageDeclinedError,
   type NewDeviceState,
 } from '@trinity/data-access/auth';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  AccountRuntimeService,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
 import {
   ACCOUNT_DELETION_LAUNCHER,
   ACCOUNT_REMOVAL_LAUNCHER,
@@ -73,6 +77,8 @@ async function renderLogin(
     record?: unknown;
     /** The device re-auth may reuse; defaults to the record's own. */
     reusableDevice?: string | null;
+    /** Whether the re-authenticating account has mention history here. */
+    mentionHistory?: boolean;
     oidcStore?: Partial<OidcStateStore>;
     /** Overrides for the redirect handoff (cold Observables that complete). */
     redirect?: Partial<SignInRedirectService>;
@@ -128,6 +134,10 @@ async function renderLogin(
     providers: [
       provideHostCapabilities(),
       MockProvider(AuthService, auth),
+      {
+        provide: ACCOUNT_LIFECYCLE_PORT,
+        useValue: { hasMentionHistory: () => of(opts.mentionHistory ?? false) },
+      },
       {
         provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
         useValue: {
@@ -1847,6 +1857,86 @@ describe('LoginPage', () => {
       const plain = await renderLogin(auth, { newDevice: true });
       plain.cmp.baseUrl.set('https://hs.example');
       expect(subtitle(plain.fixture)).toBe('Sign in to your account');
+    });
+
+    describe('mention history', () => {
+      const WITH_LOSS = `${NEW_DEVICE_COPY} ${MENTION_HISTORY_LOSS}`;
+
+      it('device=new re-auth adds the sentence only with history', async () => {
+        const auth = passwordAuth(READY_OUTCOME);
+        const held = await renderLogin(auth, {
+          reauth: '@bob:hs',
+          newDevice: true,
+          record: RECORD,
+          mentionHistory: true,
+        });
+        expect(subtitle(held.fixture)).toBe(WITH_LOSS);
+        expect(held.cmp.reauthDeletesMentionHistory()).toBe(true);
+        TestBed.resetTestingModule();
+
+        const none = await renderLogin(auth, {
+          reauth: '@bob:hs',
+          newDevice: true,
+          record: RECORD,
+        });
+        expect(subtitle(none.fixture)).toBe(NEW_DEVICE_COPY);
+      });
+
+      it('a re-auth whose keys cannot be unlocked adds it too', async () => {
+        const { fixture, cmp } = await renderLogin(
+          passwordAuth(READY_OUTCOME),
+          {
+            reauth: '@bob:hs',
+            record: RECORD,
+            reusableDevice: null,
+            mentionHistory: true,
+          },
+        );
+
+        expect(cmp.reauthDeletesMentionHistory()).toBe(true);
+        expect(subtitle(fixture)).toBe(
+          `Sign in again to reconnect this account. ${MENTION_HISTORY_LOSS}`,
+        );
+      });
+
+      it('a re-auth that keeps its device does not', async () => {
+        const { fixture, cmp } = await renderLogin(
+          passwordAuth(READY_OUTCOME),
+          {
+            reauth: '@bob:hs',
+            record: RECORD,
+            mentionHistory: true,
+          },
+        );
+
+        expect(cmp.reauthDeletesMentionHistory()).toBe(false);
+        expect(subtitle(fixture)).toBe(
+          'Sign in again to reconnect this account',
+        );
+      });
+
+      it('the server deleting the device adds it, in what focus moves to', async () => {
+        const { fixture, cmp } = await renderLogin(passwordAuth(NO_KEYS), {
+          reauth: '@bob:hs',
+          record: RECORD,
+          mentionHistory: true,
+        });
+        expect(subtitle(fixture)).not.toContain(MENTION_HISTORY_LOSS);
+
+        cmp.loginPassword();
+
+        expect(subtitle(fixture)).toBe(WITH_LOSS);
+      });
+
+      it('a plain sign-in has no sentence', async () => {
+        const { fixture, cmp } = await renderLogin(
+          passwordAuth(READY_OUTCOME),
+          { newDevice: true, mentionHistory: true },
+        );
+        cmp.baseUrl.set('https://hs.example');
+
+        expect(subtitle(fixture)).toBe('Sign in to your account');
+      });
     });
 
     it('sends the person to the new-device sign-in after a password re-auth', async () => {

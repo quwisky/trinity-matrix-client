@@ -136,6 +136,14 @@ describe('hasMentionHistory', () => {
     ).resolves.toBe(expected);
   });
 
+  it('with no account, asks about every account on this device', async () => {
+    const count = vi.fn((_accountId?: string) => of(1));
+    const { port } = lifecyclePort('gone', { count });
+
+    await expect(firstValueFrom(port.hasMentionHistory())).resolves.toBe(true);
+    expect(count).toHaveBeenCalledExactlyOnceWith(undefined);
+  });
+
   it('reads as false when the count fails', async () => {
     const { port } = lifecyclePort('gone', {
       count: () => throwError(() => new Error('store blocked')),

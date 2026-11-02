@@ -5,6 +5,10 @@ import { Subject, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
+} from '@trinity/data-access/accounts';
+import {
   ACCOUNT_DELETION_LAUNCHER,
   ACCOUNT_REMOVAL_LAUNCHER,
   ExternalBrowserService,
@@ -17,7 +21,7 @@ import { DeleteAccountDialogComponent } from './delete-account-dialog.component'
 
 const ALICE = '@alice:example.org';
 
-async function setup() {
+async function setup(hasMentionHistory = false) {
   const outcome = new Subject<AccountDeletionOutcome>();
   let prompts: AccountDeletionPrompts | null = null;
   const launcher: Partial<AccountDeletionLauncher> = {
@@ -34,6 +38,10 @@ async function setup() {
     providers: [
       { provide: ACCOUNT_DELETION_LAUNCHER, useValue: launcher },
       { provide: ACCOUNT_REMOVAL_LAUNCHER, useValue: removal },
+      {
+        provide: ACCOUNT_LIFECYCLE_PORT,
+        useValue: { hasMentionHistory: () => of(hasMentionHistory) },
+      },
       MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
       { provide: TrnDialogRef, useValue: { close, titleId: 't' } },
     ],
@@ -407,5 +415,15 @@ describe('DeleteAccountDialogComponent', () => {
     });
     await test.settle();
     await expectNoAxeViolations(test.container);
+  });
+
+  it('says the mention history goes too, only when the account has any', async () => {
+    await setup(true);
+    expect(screen.getByText(MENTION_HISTORY_LOSS)).toBeTruthy();
+  });
+
+  it('leaves that out when the account has none', async () => {
+    await setup();
+    expect(screen.queryByText(MENTION_HISTORY_LOSS)).toBeNull();
   });
 });

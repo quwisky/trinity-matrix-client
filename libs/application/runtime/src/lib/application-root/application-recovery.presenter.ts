@@ -1,9 +1,11 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
   ACCOUNT_REMOVAL_CONSEQUENCES,
   CLEAR_DATA_CONFIRMATION_WORD,
   CLEAR_DATA_MISTYPED_MESSAGE,
+  MENTION_HISTORY_LOSS,
   classifyClearDataIntent,
   clearDataMessage,
 } from '@trinity/data-access/accounts';
@@ -26,23 +28,26 @@ export class ApplicationRecoveryPresenter {
   private readonly runtime = inject(ApplicationRuntimeService);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
 
   confirmAndRecover(
     recovery: ApplicationStartupRecovery,
   ): Observable<ApplicationRecoveryOutcome> {
     if (recovery === 'reauthenticate') {
-      return this.alert
-        .confirm$({
-          header: 'Remove account and sign in again',
-          message: ACCOUNT_REMOVAL_CONSEQUENCES,
-          confirmText: 'Remove account',
-          cancelText: 'Cancel',
-          variant: 'danger',
-        })
-        .pipe(
-          filter(Boolean),
-          switchMap(() => this.runtime.recover(recovery)),
-        );
+      // No account ID is exposed here, so this is the device's total: it can only over-warn.
+      return this.lifecycle.hasMentionHistory().pipe(
+        switchMap((hasHistory) =>
+          this.alert.confirm$({
+            header: 'Remove account and sign in again',
+            message: `${ACCOUNT_REMOVAL_CONSEQUENCES}${hasHistory ? `\n\n${MENTION_HISTORY_LOSS}` : ''}`,
+            confirmText: 'Remove account',
+            cancelText: 'Cancel',
+            variant: 'danger',
+          }),
+        ),
+        filter(Boolean),
+        switchMap(() => this.runtime.recover(recovery)),
+      );
     }
     if (recovery === 'reset-installation') {
       return this.alert
