@@ -83,7 +83,7 @@
   "packageManager": "pnpm@12.16.1",
   "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act — add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
   "engines": {
-    "node": "^24.22.1",
+    "node": "^26.13.0",
     "pnpm": ">=11"
   },
   "dependencies": {
@@ -178,7 +178,7 @@
     "@testing-library/angular": "^19.6.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.0",
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.6.6",
     "@types/omggif": "^1.0.5",
     "@vitest/coverage-v8": "5.0.5",
     "@wdio/appium-service": "10.1.0",
