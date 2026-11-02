@@ -108,7 +108,7 @@ async function captureOutcome(timeout: number): Promise<CaptureOutcome> {
 describe('mobile camera capture', () => {
   beforeEach(resetApp);
 
-  it('offers Take photo and Record video right after Attach', async () => {
+  it('offers Photos, Take photo and Record video right after Attach', async () => {
     await openFreshRoom('capture-menu');
     await openInsertSheet();
 
@@ -119,8 +119,9 @@ describe('mobile camera capture', () => {
         ),
       SHEET,
     );
-    expect(order.slice(0, 3)).toEqual([
+    expect(order.slice(0, 4)).toEqual([
       'insert-attach',
+      'insert-photos',
       'insert-take-photo',
       'insert-record-video',
     ]);
