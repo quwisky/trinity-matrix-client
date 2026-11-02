@@ -12,7 +12,10 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { touchLongPress } from '../../../support/touch-platform.mts';
+import {
+  sheetAtRest,
+  touchLongPress,
+} from '../../../support/touch-platform.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
 const session = homeserverSession();
@@ -93,6 +96,7 @@ test.describe('Swipe a sheet to close it', () => {
 
     const sheet = page.getByTestId('action-sheet-surface');
     await expect(sheet).toBeVisible({ timeout: 10_000 });
+    await sheetAtRest(sheet);
     const box = await page.getByTestId('sheet-handle').boundingBox();
     expect(box).not.toBeNull();
     const x = box!.x + box!.width / 2;

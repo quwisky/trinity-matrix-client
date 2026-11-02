@@ -30,6 +30,9 @@ test('the action sheet stays bottom-bound, scrollable, touch-sized, and disabled
   await page.getByTestId('sheet-canonical').tap();
 
   const sheet = page.getByTestId('action-sheet-surface');
+  await sheet.evaluate((surface) =>
+    Promise.all(surface.getAnimations().map((animation) => animation.finished)),
+  );
   const bounds = await sheet.boundingBox();
   const viewport = page.viewportSize();
   expect(bounds).not.toBeNull();

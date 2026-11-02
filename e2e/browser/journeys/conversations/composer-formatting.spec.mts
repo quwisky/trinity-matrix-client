@@ -14,6 +14,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sheetAtRest } from '../../../support/touch-platform.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
@@ -593,6 +594,7 @@ test.describe('On-demand composer formatting on mobile', () => {
     const dialog = page.getByRole('dialog', { name: 'Format message' });
     const sheet = dialog.getByTestId('action-sheet-surface');
     await expect(sheet).toBeVisible();
+    await sheetAtRest(sheet);
     const box = await sheet.boundingBox();
     const viewport = page.viewportSize();
     expect(box).not.toBeNull();

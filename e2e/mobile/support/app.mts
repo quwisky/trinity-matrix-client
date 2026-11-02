@@ -201,6 +201,20 @@ async function waitUntilTappable(
   }
 }
 
+/** Wait out the action sheet's entrance, so what is measured next is where it rests. */
+export async function sheetAtRest(): Promise<void> {
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        () =>
+          document
+            .querySelector('[data-testid="action-sheet-surface"]')
+            ?.getAnimations().length === 0,
+      ),
+    { timeout: 5_000, timeoutMsg: 'action sheet never came to rest' },
+  );
+}
+
 /**
  * One W3C touch tap, which reaches the WebView as a gesture (a plain click does not
  * raise the IME). It waits for the target to be tappable first (see

@@ -6,12 +6,29 @@ const SHEET_GAP_PX = 8;
 const MIN_SHEET_HEIGHT_PX = 88;
 const SCROLLER_SELECTOR = '[data-message-scroller]';
 
+/** How far the sheet's entrance still has to travel. */
+function remainingSlide(surface: HTMLElement): number {
+  const { transform } = getComputedStyle(surface);
+  return transform.startsWith('matrix')
+    ? new DOMMatrixReadOnly(transform).m42
+    : 0;
+}
+
+/** Where the sheet will rest, which is what its height and the tail range must be sized for. */
+function restingBox(
+  surface: HTMLElement,
+): Pick<DOMRect, 'top' | 'bottom' | 'height'> {
+  const { top, bottom, height } = surface.getBoundingClientRect();
+  const slide = remainingSlide(surface);
+  return { top: top - slide, bottom: bottom - slide, height };
+}
+
 /**
- * One action sheet's temporary relationship with the timeline behind it. The modal blocks
- * user scrolling but its fixed overlay does not take part in timeline layout, so this
- * session adds the measured occluded band as tail range, moves the pressed row above the
- * sheet, and restores the row's original visual position on close. It owns every DOM
- * mutation it makes and is safe to release repeatedly.
+ * One action sheet's temporary relationship with the timeline behind it. The modal's fixed
+ * overlay does not take part in timeline layout, so this session freezes user scrolling, adds
+ * the measured occluded band as tail range, moves the pressed row above the sheet, and restores
+ * the row's original visual position on close. It owns every DOM mutation it makes and is safe
+ * to release repeatedly.
  */
 export class MessageSheetViewportSession {
   private readonly anchor: HTMLElement;
@@ -23,6 +40,7 @@ export class MessageSheetViewportSession {
   private frameId: number | null = null;
   private surface: HTMLElement | null = null;
   private originalSurfaceMaxHeight = '';
+  private originalOverflowY = '';
   private surfaceHeightChanged = false;
   private surfaceAttempts = 0;
 
@@ -51,6 +69,10 @@ export class MessageSheetViewportSession {
       return;
     }
     this.active = true;
+    // The press that opened the sheet may still be down. If its finger moves, iOS gives it the
+    // scroll view, which overwrites every write here and drags the row under the sheet.
+    this.originalOverflowY = this.scroller.style.overflowY;
+    this.scroller.style.overflowY = 'hidden';
     this.schedule(() => this.position());
   }
 
@@ -66,6 +88,9 @@ export class MessageSheetViewportSession {
     }
 
     this.spacer.remove();
+    if (this.scroller) {
+      this.scroller.style.overflowY = this.originalOverflowY;
+    }
     if (this.surfaceHeightChanged && this.surface) {
       this.surface.style.maxHeight = this.originalSurfaceMaxHeight;
     }
@@ -105,7 +130,7 @@ export class MessageSheetViewportSession {
 
     const scrollerRect = this.scroller!.getBoundingClientRect();
     const anchorRect = this.anchor.getBoundingClientRect();
-    let surfaceRect = surface.getBoundingClientRect();
+    let surfaceRect = restingBox(surface);
 
     // A scrollable sheet may shrink to leave a normal message fully visible. A very tall
     // message cannot, without reducing the sheet to nothing; it keeps a minimum sheet and
@@ -117,7 +142,7 @@ export class MessageSheetViewportSession {
       this.originalSurfaceMaxHeight = surface.style.maxHeight;
       surface.style.maxHeight = `${Math.max(MIN_SHEET_HEIGHT_PX, fitHeight)}px`;
       this.surfaceHeightChanged = true;
-      surfaceRect = surface.getBoundingClientRect();
+      surfaceRect = restingBox(surface);
     }
 
     const delta = this.requiredScrollDelta(
@@ -132,32 +157,47 @@ export class MessageSheetViewportSession {
       );
       this.spacer.style.height = `${clearance}px`;
       this.scroller!.append(this.spacer);
-      this.scroller!.scrollTop = Math.max(0, this.scroller!.scrollTop + delta);
     }
 
-    // Layout clamping and virtual-window re-rendering follow the first write; one
-    // correction per invocation is enough. Every read below revalidates connectivity.
-    this.schedule(() => this.correct());
+    this.schedule(() => this.follow());
   }
 
-  private correct(): void {
+  /**
+   * While the sheet slides, only its edge moves the row, and no further than the row must go at
+   * rest: scrolling there at once would jump the timeline ahead of the sheet. The write that lands
+   * the row can flip the list's window, so it gets one more look a frame later, and only one: the
+   * rounding `requiredScrollDelta` allows could otherwise keep it correcting. Every read here
+   * revalidates connectivity.
+   */
+  private follow(lastLook = false): void {
     if (!this.valid() || !this.surface?.isConnected) {
       return;
     }
-    const delta = this.requiredScrollDelta(
-      this.anchor.getBoundingClientRect(),
+    const anchor = this.anchor.getBoundingClientRect();
+    const sliding = remainingSlide(this.surface) !== 0;
+    const toRest = this.requiredScrollDelta(
+      anchor,
       this.scroller!.getBoundingClientRect(),
-      this.surface.getBoundingClientRect(),
+      restingBox(this.surface),
     );
+    const edge = this.surface.getBoundingClientRect().top - SHEET_GAP_PX;
+    const delta = sliding
+      ? Math.min(Math.max(0, toRest), Math.max(0, anchor.bottom - edge))
+      : toRest;
     if (delta !== 0) {
       this.scroller!.scrollTop = Math.max(0, this.scroller!.scrollTop + delta);
+    }
+    if (sliding) {
+      this.schedule(() => this.follow());
+    } else if (delta !== 0 && !lastLook) {
+      this.schedule(() => this.follow(true));
     }
   }
 
   private requiredScrollDelta(
     anchor: DOMRect,
     scroller: DOMRect,
-    surface: DOMRect,
+    surface: Pick<DOMRect, 'top'>,
   ): number {
     const visibleTop = scroller.top;
     const visibleBottom = Math.max(
@@ -166,7 +206,9 @@ export class MessageSheetViewportSession {
     );
     const visibleHeight = visibleBottom - visibleTop;
 
-    if (anchor.height <= visibleHeight) {
+    // A sheet shrunk to fit leaves exactly the row's height, and a sliding sheet's resting top
+    // is only good to a fraction of a pixel.
+    if (anchor.height <= visibleHeight + 1) {
       if (anchor.bottom > visibleBottom) {
         return anchor.bottom - visibleBottom;
       }

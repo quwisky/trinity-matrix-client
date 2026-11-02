@@ -1,5 +1,5 @@
 import { browser, expect } from '@wdio/globals';
-import { login, tap, waitForRooms } from '../support/app.mts';
+import { login, sheetAtRest, tap, waitForRooms } from '../support/app.mts';
 import {
   accessToken,
   createRoom,
@@ -59,6 +59,7 @@ describe('mobile composer formatting', () => {
     await press('[data-testid="composer-format"]');
     const menu = $('[data-testid="action-sheet-surface"]');
     await expect(menu).toBeDisplayed();
+    await sheetAtRest();
     const fit = await browser.execute(() => {
       const box = document
         .querySelector('[data-testid="action-sheet-surface"]')

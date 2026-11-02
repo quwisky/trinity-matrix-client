@@ -257,13 +257,13 @@ describe('TrnActionListComponent', () => {
       expectReactionNamedFromItsEmoji();
     });
 
-    it('appears in place, so the message viewport measures its final top', () => {
+    it('slides in like every other sheet', () => {
       surfaces.openActions(data());
       tick();
 
-      expect(screen.getByTestId('action-sheet-surface').classList).toContain(
-        'animate-none',
-      );
+      const { classList } = screen.getByTestId('action-sheet-surface');
+      expect(classList).toContain('trn-overlay-enter-sheet');
+      expect(classList).not.toContain('animate-none');
     });
 
     it('falls back to a sheet on a coarse pointer even with an anchor', () => {
