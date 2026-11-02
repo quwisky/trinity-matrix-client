@@ -13,7 +13,10 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { touchLongPress } from '../../../support/touch-platform.mts';
+import {
+  sheetAtRest,
+  touchLongPress,
+} from '../../../support/touch-platform.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
 // The message action sheet (#220), which no other spec can see. Every authenticated spec
@@ -104,10 +107,50 @@ async function openRoomWithMessage(
   return `.msg[data-mid="${await row.getAttribute('data-mid')}"]`;
 }
 
+/**
+ * Record every frame from now on: by the time a locator assertion returns, most of a 200ms
+ * entrance has gone.
+ */
+function sampleSheetFrames(page: Page, rowSel: string) {
+  return page.evaluateHandle((selector) => {
+    const frames: {
+      slide: number;
+      sliding: boolean;
+      sheetTop: number;
+      rowTop: number;
+      rowBottom: number;
+    }[] = [];
+    const sample = () => {
+      const sheet = document.querySelector(
+        '[data-testid=action-sheet-surface]',
+      );
+      const row = document.querySelector(selector);
+      if (sheet && row) {
+        frames.push({
+          slide: new DOMMatrixReadOnly(getComputedStyle(sheet).transform).m42,
+          sliding: sheet
+            .getAnimations()
+            .some(
+              (animation) =>
+                (animation as CSSAnimation).animationName === 'trn-sheet-in',
+            ),
+          sheetTop: sheet.getBoundingClientRect().top,
+          rowTop: row.getBoundingClientRect().top,
+          rowBottom: row.getBoundingClientRect().bottom,
+        });
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+    return frames;
+  }, rowSel);
+}
+
 async function expectMessageClearOfSheet(
   row: Locator,
   sheet: Locator,
 ): Promise<void> {
+  await sheetAtRest(sheet);
   const geometry = await row.evaluate((message) => {
     const scroller = message.closest('[data-message-scroller]');
     if (!scroller) {
@@ -180,6 +223,7 @@ test.describe('Message actions on a phone', () => {
     const dialog = page.getByRole('dialog', { name: 'Message actions' });
     const sheet = dialog.getByTestId('action-sheet-surface');
     await expect(sheet).toBeVisible({ timeout: 10_000 });
+    await sheetAtRest(sheet);
     await expect(page.locator(`${rowSel}.msg--revealed`)).toHaveCount(0);
 
     // It is a named dialog, not a bare one.
@@ -222,6 +266,55 @@ test.describe('Message actions on a phone', () => {
         timeout: 10_000,
       },
     );
+  });
+
+  test('the sheet slides up and pushes the pressed message along, with no jump', async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 's', 30);
+    const frames = await sampleSheetFrames(page, rowSel);
+
+    await longPress(page, rowSel);
+    const sheet = page
+      .getByRole('dialog', { name: 'Message actions' })
+      .getByTestId('action-sheet-surface');
+    await expectMessageClearOfSheet(page.locator(rowSel), sheet);
+
+    const seen = await frames.jsonValue();
+    expect(
+      seen.filter((frame) => frame.sliding && frame.slide > 1),
+    ).not.toEqual([]);
+    // Once the row has moved, the edge is what moved it. A timeline that jumps to its final
+    // place sits far above a sheet still on its way up.
+    const moved = seen.filter((frame) => frame.rowTop < seen[0].rowTop - 1);
+    expect(moved).not.toEqual([]);
+    for (const frame of moved) {
+      expect(frame.rowBottom + 8).toBeGreaterThanOrEqual(frame.sheetTop - 2);
+    }
+  });
+
+  test('under reduced motion the sheet is simply there', async ({
+    page,
+    request,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const rowSel = await openRoomWithMessage(page, request, 'm', 30);
+    const frames = await sampleSheetFrames(page, rowSel);
+
+    await longPress(page, rowSel);
+    const sheet = page
+      .getByRole('dialog', { name: 'Message actions' })
+      .getByTestId('action-sheet-surface');
+    await expectMessageClearOfSheet(page.locator(rowSel), sheet);
+
+    const seen = await frames.jsonValue();
+    // A 0.01ms entrance waits off-screen for its first frames, then is done: never partly up.
+    const offScreen = page.viewportSize()!.height - 1;
+    expect(
+      seen.filter((frame) => frame.slide > 0 && frame.sheetTop < offScreen),
+    ).toEqual([]);
+    expect(seen.at(-1)!.slide).toBe(0);
   });
 
   test('reacting from the sheet puts the reaction on the message', async ({

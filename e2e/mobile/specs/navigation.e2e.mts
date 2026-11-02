@@ -1,6 +1,7 @@
 import { browser, expect } from '@wdio/globals';
 import {
   login,
+  sheetAtRest,
   tap,
   waitForDurableActiveAccount,
   waitForRooms,
@@ -302,6 +303,7 @@ describe('mobile navigation', () => {
       async () => (await viewportHeight()) > fullViewportHeight - 20,
       { timeout: 10_000, timeoutMsg: 'viewport never restored after the IME' },
     );
+    await sheetAtRest();
 
     const geometry = await browser.execute(() => {
       const surface = document.querySelector<HTMLElement>(

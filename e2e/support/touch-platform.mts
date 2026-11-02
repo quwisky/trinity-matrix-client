@@ -23,6 +23,13 @@ export async function touchLongPress(
   await target.dispatchEvent('pointerup', point);
 }
 
+/** Wait out a sheet's entrance, so what is measured next is where it rests. */
+export async function sheetAtRest(sheet: Locator): Promise<void> {
+  await sheet.evaluate((surface) =>
+    Promise.all(surface.getAnimations().map((animation) => animation.finished)),
+  );
+}
+
 export async function cdpSwipe(
   page: Page,
   from: TouchPoint,

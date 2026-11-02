@@ -6,6 +6,23 @@ const SHEET_GAP_PX = 8;
 const MIN_SHEET_HEIGHT_PX = 88;
 const SCROLLER_SELECTOR = '[data-message-scroller]';
 
+/** How far the sheet's entrance still has to travel. */
+function remainingSlide(surface: HTMLElement): number {
+  const { transform } = getComputedStyle(surface);
+  return transform.startsWith('matrix')
+    ? new DOMMatrixReadOnly(transform).m42
+    : 0;
+}
+
+/** Where the sheet will rest, which is what its height and the tail range must be sized for. */
+function restingBox(
+  surface: HTMLElement,
+): Pick<DOMRect, 'top' | 'bottom' | 'height'> {
+  const { top, bottom, height } = surface.getBoundingClientRect();
+  const slide = remainingSlide(surface);
+  return { top: top - slide, bottom: bottom - slide, height };
+}
+
 /**
  * One action sheet's temporary relationship with the timeline behind it. The modal blocks
  * user scrolling but its fixed overlay does not take part in timeline layout, so this
@@ -105,7 +122,7 @@ export class MessageSheetViewportSession {
 
     const scrollerRect = this.scroller!.getBoundingClientRect();
     const anchorRect = this.anchor.getBoundingClientRect();
-    let surfaceRect = surface.getBoundingClientRect();
+    let surfaceRect = restingBox(surface);
 
     // A scrollable sheet may shrink to leave a normal message fully visible. A very tall
     // message cannot, without reducing the sheet to nothing; it keeps a minimum sheet and
@@ -117,7 +134,7 @@ export class MessageSheetViewportSession {
       this.originalSurfaceMaxHeight = surface.style.maxHeight;
       surface.style.maxHeight = `${Math.max(MIN_SHEET_HEIGHT_PX, fitHeight)}px`;
       this.surfaceHeightChanged = true;
-      surfaceRect = surface.getBoundingClientRect();
+      surfaceRect = restingBox(surface);
     }
 
     const delta = this.requiredScrollDelta(
@@ -132,15 +149,18 @@ export class MessageSheetViewportSession {
       );
       this.spacer.style.height = `${clearance}px`;
       this.scroller!.append(this.spacer);
-      this.scroller!.scrollTop = Math.max(0, this.scroller!.scrollTop + delta);
     }
 
-    // Layout clamping and virtual-window re-rendering follow the first write; one
-    // correction per invocation is enough. Every read below revalidates connectivity.
-    this.schedule(() => this.correct());
+    this.schedule(() => this.follow());
   }
 
-  private correct(): void {
+  /**
+   * Keep the row clear of the sheet's edge where it is now, so the sliding edge pushes the row
+   * up: scrolling to the resting place at once would jump the timeline ahead of the sheet. One
+   * frame past the slide settles layout clamping and virtual-window re-rendering. Every read
+   * here revalidates connectivity.
+   */
+  private follow(): void {
     if (!this.valid() || !this.surface?.isConnected) {
       return;
     }
@@ -152,12 +172,15 @@ export class MessageSheetViewportSession {
     if (delta !== 0) {
       this.scroller!.scrollTop = Math.max(0, this.scroller!.scrollTop + delta);
     }
+    if (remainingSlide(this.surface) !== 0) {
+      this.schedule(() => this.follow());
+    }
   }
 
   private requiredScrollDelta(
     anchor: DOMRect,
     scroller: DOMRect,
-    surface: DOMRect,
+    surface: Pick<DOMRect, 'top'>,
   ): number {
     const visibleTop = scroller.top;
     const visibleBottom = Math.max(
@@ -166,7 +189,9 @@ export class MessageSheetViewportSession {
     );
     const visibleHeight = visibleBottom - visibleTop;
 
-    if (anchor.height <= visibleHeight) {
+    // A sheet shrunk to fit leaves exactly the row's height, and a sliding sheet's resting top
+    // is only good to a fraction of a pixel.
+    if (anchor.height <= visibleHeight + 1) {
       if (anchor.bottom > visibleBottom) {
         return anchor.bottom - visibleBottom;
       }

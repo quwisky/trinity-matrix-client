@@ -110,6 +110,89 @@ describe('MessageSheetViewportSession', () => {
     expect(scroller.querySelector('[data-message-sheet-clearance]')).toBeNull();
   });
 
+  /** Put the sheet mid-entrance; the returned function moves it, and 0 lands it. */
+  function slideIn(surface: HTMLElement, slide: number) {
+    vi.stubGlobal(
+      'DOMMatrixReadOnly',
+      class {
+        readonly m42: number;
+        constructor(value: string) {
+          this.m42 = Number(value.split(',')[5]?.replace(')', ''));
+        }
+      },
+    );
+    let current = 0;
+    const slideTo = (next: number) => {
+      current = next;
+      surface.style.transform = next
+        ? `matrix(1, 0, 0, 1, 0, ${next})`
+        : 'none';
+    };
+    const atRest = surface.getBoundingClientRect.bind(surface);
+    surface.getBoundingClientRect = () => {
+      const box = atRest();
+      return rect(box.top + current, box.height);
+    };
+    slideTo(slide);
+    return slideTo;
+  }
+
+  it('lets the sliding edge push the row up, sized for where the sheet will rest', () => {
+    const { anchor, scroller, session, surface, scrollTop } = build({
+      rowTop: 500,
+      rowHeight: 50,
+      pressY: 525,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+    const slideTo = slideIn(surface, 500);
+
+    session.start();
+    flushFrame();
+    flushFrame();
+
+    // The edge is still below the row, so the timeline has not moved, and it has its range.
+    expect(scrollTop()).toBe(100);
+    expect(surface.style.maxHeight).toBe('');
+    expect(
+      scroller.querySelector<HTMLElement>('[data-message-sheet-clearance]')
+        ?.style.height,
+    ).toBe('508px');
+
+    slideTo(200);
+    flushFrame();
+    expect(anchor.getBoundingClientRect().bottom).toBe(292);
+
+    slideTo(0);
+    flushFrame();
+    expect(anchor.getBoundingClientRect().bottom).toBe(92);
+    expect(frames.size).toBe(0);
+  });
+
+  it('keeps a row whole when a sliding sheet shrunk to fit it reads a fraction short', () => {
+    const { anchor, session, surface } = build({
+      rowTop: 400,
+      rowHeight: 150,
+      pressY: 475,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+    const slideTo = slideIn(surface, 400);
+    // The computed transform and the box disagree by a fraction while the sheet slides.
+    vi.stubGlobal('getComputedStyle', () => ({
+      transform: surface.style.maxHeight
+        ? surface.style.transform
+        : 'matrix(1, 0, 0, 1, 0, 399.9)',
+    }));
+
+    session.start();
+    flushFrame();
+    slideTo(0);
+    flushFrame();
+
+    expect(anchor.getBoundingClientRect().bottom).toBeLessThanOrEqual(150);
+  });
+
   it('shrinks the scrollable sheet enough to keep a normal tall row whole', () => {
     const { anchor, session, surface } = build({
       rowTop: 400,

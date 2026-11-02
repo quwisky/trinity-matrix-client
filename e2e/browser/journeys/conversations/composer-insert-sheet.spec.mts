@@ -11,6 +11,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import { sheetAtRest } from '../../../support/touch-platform.mts';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
@@ -109,6 +110,7 @@ test.describe('Mobile composer insert sheet', () => {
       await expect(sheet).toBeVisible();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');
       await expect(dialog.getByTestId('insert-attach')).toBeFocused();
+      await sheetAtRest(sheet);
 
       const geometry = await page.evaluate(() => {
         const surface = document.querySelector<HTMLElement>(

@@ -53,12 +53,7 @@
     }
   </div>
 } @else {
-  <!-- No entrance: the message viewport measures the sheet the moment it opens, and a sheet
-       still sliding in would put its top at the screen edge. -->
-  <trn-sheet-frame
-    testId="action-sheet-surface"
-    class="animate-none px-1.5 pt-1.5"
-  >
+  <trn-sheet-frame testId="action-sheet-surface" class="px-1.5 pt-1.5">
     @if (data().header) {
       <p
         trnSheetFrameHeader
