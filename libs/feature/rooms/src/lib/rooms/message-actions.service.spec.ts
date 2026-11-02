@@ -11,6 +11,8 @@ import { type MediaTransferEvent } from '@trinity/data-access/media';
 import { TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, of, throwError } from 'rxjs';
+import { DraftStoreService } from '@trinity/platform-native';
+import { conversationDraftKey } from '@trinity/data-access/timeline';
 import {
   afterEach,
   beforeEach,
@@ -107,7 +109,11 @@ describe('MessageActionsService', () => {
     intent,
     cancelIntent,
   };
+  const key = { accountId: '@me:hs', roomId: '!r:hs' };
+  const holdWaiting = vi.fn();
+  const releaseWaiting = vi.fn();
   const conversation = {
+    key,
     media: { send: mediaSend },
     compose,
     messages: { redact, toggleReaction, retry, cancel, beginReply },
@@ -161,6 +167,7 @@ describe('MessageActionsService', () => {
       sendSticker,
     }),
     MockProvider(RoomLibraryService),
+    MockProvider(DraftStoreService, { holdWaiting, releaseWaiting }),
     MockProvider(TrnToastService, { show: toastShow }),
     MockProvider(AccountRoutingService),
     MockProvider(MemberActionsService),
@@ -546,6 +553,7 @@ describe('MessageActionsService', () => {
 
     it('cancels the reply the failed send restored, and brings it back if the retry fails', () => {
       const { actions } = build();
+      setDraft.mockImplementation((text: string) => draft.set(text));
       intent.set({ kind: 'reply', eventId: '$parent' });
       failSend(actions, 'hello');
       retry.mockReturnValueOnce(rejectedRetry);
@@ -627,6 +635,61 @@ describe('MessageActionsService', () => {
       expect(draft()).toBe('hello');
       expect(otherSetDraft).not.toHaveBeenCalled();
       setDraft.mockReset();
+    });
+
+    it('brings the reply back only when the text came back with it', () => {
+      const { actions } = build();
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      intent.set({ kind: 'reply', eventId: '$parent' });
+      failSend(actions, 'hello');
+      const subject = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(subject);
+      cancelIntent.mockImplementationOnce(() =>
+        intent.set({ kind: 'message' }),
+      );
+      actions.onRetry('$1');
+      // The person starts a new message while the retry hangs, then it fails.
+      draft.set('new text');
+
+      subject.next({
+        kind: 'rejected',
+        operation: 'retry',
+        failure: 'not-allowed',
+        retryable: true,
+      });
+
+      expect(beginReply).not.toHaveBeenCalled();
+      expect(draft()).toBe('new text');
+    });
+
+    it('keeps the text in the saved drafts until the retry goes out', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      const subject = new Subject<ConversationMessageOutcome>();
+      retry.mockReturnValueOnce(subject);
+
+      actions.onRetry('$1');
+
+      const draftKey = conversationDraftKey(key);
+      expect(holdWaiting).toHaveBeenCalledWith(draftKey, '$1', 'hello');
+      expect(releaseWaiting).not.toHaveBeenCalled();
+
+      subject.next({ kind: 'applied', operation: 'retry' });
+
+      expect(releaseWaiting).toHaveBeenCalledWith(draftKey, '$1');
+    });
+
+    it('lets go of the held text when the retry fails and the text returns to the box', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      retry.mockReturnValueOnce(throwError(() => new Error('nope')));
+
+      actions.onRetry('$1');
+
+      expect(releaseWaiting).toHaveBeenCalledWith(
+        conversationDraftKey(key),
+        '$1',
+      );
     });
 
     it('does not touch the box when a failed message is deleted, and forgets it', () => {

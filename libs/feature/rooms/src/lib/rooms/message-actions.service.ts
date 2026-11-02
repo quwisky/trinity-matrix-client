@@ -5,10 +5,12 @@ import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
   type ConversationHandle,
+  conversationDraftKey,
   type ConversationMessageOutcome,
   ConversationRuntime,
   TimelineActionsService,
 } from '@trinity/data-access/timeline';
+import { DraftStoreService } from '@trinity/platform-native';
 import { type Mention } from '@trinity/util/matrix';
 import { latestGuard } from '@trinity/util/ui';
 import type { ImagePackImage } from '@trinity/data-access/media';
@@ -60,6 +62,7 @@ export class MessageActionsService {
   private readonly routing = inject(AccountRoutingService);
   private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
+  private readonly drafts = inject(DraftStoreService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly jumpToDateSvc = inject(JumpToDateService);
   private readonly conversations = inject(ConversationRuntime);
@@ -457,30 +460,45 @@ export class MessageActionsService {
     const compose = handle?.compose;
     // The restored text sits in the box beside the row's Retry; once the retry goes out, leaving
     // it there lets Send post it twice. Edited text is the person's and stays.
+    const draftKey = handle && conversationDraftKey(handle.key);
     let cleared = false;
     if (
       handle &&
       compose &&
       restored &&
+      draftKey &&
       compose.intent().kind !== 'edit' &&
       compose.draft() === restored.text
     ) {
+      // A reload drops the failed row, and with it the only other copy of the text, so the saved
+      // drafts keep it (as for a message waiting offline) until the retry settles.
+      this.drafts.holdWaiting(draftKey, messageId, restored.text);
       compose.setDraft('');
       if (compose.intent().kind === 'reply') compose.cancelIntent();
       cleared = true;
     }
+    const settle = () => {
+      if (cleared && draftKey) this.drafts.releaseWaiting(draftKey, messageId);
+    };
     const undo = () => {
       if (!cleared || !handle || !compose || !restored) return;
-      if (compose.draft() === '') compose.setDraft(restored.text);
-      if (restored.replyTo && compose.intent().kind === 'message') {
-        handle.messages.beginReply(restored.replyTo);
+      // Text typed meanwhile is the person's; the reply goes back only with the text it belongs to.
+      if (compose.draft() === '') {
+        compose.setDraft(restored.text);
+        if (restored.replyTo && compose.intent().kind === 'message') {
+          handle.messages.beginReply(restored.replyTo);
+        }
       }
+      settle();
     };
     this.runMessageAction(
       this.messageCommands.retry(messageId).pipe(
         tap((outcome) => {
           if (outcome.kind === 'rejected') undo();
-          else records?.delete(messageId);
+          else {
+            settle();
+            records?.delete(messageId);
+          }
         }),
         catchError((error: unknown) => {
           undo();
