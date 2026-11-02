@@ -97,9 +97,13 @@ export class MentionInboxPreferences {
     INSTALLATION_PREFERENCE_CONTEXT,
   );
 
-  /** Whether both stored answers are known; until then `showInbox` and `keepRecord` hold defaults. */
-  readonly bothRead = computed(
+  private readonly bothRead = computed(
     () => this.show().kind === 'ready' && this.keep().kind === 'ready',
+  );
+
+  /** Both reads have answered, even if only to fail. Until then a change would race them. */
+  readonly settled = computed(
+    () => this.show().kind !== 'default' && this.keep().kind !== 'default',
   );
 
   readonly showInbox = computed(() => this.show().value);

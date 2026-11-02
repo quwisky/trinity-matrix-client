@@ -12,6 +12,7 @@ import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceStorageAdapter,
   type PreferenceStorageReadOutcome,
+  type PreferenceStorageWriteOutcome,
 } from '@trinity/runtime/preferences';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -44,34 +45,60 @@ interface Options {
   readonly count?: Observable<number>;
   readonly confirmed?: Observable<boolean>;
   readonly writesFail?: boolean;
+  /** Holds the first write until the test answers it. */
+  readonly firstWrite?: Observable<PreferenceStorageWriteOutcome>;
   readonly deleteFails?: boolean;
+  /** Keys whose read fails. */
+  readonly unreadable?: readonly string[];
+  /** Stored payloads that aren't a valid switch value. */
+  readonly corrupt?: Record<string, string>;
   /** Holds every preference read, leaving the stored setting unknown. */
   readonly readsHeld?: boolean;
 }
 
 async function setup(options: Options = {}) {
-  const stored = { ...options.stored };
+  const payloads = new Map<string, string>([
+    ...Object.entries(options.stored ?? {}).map(
+      ([key, value]): [string, string] => [
+        key,
+        JSON.stringify({ version: 1, value }),
+      ],
+    ),
+    ...Object.entries(options.corrupt ?? {}),
+  ]);
+  const unreadable = options.unreadable ?? [];
+  const writes: { key: string; value: unknown }[] = [];
   const adapter: PreferenceStorageAdapter = {
-    read: ({ key }) =>
-      options.readsHeld
-        ? NEVER
-        : of<PreferenceStorageReadOutcome>(
-            key in stored
-              ? {
-                  kind: 'found',
-                  payload: JSON.stringify({ version: 1, value: stored[key] }),
-                }
-              : { kind: 'missing' },
-          ),
-    write: () =>
-      of(
-        options.writesFail
-          ? ({
-              kind: 'unavailable',
-              diagnostic: { code: 'preference-storage-write-failed' },
-            } as never)
-          : ({ kind: 'completed' } as const),
-      ),
+    read: ({ key }) => {
+      if (options.readsHeld) return NEVER;
+      if (unreadable.includes(key)) {
+        return of({
+          kind: 'unavailable',
+          diagnostic: { code: 'storage-down' },
+        } as const);
+      }
+      const payload = payloads.get(key);
+      return of<PreferenceStorageReadOutcome>(
+        payload === undefined
+          ? { kind: 'missing' }
+          : { kind: 'found', payload },
+      );
+    },
+    write: ({ key, payload }) => {
+      writes.push({
+        key,
+        value: (JSON.parse(payload) as { value: unknown }).value,
+      });
+      if (options.firstWrite && writes.length === 1) return options.firstWrite;
+      if (options.writesFail) {
+        return of({
+          kind: 'unavailable',
+          diagnostic: { code: 'preference-storage-write-failed' },
+        } as const);
+      }
+      payloads.set(key, payload);
+      return of({ kind: 'completed' } as const);
+    },
   };
   const deleteFails = signal(options.deleteFails ?? false);
   const deleteFailed = signal(false);
@@ -113,6 +140,7 @@ async function setup(options: Options = {}) {
   return {
     ...rendered,
     prefs,
+    writes,
     count,
     deleteAll,
     deleteFails,
@@ -171,18 +199,17 @@ describe('InboxSettingsGroupComponent', () => {
     ).toBeTruthy();
   });
 
-  it('On, off: inbox stays, Mentions note shows', async () => {
+  it('On, off: the inbox stays while recording is refused', async () => {
     const { prefs } = await setup({ stored: { [KEEP]: false } });
 
     expect(showSwitch().checked).toBe(true);
     expect(recordSwitch().checked).toBe(false);
     expect(recordSwitch().disabled).toBe(false);
-    // The inbox reads these: the button stays, and without recording the note shows.
     expect(prefs.showInbox()).toBe(true);
     expect(prefs.recordAllowed()).toBe(false);
   });
 
-  it('Inbox off: record switch disabled and reads off; no button, nothing fetched, nothing recorded', async () => {
+  it('Inbox off: record switch disabled and reads off, recording refused', async () => {
     const { prefs } = await setup({ stored: { [SHOW]: false } });
 
     expect(showSwitch().checked).toBe(false);
@@ -430,6 +457,20 @@ describe('InboxSettingsGroupComponent', () => {
     });
   });
 
+  it('a turn-on that fails outright writes nothing more', async () => {
+    const { settle, show, writes } = await setup({
+      stored: { [KEEP]: false },
+      writesFail: true,
+    });
+
+    recordSwitch().click();
+    await settle();
+
+    expect(show).toHaveBeenCalledOnce();
+    expect(recordSwitch().checked).toBe(false);
+    expect(writes).toEqual([{ key: KEEP, value: true }]);
+  });
+
   it('a save that throws reads the same as one that fails', async () => {
     const { deleteAll, setKeepRecord, settle, show } = await setup();
     setKeepRecord.mockImplementationOnce(() =>
@@ -533,7 +574,7 @@ describe('InboxSettingsGroupComponent', () => {
     expect(showSwitch().checked).toBe(false);
   });
 
-  it('turning on starts empty', async () => {
+  it('turning on asks nothing and deletes nothing, since turning off already did', async () => {
     const { confirm$, deleteAll, setKeepRecord, settle } = await setup({
       stored: { [KEEP]: false },
     });
@@ -545,6 +586,148 @@ describe('InboxSettingsGroupComponent', () => {
     expect(deleteAll).not.toHaveBeenCalled();
     expect(setKeepRecord).toHaveBeenCalledExactlyOnceWith(true);
     expect(recordSwitch().checked).toBe(true);
+  });
+
+  describe('a setting that could not be read', () => {
+    it('leaves both switches usable, so the person can still refuse', async () => {
+      const { prefs } = await setup({ unreadable: [KEEP] });
+
+      expect(prefs.recordAllowed()).toBe(false);
+      expect(showSwitch().disabled).toBe(false);
+      expect(recordSwitch().disabled).toBe(false);
+      expect(
+        screen
+          .getByTestId('notif-keep-mention-record')
+          .getAttribute('aria-busy'),
+      ).toBeNull();
+    });
+
+    it('turning off from there still asks, saves and deletes', async () => {
+      const { confirm$, deleteAll, prefs, settle, writes } = await setup({
+        unreadable: [KEEP],
+      });
+
+      recordSwitch().click();
+      await settle();
+
+      expect(confirm$).toHaveBeenCalledOnce();
+      expect(writes).toEqual([{ key: KEEP, value: false }]);
+      expect(deleteAll).toHaveBeenCalledOnce();
+      expect(prefs.keepRecord()).toBe(false);
+      expect(recordSwitch().checked).toBe(false);
+    });
+
+    it('a failed save from there keeps it unread and deletes nothing', async () => {
+      const { deleteAll, prefs, settle, show } = await setup({
+        unreadable: [KEEP],
+        writesFail: true,
+      });
+
+      recordSwitch().click();
+      await settle();
+
+      expect(show).toHaveBeenCalledOnce();
+      expect(deleteAll).not.toHaveBeenCalled();
+      expect(prefs.recordAllowed()).toBe(false);
+    });
+
+    it('a corrupt value is repaired by setting it, and reads back after a restart', async () => {
+      const { prefs, settle, writes } = await setup({
+        corrupt: { [KEEP]: JSON.stringify({ version: 1, value: 'yes' }) },
+      });
+      expect(prefs.recordAllowed()).toBe(false);
+      expect(recordSwitch().disabled).toBe(false);
+
+      recordSwitch().click();
+      await settle();
+      expect(writes).toEqual([{ key: KEEP, value: false }]);
+
+      await firstValueFrom(prefs.init());
+      expect(prefs.recordDeclined()).toBe(true);
+      expect(prefs.keepRecord()).toBe(false);
+    });
+  });
+
+  describe('a preference write that hangs', () => {
+    const LIMIT = 10_000;
+
+    it('turning off gives up at the limit: switch on, nothing deleted, usable again', async () => {
+      const write = new Subject<PreferenceStorageWriteOutcome>();
+      const { confirm$, deleteAll, fixture, prefs, show, writes } = await setup(
+        { firstWrite: write },
+      );
+      vi.useFakeTimers();
+
+      recordSwitch().click();
+      await vi.advanceTimersByTimeAsync(LIMIT - 1);
+      fixture.detectChanges();
+      expect(show).not.toHaveBeenCalled();
+      expect(recordSwitch().getAttribute('aria-disabled')).toBe('true');
+
+      await vi.advanceTimersByTimeAsync(1);
+      fixture.detectChanges();
+      expect(show).toHaveBeenCalledExactlyOnceWith(SAVE_FAILED, {
+        duration: 4000,
+        variant: 'danger',
+      });
+      expect(deleteAll).not.toHaveBeenCalled();
+      expect(recordSwitch().checked).toBe(true);
+      expect(recordSwitch().getAttribute('aria-disabled')).toBeNull();
+
+      // An off that may still land stays off: nothing writes "on" over it.
+      expect(writes).toEqual([{ key: KEEP, value: false }]);
+
+      // Its late answer changes nothing here.
+      write.next({ kind: 'completed' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(prefs.keepRecord()).toBe(true);
+      expect(deleteAll).not.toHaveBeenCalled();
+
+      recordSwitch().click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(confirm$).toHaveBeenCalledTimes(2);
+    });
+
+    it('turning on gives up at the limit, and a late write cannot start recording', async () => {
+      const write = new Subject<PreferenceStorageWriteOutcome>();
+      const { fixture, prefs, show, writes } = await setup({
+        stored: { [KEEP]: false },
+        firstWrite: write,
+      });
+      vi.useFakeTimers();
+
+      recordSwitch().click();
+      await vi.advanceTimersByTimeAsync(LIMIT);
+      fixture.detectChanges();
+
+      expect(show).toHaveBeenCalledOnce();
+      expect(recordSwitch().checked).toBe(false);
+      // The hung "on" can't be called back and could land later, so "off" is queued behind it.
+      expect(writes).toEqual([
+        { key: KEEP, value: true },
+        { key: KEEP, value: false },
+      ]);
+
+      write.next({ kind: 'completed' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(prefs.keepRecord()).toBe(false);
+      expect(prefs.recordAllowed()).toBe(false);
+    });
+
+    it('a turn-on under way when the page goes still lands in the setting', async () => {
+      const write = new Subject<PreferenceStorageWriteOutcome>();
+      const { fixture, prefs, settle } = await setup({
+        stored: { [KEEP]: false },
+        firstWrite: write,
+      });
+
+      recordSwitch().click();
+      await settle();
+      fixture.destroy();
+      write.next({ kind: 'completed' });
+
+      expect(prefs.keepRecord()).toBe(true);
+    });
   });
 
   it('holds the switches while the stored setting is unknown', async () => {

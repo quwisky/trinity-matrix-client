@@ -27,6 +27,7 @@ import {
 import type { PreferenceCommandOutcome } from '@trinity/runtime/preferences';
 import {
   EMPTY,
+  TimeoutError,
   catchError,
   finalize,
   map,
@@ -39,6 +40,9 @@ import {
 
 /** The service puts no limit on a count, and the question shouldn't wait long for its number. */
 const COUNT_READ_MS = 1_000;
+
+/** No layer below limits a write, and a hung one would hold both switches for good. */
+const SAVE_LIMIT_MS = 10_000;
 
 function recordQuestion(count: number | null): ConfirmOptions {
   const record =
@@ -87,7 +91,8 @@ export class InboxSettingsGroupComponent {
   /** The stored choice, left alone while the inbox is off so it comes back with the inbox. */
   readonly keepRecord = this.preferences.keepRecord;
   readonly deleteFailed = this.index.deleteFailed;
-  readonly unknown = computed(() => !this.preferences.bothRead());
+  /** Only while the read is under way: one that failed must not stop the person refusing. */
+  readonly unknown = computed(() => !this.preferences.settled());
   /** A change is under way. The controls stay focusable, and decline further changes. */
   readonly busy = signal(false);
 
@@ -143,10 +148,10 @@ export class InboxSettingsGroupComponent {
   private turnOn(save: SaveSwitch, willRecord: boolean): Observable<unknown> {
     const retry = willRecord && this.deleteFailed();
     return (retry ? this.deleteRecord() : of(undefined)).pipe(
+      takeUntilDestroyed(this.destroyRef),
       switchMap(() =>
         retry && this.deleteFailed() ? EMPTY : this.save(save, true),
       ),
-      takeUntilDestroyed(this.destroyRef),
     );
   }
 
@@ -166,8 +171,16 @@ export class InboxSettingsGroupComponent {
 
   private save(save: SaveSwitch, on: boolean): Observable<boolean> {
     return save(on).pipe(
+      timeout(SAVE_LIMIT_MS),
       map((outcome) => outcome.kind === 'completed'),
-      catchError(() => of(false)),
+      catchError((error: unknown) => {
+        // The hung write can't be called back. A late "on" would start recording at the next
+        // start, so "off" follows it. A late "off" is left alone: the person confirmed it.
+        if (on && error instanceof TimeoutError) {
+          save(false).subscribe({ error: () => undefined });
+        }
+        return of(false);
+      }),
       tap((saved) => {
         if (!saved) {
           this.toast.show('Couldn’t save this setting. Try again.', {

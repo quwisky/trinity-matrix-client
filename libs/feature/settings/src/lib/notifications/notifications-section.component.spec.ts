@@ -75,7 +75,7 @@ async function build(over: { setOn?: Mock } = {}) {
       // MatrixClientService — harmless today only because it reports uninitialised.
       MockProvider(KeywordRulesService, { keywords: () => [] }),
       MockProvider(MentionInboxPreferences, {
-        bothRead: signal(true).asReadonly(),
+        settled: signal(true).asReadonly(),
         showInbox: signal(true).asReadonly(),
         keepRecord: signal(true).asReadonly(),
       }),
