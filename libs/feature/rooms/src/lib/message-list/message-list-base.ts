@@ -413,13 +413,14 @@ export abstract class MessageListBase {
     if (!divider) {
       // Not rendered (outside the windowed viewport), so off-screen: offer the jump. It lies
       // before the rendered rows when its message sorts before the first one on screen.
-      // A collapsed run is `group:` plus its first message's id.
-      const first = scroll
+      // The first row on screen. A collapsed run is `group:` plus the id of the LAST message in
+      // it, so an unread message after that id is below the run.
+      const last = scroll
         .querySelector<HTMLElement>('[data-mid]')
         ?.dataset['mid']?.replace(/^group:/, '');
       const ids = this.messages().map((m) => m.id);
       this.unreadIsBelow.set(
-        first !== undefined && ids.indexOf(id) > ids.indexOf(first),
+        last !== undefined && ids.indexOf(id) > ids.indexOf(last),
       );
       this.showJumpToUnread.set(true);
       return;

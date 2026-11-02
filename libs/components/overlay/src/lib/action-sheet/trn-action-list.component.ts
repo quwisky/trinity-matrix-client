@@ -97,7 +97,7 @@ export class TrnActionListComponent {
   );
 
   readonly data = input.required<ActionSheetData>();
-  /** The menu's name where there is no header to supply one. */
+  /** The menu's accessible name; without one, the header names it. */
   readonly label = input<string>();
 
   constructor() {
