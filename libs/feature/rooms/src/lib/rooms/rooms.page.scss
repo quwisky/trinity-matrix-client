@@ -221,7 +221,10 @@
     }
 
     [data-pane-slide] .main {
-      box-shadow: var(--trinity-shadow-overlay);
+      box-shadow:
+        var(--trinity-shadow-overlay),
+        inset 1px 0 0 var(--trinity-border-subtle),
+        inset 0 1px 0 var(--trinity-border-subtle);
     }
 
     [data-pane-slide='open'] .main {

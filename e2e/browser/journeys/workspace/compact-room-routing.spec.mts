@@ -25,6 +25,7 @@ const session = homeserverSession();
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 let ROOM_NAME = '';
+let OTHER_ROOM_NAME = '';
 
 // A dedicated user (registered in beforeAll) instead of the shared session account.
 // The shared account is bloated by other specs (gif, multi-account,
@@ -59,18 +60,7 @@ async function seedRoom(
   userId: string,
   name: string,
 ): Promise<void> {
-  const res = await fetch(`${hs}/_matrix/client/v3/createRoom`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) {
-    throw new Error(await describeFailure('CS-API createRoom failed', res));
-  }
-  const { room_id: roomId } = (await res.json()) as { room_id: string };
+  const roomId = await createRoom(hs, token, name);
 
   // Tag the room as a DM against a placeholder peer (the peer never needs to
   // exist/join — m.direct is just account data mapping a user id to room ids;
@@ -93,8 +83,54 @@ async function seedRoom(
   }
 }
 
+async function createRoom(
+  hs: string,
+  token: string,
+  name: string,
+): Promise<string> {
+  const res = await fetch(`${hs}/_matrix/client/v3/createRoom`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    throw new Error(await describeFailure('CS-API createRoom failed', res));
+  }
+  const { room_id: roomId } = (await res.json()) as { room_id: string };
+  return roomId;
+}
+
 /** The rail + sidebar `<aside>` — a static column at md+, the list page below md. */
 const shellSide = (page: Page) => page.locator('.shell-side');
+
+/** Record every slide, and whether the pane it is leaving was inert while it ran. */
+async function watchPaneSlides(page: Page): Promise<() => Promise<string[]>> {
+  await page.evaluate(() => {
+    const root = document.querySelector('[data-shell-root]') as HTMLElement;
+    const seen: string[] = [];
+    Object.assign(window, { paneSlides: seen });
+    new MutationObserver(() => {
+      const slide = root.getAttribute('data-pane-slide');
+      if (!slide) return;
+      const leaving = root.querySelector(
+        slide === 'open' ? '.shell-side' : '.main',
+      );
+      seen.push(
+        `${slide}${leaving?.hasAttribute('inert') ? '' : ' (not inert)'}`,
+      );
+    }).observe(root, {
+      attributes: true,
+      attributeFilter: ['data-pane-slide'],
+    });
+  });
+  return () =>
+    page.evaluate(
+      () => (window as unknown as { paneSlides: string[] }).paneSlides,
+    );
+}
 
 test.describe('Mobile navigation (separate list/chat pages)', () => {
   test.skip(
@@ -120,6 +156,7 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
   test.beforeAll(async ({ request, workerResourceNamespace }) => {
     const runId = workerResourceNamespace.role('mobile-nav');
     ROOM_NAME = `Mobile drawer ${runId}`;
+    OTHER_ROOM_NAME = `Second stop ${runId}`;
     MOBILE_USER = `mobile-user-${runId}`;
     MOBILE_PASS = `${MOBILE_USER}-pass`;
     mobileSession = {
@@ -136,6 +173,7 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
       MOBILE_PASS,
     );
     await seedRoom(mobileSession.hs as string, token, userId, ROOM_NAME);
+    await createRoom(mobileSession.hs as string, token, OTHER_ROOM_NAME);
   });
 
   test.beforeEach(async ({ page }) => {
@@ -198,22 +236,7 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
     await channel
       .first()
       .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
-    await page.evaluate(() => {
-      const root = document.querySelector('[data-shell-root]') as HTMLElement;
-      const seen: string[] = [];
-      Object.assign(window, { paneSlides: seen });
-      new MutationObserver(() => {
-        const slide = root.getAttribute('data-pane-slide');
-        if (slide) seen.push(slide);
-      }).observe(root, {
-        attributes: true,
-        attributeFilter: ['data-pane-slide'],
-      });
-    });
-    const paneSlides = () =>
-      page.evaluate(
-        () => (window as unknown as { paneSlides: string[] }).paneSlides,
-      );
+    const paneSlides = await watchPaneSlides(page);
 
     await channel.first().click();
     await expect(page.getByTestId('back-to-rooms')).toBeVisible();
@@ -230,6 +253,64 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
     await page.goBack();
     await expect(page.locator('.main')).toBeHidden();
     expect(await paneSlides()).toEqual(['open', 'close', 'open']);
+  });
+
+  // A room with no list below it: the Back guard dismisses it through Workspace after the
+  // browser's own swipe has already drawn the move, so this must not slide either.
+  test('browser Back from a room hopped to does not slide', async ({
+    page,
+  }) => {
+    const first = page
+      .locator('button.channel', { hasText: ROOM_NAME })
+      .first();
+    const second = page
+      .locator('button.channel', { hasText: OTHER_ROOM_NAME })
+      .first();
+    await first.waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
+    await second.waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
+    const heading = page.getByRole('heading', { level: 1 });
+
+    await first.click();
+    await expect(heading).toContainText(ROOM_NAME);
+    await page.getByTestId('back-to-rooms').click();
+    await expect(page.locator('.main')).toBeHidden();
+    await second.click();
+    await expect(heading).toContainText(OTHER_ROOM_NAME);
+    await expect(shellSide(page)).toBeHidden();
+
+    const paneSlides = await watchPaneSlides(page);
+    await page.keyboard.press("Control+'");
+    await expect(heading).toContainText(ROOM_NAME);
+
+    const navigationId = () =>
+      page.evaluate(
+        () => (history.state as { navigationId: number }).navigationId,
+      );
+    const before = await navigationId();
+
+    await page.goBack();
+
+    // Not where Back lands, only that it never slides: nothing marks the end of a slide that
+    // did not start, so give one the time it would have needed to appear.
+    await expect.poll(navigationId).toBeGreaterThan(before);
+    await page.waitForTimeout(500);
+    expect(await paneSlides()).toEqual([]);
+  });
+
+  test('Reduce Motion still lands a tap on the other page', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const channel = page.locator('button.channel', { hasText: ROOM_NAME });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
+
+    await channel.first().click();
+    await expect(shellSide(page)).toBeHidden();
+    await page.getByTestId('back-to-rooms').click();
+    await expect(page.locator('.main')).toBeHidden();
+    await expect(shellSide(page)).toBeVisible();
   });
 
   // #1113: a room opened from the list is one history entry on top of that list, so the

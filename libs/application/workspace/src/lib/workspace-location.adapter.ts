@@ -66,6 +66,11 @@ export class WorkspaceLocationAdapter {
     () => this.router.currentNavigation() !== null,
   );
 
+  /** The Router is settling a browser history move, such as Back or a phone's edge swipe. */
+  get traversingHistory(): boolean {
+    return this.router.currentNavigation()?.trigger === 'popstate';
+  }
+
   constructor() {
     this.router.events
       .pipe(

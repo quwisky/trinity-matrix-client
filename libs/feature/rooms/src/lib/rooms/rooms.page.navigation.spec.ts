@@ -477,7 +477,6 @@ describe('RoomsPage mobile navigation', () => {
   });
 
   describe('pane slide', () => {
-    const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
     const room = { roomId: '!r:hs', accountId: '@me:hs' };
     type Shell = ReturnType<typeof build>;
     const slide = (shell: Shell) => shell.page['paneSlide']();
@@ -542,15 +541,31 @@ describe('RoomsPage mobile navigation', () => {
       expect(slide(shell)).toBeNull();
     });
 
-    it('does not slide under Reduce Motion', async () => {
-      restoreLayout = stubLiveLayout({
-        [BELOW_MD_QUERY]: true,
-        [REDUCED_MOTION]: true,
-      });
+    it('ends a slide that crosses md, where no animation would end it', async () => {
+      restoreLayout = stubLiveLayout({ [BELOW_MD_QUERY]: true });
       const shell = build();
-
       await openRoom(shell);
+      expect(slide(shell)).toBe('open');
 
+      setMediaQuery(BELOW_MD_QUERY, false);
+      expect(slide(shell)).toBeNull();
+
+      setMediaQuery(BELOW_MD_QUERY, true);
+      expect(slide(shell)).toBeNull();
+    });
+
+    it('does not slide an empty view out', async () => {
+      restoreLayout = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+      const shell = build();
+      await openRoom(shell);
+      shell.page['onMainAnimationEnd'](animationEnd(true));
+
+      TestBed.inject(WorkspaceNavigationService)
+        .navigate({ kind: 'account', accountId: room.accountId })
+        .subscribe();
+      await vi.waitFor(() => expect(shell.store.pane()).toBe('list'));
+
+      expect(shell.store.activeRoomId()).toBeNull();
       expect(slide(shell)).toBeNull();
     });
 

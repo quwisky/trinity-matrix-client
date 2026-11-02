@@ -26,11 +26,7 @@ import {
   WORKSPACE_SYSTEM_STATUS,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import {
-  BELOW_MD_QUERY,
-  mediaQuerySignal,
-  prefersReducedMotion,
-} from '@trinity/util/ui';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -275,8 +271,9 @@ export class RoomsPage {
         !previous ||
         previous.source === pane ||
         !this.workspace.committedInApp ||
-        !this.mobileMasterDetail() ||
-        prefersReducedMotion()
+        !this.store.activeRoomId() ||
+        // A tracked read: crossing md mid-slide must clear it, as no animation would end it.
+        !this.mobileMasterDetail()
       ) {
         return null;
       }
