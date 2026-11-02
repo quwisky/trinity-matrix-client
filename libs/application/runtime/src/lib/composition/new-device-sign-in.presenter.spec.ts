@@ -64,6 +64,8 @@ describe('NewDeviceSignInPresenter', () => {
       ),
     ).resolves.toBe(false);
 
+    // The caller only asks this variant once it has read the history.
+    expect(hasMentionHistory).not.toHaveBeenCalled();
     expect(alert.choose$).not.toHaveBeenCalled();
     expect(alert.confirm$).toHaveBeenCalledExactlyOnceWith({
       header: "Delete this device's mention history?",

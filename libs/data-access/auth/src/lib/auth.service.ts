@@ -676,7 +676,8 @@ export class AuthService implements QrSignInCompletion {
 
   /**
    * With every room key backed up only the mention history is at stake. A count that can't be
-   * read asks nothing, and a re-auth's page has already said so.
+   * read asks too, since this sign-in deletes whatever is there. A re-auth's page has already
+   * said so.
    */
   private confirmMentionHistoryLoss(
     userId: string,
@@ -684,7 +685,7 @@ export class AuthService implements QrSignInCompletion {
   ): Observable<boolean> {
     return expectedUserId
       ? of(true)
-      : this.lifecycle.hasMentionHistory(userId).pipe(
+      : this.lifecycle.hasMentionHistory(userId, true).pipe(
           switchMap((hasHistory) =>
             hasHistory
               ? this.newDeviceSignIn.confirm({

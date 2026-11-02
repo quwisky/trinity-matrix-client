@@ -2044,7 +2044,11 @@ describe('AuthService', () => {
             ),
           ).rejects.toBeInstanceOf(NewDeviceSignInCancelledError);
 
-          expect(hasMentionHistory).toHaveBeenCalledExactlyOnceWith('@me:hs');
+          // True on an unread count: asking is the safe side, since this sign-in deletes it.
+          expect(hasMentionHistory).toHaveBeenCalledExactlyOnceWith(
+            '@me:hs',
+            true,
+          );
           expect(confirm).toHaveBeenCalledExactlyOnceWith({
             userId: '@me:hs',
             roomKeysBackedUp: true,

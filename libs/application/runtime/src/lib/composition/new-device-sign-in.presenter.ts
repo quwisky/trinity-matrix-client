@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { filter, map, switchMap, type Observable } from 'rxjs';
+import { filter, map, of, switchMap, type Observable } from 'rxjs';
 import { AppLockDialogGate } from './app-lock-dialog.gate';
 import {
   WorkspaceApplicationSurfaceService,
@@ -35,8 +35,13 @@ export class NewDeviceSignInPresenter implements NewDeviceSignInPort {
 
   confirm(signIn: NewDeviceSignIn): Observable<boolean> {
     return this.dialogGate.whenClear().pipe(
-      // True on an unread count: this sign-in does delete it, and is asking anyway.
-      switchMap(() => this.lifecycle.hasMentionHistory(signIn.userId, true)),
+      // True on an unread count: this sign-in does delete it, and is asking anyway. The
+      // backed-up variant is only asked once its caller has read this.
+      switchMap(() =>
+        signIn.roomKeysBackedUp
+          ? of(true)
+          : this.lifecycle.hasMentionHistory(signIn.userId, true),
+      ),
       switchMap((hasHistory) =>
         this.ask(signIn, hasHistory ? `\n\n${MENTION_HISTORY_LOSS}` : ''),
       ),
