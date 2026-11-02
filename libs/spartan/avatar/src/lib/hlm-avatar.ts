@@ -3,13 +3,7 @@ import {
   BrnAvatarFallback,
   BrnAvatarImage,
 } from '@spartan-ng/brain/avatar';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  Directive,
-  inject,
-  input,
-} from '@angular/core';
+import { Directive, inject, input } from '@angular/core';
 
 /**
  * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
@@ -70,24 +64,16 @@ export class HlmAvatarImage {
   public readonly canShow = inject(BrnAvatarImage).canShow;
 }
 
-@Component({
+@Directive({
   selector: 'hlm-avatar',
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  hostDirectives: [{ directive: BrnAvatar, inputs: [], outputs: [] }],
   host: {
     'data-slot': 'avatar',
     '[attr.data-size]': 'size()',
     class:
       'size-8 rounded-[var(--trn-avatar-radius,var(--radius-full))] after:rounded-[var(--trn-avatar-radius,var(--radius-full))] data-[size=lg]:size-10 data-[size=sm]:size-6 group/avatar after:border-foreground/10 relative flex shrink-0 select-none after:absolute after:inset-0 after:border',
   },
-  template: `
-    @if (_image()?.canShow()) {
-      <ng-content select="[hlmAvatarImage],[brnAvatarImage]" />
-    } @else {
-      <ng-content select="[hlmAvatarFallback],[brnAvatarFallback]" />
-    }
-    <ng-content />
-  `,
 })
-export class HlmAvatar extends BrnAvatar {
+export class HlmAvatar {
   public readonly size = input<'default' | 'sm' | 'lg'>('default');
 }

@@ -23,8 +23,8 @@ import { createRoom } from '../../support/space-journey.mts';
 //
 // This is deliberately an e2e rather than only a unit test, because it is the one
 // assertion in the suite that an avatar IMAGE actually reaches the screen. The `<img>`
-// is projected by BrnAvatar only once its `load` event has fired, so requiring it to be
-// visible exercises the whole chain: the SDK's heroes/member fallback, the projection,
+// is hidden by BrnAvatar until its `load` event has fired, so requiring it to be
+// visible exercises the whole chain: the SDK's heroes/member fallback, the reveal,
 // the authenticated-media fetch with a bearer token, the blob URL, and the decode.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = homeserverSession();
@@ -138,7 +138,7 @@ test.describe('Direct-message avatar', () => {
     const dmRow = page.locator('.channel', { hasText: partner });
     await dmRow.first().waitFor({ state: 'visible', timeout: 30_000 });
 
-    // BrnAvatar only projects the <img> once it has actually loaded, so this is an
+    // BrnAvatar only reveals the <img> once it has actually loaded, so this is an
     // assertion about pixels reaching the screen, not merely about a bound attribute.
     const dmImage = dmRow.first().locator('trn-avatar img');
     await expect(dmImage).toBeVisible({ timeout: 30_000 });
