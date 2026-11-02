@@ -6,7 +6,6 @@
     data-testid="read-receipts"
     [attr.aria-label]="seenByLabel()"
     [attr.aria-expanded]="seenByOpen()"
-    [trnTooltip]="seenByOpen() ? '' : seenByLabel()"
     (click)="seenByOpen.set(!seenByOpen())"
   >
     @for (receipt of receipts(); track receipt.userId) {

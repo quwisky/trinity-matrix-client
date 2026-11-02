@@ -1290,10 +1290,8 @@ export class TimelineService {
     view: MessageView,
     readers: readonly ReceiptView[],
   ): MessageView {
-    const signature = (list: readonly ReceiptView[]): string =>
-      JSON.stringify(list);
-    const wanted = signature(readers);
-    if (signature(view.readReceipts) === wanted) {
+    const wanted = JSON.stringify(readers);
+    if (JSON.stringify(view.readReceipts) === wanted) {
       return view;
     }
     const kept = this.newestReaders;

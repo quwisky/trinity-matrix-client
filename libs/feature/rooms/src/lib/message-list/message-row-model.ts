@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import {
   type MessageView,
+  type ReceiptView,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import {
@@ -18,7 +19,6 @@ import { DateTimeFormatService } from '@trinity/platform-native';
 import { groupSystemRuns } from './system-runs';
 import { DayBoundaryService } from './day-boundary.service';
 import { type MessageRow } from '../message-row/message-row.component';
-import { type ReceiptView } from '@trinity/data-access/timeline';
 
 /** A memoized row, with the inputs it was derived from (see {@link MessageRowModel.rows}). */
 interface RowCacheEntry {

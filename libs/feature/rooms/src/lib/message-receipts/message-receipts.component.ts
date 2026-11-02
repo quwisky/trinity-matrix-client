@@ -7,17 +7,14 @@ import {
   input,
   linkedSignal,
 } from '@angular/core';
-import {
-  AvatarComponent,
-  TrnTooltip,
-} from '@trinity/components/generic-content';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { type ReceiptView } from '@trinity/data-access/timeline';
 
 /** Who has read the newest message, in a strip under the conversation; a click names them. */
 @Component({
   selector: 'trn-message-receipts',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnTooltip],
+  imports: [AvatarComponent],
   host: {
     '(document:pointerdown)': 'closeOutside($event)',
     '(document:keydown.escape)': 'seenByOpen.set(false)',
@@ -36,8 +33,6 @@ export class MessageReceiptsComponent {
         .join(', ')}`,
   );
 
-  readonly receipts = input.required<readonly ReceiptView[]>();
-
   /** Whether the "seen by" reader list is expanded; closes when the readers change. */
   protected readonly seenByOpen = linkedSignal({
     source: () =>
@@ -46,6 +41,8 @@ export class MessageReceiptsComponent {
         .join(),
     computation: () => false,
   });
+
+  readonly receipts = input.required<readonly ReceiptView[]>();
 
   protected closeOutside(event: Event): void {
     if (!this.host.nativeElement.contains(event.target as Node)) {
