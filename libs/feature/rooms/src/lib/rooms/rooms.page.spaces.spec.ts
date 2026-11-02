@@ -729,13 +729,17 @@ describe('RoomsPage space filtering', () => {
     expect(shell.store.roomFilter()).toBe('');
   });
 
-  it('stops the Alt+Arrow walk while the inbox shows, though every room stays known', async () => {
+  it('walks Alt+Arrow through the rooms in Recent order while the inbox shows', async () => {
     const shell = build();
     shell.nav.onSelectRoom({ roomId: '!c:hs', accountId: '@me:hs' });
     await settleWorkspace();
     shell.nav.onShowInbox();
     await settleWorkspace();
-    expect(shell.vm.filteredRooms()).toEqual([]);
+    expect(shell.vm.filteredRooms().map((r) => r.id)).toEqual([
+      '!c:hs',
+      '!a:hs',
+      '!b:hs',
+    ]);
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!c:hs',
       '!a:hs',
@@ -753,7 +757,8 @@ describe('RoomsPage space filtering', () => {
     } as unknown as KeyboardEvent);
     await settleWorkspace();
 
-    expect(shell.store.activeRoomId()).toBe('!c:hs');
+    expect(shell.store.activeRoomId()).toBe('!a:hs');
+    expect(shell.store.inboxView()).toBe(true);
   });
 
   it('treats an all-whitespace query as no filter', () => {

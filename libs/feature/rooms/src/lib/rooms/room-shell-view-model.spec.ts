@@ -267,14 +267,14 @@ describe('RoomShellViewModel inbox', () => {
     expect(vm.inboxShown()).toBe(false);
   });
 
-  it('keeps every room for name lookups but walks none while the inbox shows', () => {
+  it('walks every room in Recent order while the inbox shows, ignoring a hidden filter', () => {
     const { vm, openInbox } = build({ selectedView: view() });
     expect(vm.filteredRooms()).toHaveLength(2);
 
     openInbox();
 
     expect(vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
-    expect(vm.filteredRooms()).toEqual([]);
+    expect(vm.filteredRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
   });
 });
 

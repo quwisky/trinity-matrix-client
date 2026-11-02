@@ -156,7 +156,8 @@ export class RoomShellViewModel {
    * unfiltered {@link visibleRooms}.
    */
   readonly filteredRooms = computed<readonly RoomSummary[]>(() => {
-    if (this.store.inboxView()) return [];
+    // The inbox hides the filter box, so a filter typed earlier no longer narrows the walk.
+    if (this.store.inboxView()) return this.visibleRooms();
     return filterRoomLibraryItems(this.visibleRooms(), this.store.roomFilter());
   });
 
