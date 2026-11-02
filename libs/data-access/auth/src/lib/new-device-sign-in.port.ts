@@ -6,14 +6,15 @@ export interface NewDeviceSignIn {
   readonly userId: string;
   /**
    * `false` when key backup is known not to hold every room key of the stored device;
-   * `null` when its client is not live, so nothing could be checked.
+   * `null` when its client is not live, so nothing could be checked; `true` when it holds
+   * them, and the question is only about the account's mention history.
    */
-  readonly roomKeysBackedUp: false | null;
+  readonly roomKeysBackedUp: boolean | null;
 }
 
 /**
  * App-composed confirmation before a new device replaces a stored one, which deletes the
- * stored device's room keys from this device. Emits true to go ahead. Deliberately has no
+ * stored device's room keys and the account's mention history from this device. Emits true to go ahead. Deliberately has no
  * default: a host that does not bind it cannot build `AuthService` at all.
  */
 export interface NewDeviceSignInPort {

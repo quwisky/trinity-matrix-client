@@ -27,8 +27,14 @@ export interface AccountLifecyclePort {
   resumeDiagnosticLog(): Observable<void>;
   /** Delete one account's recorded mention history, after its client has stopped. */
   forgetMentionHistory(accountId: string): Observable<void>;
-  /** Whether an account, or with none named any here, has mentions; a failed read answers false. */
-  hasMentionHistory(accountId?: string): Observable<boolean>;
+  /**
+   * Whether an account, or with none named any on this device, has recorded mentions. A read
+   * that fails or doesn't answer in time gives `ifUnknown`, which defaults to false.
+   */
+  hasMentionHistory(
+    accountId?: string,
+    ifUnknown?: boolean,
+  ): Observable<boolean>;
   /** Stop recording mentions and settle once no write is under way, ahead of a database wipe. */
   stopMentionIndex(): Observable<void>;
   releaseSharedCaches(): void;

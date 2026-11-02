@@ -54,6 +54,25 @@ describe('NewDeviceSignInPresenter', () => {
 
   const presenter = () => TestBed.inject(NewDeviceSignInPresenter);
 
+  it('with every key backed up, the question is only about the mention history', async () => {
+    const alert = TestBed.inject(TrnAlertService);
+    vi.mocked(alert.confirm$).mockReturnValue(of(false));
+
+    await expect(
+      firstValueFrom(
+        presenter().confirm({ userId: '@me:hs', roomKeysBackedUp: true }),
+      ),
+    ).resolves.toBe(false);
+
+    expect(alert.choose$).not.toHaveBeenCalled();
+    expect(alert.confirm$).toHaveBeenCalledExactlyOnceWith({
+      header: "Delete this device's mention history?",
+      message: `${REPLACES}\n\n${MENTION_HISTORY_LOSS}`,
+      confirmText: 'Sign in anyway',
+      variant: 'danger',
+    });
+  });
+
   it('adds the mention history sentence to either question when the account has any', async () => {
     hasMentionHistory.mockReturnValue(of(true));
     const alert = TestBed.inject(TrnAlertService);
@@ -67,7 +86,8 @@ describe('NewDeviceSignInPresenter', () => {
       presenter().confirm({ userId: '@me:hs', roomKeysBackedUp: null }),
     );
 
-    expect(hasMentionHistory).toHaveBeenCalledWith('@me:hs');
+    // An unread count answers true here, since this path does delete and asks anyway.
+    expect(hasMentionHistory).toHaveBeenCalledWith('@me:hs', true);
     expect(alert.choose$).toHaveBeenCalledWith(
       expect.objectContaining({
         message: `${REPLACES}\n\n${ROOM_KEYS_AT_RISK}\n\n${MENTION_HISTORY_LOSS}`,

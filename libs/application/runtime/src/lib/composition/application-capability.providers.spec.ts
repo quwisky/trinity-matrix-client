@@ -154,6 +154,22 @@ describe('hasMentionHistory', () => {
     ).resolves.toBe(false);
   });
 
+  it('can read a failed or unanswered count as true, for a path that deletes anyway', async () => {
+    vi.useFakeTimers();
+    for (const count of [
+      () => throwError(() => new Error('store blocked')),
+      () => NEVER,
+    ]) {
+      const { port } = lifecyclePort('gone', { count });
+
+      const answer = firstValueFrom(port.hasMentionHistory('@me:hs', true));
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(answer).resolves.toBe(true);
+      TestBed.resetTestingModule();
+    }
+  });
+
   it('reads as false when the count never answers', async () => {
     vi.useFakeTimers();
     const { port } = lifecyclePort('gone', { count: () => NEVER });

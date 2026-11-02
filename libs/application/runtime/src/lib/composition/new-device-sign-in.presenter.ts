@@ -19,7 +19,8 @@ import type {
 } from '@trinity/data-access/auth';
 
 /**
- * Asks before a sign-in's new device replaces a stored one and deletes its room keys.
+ * Asks before a sign-in's new device replaces a stored one and deletes its room keys and
+ * mention history.
  * While the stored session is live it offers the key export first; otherwise nothing
  * could export or check its keys, so it warns without a backup status. A sign-in that
  * completes behind App lock (an OIDC or SSO callback) asks once the person has unlocked.
@@ -34,7 +35,8 @@ export class NewDeviceSignInPresenter implements NewDeviceSignInPort {
 
   confirm(signIn: NewDeviceSignIn): Observable<boolean> {
     return this.dialogGate.whenClear().pipe(
-      switchMap(() => this.lifecycle.hasMentionHistory(signIn.userId)),
+      // True on an unread count: this sign-in does delete it, and is asking anyway.
+      switchMap(() => this.lifecycle.hasMentionHistory(signIn.userId, true)),
       switchMap((hasHistory) =>
         this.ask(signIn, hasHistory ? `\n\n${MENTION_HISTORY_LOSS}` : ''),
       ),
@@ -46,6 +48,14 @@ export class NewDeviceSignInPresenter implements NewDeviceSignInPort {
     historyLoss: string,
   ): Observable<boolean> {
     const replaces = `Signing in again starts a new session for ${userId} and deletes its old session’s keys from this device.`;
+    if (roomKeysBackedUp) {
+      return this.alert.confirm$({
+        header: "Delete this device's mention history?",
+        message: `${replaces}\n\n${MENTION_HISTORY_LOSS}`,
+        confirmText: 'Sign in anyway',
+        variant: 'danger',
+      });
+    }
     const header = roomKeysAtRiskHeader(roomKeysBackedUp);
     if (roomKeysBackedUp === null) {
       return this.alert.confirm$({
