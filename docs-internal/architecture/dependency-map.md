@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **80 Nx projects** and **319 dependencies**. No project cycles detected.
+This snapshot contains **80 Nx projects** and **320 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
