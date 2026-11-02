@@ -98,6 +98,25 @@ describe('MessageToolbarComponent', () => {
     fixture.destroy();
   });
 
+  it("offers Report on someone else's message", async () => {
+    const { fixture, container } = await render(MessageToolbarComponent);
+    openMenu(container, fixture);
+    expect(document.querySelector('[data-testid="msg-report"]')).toBeTruthy();
+    fixture.destroy();
+  });
+
+  it('offers no Report on your own message', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent, {
+      inputs: { caps: caps({ isOwn: true }) },
+    });
+    openMenu(container, fixture);
+    expect(
+      document.querySelector('[data-testid="msg-view-source"]'),
+    ).toBeTruthy();
+    expect(document.querySelector('[data-testid="msg-report"]')).toBeNull();
+    fixture.destroy();
+  });
+
   it('hides Forward for a message a forward cannot carry', async () => {
     const { fixture, container } = await render(MessageToolbarComponent, {
       inputs: { caps: caps({ canForward: false }) },

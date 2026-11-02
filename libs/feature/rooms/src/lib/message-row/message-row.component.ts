@@ -101,6 +101,8 @@ export interface MessageRowCaps {
   canForward: boolean;
   /** Offer "Add to my emoji": a sticker or custom emoji whose image is not in the personal pack yet. */
   addToEmoji?: boolean;
+  /** Whether the current user sent this message; you cannot report your own. */
+  isOwn?: boolean;
   /** Hide the hover toolbar + retry affordance (view-only thread panel). */
   readOnly: boolean;
 }
@@ -696,6 +698,7 @@ export class MessageRowComponent {
       saveMedia: c.saveMedia,
       canForward: c.canForward,
       addToEmoji: c.addToEmoji,
+      isOwn: c.isOwn,
     };
   });
 
