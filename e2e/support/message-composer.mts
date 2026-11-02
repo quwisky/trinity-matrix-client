@@ -12,6 +12,18 @@ export async function openNamedRoom(
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 15_000,
   });
+  await settleOpenedRoom(page);
+}
+
+/**
+ * Wait out a phone's slide into the room, then take the pointer off the click that opened it.
+ * A box measured mid-slide is still moving. Chrome re-hovers whatever the pointer ends up over
+ * about 100 ms after the slide lands, and a message time armed by that hover replaces its
+ * element, which detaches a locator the test is already acting on.
+ */
+export async function settleOpenedRoom(page: Page): Promise<void> {
+  await expect(page.locator('[data-pane-slide]')).toHaveCount(0);
+  await page.mouse.move(0, 0);
 }
 
 /** Type a message with real newlines: Shift+Enter inserts one, Enter sends. */

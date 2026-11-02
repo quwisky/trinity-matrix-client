@@ -13,6 +13,7 @@ import {
 import { registerUser } from '../../../support/account.mts';
 import { apiLogin } from '../../../support/account.mts';
 import { createRoom } from '../../support/space-journey.mts';
+import { settleOpenedRoom } from '../../../support/message-composer.mts';
 
 // Pins the message row's grid placement: the gutter standing in for the avatar and the header
 // time sit where the stylesheet puts them, and opening the "seen by" names moves nothing. The
@@ -114,6 +115,7 @@ for (const [name, use] of [
       await expect(
         page.locator('.msg__text', { hasText: bodies[2] }),
       ).toBeVisible({ timeout: 30_000 });
+      await settleOpenedRoom(page);
       const cluster = page.getByTestId('read-receipts').first();
       await expect(cluster).toBeVisible({ timeout: 20_000 });
       const closed = await measure(page);

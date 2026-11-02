@@ -19,6 +19,7 @@ import {
 } from '../../../support/journeys/navigation.mts';
 import { cdpSwipe as swipe } from '../../../support/touch-platform.mts';
 import { createRoom } from '../../support/space-journey.mts';
+import { settleOpenedRoom } from '../../../support/message-composer.mts';
 
 // Swiping a message row sideways to edit or reply to it (#222), on a real phone profile.
 //
@@ -113,6 +114,7 @@ async function openRoom(
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 20_000,
   });
+  await settleOpenedRoom(page);
   // Fresh accounts resolve their crypto state after the room becomes interactive. Wait for
   // the resulting banner before measuring a row, or its insertion can reflow the mobile
   // surface between boundingBox() and touchStart under parallel load.
