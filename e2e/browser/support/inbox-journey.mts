@@ -91,6 +91,8 @@ export function watchConsoleErrors(
     if (message.type() !== 'error') return;
     const { url } = message.location();
     const text = message.text();
+    // The SDK logs its own error when a server, such as CI's Tuwunel, has no TURN set up.
+    if (text.startsWith('Failed to get TURN URIs M_NOT_FOUND')) return;
     if (text.startsWith('Failed to load resource')) {
       const { pathname } = new URL(url || 'about:blank');
       if (pathname.startsWith('/_matrix/') && text.includes('status of 404')) {
