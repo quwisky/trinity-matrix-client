@@ -56,7 +56,8 @@ test.describe('Composer text column on a phone', () => {
           }),
           small: buttons.filter((b) => {
             const r = b.getBoundingClientRect();
-            return r.width < 44 || r.height < 44;
+            // Sub-pixel layout at a fractional device scale reads 43.999998 for a 44pt box.
+            return r.width < 43.5 || r.height < 43.5;
           }).length,
         };
       });
@@ -70,7 +71,9 @@ test.describe('Composer text column on a phone', () => {
     expect(typing.buttons).toHaveLength(3);
     expect(empty.input / empty.field).toBeGreaterThanOrEqual(0.6);
     expect(typing.input / typing.field).toBeGreaterThanOrEqual(0.5);
-    expect(empty.small + typing.small).toBe(0);
+    expect(empty.small).toBe(0);
+    // Send's icon may still be mid-motion right after it mounts, so wait for it to settle.
+    await expect.poll(async () => (await measure()).small).toBe(0);
 
     await page.getByTestId('composer-insert').click();
     await expect(page.getByTestId('insert-format')).toBeVisible();
