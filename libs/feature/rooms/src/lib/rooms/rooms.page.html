@@ -325,6 +325,7 @@
                     [roomId]="room.id"
                     [rootEventId]="panel.rootEventId"
                     [revealEventId]="panel.revealEventId ?? null"
+                    [revealRequest]="panel"
                     (revealFailed)="
                       status.showError('Could not load that message.')
                     "

@@ -368,6 +368,21 @@ describe('ThreadViewComponent reveal', () => {
     );
   });
 
+  it('scrolls again when the same message is requested again', async () => {
+    const { reveal, settle, fixture, scrollIntoView } = await revealing([a, b]);
+    const request = (key: object): void => {
+      fixture.componentRef.setInput('revealRequest', key);
+      settle();
+    };
+
+    request({});
+    reveal('$a');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    request({});
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
   it('reveals only once, however the rows change after', async () => {
     const { reveal, settle, threadMessages, scrollIntoView } = await revealing([
       a,

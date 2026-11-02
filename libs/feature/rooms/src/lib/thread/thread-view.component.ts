@@ -148,6 +148,8 @@ export class ThreadViewComponent implements OnDestroy {
   readonly rootEventId = input.required<string>();
   /** A message to scroll to once it is in the thread, paging older replies to reach it. */
   readonly revealEventId = input<string | null>(null);
+  /** A new value asks for the reveal again, as when the same message is opened a second time. */
+  readonly revealRequest = input<unknown>(null);
   readonly revealFailed = output<void>();
   /** The user closed the thread. There is nothing to pick here, so no `selected`. */
   readonly dismissed = output<void>();
@@ -168,6 +170,7 @@ export class ThreadViewComponent implements OnDestroy {
   readonly replyingToId = this.commands.replyingToId;
   readonly uploadProgress = this.commands.uploadProgress;
   private revealedEventId: string | null = null;
+  private revealedRequest: unknown = null;
   private readonly threadBinding = effect(() => {
     const roomId = this.roomId();
     const rootEventId = this.rootEventId();
@@ -233,6 +236,11 @@ export class ThreadViewComponent implements OnDestroy {
 
   private readonly revealBinding = effect(() => {
     const id = this.revealEventId();
+    const request = this.revealRequest();
+    if (request !== this.revealedRequest) {
+      this.revealedRequest = request;
+      this.revealedEventId = null;
+    }
     if (!id || id === this.revealedEventId) return;
     if (this.rows().some((row) => row.id === id)) {
       this.revealedEventId = id;
