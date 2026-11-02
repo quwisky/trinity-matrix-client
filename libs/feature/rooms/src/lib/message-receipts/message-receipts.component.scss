@@ -1,6 +1,6 @@
 @layer components {
   // The height is reserved with or without readers, so a receipt arriving never moves a message.
-  // Nothing in here may add to it: the names and the touch target lie over the conversation.
+  // Nothing in here may add to it: the names lie over the conversation, and let taps through.
   :host {
     position: relative;
     display: flex;
@@ -27,10 +27,35 @@
     }
   }
 
-  // Transform and opacity only, so a reader arriving can't move the conversation.
+  // Transform and opacity only, so a reader arriving or leaving can't move the conversation.
   .msg__receipt {
     animation: receipt-in var(--trinity-duration-base)
       var(--trinity-ease-standard);
+  }
+
+  // Out of flow, so readers arriving during the fade can't push it or be pushed sideways.
+  .msg__receipts--leaving {
+    position: absolute;
+    inset-inline-end: 0;
+    animation: receipt-out var(--trinity-duration-base)
+      var(--trinity-ease-standard) forwards;
+  }
+
+  .msg__receipt--leaving {
+    animation: receipt-out var(--trinity-duration-base)
+      var(--trinity-ease-standard) forwards;
+  }
+
+  // The whole group is already fading: its avatars neither shrink too nor replay their entrance.
+  .msg__receipts--leaving .msg__receipt {
+    animation: none;
+  }
+
+  @keyframes receipt-out {
+    to {
+      opacity: 0;
+      transform: scale(0.5);
+    }
   }
 
   @keyframes receipt-in {
@@ -52,6 +77,7 @@
     inset-inline-end: 0;
     z-index: var(--trinity-z-sticky);
     max-inline-size: 100%;
+    pointer-events: none;
     padding: var(--trinity-space-1) var(--trinity-space-2);
     border: 1px solid var(--trinity-border-subtle);
     border-radius: var(--trinity-shape-control-radius);
@@ -61,15 +87,13 @@
     line-height: var(--trinity-type-metadata-line-height);
   }
 
-  // Grows upward over the end of the last message: the strip's own edge is the scroller's.
+  // Wider but no taller than the strip, which is all the room there is: above lies the last
+  // message's own shield and links, below the scroller's edge.
   @media (pointer: coarse) {
     .msg__receipts::after {
       content: '';
       position: absolute;
-      inset-block: calc(
-          var(--trinity-space-6) - var(--trinity-interaction-target-min-size)
-        )
-        calc((16px - var(--trinity-space-6)) / 2);
+      inset-block: -4px;
       inset-inline-end: 0;
       min-inline-size: var(--trinity-interaction-target-min-size);
       inline-size: 100%;

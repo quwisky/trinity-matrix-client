@@ -306,6 +306,10 @@ export class MessageListComponent extends MessageListBase {
   readonly topPad = computed(() => this.windowResult().topPadPx);
   /** Height of the bottom spacer standing in for off-screen rows below the window. */
   readonly bottomPad = computed(() => this.windowResult().bottomPadPx);
+  /** Empty while the newest rows are windowed out, so Tab can't jump a scrolled-up reader. */
+  protected readonly stripReceipts = computed(() =>
+    this.bottomPad() > 0 ? [] : this.latestReceipts(),
+  );
 
   /** Reactive mirror of `!atBottom` for the template's jump-to-latest pill. */
   protected readonly notAtBottom = computed(() => !this.atBottomSig());

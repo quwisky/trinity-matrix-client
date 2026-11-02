@@ -440,6 +440,26 @@ describe('ComposerInsertMenuComponent', () => {
     },
   );
 
+  it('offers Photos after Attach only where a photo library picker exists', async () => {
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: { hasMenu: true, photoLibrary: true },
+    });
+    let photos = 0;
+    fixture.componentInstance.attachPhotos.subscribe(() => photos++);
+
+    container
+      .querySelector<HTMLElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+
+    expect(trayItems().map((el) => el.getAttribute('data-testid'))).toEqual([
+      'insert-attach',
+      'insert-photos',
+    ]);
+    trayItems()[1]?.click();
+    expect(photos).toBe(1);
+  });
+
   it('offers no capture where the host cannot capture', async () => {
     const { fixture, container } = await render(ComposerInsertMenuComponent, {
       inputs: { hasMenu: true, captureMode: 'none', richActions: true },

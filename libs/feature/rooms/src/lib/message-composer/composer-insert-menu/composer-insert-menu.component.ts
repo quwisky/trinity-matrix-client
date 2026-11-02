@@ -110,7 +110,11 @@ export class ComposerInsertMenuComponent {
   /** Whether formatting is unavailable right now (composing, sending, recording). */
   readonly formatDisabled = input(false);
 
+  /** Whether the host has a native photo library picker, offered as its own entry. */
+  readonly photoLibrary = input(false);
+
   readonly attachFile = output<void>();
+  readonly attachPhotos = output<void>();
   readonly createPoll = output<void>();
   readonly shareLocation = output<void>();
   readonly recordVoice = output<void>();
@@ -131,6 +135,16 @@ export class ComposerInsertMenuComponent {
           run: () => this.attachFile.emit(),
         },
       ];
+      if (this.photoLibrary()) {
+        actions.push({
+          text: 'Photos',
+          icon: 'image',
+          testId: 'insert-photos',
+          disabled: false,
+          transfersFocus: false,
+          run: () => this.attachPhotos.emit(),
+        });
+      }
       // Capture only stages, like attaching, so an upload in flight or a blocked send does
       // not gate it.
       if (this.captureMode() !== 'none') {
@@ -210,6 +224,7 @@ export class ComposerInsertMenuComponent {
       this.recording();
       this.locationSharing();
       this.captureMode();
+      this.photoLibrary();
       // A capability/context update can remove the focused row. Give focus back to the
       // replacement trigger instead of letting CDK drop it on the document body. The
       // destroy path remains non-restoring because its composer is leaving too.

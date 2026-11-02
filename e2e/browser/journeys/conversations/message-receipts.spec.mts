@@ -135,5 +135,31 @@ test.describe('Read receipts (seen by)', () => {
     );
     await expect(receipts).toHaveCount(1, { timeout: 20_000 });
     expect(await newest.boundingBox()).toEqual(before);
+
+    // Readers acknowledge the newest raw event, here a reaction with no row of its own.
+    const reactionId = await request
+      .put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.reaction/rcpt-react-${runId}`,
+        {
+          headers: author.headers,
+          data: {
+            'm.relates_to': {
+              rel_type: 'm.annotation',
+              event_id: newerId,
+              key: '👍',
+            },
+          },
+        },
+      )
+      .then((r) => r.json())
+      .then((j) => j.event_id as string);
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/receipt/m.read/${encodeURIComponent(reactionId)}`,
+      { headers: seer.headers, data: {} },
+    );
+    await expect(newest.locator('trn-message-reactions')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(receipts).toHaveAttribute('aria-label', new RegExp(seerName));
   });
 });

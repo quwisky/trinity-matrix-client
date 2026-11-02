@@ -269,7 +269,7 @@ describe('MessageComposerComponent — upload limit fallback', () => {
       ]);
       stubLimit(of(null));
 
-      fixture.componentInstance.onAttach();
+      fixture.componentInstance.onAttachPhotos();
 
       expect(stagedFiles(fixture.componentInstance)).toEqual([small]);
       expect(toast()).toHaveBeenCalledWith(
@@ -286,7 +286,7 @@ describe('MessageComposerComponent — upload limit fallback', () => {
       const { fixture } = await renderComposer({}, [camera({ pickImages })]);
       stubLimit(of(null));
 
-      fixture.componentInstance.onAttach();
+      fixture.componentInstance.onAttachPhotos();
       await settle();
 
       const [maxBytes] = pickImages.mock.calls[0] as unknown as [
@@ -309,7 +309,7 @@ describe('MessageComposerComponent — upload limit fallback', () => {
       ]);
       stubLimit(of(50 * MB));
 
-      fixture.componentInstance.onAttach();
+      fixture.componentInstance.onAttachPhotos();
       await settle();
 
       expect(stagedFiles(fixture.componentInstance)).toEqual([small]);

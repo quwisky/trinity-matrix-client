@@ -113,16 +113,47 @@ export function readReceiptsFor(
   room: Room,
   event: MatrixEvent,
 ): ReceiptView[] {
-  return readReceiptUserIds(client, room, event).map((userId) => {
-    const member = room.getMember(userId);
-    const name = member?.name || userId;
-    return {
-      userId,
-      name,
-      initial: initialOf(name),
-      avatarMxc: member?.getMxcAvatarUrl() ?? null,
-    };
-  });
+  return readReceiptUserIds(client, room, event).map((userId) =>
+    receiptView(room, userId),
+  );
+}
+
+/**
+ * Who has read `events[index]`: anyone whose marker sits on it or on a later event, since
+ * clients acknowledge the newest raw event, often a reaction or an edit with no row of its own.
+ */
+export function readersFrom(
+  client: MatrixClient,
+  room: Room,
+  events: readonly MatrixEvent[],
+  index: number,
+): ReceiptView[] {
+  const selfId = client.getUserId();
+  const authorId = events[index]?.getSender();
+  const readers = new Set<string>();
+  for (const event of events.slice(index)) {
+    // Sending a state event marks it read, but a join says nothing about what its sender has seen.
+    const stateSenderId = event.isState() ? event.getSender() : undefined;
+    for (const id of room.getUsersReadUpTo?.(event) ?? []) {
+      if (id !== selfId && id !== authorId && id !== stateSenderId) {
+        readers.add(id);
+      }
+    }
+  }
+  return [...readers]
+    .slice(0, MAX_RECEIPTS)
+    .map((userId) => receiptView(room, userId));
+}
+
+function receiptView(room: Room, userId: string): ReceiptView {
+  const member = room.getMember(userId);
+  const name = member?.name || userId;
+  return {
+    userId,
+    name,
+    initial: initialOf(name),
+    avatarMxc: member?.getMxcAvatarUrl() ?? null,
+  };
 }
 
 /** Events a client decrypted or sent as a non-message, which is unknowable once redacted. */

@@ -11,6 +11,7 @@ import {
   Injector,
   afterNextRender,
   effect,
+  linkedSignal,
   untracked,
   signal,
   inject,
@@ -23,6 +24,7 @@ import {
   roomTitle,
   TitleBarState,
   WORKSPACE_SYSTEM_STATUS,
+  WorkspaceNavigationService,
 } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { TrnButton } from '@trinity/components/controls';
@@ -251,7 +253,34 @@ export class RoomsPage {
   private readonly injector = inject(Injector);
   private readonly inboundRoomLink = inject(InboundRoomLinkService);
   private readonly appLock = inject(AppLockService);
+  private readonly workspace = inject(WorkspaceNavigationService);
   readonly store = inject(RoomShellStore);
+
+  /**
+   * The compact pane switch sliding right now, which keeps the leaving pane rendered until
+   * `.main` lands (`rooms.page.scss`). Null for a history traversal, whose edge swipe has
+   * already drawn the same motion natively.
+   */
+  protected readonly paneSlide = linkedSignal<
+    'list' | 'conversation',
+    'open' | 'close' | null
+  >({
+    source: this.store.pane,
+    computation: (pane, previous) => {
+      if (
+        !previous ||
+        previous.source === pane ||
+        !this.workspace.committedInApp ||
+        !this.store.activeRoomId() ||
+        // A tracked read: crossing md mid-slide must clear it, as no animation would end it.
+        !this.mobileMasterDetail()
+      ) {
+        return null;
+      }
+      return pane === 'conversation' ? 'open' : 'close';
+    },
+  });
+
   readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
@@ -473,6 +502,11 @@ export class RoomsPage {
     // pane that became visible once the URL lands. Doing it here as well would schedule a
     // second `afterNextRender` against the page we are leaving.
     this.nav.closeOpenRoom();
+  }
+
+  /** Descendants' animations bubble here too; only `.main`'s own ends the slide. */
+  protected onMainAnimationEnd(event: AnimationEvent): void {
+    if (event.target === event.currentTarget) this.paneSlide.set(null);
   }
 
   /**

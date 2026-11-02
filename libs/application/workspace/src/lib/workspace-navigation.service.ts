@@ -94,6 +94,7 @@ export class WorkspaceNavigationService {
   private markedUnreadWait: Subscription | null = null;
   private projectionsActive = false;
   private hasProjected = false;
+  private lastCommitInApp = false;
 
   readonly view = this.workspaceView.asReadonly();
   readonly eventTarget = this.eventTargetState.asReadonly();
@@ -108,6 +109,15 @@ export class WorkspaceNavigationService {
   /** Workspace is moving browser history itself; a popstate now is its own projection. */
   get projectingLocation(): boolean {
     return this.workflow.projectingLocation;
+  }
+
+  /**
+   * The current view came from something done inside the app. A history traversal did not: a
+   * WebKit or phone browser edge swipe has already painted its own peek when its popstate
+   * restores the view here.
+   */
+  get committedInApp(): boolean {
+    return this.lastCommitInApp;
   }
   readonly activeAccountId = computed(() => this.view().accountId);
   readonly activeSpaceId = computed(() => {
@@ -203,6 +213,9 @@ export class WorkspaceNavigationService {
         commit: (view, committedOptions) => {
           const changed = !sameWorkspaceDestination(this.view(), view);
           const needsProjection = changed || !this.projectionsActive;
+          this.lastCommitInApp =
+            committedOptions.source !== 'restore' &&
+            committedOptions.source !== 'repair';
           this.workspaceView.set(view);
           if (Object.hasOwn(committedOptions, 'eventId')) {
             this.publishEventTarget(
