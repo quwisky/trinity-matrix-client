@@ -180,7 +180,8 @@
                   type="button"
                   variant="secondary"
                   size="sm"
-                  [disabled]="inbox.status() === 'loading'"
+                  [trnActionAllowed]="inbox.status() !== 'loading'"
+                  trnActionDisabledReason="Loading more…"
                   data-testid="inbox-load-more"
                   (click)="loadMore()"
                 >

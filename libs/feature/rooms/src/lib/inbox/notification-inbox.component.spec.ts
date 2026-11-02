@@ -682,6 +682,54 @@ describe('NotificationInboxComponent', () => {
       expect(inbox.loadMore).toHaveBeenLastCalledWith('all');
     });
 
+    it('keeps Load more focusable while loading, and ignores presses until done', async () => {
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.hasMore.set(true);
+        fake.mentions.set([row('$m')]);
+      });
+      const more = byId('inbox-load-more');
+      more.focus();
+
+      inbox.status.set('loading');
+      settle();
+
+      expect(more.hasAttribute('disabled')).toBe(false);
+      expect(more.getAttribute('aria-disabled')).toBe('true');
+      expect(document.activeElement).toBe(more);
+    });
+
+    it('moves focus to the last row when the last page takes Load more away', async () => {
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.hasMore.set(true);
+        fake.mentions.set([row('$m1'), row('$m2')]);
+      });
+      const more = byId('inbox-load-more');
+      more.focus();
+
+      more.click();
+      inbox.hasMore.set(false);
+      settle();
+
+      expect(more.isConnected).toBe(false);
+      expect(document.activeElement).toBe(rowsShown()[1]);
+    });
+
+    it('moves focus to the panel when the last page leaves no rows', async () => {
+      const { inbox, settle } = await renderInbox((fake) => {
+        fake.hasMore.set(true);
+      });
+      const more = byId('inbox-load-more');
+      more.focus();
+
+      more.click();
+      inbox.hasMore.set(false);
+      settle();
+
+      expect(document.activeElement).toBe(
+        screen.getByRole('tabpanel', { name: 'Mentions' }),
+      );
+    });
+
     it('follows hasMore on Mentions and serverHasMore on All', async () => {
       const { settle } = await renderInbox((fake) => {
         fake.hasMore.set(true);
@@ -708,18 +756,20 @@ describe('NotificationInboxComponent', () => {
       expect(screen.queryByTestId('inbox-load-more')).toBeNull();
     });
 
-    it('is disabled while anything is loading', async () => {
+    it('is unavailable, yet focusable, while anything is loading', async () => {
       const { inbox, settle } = await renderInbox((fake) => {
         fake.hasMore.set(true);
         fake.mentions.set([row('$m')]);
       });
-      const button = (): HTMLButtonElement =>
-        byId('inbox-load-more') as HTMLButtonElement;
-      expect(button().disabled).toBe(false);
+      const button = byId('inbox-load-more');
+      expect(button.getAttribute('aria-disabled')).toBeNull();
 
       inbox.status.set('loading');
       settle();
-      expect(button().disabled).toBe(true);
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+      inbox.loadMore.mockClear();
+      button.click();
+      expect(inbox.loadMore).not.toHaveBeenCalled();
     });
 
     it('says "Checked 150 more notifications and found no more mentions." and keeps Load more', async () => {

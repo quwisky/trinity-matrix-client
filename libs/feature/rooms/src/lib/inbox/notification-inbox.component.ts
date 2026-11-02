@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  TrnActionAvailability,
   TrnButton,
   TrnIconButton,
   TrnTabsImports,
@@ -44,6 +45,7 @@ import { InboxRowComponent } from './inbox-row/inbox-row.component';
   imports: [
     EmptyStateComponent,
     InboxRowComponent,
+    TrnActionAvailability,
     TrnButton,
     TrnIconButton,
     TrnIconComponent,
@@ -128,6 +130,10 @@ export class NotificationInboxComponent {
     effect(() => {
       if (this.inbox.status() === 'idle') untracked(() => this.refresh());
     });
+    // Load more goes away on the last page, which would drop focus to the page.
+    effect(() => {
+      if (!this.canLoadMore()) untracked(() => this.keepFocusInPanel());
+    });
     // Not every engine keeps a scroll position through `display: none`.
     effect(() => {
       if (this.paneHidden()) return;
@@ -183,6 +189,18 @@ export class NotificationInboxComponent {
       new Map(rooms).set(row.roomId, row.eventId),
     );
     this.openRow.emit(row);
+  }
+
+  private keepFocusInPanel(): void {
+    const focused = document.activeElement;
+    const panel = focused
+      ?.closest<HTMLElement>('.inbox__more')
+      ?.closest<HTMLElement>('[role="tabpanel"]');
+    if (!panel) return;
+    const lastRow = Array.from(
+      panel.querySelectorAll<HTMLElement>('[data-testid="inbox-row"]'),
+    ).at(-1);
+    (lastRow ?? panel).focus();
   }
 
   private run(load: Observable<void>): void {
