@@ -14,10 +14,8 @@ vi.mock('@trinity/helm/utils', async (importOriginal) => {
   return { ...actual, classes: vi.fn(actual.classes) };
 });
 
-// The image-shows-once-loaded / falls-back-on-error swap is BrnAvatar's job (and
-// needs a real image load, which jsdom can't do), so these cover the component's
-// own contract: the resolved `src`, and the initials fallback that renders while
-// there's no image. The rendered image path is verified in the browser (e2e).
+// jsdom can't load an image, so the swap test below fires `load` and `error` itself.
+// The rendered image path is verified in the browser (e2e).
 // Name prefix kept out of a literal var(...) so the token guard sweep does not read it as a token.
 const AVATAR_TOKEN = '--trinity-avatar-';
 
@@ -316,6 +314,27 @@ describe('AvatarComponent', () => {
         `var(${AVATAR_TOKEN}${oldIndex(key) + 1})`,
       );
     }
+  });
+
+  it('shows the image once it loads and the initial again if it fails', async () => {
+    const { container, fixture } = await render(AvatarComponent, {
+      inputs: { initial: 'A', name: 'Ada', url: 'blob:avatar' },
+    });
+    const image = container.querySelector<HTMLImageElement>(
+      '[data-slot="avatar-image"]',
+    )!;
+    const initial = fallback(container) as HTMLElement;
+    const shown = () => [image.style.visibility, initial.style.visibility];
+
+    expect(shown()).toEqual(['hidden', '']);
+
+    image.dispatchEvent(new Event('load'));
+    fixture.detectChanges();
+    expect(shown()).toEqual(['', 'hidden']);
+
+    image.dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+    expect(shown()).toEqual(['hidden', '']);
   });
 
   it('renders no hex colour on the fallback or the badge', async () => {

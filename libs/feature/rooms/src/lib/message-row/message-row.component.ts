@@ -340,7 +340,7 @@ export class MessageRowComponent {
     // A long press on a link or attachment belongs to the BROWSER ("Open in new tab", "Save image"),
     // which lives nowhere else; otherwise the press that raised the OS menu also opens ours behind it.
     //
-    // `img` also catches the sender avatar, but only sometimes: `trn-avatar` renders an `<img>` only
+    // `img` also catches the sender avatar, but only sometimes: `trn-avatar` shows its `<img>` only
     // once the image has LOADED, else a `<span>` with the initial. So a loaded avatar gets the
     // browser's image menu and no sheet. Deliberate: "whatever the OS offers on this element wins",
     // since a per-element exception list rots.

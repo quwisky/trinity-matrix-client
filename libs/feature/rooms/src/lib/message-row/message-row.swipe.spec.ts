@@ -452,11 +452,11 @@ describe('MessageRowComponent — the sideways swipe', () => {
 
   it('captures the pointer on the row, not on whatever was under the finger', async () => {
     // `event.target` is the DEEPEST hit element — a link, a reaction pill, an avatar — and a
-    // capture dies with its target. `trn-avatar` swaps its `<span>` initial for an `<img>`
-    // the moment the image loads, so a finger that went down on an initial would lose the
-    // capture mid-drag, never see `pointerup`, and leave the row parked. Dispatching from a
-    // descendant is what makes the distinction visible at all: dispatching on `.msg`, as
-    // every other test here does, makes `target` and `currentTarget` the same element.
+    // capture dies with its target, so a finger that went down on something a re-render
+    // replaces would lose the capture mid-drag, never see `pointerup`, and leave the row
+    // parked. Dispatching from a descendant is what makes the distinction visible at all:
+    // dispatching on `.msg`, as every other test here does, makes `target` and
+    // `currentTarget` the same element.
     const { msg, capture } = await renderRow('right');
     const child = msg.querySelector('.msg__body') ?? msg.firstElementChild;
     const childCapture = vi.fn();

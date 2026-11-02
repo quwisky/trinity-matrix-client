@@ -164,7 +164,7 @@ settings:
 
 patchedDependencies:
   '@capacitor/privacy-screen@2.0.1': f2f986331ec9f771718d52fed87b9d5ae7fa7f85c90fdf4667eee575a3d84b37
-  '@spartan-ng/brain@1.8.3': 3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8
+  '@spartan-ng/brain@1.9.0': 3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8
   matrix-js-sdk@45.0.0: 782b62e66bf03e983e0b102e89c7731427d0c65e8532b00ecefe0f05857e9d77
   matrix-widget-api@1.20.0: 91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c
   pagefind@1.5.2: f9b8a0c9dfa656ac64bbbe9bfa2144b3bd8e195a65de0ce4fca0758fbce8f64f
@@ -306,8 +306,8 @@ importers:
         specifier: 4.5.0
         version: 4.5.0
       '@spartan-ng/brain':
-        specifier: 1.8.3
-        version: 1.8.3(patch_hash=3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8)(ca48018b7d68c1117cffdb95a4fdd29a)
+        specifier: 1.9.0
+        version: 1.9.0(patch_hash=3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8)(ca48018b7d68c1117cffdb95a4fdd29a)
       '@trinity/capacitor-app-lock':
         specifier: workspace:*
         version: link:libs/native/capacitor-app-lock
@@ -421,8 +421,8 @@ importers:
         specifier: 22.2.5
         version: 22.2.5(chokidar@5.0.0)
       '@spartan-ng/cli':
-        specifier: 1.8.3
-        version: 1.8.3(d34e652078468c7adc1f7189560269ec)
+        specifier: 1.9.0
+        version: 1.9.0(d34e652078468c7adc1f7189560269ec)
       '@storybook/addon-a11y':
         specifier: 10.6.5
         version: 10.6.5(storybook@10.6.5(prettier@3.9.10)(react@19.3.1))
@@ -4114,8 +4114,8 @@ packages:
   '@so-ric/colorspace@1.1.6':
     resolution: {integrity: sha512-/KiKkpHNOBgkFJwu9sh48LkHSMYGyuTcSFK/qMBdnOAlrRJzRSXAOFB5qwzaVQuDl8wAvHVMkaASQDReTahxuw==}
 
-  '@spartan-ng/brain@1.8.3':
-    resolution: {integrity: sha512-pGBER5pNMhdt0DaNMWHJ5O8ewHz3SFuOkN0dOF4YLLNV8OA7BZAS+nuHG6N9P/j01C/AJ+GQQU2AUw46UqDGnA==}
+  '@spartan-ng/brain@1.9.0':
+    resolution: {integrity: sha512-vPULFnCRk0B4RD3gB2ks5hA/AOfXX5J4vD5wrsxHyAElhkwmY6vvyVL/3BcJ7w3LszhUVUsag8ORPqtvRCEJ0w==}
     peerDependencies:
       '@angular/cdk': '>=21.0.0 <23.0.0'
       '@angular/common': '>=21.0.0 <23.0.0'
@@ -4130,8 +4130,8 @@ packages:
       luxon:
         optional: true
 
-  '@spartan-ng/cli@1.8.3':
-    resolution: {integrity: sha512-+19OyhWQaiI/gE2h9BKXmfqfBdJJe/O5dczkcfGR+WjMsjal/Z8/a0SCKx1WBQKvpAymFXEqK9LUIP2x82e93g==}
+  '@spartan-ng/cli@1.9.0':
+    resolution: {integrity: sha512-a8t4F4l8AamfBXpiB5gqBAt8Dux6ARw+pcVBZXyyNNGTkJpNxx2RKthm6pJ7eRN05c+ZWdx1G6WCymdgu+z7Ww==}
     peerDependencies:
       tslib: ^2.3.0
 
@@ -13594,7 +13594,7 @@ snapshots:
       color: 5.0.3
       text-hex: 1.0.0
 
-  '@spartan-ng/brain@1.8.3(patch_hash=3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8)(ca48018b7d68c1117cffdb95a4fdd29a)':
+  '@spartan-ng/brain@1.9.0(patch_hash=3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8)(ca48018b7d68c1117cffdb95a4fdd29a)':
     dependencies:
       '@angular/cdk': 22.2.5(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(@angular/forms@22.2.4(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(@angular/platform-browser@22.2.4(@angular/animations@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(rxjs@7.8.2))(@angular/platform-browser@22.2.4(@angular/animations@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@angular/common': 22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2)
@@ -13606,7 +13606,7 @@ snapshots:
       tslib: 2.8.1
       tw-animate-css: 1.4.0
 
-  '@spartan-ng/cli@1.8.3(d34e652078468c7adc1f7189560269ec)':
+  '@spartan-ng/cli@1.9.0(d34e652078468c7adc1f7189560269ec)':
     dependencies:
       '@angular/core': 22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)
       '@nx/angular': 24.0.2(4424bd3199030b212e7d3422432d7ad7)
