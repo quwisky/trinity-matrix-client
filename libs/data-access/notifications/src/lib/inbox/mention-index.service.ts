@@ -12,6 +12,7 @@ import {
   MatrixEventEvent,
   RelationType,
   RoomEvent,
+  SyncState,
   type IRoomTimelineData,
   type MatrixClient,
   type MatrixEvent,
@@ -65,6 +66,8 @@ export class MentionIndexService {
   private readonly store = inject(MENTION_INDEX_STORE);
 
   private readonly recorders = new Map<string, AccountRecorder>();
+  /** A new device's client catches up from the old one's saved position, replaying these as live. */
+  private readonly forgottenUpTo = new Map<string, number>();
   private readonly started = signal(false);
   private readonly stopped = signal(false);
   private readonly deleteFailedState = signal(false);
@@ -133,7 +136,17 @@ export class MentionIndexService {
 
   forgetAccount(accountId: string): Observable<void> {
     return defer(() =>
-      from(this.enqueue(() => this.store.clearAccount(accountId))),
+      from(
+        this.enqueue(async () => {
+          const [newest] = await this.store
+            .page(accountId, null, 1, Date.now())
+            .catch(() => []);
+          if (newest) {
+            this.forgottenUpTo.set(accountId, newest.ts);
+          }
+          await this.store.clearAccount(accountId);
+        }),
+      ),
     );
   }
 
@@ -243,6 +256,11 @@ export class MentionIndexService {
         client.on(RoomEvent.Timeline, recorder.onTimeline);
         client.on(MatrixEventEvent.Decrypted, recorder.onDecrypted);
         this.recorders.set(accountId, recorder);
+        // Turned on mid-session. The saved position can predate what came while off or was deleted,
+        // and the next start would replay all of that as live.
+        if (client.getSyncState() === SyncState.Syncing) {
+          client.store.save(true).catch(() => undefined);
+        }
       }
     }
   }
@@ -304,6 +322,7 @@ export class MentionIndexService {
     if (
       event.getSender() === client.getUserId() ||
       event.isRedacted() ||
+      event.getTs() <= (this.forgottenUpTo.get(accountId) ?? -Infinity) ||
       // A legacy edit highlights by display name again, so a bot's edits could use up the cap.
       event.getRelation()?.rel_type === RelationType.Replace ||
       client.getPushActionsForEvent(event, true)?.tweaks?.highlight !== true

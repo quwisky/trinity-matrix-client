@@ -62,6 +62,7 @@ function fakeClient(userId: string) {
         tweaks: { highlight: true },
       }),
     ),
+    store: { save: vi.fn((_force?: boolean) => Promise.resolve()) },
     getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
     getSyncStateData: () => ({ fromCache: true }),
     on: vi.fn((type: string, handler: Handler) => {
@@ -1048,6 +1049,52 @@ describe('MentionIndexService', () => {
     await firstValueFrom(service.forgetAccount(ME));
     expect(store.rows(ME)).toEqual([]);
     expect(store.rows('@two:hs')).toHaveLength(1);
+  });
+
+  it('keeps out what forgetAccount deleted when a new client catches up, and only that', async () => {
+    const { client, store, run, service } = setup();
+    await run();
+    client.live(message('$old'));
+    await flush();
+
+    await firstValueFrom(service.forgetAccount(ME));
+    client.live(message('$old'));
+    client.live(message('$new', { origin_server_ts: TS + 1 }));
+    await flush();
+
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$new']);
+  });
+
+  it('saves the sync position when turned on mid-session, so no restart replays what came before', async () => {
+    const { client, prefs, run } = setup();
+    await run();
+    // A start's own catch-up is still to come, and is meant to be recorded.
+    expect(client.store.save).not.toHaveBeenCalled();
+    client.getSyncState.mockReturnValue(SyncState.Syncing);
+
+    await firstValueFrom(prefs.setKeepRecord(false));
+    await flush();
+    expect(client.store.save).not.toHaveBeenCalled();
+
+    await firstValueFrom(prefs.setKeepRecord(true));
+    await flush();
+    expect(client.store.save).toHaveBeenCalledWith(true);
+  });
+
+  it('keeps recording when saving the sync position fails', async () => {
+    const { client, prefs, run, store } = setup();
+    await run();
+    client.getSyncState.mockReturnValue(SyncState.Syncing);
+    client.store.save.mockRejectedValue(new Error('quota'));
+
+    await firstValueFrom(prefs.setKeepRecord(false));
+    await flush();
+    await firstValueFrom(prefs.setKeepRecord(true));
+    await flush();
+    client.live(message('$a'));
+    await flush();
+
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$a']);
   });
 
   describe('a hung store', () => {
