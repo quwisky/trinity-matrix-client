@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 
 const session = homeserverSession();
 
@@ -278,6 +279,60 @@ test.describe('Global banner slot after sign-in', () => {
       description: `${size.height}px (one row: ${size.natural}px)`,
     });
     expect(size.height).toBeCloseTo(size.natural, 0);
+  });
+
+  /*
+   * A banner that arrives once Rooms is on screen floats over its top edge instead of
+   * pushing the page down (#1868): with persistent storage granted no notice holds the
+   * slot, so a fresh account's prompt arrives after the first row, and the row must not
+   * move for any frame from then on.
+   */
+  test('a prompt arriving after the first row does not move it at 390px', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(grantPersistentStorage);
+    await page.addInitScript(recordSlotFrames);
+    await login(page, account);
+    await expect(
+      page
+        .locator('trn-encryption-banner trn-banner')
+        .getByText('Set up encryption to secure your messages.'),
+    ).toBeVisible();
+
+    const frames = await framesWithRow(page);
+    const first = frames[0]!;
+    expect(
+      frames.some(({ slot }) => slot === 'encryption'),
+      'the prompt must arrive while the row is on screen, or nothing is measured',
+    ).toBe(true);
+    expect(first.slot, 'the slot was empty when the row was drawn').toBeNull();
+    expect(
+      frames.filter((frame) => Math.abs(frame.row! - first.row!) > 0.5),
+      `row first drawn at y=${first.row}`,
+    ).toEqual([]);
+  });
+
+  /*
+   * Dismissing the prompt holds for the session, and setting encryption up stays one
+   * route away in Settings › Security.
+   */
+  test('dismissing the prompt keeps setup reachable in Security at 390px', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page, account);
+    const prompt = page.locator('trn-encryption-banner trn-banner');
+    await expect(
+      prompt.getByText('Set up encryption to secure your messages.'),
+    ).toBeVisible();
+    await prompt.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(prompt).toHaveCount(0);
+
+    await openSettingsSection(page, 'security');
+    await expect(page.getByTestId('security-setup')).toBeVisible({
+      timeout: 20_000,
+    });
   });
 
   /*

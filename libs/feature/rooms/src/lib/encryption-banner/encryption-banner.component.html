@@ -17,7 +17,11 @@
     [attr.aria-hidden]="pending() ? 'true' : null"
     [attr.inert]="pending() ? '' : null"
   >
-    <trn-banner variant="accent" [placement]="placement()">
+    <trn-banner
+      variant="accent"
+      [placement]="placement()"
+      [overlay]="overlay()"
+    >
       <trn-icon trnBannerIcon name="lock" />
       {{ message() }}
       <span trnBannerActions>
@@ -31,6 +35,17 @@
             {{ action.label }}
           </button>
         }
+        <button
+          trnBtn
+          class="banner__action"
+          presentation="outline"
+          size="sm"
+          type="button"
+          data-dismiss
+          (click)="dismiss()"
+        >
+          Dismiss
+        </button>
       </span>
     </trn-banner>
   </div>

@@ -5,6 +5,7 @@ import {
   inject,
   linkedSignal,
   signal,
+  untracked,
 } from '@angular/core';
 import type { BannerPrompt } from '@trinity/application/workspace';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
@@ -110,6 +111,11 @@ export class CapabilityStatusService {
   private readonly signInAgainDismissed = signal<ReadonlySet<string>>(
     new Set(),
   );
+  /** Accounts whose encryption prompt was dismissed; in memory, so it returns next session. */
+  private readonly encryptionDismissed = signal<ReadonlySet<string>>(new Set());
+  private readonly shellShown = signal(false);
+  /** The slot already held a banner when the shell came on screen, so it is laid out. */
+  private readonly slotAtShell = signal(false);
   /**
    * The active Account's crypto store predates store keys, and only a sign-in as a new
    * device replaces it with an encrypted one. Asked only once key backup is on: the new
@@ -166,12 +172,17 @@ export class CapabilityStatusService {
     if (this.hasBlocking()) return 'status';
     const { status: trust, elsewhere } = this.slotTrust();
     const limited = this.visibleEntries().length > 0;
-    if (trust === 'needs-setup' && elsewhere)
+    // Dismissed, the prompt gives way; setup stays in Settings › Security.
+    const prompted = !this.encryptionDismissed().has(
+      this.matrix.activeUserId() ?? '',
+    );
+    if (prompted && trust === 'needs-setup' && elsewhere)
       return limited ? 'status' : 'encryption';
     if (
-      trust === 'needs-setup' ||
-      trust === 'needs-recovery' ||
-      trust === 'needs-verification'
+      prompted &&
+      (trust === 'needs-setup' ||
+        trust === 'needs-recovery' ||
+        trust === 'needs-verification')
     )
       return 'encryption';
     if (this.signInAgain()) return 'sign-in-again';
@@ -242,6 +253,14 @@ export class CapabilityStatusService {
    * slot back at any time.
    */
   readonly bannerSlotReserved = this.slotHeldStatus.asReadonly();
+  /**
+   * A banner that arrives once the shell is on screen floats over it instead of pushing
+   * the page down. A banner already in the slot then, a forecast included, is laid out
+   * in flow with nothing else moving, and a blocking notice always is.
+   */
+  readonly bannerSlotOverlay = computed(
+    () => this.shellShown() && !this.slotAtShell() && !this.hasBlocking(),
+  );
   /** Names what is limited: the one problem's heading, or up to two capability names. */
   readonly bannerMessage = computed(() => {
     const entries = this.visibleEntries();
@@ -323,6 +342,24 @@ export class CapabilityStatusService {
     effect(() => {
       if (this.bannerSlot() === 'status') this.slotHeldStatus.set(true);
     });
+    effect(() => {
+      if (this.shellShown() && this.bannerSlot() === null)
+        this.slotAtShell.set(false);
+    });
+  }
+
+  shellDisplayed(): void {
+    this.slotAtShell.set(untracked(this.bannerSlot) !== null);
+    this.shellShown.set(true);
+  }
+
+  /** Hide the encryption prompt for the active Account until the app starts again. */
+  dismissEncryption(): void {
+    const userId = this.matrix.activeUserId();
+    if (!userId) return;
+    this.encryptionDismissed.update((dismissed) =>
+      new Set(dismissed).add(userId),
+    );
   }
 
   show(): void {

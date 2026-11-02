@@ -18,6 +18,7 @@ const setupElsewhere = signal(false);
 const slot = signal<'status' | 'encryption' | null>('encryption');
 const slotReserved = signal(false);
 const prompt = signal<BannerPrompt | null>(null);
+const dismissEncryption = vi.fn();
 const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
   of({ kind: 'presented' as const, surface: request.surface }),
 );
@@ -38,6 +39,8 @@ function renderBanner() {
           show: vi.fn(),
           bannerSlot: slot,
           bannerSlotReserved: slotReserved,
+          bannerSlotOverlay: signal(false),
+          dismissEncryption,
           bannerPrompt: prompt,
         },
       },
@@ -52,6 +55,7 @@ beforeEach(() => {
   slotReserved.set(false);
   prompt.set(null);
   open.mockClear();
+  dismissEncryption.mockClear();
 });
 
 /** The slot holds a prompt the live status confirms. */
@@ -72,6 +76,16 @@ function clickAction(host: HTMLElement, label: string): void {
 }
 
 describe('EncryptionBannerComponent', () => {
+  it('asks the slot to hide the prompt when dismissed, without opening a flow', async () => {
+    show('needs-setup');
+    const { container } = await renderBanner();
+    fireEvent.click(
+      (container as HTMLElement).querySelector('button[data-dismiss]')!,
+    );
+    expect(dismissEncryption).toHaveBeenCalledOnce();
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it('renders nothing while the slot holds no encryption prompt', async () => {
     const { fixture, container } = await renderBanner();
     expect(container.querySelector('.banner')).toBeNull();
@@ -129,7 +143,7 @@ describe('EncryptionBannerComponent', () => {
     show('needs-setup');
     const { container } = await renderBanner();
 
-    const buttons = container.querySelectorAll('button');
+    const buttons = container.querySelectorAll('button:not([data-dismiss])');
     expect(buttons.length).toBe(1);
     expect(container.textContent).toContain('Set up encryption');
 
@@ -143,9 +157,9 @@ describe('EncryptionBannerComponent', () => {
     show('needs-recovery');
     const { container } = await renderBanner();
 
-    const labels = [...container.querySelectorAll('button')].map(
-      (b: HTMLElement) => b.textContent?.trim(),
-    );
+    const labels = [
+      ...container.querySelectorAll<HTMLElement>('button:not([data-dismiss])'),
+    ].map((b) => b.textContent?.trim());
     expect(labels).toEqual(['Use recovery key', 'Verify with another device']);
   });
 
@@ -170,9 +184,9 @@ describe('EncryptionBannerComponent', () => {
     expect(container.querySelector('trn-banner')?.textContent).toContain(
       'verify it with one of your other devices',
     );
-    const labels = [...container.querySelectorAll('trn-banner button')].map(
-      (button) => button.textContent?.trim(),
-    );
+    const labels = [
+      ...container.querySelectorAll('trn-banner button:not([data-dismiss])'),
+    ].map((button) => button.textContent?.trim());
     expect(labels).toEqual(['Verify with another device']);
 
     clickAction(container, 'Verify with another device');
@@ -188,11 +202,11 @@ describe('EncryptionBannerComponent', () => {
     expect(container.querySelector('trn-banner')?.textContent).toContain(
       'Set up recovery on the device where you first set up encryption.',
     );
-    // The banner cannot be dismissed, so its only action must not be destructive: the
+    // The banner’s only action must not be destructive: the
     // reset stays in Security settings, behind its typed confirmation.
-    const labels = [...container.querySelectorAll('trn-banner button')].map(
-      (button) => button.textContent?.trim(),
-    );
+    const labels = [
+      ...container.querySelectorAll('trn-banner button:not([data-dismiss])'),
+    ].map((button) => button.textContent?.trim());
     expect(labels).toEqual(['Security settings']);
 
     clickAction(container, 'Security settings');
@@ -257,9 +271,9 @@ describe('EncryptionBannerComponent', () => {
       expect(banner.textContent).toContain(
         'Set up recovery on the device where you first set up encryption.',
       );
-      const labels = [...banner.querySelectorAll('button')].map((button) =>
-        button.textContent?.trim(),
-      );
+      const labels = [
+        ...banner.querySelectorAll('button:not([data-dismiss])'),
+      ].map((button) => button.textContent?.trim());
       expect(labels).toEqual(['Security settings']);
     });
 
@@ -271,7 +285,7 @@ describe('EncryptionBannerComponent', () => {
 
       // jsdom does not apply inert to focus, so assert the attribute the browser
       // applies it from: every button sits inside an inert subtree.
-      expect(buttons().length).toBe(2);
+      expect(buttons().length).toBe(3);
       for (const button of buttons()) {
         expect(button.closest('[inert]')).not.toBeNull();
       }
@@ -280,7 +294,7 @@ describe('EncryptionBannerComponent', () => {
       show('needs-recovery');
       fixture.detectChanges();
 
-      expect(buttons().length).toBe(2);
+      expect(buttons().length).toBe(3);
       for (const button of buttons()) {
         expect(button.closest('[inert]')).toBeNull();
       }

@@ -76,39 +76,42 @@
     </main>
   } @else {
     @if (status.bannerSlot() === 'status') {
-      <trn-banner
-        variant="neutral"
-        placement="global"
-        data-testid="app-capability-summary"
-      >
-        <span
-          [attr.role]="status.hasBlocking() ? 'alert' : 'status'"
-          [attr.aria-live]="status.hasBlocking() ? 'assertive' : 'polite'"
-          >{{ status.bannerMessage() }}</span
+      <div class="relative">
+        <trn-banner
+          variant="neutral"
+          placement="global"
+          [overlay]="status.bannerSlotOverlay()"
+          data-testid="app-capability-summary"
         >
-        <span trnBannerActions>
-          <button
-            trnBtn
-            presentation="outline"
-            size="sm"
-            type="button"
-            (click)="status.show()"
+          <span
+            [attr.role]="status.hasBlocking() ? 'alert' : 'status'"
+            [attr.aria-live]="status.hasBlocking() ? 'assertive' : 'polite'"
+            >{{ status.bannerMessage() }}</span
           >
-            System status
-          </button>
-          @if (!status.hasBlocking()) {
+          <span trnBannerActions>
             <button
               trnBtn
-              presentation="ghost"
+              presentation="outline"
               size="sm"
               type="button"
-              (click)="dismissSummary()"
+              (click)="status.show()"
             >
-              Dismiss
+              System status
             </button>
-          }
-        </span>
-      </trn-banner>
+            @if (!status.hasBlocking()) {
+              <button
+                trnBtn
+                presentation="ghost"
+                size="sm"
+                type="button"
+                (click)="dismissSummary()"
+              >
+                Dismiss
+              </button>
+            }
+          </span>
+        </trn-banner>
+      </div>
     } @else if (!isShellRoute()) {
       <button
         trnBtn

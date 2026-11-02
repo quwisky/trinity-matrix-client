@@ -38,7 +38,10 @@ export type TrnBannerPlacement = 'inline' | 'global';
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './banner.component.scss',
   templateUrl: './banner.component.html',
-  host: { '[attr.data-placement]': 'placement()' },
+  host: {
+    '[attr.data-placement]': 'placement()',
+    '[attr.data-overlay]': 'overlay() ? "" : null',
+  },
 })
 export class BannerComponent {
   /** Semantic treatment: `neutral` status or `accent` call-to-action. */
@@ -50,6 +53,12 @@ export class BannerComponent {
    * replacing one with another then never moves the page below it.
    */
   readonly placement = input<TrnBannerPlacement>('inline');
+
+  /**
+   * Float over the top of the nearest positioned ancestor instead of taking height, for a
+   * banner that arrives while the page below is in use.
+   */
+  readonly overlay = input(false);
 
   /**
    * The accent tone paints the attention surface, so it declares that context for the

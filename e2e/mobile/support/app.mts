@@ -127,9 +127,9 @@ export async function login(user: string, pass: string): Promise<void> {
   // First-run crypto/IndexedDB setup in a CI simulator can outlast 30 s.
   await waitForRooms(browser.isIOS ? 90_000 : 30_000);
   // Every mobile journey signs in a freshly registered account, whose crypto state
-  // resolves after the Rooms shell renders and mounts this banner above it. Its arrival
-  // pushes the rail and lists down, so wait for it before any tap is aimed: a tap that
-  // only checked stability before the banner existed lands on whatever slid under it.
+  // resolves after the Rooms shell renders and mounts this banner over its top edge.
+  // It no longer pushes the lists down, but it covers what is under it, so wait for it
+  // before any tap is aimed at the top of the screen.
   await expect(
     $('//trn-banner[contains(normalize-space(.),"Set up encryption")]'),
   ).toBeDisplayed({ wait: 30_000 });

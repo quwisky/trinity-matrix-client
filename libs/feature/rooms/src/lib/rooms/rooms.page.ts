@@ -372,6 +372,9 @@ export class RoomsPage {
   }
 
   constructor() {
+    afterNextRender(() => this.systemStatus.shellDisplayed(), {
+      injector: this.injector,
+    });
     // The service cannot read the page's viewChild refs, so hand it the focus call. In the
     // constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle hooks, so
     // binding there leaves the callback unset in unit tests.

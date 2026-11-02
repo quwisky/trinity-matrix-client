@@ -406,6 +406,38 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerSlot()).toBe('encryption');
     });
 
+    it('hides a dismissed encryption prompt for this account in this session only', () => {
+      trust.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+      status.dismissEncryption();
+      expect(status.bannerSlot()).toBeNull();
+
+      activeUserId.set('@b:hs');
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('floats a banner that arrives after the shell is on screen, never a blocking one', () => {
+      status.shellDisplayed();
+      TestBed.tick();
+      expect(status.bannerSlotOverlay()).toBe(true);
+
+      report('@a:hs', 'accounts', 'restore');
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerSlotOverlay()).toBe(true);
+    });
+
+    it('lays out a banner the slot already held when the shell came on screen', () => {
+      trust.set('needs-setup');
+      status.shellDisplayed();
+      TestBed.tick();
+      expect(status.bannerSlotOverlay()).toBe(false);
+
+      // Once it leaves, the next one arrives late.
+      status.dismissEncryption();
+      TestBed.tick();
+      expect(status.bannerSlotOverlay()).toBe(true);
+    });
+
     it('is empty when nothing is limited and encryption needs nothing', () => {
       expect(status.bannerSlot()).toBeNull();
       expect(status.bannerMessage()).toBe('');

@@ -33,6 +33,16 @@ export interface WorkspaceSystemStatus {
    * `null` unless {@link bannerSlot} is `'encryption'`.
    */
   readonly bannerPrompt: Signal<BannerPrompt | null>;
+  /**
+   * Whether the banner in the slot arrived after the rooms shell was on screen. Such a
+   * banner floats over the top of the shell instead of pushing it down, so what a person
+   * is reading or about to tap stays put. Never true for a blocking notice.
+   */
+  readonly bannerSlotOverlay: Signal<boolean>;
+  /** Tell the slot the rooms shell is on screen, so a banner arriving later floats. */
+  shellDisplayed(): void;
+  /** Hide the encryption prompt for the active Account until the next app start. */
+  dismissEncryption(): void;
   /** Hide the prompt to sign in again for the active Account until the next app start. */
   dismissSignInAgain(): void;
   /** Open System status; closing it returns focus to whatever had it. */

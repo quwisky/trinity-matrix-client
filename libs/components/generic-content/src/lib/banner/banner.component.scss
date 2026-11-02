@@ -48,6 +48,15 @@
     justify-content: flex-end;
   }
 
+  // An overlay banner takes no height: it covers the top of the page instead of moving it.
+  :host([data-overlay]) {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: 0;
+    z-index: var(--trinity-z-panel);
+    box-shadow: var(--trinity-shadow-floating);
+  }
+
   // `placement="global"` banners share one slot and keep the wrapped two-action height, so a
   // replacement never moves what is below it (a tap in flight would land on the wrong row).
   // The slot measures its own width; a layout wide enough for one row reserves nothing.

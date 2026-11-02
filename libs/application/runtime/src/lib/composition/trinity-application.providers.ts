@@ -171,6 +171,9 @@ export function provideTrinityApplication(
               })
             | null
           >,
+          bannerSlotOverlay: status.bannerSlotOverlay,
+          shellDisplayed: () => status.shellDisplayed(),
+          dismissEncryption: () => status.dismissEncryption(),
           dismissSignInAgain: () => status.dismissSignInAgain(),
           show: () => visibility.show(),
         };

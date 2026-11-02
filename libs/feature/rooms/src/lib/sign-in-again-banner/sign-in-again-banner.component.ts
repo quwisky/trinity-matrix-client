@@ -53,6 +53,8 @@ export class SignInAgainBannerComponent {
     this.systemStatus.bannerSlotReserved() ? 'global' : 'inline',
   );
 
+  readonly overlay = this.systemStatus.bannerSlotOverlay;
+
   /**
    * Asks first: key backup being on does not prove the person still has the recovery key,
    * and the new device can read older messages only with it or another signed-in device.
