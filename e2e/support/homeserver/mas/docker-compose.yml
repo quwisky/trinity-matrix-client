@@ -8,16 +8,17 @@
 # what these services mount into ./mas-data, which stop.mjs deletes.
 services:
   mas-db:
-    image: mirror.gcr.io/library/postgres:17.11-alpine
+    image: mirror.gcr.io/library/postgres:18.6-alpine
     container_name: trinity-e2e-mas-db
     restart: 'no'
     environment:
       POSTGRES_USER: mas
       POSTGRES_PASSWORD: mas
       POSTGRES_DB: mas
-    # Disposable: nothing to chown, nothing for stop.mjs to delete.
+    # Disposable: nothing to chown, nothing for stop.mjs to delete. The 18 image keeps PGDATA
+    # under /var/lib/postgresql, so that is the mount.
     tmpfs:
-      - /var/lib/postgresql/data
+      - /var/lib/postgresql
     healthcheck:
       test: ['CMD', 'pg_isready', '-U', 'mas', '-d', 'mas']
       interval: 1s
