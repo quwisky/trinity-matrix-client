@@ -51,6 +51,23 @@ describe('MessageComposerComponent — sendBlocked', () => {
     expect(cmp['canSendMedia']()).toBe(true);
   });
 
+  it('marks Send idle only when nothing is in the way, so a phone hides it for an empty draft only', async () => {
+    const { fixture } = await renderComposer({});
+    const send = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="composer-send"]',
+      ) as HTMLButtonElement;
+    const idle = () => send().classList.contains('composer__send--idle');
+    expect(idle()).toBe(true);
+
+    for (const input of ['sendBlocked', 'textSending'] as const) {
+      fixture.componentRef.setInput(input, true);
+      fixture.detectChanges();
+      expect(idle()).toBe(false);
+      fixture.componentRef.setInput(input, false);
+    }
+  });
+
   it('blocks poll, location, sticker and voice sends but not recording', async () => {
     const { fixture } = await renderComposer({
       sendBlocked: true,

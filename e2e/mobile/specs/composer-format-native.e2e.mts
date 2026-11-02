@@ -20,10 +20,16 @@ async function press(selector: string): Promise<void> {
   else await tap(selector);
 }
 
+// Format lives in the `+` sheet on phones.
+async function openFormatSheet(): Promise<void> {
+  await press('[data-testid="composer-insert"]');
+  await press('[data-testid="insert-format"]');
+}
+
 describe('mobile composer formatting', () => {
   beforeEach(resetApp);
 
-  it('formats a selected word through Aa, restores the keyboard, and dismisses on Back', async () => {
+  it('formats a selected word through the Format sheet, restores the keyboard, and dismisses on Back', async () => {
     const user = uniqueId('android-format');
     const pass = `${user}-pass`;
     const roomName = `Format ${user}`;
@@ -56,7 +62,7 @@ describe('mobile composer formatting', () => {
       input.focus();
       input.setSelectionRange(4, 9);
     });
-    await press('[data-testid="composer-format"]');
+    await openFormatSheet();
     const menu = $('[data-testid="action-sheet-surface"]');
     await expect(menu).toBeDisplayed();
     await sheetAtRest();
@@ -100,7 +106,7 @@ describe('mobile composer formatting', () => {
       timeoutMsg: 'soft keyboard never restored',
     });
 
-    await press('[data-testid="composer-format"]');
+    await openFormatSheet();
     await expect($('[data-testid="format-cancel"]')).toBeDisplayed();
     const unchanged = await browser.execute(
       () =>

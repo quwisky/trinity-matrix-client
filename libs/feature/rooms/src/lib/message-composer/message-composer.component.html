@@ -176,6 +176,7 @@
        can occupy the textarea's own cell instead of standing beside it. -->
     <div
       class="composer__field"
+      [class.composer__field--format-in-sheet]="formatInSheet()"
       #composerField
       data-testid="composer-field"
       (pointerdown)="onFieldPress($event)"
@@ -192,6 +193,9 @@
         [locationSharing]="attachments.locationSharing()"
         [sendBlocked]="sendBlocked()"
         [captureMode]="attachments.captureMode"
+        [formatInSheet]="formatInSheet()"
+        [formatDisabled]="formatDisabled()"
+        (format)="openFormatSheet()"
         (attachFile)="onAttach()"
         (createPoll)="openPollDialog()"
         (shareLocation)="shareLocation()"
@@ -248,12 +252,8 @@
       <trn-composer-format-menu
         [contextKey]="formatContext()"
         [previewing]="previewing()"
-        [disabled]="
-          composing() ||
-          textSending() ||
-          contextUploadProgress() !== null ||
-          attachments.recordingVoice()
-        "
+        [inSheet]="formatInSheet()"
+        [disabled]="formatDisabled()"
         (beforeOpen)="formatting.captureSelection()"
         (format)="formatting.onMenuFormat($event)"
         (preview)="onTogglePreview()"
@@ -282,12 +282,15 @@
       </button>
       <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on a
        pointer device Enter can be ambiguous (a draft holding newlines, IME composition).
-       Withheld only while recording, where the recording bar owns the send plane. -->
+       Withheld while recording, where the recording bar owns the send plane. On touch it is
+       also hidden while idle (nothing to send, nothing in the way); blocked and sending keep it
+       visible, disabled. -->
       @if (!attachments.recordingVoice()) {
         <button
           type="button"
           trnIconButton
           class="composer__send"
+          [class.composer__send--idle]="sendIdle()"
           trnTooltip="Send"
           aria-label="Send message"
           data-testid="composer-send"

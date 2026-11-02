@@ -25,6 +25,7 @@ import {
 import {
   DraftStoreService,
   KeyboardShortcutsService,
+  isMobileOs,
   type CaptureKind,
   TrackFileChooserDirective,
 } from '@trinity/platform-native';
@@ -357,6 +358,28 @@ export class MessageComposerComponent {
     editing: this.editing(),
     editTargetId: this.editTargetId(),
   }));
+  private readonly formatMenu = viewChild(ComposerFormatMenuComponent);
+  /**
+   * Phones fold Format into the insert sheet so the text keeps its width. Editing disables the
+   * `+`, and a thread composer has no sheet, so those keep the Aa button.
+   */
+  protected readonly formatInSheet = computed(
+    () => isMobileOs() && this.hasInsertMenu() && !this.editing(),
+  );
+  protected readonly formatDisabled = computed(
+    () =>
+      this.composing() ||
+      this.textSending() ||
+      this.contextUploadProgress() !== null ||
+      this.attachments.recordingVoice(),
+  );
+  /** Send is disabled only because there is nothing to send, so a phone can hide it. */
+  protected readonly sendIdle = computed(
+    () => !this.canSubmit() && !this.cannotSend() && !this.textSending(),
+  );
+  protected openFormatSheet(): void {
+    this.formatMenu()?.openMobileSheet();
+  }
   /** Resolves the user's (rebindable) formatting chords — see {@link onKeydown}. */
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private wasReplying = false;
@@ -541,6 +564,8 @@ export class MessageComposerComponent {
     const value = (event.target as HTMLTextAreaElement).value;
     this.text.set(value);
     this.field.autoGrow();
+    // Send mounting on the first character narrows the column, so measure again once it has.
+    this.field.regrowAfterRender();
     // The host throttles the "start"s, so emitting on every keystroke is fine.
     this.typing.emit(value.trim().length > 0);
     // Don't touch the menu mid-IME-composition: the in-progress reading is transient ASCII that

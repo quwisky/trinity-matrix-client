@@ -82,6 +82,8 @@ export class ComposerFormatMenuComponent {
   readonly disabled = input(false);
   readonly contextKey = input<object | null>(null);
   readonly previewing = input(false);
+  /** On a phone with the insert sheet, Format is an entry there and this renders no button. */
+  readonly inSheet = input(false);
   readonly format = output<FormatAction>();
   readonly preview = output<void>();
   readonly beforeOpen = output<void>();
@@ -115,7 +117,7 @@ export class ComposerFormatMenuComponent {
     if (this.invocation) this.onClosed(this.invocation);
   }
 
-  protected openMobileSheet(): void {
+  openMobileSheet(): void {
     if (this.disabled() || this.mobileSheetOpen()) return;
     const invocation = this.begin();
     const buttons: ActionSheetButton[] = FORMATS.map((entry) => ({
@@ -192,7 +194,12 @@ export class ComposerFormatMenuComponent {
       this.invocation = null;
       this.mobileSheetOpen.set(false);
       const trigger = this.trigger()?.nativeElement;
-      if (!trigger?.isConnected || trigger.disabled) return;
+      if (!trigger) {
+        // Opened from the insert sheet: no Aa button to refocus, so only hand the caret back.
+        if (invocation.restoreFocus) this.dismissed.emit();
+        return;
+      }
+      if (!trigger.isConnected || trigger.disabled) return;
       // An outside desktop press may have focused another control or placed a new
       // caret in the input. Preserve that intent instead of restoring an old range.
       if (

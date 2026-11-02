@@ -1,4 +1,4 @@
-import { test, expect } from '../../../fixtures.mts';
+import { test, expect, type Locator, type Page } from '../../../fixtures.mts';
 import { homeserverSession, login } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 import { testResourceId } from '../../../fixtures.mts';
@@ -7,6 +7,25 @@ import { createRoom } from '../../support/space-journey.mts';
 
 // On a phone the trailing buttons used to take most of the field, leaving ~170px for text.
 const session = homeserverSession();
+
+async function openRoom(
+  page: Page,
+  request: Parameters<typeof registerUser>[0],
+): Promise<Locator> {
+  const hs = session.hs as string;
+  const user = `column-${testResourceId('run')}`;
+  const pass = `${user}-pass`;
+  await registerUser(request, user, pass);
+  const account = await passwordLogin(request, hs, user, pass);
+  const roomName = `Column ${user}`;
+  await createRoom(request, hs, { accessToken: account.accessToken }, roomName);
+  await login(page, { ...session, user, pass });
+  await page.locator('.channel', { hasText: roomName }).first().click();
+  const input = page.getByTestId('composer-input');
+  await input.waitFor({ timeout: 30_000 });
+
+  return input;
+}
 
 test.describe('Composer text column on a phone', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -19,22 +38,7 @@ test.describe('Composer text column on a phone', () => {
     page,
     request,
   }) => {
-    const hs = session.hs as string;
-    const user = `column-${testResourceId('run')}`;
-    const pass = `${user}-pass`;
-    await registerUser(request, user, pass);
-    const account = await passwordLogin(request, hs, user, pass);
-    const roomName = `Column ${user}`;
-    await createRoom(
-      request,
-      hs,
-      { accessToken: account.accessToken },
-      roomName,
-    );
-    await login(page, { ...session, user, pass });
-    await page.locator('.channel', { hasText: roomName }).first().click();
-    const input = page.getByTestId('composer-input');
-    await input.waitFor({ timeout: 30_000 });
+    const input = await openRoom(page, request);
 
     const measure = () =>
       page.getByTestId('composer-field').evaluate((field) => {
@@ -60,10 +64,32 @@ test.describe('Composer text column on a phone', () => {
     const empty = await measure();
     await input.fill('Hello there');
     const typing = await measure();
-    // Insert, format and emoji stay in both states; Send joins once there is text.
-    expect(empty.buttons).toHaveLength(3);
-    expect(typing.buttons).toHaveLength(4);
-    expect(empty.input / empty.field).toBeGreaterThanOrEqual(0.5);
+    console.log('MEASURE', JSON.stringify({ empty, typing }));
+    // Format moved into the `+` sheet; Send only appears with something to send.
+    await expect(page.getByTestId('composer-format')).toHaveCount(0);
+    expect(empty.buttons).toHaveLength(2);
+    expect(typing.buttons).toHaveLength(3);
+    expect(empty.input / empty.field).toBeGreaterThanOrEqual(0.6);
+    expect(typing.input / typing.field).toBeGreaterThanOrEqual(0.5);
     expect(empty.small + typing.small).toBe(0);
+
+    await page.getByTestId('composer-insert').click();
+    await expect(page.getByTestId('insert-format')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('insert-format')).toBeHidden();
+  });
+
+  test('a paste into an empty field ends with no clipped line', async ({
+    page,
+    request,
+  }) => {
+    const input = await openRoom(page, request);
+    await input.focus();
+    await page.keyboard.insertText('word '.repeat(40).trim());
+    await expect(page.getByTestId('composer-send')).toBeVisible();
+    // Send mounting narrows the column after the first measure; the field must grow again.
+    await expect
+      .poll(() => input.evaluate((el) => el.scrollHeight - el.clientHeight))
+      .toBeLessThanOrEqual(1);
   });
 });

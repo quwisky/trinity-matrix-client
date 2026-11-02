@@ -105,6 +105,10 @@ export class ComposerInsertMenuComponent {
   readonly sendBlocked = input(false);
   /** How this host takes photos and videos; `'none'` withholds both actions. */
   readonly captureMode = input<CaptureMode>('none');
+  /** On a phone Format lives in this sheet instead of beside the field. */
+  readonly formatInSheet = input(false);
+  /** Whether formatting is unavailable right now (composing, sending, recording). */
+  readonly formatDisabled = input(false);
 
   readonly attachFile = output<void>();
   readonly createPoll = output<void>();
@@ -112,6 +116,7 @@ export class ComposerInsertMenuComponent {
   readonly recordVoice = output<void>();
   readonly takePhoto = output<void>();
   readonly recordVideo = output<void>();
+  readonly format = output<void>();
 
   /** One action model feeds both the anchored desktop menu and mobile action sheet. */
   protected readonly insertActions = computed<readonly ComposerInsertAction[]>(
@@ -177,6 +182,16 @@ export class ComposerInsertMenuComponent {
             run: () => this.recordVoice.emit(),
           });
         }
+      }
+      if (this.formatInSheet()) {
+        actions.push({
+          text: 'Format message',
+          icon: 'case-sensitive',
+          testId: 'insert-format',
+          disabled: this.formatDisabled(),
+          transfersFocus: true,
+          run: () => this.format.emit(),
+        });
       }
       return actions;
     },
