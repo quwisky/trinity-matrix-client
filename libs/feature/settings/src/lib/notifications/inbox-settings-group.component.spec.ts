@@ -847,7 +847,7 @@ describe('InboxSettingsGroupComponent', () => {
 
   describe('the line for a switch that reads on while nothing records', () => {
     const NOT_RECORDING =
-      "Trinity couldn't read this setting, so it isn't recording mentions right now.";
+      "Trinity couldn't read the inbox settings, so it isn't recording mentions right now.";
 
     it('shows after a failed read, and describes the switch', async () => {
       await setup({ unreadable: [KEEP] });
@@ -862,10 +862,13 @@ describe('InboxSettingsGroupComponent', () => {
       expect(recordSwitch().disabled).toBe(false);
     });
 
-    it('shows when it was the other switch that could not be read', async () => {
+    it('shows when it was the Show switch that could not be read, and describes that too', async () => {
       await setup({ unreadable: [SHOW] });
 
       expect(screen.getByText(NOT_RECORDING)).toBeTruthy();
+      expect(showSwitch().getAttribute('aria-describedby')).toBe(
+        'notif-show-inbox-switch-description notif-mention-not-recording',
+      );
     });
 
     it('goes once the person sets the switch, which is then true', async () => {

@@ -11,7 +11,11 @@
   >
     <trn-switch
       inputId="notif-show-inbox-switch"
-      aria-describedby="notif-show-inbox-switch-description"
+      [aria-describedby]="
+        notRecording()
+          ? 'notif-show-inbox-switch-description notif-mention-not-recording'
+          : 'notif-show-inbox-switch-description'
+      "
       [checked]="showInbox()"
       [disabled]="unknown()"
       [aria-disabled]="busy()"
@@ -43,8 +47,8 @@
       id="notif-mention-not-recording"
       class="m-0 py-3 text-13 text-muted-foreground"
     >
-      Trinity couldn't read this setting, so it isn't recording mentions right
-      now.
+      Trinity couldn't read the inbox settings, so it isn't recording mentions
+      right now.
     </p>
   }
   @if (deleteFailed()) {
