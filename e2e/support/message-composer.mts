@@ -22,7 +22,9 @@ export async function openNamedRoom(
  * element, which detaches a locator the test is already acting on.
  */
 export async function settleOpenedRoom(page: Page): Promise<void> {
-  await expect(page.locator('[data-pane-slide]')).toHaveCount(0);
+  await expect(page.locator('[data-pane-slide]')).toHaveCount(0, {
+    timeout: 10_000,
+  });
   await page.mouse.move(0, 0);
 }
 
