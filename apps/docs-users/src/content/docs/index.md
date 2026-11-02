@@ -153,6 +153,9 @@ like the room list, and keeps your newest 2,000 mentions per account, for up to 
   that sign-in succeeds. That includes signing in to an account already on this device, even when
   key backup holds every key. Cancel leaves everything as it was.
 - **Erase all data on this device** deletes everything, including the record.
+- Without asking, the inbox deletes a single row when its message was redacted, when this device
+  shows you left or were banned from the room, or when your server answers that the message is
+  forbidden or doesn't exist (a 403 or 404).
 
 Your messages themselves are never deleted by any of these.
 

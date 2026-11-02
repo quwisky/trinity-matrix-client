@@ -43,10 +43,18 @@ harmless.
 
 **A deleted row can't come back through catch-up.** A client catches up from its saved sync
 position, which the SDK writes after its first sync and then at most every five minutes, and that
-catch-up reads as live. So `forgetAccount` keeps, for the session, the newest deleted `ts` per
-account and skips anything up to it, and a recorder attached to a client that's already `Syncing`
-saves the store's position. A crash before the new client's first batch is saved could bring a
-deleted row back. That's accepted.
+catch-up reads as live. So `forgetAccount` keeps the IDs it deleted, per account and for the session,
+and each queued write checks them. It compares IDs, not times, because a sender's server sets
+`origin_server_ts` and nothing caps it. A recorder attached to a client that's already `Syncing` also
+calls `store.save(true)`. That writes the SDK's whole sync store, not just a position, as its own
+periodic save does.
+
+Two gaps are accepted:
+
+- A crash before the new client's first batch is saved could bring a deleted row back.
+- Attaching in `Prepared`, `Catchup`, `Reconnecting` or `Error` skips that save, and nothing retries
+  it on return to `Syncing`. A restart before the next periodic save could then replay what came
+  while the record was off, or what was deleted.
 
 **Where a person is told first.** `MENTION_HISTORY_LOSS` is said only when there's history, and
 `hasMentionHistory(accountId, true)` also says it when the count can't be read, on paths that delete
@@ -54,9 +62,9 @@ whatever is there:
 
 | Path                                                  | Where it's said                                               | On an unread count |
 | ----------------------------------------------------- | ------------------------------------------------------------- | ------------------ |
-| Remove account, every route                           | `AccountRemovalLauncherAdapter`'s question                    | Not said           |
-| Startup recovery                                      | `ApplicationRecoveryPresenter`'s question, the device's total | Not said           |
-| Delete account in the app                             | `DeleteAccountDialogComponent`'s first step                   | Not said           |
+| Remove account, every route                           | `AccountRemovalLauncherAdapter`'s question                    | Said               |
+| Startup recovery                                      | `ApplicationRecoveryPresenter`'s question, the device's total | Said               |
+| Delete account in the app                             | `DeleteAccountDialogComponent`'s first step                   | Said               |
 | Delete account at an OAuth provider                   | `DeleteAccountGroupComponent`, once the page has been opened  | Said               |
 | Re-auth that moves device                             | The login page's subtitle                                     | Said               |
 | Sign in again banner                                  | Its question, ahead of that page                              | Not said           |
