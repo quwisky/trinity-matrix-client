@@ -303,6 +303,27 @@ test.describe('Mentions inbox', () => {
         .toBe('visible, outside the conversation');
     }
 
+    test('the floating account bar leaves the last row and Load more clear', async ({
+      page,
+    }) => {
+      await page.getByTestId('inbox-tab-mentions').click();
+      const more = page.getByTestId('inbox-load-more');
+      await expect(more).toBeVisible();
+      await scroller(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+      const barTop = async () =>
+        (await page.locator('.userbar').boundingBox())?.y ?? 0;
+      await expect
+        .poll(async () => {
+          const box = await more.boundingBox();
+          return (box?.y ?? Infinity) + (box?.height ?? 0) <= (await barTop());
+        })
+        .toBe(true);
+      const last = await rows(page).last().boundingBox();
+      expect((last?.y ?? 0) + (last?.height ?? 0)).toBeLessThanOrEqual(
+        await barTop(),
+      );
+    });
+
     test('the back arrow keeps the tab and scroll position', async ({
       page,
     }) => {
