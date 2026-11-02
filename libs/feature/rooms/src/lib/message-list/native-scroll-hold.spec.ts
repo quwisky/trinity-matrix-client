@@ -108,9 +108,19 @@ describe('NativeScrollHold', () => {
     hold.wrote(5, 1205, 0);
     expect(hold.scrolled(1205, 16)).toBe(false);
 
-    expect(hold.scrolled(0, 301)).toBe(false);
+    expect(hold.scrolled(0, 317)).toBe(false);
 
     expect(hold.shift()).toBe(0);
+  });
+
+  it("counts the time from the write's own event, so a stall cannot hide an undo", () => {
+    const hold = new NativeScrollHold(true);
+    hold.wrote(5, 1205, 0);
+    expect(hold.scrolled(1205, 400)).toBe(false);
+
+    expect(hold.scrolled(5, 460)).toBe(true);
+
+    expect(hold.shift()).toBe(1200);
   });
 
   it('stops watching a write once told to', () => {

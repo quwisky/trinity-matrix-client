@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 /** How close to the old position a settled scroll must land to count as undone by the scroll view. */
 const UNDONE_WITHIN_PX = 8;
 
-/** How long a write can be undone for: the scroll view does it within a few frames. */
+/** How long after a write's own scroll event it can be undone: the scroll view does it within a few frames. */
 const UNDONE_WITHIN_MS = 300;
 
 /**
@@ -74,15 +74,19 @@ export class NativeScrollHold {
    * position back. Returns true when it did, with the correction held again.
    */
   scrolled(scrollTop: number, now: number): boolean {
-    const written =
-      this.written && now - this.written.at <= UNDONE_WITHIN_MS
-        ? this.written
-        : null;
+    const written = this.written;
     if (written && Math.abs(scrollTop - written.to) < 1) {
-      return false; // the event for the write itself; it can still be undone
+      // The event for the write itself; it can still be undone. A stall can delay this and the
+      // undo alike, so the time runs from here.
+      this.written = { ...written, at: now };
+      return false;
     }
     this.written = null;
-    if (written && Math.abs(scrollTop - written.from) < UNDONE_WITHIN_PX) {
+    if (
+      written &&
+      now - written.at <= UNDONE_WITHIN_MS &&
+      Math.abs(scrollTop - written.from) < UNDONE_WITHIN_PX
+    ) {
       this.shift.update((shift) => shift + written.to - scrollTop);
       this.refused = true;
       return true;

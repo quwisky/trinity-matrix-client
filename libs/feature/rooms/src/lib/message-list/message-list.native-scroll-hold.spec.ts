@@ -315,6 +315,44 @@ describe('message list on iOS: older history under a finger', () => {
     expect(ctx.view.st).toBe(100);
   });
 
+  it('settles a positive margin from the position before the content shrinks', () => {
+    // Rows above the reader came out shorter, so the margin pushes down. Taking it off shortens
+    // the content, and a reader near the bottom is clamped before the shift is added.
+    const ctx = list();
+    const row = ctx.scroll.querySelector('[data-mid="$5"]') as Element;
+    let clamps = false; // only once the scroller holds its real height, past the set-up's jumps
+    setScrollGeometry(ctx.scroll, {
+      scrollTop: {
+        get: () => {
+          if (clamps) {
+            const end = ctx.scroll.scrollHeight - ctx.scroll.clientHeight;
+            ctx.view.st = Math.min(ctx.view.st, end);
+          }
+          return ctx.view.st;
+        },
+        set: (value: number) => (ctx.view.st = value),
+      },
+    });
+    touch(row, 'touchstart', 1);
+    askForPage(ctx);
+    landPage(ctx);
+
+    ctx.view.st = 1120; // 200 px off the bottom
+    ctx.cmp.onScroll();
+    ctx.view.prepended -= 440;
+    measureRows(ctx.scroll, ['$p0'], 40);
+    expect(held(ctx.scroll)).toBe(240);
+    const before = ctx.anchorTop();
+    clamps = true;
+
+    touch(row, 'touchend', 0);
+    vi.advanceTimersByTime(IDLE_MS);
+
+    expect(held(ctx.scroll)).toBe(0);
+    expect(ctx.view.st).toBe(880);
+    expect(ctx.anchorTop()).toBe(before);
+  });
+
   it('gives up the hold for a jump to a message, and does not read the jump as an undo', () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;

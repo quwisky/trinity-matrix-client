@@ -692,11 +692,12 @@ export class MessageListComponent extends MessageListBase {
   /** Margin off and position on in one task, so no frame shows the rows between the two. */
   private releaseScrollHold(el: HTMLElement): void {
     if (this.scrollHold.shift() === 0) return;
-    const shift = this.scrollHold.settle();
+    // Read first: without a positive margin the content shrinks, and the browser may clamp this.
+    const top = el.scrollTop + this.scrollHold.settle();
     el.style.removeProperty('--scroll-hold');
     this.prependAnchorActive = false;
     this.prependAnchorGeneration++;
-    this.writeCorrection(el, el.scrollTop + shift);
+    this.writeCorrection(el, top);
   }
 
   /**
