@@ -30,6 +30,7 @@ import {
 import { MentionInboxPreferences } from './mention-inbox.preferences';
 import {
   MENTION_INDEX_STORE,
+  MENTION_ROW_LIMIT,
   type MentionCursor,
   type MentionRecord,
 } from './mention-index-store';
@@ -67,7 +68,7 @@ export class MentionIndexService {
 
   private readonly recorders = new Map<string, AccountRecorder>();
   /** A new device's client catches up from the old one's saved position, replaying these as live. */
-  private readonly forgottenUpTo = new Map<string, number>();
+  private readonly forgottenIds = new Map<string, Set<string>>();
   private readonly started = signal(false);
   private readonly stopped = signal(false);
   private readonly deleteFailedState = signal(false);
@@ -138,12 +139,12 @@ export class MentionIndexService {
     return defer(() =>
       from(
         this.enqueue(async () => {
-          const [newest] = await this.store
-            .page(accountId, null, 1, Date.now())
+          const rows = await this.store
+            .page(accountId, null, MENTION_ROW_LIMIT, Date.now())
             .catch(() => []);
-          if (newest) {
-            this.forgottenUpTo.set(accountId, newest.ts);
-          }
+          const forgotten = this.forgottenIds.get(accountId) ?? new Set();
+          rows.forEach((row) => forgotten.add(row.eventId));
+          this.forgottenIds.set(accountId, forgotten);
           await this.store.clearAccount(accountId);
         }),
       ),
@@ -327,7 +328,6 @@ export class MentionIndexService {
     if (
       event.getSender() === client.getUserId() ||
       event.isRedacted() ||
-      event.getTs() <= (this.forgottenUpTo.get(accountId) ?? -Infinity) ||
       // A legacy edit highlights by display name again, so a bot's edits could use up the cap.
       event.getRelation()?.rel_type === RelationType.Replace ||
       client.getPushActionsForEvent(event, true)?.tweaks?.highlight !== true
@@ -341,8 +341,9 @@ export class MentionIndexService {
     };
     const session = this.session;
     void this.enqueue(() =>
-      // Checked here, not at the emit: a failure or a switch going off also drops queued writes.
-      this.recording()
+      // Checked here, not at the emit: a failure, a forget or a switch going off also drops queued
+      // writes.
+      this.recording() && !this.forgottenIds.get(accountId)?.has(record.eventId)
         ? this.store.put(accountId, record, Date.now())
         : Promise.resolve(),
     ).catch((error: unknown) => {

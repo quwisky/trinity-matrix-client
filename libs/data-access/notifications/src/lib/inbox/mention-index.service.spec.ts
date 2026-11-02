@@ -1082,6 +1082,34 @@ describe('MentionIndexService', () => {
     expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$new']);
   });
 
+  it('records mentions after a forget whatever time they carry', async () => {
+    const { client, store, run, service } = setup();
+    await run();
+    // Nothing caps a sender's timestamp.
+    client.live(message('$future', { origin_server_ts: TS + 1_000_000 }));
+    await flush();
+
+    await firstValueFrom(service.forgetAccount(ME));
+    client.live(message('$later'));
+    await flush();
+
+    expect(store.rows(ME).map((row) => row.eventId)).toEqual(['$later']);
+  });
+
+  it('keeps out a deleted mention arriving while its forget is queued', async () => {
+    const { client, store, run, service } = setup();
+    await run();
+    client.live(message('$old'));
+    await flush();
+
+    const forgotten = firstValueFrom(service.forgetAccount(ME));
+    client.live(message('$old'));
+    await forgotten;
+    await flush();
+
+    expect(store.rows(ME)).toEqual([]);
+  });
+
   it('saves the sync position when turned on mid-session, so no restart replays what came before', async () => {
     const { client, prefs, run } = setup();
     await run();
