@@ -4,7 +4,11 @@ import {
   type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
-import { apiLogin, type ApiUser } from '../../../support/account.mts';
+import {
+  apiLogin,
+  roomKeysBackedUp,
+  type ApiUser,
+} from '../../../support/account.mts';
 import {
   deviceKeysPublished,
   fillLabeledInput,
@@ -795,5 +799,65 @@ test.describe('Mention record', () => {
     await expect
       .poll(() => storedIds(page), { timeout: 30_000 })
       .toEqual([after]);
+  });
+
+  test('with every key backed up, signing in to a stored account still asks, and only about the history', async ({
+    page,
+    request,
+    matrixResources,
+  }) => {
+    test.slow();
+    const seed = await seedInbox(request, hs(), matrixResources);
+    const published = deviceKeysPublished(page);
+    await signIn(page, seed);
+    await published;
+    await setUpEncryption(page, seed.pass);
+
+    // The client only reports a backup as complete once its upload loop has run for a real key.
+    const roomName = matrixResources.namespace.role('backed-up-room');
+    const roomId = await createEncryptedRoom(
+      request,
+      hs(),
+      seed.reader,
+      roomName,
+    );
+    registerRoomCleanup(matrixResources, request, hs(), roomId, [seed.reader]);
+    await openRoom(page, roomName);
+    await sendEncrypted(page, 'a key for the backup');
+    await expect
+      .poll(() => roomKeysBackedUp(request, hs(), seed.reader, roomId), {
+        timeout: 60_000,
+      })
+      .toBe(true);
+    const recorded = await recordMention(page, seed);
+
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('add-account').click();
+    await expect(page.getByTestId('cancel-add')).toBeVisible();
+    await fillLabeledInput(page, 'Homeserver', hs());
+    await page.getByText('Continue', { exact: true }).click();
+    const submit = page.getByRole('button', { name: 'Sign in', exact: true });
+    await submit.waitFor({ timeout: 30_000 });
+    await fillLabeledInput(page, 'Username', seed.user);
+    await fillLabeledInput(page, 'Password', seed.pass);
+    await submit.click();
+    const asked = page.locator('trn-alert-dialog', { hasText: SENTENCE });
+
+    await expect(asked).toBeVisible({ timeout: 30_000 });
+    await expect(asked).toContainText("Delete this device's mention history?");
+    await expect(
+      asked.getByRole('button', { name: 'Export keys' }),
+    ).toHaveCount(0);
+    await asked.getByRole('button', { name: 'Cancel' }).click();
+    await expect(asked).toHaveCount(0);
+    expect(await storedIds(page)).toEqual([recorded]);
+
+    await submit.click();
+    await expect(asked).toBeVisible({ timeout: 30_000 });
+    await asked.getByRole('button', { name: 'Sign in anyway' }).click();
+
+    await expect
+      .poll(() => storedIds(page), { timeout: 30_000 })
+      .not.toContain(recorded);
   });
 });
