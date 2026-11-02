@@ -304,8 +304,6 @@
     pointer-events: none;
   }
 
-  // The content alone reserves the trailing authenticity column. Read receipts sit on the next grid
-  // row and span both columns, so a shield cannot move their inline edge toward the middle.
   .msg__content {
     min-width: 0;
   }

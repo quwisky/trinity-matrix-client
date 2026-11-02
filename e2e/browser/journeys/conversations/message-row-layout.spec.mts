@@ -14,8 +14,8 @@ import { registerUser } from '../../../support/account.mts';
 import { apiLogin } from '../../../support/account.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
-// Pins the message row's grid placement: the gutter standing in for the avatar, the header
-// time, and the receipts with their "seen by" list sit where the stylesheet puts them. The
+// Pins the message row's grid placement: the gutter standing in for the avatar and the header
+// time sit where the stylesheet puts them, and opening the "seen by" names moves nothing. The
 // row host is `display: contents` and `.msg__body` is a grid, so a child component that
 // gained a box of its own would move these without any unit test noticing; jsdom does no
 // layout.
@@ -45,8 +45,6 @@ async function measure(page: Page) {
         lead: box(row.querySelector('.msg__avatar, .msg__gutter')),
         time: box(row.querySelector('.msg__time')),
         body: box(row.querySelector('.msg__body')),
-        receipts: box(row.querySelector('.msg__receipts')),
-        seenBy: box(row.querySelector('.msg__seen-by')),
       }));
   });
 }
@@ -62,7 +60,7 @@ for (const [name, use] of [
     test.use(use);
     test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-    test('places time, gutter, receipts and seen-by in the body grid', async ({
+    test('places time and gutter in the body grid, and seen-by moves nothing', async ({
       page,
       request,
     }) => {
@@ -118,6 +116,7 @@ for (const [name, use] of [
       ).toBeVisible({ timeout: 30_000 });
       const cluster = page.getByTestId('read-receipts').first();
       await expect(cluster).toBeVisible({ timeout: 20_000 });
+      const closed = await measure(page);
       await cluster.click();
       await expect(page.getByTestId('seen-by-list').first()).toContainText(
         readerName,
@@ -125,7 +124,7 @@ for (const [name, use] of [
 
       const rows = await measure(page);
       expect(rows).toHaveLength(bodies.length);
-      const [head, mid, tail] = rows;
+      const [head, mid] = rows;
       // The header row leads with the avatar and carries the time in its head line.
       expect(head.time).not.toBeNull();
       expect(mid.time).toBeNull();
@@ -133,16 +132,8 @@ for (const [name, use] of [
       expect(head.lead?.w).toBe(40);
       expect(mid.lead?.w).toBe(40);
       expect(mid.lead?.x).toBe(head.lead?.x);
-      // Receipts and their list sit inside the last row's body, list below the cluster.
-      expect(tail.receipts).not.toBeNull();
-      expect(tail.seenBy).not.toBeNull();
-      expect(tail.seenBy!.y).toBeGreaterThanOrEqual(
-        tail.receipts!.y + tail.receipts!.h - 1,
-      );
-      expect(tail.receipts!.x).toBeGreaterThanOrEqual(tail.body!.x);
-      expect(tail.seenBy!.y + tail.seenBy!.h).toBeLessThanOrEqual(
-        tail.msg!.y + tail.msg!.h + 1,
-      );
+      // The names open over the conversation, so no row moves.
+      expect(rows.map((row) => row.msg)).toEqual(closed.map((row) => row.msg));
     });
   });
 }

@@ -86,42 +86,54 @@ test.describe('Read receipts (seen by)', () => {
       new RegExp(seerName),
     );
 
-    // The cluster is out of flow, so a reader part-way through a sender's run does not add
-    // height in the middle of it and break the group's rhythm. Measured rather than read off
-    // the stylesheet: `position: absolute` is only half the claim — the other half is that
-    // the row it sits in is no taller than one without receipts, which is what a reader
-    // actually notices and what the windowed list measures.
-    // The cluster must not be painted over the message it belongs to.
-    //
-    // This replaced an assertion that the cluster was OUT of flow. That was the wrong thing
-    // to pin: taking it out of flow did remove the height it adds mid-group, and in doing so
-    // put the avatars on top of the row's own last line, because the row has 2px of bottom
-    // padding and the cluster is ~16px tall. The property that matters to a reader is not
-    // where the box sits in the flow — it is that the words stay visible.
-    //
-    // Measured as box intersection in a real browser: jsdom does no layout, so a unit test
-    // cannot tell the two arrangements apart at all.
-    const overlap = await page.evaluate(() => {
-      const bar = document.querySelector('[data-testid=read-receipts]');
-      const row = bar?.closest('.msg');
-      const text = row?.querySelector('.msg__text');
-      if (!bar || !row || !text) {
+    // A receipt must not move the conversation: the strip takes the same room with or without
+    // readers, and it lies below the message rather than over it. jsdom does no layout, so this
+    // is measured in a real browser.
+    const layout = await page.evaluate(() => {
+      const bar = document.querySelector<HTMLElement>(
+        '[data-testid=read-receipts]',
+      );
+      const scroller = bar?.closest<HTMLElement>('.scroll');
+      const rows = scroller?.querySelectorAll<HTMLElement>('.msg');
+      const lastRow = rows?.[rows.length - 1];
+      if (!bar || !scroller || !lastRow) {
         return null;
       }
-      const b = bar.getBoundingClientRect();
-      const t = text.getBoundingClientRect();
-      return {
-        intersects:
-          b.left < t.right &&
-          b.right > t.left &&
-          b.top < t.bottom &&
-          b.bottom > t.top,
-      };
+      const inRow = bar.closest('.msg') !== null;
+      const clear =
+        bar.getBoundingClientRect().top >=
+        lastRow.getBoundingClientRect().bottom - 1;
+      const withReaders = scroller.scrollHeight;
+      bar.style.display = 'none';
+      const without = scroller.scrollHeight;
+      bar.style.display = '';
+      return { inRow, clear, withReaders, without };
     });
 
-    if (!overlap) {
-      throw new Error('expected a row carrying read receipts');
-    }
-    expect(overlap.intersects).toBe(false);
+    expect(layout).not.toBeNull();
+    expect(layout!.inRow).toBe(false);
+    expect(layout!.clear).toBe(true);
+    expect(layout!.withReaders).toBe(layout!.without);
+
+    // A newer message takes the readers away until they catch up, and catching up moves nothing.
+    const newer = `newer message ${runId}`;
+    const newerId = await request
+      .put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/rcpt-newer-${runId}`,
+        { headers: author.headers, data: { msgtype: 'm.text', body: newer } },
+      )
+      .then((r) => r.json())
+      .then((j) => j.event_id as string);
+    const newest = page.locator('.scroll .msg', { hasText: newer });
+    await expect(newest).toBeVisible({ timeout: 20_000 });
+    await expect(receipts).toHaveCount(0, { timeout: 20_000 });
+    const before = await newest.boundingBox();
+
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/receipt/m.read/${encodeURIComponent(newerId)}`,
+      { headers: seer.headers, data: {} },
+    );
+    await expect(receipts).toHaveCount(1, { timeout: 20_000 });
+    expect(await newest.boundingBox()).toEqual(before);
   });
 });

@@ -231,9 +231,6 @@
         }
       </div>
 
-      <!-- The shield and receipts share the body grid but not a column: content reserves the
-           shield's trailing column, receipts span both, so the shield never pushes their avatars
-           toward the middle of the timeline. -->
       @if (r.shield; as shield) {
         <trn-icon
           [name]="shieldIcon(shield.level)"
@@ -250,10 +247,6 @@
             <span class="msg__shield-tip-detail">{{ shield.explanation }}</span>
           </span>
         </ng-template>
-      }
-
-      @if (r.readReceipts.length) {
-        <trn-message-receipts [receipts]="r.readReceipts" />
       }
     </div>
 

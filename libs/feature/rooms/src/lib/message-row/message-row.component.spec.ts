@@ -493,7 +493,7 @@ describe('MessageRowComponent', () => {
   });
 
   // The shield qualifies the whole message but shares the body grid with its content. This
-  // lets one element serve both layouts while receipts span underneath its reserved column.
+  // lets one element serve both layouts.
   it.each([true, false])(
     'places one shield in the body grid (showHeader=%s)',
     async (showHeader) => {
@@ -515,32 +515,6 @@ describe('MessageRowComponent', () => {
       );
     },
   );
-
-  it('orders content, shield, and full-width receipts for keyboard and grid flow', async () => {
-    const { container } = await renderRow({
-      row: row({
-        shield: {
-          level: 'grey',
-          reason: 'Sent from an unverified device.',
-          explanation: 'Verify this person to be sure.',
-        },
-        readReceipts: [
-          { userId: '@bob:hs', name: 'Bob', initial: 'B', avatarMxc: null },
-        ],
-      }),
-    });
-    const body = container.querySelector('.msg__body');
-    const children = [...(body?.children ?? [])];
-
-    // The receipts are a `display: contents` component, so the host stands in the grid order.
-    expect(children.map((child) => child.className || child.localName)).toEqual(
-      [
-        'msg__content',
-        expect.stringContaining('msg__shield'),
-        'trn-message-receipts',
-      ],
-    );
-  });
 
   // The marker is the only way into the edit history, and it has to work identically in
   // both layouts — a grouped message has no header for it to sit in.
@@ -734,26 +708,6 @@ describe('MessageRowComponent', () => {
     });
   });
 
-  it('expands the "seen by" reader list when the receipt cluster is clicked', async () => {
-    const { container, fixture } = await renderRow({
-      row: row({
-        readReceipts: [
-          { userId: '@a:hs', name: 'Alice', initial: 'A', avatarMxc: null },
-        ],
-      }),
-    });
-    expect(container.querySelector('[data-testid=seen-by-list]')).toBeNull();
-
-    (
-      container.querySelector('[data-testid=read-receipts]') as HTMLElement
-    ).click();
-    fixture.detectChanges();
-
-    expect(
-      container.querySelector('[data-testid=seen-by-list]')?.textContent,
-    ).toContain('Seen by Alice');
-  });
-
   it('renders a plain caption below a media attachment', async () => {
     const { container } = await renderRow({
       row: row({ kind: 'file', media: fileMedia(), caption: 'look at this' }),
@@ -814,24 +768,14 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('.msg__text')).toBeNull();
   });
 
-  it('renders a "seen by" avatar per read receipt with a labelled group', async () => {
+  it('leaves read receipts to the list, so one arriving cannot change the row', async () => {
     const { container } = await renderRow({
       row: row({
         readReceipts: [
           { userId: '@bob:hs', name: 'Bob', initial: 'B', avatarMxc: null },
-          { userId: '@cara:hs', name: 'Cara', initial: 'C', avatarMxc: null },
         ],
       }),
     });
-
-    const receipts = container.querySelector('[data-testid=read-receipts]');
-    expect(receipts).toBeTruthy();
-    expect(receipts?.querySelectorAll('trn-avatar').length).toBe(2);
-    expect(receipts?.getAttribute('aria-label')).toBe('Seen by Bob, Cara');
-  });
-
-  it('renders no "seen by" group when nothing has been read', async () => {
-    const { container } = await renderRow({ row: row({ readReceipts: [] }) });
     expect(container.querySelector('[data-testid=read-receipts]')).toBeNull();
   });
 

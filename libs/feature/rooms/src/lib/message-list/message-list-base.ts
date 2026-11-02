@@ -307,6 +307,11 @@ export abstract class MessageListBase {
   /** The grouped rows the list renders. */
   readonly rows = this.rowModel.rows;
 
+  /** Who has read the newest message; readers further back aren't shown. */
+  readonly latestReceipts = computed(
+    () => this.rows().at(-1)?.readReceipts ?? [],
+  );
+
   /** Member event id → the id of the group row that holds it. */
   readonly runOf = this.rowModel.runOf;
 

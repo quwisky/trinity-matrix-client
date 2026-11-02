@@ -307,18 +307,6 @@ test.describe('Message authenticity shields', () => {
     const eventId = await shieldRow.getAttribute('data-mid');
     expect(eventId).toBeTruthy();
 
-    // Put a genuine receipt on this exact shielded event. The regression only exists when
-    // both controls share a row; a mocked receipt would not prove that the Matrix projection
-    // and the real browser layout meet at the same message.
-    const receiptResponse = await request.post(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/receipt/m.read/${encodeURIComponent(eventId as string)}`,
-      { headers: seerAuth, data: {} },
-    );
-    expect(receiptResponse.ok()).toBe(true);
-    const receipts = shieldRow.getByTestId('read-receipts');
-    await expect(receipts).toBeVisible({ timeout: 30_000 });
-    await expect(receipts).toHaveAttribute('aria-label', new RegExp(seerName));
-
     // The custom tooltip owns the wording now, so no native one may linger.
     await expect(shield).not.toHaveAttribute('title', /./);
     await expect(shield).toHaveAttribute('tabindex', '0');
@@ -340,8 +328,7 @@ test.describe('Message authenticity shields', () => {
     );
 
     // Placement, measured in both writing directions: the shield owns only the content
-    // row's trailing column. Receipts span the complete body below it, stay flush with the
-    // logical trailing edge, and remain in flow for virtual-row measurement.
+    // row's trailing column.
     for (const direction of ['ltr', 'rtl'] as const) {
       const geometry = await shield.evaluate(async (shieldEl, dir) => {
         document.documentElement.dir = dir;
@@ -352,16 +339,13 @@ test.describe('Message authenticity shields', () => {
         const rowEl = shieldEl.closest('.msg');
         const bodyEl = rowEl?.querySelector('.msg__body');
         const contentEl = bodyEl?.querySelector('.msg__content');
-        const receiptEl = rowEl?.querySelector('[data-testid=read-receipts]');
-        if (!rowEl || !bodyEl || !contentEl || !receiptEl) {
+        if (!rowEl || !bodyEl || !contentEl) {
           return null;
         }
 
-        const row = rowEl.getBoundingClientRect();
         const body = bodyEl.getBoundingClientRect();
         const content = contentEl.getBoundingClientRect();
         const shieldBox = shieldEl.getBoundingClientRect();
-        const receipt = receiptEl.getBoundingClientRect();
         const overlaps = (a: DOMRect, b: DOMRect): boolean =>
           a.left < b.right &&
           a.right > b.left &&
@@ -372,32 +356,15 @@ test.describe('Message authenticity shields', () => {
 
         return {
           shieldIsBodyChild: shieldEl.parentElement === bodyEl,
-          // The receipts are a `display: contents` component, so its host is the grid child.
-          receiptIsBodyChild:
-            receiptEl.closest('trn-message-receipts')?.parentElement === bodyEl,
-          receiptsHostDisplay: getComputedStyle(
-            receiptEl.closest('trn-message-receipts')!,
-          ).display,
           shieldTrailingGap: trailingGap(shieldBox),
-          receiptTrailingGap: trailingGap(receipt),
           contentOverlapsShield: overlaps(content, shieldBox),
-          receiptOverlapsContent: overlaps(receipt, content),
-          receiptOverlapsShield: overlaps(receipt, shieldBox),
-          rowContainsReceipt:
-            receipt.top >= row.top - 1 && receipt.bottom <= row.bottom + 1,
         };
       }, direction);
 
       expect(geometry).not.toBeNull();
       expect(geometry!.shieldIsBodyChild).toBe(true);
-      expect(geometry!.receiptIsBodyChild).toBe(true);
-      expect(geometry!.receiptsHostDisplay).toBe('contents');
       expect(Math.abs(geometry!.shieldTrailingGap)).toBeLessThanOrEqual(1);
-      expect(Math.abs(geometry!.receiptTrailingGap)).toBeLessThanOrEqual(1);
       expect(geometry!.contentOverlapsShield).toBe(false);
-      expect(geometry!.receiptOverlapsContent).toBe(false);
-      expect(geometry!.receiptOverlapsShield).toBe(false);
-      expect(geometry!.rowContainsReceipt).toBe(true);
     }
     await page.evaluate(() => document.documentElement.removeAttribute('dir'));
   });

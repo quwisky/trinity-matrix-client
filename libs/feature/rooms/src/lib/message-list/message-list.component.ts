@@ -17,6 +17,7 @@ import {
 } from '@angular/core';
 import { outputFromObservable, toObservable } from '@angular/core/rxjs-interop';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
+import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
 import { MessageRowComponent } from '../message-row/message-row.component';
 import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { MessageListBase, type JumpOptions } from './message-list-base';
@@ -100,6 +101,7 @@ const SCROLL_IDLE_MS = 150;
     TimelineSkeletonComponent,
     TrnButton,
     MessageComposerComponent,
+    MessageReceiptsComponent,
     MessageRowComponent,
     DropOverlayComponent,
     TimelineDividerComponent,

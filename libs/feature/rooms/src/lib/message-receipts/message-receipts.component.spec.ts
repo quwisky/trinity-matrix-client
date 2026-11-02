@@ -18,6 +18,20 @@ describe('MessageReceiptsComponent', () => {
     );
   });
 
+  it('draws one avatar per reader, and nothing when nobody has read', async () => {
+    const { container, getByTestId, fixture } = await render(
+      MessageReceiptsComponent,
+      { inputs: { receipts } },
+    );
+    expect(
+      getByTestId('read-receipts').querySelectorAll('trn-avatar').length,
+    ).toBe(2);
+
+    fixture.componentRef.setInput('receipts', []);
+    fixture.detectChanges();
+    expect(container.querySelector('[data-testid=read-receipts]')).toBeNull();
+  });
+
   it('toggles the seen-by list from the cluster', async () => {
     const { getByTestId, queryByTestId, fixture } = await render(
       MessageReceiptsComponent,

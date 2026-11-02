@@ -50,6 +50,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { RoomMembersService } from '@trinity/data-access/room-administration';
 import { quoteBlock } from '@trinity/util/matrix';
+import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
 import {
   MessageRowComponent,
   type MessageLongPressContext,
@@ -111,6 +112,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
     TypingIndicatorComponent,
     EmptyStateComponent,
     MessageRowComponent,
+    MessageReceiptsComponent,
     MessageComposerComponent,
     TrnOverlaySurfaceDirective,
   ],
@@ -223,6 +225,11 @@ export class ThreadViewComponent implements OnDestroy {
       this.openedThread()
         ?.messages()
         .find((m) => m.id === this.replyingToId())?.senderName ?? '',
+  );
+
+  /** Who has read the thread's newest message; readers further back aren't shown. */
+  protected readonly latestReceipts = computed(
+    () => this.rows().at(-1)?.readReceipts ?? [],
   );
 
   /** Whether older thread replies remain to be paged in. */
