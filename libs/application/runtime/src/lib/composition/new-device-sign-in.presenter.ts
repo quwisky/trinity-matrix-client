@@ -7,6 +7,8 @@ import {
 } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
 import {
+  ACCOUNT_LIFECYCLE_PORT,
+  MENTION_HISTORY_LOSS,
   ROOM_KEYS_AT_RISK,
   ROOM_KEYS_MAY_BE_LOST,
   roomKeysAtRiskHeader,
@@ -28,21 +30,27 @@ export class NewDeviceSignInPresenter implements NewDeviceSignInPort {
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly surfaces = inject(WorkspaceApplicationSurfaceService);
   private readonly dialogGate = inject(AppLockDialogGate);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
 
   confirm(signIn: NewDeviceSignIn): Observable<boolean> {
-    return this.dialogGate.whenClear().pipe(switchMap(() => this.ask(signIn)));
+    return this.dialogGate.whenClear().pipe(
+      switchMap(() => this.lifecycle.hasMentionHistory(signIn.userId)),
+      switchMap((hasHistory) =>
+        this.ask(signIn, hasHistory ? `\n\n${MENTION_HISTORY_LOSS}` : ''),
+      ),
+    );
   }
 
-  private ask({
-    userId,
-    roomKeysBackedUp,
-  }: NewDeviceSignIn): Observable<boolean> {
+  private ask(
+    { userId, roomKeysBackedUp }: NewDeviceSignIn,
+    historyLoss: string,
+  ): Observable<boolean> {
     const replaces = `Signing in again starts a new session for ${userId} and deletes its old session’s keys from this device.`;
     const header = roomKeysAtRiskHeader(roomKeysBackedUp);
     if (roomKeysBackedUp === null) {
       return this.alert.confirm$({
         header,
-        message: `${replaces}\n\n${ROOM_KEYS_MAY_BE_LOST}`,
+        message: `${replaces}\n\n${ROOM_KEYS_MAY_BE_LOST}${historyLoss}`,
         confirmText: 'Sign in anyway',
         variant: 'danger',
       });
@@ -50,7 +58,7 @@ export class NewDeviceSignInPresenter implements NewDeviceSignInPort {
     return this.alert
       .choose$({
         header,
-        message: `${replaces}\n\n${ROOM_KEYS_AT_RISK}`,
+        message: `${replaces}\n\n${ROOM_KEYS_AT_RISK}${historyLoss}`,
         alternativeText: 'Export keys',
         confirmText: 'Sign in anyway',
         variant: 'danger',
