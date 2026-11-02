@@ -31,13 +31,15 @@
         color: var(--trinity-state-selected-foreground);
       }
 
-      &:hover {
-        background: var(--trinity-state-selected-hover-surface);
-        color: var(--trinity-state-selected-hover-foreground);
-
-        .row__time,
-        .row__preview {
+      @media (hover: hover) {
+        &:hover {
+          background: var(--trinity-state-selected-hover-surface);
           color: var(--trinity-state-selected-hover-foreground);
+
+          .row__time,
+          .row__preview {
+            color: var(--trinity-state-selected-hover-foreground);
+          }
         }
       }
     }
