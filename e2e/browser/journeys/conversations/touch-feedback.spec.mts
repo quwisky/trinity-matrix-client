@@ -61,10 +61,9 @@ test.describe('Touch feedback on a phone', () => {
       await expect(page.locator('.msg', { hasText: text })).toBeVisible();
     }
 
-    // A second quick tap lands on Send while it is disabled (the box is empty again).
-    await expect(send).toBeDisabled();
-    const box = (await send.boundingBox())!;
-    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    // With the box empty again Send is hidden on touch, so there is no disabled button left to
+    // take the press: the keyboard stays up.
+    await expect(send).toBeHidden();
     await expect(composer).toBeFocused();
 
     const row = page.locator('.msg', { hasText: 'first' }).first();
