@@ -52,6 +52,16 @@ describe('Homebrew tap workflow', () => {
     );
   });
 
+  it('trusts the local tap before brew reads its cask', () => {
+    const run = job.steps[stepIndex('Write, check and push the cask')].run;
+    expect(run.indexOf('brew tap quwisky/trinity')).toBeLessThan(
+      run.indexOf('brew trust quwisky/trinity'),
+    );
+    expect(run.indexOf('brew trust quwisky/trinity')).toBeLessThan(
+      run.indexOf('brew audit --cask'),
+    );
+  });
+
   it('holds the deploy key in a protected environment and authenticates brew', () => {
     expect(job.environment).toBe('homebrew');
     expect(job.env.HOMEBREW_GITHUB_API_TOKEN).toBe('${{ github.token }}');

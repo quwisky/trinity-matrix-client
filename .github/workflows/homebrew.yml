@@ -162,6 +162,8 @@ jobs:
           git -C tap commit -m "$CASK $VERSION"
           # Audit the committed cask through a local tap before anything leaves the runner.
           brew tap quwisky/trinity "$GITHUB_WORKSPACE/tap"
+          # Homebrew refuses to load a cask from a tap nobody has trusted.
+          brew trust quwisky/trinity
           brew style "quwisky/trinity/$CASK"
           brew audit --cask --strict --online "quwisky/trinity/$CASK"
           git -C tap push
