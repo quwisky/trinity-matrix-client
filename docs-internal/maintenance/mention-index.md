@@ -26,14 +26,14 @@ never affects sync or notifications, and the inbox falls back to the server's li
 
 ## Who clears it
 
-| Trigger                                                          | Path                                                                                  |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Either switch turned off                                         | `deleteAll`, for every account. A failure shows Try again, and the next start retries |
-| Sign-out, removal, deletion of an account                        | `forgetAccount` through `AccountLifecycleAdapter`                                     |
-| Sign-in that makes a new device                                  | `forgetAccount`, after the new client has started                                     |
-| Account gone from the registry at start                          | `keepOnlyAccounts` sweep; an unreadable registry deletes nothing                      |
-| Installation reset                                               | The database is in `LocalDataWipeService`'s inventory                                 |
-| Redaction, membership leave or ban, `M_FORBIDDEN`, `M_NOT_FOUND` | `forget` from `NotificationInboxService`, one row                                     |
+| Trigger                                                          | Path                                                                                                                              |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Either switch turned off                                         | `deleteAll`, for every account. A failure shows Try again, and the next start retries                                             |
+| Sign-out, removal, deletion of an account                        | `forgetAccount` through `AccountLifecycleAdapter`                                                                                 |
+| Sign-in that makes a new device                                  | `forgetAccount`, after the new client has started                                                                                 |
+| Account gone from the registry at start                          | `keepOnlyAccounts` sweep, or `deleteAll` with no accounts, which leaves no empty database. An unreadable registry deletes nothing |
+| Installation reset                                               | The database is in `LocalDataWipeService`'s inventory                                                                             |
+| Redaction, membership leave or ban, `M_FORBIDDEN`, `M_NOT_FOUND` | `forget` from `NotificationInboxService`, one row                                                                                 |
 
 **A room missing from the client forgets nothing.** The SDK swallows errors while processing a
 sync (`sync.ts`, around the cached-sync and `/sync` paths) and still emits `Prepared`, so a room can
