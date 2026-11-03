@@ -10,6 +10,9 @@ import {
 import { native, resetApp, webview } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
 
+/** The pane under test, and the lowest `scrollTop` it has reported since the tap. */
+type TapProbe = Window & { tapPane?: Element; tapLowest?: number };
+
 /** The scrollable pane at the centre of the screen: what a status bar tap should scroll. */
 const frontPane = (): Promise<{ name: string; top: number } | null> =>
   browser.execute(() => {
@@ -44,6 +47,7 @@ async function expectStatusTapScrollsToTop(): Promise<void> {
         (overflowY === 'auto' || overflowY === 'scroll')
       ) {
         el.scrollTop = el.scrollHeight;
+        (window as TapProbe).tapPane = el;
         return;
       }
       el = el.parentElement;
@@ -53,12 +57,32 @@ async function expectStatusTapScrollsToTop(): Promise<void> {
     timeoutMsg: 'the pane never scrolled down',
   });
 
+  // A timeline that reaches its top loads older history and keeps the reader's row, so its
+  // scrollTop leaves 0 again within a few frames: watch for the top being reached, not kept.
+  await browser.execute(() => {
+    const probe = window as TapProbe;
+    const pane = probe.tapPane;
+    if (!pane) return;
+    probe.tapLowest = pane.scrollTop;
+    pane.addEventListener(
+      'scroll',
+      () => {
+        if (probe.tapPane === pane) {
+          probe.tapLowest = Math.min(probe.tapLowest ?? 0, pane.scrollTop);
+        }
+      },
+      { passive: true },
+    );
+  });
+
   await native();
   // The status bar is not in the XCUITest hierarchy; a touch in its strip is what a finger does.
   await browser.execute('mobile: tap', { x: 200, y: 10 });
   await webview();
 
-  await browser.waitUntil(async () => (await frontPane())?.top === 0, {
+  const lowest = (): Promise<number | undefined> =>
+    browser.execute(() => (window as TapProbe).tapLowest);
+  await browser.waitUntil(async () => ((await lowest()) ?? 1) <= 0, {
     timeout: 10_000,
     timeoutMsg: 'a status bar tap did not scroll the front pane to its top',
   });
