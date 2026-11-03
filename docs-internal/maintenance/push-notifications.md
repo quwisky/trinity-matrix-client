@@ -239,7 +239,9 @@ can't reach. The only state the two processes share and both write is an OAuth a
 vault record and its lease. [`scripts/push-extension-boundary.spec.mjs`](../../scripts/push-extension-boundary.spec.mjs)
 fails if either target imports anything beyond Foundation, Security, CryptoKit (for the lease's
 file-name hash) and UserNotifications, if the extension links another package, if `TrinityPush`
-gains a package dependency, or if either names `/sync`, `/keys/` or `sendToDevice`.
+gains a package dependency or linker settings, if the extension target's build phases (by type)
+or `OTHER_LDFLAGS` link anything else, or if either reaches `/sync`, `/keys/`, `/room_keys/` or
+`sendToDevice`; comments are not scanned.
 
 **Where the code lives.** The native half is one local Capacitor plugin, the pnpm workspace
 package `@trinity/capacitor-push` in [`libs/native/capacitor-push`](../../libs/native/capacitor-push/package.json):
@@ -441,7 +443,9 @@ first stored. iOS's lease is numbered files in the app group, each claimed once 
 live lease over, and a taker killed at any step strands nothing (the next winner removes a
 candidate file older than 30 s). A holder checks it still holds the lease right before it sends a
 grant, so one suspended past the lease's expiry starts again under a new lease instead of sending a
-token another process may have spent. The window that stays open runs from that check until the
+token another process may have spent. The refresh's budget runs on the same continuous clock as
+the lease, so a wall clock stepped back can't stretch a grant past the lease that covers it. The
+window that stays open runs from that check until the
 answer is written: a holder suspended while its grant is in flight lets the lease lapse, and another
 process can read the unchanged vault and send the same refresh token. Compare-before-write keeps the
 vault consistent, but the provider sees the token twice, and only the provider can fence that. A

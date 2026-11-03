@@ -288,7 +288,8 @@ final class TokenRefresherTests: XCTestCase {
 
     private func makeRefresher(lease: TokenLease) -> TokenRefresher {
         let clock = clock!
-        return TokenRefresher(vault: vault, lease: lease, client: client, now: { clock.now })
+        return TokenRefresher(
+            vault: vault, lease: lease, client: client, now: { clock.now }, uptime: { clock.now.timeIntervalSince1970 })
     }
 
     /// A real lease on a temporary file, on the fake clock.
@@ -469,6 +470,37 @@ final class TokenRefresherTests: XCTestCase {
         _ = await refresh()
 
         XCTAssertEqual(client.grantDeadlines, [clock.now.addingTimeInterval(budget)])
+    }
+
+    /// The wall clock steps 20 s back after the lease was taken. The lease runs on the continuous
+    /// clock and lives the budget plus its margin, so the grant must still end within the budget.
+    func testAWallClockStepBackDoesNotStretchTheGrantPastTheLease() async {
+        let refresher = TokenRefresher(vault: vault, lease: lease, client: client, now: { [clock = clock!] in clock.now })
+        lease.onTake = { [clock = clock!] in clock.advance(-20) }
+
+        _ = await refresher.refresh(account: user, lineage: "L", tokenSeen: "a0", budget: budget)
+
+        let granted = client.grantDeadlines.first.map { $0.timeIntervalSince(clock.now) }
+        XCTAssertNotNil(granted)
+        XCTAssertLessThanOrEqual(granted ?? .infinity, budget)
+    }
+
+    /// Stepped back 20 s with 2 s left on the continuous clock: too little for a grant, whatever the
+    /// wall clock says.
+    func testAWallClockStepBackDoesNotLetAGrantStartPastTheFloor() async {
+        let uptime = FakeClock()
+        let refresher = TokenRefresher(
+            vault: vault, lease: lease, client: client, now: { [clock = clock!] in clock.now },
+            uptime: { uptime.now.timeIntervalSince1970 })
+        lease.onTake = { [clock = clock!, budget] in
+            clock.advance(-20)
+            uptime.advance(budget - 2)
+        }
+
+        let result = await refresher.refresh(account: user, lineage: "L", tokenSeen: "a0", budget: budget)
+
+        XCTAssertEqual(result, .transient)
+        XCTAssertEqual(client.grants.count, 0)
     }
 
     // MARK: A grant with tokens

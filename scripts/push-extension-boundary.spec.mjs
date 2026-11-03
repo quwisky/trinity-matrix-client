@@ -38,25 +38,65 @@ const forbiddenSegments = new Set([
   'sendtodevice',
 ]);
 
+/**
+ * The source without its comments, and its string literals (`"…"` and `"""…"""`), so a quoted word
+ * in a comment trips nothing and a multi-line literal is read whole.
+ */
+function scanned(source) {
+  let code = '';
+  const literals = [];
+  let i = 0;
+  while (i < source.length) {
+    if (source.startsWith('//', i)) {
+      const end = source.indexOf('\n', i);
+      i = end < 0 ? source.length : end;
+    } else if (source.startsWith('/*', i)) {
+      const end = source.indexOf('*/', i + 2);
+      i = end < 0 ? source.length : end + 2;
+    } else if (source.startsWith('"""', i)) {
+      const end = source.indexOf('"""', i + 3);
+      const stop = end < 0 ? source.length : end + 3;
+      literals.push(source.slice(i + 3, end < 0 ? source.length : end));
+      code += source.slice(i, stop);
+      i = stop;
+    } else if (source[i] === '"') {
+      let j = i + 1;
+      while (j < source.length && source[j] !== '"' && source[j] !== '\n') {
+        j += source[j] === '\\' ? 2 : 1;
+      }
+      literals.push(source.slice(i + 1, j));
+      code += source.slice(i, j + 1);
+      i = j + 1;
+    } else {
+      code += source[i];
+      i += 1;
+    }
+  }
+  return { code, literals };
+}
+
 /** What in one Swift source crosses the boundary. */
 function sourceViolations(source) {
   const found = [];
-  for (const [, module] of source.matchAll(
+  const { code, literals } = scanned(source);
+  for (const [, module] of code.matchAll(
     /^[ \t]*(?:@\w+[ \t]+)*(?:(?:public|package|internal|fileprivate|private)[ \t]+)?import[ \t]+(?:(?:struct|class|enum|protocol|func|var|let|typealias)[ \t]+)?([\w.]+)/gm,
   )) {
     if (!allowedImports.has(module)) found.push(`import ${module}`);
   }
-  for (const [literal] of source.matchAll(/"(?:[^"\\\n]|\\.)*"/g)) {
-    const text = literal.slice(1, -1);
-    if (text.includes('_matrix') && !text.startsWith(allowedMatrixPath)) {
-      found.push(`path ${text}`);
+  for (const text of literals) {
+    if (
+      text.includes('_matrix') &&
+      !text.trim().startsWith(allowedMatrixPath)
+    ) {
+      found.push(`path ${text.trim()}`);
     }
     const segment = text
-      .split(/[/?]/)
+      .split(/[/?\s]/)
       .find((part) => forbiddenSegments.has(part.toLowerCase()));
     if (segment) found.push(`segment ${segment}`);
   }
-  if (/sendToDevice/i.test(source)) found.push('sendToDevice');
+  if (/sendToDevice/i.test(code)) found.push('sendToDevice');
   return found;
 }
 
@@ -108,21 +148,38 @@ function projectViolations(project, ownSources) {
     (entry) => entry.name,
   );
   if (products.join() !== 'TrinityPush') found.push(`packages ${products}`);
+  // By type: a phase's name is only a comment, and a target can have several of one type.
+  const linked = [];
   for (const phase of listed(target, 'buildPhases')) {
-    const entries = listed(projectObject(project, phase.id), 'files').map(
-      (entry) => entry.name,
-    );
-    if (
-      phase.name === 'Frameworks' &&
-      entries.join() !== 'TrinityPush in Frameworks'
-    ) {
-      found.push(`frameworks ${entries}`);
-    }
-    if (phase.name === 'Sources') {
+    const object = projectObject(project, phase.id);
+    const isa = /isa = (\w+);/.exec(object)?.[1];
+    const entries = listed(object, 'files').map((entry) => entry.name);
+    if (isa === 'PBXFrameworksBuildPhase') linked.push(...entries);
+    if (isa === 'PBXSourcesBuildPhase') {
       for (const entry of entries) {
         const file = entry.replace(/ in Sources$/, '');
         if (!ownSources.includes(file)) found.push(`source ${file}`);
       }
+    }
+  }
+  if (linked.join() !== 'TrinityPush in Frameworks') {
+    found.push(`frameworks ${linked}`);
+  }
+  const configurations = /buildConfigurationList = (\w+)/.exec(target)?.[1];
+  for (const configuration of listed(
+    projectObject(project, configurations ?? ''),
+    'buildConfigurations',
+  )) {
+    const flags = /OTHER_LDFLAGS = (\([^)]*\)|[^;]*);/.exec(
+      projectObject(project, configuration.id),
+    )?.[1];
+    const extra = (flags ?? '')
+      .replace(/^\(|\)$/g, '')
+      .split(/[\s,]+/)
+      .map((flag) => flag.replace(/^"|"$/g, ''))
+      .filter((flag) => flag && flag !== '$(inherited)');
+    if (extra.length > 0) {
+      found.push(`${configuration.name} OTHER_LDFLAGS ${extra.join(' ')}`);
     }
   }
   return found;
@@ -174,6 +231,7 @@ describe('notification extension boundary', () => {
     ['public import MatrixRustSDK', 'import MatrixRustSDK'],
     ['@preconcurrency import MatrixRustSDK', 'import MatrixRustSDK'],
     ['@_exported import MatrixRustSDK', 'import MatrixRustSDK'],
+    ['let path = """\n/_matrix/client/v3/sync\n"""', 'segment sync'],
   ])('flags the planted source %s', (planted, expected) => {
     expect(
       sourceViolations(`import Foundation
@@ -225,5 +283,38 @@ ${planted}
     expect(projectViolations(source, ownSources)).toEqual([
       'source AppDelegate.swift',
     ]);
+  });
+
+  it('flags a framework in a second Frameworks phase under another name', () => {
+    const project = readFileSync(projectFile, 'utf8')
+      .replace(
+        '\t\t\t\tC0FFEE00000000000000B00E /* Frameworks */,\n',
+        '\t\t\t\tC0FFEE00000000000000B00E /* Frameworks */,\n\t\t\t\tCCCC /* Link Crypto */,\n',
+      )
+      .replace(
+        '/* End PBXFrameworksBuildPhase section */',
+        '\t\tCCCC /* Link Crypto */ = {\n\t\t\tisa = PBXFrameworksBuildPhase;\n\t\t\tfiles = (\n\t\t\t\tDDDD /* MatrixRustSDK.xcframework in Frameworks */,\n\t\t\t);\n\t\t};\n/* End PBXFrameworksBuildPhase section */',
+      );
+    expect(projectViolations(project, ownSources)).toEqual([
+      'frameworks TrinityPush in Frameworks,MatrixRustSDK.xcframework in Frameworks',
+    ]);
+  });
+
+  it('flags linker flags on the extension target', () => {
+    const project = readFileSync(projectFile, 'utf8').replace(
+      '\t\tC0FFEE00000000000000B010 /* Debug */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = {\n',
+      '\t\tC0FFEE00000000000000B010 /* Debug */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = {\n\t\t\t\tOTHER_LDFLAGS = (\n\t\t\t\t\t"$(inherited)",\n\t\t\t\t\t"-framework",\n\t\t\t\t\tMatrixRustSDK,\n\t\t\t\t\t"-lolm",\n\t\t\t\t);\n',
+    );
+    expect(projectViolations(project, ownSources)).toEqual([
+      'Debug OTHER_LDFLAGS -framework MatrixRustSDK -lolm',
+    ]);
+  });
+
+  it('reads nothing in comments', () => {
+    expect(
+      sourceViolations(
+        'import Foundation\n// Never reads "sync" or "keys"; no sendToDevice.\n/* import MatrixRustSDK\n "/_matrix/client/v3/sync" */\nlet url = "https://h/x" // "room_keys"\n',
+      ),
+    ).toEqual([]);
   });
 });
