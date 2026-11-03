@@ -726,7 +726,8 @@ jobs:
               ./specs/location.e2e.mts,
               ./specs/navigation.e2e.mts,
               ./specs/notifications.e2e.mts,
-              ./specs/push-render-android.e2e.mts
+              ./specs/push-render-android.e2e.mts,
+              ./specs/status-bar-tap.e2e.mts
           - shard: 2
             specs: >-
               ./specs/attachments.e2e.mts,
