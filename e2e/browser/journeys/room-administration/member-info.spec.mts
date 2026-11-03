@@ -220,8 +220,8 @@ test.describe('Member info', () => {
     await expect(dialog).toBeHidden({ timeout: 10_000 });
     await expect(page.locator('.chat-members')).toBeVisible();
 
-    // On a phone-sized window it is a bottom sheet over the member drawer, with the handle;
-    // dragging the handle down closes the sheet and leaves the drawer open.
+    // On a phone-sized window it is a bottom sheet over the members page, with the handle;
+    // dragging the handle down closes the sheet and leaves the page open.
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator('.chat-members')).toBeVisible();
     await expectDrawerSettled(page);
@@ -234,7 +234,8 @@ test.describe('Member info', () => {
     const handle = dialog.getByTestId('sheet-handle');
     await expect(handle).toBeVisible();
     await expect(page.locator('.chat-members')).toBeVisible();
-    await expect(page.getByTestId('members-backdrop')).toBeVisible();
+    // A page, not a drawer: nothing dims the room behind it.
+    await expect(page.getByTestId('members-backdrop')).toBeHidden();
 
     // Escape on the sheet closes the sheet, not the drawer under it as well.
     await page.keyboard.press('Escape');
