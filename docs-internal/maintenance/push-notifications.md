@@ -230,6 +230,17 @@ metadata private from the gateway operator.
 The device turns `event_id_only` pushes into readable notifications; #1152 tracks the
 out-of-repo setup and the device checks, and #1211 (part B) the checks for OAuth accounts.
 
+**The extension only reads.** The iOS `NotificationService` extension and the `TrinityPush`
+package it links fetch one `event_id_only` event (and the room's name and sender's member state)
+with the account's token. They decrypt nothing and never call `/sync`, `/keys/` or
+`sendToDevice`, and they hold no crypto keys: the crypto store, the sync store and the to-device
+stream stay with the app's single `MatrixClient`, in the WebView's IndexedDB, which the extension
+can't reach. The only state the two processes share and both write is an OAuth account's token
+vault record and its lease. [`scripts/push-extension-boundary.spec.mjs`](../../scripts/push-extension-boundary.spec.mjs)
+fails if either target imports anything beyond Foundation, Security, CryptoKit (for the lease's
+file-name hash) and UserNotifications, if the extension links another package, if `TrinityPush`
+gains a package dependency, or if either names `/sync`, `/keys/` or `sendToDevice`.
+
 **Where the code lives.** The native half is one local Capacitor plugin, the pnpm workspace
 package `@trinity/capacitor-push` in [`libs/native/capacitor-push`](../../libs/native/capacitor-push/package.json):
 the `PushHandoffBridge` TypeScript API, the Android module `:trinity-capacitor-push`
@@ -386,9 +397,16 @@ refresh can leave three things behind, and a refresh that outlasts a lock a four
 plugin's messaging service with `TrinityMessagingService`, which treats the app as
 foreground, and leaves the notification to the app, while an activity is visible. Both
 fetch the event, the sender's member state and, for a room the store does not know, its
-`m.room.name` state, without retries. iOS gives the reads 5 s, and a refresh 15 s of its own; the read that follows a
-refresh gets a fresh 5 s, and a stalled lease put-back adds up to 0.5 s, so the worst case is about 29.5 s against the extension's roughly 30 s
-limit, which is reasoned and not measured on a device. Android gives the refresh and the
+`m.room.name` state, without retries. iOS gives the reads 5 s, and a refresh 8 s of its own (the
+lease wait and the grant together), but never past 13 s after the push arrived: a refresh that
+starts later gets what is left, and with under 3 s left it sends no grant. A sent grant's answer
+may take its 3 s grace and a lapsed lease a 1 s retake, so the vault write is done by about 17 s;
+the read that follows gets a fresh 5 s, so the worst case is about 22 s against the extension's
+roughly 30 s limit. The 8 s leaves room for a provider's ordinary answer, and the 8 s margin is
+there because a grant cut off after it was sent costs the session, while a `transient` answer
+costs one push's text. Both are reasoned, not measured on a device. When time does run out,
+`serviceExtensionTimeWillExpire` delivers what the push holds: the fallback applied at once (room
+name and "New message", or the expired-token text). Android gives the refresh and the
 reads 8 s together. Android enforces the budget with a watchdog that falls back without the
 network; iOS shares one deadline across each set of reads and also answers
 `serviceExtensionTimeWillExpire`. Android also ends a Matrix read that passes 256 KiB or its
@@ -417,12 +435,19 @@ renderers read the mode just before posting (iOS a second time); with no store, 
 
 A refresh takes the account's lease first and reads the vault again under it, so the app and
 a renderer that need a token at the same time make one grant, and the second takes the pair the
-first stored. iOS's lease is a file in the app group; Android's is a table in the process with a
+first stored. iOS's lease is numbered files in the app group, each claimed once with
+`RENAME_EXCL` and never moved, expiring on the system's continuous clock: no file lock is held
+(a process suspended holding one is killed with `0xdead10cc`), a wall-clock change can't hand a
+live lease over, and a taker killed at any step strands nothing. A holder checks it still holds the
+lease right before it sends a grant, so one suspended past the lease's expiry starts again under a
+new lease instead of sending a token another process may have spent. Android's is a table in the process with a
 21 s expiry (twice the 8 s budget plus a 5 s margin), so it can lapse while its holder is
 frozen and is not a plain mutex. On both platforms, once the compare under the lease finds a
 grant is needed, a refresh with under 3 s of its budget left answers `transient` and sends
 nothing: the answer could be lost after the provider spends the token, and the app's next refresh
-would then be refused. An app refresh that waits most of its 8 s on the lease ends this way too. A
+would then be refused. An app refresh that waits most of its 8 s on the lease ends this way too.
+Only the app marks a record refused: a refusal in a renderer may come from another process's
+overlap, so the vault keeps the record and the app's next refresh decides. A
 refresh is tried once per push: a 401 on the second read
 does not refresh again. These are the results, shared by both renderers through the
 `tokenFlows` rows of `push-render-cases.json`:
@@ -463,14 +488,17 @@ Nothing here has run on a device or against matrix.org; the suites above use loc
 - Keychain availability around a lock.
 - Doze and FCM priority on Android.
 - Real token lifetimes and reuse on matrix.org.
-- The 29 s worst case against the extension's real limit, measured on a device.
+- The 22 s worst case against the extension's real limit, measured on a device.
+- That the continuous clock the iOS lease expires on reads the same in the app and the extension.
 - An FCM burst behind a stalled 8 s refresh, since a queued push waits its turn.
 - Android's freezer lapsing the 21 s lease mid-grant: the app's late grant and a push's grant
   can both reach the provider, and one send uses a spent token.
 - A frozen app with N pushes: each push past the lapsed lease sends the spent refresh token, so
   N pushes make N spent sends, not one. A provider that revokes the session on reuse ends it.
 - `keepUnsaved`: when a grant worked and the vault write failed, the vault keeps the spent
-  pair and pushes can spend it for as long as the app holds the unsaved one.
+  pair and pushes can spend it for as long as the app holds the unsaved one. In the extension the
+  unsaved pair lives only in its process's memory, which dies with the process: the vault keeps the
+  spent pair and the next refresh, in either process, is refused.
 - A grant in flight after Android's fallback fires keeps running without an interrupt; if the
   process dies before it stores the answer, the token is spent and the next refresh is refused.
 
