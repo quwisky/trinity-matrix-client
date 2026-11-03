@@ -41,7 +41,9 @@ The WebdriverIO and Appium suite drives the simulator build through the XCUITest
 
 ## Dynamic Type {#dynamic-type}
 
-The renderer reads iOS body text size through a hidden `-apple-system-body` probe and scales the root font size by its ratio to the default Large size (17px), so the Text size setting stays relative to the device default, accessibility sizes included. The size is read again when the app returns to the foreground; WebKit fires no event for the change itself. Test it with `xcrun simctl ui <udid> content_size accessibility-extra-large`.
+The renderer reads iOS body text size through a hidden `-apple-system-body` probe and scales the root font size by its ratio to the default Large size (17px), accessibility sizes included. The app's Text size option multiplies that device scale, so Larger (125%) on a device at 2x is 250%, and Small is relative to the device size, not to 16px. The product is capped at 250% of the base root size, whatever the device and option, so layouts stay predictable: iOS's largest sizes (about 3.1x, or 3.9x with Larger) are held to 2.5x, which the largest accessibility size already nearly reaches (about 2.35x). Web, Android and desktop have no probe, so only the option applies there.
+
+The size is read again when the app returns to the foreground or the window regains focus; WebKit fires no event for the change itself, so a change made in Control Center while Trinity stays in front applies on the next return. Shrinking the size while reading a long room can move the reading position, because the timeline is clamped to its new, shorter height. Test it with `xcrun simctl ui <udid> content_size accessibility-extra-large`, and check layout at the cap with the root set to 250% in the browser (`text-scaling-cap.spec.mts`).
 
 ## Push extension and configuration {#push-extension}
 

@@ -17,8 +17,9 @@ const variantRecipe = {
 
 const layoutRecipe = {
   page: 'min-h-14 gap-2 border-border px-3',
+  // Buttons may shrink: at the largest text size their rem sizes outgrow a phone's width.
   toolbar:
-    'h-12 gap-1 border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-workspace)] px-2 text-[var(--trinity-text-bright)]',
+    'h-12 gap-1 [&>button]:min-w-0 [&>button]:shrink border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-workspace)] px-2 text-[var(--trinity-text-bright)]',
 } as const;
 
 const titleLayoutRecipe = {

@@ -151,9 +151,6 @@ describe('iOS Dynamic Type', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    document
-      .querySelectorAll('span[style*="apple-system-body"]')
-      .forEach((e) => e.remove());
     root.style.removeProperty('font-size');
   });
 
@@ -194,10 +191,35 @@ describe('iOS Dynamic Type', () => {
     let body = '40px';
     const adapter = iosAdapter(() => body);
     adapter.apply({ ...appearance, textSize: 'larger' });
-    expect(parseFloat(root.style.fontSize)).toBeCloseTo((125 * 40) / 17);
+    expect(root.style.fontSize).toBe('250%');
+    adapter.apply({ ...appearance, textSize: 'default' });
+    expect(root.style.fontSize).toBe('235.3%');
 
     body = '17px';
     document.dispatchEvent(new Event('visibilitychange'));
-    expect(root.style.fontSize).toBe('125%');
+    expect(root.style.fontSize).toBe('');
+  });
+
+  it('reads the size again when the window regains focus', () => {
+    let body = '17px';
+    iosAdapter(() => body).apply({ ...appearance, textSize: 'large' });
+    expect(root.style.fontSize).toBe('112.5%');
+
+    body = '34px';
+    window.dispatchEvent(new Event('focus'));
+    expect(root.style.fontSize).toBe('225%');
+  });
+
+  it('stops listening and removes its probe when destroyed', () => {
+    let body = '17px';
+    iosAdapter(() => body).apply(appearance);
+    TestBed.resetTestingModule();
+
+    body = '40px';
+    window.dispatchEvent(new Event('focus'));
+    expect(root.style.fontSize).toBe('');
+    expect(
+      document.querySelector('span[style*="apple-system-body"]'),
+    ).toBeNull();
   });
 });

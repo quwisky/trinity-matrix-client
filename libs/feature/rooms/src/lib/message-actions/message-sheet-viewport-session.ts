@@ -2,9 +2,22 @@ import type { MessageLongPressContext } from '../message-row/message-row.compone
 
 /** Visual gap between the acted-on message and the sheet edge. */
 const SHEET_GAP_PX = 8;
-/** Keep enough of a compact sheet to expose a useful control plus its scroll affordance. */
+/**
+ * Keep enough of a compact sheet to expose a useful control plus its scroll affordance, at
+ * the default text size. See `minSheetHeight` for larger text.
+ */
 const MIN_SHEET_HEIGHT_PX = 88;
 const SCROLLER_SELECTOR = '[data-message-scroller]';
+
+function minSheetHeight(surface: HTMLElement): number {
+  // The sheet inherits the root text size, which is what its rem-sized chrome follows.
+  const scale = Number.parseFloat(getComputedStyle(surface).fontSize) / 16 || 1;
+  // At large text the chrome (grabber, date, reactions) alone fills the floor, so half the
+  // screen is the least that still leaves an action row to scroll to.
+  return scale > 1
+    ? Math.max(MIN_SHEET_HEIGHT_PX * scale, window.innerHeight / 2)
+    : MIN_SHEET_HEIGHT_PX;
+}
 
 /** How far the sheet's entrance still has to travel. */
 function remainingSlide(surface: HTMLElement): number {
@@ -140,7 +153,7 @@ export class MessageSheetViewportSession {
       (scrollerRect.top + anchorRect.height + SHEET_GAP_PX);
     if (fitHeight < surfaceRect.height) {
       this.originalSurfaceMaxHeight = surface.style.maxHeight;
-      surface.style.maxHeight = `${Math.max(MIN_SHEET_HEIGHT_PX, fitHeight)}px`;
+      surface.style.maxHeight = `${Math.max(minSheetHeight(surface), fitHeight)}px`;
       this.surfaceHeightChanged = true;
       surfaceRect = restingBox(surface);
     }

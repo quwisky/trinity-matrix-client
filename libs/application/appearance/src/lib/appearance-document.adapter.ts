@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { Injectable, InjectionToken, inject } from '@angular/core';
+import { DestroyRef, Injectable, InjectionToken, inject } from '@angular/core';
 import {
   CODE_LINE_PRESENTATION_PREFERENCE,
   CODE_SIZE_OPTIONS,
@@ -22,6 +22,8 @@ const CODE_SIZE_PROPERTY = '--trinity-code-scale';
 /** iOS body text at its default Large Dynamic Type size. */
 const IOS_DEFAULT_BODY_PX = 17;
 const IOS_BODY_FONT = '-apple-system-body';
+/** Largest root scale the device size and the app's option may reach together. */
+export const MAX_ROOT_PERCENT = 250;
 
 /**
  * A hidden element whose font is iOS body text, so its size follows Dynamic Type. Only a
@@ -69,8 +71,14 @@ export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapt
     // returns from Settings.
     if (this.probe) {
       const reapply = (): void => this.reapply();
+      const win = this.document.defaultView;
       this.document.addEventListener('visibilitychange', reapply);
-      this.document.defaultView?.addEventListener('focus', reapply);
+      win?.addEventListener('focus', reapply);
+      inject(DestroyRef).onDestroy(() => {
+        this.document.removeEventListener('visibilitychange', reapply);
+        win?.removeEventListener('focus', reapply);
+        this.probe?.remove();
+      });
     }
   }
 
@@ -101,8 +109,14 @@ export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapt
       ({ id }) => id === appearance.textSize,
     );
     const win = this.document.defaultView;
-    const percent =
-      (option?.percent ?? 100) * (win ? deviceTextScale(this.probe, win) : 1);
+    const percent = Math.min(
+      MAX_ROOT_PERCENT,
+      Math.round(
+        (option?.percent ?? 100) *
+          (win ? deviceTextScale(this.probe, win) : 1) *
+          10,
+      ) / 10,
+    );
     if (percent === 100) {
       this.root.style.removeProperty('font-size');
       return;

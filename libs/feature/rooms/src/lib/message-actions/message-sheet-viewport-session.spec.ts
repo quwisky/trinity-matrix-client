@@ -355,6 +355,23 @@ describe('MessageSheetViewportSession', () => {
     );
   });
 
+  it('keeps half the screen for a sheet when the root text is scaled', () => {
+    const { session, surface } = build({
+      rowTop: 100,
+      rowHeight: 560,
+      pressY: 600,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+
+    surface.style.fontSize = '40px';
+    session.start();
+    flushFrame();
+    flushFrame();
+
+    expect(surface.style.maxHeight).toBe(`${window.innerHeight / 2}px`);
+  });
+
   it('cancels safely when the exact anchor has disconnected', () => {
     const { anchor, scroller, session, scrollTop } = build({
       rowTop: 500,
