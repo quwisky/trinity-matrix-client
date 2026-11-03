@@ -2742,6 +2742,29 @@ describe('room panels', () => {
     });
   });
 
+  it('drops a panel tap whose transition reports another in progress when none holds Workspace', async () => {
+    const h = await inRoom();
+    const workflow = TestBed.inject(WorkspaceTransitionWorkflow);
+    const run = vi
+      .spyOn(workflow, 'run')
+      .mockImplementationOnce((destination) =>
+        of({ kind: 'transition-in-progress', destination } as const),
+      );
+
+    h.service.openPanel(members);
+    await settle();
+
+    expect(workflow.busy()).toBe(false);
+    expect(run).toHaveBeenCalledOnce();
+    expect(h.service.panel()).toBeNull();
+
+    // The queue is free again: the next tap applies.
+    run.mockRestore();
+    h.service.openPanel(members);
+    await settle();
+    expect(h.service.panel()).toEqual(members);
+  });
+
   it('keeps choosing the open Room again a no-op while a panel is open', async () => {
     const h = await inRoom();
     h.service.openPanel(members);

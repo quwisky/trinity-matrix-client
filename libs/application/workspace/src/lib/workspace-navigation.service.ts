@@ -383,7 +383,9 @@ export class WorkspaceNavigationService {
         if (!resolved) return EMPTY;
         return this.transition(resolved.destination, resolved.options).pipe(
           switchMap((outcome) =>
-            outcome.kind === 'transition-in-progress'
+            // Retry behind the transition that holds Workspace; with none holding it, the
+            // outcome came from a cancelled attempt, and retrying at once would never end.
+            outcome.kind === 'transition-in-progress' && this.workflow.busy()
               ? this.applyPanel(request)
               : EMPTY,
           ),
