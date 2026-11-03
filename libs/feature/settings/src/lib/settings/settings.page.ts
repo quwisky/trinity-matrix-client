@@ -11,6 +11,7 @@ import {
   inject,
   linkedSignal,
   signal,
+  untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -75,6 +76,8 @@ export class SettingsPage {
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private lastFocusedSection: string | null = null;
+  /** The step up to the list, taken once the section has slid off. */
+  private afterSlide: (() => void) | null = null;
 
   readonly query = signal('');
   readonly results = computed(() => matchingSettingsSections(this.query()));
@@ -89,6 +92,11 @@ export class SettingsPage {
       group,
     })),
   );
+  /**
+   * A narrow section sliding over the list or off it, as a room slides over its list. A
+   * history step gets none: the platform's swipe draws its own.
+   */
+  protected readonly slide = signal<'open' | 'close' | null>(null);
   /** A narrow directory click adds `/settings` behind the section in history. */
   private readonly narrowSectionPushed = signal(false);
 
@@ -149,6 +157,13 @@ export class SettingsPage {
       this.narrowSectionPushed.set(false);
     });
 
+    // A history step off a section still sliding in leaves the list at rest and focusable.
+    effect(() => {
+      if (this.activePath() === null && untracked(this.slide) === 'open') {
+        this.slide.set(null);
+      }
+    });
+
     // The wide two-pane layout must never show an empty detail pane: land the bare
     // `/settings` index on the first section. Narrow leaves the index on the list.
     effect(() => {
@@ -164,6 +179,13 @@ export class SettingsPage {
 
   /** Mark the activated child heading as the app shell's route-focus destination. */
   onSectionActivated(): void {
+    if (
+      !this.wide() &&
+      this.narrowSectionPushed() &&
+      this.router.currentNavigation()?.trigger !== 'popstate'
+    ) {
+      this.slide.set('open');
+    }
     afterNextRender(
       () => {
         const heading = this.host.nativeElement.querySelector<HTMLElement>(
@@ -283,14 +305,10 @@ export class SettingsPage {
    */
   goBack(): void {
     if (!this.wide() && this.sectionActive()) {
-      this.markDirectoryFocusTarget();
-      if (this.narrowSectionPushed()) {
-        this.narrowSectionPushed.set(false);
-        this.location.back();
-        return;
-      }
-      // Up to the list, replacing the section so a later Back doesn't retrace into it.
-      void this.router.navigate(['/settings'], { replaceUrl: true });
+      // The outlet drops the section as soon as the route changes, so it slides off first.
+      if (this.slide() === 'close') return;
+      this.afterSlide = () => this.backToList();
+      this.slide.set('close');
       return;
     }
     if (this.wide() && this.narrowSectionPushed()) {
@@ -299,6 +317,25 @@ export class SettingsPage {
       return;
     }
     this.location.back();
+  }
+
+  protected onSlideEnd(): void {
+    const step = this.afterSlide;
+    this.afterSlide = null;
+    this.slide.set(null);
+    step?.();
+  }
+
+  private backToList(): void {
+    if (this.wide() || !this.sectionActive()) return;
+    this.markDirectoryFocusTarget();
+    if (this.narrowSectionPushed()) {
+      this.narrowSectionPushed.set(false);
+      this.location.back();
+      return;
+    }
+    // Up to the list, replacing the section so a later Back doesn't retrace into it.
+    void this.router.navigate(['/settings'], { replaceUrl: true });
   }
 
   // Read the section from the router URL, not `route.firstChild`: on a deep link or reload the

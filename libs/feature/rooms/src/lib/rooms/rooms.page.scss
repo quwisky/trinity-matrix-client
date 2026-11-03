@@ -255,31 +255,6 @@
     }
   }
 
-  @keyframes pane-over-in {
-    from {
-      transform: translateX(100%);
-    }
-  }
-
-  @keyframes pane-over-out {
-    to {
-      transform: translateX(100%);
-    }
-  }
-
-  // UIKit's parallax: the page underneath travels 30% of the width.
-  @keyframes pane-under-out {
-    to {
-      transform: translateX(-30%);
-    }
-  }
-
-  @keyframes pane-under-in {
-    from {
-      transform: translateX(-30%);
-    }
-  }
-
   // The chat area owns the drawer gesture, so a swipe that starts over the timeline is heard.
   // `touch-action: pan-y` keeps vertical scrolling native while claiming the horizontal axis —
   // without it the browser consumes the sideways drag as a scroll or an overscroll navigation

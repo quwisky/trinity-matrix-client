@@ -1,11 +1,11 @@
-<ng-template #heading>
+<ng-template #heading let-text>
   <h1
     data-autofocus
     data-settings-autofocus
     tabindex="-1"
     [attr.data-testid]="headingTestId()"
   >
-    {{ headingText() }}
+    {{ text }}
   </h1>
 </ng-template>
 <ng-template #closeButton>
@@ -47,11 +47,21 @@
     [attr.data-compact]="compact()"
     [attr.data-testid]="testId()"
   >
-    <div class="settings-layout__workspace" data-testid="settings-workspace">
+    <div
+      class="settings-layout__workspace"
+      data-testid="settings-workspace"
+      [attr.data-pane-slide]="compact() ? slide() : null"
+      [trnSettingsSwipeBack]="swipeBack()"
+      [trnSettingsSwipeBackPage]="detail"
+      [trnSettingsSwipeBackUnder]="directory"
+      (swiped)="swipedBack.emit()"
+      (animationend)="onAnimationEnd($event, detail)"
+    >
       <nav
         #directory
         class="settings-layout__nav no-scrollbar"
         [class.settings-pane--hidden]="compact() && !directoryVisible()"
+        [attr.inert]="slide() === 'open' ? '' : null"
         [attr.aria-label]="directoryLabel()"
         [attr.data-testid]="testId() + '-directory'"
       >
@@ -62,7 +72,10 @@
               class="settings-layout__list-head"
               [class.sr-only]="framing !== 'fullscreen'"
             >
-              <ng-container [ngTemplateOutlet]="heading" />
+              <ng-container
+                [ngTemplateOutlet]="heading"
+                [ngTemplateOutletContext]="{ $implicit: title() }"
+              />
               <ng-container [ngTemplateOutlet]="closeButton" />
             </div>
           }
@@ -126,12 +139,13 @@
       <section
         #detail
         [class]="detailClasses()"
-        [attr.aria-label]="headingText()"
+        [attr.aria-label]="detailView() ? sectionHeading() : title()"
         [class.settings-pane--hidden]="compact() && directoryVisible()"
+        [attr.inert]="slide() === 'close' ? '' : null"
         [attr.data-testid]="resolvedDetailTestId()"
       >
         <div class="settings-layout__column">
-          @if (compact() && !listView()) {
+          @if (compact() && detailView()) {
             <div class="settings-layout__topbar">
               @if (selectedSection()) {
                 <button
@@ -148,17 +162,23 @@
               }
               <!-- Under a framed header, Back and the section name share one row. -->
               @if (framing !== 'fullscreen') {
-                <ng-container [ngTemplateOutlet]="heading" />
+                <ng-container
+                  [ngTemplateOutlet]="heading"
+                  [ngTemplateOutletContext]="{ $implicit: sectionHeading() }"
+                />
               }
               <ng-container [ngTemplateOutlet]="closeButton" />
             </div>
           }
           <ng-content select="[settings-context]" />
           <ng-content select="[settings-warning]" />
-          @if (!listView() && !(compact() && framing !== 'fullscreen')) {
-            <ng-container [ngTemplateOutlet]="heading" />
+          @if (detailView() && !(compact() && framing !== 'fullscreen')) {
+            <ng-container
+              [ngTemplateOutlet]="heading"
+              [ngTemplateOutletContext]="{ $implicit: sectionHeading() }"
+            />
           }
-          @if (compact() && !listView() && hasParts()) {
+          @if (compact() && detailView() && hasParts()) {
             <nav
               class="settings-layout__chips no-scrollbar"
               [attr.aria-label]="'Parts of ' + selectedLabel()"
@@ -180,7 +200,7 @@
           }
           <ng-content />
         </div>
-        @if (!listView() && !compact()) {
+        @if (!compact()) {
           <ng-container [ngTemplateOutlet]="closeButton" />
         }
       </section>

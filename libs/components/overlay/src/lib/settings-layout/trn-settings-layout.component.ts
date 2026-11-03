@@ -3,7 +3,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  Injector,
+  afterNextRender,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -18,6 +21,7 @@ import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import { TrnDialogShellComponent } from '../dialog-shell/trn-dialog-shell.component';
 import { TrnSettingsParts } from './trn-settings-parts';
 import { TrnSettingsScrollSpy } from './trn-settings-scroll-spy';
+import { TrnSettingsSwipeBack } from './trn-settings-swipe-back';
 
 /** One selectable entry in a domain-neutral settings directory. */
 export interface TrnSettingsLayoutSection {
@@ -35,6 +39,7 @@ export interface TrnSettingsLayoutSection {
     TrnButton,
     TrnIconComponent,
     TrnDialogShellComponent,
+    TrnSettingsSwipeBack,
   ],
   // A wrapper that projects the sections itself provides the registry the layout then shares:
   // projected sections resolve their injector from where they are declared, outside the layout.
@@ -98,6 +103,13 @@ export class TrnSettingsLayoutComponent {
   /** Optional compatibility hook for the close action. */
   readonly closeTestId = input<string | null>(null);
 
+  /**
+   * A compact section page sliding over the directory (`open`) or off it (`close`), drawn
+   * with the room-over-list page slide. While it closes the page keeps its section; the
+   * consumer clears this on `slideEnd`.
+   */
+  readonly slide = input<'open' | 'close' | null>(null);
+
   /** A part of the open section to scroll to once it has rendered (from a URL fragment). */
   readonly initialPart = input<string | null>(null);
   /** The part the user picked or scrolled to; null when `initialPart` names no part. */
@@ -105,13 +117,30 @@ export class TrnSettingsLayoutComponent {
   readonly sectionSelected = output<string>();
   readonly backRequested = output<void>();
   readonly closeRequested = output<void>();
+  /** The slide finished, or can no longer run because the layout left compact. */
+  readonly slideEnd = output<void>();
+  /** A section swiped back from the leading edge, already drawn off screen. */
+  readonly swipedBack = output<void>();
 
   /** Compact and showing only the directory: the close and title live in the list. */
   protected readonly listView = computed(
-    () => this.compact() && this.directoryVisible(),
+    () => this.compact() && (this.directoryVisible() || this.slide() !== null),
   );
-  protected readonly headingText = computed(() =>
-    this.listView() ? this.title() : (this.heading() ?? this.title()),
+  /** The detail pane shows a section, including one sliding over the directory. */
+  protected readonly detailView = computed(
+    () => !this.listView() || this.slide() !== null,
+  );
+  protected readonly sectionHeading = computed(
+    () => this.heading() ?? this.title(),
+  );
+  /** Only a dialog swipes back in-app; the routed page's Back swipe is the platform's. */
+  protected readonly swipeBack = computed(
+    () =>
+      this.openedAs !== null &&
+      this.compact() &&
+      !!this.selectedSection() &&
+      !this.directoryVisible() &&
+      this.slide() === null,
   );
   protected readonly parts = this.registry.parts;
   protected readonly currentPart = this.registry.current;
@@ -143,6 +172,30 @@ export class TrnSettingsLayoutComponent {
       this.compact,
       (id) => this.partSelected.emit(id),
     );
+    // A slide that cannot run never ends on its own: wide, where the panes sit side by side,
+    // or where the page draws no animation at all.
+    const injector = inject(Injector);
+    effect(() => {
+      if (this.slide() === null) return;
+      if (!this.compact()) {
+        this.slideEnd.emit();
+        return;
+      }
+      afterNextRender(
+        () => {
+          const page = this.detail()?.nativeElement;
+          if (this.slide() !== null && !page?.getAnimations?.().length) {
+            this.slideEnd.emit();
+          }
+        },
+        { injector },
+      );
+    });
+  }
+
+  /** Descendants' animations bubble here too; only the section page's own ends the slide. */
+  protected onAnimationEnd(event: AnimationEvent, page: HTMLElement): void {
+    if (event.target === page && this.slide() !== null) this.slideEnd.emit();
   }
 
   protected goToPart(id: string): void {
