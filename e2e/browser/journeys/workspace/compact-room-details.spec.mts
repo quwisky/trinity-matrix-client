@@ -1094,6 +1094,7 @@ for (const viewport of [
         const footer = root.querySelector('.thread__footer')!;
         const scroller = root.querySelector('.thread')!;
         return {
+          viewportBottom: window.innerHeight,
           rootBottom: Math.round(root.getBoundingClientRect().bottom),
           footerBottom: Math.round(footer.getBoundingClientRect().bottom),
           footerBackground: getComputedStyle(footer).backgroundColor,
@@ -1101,9 +1102,32 @@ for (const viewport of [
           rootPaddingBottom: getComputedStyle(root).paddingBottom,
         };
       });
+      expect(edges.rootBottom).toBe(edges.viewportBottom);
       expect(edges.footerBottom).toBe(edges.rootBottom);
       expect(edges.rootPaddingBottom).toBe('0px');
       expect(edges.footerBackground).toBe(edges.scrollerBackground);
+
+      // Keyboard up: the page ends above it and the footer still reaches that edge.
+      if (viewport.width < 768) {
+        await page.evaluate(() =>
+          document.documentElement.style.setProperty(
+            '--trinity-keyboard-inset',
+            '300px',
+          ),
+        );
+        await expect
+          .poll(() =>
+            thread.evaluate((root) => {
+              const footer = root.querySelector('.thread__footer')!;
+              return [
+                Math.round(root.getBoundingClientRect().bottom),
+                Math.round(footer.getBoundingClientRect().bottom),
+                window.innerHeight,
+              ];
+            }),
+          )
+          .toEqual([844 - 266, 844 - 266, 844]);
+      }
     });
   });
 }

@@ -175,6 +175,17 @@ describe('component styling reach', () => {
 
     expect(unpadded).toEqual([]);
   });
+
+  it('pads the thread bottom inset once, in its composer, not on the thread root', () => {
+    expect(
+      read(
+        'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
+      ),
+    ).toContain('env(safe-area-inset-bottom)');
+    expect(
+      read('libs/feature/rooms/src/lib/thread/thread-view.component.html'),
+    ).not.toContain('safe-bottom');
+  });
 });
 
 describe('overlay surface and scrim', () => {

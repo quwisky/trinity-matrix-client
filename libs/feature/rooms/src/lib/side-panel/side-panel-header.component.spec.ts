@@ -21,6 +21,14 @@ describe('SidePanelHeaderComponent', () => {
     expect(closed).toHaveBeenCalledOnce();
   });
 
+  it('renders no subtitle by default', async () => {
+    const { container } = await render(SidePanelHeaderComponent, {
+      inputs: { title: 'Members' },
+      providers: [provideTrnIcons()],
+    });
+    expect(container.querySelector('p')).toBeNull();
+  });
+
   it('shows the subtitle under the title', async () => {
     await render(SidePanelHeaderComponent, {
       inputs: { title: 'Thread', subtitle: 'General' },
