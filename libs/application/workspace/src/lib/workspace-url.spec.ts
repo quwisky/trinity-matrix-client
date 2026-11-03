@@ -33,6 +33,7 @@ describe('Workspace URL projection', () => {
       scope: { kind: 'recent' },
       roomId: '!room:example.org',
       pane: 'conversation',
+      panel: null,
     } as const;
 
     expect(workspaceUrlOf(destination, '$notification').queryParams).toEqual({
@@ -47,6 +48,7 @@ describe('Workspace URL projection', () => {
       scope: { kind: 'space', spaceId: '!space:example.org' },
       roomId: '!room:example.org',
       pane: 'conversation',
+      panel: null,
     } as const;
     const projected = workspaceUrlOf(destination);
 
@@ -74,6 +76,7 @@ describe('Workspace URL projection', () => {
         scope: { kind: 'recent' },
         roomId: '!room:example.org',
         pane: 'conversation',
+        panel: null,
       },
       canonical: false,
     });
@@ -99,6 +102,7 @@ describe('Workspace URL projection', () => {
           scope: { kind: 'recent' },
           roomId: null,
           pane: 'list',
+          panel: null,
         },
         canonical: false,
       });
@@ -121,6 +125,7 @@ describe('Workspace URL projection', () => {
       scope: { kind: 'rooms' },
       roomId: '!room:example.org',
       pane: 'list',
+      panel: null,
     } as const;
     const projected = workspaceUrlOf(destination);
 
@@ -157,6 +162,7 @@ describe('Workspace URL projection', () => {
         scope: { kind: 'recent' },
         roomId: null,
         pane: 'list',
+        panel: null,
       },
       canonical: false,
     });
@@ -168,6 +174,7 @@ describe('Workspace URL projection', () => {
       scope: { kind: 'inbox' },
       roomId: null,
       pane: 'list',
+      panel: null,
     } as const;
     const projected = workspaceUrlOf(destination);
 
@@ -182,5 +189,80 @@ describe('Workspace URL projection', () => {
         '@alice:example.org',
       ),
     ).toEqual({ destination, canonical: true });
+  });
+  describe('room panel', () => {
+    const base = {
+      accountId: '@alice:example.org',
+      scope: { kind: 'recent' },
+      roomId: '!room:example.org',
+      pane: 'conversation',
+    } as const;
+    const parse = (query: Record<string, string>) =>
+      parseWorkspaceUrl(
+        convertToParamMap({ roomId: encodeRoomSegment(base.roomId) }),
+        convertToParamMap({ account: base.accountId, ...query }),
+        base.accountId,
+      );
+
+    it.each([
+      { kind: 'members' },
+      { kind: 'threads' },
+      { kind: 'pinned' },
+      { kind: 'search' },
+      { kind: 'thread', root: '$root:example.org' },
+    ] as const)('round-trips the $kind panel', (panel) => {
+      const destination = { ...base, panel };
+      expect(parse(workspaceUrlOf(destination).queryParams)).toEqual({
+        destination,
+        canonical: true,
+      });
+    });
+
+    it('keeps $ and : in a thread root and never writes a search query', () => {
+      const root = '$abc_DEF-123:example.org';
+      expect(
+        workspaceUrlOf({ ...base, panel: { kind: 'thread', root } })
+          .queryParams,
+      ).toEqual({
+        account: base.accountId,
+        panel: 'thread',
+        root,
+      });
+      expect(
+        workspaceUrlOf({ ...base, panel: { kind: 'search' } }).queryParams,
+      ).toEqual({ account: base.accountId, panel: 'search' });
+    });
+
+    it.each<Record<string, string>>([
+      { panel: 'thread' },
+      { panel: 'thread', root: 'not-an-event' },
+      { panel: 'thread', root: '$has space' },
+      { panel: 'unknown' },
+      { panel: 'members', root: '$root:example.org' },
+      { root: '$root:example.org' },
+    ])('parses %o to no panel and repairs the URL', (query) => {
+      expect(parse(query)).toMatchObject({
+        destination: { panel: null },
+        canonical: false,
+      });
+    });
+
+    it('never carries a panel on a list destination', () => {
+      const members = { kind: 'members' } as const;
+      expect(
+        workspaceUrlOf({ ...base, pane: 'list', panel: members }).queryParams,
+      ).not.toHaveProperty('panel');
+      expect(parse({ pane: 'list', panel: 'members' })).toMatchObject({
+        destination: { pane: 'list', panel: null },
+        canonical: false,
+      });
+      expect(
+        parseWorkspaceUrl(
+          convertToParamMap({}),
+          convertToParamMap({ account: base.accountId, panel: 'members' }),
+          base.accountId,
+        ),
+      ).toMatchObject({ destination: { roomId: null, panel: null } });
+    });
   });
 });

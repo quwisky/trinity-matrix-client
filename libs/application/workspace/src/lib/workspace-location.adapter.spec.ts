@@ -76,6 +76,7 @@ const conversation = {
   scope: { kind: 'recent' },
   roomId: ROOM,
   pane: 'conversation',
+  panel: null,
 } as const;
 
 afterEach(() => TestBed.resetTestingModule());
@@ -116,6 +117,7 @@ describe('WorkspaceLocationAdapter', () => {
         scope: { kind: 'recent' },
         roomId: null,
         pane: 'list',
+        panel: null,
       },
       { history: 'replace' },
     );

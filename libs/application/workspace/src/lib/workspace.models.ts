@@ -2,6 +2,7 @@ import type {
   WorkspaceNavigationScope,
   WorkspaceView,
 } from './workspace-navigation.models';
+import type { WorkspacePanel } from './workspace-surface.models';
 
 export type {
   WorkspaceEventTarget,
@@ -16,6 +17,8 @@ export interface WorkspaceDestination {
   readonly scope: WorkspaceScope;
   readonly roomId: string | null;
   readonly pane: 'list' | 'conversation';
+  /** The open Room panel; always null on a list destination. */
+  readonly panel: WorkspacePanel | null;
 }
 
 export type WorkspaceNavigationSource =
@@ -65,8 +68,9 @@ export const RECENT_WORKSPACE_SCOPE: WorkspaceScope = Object.freeze({
 export function workspaceViewOf(
   destination: WorkspaceDestination,
 ): WorkspaceView {
+  const { panel: _panel, ...view } = destination;
   return Object.freeze({
-    ...destination,
+    ...view,
     scope: Object.freeze({ ...destination.scope }),
   });
 }

@@ -182,6 +182,7 @@ export class WorkspaceNavigationService {
                 scope: RECENT_WORKSPACE_SCOPE,
                 roomId: view.roomId,
                 pane: view.pane,
+                panel: null,
               },
               { source: 'repair', history: 'replace' },
             )
