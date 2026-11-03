@@ -184,9 +184,14 @@ export class TrnSheetDrag {
     this.snap(detent === 'medium' ? 'large' : 'medium');
   }
 
-  /** Springs a `medium` sheet that can grow to `large`, e.g. for the keyboard. */
+  /**
+   * Springs a `medium` sheet that offers `large`, e.g. for the keyboard; unlike the handle,
+   * also when it cannot be dragged (`disableClose`).
+   */
   expand(): void {
-    if (this.toggleable() === 'expand') this.snap('large');
+    if (this.detent() === 'medium' && this.offered().includes('large')) {
+      this.snap('large');
+    }
   }
 
   begin(event: PointerEvent): void {

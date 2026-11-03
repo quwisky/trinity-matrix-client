@@ -28,12 +28,6 @@
     padding-top: var(--trinity-space-2);
   }
 
-  // Above the sheet handle's invisible 44px target, which reaches into this row.
-  .dialog-shell__header > button {
-    position: relative;
-    z-index: var(--trinity-z-sticky);
-  }
-
   .dialog-shell__title {
     min-width: 0;
     flex: 1;

@@ -228,6 +228,27 @@ describe('TrnDialogService', () => {
     ref.close();
   });
 
+  it.each([
+    [{ detents: ['medium', 'large'] }, 'dialog'],
+    [
+      { detents: ['medium', 'large'], autoFocus: '[data-autofocus]' },
+      '[data-autofocus]',
+    ],
+    [{}, 'first-tabbable'],
+  ] as const)(
+    "focuses a detent sheet's dialog, not its height button, unless told otherwise (%o)",
+    (options, expected) => {
+      const open = vi.spyOn(TestBed.inject(Dialog), 'open');
+      const ref = TestBed.inject(TrnDialogService).open(TestDialogComponent, {
+        placement: 'bottom',
+        ...options,
+      });
+
+      expect(open.mock.calls[0]?.[1]?.autoFocus).toBe(expected);
+      ref.close();
+    },
+  );
+
   it('reports whether any dialog is currently open (getTop replacement)', () => {
     const svc = TestBed.inject(TrnDialogService);
     expect(svc.hasOpen()).toBe(false);

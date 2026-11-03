@@ -240,14 +240,25 @@ describe('TrnSheetKeyboardAvoidance on a detent sheet', () => {
     vi.unstubAllGlobals();
   });
 
-  function open(): void {
+  function open(disableClose = false): void {
     dialogs.open(SearchSheetComponent, {
       placement: 'bottom',
       autoFocus: false,
       detents: ['medium', 'large'],
+      disableClose,
     });
     tick();
   }
+
+  it('raises a sheet opened disableClose too, which has no handle to drag', () => {
+    open(true);
+    expect(document.querySelector('[data-trn-sheet-toggle]')).toBeNull();
+
+    search().focus();
+    tick();
+
+    expect(detent()).toBe('large');
+  });
 
   it.each([false, true])(
     'rises from medium to large when a field takes focus (iOS shell: %s)',

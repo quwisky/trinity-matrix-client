@@ -303,7 +303,9 @@ export class TrnDialogService {
       ariaDescribedBy: opts.ariaDescribedBy,
       // Spelled out rather than left off: CDK merges the config over its defaults with a spread,
       // so an `autoFocus: undefined` key would clobber the default.
-      autoFocus: opts.autoFocus ?? 'first-tabbable',
+      // A detent sheet's first tabbable is its height button; the title-labelled dialog is better.
+      autoFocus:
+        opts.autoFocus ?? (opts.detents?.length ? 'dialog' : 'first-tabbable'),
       // The pressed control, not only what held focus: a WebKit tap never focuses it.
       restoreFocus:
         opts.restoreFocus === false ? false : this.opener.restoreTarget(),

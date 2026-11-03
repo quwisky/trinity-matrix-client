@@ -114,49 +114,75 @@ test('a mostly horizontal drag changes no detent, where a vertical one would', a
   await expect(sheet).toHaveAttribute('data-sheet-detent', 'large');
 });
 
-test('opens with focus on the sheet content, never on the handle button', async ({
+test('opens with focus on the dialog, never on the handle button', async ({
   page,
 }) => {
   for (const which of ['long', 'short'] as const) {
     const sheet = await openSheet(page, which);
-    await expect(sheet.getByRole('button', { name: 'Close' })).toBeFocused();
+    const focused = await page.evaluate(() => ({
+      role: document.activeElement?.getAttribute('role') ?? null,
+      toggle: document.activeElement?.hasAttribute('data-trn-sheet-toggle'),
+    }));
+    expect(focused).toEqual({ role: 'dialog', toggle: false });
+    await expect(sheet).toBeVisible();
   }
 });
 
-test('the handle is a 44px button that expands and collapses from the keyboard', async ({
+test('taps on the title and at the start of the body leave the height alone', async ({
   page,
 }) => {
   const sheet = await openSheet(page, 'long');
-  const expand = sheet.getByRole('button', { name: 'Expand' });
-  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await sheet.getByRole('heading', { name: 'Detent sheet' }).tap();
+  // The field at the top of the body would raise the sheet on focus, so tap the first row.
+  await sheet.getByTestId('sheet-detents-row').first().tap();
+  await expect(sheet).toHaveAttribute('data-sheet-detent', 'medium');
+  expect(await settledHeight(sheet)).toBeCloseTo(
+    page.viewportSize()!.height / 2,
+    -1,
+  );
+});
 
-  // The invisible target reaches 44px down from the top edge, and the close X still wins.
+test('the handle is a stateful button whose target stops above the header', async ({
+  page,
+}) => {
+  const sheet = await openSheet(page, 'long');
+  const toggle = sheet.getByRole('button', { name: 'Sheet height' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
   const pill = (await sheet.getByTestId('sheet-handle').boundingBox())!;
   const top = (await sheet.boundingBox())!.y;
-  const hit = await page.evaluate(
-    ({ x, y }) =>
-      document.elementFromPoint(x, y)?.closest('[data-trn-sheet-toggle]') !==
-      null,
-    { x: pill.x + pill.width / 2, y: top + 42 },
-  );
-  expect(hit).toBe(true);
-  const close = await centre(sheet.getByRole('button', { name: 'Close' }));
+  const title = sheet.getByRole('heading', { name: 'Detent sheet' });
+  const titleBox = (await title.boundingBox())!;
+  const at = (x: number, y: number) =>
+    page.evaluate(
+      ({ x, y }) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit?.closest('[data-trn-sheet-toggle]')
+          ? 'toggle'
+          : (hit?.closest('button')?.ariaLabel ?? hit?.tagName ?? null);
+      },
+      { x, y },
+    );
+  // The target reaches into the header's top padding, and no further.
+  const button = (await toggle.boundingBox())!;
+  const reach = button.y + button.height;
+  expect(await at(pill.x + pill.width / 2, reach + 2)).toBe('toggle');
+  expect(await at(pill.x + pill.width / 2, reach + 6)).not.toBe('toggle');
   expect(
-    await page.evaluate(
-      ({ x, y }) =>
-        document.elementFromPoint(x, y)?.closest('button')?.ariaLabel ?? null,
-      close,
-    ),
-  ).toBe('Close');
+    await at(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2),
+  ).not.toBe('toggle');
+  expect(await at(titleBox.x + 4, top + 30)).not.toBe('toggle');
+  const close = await centre(sheet.getByRole('button', { name: 'Close' }));
+  expect(await at(close.x, close.y)).toBe('Close');
 
-  await expand.focus();
+  await toggle.focus();
   await page.keyboard.press('Enter');
   await expect(sheet).toHaveAttribute('data-sheet-detent', 'large');
-  const collapse = sheet.getByRole('button', { name: 'Collapse' });
-  await expect(collapse).toBeFocused();
-  await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await page.keyboard.press('Space');
   await expect(sheet).toHaveAttribute('data-sheet-detent', 'medium');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await page.keyboard.press('Escape');
   await expect(sheet).toHaveCount(0);
 });
@@ -178,7 +204,9 @@ test('content shorter than half height shows at its own height with no full heig
   const viewport = page.viewportSize()!;
   const height = await settledHeight(sheet);
   expect(height).toBeLessThan(viewport.height / 2 - 20);
-  await expect(sheet.getByRole('button', { name: 'Expand' })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Sheet height' })).toHaveCount(
+    0,
+  );
 
   const from = await centre(sheet.getByTestId('sheet-handle'));
   await cdpSwipe(page, from, { x: from.x, y: from.y - 300 });

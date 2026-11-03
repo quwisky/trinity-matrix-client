@@ -147,21 +147,21 @@ describe('TrnSheetFrameComponent', () => {
         document.querySelector<HTMLButtonElement>('[data-trn-sheet-toggle]')!;
 
       expect(toggle().tagName).toBe('BUTTON');
-      expect(toggle().getAttribute('aria-label')).toBe('Expand');
+      expect(toggle().getAttribute('aria-label')).toBe('Sheet height');
       expect(toggle().getAttribute('aria-expanded')).toBe('false');
       expect(toggle().contains(handle())).toBe(true);
 
       toggle().click();
       TestBed.inject(ApplicationRef).tick();
       expect(surface().getAttribute('data-sheet-detent')).toBe('large');
-      expect(toggle().getAttribute('aria-label')).toBe('Collapse');
+      expect(toggle().getAttribute('aria-label')).toBe('Sheet height');
       expect(toggle().getAttribute('aria-expanded')).toBe('true');
       await new Promise((resolve) => setTimeout(resolve));
 
       toggle().click();
       TestBed.inject(ApplicationRef).tick();
       expect(surface().getAttribute('data-sheet-detent')).toBe('medium');
-      expect(toggle().getAttribute('aria-label')).toBe('Expand');
+      expect(toggle().getAttribute('aria-label')).toBe('Sheet height');
     } finally {
       vi.unstubAllGlobals();
     }
