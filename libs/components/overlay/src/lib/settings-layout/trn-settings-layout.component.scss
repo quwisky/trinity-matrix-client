@@ -352,9 +352,11 @@
     block-size: min(44rem, calc(var(--settings-layout-viewport) - 6rem));
   }
 
-  // The sheet's own cap, less its header band.
+  // A sheet asks for its whole cap and shrinks into the body that its header band, home
+  // indicator inset and keyboard leave, so only the panes scroll.
   :host([data-presentation='sheet']) .settings-layout {
-    block-size: calc(min(90svh, var(--settings-layout-viewport)) - 4rem);
+    block-size: min(90svh, var(--settings-layout-viewport));
+    min-block-size: 0;
   }
 
   :host(:not([data-presentation='fullscreen'])) .settings-layout__nav {

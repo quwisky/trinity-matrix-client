@@ -69,12 +69,18 @@ class HandledCloseHostComponent {
 })
 class NamedCloseHostComponent {}
 
-function refFor(presentation: TrnDialogPresentation): {
+function refFor(
+  presentation: TrnDialogPresentation,
+  disableClose = false,
+): {
   close: ReturnType<typeof vi.fn>;
   providers: Provider[];
 } {
   const close = vi.fn();
-  const ref = new TrnDialogRef({ closed: new Subject(), close }, presentation);
+  const ref = new TrnDialogRef(
+    { closed: new Subject(), close, disableClose },
+    presentation,
+  );
   return {
     close,
     providers: [provideTrnIcons(), { provide: TrnDialogRef, useValue: ref }],
@@ -82,6 +88,7 @@ function refFor(presentation: TrnDialogPresentation): {
 }
 
 const surface = () => screen.getByTestId('dialog-surface');
+const shell = () => document.querySelector('trn-dialog-shell')!;
 
 describe('TrnDialogShellComponent', () => {
   it('renders title, body and a footer band with the projected actions', async () => {
@@ -200,6 +207,21 @@ describe('TrnDialogShellComponent', () => {
 
     expect(screen.getByTestId('sheet-handle')).toBeTruthy();
     expect(screen.queryByTestId('dialog-close')).toBeNull();
+  });
+
+  it('marks a sheet that draws its handle, which tightens its header', async () => {
+    await render(PlainHostComponent, { providers: refFor('sheet').providers });
+
+    expect(shell().hasAttribute('data-sheet-handle')).toBe(true);
+  });
+
+  it('leaves a sheet without a handle unmarked, so its header keeps its inset', async () => {
+    await render(PlainHostComponent, {
+      providers: refFor('sheet', true).providers,
+    });
+
+    expect(screen.queryByTestId('sheet-handle')).toBeNull();
+    expect(shell().hasAttribute('data-sheet-handle')).toBe(false);
   });
 
   it('presents a centred dialog with the dialog entrance and no handle', async () => {

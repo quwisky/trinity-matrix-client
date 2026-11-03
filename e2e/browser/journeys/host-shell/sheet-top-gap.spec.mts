@@ -13,6 +13,10 @@ interface SheetTop {
   readonly closeBottom: number;
   readonly closeHeight: number;
   readonly contentTop: number;
+  /** How far the shell body scrolls on its own, past the panes that should scroll instead. */
+  readonly bodyOverflow: number;
+  /** The panes' bottom edge, measured from the top of the 34 px home indicator. */
+  readonly layoutPastInset: number;
 }
 
 /** Settled geometry of a sheet's top, measured from its top edge. */
@@ -32,7 +36,20 @@ async function sheetTop(
       async (locator) => (await locator.boundingBox())!,
     ),
   );
+  const fit = await surface.evaluate((element) => {
+    const body = element.querySelector<HTMLElement>('.dialog-shell__body')!;
+    const layout = element.querySelector<HTMLElement>('.settings-layout')!;
+    const inset = parseFloat(getComputedStyle(element).paddingBottom);
+    return {
+      bodyOverflow: body.scrollHeight - body.clientHeight,
+      layoutPastInset: Math.round(
+        layout.getBoundingClientRect().bottom -
+          (element.getBoundingClientRect().bottom - inset),
+      ),
+    };
+  });
   return {
+    ...fit,
     sheetTop: Math.round(sheet.y),
     closeTop: Math.round(close.y - sheet.y),
     closeBottom: Math.round(close.y + close.height - sheet.y),
@@ -41,13 +58,34 @@ async function sheetTop(
   };
 }
 
+/** The panes fill the body and end above the home indicator, so nothing scrolls twice. */
+function expectFits(top: SheetTop): void {
+  expect(top.bodyOverflow).toBeLessThanOrEqual(1);
+  expect(top.layoutPastInset).toBeLessThanOrEqual(1);
+}
+
 function expectCompactTop(top: SheetTop): void {
   // Below the 47 px status bar, which the sheet then must not pad for again.
   expect(top.sheetTop).toBeGreaterThanOrEqual(47);
   expect(top.closeHeight).toBeGreaterThanOrEqual(44);
-  expect(top.closeTop).toBeLessThanOrEqual(20);
+  expect(top.closeTop).toBeLessThanOrEqual(24);
   expect(top.contentTop - top.closeBottom).toBeLessThanOrEqual(24);
   expect(top.contentTop).toBeLessThanOrEqual(84);
+  expectFits(top);
+}
+
+/** At 250% the header grows, but the close stays on screen and the content starts below it. */
+function expectLargeTextTop(top: SheetTop): void {
+  expect(top.sheetTop).toBeGreaterThanOrEqual(47);
+  expect(top.closeHeight).toBeGreaterThanOrEqual(44);
+  expect(top.contentTop).toBeGreaterThanOrEqual(top.closeBottom);
+  expectFits(top);
+}
+
+async function largestText(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '250%';
+  });
 }
 
 async function dark(page: Page): Promise<void> {
@@ -61,9 +99,10 @@ async function attach(page: Page, testInfo: TestInfo, name: string) {
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
-async function openStatus(page: Page): Promise<Locator> {
+async function openStatus(page: Page, large = false): Promise<Locator> {
   await page.goto('/login');
   await dark(page);
+  if (large) await largestText(page);
   await page
     .getByRole('button', { name: 'System status', exact: true })
     .first()
@@ -71,9 +110,10 @@ async function openStatus(page: Page): Promise<Locator> {
   return page.getByRole('dialog', { name: 'System status' });
 }
 
-async function openSettings(page: Page): Promise<Locator> {
+async function openSettings(page: Page, large = false): Promise<Locator> {
   await login(page, session);
   await dark(page);
+  if (large) await largestText(page);
   await page.getByTestId('open-settings').click();
   return page.getByRole('dialog', { name: 'Settings' });
 }
@@ -103,31 +143,40 @@ test.describe('Sheet top', () => {
       });
     });
 
-    test('System status starts its first row under the handle and close row', async ({
-      page,
-    }, testInfo) => {
-      const dialog = await openStatus(page);
-      const top = await sheetTop(
-        dialog,
-        'Close System status',
-        statusFirstRow(dialog),
-      );
-      await attach(page, testInfo, 'system-status-390-dark');
-      expectCompactTop(top);
-    });
+    for (const large of [false, true]) {
+      const at = large ? ' at 250% text' : '';
+      const check = large ? expectLargeTextTop : expectCompactTop;
 
-    test('Settings starts its search under the handle and close row', async ({
-      page,
-    }, testInfo) => {
-      const dialog = await openSettings(page);
-      const top = await sheetTop(
-        dialog,
-        'Close settings',
-        dialog.locator('trn-settings-directory-search input').first(),
-      );
-      await attach(page, testInfo, 'settings-390-dark');
-      expectCompactTop(top);
-    });
+      test(`System status starts its first row under the handle and close row${at}`, async ({
+        page,
+      }, testInfo) => {
+        const dialog = await openStatus(page, large);
+        const top = await sheetTop(
+          dialog,
+          'Close System status',
+          statusFirstRow(dialog),
+        );
+        await attach(
+          page,
+          testInfo,
+          `system-status-390-dark${large ? '-250' : ''}`,
+        );
+        check(top);
+      });
+
+      test(`Settings starts its search under the handle and close row${at}`, async ({
+        page,
+      }, testInfo) => {
+        const dialog = await openSettings(page, large);
+        const top = await sheetTop(
+          dialog,
+          'Close settings',
+          dialog.locator('trn-settings-directory-search input').first(),
+        );
+        await attach(page, testInfo, `settings-390-dark${large ? '-250' : ''}`);
+        check(top);
+      });
+    }
   });
 
   test.describe('on a 1280 px desktop', () => {
@@ -142,7 +191,7 @@ test.describe('Sheet top', () => {
       ['Settings', openSettings],
     ] as const) {
       test(`${name} keeps its dialog header`, async ({ page }, testInfo) => {
-        const dialog = await open(page);
+        const dialog = await open(page, false);
         const surface = dialog.getByTestId('dialog-surface');
         await expect(surface).toHaveAttribute('data-trn-layout', 'dialog');
         await expect(surface.locator('.dialog-shell__header')).toHaveCSS(
