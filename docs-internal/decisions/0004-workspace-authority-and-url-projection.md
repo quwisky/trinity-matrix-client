@@ -38,6 +38,19 @@ Responsive placement creates no history. This keeps browser Back,
 native Back, dialogs, reloads, and compact-layout changes coherent without exposing a half-old
 Workspace.
 
+The open Room panel is part of the semantic view too, projected as `panel=` with a thread's
+`root=`. Opening a panel pushes history; moving between panels replaces it, except a thread from
+the threads list and any panel opened over the roster, which push. History-state marks record a
+panel pushed over its Room and the roster below a temporary panel, so close and Back step back to
+what lay below. Changing Room drops the panel, except that the wide layout's roster follows to the
+Account's next Room; on a phone it drops too. Presentation stays derived: a column beside the
+timeline, a drawer below the `members` breakpoint and, below `md`, a page over the Room that stays
+mounted underneath. On iOS the WebKit edge swipe is on only for such a page with its own entry
+below it. The same switch enables WebKit's Forward swipe, which re-opens the panel entry above. The
+page has no close drag of its own, so the swipe has no rival. A page's Back button is one history
+step too: the marks keep it inside the Room in every in-app flow, and after a stale mark it lands
+where system Back would. With no panel entry below, it closes the panel in place.
+
 Product navigation crosses Workspace as semantic intent rather than as a caller-built destination.
 Account selection, sidebar scope selection, exact Account-and-Room opens, compact-list close, Room
 removal, shortcuts, Room hopping, and Workspace Back all use that interface. Workspace derives the

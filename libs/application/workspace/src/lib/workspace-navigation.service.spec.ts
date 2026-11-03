@@ -219,7 +219,9 @@ function harness(options: HarnessOptions = {}) {
     readonly withinRoom?: boolean;
   }[] = [];
   const popHistory = vi.fn();
+  const back = vi.fn(() => Promise.resolve(true));
   const location = {
+    back,
     listBelow: listBelow.asReadonly(),
     panelBelow: panelBelow.asReadonly(),
     membersBelow: membersBelow.asReadonly(),
@@ -324,6 +326,7 @@ function harness(options: HarnessOptions = {}) {
     membersBelow,
     projections,
     popHistory,
+    back,
     activeAccountId,
     paramMap,
     queryParamMap,
@@ -2522,6 +2525,83 @@ describe('room panels', () => {
     expect(h.popHistory).toHaveBeenCalledOnce();
     expect(h.navigate).not.toHaveBeenCalled();
     expect(h.service.panel()).toBeNull();
+  });
+
+  it("steps a page back one entry, and counts the Room's restoration as its own", async () => {
+    const h = await inRoom();
+    h.service.openPanel(threads);
+    await settle();
+    h.service.openPanel(thread);
+    await settle();
+    h.panelBelow.set(true);
+    h.navigate.mockClear();
+    const before = h.projections.length;
+
+    h.service.stepBackPanel();
+    expect(h.back).toHaveBeenCalledOnce();
+    expect(h.projections).toHaveLength(before);
+    // The popstate lands on the threads list below.
+    h.queryParamMap.next(
+      convertToParamMap({ account: ALICE, panel: 'threads' }),
+    );
+    await settle();
+    expect(h.service.panel()).toEqual(threads);
+    expect(h.service.committedInApp).toBe(true);
+    expect(h.navigate).not.toHaveBeenCalled();
+
+    // A platform Back is not the app's own.
+    h.queryParamMap.next(convertToParamMap({ account: ALICE }));
+    await settle();
+    expect(h.service.panel()).toBeNull();
+    expect(h.service.committedInApp).toBe(false);
+  });
+
+  it('drops a second Back that arrives before the first step lands', async () => {
+    const h = await inRoom();
+    h.service.openPanel(threads);
+    await settle();
+    h.panelBelow.set(true);
+
+    h.service.stepBackPanel();
+    h.service.stepBackPanel();
+    expect(h.back).toHaveBeenCalledOnce();
+
+    // Once the step lands, the next Back steps again.
+    h.queryParamMap.next(convertToParamMap({ account: ALICE }));
+    await settle();
+    h.service.openPanel(threads);
+    await settle();
+    h.service.stepBackPanel();
+    expect(h.back).toHaveBeenCalledTimes(2);
+  });
+
+  it("ends a step whose navigation is cancelled, so a platform Back is not the app's", async () => {
+    const h = await inRoom();
+    h.service.openPanel(threads);
+    await settle();
+    h.panelBelow.set(true);
+    h.back.mockResolvedValueOnce(false);
+
+    h.service.stepBackPanel();
+    await settle();
+    h.queryParamMap.next(convertToParamMap({ account: ALICE }));
+    await settle();
+    expect(h.service.panel()).toBeNull();
+    expect(h.service.committedInApp).toBe(false);
+    // And the cancelled step does not hold the next one off.
+    h.service.openPanel(threads);
+    await settle();
+    h.service.stepBackPanel();
+    expect(h.back).toHaveBeenCalledTimes(2);
+  });
+
+  it('closes a page with no entry below in place', async () => {
+    const h = await inRoom({ routePanel: 'threads' });
+    h.service.stepBackPanel();
+    await settle();
+    expect(h.back).not.toHaveBeenCalled();
+    expect(h.service.panel()).toBeNull();
+    expect(h.projections.at(-1)?.history).toBe('replace');
   });
 
   it('steps back to the roster below a panel opened over it', async () => {

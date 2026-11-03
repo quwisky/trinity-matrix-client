@@ -72,6 +72,8 @@ function build(
   });
   const panel = signal<WorkspacePanel | null>(null);
   const membersBelow = signal(false);
+  const panelOverRoom = signal(false);
+  const stepBackPanel = vi.fn();
   const openPanel = vi.fn((next: WorkspacePanel) => {
     if (commits) panel.set(next);
   });
@@ -98,6 +100,8 @@ function build(
           navigate,
           panel: panel.asReadonly(),
           membersBelow: membersBelow.asReadonly(),
+          panelOverRoom: panelOverRoom.asReadonly(),
+          stepBackPanel,
           openPanel,
           closePanel,
         },
@@ -112,6 +116,8 @@ function build(
     navigate,
     panel,
     membersBelow,
+    panelOverRoom,
+    stepBackPanel,
     openPanel,
     closePanel,
     lifecycle: TestBed.inject(RoomSurfaceLifecycle),
@@ -275,6 +281,83 @@ describe('RoomSurfaceLifecycle', () => {
     }
   });
 
+  /** A slot holding one surface whose header has a button and no marked focus target. */
+  function slotWithHeaderButton(): { slot: HTMLElement; button: HTMLElement } {
+    const slot = document.createElement('div');
+    const surface = document.createElement('div');
+    const header = document.createElement('trn-side-panel-header');
+    const button = document.createElement('button');
+    slot.dataset['rightPanelSlot'] = '';
+    surface.dataset['rightPanelSurface'] = '';
+    header.append(button);
+    surface.append(header);
+    slot.append(surface);
+    return { slot, button };
+  }
+
+  it('moves focus into a page opened below md, onto its header button', () => {
+    stubMedia({ [BELOW_MEMBERS_QUERY]: true, [BELOW_MD_QUERY]: true });
+    const { lifecycle } = build();
+    const trigger = document.createElement('button');
+    const { slot, button } = slotWithHeaderButton();
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      lifecycle.transition({ kind: 'open-threads' });
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(button);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
+  it('returns focus to the opener while the closed page is still sliding off', () => {
+    stubMedia({ [BELOW_MEMBERS_QUERY]: true, [BELOW_MD_QUERY]: true });
+    const { lifecycle } = build();
+    const trigger = document.createElement('button');
+    const { slot, button } = slotWithHeaderButton();
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      lifecycle.transition({ kind: 'open-threads' });
+      TestBed.tick();
+      TestBed.tick();
+      expect(document.activeElement).toBe(button);
+
+      // The page leaves the DOM only when its slide ends; its Back button still has focus.
+      lifecycle.transition({ kind: 'dismiss' });
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
+  it('leaves focus alone when a wide panel switches to one with no marked target', () => {
+    stubMedia({ [BELOW_MEMBERS_QUERY]: false, [BELOW_MD_QUERY]: false });
+    const { lifecycle } = build();
+    const { slot } = slotWithHeaderButton();
+    document.body.append(slot);
+    try {
+      lifecycle.transition({ kind: 'open-threads' });
+      TestBed.tick();
+      (document.activeElement as HTMLElement | null)?.blur();
+      lifecycle.transition({ kind: 'open-pinned' });
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(document.body);
+    } finally {
+      slot.remove();
+    }
+  });
+
   it('asks Workspace for each panel it opens, and shows what the URL then names', () => {
     stubMedia();
     const { lifecycle, openPanel } = build();
@@ -418,6 +501,41 @@ describe('RoomSurfaceLifecycle', () => {
     expect(openPanel).toHaveBeenLastCalledWith({ kind: 'members' });
     expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
     expect(lifecycle.membersVisible()).toBe(true);
+  });
+
+  it('steps a page back one history entry, and closes the panel otherwise', () => {
+    stubMedia({ [BELOW_MD_QUERY]: true });
+    const {
+      closePanel,
+      lifecycle,
+      openPanel,
+      panel,
+      panelOverRoom,
+      stepBackPanel,
+    } = build();
+    panel.set({ kind: 'thread', root: '$root' });
+    panelOverRoom.set(true);
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(stepBackPanel).toHaveBeenCalledOnce();
+    expect(closePanel).not.toHaveBeenCalled();
+    expect(openPanel).not.toHaveBeenCalled();
+
+    // A page with no entry below, after a reload or a link, closes to the Room.
+    panelOverRoom.set(false);
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(stepBackPanel).toHaveBeenCalledOnce();
+    expect(closePanel).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the wide layout's close button closing the whole panel", () => {
+    stubMedia({ [BELOW_MD_QUERY]: false });
+    const { closePanel, lifecycle, panel, panelOverRoom, stepBackPanel } =
+      build();
+    panel.set({ kind: 'thread', root: '$root' });
+    panelOverRoom.set(true);
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(closePanel).toHaveBeenCalledOnce();
+    expect(stepBackPanel).not.toHaveBeenCalled();
   });
 
   it('closes back to the roster history says lies below, after a reload or Forward', () => {

@@ -69,7 +69,10 @@ import { JoinRequestsBannerComponent } from '../join-requests-banner/join-reques
 import { type SwipeDirection } from '../message-row/message-row.component';
 import { showRoomIntro } from './room-intro';
 import { RoomShellStore } from './room-shell-store';
-import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
+import {
+  RoomSurfaceLifecycle,
+  type RenderedRoomSurface,
+} from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -174,11 +177,11 @@ export class RoomsPage {
    * only half the answer and this page is the only place that knows the other halves.
    *
    * `roomSurfaces.renderedSurface()` is the expression `[drawerOpen]` is bound to below, so
-   * the two cannot drift. It is NOT what stops the row gesture competing with the drawer:
-   * while a panel is open a `fixed inset-0` backdrop covers the viewport, so no `pointerdown`
-   * reaches a timeline row at all. The clause mirrors the drawer's own arming condition, so a
-   * gesture that is off is off for a stated reason rather than by a side effect of somebody
-   * else's markup.
+   * the two cannot drift. It is NOT what stops the row gesture competing with the panel:
+   * while one is open, the drawer's `fixed inset-0` backdrop covers the viewport, or below md
+   * the page makes `trn-message-list` inert, so no `pointerdown` reaches a timeline row. The
+   * clause mirrors the drawer's own arming condition, so a gesture that is off is off for a
+   * stated reason rather than by a side effect of somebody else's markup.
    *
    * The thread panel is the deliberate exception and is handled at the row: it only EXISTS
    * while the drawer is open, so this rule would make the gesture permanently dead there. It
@@ -222,9 +225,8 @@ export class RoomsPage {
     if (!panel || panel.kind === 'members') {
       return MEMBERS_DRAWER_PX;
     }
-    // The panels are `width: 480px; max-width: 100%` at this breakpoint, so on a phone the
-    // viewport is what they actually get.
-    return Math.min(PANEL_DRAWER_PX, window.innerWidth);
+    // Below md an open panel is a page with no close drag, so this is the md+ drawer.
+    return PANEL_DRAWER_PX;
   }
 
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
@@ -282,6 +284,65 @@ export class RoomsPage {
   });
 
   readonly roomSurfaces = inject(RoomSurfaceLifecycle);
+  /** Below md an open panel is a page over the room, which stays mounted but inert. */
+  protected readonly panelPage = computed(
+    () => this.mobileMasterDetail() && !!this.roomSurfaces.renderedSurface(),
+  );
+
+  /**
+   * A panel page pushed over its room, or popped off it, slides the way a room does over its
+   * list ({@link paneSlide}). Moving between pages, such as threads to a thread, happens in
+   * place. Null for a history traversal, whose edge swipe draws the motion natively, and for a
+   * page arriving with the room, which rides the room's own slide.
+   */
+  protected readonly panelSlide = linkedSignal<
+    { readonly open: boolean; readonly room: string },
+    'open' | 'close' | null
+  >({
+    source: computed(
+      () => ({
+        open: !!this.roomSurfaces.renderedSurface(),
+        room: `${this.store.activeAccountId()} ${this.store.activeRoomId()}`,
+      }),
+      { equal: (a, b) => a.open === b.open && a.room === b.room },
+    ),
+    computation: (source, previous) => {
+      if (
+        !previous ||
+        // Tracked, as in `paneSlide`: crossing md mid-slide must clear it.
+        !this.mobileMasterDetail()
+      ) {
+        return null;
+      }
+      // Only crossing md re-runs this with the same source: a resize starts no slide.
+      if (previous.source === source) return previous.value;
+      if (
+        // A page closed by a room change in place leaves at once, not over the new room.
+        previous.source.room !== source.room ||
+        !this.workspace.committedInApp ||
+        untracked(this.paneSlide) !== null
+      ) {
+        return null;
+      }
+      return source.open ? 'open' : 'close';
+    },
+  });
+
+  /** The panel on screen: the open one, or the one sliding off until its slide ends. */
+  protected readonly shownSurface = linkedSignal<
+    RenderedRoomSurface | null,
+    RenderedRoomSurface | null
+  >({
+    source: () => this.roomSurfaces.renderedSurface(),
+    computation: (surface, previous) =>
+      surface ??
+      (this.panelSlide() === 'close' ? (previous?.value ?? null) : null),
+  });
+
+  /** The shown panel is only sliding away; it takes no input. */
+  protected readonly panelLeaving = computed(
+    () => !!this.shownSurface() && !this.roomSurfaces.renderedSurface(),
+  );
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
   readonly nav = inject(RoomShellNavigationService);
@@ -531,6 +592,12 @@ export class RoomsPage {
   /** Descendants' animations bubble here too; only `.main`'s own ends the slide. */
   protected onMainAnimationEnd(event: AnimationEvent): void {
     if (event.target === event.currentTarget) this.paneSlide.set(null);
+    if (
+      event.target instanceof Element &&
+      event.target.hasAttribute('data-right-panel-surface')
+    ) {
+      this.panelSlide.set(null);
+    }
   }
 
   /**

@@ -51,8 +51,8 @@ export class ShellShortcutsService {
    * `panelOwnsTheScreen()` for the right-hand slot, where threads, pinned messages and in-room
    * search are plain components. A chord fired while typing in the search field would
    * otherwise walk to another room and leave behind a panel about the room just left. The
-   * roster is deliberately NOT counted: it is a column beside the timeline, not over it, and
-   * hopping rooms with it open works.
+   * roster is deliberately NOT counted: a room change handles it, carrying the wide layout's
+   * column to the next room and dropping the phone's page.
    */
   onGlobalKeydown(event: Event): void {
     // Locked: the cover stops keys at its dialog, and this guard covers anything that

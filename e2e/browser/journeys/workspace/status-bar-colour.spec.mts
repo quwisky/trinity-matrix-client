@@ -259,13 +259,14 @@ for (const [colorScheme, theme] of RUNS) {
       await expect(back).toBeVisible();
       await expectStatusBarMatchesTopBar(page, 'room');
 
-      // The threads drawer reaches the top over the room.
+      // The threads page reaches the top over the room.
       await page.getByTestId('open-threads').click();
       await expect(
         page.getByRole('heading', { name: 'Threads' }),
       ).toBeVisible();
       await expectStatusBarMatchesTopBar(page, 'threads panel');
-      await page.getByRole('button', { name: 'Close threads' }).click();
+      // At this width the threads are a page, closed by its Back button.
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Threads' })).toBeHidden();
 
       // The image viewer's black matte: the one top surface darker than a light theme.

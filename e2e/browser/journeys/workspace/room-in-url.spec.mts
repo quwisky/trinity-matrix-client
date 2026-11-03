@@ -1,3 +1,4 @@
+import { nextTestResourceId } from '../../../support/namespace.mts';
 import {
   testResourceId,
   test,

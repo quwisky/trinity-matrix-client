@@ -54,7 +54,7 @@ describe('Workspace semantic navigation boundary', () => {
         `${applicationRoot}/workspace-navigation.service.ts`,
         'WorkspaceNavigationService',
       ),
-    ).toEqual(['navigate', 'openPanel', 'closePanel']);
+    ).toEqual(['navigate', 'openPanel', 'closePanel', 'stepBackPanel']);
     expect(service).toContain('readonly view =');
     expect(service).not.toContain('register(');
     expect(service).not.toContain('WorkspaceNavigationActivator');

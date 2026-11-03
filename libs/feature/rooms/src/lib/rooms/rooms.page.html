@@ -17,6 +17,7 @@
     [style.--shell-right-panel-w.px]="layout.rightPanelWidth()"
     [attr.data-mobile-view]="store.pane() === 'conversation' ? 'chat' : 'list'"
     [attr.data-pane-slide]="paneSlide()"
+    [attr.data-panel-slide]="panelSlide()"
   >
     <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
          pages, shown one at a time from the Workspace pane coordinate (rooms.page.scss).
@@ -151,6 +152,7 @@
       (animationend)="onMainAnimationEnd($event)"
     >
       <trn-room-header
+        [attr.inert]="panelPage() ? '' : null"
         [room]="vm.activeRoom()"
         [loading]="
           !!store.activeRoomId() && timeline.loadState().kind === 'loading'
@@ -173,10 +175,12 @@
            horizontal space and squeezes the timeline and the composer's text column. -->
       @if (vm.activeRoom()) {
         <trn-tombstone-banner
+          [attr.inert]="panelPage() ? '' : null"
           (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
         />
-        <trn-identity-change-banner />
+        <trn-identity-change-banner [attr.inert]="panelPage() ? '' : null" />
         <trn-join-requests-banner
+          [attr.inert]="panelPage() ? '' : null"
           (review)="roomActions.onOpenRoomSettings('members')"
         />
       }
@@ -185,7 +189,7 @@
         class="chat-body"
         data-right-panel-slot
         trnDrawerSwipe
-        [drawerEnabled]="roomSurfaces.membersAreDrawer()"
+        [drawerEnabled]="roomSurfaces.membersAreDrawer() && !panelPage()"
         [drawerOpen]="!!roomSurfaces.renderedSurface()"
         [drawerWidth]="drawerWidth()"
         (opened)="onDrawerSwipedOpen()"
@@ -200,6 +204,7 @@
              rows flying past render as placeholders. Flipping one changes this same list in
              place, so the reader keeps their position. -->
           <trn-message-list
+            [attr.inert]="panelPage() ? '' : null"
             [windowed]="flags.virtualTimeline()"
             [deferMediaWhileScrolling]="flags.deferMediaWhileScrolling()"
             [flingPlaceholders]="flags.flingPlaceholders()"
@@ -267,7 +272,7 @@
             }
           </trn-message-list>
           @if (vm.activeRoom(); as room) {
-            @if (roomSurfaces.renderedSurface(); as panel) {
+            @if (shownSurface(); as panel) {
               @if (panel.kind !== 'members') {
                 <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
                    where the slot is an overlay drawer rather than a column sharing the row.
@@ -289,17 +294,17 @@
                   (committed)="layout.setRightPanelWidth($event)"
                 />
               }
-              <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
-               (shown only at that width) dismisses it. At or above it the slot is a static
-               column and the backdrop is display:none. One backdrop for every surface,
-               because there is one slot.
+              <!-- Between md and the `members` breakpoint the slot is an overlay drawer; a
+               backdrop (shown only at those widths) dismisses it. At or above it the slot is a
+               static column, and below md a page over the room, so there is no backdrop.
+               One backdrop for every surface, because there is one slot.
 
                Each surface names itself with role/aria-label. `complementary` rather than
-               `dialog` — nothing here traps focus or marks the rest of the page inert, and
-               claiming modality a screen reader then cannot rely on is worse than not
-               claiming it. -->
+               `dialog` — nothing here traps focus, and claiming modality a screen reader then
+               cannot rely on is worse than not claiming it. Below md the room the page covers
+               is inert (`panelPage`), as a page it replaced would be. -->
               <div
-                class="fixed inset-0 top-[var(--trinity-title-row-inset,0px)] z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
+                class="fixed inset-0 top-[var(--trinity-title-row-inset,0px)] z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim md:max-members:block"
                 (click)="clearRightPanel()"
                 aria-hidden="true"
                 data-testid="members-backdrop"
@@ -308,6 +313,7 @@
                 @case ('members') {
                   <trn-member-list
                     class="chat-members"
+                    [attr.inert]="panelLeaving() ? '' : null"
                     data-right-panel-surface
                     [members]="vm.members()"
                     [availability]="vm.membersView().availability"
@@ -319,6 +325,7 @@
                 @case ('threads') {
                   <trn-threads-list
                     class="chat-panel"
+                    [attr.inert]="panelLeaving() ? '' : null"
                     data-right-panel-surface
                     role="complementary"
                     aria-label="Threads"
@@ -330,6 +337,7 @@
                 @case ('thread') {
                   <trn-thread-view
                     class="chat-panel"
+                    [attr.inert]="panelLeaving() ? '' : null"
                     data-right-panel-surface
                     role="complementary"
                     aria-label="Thread"
@@ -348,6 +356,7 @@
                 @case ('pinned') {
                   <trn-pinned-messages-panel
                     class="chat-panel"
+                    [attr.inert]="panelLeaving() ? '' : null"
                     data-right-panel-surface
                     role="complementary"
                     aria-label="Pinned messages"
@@ -358,6 +367,7 @@
                 @case ('search') {
                   <trn-message-search
                     class="chat-panel"
+                    [attr.inert]="panelLeaving() ? '' : null"
                     data-right-panel-surface
                     role="complementary"
                     aria-label="Search messages"

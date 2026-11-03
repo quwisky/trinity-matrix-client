@@ -1,6 +1,10 @@
 import { render, screen } from '@trinity/testing';
 import { provideTrnIcons } from '@trinity/components/foundations';
-import { SidePanelHeaderComponent } from './side-panel-header.component';
+import { signal } from '@angular/core';
+import {
+  RIGHT_PANEL_PAGE,
+  SidePanelHeaderComponent,
+} from './side-panel-header.component';
 
 describe('SidePanelHeaderComponent', () => {
   it('titles the panel and closes it', async () => {
@@ -14,6 +18,40 @@ describe('SidePanelHeaderComponent', () => {
       screen.getByRole('heading', { level: 2, name: 'Members' }),
     ).toBeTruthy();
     screen.getByTestId('close-members').click();
+    expect(closed).toHaveBeenCalledOnce();
+  });
+
+  it('names its close button after the panel beside the room, after the title', async () => {
+    await render(SidePanelHeaderComponent, {
+      inputs: { title: 'Threads', closeLabel: 'Close threads' },
+      providers: [provideTrnIcons()],
+    });
+    const button = screen.getByRole('button', { name: 'Close threads' });
+    const heading = screen.getByRole('heading', { name: 'Threads' });
+    expect(
+      heading.compareDocumentPosition(button) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('leads a page with a Back button, first in reading and focus order', async () => {
+    const closed = vi.fn();
+    await render(SidePanelHeaderComponent, {
+      inputs: { title: 'Threads', closeLabel: 'Close threads' },
+      on: { closed },
+      providers: [
+        provideTrnIcons(),
+        { provide: RIGHT_PANEL_PAGE, useValue: signal(true) },
+      ],
+    });
+    expect(screen.queryByRole('button', { name: 'Close threads' })).toBeNull();
+    const button = screen.getByRole('button', { name: 'Back' });
+    const heading = screen.getByRole('heading', { name: 'Threads' });
+    expect(
+      button.compareDocumentPosition(heading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    button.click();
     expect(closed).toHaveBeenCalledOnce();
   });
 });

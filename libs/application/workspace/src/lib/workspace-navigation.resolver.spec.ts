@@ -481,6 +481,46 @@ describe('resolveWorkspaceNavigation — the open panel', () => {
     }
   });
 
+  it('drops the roster with the Room on a phone, where it is a page over the Room', () => {
+    const toOther = (compact: boolean) =>
+      resolveWorkspaceNavigation(
+        {
+          kind: 'room',
+          accountId: '@a:hs',
+          roomId: '!other:hs',
+          origin: 'room-action',
+        },
+        open,
+        { listBelow: false, compact },
+      )?.destination.panel;
+    expect(toOther(true)).toBeNull();
+    expect(toOther(false)).toEqual(members);
+    // Choosing the open Room again still keeps its page.
+    expect(
+      resolveWorkspaceNavigation(
+        {
+          kind: 'room',
+          accountId: '@a:hs',
+          roomId: '!chat:hs',
+          origin: 'room-action',
+        },
+        open,
+        { listBelow: false, compact: true },
+      )?.destination.panel,
+    ).toEqual(members);
+  });
+
+  it('drops the roster on a phone for a quick-switcher pick too', () => {
+    const picked = (compact: boolean) =>
+      resolveWorkspaceNavigation(
+        { kind: 'conversation', accountId: '@a:hs', roomId: '!other:hs' },
+        open,
+        { listBelow: false, compact },
+      )?.destination.panel;
+    expect(picked(true)).toBeNull();
+    expect(picked(false)).toEqual(members);
+  });
+
   it('drops the panel when the Account changes', () => {
     expect(
       resolveWorkspaceNavigation({ kind: 'account', accountId: '@b:hs' }, open)

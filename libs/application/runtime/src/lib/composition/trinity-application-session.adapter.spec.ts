@@ -129,6 +129,8 @@ function setup({
   const workspaceActive = signal(false);
   const workspaceSurface = signal<WorkspaceSurface | null>(null);
   const conversationOverList = signal(false);
+  const panelOverRoom = signal(false);
+  const placement = signal<'list' | 'conversation' | 'split'>('split');
   const routedSurface = signal<WorkspaceSurface | null>(null);
   const workspaceOwnsOverlay = vi.fn(() => false);
   const workspaceBack = vi.fn(() => of({ kind: 'unhandled' as const }));
@@ -239,6 +241,8 @@ function setup({
       MockProvider(WorkspaceNavigationService, {
         navigate: workspaceNavigate,
         conversationOverList: conversationOverList.asReadonly(),
+        panelOverRoom: panelOverRoom.asReadonly(),
+        placement: placement.asReadonly(),
       }),
       MockProvider(NativeNavigationService, { setHistoryGesturesEnabled }),
       {
@@ -283,6 +287,8 @@ function setup({
     workspaceActive,
     workspaceSurface,
     conversationOverList,
+    panelOverRoom,
+    placement,
     routedSurface,
     workspaceOwnsOverlay,
     workspaceBack,
@@ -1359,6 +1365,25 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     // A panel over it, or a dialog, still owns Back.
     test.workspaceSurface.set({ layer: 'room', surface: { kind: 'threads' } });
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+  });
+
+  it('turns the native Back gesture on over a phone panel page pushed over its Room', () => {
+    const test = setup();
+    test.workspaceSurface.set({ layer: 'room', surface: { kind: 'threads' } });
+    test.panelOverRoom.set(true);
+    lifetime = test.adapter.run(of(void 0)).subscribe();
+    TestBed.tick();
+    // Beside the room at wide widths the panel still owns Back.
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+
+    test.placement.set('conversation');
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+
+    // A panel restored with no entry of its own below keeps Back for Workspace.
+    test.panelOverRoom.set(false);
     TestBed.tick();
     expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
   });

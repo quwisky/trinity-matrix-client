@@ -234,6 +234,43 @@ describe('mobile navigation', () => {
     expect(await browser.execute(() => history.length)).toBe(entries);
   });
 
+  it('turns the iOS history swipe on over a panel page, and its Back closes the panel', async function () {
+    onlyOn(
+      'ios',
+      "WebKit's edge swipe; Android's system Back over a panel is covered below",
+    ).call(this);
+    const { user, pass, roomName } = await seedComposerRoom();
+    await login(user, pass);
+    await tap('[data-testid="rail-rooms"]');
+    const room = `//button[contains(@class,"channel")][contains(.,"${roomName}")]`;
+    await expect($(room)).toBeDisplayed({ wait: 30_000 });
+    await tap(room);
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+    const entries = await browser.execute(() => history.length);
+    await recordHistoryGestures();
+
+    await tap('[data-testid="room-actions-overflow"]');
+    await tap('[data-testid="overflow-toggle-members"]');
+    await expect($('.chat-members')).toBeDisplayed({ wait: 5_000 });
+    // The roster is a page with an entry of its own over the room, so the swipe is on.
+    await browser.waitUntil(
+      async () => (await historyGestures()).at(-1) === true,
+      {
+        timeout: 10_000,
+        timeoutMsg: 'a panel page never turned the history swipe on',
+      },
+    );
+
+    // The swipe itself is WebKit's, fired only intermittently by a synthesized edge pan on
+    // the Simulator, so the spec takes the same history step it would.
+    await browser.execute(() => history.back());
+    await expect($('.chat-members')).not.toBeDisplayed({ wait: 5_000 });
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed();
+    expect(await browser.execute(() => history.length)).toBe(entries + 1);
+  });
+
   it('steps System status back to its sections, then closes it, on hardware Back', async function () {
     onlyOn('android', PANEL_BACK_ANDROID_ONLY).call(this);
     const { user, pass, roomName } = await seedComposerRoom();

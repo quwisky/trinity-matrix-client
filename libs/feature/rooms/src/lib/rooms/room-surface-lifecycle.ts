@@ -324,10 +324,18 @@ export class RoomSurfaceLifecycle {
     return { kind: 'applied' };
   }
 
-  /** Close a temporary panel back to the roster it replaced, or close the roster. */
+  /**
+   * Close a temporary panel back to the roster it replaced, or close the roster; on a phone
+   * page, step back one history entry.
+   */
   private dismiss(): RoomSurfaceTransitionOutcome {
     const panel = this.panel();
     if (!panel) return { kind: 'unchanged' };
+    // A page's Back is one history step, the same as the platform's Back.
+    if (this.compactConversation() && this.workspace.panelOverRoom()) {
+      this.workspace.stepBackPanel();
+      return { kind: 'applied' };
+    }
     // History knows after a reload or Forward too, when this page's own record is gone.
     if (
       panel.kind !== 'members' &&
@@ -373,19 +381,28 @@ export class RoomSurfaceLifecycle {
     effect(() => {
       const panel = this.renderedSurface();
       const isDrawer = this.membersAreDrawer();
+      // Below md the panel is a page and its opener goes inert under it.
+      const isPage = this.compactConversation();
       untracked(() => {
         const oldPanel = previous;
         previous = panel;
         if (panel) {
           trigger ??= this.activeElementOutsidePanel();
           if (oldPanel) {
-            this.focusPanelAfterRender(panel);
-          } else if (panel.kind === 'members' && isDrawer) {
-            this.focusPanelAfterRender(panel, trigger);
+            this.focusPanelAfterRender(panel, null, isPage);
+          } else if ((panel.kind === 'members' && isDrawer) || isPage) {
+            this.focusPanelAfterRender(panel, trigger, isPage);
           }
           return;
         }
-        const target = trigger;
+        // A page restored by a reload or a link has no opener: the room's main takes focus.
+        const target =
+          trigger ??
+          (isPage && oldPanel
+            ? (document
+                .querySelector('[data-right-panel-slot]')
+                ?.closest<HTMLElement>('main') ?? null)
+            : null);
         trigger = null;
         if (!target) return;
         afterNextRender(
@@ -393,7 +410,9 @@ export class RoomSurfaceLifecycle {
             if (
               this.renderedSurface() === null &&
               target.isConnected &&
-              document.activeElement === document.body
+              // A page sliding off still holds the focus its Back button had.
+              (document.activeElement === document.body ||
+                !!document.activeElement?.closest('[data-right-panel-surface]'))
             ) {
               target.focus();
             }
@@ -407,6 +426,7 @@ export class RoomSurfaceLifecycle {
   private focusPanelAfterRender(
     panel: RenderedRoomSurface,
     openingTrigger: HTMLElement | null = null,
+    page = false,
   ): void {
     afterNextRender(
       () => {
@@ -419,9 +439,16 @@ export class RoomSurfaceLifecycle {
         ) {
           return;
         }
-        const target = document.querySelector<HTMLElement>(
-          '[data-right-panel-slot] [data-right-panel-focus]',
-        );
+        // A page without a marked target takes focus on its header's Back button.
+        const target =
+          document.querySelector<HTMLElement>(
+            '[data-right-panel-slot] [data-right-panel-focus]',
+          ) ??
+          (page
+            ? document.querySelector<HTMLElement>(
+                '[data-right-panel-slot] [data-right-panel-surface] trn-side-panel-header button',
+              )
+            : null);
         if (target?.isConnected) target.focus();
       },
       { injector: this.injector },

@@ -545,6 +545,9 @@ test.describe('Swipe a message', () => {
       // #222 asks for the drawer to still work "in both directions and with the setting
       // Off". Covering only one direction would leave the two settings most likely to
       // interfere — Left, which drags the same way the drawer closes — untested.
+      // The drawer, which has a close drag; below md the roster is a page that leaves
+      // closing to Back.
+      await page.setViewportSize({ width: 800, height: 900 });
       await openRoom(
         page,
         request,
@@ -572,6 +575,9 @@ test.describe('Swipe a message', () => {
     // A positive assertion, not the absence of a failure: with the setting ON, the drawer's
     // own edge drag must still open and close it. A swipe test that only checked the row
     // would pass just as happily with the drawer broken.
+    // The drawer, which has a close drag; below md the roster is a page that leaves
+    // closing to Back.
+    await page.setViewportSize({ width: 800, height: 900 });
     const { other } = await openRoom(page, request, 'w', 'right');
     const size = page.viewportSize()!;
     const members = page.locator('.chat-members');

@@ -361,8 +361,8 @@
     }
 
     // Where the two drawers part company, on width and on the safe-area insets.
-    // WIDTH: the roster fits 240px; a thread or a search result does not, so `max-width` keeps
-    // them full-screen at this width (480px exceeds the viewport here). The dragged width is
+    // WIDTH: the roster fits 240px; a thread or a search result does not (below md every
+    // panel is a full page instead, see the page rule further down). The dragged width is
     // deliberately not read at this breakpoint: there is no divider to drag, and a width
     // chosen on a desktop has nothing to say about a phone.
     // INSETS: the drawer above takes the top inset; every panel pads its own bottom with
@@ -377,6 +377,64 @@
     .chat-panel {
       width: 480px;
       max-width: 100%;
+    }
+  }
+
+  // Below md a panel is a page of its own: it fills the conversation pane, over the room's
+  // header, timeline and composer, which stay mounted underneath so their scroll position and
+  // draft are there on the way back. Absolute in `.main`, not fixed: the pane slide transforms
+  // `.main`, which would make it the containing block of a fixed panel anyway, and inside
+  // `.main` the panel ends above the keyboard already.
+  @media #{$below-md} {
+    .main {
+      position: relative;
+    }
+
+    .chat-members,
+    .chat-panel {
+      position: absolute;
+      inset: 0;
+      width: auto;
+      max-width: none;
+
+      // It covers `.main`'s top padding, so like the bar at the top of each column it takes
+      // the top inset itself, and the status bar is the page's colour.
+      padding-top: var(--trinity-top-inset);
+      border-inline-start: 0;
+      box-shadow: none;
+      transition: none;
+
+      // No drawer entrance: a page moves only with the page slide below, and a page arriving
+      // with the room rides `.main`'s.
+      animation: none;
+    }
+
+    // Pushing a page over its room, or popping it off, is the room-over-list slide one level
+    // in: the page moves over a room that shifts underneath (`paneSlide`, above).
+    [data-panel-slide] :is(.chat-members, .chat-panel) {
+      box-shadow: var(--trinity-shadow-overlay);
+    }
+
+    [data-panel-slide='open'] :is(.chat-members, .chat-panel) {
+      animation: pane-over-in var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-panel-slide='close'] :is(.chat-members, .chat-panel) {
+      animation: pane-over-out var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-panel-slide='open'] .main > :not(.chat-body),
+    [data-panel-slide='open'] .chat-body > :not([data-right-panel-surface]) {
+      animation: pane-under-out var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-panel-slide='close'] .main > :not(.chat-body),
+    [data-panel-slide='close'] .chat-body > :not([data-right-panel-surface]) {
+      animation: pane-under-in var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
     }
   }
 

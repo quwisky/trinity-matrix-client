@@ -1,8 +1,10 @@
+import { nextTestResourceId } from '../../../support/namespace.mts';
 import {
   testResourceId,
   test,
   expect,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '../../../fixtures.mts';
 import { devices } from '@playwright/test';
@@ -59,7 +61,12 @@ async function seedRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: HomeserverSession; roomName: string; buddyName: string }> {
+): Promise<{
+  reader: HomeserverSession;
+  roomName: string;
+  buddyName: string;
+  roomId: string;
+}> {
   const readerUser = `mob-reader-${runId}`;
   const readerPass = `${readerUser}-pass`;
   await registerUser(request, readerUser, readerPass);
@@ -85,6 +92,7 @@ async function seedRoom(
     reader: { available: true, hs, user: readerUser, pass: readerPass },
     roomName,
     buddyName,
+    roomId,
   };
 }
 
@@ -157,7 +165,7 @@ test.describe('Mobile room navigation', () => {
     ).toBeVisible();
   });
 
-  test('opens the member list as a dismissible drawer', async ({
+  test('opens the member list as a dismissible drawer between md and the members breakpoint', async ({
     page,
     request,
   }) => {
@@ -168,15 +176,17 @@ test.describe('Mobile room navigation', () => {
       runId,
     );
 
+    // Below md the roster is a page instead; see the phone pages below.
+    await page.setViewportSize({ width: 800, height: 900 });
     await login(page, reader);
-    await openRoomMobile(page, roomName);
+    await page.locator('.channel', { hasText: roomName }).first().click();
+    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
 
     // The member list is not shown on the narrow layout by default.
     await expect(page.locator('.chat-members')).toBeHidden();
 
-    // Opening it from the overflow menu shows a drawer plus a backdrop.
-    await openOverflowMenu(page);
-    await page.getByTestId('overflow-toggle-members').click();
+    // Opening it from the header shows a drawer plus a backdrop.
+    await page.getByTestId('toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible();
     await expect(page.getByTestId('member-filter')).toBeFocused();
     await expect(page.getByTestId('members-backdrop')).toBeVisible();
@@ -185,30 +195,20 @@ test.describe('Mobile room navigation', () => {
       timeout: 20_000,
     });
 
-    // Tapping the backdrop dismisses the drawer — near its top-left corner, deliberately.
-    // The backdrop is `inset-0`, so its centre (195,422 at this viewport) lies *under* the
-    // 240px drawer pinned to the right edge (x 150-390), and Playwright clicks an element's
-    // centre by default. Measured: elementFromPoint at the centre is `aside.members`, at
-    // (10,10) it is the backdrop. This only ever passed because the click raced the 0.2s
-    // slide-in animation while the drawer was still translated off-screen; once the drawer
-    // settles the click is blocked forever, which is what it does on a slower CI runner.
+    // Tapping the backdrop dismisses the drawer — near its top-left corner, deliberately: the
+    // backdrop is `inset-0`, so a click at its centre could land on the drawer over it.
     await page
       .getByTestId('members-backdrop')
       .click({ position: { x: 10, y: 10 } });
     await expect(page.locator('.chat-members')).toBeHidden();
 
-    // Reopen and pick the buddy: member info opens as a bottom sheet over the drawer, which
-    // stays open under it, and closing the sheet goes back to the drawer (#1041).
-    await openOverflowMenu(page);
-    await page.getByTestId('overflow-toggle-members').click();
+    // Reopen and pick the buddy: member info opens over the drawer, which stays open under
+    // it, and closing it goes back to the drawer (#1041).
+    await page.getByTestId('toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible();
     await page.locator('.members .member', { hasText: buddyName }).click();
     const memberInfo = page.getByRole('dialog', { name: 'Member info' });
     await expect(memberInfo.getByTestId('member-info')).toBeVisible();
-    await expect(memberInfo.getByTestId('dialog-surface')).toHaveAttribute(
-      'data-trn-layout',
-      'sheet',
-    );
     await expect(page.locator('.chat-members')).toBeVisible();
     await memberInfo.getByTestId('member-info-close').click();
     await expect(memberInfo).toBeHidden();
@@ -314,7 +314,8 @@ test.describe('Mobile room navigation', () => {
 
     await page.setViewportSize(devices['Pixel 5'].viewport);
     await expect(page.getByRole('heading', { name: 'Threads' })).toBeVisible();
-    await page.getByRole('button', { name: 'Close threads' }).click();
+    // At phone width the threads are a page, closed by its Back button.
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     // The roster the threads opened over is still the URL's, so it returns as the drawer.
     await expect(members).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -334,5 +335,687 @@ test.describe('Mobile room navigation', () => {
     await expect(members).toBeHidden();
     await firstRoom.click();
     await expect(members).toBeHidden();
+  });
+});
+
+/** Post one message as `actor`; returns its event id. */
+async function send(
+  request: APIRequestContext,
+  hs: string,
+  actor: ApiUser,
+  roomId: string,
+  content: Record<string, unknown>,
+): Promise<string> {
+  const txn = nextTestResourceId('txn');
+  const res = await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
+    { headers: actor.headers, data: { msgtype: 'm.text', ...content } },
+  );
+  expect(res.ok()).toBe(true);
+  return (await res.json()).event_id as string;
+}
+
+/** The panel has settled over the whole conversation pane, its header and composer included. */
+async function expectPage(page: Page, panel: Locator): Promise<void> {
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  const rounded = async (target: Locator) =>
+    Object.values((await target.boundingBox())!).map(Math.round);
+  const main = await rounded(page.locator('main.main'));
+  expect(main[2]).toBe(page.viewportSize()!.width);
+  // Polled: the page lands as the panel renders.
+  await expect.poll(() => rounded(panel)).toEqual(main);
+  await expect(page.locator('trn-room-header')).toHaveAttribute('inert', '');
+  await expect(page.locator('trn-message-list')).toHaveAttribute('inert', '');
+  await expect(page.getByTestId('members-backdrop')).toBeHidden();
+  // The way out leads the header as a Back button, as on the room page itself: first on
+  // screen and first in reading and focus order.
+  const back = panel
+    .locator('trn-side-panel-header')
+    .getByRole('button', { name: 'Back', exact: true });
+  const title = panel.locator('trn-side-panel-header h2');
+  expect((await back.boundingBox())!.x).toBeLessThan(
+    (await title.boundingBox())!.x,
+  );
+  expect(
+    await back.evaluate(
+      (button) =>
+        !!(
+          button.compareDocumentPosition(
+            button.closest('trn-side-panel-header')!.querySelector('h2')!,
+          ) & Node.DOCUMENT_POSITION_FOLLOWING
+        ),
+    ),
+  ).toBe(true);
+  // The opener went inert under the page, so focus moves into it.
+  await expect
+    .poll(() =>
+      panel.evaluate((element) => element.contains(document.activeElement)),
+    )
+    .toBe(true);
+  await expect(page.locator('[data-shell-root]')).not.toHaveAttribute(
+    'data-panel-slide',
+  );
+  // Arriving with the room's own slide, the page rides it, and it does not slide in again
+  // once that slide has ended.
+  expect(
+    await page.evaluate(async () => {
+      const frame = () => new Promise((done) => requestAnimationFrame(done));
+      const workspace = document.querySelector('.rooms-workspace')!;
+      const surface = document.querySelector(
+        '[data-right-panel-surface]',
+      ) as HTMLElement;
+      workspace.setAttribute('data-pane-slide', 'open');
+      await frame();
+      const during = surface.getAnimations().length;
+      workspace.removeAttribute('data-pane-slide');
+      await frame();
+      await frame();
+      return [during, surface.getAnimations().length];
+    }),
+  ).toEqual([0, 0]);
+}
+
+/**
+ * Record each panel-page slide as it starts: its direction, and the duration of the page's
+ * own slide animation then (-1 when the page has none).
+ */
+async function watchPanelSlides(
+  page: Page,
+): Promise<() => Promise<[string, number][]>> {
+  await page.evaluate(() => {
+    const root = document.querySelector('[data-shell-root]')!;
+    const seen: [string, number][] = [];
+    Object.assign(window, { panelSlides: seen });
+    new MutationObserver(() => {
+      const slide = root.getAttribute('data-panel-slide');
+      if (!slide) return;
+      const keyframes = slide === 'open' ? 'pane-over-in' : 'pane-over-out';
+      const run = root
+        .querySelector('[data-right-panel-surface]')
+        ?.getAnimations()
+        .find(
+          (animation) =>
+            animation instanceof CSSAnimation &&
+            animation.animationName.endsWith(keyframes),
+        );
+      seen.push([
+        slide,
+        run ? Number(run.effect!.getComputedTiming().duration) : -1,
+      ]);
+    }).observe(root, {
+      attributes: true,
+      attributeFilter: ['data-panel-slide'],
+    });
+  });
+  return () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { panelSlides: [string, number][] }).panelSlides,
+    );
+}
+
+/**
+ * A resize starts no slide: two frames on, well inside a slide's length, there is no slide
+ * attribute and nothing on the page or the room is moving. Not waiting for a slide to clear,
+ * which would hide one that started.
+ */
+async function expectNoSlideStarted(page: Page): Promise<void> {
+  expect(
+    await page.evaluate(async () => {
+      const frame = () => new Promise((done) => requestAnimationFrame(done));
+      await frame();
+      await frame();
+      return {
+        slide: document
+          .querySelector('[data-shell-root]')!
+          .getAttribute('data-panel-slide'),
+        moving: [
+          ...document.querySelectorAll(
+            '[data-right-panel-surface], .main > *, .chat-body > *',
+          ),
+        ].flatMap((element) =>
+          element.getAnimations().map((a) => (a as CSSAnimation).animationName),
+        ),
+      };
+    }),
+  ).toEqual({ slide: null, moving: [] });
+}
+
+/**
+ * Sample every frame until read: whatever shows the room from under the page, as a slide
+ * attribute, an animation on the page or the room, or a frame with no page covering `.main`.
+ */
+async function watchInPlace(page: Page): Promise<() => Promise<string[]>> {
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    const state = { seen, on: true };
+    Object.assign(window, { inPlace: state });
+    const main = document.querySelector('main.main')!;
+    const sample = () => {
+      if (!state.on) return;
+      const slide = document
+        .querySelector('[data-shell-root]')!
+        .getAttribute('data-panel-slide');
+      if (slide) seen.push(`slide ${slide}`);
+      const surface = document.querySelector('[data-right-panel-surface]');
+      const box = surface?.getBoundingClientRect();
+      const room = main.getBoundingClientRect();
+      if (
+        !box ||
+        Math.round(box.left) !== Math.round(room.left) ||
+        Math.round(box.width) !== Math.round(room.width)
+      ) {
+        seen.push('room uncovered');
+      }
+      for (const element of document.querySelectorAll(
+        '[data-right-panel-surface], .main > *, .chat-body > *',
+      )) {
+        for (const animation of element.getAnimations()) {
+          seen.push(`moving ${(animation as CSSAnimation).animationName}`);
+        }
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  return () =>
+    page.evaluate(() => {
+      const state = (
+        window as unknown as { inPlace: { seen: string[]; on: boolean } }
+      ).inPlace;
+      state.on = false;
+      return [...new Set(state.seen)];
+    });
+}
+
+/** Two frames after the slide has cleared, nothing on the page or the room is still moving. */
+async function expectSettled(page: Page): Promise<void> {
+  await expect(page.locator('[data-shell-root]')).not.toHaveAttribute(
+    'data-panel-slide',
+  );
+  expect(
+    await page.evaluate(async () => {
+      const frame = () => new Promise((done) => requestAnimationFrame(done));
+      await frame();
+      await frame();
+      return [
+        ...document.querySelectorAll(
+          '[data-right-panel-surface], .main > *, .chat-body > *',
+        ),
+      ].flatMap((element) =>
+        element.getAnimations().map((a) => (a as CSSAnimation).animationName),
+      );
+    }),
+  ).toEqual([]);
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 600, height: 900 },
+]) {
+  test.describe(`Room panels as pages at ${viewport.width}px`, () => {
+    test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+    test.use({ viewport });
+
+    test('opens every panel over the whole room, and Back returns to it as it was', async ({
+      page,
+      request,
+    }) => {
+      const hs = session.hs as string;
+      const runId = `${testResourceId('run')}p${viewport.width}`;
+      const { reader, roomName, roomId } = await seedRoom(request, hs, runId);
+      const actor = await apiLogin(
+        request,
+        hs,
+        reader.user as string,
+        reader.pass as string,
+      );
+      // Enough history to scroll, so the timeline's position is something to keep.
+      for (let line = 0; line < 30; line++) {
+        await send(request, hs, actor, roomId, { body: `history ${line}` });
+      }
+      const rootId = await send(request, hs, actor, roomId, {
+        body: `thread root ${runId}`,
+      });
+      await send(request, hs, actor, roomId, {
+        body: `thread reply ${runId}`,
+        'm.relates_to': { rel_type: 'm.thread', event_id: rootId },
+      });
+
+      await login(page, reader);
+      await openRoomMobile(page, roomName);
+
+      const composer = page.getByTestId('composer-input');
+      await composer.fill(`half typed ${runId}`);
+      const scroller = page.locator('.scroll').first();
+      await expect(
+        page.locator('.scroll .msg[data-mid]', { hasText: 'history 29' }),
+      ).toBeVisible({ timeout: 20_000 });
+      await scroller.evaluate(
+        (el) => (el.scrollTop = Math.max(0, el.scrollTop - 400)),
+      );
+      const anchor = () =>
+        scroller.evaluate((el) => {
+          const top = el.getBoundingClientRect().top;
+          const row = [
+            ...el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
+          ].find((candidate) => candidate.getBoundingClientRect().bottom > top);
+          return row
+            ? {
+                id: row.dataset['mid'],
+                offset: Math.round(row.getBoundingClientRect().top - top),
+              }
+            : null;
+        });
+      await expect.poll(anchor).not.toBeNull();
+      const before = await anchor();
+
+      const threads = page.getByRole('complementary', { name: 'Threads' });
+      const thread = page.getByTestId('thread-view');
+      const panels: [string, () => Promise<void>, Locator][] = [
+        [
+          'members',
+          async () => {
+            await openOverflowMenu(page);
+            await page.getByTestId('overflow-toggle-members').click();
+          },
+          page.locator('.chat-members'),
+        ],
+        ['threads', () => page.getByTestId('open-threads').click(), threads],
+        [
+          'pinned',
+          async () => {
+            await openOverflowMenu(page);
+            await page.getByTestId('overflow-open-pinned').click();
+          },
+          page.getByTestId('pinned-panel'),
+        ],
+        [
+          'search',
+          () => page.getByTestId('search-messages').click(),
+          page.getByRole('complementary', { name: 'Search messages' }),
+        ],
+      ];
+      const slides = await watchPanelSlides(page);
+      let slid = 0;
+      for (const [kind, open, panel] of panels) {
+        await open();
+        await expect(page).toHaveURL(new RegExp(`panel=${kind}`));
+        await expectPage(page, panel);
+        // Pushed over the room, the page slides in once, as a room does over its list.
+        const opened = await slides();
+        expect(opened.slice(slid).map(([slide]) => slide)).toEqual(['open']);
+        expect(opened[slid][1]).toBeGreaterThan(100);
+        slid = opened.length;
+        await expectSettled(page);
+        // History Back draws no slide: the platform's own swipe already did.
+        await page.goBack();
+        await expect(panel).toBeHidden();
+        await expect(page.locator('trn-room-header')).not.toHaveAttribute(
+          'inert',
+          '',
+        );
+      }
+
+      // A thread opened from the list is a page over the list, and the page changes in
+      // place both ways: no slide, nothing moving, and the room never shows from under it.
+      // History Back steps to the list, then out; the page's own Back is covered below.
+      await page.getByTestId('open-threads').click();
+      await expectPage(page, threads);
+      await expectSettled(page);
+      const seen = await watchInPlace(page);
+      await threads.locator('.thread-item').first().click();
+      await expect(thread).toContainText(`thread reply ${runId}`, {
+        timeout: 15_000,
+      });
+      await expectPage(page, page.locator('.chat-panel'));
+      await page.goBack();
+      await expect(threads).toBeVisible();
+      await expect(thread).toBeHidden();
+      expect(await seen()).toEqual([]);
+      await page.goBack();
+      await expect(threads).toBeHidden();
+
+      // The back arrow closes a page too.
+      await page.getByTestId('open-threads').click();
+      await expectPage(page, threads);
+      await threads.getByRole('button', { name: 'Back', exact: true }).click();
+      await expect(threads).toBeHidden();
+      // The in-app Back slides the page off once, as leaving a room does.
+      const closed = (await slides()).slice(-2);
+      expect(closed.map(([slide]) => slide)).toEqual(['open', 'close']);
+      expect(closed[1][1]).toBeGreaterThan(100);
+      await expectSettled(page);
+      await expect(page.getByTestId('open-threads')).toBeFocused();
+
+      // Rotating past md and back changes presentation only: no slide starts.
+      await page.setViewportSize({ width: 900, height: viewport.height });
+      await page.setViewportSize(viewport);
+      await expectNoSlideStarted(page);
+
+      await expect(composer).toHaveValue(`half typed ${runId}`);
+      await expect.poll(anchor).toEqual(before);
+    });
+  });
+}
+
+test.describe('Room panel pages with Reduce Motion', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('opens and closes a page with no slide', async ({ page, request }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const runId = `${testResourceId('run')}rm`;
+    const { reader, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+    const slides = await watchPanelSlides(page);
+    const threads = page.getByRole('complementary', { name: 'Threads' });
+
+    await page.getByTestId('open-threads').click();
+    await expectPage(page, threads);
+    await threads.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(threads).toBeHidden();
+    await expectSettled(page);
+    // The room slide's handling: the same slide, collapsed to an instant.
+    const seen = await slides();
+    expect(seen.map(([slide]) => slide)).toEqual(['open', 'close']);
+    for (const [, duration] of seen) {
+      expect(duration).toBeGreaterThanOrEqual(0);
+      expect(duration).toBeLessThan(1);
+    }
+  });
+});
+
+test.describe('Room panel pages across a room change', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('drop a page at once when the room changes in place', async ({
+    page,
+    request,
+  }) => {
+    const runId = `${testResourceId('run')}hop`;
+    const { reader, roomName, buddyName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+    await openOverflowMenu(page);
+    await page.getByTestId('overflow-toggle-members').click();
+    const members = page.locator('.chat-members');
+    await expectPage(page, members);
+    const roomAUrl = page.url();
+    expect(roomAUrl).toContain('panel=members');
+    const slides = await watchPanelSlides(page);
+
+    // Member info's "Message" opens the direct message in place, over the members page.
+    await members
+      .locator('[data-testid="member-row"]', { hasText: buddyName })
+      .first()
+      .click();
+    const sheet = page.getByRole('dialog', { name: 'Member info' });
+    await sheet.getByTestId('member-info-message').click();
+    await expect(page.getByTestId('room-title')).toContainText(buddyName, {
+      timeout: 30_000,
+    });
+    // The page leaves at once rather than sliding off over the new room.
+    await expect(members).toBeHidden();
+    await expectNoSlideStarted(page);
+    expect(await slides()).toEqual([]);
+    await expect(sheet).toBeHidden();
+    await expect(page).not.toHaveURL(/panel=/);
+    const roomPath = (url: string) => new URL(url).pathname;
+    expect(roomPath(page.url())).toMatch(/^\/rooms\/[^/]+$/);
+    expect(roomPath(page.url())).not.toBe(roomPath(roomAUrl));
+    await expect(page.locator('trn-room-header')).not.toHaveAttribute(
+      'inert',
+      '',
+    );
+    // A room opened from the app moves focus into it, as any room opening does: the
+    // conversation's main content, not the body the removed page left behind.
+    await expect(page.locator('main.main')).toBeFocused();
+
+    // No members entry was left above the new room: one Back returns to the room the page
+    // covered, with its members page as it was.
+    await page.goBack();
+    await expect(page).toHaveURL(roomAUrl);
+    await expect(page.getByTestId('room-title')).toContainText(roomName);
+    await expect(members).toBeVisible();
+  });
+});
+
+test.describe("A room panel page's Back button", () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('steps back one entry: thread, threads list, room, after a reload too', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}bk`;
+    const { reader, roomName, roomId } = await seedRoom(request, hs, runId);
+    const actor = await apiLogin(
+      request,
+      hs,
+      reader.user as string,
+      reader.pass as string,
+    );
+    const rootId = await send(request, hs, actor, roomId, {
+      body: `thread root ${runId}`,
+    });
+    await send(request, hs, actor, roomId, {
+      body: `thread reply ${runId}`,
+      'm.relates_to': { rel_type: 'm.thread', event_id: rootId },
+    });
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+    const threads = page.getByRole('complementary', { name: 'Threads' });
+    const thread = page.getByTestId('thread-view');
+    const backOf = (panel: Locator) =>
+      panel
+        .locator('trn-side-panel-header')
+        .getByRole('button', { name: 'Back', exact: true });
+    const panelOf = () => new URL(page.url()).searchParams.get('panel');
+    const roomUrl = page.url();
+    const entries = () => page.evaluate(() => history.length);
+
+    for (const reload of [false, true]) {
+      await page.getByTestId('open-threads').click();
+      await expectPage(page, threads);
+      await threads.locator('.thread-item').first().click();
+      await expect(thread).toContainText(`thread reply ${runId}`, {
+        timeout: 15_000,
+      });
+      // History marks survive a reload, so its Back still knows what lies below.
+      if (reload) {
+        await page.reload();
+        await expect(thread).toContainText(`thread reply ${runId}`, {
+          timeout: 30_000,
+        });
+      }
+      await expectPage(page, page.locator('.chat-panel'));
+      const depth = await entries();
+
+      // The thread's Back returns to the threads list, in place.
+      await expectSettled(page);
+      const seen = await watchInPlace(page);
+      await backOf(page.locator('.chat-panel')).click();
+      await expect(threads).toBeVisible();
+      await expect(thread).toBeHidden();
+      expect(await seen()).toEqual([]);
+      await expect.poll(panelOf).toBe('threads');
+
+      // The list's Back returns to the room, and no further.
+      await backOf(threads).click();
+      await expect(threads).toBeHidden();
+      await expect.poll(panelOf).toBeNull();
+      await expect(page.getByTestId('room-title')).toContainText(roomName);
+      await expectSettled(page);
+      expect(new URL(page.url()).pathname).toBe(new URL(roomUrl).pathname);
+      // Both were history steps: Forward still reaches the thread.
+      expect(await entries()).toBe(depth);
+      // Focus returns to the opener, or to the room's main after a reload, which lost it.
+      await expect(
+        reload ? page.locator('main.main') : page.getByTestId('open-threads'),
+      ).toBeFocused();
+    }
+  });
+});
+
+test.describe('Room panel pages from a link and out to the timeline', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('a pinned jump reveals its row, and a reloaded thread link lands on the page', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}lnk`;
+    const { reader, roomName, roomId } = await seedRoom(request, hs, runId);
+    const actor = await apiLogin(
+      request,
+      hs,
+      reader.user as string,
+      reader.pass as string,
+    );
+    // Pinned well above the loaded end of the timeline, so the jump has to reveal it.
+    const pinnedBody = `pinned far up ${runId}`;
+    const pinnedId = await send(request, hs, actor, roomId, {
+      body: pinnedBody,
+    });
+    for (let line = 0; line < 30; line++) {
+      await send(request, hs, actor, roomId, { body: `history ${line}` });
+    }
+    const rootId = await send(request, hs, actor, roomId, {
+      body: `thread root ${runId}`,
+    });
+    await send(request, hs, actor, roomId, {
+      body: `thread reply ${runId}`,
+      'm.relates_to': { rel_type: 'm.thread', event_id: rootId },
+    });
+    const pin = await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.pinned_events/`,
+      { headers: actor.headers, data: { pinned: [pinnedId] } },
+    );
+    expect(pin.ok()).toBe(true);
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+    const roomUrl = page.url();
+    const pinnedRow = page.locator('.scroll .msg[data-mid]', {
+      hasText: pinnedBody,
+    });
+    await expect(
+      page.locator('.scroll .msg[data-mid]', { hasText: 'history 29' }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(pinnedRow.first()).not.toBeInViewport();
+
+    // A jump from the pinned page reveals the row in the room under it, and the page goes.
+    await openOverflowMenu(page);
+    await page.getByTestId('overflow-open-pinned').click();
+    const pinned = page.getByTestId('pinned-panel');
+    await expectPage(page, pinned);
+    await pinned.getByTestId('pinned-item').first().click();
+    await expect(pinned).toBeHidden();
+    await expect(pinnedRow.first()).toBeInViewport({ timeout: 30_000 });
+    await expect(page).not.toHaveURL(/panel=/);
+    await expectSettled(page);
+    // The pinned entry is spent: the next Back leaves the room for the list.
+    await page.goBack();
+    await expect(
+      page.locator('.channel', { hasText: roomName }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.chat-panel')).toBeHidden();
+
+    // A reload of a thread link lands on the page itself, with no slide.
+    const threadUrl = new URL(roomUrl);
+    threadUrl.searchParams.set('panel', 'thread');
+    threadUrl.searchParams.set('root', rootId);
+    await page.goto(threadUrl.toString());
+    await page.reload();
+    const thread = page.getByTestId('thread-view');
+    await expect(thread).toContainText(`thread reply ${runId}`, {
+      timeout: 30_000,
+    });
+    await expectPage(page, page.locator('.chat-panel'));
+    await expectNoSlideStarted(page);
+    // No entry lies below it, so its Back replaces it with the room in place.
+    const entries = await page.evaluate(() => history.length);
+    await page
+      .locator('.chat-panel trn-side-panel-header')
+      .getByRole('button', { name: 'Back', exact: true })
+      .click();
+    await expect(thread).toBeHidden();
+    await expect(page).not.toHaveURL(/panel=/);
+    await expect(page.getByTestId('room-title')).toContainText(roomName);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+  });
+});
+
+test.describe('Room panels across widths', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('keeps the drawer and the column above md, and resizing adds no history', async ({
+    page,
+    request,
+  }) => {
+    const runId = `${testResourceId('run')}rz`;
+    const { reader, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await login(page, reader);
+    await page.locator('.channel', { hasText: roomName }).first().click();
+    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('toggle-members').click();
+    const members = page.locator('.chat-members');
+    await expect(members).toBeVisible();
+    const entries = await page.evaluate(() => history.length);
+    const url = page.url();
+
+    const settled = async () => {
+      await members.evaluate((element) =>
+        Promise.all(element.getAnimations().map((a) => a.finished)),
+      );
+      return (await members.boundingBox())!;
+    };
+    const backdrop = page.getByTestId('members-backdrop');
+
+    // The wide column sits in the row beside the timeline.
+    expect(Math.round((await settled()).width)).toBe(240);
+    await expect(backdrop).toBeHidden();
+
+    // The drawer lies over the timeline, against the right edge, with its backdrop.
+    await page.setViewportSize({ width: 800, height: 800 });
+    let box = await settled();
+    expect(Math.round(box.width)).toBe(240);
+    expect(Math.round(box.x + box.width)).toBe(800);
+    await expect(backdrop).toBeVisible();
+
+    // Below md it is a page, and crossing md slides nothing in.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectNoSlideStarted(page);
+    box = await settled();
+    expect(Math.round(box.width)).toBe(390);
+    await expect(backdrop).toBeHidden();
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    box = await settled();
+    expect(Math.round(box.width)).toBe(240);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+    expect(page.url()).toBe(url);
   });
 });

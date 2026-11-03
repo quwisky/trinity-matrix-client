@@ -36,6 +36,18 @@ Startup does not wait for an account's first sync. The SDK replays its sync cach
 
 Conversation Runtime retains the exact account-and-room timeline handle associated with focus and releases the previous handle when focus changes. Workspace chooses the focus; the conversation capability owns its room-bound state.
 
+## Present room panels {#room-panels}
+
+The open room panel (members, the threads list, a thread, pinned messages or search) is part of the Workspace destination, written as `?panel=` and, for a thread, `&root=`. `WorkspaceNavigationService.openPanel` and `closePanel` change it, and history follows the panel: opening one pushes an entry, and Back steps back through them at every width. Changing room drops the panel, except that the wide layout's roster follows to the account's next room; below `md` the roster drops too.
+
+Width decides only how the panel is presented, so a resize adds no history:
+
+- From the `members` breakpoint (1100px) up, the panel is a column beside the timeline.
+- Between `md` (768px) and `members`, it is a drawer over the timeline, with a backdrop that dismisses it.
+- Below `md`, it is a page of its own. It fills the conversation pane under the top safe area, over the room's header, timeline and composer. The room stays mounted and inert underneath, so its scroll position and draft are there on the way back. The panel's header leads with a Back button in place of the close button, first in reading and focus order, and focus moves into the page when it opens. Opening a page from the room slides it over the room, the way a room slides over its list, and the in-app Back to the room slides it off. Moving between pages, such as from the threads list to a thread and back, happens in place. A page's Back button steps back one history entry, the same as the platform's Back. The history marks keep that step inside the room in every in-app flow; after a stale mark it lands where the platform's Back would. From a thread opened from the threads list it returns to the list, then to the room. With no panel entry below, as after following a link to a thread, it closes to the room. The wide layout's close button closes the whole panel. A history step draws no slide, because the platform's swipe already has, and neither does a page arriving with its room. Reduce Motion collapses the slide as it does the room's. A page has no close drag of its own, because a rightward drag there is the platform's Back peek. The right-edge swipe still opens the roster from the room.
+
+On iOS, WebKit's edge swipe is a history step. It is on for a panel page pushed over its room (`WorkspaceNavigationService.panelOverRoom`), and off at every width from `md` up, for one restored from a link with no entry below it, and for dialogs. The same switch enables WebKit's Forward swipe, which re-opens the panel entry above. Member info and room settings stay modal at every width.
+
 ## Keep route behavior centralized {#route-behavior}
 
 Public authentication routes remain reachable without an account. Product routes use application guards, the empty path redirects to rooms, and the final wildcard recovers stale same-origin navigations. Add route-specific behavior in the composition root and application adapters, not in a reusable component.
