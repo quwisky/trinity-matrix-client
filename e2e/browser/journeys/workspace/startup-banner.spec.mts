@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import { expectForecastStored } from '../../support/encryption-journey.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 
 const session = homeserverSession();
@@ -72,26 +73,6 @@ function doubleTextSize(): void {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(':root { font-size: 200% !important; }');
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-}
-
-/** Wait until this device has recorded which prompt the Account needs, so a restart has it. */
-async function expectForecastStored(page: Page, kind: string): Promise<void> {
-  await expect
-    .poll(() =>
-      page.evaluate((wanted) => {
-        for (let index = 0; index < localStorage.length; index += 1) {
-          const key = localStorage.key(index) ?? '';
-          if (
-            key.includes('trinity.trust.slot-forecast') &&
-            (localStorage.getItem(key) ?? '').includes(wanted)
-          ) {
-            return true;
-          }
-        }
-        return false;
-      }, kind),
-    )
-    .toBe(true);
 }
 
 /** The prompt's box in the last frame it was a forecast and the first frame it showed. */
@@ -247,7 +228,9 @@ test.describe('Global banner slot after sign-in', () => {
     await page.addInitScript(grantPersistentStorage);
     await page.addInitScript(recordSlotFrames);
     await login(page, account);
-    // Arriving after the first row, the prompt waits for the next page switch.
+    // Arriving after the first row, the prompt waits for the next page switch, so let the
+    // status arrive first and the switch shows it.
+    await expectForecastStored(page, 'needs-setup');
     await page.locator('button.channel').first().click();
     const prompt = page.locator('trn-encryption-banner trn-banner');
     await expect(
@@ -449,7 +432,9 @@ test.describe('Global banner slot after sign-in', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(grantPersistentStorage);
     await login(page, account);
-    // Arriving after the first row, the prompt waits for the next page switch.
+    // Arriving after the first row, the prompt waits for the next page switch, so let the
+    // status arrive first and the switch shows it.
+    await expectForecastStored(page, 'needs-setup');
     await page.locator('button.channel').first().click();
     const prompt = page.locator('trn-encryption-banner trn-banner');
     await expect(
