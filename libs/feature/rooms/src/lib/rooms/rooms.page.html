@@ -188,7 +188,7 @@
         class="chat-body"
         data-right-panel-slot
         trnDrawerSwipe
-        [drawerEnabled]="roomSurfaces.membersAreDrawer()"
+        [drawerEnabled]="roomSurfaces.membersAreDrawer() && !panelPage()"
         [drawerOpen]="!!roomSurfaces.renderedSurface()"
         [drawerWidth]="drawerWidth()"
         (opened)="onDrawerSwipedOpen()"

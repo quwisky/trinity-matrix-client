@@ -373,6 +373,8 @@ export class RoomSurfaceLifecycle {
     effect(() => {
       const panel = this.renderedSurface();
       const isDrawer = this.membersAreDrawer();
+      // Below md the panel is a page and its opener goes inert under it.
+      const isPage = this.compactConversation();
       untracked(() => {
         const oldPanel = previous;
         previous = panel;
@@ -380,7 +382,7 @@ export class RoomSurfaceLifecycle {
           trigger ??= this.activeElementOutsidePanel();
           if (oldPanel) {
             this.focusPanelAfterRender(panel);
-          } else if (panel.kind === 'members' && isDrawer) {
+          } else if ((panel.kind === 'members' && isDrawer) || isPage) {
             this.focusPanelAfterRender(panel, trigger);
           }
           return;
@@ -419,9 +421,14 @@ export class RoomSurfaceLifecycle {
         ) {
           return;
         }
-        const target = document.querySelector<HTMLElement>(
-          '[data-right-panel-slot] [data-right-panel-focus]',
-        );
+        // A panel without a marked target takes focus on its header's button.
+        const target =
+          document.querySelector<HTMLElement>(
+            '[data-right-panel-slot] [data-right-panel-focus]',
+          ) ??
+          document.querySelector<HTMLElement>(
+            '[data-right-panel-slot] [data-right-panel-surface] trn-side-panel-header button',
+          );
         if (target?.isConnected) target.focus();
       },
       { injector: this.injector },

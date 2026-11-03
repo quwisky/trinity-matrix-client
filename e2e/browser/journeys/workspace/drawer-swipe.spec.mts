@@ -74,7 +74,7 @@ test.use({ ...devices['Pixel 5'] });
 test.describe('Drawer swipe on a touch device', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('reserves native history edge, then opens from its inset band and closes', async ({
+  test('reserves native history edge, opens from its inset band, and leaves closing to Back', async ({
     page,
     request,
   }) => {
@@ -132,8 +132,48 @@ test.describe('Drawer swipe on a touch device', () => {
     );
     expect((await members.boundingBox())!.width).toBe(size.width);
 
-    // And away again, from anywhere on the drawer.
+    // A page has no close drag of its own below md: a rightward drag there is the
+    // platform's Back peek. Back closes it.
     await swipe(page, Math.round(size.width * 0.4), size.width - 4, y);
+    await expect(members).toBeVisible();
+    await page.goBack();
+    await expect(members).toBeHidden({ timeout: 10_000 });
+  });
+
+  test('swipes the drawer away between md and the members breakpoint', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}dw`;
+    const user = `drawerswipe-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `DrawerSwipe ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    await createRoom(request, hs, { accessToken: token }, roomName);
+
+    await page.setViewportSize({ width: 800, height: 900 });
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    const channel = page.locator('.channel', { hasText: roomName });
+    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.first().click();
+    await page.getByTestId('toggle-members').click();
+    const members = page.locator('.chat-members');
+    await expect(members).toBeVisible({ timeout: 10_000 });
+
+    // The drawer over the timeline still follows a closing drag from anywhere on it.
+    await swipe(page, 640, 796, 450);
     await expect(members).toBeHidden({ timeout: 10_000 });
   });
 

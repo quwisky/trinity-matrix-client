@@ -313,7 +313,8 @@ test.describe('Mobile room navigation', () => {
 
     await page.setViewportSize(devices['Pixel 5'].viewport);
     await expect(page.getByRole('heading', { name: 'Threads' })).toBeVisible();
-    await page.getByRole('button', { name: 'Close threads' }).click();
+    // At phone width the threads are a page, closed by its Back button.
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     // The roster the threads opened over is still the URL's, so it returns as the drawer.
     await expect(members).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -365,12 +366,44 @@ async function expectPage(page: Page, panel: Locator): Promise<void> {
   await expect(page.locator('trn-room-header')).toHaveAttribute('inert', '');
   await expect(page.locator('trn-message-list')).toHaveAttribute('inert', '');
   await expect(page.getByTestId('members-backdrop')).toBeHidden();
-  // The way out leads the header as a back arrow, as on the room page itself.
-  const back = panel.locator('trn-side-panel-header button');
+  // The way out leads the header as a Back button, as on the room page itself: first on
+  // screen and first in reading and focus order.
+  const back = panel
+    .locator('trn-side-panel-header')
+    .getByRole('button', { name: 'Back', exact: true });
   const title = panel.locator('trn-side-panel-header h2');
   expect((await back.boundingBox())!.x).toBeLessThan(
     (await title.boundingBox())!.x,
   );
+  expect(
+    await back.evaluate(
+      (button) =>
+        !!(
+          button.compareDocumentPosition(
+            button.closest('trn-side-panel-header')!.querySelector('h2')!,
+          ) & Node.DOCUMENT_POSITION_FOLLOWING
+        ),
+    ),
+  ).toBe(true);
+  // The opener went inert under the page, so focus moves into it.
+  await expect
+    .poll(() =>
+      panel.evaluate((element) => element.contains(document.activeElement)),
+    )
+    .toBe(true);
+  // Arriving with the room's own slide, the page rides it rather than sliding twice.
+  expect(
+    await page.evaluate(() => {
+      const workspace = document.querySelector('.rooms-workspace')!;
+      workspace.setAttribute('data-pane-slide', 'open');
+      const panel = document.querySelector(
+        '[data-right-panel-surface]',
+      ) as HTMLElement;
+      const name = getComputedStyle(panel).animationName;
+      workspace.removeAttribute('data-pane-slide');
+      return name;
+    }),
+  ).toBe('none');
 }
 
 for (const viewport of [
@@ -487,8 +520,9 @@ for (const viewport of [
       // The back arrow closes a page too.
       await page.getByTestId('open-threads').click();
       await expectPage(page, threads);
-      await threads.getByRole('button', { name: 'Close threads' }).click();
+      await threads.getByRole('button', { name: 'Back', exact: true }).click();
       await expect(threads).toBeHidden();
+      await expect(page.getByTestId('open-threads')).toBeFocused();
 
       await expect(composer).toHaveValue(`half typed ${runId}`);
       await expect.poll(anchor).toEqual(before);

@@ -395,6 +395,11 @@
       box-shadow: none;
       transition: none;
     }
+
+    // A page that arrives with the room rides `.main`'s slide rather than sliding again.
+    [data-pane-slide] :is(.chat-members, .chat-panel) {
+      animation: none;
+    }
   }
 
   @keyframes members-drawer-in {

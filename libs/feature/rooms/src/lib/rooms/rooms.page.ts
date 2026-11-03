@@ -218,8 +218,6 @@ export class RoomsPage {
    * template call is re-evaluated each pass so a rotation is picked up.
    */
   protected drawerWidth(): number {
-    // Below md every panel is a page as wide as the viewport.
-    if (this.mobileMasterDetail()) return window.innerWidth;
     const panel = this.roomSurfaces.renderedSurface();
     if (!panel || panel.kind === 'members') {
       return MEMBERS_DRAWER_PX;

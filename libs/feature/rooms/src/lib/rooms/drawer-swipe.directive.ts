@@ -1,12 +1,29 @@
-import { Directive, ElementRef, inject, input, output } from '@angular/core';
-import { prefersReducedMotion } from '@trinity/util/ui';
+import {
+  DestroyRef,
+  Directive,
+  ElementRef,
+  inject,
+  input,
+  output,
+} from '@angular/core';
+import {
+  BELOW_MD_QUERY,
+  mediaQuerySignal,
+  prefersReducedMotion,
+} from '@trinity/util/ui';
+import { RIGHT_PANEL_PAGE } from '../side-panel/side-panel-header.component';
 
 /**
  * Swipe the right-hand drawer open, and swipe it away again.
  *
  * Only the layout below the `members` breakpoint has a drawer: there the right-hand slot is a
- * fixed overlay over the timeline, and below `md` a page over the whole room, where the drag
- * measures against the viewport width. Above it the slot is a column sharing the row.
+ * fixed overlay over the timeline. Above it the slot is a column sharing the row. Below `md` an
+ * open panel is a page over the whole room with no close drag: a rightward drag there is
+ * WebKit's Back peek, so the page leaves the gesture to the platform. The edge band still opens
+ * the roster from the room.
+ *
+ * The slot also tells the panels inside it whether they are pages ({@link RIGHT_PANEL_PAGE}),
+ * because it is the one element every panel sits under.
  *
  * The room list is deliberately NOT handled here. Below `md` it is a separate page keyed off
  * the open room in the URL, so "swipe back to the room list" is the platform's own back
@@ -59,6 +76,12 @@ const VERTICAL_SLOP_PX = 12;
 
 @Directive({
   selector: '[trnDrawerSwipe]',
+  providers: [
+    {
+      provide: RIGHT_PANEL_PAGE,
+      useFactory: () => mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef)),
+    },
+  ],
   host: {
     '(pointerdown)': 'onPointerDown($event)',
   },
