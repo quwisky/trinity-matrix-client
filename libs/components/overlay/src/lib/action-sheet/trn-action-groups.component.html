@@ -1,47 +1,47 @@
-@if (data().reactions?.length || tiles().length) {
-  <!-- Equal square tiles across the width; below a 44px tile they wrap onto a new line. -->
-  <div
-    class="grid shrink-0 grid-cols-[repeat(auto-fit,minmax(--spacing(11),1fr))] gap-1 px-2.5 pb-4"
-    role="group"
-    aria-label="Quick reactions"
-  >
-    @for (reaction of data().reactions; track reaction.key) {
-      <button
-        trnBtn
-        type="button"
-        variant="secondary"
-        shape="row"
-        class="aspect-square min-h-11 justify-center rounded-[var(--trinity-radius-xl)] px-0 text-2xl"
-        [attr.data-testid]="'sheet-react-' + reaction.key"
-        (click)="reacted.emit(reaction)"
-      >
-        <!-- Named from content, not aria-label: the visible emoji is part of the name
-             (WCAG 2.5.3 label in name), the hidden prefix says what it does. -->
-        <span class="sr-only">React with</span> {{ reaction.key }}
-      </button>
-    }
-    @for (button of tiles(); track $index) {
-      <button
-        trnBtn
-        type="button"
-        variant="secondary"
-        shape="row"
-        class="aspect-square min-h-11 justify-center rounded-[var(--trinity-radius-xl)] px-0"
-        [disabled]="button.disabled"
-        [attr.data-testid]="button.testId"
-        (click)="picked.emit(button)"
-      >
-        @if (button.icon) {
-          <trn-icon [name]="button.icon" size="xl" />
-        }
-        <span class="sr-only">{{ button.text }}</span>
-      </button>
-    }
-  </div>
-}
-<!-- The scroller. min-h-0 because a flex child will not shrink below its content
+<!-- The scroller, tiles included: at the largest text size the tiles alone outgrow the sheet. min-h-0 because a flex child will not shrink below its content
      height without it, which would push the max-height back off the screen. -->
 <div class="min-h-0 flex-1 overflow-y-auto pb-1.5">
+  @if (data().reactions?.length || tiles().length) {
+    <!-- Equal square tiles (auto-fill, so a lone tile stays tile-sized); below a 44px tile they wrap onto a new line. -->
+    <div
+      class="grid grid-cols-[repeat(auto-fill,minmax(--spacing(11),1fr))] gap-1 px-2.5 pb-4"
+      role="group"
+      aria-label="Quick reactions"
+    >
+      @for (reaction of data().reactions; track reaction.key) {
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          shape="row"
+          class="aspect-square min-h-11 justify-center rounded-[var(--trinity-radius-xl)] px-0 text-2xl"
+          [attr.data-testid]="'sheet-react-' + reaction.key"
+          (click)="reacted.emit(reaction)"
+        >
+          <!-- Named from content, not aria-label: the visible emoji is part of the name
+             (WCAG 2.5.3 label in name), the hidden prefix says what it does. -->
+          <span class="sr-only">React with</span> {{ reaction.key }}
+        </button>
+      }
+      @for (button of tiles(); track $index) {
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          shape="row"
+          class="aspect-square min-h-11 justify-center rounded-[var(--trinity-radius-xl)] px-0"
+          [disabled]="button.disabled"
+          [attr.data-testid]="button.testId"
+          (click)="picked.emit(button)"
+        >
+          @if (button.icon) {
+            <trn-icon [name]="button.icon" size="xl" />
+          }
+          <span class="sr-only">{{ button.text }}</span>
+        </button>
+      }
+    </div>
+  }
   @for (group of groups(); track $index) {
     @if (!$first) {
       <div class="h-4" role="separator"></div>
