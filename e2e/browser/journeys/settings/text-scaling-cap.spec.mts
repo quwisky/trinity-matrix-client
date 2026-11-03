@@ -32,6 +32,9 @@ const CAP = '250%';
 const KEYBOARD = 336;
 
 test.use({
+  // The owner's rule is dark; light keeps the default theme covered.
+  colorScheme:
+    process.env['TRINITY_E2E_COLOR_SCHEME'] === 'dark' ? 'dark' : 'light',
   ...devices['Pixel 5'],
   viewport: { width: 390, height: 844 },
 });
