@@ -181,6 +181,11 @@ test.describe('Largest text size on a phone', () => {
     await expect(row).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-pane-slide]')).toHaveCount(0);
     expect(await unreachableControls(page.locator('body')), 'room').toEqual([]);
+    // Shrinking to fit must not take a header button below a usable touch target.
+    for (const id of ['back-to-rooms', 'open-threads']) {
+      const box = await page.getByTestId(id).boundingBox();
+      expect(box!.width, id).toBeGreaterThanOrEqual(44);
+    }
 
     // The message action sheet.
     const sheet = page

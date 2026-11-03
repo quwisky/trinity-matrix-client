@@ -7,16 +7,22 @@ const SHEET_GAP_PX = 8;
  * the default text size. See `minSheetHeight` for larger text.
  */
 const MIN_SHEET_HEIGHT_PX = 88;
+/** The root scale from which the sheet's chrome needs half the screen. */
+const LARGE_TEXT_SCALE = 2;
 const SCROLLER_SELECTOR = '[data-message-scroller]';
 
 function minSheetHeight(surface: HTMLElement): number {
-  // The sheet inherits the root text size, which is what its rem-sized chrome follows.
-  const scale = Number.parseFloat(getComputedStyle(surface).fontSize) / 16 || 1;
-  // At large text the chrome (grabber, date, reactions) alone fills the floor, so half the
-  // screen is the least that still leaves an action row to scroll to.
-  return scale > 1
-    ? Math.max(MIN_SHEET_HEIGHT_PX * scale, window.innerHeight / 2)
-    : MIN_SHEET_HEIGHT_PX;
+  // The root text size, which the sheet's rem-sized chrome follows; the sheet's own font
+  // size could be changed by its styling.
+  const root = surface.closest('html');
+  const scale =
+    (root && Number.parseFloat(getComputedStyle(root).fontSize) / 16) || 1;
+  const scaled = MIN_SHEET_HEIGHT_PX * Math.max(1, scale);
+  // Near the cap the chrome (grabber, date, reactions) alone fills the proportional floor,
+  // so half the screen is the least that still leaves an action row to scroll to.
+  return scale >= LARGE_TEXT_SCALE
+    ? Math.max(scaled, window.innerHeight / 2)
+    : scaled;
 }
 
 /** How far the sheet's entrance still has to travel. */
