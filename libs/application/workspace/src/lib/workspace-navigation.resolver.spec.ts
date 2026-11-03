@@ -341,20 +341,23 @@ describe('resolveWorkspacePanel — panel history', () => {
   const thread = { kind: 'thread', root: '$root:hs' } as const;
 
   it('pushes a panel opened over the bare Room', () => {
-    expect(resolveWorkspacePanel(members, room, { panelBelow: false })).toEqual(
-      {
-        destination: { ...room, accountId: '@a:hs', panel: members },
-        options: { source: 'user', history: 'push', withinRoom: true },
-      },
-    );
+    expect(
+      resolveWorkspacePanel(members, room, {
+        panelBelow: false,
+        membersBelow: false,
+      }),
+    ).toEqual({
+      destination: { ...room, accountId: '@a:hs', panel: members },
+      options: { source: 'user', history: 'push', withinRoom: true },
+    });
   });
 
   it('replaces one panel with another', () => {
     expect(
       resolveWorkspacePanel(
         { kind: 'pinned' },
-        { ...room, panel: members },
-        { panelBelow: true },
+        { ...room, panel: threads },
+        { panelBelow: true, membersBelow: false },
       )?.options.history,
     ).toBe('replace');
     expect(
@@ -363,7 +366,40 @@ describe('resolveWorkspacePanel — panel history', () => {
         { ...room, panel: thread },
         {
           panelBelow: true,
+          membersBelow: false,
         },
+      )?.options.history,
+    ).toBe('replace');
+  });
+
+  it('pushes a panel opened over the roster, so Back returns to the roster', () => {
+    for (const panel of [threads, thread, { kind: 'pinned' } as const]) {
+      expect(
+        resolveWorkspacePanel(
+          panel,
+          { ...room, panel: members },
+          { panelBelow: true, membersBelow: false },
+        )?.options.history,
+      ).toBe('push');
+    }
+  });
+
+  it('pops back to the roster below rather than opening it again', () => {
+    expect(
+      resolveWorkspacePanel(
+        members,
+        { ...room, panel: thread },
+        { panelBelow: true, membersBelow: true },
+      ),
+    ).toMatchObject({
+      destination: { panel: members },
+      options: { history: 'back', withinRoom: true },
+    });
+    expect(
+      resolveWorkspacePanel(
+        members,
+        { ...room, panel: thread },
+        { panelBelow: true, membersBelow: false },
       )?.options.history,
     ).toBe('replace');
   });
@@ -375,6 +411,7 @@ describe('resolveWorkspacePanel — panel history', () => {
         { ...room, panel: threads },
         {
           panelBelow: true,
+          membersBelow: false,
         },
       )?.options.history,
     ).toBe('push');
@@ -383,13 +420,19 @@ describe('resolveWorkspacePanel — panel history', () => {
   it('pops a panel pushed over its Room on close, and replaces one without the mark', () => {
     const open = { ...room, panel: members };
     expect(
-      resolveWorkspacePanel(null, open, { panelBelow: true }),
+      resolveWorkspacePanel(null, open, {
+        panelBelow: true,
+        membersBelow: false,
+      }),
     ).toMatchObject({
       destination: { roomId: '!chat:hs', panel: null },
       options: { history: 'back', withinRoom: true },
     });
     expect(
-      resolveWorkspacePanel(null, open, { panelBelow: false })?.options.history,
+      resolveWorkspacePanel(null, open, {
+        panelBelow: false,
+        membersBelow: false,
+      })?.options.history,
     ).toBe('replace');
   });
 
@@ -397,13 +440,17 @@ describe('resolveWorkspacePanel — panel history', () => {
     expect(
       resolveWorkspacePanel(members, view({ roomId: '!chat:hs' }), {
         panelBelow: false,
+        membersBelow: false,
       })?.destination,
     ).toMatchObject({ pane: 'conversation', panel: members });
   });
 
   it('rejects a panel with no Room open', () => {
     expect(
-      resolveWorkspacePanel(members, view(), { panelBelow: false }),
+      resolveWorkspacePanel(members, view(), {
+        panelBelow: false,
+        membersBelow: false,
+      }),
     ).toBeNull();
   });
 });
@@ -416,18 +463,25 @@ describe('resolveWorkspaceNavigation — the open panel', () => {
     panel: members,
   });
 
-  it('drops the panel when the Room or Account changes', () => {
-    expect(
+  it('carries the roster to another Room of the same Account, and nothing else', () => {
+    const toOther = (current: typeof open, accountId = '@a:hs') =>
       resolveWorkspaceNavigation(
-        {
-          kind: 'room',
-          accountId: '@a:hs',
-          roomId: '!other:hs',
-          origin: 'room-list',
-        },
-        open,
-      )?.destination.panel,
-    ).toBeNull();
+        { kind: 'room', accountId, roomId: '!other:hs', origin: 'room-list' },
+        current,
+      )?.destination.panel;
+    expect(toOther(open)).toEqual(members);
+    expect(toOther(open, '@b:hs')).toBeNull();
+    for (const panel of [
+      { kind: 'threads' },
+      { kind: 'pinned' },
+      { kind: 'search' },
+      { kind: 'thread', root: '$root:hs' },
+    ] as const) {
+      expect(toOther({ ...open, panel })).toBeNull();
+    }
+  });
+
+  it('drops the panel when the Account changes', () => {
     expect(
       resolveWorkspaceNavigation({ kind: 'account', accountId: '@b:hs' }, open)
         ?.destination.panel,

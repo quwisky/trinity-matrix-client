@@ -330,13 +330,16 @@ describe('RoomsPage quick switcher', () => {
     // right-hand slot, and a picked row arrives back through `onPanelJump` — which is what
     // the template binds the panel's `(selected)` output to.
     const shell = build();
+    await settleWorkspace();
     shell.nav.onSelectRoom({ roomId: '!r:hs', accountId: '@me:hs' });
     await settleWorkspace();
 
     shell.messages.openMessageSearch();
+    await settleWorkspace();
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'search' });
 
     shell.messages.onPanelJump('$evt:hs');
+    await settleWorkspace();
 
     flushPanelJump();
 
@@ -648,6 +651,7 @@ describe('RoomsPage mobile navigation', () => {
       const shell = build();
       await settleWorkspace();
       shell.surfaces.transition({ kind: 'open-threads' });
+      await settleWorkspace();
       const workspaceBack = TestBed.inject(WorkspaceBackService);
 
       await expect(firstValueFrom(workspaceBack.back())).resolves.toMatchObject(
@@ -675,14 +679,16 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('remembers members through the list pane and restores them in the next room', async () => {
+  it('drops the member drawer when the compact list comes between two Rooms', async () => {
     // Force the narrow (drawer) layout so the member list reads as an overlay.
     const restore = stubNarrowLayout();
     try {
       const shell = build();
+      await settleWorkspace();
       shell.nav.onSelectRoom({ roomId: '!a:hs', accountId: '@me:hs' });
       await settleWorkspace();
       shell.surfaces.transition({ kind: 'open-members' });
+      await settleWorkspace();
       expect(shell.surfaces.membersVisible()).toBe(true);
 
       shell.page.backToList();
@@ -691,37 +697,46 @@ describe('RoomsPage mobile navigation', () => {
 
       shell.nav.onSelectRoom({ roomId: '!b:hs', accountId: '@me:hs' });
       await settleWorkspace();
-      expect(shell.surfaces.membersVisible()).toBe(true);
+      expect(shell.surfaces.membersVisible()).toBe(false);
     } finally {
       restore();
     }
   });
 
-  it('starts the wide member column closed and toggleMembers flips it', () => {
+  it('starts the wide member column closed and toggleMembers flips it', async () => {
     setRouteRoom('!r:hs');
     const shell = build();
+    await settleWorkspace();
     expect(shell.surfaces.membersVisible()).toBe(false);
 
     shell.page.toggleMembers();
+    await settleWorkspace();
     expect(shell.surfaces.membersVisible()).toBe(true);
 
     shell.page.toggleMembers();
+    await settleWorkspace();
     expect(shell.surfaces.membersVisible()).toBe(false);
   });
 
-  it('updates remembered member visibility from drawer swipe intents', () => {
+  it('updates remembered member visibility from drawer swipe intents', async () => {
     setRouteRoom('!r:hs');
     const shell = build();
+    await settleWorkspace();
 
     shell.page.onDrawerSwipedOpen();
+    await settleWorkspace();
     expect(shell.surfaces.membersVisible()).toBe(true);
 
     shell.page.onDrawerSwipedClosed();
+    await settleWorkspace();
     expect(shell.surfaces.membersVisible()).toBe(false);
 
     shell.surfaces.transition({ kind: 'open-threads' });
+    await settleWorkspace();
     shell.page.onDrawerSwipedClosed();
+    await settleWorkspace();
     shell.page.closeRightPanel();
+    await settleWorkspace();
     expect(shell.surfaces.membersVisible()).toBe(false);
   });
 
@@ -736,68 +751,88 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('dismisses the visible roster through the panel-close intent', () => {
+  it('dismisses the visible roster through the panel-close intent', async () => {
     setRouteRoom('!r:hs');
     const shell = build();
+    await settleWorkspace();
     showSurface(shell, { kind: 'members' });
+    await settleWorkspace();
     expect(shell.surfaces.membersVisible()).toBe(true);
 
     shell.page.closeRightPanel();
+    await settleWorkspace();
     expect(shell.surfaces.membersVisible()).toBe(false);
   });
 
-  it('Escape closes a panel at the WIDE layout, where nothing else does', () => {
+  it('Escape closes a panel at the WIDE layout, where nothing else does', async () => {
     // The base matchMedia stub reports non-drawer, i.e. the wide layout. These are plain
     // components now, so nothing gives them the Escape a CDK dialog answered for free — and
     // the guard that used to read `membersAreDrawer()` alone made Escape a no-op here.
     const shell = build();
+    await settleWorkspace();
     setRouteRoom('!r:hs');
+    await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-threads' });
+    await settleWorkspace();
 
     shell.page.onEscapeKey(escape());
+    await settleWorkspace();
 
     expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
-  it('Escape leaves the wide roster alone (the composer owns Escape there)', () => {
+  it('Escape leaves the wide roster alone (the composer owns Escape there)', async () => {
     // This is a DOCUMENT listener: an unguarded Escape would close the member column every
     // time someone pressed Escape to cancel an edit in the composer. As the narrow drawer it
     // is an overlay like the rest and goes — covered by the drawer test above.
     const shell = build();
+    await settleWorkspace();
     setRouteRoom('!r:hs');
+    await settleWorkspace();
     showSurface(shell, { kind: 'members' });
+    await settleWorkspace();
 
     shell.page.onEscapeKey(escape());
+    await settleWorkspace();
 
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
-  it('Escape on a temporary surface goes back to the roster, like its close button', () => {
+  it('Escape on a temporary surface goes back to the roster, like its close button', async () => {
     // Escape is the keyboard spelling of pressing the panel's own close button, so it has to
     // land in the same place. Only the mobile backdrop empties the slot outright.
     const shell = build();
+    await settleWorkspace();
     setRouteRoom('!r:hs');
+    await settleWorkspace();
     showSurface(shell, { kind: 'members' });
+    await settleWorkspace();
     showSurface(shell, { kind: 'pinned' });
+    await settleWorkspace();
 
     shell.page.onEscapeKey(escape());
+    await settleWorkspace();
 
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
-  it('leaves the member drawer open for an Escape a modal surface already handled', () => {
+  it('leaves the member drawer open for an Escape a modal surface already handled', async () => {
     // Member info opens as a sheet over the drawer (#1041). The sheet takes the Escape and
     // marks it handled; this document listener runs after, and must not close the drawer
     // under it as well.
     const restore = stubNarrowLayout();
     try {
       const shell = build();
+      await settleWorkspace();
       setRouteRoom('!r:hs');
+      await settleWorkspace();
       showSurface(shell, { kind: 'members' });
+      await settleWorkspace();
       const handled = escape();
       handled.preventDefault();
 
       shell.page.onEscapeKey(handled);
+      await settleWorkspace();
 
       expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     } finally {
@@ -805,24 +840,29 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('measures the swipe against the drawer that is actually on screen', () => {
+  it('measures the swipe against the drawer that is actually on screen', async () => {
     // NOT `layout.rightPanelWidth()`, which is the width the pane handle drags on a DESKTOP
     // and which the stylesheet ignores at this breakpoint. Passing it measured a 240px roster
     // against a 480px default — 80% of its travel to commit, where the rule is 40% — and a
     // user who had dragged the panel to its 720px maximum made the distance threshold
     // physically unreachable on a phone.
     const shell = build();
+    await settleWorkspace();
     setRouteRoom('!r:hs');
+    await settleWorkspace();
     const widthOf = () =>
       (shell.page as unknown as { drawerWidth(): number }).drawerWidth();
 
     showSurface(shell, { kind: 'members' });
+    await settleWorkspace();
     expect(widthOf()).toBe(240);
 
     shell.surfaces.transition({ kind: 'clear' });
+    await settleWorkspace();
     expect(widthOf()).toBe(240); // an opening swipe measures the roster it will open
 
     shell.surfaces.transition({ kind: 'open-threads' });
+    await settleWorkspace();
     expect(widthOf()).toBe(Math.min(480, window.innerWidth));
   });
 
@@ -1264,10 +1304,12 @@ describe('RoomsPage keyboard room switching', () => {
     const restore = stubLiveLayout({ [BELOW_MEMBERS_QUERY]: true });
     try {
       const shell = build();
+      await settleWorkspace();
       await visitABC(shell);
 
       const handled = key({ key: 'f', ctrlKey: true });
       shell.shortcuts.onGlobalKeydown(handled);
+      await settleWorkspace();
       expect(handled.preventDefault).toHaveBeenCalled();
       expect(shell.surfaces.renderedSurface()?.kind).toBe('search');
     } finally {
@@ -1277,12 +1319,14 @@ describe('RoomsPage keyboard room switching', () => {
 
   it('clears the header search when the room changes', async () => {
     const shell = build();
+    await settleWorkspace();
     await visitABC(shell);
     const query = (
       shell.page as unknown as { searchQuery: WritableSignal<string> }
     ).searchQuery;
     query.set('hello');
     shell.surfaces.transition({ kind: 'open-search' });
+    await settleWorkspace();
 
     shell.nav.onSelectRoom({ roomId: '!b:hs', accountId: '@me:hs' });
     await settleWorkspace();
@@ -1304,16 +1348,20 @@ describe('RoomsPage keyboard room switching', () => {
     const restore = stubLiveLayout({ [BELOW_MEMBERS_QUERY]: true });
     try {
       const shell = build();
+      await settleWorkspace();
       await visitABC(shell);
       shell.surfaces.transition({ kind: 'open-threads' });
+      await settleWorkspace();
 
       const hop = key({ key: "'", ctrlKey: true });
       shell.shortcuts.onGlobalKeydown(hop);
+      await settleWorkspace();
       expect(hop.preventDefault).not.toHaveBeenCalled();
       expect(shell.store.activeRoomId()).toBe('!c:hs');
 
       const find = key({ key: 'f', ctrlKey: true });
       shell.shortcuts.onGlobalKeydown(find);
+      await settleWorkspace();
       expect(find.preventDefault).toHaveBeenCalled();
       expect(shell.surfaces.renderedSurface()?.kind).toBe('search');
     } finally {
@@ -1370,13 +1418,17 @@ describe('RoomsPage keyboard room switching', () => {
     // chord typed into the search field walked to another room. The roster stays exempt: it
     // is a column beside the timeline, not over it.
     const shell = build();
+    await settleWorkspace();
     await visitABC(shell); // in c, MRU [c, b, a]
 
     shell.surfaces.transition({ kind: 'open-search' });
+    await settleWorkspace();
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!c:hs'); // suppressed
 
     showSurface(shell, { kind: 'members' });
+    await settleWorkspace();
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
     await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // still hops

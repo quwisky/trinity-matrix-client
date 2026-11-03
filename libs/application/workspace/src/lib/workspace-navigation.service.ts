@@ -142,6 +142,8 @@ export class WorkspaceNavigationService {
   readonly pane = computed(() => this.view().pane);
   /** The open Room panel, as the URL names it. */
   readonly panel = computed(() => this.view().panel);
+  /** History says the open panel was opened over the roster, which closing it returns to. */
+  readonly membersBelow = computed(() => this.location.membersBelow());
   readonly placement = computed(() =>
     this.compact() ? this.view().pane : 'split',
   );
@@ -379,6 +381,7 @@ export class WorkspaceNavigationService {
         }
         const resolved = resolveWorkspacePanel(request.panel, view, {
           panelBelow: this.location.panelBelow(),
+          membersBelow: this.location.membersBelow(),
         });
         if (!resolved) return EMPTY;
         return this.transition(resolved.destination, resolved.options).pipe(

@@ -379,22 +379,11 @@ async function expectAccountMenuAboveDock(page: Page): Promise<void> {
 async function expectScrollContract(
   page: Page,
   viewport: { width: number; height: number },
-  activate: (target: Locator) => Promise<void>,
 ): Promise<void> {
-  const previousViewport = page.viewportSize();
   await page.setViewportSize(viewport);
   const membersToggle = page.getByTestId('toggle-members');
   const memberList = page.getByTestId('member-list');
-  if (
-    previousViewport !== null &&
-    previousViewport.width >= 1100 &&
-    viewport.width < 1100
-  ) {
-    // Entering the drawer presentation deliberately closes the remembered wide roster.
-    await expect(membersToggle).toHaveAttribute('aria-pressed', 'false');
-    await expect(memberList).toBeHidden();
-    await activate(membersToggle);
-  }
+  // The roster is the URL's panel, so entering the drawer presentation keeps it open.
   await expect(membersToggle).toHaveAttribute('aria-pressed', 'true');
   await expect(memberList).toBeVisible();
   await expect(memberList.locator('.member').first()).toBeVisible();
@@ -736,7 +725,7 @@ test.describe('Modern room shell layout', () => {
         { width: 1024, height: 768 },
         { width: 900, height: 700 },
       ]) {
-        await expectScrollContract(page, viewport, activate);
+        await expectScrollContract(page, viewport);
       }
 
       await expectAccountMenuAboveDock(page);

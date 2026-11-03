@@ -1153,6 +1153,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
+    await settleWorkspace();
     const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
@@ -1175,6 +1176,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
+    await settleWorkspace();
     const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
@@ -1198,16 +1200,21 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
+    await settleWorkspace();
     const ref = memberInfoRef();
     shell.members.onSelectMember(bob);
     await settleWorkspace();
     expect(ref.close).not.toHaveBeenCalled();
 
-    setRouteRoom('!other:hs');
+    shell.routing.onSelectRoomSelection(
+      { accountId: '@me:hs', roomId: '!other:hs' },
+      'room-list',
+    );
     await settleWorkspace();
 
     expect(ref.close).toHaveBeenCalledWith();
     expect(createDirectMessage).not.toHaveBeenCalled();
+    // The roster itself follows into the next Room of the same Account.
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
@@ -1217,6 +1224,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     createDirectMessage.mockReturnValue(of('!dm:hs'));
     shell.surfaces.transition({ kind: 'open-members' });
+    await settleWorkspace();
     const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
@@ -1234,6 +1242,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!first:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
+    await settleWorkspace();
     const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
@@ -1248,6 +1257,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     );
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-threads' });
+    await settleWorkspace();
 
     pendingDm.next('!second:hs');
     pendingDm.complete();
@@ -1296,6 +1306,8 @@ describe('RoomsPage room / DM / invite actions', () => {
       setRouteRoom('!r:hs');
       await settleWorkspace();
       shell.surfaces.transition({ kind: 'open-members' });
+      await settleWorkspace();
+      await settleWorkspace();
       expect(shell.surfaces.membersVisible()).toBe(true);
       memberInfoRef();
 
@@ -1317,6 +1329,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
+    await settleWorkspace();
     memberInfoRef();
 
     shell.members.onSelectMember(bob);

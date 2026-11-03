@@ -19,7 +19,9 @@
     data-message-scroller
     (focusin)="revealFocusAfterExpand($event)"
   >
-    @if (loadingOlder()) {
+    @if (loading()) {
+      <div class="thread__load-older" role="status">Loading thread…</div>
+    } @else if (loadingOlder()) {
       <div class="thread__load-older">Loading older replies…</div>
     } @else if (canLoadOlder()) {
       <button type="button" class="thread__load-older" (click)="loadOlder()">
@@ -40,7 +42,9 @@
         (pollEnd)="onPollEnd($event)"
       />
     } @empty {
-      <trn-empty-state body="No replies in this thread yet." />
+      @if (!loading()) {
+        <trn-empty-state body="No replies in this thread yet." />
+      }
     }
 
     @if (rows().length) {
@@ -57,6 +61,7 @@
       [members]="members()"
       [richActions]="false"
       [postUnavailableReason]="postUnavailableReason()"
+      [sendBlocked]="loading()"
       [editing]="editingId() !== null"
       [editTargetId]="editingId()"
       [draft]="editingDraft()"

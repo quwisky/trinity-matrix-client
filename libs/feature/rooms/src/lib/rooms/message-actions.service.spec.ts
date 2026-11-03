@@ -30,7 +30,10 @@ import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 import type { Mention } from '@trinity/util/matrix';
-import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import {
+  WorkspaceNavigationService,
+  type WorkspacePanel,
+} from '@trinity/application/workspace';
 
 /**
  * The composer and timeline half of MessageActionsService.
@@ -184,6 +187,7 @@ describe('MessageActionsService', () => {
     // One signal per build prevents a room opened in one test leaking into the next.
     const activeRoomId = signal<string | null>(null);
     const pane = signal<'list' | 'conversation'>('list');
+    const panel = signal<WorkspacePanel | null>(null);
     TestBed.configureTestingModule({
       providers: [
         ...MOCKS,
@@ -203,6 +207,10 @@ describe('MessageActionsService', () => {
             placement: signal<'list' | 'conversation' | 'split'>(
               'split',
             ).asReadonly(),
+            panel: panel.asReadonly(),
+            membersBelow: signal(false).asReadonly(),
+            openPanel: (next: WorkspacePanel) => panel.set(next),
+            closePanel: () => panel.set(null),
           },
         },
       ],

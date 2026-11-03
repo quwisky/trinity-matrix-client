@@ -209,6 +209,7 @@ function harness(options: HarnessOptions = {}) {
         } as const);
   const listBelow = signal(false);
   const panelBelow = signal(false);
+  const membersBelow = signal(false);
   // A Router navigation Workspace did not start, such as one to Settings, still resolving.
   const routerNavigating = signal(false);
   const projections: {
@@ -221,6 +222,7 @@ function harness(options: HarnessOptions = {}) {
   const location = {
     listBelow: listBelow.asReadonly(),
     panelBelow: panelBelow.asReadonly(),
+    membersBelow: membersBelow.asReadonly(),
     navigating: routerNavigating.asReadonly(),
     get projecting() {
       return locationWrites > 0;
@@ -319,6 +321,7 @@ function harness(options: HarnessOptions = {}) {
     service,
     listBelow,
     panelBelow,
+    membersBelow,
     projections,
     popHistory,
     activeAccountId,
@@ -2485,7 +2488,7 @@ describe('room panels', () => {
 
   it('replaces one panel with another, but pushes a thread from the threads list', async () => {
     const h = await inRoom();
-    h.service.openPanel(members);
+    h.service.openPanel({ kind: 'pinned' });
     await settle();
 
     h.service.openPanel(threads);
@@ -2519,6 +2522,23 @@ describe('room panels', () => {
     expect(h.popHistory).toHaveBeenCalledOnce();
     expect(h.navigate).not.toHaveBeenCalled();
     expect(h.service.panel()).toBeNull();
+  });
+
+  it('steps back to the roster below a panel opened over it', async () => {
+    const h = await inRoom();
+    h.service.openPanel(members);
+    await settle();
+    h.service.openPanel(threads);
+    await settle();
+    expect(h.projections.at(-1)?.history).toBe('push');
+    h.panelBelow.set(true);
+    h.membersBelow.set(true);
+
+    h.service.openPanel(members);
+    await settle();
+
+    expect(h.projections.at(-1)).toMatchObject({ history: 'back' });
+    expect(h.popHistory).toHaveBeenCalledOnce();
   });
 
   it('closes a panel with nothing below it, such as after a reload, in place', async () => {
@@ -2562,7 +2582,7 @@ describe('room panels', () => {
     expect(h.navigate).not.toHaveBeenCalled();
   });
 
-  it('drops the panel when the Room or the Account changes', async () => {
+  it('carries the roster to another Room, and drops other panels and any on an Account change', async () => {
     const other = '!other:example.org';
     const h = await inRoom({
       rooms: { [ALICE]: [ROOM, other], [BOB]: [ROOM] },
@@ -2574,6 +2594,16 @@ describe('room panels', () => {
       kind: 'room',
       accountId: ALICE,
       roomId: other,
+      origin: 'room-list',
+    });
+    expect(h.service.panel()).toEqual(members);
+
+    h.service.openPanel(threads);
+    await settle();
+    await go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: ROOM,
       origin: 'room-list',
     });
     expect(h.service.panel()).toBeNull();
@@ -2624,8 +2654,8 @@ describe('room panels', () => {
       return new Promise<boolean>((resolve) => (finishOpen = resolve));
     });
 
-    h.service.openPanel(members);
     h.service.openPanel(threads);
+    h.service.openPanel(members);
     h.service.openPanel({ kind: 'pinned' });
     finishOpen(true);
     await settle();

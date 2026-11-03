@@ -338,6 +338,7 @@
                     [rootEventId]="panel.rootEventId"
                     [revealEventId]="panel.revealEventId ?? null"
                     [revealRequest]="panel"
+                    [loading]="'loading' in panel"
                     (revealFailed)="
                       status.showError('Could not load that message.')
                     "

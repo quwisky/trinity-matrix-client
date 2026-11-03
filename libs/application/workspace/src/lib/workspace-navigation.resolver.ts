@@ -98,10 +98,12 @@ export function resolveWorkspaceNavigation(
           scope: roomScope(intent, current),
           roomId: intent.roomId,
           pane: 'conversation',
-          // Choosing the open Room again keeps its panel, so it stays a no-op.
+          // Choosing the open Room again keeps its panel, so it stays a no-op. The roster
+          // is a column the person keeps open, so it follows them to the Account's next Room.
           panel:
             current.accountId === intent.accountId &&
-            current.roomId === intent.roomId
+            (current.roomId === intent.roomId ||
+              current.panel?.kind === 'members')
               ? current.panel
               : null,
         },
@@ -200,20 +202,26 @@ export function resolveWorkspaceNavigation(
 
 /**
  * Open, switch or close (`null`) the open Room's one panel. Opening pushes, switching
- * replaces, except a thread opened from the threads list, which pushes so Back returns to the
- * list. Closing pops a panel entry that sits on its Room, otherwise replaces it.
+ * replaces, except a panel opened over the roster or a thread opened from the threads list,
+ * which push so Back returns to them. Closing pops a panel entry that sits on its Room, and
+ * asking for the roster that lies below pops back to it; otherwise the entry is replaced.
  */
 export function resolveWorkspacePanel(
   panel: WorkspacePanel | null,
   current: WorkspaceView,
-  history: { readonly panelBelow: boolean },
+  history: { readonly panelBelow: boolean; readonly membersBelow: boolean },
 ): ResolvedWorkspaceNavigation | null {
   if (!current.accountId || !current.roomId) return null;
   if (panel === null && current.panel === null) return null;
   const opensOver =
     panel !== null &&
     (current.panel === null ||
+      (current.panel.kind === 'members' && panel.kind !== 'members') ||
       (current.panel.kind === 'threads' && panel.kind === 'thread'));
+  const backToMembers =
+    panel?.kind === 'members' &&
+    current.panel?.kind !== 'members' &&
+    history.membersBelow;
   return {
     destination: {
       accountId: current.accountId,
@@ -226,7 +234,7 @@ export function resolveWorkspacePanel(
       source: 'user',
       history: opensOver
         ? 'push'
-        : panel === null && history.panelBelow
+        : (panel === null && history.panelBelow) || backToMembers
           ? 'back'
           : 'replace',
       withinRoom: true,
