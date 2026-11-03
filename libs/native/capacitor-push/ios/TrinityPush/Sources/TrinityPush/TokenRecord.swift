@@ -182,8 +182,14 @@ public enum TokenRevokeResult: String {
 
 /// Seconds.
 public enum TokenBudgets {
+    /// With the grace and a retake, 12 s: under JavaScript's 13 s call timeout.
     public static let appGrant: TimeInterval = 8
-    public static let serviceRefresh: TimeInterval = 15
+    /// A push's refresh: the lease wait and the grant together.
+    public static let serviceRefresh: TimeInterval = 8
+    /// How long after a push arrived its refresh budget may run. With the grace and the retake
+    /// after it, the vault write is done by about 17 s and the read after it by 22 s, well before
+    /// the extension's roughly 30 s, so its expiry does not cut off a grant that was sent.
+    public static let serviceRefreshEnd: TimeInterval = 13
     public static let leaseMargin: TimeInterval = 5
     public static let longestLifetime: TimeInterval = 30
     public static let removalWait: TimeInterval = 1

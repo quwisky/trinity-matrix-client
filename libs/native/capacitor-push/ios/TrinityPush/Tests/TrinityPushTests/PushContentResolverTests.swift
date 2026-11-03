@@ -435,13 +435,31 @@ final class PushContentResolverTests: XCTestCase {
         XCTAssertTrue(api.accounts.isEmpty)
     }
 
-    func testTheRefreshGetsFifteenSeconds() async {
+    func testTheRefreshGetsEightSeconds() async {
         let store = FakeStore(accounts: ["@alice:hs": entry(expired: true)], rooms: team)
         let tokens = FakeTokens(answer: .gone)
 
         _ = await PushContentResolver(store: store, api: FakeAPI(), tokens: tokens).resolve(payload())
 
-        XCTAssertEqual(tokens.lastBudget, 15)
+        XCTAssertEqual(tokens.lastBudget, 8)
+    }
+
+    /// A refresh's budget ends 13 s after the push arrived, so its grant, grace and retake are over
+    /// by 17 s and the read after it by 22 s, whatever ran before it.
+    func testALateRefreshGetsOnlyWhatIsLeftOfThePush() async {
+        let store = FakeStore(accounts: ["@alice:hs": entry(expired: false)], rooms: team)
+        let arrived = Date(timeIntervalSince1970: 1_700_000_000)
+        for (elapsed, budget) in [(5.0, 8.0), (7.0, 6.0), (11.0, 2.0), (20.0, 0.0)] {
+            let clock = MovableClock(arrived)
+            let tokens = FakeTokens(answer: .gone)
+            let resolver = PushContentResolver(
+                store: store, api: FakeAPI(eventReads: [.unauthorized]), tokens: tokens, now: { clock.now })
+            clock.now = arrived + elapsed
+
+            _ = await resolver.resolve(payload())
+
+            XCTAssertEqual(tokens.lastBudget, budget, "after \(elapsed) s")
+        }
     }
 
     func testNoRefreshWithNoTokensDependency() async {

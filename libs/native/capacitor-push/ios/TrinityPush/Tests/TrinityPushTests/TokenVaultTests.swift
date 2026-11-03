@@ -172,7 +172,8 @@ final class TokenVaultTests: XCTestCase {
 
     func testBudgets() {
         XCTAssertEqual(TokenBudgets.appGrant, 8)
-        XCTAssertEqual(TokenBudgets.serviceRefresh, 15)
+        XCTAssertEqual(TokenBudgets.serviceRefresh, 8)
+        XCTAssertEqual(TokenBudgets.serviceRefreshEnd, 13)
         XCTAssertEqual(TokenBudgets.leaseMargin, 5)
         XCTAssertEqual(TokenBudgets.longestLifetime, 30)
         XCTAssertEqual(TokenBudgets.removalWait, 1)
