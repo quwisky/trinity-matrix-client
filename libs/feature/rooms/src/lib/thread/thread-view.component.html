@@ -42,7 +42,9 @@
         (pollEnd)="onPollEnd($event)"
       />
     } @empty {
-      <trn-empty-state body="No replies in this thread yet." />
+      @if (!loading()) {
+        <trn-empty-state body="No replies in this thread yet." />
+      }
     }
 
     @if (rows().length) {

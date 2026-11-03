@@ -503,6 +503,9 @@ describe('ThreadViewComponent', () => {
     fixture.detectChanges();
 
     expect(container.textContent).toContain('Loading thread…');
+    expect(container.textContent).not.toContain(
+      'No replies in this thread yet.',
+    );
     expect(openThread).not.toHaveBeenCalled();
     expect(releasedRoots).toHaveBeenCalledWith('$root');
 
