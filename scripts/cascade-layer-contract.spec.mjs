@@ -254,7 +254,7 @@ describe('cascade layer contract', () => {
     expect(components).toContain('.trn-routed-page');
 
     const utilities = layerBodies('apps/trinity/src/global.scss', 'utilities');
-    expect(utilities).toContain('.safe-top');
+    expect(utilities).not.toContain('.safe-top');
     expect(utilities).toContain('.safe-bottom');
 
     const overrides = layerBodies('apps/trinity/src/global.scss', 'overrides');
@@ -289,6 +289,9 @@ describe('cascade layer contract', () => {
       '@media (pointer: coarse)',
       '@media (pointer: coarse) > button[trnBtn], a[trnBtn]',
       "@media (pointer: coarse) > input:not( [type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='color'], [type='image'], [type='hidden'] ), textarea, select, [contenteditable]:not([contenteditable='false'])",
+      '@media (hover: none) and (pointer: coarse)',
+      "@media (hover: none) and (pointer: coarse) > :focus-visible:not( input:not( [type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='color'], [type='image'], [type='hidden'] ), textarea, select, [contenteditable]:not([contenteditable='false']) )",
+      "@media (hover: none) and (pointer: coarse) > :focus-visible:not( input:not( [type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='color'], [type='image'], [type='hidden'] ), textarea, select, [contenteditable]:not([contenteditable='false']) ) > &, & ~ *, .group:has(&)",
     ]);
   });
 

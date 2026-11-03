@@ -243,9 +243,9 @@ describe('ApplicationRootComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    // The top inset sits on the root, above the banners, not on any one page.
+    // The frame clears the top inset on a page like this one (global.scss), not the page.
     expect(
-      getByTestId('system-status-access').closest('.safe-top'),
+      getByTestId('system-status-access').closest('.app-frame'),
     ).not.toBeNull();
   });
 
