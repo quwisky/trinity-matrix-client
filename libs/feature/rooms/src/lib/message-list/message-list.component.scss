@@ -26,7 +26,8 @@
     flex: 0 0 auto;
   }
 
-  // Phones seat a room too short to scroll at the bottom, by the composer. Only the first spacer
+  // Phones (the width of BELOW_MD_QUERY, which also turns the room title into a button) seat a room
+  // too short to scroll at the bottom, by the composer. Only the top spacer
   // takes the free space, so an overflowing timeline lays out exactly as before, and an empty or
   // loading one (no rows yet) stays at the top.
   @media (max-width: 767.98px) {
@@ -34,7 +35,7 @@
       display: flex;
       flex-direction: column;
 
-      > .vpad:first-of-type {
+      > .vpad--top {
         margin-block-start: auto;
       }
     }
