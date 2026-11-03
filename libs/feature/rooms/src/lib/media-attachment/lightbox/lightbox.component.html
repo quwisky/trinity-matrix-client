@@ -7,13 +7,13 @@
     shape="icon"
     size="lg"
     class="lightbox__action lightbox__download"
-    [attr.aria-label]="(shares ? 'Share ' : 'Download ') + media().kind"
+    [attr.aria-label]="(shares() ? 'Share ' : 'Download ') + media().kind"
     [loading]="busy()"
     [attr.aria-disabled]="busy() ? 'true' : null"
     (click)="download($event)"
     data-testid="lightbox-download"
   >
-    @if (shares) {
+    @if (shares()) {
       <trn-icon name="share" motion="nudge-up" />
     } @else {
       <trn-icon name="download" motion="nudge-down" />

@@ -71,15 +71,15 @@
     opacity: var(--lightbox-dim, 1);
   }
 
+  /* Faded, not removed: the buttons stay in the tab order and the accessibility tree, and
+   * focus or a key press brings them back. A finger's touch passes through to the viewer. */
   :host(.lightbox--bare) .lightbox__actions {
-    visibility: hidden;
     opacity: 0;
+    pointer-events: none;
   }
 
   .lightbox__actions {
-    transition:
-      opacity var(--trinity-duration-overlay) ease-out,
-      visibility var(--trinity-duration-overlay);
+    transition: opacity var(--trinity-duration-overlay) ease-out;
   }
 
   /* A phone: the image takes the whole screen and the fingers own the surface. Gestures

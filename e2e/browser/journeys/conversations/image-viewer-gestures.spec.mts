@@ -109,13 +109,19 @@ test.describe('Image viewer on a phone', () => {
   }) => {
     const dialog = await openViewer(page, request);
     const close = page.getByTestId('lightbox-close');
-    await expect(close).toBeVisible();
+    const controls = page.locator('.lightbox__actions');
+    await expect(controls).toHaveCSS('opacity', '1');
     await cdpTap(page, 195, 422);
-    await expect(close).toBeHidden();
+    // Faded, not removed: still reachable by keyboard and screen reader.
+    await expect(controls).toHaveCSS('opacity', '0');
     await expect(dialog).toBeVisible();
     await cdpTap(page, 195, 422);
-    await expect(close).toBeVisible();
+    await expect(controls).toHaveCSS('opacity', '1');
     await expect(dialog).toBeVisible();
+    await cdpTap(page, 195, 422);
+    await expect(controls).toHaveCSS('opacity', '0');
+    await page.keyboard.press('Tab');
+    await expect(controls).toHaveCSS('opacity', '1');
     await close.click();
     await expect(dialog).toBeHidden();
   });

@@ -27,6 +27,17 @@ const FLICK_MIN_PX = 40;
 export const clampScale = (scale: number): number =>
   Math.min(MAX_SCALE, Math.max(1, scale));
 
+/** The size a `contain`-fitted image really occupies inside its element box. */
+export function containedSize(
+  box: { readonly width: number; readonly height: number },
+  natural: { readonly width: number; readonly height: number },
+): { readonly width: number; readonly height: number } {
+  if (!natural.width || !natural.height || !box.width || !box.height)
+    return box;
+  const fit = Math.min(box.width / natural.width, box.height / natural.height);
+  return { width: natural.width * fit, height: natural.height * fit };
+}
+
 /** Keeps a zoomed image covering its own box: no pan at rest, half the overshoot each way. */
 export function clampView(
   view: ImageView,

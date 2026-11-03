@@ -12,13 +12,17 @@ import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { type PresentedMediaReference } from '@trinity/data-access/media';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FileSaveService } from '@trinity/platform-native';
+import { HostFileExportService } from '@trinity/runtime/host';
+import { map } from 'rxjs';
 import { MediaSaveService } from '../media-save.service';
 import {
   REST_VIEW,
   backdropOpacity,
   clampScale,
   clampView,
+  containedSize,
   doubleTapView,
   isDoubleTap,
   isTap,
@@ -44,6 +48,9 @@ import {
  * The drag writes the transform straight to the element, as the other swipe gestures do, so no
  * render sits between a finger and a frame.
  */
+/** A finger's own click follows its lift within this long; a click much later is not its. */
+const FINGER_CLICK_WINDOW_MS = 500;
+
 @Component({
   selector: 'trn-lightbox',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,7 +59,10 @@ import {
     class: 'lightbox',
     '[class.lightbox--bare]': '!controls()',
     '[class.lightbox--touching]': 'touching()',
-    '(click)': 'hostClick()',
+    '(click)': 'hostClick($event)',
+    '(keydown)': 'revealControls()',
+    '(focusin)': 'revealControls()',
+    '(window:resize)': 'refit()',
     '(pointerdown)': 'pointerDown($event)',
     '(pointermove)': 'pointerMove($event)',
     '(pointerup)': 'pointerUp($event)',
@@ -88,14 +98,25 @@ export class LightboxComponent {
   private multi = false;
   private dismissing = false;
   private lastTap: { at: number; point: ViewPoint } | null = null;
-  /** The last press was a finger, whose click the gestures have already handled. */
-  private fingerPressed = false;
+  /** When the last finger lifted: its trailing click is already handled by the gestures. */
+  private fingerLiftedAt = -Infinity;
+  /** The viewer's box, read once per touch rather than on every move. */
+  private rect: DOMRect | null = null;
 
   /** The phone shows the controls only until a tap hides them; a mouse always has them. */
   protected readonly controls = signal(true);
   protected readonly touching = signal(false);
   /** Natively the host's save is the system share sheet, so name the action for what it does. */
-  protected readonly shares = inject(FileSaveService).nativeAvailable;
+  private readonly exportSupported = toSignal(
+    inject(HostFileExportService)
+      .support()
+      .pipe(map((support) => support.kind === 'supported')),
+    { initialValue: false },
+  );
+  protected readonly shares = computed(
+    () => this.exportSupported() && this.files.nativeAvailable,
+  );
+  private readonly files = inject(FileSaveService);
 
   /** Save without letting the click reach the host, which closes the viewer on any click. */
   protected download(event: Event): void {
@@ -109,22 +130,32 @@ export class LightboxComponent {
     this.dialogRef.close();
   }
 
-  protected hostClick(): void {
-    if (this.fingerPressed) {
-      this.fingerPressed = false;
-      return;
-    }
+  protected hostClick(event: MouseEvent): void {
+    if (event.timeStamp - this.fingerLiftedAt < FINGER_CLICK_WINDOW_MS) return;
     this.close();
   }
 
+  /** Hidden controls come back for a keyboard or screen reader user reaching for them. */
+  protected revealControls(): void {
+    this.controls.set(true);
+  }
+
+  /** A resize or rotation changes the box the pan offsets were measured in. */
+  protected refit(): void {
+    this.rect = null;
+    this.show(clampView(this.view, this.displayed()));
+  }
+
   protected pointerDown(event: PointerEvent): void {
-    this.fingerPressed = event.pointerType !== 'mouse';
     if (
-      !this.fingerPressed ||
+      event.pointerType === 'mouse' ||
       (event.target as Element).closest('button') ||
       this.dismissing
     ) {
       return;
+    }
+    if (this.pointers.size === 0) {
+      this.rect = this.host.nativeElement.getBoundingClientRect();
     }
     this.host.nativeElement.setPointerCapture?.(event.pointerId);
     this.pointers.set(event.pointerId, this.point(event));
@@ -142,7 +173,7 @@ export class LightboxComponent {
   protected pointerMove(event: PointerEvent): void {
     if (!this.pointers.has(event.pointerId)) return;
     this.pointers.set(event.pointerId, this.point(event));
-    const box = this.image().nativeElement;
+    const box = this.displayed();
     if (this.pinch && this.pointers.size === 2) {
       const now = this.pinchFrom(this.view);
       const scale = clampScale(
@@ -174,19 +205,31 @@ export class LightboxComponent {
           box,
         ),
       );
-    } else if (dy > 0 && dy > Math.abs(dx)) {
-      this.show({ scale: 1, x: 0, y: dy });
+    } else {
+      // Dragging back up past where the finger started leaves no pull to release from.
+      const pull = dy > 0 && dy > Math.abs(dx) ? dy : 0;
+      this.show({ scale: 1, x: 0, y: pull });
       this.host.nativeElement.style.setProperty(
         '--lightbox-dim',
-        String(backdropOpacity(dy, this.host.nativeElement.clientHeight)),
+        String(backdropOpacity(pull, this.rect?.height || 1)),
       );
     }
   }
 
   protected pointerUp(event: PointerEvent): void {
+    this.release(event, false);
+  }
+
+  protected pointerCancel(event: PointerEvent): void {
+    this.release(event, true);
+  }
+
+  private release(event: PointerEvent, cancelled: boolean): void {
     const start = this.start;
     if (!this.pointers.delete(event.pointerId)) return;
+    this.fingerLiftedAt = event.timeStamp;
     if (this.pointers.size > 0) {
+      // One finger of a pinch is still down: it carries on as a pan from the current view.
       this.rebase(event.timeStamp);
       this.pinch = null;
       return;
@@ -198,11 +241,13 @@ export class LightboxComponent {
     const elapsed = event.timeStamp - start.at;
     if (this.multi) {
       this.show(this.view.scale <= 1.02 ? REST_VIEW : this.view);
+    } else if (cancelled) {
+      this.settle(start.view);
     } else if (isTap(this.travel, elapsed)) {
       this.settle(start.view);
       this.tap(this.point(event), event.timeStamp);
     } else if (this.view.y > 0 && this.view.scale === 1) {
-      const height = this.host.nativeElement.clientHeight;
+      const height = this.rect?.height || 1;
       if (shouldDismiss(this.view.y, elapsed, height)) {
         this.dismissing = true;
         this.dialogRef.close();
@@ -212,24 +257,12 @@ export class LightboxComponent {
     }
   }
 
-  protected pointerCancel(event: PointerEvent): void {
-    if (!this.pointers.delete(event.pointerId)) return;
-    if (this.pointers.size === 0) {
-      this.touching.set(false);
-      if (this.start) this.settle(this.start.view);
-      this.start = null;
-      this.pinch = null;
-    }
-  }
-
   private tap(point: ViewPoint, at: number): void {
     if (isDoubleTap(this.lastTap, at, point)) {
       this.lastTap = null;
       // The first tap of the pair toggled the controls; the zoom takes that back.
       this.controls.update((shown) => !shown);
-      this.show(
-        clampView(doubleTapView(this.view, point), this.image().nativeElement),
-      );
+      this.show(clampView(doubleTapView(this.view, point), this.displayed()));
       return;
     }
     this.lastTap = { at, point };
@@ -252,9 +285,19 @@ export class LightboxComponent {
     this.start = { at, point: first, view: this.view };
   }
 
+  /** What the image really covers, which a `contain`-fitted element box overstates. */
+  private displayed() {
+    const image = this.image().nativeElement;
+    return containedSize(
+      { width: image.clientWidth, height: image.clientHeight },
+      { width: image.naturalWidth, height: image.naturalHeight },
+    );
+  }
+
   /** Finger positions are kept relative to the viewer's centre, where the zoom is anchored. */
   private point(event: PointerEvent): ViewPoint {
-    const rect = this.host.nativeElement.getBoundingClientRect();
+    const rect = (this.rect ??=
+      this.host.nativeElement.getBoundingClientRect());
     return {
       x: event.clientX - rect.left - rect.width / 2,
       y: event.clientY - rect.top - rect.height / 2,

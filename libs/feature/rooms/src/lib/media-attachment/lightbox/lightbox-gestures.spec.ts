@@ -6,6 +6,7 @@ import {
   backdropOpacity,
   clampScale,
   clampView,
+  containedSize,
   doubleTapView,
   isDoubleTap,
   isTap,
@@ -16,6 +17,14 @@ import {
 const box = { width: 400, height: 800 };
 
 describe('lightbox gestures', () => {
+  it('fits a portrait image inside a wider box, and passes an unknown size through', () => {
+    expect(containedSize(box, { width: 100, height: 100 })).toEqual({
+      width: 400,
+      height: 400,
+    });
+    expect(containedSize(box, { width: 0, height: 0 })).toEqual(box);
+  });
+
   it('clamps zoom between rest and the maximum', () => {
     expect(clampScale(0.4)).toBe(1);
     expect(clampScale(9)).toBe(MAX_SCALE);

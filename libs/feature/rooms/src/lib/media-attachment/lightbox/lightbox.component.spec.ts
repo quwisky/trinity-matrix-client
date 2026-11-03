@@ -97,4 +97,105 @@ describe('LightboxComponent touch', () => {
       .click();
     expect(close).toHaveBeenCalledTimes(1);
   });
+
+  const matrix = (root: HTMLElement) => {
+    const m = root
+      .querySelector<HTMLImageElement>('.lightbox__image')!
+      .style.transform.match(
+        /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/,
+      )!;
+    return { x: Number(m[1]), y: Number(m[2]), scale: Number(m[3]) };
+  };
+  const sized = (root: HTMLElement, width: number, height: number) => {
+    const img = root.querySelector<HTMLImageElement>('.lightbox__image')!;
+    Object.defineProperty(img, 'clientWidth', {
+      value: width,
+      configurable: true,
+    });
+    Object.defineProperty(img, 'clientHeight', {
+      value: height,
+      configurable: true,
+    });
+  };
+  const tapAt = (root: Element, id: number, x: number, y: number) => {
+    touch(root, 'pointerdown', { pointerId: id, clientX: x, clientY: y });
+    touch(root, 'pointerup', { pointerId: id, clientX: x, clientY: y });
+  };
+
+  it('brings hidden controls back on a key press or focus, without removing them', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    tapAt(root, 1, 20, 20);
+    fixture.detectChanges();
+    expect(root.classList).toContain('lightbox--bare');
+    root.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }),
+    );
+    fixture.detectChanges();
+    expect(root.classList).not.toContain('lightbox--bare');
+
+    tapAt(root, 1, 20, 20);
+    fixture.detectChanges();
+    expect(root.classList).toContain('lightbox--bare');
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="lightbox-close"]')!
+      .dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    fixture.detectChanges();
+    expect(root.classList).not.toContain('lightbox--bare');
+  });
+
+  it('keeps a click with no finger before it, such as an assistive activation', async () => {
+    const { fixture, close } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    tapAt(root, 1, 20, 20);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    root.click();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('carries on from the current view when one finger of a pinch is cancelled', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    sized(root, 400, 800);
+    touch(root, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 0 });
+    touch(root, 'pointerdown', { pointerId: 2, clientX: 200, clientY: 0 });
+    touch(root, 'pointermove', { pointerId: 2, clientX: 300, clientY: 0 });
+    const pinched = matrix(root);
+    expect(pinched.scale).toBeGreaterThan(1);
+
+    touch(root, 'pointercancel', { pointerId: 2, clientX: 300, clientY: 0 });
+    expect(matrix(root)).toEqual(pinched);
+    touch(root, 'pointermove', { pointerId: 1, clientX: 100, clientY: 0 });
+    // The remaining finger has not moved, so the image has not either.
+    expect(matrix(root)).toEqual(pinched);
+  });
+
+  it('re-clamps a zoomed image when the viewer resizes', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    sized(root, 400, 800);
+    tapAt(root, 1, 100, 0);
+    tapAt(root, 1, 100, 0);
+    const zoomed = matrix(root);
+    expect(zoomed.scale).toBeGreaterThan(1);
+    expect(zoomed.x).toBeLessThan(-100);
+
+    sized(root, 100, 200);
+    window.dispatchEvent(new Event('resize'));
+    const refit = matrix(root);
+    expect(Math.abs(refit.x)).toBeLessThanOrEqual(
+      ((refit.scale - 1) * 100) / 2,
+    );
+  });
+
+  it('does not dismiss from a release after the finger came back up', async () => {
+    const { fixture, close } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    touch(root, 'pointerdown', { pointerId: 1, clientX: 0, clientY: 100 });
+    touch(root, 'pointermove', { pointerId: 1, clientX: 0, clientY: 400 });
+    touch(root, 'pointermove', { pointerId: 1, clientX: 0, clientY: 90 });
+    touch(root, 'pointerup', { pointerId: 1, clientX: 0, clientY: 90 });
+    expect(close).not.toHaveBeenCalled();
+    expect(matrix(root).y).toBe(0);
+  });
 });
