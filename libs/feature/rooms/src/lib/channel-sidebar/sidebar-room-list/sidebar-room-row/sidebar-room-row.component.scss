@@ -182,7 +182,8 @@
   // in the accessibility tree and focusable (VoiceOver, TalkBack, a keyboard on a tablet), and a
   // focused kebab shows itself. Lives here because `.channel__menu` is rendered by THIS component,
   // and under emulated encapsulation a parent copy silently matches nothing.
-  @media (hover: none) {
+  // `any-hover` too: a tablet with a mouse has no long press to fall back on, so it keeps the kebab.
+  @media (hover: none) and (any-hover: none) {
     .channel-row {
       position: relative;
     }

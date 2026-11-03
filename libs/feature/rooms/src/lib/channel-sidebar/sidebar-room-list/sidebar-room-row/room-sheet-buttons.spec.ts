@@ -61,10 +61,25 @@ describe('roomSheetButtons', () => {
     expect(list).not.toContain('Report room');
   });
 
-  it('offers Remove from space only in a space, disabled without rights', () => {
-    const { list } = buttons({ spaceActive: true, canCurate: false });
-    const remove = list.find((b) => b.text === 'Remove from space');
-    expect(remove?.disabled).toBe(true);
+  it('offers Remove from space only in a space, and says why when it is refused', () => {
+    expect(texts(buttons().list)).not.toContain('Remove from space');
+    expect(texts(buttons({ spaceActive: true }).list)).toContain(
+      'Remove from space',
+    );
+    const refused = buttons({
+      spaceActive: true,
+      canCurate: false,
+      curateReason: 'You cannot manage this space',
+    }).list.find((b) => b.text.startsWith('Remove from space'));
+    expect(refused?.text).toBe(
+      'Remove from space: You cannot manage this space',
+    );
+    expect(refused?.disabled).toBe(true);
+  });
+
+  it('leaves out a refused Remove from space that cannot say why', () => {
+    const list = texts(buttons({ spaceActive: true, canCurate: false }).list);
+    expect(list.some((t) => t.startsWith('Remove from space'))).toBe(false);
   });
 
   it('emits the same actions as the menu', () => {

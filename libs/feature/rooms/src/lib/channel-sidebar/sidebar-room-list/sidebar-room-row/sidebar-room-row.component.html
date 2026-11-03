@@ -8,9 +8,9 @@
     (click)="select()"
     (pointerdown)="onPointerDown($event)"
     (pointermove)="onPointerMove($event)"
-    (pointerup)="onPointerUp()"
-    (pointercancel)="onPointerUp()"
-    (pointerleave)="cancelPress()"
+    (pointerup)="cancelPress($event)"
+    (pointercancel)="cancelPress($event)"
+    (pointerleave)="cancelPress($event)"
     (contextmenu)="onContextMenu($event)"
   >
     <trn-avatar

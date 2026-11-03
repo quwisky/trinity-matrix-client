@@ -64,9 +64,12 @@ export function roomSheetButtons(c: RoomSheetContext): ActionSheetButton[] {
       handler: () => emit({ kind: 'notify', room, mode }),
     });
   }
-  if (c.spaceActive) {
+  // The kebab explains a refusal in a tooltip; a sheet row has no hint, so the reason goes in the label, and a row that cannot say why is left out.
+  if (c.spaceActive && (c.canCurate || c.curateReason)) {
     buttons.push({
-      text: 'Remove from space',
+      text: c.canCurate
+        ? 'Remove from space'
+        : `Remove from space: ${c.curateReason}`,
       icon: 'circle-minus',
       variant: 'danger',
       disabled: !c.canCurate,

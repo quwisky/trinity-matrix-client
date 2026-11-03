@@ -58,9 +58,14 @@ test.describe('Sidebar on a touch device', () => {
     // desktop rules and the spec would pass while proving nothing.
     const coarse = await page.evaluate(() => ({
       noHover: matchMedia('(hover: none)').matches,
+      noAnyHover: matchMedia('(any-hover: none)').matches,
       coarsePointer: matchMedia('(pointer: coarse)').matches,
     }));
-    expect(coarse).toEqual({ noHover: true, coarsePointer: true });
+    expect(coarse).toEqual({
+      noHover: true,
+      noAnyHover: true,
+      coarsePointer: true,
+    });
 
     // The identity menu remains usable on the touch layout and keeps the same hierarchy as
     // desktop. Escape must close it without leaving focus stranded in the overlay.

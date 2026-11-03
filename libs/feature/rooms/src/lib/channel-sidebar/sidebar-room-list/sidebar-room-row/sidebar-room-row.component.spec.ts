@@ -286,5 +286,78 @@ describe('SidebarRoomRowComponent', () => {
         vi.useRealTimers();
       }
     });
+
+    it('stops swallowing clicks 300 ms after the lift, so a later tap selects', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, actions } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        channel.dispatchEvent(touch('pointerup'));
+        vi.advanceTimersByTime(299);
+        channel.click();
+        expect(actions).toEqual([]);
+        channel.dispatchEvent(touch('pointerup'));
+        vi.advanceTimersByTime(300);
+        channel.click();
+        expect(actions).toEqual([{ kind: 'select', room: room() }]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('releases after the fallback when no pointer end ever arrives', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, actions } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        vi.advanceTimersByTime(9_000);
+        document.body.click();
+        vi.advanceTimersByTime(1_000);
+        channel.click();
+        expect(actions).toEqual([{ kind: 'select', room: room() }]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('releases when the row is destroyed mid-hold', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, fixture } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        const seen = vi.fn();
+        document.addEventListener('click', seen);
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        fixture.destroy();
+        document.body.click();
+        document.removeEventListener('click', seen);
+        expect(seen).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ignores the lift of a different pointer', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, actions } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        document.dispatchEvent(
+          new PointerEvent('pointerup', { pointerId: 99, bubbles: true }),
+        );
+        vi.advanceTimersByTime(400);
+        channel.click();
+        expect(actions).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

@@ -2,10 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   inject,
   input,
   output,
-  DestroyRef,
 } from '@angular/core';
 import {
   TrnActionAvailability,
@@ -40,9 +40,9 @@ import type { RoomSummary } from '@trinity/data-access/room-library';
 import { HapticsService } from '@trinity/platform-native';
 import { unencryptedShield } from '@trinity/data-access/timeline';
 import { formatTypingNotice } from '@trinity/util/matrix';
-import { roomSheetButtons } from './room-sheet-buttons';
-import { unreadBadgeLabel } from '../../../shared/unread-badge';
 import { UnencryptedMarkComponent } from '../../../shared/unencrypted-mark/unencrypted-mark.component';
+import { unreadBadgeLabel } from '../../../shared/unread-badge';
+import { roomSheetButtons } from './room-sheet-buttons';
 
 /**
  * What a row asks its list to do. Every variant carries the row's room (a merged row's `accountIds`
@@ -66,6 +66,8 @@ export type SidebarRoomAction =
 /** How long a touch is held before it opens the room's actions, and how far it may drift first. */
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_SLOP_PX = 10;
+/** The most a hold may keep swallowing clicks if no pointer end is ever seen. */
+const SWALLOW_FALLBACK_MS = 10_000;
 
 /**
  * One room in the sidebar list: the select button, the kebab and its menu with the Notifications submenu.
@@ -107,7 +109,10 @@ export class SidebarRoomRowComponent {
   private readonly haptics = inject(HapticsService);
   private pressTimer: ReturnType<typeof setTimeout> | null = null;
   private pressOrigin: { x: number; y: number } | null = null;
+  private pressPointerId: number | null = null;
   private swallowing = false;
+  private releaseTimer: ReturnType<typeof setTimeout> | null = null;
+  private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
   /**
    * After a hold opened the sheet, the click that follows the lift lands on the sheet's backdrop
    * (closing it) or on the row (opening the room). Taken in capture so it reaches neither.
@@ -172,10 +177,22 @@ export class SidebarRoomRowComponent {
     this.action.emit({ kind: 'select', room: this.room() });
   }
 
+  /** The lift of the finger that held: its click follows at once, so stop swallowing shortly after. */
+  private readonly liftSeen = (event: PointerEvent) => {
+    if (event.pointerId !== this.pressPointerId || this.releaseTimer !== null)
+      return;
+    this.releaseTimer = setTimeout(() => this.releaseClick(), 300);
+  };
+
   private releaseClick(): void {
     if (!this.swallowing) return;
     this.swallowing = false;
     document.removeEventListener('click', this.swallowClick, true);
+    document.removeEventListener('pointerup', this.liftSeen, true);
+    document.removeEventListener('pointercancel', this.liftSeen, true);
+    if (this.releaseTimer !== null) clearTimeout(this.releaseTimer);
+    if (this.fallbackTimer !== null) clearTimeout(this.fallbackTimer);
+    this.releaseTimer = this.fallbackTimer = null;
   }
 
   /** Touch has no ⋮ here: holding the row opens the same actions in the action sheet. */
@@ -183,13 +200,25 @@ export class SidebarRoomRowComponent {
     if (event.pointerType !== 'touch' || !event.isPrimary) return;
     this.cancelPress();
     this.pressOrigin = { x: event.clientX, y: event.clientY };
+    this.pressPointerId = event.pointerId;
     this.pressTimer = setTimeout(() => {
       this.pressTimer = null;
       this.swallowing = true;
       document.addEventListener('click', this.swallowClick, true);
+      document.addEventListener('pointerup', this.liftSeen, true);
+      document.addEventListener('pointercancel', this.liftSeen, true);
+      // Whatever ends the gesture elsewhere, a tap must never be swallowed for long.
+      this.fallbackTimer = setTimeout(
+        () => this.releaseClick(),
+        SWALLOW_FALLBACK_MS,
+      );
       this.haptics.gestureCommitted();
       this.surfaces.openActions(
         {
+          header:
+            this.mode() === 'mixed'
+              ? 'Notification settings differ between accounts'
+              : undefined,
           buttons: roomSheetButtons({
             room: this.room(),
             active: this.active(),
@@ -206,12 +235,6 @@ export class SidebarRoomRowComponent {
     }, LONG_PRESS_MS);
   }
 
-  protected onPointerUp(): void {
-    this.cancelPress();
-    // The click of a lift follows at once; a later keyboard click must not be swallowed.
-    if (this.swallowing) setTimeout(() => this.releaseClick(), 300);
-  }
-
   /** A press that travels is a scroll. */
   protected onPointerMove(event: PointerEvent): void {
     const origin = this.pressOrigin;
@@ -224,7 +247,8 @@ export class SidebarRoomRowComponent {
     }
   }
 
-  protected cancelPress(): void {
+  protected cancelPress(event?: PointerEvent): void {
+    if (event && event.pointerId !== this.pressPointerId) return;
     if (this.pressTimer !== null) clearTimeout(this.pressTimer);
     this.pressTimer = null;
     this.pressOrigin = null;
