@@ -236,6 +236,229 @@ describe('WorkspaceLocationAdapter', () => {
     );
   });
 
+  describe('room panels', () => {
+    const members = { ...conversation, panel: { kind: 'members' } } as const;
+    const roomUrl = (destination: Parameters<typeof workspaceUrlOf>[0]) => {
+      const router = TestBed.inject(Router);
+      const projection = workspaceUrlOf(destination);
+      return router.serializeUrl(
+        router.createUrlTree([...projection.commands], {
+          queryParams: { ...projection.queryParams },
+        }),
+      );
+    };
+
+    it('marks a panel pushed over its Room, keeping the list mark below the Room', async () => {
+      const test = setup('/rooms');
+      test.moveTo(roomUrl(conversation), { trinityListBelow: true });
+
+      await firstValueFrom(
+        test.adapter.project(members, { history: 'push', withinRoom: true }),
+      );
+
+      expect(test.navigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          replaceUrl: false,
+          state: { trinityListBelow: true, trinityPanelBelow: true },
+        }),
+      );
+    });
+
+    it('keeps both marks when one panel replaces another', async () => {
+      const test = setup('/rooms');
+      test.moveTo(roomUrl(members), {
+        trinityListBelow: true,
+        trinityPanelBelow: true,
+      });
+
+      await firstValueFrom(
+        test.adapter.project(
+          { ...conversation, panel: { kind: 'pinned' } },
+          { history: 'replace', withinRoom: true },
+        ),
+      );
+
+      expect(test.navigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          replaceUrl: true,
+          state: { trinityListBelow: true, trinityPanelBelow: true },
+        }),
+      );
+    });
+
+    it('keeps the list mark when a panel with nothing below closes in place', async () => {
+      const test = setup('/rooms');
+      test.moveTo(roomUrl(members), { trinityListBelow: true });
+
+      await firstValueFrom(
+        test.adapter.project(conversation, {
+          history: 'replace',
+          withinRoom: true,
+        }),
+      );
+
+      expect(test.navigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          replaceUrl: true,
+          state: { trinityListBelow: true },
+        }),
+      );
+    });
+
+    it('follows the panel-below mark of the current history entry', () => {
+      const test = setup('/rooms');
+      expect(test.adapter.panelBelow()).toBe(false);
+      test.moveTo(roomUrl(members), { trinityPanelBelow: true });
+      expect(test.adapter.panelBelow()).toBe(true);
+      test.moveTo(roomUrl(conversation), { trinityListBelow: true });
+      expect(test.adapter.panelBelow()).toBe(false);
+    });
+
+    it('pops a thread opened from the threads list back past that list to its Room', async () => {
+      const test = setup('/rooms');
+      const threads = { ...conversation, panel: { kind: 'threads' } } as const;
+      const thread = {
+        ...conversation,
+        panel: { kind: 'thread', root: '$root:example.org' },
+      } as const;
+      test.moveTo(roomUrl(thread), { trinityPanelBelow: true });
+      test.location.back
+        .mockImplementationOnce(() =>
+          queueMicrotask(() =>
+            test.moveTo(roomUrl(threads), { trinityPanelBelow: true }),
+          ),
+        )
+        .mockImplementationOnce(() =>
+          queueMicrotask(() =>
+            test.moveTo(roomUrl(conversation), { trinityListBelow: true }),
+          ),
+        );
+
+      await expect(
+        firstValueFrom(test.adapter.project(conversation, { history: 'back' })),
+      ).resolves.toBe(true);
+      expect(test.location.back).toHaveBeenCalledTimes(2);
+      expect(test.navigate).not.toHaveBeenCalled();
+    });
+
+    it('stops on an unmarked panel below, such as a deep-linked threads list, and writes the Room there', async () => {
+      const test = setup('/rooms');
+      const threads = { ...conversation, panel: { kind: 'threads' } } as const;
+      const thread = {
+        ...conversation,
+        panel: { kind: 'thread', root: '$root:example.org' },
+      } as const;
+      test.moveTo(roomUrl(thread), { trinityPanelBelow: true });
+      test.location.back.mockImplementationOnce(() =>
+        queueMicrotask(() =>
+          test.moveTo(roomUrl(threads), { navigationId: 2 }),
+        ),
+      );
+
+      await firstValueFrom(
+        test.adapter.project(conversation, { history: 'back' }),
+      );
+
+      expect(test.location.back).toHaveBeenCalledOnce();
+      expect(test.navigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ replaceUrl: true }),
+      );
+      expect(test.navigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.not.objectContaining({ state: expect.anything() }),
+      );
+    });
+
+    it('does not pop a Room off to the list unless the Room is marked over it', async () => {
+      const test = setup('/rooms');
+      const list = { ...conversation, pane: 'list' } as const;
+      test.moveTo(roomUrl(members), { trinityPanelBelow: true });
+      test.location.back.mockImplementationOnce(() =>
+        queueMicrotask(() => test.moveTo(roomUrl(conversation))),
+      );
+
+      await firstValueFrom(test.adapter.project(list, { history: 'back' }));
+
+      expect(test.location.back).toHaveBeenCalledOnce();
+      expect(test.navigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ replaceUrl: true }),
+      );
+    });
+
+    it('keeps both marks when a repair replaces a panel entry', async () => {
+      const test = setup('/rooms');
+      test.moveTo(roomUrl(members), {
+        trinityListBelow: true,
+        trinityPanelBelow: true,
+      });
+
+      await firstValueFrom(
+        test.adapter.project(members, { history: 'replace', background: true }),
+      );
+
+      expect(test.navigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          replaceUrl: true,
+          state: { trinityListBelow: true, trinityPanelBelow: true },
+        }),
+      );
+    });
+
+    it('pops a panel and its Room to the list below them', async () => {
+      const test = setup('/rooms');
+      const list = { ...conversation, pane: 'list' } as const;
+      test.moveTo(roomUrl(members), {
+        trinityPanelBelow: true,
+        trinityListBelow: true,
+      });
+      test.location.back
+        .mockImplementationOnce(() =>
+          queueMicrotask(() =>
+            test.moveTo(roomUrl(conversation), { trinityListBelow: true }),
+          ),
+        )
+        .mockImplementationOnce(() =>
+          queueMicrotask(() => test.moveTo(roomUrl(list))),
+        );
+
+      await firstValueFrom(test.adapter.project(list, { history: 'back' }));
+
+      expect(test.location.back).toHaveBeenCalledTimes(2);
+      expect(test.navigate).not.toHaveBeenCalled();
+    });
+
+    it('stops at the Room below a panel, writing it in place with its list mark', async () => {
+      const test = setup('/rooms');
+      test.moveTo(roomUrl(members), { trinityPanelBelow: true });
+      test.location.back.mockImplementationOnce(() =>
+        queueMicrotask(() =>
+          test.moveTo(`${roomUrl(conversation)}&event=%24old`, {
+            trinityListBelow: true,
+          }),
+        ),
+      );
+
+      await firstValueFrom(
+        test.adapter.project(conversation, { history: 'back' }),
+      );
+
+      expect(test.location.back).toHaveBeenCalledOnce();
+      expect(test.navigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          replaceUrl: true,
+          state: { trinityListBelow: true },
+        }),
+      );
+    });
+  });
+
   it('follows the list-below mark of the current history entry', () => {
     const test = setup('/rooms');
     expect(test.adapter.listBelow()).toBe(false);

@@ -122,3 +122,27 @@ export type WorkspaceBackOutcome =
 export type WorkspacePanel =
   | { readonly kind: 'members' | 'threads' | 'pinned' | 'search' }
   | { readonly kind: 'thread'; readonly root: string };
+
+export function sameWorkspacePanel(
+  left: WorkspacePanel | null,
+  right: WorkspacePanel | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  if (left.kind !== right.kind) return false;
+  return (
+    left.kind !== 'thread' ||
+    (right.kind === 'thread' && left.root === right.root)
+  );
+}
+
+/** Whether a Room surface is the panel a Workspace destination names. */
+export function isWorkspacePanelSurface(
+  surface: WorkspaceRoomSurface,
+  panel: WorkspacePanel | null,
+): boolean {
+  if (panel === null || surface.kind !== panel.kind) return false;
+  return (
+    surface.kind !== 'thread' ||
+    (panel.kind === 'thread' && surface.rootEventId === panel.root)
+  );
+}

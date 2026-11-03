@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import {
   WorkspaceBackService,
   WorkspaceNavigationService,
+  isWorkspacePanelSurface,
 } from '@trinity/application/workspace';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import { map, take, type Observable } from 'rxjs';
@@ -34,6 +35,13 @@ export function workspaceBrowserBackGuard(): boolean | Observable<boolean> {
     // from) and Workspace restores it. Dismissing here would navigate inside this popstate,
     // supersede it and, as that cancels the dismissal, write the Conversation back (#1888).
     if (active?.layer === 'conversation') return true;
+    // A panel the URL names: the step lands on the entry below it, and Workspace restores
+    // that, closing the panel, for the same reason.
+    if (
+      active?.layer === 'room' &&
+      isWorkspacePanelSurface(active.surface, workspace.panel())
+    )
+      return true;
   }
   if (back.hasActive()) {
     // `hasActive` is a cached projection; `back()` re-reads the surface when it runs. If
