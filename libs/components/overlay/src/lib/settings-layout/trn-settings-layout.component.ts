@@ -52,7 +52,11 @@ export interface TrnSettingsLayoutSection {
     },
   ],
   templateUrl: './trn-settings-layout.component.html',
-  styleUrl: './trn-settings-layout.component.scss',
+  // The section slide sits in a sheet of its own to keep each under the style budget.
+  styleUrls: [
+    './trn-settings-layout.component.scss',
+    './trn-settings-layout.slide.scss',
+  ],
   host: {
     '[attr.data-presentation]': 'framing',
     '(keydown.escape)': 'onEscape($event)',

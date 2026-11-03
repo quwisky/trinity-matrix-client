@@ -8,7 +8,13 @@ import {
   WHATS_NEW_LAUNCHER,
 } from '@trinity/data-access/whats-new';
 import { BUILD_INFO, FeatureFlagsService } from '@trinity/platform-native';
-import { TrnDialogRef, TrnSettingsParts } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnSettingsParts,
+  TrnSurfaceService,
+} from '@trinity/components/overlay';
+import { Location } from '@angular/common';
+import { provideLocationMocks } from '@angular/common/testing';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { matchingSettingsSections } from '../settings-sections';
@@ -254,6 +260,121 @@ describe('SettingsDialogComponent', () => {
       expect(
         within(root).queryByRole('button', { name: "What's new" }),
       ).toBeNull();
+    });
+  });
+
+  describe('phone sheet history', () => {
+    let topmost = true;
+    const closeTopmost = vi.fn();
+    const MARK = 'trinitySettingsSection';
+
+    const sheet = () => {
+      vi.stubGlobal('innerWidth', 390);
+      TestBed.configureTestingModule({
+        providers: [
+          provideLocationMocks(),
+          {
+            provide: TrnSurfaceService,
+            useValue: { isTopmost: () => topmost, closeTopmost },
+          },
+        ],
+      });
+      const location = TestBed.inject(Location);
+      location.go('/rooms/!a');
+      const fixture = TestBed.createComponent(SettingsDialogComponent);
+      fixture.detectChanges();
+      return { fixture, dialog: fixture.componentInstance, location };
+    };
+    const markOf = (location: Location) =>
+      (
+        location.getState() as Record<
+          string,
+          { section: string; depth: number }
+        > | null
+      )?.[MARK] ?? null;
+
+    beforeEach(() => {
+      topmost = true;
+    });
+
+    it('gives a section a marked entry at the same URL, and Back pops it', () => {
+      const { fixture, dialog, location } = sheet();
+      dialog.selectSection('appearance');
+      expect(location.path()).toBe('/rooms/!a');
+      expect(markOf(location)).toMatchObject({
+        section: 'appearance',
+        depth: 1,
+      });
+
+      dialog.goBackOrClose();
+      expect(dialog.selectedPath()).toBeNull();
+      expect(markOf(location)).toBeNull();
+      expect(close).not.toHaveBeenCalled();
+
+      // Browser Back from a section steps to the list too; Forward re-opens it.
+      dialog.selectSection('privacy');
+      location.back();
+      expect(dialog.selectedPath()).toBeNull();
+      location.forward();
+      expect(dialog.selectedPath()).toBe('privacy');
+      fixture.destroy();
+    });
+
+    it('takes its entries off history when it closes, and only its own', () => {
+      const { fixture, dialog, location } = sheet();
+      dialog.selectSection('appearance');
+      const historyGo = vi.spyOn(location, 'historyGo');
+      fixture.destroy();
+      expect(historyGo).toHaveBeenCalledWith(-1);
+
+      // A sheet opened over another sheet's leftover entry ignores that mark.
+      location.go('/rooms/!a', '', {
+        [MARK]: { sheet: 'another', section: 'privacy', depth: 1 },
+      });
+      const next = TestBed.createComponent(SettingsDialogComponent);
+      next.detectChanges();
+      location.go('/rooms/!a');
+      location.back();
+      expect(next.componentInstance.selectedPath()).toBeNull();
+      historyGo.mockClear();
+      next.destroy();
+      expect(historyGo).not.toHaveBeenCalled();
+    });
+
+    it('closes a dialog over it instead of changing section, and undoes the step either way', () => {
+      const { fixture, dialog, location } = sheet();
+      dialog.selectSection('appearance');
+      topmost = false;
+      // Back: put back with Forward.
+      location.back();
+      expect(closeTopmost).toHaveBeenCalledOnce();
+      expect(dialog.selectedPath()).toBe('appearance');
+      expect(markOf(location)).toMatchObject({ section: 'appearance' });
+
+      // Forward from the list: put back with Back.
+      topmost = true;
+      location.back();
+      expect(dialog.selectedPath()).toBeNull();
+      topmost = false;
+      closeTopmost.mockClear();
+      location.forward();
+      expect(closeTopmost).toHaveBeenCalledOnce();
+      expect(dialog.selectedPath()).toBeNull();
+      expect(markOf(location)).toBeNull();
+      fixture.destroy();
+    });
+
+    it('undoes the step once when the dialog over it refuses to close', () => {
+      const { fixture, dialog, location } = sheet();
+      dialog.selectSection('appearance');
+      topmost = false;
+      location.back();
+      location.back();
+      // The second Back is a fresh step, taken while the dialog still covers the sheet.
+      expect(closeTopmost).toHaveBeenCalledTimes(2);
+      expect(dialog.selectedPath()).toBe('appearance');
+      expect(markOf(location)).toMatchObject({ section: 'appearance' });
+      fixture.destroy();
     });
   });
 });

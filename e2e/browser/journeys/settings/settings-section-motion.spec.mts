@@ -177,6 +177,29 @@ test.describe('Settings sections on a phone', () => {
     await expect(page.locator('trn-rooms')).toBeVisible();
   });
 
+  test('leaving for another page from a section leaves no dead entry behind', async ({
+    page,
+  }) => {
+    await openPhoneSheet(page);
+    const roomUrl = page.url();
+    const base = await historyIndex(page);
+
+    await page.getByTestId('settings-nav-security').click();
+    const setUp = page.getByTestId('security-setup');
+    await expect(setUp).toBeVisible({ timeout: 20_000 });
+    expect(await historyIndex(page)).toBe(base + 1);
+
+    // Recovery setup is a page of its own: it takes the section's entry.
+    await setUp.click();
+    await page.waitForURL(/\/encryption\/setup/);
+    expect(await historyIndex(page)).toBe(base + 1);
+
+    // One Back lands where the sheet opened, with nothing of the sheet left to step through.
+    await page.evaluate(() => history.back());
+    await expect(page).toHaveURL(roomUrl);
+    await expect.poll(() => historyIndex(page)).toBe(base);
+  });
+
   test('a section slides in over the sheet directory and out again', async ({
     page,
   }) => {
@@ -289,14 +312,15 @@ test.describe('Settings sections on a phone', () => {
       const edge = { x: Math.round(box.x + 8), y: Math.round(box.y + 200) };
 
       // Mid-drag the section follows the finger over the directory.
-      const release = await swipe(page, edge, edge.x + 120, {
+      // 80px of 390 over at least 300ms: well short of 40% and of the 0.5 px/ms fling.
+      const release = await swipe(page, edge, edge.x + 80, {
         release: false,
       });
       await expect(workspace).toHaveAttribute('data-pane-swipe', '');
       const following = await detail.evaluate(
         (element) => new DOMMatrix(getComputedStyle(element).transform).m41,
       );
-      expect(following).toBeGreaterThan(100);
+      expect(following).toBeGreaterThan(60);
       await release();
 
       // Short of the threshold, it springs back and stays.

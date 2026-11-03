@@ -16,7 +16,8 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { NavigationStart, Router } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   TrnDialogRef,
   TrnSurfaceService,
@@ -31,7 +32,7 @@ import {
   WHATS_NEW_LAUNCHER,
 } from '@trinity/data-access/whats-new';
 import { textScaledViewportSignal } from '@trinity/util/ui';
-import { of } from 'rxjs';
+import { filter, of } from 'rxjs';
 import { provideConfigEditor } from '../advanced/config-editor-loader';
 import {
   SETTINGS_SECTIONS,
@@ -83,6 +84,8 @@ export class SettingsDialogComponent {
   private depth = 0;
   /** The section leaving was swiped off already, so it draws no slide. */
   private swiped = false;
+  /** The next history step is this sheet undoing one taken under a dialog above it. */
+  private restoring = false;
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
   private readonly directorySearch = viewChild(
     SettingsDirectorySearchComponent,
@@ -155,6 +158,28 @@ export class SettingsDialogComponent {
     this.destroyRef.onDestroy(unregister);
     this.destroyRef.onDestroy(() => this.advancedInjector.destroy());
     const pops = this.location.subscribe(({ state }) => this.onPop(state));
+    // Leaving for another page from a section: that page takes the section's entry, so Back
+    // from it lands where the sheet opened, with no dead entry between.
+    // shortcut: replaces one entry; deeper ones (an open sheet re-targeted to a section) stay.
+    this.router.events
+      .pipe(
+        filter(
+          (event) =>
+            event instanceof NavigationStart &&
+            event.navigationTrigger === 'imperative',
+        ),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => {
+        const navigation = this.router.currentNavigation();
+        if (
+          navigation &&
+          this.depth > 0 &&
+          this.markOf(this.location.getState())
+        ) {
+          navigation.extras.replaceUrl = true;
+        }
+      });
     this.destroyRef.onDestroy(() => {
       pops.unsubscribe();
       // Closed by ×, the scrim or a drag over its own entries: take them off. A navigation
@@ -259,14 +284,20 @@ export class SettingsDialogComponent {
    * skips it and runs no guard; the sheet follows the entry it landed on.
    */
   private onPop(state: unknown): void {
+    if (this.restoring) {
+      this.restoring = false;
+      return;
+    }
     const mark = this.markOf(state);
     // Not from one of this sheet's entries: the router's step, which its guard owns.
     if (this.depth === 0 && !mark) return;
     if (!this.dialog.isTopmost(this.ref)) {
-      // With nothing to guard, Back would change the section under the dialog above: close
-      // that instead, and put the step back.
+      // With nothing to guard, the step would change the section under the dialog above:
+      // close that instead, and undo the step in the direction it went.
       this.dialog.closeTopmost();
-      this.location.forward();
+      this.restoring = true;
+      if ((mark?.depth ?? 0) < this.depth) this.location.forward();
+      else this.location.back();
       return;
     }
     this.depth = mark?.depth ?? 0;
