@@ -24,7 +24,7 @@
     />
   } @else if (blocked(); as blockedState) {
     <main
-      class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center"
+      class="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-4 overflow-y-auto p-6 text-center"
       role="alert"
       data-testid="app-startup-blocked"
     >

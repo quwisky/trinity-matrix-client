@@ -1,7 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { THEME_CATALOG } from '@trinity/theme-foundation';
-import { afterEach, describe, expect, it } from 'vitest';
-import { BrowserAppearanceDocumentAdapter } from './appearance-document.adapter';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  BrowserAppearanceDocumentAdapter,
+  deviceTextScale,
+} from './appearance-document.adapter';
 import type { ResolvedAppearance } from './appearance-resolution';
 
 const root = document.documentElement;
@@ -132,4 +135,69 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       expect(root.getAttribute('data-theme')).toBe(theme.dataTheme);
     });
   }
+});
+
+describe('iOS Dynamic Type', () => {
+  const appearance: ResolvedAppearance = {
+    mode: 'light',
+    theme: 'trinity',
+    textSize: 'default',
+    density: 'cosy',
+    roomList: 'rich',
+    codeSize: 'default',
+    codeLinePresentation: 'auto',
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    document
+      .querySelectorAll('span[style*="apple-system-body"]')
+      .forEach((e) => e.remove());
+    root.style.removeProperty('font-size');
+  });
+
+  function iosAdapter(bodyPx: () => string): BrowserAppearanceDocumentAdapter {
+    vi.stubGlobal('CSS', { supports: () => true });
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((el) =>
+      el instanceof HTMLSpanElement
+        ? ({ fontSize: bodyPx() } as CSSStyleDeclaration)
+        : real(el),
+    );
+    TestBed.configureTestingModule({
+      providers: [BrowserAppearanceDocumentAdapter],
+    });
+    return TestBed.inject(BrowserAppearanceDocumentAdapter);
+  }
+
+  it('is 1 without a probe and 40/17 at accessibility extra large', () => {
+    expect(deviceTextScale(null, window)).toBe(1);
+    const probe = document.createElement('span');
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
+      fontSize: '17px',
+    } as CSSStyleDeclaration);
+    expect(deviceTextScale(probe, window)).toBe(1);
+    vi.mocked(window.getComputedStyle).mockReturnValue({
+      fontSize: '40px',
+    } as CSSStyleDeclaration);
+    expect(deviceTextScale(probe, window)).toBeCloseTo(40 / 17);
+  });
+
+  it('leaves the root alone at the default device size', () => {
+    iosAdapter(() => '17px').apply(appearance);
+    expect(root.style.fontSize).toBe('');
+  });
+
+  it('scales the app setting relative to the device size, and follows it live', () => {
+    let body = '40px';
+    const adapter = iosAdapter(() => body);
+    adapter.apply({ ...appearance, textSize: 'larger' });
+    expect(parseFloat(root.style.fontSize)).toBeCloseTo((125 * 40) / 17);
+
+    body = '17px';
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(root.style.fontSize).toBe('125%');
+  });
 });

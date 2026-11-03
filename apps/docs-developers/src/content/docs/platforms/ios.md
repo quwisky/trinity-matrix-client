@@ -39,6 +39,10 @@ TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native TRINITY_E2E
 
 The WebdriverIO and Appium suite drives the simulator build through the XCUITest driver. It needs macOS, Xcode, the pinned iOS Simulator runtime, `caddy` on `PATH`, and a Python 3 new enough for the pinned Synapse (the system Python 3.9 is too old); Synapse runs from a venv instead of Docker, without a second homeserver; with `dex` on `PATH` and `TRINITY_E2E_SSO_PROVIDER=mock`, the SSO spec signs in through Dex's form-free mock connector, and skips otherwise. Read [desktop and native tests](../../testing/desktop-and-native-tests/) for what simulator evidence does and does not prove.
 
+## Dynamic Type {#dynamic-type}
+
+The renderer reads iOS body text size through a hidden `-apple-system-body` probe and scales the root font size by its ratio to the default Large size (17px), so the Text size setting stays relative to the device default, accessibility sizes included. The size is read again when the app returns to the foreground; WebKit fires no event for the change itself. Test it with `xcrun simctl ui <udid> content_size accessibility-extra-large`.
+
 ## Push extension and configuration {#push-extension}
 
 The Xcode project has two targets: `App` and the `NotificationService` app extension (`dev.trinityproject.trinity.NotificationService`), which renders push notifications while Trinity is closed. The extension links the `TrinityPush` Swift package in `libs/native/capacitor-push/ios/TrinityPush`; the app reaches it through the `PushHandoff` plugin, the Swift package `TrinityCapacitorPush` that synchronization adds to `CapApp-SPM` from the workspace package `@trinity/capacitor-push`. Run the `TrinityPush` tests with `pnpm nx run trinity-ios:test-push`; it runs `swift test` and precedes the native builds in `verify-native` and CI's prebuilt build. The targets share the app group `group.dev.trinityproject.trinity` and a keychain access group, declared in `App/App.entitlements` and `NotificationService/NotificationService.entitlements` together with the push capability.
