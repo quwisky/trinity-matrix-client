@@ -198,4 +198,19 @@ describe('LightboxComponent touch', () => {
     expect(close).not.toHaveBeenCalled();
     expect(matrix(root).y).toBe(0);
   });
+
+  it('moves focus off a control before a tap hides it, so Enter cannot act unseen', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const closeButton = root.querySelector<HTMLButtonElement>(
+      '[data-testid="lightbox-close"]',
+    )!;
+    closeButton.focus();
+    expect(document.activeElement).toBe(closeButton);
+
+    tapAt(root, 1, 20, 20);
+    fixture.detectChanges();
+    expect(root.classList).toContain('lightbox--bare');
+    expect(document.activeElement).not.toBe(closeButton);
+  });
 });

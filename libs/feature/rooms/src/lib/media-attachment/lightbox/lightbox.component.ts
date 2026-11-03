@@ -8,14 +8,14 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { type PresentedMediaReference } from '@trinity/data-access/media';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { FileSaveService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
-import { map } from 'rxjs';
 import { MediaSaveService } from '../media-save.service';
 import {
   REST_VIEW,
@@ -31,6 +31,9 @@ import {
   type ImageView,
   type ViewPoint,
 } from './lightbox-gestures';
+
+/** A finger's own click follows its lift within this long; a click much later is not its. */
+const FINGER_CLICK_WINDOW_MS = 500;
 
 /**
  * A full-resolution image, filling the viewport over a dark backdrop.
@@ -48,8 +51,6 @@ import {
  * The drag writes the transform straight to the element, as the other swipe gestures do, so no
  * render sits between a finger and a frame.
  */
-/** A finger's own click follows its lift within this long; a click much later is not its. */
-const FINGER_CLICK_WINDOW_MS = 500;
 
 @Component({
   selector: 'trn-lightbox',
@@ -72,24 +73,21 @@ const FINGER_CLICK_WINDOW_MS = 500;
   styleUrl: './lightbox.component.scss',
 })
 export class LightboxComponent {
-  readonly src = input.required<string>();
-  readonly filename = input<string>('');
-  /** The attachment being viewed; what the download button saves. */
-  readonly media = input.required<PresentedMediaReference>();
-
   private readonly mediaSave = inject(MediaSaveService);
-  /** Whether THIS item is being saved; other items' saves do not affect the button. */
-  protected readonly busy = computed(() =>
-    this.mediaSave.isSaving(this.media()),
-  );
-
+  private readonly files = inject(FileSaveService);
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly image =
     viewChild.required<ElementRef<HTMLImageElement>>('image');
+  private readonly exportSupported = toSignal(
+    inject(HostFileExportService)
+      .support()
+      .pipe(map((support) => support.kind === 'supported')),
+    { initialValue: false },
+  );
+  private readonly pointers = new Map<number, ViewPoint>();
 
   private view: ImageView = REST_VIEW;
-  private readonly pointers = new Map<number, ViewPoint>();
   private start: { at: number; point: ViewPoint; view: ImageView } | null =
     null;
   private pinch: { distance: number; mid: ViewPoint; view: ImageView } | null =
@@ -103,20 +101,22 @@ export class LightboxComponent {
   /** The viewer's box, read once per touch rather than on every move. */
   private rect: DOMRect | null = null;
 
+  /** Whether THIS item is being saved; other items' saves do not affect the button. */
+  protected readonly busy = computed(() =>
+    this.mediaSave.isSaving(this.media()),
+  );
   /** The phone shows the controls only until a tap hides them; a mouse always has them. */
   protected readonly controls = signal(true);
   protected readonly touching = signal(false);
   /** Natively the host's save is the system share sheet, so name the action for what it does. */
-  private readonly exportSupported = toSignal(
-    inject(HostFileExportService)
-      .support()
-      .pipe(map((support) => support.kind === 'supported')),
-    { initialValue: false },
-  );
   protected readonly shares = computed(
     () => this.exportSupported() && this.files.nativeAvailable,
   );
-  private readonly files = inject(FileSaveService);
+
+  readonly src = input.required<string>();
+  readonly filename = input<string>('');
+  /** The attachment being viewed; what the download button saves. */
+  readonly media = input.required<PresentedMediaReference>();
 
   /** Save without letting the click reach the host, which closes the viewer on any click. */
   protected download(event: Event): void {
@@ -261,11 +261,25 @@ export class LightboxComponent {
     if (isDoubleTap(this.lastTap, at, point)) {
       this.lastTap = null;
       // The first tap of the pair toggled the controls; the zoom takes that back.
-      this.controls.update((shown) => !shown);
+      this.toggleControls();
       this.show(clampView(doubleTapView(this.view, point), this.displayed()));
       return;
     }
     this.lastTap = { at, point };
+    this.toggleControls();
+  }
+
+  /** Hiding must not leave focus on a control nobody can see, where Enter would act unseen. */
+  private toggleControls(): void {
+    if (this.controls()) {
+      const focused = document.activeElement;
+      if (focused && focused.closest('.lightbox__actions')) {
+        this.host.nativeElement
+          .closest<HTMLElement>('[role="dialog"]')
+          ?.focus();
+        (focused as HTMLElement).blur();
+      }
+    }
     this.controls.update((shown) => !shown);
   }
 
