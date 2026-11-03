@@ -332,7 +332,7 @@
       // Fixed to the layout viewport, outside the root, so it ends above the iOS keyboard itself.
       bottom: var(--trinity-keyboard-shrink, 0);
       transition: bottom var(--trinity-duration-keyboard)
-        var(--trinity-ease-keyboard);
+        var(--trinity-ease-keyboard) var(--trinity-delay-keyboard);
       right: 0;
       z-index: var(--trinity-z-panel);
       flex: none;
