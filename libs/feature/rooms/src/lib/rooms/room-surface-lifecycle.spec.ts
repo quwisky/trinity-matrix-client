@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import {
   WorkspaceBackService,
   WorkspaceNavigationService,
+  type WorkspacePanel,
   type WorkspaceRoomSurface,
 } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
@@ -52,7 +53,14 @@ function stubMedia(initial: Record<string, boolean> = {}) {
   };
 }
 
-function build(roomId: string | null = '!room:example.org') {
+/**
+ * Workspace commits a panel request at once unless `commits` is false, which models a
+ * close still being written when the next thing happens.
+ */
+function build(
+  roomId: string | null = '!room:example.org',
+  { commits = true }: { readonly commits?: boolean } = {},
+) {
   const activeAccountId = signal<string | null>('@alice:example.org');
   const activeRoomId = signal<string | null>(roomId);
   const pane = signal<'list' | 'conversation'>(
@@ -61,6 +69,14 @@ function build(roomId: string | null = '!room:example.org') {
   const navigate = vi.fn((intent: { readonly kind: string }) => {
     if (intent.kind === 'list') pane.set('list');
     return of({ kind: 'ready' as const });
+  });
+  const panel = signal<WorkspacePanel | null>(null);
+  const membersBelow = signal(false);
+  const openPanel = vi.fn((next: WorkspacePanel) => {
+    if (commits) panel.set(next);
+  });
+  const closePanel = vi.fn(() => {
+    if (commits) panel.set(null);
   });
 
   TestBed.configureTestingModule({
@@ -80,6 +96,10 @@ function build(roomId: string | null = '!room:example.org') {
             'split',
           ).asReadonly(),
           navigate,
+          panel: panel.asReadonly(),
+          membersBelow: membersBelow.asReadonly(),
+          openPanel,
+          closePanel,
         },
       },
     ],
@@ -90,6 +110,10 @@ function build(roomId: string | null = '!room:example.org') {
     activeRoomId,
     pane,
     navigate,
+    panel,
+    membersBelow,
+    openPanel,
+    closePanel,
     lifecycle: TestBed.inject(RoomSurfaceLifecycle),
     back: TestBed.inject(WorkspaceBackService),
   };
@@ -251,42 +275,139 @@ describe('RoomSurfaceLifecycle', () => {
     }
   });
 
-  it('keeps remembered members across Room, Account, and missing-Room transitions', () => {
+  it('asks Workspace for each panel it opens, and shows what the URL then names', () => {
     stubMedia();
-    const { activeAccountId, activeRoomId, lifecycle, pane } = build();
-    lifecycle.transition({ kind: 'open-members' });
+    const { lifecycle, openPanel } = build();
+    const opened: readonly [RoomSurfaceTransition, WorkspacePanel][] = [
+      [{ kind: 'open-members' }, { kind: 'members' }],
+      [{ kind: 'open-threads' }, { kind: 'threads' }],
+      [
+        { kind: 'open-thread', rootEventId: '$root' },
+        { kind: 'thread', root: '$root' },
+      ],
+      [{ kind: 'open-pinned' }, { kind: 'pinned' }],
+      [{ kind: 'open-search' }, { kind: 'search' }],
+    ];
 
-    activeRoomId.set('!other:example.org');
-    expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
-
-    activeAccountId.set('@carol:example.org');
-    expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
-
-    pane.set('list');
-    expect(lifecycle.renderedSurface()).toBeNull();
-    pane.set('conversation');
-    expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
+    for (const [intent, panel] of opened) {
+      lifecycle.transition(intent);
+      expect(openPanel).toHaveBeenLastCalledWith(panel);
+      expect(lifecycle.renderedSurface()).toMatchObject({ kind: panel.kind });
+    }
   });
 
-  it('keeps remembered closed across Room, Account, and missing-Room transitions', () => {
+  it('shows the panel a reloaded URL names, and a thread once its root has loaded', () => {
     stubMedia();
-    const { activeAccountId, activeRoomId, lifecycle, pane } = build();
+    const { lifecycle, openPanel, panel } = build();
 
-    activeRoomId.set('!other:example.org');
-    expect(lifecycle.renderedSurface()).toBeNull();
+    for (const kind of ['members', 'threads', 'pinned', 'search'] as const) {
+      panel.set({ kind });
+      expect(lifecycle.renderedSurface()).toEqual({ kind });
+    }
 
-    activeAccountId.set('@carol:example.org');
+    panel.set({ kind: 'thread', root: '$root' });
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+      loading: true,
+    });
+
+    lifecycle.transition({ kind: 'open-thread', rootEventId: '$root' });
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+    });
+    expect(openPanel).not.toHaveBeenCalled();
+  });
+
+  it('forgets a thread and its reveal once the URL names another root', () => {
+    stubMedia();
+    const { lifecycle, panel } = build();
+    lifecycle.transition({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$reply',
+    });
+
+    panel.set({ kind: 'thread', root: '$other' });
+    expect(lifecycle.renderedSurface()).toMatchObject({ loading: true });
+    TestBed.tick();
+    panel.set({ kind: 'thread', root: '$root' });
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+      loading: true,
+    });
+  });
+
+  it('reveals a requested message once, not again after Back and Forward', () => {
+    stubMedia();
+    const { lifecycle, panel } = build();
+    lifecycle.transition({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$reply',
+    });
+    expect(lifecycle.renderedSurface()).toMatchObject({
+      revealEventId: '$reply',
+    });
+
+    panel.set(null);
     expect(lifecycle.renderedSurface()).toBeNull();
+    panel.set({ kind: 'thread', root: '$root' });
+
+    expect(lifecycle.renderedSurface()).toMatchObject({ loading: true });
+    expect(lifecycle.renderedSurface()).not.toHaveProperty('revealEventId');
+  });
+
+  it('keeps showing the thread the URL names until another one commits', () => {
+    stubMedia();
+    const { lifecycle, panel } = build(undefined, { commits: false });
+    panel.set({ kind: 'thread', root: '$a' });
+    lifecycle.transition({ kind: 'open-thread', rootEventId: '$a' });
+
+    lifecycle.transition({ kind: 'open-thread', rootEventId: '$b' });
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$a',
+    });
+
+    panel.set({ kind: 'thread', root: '$b' });
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$b',
+    });
+  });
+
+  it('drops a reveal whose close another panel superseded, even once that one closes', () => {
+    stubMedia();
+    const { lifecycle, panel } = build(undefined, { commits: false });
+    panel.set({ kind: 'pinned' });
+
+    lifecycle.transition({ kind: 'reveal-message', eventId: '$event' });
+    panel.set({ kind: 'threads' });
+    TestBed.tick();
+    panel.set(null);
+    TestBed.tick();
+
+    expect(lifecycle.jumpTarget()).toBeNull();
+    expect(lifecycle.jumpRevision()).toBe(0);
+  });
+
+  it('shows nothing while the Conversation pane is not open', () => {
+    stubMedia();
+    const { lifecycle, pane, panel } = build();
+    panel.set({ kind: 'members' });
 
     pane.set('list');
     expect(lifecycle.renderedSurface()).toBeNull();
     pane.set('conversation');
-    expect(lifecycle.renderedSurface()).toBeNull();
+    expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('places a temporary surface over remembered members and restores the roster', () => {
     stubMedia();
-    const { lifecycle } = build();
+    const { lifecycle, openPanel } = build();
     lifecycle.transition({ kind: 'open-members' });
     lifecycle.transition({ kind: 'open-threads' });
 
@@ -294,8 +415,37 @@ describe('RoomSurfaceLifecycle', () => {
     expect(lifecycle.membersVisible()).toBe(false);
 
     lifecycle.transition({ kind: 'dismiss' });
+    expect(openPanel).toHaveBeenLastCalledWith({ kind: 'members' });
     expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
     expect(lifecycle.membersVisible()).toBe(true);
+  });
+
+  it('closes back to the roster history says lies below, after a reload or Forward', () => {
+    stubMedia();
+    const { closePanel, lifecycle, membersBelow, openPanel, panel } = build();
+    panel.set({ kind: 'threads' });
+    membersBelow.set(true);
+
+    lifecycle.transition({ kind: 'dismiss' });
+
+    expect(openPanel).toHaveBeenCalledExactlyOnceWith({ kind: 'members' });
+    expect(closePanel).not.toHaveBeenCalled();
+  });
+
+  it('does not restore a roster that a reload or Back did not leave below', () => {
+    stubMedia();
+    const { closePanel, lifecycle, panel } = build();
+    panel.set({ kind: 'threads' });
+
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(closePanel).toHaveBeenCalledOnce();
+    expect(lifecycle.renderedSurface()).toBeNull();
+
+    panel.set({ kind: 'members' });
+    panel.set(null);
+    panel.set({ kind: 'pinned' });
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(lifecycle.renderedSurface()).toBeNull();
   });
 
   it('returns every temporary surface to the remembered roster or an empty slot', () => {
@@ -372,9 +522,6 @@ describe('RoomSurfaceLifecycle', () => {
 
     resize(BELOW_MEMBERS_QUERY, true);
     TestBed.tick();
-    expect(lifecycle.renderedSurface()).toBeNull();
-
-    lifecycle.transition({ kind: 'open-members' });
     lifecycle.transition({ kind: 'escape' });
     expect(lifecycle.renderedSurface()).toBeNull();
 
@@ -383,18 +530,19 @@ describe('RoomSurfaceLifecycle', () => {
     expect(lifecycle.renderedSurface()).toBeNull();
   });
 
-  it('clears hidden remembered members on drawer entry without closing a temporary surface', () => {
+  it('keeps the roster the URL names when the viewport becomes a drawer', () => {
     const resize = stubMedia({ [BELOW_MEMBERS_QUERY]: false });
-    const { lifecycle } = build();
+    const { closePanel, lifecycle } = build();
     lifecycle.transition({ kind: 'open-members' });
-    lifecycle.transition({ kind: 'open-threads' });
 
     resize(BELOW_MEMBERS_QUERY, true);
     TestBed.tick();
-    expect(lifecycle.renderedSurface()).toEqual({ kind: 'threads' });
+    expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
+    expect(closePanel).not.toHaveBeenCalled();
 
+    lifecycle.transition({ kind: 'open-threads' });
     lifecycle.transition({ kind: 'dismiss' });
-    expect(lifecycle.renderedSurface()).toBeNull();
+    expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('keeps an opened member drawer when it becomes a wide static column', () => {
@@ -407,21 +555,16 @@ describe('RoomSurfaceLifecycle', () => {
     expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
   });
 
-  it('drops temporary and jump state when the exact Conversation changes', () => {
+  it('drops jump state when the exact Conversation changes', () => {
     stubMedia();
-    const { activeAccountId, activeRoomId, lifecycle } = build();
-    lifecycle.transition({ kind: 'open-pinned' });
+    const { activeRoomId, lifecycle } = build();
     lifecycle.transition({ kind: 'reveal-message', eventId: '$one' });
     TestBed.tick();
+    expect(lifecycle.jumpTarget()).toBe('$one');
 
     activeRoomId.set('!other:example.org');
-    expect(lifecycle.renderedSurface()).toBeNull();
     expect(lifecycle.jumpTarget()).toBeNull();
     expect(lifecycle.jumpRevision()).toBe(0);
-
-    lifecycle.transition({ kind: 'open-threads' });
-    activeAccountId.set('@bob:example.org');
-    expect(lifecycle.renderedSurface()).toBeNull();
   });
 
   it('closes temporary state before a deferred message reveal', () => {
@@ -433,6 +576,24 @@ describe('RoomSurfaceLifecycle', () => {
     expect(lifecycle.renderedSurface()).toBeNull();
     expect(lifecycle.jumpTarget()).toBeNull();
 
+    TestBed.tick();
+    expect(lifecycle.jumpTarget()).toBe('$event');
+    expect(lifecycle.jumpRevision()).toBe(1);
+  });
+
+  it('reveals a jump from a panel only once its close has committed', () => {
+    stubMedia();
+    const { closePanel, lifecycle, panel } = build(undefined, {
+      commits: false,
+    });
+    panel.set({ kind: 'pinned' });
+
+    lifecycle.transition({ kind: 'reveal-message', eventId: '$event' });
+    expect(closePanel).toHaveBeenCalledOnce();
+    TestBed.tick();
+    expect(lifecycle.jumpTarget()).toBeNull();
+
+    panel.set(null);
     TestBed.tick();
     expect(lifecycle.jumpTarget()).toBe('$event');
     expect(lifecycle.jumpRevision()).toBe(1);

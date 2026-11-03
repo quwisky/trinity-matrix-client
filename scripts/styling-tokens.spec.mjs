@@ -129,6 +129,23 @@ describe('styling tokens', () => {
     );
     expect(lockCover).toContain(shrink);
     expect(lockCover).toContain(`duration-[${follows}]`);
+    // ...and with the same head start as the root, or it lags a frame or two behind it.
+    const delay = 'var(--trinity-delay-keyboard)';
+    expect(lockCover).toContain(`delay-[${delay}]`);
+    expect(
+      read(
+        'libs/application/runtime/src/lib/application-root/application-root.component.html',
+      ),
+    ).toContain(`delay-[${delay}]`);
+    expect(rule(globalStyles, '.cdk-global-overlay-wrapper {')).toContain(
+      `var(--trinity-ease-keyboard) ${delay}`,
+    );
+    expect(
+      rule(
+        read('libs/feature/rooms/src/lib/rooms/rooms.page.scss'),
+        '.chat-members,\n    .chat-panel {',
+      ),
+    ).toContain(`var(--trinity-ease-keyboard) ${delay}`);
 
     const caps = [
       'libs/**/*.{scss,css,html,ts}',

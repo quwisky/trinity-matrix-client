@@ -156,6 +156,8 @@ export class ThreadViewComponent implements OnDestroy {
   /** A new value asks for the reveal again, as when the same message is opened a second time. */
   readonly revealRequest = input<unknown>(null);
   readonly revealFailed = output<void>();
+  /** Its root is still loading: show the panel's loading state and open nothing yet. */
+  readonly loading = input(false);
   /** The user closed the thread. There is nothing to pick here, so no `selected`. */
   readonly dismissed = output<void>();
 
@@ -177,10 +179,12 @@ export class ThreadViewComponent implements OnDestroy {
   private revealedEventId: string | null = null;
   private revealedRequest: unknown = null;
   private readonly threadBinding = effect(() => {
+    const loading = this.loading();
     const roomId = this.roomId();
     const rootEventId = this.rootEventId();
     const current = this.openedThread();
     if (
+      !loading &&
       current?.key.roomId === roomId &&
       current.key.rootEventId === rootEventId
     ) {
@@ -192,7 +196,9 @@ export class ThreadViewComponent implements OnDestroy {
       this.commands.reset();
       this.timeline.setTyping(false, 'thread');
     }
-    this.openedThread.set(this.conversations.threads.forRoot(rootEventId));
+    this.openedThread.set(
+      loading ? null : this.conversations.threads.forRoot(rootEventId),
+    );
   });
 
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');

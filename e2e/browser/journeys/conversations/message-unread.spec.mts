@@ -229,7 +229,13 @@ test.describe('Unread divider + jump-to-unread', () => {
     // pill back. Deliberately not scrolling up by a fixed amount: that heads towards the
     // top, and crossing the auto-load threshold starts a backfill whose re-rendering leaves
     // the pill never stable enough for Playwright to click.
-    await scroll.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    //
+    // A wheel, not `scrollTo`: for a few seconds after a jump the list re-aims at its target as
+    // rows measure and history lands, until the reader scrolls with wheel, touch, keys or a pointer.
+    // A bare `scrollTo` is no reader input, so a late re-aim pulled the list back to the divider
+    // and removed the pill before or during the click.
+    await scroll.hover();
+    await page.mouse.wheel(0, 10_000);
     await expect(jump).toBeVisible({ timeout: 20_000 });
     await page.evaluate(() => {
       (window as unknown as { __scrolls: string[] }).__scrolls = [];

@@ -2,6 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { Injectable, inject, untracked } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 import { ROUTED_PAGE_CLASS, isBackgroundNavigation } from '@trinity/util/ui';
+import { isWorkspacePanelChange } from '@trinity/application/workspace';
 import { Observable, filter } from 'rxjs';
 
 /** Landmarks focus can fall back to when the control holding it is removed. */
@@ -42,6 +43,7 @@ export class NavigationFocusService {
         if (!completedSynchronously) pendingFrames.add(frameId);
       };
       let lastFocus: FocusRecord | null = null;
+      let lastUrl: string | null = null;
       const onFocusIn = (event: FocusEvent): void => {
         if (event.target instanceof Element) {
           lastFocus = {
@@ -58,12 +60,18 @@ export class NavigationFocusService {
           ),
         )
         .subscribe({
-          next: () => {
+          next: (end) => {
+            const previousUrl = lastUrl;
+            lastUrl = end.urlAfterRedirects;
             // Router records the navigation just before NavigationEnd; read it now, before a
-            // later navigation can replace it.
-            const background = isBackgroundNavigation(
-              untracked(this.router.lastSuccessfulNavigation)?.extras.info,
-            );
+            // later navigation can replace it. A Room panel opening or closing keeps focus
+            // where the Room's surface put it.
+            const background =
+              isBackgroundNavigation(
+                untracked(this.router.lastSuccessfulNavigation)?.extras.info,
+              ) ||
+              (previousUrl !== null &&
+                isWorkspacePanelChange(previousUrl, end.urlAfterRedirects));
             if (!background) {
               frame(() => {
                 this.focusEnteringPage();

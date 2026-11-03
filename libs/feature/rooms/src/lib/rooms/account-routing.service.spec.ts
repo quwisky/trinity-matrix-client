@@ -1,6 +1,9 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import {
+  WorkspaceNavigationService,
+  type WorkspacePanel,
+} from '@trinity/application/workspace';
 import {
   MatrixClientService,
   type SyncState,
@@ -29,7 +32,10 @@ import {
 import { AccountRoutingService } from './account-routing.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
-import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
+import {
+  RoomSurfaceLifecycle,
+  type RenderedRoomSurface,
+} from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 
 describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
@@ -77,8 +83,12 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
           navigate,
           activeAccountId: signal<string | null>('@me:hs'),
           eventTarget: eventTarget.asReadonly(),
+          panel: signal(null),
         }),
-        MockProvider(RoomSurfaceLifecycle, { transition }),
+        MockProvider(RoomSurfaceLifecycle, {
+          transition,
+          renderedSurface: signal(null),
+        }),
         MockProvider(ConversationRuntime, {
           focused: focused.asReadonly(),
           timeline: {
@@ -463,11 +473,18 @@ describe('AccountRoutingService.openInboxRow', () => {
       readonly loaded?: readonly string[];
       readonly loadEvent?: Mock;
       readonly loadRoot?: Mock;
+      readonly panel?: WorkspacePanel;
     } = {},
   ) {
     const activeAccountId = options.activeAccountId ?? '@me:hs';
     const activeRoomId = options.activeRoomId ?? null;
     const roomId = signal<string | null>(activeRoomId);
+    const panel = signal<WorkspacePanel | null>(options.panel ?? null);
+    const shown = signal<RenderedRoomSurface | null>(null);
+    const loadState = signal<{
+      readonly kind: string;
+      readonly reason?: string;
+    }>({ kind: 'ready' });
     const navigate: Mock = vi.fn((intent: { readonly roomId: string }) => {
       roomId.set(intent.roomId);
       return of({ kind: 'ready' });
@@ -501,8 +518,12 @@ describe('AccountRoutingService.openInboxRow', () => {
           navigate,
           activeAccountId: signal<string | null>(activeAccountId),
           eventTarget: signal(null),
+          panel: panel.asReadonly(),
         }),
-        MockProvider(RoomSurfaceLifecycle, { transition }),
+        MockProvider(RoomSurfaceLifecycle, {
+          transition,
+          renderedSurface: shown.asReadonly(),
+        }),
         MockProvider(ConversationRuntime, {
           focused,
           threads: { loadRoot } as never,
@@ -511,7 +532,7 @@ describe('AccountRoutingService.openInboxRow', () => {
             messages: signal(
               (options.loaded ?? []).map((id) => ({ id })),
             ).asReadonly(),
-            loadState: signal({ kind: 'ready' }).asReadonly(),
+            loadState: loadState.asReadonly(),
           } as never,
         }),
         MockProvider(SelectedRoomLibraryService, {
@@ -535,6 +556,8 @@ describe('AccountRoutingService.openInboxRow', () => {
       roomId,
       syncState,
       focused,
+      shown,
+      loadState,
     };
   }
 
@@ -666,6 +689,101 @@ describe('AccountRoutingService.openInboxRow', () => {
       rootEventId: '$root',
       revealEventId: '$e',
     });
+  });
+
+  it('opens a thread the URL names once the Room is focused and its root loads', () => {
+    const page = new Subject<boolean>();
+    const { transition, loadRoot, focused, shown } = build({
+      activeRoomId: '!r:hs',
+      focused: null,
+      panel: { kind: 'thread', root: '$root' },
+      loadRoot: vi.fn(() => page),
+    });
+    TestBed.tick();
+    expect(loadRoot).not.toHaveBeenCalled();
+
+    focused.set({
+      key: { accountId: row.accountId, roomId: row.roomId },
+    } as ConversationHandle);
+    TestBed.tick();
+    expect(loadRoot).toHaveBeenCalledExactlyOnceWith('$root');
+    page.next(true);
+
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'open-thread',
+      rootEventId: '$root',
+    });
+    shown.set({ kind: 'thread', rootEventId: '$root' });
+    TestBed.tick();
+    expect(loadRoot).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads a thread the URL names while its loading state shows, once', () => {
+    const page = new Subject<boolean>();
+    const { transition, loadRoot, loadState, shown } = build({
+      activeRoomId: '!r:hs',
+      panel: { kind: 'thread', root: '$root' },
+      loadRoot: vi.fn(() => page),
+    });
+    shown.set({ kind: 'thread', rootEventId: '$root', loading: true });
+    TestBed.tick();
+    expect(loadRoot).toHaveBeenCalledOnce();
+
+    // The timeline moving on (a backfill, a stopped sync) doesn't restart the load.
+    loadState.set({ kind: 'error', reason: 'sync-stopped' });
+    TestBed.tick();
+    loadState.set({ kind: 'ready' });
+    TestBed.tick();
+    expect(loadRoot).toHaveBeenCalledOnce();
+
+    page.next(true);
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'open-thread',
+      rootEventId: '$root',
+    });
+  });
+
+  it('closes a thread the URL names whose root will not load, without an error', () => {
+    const { transition, showError } = build({
+      activeRoomId: '!r:hs',
+      panel: { kind: 'thread', root: '$gone' },
+      loadRoot: vi.fn(() => of(false)),
+    });
+    TestBed.tick();
+
+    expect(transition).toHaveBeenCalledExactlyOnceWith({ kind: 'clear' });
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('closes a thread the URL names in a Room this Account cannot open', () => {
+    const { transition, loadRoot, loadState, showError } = build({
+      activeRoomId: '!r:hs',
+      focused: null,
+      panel: { kind: 'thread', root: '$root' },
+    });
+    TestBed.tick();
+    expect(transition).not.toHaveBeenCalled();
+
+    loadState.set({ kind: 'error', reason: 'room-unavailable' });
+    TestBed.tick();
+
+    expect(transition).toHaveBeenCalledExactlyOnceWith({ kind: 'clear' });
+    expect(loadRoot).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('closes a thread the URL names whose root fetch fails or never answers', () => {
+    vi.useFakeTimers();
+    const { transition, showError } = build({
+      activeRoomId: '!r:hs',
+      panel: { kind: 'thread', root: '$slow' },
+      loadRoot: vi.fn(() => NEVER),
+    });
+    TestBed.tick();
+    vi.advanceTimersByTime(ROOM_READINESS_TIMEOUT_MS);
+
+    expect(transition).toHaveBeenCalledExactlyOnceWith({ kind: 'clear' });
+    expect(showError).not.toHaveBeenCalled();
   });
 
   it('waits for focus before loading the root', () => {

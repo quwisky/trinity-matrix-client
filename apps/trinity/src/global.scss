@@ -118,14 +118,34 @@
 }
 
 @layer components {
-  /* The application frame owns the top safe-area inset, so its ground shows under a notched
-   * status bar: keep it the open page's ground. */
+  /* The status bar sits over the top of the frame, so whatever is at the top clears the inset
+   * with its own background and the status bar takes that colour. On most pages that is the
+   * frame, in the open page's ground. Otherwise the first banner takes it, or else the bar at
+   * the top of each rooms shell column (`--trinity-top-inset`, rooms.page.scss). */
   .app-frame {
+    --trinity-top-inset: env(safe-area-inset-top, 0px);
+
+    padding-top: var(--trinity-top-inset);
     background-color: var(--background);
   }
 
   .app-frame:has(.rooms-shell) {
     background-color: var(--trinity-surface-app);
+  }
+
+  .app-frame:has(> trn-banner, .rooms-shell) {
+    padding-top: 0;
+  }
+
+  /* A banner wrapper may hold no banner; whatever follows a banner starts below the inset. */
+  .app-frame > trn-banner,
+  .rooms-shell > :not(.rooms-workspace):has(trn-banner) {
+    --trinity-banner-inset-top: var(--trinity-top-inset);
+  }
+
+  .app-frame > trn-banner ~ *,
+  .rooms-shell > :not(.rooms-workspace):has(trn-banner) ~ * {
+    --trinity-top-inset: 0px;
   }
 }
 
@@ -337,13 +357,9 @@
   /*
    * Safe-area insets (notch / status bar / home indicator). `env(safe-area-inset-*)` is 0 on
    * web and desktop (and inside Android's keyboard-resized WebView), so these helpers only pad
-   * on notched native devices; index.html sets `viewport-fit=cover`. Pair `.safe-top` with
-   * `min-h-*` (not a fixed `h-*`) so the bar grows by the inset and keeps full content height.
+   * on notched native devices; index.html sets `viewport-fit=cover`. There is no top helper:
+   * the top inset belongs to whatever bar sits at the top (`--trinity-top-inset`, above).
    */
-  .safe-top {
-    padding-top: env(safe-area-inset-top);
-  }
-
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
@@ -378,7 +394,7 @@
     bottom: var(--trinity-keyboard-shrink);
     height: auto !important;
     transition: bottom var(--trinity-duration-keyboard)
-      var(--trinity-ease-keyboard);
+      var(--trinity-ease-keyboard) var(--trinity-delay-keyboard);
   }
 
   /* The scrim colour. CDK writes its own `.cdk-overlay-dark-backdrop` colour and fade inside an
@@ -448,7 +464,8 @@
 
     /* iOS WebKit zooms the page when a focused text field computes below 16px, so every
      * text-entry control resolves to at least 16px here. The floor token is rem-based, so the
-     * Text size setting still grows fields; a field may set `--trinity-entry-font-size`. */
+     * Text size setting still grows fields; a field may set `--trinity-entry-font-size`.
+     * Keep this list in sync with the text-entry exemption in the touch focus rule below. */
     input:not(
       [type='checkbox'],
       [type='radio'],
@@ -468,6 +485,46 @@
         var(--trinity-entry-font-size, var(--trinity-type-control-size)),
         var(--trinity-type-entry-min-size)
       );
+    }
+  }
+
+  /* Touch-primary devices (the iOS and Android apps, phone and tablet browsers; the same
+   * query the appearance adapter uses) draw no focus ring except on text entry. Focus itself
+   * is untouched. This is the last layer, so it out-ranks every component rule without
+   * `!important`. On the focused element it clears the outline and sets `--tw-ring-shadow`,
+   * `--ring` and `--trinity-focus-ring` (the colours of ring shadows and focus borders) to
+   * nothing. A ring painted on another element is cleared the same way through its source:
+   * the later siblings of a focused control (`peer-focus-visible`, the checkbox, switch and
+   * radio indicator) and the `.group` wrapper around it (`has-[:focus-visible]`, a radio
+   * option). Forced colours does not restore a ring either: a hardware-keyboard or Switch
+   * Control user on a phone sees no indicator, by owner decision. */
+  @media (hover: none) and (pointer: coarse) {
+    :focus-visible:not(
+      input:not(
+        [type='checkbox'],
+        [type='radio'],
+        [type='range'],
+        [type='button'],
+        [type='submit'],
+        [type='reset'],
+        [type='file'],
+        [type='color'],
+        [type='image'],
+        [type='hidden']
+      ),
+      textarea,
+      select,
+      [contenteditable]:not([contenteditable='false'])
+    ) {
+      &,
+      & ~ *,
+      .group:has(&) {
+        outline: none;
+
+        --tw-ring-shadow: 0 0 transparent;
+        --ring: transparent;
+        --trinity-focus-ring: transparent;
+      }
     }
   }
 }

@@ -51,6 +51,24 @@ describe('Room surface lifecycle boundary', () => {
     expect(page).not.toContain('this.workspace.eventTarget()');
   });
 
+  it('takes every Room panel from the Workspace destination, which only it asks to change', () => {
+    const lifecycle = source(lifecycleFile);
+    expect(lifecycle).toContain('this.workspace.panel()');
+    expect(lifecycle).toContain('this.workspace.openPanel(');
+    expect(lifecycle).toContain('this.workspace.closePanel(');
+    // A remembered roster or temporary surface held beside the URL would let them disagree.
+    expect(lifecycle).not.toMatch(/\bmembersRequested\b|\bsurface: null\b/u);
+
+    const callers = globSync(`${featureRoot}/**/*.ts`, {
+      cwd: workspaceRoot,
+    }).filter((file) => file !== lifecycleFile && !file.endsWith('.spec.ts'));
+    expect(
+      callers.filter((file) =>
+        /\.(?:openPanel|closePanel)\(/u.test(source(file)),
+      ),
+    ).toEqual([]);
+  });
+
   it('keeps every Room surface and its browser lifecycle out of the shell store and page', () => {
     const store = source(`${featureRoot}/room-shell-store.ts`);
     expect(store).not.toContain('rightPanel');

@@ -8,6 +8,7 @@ export {
 export * from './lib/workspace-back.service';
 export * from './lib/workspace-navigation.models';
 export * from './lib/workspace-navigation.service';
+export { isWorkspacePanelChange } from './lib/workspace-url';
 export * from './lib/workspace-surface.models';
 export * from './lib/workspace-search.models';
 export * from './lib/inbound-room-link.service';

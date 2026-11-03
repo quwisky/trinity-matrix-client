@@ -164,6 +164,26 @@ describe('NavigationFocusService', () => {
       lifetime.unsubscribe();
     });
 
+    it('leaves focus to the Room when a navigation only opens or closes its panel', () => {
+      const lifetime = service.run().subscribe();
+      const room = '/rooms/IXI6aHM?account=%40me%3Ahs';
+      events.next(new NavigationEnd(1, room, room));
+      const composer = document.querySelector('textarea')!;
+      composer.focus();
+      const focus = vi.spyOn(service, 'focusEnteringPage');
+
+      for (const url of [`${room}&panel=members`, room]) {
+        lastSuccessfulNavigation.set({ extras: {} } as Navigation);
+        events.next(new NavigationEnd(2, url, url));
+      }
+      expect(focus).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(composer);
+
+      events.next(new NavigationEnd(3, '/rooms?account=%40me%3Ahs', '/rooms'));
+      expect(focus).toHaveBeenCalledOnce();
+      lifetime.unsubscribe();
+    });
+
     it('moves focus from a control it removed to the nearest landmark left', () => {
       const lifetime = service.run().subscribe();
       pill().focus();

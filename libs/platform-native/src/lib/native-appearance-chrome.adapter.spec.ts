@@ -27,9 +27,9 @@ describe('NativeAppearanceChromeAdapter', () => {
     setStyle.mockReset().mockResolvedValue(undefined);
   });
 
-  it('keeps status-bar projection cold and maps only resolved Mode', async () => {
+  it('keeps status-bar projection cold and maps Mode to the content style', async () => {
     const adapter = TestBed.inject(NativeAppearanceChromeAdapter);
-    const command = adapter.apply({ mode: 'dark' });
+    const command = adapter.apply({ mode: 'dark', color: '#151618' });
 
     expect(setStyle).not.toHaveBeenCalled();
     await firstValueFrom(command);
@@ -37,19 +37,54 @@ describe('NativeAppearanceChromeAdapter', () => {
     expect(setStyle).toHaveBeenCalledOnce();
     expect(setStyle).toHaveBeenCalledWith({ style: 'DARK' });
 
-    await firstValueFrom(adapter.apply({ mode: 'light' }));
+    await firstValueFrom(adapter.apply({ mode: 'light', color: '#fdfcf9' }));
     expect(setStyle).toHaveBeenLastCalledWith({ style: 'LIGHT' });
+  });
+
+  it('sends the native style only when it changes', async () => {
+    const adapter = TestBed.inject(NativeAppearanceChromeAdapter);
+    await firstValueFrom(adapter.apply({ mode: 'light', color: '#fdfcf9' }));
+    await firstValueFrom(adapter.apply({ mode: 'light', color: '#f5f3ef' }));
+    expect(setStyle).toHaveBeenCalledOnce();
+
+    // A rejected command is not remembered, so the next apply tries again.
+    setStyle.mockRejectedValueOnce(new Error('bridge busy'));
+    await expect(
+      firstValueFrom(adapter.apply({ mode: 'dark', color: '#151618' })),
+    ).rejects.toThrow('bridge busy');
+    await firstValueFrom(adapter.apply({ mode: 'dark', color: '#151618' }));
+    expect(setStyle).toHaveBeenCalledTimes(3);
+  });
+
+  it('paints the browser theme colour from the status area on Web', async () => {
+    const adapter = TestBed.inject(NativeAppearanceChromeAdapter);
+    isNative.mockReturnValue(false);
+    const metas = ['light', 'dark'].map((scheme) => {
+      const meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      meta.media = `(prefers-color-scheme: ${scheme})`;
+      meta.content = '#000000';
+      document.head.append(meta);
+      return meta;
+    });
+
+    await firstValueFrom(adapter.apply({ mode: 'light', color: '#5358ee' }));
+    expect(metas.map((meta) => meta.content)).toEqual(['#5358ee', '#5358ee']);
+
+    await firstValueFrom(adapter.apply({ mode: 'light', color: null }));
+    expect(metas.map((meta) => meta.content)).toEqual(['#5358ee', '#5358ee']);
+    for (const meta of metas) meta.remove();
   });
 
   it('completes without touching plugins on Web, Electron, or missing hosts', async () => {
     const adapter = TestBed.inject(NativeAppearanceChromeAdapter);
     isNative.mockReturnValue(false);
-    await firstValueFrom(adapter.apply({ mode: 'dark' }));
+    await firstValueFrom(adapter.apply({ mode: 'dark', color: '#151618' }));
     expect(setStyle).not.toHaveBeenCalled();
 
     isNative.mockReturnValue(true);
     isAvailable.mockReturnValue(false);
-    await firstValueFrom(adapter.apply({ mode: 'dark' }));
+    await firstValueFrom(adapter.apply({ mode: 'dark', color: '#151618' }));
     expect(setStyle).not.toHaveBeenCalled();
   });
 });

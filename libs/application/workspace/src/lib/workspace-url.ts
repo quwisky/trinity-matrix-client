@@ -194,3 +194,29 @@ function parsePanel(
   const known = PANEL_KINDS.find((candidate) => candidate === kind);
   return known && !root ? { panel: { kind: known }, canonical: true } : none;
 }
+
+/**
+ * Whether a navigation between two Workspace URLs only opened, switched or closed the open
+ * Room's panel, which the Room's surface owns focus for. Opening one also drops `event`.
+ */
+export function isWorkspacePanelChange(
+  previous: string,
+  next: string,
+): boolean {
+  const parse = (url: string) => new URL(url, 'https://trinity.invalid');
+  const before = parse(previous);
+  const after = parse(next);
+  const panelOf = (url: URL) =>
+    `${url.searchParams.get('panel')} ${url.searchParams.get('root')}`;
+  const placeOf = (url: URL) => {
+    const query = new URLSearchParams(url.searchParams);
+    for (const key of ['panel', 'root', 'event']) query.delete(key);
+    query.sort();
+    return `${url.pathname}?${query}`;
+  };
+  return (
+    before.pathname.startsWith('/rooms/') &&
+    panelOf(before) !== panelOf(after) &&
+    placeOf(before) === placeOf(after)
+  );
+}

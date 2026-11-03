@@ -308,6 +308,41 @@ describe('WorkspaceLocationAdapter', () => {
       );
     });
 
+    it('marks a panel pushed over the roster, and keeps that mark through a switch', async () => {
+      const test = setup('/rooms');
+      const threads = { ...conversation, panel: { kind: 'threads' } } as const;
+      test.moveTo(roomUrl(members), { trinityPanelBelow: true });
+
+      await firstValueFrom(
+        test.adapter.project(threads, { history: 'push', withinRoom: true }),
+      );
+      expect(test.navigate).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          state: { trinityPanelBelow: true, trinityMembersBelow: true },
+        }),
+      );
+
+      test.moveTo(roomUrl(threads), {
+        trinityPanelBelow: true,
+        trinityMembersBelow: true,
+      });
+      expect(test.adapter.membersBelow()).toBe(true);
+      await firstValueFrom(
+        test.adapter.project(
+          { ...conversation, panel: { kind: 'pinned' } },
+          { history: 'replace', withinRoom: true },
+        ),
+      );
+      expect(test.navigate).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          replaceUrl: true,
+          state: { trinityPanelBelow: true, trinityMembersBelow: true },
+        }),
+      );
+    });
+
     it('follows the panel-below mark of the current history entry', () => {
       const test = setup('/rooms');
       expect(test.adapter.panelBelow()).toBe(false);

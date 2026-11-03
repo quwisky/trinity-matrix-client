@@ -164,9 +164,7 @@ describe('safe-area helpers and padding utilities', () => {
       'safe-bottom',
       'safe-left',
       'safe-right',
-      'safe-top',
     ]);
-    expect(HELPERS.get('safe-top')).toEqual(['top']);
     expect(HELPERS.get('safe-bottom')).toEqual(['bottom']);
     // And the sweep reaches the places that use them. No TypeScript recipe names one since the
     // application frame took over the top inset; the .ts walk stays so a new one is checked.
@@ -232,15 +230,19 @@ describe('safe-area helpers and padding utilities', () => {
 });
 
 /**
- * The application frame pads the top safe area once, above every routed page, so an in-flow
+ * The application frame pads the top safe area once, above every routed page, or hands it to
+ * the first banner or the Rooms shell columns as `--trinity-top-inset`, so an in-flow
  * surface that pads it again doubles the gap on a notched device. Only out-of-flow surfaces
  * (overlays, fixed layers, the top-layer lock cover) may apply it themselves.
  */
 const TOP_INSET_OWNERS = new Map([
-  ['apps/trinity/src/global.scss', 'defines the .safe-top helper'],
   [
-    'libs/application/runtime/src/lib/application-root/application-root.component.html',
-    'the application frame',
+    'apps/trinity/src/global.scss',
+    'the application frame, which hands the inset to its top bar',
+  ],
+  [
+    'libs/application/appearance/src/lib/appearance-status-area.source.ts',
+    'a fixed, hidden probe measuring whether the page reaches under the status bar',
   ],
   [
     'libs/application/runtime/src/lib/application-root/app-lock-cover/app-lock-cover.component.html',

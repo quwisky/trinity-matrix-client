@@ -133,6 +133,77 @@ test.describe('Focus rings follow the last input', () => {
       isMobile: true,
     });
 
+    test('a button, a switch and its track show no ring by touch or Tab, text entry keeps its ring', async ({
+      page,
+      request,
+    }) => {
+      const trigger = await signIn(page, request);
+      // What focus paints on `painted` (the focused element unless a sibling draws it): an
+      // outline, or a shadow or border colour that differs once blurred.
+      const paint = (target: Locator, painted: string = ':scope') =>
+        target.evaluate((element, paintedSelector) => {
+          const host =
+            paintedSelector === ':scope'
+              ? element
+              : (element.nextElementSibling as Element);
+          (host as HTMLElement).style.transition = 'none';
+          const visible = (shadow: string) =>
+            shadow
+              .replaceAll(/rgba\(0, 0, 0, 0\)[\d. a-z]*/g, '')
+              .replace(/[, ]/g, '') || 'none';
+          const read = () => {
+            const { outlineStyle, boxShadow, borderColor } =
+              getComputedStyle(host);
+            return { outlineStyle, boxShadow, borderColor };
+          };
+          const focused = read();
+          (element as HTMLElement).blur();
+          const blurred = read();
+          (element as HTMLElement).focus();
+          return [
+            focused.outlineStyle,
+            visible(focused.boxShadow) !== visible(blurred.boxShadow),
+            focused.borderColor !== blurred.borderColor,
+          ].join('|');
+        }, painted);
+      await page.evaluate(() => {
+        const field = document.createElement('input');
+        field.id = 'ring-field';
+        const area = document.createElement('textarea');
+        area.id = 'ring-area';
+        const editable = document.createElement('div');
+        editable.id = 'ring-editable';
+        editable.contentEditable = 'true';
+        document.body.append(field, area, editable);
+      });
+
+      await trigger.tap();
+      await expect(page.getByTestId('account-row').first()).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(trigger).toBeFocused();
+      expect(await paint(trigger)).toBe('none|false|false');
+
+      await expect(() => focusWithKeyboard(trigger)).toPass();
+      expect(await paint(trigger)).toBe('none|false|false');
+
+      for (const id of ['ring-field', 'ring-area', 'ring-editable']) {
+        const entry = page.locator(`#${id}`);
+        await focusWithKeyboard(entry);
+        expect(await paint(entry), id).not.toMatch(/^none\|false\|false$/);
+        expect(
+          await entry.evaluate((el) => getComputedStyle(el).outlineStyle),
+          id,
+        ).not.toBe('none');
+      }
+
+      await page.getByTestId('open-settings').tap();
+      await page.getByTestId('settings-nav-notifications').tap();
+      const toggle = page.getByRole('switch').first();
+      await expect(toggle).toBeVisible();
+      await expect(() => focusWithKeyboard(toggle)).toPass();
+      expect(await paint(toggle, 'sibling')).toBe('none|false|false');
+    });
+
     test('a real dialog container shows no ring when it takes script focus after a key', async ({
       page,
       request,

@@ -495,6 +495,44 @@ describe('ThreadViewComponent', () => {
     expect(openThread).toHaveBeenCalledWith('!r:hs', '$root');
   });
 
+  it('shows its loading state, opening nothing, until its root has loaded', async () => {
+    const { fixture, container, openThread, releasedRoots } = await build();
+    openThread.mockClear();
+    fixture.componentRef.setInput('rootEventId', '$cold');
+    fixture.componentRef.setInput('loading', true);
+    fixture.detectChanges();
+
+    expect(container.textContent).toContain('Loading thread…');
+    expect(container.textContent).not.toContain(
+      'No replies in this thread yet.',
+    );
+    expect(openThread).not.toHaveBeenCalled();
+    expect(releasedRoots).toHaveBeenCalledWith('$root');
+
+    fixture.componentRef.setInput('loading', false);
+    fixture.detectChanges();
+    expect(container.textContent).not.toContain('Loading thread…');
+    expect(openThread).toHaveBeenCalledWith('!r:hs', '$cold');
+  });
+
+  it('keeps a reply typed while the thread loads, sending nothing until it has', async () => {
+    const { fixture, container, sendToThread } = await build();
+    fixture.componentRef.setInput('loading', true);
+    fixture.detectChanges();
+    const field = container.querySelector<HTMLTextAreaElement>(
+      '[data-testid="composer-input"]',
+    )!;
+    field.value = 'early reply';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    composerOf(fixture).submit();
+    fixture.detectChanges();
+
+    expect(sendToThread).not.toHaveBeenCalled();
+    expect(field.value).toBe('early reply');
+  });
+
   it('releases and replaces the exact child when the mounted panel changes roots', async () => {
     const { fixture, openThread, releasedRoots, sentRoots } = await build();
 

@@ -49,6 +49,9 @@ const LIST_BELOW = 'trinityListBelow';
 /** History-state key on a panel entry pushed over another entry of the same Room. */
 const PANEL_BELOW = 'trinityPanelBelow';
 
+/** History-state key on a panel entry with the Room's roster somewhere below it. */
+const MEMBERS_BELOW = 'trinityMembersBelow';
+
 /** How long a popped entry may take to settle before Back writes the list in place. */
 const POP_SETTLE_MS = 3_000;
 
@@ -59,12 +62,15 @@ export class WorkspaceLocationAdapter {
   private readonly location = inject(Location);
   private readonly listBelowState = signal(this.readMark(LIST_BELOW));
   private readonly panelBelowState = signal(this.readMark(PANEL_BELOW));
+  private readonly membersBelowState = signal(this.readMark(MEMBERS_BELOW));
   private pendingProjections = 0;
 
   /** The current history entry is a Conversation pushed straight over its list. */
   readonly listBelow = this.listBelowState.asReadonly();
   /** The current history entry is a panel pushed over another entry of its Room. */
   readonly panelBelow = this.panelBelowState.asReadonly();
+  /** The current history entry is a panel with its Room's roster entry below it. */
+  readonly membersBelow = this.membersBelowState.asReadonly();
 
   /**
    * A Router navigation is in flight, whoever started it: Workspace, or the person heading
@@ -83,6 +89,7 @@ export class WorkspaceLocationAdapter {
       .subscribe(() => {
         this.listBelowState.set(this.readMark(LIST_BELOW));
         this.panelBelowState.set(this.readMark(PANEL_BELOW));
+        this.membersBelowState.set(this.readMark(MEMBERS_BELOW));
       });
   }
 
@@ -169,6 +176,11 @@ export class WorkspaceLocationAdapter {
       keepMarks &&
       destination.panel !== null &&
       (push || this.readMark(PANEL_BELOW));
+    const membersBelow =
+      panelBelow &&
+      destination.panel?.kind !== 'members' &&
+      ((push && this.panelHere(destination)?.kind === 'members') ||
+        this.readMark(MEMBERS_BELOW));
     return this.router.navigate([...projection.commands], {
       queryParams: { ...projection.queryParams },
       replaceUrl: options.history === 'replace',
@@ -177,11 +189,18 @@ export class WorkspaceLocationAdapter {
             state: {
               ...(listBelow ? { [LIST_BELOW]: true } : {}),
               ...(panelBelow ? { [PANEL_BELOW]: true } : {}),
+              ...(membersBelow ? { [MEMBERS_BELOW]: true } : {}),
             },
           }
         : {}),
       ...(options.background ? { info: BACKGROUND_NAVIGATION_INFO } : {}),
     });
+  }
+
+  /** The panel the entry being left names, when it is the destination's Room. */
+  private panelHere(destination: WorkspaceDestination) {
+    const here = this.current(destination.accountId);
+    return here.kind === 'workspace' ? here.parsed.destination?.panel : null;
   }
 
   private inSameRoom(destination: WorkspaceDestination): boolean {
@@ -278,7 +297,9 @@ export class WorkspaceLocationAdapter {
     );
   }
 
-  private readMark(key: typeof LIST_BELOW | typeof PANEL_BELOW): boolean {
+  private readMark(
+    key: typeof LIST_BELOW | typeof PANEL_BELOW | typeof MEMBERS_BELOW,
+  ): boolean {
     const state: unknown = this.location.getState();
     return (
       typeof state === 'object' &&

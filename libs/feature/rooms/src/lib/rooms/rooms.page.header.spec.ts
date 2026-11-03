@@ -70,6 +70,7 @@ import {
   SYSTEM_STATUS_PROVIDER,
   setRouteRoom,
   stubLiveLayout,
+  workspacePanelStub,
 } from './rooms-page.spec-harness';
 import { BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { SessionActionsService } from './session-actions.service';
@@ -316,6 +317,7 @@ function renderHeader(
             pane: signal<'list' | 'conversation'>('conversation'),
             placement: signal<'list' | 'conversation' | 'split'>('split'),
             eventTarget: signal(null),
+            ...workspacePanelStub(),
           },
         },
         {

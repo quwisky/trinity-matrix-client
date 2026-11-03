@@ -1,7 +1,11 @@
 import { convertToParamMap } from '@angular/router';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 import { describe, expect, it } from 'vitest';
-import { parseWorkspaceUrl, workspaceUrlOf } from './workspace-url';
+import {
+  isWorkspacePanelChange,
+  parseWorkspaceUrl,
+  workspaceUrlOf,
+} from './workspace-url';
 
 describe('Workspace URL projection', () => {
   it('parses a typed notification event anchor only beside a valid Room', () => {
@@ -264,5 +268,40 @@ describe('Workspace URL projection', () => {
         ),
       ).toMatchObject({ destination: { roomId: null, panel: null } });
     });
+  });
+});
+
+describe('isWorkspacePanelChange', () => {
+  const room = '/rooms/IXI6aHM?account=%40me%3Ahs&view=rooms';
+
+  it('names a navigation that only opens, switches or closes the panel', () => {
+    expect(isWorkspacePanelChange(room, `${room}&panel=members`)).toBe(true);
+    expect(
+      isWorkspacePanelChange(
+        `${room}&panel=threads`,
+        `${room}&panel=thread&root=%24root`,
+      ),
+    ).toBe(true);
+    expect(isWorkspacePanelChange(`${room}&panel=pinned`, room)).toBe(true);
+    expect(
+      isWorkspacePanelChange(`${room}&event=%24e`, `${room}&panel=threads`),
+    ).toBe(true);
+  });
+
+  it('leaves out every other navigation', () => {
+    expect(isWorkspacePanelChange(room, room)).toBe(false);
+    expect(isWorkspacePanelChange(room, `${room}&event=%24e`)).toBe(false);
+    expect(
+      isWorkspacePanelChange(
+        `${room}&panel=members`,
+        '/rooms/IWI6aHM?account=%40me%3Ahs&view=rooms',
+      ),
+    ).toBe(false);
+    expect(
+      isWorkspacePanelChange(
+        '/rooms?account=%40me%3Ahs',
+        '/rooms?account=%40me%3Ahs&panel=members',
+      ),
+    ).toBe(false);
   });
 });
