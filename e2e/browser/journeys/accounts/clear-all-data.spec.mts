@@ -7,11 +7,7 @@ import {
   seedPreference,
   homeserverSession,
 } from '../../../support/app.mts';
-import {
-  AA_NORMAL_TEXT,
-  measureContrast,
-  resolveTokenSrgb,
-} from '../../support/contrast.mts';
+import { AA_NORMAL_TEXT, measureContrast } from '../../support/contrast.mts';
 import { DESIGN_VIEWPORTS } from '../../support/design-viewports.mts';
 
 // End-to-end for "Clear all data" (issue #96): the escape hatch on the login page for an
@@ -205,7 +201,8 @@ test.describe('Clear all data — phone prompt', () => {
 });
 
 /**
- * The escape hatch has to LOOK destructive — deliberately outside the Synapse describe
+ * The escape hatch stays legible, though no longer red (it is a quiet link, so it does not
+ * out-shout signing in) — deliberately outside the Synapse describe
  * above, because that is true of a signed-out install with no homeserver at all, so this
  * runs on every PR rather than only where Docker does.
  *
@@ -230,7 +227,7 @@ for (const scheme of ['light', 'dark'] as const) {
     test.use({ colorScheme: scheme });
 
     for (const theme of THEMES) {
-      test(`stays a legible danger red on ${theme.id}`, async ({ page }) => {
+      test(`stays a legible quiet link on ${theme.id}`, async ({ page }) => {
         // The Theme is restored from its current descriptor key on boot.
         await seedPreference(page, 'trinity.appearance.theme', theme.id);
         await page.goto('/login', { waitUntil: 'networkidle' });
@@ -249,27 +246,13 @@ for (const scheme of ['light', 'dark'] as const) {
           )
           .toEqual({ dark: scheme === 'dark', theme: theme.attribute });
 
-        const danger = await resolveTokenSrgb(
-          page,
-          'clear-all-data',
-          '--trinity-danger',
-        );
-
         for (const state of ['rest', 'hover'] as const) {
           if (state === 'hover') {
-            // Ghost's hover paints a translucent `--muted` UNDER a label that
-            // `hover:text-danger` keeps red; both halves only exist at this layer.
+            // The hover fill paints UNDER the label; only this layer sees both.
             await button.hover();
           }
           const measured = await measureContrast(page, 'clear-all-data');
           const where = `${theme.id}/${scheme}/${state}`;
-
-          // Legibility alone would not say this looks DESTRUCTIVE: plain `--foreground` is
-          // near-black and clears the ratio comfortably while reading as an ordinary link.
-          // Pinning the label to the danger token is what makes this a styling test.
-          expect(measured.text, `${where}: label is the danger token`).toEqual(
-            danger,
-          );
 
           expect(
             measured.ratio,

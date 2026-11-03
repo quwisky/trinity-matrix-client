@@ -61,10 +61,26 @@ test.describe('Touch feedback on a phone', () => {
       await expect(page.locator('.msg', { hasText: text })).toBeVisible();
     }
 
-    // A second quick tap lands on Send while it is disabled (the box is empty again).
-    await expect(send).toBeDisabled();
-    const box = (await send.boundingBox())!;
-    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    // Send lingers, disabled, for a second after a send, so a quick second tap lands on it and
+    // does nothing: no emoji picker, no second message, and the keyboard stays up.
+    await composer.fill('third');
+    await send.tap();
+    await expect(composer).toHaveValue('');
+    const lingering = (await send.boundingBox())!;
+    await page.touchscreen.tap(
+      lingering.x + lingering.width / 2,
+      lingering.y + lingering.height / 2,
+    );
+    await expect(composer).toBeFocused();
+    await expect(page.getByTestId('emoji-picker')).toHaveCount(0);
+    await expect(page.locator('.msg', { hasText: 'third' })).toHaveCount(1);
+
+    // With the box empty again Send is hidden on touch, so there is no disabled button left to
+    // take the press: the keyboard stays up.
+    await expect(send).toBeHidden();
+    // A tap on the input's own padding keeps the keyboard up.
+    const field = (await page.getByTestId('composer-field').boundingBox())!;
+    await page.touchscreen.tap(field.x + 60, field.y + field.height * 0.04);
     await expect(composer).toBeFocused();
 
     const row = page.locator('.msg', { hasText: 'first' }).first();

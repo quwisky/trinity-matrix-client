@@ -38,6 +38,11 @@ function setup() {
   const room = {
     roomId: KEY.roomId,
     hasEncryptionStateEvent: vi.fn(() => true),
+    getLiveTimeline: () => ({
+      getEvents: () => [],
+      removeEvent: () => null,
+      addEvent: vi.fn(),
+    }),
     findEventById: vi.fn((id: string) => {
       if (id === '$event') return localEcho;
       if (id === pendingEcho.id) return pendingEcho;

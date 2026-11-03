@@ -252,6 +252,20 @@ export class RoomShellViewModel {
     () => !!this.store.activeSpaceId() && !this.activeSpaceListed(),
   );
 
+  /**
+   * The room list may still fill: the selected space is not listed yet, or the account has
+   * not prepared its rooms yet, so an empty list is not yet "no rooms".
+   */
+  readonly roomListLoading = computed(() => {
+    const account = this.matrix.activeUserId();
+    // Latched: an outage after the first prepare keeps the list it has.
+    return (
+      this.activeSpacePending() ||
+      !account ||
+      !this.matrix.roomsPrepared(account)
+    );
+  });
+
   readonly sidebarTitle = computed(() => {
     if (this.store.recentView()) {
       return 'Recent activity';
