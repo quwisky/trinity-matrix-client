@@ -53,7 +53,9 @@ async function expectStatusTapScrollsToTop(): Promise<void> {
       el = el.parentElement;
     }
   });
-  await browser.waitUntil(async () => ((await frontPane())?.top ?? 0) > 200, {
+  // Any clear distance from the top: the Settings directory, now sized to its sheet, scrolls
+  // less than 200 px on a tall phone.
+  await browser.waitUntil(async () => ((await frontPane())?.top ?? 0) > 40, {
     timeoutMsg: 'the pane never scrolled down',
   });
 
