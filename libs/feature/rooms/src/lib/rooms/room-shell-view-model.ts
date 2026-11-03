@@ -252,6 +252,17 @@ export class RoomShellViewModel {
     () => !!this.store.activeSpaceId() && !this.activeSpaceListed(),
   );
 
+  /**
+   * The room list may still fill: the selected space is not listed yet, or the account has
+   * not completed its first sync, so an empty list is not yet "no rooms".
+   */
+  readonly roomListLoading = computed(() => {
+    const state = String(this.matrix.syncState() ?? '');
+    return (
+      this.activeSpacePending() || (state !== 'PREPARED' && state !== 'SYNCING')
+    );
+  });
+
   readonly sidebarTitle = computed(() => {
     if (this.store.recentView()) {
       return 'Recent activity';

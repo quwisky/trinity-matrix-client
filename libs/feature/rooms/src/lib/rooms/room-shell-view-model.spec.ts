@@ -2,7 +2,10 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  type SyncState,
+} from '@trinity/data-access/matrix-client';
 import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import {
   type MemberSummary,
@@ -74,6 +77,7 @@ function build(
   const profiles = signal<ReadonlyMap<string, AccountIdentity>>(new Map());
   const activeUserId = signal<string | null>('@me:hs');
   const accountIds = signal<readonly string[]>(['@me:hs']);
+  const syncState = signal<SyncState | null>('SYNCING' as SyncState);
   const trustSummaries = signal<ReadonlyMap<string, AccountTrustSummary>>(
     new Map(),
   );
@@ -162,6 +166,7 @@ function build(
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
         accountIds: accountIds.asReadonly(),
+        syncState: syncState.asReadonly(),
       }),
       {
         provide: WorkspaceNavigationService,
@@ -200,6 +205,7 @@ function build(
     profiles,
     activeUserId,
     accountIds,
+    syncState,
     trustSummaries,
     rosters,
     membersFor,
@@ -275,6 +281,20 @@ describe('RoomShellViewModel inbox', () => {
 
     expect(vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
     expect(vm.filteredRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
+  });
+});
+
+describe('RoomShellViewModel room list loading', () => {
+  // #1868: "No rooms here yet." flashed between sign-in and the first sync.
+  it('is loading until the account has synced, then settled', () => {
+    const { vm, syncState } = build();
+
+    syncState.set(null);
+    expect(vm.roomListLoading()).toBe(true);
+    syncState.set('PREPARED' as SyncState);
+    expect(vm.roomListLoading()).toBe(false);
+    syncState.set('SYNCING' as SyncState);
+    expect(vm.roomListLoading()).toBe(false);
   });
 });
 

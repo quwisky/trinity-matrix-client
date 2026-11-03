@@ -163,6 +163,15 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       ) {
         return of(this.rejected('retry', 'event-not-retryable'));
       }
+      // The SDK leaves a resent echo where it was first added, yet the server stamps it with the
+      // resend's time: re-append it so its place and its time agree.
+      const live = context.room.getLiveTimeline();
+      if (
+        live.getEvents().at(-1) !== event &&
+        live.removeEvent(request.messageId)
+      ) {
+        live.addEvent(event, { toStartOfTimeline: false, addToState: false });
+      }
       return from(context.client.resendEvent(event, context.room)).pipe(
         map(() => this.applied('retry')),
         catchError((error: unknown) =>
