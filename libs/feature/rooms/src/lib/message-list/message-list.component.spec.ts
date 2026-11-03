@@ -1059,6 +1059,118 @@ describe('MessageListComponent', () => {
     });
 
     /**
+     * A room just past full, pinned near the top: its pin's scroll event, reported after the next
+     * message rendered, has paged history in as a fill, and the reader is pinned with it in flight.
+     */
+    async function pastFullFill() {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+        frames.push(frame);
+        return frames.length;
+      });
+      const runFrames = () => {
+        for (const frame of frames.splice(0)) frame(0);
+      };
+      const { fixture, container } = await renderList({
+        messages: many(3),
+        canLoadOlder: true,
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 0, sh: 605 };
+      Object.defineProperties(scroll, {
+        scrollTop: {
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 498))),
+        },
+        scrollHeight: { get: () => view.sh },
+        clientHeight: { value: 498 },
+      });
+      runFrames();
+      const loadOlder = vi.fn();
+      cmp.loadOlder.subscribe(loadOlder);
+      const atBottom = () => view.st === view.sh - 498;
+      let messages = many(3);
+      const arrive = async (message: MessageView, height: number) => {
+        messages = [...messages, message];
+        view.sh += height;
+        fixture.componentRef.setInput('messages', messages);
+        fixture.detectChanges();
+        await fixture.whenStable();
+      };
+      const land = async (page: MessageView[], height: number) => {
+        messages = [...page, ...messages];
+        view.sh += height;
+        fixture.componentRef.setInput('loadingOlder', false);
+        fixture.componentRef.setInput('messages', messages);
+        fixture.detectChanges();
+        await fixture.whenStable();
+      };
+
+      const newest = scroll.querySelector('[data-mid="$2"]') as Element;
+      rowObserver().emit([resizeEntry(newest, 314)]);
+      expect(view.st).toBe(107); // pinned, near the top
+      await arrive(msg('$3', '@b:hs', 'B', 900_000), 314);
+      cmp.onScroll();
+      expect(loadOlder).toHaveBeenCalledOnce();
+      expect(notAtBottom(cmp)).toBe(false);
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+      runFrames();
+      expect(atBottom()).toBe(true);
+      return { fixture, cmp, view, runFrames, atBottom, arrive, land };
+    }
+
+    it('keeps a reader pinned while its own pin pages history into a room just past full', async () => {
+      const { cmp, runFrames, atBottom, arrive, land } = await pastFullFill();
+
+      cmp.onScroll();
+      await arrive(msg('$4', '@b:hs', 'B', 910_000), 314);
+      runFrames();
+      expect(atBottom()).toBe(true);
+
+      cmp.onScroll();
+      await land([msg('$older', '@a:hs', 'A', 1)], EST);
+      runFrames();
+      expect(atBottom()).toBe(true);
+      expect(notAtBottom(cmp)).toBe(false);
+    });
+
+    it('leaves a reader who scrolls up during that fill where they are', async () => {
+      const { cmp, view, runFrames, atBottom, arrive, land } =
+        await pastFullFill();
+
+      view.st = 200;
+      cmp.onScroll();
+      expect(notAtBottom(cmp)).toBe(true);
+      await arrive(msg('$4', '@b:hs', 'B', 910_000), 314);
+      runFrames();
+      // Held by the history anchor (jsdom has no row geometry, so by distance from the end).
+      expect(atBottom()).toBe(false);
+
+      await land([msg('$older', '@a:hs', 'A', 1)], EST);
+      runFrames();
+      expect(atBottom()).toBe(false);
+      expect(notAtBottom(cmp)).toBe(true);
+    });
+
+    it('leaves a reader who scrolls up after an empty fill page where they are', async () => {
+      const { fixture, cmp, view, runFrames, arrive } = await pastFullFill();
+      // The page brought nothing to show: the messages, and so the effect, stay as they were.
+      fixture.componentRef.setInput('loadingOlder', false);
+      fixture.detectChanges();
+      runFrames();
+
+      view.st = 200;
+      cmp.onScroll();
+      await arrive(msg('$4', '@b:hs', 'B', 910_000), 314);
+      runFrames();
+      expect(view.st).toBe(200);
+      expect(notAtBottom(cmp)).toBe(true);
+    });
+
+    /**
      * A short room the reader is at the bottom of, near enough the top to ask for older
      * history, after one page of 110px has landed above and its anchor restore has been
      * acknowledged. The history anchor is still active (it lasts until the reader scrolls).
@@ -1089,6 +1201,7 @@ describe('MessageListComponent', () => {
         scroll.querySelector('[data-mid="$0"]') as HTMLElement
       ).getBoundingClientRect = () => rect(anchorTop(), anchorTop() + EST);
       const newest = scroll.querySelector('[data-mid="$29"]') as Element;
+      view.st = 100; // already at the bottom, so the pin below moves nothing
       rowObserver().emit([resizeEntry(newest, 100)]); // pinned: scrollTop 100
       cmp.onScroll(); // near the top: anchors $0 and asks for history
       fixture.componentRef.setInput('loadingOlder', true);
