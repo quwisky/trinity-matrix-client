@@ -800,6 +800,86 @@ test.describe('Room panel pages across a room change', () => {
   });
 });
 
+test.describe("A room panel page's Back button", () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('steps back one entry: thread, threads list, room, after a reload too', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}bk`;
+    const { reader, roomName, roomId } = await seedRoom(request, hs, runId);
+    const actor = await apiLogin(
+      request,
+      hs,
+      reader.user as string,
+      reader.pass as string,
+    );
+    const rootId = await send(request, hs, actor, roomId, {
+      body: `thread root ${runId}`,
+    });
+    await send(request, hs, actor, roomId, {
+      body: `thread reply ${runId}`,
+      'm.relates_to': { rel_type: 'm.thread', event_id: rootId },
+    });
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+    const threads = page.getByRole('complementary', { name: 'Threads' });
+    const thread = page.getByTestId('thread-view');
+    const backOf = (panel: Locator) =>
+      panel
+        .locator('trn-side-panel-header')
+        .getByRole('button', { name: 'Back', exact: true });
+    const panelOf = () => new URL(page.url()).searchParams.get('panel');
+    const roomUrl = page.url();
+    const entries = () => page.evaluate(() => history.length);
+
+    for (const reload of [false, true]) {
+      await page.getByTestId('open-threads').click();
+      await expectPage(page, threads);
+      await threads.locator('.thread-item').first().click();
+      await expect(thread).toContainText(`thread reply ${runId}`, {
+        timeout: 15_000,
+      });
+      // History marks survive a reload, so its Back still knows what lies below.
+      if (reload) {
+        await page.reload();
+        await expect(thread).toContainText(`thread reply ${runId}`, {
+          timeout: 30_000,
+        });
+      }
+      await expectPage(page, page.locator('.chat-panel'));
+      const depth = await entries();
+
+      // The thread's Back returns to the threads list, in place.
+      await expectSettled(page);
+      const seen = await watchInPlace(page);
+      await backOf(page.locator('.chat-panel')).click();
+      await expect(threads).toBeVisible();
+      await expect(thread).toBeHidden();
+      expect(await seen()).toEqual([]);
+      await expect.poll(panelOf).toBe('threads');
+
+      // The list's Back returns to the room, and no further.
+      await backOf(threads).click();
+      await expect(threads).toBeHidden();
+      await expect.poll(panelOf).toBeNull();
+      await expect(page.getByTestId('room-title')).toContainText(roomName);
+      await expectSettled(page);
+      expect(new URL(page.url()).pathname).toBe(new URL(roomUrl).pathname);
+      // Both were history steps: Forward still reaches the thread.
+      expect(await entries()).toBe(depth);
+      // Focus returns to the opener, or to the room's main after a reload, which lost it.
+      await expect(
+        reload ? page.locator('main.main') : page.getByTestId('open-threads'),
+      ).toBeFocused();
+    }
+  });
+});
+
 test.describe('Room panel pages from a link and out to the timeline', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
   test.use({ viewport: { width: 390, height: 844 } });

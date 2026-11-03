@@ -100,6 +100,8 @@ export class WorkspaceNavigationService {
   private projectionsActive = false;
   private hasProjected = false;
   private lastCommitInApp = false;
+  /** {@link stepBackPanel} popped history: the restoration it lands is the app's own. */
+  private steppingBack = false;
   /** The latest panel open or close not yet applied; a newer one replaces it. */
   private panelRequest: PanelRequest | null = null;
   private panelRunning = false;
@@ -233,8 +235,10 @@ export class WorkspaceNavigationService {
           const changed = !sameWorkspacePlace(this.view(), view);
           const needsProjection = changed || !this.projectionsActive;
           this.lastCommitInApp =
-            committedOptions.source !== 'restore' &&
-            committedOptions.source !== 'repair';
+            (committedOptions.source !== 'restore' &&
+              committedOptions.source !== 'repair') ||
+            (this.steppingBack && committedOptions.source === 'restore');
+          this.steppingBack = false;
           this.workspaceView.set(view);
           if (Object.hasOwn(committedOptions, 'eventId')) {
             this.publishEventTarget(
@@ -335,6 +339,20 @@ export class WorkspaceNavigationService {
   /** Close the open Room panel. */
   closePanel(): void {
     this.changePanel(null);
+  }
+
+  /**
+   * Step back exactly one history entry from a panel pushed over its Room, as browser Back
+   * does: to the panel below it, or to the Room. The mark guarantees that entry is this Room's,
+   * so this never leaves it. With no entry below (a reload or a link), close the panel.
+   */
+  stepBackPanel(): void {
+    if (!this.panelOverRoom()) {
+      this.closePanel();
+      return;
+    }
+    this.steppingBack = true;
+    this.location.back();
   }
 
   /**

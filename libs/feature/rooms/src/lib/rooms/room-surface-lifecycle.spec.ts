@@ -72,6 +72,8 @@ function build(
   });
   const panel = signal<WorkspacePanel | null>(null);
   const membersBelow = signal(false);
+  const panelOverRoom = signal(false);
+  const stepBackPanel = vi.fn();
   const openPanel = vi.fn((next: WorkspacePanel) => {
     if (commits) panel.set(next);
   });
@@ -98,6 +100,8 @@ function build(
           navigate,
           panel: panel.asReadonly(),
           membersBelow: membersBelow.asReadonly(),
+          panelOverRoom: panelOverRoom.asReadonly(),
+          stepBackPanel,
           openPanel,
           closePanel,
         },
@@ -112,6 +116,8 @@ function build(
     navigate,
     panel,
     membersBelow,
+    panelOverRoom,
+    stepBackPanel,
     openPanel,
     closePanel,
     lifecycle: TestBed.inject(RoomSurfaceLifecycle),
@@ -495,6 +501,41 @@ describe('RoomSurfaceLifecycle', () => {
     expect(openPanel).toHaveBeenLastCalledWith({ kind: 'members' });
     expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
     expect(lifecycle.membersVisible()).toBe(true);
+  });
+
+  it('steps a page back one history entry, and closes the panel otherwise', () => {
+    stubMedia({ [BELOW_MD_QUERY]: true });
+    const {
+      closePanel,
+      lifecycle,
+      openPanel,
+      panel,
+      panelOverRoom,
+      stepBackPanel,
+    } = build();
+    panel.set({ kind: 'thread', root: '$root' });
+    panelOverRoom.set(true);
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(stepBackPanel).toHaveBeenCalledOnce();
+    expect(closePanel).not.toHaveBeenCalled();
+    expect(openPanel).not.toHaveBeenCalled();
+
+    // A page with no entry below, after a reload or a link, closes to the Room.
+    panelOverRoom.set(false);
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(stepBackPanel).toHaveBeenCalledOnce();
+    expect(closePanel).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the wide layout's close button closing the whole panel", () => {
+    stubMedia({ [BELOW_MD_QUERY]: false });
+    const { closePanel, lifecycle, panel, panelOverRoom, stepBackPanel } =
+      build();
+    panel.set({ kind: 'thread', root: '$root' });
+    panelOverRoom.set(true);
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(closePanel).toHaveBeenCalledOnce();
+    expect(stepBackPanel).not.toHaveBeenCalled();
   });
 
   it('closes back to the roster history says lies below, after a reload or Forward', () => {

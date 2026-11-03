@@ -155,6 +155,11 @@ export class WorkspaceLocationAdapter {
     });
   }
 
+  /** Step back one browser history entry; the popstate restores the view it lands on. */
+  back(): void {
+    this.location.back();
+  }
+
   /** Push or replace the projection; over the list, first rewrite the entry it leaves. */
   private write(
     projection: ReturnType<typeof workspaceUrlOf>,

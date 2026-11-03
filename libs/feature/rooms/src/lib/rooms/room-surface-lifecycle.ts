@@ -328,6 +328,11 @@ export class RoomSurfaceLifecycle {
   private dismiss(): RoomSurfaceTransitionOutcome {
     const panel = this.panel();
     if (!panel) return { kind: 'unchanged' };
+    // A page's Back is one history step, the same as the platform's Back.
+    if (this.compactConversation() && this.workspace.panelOverRoom()) {
+      this.workspace.stepBackPanel();
+      return { kind: 'applied' };
+    }
     // History knows after a reload or Forward too, when this page's own record is gone.
     if (
       panel.kind !== 'members' &&
@@ -387,7 +392,14 @@ export class RoomSurfaceLifecycle {
           }
           return;
         }
-        const target = trigger;
+        // A page restored by a reload or a link has no opener: the room's main takes focus.
+        const target =
+          trigger ??
+          (isPage && oldPanel
+            ? (document
+                .querySelector('[data-right-panel-slot]')
+                ?.closest<HTMLElement>('main') ?? null)
+            : null);
         trigger = null;
         if (!target) return;
         afterNextRender(
