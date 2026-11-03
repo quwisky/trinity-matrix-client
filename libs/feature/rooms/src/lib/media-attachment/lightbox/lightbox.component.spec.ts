@@ -62,3 +62,39 @@ describe('LightboxComponent download', () => {
     expect(close).not.toHaveBeenCalled();
   });
 });
+
+describe('LightboxComponent touch', () => {
+  const touch = (host: Element, type: string, init: PointerEventInit) =>
+    host.dispatchEvent(
+      new PointerEvent(type, {
+        pointerType: 'touch',
+        pointerId: 1,
+        bubbles: true,
+        ...init,
+      }),
+    );
+
+  it('closes on a mouse click but a finger tap only toggles the controls', async () => {
+    const { close, fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+
+    root.click();
+    expect(close).toHaveBeenCalledTimes(1);
+
+    touch(root, 'pointerdown', { clientX: 20, clientY: 20 });
+    touch(root, 'pointerup', { clientX: 20, clientY: 20 });
+    root.click();
+    expect(close).toHaveBeenCalledTimes(1);
+    fixture.detectChanges();
+    expect(root.classList).toContain('lightbox--bare');
+  });
+
+  it('keeps the explicit close working for a finger', async () => {
+    const { close, fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="lightbox-close"]')!
+      .click();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+});
