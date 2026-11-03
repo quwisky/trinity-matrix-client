@@ -3,13 +3,18 @@
     display: block;
   }
 
+  // Narrow, it sizes to its content and shrinks inside the flex body, so a short list rests at
+  // its own height in a phone sheet and only the people list scrolls.
   .reactions-dialog {
     display: flex;
-
-    // A fixed height keeps the directory and the people list scrolling on their own,
-    // inside the shell's body.
-    height: min(32rem, (100dvh - var(--trinity-keyboard-shrink, 0px)) * 0.6);
+    min-height: 0;
+    flex: 0 1 auto;
     flex-direction: column;
+  }
+
+  // Wide, a fixed height keeps the directory and the people list scrolling on their own.
+  .reactions-dialog--wide {
+    height: min(32rem, (100dvh - var(--trinity-keyboard-shrink, 0px)) * 0.6);
   }
 
   .reactions-dialog__workspace {

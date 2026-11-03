@@ -62,6 +62,25 @@ async function settledTop(sheet: Locator): Promise<number> {
   );
 }
 
+/** Resolves once `scroller` has had no scroll event for longer than the drag's 120ms momentum guard. */
+async function scrollSettled(scroller: Locator): Promise<void> {
+  await scroller.evaluate(
+    (element) =>
+      new Promise<void>((resolve) => {
+        let quiet: ReturnType<typeof setTimeout> | undefined;
+        const scrolled = () => {
+          clearTimeout(quiet);
+          quiet = setTimeout(() => {
+            element.removeEventListener('scroll', scrolled);
+            resolve();
+          }, 200);
+        };
+        element.addEventListener('scroll', scrolled);
+        scrolled();
+      }),
+  );
+}
+
 async function centre(target: Locator): Promise<{ x: number; y: number }> {
   const box = (await target.boundingBox())!;
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -122,65 +141,98 @@ async function openStatus(page: Page): Promise<Locator> {
   return dialog;
 }
 
-const REACTION_KEYS = [
-  '👍',
-  '❤️',
-  '😂',
-  '😮',
-  '😢',
-  '🎉',
-  '🚀',
-  '✅',
-  '👏',
-  '🔥',
-  '💯',
-  '✨',
-];
-
-/** A room whose one message the signed-in account has reacted to with every key above. */
+/**
+ * A room with one message that `reactors` accounts, the signed-in one first, reacted 👍 to.
+ * The list shows one row per reactor, so this sets how tall the reactions list is.
+ */
 async function seedReactedRoom(
   request: APIRequestContext,
+  reactors: number,
 ): Promise<{ reader: HomeserverSession; roomName: string; body: string }> {
   const hs = session.hs as string;
-  const runId = `${testResourceId('run')}d`;
-  const user = `detents-${runId}`;
-  const pass = `${user}-pass`;
+  const runId = `${testResourceId('run')}d${reactors}`;
+  const users = Array.from(
+    { length: reactors },
+    (_, i) => `detents-${runId}-${i}`,
+  );
   const roomName = `Detents ${runId}`;
   const body = `react to me ${runId}`;
-  await registerUser(request, user, pass);
-  const { token } = await apiLogin(request, hs, user, pass);
-  const headers = { Authorization: `Bearer ${token}` };
+  const headers = await Promise.all(
+    users.map(async (user) => {
+      await registerUser(request, user, `${user}-pass`);
+      const { token } = await apiLogin(request, hs, user, `${user}-pass`);
+      return { Authorization: `Bearer ${token}` };
+    }),
+  );
   const room = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers,
-    data: { name: roomName, preset: 'private_chat' },
+    headers: headers[0],
+    data: { name: roomName, preset: 'public_chat' },
   });
   expect(room.ok(), `create room: ${room.status()}`).toBe(true);
   const roomId = encodeURIComponent((await room.json()).room_id);
+  for (const [index, other] of headers.slice(1).entries()) {
+    await sendWithRetry(`join ${index}`, () =>
+      request.post(`${hs}/_matrix/client/v3/rooms/${roomId}/join`, {
+        headers: other,
+      }),
+    );
+  }
   const sent = await sendWithRetry('message', () =>
     request.put(
       `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/m-${runId}`,
-      { headers, data: { msgtype: 'm.text', body } },
+      { headers: headers[0], data: { msgtype: 'm.text', body } },
     ),
   );
   const { event_id } = await sent.json();
-  for (const [index, key] of REACTION_KEYS.entries()) {
-    await sendWithRetry(`reaction ${key}`, () =>
+  for (const [index, reactor] of headers.entries()) {
+    await sendWithRetry(`reaction ${index}`, () =>
       request.put(
         `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.reaction/r${index}-${runId}`,
         {
-          headers,
+          headers: reactor,
           data: {
-            'm.relates_to': { rel_type: 'm.annotation', event_id, key },
+            'm.relates_to': { rel_type: 'm.annotation', event_id, key: '👍' },
           },
         },
       ),
     );
   }
   return {
-    reader: { available: true, hs, user, pass } as HomeserverSession,
+    reader: {
+      available: true,
+      hs,
+      user: users[0],
+      pass: `${users[0]}-pass`,
+    } as HomeserverSession,
     roomName,
     body,
   };
+}
+
+/** Signs in as the first reactor and opens the room, its message showing `reactors` 👍. */
+async function openReactedMessage(
+  page: Page,
+  request: APIRequestContext,
+  reactors: number,
+): Promise<Locator> {
+  const seeded = await seedReactedRoom(request, reactors);
+  await login(page, seeded.reader);
+  await dark(page);
+  await openNamedRoom(page, seeded.roomName);
+  const row = page.locator('.scroll .msg', { hasText: seeded.body }).first();
+  await expect(
+    row.locator('.reaction:not(.reaction--who) .reaction__count'),
+  ).toHaveText(String(reactors), { timeout: 30_000 });
+  return row;
+}
+
+async function openReactions(page: Page, row: Locator): Promise<Locator> {
+  await row.getByTestId('reactions-who').click();
+  const dialog = page.getByRole('dialog').filter({
+    has: page.getByTestId('reactions-dialog'),
+  });
+  await expect(surface(dialog)).toBeVisible({ timeout: 10_000 });
+  return dialog;
 }
 
 test.describe('Sheet detents on a 390 px phone with a 47 px status bar', () => {
@@ -225,7 +277,7 @@ test.describe('Sheet detents on a 390 px phone with a 47 px status bar', () => {
       .first();
     await search.focus();
     await expectLarge(sheet);
-    // The field and its results stay above the keyboard; only a drag lowers the sheet.
+    // The field and its results stay above the keyboard; the keyboard closing never lowers it.
     await search.blur();
     await expectLarge(sheet);
   });
@@ -261,6 +313,49 @@ test.describe('Sheet detents on a 390 px phone with a 47 px status bar', () => {
     await expectLarge(sheet);
   });
 
+  test('in a section scrolled to one of its parts, a vertical edge drag scrolls it and a horizontal one goes back', async ({
+    page,
+  }) => {
+    const dialog = await openSettings(page);
+    const sheet = surface(dialog);
+    await expectMedium(sheet);
+    await dialog.getByTestId('settings-nav-appearance').click();
+    await expect(dialog.getByTestId('mode-dark')).toBeVisible();
+    await expect(page.locator('[data-pane-slide]')).toHaveCount(0);
+    // A part chip scrolls the section part-way down to that part.
+    await dialog.locator('[data-part="code-blocks"]').click();
+    const detail = dialog.getByTestId('settings-detail');
+    await expect
+      .poll(() => detail.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(100);
+    await scrollSettled(detail);
+    const workspace = dialog.getByTestId('settings-workspace');
+    const box = (await detail.boundingBox())!;
+    const edge = {
+      x: Math.round(box.x + 8),
+      y: Math.round(box.y + box.height / 2),
+    };
+
+    // Mostly vertical, from the edge: the section scrolls, nothing else moves.
+    const before = await detail.evaluate((el) => el.scrollTop);
+    await cdpSwipe(page, edge, { x: edge.x + 30, y: edge.y + 120 });
+    await expect
+      .poll(() => detail.evaluate((el) => el.scrollTop))
+      .toBeLessThan(before);
+    await expectMedium(sheet);
+    await expect(workspace).not.toHaveAttribute('data-pane-swipe');
+    await expect(dialog.getByTestId('settings-nav-appearance')).toBeHidden();
+
+    // Mostly horizontal, from the edge: the section goes back and the height holds.
+    await scrollSettled(detail);
+    await cdpSwipe(page, edge, {
+      x: Math.round(box.x + box.width * 0.75),
+      y: edge.y + 40,
+    });
+    await expect(dialog.getByTestId('settings-nav-appearance')).toBeVisible();
+    await expectMedium(sheet);
+  });
+
   test('System status opens at half height, drags to full and back, and closes from half', async ({
     page,
   }, testInfo) => {
@@ -274,15 +369,7 @@ test.describe('Sheet detents on a 390 px phone with a 47 px status bar', () => {
     page,
     request,
   }, testInfo) => {
-    const seeded = await seedReactedRoom(request);
-    await login(page, seeded.reader);
-    await dark(page);
-    await openNamedRoom(page, seeded.roomName);
-    const row = page.locator('.scroll .msg', { hasText: seeded.body }).first();
-    await expect(row.locator('.reaction:not(.reaction--who)')).toHaveCount(
-      REACTION_KEYS.length,
-      { timeout: 30_000 },
-    );
+    const row = await openReactedMessage(page, request, 10);
 
     const actions = page.getByRole('dialog', { name: 'Message actions' });
     await expect(async () => {
@@ -297,16 +384,43 @@ test.describe('Sheet detents on a 390 px phone with a 47 px status bar', () => {
     await expect(
       actions.getByRole('button', { name: 'Sheet height' }),
     ).toHaveCount(0);
+    // Content-sized: as tall as its rows, with nothing imposed and nothing to scroll.
+    const fit = await actionSheet.evaluate((element) => {
+      const body = element.querySelector<HTMLElement>('.dialog-shell__body');
+      return {
+        height: element.getBoundingClientRect().height,
+        content: element.scrollHeight,
+        inlineHeight: element.style.height,
+        bodyOverflow: body ? body.scrollHeight - body.clientHeight : 0,
+      };
+    });
+    expect(fit.inlineHeight).toBe('');
+    // Under 2 px: the heights are fractional, scrollHeight is rounded.
+    expect(Math.abs(fit.height - fit.content)).toBeLessThan(2);
+    expect(fit.bodyOverflow).toBeLessThan(2);
     await page.keyboard.press('Escape');
     await expect(actions).toHaveCount(0);
 
-    await row.getByTestId('reactions-who').click();
-    const dialog = page.getByRole('dialog').filter({
-      has: page.getByTestId('reactions-dialog'),
-    });
-    await expect(surface(dialog)).toBeVisible({ timeout: 10_000 });
+    const dialog = await openReactions(page, row);
     await expectMedium(surface(dialog));
     await attach(page, testInfo, 'reactions-half-390-dark');
     await expectDetentDrag(page, dialog);
+  });
+
+  test('a one-reactor reactions list rests at its own height with no full height', async ({
+    page,
+    request,
+  }) => {
+    const row = await openReactedMessage(page, request, 1);
+    const dialog = await openReactions(page, row);
+    const sheet = surface(dialog);
+    await expect(dialog.locator('.reactor')).toHaveCount(1);
+    const top = await settledTop(sheet);
+    expect(top).toBeGreaterThan(HEIGHT / 2 + 20);
+    await expect(
+      dialog.getByRole('button', { name: 'Sheet height' }),
+    ).toHaveCount(0);
+    await dragHandle(page, sheet, -300);
+    expect(Math.abs((await settledTop(sheet)) - top)).toBeLessThanOrEqual(2);
   });
 });

@@ -13,13 +13,24 @@ import { onlyOn } from '../support/platform.mts';
 /** The pane under test, and the lowest `scrollTop` it has reported since the tap. */
 type TapProbe = Window & { tapPane?: Element; tapLowest?: number };
 
-/** The scrollable pane at the centre of the screen: what a status bar tap should scroll. */
+/** The scrollable pane in front, at the centre of the topmost sheet or the screen: what a status bar tap should scroll. */
 const frontPane = (): Promise<{ name: string; top: number } | null> =>
   browser.execute(() => {
-    let el = document.elementFromPoint(
-      window.innerWidth / 2,
-      window.innerHeight / 2,
-    );
+    // As the adapter does: the topmost open sheet's centre, since a half-height sheet's top
+    // edge is the screen centre.
+    const front = [
+      ...document.querySelectorAll('.cdk-overlay-container [role="dialog"]'),
+    ].at(-1);
+    const box = front?.getBoundingClientRect();
+    let el = box
+      ? document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        )
+      : document.elementFromPoint(
+          window.innerWidth / 2,
+          window.innerHeight / 2,
+        );
     while (el) {
       const { overflowY } = getComputedStyle(el);
       if (
@@ -36,10 +47,21 @@ const frontPane = (): Promise<{ name: string; top: number } | null> =>
 /** Scroll the pane down, tap the status bar the way a finger does, and wait for the top. */
 async function expectStatusTapScrollsToTop(): Promise<void> {
   await browser.execute(() => {
-    let el = document.elementFromPoint(
-      window.innerWidth / 2,
-      window.innerHeight / 2,
-    );
+    // As the adapter does: the topmost open sheet's centre, since a half-height sheet's top
+    // edge is the screen centre.
+    const front = [
+      ...document.querySelectorAll('.cdk-overlay-container [role="dialog"]'),
+    ].at(-1);
+    const box = front?.getBoundingClientRect();
+    let el = box
+      ? document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        )
+      : document.elementFromPoint(
+          window.innerWidth / 2,
+          window.innerHeight / 2,
+        );
     while (el) {
       const { overflowY } = getComputedStyle(el);
       if (

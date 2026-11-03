@@ -88,6 +88,31 @@ describe('NativeStatusBarTapAdapter', () => {
     run.unsubscribe();
   });
 
+  it('probes the centre of the topmost open sheet, not the screen centre', () => {
+    const container = document.createElement('div');
+    container.className = 'cdk-overlay-container';
+    const below = document.createElement('div');
+    below.setAttribute('role', 'dialog');
+    const sheet = document.createElement('div');
+    sheet.setAttribute('role', 'dialog');
+    // A half-height sheet: its top edge is the screen centre.
+    sheet.getBoundingClientRect = () =>
+      ({ left: 0, top: 422, width: 390, height: 422 }) as DOMRect;
+    container.append(below, sheet);
+    document.body.append(container);
+    const scroller = pane('sheet-list', 'auto');
+    sheet.append(scroller);
+    document.elementFromPoint = vi.fn((x: number, y: number) =>
+      x === 195 && y === 633 ? scroller : null,
+    );
+    const run = TestBed.inject(NativeStatusBarTapAdapter).run().subscribe();
+
+    tap();
+
+    expect(scroller.scrollTo).toHaveBeenCalledOnce();
+    run.unsubscribe();
+  });
+
   it('ignores the event off iOS, and after unsubscribing', () => {
     const scroller = pane('list', 'auto');
     under = scroller;
