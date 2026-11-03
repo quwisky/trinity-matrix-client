@@ -136,7 +136,8 @@ export class TrnSheetDrag {
         const dy = offset(y);
         const velocity = dy / Math.max(1, t - startT);
         this.stopDrag?.();
-        this.host.style.transition = 'transform 200ms ease-out';
+        this.host.style.transition =
+          'transform var(--trinity-duration-base) ease-out';
         const far =
           dy / height > DISMISS_FRACTION ||
           (dy > FLING_MIN_DISTANCE && velocity > FLING_VELOCITY);
@@ -201,17 +202,18 @@ export class TrnSheetDrag {
   private contentCanDrag(target: Element | null): boolean {
     if (!target || target.closest(OWN_GESTURE)) return false;
     if (performance.now() - this.lastScroll < MOMENTUM_MS) return false;
-    if (!window.getSelection()?.isCollapsed) return false;
-    for (let el: Element | null = target; el && el !== this.host;) {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return false;
+    for (let el: Element | null = target; el;) {
       const style = getComputedStyle(el);
       if (
         el.scrollTop > 0 ||
-        /^(none|pan-x)/.test(style.touchAction) ||
+        /^(none|pan-x)$/.test(style.touchAction) ||
         (el.scrollWidth > el.clientWidth && /auto|scroll/.test(style.overflowX))
       ) {
         return false;
       }
-      el = el.parentElement;
+      el = el === this.host ? null : el.parentElement;
     }
     return true;
   }
