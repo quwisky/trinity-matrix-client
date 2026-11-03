@@ -45,7 +45,12 @@ export const RIGHT_PANEL_PAGE = new InjectionToken<Signal<boolean>>(
         <trn-icon name="arrow-left" size="lg" motion="nudge-left" />
       </button>
     }
-    <h2 class="flex-1 truncate text-base font-semibold">{{ title() }}</h2>
+    <div class="min-w-0 flex-1">
+      <h2 class="truncate text-base font-semibold">{{ title() }}</h2>
+      @if (subtitle()) {
+        <p class="truncate text-xs text-muted-foreground">{{ subtitle() }}</p>
+      }
+    </div>
     @if (!page()) {
       <button
         trnBtn
@@ -67,6 +72,8 @@ export const RIGHT_PANEL_PAGE = new InjectionToken<Signal<boolean>>(
 })
 export class SidePanelHeaderComponent {
   readonly title = input.required<string>();
+  /** A secondary line under the title, such as the room a panel belongs to. */
+  readonly subtitle = input('');
   readonly closeLabel = input('Close');
   readonly closeTestId = input('side-panel-close');
   /** Marks the button as the element the panel focuses when it opens. */

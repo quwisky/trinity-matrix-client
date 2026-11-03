@@ -150,6 +150,8 @@ export class ThreadViewComponent implements OnDestroy {
 
   readonly roomId = input.required<string>();
   readonly accountId = input<string | null>(null);
+  /** Shown under the title so a thread page says which room it belongs to. */
+  readonly roomName = input('');
   readonly rootEventId = input.required<string>();
   /** A message to scroll to once it is in the thread, paging older replies to reach it. */
   readonly revealEventId = input<string | null>(null);

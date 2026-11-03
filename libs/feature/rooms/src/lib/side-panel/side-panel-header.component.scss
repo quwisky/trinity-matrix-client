@@ -4,7 +4,7 @@
     align-items: center;
     gap: var(--trinity-space-3);
     flex: none;
-    block-size: 3rem;
+    min-block-size: 3rem;
     padding-inline: calc(var(--trinity-space-4) + env(safe-area-inset-left))
       calc(var(--trinity-space-4) + env(safe-area-inset-right));
     border-block-end: 1px solid var(--trinity-border-subtle);

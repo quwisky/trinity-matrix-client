@@ -21,6 +21,14 @@ describe('SidePanelHeaderComponent', () => {
     expect(closed).toHaveBeenCalledOnce();
   });
 
+  it('shows the subtitle under the title', async () => {
+    await render(SidePanelHeaderComponent, {
+      inputs: { title: 'Thread', subtitle: 'General' },
+      providers: [provideTrnIcons()],
+    });
+    expect(screen.getByText('General')).toBeTruthy();
+  });
+
   it('names its close button after the panel beside the room, after the title', async () => {
     await render(SidePanelHeaderComponent, {
       inputs: { title: 'Threads', closeLabel: 'Close threads' },

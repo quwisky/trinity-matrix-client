@@ -1019,3 +1019,91 @@ test.describe('Room panels across widths', () => {
     expect(page.url()).toBe(url);
   });
 });
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1280, height: 800 },
+]) {
+  test.describe(`Thread page details at ${viewport.width}px`, () => {
+    test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+    test.use({ viewport, colorScheme: 'dark' });
+
+    test('names its room under the title and keeps the composer to the bottom edge', async ({
+      page,
+      request,
+    }) => {
+      const hs = session.hs as string;
+      const runId = `${testResourceId('run')}td${viewport.width}`;
+      const { reader, roomName, roomId } = await seedRoom(request, hs, runId);
+      const actor = await apiLogin(
+        request,
+        hs,
+        reader.user as string,
+        reader.pass as string,
+      );
+      const rootId = await send(request, hs, actor, roomId, {
+        body: `thread root ${runId}`,
+      });
+      await send(request, hs, actor, roomId, {
+        body: `thread reply ${runId}`,
+        'm.relates_to': { rel_type: 'm.thread', event_id: rootId },
+      });
+      // A home indicator under the composer, as on an iPhone.
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Emulation.setSafeAreaInsetsOverride', {
+        insets: { bottom: 34 },
+      });
+
+      await login(page, reader);
+      await page.getByTestId('rail-rooms').click();
+      const channel = page.locator('.channel', { hasText: roomName }).first();
+      await channel.waitFor({ state: 'visible', timeout: 30_000 });
+      await channel.click();
+      await page.getByTestId('open-threads').click();
+      await page.locator('.thread-item').first().click();
+      const thread = page.getByTestId('thread-view');
+      await expect(thread).toContainText(`thread reply ${runId}`, {
+        timeout: 15_000,
+      });
+
+      const header = thread.locator('trn-side-panel-header');
+      const subtitle = header.locator('p');
+      await expect(
+        header.getByRole('heading', { name: 'Thread' }),
+      ).toBeVisible();
+      await expect(subtitle).toHaveText(roomName);
+      const line = await subtitle.evaluate((el) => ({
+        whiteSpace: getComputedStyle(el).whiteSpace,
+        overflow: getComputedStyle(el).overflow,
+        height: el.getBoundingClientRect().height,
+        fontSize: parseFloat(getComputedStyle(el).fontSize),
+      }));
+      expect(line.whiteSpace).toBe('nowrap');
+      expect(line.overflow).toBe('hidden');
+      expect(line.height).toBeLessThan(line.fontSize * 2);
+
+      if (viewport.width < 768) {
+        await expect(
+          header.getByRole('button', { name: 'Back', exact: true }),
+        ).toBeVisible();
+      }
+
+      // No band of the panel's own colour under the composer: the footer, which carries the
+      // composer's inset, reaches the bottom edge of the page in the chat colour.
+      const edges = await thread.evaluate((root) => {
+        const footer = root.querySelector('.thread__footer')!;
+        const scroller = root.querySelector('.thread')!;
+        return {
+          rootBottom: Math.round(root.getBoundingClientRect().bottom),
+          footerBottom: Math.round(footer.getBoundingClientRect().bottom),
+          footerBackground: getComputedStyle(footer).backgroundColor,
+          scrollerBackground: getComputedStyle(scroller).backgroundColor,
+          rootPaddingBottom: getComputedStyle(root).paddingBottom,
+        };
+      });
+      expect(edges.footerBottom).toBe(edges.rootBottom);
+      expect(edges.rootPaddingBottom).toBe('0px');
+      expect(edges.footerBackground).toBe(edges.scrollerBackground);
+    });
+  });
+}

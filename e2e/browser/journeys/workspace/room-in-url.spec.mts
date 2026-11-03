@@ -5,7 +5,6 @@ import {
   expect,
   type APIRequestContext,
 } from '../../../fixtures.mts';
-import { nextTestResourceId } from '../../../support/namespace.mts';
 import {
   login,
   homeserverSession,
