@@ -2,7 +2,7 @@ import { browser, expect } from '@wdio/globals';
 import { login, tap, waitForRooms } from '../support/app.mts';
 import { registerUser, uniqueId } from '../support/matrix.mts';
 import { mobilePlatform } from '../support/platform.mts';
-import { resetApp } from '../support/session.mts';
+import { native, resetApp, webview } from '../support/session.mts';
 
 interface NativeStatusBarInfo {
   readonly height: number;
@@ -35,6 +35,44 @@ async function readNativeStatusBar(): Promise<NativeStatusBarInfo> {
   const info = result as NativeStatusBarInfo & { error?: string };
   if (info.error) throw new Error(info.error);
   return info;
+}
+
+/**
+ * The status bar style that gives its clock and icons more contrast on what the screen shows
+ * under them, read from a native screenshot: the app paints that strip where the WebView reaches
+ * under the status bar, and the host's window shows there where it pads the WebView instead.
+ */
+async function styleForStatusStrip(): Promise<NativeStatusBarInfo['style']> {
+  await native();
+  const screenshot = await browser.takeScreenshot();
+  await webview();
+  const strip = await browser.execute(async (base64: string) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${base64}`;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('status strip: no canvas context');
+    context.drawImage(image, 0, 0);
+    // The top rows, clear of the clock, the icons and a camera cutout.
+    return [0.15, 0.85].map((x) =>
+      Array.from(
+        context.getImageData(Math.round(image.width * x), 2, 1, 1).data,
+      ),
+    );
+  }, screenshot);
+  const luminance = (rgb: number[]) => {
+    const [r, g, b] = rgb.map((c) => {
+      const v = c / 255;
+      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const l = Math.max(...strip.map(luminance));
+  // `DARK` is light content, for a dark strip.
+  return 1.05 / (l + 0.05) > (l + 0.05) / 0.05 ? 'DARK' : 'LIGHT';
 }
 
 async function choose(select: string, option: string): Promise<void> {
@@ -90,9 +128,17 @@ describe('mobile Appearance', () => {
       containing: true,
     });
     await expect($('html')).toHaveAttribute('data-theme', 'amethyst');
+    // The status bar's content follows what is under it, not the Mode: here that is the
+    // Settings sheet's scrim, or the host's window where the WebView is padded below the bar.
+    let lightStrip: NativeStatusBarInfo['style'] | undefined;
     await browser.waitUntil(
-      async () => (await readNativeStatusBar()).style === 'LIGHT',
-      { timeout: 10_000, timeoutMsg: 'native status bar style never LIGHT' },
+      async () =>
+        (await readNativeStatusBar()).style ===
+        (lightStrip = await styleForStatusStrip()),
+      {
+        timeout: 10_000,
+        timeoutMsg: `native status bar style never matched the strip (${lightStrip})`,
+      },
     );
     const lightStatusBar = await readNativeStatusBar();
     expect(lightStatusBar.visible).toBe(true);
@@ -110,9 +156,15 @@ describe('mobile Appearance', () => {
     expect(await $('html').getCSSProperty('font-size')).toMatchObject({
       value: '20px',
     });
+    let darkStrip: NativeStatusBarInfo['style'] | undefined;
     await browser.waitUntil(
-      async () => (await readNativeStatusBar()).style === 'DARK',
-      { timeout: 10_000, timeoutMsg: 'native status bar style never DARK' },
+      async () =>
+        (await readNativeStatusBar()).style ===
+        (darkStrip = await styleForStatusStrip()),
+      {
+        timeout: 10_000,
+        timeoutMsg: `native status bar style never matched the strip (${darkStrip})`,
+      },
     );
     const darkStatusBar = await readNativeStatusBar();
 

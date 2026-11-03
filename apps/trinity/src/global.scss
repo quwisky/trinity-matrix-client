@@ -118,14 +118,34 @@
 }
 
 @layer components {
-  /* The application frame owns the top safe-area inset, so its ground shows under a notched
-   * status bar: keep it the open page's ground. */
+  /* The status bar sits over the top of the frame, so whatever is at the top clears the inset
+   * with its own background and the status bar takes that colour. On most pages that is the
+   * frame, in the open page's ground. Otherwise the first banner takes it, or else the bar at
+   * the top of each rooms shell column (`--trinity-top-inset`, rooms.page.scss). */
   .app-frame {
+    --trinity-top-inset: env(safe-area-inset-top, 0px);
+
+    padding-top: var(--trinity-top-inset);
     background-color: var(--background);
   }
 
   .app-frame:has(.rooms-shell) {
     background-color: var(--trinity-surface-app);
+  }
+
+  .app-frame:has(> trn-banner, .rooms-shell) {
+    padding-top: 0;
+  }
+
+  /* A banner wrapper may hold no banner; whatever follows a banner starts below the inset. */
+  .app-frame > trn-banner,
+  .rooms-shell > :not(.rooms-workspace):has(trn-banner) {
+    --trinity-banner-inset-top: var(--trinity-top-inset);
+  }
+
+  .app-frame > trn-banner ~ *,
+  .rooms-shell > :not(.rooms-workspace):has(trn-banner) ~ * {
+    --trinity-top-inset: 0px;
   }
 }
 
@@ -337,13 +357,9 @@
   /*
    * Safe-area insets (notch / status bar / home indicator). `env(safe-area-inset-*)` is 0 on
    * web and desktop (and inside Android's keyboard-resized WebView), so these helpers only pad
-   * on notched native devices; index.html sets `viewport-fit=cover`. Pair `.safe-top` with
-   * `min-h-*` (not a fixed `h-*`) so the bar grows by the inset and keeps full content height.
+   * on notched native devices; index.html sets `viewport-fit=cover`. There is no top helper:
+   * the top inset belongs to whatever bar sits at the top (`--trinity-top-inset`, above).
    */
-  .safe-top {
-    padding-top: env(safe-area-inset-top);
-  }
-
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
