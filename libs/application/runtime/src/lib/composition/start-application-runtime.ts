@@ -1,5 +1,8 @@
 import { ApplicationRef, ErrorHandler } from '@angular/core';
-import { NativeKeyboardInsetAdapter } from '@trinity/platform-native';
+import {
+  NativeKeyboardInsetAdapter,
+  NativeStatusBarTapAdapter,
+} from '@trinity/platform-native';
 import { take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { DiagnosticMarkersBinding } from './diagnostic-markers.binding';
@@ -7,7 +10,7 @@ import { SessionHandoverWorkflow } from './session-handover.workflow';
 
 /**
  * Own Application Runtime's lifetime subscriptions with the Angular application: the session
- * handover, the runtime itself, the diagnostic log's lifecycle markers and the iOS keyboard inset.
+ * handover, the runtime itself, the diagnostic log's lifecycle markers and the iOS keyboard inset and status bar tap.
  */
 export function startApplicationRuntime(applicationRef: ApplicationRef): void {
   const runtime = applicationRef.injector.get(ApplicationRuntimeService);
@@ -28,6 +31,10 @@ export function startApplicationRuntime(applicationRef: ApplicationRef): void {
     .get(NativeKeyboardInsetAdapter)
     .run()
     .subscribe({ error: (error: unknown) => errors.handleError(error) });
+  const statusBarTap = applicationRef.injector
+    .get(NativeStatusBarTapAdapter)
+    .run()
+    .subscribe({ error: (error: unknown) => errors.handleError(error) });
 
   applicationRef.onDestroy(() => {
     runtime.stop().pipe(take(1)).subscribe();
@@ -35,5 +42,6 @@ export function startApplicationRuntime(applicationRef: ApplicationRef): void {
     diagnosticMarkers.unsubscribe();
     handover.unsubscribe();
     keyboardInset.unsubscribe();
+    statusBarTap.unsubscribe();
   });
 }

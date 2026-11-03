@@ -3,6 +3,8 @@ import { provideTrnIcons } from '@trinity/components/foundations';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import { ContentReportingService } from '@trinity/data-access/room-administration';
+import { TrnSurfaceService } from '@trinity/components/overlay';
+import { HapticsService } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
@@ -15,9 +17,12 @@ import { roomSummary as room } from '../../../testing/room-summary.fixture';
 async function renderRow(
   inputs: Record<string, unknown> = {},
   offers: (accountId: string, kind: string) => boolean = () => true,
+  mode: 'all' | 'mixed' = 'all',
 ) {
-  const modeForAccounts = vi.fn(() => 'all' as const);
+  const modeForAccounts = vi.fn(() => mode as never);
   const actions: SidebarRoomAction[] = [];
+  const openActions = vi.fn();
+  const gestureCommitted = vi.fn();
   const result = await render(SidebarRoomRowComponent, {
     inputs: { room: room(), avatarSize: 36, ...inputs },
     on: { action: (a: SidebarRoomAction) => actions.push(a) },
@@ -25,13 +30,15 @@ async function renderRow(
       provideTrnIcons(),
       MockProvider(RoomNotificationsService, { modeForAccounts }),
       MockProvider(ContentReportingService, { offers }),
+      MockProvider(TrnSurfaceService, { openActions }),
+      MockProvider(HapticsService, { gestureCommitted }),
       {
         provide: IdentityPresenceService,
         useValue: { presenceFor: () => signal('online') },
       },
     ],
   });
-  return { ...result, modeForAccounts, actions };
+  return { ...result, modeForAccounts, actions, openActions, gestureCommitted };
 }
 
 describe('SidebarRoomRowComponent', () => {
@@ -186,5 +193,212 @@ describe('SidebarRoomRowComponent', () => {
     expect(
       container.querySelector('.channel__preview--typing')!.textContent,
     ).toContain('Bob');
+  });
+
+  describe('long press on touch', () => {
+    const touch = (type: string, x = 5, y = 5) =>
+      new PointerEvent(type, {
+        pointerType: 'touch',
+        isPrimary: true,
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+      });
+
+    it('opens the room actions in a sheet, with a haptic, and does not select the room', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, actions, openActions, gestureCommitted } =
+          await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(499);
+        expect(openActions).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        channel.dispatchEvent(touch('pointerup'));
+        channel.click();
+
+        expect(openActions).toHaveBeenCalledTimes(1);
+        expect(
+          openActions.mock.calls[0][0].buttons.map(
+            (b: { text: string }) => b.text,
+          ),
+        ).toContain('Leave room');
+        expect(gestureCommitted).toHaveBeenCalledTimes(1);
+        expect(actions).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('leaves a short press as a plain select', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, actions, openActions } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(200);
+        channel.dispatchEvent(touch('pointerup'));
+        channel.click();
+        vi.advanceTimersByTime(1000);
+
+        expect(openActions).not.toHaveBeenCalled();
+        expect(actions).toEqual([{ kind: 'select', room: room() }]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('treats a drag or a cancelled gesture as a scroll', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, openActions } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+
+        channel.dispatchEvent(touch('pointerdown'));
+        channel.dispatchEvent(touch('pointermove', 5, 40));
+        vi.advanceTimersByTime(600);
+        channel.dispatchEvent(touch('pointerdown'));
+        channel.dispatchEvent(touch('pointercancel'));
+        vi.advanceTimersByTime(600);
+
+        expect(openActions).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('titles the sheet when notification settings differ between accounts', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, openActions } = await renderRow(
+          {},
+          () => true,
+          'mixed',
+        );
+        container
+          .querySelector<HTMLElement>('.channel')!
+          .dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        expect(openActions.mock.calls[0][0].header).toBe(
+          'Notification settings differ between accounts',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ignores a mouse', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, openActions } = await renderRow();
+        container.querySelector<HTMLElement>('.channel')!.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            pointerType: 'mouse',
+            isPrimary: true,
+            bubbles: true,
+          }),
+        );
+        vi.advanceTimersByTime(600);
+        expect(openActions).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    /** Whether a click reaches a bubble listener on the document: false while the guard swallows it. */
+    const clickReaches = () => {
+      const seen = vi.fn();
+      document.addEventListener('click', seen);
+      document.body.click();
+      document.removeEventListener('click', seen);
+      return seen.mock.calls.length === 1;
+    };
+
+    it('stops swallowing clicks 300 ms after the lift', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        channel.dispatchEvent(touch('pointerup'));
+        vi.advanceTimersByTime(299);
+        expect(vi.getTimerCount()).toBeGreaterThan(0);
+        vi.advanceTimersByTime(1);
+        expect(clickReaches()).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('releases after the fallback when no pointer end ever arrives', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        vi.advanceTimersByTime(9_999);
+        vi.advanceTimersByTime(1);
+        expect(clickReaches()).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('releases at once when another pointer goes down', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        document.dispatchEvent(
+          new PointerEvent('pointerdown', { pointerId: 7, bubbles: true }),
+        );
+        expect(clickReaches()).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('releases when the row is destroyed mid-hold', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, fixture } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        const seen = vi.fn();
+        document.addEventListener('click', seen);
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        fixture.destroy();
+        document.body.click();
+        document.removeEventListener('click', seen);
+        expect(seen).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ignores the lift of a different pointer', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, actions } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        document.dispatchEvent(
+          new PointerEvent('pointerup', { pointerId: 99, bubbles: true }),
+        );
+        vi.advanceTimersByTime(400);
+        channel.click();
+        expect(actions).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

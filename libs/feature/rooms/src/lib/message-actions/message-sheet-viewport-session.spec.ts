@@ -31,6 +31,7 @@ describe('MessageSheetViewportSession', () => {
 
   afterEach(() => {
     document.body.replaceChildren();
+    document.documentElement.style.removeProperty('font-size');
     vi.unstubAllGlobals();
   });
 
@@ -353,6 +354,40 @@ describe('MessageSheetViewportSession', () => {
     expect(anchorBox.bottom).toBeGreaterThan(
       surface.getBoundingClientRect().top,
     );
+  });
+
+  it('keeps half the screen for a sheet when the root text is scaled', () => {
+    const { session, surface } = build({
+      rowTop: 100,
+      rowHeight: 560,
+      pressY: 600,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+
+    document.documentElement.style.fontSize = '40px';
+    session.start();
+    flushFrame();
+    flushFrame();
+
+    expect(surface.style.maxHeight).toBe(`${window.innerHeight / 2}px`);
+  });
+
+  it('grows the sheet floor in proportion to a moderately larger root text', () => {
+    document.documentElement.style.fontSize = '20px';
+    const { session, surface } = build({
+      rowTop: 100,
+      rowHeight: 560,
+      pressY: 600,
+      sheetTop: 100,
+      sheetHeight: 500,
+    });
+
+    session.start();
+    flushFrame();
+    flushFrame();
+
+    expect(surface.style.maxHeight).toBe('110px');
   });
 
   it('cancels safely when the exact anchor has disconnected', () => {

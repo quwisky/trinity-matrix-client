@@ -200,7 +200,7 @@ describe('modern room shell layout contracts', () => {
   it('gives the desktop identity dock one shared floating geometry contract', () => {
     expect(roomsHtml).not.toMatch(/class="[^"]*shell-side[^"]*\bw-full\b/);
     expect(roomsCss).toMatch(
-      /\.shell-side\s*\{[^}]*position:\s*relative;[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*--trinity-navigation-dock-height:\s*60px;[^}]*@media\s+#\{\$md\}\s*\{[^}]*width:\s*var\(--shell-sidebar-w,\s*352px\);/s,
+      /\.shell-side\s*\{[^}]*position:\s*relative;[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*--trinity-navigation-dock-height:\s*max\(60px,\s*calc\(2rem\s*\+\s*12px\)\);[^}]*@media\s+#\{\$md\}\s*\{[^}]*width:\s*var\(--shell-sidebar-w,\s*352px\);/s,
     );
     expect(roomsCss).toMatch(
       /--trinity-navigation-safe-area-bottom:\s*env\(safe-area-inset-bottom\);[\s\S]*?padding-bottom:\s*var\(--trinity-navigation-safe-area-bottom\);/,

@@ -1,6 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { RecentEmojiService } from '@trinity/data-access/media';
-import { DateTimeFormatService } from '@trinity/platform-native';
+import {
+  DateTimeFormatService,
+  HapticsService,
+} from '@trinity/platform-native';
 import { hasUsableTimestamp } from '@trinity/util/matrix';
 import {
   TrnSurfaceService,
@@ -73,6 +76,7 @@ export class MessageActionSheetService {
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly recentEmoji = inject(RecentEmojiService);
   private readonly fmt = inject(DateTimeFormatService);
+  private readonly haptics = inject(HapticsService);
   private ref: TrnActionSheetRef | null = null;
   private owner: object | null = null;
   private viewport: MessageSheetViewportSession | null = null;
@@ -229,6 +233,7 @@ export class MessageActionSheetService {
 
     this.dismiss();
     this.owner = owner;
+    this.haptics.gestureCommitted();
     const ref = this.surfaces.openActions(
       {
         // The row's time is hover-only on a grouped message, so a touch screen has no other way
