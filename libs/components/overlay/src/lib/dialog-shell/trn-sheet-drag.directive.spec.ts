@@ -275,3 +275,94 @@ describe('TrnSheetDrag', () => {
     ).toHaveLength(0);
   });
 });
+
+describe('TrnSheetDrag content drag', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function touch(
+    type: string,
+    x: number,
+    y: number,
+    timeStamp: number,
+    target: Element,
+  ): Event {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(event, {
+      touches: {
+        value: type === 'touchend' ? [] : [{ clientX: x, clientY: y }],
+      },
+      timeStamp: { value: timeStamp },
+    });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  /** A slow touch drag of (dx, dy) on `from`; reports whether the first move was claimed. */
+  function pull(from: Element, dx: number, dy: number): boolean {
+    touch('touchstart', 100, 100, 0, from);
+    const moved = touch('touchmove', 100 + dx, 100 + dy, 1000, from);
+    touch('touchend', 100 + dx, 100 + dy, 1000, from);
+    return moved.defaultPrevented;
+  }
+
+  it('dismisses on a downward pull of content at its top', async () => {
+    const { sheet } = await setup();
+    const body = document.querySelector('[data-testid=body]')!;
+    expect(pull(body, 0, 200)).toBe(true);
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(sheet.style.transform).not.toBe('translateY(0px)');
+  });
+
+  it('springs back from a short pull', async () => {
+    const { sheet } = await setup();
+    const body = document.querySelector('[data-testid=body]')!;
+    expect(pull(body, 0, 40)).toBe(true);
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(sheet.style.transform).toBe('');
+  });
+
+  it('leaves an upward or sideways move to native scrolling', async () => {
+    await setup();
+    const body = document.querySelector('[data-testid=body]')!;
+    expect(pull(body, 0, -200)).toBe(false);
+    expect(pull(body, 200, 20)).toBe(false);
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it('leaves content scrolled down to scroll', async () => {
+    await setup();
+    const body = document.querySelector<HTMLElement>('[data-testid=body]')!;
+    body.scrollTop = 30;
+    expect(pull(body, 0, 200)).toBe(false);
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it('leaves a scroller that is still coasting alone', async () => {
+    await setup();
+    const body = document.querySelector('[data-testid=body]')!;
+    body.dispatchEvent(new Event('scroll'));
+    expect(pull(body, 0, 200)).toBe(false);
+  });
+
+  it('leaves sliders, inputs and opted-out regions their gesture', async () => {
+    const { sheet } = await setup();
+    for (const html of [
+      '<input type="range">',
+      '<textarea></textarea>',
+      '<div data-trn-sheet-no-drag><i></i></div>',
+    ]) {
+      sheet.insertAdjacentHTML('beforeend', html);
+      const inner = sheet.lastElementChild!;
+      expect(pull(inner.firstElementChild ?? inner, 0, 200)).toBe(false);
+    }
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it('stays open when the dismissal is refused', async () => {
+    const { sheet } = await setup();
+    dismiss.mockReturnValue(false);
+    pull(document.querySelector('[data-testid=body]')!, 0, 200);
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(sheet.style.transform).toBe('');
+  });
+});
