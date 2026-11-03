@@ -253,7 +253,7 @@ test.describe('Mobile room navigation', () => {
     await expect(page.locator('.chat-members')).toBeVisible();
   });
 
-  test('remembers member choice while temporary surfaces and widths change', async ({
+  test('keeps the roster in the URL while temporary surfaces and widths change', async ({
     page,
     request,
   }) => {
@@ -293,23 +293,22 @@ test.describe('Mobile room navigation', () => {
     await page.setViewportSize(devices['Pixel 5'].viewport);
     await expect(page.getByRole('heading', { name: 'Threads' })).toBeVisible();
     await page.getByRole('button', { name: 'Close threads' }).click();
-    await expect(members).toBeHidden();
-
-    await openOverflowMenu(page);
-    await page.getByTestId('overflow-toggle-members').click();
+    // The roster the threads opened over is still the URL's, so it returns as the drawer.
     await expect(members).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(members).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
+    // The roster is the Room's panel, so another Room opens without it.
     const otherRoom = page
       .locator('.channel', { hasText: otherRoomName })
       .first();
     await otherRoom.waitFor({ state: 'visible', timeout: 30_000 });
     await otherRoom.click();
-    await expect(members).toBeVisible();
+    await expect(members).toBeHidden();
 
     await toggle.click();
-    await expect(members).toBeHidden();
+    await expect(members).toBeVisible();
     await firstRoom.click();
     await expect(members).toBeHidden();
   });

@@ -73,6 +73,7 @@ import { RoomsPage } from './rooms.page';
 import {
   ROUTE_PROVIDER,
   SHARED_MOCKS,
+  panelCommitted,
   SYSTEM_STATUS_PROVIDER,
   RoomsTimelineStub,
   UNREAD_AGGREGATOR_PROVIDER,
@@ -80,6 +81,7 @@ import {
   matrixClientProvider,
   setRouteRoom,
   shellFrom,
+  workspacePanelStub,
 } from './rooms-page.spec-harness';
 import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
@@ -292,6 +294,7 @@ function buildPage({
             pane: signal<'list' | 'conversation'>('conversation'),
             placement,
             eventTarget: signal(null),
+            ...workspacePanelStub(),
           },
         },
         { provide: MemberActionsService, useValue: memberActions },
@@ -470,7 +473,7 @@ describe('RoomsPage rendered right-panel focus', () => {
     return shellFrom();
   }
 
-  it('gives focus back to whatever opened the slot once it empties', () => {
+  it('gives focus back to whatever opened the slot once it empties', async () => {
     // CDK did this for the four dialogs these panels replaced. Without it a keyboard user who
     // opens Threads, reads the list and closes it lands on `<body>` — and in-room search is
     // worse, because it deliberately takes focus when it opens.
@@ -483,9 +486,11 @@ describe('RoomsPage rendered right-panel focus', () => {
       trigger.focus();
 
       shell.surfaces.transition({ kind: 'open-threads' });
+      await panelCommitted();
       TestBed.tick();
       trigger.blur(); // the panel took focus, then its removal orphans it
       shell.page.clearRightPanel();
+      await panelCommitted();
       TestBed.tick();
       TestBed.tick(); // the restore is deferred to after the render that removes the panel
 
@@ -495,21 +500,24 @@ describe('RoomsPage rendered right-panel focus', () => {
     }
   });
 
-  it('leaves focus alone when something else has claimed it', () => {
+  it('leaves focus alone when something else has claimed it', async () => {
     // The room-change handoff, or a DM the panel just opened, has a better idea than a
     // remembered button does — so the restore only fires when the removal orphaned focus.
     const shell = build();
     setRouteRoom('!r:hs');
     shell.page.closeRightPanel();
+    await panelCommitted();
     const trigger = document.createElement('button');
     const elsewhere = document.createElement('button');
     document.body.append(trigger, elsewhere);
     try {
       trigger.focus();
       shell.surfaces.transition({ kind: 'open-threads' });
+      await panelCommitted();
       TestBed.tick();
 
       shell.page.clearRightPanel();
+      await panelCommitted();
       elsewhere.focus();
       TestBed.tick();
       TestBed.tick();
@@ -545,42 +553,49 @@ describe('RoomsPage rendered right-panel focus', () => {
       to: { kind: 'members' },
       targetTag: 'input',
     },
-  ])('hands focus to the replacement on $name', ({ from, to, targetTag }) => {
+  ])(
+    'hands focus to the replacement on $name',
+    async ({ from, to, targetTag }) => {
+      const shell = build();
+      setRouteRoom('!r:hs');
+      shell.page.closeRightPanel();
+      await panelCommitted();
+      TestBed.tick();
+      const trigger = document.createElement('button');
+      const slot = document.createElement('div');
+      slot.dataset['rightPanelSlot'] = '';
+      document.body.append(trigger, slot);
+      try {
+        trigger.focus();
+        showSurface(shell, from);
+        await panelCommitted();
+        TestBed.tick();
+
+        const source = document.createElement('button');
+        slot.append(source);
+        source.focus();
+        showSurface(shell, to);
+        await panelCommitted();
+        source.remove(); // the outgoing panel's render removal orphans focus
+        const target = document.createElement(targetTag);
+        target.dataset['rightPanelFocus'] = '';
+        slot.append(target);
+        TestBed.tick();
+        TestBed.tick();
+
+        expect(document.activeElement).toBe(target);
+      } finally {
+        trigger.remove();
+        slot.remove();
+      }
+    },
+  );
+
+  it('restores the original external trigger after an inline swap then close', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
     shell.page.closeRightPanel();
-    TestBed.tick();
-    const trigger = document.createElement('button');
-    const slot = document.createElement('div');
-    slot.dataset['rightPanelSlot'] = '';
-    document.body.append(trigger, slot);
-    try {
-      trigger.focus();
-      showSurface(shell, from);
-      TestBed.tick();
-
-      const source = document.createElement('button');
-      slot.append(source);
-      source.focus();
-      showSurface(shell, to);
-      source.remove(); // the outgoing panel's render removal orphans focus
-      const target = document.createElement(targetTag);
-      target.dataset['rightPanelFocus'] = '';
-      slot.append(target);
-      TestBed.tick();
-      TestBed.tick();
-
-      expect(document.activeElement).toBe(target);
-    } finally {
-      trigger.remove();
-      slot.remove();
-    }
-  });
-
-  it('restores the original external trigger after an inline swap then close', () => {
-    const shell = build();
-    setRouteRoom('!r:hs');
-    shell.page.closeRightPanel();
+    await panelCommitted();
     TestBed.tick();
     const trigger = document.createElement('button');
     const slot = document.createElement('div');
@@ -589,6 +604,7 @@ describe('RoomsPage rendered right-panel focus', () => {
     try {
       trigger.focus();
       shell.surfaces.transition({ kind: 'open-threads' });
+      await panelCommitted();
       TestBed.tick();
 
       const source = document.createElement('button');
@@ -598,6 +614,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         kind: 'open-thread',
         rootEventId: '$root',
       });
+      await panelCommitted();
       source.remove();
       const threadClose = document.createElement('button');
       threadClose.dataset['rightPanelFocus'] = '';
@@ -607,6 +624,7 @@ describe('RoomsPage rendered right-panel focus', () => {
       expect(document.activeElement).toBe(threadClose);
 
       shell.page.clearRightPanel();
+      await panelCommitted();
       slot.remove();
       TestBed.tick();
       TestBed.tick();
@@ -618,10 +636,11 @@ describe('RoomsPage rendered right-panel focus', () => {
     }
   });
 
-  it('remembers an outside opener when the wide roster was already open', () => {
+  it('remembers an outside opener when the wide roster was already open', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
     showSurface(shell, { kind: 'members' });
+    await panelCommitted();
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     TestBed.tick(); // establish the already-rendered roster before its toolbar replacement
     const trigger = document.createElement('button');
@@ -631,6 +650,7 @@ describe('RoomsPage rendered right-panel focus', () => {
     try {
       trigger.focus();
       shell.surfaces.transition({ kind: 'open-threads' });
+      await panelCommitted();
       TestBed.tick();
 
       const threadRow = document.createElement('button');
@@ -640,6 +660,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         kind: 'open-thread',
         rootEventId: '$root',
       });
+      await panelCommitted();
       threadRow.remove();
       const threadClose = document.createElement('button');
       threadClose.dataset['rightPanelFocus'] = '';
@@ -649,6 +670,7 @@ describe('RoomsPage rendered right-panel focus', () => {
       expect(document.activeElement).toBe(threadClose);
 
       shell.page.clearRightPanel();
+      await panelCommitted();
       slot.remove();
       TestBed.tick();
       TestBed.tick();
@@ -660,10 +682,11 @@ describe('RoomsPage rendered right-panel focus', () => {
     }
   });
 
-  it('remembers a timeline opener beside an open wide roster', () => {
+  it('remembers a timeline opener beside an open wide roster', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
     showSurface(shell, { kind: 'members' });
+    await panelCommitted();
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     TestBed.tick();
     const slot = document.createElement('div');
@@ -677,6 +700,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         kind: 'open-thread',
         rootEventId: '$root',
       });
+      await panelCommitted();
       TestBed.tick();
 
       const panel = document.createElement('div');
@@ -688,6 +712,7 @@ describe('RoomsPage rendered right-panel focus', () => {
       threadClose.focus();
 
       shell.page.clearRightPanel();
+      await panelCommitted();
       panel.remove();
       TestBed.tick();
       TestBed.tick();
@@ -698,10 +723,11 @@ describe('RoomsPage rendered right-panel focus', () => {
     }
   });
 
-  it('does not steal focus claimed while an inline swap renders', () => {
+  it('does not steal focus claimed while an inline swap renders', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
     shell.page.closeRightPanel();
+    await panelCommitted();
     TestBed.tick();
     const trigger = document.createElement('button');
     const elsewhere = document.createElement('button');
@@ -711,6 +737,7 @@ describe('RoomsPage rendered right-panel focus', () => {
     try {
       trigger.focus();
       shell.surfaces.transition({ kind: 'open-threads' });
+      await panelCommitted();
       TestBed.tick();
 
       const source = document.createElement('button');
@@ -720,6 +747,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         kind: 'open-thread',
         rootEventId: '$root',
       });
+      await panelCommitted();
       source.remove();
       const target = document.createElement('button');
       target.dataset['rightPanelFocus'] = '';

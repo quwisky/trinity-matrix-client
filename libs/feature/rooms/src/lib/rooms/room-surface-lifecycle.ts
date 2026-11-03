@@ -13,7 +13,9 @@ import {
 import {
   WorkspaceBackService,
   WorkspaceNavigationService,
+  sameWorkspacePanel,
   type WorkspaceDismissResult,
+  type WorkspacePanel,
   type WorkspaceRoomSurface,
   type WorkspaceSurface,
 } from '@trinity/application/workspace';
@@ -34,12 +36,17 @@ type TemporaryRoomSurface = Extract<
   { readonly kind: 'threads' | 'thread' | 'pinned' | 'search' }
 >;
 type MembersRoomSurface = { readonly kind: 'members' };
+type ThreadRoomSurface = Extract<TemporaryRoomSurface, { kind: 'thread' }>;
 
 export type RenderedRoomSurface = TemporaryRoomSurface | MembersRoomSurface;
 
 interface RoomSurfaceState {
   readonly conversation: ExactRoomSelection;
-  readonly surface: TemporaryRoomSurface | null;
+  /** A reveal waiting for the panel's close to commit. */
+  readonly pendingReveal: {
+    readonly eventId: string;
+    readonly token: LatestToken;
+  } | null;
   readonly jumpTarget: string | null;
   readonly jumpRevision: number;
 }
@@ -68,15 +75,27 @@ export type RoomSurfaceTransitionOutcome =
       readonly reason: 'no-active-conversation';
     };
 
-const MEMBERS_SURFACE: MembersRoomSurface = { kind: 'members' };
+/** One object per kind, so a re-committed URL keeps the rendered surface's identity. */
+const SURFACES = {
+  members: { kind: 'members' },
+  threads: { kind: 'threads' },
+  pinned: { kind: 'pinned' },
+  search: { kind: 'search' },
+} as const satisfies Record<
+  Exclude<RenderedRoomSurface['kind'], 'thread'>,
+  RenderedRoomSurface
+>;
 
-/** Page-scoped lifecycle for the one surface slot beside an exact Conversation. */
+/**
+ * Page-scoped lifecycle for the one surface slot beside an exact Conversation. The open
+ * panel is the Workspace destination's: a transition asks Workspace to open or close it, and
+ * the slot follows once the URL commits.
+ */
 @Injectable()
 export class RoomSurfaceLifecycle {
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly membersRequested = signal(false);
   private readonly reveal = latestGuard();
   private readonly compactConversation = mediaQuerySignal(
     BELOW_MD_QUERY,
@@ -102,12 +121,34 @@ export class RoomSurfaceLifecycle {
       conversation
         ? {
             conversation,
-            surface: null,
+            pendingReveal: null,
             jumpTarget: null,
             jumpRevision: 0,
           }
         : null,
   });
+
+  private readonly panel = computed(() =>
+    this.activeConversation() ? this.workspace.panel() : null,
+  );
+
+  /**
+   * The thread the slot may show: one opened here, or a URL's root once it has loaded. It
+   * carries the message to reveal, and is dropped once the panel names another root.
+   */
+  private readonly openedThread = linkedSignal<
+    WorkspacePanel | null,
+    ThreadRoomSurface | null
+  >({
+    source: this.panel,
+    computation: (panel, previous) =>
+      panel?.kind === 'thread' && previous?.value?.rootEventId === panel.root
+        ? previous.value
+        : null,
+  });
+
+  /** The roster was open when the temporary panel now open replaced it. */
+  private readonly membersBelow = signal(false);
 
   readonly membersAreDrawer = mediaQuerySignal(
     BELOW_MEMBERS_QUERY,
@@ -119,10 +160,12 @@ export class RoomSurfaceLifecycle {
   readonly jumpRevision = computed(
     () => this.writableState()?.jumpRevision ?? 0,
   );
+  /** A thread the URL names renders once its root has loaded. */
   readonly renderedSurface = computed<RenderedRoomSurface | null>(() => {
-    const state = this.writableState();
-    if (!state) return null;
-    return state.surface ?? (this.membersRequested() ? MEMBERS_SURFACE : null);
+    const panel = this.panel();
+    if (!panel) return null;
+    if (panel.kind !== 'thread') return SURFACES[panel.kind];
+    return this.openedThread();
   });
   /** The roster is visible, not merely remembered behind a temporary surface. */
   readonly membersVisible = computed(
@@ -130,13 +173,19 @@ export class RoomSurfaceLifecycle {
   );
 
   constructor() {
-    let wasDrawer = this.membersAreDrawer();
+    // Any way the panel closes, Back included, ends what lay below it.
     effect(() => {
-      const isDrawer = this.membersAreDrawer();
-      if (isDrawer && !wasDrawer) {
-        untracked(() => this.clearRememberedMembers());
-      }
-      wasDrawer = isDrawer;
+      if (!this.panel()) untracked(() => this.membersBelow.set(false));
+    });
+    // Reveal once the panel's close has committed, so the row is measured without it.
+    effect(() => {
+      const state = this.writableState();
+      if (!state?.pendingReveal || this.panel()) return;
+      const { eventId, token } = state.pendingReveal;
+      untracked(() => {
+        this.writableState.set({ ...state, pendingReveal: null });
+        this.scheduleReveal(state.conversation, eventId, token);
+      });
     });
 
     this.manageFocus();
@@ -158,83 +207,73 @@ export class RoomSurfaceLifecycle {
 
     switch (intent.kind) {
       case 'open-threads':
-      case 'open-thread':
       case 'open-pinned':
       case 'open-search':
-        this.writableState.set({
-          ...state,
-          surface:
-            intent.kind === 'open-thread'
-              ? {
-                  kind: 'thread',
-                  rootEventId: intent.rootEventId,
-                  revealEventId: intent.revealEventId,
-                }
-              : {
-                  kind:
-                    intent.kind === 'open-threads'
-                      ? 'threads'
-                      : intent.kind === 'open-pinned'
-                        ? 'pinned'
-                        : 'search',
-                },
-        });
-        return { kind: 'applied' };
-
       case 'open-members':
-        this.membersRequested.set(true);
-        this.writableState.set({ ...state, surface: null });
-        return { kind: 'applied' };
+        return this.open({ kind: OPENED_KIND[intent.kind] });
+
+      case 'open-thread':
+        this.openedThread.set({
+          kind: 'thread',
+          rootEventId: intent.rootEventId,
+          revealEventId: intent.revealEventId,
+        });
+        return this.open({ kind: 'thread', root: intent.rootEventId });
 
       case 'toggle-members':
         if (this.membersVisible()) {
-          this.membersRequested.set(false);
+          this.workspace.closePanel();
           return { kind: 'applied' };
         }
-        return this.transition({ kind: 'open-members' });
+        return this.open({ kind: 'members' });
 
       case 'dismiss':
-        return this.dismiss(state);
+        return this.dismiss();
 
       case 'clear':
-        if (!state.surface && !this.membersRequested()) {
-          return { kind: 'unchanged' };
-        }
-        this.membersRequested.set(false);
-        this.writableState.set({ ...state, surface: null });
+        if (!this.panel()) return { kind: 'unchanged' };
+        this.workspace.closePanel();
         return { kind: 'applied' };
 
       case 'escape':
         if (this.membersVisible() && !this.membersAreDrawer()) {
           return { kind: 'unchanged' };
         }
-        return this.dismiss(state);
+        return this.dismiss();
 
       case 'reveal-message':
-        this.writableState.set({ ...state, surface: null });
-        this.scheduleReveal(
-          state.conversation,
-          intent.eventId,
-          this.reveal.next(),
-        );
+        if (this.panel()) this.workspace.closePanel();
+        this.writableState.set({
+          ...state,
+          pendingReveal: { eventId: intent.eventId, token: this.reveal.next() },
+        });
         return { kind: 'applied' };
     }
   }
 
-  private dismiss(state: RoomSurfaceState): RoomSurfaceTransitionOutcome {
-    if (state.surface) {
-      this.writableState.set({ ...state, surface: null });
-      return { kind: 'applied' };
+  private open(panel: WorkspacePanel): RoomSurfaceTransitionOutcome {
+    const current = this.panel();
+    this.membersBelow.set(
+      panel.kind !== 'members' &&
+        (current?.kind === 'members' ||
+          (current !== null && this.membersBelow())),
+    );
+    if (!sameWorkspacePanel(current, panel)) {
+      this.workspace.openPanel(panel);
     }
-    if (this.membersRequested()) {
-      this.membersRequested.set(false);
-      return { kind: 'applied' };
-    }
-    return { kind: 'unchanged' };
+    return { kind: 'applied' };
   }
 
-  private clearRememberedMembers(): void {
-    this.membersRequested.set(false);
+  /** Close a temporary panel back to the roster it replaced, or close the roster. */
+  private dismiss(): RoomSurfaceTransitionOutcome {
+    const panel = this.panel();
+    if (!panel) return { kind: 'unchanged' };
+    if (panel.kind !== 'members' && this.membersBelow()) {
+      this.workspace.openPanel({ kind: 'members' });
+    } else {
+      this.workspace.closePanel();
+    }
+    return { kind: 'applied' };
   }
 
   private scheduleReveal(
@@ -247,7 +286,7 @@ export class RoomSurfaceLifecycle {
         const current = this.writableState();
         if (
           current?.conversation !== conversation ||
-          current.surface ||
+          this.panel() ||
           !this.reveal.isCurrent(token)
         ) {
           return;
@@ -380,6 +419,13 @@ export class RoomSurfaceLifecycle {
     });
   }
 }
+
+const OPENED_KIND = {
+  'open-threads': 'threads',
+  'open-pinned': 'pinned',
+  'open-search': 'search',
+  'open-members': 'members',
+} as const;
 
 function sameRenderedSurface(
   left: RenderedRoomSurface,

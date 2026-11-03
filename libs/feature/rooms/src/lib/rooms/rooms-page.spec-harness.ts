@@ -81,7 +81,10 @@ import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import {
+  WorkspaceNavigationService,
+  type WorkspacePanel,
+} from '@trinity/application/workspace';
 import {
   ConversationComposeStub,
   ConversationTimelineStub,
@@ -133,7 +136,11 @@ export function flushPanelJump(): void {
 
 export function setRouteRoom(
   roomId: string | null,
-  options: { readonly space?: string } = {},
+  options: {
+    readonly space?: string;
+    /** More query parameters, as a reloaded or shared link carries them. */
+    readonly query?: Readonly<Record<string, string>>;
+  } = {},
 ): void {
   // Page-level specs start from the canonical Active Account coordinate. Legacy URLs
   // without `account` are covered by Workspace's adapter suite; leaving it absent here
@@ -141,6 +148,7 @@ export function setRouteRoom(
   const queryParams: Record<string, string> = {
     account: '@me:hs',
     ...(options.space ? { space: encodeRoomSegment(options.space) } : {}),
+    ...options.query,
   };
   queryParamMap.next(convertToParamMap(queryParams));
   paramMap.next(
@@ -689,6 +697,32 @@ export function clientStub(over: Record<string, unknown> = {}): never {
     getRooms: () => [],
     ...over,
   } as never;
+}
+
+/**
+ * The panel members of a stubbed Workspace, committing each request at once, for specs that
+ * stand in for Workspace rather than drive its Router.
+ */
+export function workspacePanelStub() {
+  const panel = signal<WorkspacePanel | null>(null);
+  return {
+    panel: panel.asReadonly(),
+    openPanel: (next: WorkspacePanel) => panel.set(next),
+    closePanel: () => panel.set(null),
+  };
+}
+
+/** The query of the URL the Router stub is on. */
+export function routeQuery(): URLSearchParams {
+  return new URL(currentRouteUrl, 'https://trinity.invalid').searchParams;
+}
+
+/**
+ * Let Workspace commit a panel request through the Router stub without rendering, for a spec
+ * that changes the DOM between the commit and the render that follows it.
+ */
+export function panelCommitted(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve));
 }
 
 /** Settle a real Router navigation Promise, then flush the resulting signal projections. */

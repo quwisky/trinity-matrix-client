@@ -11,6 +11,7 @@ import {
   flushPanelJump,
   invitesProvider,
   selectedRoomLibraryProvider,
+  routeQuery,
   setRouteRoom,
   settleWorkspace,
   shellFrom,
@@ -518,7 +519,9 @@ describe('RoomsPage panels, pins and media', () => {
     await settleWorkspace();
 
     shell.messages.openThreadsList();
+    await settleWorkspace();
 
+    expect(routeQuery().get('panel')).toBe('threads');
     // The slot itself, not a spy on a service that no longer exists: the shell's one
     // right-hand slot IS the presentation now, so this is what the user sees. Asserting a
     // call would still pass if the value never reached the layout.
@@ -546,6 +549,7 @@ describe('RoomsPage panels, pins and media', () => {
     setRouteRoom('!a:hs');
     await settleWorkspace();
     shell.messages.onOpenThread('$root');
+    await settleWorkspace();
     expect(shell.surfaces.renderedSurface()).toEqual({
       kind: 'thread',
       rootEventId: '$root',
@@ -557,22 +561,69 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
-  it('carries the roster — and a closed slot — across a room change', async () => {
-    // The other half, and why this is not just `set(null)` on every switch: whether the
-    // member column is up is a preference the user owns, and the list re-projects itself
-    // onto the new room. Closing it and switching rooms must not reopen it.
+  it('gives every panel opener a URL, the search query never in it', async () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    const opened: readonly [() => void, Record<string, string>][] = [
+      [() => shell.page.toggleMembers(), { panel: 'members' }],
+      [() => shell.messages.openThreadsList(), { panel: 'threads' }],
+      [
+        () => shell.messages.onThreadPicked('$root:hs'),
+        { panel: 'thread', root: '$root:hs' },
+      ],
+      [() => shell.messages.openPinnedPanel(), { panel: 'pinned' }],
+      [() => shell.messages.openMessageSearch(), { panel: 'search' }],
+    ];
+
+    for (const [open, query] of opened) {
+      open();
+      await settleWorkspace();
+      const url = routeQuery();
+      expect({
+        panel: url.get('panel'),
+        ...(url.has('root') ? { root: url.get('root') } : {}),
+      }).toEqual(query);
+    }
+    expect([...routeQuery().keys()].sort()).toEqual(['account', 'panel']);
+  });
+
+  it('restores each panel a reloaded URL names', async () => {
+    const shell = build();
+    for (const kind of ['members', 'threads', 'pinned', 'search'] as const) {
+      setRouteRoom('!r:hs', { query: { panel: kind } });
+      await settleWorkspace();
+      expect(shell.surfaces.renderedSurface()).toEqual({ kind });
+    }
+  });
+
+  it('closes the roster with the room it was opened in', async () => {
+    // The roster's open state is the URL now, and a Room's URL names only its own panel.
     const shell = build();
     setRouteRoom('!a:hs');
     await settleWorkspace();
-    shell.page.closeRightPanel();
-
-    setRouteRoom('!b:hs');
-    await settleWorkspace();
-    expect(shell.surfaces.renderedSurface()).toBeNull();
-
     shell.surfaces.transition({ kind: 'open-members' });
+    await settleWorkspace();
+    expect(routeQuery().get('panel')).toBe('members');
+
     setRouteRoom('!c:hs');
     await settleWorkspace();
+    expect(shell.surfaces.renderedSurface()).toBeNull();
+  });
+
+  it('returns a temporary panel to the roster it was opened over', async () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    shell.surfaces.transition({ kind: 'open-members' });
+    await settleWorkspace();
+    shell.messages.openPinnedPanel();
+    await settleWorkspace();
+
+    shell.page.closeRightPanel();
+    await settleWorkspace();
+
+    expect(routeQuery().get('panel')).toBe('members');
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
@@ -635,9 +686,11 @@ describe('RoomsPage panels, pins and media', () => {
     await settleWorkspace();
 
     shell.messages.openPinnedPanel();
+    await settleWorkspace();
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'pinned' });
 
     shell.messages.onPanelJump('$evt:hs');
+    await settleWorkspace();
 
     flushPanelJump();
 
@@ -766,9 +819,11 @@ describe('RoomsPage panels, pins and media', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.messages.openPinnedPanel();
+    await settleWorkspace();
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'pinned' });
 
     shell.page.closeRightPanel();
+    await settleWorkspace();
 
     expect(shell.surfaces.renderedSurface()).toBeNull();
     expect(shell.surfaces.jumpTarget()).toBeNull();

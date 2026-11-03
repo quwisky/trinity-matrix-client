@@ -104,6 +104,44 @@ export class AccountRoutingService {
       );
       onCleanup(() => pending.unsubscribe());
     });
+    // A thread the URL names (a reload, a shared link, Back and Forward) opens once its root
+    // loads, as `forRoot` has nothing before the Room is focused. A root that won't load, or
+    // a Room this Account can't open, closes the panel, leaving the Room as a room link would.
+    effect((onCleanup) => {
+      const panel = this.workspace.panel();
+      const accountId = this.store.activeAccountId();
+      const roomId = this.store.activeRoomId();
+      if (
+        panel?.kind !== 'thread' ||
+        !accountId ||
+        !roomId ||
+        this.roomSurfaces.renderedSurface()
+      ) {
+        return;
+      }
+      const load = this.conversations.timeline.loadState();
+      if (load.kind === 'error' && load.reason === 'room-unavailable') {
+        untracked(() => this.roomSurfaces.transition({ kind: 'clear' }));
+        return;
+      }
+      const { root } = panel;
+      const pending = untracked(() =>
+        this.whenRoomCanLoad(
+          { accountId, roomId },
+          {
+            needsLiveSync: false,
+            load: () => this.conversations.threads.loadRoot(root),
+            reveal: () =>
+              this.roomSurfaces.transition({
+                kind: 'open-thread',
+                rootEventId: root,
+              }),
+            failed: () => this.roomSurfaces.transition({ kind: 'clear' }),
+          },
+        ),
+      );
+      onCleanup(() => pending.unsubscribe());
+    });
   }
 
   /** An account's display name for user-facing copy, falling back to its user id. */
@@ -355,10 +393,12 @@ export class AccountRoutingService {
       needsLiveSync,
       load,
       reveal,
+      failed = () => void this.status.showError('Could not load that message.'),
     }: {
       readonly needsLiveSync: boolean;
       readonly load: () => Observable<boolean>;
       readonly reveal: () => unknown;
+      readonly failed?: () => unknown;
     },
   ): Subscription {
     // The watcher only signals a change; the live state is re-read, since its replayed value
@@ -395,13 +435,11 @@ export class AccountRoutingService {
           if (loaded) {
             reveal();
           } else {
-            void this.status.showError('Could not load that message.');
+            failed();
           }
         },
         error: () => {
-          if (isActive()) {
-            void this.status.showError('Could not load that message.');
-          }
+          if (isActive()) failed();
         },
       });
   }
