@@ -5,6 +5,8 @@ import {
   inject,
   linkedSignal,
   signal,
+  untracked,
+  type Signal,
 } from '@angular/core';
 import type { BannerPrompt } from '@trinity/application/workspace';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
@@ -111,6 +113,17 @@ export class CapabilityStatusService {
     new Set(),
   );
   /**
+   * The prompt kind each Account dismissed; in memory, so it returns next session. A prompt of
+   * another kind is a new state and shows again.
+   */
+  private readonly encryptionDismissed = signal<
+    ReadonlyMap<string, SlotForecast>
+  >(new Map());
+  /** The rooms shell's compact flag while it is on screen; `null` otherwise. */
+  private readonly shell = signal<Signal<boolean> | null>(null);
+  /** Bumped when the person switches page or room. */
+  private readonly releases = signal(0);
+  /**
    * The active Account's crypto store predates store keys, and only a sign-in as a new
    * device replaces it with an encrypted one. Asked only once key backup is on: the new
    * device starts without the old store's room keys.
@@ -166,12 +179,17 @@ export class CapabilityStatusService {
     if (this.hasBlocking()) return 'status';
     const { status: trust, elsewhere } = this.slotTrust();
     const limited = this.visibleEntries().length > 0;
-    if (trust === 'needs-setup' && elsewhere)
+    // Dismissed, that kind of prompt gives way; setup stays in Settings › Security.
+    const prompted =
+      this.encryptionDismissed().get(this.matrix.activeUserId() ?? '') !==
+      promptKind(this.slotTrust());
+    if (prompted && trust === 'needs-setup' && elsewhere)
       return limited ? 'status' : 'encryption';
     if (
-      trust === 'needs-setup' ||
-      trust === 'needs-recovery' ||
-      trust === 'needs-verification'
+      prompted &&
+      (trust === 'needs-setup' ||
+        trust === 'needs-recovery' ||
+        trust === 'needs-verification')
     )
       return 'encryption';
     if (this.signInAgain()) return 'sign-in-again';
@@ -183,17 +201,11 @@ export class CapabilityStatusService {
    * while a pointer is pressed neither changes, so a tap never straddles the slot or its
    * content growing, shrinking or changing kind above it. The change applies on release.
    */
-  private readonly slotState = linkedSignal<
-    { live: SlotState; pressed: boolean },
-    SlotState
-  >({
-    source: () => ({
-      live: { slot: this.liveSlot(), trust: this.slotTrust() },
-      pressed: this.press.pressed(),
-    }),
-    computation: ({ live, pressed }, previous) =>
-      pressed && previous ? previous.value : live,
-  });
+  private readonly slotState = this.settled<SlotState>(
+    () => ({ slot: this.liveSlot(), trust: this.slotTrust() }),
+    ({ slot }) => slot === null,
+    ({ slot }) => slot === 'status' && this.hasBlocking(),
+  );
 
   readonly open = this.visibility.open;
   readonly copyConfirmed = this.copied.asReadonly();
@@ -242,6 +254,17 @@ export class CapabilityStatusService {
    * slot back at any time.
    */
   readonly bannerSlotReserved = this.slotHeldStatus.asReadonly();
+  /**
+   * The encryption prompt the live status asks for, whether or not the slot is showing it
+   * yet: held banners still announce at once, since that moves no layout. `null` for a
+   * forecast, which is not confirmed.
+   */
+  readonly announcedPrompt = computed<SlotForecast | null>(() => {
+    const live = this.slotTrust();
+    return this.liveSlot() === 'encryption' && !live.forecast
+      ? promptKind(live)
+      : null;
+  });
   /** Names what is limited: the one problem's heading, or up to two capability names. */
   readonly bannerMessage = computed(() => {
     const entries = this.visibleEntries();
@@ -322,6 +345,94 @@ export class CapabilityStatusService {
     // miss a notice that nobody asked about before the prompt replaced it.
     effect(() => {
       if (this.bannerSlot() === 'status') this.slotHeldStatus.set(true);
+    });
+    // A ready account has nothing to dismiss: a later reset prompts again.
+    effect(() => {
+      const { status, forecast } = this.slotTrust();
+      const userId = this.matrix.activeUserId();
+      if (
+        status === 'ready' &&
+        !forecast &&
+        userId &&
+        untracked(this.encryptionDismissed).has(userId)
+      ) {
+        this.encryptionDismissed.update((dismissed) => {
+          const next = new Map(dismissed);
+          next.delete(userId);
+          return next;
+        });
+      }
+    });
+  }
+
+  shellDisplayed(compact: Signal<boolean>): void {
+    this.shell.set(compact);
+  }
+
+  shellLeft(): void {
+    this.shell.set(null);
+  }
+
+  releaseLateBanners(): void {
+    this.releases.update((count) => count + 1);
+  }
+
+  settleBanner(
+    want: Signal<boolean>,
+    urgent: Signal<boolean> = signal(false),
+  ): Signal<boolean> {
+    return this.settled(
+      () => want(),
+      (shown) => !shown,
+      () => urgent(),
+    );
+  }
+
+  /** Hide the encryption prompt the person is looking at, until the app starts again. */
+  dismissEncryption(): void {
+    const userId = this.matrix.activeUserId();
+    const kind = promptKind(this.slotState().trust);
+    if (!userId || !kind) return;
+    this.encryptionDismissed.update((dismissed) =>
+      new Map(dismissed).set(userId, kind),
+    );
+  }
+
+  /**
+   * `live`, held in two ways so nothing moves under a finger or an eye. While a pointer is
+   * pressed nothing changes, and applies on release. On a compact layout with the rooms shell
+   * on screen, something that appears from empty and is not `urgent` waits for the next
+   * page or room switch, when nothing is being read.
+   */
+  private settled<T>(
+    live: () => T,
+    isEmpty: (value: T) => boolean,
+    urgent: (value: T) => boolean,
+  ): Signal<T> {
+    let seen = untracked(this.releases);
+    let released = false;
+    return linkedSignal<{ live: T; pressed: boolean; release: number }, T>({
+      source: () => ({
+        live: live(),
+        pressed: this.press.pressed(),
+        release: this.releases(),
+      }),
+      computation: (source, previous) => {
+        if (source.release !== seen) {
+          seen = source.release;
+          released = true;
+        }
+        if (!previous) return source.live;
+        if (source.pressed) return previous.value;
+        const late =
+          this.shell()?.() === true &&
+          isEmpty(previous.value) &&
+          !isEmpty(source.live) &&
+          !urgent(source.live);
+        const hold = late && !released;
+        released = false;
+        return hold ? previous.value : source.live;
+      },
     });
   }
 

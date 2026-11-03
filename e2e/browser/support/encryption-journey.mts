@@ -1,4 +1,5 @@
 import {
+  expect,
   testResourceId,
   type APIRequestContext,
   type Page,
@@ -88,6 +89,34 @@ export async function answerUiaIfAsked(
     await uia.locator('input[type="password"]').fill(password);
     await uia.getByRole('button', { name: 'Confirm' }).click();
   }
+}
+
+/**
+ * Wait until this device has recorded which prompt the Account needs, which Trust writes
+ * when the encryption status arrives. A phone holds a banner that arrives after the page is
+ * on screen until the next page switch, so a journey that wants the prompt after opening a
+ * room waits for this first: the switch then shows it, instead of racing the status.
+ */
+export async function expectForecastStored(
+  page: Page,
+  kind: string,
+): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate((wanted) => {
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index) ?? '';
+          if (
+            key.includes('trinity.trust.slot-forecast') &&
+            (localStorage.getItem(key) ?? '').includes(wanted)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      }, kind),
+    )
+    .toBe(true);
 }
 
 /** First-device setup through the app; returns the recovery key it showed once. */

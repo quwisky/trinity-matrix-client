@@ -190,8 +190,14 @@ export const SYSTEM_STATUS_PROVIDER: Provider = {
       'encryption',
     ),
     dismissSignInAgain: vi.fn(),
+    dismissEncryption: vi.fn(),
+    shellDisplayed: vi.fn(),
+    shellLeft: vi.fn(),
+    releaseLateBanners: vi.fn(),
+    settleBanner: (want: Signal<boolean>) => want,
     bannerSlotReserved: signal(false),
     bannerPrompt: signal(null),
+    announcedPrompt: signal(null),
   }),
 };
 

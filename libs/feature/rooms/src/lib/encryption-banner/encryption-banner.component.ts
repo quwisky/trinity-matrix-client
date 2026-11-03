@@ -9,6 +9,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   WORKSPACE_SYSTEM_STATUS,
   WorkspaceApplicationSurfaceService,
+  type SlotForecast,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
@@ -17,6 +18,7 @@ import {
   type TrnBannerPlacement,
 } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 
 /** Which surface a banner action opens: an encryption flow, or Security settings. */
 type BannerActionKind = 'setup' | 'unlock' | 'verify' | 'security';
@@ -28,7 +30,7 @@ interface BannerAction {
 }
 
 /**
- * Non-blocking, persistent prompt shown in the rooms shell when this device's encryption
+ * Non-blocking prompt, dismissible for the session, shown in the rooms shell when this device's encryption
  * isn't ready (MSC4153: existing unverified devices are prompted, never blocked). Renders the
  * prompt the global banner slot holds (`bannerPrompt`), never the live trust status, so the
  * slot owner can hold the prompt while a pointer is pressed.
@@ -38,8 +40,9 @@ interface BannerAction {
  *   because setup would replace that identity.
  * - `setup-elsewhere` (verified device still lacking that identity's keys): sent to the
  *   device that holds them; its only action opens Security settings.
- * The banner cannot be dismissed, so it never offers the irreversible reset; that stays in
- * Security settings, behind its typed confirmation.
+ * Dismissing hides it until the app starts again; Settings › Security still offers every
+ * action. The banner never offers the irreversible reset; that stays in Security settings,
+ * behind its typed confirmation.
  * A placeholder prompt (a forecast before the live status arrives, or a held prompt the live
  * status no longer supports) is laid out hidden, unannounced and inert, so it holds its exact
  * space; a confirmed forecast is the same element, revealed in place. The status is the
@@ -63,6 +66,9 @@ export class EncryptionBannerComponent {
   private readonly slotPrompt = this.systemStatus.bannerPrompt;
   private readonly kind = computed(() => this.slotPrompt()?.kind ?? null);
 
+  /** The phone layout: one line, the primary action and Dismiss, on a quieter surface. */
+  readonly compact = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
+
   /** A placeholder prompt: laid out to hold its space, but hidden, unannounced and inert. */
   readonly pending = computed(() => this.slotPrompt()?.placeholder ?? false);
 
@@ -77,18 +83,34 @@ export class EncryptionBannerComponent {
     this.systemStatus.bannerSlotReserved() ? 'global' : 'inline',
   );
 
-  readonly message = computed(() => {
+  readonly message = computed(() => fullMessage(this.kind()));
+
+  /**
+   * What a screen reader hears: the confirmed prompt, even while the slot holds it back,
+   * since announcing moves nothing.
+   */
+  readonly announcement = computed(() => {
+    const kind = this.systemStatus.announcedPrompt();
+    return kind ? fullMessage(kind) : '';
+  });
+
+  /** The same prompt in one short line; the live region still reads {@link message}. */
+  readonly shortMessage = computed(() => {
     switch (this.kind()) {
       case 'setup-elsewhere':
-        return 'Set up recovery on the device where you first set up encryption.';
+        return 'Set up recovery on your first device.';
       case 'needs-recovery':
-        return 'This device isn’t verified yet — unlock your encrypted messages.';
       case 'needs-verification':
-        return 'This device isn’t verified yet — verify it with one of your other devices.';
+        return 'This device isn’t verified.';
       default:
-        return 'Set up encryption to secure your messages.';
+        return 'Encryption isn’t set up.';
     }
   });
+
+  /** On a phone only the primary action shows; the others are in Settings › Security. */
+  readonly shownActions = computed(() =>
+    this.compact() ? this.actions().slice(0, 1) : this.actions(),
+  );
 
   readonly actions = computed<BannerAction[]>(() => {
     switch (this.kind()) {
@@ -109,6 +131,11 @@ export class EncryptionBannerComponent {
         return [];
     }
   });
+  /** Hide the prompt for this session; setup stays in Settings › Security. */
+  dismiss(): void {
+    this.systemStatus.dismissEncryption();
+  }
+
   /**
    * Open a trust surface or Security settings. The application adapter picks a modal or
    * route, keeping Router and platform policy out of this capability.
@@ -122,5 +149,18 @@ export class EncryptionBannerComponent {
       .open(request)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+}
+
+function fullMessage(kind: SlotForecast | null): string {
+  switch (kind) {
+    case 'setup-elsewhere':
+      return 'Set up recovery on the device where you first set up encryption.';
+    case 'needs-recovery':
+      return 'This device isn’t verified yet — unlock your encrypted messages.';
+    case 'needs-verification':
+      return 'This device isn’t verified yet — verify it with one of your other devices.';
+    default:
+      return 'Set up encryption to secure your messages.';
   }
 }

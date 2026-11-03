@@ -401,6 +401,30 @@ export class RoomsPage {
   }
 
   constructor() {
+    afterNextRender(
+      () => this.systemStatus.shellDisplayed(this.mobileMasterDetail),
+      { injector: this.injector },
+    );
+    inject(DestroyRef).onDestroy(() => this.systemStatus.shellLeft());
+    // Switching page, room or account is when nothing is being read: late banners appear
+    // then, but only once any slide has ended, since a banner above the panes would shrink
+    // them mid-slide.
+    const switches = signal(0);
+    let shown = false;
+    effect(() => {
+      this.store.pane();
+      this.store.activeRoomId();
+      this.store.activeAccountId();
+      if (shown) untracked(() => switches.update((count) => count + 1));
+      shown = true;
+    });
+    let released = 0;
+    effect(() => {
+      const count = switches();
+      if (count === released || this.paneSlide() !== null) return;
+      released = count;
+      untracked(() => this.systemStatus.releaseLateBanners());
+    });
     // The service cannot read the page's viewChild refs, so hand it the focus call. In the
     // constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle hooks, so
     // binding there leaves the callback unset in unit tests.
