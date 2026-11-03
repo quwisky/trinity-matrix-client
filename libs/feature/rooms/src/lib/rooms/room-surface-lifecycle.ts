@@ -381,9 +381,9 @@ export class RoomSurfaceLifecycle {
         if (panel) {
           trigger ??= this.activeElementOutsidePanel();
           if (oldPanel) {
-            this.focusPanelAfterRender(panel);
+            this.focusPanelAfterRender(panel, null, isPage);
           } else if ((panel.kind === 'members' && isDrawer) || isPage) {
-            this.focusPanelAfterRender(panel, trigger);
+            this.focusPanelAfterRender(panel, trigger, isPage);
           }
           return;
         }
@@ -409,6 +409,7 @@ export class RoomSurfaceLifecycle {
   private focusPanelAfterRender(
     panel: RenderedRoomSurface,
     openingTrigger: HTMLElement | null = null,
+    page = false,
   ): void {
     afterNextRender(
       () => {
@@ -421,14 +422,16 @@ export class RoomSurfaceLifecycle {
         ) {
           return;
         }
-        // A panel without a marked target takes focus on its header's button.
+        // A page without a marked target takes focus on its header's Back button.
         const target =
           document.querySelector<HTMLElement>(
             '[data-right-panel-slot] [data-right-panel-focus]',
           ) ??
-          document.querySelector<HTMLElement>(
-            '[data-right-panel-slot] [data-right-panel-surface] trn-side-panel-header button',
-          );
+          (page
+            ? document.querySelector<HTMLElement>(
+                '[data-right-panel-slot] [data-right-panel-surface] trn-side-panel-header button',
+              )
+            : null);
         if (target?.isConnected) target.focus();
       },
       { injector: this.injector },

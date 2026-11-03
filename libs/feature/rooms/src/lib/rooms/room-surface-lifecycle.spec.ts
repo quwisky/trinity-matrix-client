@@ -275,6 +275,58 @@ describe('RoomSurfaceLifecycle', () => {
     }
   });
 
+  /** A slot holding one surface whose header has a button and no marked focus target. */
+  function slotWithHeaderButton(): { slot: HTMLElement; button: HTMLElement } {
+    const slot = document.createElement('div');
+    const surface = document.createElement('div');
+    const header = document.createElement('trn-side-panel-header');
+    const button = document.createElement('button');
+    slot.dataset['rightPanelSlot'] = '';
+    surface.dataset['rightPanelSurface'] = '';
+    header.append(button);
+    surface.append(header);
+    slot.append(surface);
+    return { slot, button };
+  }
+
+  it('moves focus into a page opened below md, onto its header button', () => {
+    stubMedia({ [BELOW_MEMBERS_QUERY]: true, [BELOW_MD_QUERY]: true });
+    const { lifecycle } = build();
+    const trigger = document.createElement('button');
+    const { slot, button } = slotWithHeaderButton();
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      lifecycle.transition({ kind: 'open-threads' });
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(button);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
+  it('leaves focus alone when a wide panel switches to one with no marked target', () => {
+    stubMedia({ [BELOW_MEMBERS_QUERY]: false, [BELOW_MD_QUERY]: false });
+    const { lifecycle } = build();
+    const { slot } = slotWithHeaderButton();
+    document.body.append(slot);
+    try {
+      lifecycle.transition({ kind: 'open-threads' });
+      TestBed.tick();
+      (document.activeElement as HTMLElement | null)?.blur();
+      lifecycle.transition({ kind: 'open-pinned' });
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(document.body);
+    } finally {
+      slot.remove();
+    }
+  });
+
   it('asks Workspace for each panel it opens, and shows what the URL then names', () => {
     stubMedia();
     const { lifecycle, openPanel } = build();

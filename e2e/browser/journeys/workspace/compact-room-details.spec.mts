@@ -361,7 +361,7 @@ async function expectPage(page: Page, panel: Locator): Promise<void> {
     Object.values((await target.boundingBox())!).map(Math.round);
   const main = await rounded(page.locator('main.main'));
   expect(main[2]).toBe(page.viewportSize()!.width);
-  // Polled: the page slides in from the right edge.
+  // Polled: the page lands as the panel renders.
   await expect.poll(() => rounded(panel)).toEqual(main);
   await expect(page.locator('trn-room-header')).toHaveAttribute('inert', '');
   await expect(page.locator('trn-message-list')).toHaveAttribute('inert', '');
@@ -391,19 +391,24 @@ async function expectPage(page: Page, panel: Locator): Promise<void> {
       panel.evaluate((element) => element.contains(document.activeElement)),
     )
     .toBe(true);
-  // Arriving with the room's own slide, the page rides it rather than sliding twice.
+  // Arriving with the room's own slide, the page rides it, and it does not slide in again
+  // once that slide has ended.
   expect(
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
+      const frame = () => new Promise((done) => requestAnimationFrame(done));
       const workspace = document.querySelector('.rooms-workspace')!;
-      workspace.setAttribute('data-pane-slide', 'open');
-      const panel = document.querySelector(
+      const surface = document.querySelector(
         '[data-right-panel-surface]',
       ) as HTMLElement;
-      const name = getComputedStyle(panel).animationName;
+      workspace.setAttribute('data-pane-slide', 'open');
+      await frame();
+      const during = surface.getAnimations().length;
       workspace.removeAttribute('data-pane-slide');
-      return name;
+      await frame();
+      await frame();
+      return [during, surface.getAnimations().length];
     }),
-  ).toBe('none');
+  ).toEqual([0, 0]);
 }
 
 for (const viewport of [

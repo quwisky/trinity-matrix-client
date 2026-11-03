@@ -394,10 +394,9 @@
       border-inline-start: 0;
       box-shadow: none;
       transition: none;
-    }
 
-    // A page that arrives with the room rides `.main`'s slide rather than sliding again.
-    [data-pane-slide] :is(.chat-members, .chat-panel) {
+      // No entrance of its own: a page arriving with the room rides `.main`'s slide, and an
+      // entrance suppressed only for the slide's length would replay once it ended.
       animation: none;
     }
   }
