@@ -470,4 +470,37 @@
       );
     }
   }
+
+  /* Touch-primary devices (the iOS and Android apps, phone and tablet browsers; the same
+   * query the appearance adapter uses) draw no focus ring except on text entry. Focus itself
+   * is untouched. This is the last layer, so it out-ranks every component outline and
+   * Tailwind ring without `!important`: `--tw-ring-shadow` is what `ring-*` utilities
+   * compose into box-shadow, and `--ring` and `--trinity-focus-ring` colour the focus
+   * borders. It also applies under forced colours: a hardware-keyboard or Switch Control
+   * user on a phone sees no indicator, by owner decision. */
+  @media (hover: none) and (pointer: coarse) {
+    :focus-visible:not(
+      input:not(
+        [type='checkbox'],
+        [type='radio'],
+        [type='range'],
+        [type='button'],
+        [type='submit'],
+        [type='reset'],
+        [type='file'],
+        [type='color'],
+        [type='image'],
+        [type='hidden']
+      ),
+      textarea,
+      select,
+      [contenteditable]:not([contenteditable='false'])
+    ) {
+      outline: none;
+
+      --tw-ring-shadow: 0 0 transparent;
+      --ring: transparent;
+      --trinity-focus-ring: transparent;
+    }
+  }
 }

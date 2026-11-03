@@ -133,6 +133,54 @@ test.describe('Focus rings follow the last input', () => {
       isMobile: true,
     });
 
+    test('a button shows no ring by touch or Tab, a text field keeps its ring', async ({
+      page,
+      request,
+    }) => {
+      const trigger = await signIn(page, request);
+      // What focus paints: an outline, or a shadow or border colour that differs once blurred.
+      const paint = (target: Locator) =>
+        target.evaluate((element) => {
+          (element as HTMLElement).style.transition = 'none';
+          const visible = (shadow: string) =>
+            shadow
+              .replaceAll(/rgba\(0, 0, 0, 0\)[\d. a-z]*/g, '')
+              .replace(/[, ]/g, '') || 'none';
+          const read = () => {
+            const { outlineStyle, boxShadow, borderColor } =
+              getComputedStyle(element);
+            return { outlineStyle, boxShadow, borderColor };
+          };
+          const focused = read();
+          (element as HTMLElement).blur();
+          const blurred = read();
+          (element as HTMLElement).focus();
+          return [
+            focused.outlineStyle,
+            visible(focused.boxShadow) !== visible(blurred.boxShadow),
+            focused.borderColor !== blurred.borderColor,
+          ].join('|');
+        });
+      await page.evaluate(() => {
+        const field = document.createElement('input');
+        field.id = 'ring-field';
+        document.body.append(field);
+      });
+
+      await trigger.tap();
+      await expect(page.getByTestId('account-row').first()).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(trigger).toBeFocused();
+      expect(await paint(trigger)).toBe('none|false|false');
+
+      await expect(() => focusWithKeyboard(trigger)).toPass();
+      expect(await paint(trigger)).toBe('none|false|false');
+
+      const field = page.locator('#ring-field');
+      await focusWithKeyboard(field);
+      expect((await paint(field)).startsWith('solid')).toBe(true);
+    });
+
     test('a real dialog container shows no ring when it takes script focus after a key', async ({
       page,
       request,
