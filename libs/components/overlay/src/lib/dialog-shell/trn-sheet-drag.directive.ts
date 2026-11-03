@@ -5,9 +5,11 @@ import {
   InjectionToken,
   booleanAttribute,
   computed,
+  effect,
   inject,
   input,
   signal,
+  untracked,
   type Signal,
 } from '@angular/core';
 import type { Dialog } from '@angular/cdk/dialog';
@@ -20,6 +22,7 @@ import {
   SHEET_DETENT_HEIGHT,
   SHEET_LARGE_HEIGHT,
   nextDetent,
+  type SheetDetentHeights,
   type TrnSheetDetent,
 } from '../sheet-frame/sheet-detent';
 
@@ -52,6 +55,14 @@ const MOMENTUM_MS = 120;
 /** Controls and surfaces that keep their own drag; the handle bar is covered by its own pointer path. */
 const OWN_GESTURE =
   'input, textarea, select, [contenteditable], [role="slider"], canvas, pre, code, [data-trn-sheet-no-drag], [data-trn-sheet-handle]';
+/** How each detent rests: `medium` at its content's height up to half the screen. */
+const RESTING = {
+  medium: {
+    height: 'auto',
+    max: `min(${SHEET_DETENT_HEIGHT.medium}, ${SHEET_LARGE_HEIGHT})`,
+  },
+  large: { height: SHEET_LARGE_HEIGHT, max: SHEET_LARGE_HEIGHT },
+} as const satisfies Record<TrnSheetDetent, { height: string; max: string }>;
 
 interface SheetFollow {
   move(y: number): void;
@@ -66,8 +77,8 @@ interface SheetFollow {
   selector: '[trnSheetDrag]',
   host: {
     '[attr.data-sheet-detent]': 'detent()',
-    '[style.--trn-sheet-height]': 'detentHeight()',
-    '[style.--trn-sheet-max-height]': 'detent() ? largeHeight : null',
+    '[style.--trn-sheet-height]': 'resting()?.height ?? null',
+    '[style.--trn-sheet-max-height]': 'resting()?.max ?? null',
   },
 })
 export class TrnSheetDrag {
@@ -76,20 +87,28 @@ export class TrnSheetDrag {
   private readonly dismiss = inject(TRN_SHEET_DISMISS);
   private readonly ref = inject(TrnDialogRef, { optional: true });
   private readonly detents = this.ref?.detents ?? [];
-  private readonly resting = signal<TrnSheetDetent>(
+  private readonly rest = signal<TrnSheetDetent>(
     this.detents.includes(this.ref?.initialDetent ?? 'medium')
       ? (this.ref?.initialDetent ?? 'medium')
       : (this.detents[0] ?? 'medium'),
   );
   private readonly phone = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
+  /** Content that fits inside `medium` rests at its own height and offers no `large`. */
+  private readonly fits = signal(false);
+  private readonly offered = computed(() =>
+    this.fits() && this.detents.includes('medium')
+      ? (['medium'] as const)
+      : this.detents,
+  );
   private stopDrag: (() => void) | null = null;
   private lastScroll = -Infinity;
   private unsnap: ReturnType<typeof setTimeout> | undefined;
+  /** The click that ends a drag on the handle button is not a toggle. */
+  private dragged = false;
 
-  protected readonly largeHeight = SHEET_LARGE_HEIGHT;
-  protected readonly detentHeight = computed(() => {
+  protected readonly resting = computed(() => {
     const detent = this.detent();
-    return detent ? SHEET_DETENT_HEIGHT[detent] : null;
+    return detent ? RESTING[detent] : null;
   });
 
   /** `[trnSheetDrag]="false"` turns the drag off, e.g. for a centred dialog. */
@@ -101,8 +120,14 @@ export class TrnSheetDrag {
   readonly active = computed(() => this.enabled() && !this.ref?.disableClose);
   /** The height the sheet rests at; null without detents or at `md` and wider. */
   readonly detent: Signal<TrnSheetDetent | null> = computed(() =>
-    this.detents.length && this.phone() ? this.resting() : null,
+    this.detents.length && this.phone() ? this.rest() : null,
   );
+  /** What the handle button does: grow to `large`, shrink to `medium`, or nothing. */
+  readonly toggleable: Signal<'expand' | 'collapse' | null> = computed(() => {
+    const detent = this.detent();
+    if (!detent || !this.active() || this.offered().length < 2) return null;
+    return detent === 'medium' ? 'expand' : 'collapse';
+  });
 
   constructor() {
     // Scroll events do not bubble, so a capturing listener sees every scroller in the sheet.
@@ -113,7 +138,18 @@ export class TrnSheetDrag {
       passive: true,
     });
     this.host.addEventListener('touchstart', start, { passive: true });
+    const observer =
+      this.detents.length && typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => this.measureFit())
+        : null;
+    observer?.observe(this.host);
+    // Crossing `md` mid-drag or mid-snap leaves no inline geometry for the other layout.
+    effect(() => {
+      this.phone();
+      untracked(() => this.release());
+    });
     inject(DestroyRef).onDestroy(() => {
+      observer?.disconnect();
       clearTimeout(this.unsnap);
       this.stopDrag?.();
       this.host.removeEventListener('scroll', scrolled, { capture: true });
@@ -121,17 +157,28 @@ export class TrnSheetDrag {
     });
   }
 
-  /** Rests the sheet at `detent`, if it was opened with it. */
+  /** Rests the sheet at `detent`, if it offers it. */
   setDetent(detent: TrnSheetDetent): void {
-    if (!this.detents.includes(detent)) return;
-    this.resting.set(detent);
-    // Written now as well as by the binding, so a release springs to it in the same frame.
-    if (this.phone()) {
+    if (!this.offered().includes(detent)) return;
+    this.rest.set(detent);
+    // Written now as well as by the bindings, so a release springs to it in the same frame
+    // and a drag's own cap is replaced.
+    if (this.detent()) {
+      this.host.style.setProperty('--trn-sheet-height', RESTING[detent].height);
       this.host.style.setProperty(
-        '--trn-sheet-height',
-        SHEET_DETENT_HEIGHT[detent],
+        '--trn-sheet-max-height',
+        RESTING[detent].max,
       );
     }
+  }
+
+  /** The handle button: springs to the other detent, unless the press was a drag. */
+  toggle(): void {
+    const detent = this.detent();
+    if (this.dragged || !detent || !this.toggleable()) return;
+    const heights = this.grab();
+    this.host.getBoundingClientRect(); // commits the start height, so the snap animates from it
+    this.settle(detent === 'medium' ? 'large' : 'medium', heights);
   }
 
   begin(event: PointerEvent): void {
@@ -146,7 +193,10 @@ export class TrnSheetDrag {
     const cancel = (e: PointerEvent) =>
       e.pointerId === id && drag.end(e.clientY, e.timeStamp, true);
 
-    const capture = event.currentTarget as Element | null;
+    // On the handle button, so the click that ends a tap still reaches it.
+    const capture =
+      (event.target as Element | null)?.closest('[data-trn-sheet-toggle]') ??
+      (event.currentTarget as Element | null);
     try {
       capture?.setPointerCapture?.(id);
     } catch {
@@ -206,20 +256,12 @@ export class TrnSheetDrag {
     startY: number,
     startT: number,
   ): SheetFollow {
-    // Read before the transition is stopped, so a sheet grabbed mid-settle starts where it is.
-    const start = this.host.getBoundingClientRect().height;
-    clearTimeout(this.unsnap);
-    this.host.style.transition = 'none';
-    const heights = {
-      start,
-      medium: this.measure(SHEET_DETENT_HEIGHT.medium),
-      large: this.measure(SHEET_DETENT_HEIGHT.large),
-    };
-    this.host.style.height = `${start}px`;
-    const floor = Math.min(start, heights.medium);
+    const heights = this.grab();
+    const available = this.offered();
+    const floor = Math.min(heights.start, heights.medium);
     return {
       move: (y: number) => {
-        const next = start - (y - startY);
+        const next = heights.start - (y - startY);
         this.host.style.height = `${Math.max(floor, next)}px`;
         this.host.style.transform =
           next < floor ? `translateY(${floor - next}px)` : '';
@@ -230,22 +272,47 @@ export class TrnSheetDrag {
           detent,
           dy,
           dy / Math.max(1, t - startT),
-          this.detents,
+          available,
           heights,
         );
         this.stopDrag?.();
-        this.host.style.transition =
-          'transform var(--trinity-duration-base) ease-out, height var(--trinity-duration-base) ease-out';
+        if (Math.abs(dy) >= CLAIM_SLOP) {
+          this.dragged = true;
+          setTimeout(() => (this.dragged = false));
+        }
         if (cancelled) {
-          this.settle(detent);
+          this.settle(detent, heights);
         } else if (next !== 'dismiss') {
-          this.settle(next);
+          this.settle(next, heights);
         } else if (!this.dismiss()) {
           // A refused close rests at the lowest height, never where the finger let go.
-          this.settle(this.detents.includes('medium') ? 'medium' : 'large');
+          this.settle(
+            available.includes('medium') ? 'medium' : 'large',
+            heights,
+          );
         }
       },
     };
+  }
+
+  /**
+   * Stops a snap where the sheet is, holds it there in px and measures what it can snap to,
+   * under the full-height cap the drag may grow to.
+   */
+  private grab(): SheetDetentHeights {
+    // Read before the transition is stopped, so a sheet grabbed mid-settle starts where it is.
+    const start = this.host.getBoundingClientRect().height;
+    clearTimeout(this.unsnap);
+    this.host.style.transition = 'none';
+    this.host.style.setProperty('--trn-sheet-max-height', SHEET_LARGE_HEIGHT);
+    const content = this.measure('auto');
+    const heights = {
+      start,
+      medium: Math.min(content, this.measure(SHEET_DETENT_HEIGHT.medium)),
+      large: this.measure(SHEET_LARGE_HEIGHT),
+    };
+    this.host.style.height = `${start}px`;
+    return heights;
   }
 
   /** The rendered height of `height` on this sheet, inside its own cap. */
@@ -254,18 +321,41 @@ export class TrnSheetDrag {
     return this.host.getBoundingClientRect().height;
   }
 
-  private settle(detent: TrnSheetDetent): void {
+  /** Springs to `detent`'s measured height, then hands the height back to the bindings. */
+  private settle(detent: TrnSheetDetent, heights: SheetDetentHeights): void {
     this.setDetent(detent);
-    this.host.style.height = '';
+    this.host.style.transition =
+      'transform var(--trinity-duration-base) ease-out, height var(--trinity-duration-base) ease-out';
+    // In px: `medium` rests at `auto`, which does not animate.
+    this.host.style.height = `${heights[detent]}px`;
     this.host.style.transform = '';
     // The height transition is the snap's only; a later rotation or keyboard resizes at once.
     // A timer, not an end event: under Reduce Motion no transition runs to end.
     const seconds = parseFloat(getComputedStyle(this.host).transitionDuration);
     clearTimeout(this.unsnap);
     this.unsnap = setTimeout(
-      () => (this.host.style.transition = ''),
+      () => {
+        this.host.style.transition = '';
+        this.host.style.height = '';
+      },
       (seconds || 0) * 1000,
     );
+  }
+
+  /** Drops a drag or snap in flight and its inline geometry. */
+  private release(): void {
+    this.stopDrag?.();
+    clearTimeout(this.unsnap);
+    this.host.style.transition = '';
+    this.host.style.height = '';
+    this.host.style.transform = '';
+  }
+
+  /** At rest at `medium`, a sheet shorter than its cap is sized by its content. */
+  private measureFit(): void {
+    if (this.detent() !== 'medium' || this.host.style.height) return;
+    const cap = parseFloat(getComputedStyle(this.host).maxHeight);
+    this.fits.set(this.host.getBoundingClientRect().height + 1 < cap);
   }
 
   private beginContent(event: TouchEvent): void {
@@ -280,8 +370,8 @@ export class TrnSheetDrag {
     }
     this.stopDrag?.();
     const { clientX: x0, clientY: y0 } = touch;
-    // Decided once, on the first move past the slop: a downward pull claims the gesture,
-    // anything else leaves it to native scrolling and the controls inside the sheet.
+    // Decided once, on the first move past the slop: a vertical pull the sheet can follow
+    // claims the gesture, anything else is left to native scrolling and the controls inside.
     let drag: SheetFollow | null = null;
     let decided = false;
     let lastY = y0;
@@ -295,7 +385,15 @@ export class TrnSheetDrag {
         const dy = t.clientY - y0;
         if (Math.hypot(dx, dy) < CLAIM_SLOP) return;
         decided = true;
-        if (dy <= 0 || Math.abs(dx) > dy || !e.cancelable) return stop();
+        // Up only grows a `medium` sheet that can; at `large` it scrolls the content.
+        const grows = this.toggleable() === 'expand';
+        if (
+          Math.abs(dx) > Math.abs(dy) ||
+          (dy < 0 && !grows) ||
+          !e.cancelable
+        ) {
+          return stop();
+        }
         drag = this.follow(y0, event.timeStamp);
       }
       e.preventDefault();
@@ -355,7 +453,11 @@ export class TrnSheetDragHandle {
 
   protected start(event: PointerEvent): void {
     // A header control (the close X) keeps its own press; capturing would retarget its click.
-    if ((event.target as Element | null)?.closest('button, a, input')) return;
+    // The handle button is the exception: it toggles on a click and drags on a press.
+    const control = (event.target as Element | null)?.closest(
+      'button, a, input',
+    );
+    if (control && !control.hasAttribute('data-trn-sheet-toggle')) return;
     this.sheet?.begin(event);
   }
 }

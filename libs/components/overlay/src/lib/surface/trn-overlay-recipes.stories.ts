@@ -20,6 +20,7 @@ import { DialogOverlayStoryComponent } from './stories/dialog-overlay-story/dial
 import { DropdownOverlayStoryComponent } from './stories/dropdown-overlay-story/dropdown-overlay-story.component';
 import { FeedbackOverlayStoryComponent } from './stories/feedback-overlay-story/feedback-overlay-story.component';
 import { LayeredOverlayStoryComponent } from './stories/layered-overlay-story/layered-overlay-story.component';
+import { SheetDetentsStoryComponent } from './stories/sheet-detents-story/sheet-detents-story.component';
 import {
   type TrnOverlaySurfaceLayout,
   type TrnOverlaySurfaceSize,
@@ -81,6 +82,7 @@ const meta: Meta = {
         DropdownOverlayStoryComponent,
         FeedbackOverlayStoryComponent,
         LayeredOverlayStoryComponent,
+        SheetDetentsStoryComponent,
         TrnButton,
         TrnCheckboxComponent,
         TrnInput,
@@ -119,6 +121,11 @@ export const Dialogs: Story = {
 
 export const Feedback: Story = {
   render: () => ({ template: '<trn-feedback-overlay-story />' }),
+};
+
+/** A phone sheet opened with detents: half height, dragged or toggled to full height. */
+export const SheetDetents: Story = {
+  render: () => ({ template: '<trn-sheet-detents-story />' }),
 };
 
 /**

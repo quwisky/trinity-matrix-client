@@ -125,15 +125,52 @@ describe('TrnSheetFrameComponent', () => {
 
       expect(surface().getAttribute('data-sheet-detent')).toBe('medium');
       expect(surface().style.getPropertyValue('--trn-sheet-height')).toBe(
-        '50svh',
+        'auto',
       );
       expect(surface().classList).toContain('h-[var(--trn-sheet-height)]');
       expect(surface().classList).toContain(
         'max-h-[var(--trn-sheet-max-height)]',
       );
       expect(surface().style.getPropertyValue('--trn-sheet-max-height')).toBe(
-        SHEET_LARGE_HEIGHT,
+        `min(50svh, ${SHEET_LARGE_HEIGHT})`,
       );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('makes the handle a button that expands and collapses the sheet', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    try {
+      open({ detents: ['medium', 'large'] });
+      const toggle = () =>
+        document.querySelector<HTMLButtonElement>('[data-trn-sheet-toggle]')!;
+
+      expect(toggle().tagName).toBe('BUTTON');
+      expect(toggle().getAttribute('aria-label')).toBe('Expand');
+      expect(toggle().contains(handle())).toBe(true);
+
+      toggle().click();
+      TestBed.inject(ApplicationRef).tick();
+      expect(surface().getAttribute('data-sheet-detent')).toBe('large');
+      expect(toggle().getAttribute('aria-label')).toBe('Collapse');
+      await new Promise((resolve) => setTimeout(resolve));
+
+      toggle().click();
+      TestBed.inject(ApplicationRef).tick();
+      expect(surface().getAttribute('data-sheet-detent')).toBe('medium');
+      expect(toggle().getAttribute('aria-label')).toBe('Expand');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the plain handle on a sheet that cannot change height', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    try {
+      open();
+      expect(document.querySelector('[data-trn-sheet-toggle]')).toBeNull();
+      expect(handle()?.getAttribute('aria-hidden')).toBe('true');
     } finally {
       vi.unstubAllGlobals();
     }

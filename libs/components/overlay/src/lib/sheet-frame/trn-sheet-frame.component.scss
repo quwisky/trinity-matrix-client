@@ -9,7 +9,17 @@
     flex: none;
   }
 
+  // The whole strip above the header, so the handle is a reachable target.
+  .sheet-frame__toggle {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
   .sheet-frame__handle {
+    display: block;
     width: 36px;
     height: 4px;
     margin: var(--trinity-space-3) auto 0;

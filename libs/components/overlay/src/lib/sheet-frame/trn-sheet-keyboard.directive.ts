@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { isNativeIos } from '@trinity/platform-native';
+import { TrnSheetDrag } from '../dialog-shell/trn-sheet-drag.directive';
 
 /**
  * The smallest covered height read as a keyboard, in px. Below it the gap is browser chrome:
@@ -68,6 +69,9 @@ interface VirtualKeyboardLike extends EventTarget {
  * scrolled into view once per change of the covered height, not on every viewport scroll,
  * so scrolling inside the sheet is not snapped back.
  *
+ * A `medium` detent sheet first rises to `large` when a field takes focus, on every
+ * platform, so the field and what it filters stay above the keyboard; only a drag lowers it.
+ *
  * A host directive of `TrnSheetFrameComponent`, so every sheet gets it.
  */
 @Directive({
@@ -76,7 +80,7 @@ interface VirtualKeyboardLike extends EventTarget {
     '[style.translate]': 'lift()',
     '[style.max-height]': 'maxHeight()',
     // Focus moving in or out of a field changes whether a keyboard is this sheet's.
-    '(focusin)': 'update()',
+    '(focusin)': 'focused($event)',
     '(focusout)': 'update()',
   },
 })
@@ -85,6 +89,7 @@ export class TrnSheetKeyboardAvoidance {
     inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);
+  private readonly drag = inject(TrnSheetDrag, { optional: true });
   /** Height of the layout viewport the keyboard covers, in px; 0 with no keyboard. */
   private readonly covered = signal(0);
   /** Height of the visible area while a keyboard is open, in px. */
@@ -141,6 +146,16 @@ export class TrnSheetKeyboardAvoidance {
       viewport?.removeEventListener('scroll', update);
       keyboard?.removeEventListener('geometrychange', update);
     });
+    this.update();
+  }
+
+  protected focused(event: FocusEvent): void {
+    if (
+      this.drag?.detent() === 'medium' &&
+      isEditable(event.target as Element)
+    ) {
+      this.drag.setDetent('large');
+    }
     this.update();
   }
 

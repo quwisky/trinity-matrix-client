@@ -1,0 +1,13 @@
+<trn-dialog-shell title="Detent sheet">
+  <input
+    trnInput
+    type="search"
+    aria-label="Search rows"
+    data-testid="sheet-detents-search"
+  />
+  <ul data-testid="sheet-detents-list">
+    @for (item of items(); track item) {
+      <li class="py-3" data-testid="sheet-detents-row">{{ item }}</li>
+    }
+  </ul>
+</trn-dialog-shell>

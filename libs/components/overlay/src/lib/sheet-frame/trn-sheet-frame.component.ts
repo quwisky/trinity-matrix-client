@@ -54,7 +54,7 @@ import {
 })
 export class TrnSheetFrameComponent {
   private readonly ref = inject(TrnDialogRef);
-  private readonly drag = inject(TrnSheetDrag);
+  protected readonly drag = inject(TrnSheetDrag);
 
   /** A sheet opened `disableClose` shows no handle; the drag directive ignores it too. */
   protected readonly swipeable = !this.ref.disableClose;
