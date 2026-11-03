@@ -219,6 +219,11 @@ test.describe('Short rooms on a phone', () => {
     await expect.poll(() => gapAboveComposer(page)).toBeLessThan(0.2);
 
     const scroll = page.locator('.scroll');
+    // A slow server: history paged in from the pin past full must not hold the reader up there.
+    await page.route(/\/messages\?.*dir=b/, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      await route.continue();
+    });
     for (let i = 0; i < 8; i++) await send(`Growing ${i}: ${LONG_BODY}`);
     await expect(scroll.getByText('Growing 7:')).toBeVisible();
     expect(

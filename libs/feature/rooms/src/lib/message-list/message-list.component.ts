@@ -166,6 +166,8 @@ export class MessageListComponent extends MessageListBase {
   private jumpsRequested = 0;
   /** Last scrollTop written by our own correction; distinguishes it from user movement. */
   private expectedProgrammaticScrollTop: number | null = null;
+  /** Where the last bottom pin moved the list, until its scroll event arrives; see {@link onScroll}. */
+  private pinnedTop: number | null = null;
   /** Pending end of the current scroll; see {@link markScrolling}. */
   private scrollIdle: ReturnType<typeof setTimeout> | null = null;
   private readonly iosWebKit = isIosWebKit();
@@ -421,7 +423,7 @@ export class MessageListComponent extends MessageListBase {
       requestAnimationFrame(() => {
         // A jump made as a loaded room opens lands before this frame, and the pin would undo it.
         if (stickToBottom && jumpsBefore === this.jumpsRequested) {
-          this.writeScrollTop(el, el.scrollHeight);
+          this.pinToBottom(el);
         }
 
         const notFull = el.scrollHeight <= el.clientHeight + 1;
@@ -440,8 +442,8 @@ export class MessageListComponent extends MessageListBase {
           this.lastBackfillOldestId = oldestId;
           this.backfillRounds++;
           this.loadOlder.emit();
-        } else if (!chromeToggled) {
-          // A skeleton/error-only re-run must not cancel an in-flight backfill.
+        } else if (!chromeToggled && !this.loadingOlder()) {
+          // A skeleton/error-only re-run, or a message arriving, must not cancel an in-flight backfill.
           this.backfilling = false;
         }
       });
@@ -521,6 +523,7 @@ export class MessageListComponent extends MessageListBase {
     this.prependAnchorActive = false;
     this.prependAnchorGeneration++;
     this.expectedProgrammaticScrollTop = null;
+    this.pinnedTop = null;
     this.scrollHold.reset();
     this.scrollEl()?.nativeElement.style.removeProperty('--scroll-hold');
     this.atBottomSig.set(true);
@@ -597,12 +600,16 @@ export class MessageListComponent extends MessageListBase {
       this.prependAnchorGeneration++;
     }
     this.scrollTop.set(el.scrollTop);
-    this.atBottomSig.set(
-      el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX,
-    );
-    this.updateJumpToUnread(); // divider may have scrolled in/out of the window
     const bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (this.loadingOlder() && bottomGap >= 1) {
+    // The list's own pin, not the reader. Matched by position: a message rendered before this event
+    // leaves the pin short of the bottom, which must not unpin the reader.
+    const fromPin = el.scrollTop === this.pinnedTop;
+    this.pinnedTop = null;
+    this.atBottomSig.set(fromPin || bottomGap < NEAR_BOTTOM_PX);
+    // The reader left the bottom: what lands next is no longer a fill to stay pinned through.
+    if (!fromPin && bottomGap >= 1) this.backfilling = false;
+    this.updateJumpToUnread(); // divider may have scrolled in/out of the window
+    if (this.loadingOlder() && bottomGap >= 1 && !fromPin) {
       // A reader can move while an earlier automatic backfill is in flight. Transfer its restore
       // point even inside the near-bottom threshold: only an exact bottom pin has no offset to preserve.
       this.prevScrollHeight = el.scrollHeight;
@@ -623,6 +630,12 @@ export class MessageListComponent extends MessageListBase {
       return;
     }
     if (el.scrollTop < AUTO_LOAD_THRESHOLD_PX) {
+      if (fromPin) {
+        // The pin of a room just past full: page history in as a fill, which keeps the reader pinned.
+        this.backfilling = true;
+        this.loadOlder.emit();
+        return;
+      }
       this.prevScrollHeight = el.scrollHeight;
       this.prevScrollTop = el.scrollTop;
       this.capturePrependAnchor(el);
@@ -748,7 +761,7 @@ export class MessageListComponent extends MessageListBase {
     this.expectedProgrammaticScrollTop = null;
     // Pin the window to the bottom, then scroll once it has re-rendered the newest rows (spacer heights shift).
     this.atBottomSig.set(true);
-    requestAnimationFrame(() => this.writeScrollTop(el, el.scrollHeight));
+    requestAnimationFrame(() => this.pinToBottom(el));
   }
 
   /**
@@ -925,7 +938,7 @@ export class MessageListComponent extends MessageListBase {
     }
     if (atBottom) {
       // Stay pinned to the newest message as measured heights settle.
-      this.writeScrollTop(el, el.scrollHeight);
+      this.pinToBottom(el);
     } else {
       // While scrolled up, a change to a row ABOVE the fold shoves the read position (native
       // anchoring is off): a real reflow or the first estimate-to-real measurement of an overscan
@@ -1012,6 +1025,13 @@ export class MessageListComponent extends MessageListBase {
     el.scrollTop = top;
     this.scrollActivity.shifted(el.scrollTop - before);
     this.scrollTop.set(el.scrollTop);
+  }
+
+  private pinToBottom(el: HTMLElement): void {
+    const before = el.scrollTop;
+    this.writeScrollTop(el, el.scrollHeight);
+    // A write that does not move the list fires no scroll event to clear this.
+    if (el.scrollTop !== before) this.pinnedTop = el.scrollTop;
   }
 
   /**
