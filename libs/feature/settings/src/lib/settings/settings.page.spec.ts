@@ -362,8 +362,9 @@ describe('SettingsPage (shell)', () => {
     search.dispatchEvent(new Event('input', { bubbles: true }));
     harness.detectChanges();
     shell.goBack();
-    expect(search.hasAttribute('data-route-focus')).toBe(true);
+    // The section slides off first; jsdom draws no slide, so it ends on the next render.
     await flush();
+    expect(search.hasAttribute('data-route-focus')).toBe(true);
   });
 
   it('shows the running build version and commit in a footer', async () => {

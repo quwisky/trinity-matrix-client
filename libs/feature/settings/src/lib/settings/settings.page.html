@@ -6,6 +6,7 @@
   [initialPart]="partTarget()"
   [compact]="!wide()"
   [directoryVisible]="wide() || !sectionActive()"
+  [slide]="slide()"
   testId="settings-dialog"
   navItemTestIdPrefix="settings-nav-"
   detailTestId="settings-detail"
@@ -14,6 +15,7 @@
   (sectionSelected)="selectSection($event)"
   (backRequested)="goBack()"
   (closeRequested)="close()"
+  (slideEnd)="onSlideEnd()"
 >
   <trn-settings-directory-search
     settings-directory-header

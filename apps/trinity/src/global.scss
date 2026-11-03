@@ -344,6 +344,33 @@
     }
   }
 
+  /* A page pushed over the one below it, or popped off: a room over its list, a panel page
+   * over its room, a Settings section over its directory. Global, because a component's own
+   * keyframes are scoped to it. UIKit's parallax: the page underneath travels 30%. */
+  @keyframes pane-over-in {
+    from {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes pane-over-out {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes pane-under-out {
+    to {
+      transform: translateX(-30%);
+    }
+  }
+
+  @keyframes pane-under-in {
+    from {
+      transform: translateX(-30%);
+    }
+  }
+
   .trn-overlay-enter-dialog {
     animation: trn-dialog-in var(--trinity-duration-overlay) ease-out;
   }

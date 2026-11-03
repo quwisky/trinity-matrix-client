@@ -1,0 +1,53 @@
+@layer components {
+  // A compact section page pushed over its directory, or popped off it, is the room-over-list
+  // page slide (`rooms.page.scss`, keyframes in the app's `global.scss`): the page moves over a
+  // directory that shifts underneath. A swipe back shows the same two panes under the finger.
+  // The pane leaving comes out of flow at the size it had.
+  .settings-layout__workspace:is([data-pane-slide], [data-pane-swipe]) {
+    position: relative;
+  }
+
+  :is([data-pane-slide], [data-pane-swipe]) .settings-pane--hidden {
+    display: flex;
+  }
+
+  :is([data-pane-slide], [data-pane-swipe]) .settings-layout__content {
+    // Positioned and after the directory, so it paints over it.
+    position: relative;
+    box-shadow: var(--trinity-shadow-overlay);
+  }
+
+  // A framed layout's panes are transparent on the shell; the page moving over needs a fill.
+  :host(:not([data-presentation='fullscreen']))
+    :is([data-pane-slide], [data-pane-swipe])
+    .settings-layout__content {
+    background: var(--trinity-surface-overlay);
+  }
+
+  [data-pane-slide='open'] .settings-layout__nav,
+  [data-pane-swipe] .settings-layout__nav,
+  [data-pane-slide='close'] .settings-layout__content {
+    position: absolute;
+    inset: 0;
+  }
+
+  [data-pane-slide='open'] .settings-layout__content {
+    animation: pane-over-in var(--trinity-duration-base)
+      var(--trinity-ease-standard) both;
+  }
+
+  [data-pane-slide='close'] .settings-layout__content {
+    animation: pane-over-out var(--trinity-duration-base)
+      var(--trinity-ease-standard) both;
+  }
+
+  [data-pane-slide='open'] .settings-layout__nav {
+    animation: pane-under-out var(--trinity-duration-base)
+      var(--trinity-ease-standard) both;
+  }
+
+  [data-pane-slide='close'] .settings-layout__nav {
+    animation: pane-under-in var(--trinity-duration-base)
+      var(--trinity-ease-standard) both;
+  }
+}

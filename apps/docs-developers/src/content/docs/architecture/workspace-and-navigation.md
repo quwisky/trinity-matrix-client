@@ -48,6 +48,14 @@ Width decides only how the panel is presented, so a resize adds no history:
 
 On iOS, WebKit's edge swipe is a history step. It is on for a panel page pushed over its room (`WorkspaceNavigationService.panelOverRoom`), and off at every width from `md` up, for one restored from a link with no entry below it, and for dialogs. The same switch enables WebKit's Forward swipe, which re-opens the panel entry above. Member info and room settings stay modal at every width.
 
+## Present Settings sections {#settings-sections}
+
+Below `md`, a Settings section is a page over the section list. That holds both in the Settings sheet and on a routed `/settings` page. Opening a section slides it over the list, and Back slides it off, using the same slide and Reduce Motion handling as a room over its list. Wide layouts show both panes, with no slide.
+
+- **Routed page.** A section is a route of its own, so WebKit's edge swipe is a history step there, and a history step draws no slide.
+- **Sheet.** The sheet adds one history entry per section, at the same URL and marked `trinitySettingsSection` in its state. The router skips a step between those entries, so the sheet follows the entry it lands on. Back, browser Back and Android Back step from a section to the list, and the next Back closes the sheet. Closing the sheet with ×, the scrim or a drag pops the entries it added.
+- **Sheet swipe.** WebKit's swipe stays off while a dialog is open. In its place, the sheet's section follows a swipe from its leading edge and goes back past a threshold.
+
 ## Keep route behavior centralized {#route-behavior}
 
 Public authentication routes remain reachable without an account. Product routes use application guards, the empty path redirects to rooms, and the final wildcard recovers stale same-origin navigations. Add route-specific behavior in the composition root and application adapters, not in a reusable component.
