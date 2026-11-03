@@ -12,10 +12,11 @@
     overflow: hidden;
   }
 
-  /* WebKit zooms on a double tap unless an ancestor opts out; `manipulation` keeps pan and
-   * pinch-zoom (accessibility) and drops only the double-tap gesture. Descendants that set their
-   * own `touch-action` intersect with this. */
-  html {
+  /* WebKit zooms on a double tap unless `touch-action` opts out; `manipulation` keeps pan and
+   * pinch-zoom (accessibility) and drops only the double-tap gesture. The value is resolved only up
+   * to the nearest scroll container, so every element states it. Zero specificity: any rule that
+   * sets its own `touch-action` (sheet drag, the image viewer, swipes) still wins. */
+  :where(html, html *) {
     touch-action: manipulation;
   }
 
