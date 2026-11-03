@@ -19,6 +19,7 @@ import {
   type ApiUser,
 } from '../../../support/account.mts';
 import { createRoom } from '../../support/space-journey.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers the rendered thread summary on a real timeline: keyboard activation on desktop,
 // touch activation on a Pixel 5, and the long-preview layout in the browser engine.
@@ -220,16 +221,6 @@ async function seedThread(
     imageFilename: imageRootBody ? 'short-root.png' : undefined,
     imageLatestBody: options.imageLatestBody,
   };
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 20_000,
-  });
 }
 
 async function assertPreview(
