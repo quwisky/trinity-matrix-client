@@ -1,5 +1,6 @@
 import type { ResolvedThemeMode } from '@trinity/theme-foundation';
 import type { AppearanceValue } from './appearance-preferences';
+import type { StatusAreaReading } from './appearance-status-area.source';
 
 /** Committed Appearance after the system Mode choice has resolved. */
 export type ResolvedAppearance = Omit<AppearanceValue, 'mode'> & {
@@ -26,18 +27,27 @@ export function resolveAppearance(
 }
 
 /**
- * Narrow the application projection before it crosses the native boundary. The surface under
- * the status bar decides its Mode, so an accent banner or the media viewer keeps contrast in
- * either Mode; without a reading the resolved Mode stands in.
+ * Narrow the application projection before it crosses the native boundary. What sits under the
+ * status bar decides its Mode, so an accent banner or the media viewer keeps contrast in either
+ * Mode. A host that pads the WebView shows its window there, which follows the system Mode;
+ * without a reading the resolved Mode stands in.
  */
 export function toNativeChromeAppearance(
   appearance: ResolvedAppearance,
-  statusAreaColor: string | null = null,
+  statusArea: StatusAreaReading = { kind: 'unknown' },
+  systemMode: ResolvedThemeMode = appearance.mode,
 ): NativeChromeAppearance {
-  return Object.freeze({
-    mode: statusAreaColor ? surfaceMode(statusAreaColor) : appearance.mode,
-    color: statusAreaColor,
-  });
+  switch (statusArea.kind) {
+    case 'page':
+      return Object.freeze({
+        mode: surfaceMode(statusArea.color),
+        color: statusArea.color,
+      });
+    case 'host':
+      return Object.freeze({ mode: systemMode, color: null });
+    case 'unknown':
+      return Object.freeze({ mode: appearance.mode, color: null });
+  }
 }
 
 /**

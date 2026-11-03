@@ -1,5 +1,14 @@
-import { test, expect, type Page } from '../../../fixtures.mts';
-import { login, homeserverSession } from '../../../support/app.mts';
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type Page,
+} from '../../../fixtures.mts';
+import {
+  login,
+  homeserverSession,
+  seedPreference,
+} from '../../../support/app.mts';
 import { apiLogin } from '../../../support/account.mts';
 import {
   freshAccount,
@@ -102,6 +111,39 @@ function hexToRgb(value: string): Rgb {
   return [r, g, b];
 }
 
+const IMAGE = 'status-bar.png';
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+async function postImage(
+  request: APIRequestContext,
+  hs: string,
+  token: string,
+  roomId: string,
+): Promise<void> {
+  const headers = { Authorization: `Bearer ${token}` };
+  const upload = await request.post(
+    `${hs}/_matrix/media/v3/upload?filename=${IMAGE}`,
+    { headers: { ...headers, 'Content-Type': 'image/png' }, data: PNG_1X1 },
+  );
+  const { content_uri: url } = (await upload.json()) as { content_uri: string };
+  const sent = await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/status-bar-image`,
+    {
+      headers,
+      data: {
+        msgtype: 'm.image',
+        body: IMAGE,
+        url,
+        info: { mimetype: 'image/png', size: PNG_1X1.length, w: 1, h: 1 },
+      },
+    },
+  );
+  expect(sent.ok()).toBe(true);
+}
+
 /** Hold the room slide halfway, as it starts. */
 async function pauseNextPaneSlide(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -122,13 +164,27 @@ async function pauseNextPaneSlide(page: Page): Promise<void> {
   });
 }
 
-for (const colorScheme of ['light', 'dark'] as const) {
-  test.describe(`Status bar colour (${colorScheme})`, () => {
+// Classic is the theme whose room list header differs from its column.
+const RUNS = [
+  ['light', 'trinity'],
+  ['dark', 'trinity'],
+  ['light', 'classic'],
+  ['dark', 'classic'],
+] as const;
+
+for (const [colorScheme, theme] of RUNS) {
+  test.describe(`Status bar colour (${theme}, ${colorScheme})`, () => {
     test.skip(!session.available, 'requires a homeserver (Docker or native)');
-    test.use({ viewport: { width: WIDTH, height: 844 }, colorScheme });
+    // A touch screen: the colour reading runs only where a status bar shows it.
+    test.use({
+      viewport: { width: WIDTH, height: 844 },
+      colorScheme,
+      hasTouch: true,
+      isMobile: true,
+    });
     test.describe.configure({ timeout: 150_000 });
 
-    test('matches the bar below with a banner, on the room list, mid-slide, in a room and under a sheet', async ({
+    test('matches the bar below with a banner, on the room list, mid-slide, in a room, its panels, the image viewer and a sheet', async ({
       page,
       request,
     }) => {
@@ -139,12 +195,16 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const hs = session.hs as string;
       const account = await freshAccount(request, hs, 'status-bar');
       const roomName = `Status ${account.user}`;
-      await createRoom(
+      const owner = await apiLogin(request, hs, account.user, account.pass);
+      await postImage(
         request,
         hs,
-        await apiLogin(request, hs, account.user, account.pass),
-        roomName,
+        owner.token,
+        await createRoom(request, hs, owner, roomName),
       );
+      if (theme !== 'trinity') {
+        await seedPreference(page, 'trinity.appearance.theme', theme);
+      }
       const room = page.locator('.sidebar__scroll .channel', {
         hasText: roomName,
       });
@@ -198,6 +258,23 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
       await expect(back).toBeVisible();
       await expectStatusBarMatchesTopBar(page, 'room');
+
+      // The threads drawer reaches the top over the room.
+      await page.getByTestId('open-threads').click();
+      await expect(
+        page.getByRole('heading', { name: 'Threads' }),
+      ).toBeVisible();
+      await expectStatusBarMatchesTopBar(page, 'threads panel');
+      await page.getByRole('button', { name: 'Close threads' }).click();
+      await expect(page.getByRole('heading', { name: 'Threads' })).toBeHidden();
+
+      // The image viewer's black matte: the one top surface darker than a light theme.
+      await page.getByRole('button', { name: `Open image ${IMAGE}` }).click();
+      const viewer = page.getByRole('dialog', { name: IMAGE });
+      await expect(viewer).toBeVisible({ timeout: 20_000 });
+      await expectStatusBarMatchesTopBar(page, 'image viewer');
+      await page.keyboard.press('Escape');
+      await expect(viewer).toBeHidden();
 
       await back.click();
       await expect(room).toBeVisible();

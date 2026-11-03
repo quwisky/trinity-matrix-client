@@ -41,6 +41,21 @@ describe('NativeAppearanceChromeAdapter', () => {
     expect(setStyle).toHaveBeenLastCalledWith({ style: 'LIGHT' });
   });
 
+  it('sends the native style only when it changes', async () => {
+    const adapter = TestBed.inject(NativeAppearanceChromeAdapter);
+    await firstValueFrom(adapter.apply({ mode: 'light', color: '#fdfcf9' }));
+    await firstValueFrom(adapter.apply({ mode: 'light', color: '#f5f3ef' }));
+    expect(setStyle).toHaveBeenCalledOnce();
+
+    // A rejected command is not remembered, so the next apply tries again.
+    setStyle.mockRejectedValueOnce(new Error('bridge busy'));
+    await expect(
+      firstValueFrom(adapter.apply({ mode: 'dark', color: '#151618' })),
+    ).rejects.toThrow('bridge busy');
+    await firstValueFrom(adapter.apply({ mode: 'dark', color: '#151618' }));
+    expect(setStyle).toHaveBeenCalledTimes(3);
+  });
+
   it('paints the browser theme colour from the status area on Web', async () => {
     const adapter = TestBed.inject(NativeAppearanceChromeAdapter);
     isNative.mockReturnValue(false);

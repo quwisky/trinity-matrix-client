@@ -98,9 +98,14 @@ export class AppearanceEffects {
       if (!nativeChrome) return documentEffects;
       const nativeChromeEffects = resolved.pipe(
         switchMap((appearance) =>
-          this.statusArea
-            .observe()
-            .pipe(map((color) => toNativeChromeAppearance(appearance, color))),
+          combineLatest([
+            this.statusArea.observe(),
+            this.systemMode.observe(),
+          ]).pipe(
+            map(([statusArea, systemMode]) =>
+              toNativeChromeAppearance(appearance, statusArea, systemMode),
+            ),
+          ),
         ),
         distinctUntilChanged(
           (left, right) =>

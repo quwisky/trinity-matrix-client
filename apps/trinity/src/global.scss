@@ -357,13 +357,9 @@
   /*
    * Safe-area insets (notch / status bar / home indicator). `env(safe-area-inset-*)` is 0 on
    * web and desktop (and inside Android's keyboard-resized WebView), so these helpers only pad
-   * on notched native devices; index.html sets `viewport-fit=cover`. Pair `.safe-top` with
-   * `min-h-*` (not a fixed `h-*`) so the bar grows by the inset and keeps full content height.
+   * on notched native devices; index.html sets `viewport-fit=cover`. There is no top helper:
+   * the top inset belongs to whatever bar sits at the top (`--trinity-top-inset`, above).
    */
-  .safe-top {
-    padding-top: env(safe-area-inset-top);
-  }
-
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }

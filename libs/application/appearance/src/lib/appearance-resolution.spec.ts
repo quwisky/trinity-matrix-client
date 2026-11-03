@@ -6,6 +6,8 @@ import {
   toNativeChromeAppearance,
 } from './appearance-resolution';
 
+const page = (color: string) => ({ kind: 'page', color }) as const;
+
 const committed = (mode: AppearanceValue['mode']): AppearanceValue => ({
   mode,
   theme: 'amethyst',
@@ -47,13 +49,23 @@ describe('Appearance resolution', () => {
     const dark = resolveAppearance(committed('dark'), 'dark');
 
     // The dark Graphite accent banner: white content would measure 2.96:1, black 7.1:1.
-    expect(toNativeChromeAppearance(dark, '#7f8ff1')).toEqual({
+    expect(toNativeChromeAppearance(dark, page('#7f8ff1'))).toEqual({
       mode: 'light',
       color: '#7f8ff1',
     });
     // The media viewer's black matte in light Mode.
-    expect(toNativeChromeAppearance(light, '#000000').mode).toBe('dark');
-    expect(toNativeChromeAppearance(light, '#f5f3ef').mode).toBe('light');
+    expect(toNativeChromeAppearance(light, page('#000000')).mode).toBe('dark');
+    expect(toNativeChromeAppearance(light, page('#f5f3ef')).mode).toBe('light');
+  });
+
+  it('follows the system Mode where the host pads the WebView below the status bar', () => {
+    // Android WebView before 140 shows the window background there, which follows the system.
+    const light = resolveAppearance(committed('light'), 'dark');
+
+    expect(toNativeChromeAppearance(light, { kind: 'host' }, 'dark')).toEqual({
+      mode: 'dark',
+      color: null,
+    });
   });
 
   it('picks the content colour with more contrast on the surface', () => {

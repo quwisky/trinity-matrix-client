@@ -12,6 +12,7 @@ import { defer, from, of, type Observable } from 'rxjs';
 @Injectable({ providedIn: 'root' })
 export class NativeAppearanceChromeAdapter {
   private readonly document = inject(DOCUMENT);
+  private appliedMode: ResolvedThemeMode | undefined;
 
   apply(appearance: {
     readonly mode: ResolvedThemeMode;
@@ -29,10 +30,18 @@ export class NativeAppearanceChromeAdapter {
         }
         return of(void 0);
       }
-      if (!Capacitor.isPluginAvailable('StatusBar')) return of(void 0);
+      if (
+        !Capacitor.isPluginAvailable('StatusBar') ||
+        appearance.mode === this.appliedMode
+      ) {
+        return of(void 0);
+      }
+      const mode = appearance.mode;
       return from(
         StatusBar.setStyle({
-          style: appearance.mode === 'dark' ? Style.Dark : Style.Light,
+          style: mode === 'dark' ? Style.Dark : Style.Light,
+        }).then(() => {
+          this.appliedMode = mode;
         }),
       );
     });

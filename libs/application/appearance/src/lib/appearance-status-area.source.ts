@@ -1,73 +1,141 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, InjectionToken, inject } from '@angular/core';
-import { Observable, auditTime, distinctUntilChanged, map, of } from 'rxjs';
+import {
+  Observable,
+  auditTime,
+  distinctUntilChanged,
+  map,
+  merge,
+  of,
+} from 'rxjs';
 
 /** A screen settles within a frame or two of a change; the status bar can trail it this much. */
 const SETTLE_MS = 100;
 
-/** Cold host observation of the colour painted under the status bar, as `#rrggbb`. */
+/**
+ * What sits under the status bar: the page's colour as `#rrggbb`; the host's own window, when
+ * it pads the WebView below the status bar instead (Android WebView before 140); or unknown.
+ */
+export type StatusAreaReading =
+  | { readonly kind: 'page'; readonly color: string }
+  | { readonly kind: 'host' }
+  | { readonly kind: 'unknown' };
+
+const UNKNOWN: StatusAreaReading = { kind: 'unknown' };
+
+/** Cold host observation of what is painted under the status bar. */
 export interface AppearanceStatusAreaSource {
-  observe(): Observable<string | null>;
+  observe(): Observable<StatusAreaReading>;
 }
 
 /**
  * Reads what the page paints at the top centre of the viewport, the strip a phone's status bar
- * sits on, by compositing the backgrounds of every element there. It samples again after DOM,
- * class or animation changes, so it follows screens, banners and overlays; an Appearance change
- * subscribes again.
- * Null where the engine cannot hit-test or read back a canvas.
+ * sits on, by compositing every element there. It samples at once, then again after DOM,
+ * attribute or animation changes, so it follows screens, banners and overlays; an Appearance
+ * change subscribes again. It runs only where the reading shows: on a touch screen (a phone's
+ * status bar) or in an installed web app (its theme colour).
  */
 @Injectable({ providedIn: 'root' })
 export class BrowserAppearanceStatusAreaSource implements AppearanceStatusAreaSource {
   private readonly document = inject(DOCUMENT);
   private context: CanvasRenderingContext2D | null | undefined;
+  private probe: HTMLElement | undefined;
 
-  observe(): Observable<string | null> {
+  observe(): Observable<StatusAreaReading> {
     const view = this.document.defaultView;
     if (
       !view?.MutationObserver ||
-      typeof this.document.elementsFromPoint !== 'function'
+      typeof view.matchMedia !== 'function' ||
+      typeof this.document.elementsFromPoint !== 'function' ||
+      !view.matchMedia('(pointer: coarse), (display-mode: standalone)').matches
     ) {
-      return of(null);
+      return of(UNKNOWN);
     }
-    return new Observable<void>((subscriber) => {
+    const changes = new Observable<void>((subscriber) => {
       const changed = (): void => subscriber.next();
       const observer = new view.MutationObserver(changed);
       observer.observe(this.document.body, {
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ['class', 'style', 'inert', 'data-pane-slide'],
+        attributeFilter: [
+          'class',
+          'style',
+          'hidden',
+          'inert',
+          'open',
+          'data-pane-slide',
+          'data-mobile-view',
+          'data-forecast',
+        ],
       });
       const events = ['animationend', 'resize'] as const;
       for (const type of events) view.addEventListener(type, changed, true);
-      changed();
       return () => {
         observer.disconnect();
-        for (const type of events)
+        for (const type of events) {
           view.removeEventListener(type, changed, true);
+        }
       };
-    }).pipe(
-      auditTime(SETTLE_MS),
+    });
+    return merge(of(undefined), changes.pipe(auditTime(SETTLE_MS))).pipe(
       map(() => this.sample(view)),
-      distinctUntilChanged(),
+      distinctUntilChanged(sameReading),
     );
   }
 
-  private sample(view: Window): string | null {
+  private sample(view: Window): StatusAreaReading {
+    if (this.hostPadsTop(view)) return { kind: 'host' };
     const context = this.canvas();
-    if (!context) return null;
+    if (!context) return UNKNOWN;
     const layers = this.document.elementsFromPoint(view.innerWidth / 2, 0);
     context.clearRect(0, 0, 1, 1);
+    // shortcut: reads only each hit-testable element's background colour and, where it covers
+    // the point, its top border; opacity, background images, pseudo-elements and
+    // `pointer-events: none` layers are not seen. Upgrade if a top bar uses one of those.
     for (const element of layers.reverse()) {
-      // An unparseable value leaves this in place instead of repainting the layer below.
-      context.fillStyle = 'transparent';
-      context.fillStyle = view.getComputedStyle(element).backgroundColor;
-      context.fillRect(0, 0, 1, 1);
+      const style = view.getComputedStyle(element);
+      this.paint(context, style.backgroundColor);
+      const top = element.getBoundingClientRect().top;
+      if (top <= 0 && top + Number.parseFloat(style.borderTopWidth) > 0) {
+        this.paint(context, style.borderTopColor);
+      }
     }
     const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
-    if (alpha !== 255) return null;
-    return `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+    if (alpha !== 255) return UNKNOWN;
+    const color = `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+    return { kind: 'page', color };
+  }
+
+  private paint(context: CanvasRenderingContext2D, color: string): void {
+    // An unparseable value leaves this in place instead of repainting the layer below.
+    context.fillStyle = 'transparent';
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+  }
+
+  /**
+   * Capacitor's SystemBars reports the inset as `--safe-area-inset-top` on every Android
+   * WebView, but only from WebView 140 does the page reach under the status bar and `env()`
+   * report it; before that it pads the WebView natively.
+   */
+  private hostPadsTop(view: Window): boolean {
+    const reported = Number.parseFloat(
+      view
+        .getComputedStyle(this.document.body)
+        .getPropertyValue('--safe-area-inset-top'),
+    );
+    if (!(reported > 0)) return false;
+    if (!this.probe) {
+      this.probe = this.document.createElement('div');
+      this.probe.setAttribute('aria-hidden', 'true');
+      this.probe.style.cssText =
+        'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px)';
+      this.document.body.append(this.probe);
+    }
+    return (
+      Number.parseFloat(view.getComputedStyle(this.probe).paddingTop) === 0
+    );
   }
 
   private canvas(): CanvasRenderingContext2D | null {
@@ -82,6 +150,15 @@ export class BrowserAppearanceStatusAreaSource implements AppearanceStatusAreaSo
     }
     return this.context;
   }
+}
+
+function sameReading(
+  left: StatusAreaReading,
+  right: StatusAreaReading,
+): boolean {
+  return left.kind === 'page' && right.kind === 'page'
+    ? left.color === right.color
+    : left.kind === right.kind;
 }
 
 export const APPEARANCE_STATUS_AREA_SOURCE =

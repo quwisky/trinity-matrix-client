@@ -19,7 +19,10 @@ import {
 import {
   APPEARANCE_STATUS_AREA_SOURCE,
   type AppearanceStatusAreaSource,
+  type StatusAreaReading,
 } from './appearance-status-area.source';
+
+const page = (color: string): StatusAreaReading => ({ kind: 'page', color });
 import {
   APPEARANCE_SYSTEM_MODE_SOURCE,
   type AppearanceSystemModeSource,
@@ -104,7 +107,7 @@ describe('AppearanceEffects', () => {
   it('gives native chrome the Mode and colour of the surface under the status bar', () => {
     const committed = signal({ ...defaults(), mode: 'dark' as const });
     const systemMode = new BehaviorSubject<'light' | 'dark'>('dark');
-    const statusArea = new BehaviorSubject<string | null>('#151618');
+    const statusArea = new BehaviorSubject<StatusAreaReading>(page('#151618'));
     const nativeAdapter: AppearanceNativeChromeAdapter = {
       apply: vi.fn(() => of(void 0)),
     };
@@ -125,19 +128,27 @@ describe('AppearanceEffects', () => {
     });
 
     // An accent banner reaches the top in dark Mode: its pale surface needs dark content.
-    statusArea.next('#7f8ff1');
+    statusArea.next(page('#7f8ff1'));
     expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
       mode: 'light',
       color: '#7f8ff1',
     });
 
-    statusArea.next('#7f8ff1');
+    statusArea.next(page('#7f8ff1'));
     expect(nativeAdapter.apply).toHaveBeenCalledTimes(2);
 
     // Unreadable again: the resolved Mode stands in.
-    statusArea.next(null);
+    statusArea.next({ kind: 'unknown' });
     expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
       mode: 'dark',
+      color: null,
+    });
+
+    // A natively padded WebView: the window under the status bar follows the system Mode.
+    statusArea.next({ kind: 'host' });
+    systemMode.next('light');
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'light',
       color: null,
     });
     subscription.unsubscribe();
@@ -369,7 +380,7 @@ function configureEffects(
   systemMode: BehaviorSubject<'light' | 'dark'>,
   documentAdapter: AppearanceDocumentAdapter,
   nativeAdapter?: AppearanceNativeChromeAdapter,
-  statusArea = new BehaviorSubject<string | null>(null),
+  statusArea = new BehaviorSubject<StatusAreaReading>({ kind: 'unknown' }),
 ): void {
   TestBed.configureTestingModule({
     providers: [
