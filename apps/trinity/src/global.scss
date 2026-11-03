@@ -448,7 +448,8 @@
 
     /* iOS WebKit zooms the page when a focused text field computes below 16px, so every
      * text-entry control resolves to at least 16px here. The floor token is rem-based, so the
-     * Text size setting still grows fields; a field may set `--trinity-entry-font-size`. */
+     * Text size setting still grows fields; a field may set `--trinity-entry-font-size`.
+     * Keep this list in sync with the text-entry exemption in the touch focus rule below. */
     input:not(
       [type='checkbox'],
       [type='radio'],
@@ -468,6 +469,46 @@
         var(--trinity-entry-font-size, var(--trinity-type-control-size)),
         var(--trinity-type-entry-min-size)
       );
+    }
+  }
+
+  /* Touch-primary devices (the iOS and Android apps, phone and tablet browsers; the same
+   * query the appearance adapter uses) draw no focus ring except on text entry. Focus itself
+   * is untouched. This is the last layer, so it out-ranks every component rule without
+   * `!important`. On the focused element it clears the outline and sets `--tw-ring-shadow`,
+   * `--ring` and `--trinity-focus-ring` (the colours of ring shadows and focus borders) to
+   * nothing. A ring painted on another element is cleared the same way through its source:
+   * the later siblings of a focused control (`peer-focus-visible`, the checkbox, switch and
+   * radio indicator) and the `.group` wrapper around it (`has-[:focus-visible]`, a radio
+   * option). Forced colours does not restore a ring either: a hardware-keyboard or Switch
+   * Control user on a phone sees no indicator, by owner decision. */
+  @media (hover: none) and (pointer: coarse) {
+    :focus-visible:not(
+      input:not(
+        [type='checkbox'],
+        [type='radio'],
+        [type='range'],
+        [type='button'],
+        [type='submit'],
+        [type='reset'],
+        [type='file'],
+        [type='color'],
+        [type='image'],
+        [type='hidden']
+      ),
+      textarea,
+      select,
+      [contenteditable]:not([contenteditable='false'])
+    ) {
+      &,
+      & ~ *,
+      .group:has(&) {
+        outline: none;
+
+        --tw-ring-shadow: 0 0 transparent;
+        --ring: transparent;
+        --trinity-focus-ring: transparent;
+      }
     }
   }
 }
