@@ -37,6 +37,10 @@ interface ComposerInsertAction {
   readonly disabled: boolean;
   /** The launched surface deliberately owns focus after the sheet closes. */
   readonly transfersFocus: boolean;
+  /** Starts a card on a phone sheet: attach and capture, the composed kinds, then Format. */
+  readonly cardBefore?: boolean;
+  /** Opens a sheet of its own. */
+  readonly submenu?: boolean;
   readonly run: () => void;
 }
 
@@ -173,6 +177,7 @@ export class ComposerInsertMenuComponent {
             text: 'Poll',
             icon: 'vote',
             testId: 'insert-poll',
+            cardBefore: true,
             disabled: this.sendBlocked(),
             transfersFocus: true,
             run: () => this.createPoll.emit(),
@@ -202,6 +207,8 @@ export class ComposerInsertMenuComponent {
           text: 'Format message',
           icon: 'case-sensitive',
           testId: 'insert-format',
+          cardBefore: true,
+          submenu: true,
           disabled: this.formatDisabled(),
           transfersFocus: true,
           run: () => this.format.emit(),
@@ -243,10 +250,8 @@ export class ComposerInsertMenuComponent {
       icon: action.icon,
       testId: action.testId,
       disabled: action.disabled,
-      // Attach and capture first; the composed kinds, then Format and its own sheet.
-      separatorBefore:
-        action.testId === 'insert-poll' || action.testId === 'insert-format',
-      submenu: action.testId === 'insert-format',
+      cardBefore: action.cardBefore,
+      submenu: action.submenu,
       handler: () => {
         const current = invocation;
         if (!current) return;

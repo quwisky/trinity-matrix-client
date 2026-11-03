@@ -125,6 +125,23 @@ describe('TrnActionListComponent', () => {
       expect(closed).toHaveBeenCalledOnce();
     });
 
+    it('draws no rule for a card break, only for a separator', () => {
+      surfaces.openActions(
+        {
+          buttons: [
+            { text: 'Reply', handler: vi.fn() },
+            { text: 'Quote', cardBefore: true, handler: vi.fn() },
+          ],
+        },
+        { anchor: opener },
+      );
+      tick();
+
+      expect(
+        screen.getByRole('menu').querySelectorAll('[role=separator]'),
+      ).toHaveLength(0);
+    });
+
     it('keeps a reaction-tile row as a menu item', () => {
       surfaces.openActions(
         {
@@ -275,6 +292,7 @@ describe('TrnActionListComponent', () => {
     });
 
     it('groups the rows into cards at each separator and for Cancel', () => {
+      media.narrow = true;
       surfaces.openActions(data());
       tick();
 
@@ -299,6 +317,7 @@ describe('TrnActionListComponent', () => {
     });
 
     it('marks a row that opens another sheet with a chevron', () => {
+      media.narrow = true;
       surfaces.openActions({
         buttons: [
           {
@@ -318,6 +337,7 @@ describe('TrnActionListComponent', () => {
     });
 
     it('shows a reaction-tile row as the last quick-reaction tile, not a row', () => {
+      media.narrow = true;
       const more = vi.fn();
       surfaces.openActions({
         reactions: [{ key: '👍', handler: vi.fn() }],
@@ -374,6 +394,31 @@ describe('TrnActionListComponent', () => {
 
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(document.activeElement).toBe(opener);
+    });
+
+    it('keeps the plain rows on a desktop sheet opened without an anchor', () => {
+      surfaces.openActions({
+        ...data(),
+        buttons: [
+          ...data().buttons,
+          { text: 'More reactions…', reactionTile: true, testId: 'row-more' },
+          { text: 'Quote', cardBefore: true, testId: 'row-quote' },
+        ],
+      });
+      tick();
+
+      expect(screen.queryByTestId('action-sheet-group')).toBeNull();
+      expect(
+        screen
+          .getByTestId('row-more')
+          .closest('[aria-label="Quick reactions"]'),
+      ).toBeNull();
+      // Only the separator draws a rule, as before.
+      expect(
+        screen
+          .getByTestId('action-sheet-surface')
+          .querySelectorAll('[role=separator]'),
+      ).toHaveLength(1);
     });
 
     it('leaves focus to the opener when it restores it itself', () => {

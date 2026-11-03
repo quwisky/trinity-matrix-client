@@ -37,8 +37,8 @@ describe('roomSheetButtons', () => {
   });
 
   it('starts a group at the notification choices and at the way out', () => {
-    const starts = (list: { text: string; separatorBefore?: boolean }[]) =>
-      list.filter((b) => b.separatorBefore).map((b) => b.text);
+    const starts = (list: { text: string; cardBefore?: boolean }[]) =>
+      list.filter((b) => b.cardBefore).map((b) => b.text);
     expect(starts(buttons().list)).toEqual([
       'Mute except mentions & keywords',
       'Report room',

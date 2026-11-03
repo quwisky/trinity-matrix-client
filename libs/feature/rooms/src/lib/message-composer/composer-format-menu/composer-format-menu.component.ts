@@ -131,7 +131,7 @@ export class ComposerFormatMenuComponent {
         text: this.previewing() ? 'Edit message' : 'Preview',
         icon: this.previewing() ? 'pencil' : 'eye',
         testId: 'format-preview',
-        separatorBefore: true,
+        cardBefore: true,
         handler: () => this.choose('preview', invocation),
       },
       { text: 'Cancel', role: 'cancel', testId: 'format-cancel' },

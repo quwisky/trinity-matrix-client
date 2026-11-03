@@ -61,7 +61,7 @@ export function roomSheetButtons(c: RoomSheetContext): ActionSheetButton[] {
     buttons.push({
       text,
       icon,
-      separatorBefore: buttons.length === notify,
+      cardBefore: buttons.length === notify,
       testId: `sheet-room-notify-${mode}`,
       handler: () => emit({ kind: 'notify', room, mode }),
     });
@@ -77,6 +77,7 @@ export function roomSheetButtons(c: RoomSheetContext): ActionSheetButton[] {
       icon: 'circle-minus',
       variant: 'danger',
       disabled: !c.canCurate,
+      separatorBefore: true,
       testId: 'sheet-room-remove',
       handler: act('remove'),
     });
@@ -99,6 +100,6 @@ export function roomSheetButtons(c: RoomSheetContext): ActionSheetButton[] {
     },
     { text: 'Cancel', role: 'cancel' },
   );
-  buttons[leaving] = { ...buttons[leaving], separatorBefore: true };
+  buttons[leaving] = { ...buttons[leaving], cardBefore: true };
   return buttons;
 }

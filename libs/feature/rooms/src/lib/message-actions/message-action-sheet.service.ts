@@ -151,6 +151,7 @@ export class MessageActionSheetService {
         text: 'Delete',
         icon: 'trash-2',
         variant: 'danger',
+        separatorBefore: true,
         testId: 'sheet-delete',
         handler: act('delete'),
       });
@@ -232,7 +233,7 @@ export class MessageActionSheetService {
           ]),
     );
     if (rest > 0) {
-      buttons[rest] = { ...buttons[rest], separatorBefore: true };
+      buttons[rest] = { ...buttons[rest], cardBefore: true };
     }
     buttons.push({ text: 'Cancel', role: 'cancel' });
 

@@ -26,6 +26,8 @@ interface ElementClassManager {
   element: HTMLElement;
   sources: Map<number, { classes: Set<string>; order: number }>;
   baseClasses: Set<string>;
+  /** The static `class` attribute: always base, even where a source emits the same class. */
+  hostClasses: ReadonlySet<string>;
   isUpdating: boolean;
   nextOrder: number;
   hasInitialized: boolean;
@@ -80,6 +82,7 @@ export function classes(
         element,
         sources: new Map(),
         baseClasses: initialBaseClasses,
+        hostClasses: new Set(initialBaseClasses),
         isUpdating: false,
         nextOrder: 0,
         hasInitialized: false,
@@ -208,8 +211,12 @@ function setupGlobalObserver(platformId: object): void {
               }
             }
 
-            // Any classes not from sources become new base classes
+            // Any classes not from sources become new base classes. Host classes stay base
+            // even when a source emits them too, or a later source's conflicting class wins.
             manager.baseClasses.clear();
+            manager.hostClasses.forEach((className) =>
+              manager.baseClasses.add(className),
+            );
 
             for (const className of currentClasses) {
               if (!allSourceClasses.has(className)) {

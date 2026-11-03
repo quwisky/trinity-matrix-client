@@ -23,7 +23,9 @@ import {
   TrnDropdownMenuLabel,
   TrnDropdownMenuSeparator,
 } from '../dropdown/trn-dropdown-menu';
+import { prefersSheet } from '../dialog/trn-dialog.service';
 import { TrnSheetFrameComponent } from '../sheet-frame/trn-sheet-frame.component';
+import { TrnActionGroupsComponent } from './trn-action-groups.component';
 
 export type TrnActionSheetButtonVariant = Extract<
   TrnVariant,
@@ -41,11 +43,13 @@ export interface ActionSheetButton {
   handler?: () => void;
   /** Leading icon. */
   icon?: TrnIconName;
-  /** Start a new group here: a rule in a menu, a new card in a sheet. */
+  /** Draw a rule above this row — separating a destructive action from the rest. */
   separatorBefore?: boolean;
-  /** The row opens another menu or sheet; a sheet marks it with a trailing chevron. */
+  /** Start a new card on a phone sheet; a menu or desktop sheet draws nothing for it. */
+  cardBefore?: boolean;
+  /** The row opens another sheet; a phone sheet marks it with a trailing chevron. */
   submenu?: boolean;
-  /** A sheet shows this row as the last quick-reaction tile; a menu keeps it as a row. */
+  /** A phone sheet shows this row as the last quick-reaction tile; elsewhere it stays a row. */
   reactionTile?: boolean;
   /** Harness hook. The Playwright specs drive these rows by id. */
   testId?: string;
@@ -83,6 +87,7 @@ export interface ActionSheetData {
     TrnDropdownMenuLabel,
     TrnDropdownMenuSeparator,
     TrnSheetFrameComponent,
+    TrnActionGroupsComponent,
   ],
   templateUrl: './trn-action-list.component.html',
 })
@@ -100,27 +105,8 @@ export class TrnActionListComponent {
       : this.data().buttons,
   );
 
-  /** The sheet's cards: a new one at each separator and for Cancel. */
-  protected readonly groups = computed(() => {
-    const groups: ActionSheetButton[][] = [];
-    for (const button of this.rows()) {
-      if (button.reactionTile) continue;
-      const last = groups.at(-1);
-      if (last && !button.separatorBefore && button.role !== 'cancel') {
-        last.push(button);
-      } else {
-        groups.push([button]);
-      }
-    }
-    return groups.map((rows) => ({
-      rows,
-      icons: rows.some((row) => row.icon),
-    }));
-  });
-  protected readonly reactionTiles = computed(() =>
-    this.data().buttons.filter((button) => button.reactionTile),
-  );
-
+  /** Phones and tablets get the grouped cards; a desktop sheet keeps the plain rows. */
+  protected readonly grouped = !this.popover && prefersSheet();
   readonly data = input.required<ActionSheetData>();
   /** The menu's accessible name; without one, the header names it. */
   readonly label = input<string>();

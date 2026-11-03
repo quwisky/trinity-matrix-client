@@ -191,6 +191,7 @@ describe('MessageActionSheetService', () => {
     let buttons: readonly {
       testId?: string;
       separatorBefore?: boolean;
+      cardBefore?: boolean;
       reactionTile?: boolean;
     }[] = [];
     TestBed.configureTestingModule({
@@ -210,10 +211,14 @@ describe('MessageActionSheetService', () => {
     });
     const sheet = TestBed.inject(MessageActionSheetService);
     const starts = () =>
+      buttons.filter((b) => b.cardBefore).map((b) => b.testId);
+    const rules = () =>
       buttons.filter((b) => b.separatorBefore).map((b) => b.testId);
 
     sheet.open({}, { canRespond: true, canQuote: true } as SheetCaps, vi.fn());
     expect(starts()).toEqual(['sheet-quote']);
+    // A card break, not a rule: the wide menu keeps the one rule it had, before Delete.
+    expect(rules()).toEqual([]);
     expect(buttons.filter((b) => b.reactionTile).map((b) => b.testId)).toEqual([
       'sheet-react-more',
     ]);
@@ -224,6 +229,7 @@ describe('MessageActionSheetService', () => {
       vi.fn(),
     );
     expect(starts()).toEqual(['sheet-delete']);
+    expect(rules()).toEqual(['sheet-delete']);
 
     // Nothing above the rest, so no group to rule off.
     sheet.open({}, { canRespond: false } as SheetCaps, vi.fn());
