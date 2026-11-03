@@ -1,5 +1,5 @@
 import Foundation
-import TrinityPush
+@testable import TrinityPush
 
 /// The two sides of a race over one account: the real refresher, lease, grant client and renderer,
 /// over a file standing in for the keychain, which a macOS tool without entitlements cannot share.
@@ -11,21 +11,32 @@ private func say(_ line: String) {
 }
 
 /// One account's record in one file. Writes are atomic, as a keychain item's are.
-private struct FileVault: TokenVault {
+/// `stopsAfterFirstRead` freezes this process after its first read, which in the app is the one under
+/// the lease, before any grant.
+private final class FileVault: TokenVault, @unchecked Sendable {
     let file: URL
+    private var stopsAfterRead: Bool
 
-    init(container: String) {
+    init(container: String, stopsAfterFirstRead: Bool = false) {
         file = URL(fileURLWithPath: container).appendingPathComponent("vault.json")
+        stopsAfterRead = stopsAfterFirstRead
     }
 
     func read(_ userId: String) -> TokenVaultRead {
+        let answer: TokenVaultRead
         do {
-            return .record(try JSONDecoder().decode(TokenRecord.self, from: Data(contentsOf: file)))
+            answer = .record(try JSONDecoder().decode(TokenRecord.self, from: Data(contentsOf: file)))
         } catch CocoaError.fileReadNoSuchFile {
-            return .absent
+            answer = .absent
         } catch {
-            return .unavailable
+            answer = .unavailable
         }
+        if stopsAfterRead {
+            stopsAfterRead = false
+            say("read")
+            raise(SIGSTOP)
+        }
+        return answer
     }
 
     func write(_ record: TokenRecord, for userId: String) -> Bool {
@@ -101,27 +112,46 @@ func runWaiter(_ arguments: [String]) async {
     }
 }
 
-/// app <container> <account> <tokenSeen> [<lease lifetime> [stop]]: one refresh, and its answer.
+/// stalled-taker <container> <account> <lifetime>: prints `read` at its first rename, having read
+/// the lease, waits for a line, renames, and dies at once, as a taker killed mid-take does.
+func runStalledTaker(_ arguments: [String]) async {
+    let lease = AppGroupTokenLease(containerURL: URL(fileURLWithPath: arguments[0]), rename: { from, to, flags in
+        say("read")
+        _ = readLine()
+        _ = AppGroupTokenLease.systemRename(from, to, flags)
+        _exit(0)
+    })
+    _ = await lease.take(arguments[1], lifetime: Double(arguments[2])!, wait: 0)
+}
+
+/// app <container> <account> <tokenSeen> [<lease lifetime> [stop|stop-after-read]]: one refresh,
+/// and its answer. `stop` freezes it on taking the lease, `stop-after-read` once it has read the
+/// vault under it.
 func runApp(_ arguments: [String]) async {
+    let stop = arguments.count > 4 ? arguments[4] : nil
     let refresher = TokenRefresher(
-        vault: FileVault(container: arguments[0]),
+        vault: FileVault(container: arguments[0], stopsAfterFirstRead: stop == "stop-after-read"),
         lease: ProbeLease(
             container: arguments[0], lifetime: arguments.count > 3 ? Double(arguments[3]) : nil,
-            stopsHolding: arguments.count > 4),
+            stopsHolding: stop == "stop"),
         client: URLSessionTokenGrantClient())
     say("ready")
     _ = readLine()
     say("\(await refresher.refresh(account: arguments[1], lineage: "L", tokenSeen: arguments[2], budget: TokenBudgets.appGrant))")
 }
 
-/// push <container> <account> <homeserver>: one rendered body per line of stdin. One process, one
-/// refresher, because iOS reuses a notification process for later pushes.
+/// push <container> <account> <homeserver> [<clock offset>]: one rendered body per line of stdin.
+/// One process, one refresher, because iOS reuses a notification process for later pushes. The
+/// offset moves this process's wall clock, as a clock change does after another took the lease;
+/// the lease reads no wall clock.
 func runPush(_ arguments: [String]) async {
     let vault = FileVault(container: arguments[0])
     let store = FileHandoff(vault: vault, homeserver: arguments[2])
+    let offset = arguments.count > 3 ? Double(arguments[3])! : 0
+    let wallClock: @Sendable () -> Date = { Date() + offset }
     let refresher = TokenRefresher(
         vault: vault, lease: AppGroupTokenLease(containerURL: URL(fileURLWithPath: arguments[0])),
-        client: URLSessionTokenGrantClient())
+        client: URLSessionTokenGrantClient(), now: wallClock)
     let userInfo: [AnyHashable: Any] = ["trinity_user_id": arguments[1], "room_id": "!r:hs", "event_id": "$e"]
     say("ready")
     while readLine() != nil {

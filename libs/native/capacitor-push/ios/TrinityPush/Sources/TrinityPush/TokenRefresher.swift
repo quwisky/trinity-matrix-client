@@ -99,6 +99,12 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
         // With less left the answer can be lost after the provider spends the token, and the next
         // refresh is then refused, which ends a live session.
         if deadline.timeIntervalSince(now()) < TokenBudgets.grantFloor { return .transient }
+        // Suspended past the lease's expiry since the read: another process may have spent this
+        // refresh token, so start again under a new lease.
+        guard lease.holds(ticket) else {
+            return await refreshUnderLease(
+                account, lineage, tokenSeen, deadline.timeIntervalSince(now()), recordsRefusal: recordsRefusal)
+        }
         let started = now()
         switch await client.grant(record, deadline: deadline) {
         case .failed:

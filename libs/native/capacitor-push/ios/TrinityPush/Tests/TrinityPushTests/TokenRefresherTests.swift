@@ -294,7 +294,7 @@ final class TokenRefresherTests: XCTestCase {
     /// A real lease on a temporary file, on the fake clock.
     private func realLease() -> AppGroupTokenLease {
         let clock = clock!
-        return AppGroupTokenLease(containerURL: container, now: { clock.now })
+        return AppGroupTokenLease(containerURL: container, uptime: { clock.now.timeIntervalSince1970 })
     }
 
     private func refresh(_ tokenSeen: String = "a0") async -> TokenRefreshResult {

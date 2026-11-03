@@ -74,7 +74,7 @@ final class TokenLeaseTests: XCTestCase {
         XCTAssertEqual(answers.filter { $0 == "busy" }.count, 7, "\(answers)")
     }
 
-    /// `RENAME_SWAP` hands the stale file to one process only: the others find something else.
+    /// `RENAME_EXCL` hands the next number to one process only: the others find it taken.
     func testOnlyOneOfManyProcessesTakesAnExpiredLease() async throws {
         _ = try await held(lifetime: 0)
         // Far more than the floor, so that a stall on a busy runner cannot fail this.
@@ -135,14 +135,15 @@ final class TokenLeaseTests: XCTestCase {
         XCTAssertTrue(lease.holds(long))
     }
 
-    func testAReleasedLeaseIsNotHeldAndLeavesOneExpiredFile() async throws {
+    /// A release claims the next number with an expired file; the next taker removes both.
+    func testAReleasedLeaseIsNotHeldAndTheNextTakerClearsItsFiles() async throws {
         let ticket = try await held()
         lease.release(ticket)
         XCTAssertFalse(lease.holds(ticket))
-        XCTAssertEqual(try allFiles().count, 1, "the name is never emptied once it exists")
+        XCTAssertEqual(try allFiles().map(\.lastPathComponent).sorted(), [1, 2].map { Self.leaseName(account, $0) })
         let next = try await held()
         XCTAssertTrue(lease.holds(next))
-        XCTAssertEqual(try allFiles().count, 1)
+        XCTAssertEqual(try allFiles().map(\.lastPathComponent), [Self.leaseName(account, 3)])
     }
 
     func testADiscardedLeaseLeavesNoFileAndCanBeTakenAgain() async throws {
@@ -164,7 +165,7 @@ final class TokenLeaseTests: XCTestCase {
         let first = try await held()
         let other = await lease.take("@b:hs", lifetime: 30, wait: 0)
         guard case .taken = other else { return XCTFail("\(other)") }
-        let inFlight = leaseFile.appendingPathExtension("candidate")
+        let inFlight = leasesDirectory.appendingPathComponent(Self.hash(account) + ".lease.candidate")
         try Data().write(to: inFlight)
 
         lease.discardAll()
@@ -178,41 +179,47 @@ final class TokenLeaseTests: XCTestCase {
     }
 
     func testReleasingAnExpiredLeaseStillFreesIt() async throws {
-        let t = Date(timeIntervalSince1970: 1_700_000_000)
-        let clock = MovableClock(t)
-        let lease = AppGroupTokenLease(containerURL: container, now: { clock.now })
+        let clock = MovableClock(Date(timeIntervalSince1970: 1_000))
+        let lease = AppGroupTokenLease(containerURL: container, uptime: { clock.now.timeIntervalSince1970 })
         let answer = await lease.take(account, lifetime: 1, wait: 0)
         guard case .taken(let ticket) = answer else { return XCTFail("\(answer)") }
-        clock.now = t + 2
+        clock.now += 2
         lease.release(ticket)
-        clock.now = t - 25 // A release marks the file long expired, not expired by this clock.
+        clock.now -= 25 // A release marks the file long expired, not expired by this clock.
         let next = await lease.take(account, lifetime: 1, wait: 0)
         guard case .taken = next else { return XCTFail("\(next)") }
     }
 
-    /// The holder read its own name, then the lease passed on before its swap.
-    func testAReleaseThatLostARacePutsTheNewHolderBack() async throws {
+    /// The holder releases a lease that has expired, and a taker takes it over between the holder's
+    /// read and its rename. A third process that comes after the release must find the taker's lease.
+    func testAReleaseRacingATakeoverNeverLeavesAnExpiredLeaseForAThirdTaker() async throws {
         let container = container!, account = account
-        let releasing = AppGroupTokenLease(containerURL: container, rename: beforeFirstSwap {
-            let file = Self.leaseFile(container, account)
-            try? FileManager.default.removeItem(at: file)
+        let armed = Box<Bool>(false)
+        let releasing = AppGroupTokenLease(containerURL: container, rename: { from, to, flags in
+            guard armed.value == true else { return AppGroupTokenLease.systemRename(from, to, flags) }
+            armed.value = false
             XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "taken")
+            let result = AppGroupTokenLease.systemRename(from, to, flags)
+            XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "busy",
+                           "a third process found the released file, not the taker's")
+            return result
         })
-        let answer = await releasing.take(account, lifetime: 30, wait: 0)
+        let answer = await releasing.take(account, lifetime: 0.1, wait: 0)
         guard case .taken(let ticket) = answer else { return XCTFail("\(answer)") }
+        try await Task.sleep(for: .milliseconds(200))
+        armed.value = true
         releasing.release(ticket)
-        XCTAssertEqual(try runProbe(), "busy", "the new holder's lease is back")
-        XCTAssertEqual(try allFiles().count, 1)
+        XCTAssertEqual(try runProbe(), "busy", "the taker's lease stays")
     }
 
     // MARK: The takeover races
 
-    /// C read the stale lease; a fresh holder took over before C's swap.
-    func testATakerWithAnOldReadPutsTheFreshLeaseBackAndClaimsNothing() async throws {
+    /// C read the stale lease; a fresh holder claimed the next number before C could.
+    func testATakerWithAnOldReadClaimsNothingAndLeavesTheFreshLease() async throws {
         _ = try await held(lifetime: 0)
         let container = container!, account = account
         let fresh = Box<Data>()
-        let taker = AppGroupTokenLease(containerURL: container, rename: beforeFirstSwap {
+        let taker = AppGroupTokenLease(containerURL: container, rename: beforeFirstRename {
             XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "taken")
             fresh.value = try? Data(contentsOf: Self.leaseFile(container, account))
         })
@@ -222,155 +229,61 @@ final class TokenLeaseTests: XCTestCase {
         XCTAssertEqual(try allFiles().count, 1, "the taker's own file went too")
     }
 
-    func testTheNameIsNeverEmptyAcrossATakeoverThatFails() async throws {
+    /// C read lease 1 expired. Before C's claim, 2 was taken and expired and 3 taken, which removed
+    /// 1 and 2. C's claim of 2 then succeeds, below the live 3: C must give it up.
+    func testATakerWhoseReadIsOlderThanTheFilesClaimsBelowTheLeaseAndGivesItUp() async throws {
         _ = try await held(lifetime: 0)
         let container = container!, account = account
-        let file = leaseFile
-        let forward = beforeFirstSwap {
-            XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "taken")
-        }
-        let swaps = Box<Int>(0)
-        let taker = AppGroupTokenLease(containerURL: container, rename: { from, to, flags in
-            let result = forward(from, to, flags)
-            swaps.value! += 1
-            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
-            return result
-        })
-        _ = await taker.take(account, lifetime: 30, wait: 0)
-        XCTAssertEqual(swaps.value, 2, "out, and back")
-    }
-
-    /// The first swap landed and the swap back never came, which is what a kill looks like.
-    func testATakerKilledMidTakeoverLeavesTheLeaseOccupied() async throws {
-        _ = try await held(lifetime: 0)
-        let container = container!, account = account
-        let count = Box<Int>(0)
-        let takeOver = beforeFirstSwap {
-            XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "taken")
-        }
-        let killed = AppGroupTokenLease(containerURL: container, rename: { from, to, flags in
-            count.value! += 1
-            return count.value == 1 ? takeOver(from, to, flags) : EIO
-        })
-        let answer = await killed.take(account, lifetime: 30, wait: 0)
-        XCTAssertEqual(answer, .busy)
-        XCTAssertEqual(try runProbe(), "busy", "nobody else can take it")
-    }
-
-    /// B, C and E: C and E read the stale lease, B took over, then C and E swap in this order.
-    func testTwoOldReadsPutBackInOrderLeaveTheFreshLease() async throws {
-        try await twoTakersWithOldReads(order: ["C", "E", "E", "C"])
-    }
-
-    /// C's swap back takes E's file, and E's takes C's: each has to keep swapping.
-    func testTwoOldReadsPutBackOutOfOrderLeaveTheFreshLease() async throws {
-        try await twoTakersWithOldReads(order: ["C", "E", "C", "E"])
-    }
-
-    /// E takes B back out, then stalls holding C's file while C swaps alone, and then the reverse.
-    /// A stall of about 2 ms is enough: neither can get its own file while the other is not running.
-    func testATakerStallingMidPutBackLeavesTheFreshLease() async throws {
-        let cAlone = Array(repeating: "C", count: 14), eAlone = Array(repeating: "E", count: 13)
-        try await twoTakersWithOldReads(order: ["C", "E", "C", "E", "E"] + cAlone + eAlone)
-    }
-
-    /// With no time from its caller, a put-back still gets the floor, which covers a short stall.
-    /// Kept short: each swap takes about 40 ms on a CI runner, and all of this must fit in the floor.
-    func testATakerStallingMidPutBackWithNoTimeLeftLeavesTheFreshLease() async throws {
-        try await twoTakersWithOldReads(order: ["C", "E", "C", "E", "E", "C", "C", "E"], wait: 0)
-    }
-
-    /// By default a long wait, so that the takers' time to put back outlasts any stall a busy runner adds.
-    private func twoTakersWithOldReads(order: [String], wait: TimeInterval = 30) async throws {
-        _ = try await held(lifetime: 0)
-        let container = container!, account = account
-        let turns = Turns(order: order)
-        let c = AppGroupTokenLease(containerURL: container, rename: turns.rename("C"))
-        let e = AppGroupTokenLease(containerURL: container, rename: turns.rename("E"))
-        let first = Task.detached { await c.take(account, lifetime: 30, wait: wait) }
-        let second = Task.detached { await e.take(account, lifetime: 30, wait: wait) }
-        try await turns.waitForBothToHaveRead()
-        XCTAssertEqual(try runProbe(), "taken")
-        let fresh = try Data(contentsOf: leaseFile)
-        turns.start()
-
-        try await turns.waitForTheOrderToEnd()
-        // Cancelling cuts only the poll that follows a put-back, never the put-back.
-        first.cancel()
-        second.cancel()
-        let answers = await [first.value, second.value]
-        XCTAssertEqual(answers, [.busy, .busy])
-        XCTAssertEqual(try Data(contentsOf: leaseFile), fresh)
-        XCTAssertEqual(try allFiles().count, 1)
-        XCTAssertFalse(turns.timedOut)
-    }
-
-    /// With no time from its caller, a put-back whose file never comes back gives up at the floor,
-    /// well short of the 200 swaps of its full limit, and leaves the new holder's lease in the name.
-    func testAPutBackWithNoTimeLeftStopsAtTheFloor() async throws {
-        _ = try await held(lifetime: 0)
-        let container = container!, account = account
-        let swaps = Box<Int>(0)
-        let taker = AppGroupTokenLease(containerURL: container, rename: losingOwnFile(swaps) {
+        let taker = AppGroupTokenLease(containerURL: container, rename: beforeFirstRename {
+            XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 0, wait: 0), "taken")
             XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "taken")
         })
         let answer = await taker.take(account, lifetime: 30, wait: 0)
         XCTAssertEqual(answer, .busy)
-        XCTAssertLessThan(try XCTUnwrap(swaps.value), 100)
-        XCTAssertEqual(try runProbe(), "busy", "the new holder's lease is back")
+        XCTAssertEqual(try runProbe(), "busy", "lease 3 is still held")
+        XCTAssertEqual(try allFiles().map(\.lastPathComponent), [Self.leaseName(account, 3)])
     }
 
-    /// The floor passes during the second swap back, which leaves the new holder's lease out of the
-    /// name: only an odd count of swaps back returns it, so this has to swap once more.
-    func testAPutBackPastItsLimitAfterAnEvenSwapSwapsOnceMore() async throws {
+    /// The claim landed and the taker died before it could list again, which is what a kill looks
+    /// like: it then simply holds a lease that expires.
+    func testATakerKilledAfterItsClaimHoldsUntilItsExpiry() async throws {
+        _ = try await held(lifetime: 0)
+        let taker = AppGroupTokenLease(containerURL: container, rename: { from, to, flags in
+            _ = AppGroupTokenLease.systemRename(from, to, flags)
+            return EIO
+        })
+        let answer = await taker.take(account, lifetime: 0.2, wait: 0)
+        XCTAssertEqual(answer, .unavailable)
+        XCTAssertEqual(try runProbe(), "busy")
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(try runProbe(), "taken")
+    }
+
+    /// C and E read the stale lease; both claim the next number, and one gets it.
+    func testOfTwoTakersWithTheSameReadOneWins() async throws {
         _ = try await held(lifetime: 0)
         let container = container!, account = account
-        let swaps = Box<Int>(0)
-        let taker = AppGroupTokenLease(containerURL: container, rename: losingOwnFile(swaps, stallBeforeSwap: 3) {
-            XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "taken")
+        let e = AppGroupTokenLease(containerURL: container)
+        let eAnswer = Box<LeaseTake>()
+        let c = AppGroupTokenLease(containerURL: container, rename: beforeFirstRename {
+            let done = DispatchSemaphore(value: 0)
+            Task.detached {
+                eAnswer.value = await e.take(account, lifetime: 30, wait: 0)
+                done.signal()
+            }
+            done.wait()
         })
-        _ = await taker.take(account, lifetime: 30, wait: 0)
-        XCTAssertEqual(try runProbe(), "busy", "the new holder's lease is back")
-    }
-
-    func testAReleasePutBackStopsAtTheFloor() async throws {
-        let container = container!, account = account
-        let swaps = Box<Int>(0)
-        let releasing = AppGroupTokenLease(containerURL: container, rename: losingOwnFile(swaps) {
-            try? FileManager.default.removeItem(at: Self.leaseFile(container, account))
-            XCTAssertEqual(try? Self.runProbe(container, account, lifetime: 30, wait: 0), "taken")
-        })
-        let answer = await releasing.take(account, lifetime: 30, wait: 0)
-        guard case .taken(let ticket) = answer else { return XCTFail("\(answer)") }
-        releasing.release(ticket)
-        XCTAssertLessThan(try XCTUnwrap(swaps.value), 100)
-        XCTAssertEqual(try runProbe(), "busy", "the new holder's lease is back")
-    }
-
-    /// C wins the stale lease; E, with the same read, then swaps out C's fresh file.
-    func testATakerThatSwapsOutTheWinnersFileGivesItBack() async throws {
-        _ = try await held(lifetime: 0)
-        let container = container!, account = account
-        let turns = Turns(order: ["C", "E", "E"])
-        let c = AppGroupTokenLease(containerURL: container, rename: turns.rename("C"))
-        let e = AppGroupTokenLease(containerURL: container, rename: turns.rename("E"))
-        async let first = Task.detached { await c.take(account, lifetime: 30, wait: 0) }.value
-        async let second = Task.detached { await e.take(account, lifetime: 30, wait: 0) }.value
-        try await turns.waitForBothToHaveRead()
-        turns.start()
-
-        let (winner, loser) = await (first, second)
-        guard case .taken(let ticket) = winner else { return XCTFail("\(winner)") }
-        XCTAssertEqual(loser, .busy)
-        XCTAssertTrue(c.holds(ticket))
+        let cAnswer = await c.take(account, lifetime: 30, wait: 0)
+        guard case .taken(let ticket) = eAnswer.value else { return XCTFail("\(String(describing: eAnswer.value))") }
+        XCTAssertEqual(cAnswer, .busy)
+        XCTAssertTrue(e.holds(ticket))
         XCTAssertEqual(try allFiles().count, 1)
-        XCTAssertFalse(turns.timedOut)
     }
 
-    func testALeaseThatVanishesBeforeTheSwapIsTakenAtTheNextPoll() async throws {
+    func testALeaseThatVanishesBeforeTheClaimIsTaken() async throws {
         _ = try await held(lifetime: 0)
         let file = leaseFile
-        let taker = AppGroupTokenLease(containerURL: container, rename: beforeFirstSwap {
+        let taker = AppGroupTokenLease(containerURL: container, rename: beforeFirstRename {
             try? FileManager.default.removeItem(at: file)
         })
         let answer = await taker.take(account, lifetime: 30, wait: 1)
@@ -394,7 +307,7 @@ final class TokenLeaseTests: XCTestCase {
         }
     }
 
-    func testARefusedSwapEndsTheWaitAtOnce() async throws {
+    func testARefusedClaimEndsTheWaitAtOnce() async throws {
         _ = try await held(lifetime: 0)
         let before = try Data(contentsOf: leaseFile)
         let refused = AppGroupTokenLease(containerURL: container, rename: { _, _, _ in EPERM })
@@ -433,6 +346,14 @@ final class TokenLeaseTests: XCTestCase {
         XCTAssertEqual(try allFiles().count, 1)
     }
 
+    /// The file a build before numbered leases left: never read, and the numbers start beside it.
+    func testALeaseFileWithoutANumberIsIgnored() async throws {
+        try FileManager.default.createDirectory(at: leasesDirectory, withIntermediateDirectories: true)
+        try Data().write(to: leasesDirectory.appendingPathComponent(Self.hash(account) + ".lease"))
+        let ticket = try await held()
+        XCTAssertTrue(lease.holds(ticket))
+    }
+
     // MARK: Clock, lifetime and names
 
     func testAccountsDoNotExcludeEachOther() async throws {
@@ -441,30 +362,38 @@ final class TokenLeaseTests: XCTestCase {
         guard case .taken = first, case .taken = second else { return XCTFail("\(first) \(second)") }
     }
 
+    /// The continuous clock restarts near zero with the device, and a lease from before reads as
+    /// far ahead.
     func testAnExpiryFarBeyondTheLongestLifetimeCountsAsExpired() async throws {
-        let t = Date(timeIntervalSince1970: 1_700_000_000)
-        let clock = MovableClock(t)
-        let lease = AppGroupTokenLease(containerURL: container, now: { clock.now })
+        let clock = MovableClock(Date(timeIntervalSince1970: 100_000))
+        let lease = AppGroupTokenLease(containerURL: container, uptime: { clock.now.timeIntervalSince1970 })
         let first = await lease.take(account, lifetime: 30, wait: 0)
         guard case .taken = first else { return XCTFail("\(first)") }
         let sameInstant = await lease.take(account, lifetime: 30, wait: 0)
         XCTAssertEqual(sameInstant, .busy, "the longest lifetime itself is still a held lease")
-        clock.now = t - 3600
-        let afterTheClockWentBack = await lease.take(account, lifetime: 30, wait: 0)
-        guard case .taken = afterTheClockWentBack else { return XCTFail("\(afterTheClockWentBack)") }
+        clock.now = Date(timeIntervalSince1970: 5)
+        let afterARestart = await lease.take(account, lifetime: 30, wait: 0)
+        guard case .taken = afterARestart else { return XCTFail("\(afterARestart)") }
     }
 
     func testALifetimeAboveTheLongestIsClampedNotInstantlyStealable() async throws {
-        let t = Date(timeIntervalSince1970: 1_700_000_000)
-        let clock = MovableClock(t)
-        let lease = AppGroupTokenLease(containerURL: container, now: { clock.now })
+        let clock = MovableClock(Date(timeIntervalSince1970: 100_000))
+        let lease = AppGroupTokenLease(containerURL: container, uptime: { clock.now.timeIntervalSince1970 })
         let first = await lease.take(account, lifetime: 3600, wait: 0)
         guard case .taken(let ticket) = first else { return XCTFail("\(first)") }
         let atOnce = await lease.take(account, lifetime: 30, wait: 0)
         XCTAssertEqual(atOnce, .busy)
         XCTAssertTrue(lease.holds(ticket))
-        clock.now = t + TokenBudgets.longestLifetime
+        clock.now += TokenBudgets.longestLifetime
         XCTAssertFalse(lease.holds(ticket))
+    }
+
+    /// The lease expires on the continuous clock: the process's wall clock never moves it.
+    func testTheDefaultClockIsTheSystemsContinuousOne() {
+        let before = TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000_000
+        let read = AppGroupTokenLease.continuousUptime()
+        XCTAssertGreaterThanOrEqual(read, before)
+        XCTAssertLessThan(read - before, 1)
     }
 
     func testLeaseFileNamesAreSafeForAnyUserId() async throws {
@@ -483,7 +412,7 @@ final class TokenLeaseTests: XCTestCase {
         }
         XCTAssertEqual(
             Set(created.map { ($0 as NSString).lastPathComponent }),
-            Set(["@a/../b:hs", longest].map(Self.leaseName)))
+            Set(["@a/../b:hs", longest].map { Self.leaseName($0, 1) }))
         XCTAssertEqual(
             try leasesDirectory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
     }
@@ -505,12 +434,25 @@ final class TokenLeaseTests: XCTestCase {
 
     private var leaseFile: URL { Self.leaseFile(container, account) }
 
+    /// The account's newest numbered file, or number 1 when there is none.
     private static func leaseFile(_ container: URL, _ account: String) -> URL {
-        container.appendingPathComponent("push-handoff/leases/\(leaseName(account))")
+        let directory = container.appendingPathComponent("push-handoff/leases")
+        let prefix = hash(account) + "."
+        let newest = ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
+            .compactMap { name -> UInt64? in
+                guard name.hasPrefix(prefix), name.hasSuffix(".lease") else { return nil }
+                return UInt64(name.dropFirst(prefix.count).dropLast(".lease".count))
+            }
+            .max() ?? 1
+        return directory.appendingPathComponent(leaseName(account, newest))
     }
 
-    private static func leaseName(_ id: String) -> String {
-        SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined() + ".lease"
+    private static func leaseName(_ id: String, _ generation: UInt64) -> String {
+        "\(hash(id)).\(generation).lease"
+    }
+
+    private static func hash(_ id: String) -> String {
+        SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     private func allFiles() throws -> [URL] {
@@ -521,33 +463,15 @@ final class TokenLeaseTests: XCTestCase {
         }
     }
 
-    /// The real system call, after `action` the first time a swap is about to happen.
-    private func beforeFirstSwap(
+    /// The real system call, after `action` the first time a rename is about to happen.
+    private func beforeFirstRename(
         _ action: @escaping @Sendable () -> Void
     ) -> @Sendable (String, String, UInt32) -> Int32 {
         let done = Box<Bool>(false)
         return { from, to, flags in
-            if flags == UInt32(RENAME_SWAP), done.value != true {
+            if done.value != true {
                 done.value = true
                 action()
-            }
-            return AppGroupTokenLease.systemRename(from, to, flags)
-        }
-    }
-
-    /// The real system call, counting swaps. The first swap runs `action` and overwrites this taker's
-    /// file, which then never comes back, as if a dead taker held it. A stall outlasts the floor.
-    private func losingOwnFile(
-        _ swaps: Box<Int>, stallBeforeSwap stalled: Int? = nil, _ action: @escaping @Sendable () -> Void
-    ) -> @Sendable (String, String, UInt32) -> Int32 {
-        { from, to, flags in
-            if flags == UInt32(RENAME_SWAP) {
-                if swaps.value == 0 {
-                    try? Data("another taker's".utf8).write(to: URL(fileURLWithPath: from))
-                    action()
-                }
-                swaps.value! += 1
-                if swaps.value == stalled { usleep(600_000) }
             }
             return AppGroupTokenLease.systemRename(from, to, flags)
         }
@@ -593,7 +517,7 @@ final class TokenLeaseTests: XCTestCase {
     }
 }
 
-private final class MovableClock: @unchecked Sendable {
+final class MovableClock: @unchecked Sendable {
     private let lock = NSLock()
     private var value: Date
 
@@ -614,79 +538,5 @@ private final class Box<Value>: @unchecked Sendable {
     var value: Value? {
         get { lock.withLock { stored } }
         set { lock.withLock { stored = newValue } }
-    }
-}
-
-/// Runs two takers' swaps one at a time in a set order, then in whatever order they arrive. Each
-/// waits at its first swap, having read the lease, until `start`. A stuck turn gives up rather
-/// than hang the suite, and the test checks `timedOut`.
-private final class Turns: @unchecked Sendable {
-    private let condition = NSCondition()
-    private var order: [String]
-    private var arrived = Set<String>()
-    private var started = false
-    private var stuck = false
-
-    init(order: [String]) { self.order = order }
-
-    var timedOut: Bool {
-        condition.lock()
-        defer { condition.unlock() }
-        return stuck
-    }
-
-    private var bothArrived: Bool {
-        condition.lock()
-        defer { condition.unlock() }
-        return arrived.count == 2
-    }
-
-    private var orderEnded: Bool {
-        condition.lock()
-        defer { condition.unlock() }
-        return order.isEmpty
-    }
-
-    func rename(_ who: String) -> @Sendable (String, String, UInt32) -> Int32 {
-        { [self] from, to, flags in
-            condition.lock()
-            defer { condition.unlock() }
-            arrived.insert(who)
-            condition.broadcast()
-            let giveUp = Date() + 20
-            while !started || (order.first != nil && order.first != who) {
-                if !condition.wait(until: giveUp) {
-                    stuck = true
-                    break
-                }
-            }
-            let result = AppGroupTokenLease.systemRename(from, to, flags)
-            if order.first == who { order.removeFirst() }
-            condition.broadcast()
-            return result
-        }
-    }
-
-    func waitForBothToHaveRead() async throws {
-        for _ in 0..<2000 {
-            if bothArrived { return }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        XCTFail("the takers never reached their swap")
-    }
-
-    func waitForTheOrderToEnd() async throws {
-        for _ in 0..<2000 {
-            if orderEnded { return }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        XCTFail("the takers never took all their turns")
-    }
-
-    func start() {
-        condition.lock()
-        started = true
-        condition.broadcast()
-        condition.unlock()
     }
 }
