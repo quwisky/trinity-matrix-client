@@ -406,6 +406,116 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerSlot()).toBe('encryption');
     });
 
+    it('hides a dismissed prompt only while this account needs that kind of prompt', () => {
+      trust.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+      status.dismissEncryption();
+      expect(status.bannerSlot()).toBeNull();
+
+      // Set up elsewhere in the meantime: a different state, so the prompt returns.
+      trust.set('needs-verification');
+      expect(status.bannerSlot()).toBe('encryption');
+
+      activeUserId.set('@b:hs');
+      trust.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('forgets a dismissal once the account is ready, so a later reset prompts again', () => {
+      trust.set('needs-setup');
+      status.dismissEncryption();
+      expect(status.bannerSlot()).toBeNull();
+
+      trust.set('ready');
+      TestBed.tick();
+      trust.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('announces the live prompt even while the slot holds it back', () => {
+      status.shellDisplayed(signal(true));
+      TestBed.tick();
+      trust.set('needs-recovery');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBeNull();
+      expect(status.announcedPrompt()).toBe('needs-recovery');
+    });
+
+    describe('a banner arriving after the shell is on screen', () => {
+      const compact = signal(true);
+
+      beforeEach(() => {
+        compact.set(true);
+        status.shellDisplayed(compact);
+        TestBed.tick();
+      });
+
+      it('waits for the next page or room switch on a compact layout', () => {
+        trust.set('needs-setup');
+        TestBed.tick();
+        expect(status.bannerSlot()).toBeNull();
+
+        status.releaseLateBanners();
+        TestBed.tick();
+        expect(status.bannerSlot()).toBe('encryption');
+      });
+
+      it('appears at once on a layout that is not compact', () => {
+        compact.set(false);
+        trust.set('needs-setup');
+        TestBed.tick();
+        expect(status.bannerSlot()).toBe('encryption');
+      });
+
+      it('shows a blocking notice at once', () => {
+        reportHostBlocked();
+        TestBed.tick();
+        expect(status.hasBlocking()).toBe(true);
+        expect(status.bannerSlot()).toBe('status');
+      });
+
+      it('keeps a release that happens during a press for when the press ends', () => {
+        pressed.set(true);
+        trust.set('needs-setup');
+        status.releaseLateBanners();
+        TestBed.tick();
+        expect(status.bannerSlot()).toBeNull();
+
+        pressed.set(false);
+        TestBed.tick();
+        expect(status.bannerSlot()).toBe('encryption');
+      });
+
+      it('holds nothing once the shell has left the screen', () => {
+        status.shellLeft();
+        trust.set('needs-setup');
+        TestBed.tick();
+        expect(status.bannerSlot()).toBe('encryption');
+      });
+
+      it('holds a banner the slot already showed through a swap', () => {
+        trust.set('needs-setup');
+        status.releaseLateBanners();
+        TestBed.tick();
+        trust.set('needs-recovery');
+        TestBed.tick();
+        expect(status.bannerSlot()).toBe('encryption');
+      });
+
+      it('settles an ordinary banner the same way, urgent ones at once', () => {
+        const want = signal(false);
+        const urgent = signal(false);
+        const shown = status.settleBanner(want, urgent);
+        expect(shown()).toBe(false);
+        want.set(true);
+        TestBed.tick();
+        expect(shown()).toBe(false);
+        urgent.set(true);
+        TestBed.tick();
+        expect(shown()).toBe(true);
+      });
+    });
+
     it('is empty when nothing is limited and encryption needs nothing', () => {
       expect(status.bannerSlot()).toBeNull();
       expect(status.bannerMessage()).toBe('');

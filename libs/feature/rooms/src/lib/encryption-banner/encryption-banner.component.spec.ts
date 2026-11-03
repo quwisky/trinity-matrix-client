@@ -18,6 +18,8 @@ const setupElsewhere = signal(false);
 const slot = signal<'status' | 'encryption' | null>('encryption');
 const slotReserved = signal(false);
 const prompt = signal<BannerPrompt | null>(null);
+const dismissEncryption = vi.fn();
+const announcedPrompt = signal<SlotForecast | null>(null);
 const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
   of({ kind: 'presented' as const, surface: request.surface }),
 );
@@ -38,7 +40,9 @@ function renderBanner() {
           show: vi.fn(),
           bannerSlot: slot,
           bannerSlotReserved: slotReserved,
+          dismissEncryption,
           bannerPrompt: prompt,
+          announcedPrompt,
         },
       },
     ],
@@ -51,17 +55,21 @@ beforeEach(() => {
   slot.set('encryption');
   slotReserved.set(false);
   prompt.set(null);
+  announcedPrompt.set(null);
   open.mockClear();
+  dismissEncryption.mockClear();
 });
 
 /** The slot holds a prompt the live status confirms. */
 function show(kind: SlotForecast): void {
   prompt.set({ kind, placeholder: false });
+  announcedPrompt.set(kind);
 }
 
 /** The slot holds a prompt's space only: a forecast, or a held prompt gone stale. */
 function hold(kind: SlotForecast): void {
   prompt.set({ kind, placeholder: true });
+  announcedPrompt.set(null);
 }
 
 function clickAction(host: HTMLElement, label: string): void {
@@ -72,6 +80,36 @@ function clickAction(host: HTMLElement, label: string): void {
 }
 
 describe('EncryptionBannerComponent', () => {
+  it('announces a prompt the slot is holding back, with no banner on screen', async () => {
+    slot.set(null);
+    announcedPrompt.set('needs-setup');
+    const { container } = await renderBanner();
+    expect(container.querySelector('trn-banner')).toBeNull();
+    expect(
+      container.querySelector('.sr-only[role="status"]')?.textContent?.trim(),
+    ).toBe('Set up encryption to secure your messages.');
+  });
+
+  it('names the dismiss button for what it dismisses', async () => {
+    show('needs-setup');
+    const { container } = await renderBanner();
+    expect(
+      (container as HTMLElement)
+        .querySelector('button[data-dismiss]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Dismiss encryption prompt');
+  });
+
+  it('asks the slot to hide the prompt when dismissed, without opening a flow', async () => {
+    show('needs-setup');
+    const { container } = await renderBanner();
+    fireEvent.click(
+      (container as HTMLElement).querySelector('button[data-dismiss]')!,
+    );
+    expect(dismissEncryption).toHaveBeenCalledOnce();
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it('renders nothing while the slot holds no encryption prompt', async () => {
     const { fixture, container } = await renderBanner();
     expect(container.querySelector('.banner')).toBeNull();
@@ -129,7 +167,7 @@ describe('EncryptionBannerComponent', () => {
     show('needs-setup');
     const { container } = await renderBanner();
 
-    const buttons = container.querySelectorAll('button');
+    const buttons = container.querySelectorAll('button:not([data-dismiss])');
     expect(buttons.length).toBe(1);
     expect(container.textContent).toContain('Set up encryption');
 
@@ -143,9 +181,9 @@ describe('EncryptionBannerComponent', () => {
     show('needs-recovery');
     const { container } = await renderBanner();
 
-    const labels = [...container.querySelectorAll('button')].map(
-      (b: HTMLElement) => b.textContent?.trim(),
-    );
+    const labels = [
+      ...container.querySelectorAll<HTMLElement>('button:not([data-dismiss])'),
+    ].map((b) => b.textContent?.trim());
     expect(labels).toEqual(['Use recovery key', 'Verify with another device']);
   });
 
@@ -170,9 +208,9 @@ describe('EncryptionBannerComponent', () => {
     expect(container.querySelector('trn-banner')?.textContent).toContain(
       'verify it with one of your other devices',
     );
-    const labels = [...container.querySelectorAll('trn-banner button')].map(
-      (button) => button.textContent?.trim(),
-    );
+    const labels = [
+      ...container.querySelectorAll('trn-banner button:not([data-dismiss])'),
+    ].map((button) => button.textContent?.trim());
     expect(labels).toEqual(['Verify with another device']);
 
     clickAction(container, 'Verify with another device');
@@ -188,11 +226,11 @@ describe('EncryptionBannerComponent', () => {
     expect(container.querySelector('trn-banner')?.textContent).toContain(
       'Set up recovery on the device where you first set up encryption.',
     );
-    // The banner cannot be dismissed, so its only action must not be destructive: the
+    // The banner’s only action must not be destructive: the
     // reset stays in Security settings, behind its typed confirmation.
-    const labels = [...container.querySelectorAll('trn-banner button')].map(
-      (button) => button.textContent?.trim(),
-    );
+    const labels = [
+      ...container.querySelectorAll('trn-banner button:not([data-dismiss])'),
+    ].map((button) => button.textContent?.trim());
     expect(labels).toEqual(['Security settings']);
 
     clickAction(container, 'Security settings');
@@ -257,9 +295,9 @@ describe('EncryptionBannerComponent', () => {
       expect(banner.textContent).toContain(
         'Set up recovery on the device where you first set up encryption.',
       );
-      const labels = [...banner.querySelectorAll('button')].map((button) =>
-        button.textContent?.trim(),
-      );
+      const labels = [
+        ...banner.querySelectorAll('button:not([data-dismiss])'),
+      ].map((button) => button.textContent?.trim());
       expect(labels).toEqual(['Security settings']);
     });
 
@@ -271,7 +309,7 @@ describe('EncryptionBannerComponent', () => {
 
       // jsdom does not apply inert to focus, so assert the attribute the browser
       // applies it from: every button sits inside an inert subtree.
-      expect(buttons().length).toBe(2);
+      expect(buttons().length).toBe(3);
       for (const button of buttons()) {
         expect(button.closest('[inert]')).not.toBeNull();
       }
@@ -280,7 +318,7 @@ describe('EncryptionBannerComponent', () => {
       show('needs-recovery');
       fixture.detectChanges();
 
-      expect(buttons().length).toBe(2);
+      expect(buttons().length).toBe(3);
       for (const button of buttons()) {
         expect(button.closest('[inert]')).toBeNull();
       }
@@ -382,25 +420,22 @@ describe('EncryptionBannerComponent', () => {
       expect(container.querySelector('trn-banner')).toBeNull();
     });
 
-    it('never announces the held kind, only the prompt that replaces it on release', async () => {
+    it('never announces the held kind, only the live prompt, at once', async () => {
       status.set('needs-setup');
       show('needs-setup');
       const { container, fixture } = await renderBanner();
       const liveRegion = () =>
         container.querySelector('.sr-only[role="status"]')!;
 
-      // Pressed: the live status changed kind; the held kind stays, unannounced.
+      // Pressed: the live status changed kind; the held kind stays on screen, and the live
+      // prompt is announced at once, since that moves nothing.
       status.set('needs-recovery');
       hold('needs-setup');
+      announcedPrompt.set('needs-recovery');
       fixture.detectChanges();
       expect(container.querySelector('trn-banner')!.textContent).toContain(
         'Set up encryption',
       );
-      expect(liveRegion().textContent!.trim()).toBe('');
-
-      // Released: the live prompt replaces it and is announced.
-      show('needs-recovery');
-      fixture.detectChanges();
       expect(liveRegion().textContent).toContain(
         'unlock your encrypted messages',
       );

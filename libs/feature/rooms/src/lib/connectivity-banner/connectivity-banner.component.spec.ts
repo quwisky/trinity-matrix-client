@@ -1,7 +1,8 @@
-import { signal } from '@angular/core';
+import { signal, type Signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConnectivityBannerComponent } from './connectivity-banner.component';
 
@@ -14,10 +15,23 @@ describe('ConnectivityBannerComponent', () => {
     waitingCount = signal(0);
   });
 
+  let settleBanner: (
+    want: Signal<boolean>,
+    urgent?: Signal<boolean>,
+  ) => Signal<boolean>;
+
+  beforeEach(() => {
+    settleBanner = (want) => want;
+  });
+
   const renderBanner = () =>
     render(ConnectivityBannerComponent, {
       providers: [
         MockProvider(MatrixClientService, { connectivity, waitingCount }),
+        {
+          provide: WORKSPACE_SYSTEM_STATUS,
+          useValue: { settleBanner },
+        },
       ],
     });
 
@@ -87,5 +101,29 @@ describe('ConnectivityBannerComponent', () => {
     connectivity.set('offline');
     fixture.detectChanges();
     expect(container.querySelector('trn-icon')).not.toBeNull();
+  });
+
+  it('keeps announcing a notice the page is holding back, without drawing it', async () => {
+    settleBanner = () => signal(false);
+    const { container, fixture } = await renderBanner();
+
+    connectivity.set('offline');
+    fixture.detectChanges();
+
+    expect(banner(container)).toBeNull();
+    expect(
+      container.querySelector('.sr-only[role="status"]')?.textContent,
+    ).toContain('offline');
+  });
+
+  it('marks messages waiting as urgent, so they are never held', async () => {
+    const urgent: boolean[] = [];
+    settleBanner = (want, isUrgent) => {
+      urgent.push(isUrgent?.() ?? false);
+      return want;
+    };
+    waitingCount.set(2);
+    await renderBanner();
+    expect(urgent).toEqual([true]);
   });
 });
