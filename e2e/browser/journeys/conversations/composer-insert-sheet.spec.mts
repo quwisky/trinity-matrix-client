@@ -101,8 +101,9 @@ test.describe('Mobile composer insert sheet', () => {
 
       const trigger = page.getByTestId('composer-insert');
       const triggerBox = await trigger.boundingBox();
-      expect(triggerBox?.width ?? 0).toBeGreaterThanOrEqual(44);
-      expect(triggerBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+      // A transform on an ancestor leaves float error in the box (43.999996 for a 44px button).
+      expect(triggerBox?.width ?? 0).toBeGreaterThanOrEqual(43.99);
+      expect(triggerBox?.height ?? 0).toBeGreaterThanOrEqual(43.99);
       await trigger.click();
 
       const dialog = page.getByRole('dialog', { name: 'Add to message' });

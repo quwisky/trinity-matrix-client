@@ -18,11 +18,7 @@
        nested heading. This component's scoped styles style .title-room/.title-lock. -->
   <ng-container trnHeaderTitle>
     @if (room(); as room) {
-      <span
-        class="title-room"
-        [class.title-room--topic]="!!room.topic && !compact()"
-        data-testid="room-title"
-      >
+      <ng-template #titleContent>
         <trn-avatar
           [mxc]="room.avatarMxc"
           [accountId]="room.accountId"
@@ -33,7 +29,27 @@
           aria-hidden="true"
         />
         <span class="truncate">{{ room.name }}</span>
-      </span>
+      </ng-template>
+      @if (compact()) {
+        <!-- A phone has no always-visible details panel, so the title is the way in. -->
+        <button
+          type="button"
+          class="title-room title-room--button"
+          aria-haspopup="dialog"
+          data-testid="room-title"
+          (click)="action.emit({ type: 'settings' })"
+        >
+          <ng-container [ngTemplateOutlet]="titleContent" />
+        </button>
+      } @else {
+        <span
+          class="title-room"
+          [class.title-room--topic]="!!room.topic"
+          data-testid="room-title"
+        >
+          <ng-container [ngTemplateOutlet]="titleContent" />
+        </span>
+      }
       @if (room.encrypted) {
         <trn-icon class="title-lock" name="lock" label="Encrypted room" />
       }

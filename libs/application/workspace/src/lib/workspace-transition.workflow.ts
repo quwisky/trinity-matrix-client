@@ -125,6 +125,9 @@ export class WorkspaceTransitionWorkflow {
       return this.location.project(resolved.destination, {
         history: resolved.repaired ? 'replace' : options.history,
         overList: options.overList === true && !resolved.repaired,
+        ...(options.withinRoom && !resolved.repaired
+          ? { withinRoom: true }
+          : {}),
         eventId: options.eventId,
         // A repair is not the person's navigation, so it leaves their focus alone.
         ...(options.source === 'repair' ? { background: true } : {}),
@@ -240,6 +243,7 @@ export class WorkspaceTransitionWorkflow {
         scope: previous.scope,
         roomId: previous.roomId,
         pane: previous.pane,
+        panel: previous.panel,
       },
       { history: 'replace' },
     );
@@ -279,6 +283,7 @@ export class WorkspaceTransitionWorkflow {
         scope,
         roomId,
         pane,
+        panel: roomId && pane !== 'list' ? requested.panel : null,
       },
       repaired,
     };

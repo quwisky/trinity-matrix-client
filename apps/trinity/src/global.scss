@@ -394,7 +394,7 @@
     bottom: var(--trinity-keyboard-shrink);
     height: auto !important;
     transition: bottom var(--trinity-duration-keyboard)
-      var(--trinity-ease-keyboard);
+      var(--trinity-ease-keyboard) var(--trinity-delay-keyboard);
   }
 
   /* The scrim colour. CDK writes its own `.cdk-overlay-dark-backdrop` colour and fade inside an

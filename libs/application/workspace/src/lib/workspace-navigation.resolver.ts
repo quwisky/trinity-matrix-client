@@ -1,4 +1,5 @@
 import type { WorkspaceNavigationIntent } from './workspace-navigation.models';
+import type { WorkspacePanel } from './workspace-surface.models';
 import {
   RECENT_WORKSPACE_SCOPE,
   sameWorkspaceScope,
@@ -67,6 +68,7 @@ export function resolveWorkspaceNavigation(
           scope: { kind: 'home' },
           roomId: null,
           pane: 'list',
+          panel: null,
         },
         options:
           intent.origin === 'search-preparation'
@@ -81,6 +83,7 @@ export function resolveWorkspaceNavigation(
           roomId:
             current.accountId === intent.accountId ? current.roomId : null,
           pane: current.accountId === intent.accountId ? current.pane : 'list',
+          panel: current.accountId === intent.accountId ? current.panel : null,
         },
         // The inbox is a view over the list, not a place to return to.
         options: {
@@ -95,6 +98,12 @@ export function resolveWorkspaceNavigation(
           scope: roomScope(intent, current),
           roomId: intent.roomId,
           pane: 'conversation',
+          // Choosing the open Room again keeps its panel, so it stays a no-op.
+          panel:
+            current.accountId === intent.accountId &&
+            current.roomId === intent.roomId
+              ? current.panel
+              : null,
         },
         options: {
           source: intent.origin === 'room-hop' ? 'hop' : 'user',
@@ -136,6 +145,7 @@ export function resolveWorkspaceNavigation(
           scope: RECENT_WORKSPACE_SCOPE,
           roomId: intent.roomId ?? null,
           pane: intent.roomId ? 'conversation' : 'list',
+          panel: null,
         },
         options: { source: 'user', history: 'push' },
       };
@@ -147,6 +157,7 @@ export function resolveWorkspaceNavigation(
           scope: intent.scope,
           roomId: intent.roomId,
           pane: intent.pane,
+          panel: intent.panel ?? null,
         },
         options: {
           source: intent.canonical ? 'restore' : 'repair',
@@ -166,6 +177,7 @@ export function resolveWorkspaceNavigation(
           scope: current.scope,
           roomId: roomRemoved ? null : current.roomId,
           pane: 'list',
+          panel: null,
         },
         options: {
           source: roomRemoved
@@ -184,4 +196,40 @@ export function resolveWorkspaceNavigation(
       };
     }
   }
+}
+
+/**
+ * Open, switch or close (`null`) the open Room's one panel. Opening pushes, switching
+ * replaces, except a thread opened from the threads list, which pushes so Back returns to the
+ * list. Closing pops a panel entry that sits on its Room, otherwise replaces it.
+ */
+export function resolveWorkspacePanel(
+  panel: WorkspacePanel | null,
+  current: WorkspaceView,
+  history: { readonly panelBelow: boolean },
+): ResolvedWorkspaceNavigation | null {
+  if (!current.accountId || !current.roomId) return null;
+  if (panel === null && current.panel === null) return null;
+  const opensOver =
+    panel !== null &&
+    (current.panel === null ||
+      (current.panel.kind === 'threads' && panel.kind === 'thread'));
+  return {
+    destination: {
+      accountId: current.accountId,
+      scope: current.scope,
+      roomId: current.roomId,
+      pane: 'conversation',
+      panel,
+    },
+    options: {
+      source: 'user',
+      history: opensOver
+        ? 'push'
+        : panel === null && history.panelBelow
+          ? 'back'
+          : 'replace',
+      withinRoom: true,
+    },
+  };
 }

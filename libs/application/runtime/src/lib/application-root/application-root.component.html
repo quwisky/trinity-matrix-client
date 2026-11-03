@@ -1,5 +1,5 @@
 <div
-  class="app-frame flex h-dvh flex-col overflow-hidden pb-[var(--trinity-keyboard-shrink)] text-foreground transition-[padding-bottom] duration-[var(--trinity-duration-keyboard)] ease-[var(--trinity-ease-keyboard)]"
+  class="app-frame flex h-dvh flex-col overflow-hidden pb-[var(--trinity-keyboard-shrink)] text-foreground transition-[padding-bottom] delay-[var(--trinity-delay-keyboard)] duration-[var(--trinity-duration-keyboard)] ease-[var(--trinity-ease-keyboard)]"
   [style.visibility]="appLocked() ? 'hidden' : null"
 >
   <trn-title-bar />
@@ -24,7 +24,7 @@
     />
   } @else if (blocked(); as blockedState) {
     <main
-      class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center"
+      class="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-4 overflow-y-auto p-6 text-center"
       role="alert"
       data-testid="app-startup-blocked"
     >

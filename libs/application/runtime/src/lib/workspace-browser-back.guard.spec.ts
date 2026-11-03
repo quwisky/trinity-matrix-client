@@ -4,6 +4,8 @@ import { DefaultUrlSerializer, Router } from '@angular/router';
 import {
   WorkspaceBackService,
   WorkspaceNavigationService,
+  type WorkspacePanel,
+  type WorkspaceRoomSurface,
 } from '@trinity/application/workspace';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import { WorkspaceRoutedSurfaceAdapter } from './composition/workspace-routed-surface.adapter';
@@ -28,6 +30,10 @@ function setup(
     readonly conversation?: boolean;
     readonly conversationOverList?: boolean;
     readonly projectingLocation?: boolean;
+    /** The active surface is this Room surface. */
+    readonly room?: WorkspaceRoomSurface;
+    /** The panel Workspace's destination names. */
+    readonly panel?: WorkspacePanel;
   },
 ) {
   const back = vi.fn(() =>
@@ -50,19 +56,21 @@ function setup(
           activeSurface: () =>
             !options.active
               ? null
-              : options.conversation
-                ? {
-                    layer: 'conversation',
-                    surface: {
-                      kind: 'conversation',
-                      accountId: '@alice:example.org',
-                      roomId: '!room:example.org',
+              : options.room
+                ? { layer: 'room', surface: options.room }
+                : options.conversation
+                  ? {
+                      layer: 'conversation',
+                      surface: {
+                        kind: 'conversation',
+                        accountId: '@alice:example.org',
+                        roomId: '!room:example.org',
+                      },
+                    }
+                  : {
+                      layer: 'application',
+                      surface: { kind: 'settings', section: null },
                     },
-                  }
-                : {
-                    layer: 'application',
-                    surface: { kind: 'settings', section: null },
-                  },
         },
       },
       {
@@ -70,6 +78,7 @@ function setup(
         useValue: {
           projectingLocation: options.projectingLocation ?? false,
           conversationOverList: () => options.conversationOverList ?? false,
+          panel: () => options.panel ?? null,
         },
       },
       {
@@ -220,13 +229,63 @@ describe('workspaceBrowserBackGuard', () => {
     expect(test.back).not.toHaveBeenCalled();
   });
 
-  it('still offers a Conversation with no list below to Workspace', async () => {
+  // A dismissal started here would supersede this popstate and be cancelled with it.
+  it('lets history leave a Conversation with no list below, such as one hopped to (#1888)', () => {
     const test = setup('popstate', { active: true, conversation: true });
 
-    expect(isObservable(test.result)).toBe(true);
-    await expect(
-      firstValueFrom(test.result as Observable<boolean>),
-    ).resolves.toBe(false);
-    expect(test.back).toHaveBeenCalledOnce();
+    expect(test.result).toBe(true);
+    expect(test.back).not.toHaveBeenCalled();
+  });
+
+  it('still closes an unowned dialog over a Conversation first', () => {
+    const test = setup('popstate', {
+      active: true,
+      conversation: true,
+      dialogOpen: true,
+    });
+
+    expect(test.result).toBe(false);
+    expect(test.closeTopmost).toHaveBeenCalledOnce();
+    expect(test.back).not.toHaveBeenCalled();
+  });
+
+  describe('a Room panel', () => {
+    it('lets history close a panel the URL names, as the step lands on the Room', () => {
+      const test = setup('popstate', {
+        active: true,
+        room: { kind: 'thread', rootEventId: '$root:example.org' },
+        panel: { kind: 'thread', root: '$root:example.org' },
+      });
+
+      expect(test.result).toBe(true);
+      expect(test.back).not.toHaveBeenCalled();
+    });
+
+    it('still offers a panel the URL does not name to Workspace', async () => {
+      const test = setup('popstate', {
+        active: true,
+        room: { kind: 'thread', rootEventId: '$other:example.org' },
+        panel: { kind: 'thread', root: '$root:example.org' },
+      });
+
+      expect(isObservable(test.result)).toBe(true);
+      await expect(
+        firstValueFrom(test.result as Observable<boolean>),
+      ).resolves.toBe(false);
+      expect(test.back).toHaveBeenCalledOnce();
+    });
+
+    it('still closes an unowned dialog over a URL-backed panel first', () => {
+      const test = setup('popstate', {
+        active: true,
+        dialogOpen: true,
+        room: { kind: 'members' },
+        panel: { kind: 'members' },
+      });
+
+      expect(test.result).toBe(false);
+      expect(test.closeTopmost).toHaveBeenCalledOnce();
+      expect(test.back).not.toHaveBeenCalled();
+    });
   });
 });

@@ -32,6 +32,48 @@ class MainViewController: CAPBridgeViewController {
         }
         bridge?.registerPluginInstance(NativeNavigationPlugin())
         bridge?.registerPluginInstance(AppSettingsPlugin())
+        bridge?.registerPluginInstance(KeyboardFramePlugin())
+    }
+}
+
+/**
+ * Reports each keyboard frame change with the keyboard's own animation timing, so the web layout
+ * moves with the keyboard (`NativeKeyboardInsetAdapter`). The keyboard plugin's events carry only
+ * a height, and its hide event waits a run-loop turn.
+ *
+ * The height is the part of the WebView the keyboard covers, as Apple advises, so a hardware
+ * keyboard's off-screen frame reports only its visible bar.
+ */
+@objc(KeyboardFramePlugin)
+class KeyboardFramePlugin: CAPInstancePlugin, CAPBridgedPlugin {
+    let identifier = "KeyboardFramePlugin"
+    let jsName = "KeyboardFrame"
+    let pluginMethods: [CAPPluginMethod] = []
+
+    override func load() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil
+        )
+    }
+
+    @objc func keyboardWillChangeFrame(_ notification: Notification) {
+        guard let webView = bridge?.webView, let screen = webView.window?.screen,
+              let info = notification.userInfo,
+              let end = (info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        else { return }
+        let frame = webView.convert(end, from: screen.coordinateSpace)
+        let covered = webView.bounds.intersection(frame)
+        var data: [String: Any] = [
+            "height": covered.isNull ? 0 : covered.height,
+            "curve": info[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int ?? 7
+        ]
+        if let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double {
+            data["duration"] = duration
+        }
+        notifyListeners("keyboardFrame", data: data)
     }
 }
 
