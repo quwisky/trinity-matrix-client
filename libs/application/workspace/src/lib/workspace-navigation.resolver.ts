@@ -67,6 +67,7 @@ export function resolveWorkspaceNavigation(
           scope: { kind: 'home' },
           roomId: null,
           pane: 'list',
+          panel: null,
         },
         options:
           intent.origin === 'search-preparation'
@@ -81,6 +82,7 @@ export function resolveWorkspaceNavigation(
           roomId:
             current.accountId === intent.accountId ? current.roomId : null,
           pane: current.accountId === intent.accountId ? current.pane : 'list',
+          panel: null,
         },
         // The inbox is a view over the list, not a place to return to.
         options: {
@@ -95,6 +97,7 @@ export function resolveWorkspaceNavigation(
           scope: roomScope(intent, current),
           roomId: intent.roomId,
           pane: 'conversation',
+          panel: null,
         },
         options: {
           source: intent.origin === 'room-hop' ? 'hop' : 'user',
@@ -136,6 +139,7 @@ export function resolveWorkspaceNavigation(
           scope: RECENT_WORKSPACE_SCOPE,
           roomId: intent.roomId ?? null,
           pane: intent.roomId ? 'conversation' : 'list',
+          panel: null,
         },
         options: { source: 'user', history: 'push' },
       };
@@ -147,6 +151,7 @@ export function resolveWorkspaceNavigation(
           scope: intent.scope,
           roomId: intent.roomId,
           pane: intent.pane,
+          panel: null,
         },
         options: {
           source: intent.canonical ? 'restore' : 'repair',
@@ -166,6 +171,7 @@ export function resolveWorkspaceNavigation(
           scope: current.scope,
           roomId: roomRemoved ? null : current.roomId,
           pane: 'list',
+          panel: null,
         },
         options: {
           source: roomRemoved

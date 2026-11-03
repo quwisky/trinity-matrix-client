@@ -117,3 +117,8 @@ export type WorkspaceBackOutcome =
       readonly surface: WorkspaceSurface;
     }
   | { readonly kind: 'unhandled' };
+
+/** A panel open beside or over one Room, described by the Workspace destination. */
+export type WorkspacePanel =
+  | { readonly kind: 'members' | 'threads' | 'pinned' | 'search' }
+  | { readonly kind: 'thread'; readonly root: string };

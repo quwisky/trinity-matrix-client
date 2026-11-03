@@ -240,6 +240,7 @@ export class WorkspaceTransitionWorkflow {
         scope: previous.scope,
         roomId: previous.roomId,
         pane: previous.pane,
+        panel: null,
       },
       { history: 'replace' },
     );
@@ -279,6 +280,7 @@ export class WorkspaceTransitionWorkflow {
         scope,
         roomId,
         pane,
+        panel: roomId && pane !== 'list' ? requested.panel : null,
       },
       repaired,
     };

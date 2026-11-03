@@ -47,6 +47,7 @@ describe("resolveWorkspaceNavigation — 'rail-unread'", () => {
       scope: { kind: 'rooms' },
       roomId: '!chat:hs',
       pane: 'conversation',
+      panel: null,
     });
     expect(resolved?.options).toMatchObject({
       source: 'user',
@@ -145,6 +146,7 @@ describe("resolveWorkspaceNavigation — 'rail-unread'", () => {
       scope: { kind: 'recent' },
       roomId: '!chat:hs',
       pane: 'conversation',
+      panel: null,
     });
   });
 
@@ -191,6 +193,7 @@ describe('resolveWorkspaceNavigation — a room opened from a space', () => {
       scope: space,
       roomId: '!chat:hs',
       pane: 'conversation',
+      panel: null,
     });
   });
 
