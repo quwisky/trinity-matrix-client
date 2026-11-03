@@ -515,6 +515,24 @@ describe('ThreadViewComponent', () => {
     expect(openThread).toHaveBeenCalledWith('!r:hs', '$cold');
   });
 
+  it('keeps a reply typed while the thread loads, sending nothing until it has', async () => {
+    const { fixture, container, sendToThread } = await build();
+    fixture.componentRef.setInput('loading', true);
+    fixture.detectChanges();
+    const field = container.querySelector<HTMLTextAreaElement>(
+      '[data-testid="composer-input"]',
+    )!;
+    field.value = 'early reply';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    composerOf(fixture).submit();
+    fixture.detectChanges();
+
+    expect(sendToThread).not.toHaveBeenCalled();
+    expect(field.value).toBe('early reply');
+  });
+
   it('releases and replaces the exact child when the mounted panel changes roots', async () => {
     const { fixture, openThread, releasedRoots, sentRoots } = await build();
 

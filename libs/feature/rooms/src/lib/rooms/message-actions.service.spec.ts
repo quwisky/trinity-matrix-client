@@ -208,6 +208,7 @@ describe('MessageActionsService', () => {
               'split',
             ).asReadonly(),
             panel: panel.asReadonly(),
+            membersBelow: signal(false).asReadonly(),
             openPanel: (next: WorkspacePanel) => panel.set(next),
             closePanel: () => panel.set(null),
           },

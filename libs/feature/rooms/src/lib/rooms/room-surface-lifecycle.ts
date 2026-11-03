@@ -138,16 +138,19 @@ export class RoomSurfaceLifecycle {
   );
 
   /**
+   * A thread opened here whose URL has not committed yet, and the panel it was opened from.
+   * A plain field: only the computation below reads it, and taking it is a one-off.
+   */
+  private requestedThread: {
+    readonly thread: ThreadRoomSurface;
+    readonly from: WorkspacePanel | null;
+  } | null = null;
+
+  /**
    * The thread opened here, or a URL's root once it has loaded. It carries the message to
    * reveal, shows only while the URL names its root, and is dropped once the URL names
    * another one.
    */
-  /** A thread opened here whose URL has not committed yet, and the panel it was opened from. */
-  private readonly requestedThread = signal<{
-    readonly thread: ThreadRoomSurface;
-    readonly from: WorkspacePanel | null;
-  } | null>(null);
-
   private readonly openedThread = linkedSignal<
     WorkspacePanel | null,
     ThreadRoomSurface | null
@@ -157,11 +160,13 @@ export class RoomSurfaceLifecycle {
       if (panel?.kind !== 'thread') return null;
       // Adopted only straight from the panel it was opened over: a request whose URL went
       // elsewhere first was dropped, and a later visit to that root mustn't replay its reveal.
-      const requested = untracked(this.requestedThread);
+      const requested = this.requestedThread;
       if (
         requested?.thread.rootEventId === panel.root &&
         sameWorkspacePanel(previous?.source ?? null, requested.from)
       ) {
+        // Taken once: Back and Forward to this root later show the thread, not its reveal.
+        this.requestedThread = null;
         return requested.thread;
       }
       return previous?.value?.rootEventId === panel.root
@@ -264,7 +269,7 @@ export class RoomSurfaceLifecycle {
         if (panel?.kind === 'thread' && panel.root === intent.rootEventId) {
           this.openedThread.set(thread);
         } else {
-          this.requestedThread.set({ thread, from: panel });
+          this.requestedThread = { thread, from: panel };
         }
         return this.open({ kind: 'thread', root: intent.rootEventId });
       }
@@ -323,7 +328,11 @@ export class RoomSurfaceLifecycle {
   private dismiss(): RoomSurfaceTransitionOutcome {
     const panel = this.panel();
     if (!panel) return { kind: 'unchanged' };
-    if (panel.kind !== 'members' && this.membersBelow()) {
+    // History knows after a reload or Forward too, when this page's own record is gone.
+    if (
+      panel.kind !== 'members' &&
+      (this.membersBelow() || this.workspace.membersBelow())
+    ) {
       this.workspace.openPanel({ kind: 'members' });
     } else {
       this.workspace.closePanel();

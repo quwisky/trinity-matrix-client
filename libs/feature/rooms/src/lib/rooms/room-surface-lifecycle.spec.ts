@@ -71,6 +71,7 @@ function build(
     return of({ kind: 'ready' as const });
   });
   const panel = signal<WorkspacePanel | null>(null);
+  const membersBelow = signal(false);
   const openPanel = vi.fn((next: WorkspacePanel) => {
     if (commits) panel.set(next);
   });
@@ -96,6 +97,7 @@ function build(
           ).asReadonly(),
           navigate,
           panel: panel.asReadonly(),
+          membersBelow: membersBelow.asReadonly(),
           openPanel,
           closePanel,
         },
@@ -109,6 +111,7 @@ function build(
     pane,
     navigate,
     panel,
+    membersBelow,
     openPanel,
     closePanel,
     lifecycle: TestBed.inject(RoomSurfaceLifecycle),
@@ -337,6 +340,26 @@ describe('RoomSurfaceLifecycle', () => {
     });
   });
 
+  it('reveals a requested message once, not again after Back and Forward', () => {
+    stubMedia();
+    const { lifecycle, panel } = build();
+    lifecycle.transition({
+      kind: 'open-thread',
+      rootEventId: '$root',
+      revealEventId: '$reply',
+    });
+    expect(lifecycle.renderedSurface()).toMatchObject({
+      revealEventId: '$reply',
+    });
+
+    panel.set(null);
+    expect(lifecycle.renderedSurface()).toBeNull();
+    panel.set({ kind: 'thread', root: '$root' });
+
+    expect(lifecycle.renderedSurface()).toMatchObject({ loading: true });
+    expect(lifecycle.renderedSurface()).not.toHaveProperty('revealEventId');
+  });
+
   it('keeps showing the thread the URL names until another one commits', () => {
     stubMedia();
     const { lifecycle, panel } = build(undefined, { commits: false });
@@ -395,6 +418,18 @@ describe('RoomSurfaceLifecycle', () => {
     expect(openPanel).toHaveBeenLastCalledWith({ kind: 'members' });
     expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
     expect(lifecycle.membersVisible()).toBe(true);
+  });
+
+  it('closes back to the roster history says lies below, after a reload or Forward', () => {
+    stubMedia();
+    const { closePanel, lifecycle, membersBelow, openPanel, panel } = build();
+    panel.set({ kind: 'threads' });
+    membersBelow.set(true);
+
+    lifecycle.transition({ kind: 'dismiss' });
+
+    expect(openPanel).toHaveBeenCalledExactlyOnceWith({ kind: 'members' });
+    expect(closePanel).not.toHaveBeenCalled();
   });
 
   it('does not restore a roster that a reload or Back did not leave below', () => {

@@ -707,6 +707,7 @@ export function workspacePanelStub() {
   const panel = signal<WorkspacePanel | null>(null);
   return {
     panel: panel.asReadonly(),
+    membersBelow: signal(false).asReadonly(),
     openPanel: (next: WorkspacePanel) => panel.set(next),
     closePanel: () => panel.set(null),
   };
