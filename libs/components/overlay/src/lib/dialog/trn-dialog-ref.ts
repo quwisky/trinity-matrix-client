@@ -1,4 +1,5 @@
 import type { Observable } from 'rxjs';
+import type { TrnSheetDetent } from '../sheet-frame/sheet-detent';
 
 /**
  * The two members of the vendor's ref this wraps, named structurally rather than imported.
@@ -11,6 +12,13 @@ export interface ClosableRef<R> {
   /** CDK's `DialogRef` carries it; `close()` itself ignores it, so callers that swipe must not. */
   readonly disableClose?: boolean;
   close(result?: R): void;
+}
+
+/** The open options that let a phone sheet snap between heights. */
+export interface DialogDetents {
+  /** Opt in to snapping; the sheet opens at `initialDetent`, or `'medium'` when it is offered. */
+  detents?: readonly TrnSheetDetent[];
+  initialDetent?: TrnSheetDetent;
 }
 
 let nextTitleId = 0;
@@ -70,16 +78,23 @@ export class TrnDialogRef<R = unknown> {
    */
   readonly blockStart: string | null;
 
+  /** The heights a phone sheet snaps between; empty for a content-sized sheet or a dialog. */
+  readonly detents: readonly TrnSheetDetent[];
+  readonly initialDetent: TrnSheetDetent | undefined;
+
   constructor(
     private readonly cdkRef: ClosableRef<R>,
     presentation: TrnDialogPresentation = 'dialog',
     titleId = dialogTitleId(),
     blockStart: string | null = null,
+    detents: DialogDetents = {},
   ) {
     this.closed = cdkRef.closed;
     this.presentation = presentation;
     this.titleId = titleId;
     this.blockStart = blockStart;
+    this.detents = presentation === 'sheet' ? (detents.detents ?? []) : [];
+    this.initialDetent = detents.initialDetent;
   }
 
   /** Opened non-dismissible: no gesture may close it, only the flow itself. */

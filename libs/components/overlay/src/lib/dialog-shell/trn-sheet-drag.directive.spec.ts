@@ -1,6 +1,8 @@
 import { Component, DestroyRef, input } from '@angular/core';
 import { render } from '@trinity/testing';
+import { Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import {
   TRN_SHEET_DISMISS,
   TrnSheetDrag,
@@ -430,5 +432,122 @@ describe('TrnSheetDrag content drag', () => {
     pull(document.querySelector('[data-testid=body]')!, 0, 200);
     expect(dismiss).toHaveBeenCalledOnce();
     expect(sheet.style.transform).toBe('');
+  });
+});
+
+@Component({
+  imports: [TrnSheetDrag, TrnSheetDragHandle],
+  providers: [
+    { provide: TRN_SHEET_DISMISS, useFactory: () => dismiss },
+    {
+      provide: TrnDialogRef,
+      useFactory: () =>
+        new TrnDialogRef(
+          { closed: new Subject(), close: () => undefined },
+          'sheet',
+          'title',
+          null,
+          { detents: ['medium', 'large'] },
+        ),
+    },
+  ],
+  template: `
+    <div trnSheetDrag data-testid="sheet">
+      <div trnSheetDragHandle data-testid="handle"></div>
+    </div>
+  `,
+})
+class DetentSheetHostComponent {}
+
+describe('TrnSheetDrag detents', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function setupDetents(phone = true) {
+    vi.stubGlobal('matchMedia', () => ({ matches: phone }));
+    vi.stubGlobal('innerHeight', 800);
+    dismiss.mockReset().mockReturnValue(true);
+    const view = await render(DetentSheetHostComponent);
+    const sheet = document.querySelector<HTMLElement>('[data-testid=sheet]')!;
+    vi.spyOn(sheet, 'getBoundingClientRect').mockReturnValue({
+      height: 400,
+    } as DOMRect);
+    const drag = view.fixture.debugElement
+      .query((el) => el.nativeElement === sheet)
+      .injector.get(TrnSheetDrag);
+    const handle = document.querySelector<HTMLElement>('[data-testid=handle]')!;
+    return { view, sheet, drag, handle };
+  }
+
+  it('starts at medium and marks the sheet', async () => {
+    const { sheet, drag } = await setupDetents();
+    expect(drag.detent()).toBe('medium');
+    expect(sheet.getAttribute('data-sheet-detent')).toBe('medium');
+    expect(sheet.style.getPropertyValue('--trn-sheet-height')).toBe('50svh');
+  });
+
+  it('has no detent at md and wider', async () => {
+    const { sheet, drag } = await setupDetents(false);
+    expect(drag.detent()).toBeNull();
+    expect(sheet.hasAttribute('data-sheet-detent')).toBe(false);
+  });
+
+  it('grows with the finger, then snaps to large', async () => {
+    const { view, sheet, drag, handle } = await setupDetents();
+    pointer('pointerdown', 500, 0, handle);
+    pointer('pointermove', 250, 1000);
+    expect(sheet.style.height).toBe('650px');
+    expect(sheet.style.transform).toBe('');
+    pointer('pointerup', 250, 1000);
+    view.fixture.detectChanges();
+    expect(drag.detent()).toBe('large');
+    expect(sheet.getAttribute('data-sheet-detent')).toBe('large');
+    expect(sheet.style.height).toBe('');
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it('slides below medium and springs back to it when the close is refused', async () => {
+    const { sheet, drag, handle } = await setupDetents();
+    dismiss.mockReturnValue(false);
+    drag.setDetent('large');
+    vi.mocked(sheet.getBoundingClientRect).mockReturnValue({
+      height: 800,
+    } as DOMRect);
+    pointer('pointerdown', 100, 0, handle);
+    pointer('pointermove', 300, 1000);
+    expect(sheet.style.transform).toBe('');
+    pointer('pointermove', 700, 1000);
+    expect(sheet.style.height).toBe('400px');
+    expect(sheet.style.transform).toBe('translateY(200px)');
+    pointer('pointerup', 700, 5000);
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(drag.detent()).toBe('medium');
+    expect(sheet.style.transform).toBe('');
+  });
+
+  it('dismisses on a drag down from medium', async () => {
+    const { handle } = await setupDetents();
+    pointer('pointerdown', 100, 0, handle);
+    pointer('pointermove', 300, 1000);
+    pointer('pointerup', 300, 1000);
+    expect(dismiss).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a detent it was not opened with', async () => {
+    const { drag } = await setupDetents();
+    drag.setDetent('large');
+    drag.setDetent('medium');
+    expect(drag.detent()).toBe('medium');
+  });
+});
+
+describe('TrnSheetDrag without detents', () => {
+  it('has a null detent', async () => {
+    await render(SheetHostComponent);
+    const sheet = document.querySelector<HTMLElement>('[data-testid=sheet]')!;
+    expect(sheet.hasAttribute('data-sheet-detent')).toBe(false);
+    expect(sheet.style.getPropertyValue('--trn-sheet-height')).toBe('');
   });
 });

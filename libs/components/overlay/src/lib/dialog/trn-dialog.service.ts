@@ -13,8 +13,10 @@ import {
   TrnDialogRef,
   dialogTitleId,
   type ClosableRef,
+  type DialogDetents,
   type TrnDialogPresentation,
 } from './trn-dialog-ref';
+import { SHEET_LARGE_HEIGHT } from '../sheet-frame/sheet-detent';
 import { TrnDialogOpenerService } from './trn-dialog-opener.service';
 
 /** Structural position for a component dialog. Appearance belongs to its surface. */
@@ -24,7 +26,7 @@ export type TrnDialogPlacement =
 /** Trinity's focus target vocabulary, independent of CDK's configuration type. */
 export type TrnDialogAutoFocus = string | false;
 
-export interface DialogOptions<C = object> {
+export interface DialogOptions<C = object> extends DialogDetents {
   /** Set on the opened component as inputs after creation. */
   inputs?: Record<string, unknown>;
   /**
@@ -138,8 +140,7 @@ export function prefersCentred(): boolean {
 }
 
 /** The sheet's height cap; the same value as the sheet surface recipe's, so the pane never clips it. */
-const SHEET_MAX_HEIGHT =
-  'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px)))';
+const SHEET_MAX_HEIGHT = `min(90svh, ${SHEET_LARGE_HEIGHT})`;
 
 /**
  * The presentation, CDK pane geometry and ref wiring for a dialog, decided once at open.
@@ -155,6 +156,7 @@ export function dialogPresentation(
   overlay: Overlay,
   placement: TrnDialogPlacement,
   anchor: HTMLElement | null,
+  detents: DialogDetents = {},
 ): {
   pane: {
     ariaLabelledBy: string;
@@ -221,7 +223,10 @@ export function dialogPresentation(
       ...(sheet && {
         width: '100vw',
         maxWidth: '100vw',
-        maxHeight: SHEET_MAX_HEIGHT,
+        // A sheet that snaps to full height needs the pane to let it.
+        maxHeight: detents.detents?.length
+          ? SHEET_LARGE_HEIGHT
+          : SHEET_MAX_HEIGHT,
       }),
       // Undefined lets CDK center the card; `'inline-end'` pins it to the logical end edge.
       ...(positionStrategy && { positionStrategy }),
@@ -234,6 +239,7 @@ export function dialogPresentation(
         placement === 'top' && presentation === 'dialog'
           ? DIALOG_BLOCK_START
           : null,
+        detents,
       ),
   };
 }
@@ -280,6 +286,7 @@ export class TrnDialogService {
       this.overlay,
       opts.placement ?? 'center',
       anchor,
+      opts,
     );
     let trinityRef: TrnDialogRef<R> | null = null;
     const ref = this.dialog.open<R, unknown, C>(component, {

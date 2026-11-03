@@ -116,4 +116,31 @@ describe('TrnSheetFrameComponent', () => {
     pointer('pointerup', 200, 1000, document);
     expect(dialogs.hasOpen()).toBe(true);
   });
+
+  it('rests a phone sheet opened with detents at half height', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    try {
+      open({ detents: ['medium', 'large'] });
+
+      expect(surface().getAttribute('data-sheet-detent')).toBe('medium');
+      expect(surface().style.getPropertyValue('--trn-sheet-height')).toBe(
+        '50svh',
+      );
+      expect(surface().classList).toContain('h-[var(--trn-sheet-height)]');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps a sheet without detents content-sized', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    try {
+      open();
+
+      expect(surface().hasAttribute('data-sheet-detent')).toBe(false);
+      expect(surface().classList).not.toContain('h-[var(--trn-sheet-height)]');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

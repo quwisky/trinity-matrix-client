@@ -7,9 +7,20 @@ import {
   computed,
   inject,
   input,
+  signal,
+  type Signal,
 } from '@angular/core';
 import type { Dialog } from '@angular/cdk/dialog';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import {
+  DISMISS_FRACTION,
+  FLING_MIN_DISTANCE,
+  FLING_VELOCITY,
+  SHEET_DETENT_HEIGHT,
+  nextDetent,
+  type TrnSheetDetent,
+} from '../sheet-frame/sheet-detent';
 
 /** Dismisses the surrounding sheet; returns whether it actually closed (a guard may refuse). */
 export const TRN_SHEET_DISMISS = new InjectionToken<() => boolean>(
@@ -33,12 +44,6 @@ export function sheetDismissFor(
   };
 }
 
-const DISMISS_FRACTION = 0.25;
-/** px per ms */
-const FLING_VELOCITY = 0.5;
-/** A fling must also travel this far (px), so a twitch never closes the sheet. */
-const FLING_MIN_DISTANCE = 24;
-
 /** A touch must travel this far (px) before it is judged a pull on the sheet or not. */
 const CLAIM_SLOP = 6;
 /** A scroll this recent (ms) means the touch landed on a scroller still coasting. */
@@ -52,15 +57,36 @@ interface SheetFollow {
   end(y: number, t: number, cancelled: boolean): void;
 }
 
-/** The sheet surface that follows a drag started on a {@link TrnSheetDragHandle}. */
-@Directive({ selector: '[trnSheetDrag]' })
+/**
+ * The sheet surface that follows a drag started on a {@link TrnSheetDragHandle}. A sheet opened
+ * with `detents` snaps between them below `md`, its height in `--trn-sheet-height`.
+ */
+@Directive({
+  selector: '[trnSheetDrag]',
+  host: {
+    '[attr.data-sheet-detent]': 'detent()',
+    '[style.--trn-sheet-height]': 'detentHeight()',
+  },
+})
 export class TrnSheetDrag {
   private readonly host =
     inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly dismiss = inject(TRN_SHEET_DISMISS);
   private readonly ref = inject(TrnDialogRef, { optional: true });
+  private readonly detents = this.ref?.detents ?? [];
+  private readonly resting = signal<TrnSheetDetent>(
+    this.detents.includes(this.ref?.initialDetent ?? 'medium')
+      ? (this.ref?.initialDetent ?? 'medium')
+      : (this.detents[0] ?? 'medium'),
+  );
+  private readonly phone = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
   private stopDrag: (() => void) | null = null;
   private lastScroll = -Infinity;
+
+  protected readonly detentHeight = computed(() => {
+    const detent = this.detent();
+    return detent ? SHEET_DETENT_HEIGHT[detent] : null;
+  });
 
   /** `[trnSheetDrag]="false"` turns the drag off, e.g. for a centred dialog. */
   readonly enabled = input(true, {
@@ -69,6 +95,10 @@ export class TrnSheetDrag {
   });
   /** On unless turned off, and never for a sheet its dialog opened `disableClose`. */
   readonly active = computed(() => this.enabled() && !this.ref?.disableClose);
+  /** The height the sheet rests at; null without detents or at `md` and wider. */
+  readonly detent: Signal<TrnSheetDetent | null> = computed(() =>
+    this.detents.length && this.phone() ? this.resting() : null,
+  );
 
   constructor() {
     // Scroll events do not bubble, so a capturing listener sees every scroller in the sheet.
@@ -84,6 +114,19 @@ export class TrnSheetDrag {
       this.host.removeEventListener('scroll', scrolled, { capture: true });
       this.host.removeEventListener('touchstart', start);
     });
+  }
+
+  /** Rests the sheet at `detent`, if it was opened with it. */
+  setDetent(detent: TrnSheetDetent): void {
+    if (!this.detents.includes(detent)) return;
+    this.resting.set(detent);
+    // Written now as well as by the binding, so a release springs to it in the same frame.
+    if (this.phone()) {
+      this.host.style.setProperty(
+        '--trn-sheet-height',
+        SHEET_DETENT_HEIGHT[detent],
+      );
+    }
   }
 
   begin(event: PointerEvent): void {
@@ -125,6 +168,8 @@ export class TrnSheetDrag {
    * and the content drag share it, so thresholds, spring and a refused guard behave alike.
    */
   private follow(startY: number, startT: number): SheetFollow {
+    const detent = this.detent();
+    if (detent) return this.followDetent(detent, startY, startT);
     const height = this.host.getBoundingClientRect().height || 1;
     const offset = (y: number) => Math.max(0, y - startY);
     this.host.style.transition = 'none';
@@ -145,6 +190,54 @@ export class TrnSheetDrag {
         this.host.style.transform = '';
       },
     };
+  }
+
+  /**
+   * Above the half-height the sheet grows and shrinks with the finger; below it, it slides down
+   * as a content-sized sheet does. Release snaps to {@link nextDetent}'s pick.
+   */
+  private followDetent(
+    detent: TrnSheetDetent,
+    startY: number,
+    startT: number,
+  ): SheetFollow {
+    const height = this.host.getBoundingClientRect().height;
+    const floor = Math.min(height, window.innerHeight / 2);
+    this.host.style.transition = 'none';
+    return {
+      move: (y: number) => {
+        const next = height - (y - startY);
+        this.host.style.height = `${Math.max(floor, next)}px`;
+        this.host.style.transform =
+          next < floor ? `translateY(${floor - next}px)` : '';
+      },
+      end: (y: number, t: number, cancelled: boolean) => {
+        const dy = y - startY;
+        const next = nextDetent(
+          detent,
+          dy,
+          dy / Math.max(1, t - startT),
+          this.detents,
+        );
+        this.stopDrag?.();
+        this.host.style.transition =
+          'transform var(--trinity-duration-base) ease-out, height var(--trinity-duration-base) ease-out';
+        if (cancelled) {
+          this.settle(detent);
+        } else if (next !== 'dismiss') {
+          this.settle(next);
+        } else if (!this.dismiss()) {
+          // A refused close rests at the lowest height, never where the finger let go.
+          this.settle(this.detents.includes('medium') ? 'medium' : 'large');
+        }
+      },
+    };
+  }
+
+  private settle(detent: TrnSheetDetent): void {
+    this.setDetent(detent);
+    this.host.style.height = '';
+    this.host.style.transform = '';
   }
 
   private beginContent(event: TouchEvent): void {

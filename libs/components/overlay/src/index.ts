@@ -5,6 +5,7 @@ export {
   TrnDialogRef,
   type TrnDialogPresentation,
 } from './lib/dialog/trn-dialog-ref';
+export { type TrnSheetDetent } from './lib/sheet-frame/sheet-detent';
 export {
   TrnDialogActions,
   TrnDialogShellComponent,
