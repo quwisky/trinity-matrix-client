@@ -353,33 +353,43 @@ export class WorkspaceNavigationService {
       .subscribe({ complete: next, error: next });
   }
 
+  /**
+   * Resolve a panel request only once no transition holds Workspace, so it reads the view an
+   * open just committed or a restoration just landed, and skip it if a newer tap replaced it
+   * meanwhile. `busy` clears when its attempt settles; Router promises settle, and a pop is
+   * bounded by the location adapter's settle timeout.
+   */
   private applyPanel(request: PanelRequest): Observable<unknown> {
-    return defer(() => {
-      const view = this.view();
-      if (
-        view.accountId !== request.accountId ||
-        view.roomId !== request.roomId
-      ) {
-        return EMPTY;
-      }
-      const resolved = resolveWorkspacePanel(request.panel, view, {
-        panelBelow: this.location.panelBelow(),
-      });
-      if (!resolved) return EMPTY;
-      return this.transition(resolved.destination, resolved.options).pipe(
-        switchMap((outcome) =>
-          outcome.kind === 'transition-in-progress' && !this.panelRequest
-            ? toObservable(this.workflow.busy, {
-                injector: this.injector,
-              }).pipe(
-                filter((busy) => !busy),
-                take(1),
-                switchMap(() => this.applyPanel(request)),
-              )
-            : EMPTY,
-        ),
-      );
-    });
+    return defer(() =>
+      this.workflow.busy()
+        ? toObservable(this.workflow.busy, { injector: this.injector }).pipe(
+            filter((busy) => !busy),
+            take(1),
+          )
+        : of(null),
+    ).pipe(
+      switchMap(() => {
+        const view = this.view();
+        if (
+          this.panelRequest ||
+          view.accountId !== request.accountId ||
+          view.roomId !== request.roomId
+        ) {
+          return EMPTY;
+        }
+        const resolved = resolveWorkspacePanel(request.panel, view, {
+          panelBelow: this.location.panelBelow(),
+        });
+        if (!resolved) return EMPTY;
+        return this.transition(resolved.destination, resolved.options).pipe(
+          switchMap((outcome) =>
+            outcome.kind === 'transition-in-progress'
+              ? this.applyPanel(request)
+              : EMPTY,
+          ),
+        );
+      }),
+    );
   }
 
   private navigateHistory(

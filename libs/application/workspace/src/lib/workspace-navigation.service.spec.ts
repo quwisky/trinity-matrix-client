@@ -2667,6 +2667,81 @@ describe('room panels', () => {
     });
   });
 
+  describe('a panel tap during another transition', () => {
+    async function holdScope(h: Awaited<ReturnType<typeof inRoom>>) {
+      let finish!: (navigated: boolean) => void;
+      h.navigate.mockImplementationOnce((commands, extras) => {
+        h.paramMap.next(convertToParamMap({ roomId: commands[1] }));
+        h.queryParamMap.next(convertToParamMap(extras?.queryParams ?? {}));
+        return new Promise<boolean>((resolve) => (finish = resolve));
+      });
+      const done = firstValueFrom(
+        h.service.navigate({
+          kind: 'scope',
+          accountId: ALICE,
+          scope: { kind: 'home' },
+        }),
+      );
+      await settle();
+      return async () => {
+        finish(true);
+        await done;
+        await settle();
+      };
+    }
+
+    it('applies only the newest of taps made while waiting', async () => {
+      const h = await inRoom({ routeView: 'rooms' });
+      const release = await holdScope(h);
+
+      h.service.openPanel(members);
+      await settle();
+      h.service.openPanel(threads);
+      await release();
+
+      const panels = h.navigate.mock.calls.map(
+        ([, extras]) =>
+          (extras?.queryParams as Record<string, string>)?.['panel'],
+      );
+      expect(panels).toEqual([undefined, 'threads']);
+      expect(h.service.panel()).toEqual(threads);
+    });
+
+    it('closes the panel the settled view holds, so a close is never lost', async () => {
+      const h = await inRoom({ routeView: 'rooms' });
+      h.service.openPanel(members);
+      await settle();
+      h.navigate.mockClear();
+      const release = await holdScope(h);
+
+      // Tapped before the scope commits; that view keeps the panel, which the close closes.
+      h.service.closePanel();
+      await release();
+
+      expect(h.navigate).toHaveBeenCalledTimes(2);
+      expect(h.navigate).toHaveBeenLastCalledWith(roomCommands, {
+        queryParams: { account: ALICE, view: 'home' },
+        replaceUrl: true,
+      });
+      expect(h.service.view()).toMatchObject({
+        scope: { kind: 'home' },
+        panel: null,
+      });
+    });
+
+    it('lets a close cancel an open made while waiting, writing no panel', async () => {
+      const h = await inRoom({ routeView: 'rooms' });
+      const release = await holdScope(h);
+
+      h.service.openPanel(members);
+      h.service.closePanel();
+      await release();
+
+      expect(h.navigate).toHaveBeenCalledOnce();
+      expect(h.service.panel()).toBeNull();
+    });
+  });
+
   it('keeps choosing the open Room again a no-op while a panel is open', async () => {
     const h = await inRoom();
     h.service.openPanel(members);
