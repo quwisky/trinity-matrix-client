@@ -16,7 +16,6 @@ function stubPage(options: {
   coarse?: boolean;
   layers: Layer[];
   pixel?: [number, number, number, number];
-  reportedInset?: string;
   envInset?: string;
 }) {
   const fills: string[] = [];
@@ -33,8 +32,6 @@ function stubPage(options: {
       borderTopWidth: layer?.borderTop?.width ?? '0px',
       borderTopColor: layer?.borderTop?.color ?? 'rgb(0, 0, 0)',
       paddingTop: options.envInset ?? '0px',
-      getPropertyValue: (name: string) =>
-        name === '--safe-area-inset-top' ? (options.reportedInset ?? '') : '',
     } as unknown as CSSStyleDeclaration;
   });
   let fillStyle = '';
@@ -95,7 +92,9 @@ describe('BrowserAppearanceStatusAreaSource', () => {
       TestBed.inject(BrowserAppearanceStatusAreaSource),
     );
 
-    expect(readings).toEqual([{ kind: 'page', color: '#151618' }]);
+    expect(readings).toEqual([
+      { kind: 'page', color: '#151618', underStatusBar: false },
+    ]);
     expect(fills).toEqual([
       'oklch(18% 0.014 265deg)',
       'rgba(0, 0, 0, 0)',
@@ -123,25 +122,26 @@ describe('BrowserAppearanceStatusAreaSource', () => {
     subscription.unsubscribe();
   });
 
-  it('reports the host where it pads the WebView and env() reports no inset', () => {
-    stubPage({ layers: [], reportedInset: '24px', envInset: '0px' });
-    const { readings, subscription } = collect(
+  it('says whether the page reaches under the status bar', () => {
+    // Android WebView before 140: SystemBars pads the WebView and `env()` reads 0.
+    stubPage({ layers: [layer('rgb(21, 22, 24)')], envInset: '0px' });
+    let { readings, subscription } = collect(
       TestBed.inject(BrowserAppearanceStatusAreaSource),
     );
-    expect(readings).toEqual([{ kind: 'host' }]);
+    expect(readings).toEqual([
+      { kind: 'page', color: '#151618', underStatusBar: false },
+    ]);
     subscription.unsubscribe();
-  });
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
 
-  it('reads the page where the inset reaches env()', () => {
-    stubPage({
-      layers: [layer('rgb(21, 22, 24)')],
-      reportedInset: '24px',
-      envInset: '24px',
-    });
-    const { readings, subscription } = collect(
+    stubPage({ layers: [layer('rgb(21, 22, 24)')], envInset: '54px' });
+    ({ readings, subscription } = collect(
       TestBed.inject(BrowserAppearanceStatusAreaSource),
-    );
-    expect(readings).toEqual([{ kind: 'page', color: '#151618' }]);
+    ));
+    expect(readings).toEqual([
+      { kind: 'page', color: '#151618', underStatusBar: true },
+    ]);
     subscription.unsubscribe();
   });
 
@@ -171,7 +171,11 @@ describe('BrowserAppearanceStatusAreaSource', () => {
     await vi.advanceTimersByTimeAsync(99);
     expect(readings).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(readings.at(-1)).toEqual({ kind: 'page', color: '#7f8ff1' });
+    expect(readings.at(-1)).toEqual({
+      kind: 'page',
+      color: '#7f8ff1',
+      underStatusBar: false,
+    });
 
     subscription.unsubscribe();
     expect(disconnect).toHaveBeenCalled();

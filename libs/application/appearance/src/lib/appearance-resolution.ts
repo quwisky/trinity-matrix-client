@@ -27,27 +27,26 @@ export function resolveAppearance(
 }
 
 /**
- * Narrow the application projection before it crosses the native boundary. What sits under the
- * status bar decides its Mode, so an accent banner or the media viewer keeps contrast in either
- * Mode. A host that pads the WebView shows its window there, which follows the system Mode;
- * without a reading the resolved Mode stands in.
+ * Narrow the application projection before it crosses the native boundary. Where the page
+ * reaches under the status bar, its colour there decides the Mode, so an accent banner or the
+ * media viewer keeps contrast in either Mode. Where it doesn't, the host's window shows there,
+ * which follows the system Mode; the colour still goes to a browser's theme colour. Without a
+ * reading the resolved Mode stands in.
  */
 export function toNativeChromeAppearance(
   appearance: ResolvedAppearance,
   statusArea: StatusAreaReading = { kind: 'unknown' },
   systemMode: ResolvedThemeMode = appearance.mode,
 ): NativeChromeAppearance {
-  switch (statusArea.kind) {
-    case 'page':
-      return Object.freeze({
-        mode: surfaceMode(statusArea.color),
-        color: statusArea.color,
-      });
-    case 'host':
-      return Object.freeze({ mode: systemMode, color: null });
-    case 'unknown':
-      return Object.freeze({ mode: appearance.mode, color: null });
+  if (statusArea.kind === 'unknown') {
+    return Object.freeze({ mode: appearance.mode, color: null });
   }
+  return Object.freeze({
+    mode: statusArea.underStatusBar
+      ? surfaceMode(statusArea.color)
+      : systemMode,
+    color: statusArea.color,
+  });
 }
 
 /**

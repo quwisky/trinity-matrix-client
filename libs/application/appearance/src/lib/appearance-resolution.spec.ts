@@ -6,7 +6,8 @@ import {
   toNativeChromeAppearance,
 } from './appearance-resolution';
 
-const page = (color: string) => ({ kind: 'page', color }) as const;
+const page = (color: string) =>
+  ({ kind: 'page', color, underStatusBar: true }) as const;
 
 const committed = (mode: AppearanceValue['mode']): AppearanceValue => ({
   mode,
@@ -58,14 +59,18 @@ describe('Appearance resolution', () => {
     expect(toNativeChromeAppearance(light, page('#f5f3ef')).mode).toBe('light');
   });
 
-  it('follows the system Mode where the host pads the WebView below the status bar', () => {
-    // Android WebView before 140 shows the window background there, which follows the system.
+  it('follows the system Mode where the page does not reach under the status bar', () => {
+    // Android WebView before 140 shows the window background there, which follows the system;
+    // the colour still goes to a browser's theme colour.
     const light = resolveAppearance(committed('light'), 'dark');
 
-    expect(toNativeChromeAppearance(light, { kind: 'host' }, 'dark')).toEqual({
-      mode: 'dark',
-      color: null,
-    });
+    expect(
+      toNativeChromeAppearance(
+        light,
+        { kind: 'page', color: '#5358ee', underStatusBar: false },
+        'dark',
+      ),
+    ).toEqual({ mode: 'dark', color: '#5358ee' });
   });
 
   it('picks the content colour with more contrast on the surface', () => {

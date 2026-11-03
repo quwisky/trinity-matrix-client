@@ -13,12 +13,16 @@ import {
 const SETTLE_MS = 100;
 
 /**
- * What sits under the status bar: the page's colour as `#rrggbb`; the host's own window, when
- * it pads the WebView below the status bar instead (Android WebView before 140); or unknown.
+ * The colour at the top of the page as `#rrggbb`, and whether the page reaches under the status
+ * bar there. It doesn't where the host pads the WebView below the bar (Android WebView before
+ * 140) or where the browser draws its own (the web), so `env(safe-area-inset-top)` reads 0.
  */
 export type StatusAreaReading =
-  | { readonly kind: 'page'; readonly color: string }
-  | { readonly kind: 'host' }
+  | {
+      readonly kind: 'page';
+      readonly color: string;
+      readonly underStatusBar: boolean;
+    }
   | { readonly kind: 'unknown' };
 
 const UNKNOWN: StatusAreaReading = { kind: 'unknown' };
@@ -85,7 +89,6 @@ export class BrowserAppearanceStatusAreaSource implements AppearanceStatusAreaSo
   }
 
   private sample(view: Window): StatusAreaReading {
-    if (this.hostPadsTop(view)) return { kind: 'host' };
     const context = this.canvas();
     if (!context) return UNKNOWN;
     const layers = this.document.elementsFromPoint(view.innerWidth / 2, 0);
@@ -104,7 +107,7 @@ export class BrowserAppearanceStatusAreaSource implements AppearanceStatusAreaSo
     const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
     if (alpha !== 255) return UNKNOWN;
     const color = `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
-    return { kind: 'page', color };
+    return { kind: 'page', color, underStatusBar: this.underStatusBar(view) };
   }
 
   private paint(context: CanvasRenderingContext2D, color: string): void {
@@ -114,18 +117,7 @@ export class BrowserAppearanceStatusAreaSource implements AppearanceStatusAreaSo
     context.fillRect(0, 0, 1, 1);
   }
 
-  /**
-   * Capacitor's SystemBars reports the inset as `--safe-area-inset-top` on every Android
-   * WebView, but only from WebView 140 does the page reach under the status bar and `env()`
-   * report it; before that it pads the WebView natively.
-   */
-  private hostPadsTop(view: Window): boolean {
-    const reported = Number.parseFloat(
-      view
-        .getComputedStyle(this.document.body)
-        .getPropertyValue('--safe-area-inset-top'),
-    );
-    if (!(reported > 0)) return false;
+  private underStatusBar(view: Window): boolean {
     if (!this.probe) {
       this.probe = this.document.createElement('div');
       this.probe.setAttribute('aria-hidden', 'true');
@@ -133,9 +125,7 @@ export class BrowserAppearanceStatusAreaSource implements AppearanceStatusAreaSo
         'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px)';
       this.document.body.append(this.probe);
     }
-    return (
-      Number.parseFloat(view.getComputedStyle(this.probe).paddingTop) === 0
-    );
+    return Number.parseFloat(view.getComputedStyle(this.probe).paddingTop) > 0;
   }
 
   private canvas(): CanvasRenderingContext2D | null {
@@ -157,7 +147,7 @@ function sameReading(
   right: StatusAreaReading,
 ): boolean {
   return left.kind === 'page' && right.kind === 'page'
-    ? left.color === right.color
+    ? left.color === right.color && left.underStatusBar === right.underStatusBar
     : left.kind === right.kind;
 }
 

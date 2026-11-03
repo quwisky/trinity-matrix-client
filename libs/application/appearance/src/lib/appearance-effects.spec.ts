@@ -22,7 +22,11 @@ import {
   type StatusAreaReading,
 } from './appearance-status-area.source';
 
-const page = (color: string): StatusAreaReading => ({ kind: 'page', color });
+const page = (color: string, underStatusBar = true): StatusAreaReading => ({
+  kind: 'page',
+  color,
+  underStatusBar,
+});
 import {
   APPEARANCE_SYSTEM_MODE_SOURCE,
   type AppearanceSystemModeSource,
@@ -145,11 +149,16 @@ describe('AppearanceEffects', () => {
     });
 
     // A natively padded WebView: the window under the status bar follows the system Mode.
-    statusArea.next({ kind: 'host' });
+    statusArea.next(page('#7f8ff1', false));
     systemMode.next('light');
     expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
       mode: 'light',
-      color: null,
+      color: '#7f8ff1',
+    });
+    systemMode.next('dark');
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'dark',
+      color: '#7f8ff1',
     });
     subscription.unsubscribe();
   });
