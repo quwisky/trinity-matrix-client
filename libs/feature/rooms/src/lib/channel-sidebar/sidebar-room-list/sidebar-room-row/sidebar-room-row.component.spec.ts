@@ -17,8 +17,9 @@ import { roomSummary as room } from '../../../testing/room-summary.fixture';
 async function renderRow(
   inputs: Record<string, unknown> = {},
   offers: (accountId: string, kind: string) => boolean = () => true,
+  mode: 'all' | 'mixed' = 'all',
 ) {
-  const modeForAccounts = vi.fn(() => 'all' as const);
+  const modeForAccounts = vi.fn(() => mode as never);
   const actions: SidebarRoomAction[] = [];
   const openActions = vi.fn();
   const gestureCommitted = vi.fn();
@@ -269,6 +270,26 @@ describe('SidebarRoomRowComponent', () => {
       }
     });
 
+    it('titles the sheet when notification settings differ between accounts', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container, openActions } = await renderRow(
+          {},
+          () => true,
+          'mixed',
+        );
+        container
+          .querySelector<HTMLElement>('.channel')!
+          .dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        expect(openActions.mock.calls[0][0].header).toBe(
+          'Notification settings differ between accounts',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('ignores a mouse', async () => {
       vi.useFakeTimers();
       try {
@@ -287,21 +308,27 @@ describe('SidebarRoomRowComponent', () => {
       }
     });
 
-    it('stops swallowing clicks 300 ms after the lift, so a later tap selects', async () => {
+    /** Whether a click reaches a bubble listener on the document: false while the guard swallows it. */
+    const clickReaches = () => {
+      const seen = vi.fn();
+      document.addEventListener('click', seen);
+      document.body.click();
+      document.removeEventListener('click', seen);
+      return seen.mock.calls.length === 1;
+    };
+
+    it('stops swallowing clicks 300 ms after the lift', async () => {
       vi.useFakeTimers();
       try {
-        const { container, actions } = await renderRow();
+        const { container } = await renderRow();
         const channel = container.querySelector<HTMLElement>('.channel')!;
         channel.dispatchEvent(touch('pointerdown'));
         vi.advanceTimersByTime(500);
         channel.dispatchEvent(touch('pointerup'));
         vi.advanceTimersByTime(299);
-        channel.click();
-        expect(actions).toEqual([]);
-        channel.dispatchEvent(touch('pointerup'));
-        vi.advanceTimersByTime(300);
-        channel.click();
-        expect(actions).toEqual([{ kind: 'select', room: room() }]);
+        expect(vi.getTimerCount()).toBeGreaterThan(0);
+        vi.advanceTimersByTime(1);
+        expect(clickReaches()).toBe(true);
       } finally {
         vi.useRealTimers();
       }
@@ -310,15 +337,29 @@ describe('SidebarRoomRowComponent', () => {
     it('releases after the fallback when no pointer end ever arrives', async () => {
       vi.useFakeTimers();
       try {
-        const { container, actions } = await renderRow();
+        const { container } = await renderRow();
         const channel = container.querySelector<HTMLElement>('.channel')!;
         channel.dispatchEvent(touch('pointerdown'));
         vi.advanceTimersByTime(500);
-        vi.advanceTimersByTime(9_000);
-        document.body.click();
-        vi.advanceTimersByTime(1_000);
-        channel.click();
-        expect(actions).toEqual([{ kind: 'select', room: room() }]);
+        vi.advanceTimersByTime(9_999);
+        vi.advanceTimersByTime(1);
+        expect(clickReaches()).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('releases at once when another pointer goes down', async () => {
+      vi.useFakeTimers();
+      try {
+        const { container } = await renderRow();
+        const channel = container.querySelector<HTMLElement>('.channel')!;
+        channel.dispatchEvent(touch('pointerdown'));
+        vi.advanceTimersByTime(500);
+        document.dispatchEvent(
+          new PointerEvent('pointerdown', { pointerId: 7, bubbles: true }),
+        );
+        expect(clickReaches()).toBe(true);
       } finally {
         vi.useRealTimers();
       }

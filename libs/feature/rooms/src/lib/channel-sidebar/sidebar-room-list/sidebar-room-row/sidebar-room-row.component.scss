@@ -165,14 +165,14 @@
     font-size: 1.125rem;
     opacity: 0;
 
-    @media (hover: hover) {
+    @media (hover: hover), (any-hover: hover) {
       &:hover {
         color: var(--trinity-text-bright);
       }
     }
   }
 
-  @media (hover: hover) {
+  @media (hover: hover), (any-hover: hover) {
     .channel-row:hover .channel__menu {
       opacity: 1;
     }
@@ -182,7 +182,7 @@
   // in the accessibility tree and focusable (VoiceOver, TalkBack, a keyboard on a tablet), and a
   // focused kebab shows itself. Lives here because `.channel__menu` is rendered by THIS component,
   // and under emulated encapsulation a parent copy silently matches nothing.
-  // `any-hover` too: a tablet with a mouse has no long press to fall back on, so it keeps the kebab.
+  // `any-hover` too: a touch tablet with a mouse attached keeps the kebab, since a mouse cannot long press.
   @media (hover: none) and (any-hover: none) {
     .channel-row {
       position: relative;

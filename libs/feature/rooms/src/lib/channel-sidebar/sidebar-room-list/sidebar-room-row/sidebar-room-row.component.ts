@@ -184,9 +184,15 @@ export class SidebarRoomRowComponent {
     this.releaseTimer = setTimeout(() => this.releaseClick(), 300);
   };
 
+  /** A new pointer means the held one's end was lost; nothing may be swallowed on its behalf. */
+  private readonly otherPointerDown = (event: PointerEvent) => {
+    if (event.pointerId !== this.pressPointerId) this.releaseClick();
+  };
+
   private releaseClick(): void {
     if (!this.swallowing) return;
     this.swallowing = false;
+    document.removeEventListener('pointerdown', this.otherPointerDown, true);
     document.removeEventListener('click', this.swallowClick, true);
     document.removeEventListener('pointerup', this.liftSeen, true);
     document.removeEventListener('pointercancel', this.liftSeen, true);
@@ -203,8 +209,10 @@ export class SidebarRoomRowComponent {
     this.pressPointerId = event.pointerId;
     this.pressTimer = setTimeout(() => {
       this.pressTimer = null;
+      this.releaseClick();
       this.swallowing = true;
       document.addEventListener('click', this.swallowClick, true);
+      document.addEventListener('pointerdown', this.otherPointerDown, true);
       document.addEventListener('pointerup', this.liftSeen, true);
       document.addEventListener('pointercancel', this.liftSeen, true);
       // Whatever ends the gesture elsewhere, a tap must never be swallowed for long.
