@@ -100,6 +100,9 @@ export class WorkspaceNavigationService {
   private projectionsActive = false;
   private hasProjected = false;
   private lastCommitInApp = false;
+  /** The latest panel open or close not yet applied; a newer one replaces it. */
+  private panelRequest: PanelRequest | null = null;
+  private panelRunning = false;
 
   readonly view = this.workspaceView.asReadonly();
   readonly eventTarget = this.eventTargetState.asReadonly();
@@ -328,17 +331,55 @@ export class WorkspaceNavigationService {
     this.changePanel(null);
   }
 
+  /**
+   * Panel taps are applied one at a time and the last one wins: a close tapped while an open
+   * is still being written, or while another transition holds Workspace, runs once that
+   * settles instead of being dropped. A request for a Room no longer open is dropped.
+   */
   private changePanel(panel: WorkspacePanel | null): void {
-    defer(() => {
-      const resolved = resolveWorkspacePanel(panel, this.view(), {
+    const { accountId, roomId } = this.view();
+    this.panelRequest = { panel, accountId, roomId };
+    if (!this.panelRunning) this.runPanelRequest();
+  }
+
+  private runPanelRequest(): void {
+    const request = this.panelRequest;
+    this.panelRequest = null;
+    this.panelRunning = request !== null;
+    if (!request) return;
+    const next = (): void => this.runPanelRequest();
+    this.applyPanel(request)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ complete: next, error: next });
+  }
+
+  private applyPanel(request: PanelRequest): Observable<unknown> {
+    return defer(() => {
+      const view = this.view();
+      if (
+        view.accountId !== request.accountId ||
+        view.roomId !== request.roomId
+      ) {
+        return EMPTY;
+      }
+      const resolved = resolveWorkspacePanel(request.panel, view, {
         panelBelow: this.location.panelBelow(),
       });
-      return resolved
-        ? this.transition(resolved.destination, resolved.options)
-        : EMPTY;
-    })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      if (!resolved) return EMPTY;
+      return this.transition(resolved.destination, resolved.options).pipe(
+        switchMap((outcome) =>
+          outcome.kind === 'transition-in-progress' && !this.panelRequest
+            ? toObservable(this.workflow.busy, {
+                injector: this.injector,
+              }).pipe(
+                filter((busy) => !busy),
+                take(1),
+                switchMap(() => this.applyPanel(request)),
+              )
+            : EMPTY,
+        ),
+      );
+    });
   }
 
   private navigateHistory(
@@ -535,6 +576,12 @@ export class WorkspaceNavigationService {
       this.availability.roomKept(destination.accountId, destination.roomId)
     );
   }
+}
+
+interface PanelRequest {
+  readonly panel: WorkspacePanel | null;
+  readonly accountId: string | null;
+  readonly roomId: string | null;
 }
 
 function normalizeEventId(eventId: string | undefined): string | null {

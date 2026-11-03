@@ -154,13 +154,21 @@ export class WorkspaceLocationAdapter {
     destination: WorkspaceDestination,
     options: WorkspaceLocationProjection,
   ): Promise<boolean> {
-    const withinRoom = options.withinRoom === true;
+    const push = options.history === 'push';
+    // A panel push, or any replace, that stays in the Room keeps the marks of the entry it
+    // leaves or rewrites, so Back and a later close still find what lies below.
+    const keepMarks =
+      (!push || options.withinRoom === true) && this.inSameRoom(destination);
     const listBelow =
-      options.history === 'push' && options.overList === true
+      push && options.overList === true
         ? this.rewriteListBelow(destination)
-        : withinRoom && this.readMark(LIST_BELOW);
+        : keepMarks &&
+          destination.pane === 'conversation' &&
+          this.readMark(LIST_BELOW);
     const panelBelow =
-      withinRoom && (options.history === 'push' || this.readMark(PANEL_BELOW));
+      keepMarks &&
+      destination.panel !== null &&
+      (push || this.readMark(PANEL_BELOW));
     return this.router.navigate([...projection.commands], {
       queryParams: { ...projection.queryParams },
       replaceUrl: options.history === 'replace',
@@ -174,6 +182,16 @@ export class WorkspaceLocationAdapter {
         : {}),
       ...(options.background ? { info: BACKGROUND_NAVIGATION_INFO } : {}),
     });
+  }
+
+  private inSameRoom(destination: WorkspaceDestination): boolean {
+    const here = this.current(destination.accountId);
+    const current = here.kind === 'workspace' ? here.parsed.destination : null;
+    return (
+      destination.roomId !== null &&
+      current?.accountId === destination.accountId &&
+      current.roomId === destination.roomId
+    );
   }
 
   /**
@@ -195,8 +213,9 @@ export class WorkspaceLocationAdapter {
 
   /**
    * Pop the current entry and resolve once the Router has settled on the one below, popping on
-   * through a Room's panel entries while the destination lies below them. When the entry
-   * reached is not the expected projection, or nothing settles, write the projection in place.
+   * only while the entry reached is marked as sitting on the destination's side (see
+   * {@link marksMore}). When the entry reached is not the expected projection, or nothing
+   * settles, write the projection in place.
    */
   private async popTo(
     destination: WorkspaceDestination,
@@ -204,7 +223,6 @@ export class WorkspaceLocationAdapter {
   ): Promise<boolean> {
     const target = this.urlOf(projection);
     for (;;) {
-      const onRoom = this.readMark(PANEL_BELOW);
       const settled = firstValueFrom(
         race(
           this.router.events.pipe(
@@ -223,7 +241,7 @@ export class WorkspaceLocationAdapter {
       const event = await settled;
       if (!(event instanceof NavigationEnd)) break;
       if (this.router.url === target) return true;
-      if (!onRoom || !this.stillAbove(destination)) break;
+      if (!this.marksMore(destination)) break;
     }
     const keepListBelow =
       destination.pane === 'conversation' && this.readMark(LIST_BELOW);
@@ -235,18 +253,20 @@ export class WorkspaceLocationAdapter {
   }
 
   /**
-   * After a pop off a panel entry, whether the destination (a closed panel or the list) is
-   * still below: the entry reached is another of the Room's panels, or the Room itself while
-   * the destination is its list.
+   * Whether the entry a pop reached says the destination lies one more pop below it: one of
+   * the Room's panels marked as pushed over the Room, or the Room itself marked as pushed over
+   * the list the destination names. An unmarked entry ends the walk, so it never leaves the
+   * Room's history.
    */
-  private stillAbove(destination: WorkspaceDestination): boolean {
+  private marksMore(destination: WorkspaceDestination): boolean {
     const here = this.current(destination.accountId);
     const landed = here.kind === 'workspace' ? here.parsed.destination : null;
+    if (landed === null || landed.roomId !== destination.roomId) return false;
+    if (landed.panel !== null) return this.readMark(PANEL_BELOW);
     return (
-      landed !== null &&
-      landed.roomId === destination.roomId &&
-      (landed.panel !== null ||
-        (landed.pane === 'conversation' && destination.pane === 'list'))
+      landed.pane === 'conversation' &&
+      destination.pane === 'list' &&
+      this.readMark(LIST_BELOW)
     );
   }
 

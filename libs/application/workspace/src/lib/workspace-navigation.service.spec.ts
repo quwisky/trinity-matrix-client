@@ -2590,6 +2590,102 @@ describe('room panels', () => {
     expect(h.service.view()).toMatchObject({ accountId: BOB, panel: null });
   });
 
+  it('applies a close tapped while the open is still being written', async () => {
+    const h = await inRoom();
+    let finishOpen!: (navigated: boolean) => void;
+    h.navigate.mockImplementationOnce((commands, extras) => {
+      h.paramMap.next(convertToParamMap({ roomId: commands[1] }));
+      h.queryParamMap.next(convertToParamMap(extras?.queryParams ?? {}));
+      return new Promise<boolean>((resolve) => (finishOpen = resolve));
+    });
+
+    h.service.openPanel(thread);
+    h.service.closePanel();
+    await settle();
+    expect(h.navigate).toHaveBeenCalledOnce();
+
+    finishOpen(true);
+    await settle();
+
+    expect(h.navigate).toHaveBeenCalledTimes(2);
+    expect(h.navigate).toHaveBeenLastCalledWith(roomCommands, {
+      queryParams: { account: ALICE },
+      replaceUrl: true,
+    });
+    expect(h.service.panel()).toBeNull();
+  });
+
+  it('lets the last of several quick panel taps win', async () => {
+    const h = await inRoom();
+    let finishOpen!: (navigated: boolean) => void;
+    h.navigate.mockImplementationOnce((commands, extras) => {
+      h.paramMap.next(convertToParamMap({ roomId: commands[1] }));
+      h.queryParamMap.next(convertToParamMap(extras?.queryParams ?? {}));
+      return new Promise<boolean>((resolve) => (finishOpen = resolve));
+    });
+
+    h.service.openPanel(members);
+    h.service.openPanel(threads);
+    h.service.openPanel({ kind: 'pinned' });
+    finishOpen(true);
+    await settle();
+
+    expect(h.navigate).toHaveBeenCalledTimes(2);
+    expect(h.navigate).toHaveBeenLastCalledWith(roomCommands, {
+      queryParams: { account: ALICE, panel: 'pinned' },
+      replaceUrl: true,
+    });
+    expect(h.service.panel()).toEqual({ kind: 'pinned' });
+  });
+
+  it('applies a panel tapped during another transition once it settles, in the same Room', async () => {
+    const h = await inRoom({ routeView: 'rooms' });
+    let finishScope!: (navigated: boolean) => void;
+    h.navigate.mockImplementationOnce((commands, extras) => {
+      h.paramMap.next(convertToParamMap({ roomId: commands[1] }));
+      h.queryParamMap.next(convertToParamMap(extras?.queryParams ?? {}));
+      return new Promise<boolean>((resolve) => (finishScope = resolve));
+    });
+    const scope = firstValueFrom(
+      h.service.navigate({
+        kind: 'scope',
+        accountId: ALICE,
+        scope: { kind: 'home' },
+      }),
+    );
+
+    h.service.openPanel(members);
+    await settle();
+    finishScope(true);
+    await scope;
+    await settle();
+
+    expect(h.service.view()).toMatchObject({
+      scope: { kind: 'home' },
+      roomId: ROOM,
+      panel: members,
+    });
+  });
+
+  it('keeps choosing the open Room again a no-op while a panel is open', async () => {
+    const h = await inRoom();
+    h.service.openPanel(members);
+    await settle();
+    h.navigate.mockClear();
+
+    await expect(
+      go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'room-list',
+      }),
+    ).resolves.toEqual({ kind: 'ready', change: 'unchanged' });
+
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.service.panel()).toEqual(members);
+  });
+
   it('ignores a panel with no Room open', async () => {
     const h = harness({ routeAccountId: ALICE });
     await settle();

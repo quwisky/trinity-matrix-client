@@ -98,7 +98,12 @@ export function resolveWorkspaceNavigation(
           scope: roomScope(intent, current),
           roomId: intent.roomId,
           pane: 'conversation',
-          panel: null,
+          // Choosing the open Room again keeps its panel, so it stays a no-op.
+          panel:
+            current.accountId === intent.accountId &&
+            current.roomId === intent.roomId
+              ? current.panel
+              : null,
         },
         options: {
           source: intent.origin === 'room-hop' ? 'hop' : 'user',
