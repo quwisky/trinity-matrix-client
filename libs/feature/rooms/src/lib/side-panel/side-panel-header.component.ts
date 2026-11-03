@@ -9,7 +9,8 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnTooltip } from '@trinity/components/generic-content';
 
 /**
- * The top bar every right-hand panel shares: a title and a close button. The height grows by
+ * The top bar every right-hand panel shares: a title and a close button. Below md a room panel
+ * is a page, so the button leads the bar as a back arrow, like the room header's. The height grows by
  * the top inset rather than being eaten by it, so on a notched device the bar sits below the
  * cutout at full height. Padding is composed in one declaration; the `.safe-*` helpers would
  * fight Tailwind spacing over the same longhands.
@@ -32,7 +33,13 @@ import { TrnTooltip } from '@trinity/components/generic-content';
       [attr.data-right-panel-focus]="focusClose() ? '' : null"
       (click)="closed.emit()"
     >
-      <trn-icon name="x" size="lg" motion="rotate" />
+      <trn-icon class="close-icon" name="x" size="lg" motion="rotate" />
+      <trn-icon
+        class="back-icon"
+        name="arrow-left"
+        size="lg"
+        motion="nudge-left"
+      />
     </button>
   `,
   styleUrl: './side-panel-header.component.scss',

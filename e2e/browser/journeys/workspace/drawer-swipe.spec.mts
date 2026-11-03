@@ -125,6 +125,12 @@ test.describe('Drawer swipe on a touch device', () => {
       y,
     );
     await expect(members).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/panel=members/);
+    // Below md the roster it opens is a page as wide as the phone.
+    await members.evaluate((element) =>
+      Promise.all(element.getAnimations().map((a) => a.finished)),
+    );
+    expect((await members.boundingBox())!.width).toBe(size.width);
 
     // And away again, from anywhere on the drawer.
     await swipe(page, Math.round(size.width * 0.4), size.width - 4, y);

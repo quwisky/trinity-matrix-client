@@ -36,6 +36,18 @@ Startup does not wait for an account's first sync. The SDK replays its sync cach
 
 Conversation Runtime retains the exact account-and-room timeline handle associated with focus and releases the previous handle when focus changes. Workspace chooses the focus; the conversation capability owns its room-bound state.
 
+## Present room panels {#room-panels}
+
+The open room panel (members, the threads list, a thread, pinned messages or search) is part of the Workspace destination, written as `?panel=` and, for a thread, `&root=`. `WorkspaceNavigationService.openPanel` and `closePanel` change it, and history follows the panel: opening one pushes an entry, and Back steps back through them at every width.
+
+Width decides only how the panel is presented, so a resize adds no history:
+
+- From the `members` breakpoint (1100px) up, the panel is a column beside the timeline.
+- Between `md` (768px) and `members`, it is a drawer over the timeline, with a backdrop that dismisses it.
+- Below `md`, it is a page of its own. It fills the conversation pane under the top safe area, over the room's header, timeline and composer. The room stays mounted and inert underneath, so its scroll position and draft are there on the way back. The panel's header leads with a back arrow in place of the close button. The right-edge swipe still opens the roster.
+
+On iOS, WebKit's edge swipe is a history step. It is on for a panel page pushed over its room (`WorkspaceNavigationService.panelOverRoom`), and off for a panel beside the room, for one restored from a link with no entry below it, and for dialogs. Member info and room settings stay modal at every width.
+
 ## Keep route behavior centralized {#route-behavior}
 
 Public authentication routes remain reachable without an account. Product routes use application guards, the empty path redirects to rooms, and the final wildcard recovers stale same-origin navigations. Add route-specific behavior in the composition root and application adapters, not in a reusable component.

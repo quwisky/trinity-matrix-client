@@ -5,7 +5,8 @@ import { prefersReducedMotion } from '@trinity/util/ui';
  * Swipe the right-hand drawer open, and swipe it away again.
  *
  * Only the layout below the `members` breakpoint has a drawer: there the right-hand slot is a
- * fixed overlay over the timeline. Above it the slot is a column sharing the row.
+ * fixed overlay over the timeline, and below `md` a page over the whole room, where the drag
+ * measures against the viewport width. Above it the slot is a column sharing the row.
  *
  * The room list is deliberately NOT handled here. Below `md` it is a separate page keyed off
  * the open room in the URL, so "swipe back to the room list" is the platform's own back

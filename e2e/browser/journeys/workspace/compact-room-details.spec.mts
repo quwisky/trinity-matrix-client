@@ -3,6 +3,7 @@ import {
   test,
   expect,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '../../../fixtures.mts';
 import { devices } from '@playwright/test';
@@ -59,7 +60,12 @@ async function seedRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: HomeserverSession; roomName: string; buddyName: string }> {
+): Promise<{
+  reader: HomeserverSession;
+  roomName: string;
+  buddyName: string;
+  roomId: string;
+}> {
   const readerUser = `mob-reader-${runId}`;
   const readerPass = `${readerUser}-pass`;
   await registerUser(request, readerUser, readerPass);
@@ -85,6 +91,7 @@ async function seedRoom(
     reader: { available: true, hs, user: readerUser, pass: readerPass },
     roomName,
     buddyName,
+    roomId,
   };
 }
 
@@ -157,7 +164,7 @@ test.describe('Mobile room navigation', () => {
     ).toBeVisible();
   });
 
-  test('opens the member list as a dismissible drawer', async ({
+  test('opens the member list as a dismissible drawer between md and the members breakpoint', async ({
     page,
     request,
   }) => {
@@ -168,15 +175,17 @@ test.describe('Mobile room navigation', () => {
       runId,
     );
 
+    // Below md the roster is a page instead; see the phone pages below.
+    await page.setViewportSize({ width: 800, height: 900 });
     await login(page, reader);
-    await openRoomMobile(page, roomName);
+    await page.locator('.channel', { hasText: roomName }).first().click();
+    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
 
     // The member list is not shown on the narrow layout by default.
     await expect(page.locator('.chat-members')).toBeHidden();
 
-    // Opening it from the overflow menu shows a drawer plus a backdrop.
-    await openOverflowMenu(page);
-    await page.getByTestId('overflow-toggle-members').click();
+    // Opening it from the header shows a drawer plus a backdrop.
+    await page.getByTestId('toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible();
     await expect(page.getByTestId('member-filter')).toBeFocused();
     await expect(page.getByTestId('members-backdrop')).toBeVisible();
@@ -185,30 +194,20 @@ test.describe('Mobile room navigation', () => {
       timeout: 20_000,
     });
 
-    // Tapping the backdrop dismisses the drawer — near its top-left corner, deliberately.
-    // The backdrop is `inset-0`, so its centre (195,422 at this viewport) lies *under* the
-    // 240px drawer pinned to the right edge (x 150-390), and Playwright clicks an element's
-    // centre by default. Measured: elementFromPoint at the centre is `aside.members`, at
-    // (10,10) it is the backdrop. This only ever passed because the click raced the 0.2s
-    // slide-in animation while the drawer was still translated off-screen; once the drawer
-    // settles the click is blocked forever, which is what it does on a slower CI runner.
+    // Tapping the backdrop dismisses the drawer — near its top-left corner, deliberately: the
+    // backdrop is `inset-0`, so a click at its centre could land on the drawer over it.
     await page
       .getByTestId('members-backdrop')
       .click({ position: { x: 10, y: 10 } });
     await expect(page.locator('.chat-members')).toBeHidden();
 
-    // Reopen and pick the buddy: member info opens as a bottom sheet over the drawer, which
-    // stays open under it, and closing the sheet goes back to the drawer (#1041).
-    await openOverflowMenu(page);
-    await page.getByTestId('overflow-toggle-members').click();
+    // Reopen and pick the buddy: member info opens over the drawer, which stays open under
+    // it, and closing it goes back to the drawer (#1041).
+    await page.getByTestId('toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible();
     await page.locator('.members .member', { hasText: buddyName }).click();
     const memberInfo = page.getByRole('dialog', { name: 'Member info' });
     await expect(memberInfo.getByTestId('member-info')).toBeVisible();
-    await expect(memberInfo.getByTestId('dialog-surface')).toHaveAttribute(
-      'data-trn-layout',
-      'sheet',
-    );
     await expect(page.locator('.chat-members')).toBeVisible();
     await memberInfo.getByTestId('member-info-close').click();
     await expect(memberInfo).toBeHidden();
@@ -334,5 +333,221 @@ test.describe('Mobile room navigation', () => {
     await expect(members).toBeHidden();
     await firstRoom.click();
     await expect(members).toBeHidden();
+  });
+});
+
+/** Post one message as `actor`; returns its event id. */
+async function send(
+  request: APIRequestContext,
+  hs: string,
+  actor: ApiUser,
+  roomId: string,
+  content: Record<string, unknown>,
+): Promise<string> {
+  const txn = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const res = await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
+    { headers: actor.headers, data: { msgtype: 'm.text', ...content } },
+  );
+  expect(res.ok()).toBe(true);
+  return (await res.json()).event_id as string;
+}
+
+/** The panel has settled over the whole conversation pane, its header and composer included. */
+async function expectPage(page: Page, panel: Locator): Promise<void> {
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  const rounded = async (target: Locator) =>
+    Object.values((await target.boundingBox())!).map(Math.round);
+  const main = await rounded(page.locator('main.main'));
+  expect(main[2]).toBe(page.viewportSize()!.width);
+  // Polled: the page slides in from the right edge.
+  await expect.poll(() => rounded(panel)).toEqual(main);
+  await expect(page.locator('trn-room-header')).toHaveAttribute('inert', '');
+  await expect(page.locator('trn-message-list')).toHaveAttribute('inert', '');
+  await expect(page.getByTestId('members-backdrop')).toBeHidden();
+  // The way out leads the header as a back arrow, as on the room page itself.
+  const back = panel.locator('trn-side-panel-header button');
+  const title = panel.locator('trn-side-panel-header h2');
+  expect((await back.boundingBox())!.x).toBeLessThan(
+    (await title.boundingBox())!.x,
+  );
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 600, height: 900 },
+]) {
+  test.describe(`Room panels as pages at ${viewport.width}px`, () => {
+    test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+    test.use({ viewport });
+
+    test('opens every panel over the whole room, and Back returns to it as it was', async ({
+      page,
+      request,
+    }) => {
+      const hs = session.hs as string;
+      const runId = `${testResourceId('run')}p${viewport.width}`;
+      const { reader, roomName, roomId } = await seedRoom(request, hs, runId);
+      const actor = await apiLogin(
+        request,
+        hs,
+        reader.user as string,
+        reader.pass as string,
+      );
+      // Enough history to scroll, so the timeline's position is something to keep.
+      for (let line = 0; line < 30; line++) {
+        await send(request, hs, actor, roomId, { body: `history ${line}` });
+      }
+      const rootId = await send(request, hs, actor, roomId, {
+        body: `thread root ${runId}`,
+      });
+      await send(request, hs, actor, roomId, {
+        body: `thread reply ${runId}`,
+        'm.relates_to': { rel_type: 'm.thread', event_id: rootId },
+      });
+
+      await login(page, reader);
+      await openRoomMobile(page, roomName);
+
+      const composer = page.getByTestId('composer-input');
+      await composer.fill(`half typed ${runId}`);
+      const scroller = page.locator('.scroll').first();
+      await expect(
+        page.locator('.scroll .msg[data-mid]', { hasText: 'history 29' }),
+      ).toBeVisible({ timeout: 20_000 });
+      await scroller.evaluate(
+        (el) => (el.scrollTop = Math.max(0, el.scrollTop - 400)),
+      );
+      const anchor = () =>
+        scroller.evaluate((el) => {
+          const top = el.getBoundingClientRect().top;
+          const row = [
+            ...el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
+          ].find((candidate) => candidate.getBoundingClientRect().bottom > top);
+          return row
+            ? {
+                id: row.dataset['mid'],
+                offset: Math.round(row.getBoundingClientRect().top - top),
+              }
+            : null;
+        });
+      await expect.poll(anchor).not.toBeNull();
+      const before = await anchor();
+
+      const threads = page.getByRole('complementary', { name: 'Threads' });
+      const thread = page.getByTestId('thread-view');
+      const panels: [string, () => Promise<void>, Locator][] = [
+        [
+          'members',
+          async () => {
+            await openOverflowMenu(page);
+            await page.getByTestId('overflow-toggle-members').click();
+          },
+          page.locator('.chat-members'),
+        ],
+        ['threads', () => page.getByTestId('open-threads').click(), threads],
+        [
+          'pinned',
+          async () => {
+            await openOverflowMenu(page);
+            await page.getByTestId('overflow-open-pinned').click();
+          },
+          page.getByTestId('pinned-panel'),
+        ],
+        [
+          'search',
+          () => page.getByTestId('search-messages').click(),
+          page.getByRole('complementary', { name: 'Search messages' }),
+        ],
+      ];
+      for (const [kind, open, panel] of panels) {
+        await open();
+        await expect(page).toHaveURL(new RegExp(`panel=${kind}`));
+        await expectPage(page, panel);
+        await page.goBack();
+        await expect(panel).toBeHidden();
+        await expect(page.locator('trn-room-header')).not.toHaveAttribute(
+          'inert',
+          '',
+        );
+      }
+
+      // A thread opened from the list is a page over the list: Back steps to it, then out.
+      await page.getByTestId('open-threads').click();
+      await threads.locator('.thread-item').first().click();
+      await expect(thread).toContainText(`thread reply ${runId}`, {
+        timeout: 15_000,
+      });
+      await expectPage(page, page.locator('.chat-panel'));
+      await page.goBack();
+      await expect(threads).toBeVisible();
+      await page.goBack();
+      await expect(threads).toBeHidden();
+
+      // The back arrow closes a page too.
+      await page.getByTestId('open-threads').click();
+      await expectPage(page, threads);
+      await threads.getByRole('button', { name: 'Close threads' }).click();
+      await expect(threads).toBeHidden();
+
+      await expect(composer).toHaveValue(`half typed ${runId}`);
+      await expect.poll(anchor).toEqual(before);
+    });
+  });
+}
+
+test.describe('Room panels across widths', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('keeps the drawer and the column above md, and resizing adds no history', async ({
+    page,
+    request,
+  }) => {
+    const runId = `${testResourceId('run')}rz`;
+    const { reader, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await login(page, reader);
+    await page.locator('.channel', { hasText: roomName }).first().click();
+    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('toggle-members').click();
+    const members = page.locator('.chat-members');
+    await expect(members).toBeVisible();
+    const entries = await page.evaluate(() => history.length);
+    const url = page.url();
+
+    const settled = async () => {
+      await members.evaluate((element) =>
+        Promise.all(element.getAnimations().map((a) => a.finished)),
+      );
+      return (await members.boundingBox())!;
+    };
+    const backdrop = page.getByTestId('members-backdrop');
+
+    // The wide column sits in the row beside the timeline.
+    expect(Math.round((await settled()).width)).toBe(240);
+    await expect(backdrop).toBeHidden();
+
+    // The drawer lies over the timeline, against the right edge, with its backdrop.
+    await page.setViewportSize({ width: 800, height: 800 });
+    let box = await settled();
+    expect(Math.round(box.width)).toBe(240);
+    expect(Math.round(box.x + box.width)).toBe(800);
+    await expect(backdrop).toBeVisible();
+
+    // Below md it is a page.
+    await page.setViewportSize({ width: 390, height: 844 });
+    box = await settled();
+    expect(Math.round(box.width)).toBe(390);
+    await expect(backdrop).toBeHidden();
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    box = await settled();
+    expect(Math.round(box.width)).toBe(240);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+    expect(page.url()).toBe(url);
   });
 });

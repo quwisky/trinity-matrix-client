@@ -374,6 +374,29 @@
     }
   }
 
+  // Below md a panel is a page of its own: it fills the conversation pane, over the room's
+  // header, timeline and composer, which stay mounted underneath so their scroll position and
+  // draft are there on the way back. Absolute in `.main`, not fixed: the pane slide transforms
+  // `.main`, which would make it the containing block of a fixed panel anyway, and inside
+  // `.main` the panel sits under the shell's top inset and above the keyboard already.
+  @media #{$below-md} {
+    .main {
+      position: relative;
+    }
+
+    .chat-members,
+    .chat-panel {
+      position: absolute;
+      inset: 0;
+      width: auto;
+      max-width: none;
+      padding-top: 0;
+      border-inline-start: 0;
+      box-shadow: none;
+      transition: none;
+    }
+  }
+
   @keyframes members-drawer-in {
     from {
       transform: translateX(100%);

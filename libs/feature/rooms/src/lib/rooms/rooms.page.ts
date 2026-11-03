@@ -218,6 +218,8 @@ export class RoomsPage {
    * template call is re-evaluated each pass so a rotation is picked up.
    */
   protected drawerWidth(): number {
+    // Below md every panel is a page as wide as the viewport.
+    if (this.mobileMasterDetail()) return window.innerWidth;
     const panel = this.roomSurfaces.renderedSurface();
     if (!panel || panel.kind === 'members') {
       return MEMBERS_DRAWER_PX;
@@ -282,6 +284,10 @@ export class RoomsPage {
   });
 
   readonly roomSurfaces = inject(RoomSurfaceLifecycle);
+  /** Below md an open panel is a page over the room, which stays mounted but inert. */
+  protected readonly panelPage = computed(
+    () => this.mobileMasterDetail() && !!this.roomSurfaces.renderedSurface(),
+  );
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
   readonly nav = inject(RoomShellNavigationService);

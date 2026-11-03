@@ -142,6 +142,10 @@ export class WorkspaceNavigationService {
   readonly pane = computed(() => this.view().pane);
   /** The open Room panel, as the URL names it. */
   readonly panel = computed(() => this.view().panel);
+  /** The open panel is a history entry pushed over its Room, so Back is a plain history step. */
+  readonly panelOverRoom = computed(
+    () => this.view().panel !== null && this.location.panelBelow(),
+  );
   /** History says the open panel was opened over the roster, which closing it returns to. */
   readonly membersBelow = computed(() => this.location.membersBelow());
   readonly placement = computed(() =>
