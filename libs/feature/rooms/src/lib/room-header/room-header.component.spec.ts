@@ -196,6 +196,17 @@ describe('RoomHeaderComponent title', () => {
     expect(byId('room-topic')).toBeNull();
   });
 
+  it('opens room details from a title button when compact', async () => {
+    const compact = await build({ compact: true });
+    compact.byId('room-title')?.click();
+    expect(compact.byId('room-title')?.tagName).toBe('BUTTON');
+    expect(compact.actions).toEqual([{ type: 'settings' }]);
+  });
+
+  it('keeps the title plain text when not compact', async () => {
+    expect((await build()).byId('room-title')?.tagName).toBe('SPAN');
+  });
+
   it('shows no acting-as chip without an identity', async () => {
     expect((await build()).byId('active-account-chip')).toBeNull();
   });

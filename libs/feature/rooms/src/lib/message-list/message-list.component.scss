@@ -26,6 +26,20 @@
     flex: 0 0 auto;
   }
 
+  // Phones seat a room too short to scroll at the bottom, by the composer. Only the first spacer
+  // takes the free space, so an overflowing timeline lays out exactly as before, and an empty or
+  // loading one (no rows yet) stays at the top.
+  @media (max-width: 767.98px) {
+    .scroll:has(trn-message-row) {
+      display: flex;
+      flex-direction: column;
+
+      > .vpad:first-of-type {
+        margin-block-start: auto;
+      }
+    }
+  }
+
   // A row flying past in a fling ("Blank rows while scrolling fast"): blank, at the row's height.
   .row-placeholder {
     flex: 0 0 auto;
