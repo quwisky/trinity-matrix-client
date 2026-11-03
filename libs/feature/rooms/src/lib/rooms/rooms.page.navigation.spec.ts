@@ -679,7 +679,7 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('closes the member drawer with its Room, as its URL does', async () => {
+  it('drops the member drawer when the compact list comes between two Rooms', async () => {
     // Force the narrow (drawer) layout so the member list reads as an overlay.
     const restore = stubNarrowLayout();
     try {

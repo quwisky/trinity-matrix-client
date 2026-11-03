@@ -495,6 +495,23 @@ describe('ThreadViewComponent', () => {
     expect(openThread).toHaveBeenCalledWith('!r:hs', '$root');
   });
 
+  it('shows its loading state, opening nothing, until its root has loaded', async () => {
+    const { fixture, container, openThread, releasedRoots } = await build();
+    openThread.mockClear();
+    fixture.componentRef.setInput('rootEventId', '$cold');
+    fixture.componentRef.setInput('loading', true);
+    fixture.detectChanges();
+
+    expect(container.textContent).toContain('Loading thread…');
+    expect(openThread).not.toHaveBeenCalled();
+    expect(releasedRoots).toHaveBeenCalledWith('$root');
+
+    fixture.componentRef.setInput('loading', false);
+    fixture.detectChanges();
+    expect(container.textContent).not.toContain('Loading thread…');
+    expect(openThread).toHaveBeenCalledWith('!r:hs', '$cold');
+  });
+
   it('releases and replaces the exact child when the mounted panel changes roots', async () => {
     const { fixture, openThread, releasedRoots, sentRoots } = await build();
 

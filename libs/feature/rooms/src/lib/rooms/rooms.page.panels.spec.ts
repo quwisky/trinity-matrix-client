@@ -597,17 +597,51 @@ describe('RoomsPage panels, pins and media', () => {
     }
   });
 
-  it('closes the roster with the room it was opened in', async () => {
-    // The roster's open state is the URL now, and a Room's URL names only its own panel.
+  it('shows a reloaded thread as loading until its root loads', async () => {
     const shell = build();
-    setRouteRoom('!a:hs');
+    const root = new Subject<boolean>();
+    const runtime = TestBed.inject(ConversationRuntime);
+    vi.mocked(runtime.threads.loadRoot).mockReturnValue(root);
+    setRouteRoom('!r:hs', { query: { panel: 'thread', root: '$root:hs' } });
     await settleWorkspace();
+    await settleWorkspace();
+
+    expect(shell.surfaces.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root:hs',
+      loading: true,
+    });
+    expect(runtime.threads.loadRoot).toHaveBeenCalledWith('$root:hs');
+
+    root.next(true);
+    expect(shell.surfaces.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root:hs',
+    });
+  });
+
+  it('carries the open roster to the next Room, but not a temporary panel', async () => {
+    // Whether the member column is up is a preference the person owns, so it follows them
+    // from Room to Room of the same Account. A thread or a search is about its own Room.
+    const shell = build();
+    const open = async (roomId: string) => {
+      shell.routing.onSelectRoomSelection(
+        { accountId: '@me:hs', roomId },
+        'room-list',
+      );
+      await settleWorkspace();
+    };
+    await open('!a:hs');
     shell.surfaces.transition({ kind: 'open-members' });
     await settleWorkspace();
-    expect(routeQuery().get('panel')).toBe('members');
 
-    setRouteRoom('!c:hs');
+    await open('!b:hs');
+    expect(routeQuery().get('panel')).toBe('members');
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+
+    shell.messages.openPinnedPanel();
     await settleWorkspace();
+    await open('!c:hs');
     expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 

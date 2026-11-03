@@ -19,7 +19,9 @@
     data-message-scroller
     (focusin)="revealFocusAfterExpand($event)"
   >
-    @if (loadingOlder()) {
+    @if (loading()) {
+      <div class="thread__load-older" role="status">Loading thread…</div>
+    } @else if (loadingOlder()) {
       <div class="thread__load-older">Loading older replies…</div>
     } @else if (canLoadOlder()) {
       <button type="button" class="thread__load-older" (click)="loadOlder()">

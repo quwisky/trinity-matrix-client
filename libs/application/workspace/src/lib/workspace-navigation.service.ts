@@ -379,6 +379,7 @@ export class WorkspaceNavigationService {
         }
         const resolved = resolveWorkspacePanel(request.panel, view, {
           panelBelow: this.location.panelBelow(),
+          membersBelow: this.location.membersBelow(),
         });
         if (!resolved) return EMPTY;
         return this.transition(resolved.destination, resolved.options).pipe(

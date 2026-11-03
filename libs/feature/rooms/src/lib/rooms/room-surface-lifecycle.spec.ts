@@ -303,7 +303,11 @@ describe('RoomSurfaceLifecycle', () => {
     }
 
     panel.set({ kind: 'thread', root: '$root' });
-    expect(lifecycle.renderedSurface()).toBeNull();
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+      loading: true,
+    });
 
     lifecycle.transition({ kind: 'open-thread', rootEventId: '$root' });
     expect(lifecycle.renderedSurface()).toEqual({
@@ -323,9 +327,48 @@ describe('RoomSurfaceLifecycle', () => {
     });
 
     panel.set({ kind: 'thread', root: '$other' });
-    expect(lifecycle.renderedSurface()).toBeNull();
+    expect(lifecycle.renderedSurface()).toMatchObject({ loading: true });
+    TestBed.tick();
     panel.set({ kind: 'thread', root: '$root' });
-    expect(lifecycle.renderedSurface()).toBeNull();
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+      loading: true,
+    });
+  });
+
+  it('keeps showing the thread the URL names until another one commits', () => {
+    stubMedia();
+    const { lifecycle, panel } = build(undefined, { commits: false });
+    panel.set({ kind: 'thread', root: '$a' });
+    lifecycle.transition({ kind: 'open-thread', rootEventId: '$a' });
+
+    lifecycle.transition({ kind: 'open-thread', rootEventId: '$b' });
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$a',
+    });
+
+    panel.set({ kind: 'thread', root: '$b' });
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$b',
+    });
+  });
+
+  it('drops a reveal whose close another panel superseded, even once that one closes', () => {
+    stubMedia();
+    const { lifecycle, panel } = build(undefined, { commits: false });
+    panel.set({ kind: 'pinned' });
+
+    lifecycle.transition({ kind: 'reveal-message', eventId: '$event' });
+    panel.set({ kind: 'threads' });
+    TestBed.tick();
+    panel.set(null);
+    TestBed.tick();
+
+    expect(lifecycle.jumpTarget()).toBeNull();
+    expect(lifecycle.jumpRevision()).toBe(0);
   });
 
   it('shows nothing while the Conversation pane is not open', () => {

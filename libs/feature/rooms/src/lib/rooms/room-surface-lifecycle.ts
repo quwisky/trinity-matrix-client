@@ -37,8 +37,11 @@ type TemporaryRoomSurface = Extract<
 >;
 type MembersRoomSurface = { readonly kind: 'members' };
 type ThreadRoomSurface = Extract<TemporaryRoomSurface, { kind: 'thread' }>;
+/** A thread the URL names whose root has not loaded yet: the slot shows its loading state. */
+type LoadingThreadSurface = ThreadRoomSurface & { readonly loading: true };
 
-export type RenderedRoomSurface = TemporaryRoomSurface | MembersRoomSurface;
+export type RenderedRoomSurface =
+  TemporaryRoomSurface | LoadingThreadSurface | MembersRoomSurface;
 
 interface RoomSurfaceState {
   readonly conversation: ExactRoomSelection;
@@ -46,6 +49,8 @@ interface RoomSurfaceState {
   readonly pendingReveal: {
     readonly eventId: string;
     readonly token: LatestToken;
+    /** The panel being closed for it; any other panel means the close was dropped. */
+    readonly from: WorkspacePanel | null;
   } | null;
   readonly jumpTarget: string | null;
   readonly jumpRevision: number;
@@ -133,19 +138,47 @@ export class RoomSurfaceLifecycle {
   );
 
   /**
-   * The thread the slot may show: one opened here, or a URL's root once it has loaded. It
-   * carries the message to reveal, and is dropped once the panel names another root.
+   * The thread opened here, or a URL's root once it has loaded. It carries the message to
+   * reveal, shows only while the URL names its root, and is dropped once the URL names
+   * another one.
    */
+  /** A thread opened here whose URL has not committed yet, and the panel it was opened from. */
+  private readonly requestedThread = signal<{
+    readonly thread: ThreadRoomSurface;
+    readonly from: WorkspacePanel | null;
+  } | null>(null);
+
   private readonly openedThread = linkedSignal<
     WorkspacePanel | null,
     ThreadRoomSurface | null
   >({
     source: this.panel,
-    computation: (panel, previous) =>
-      panel?.kind === 'thread' && previous?.value?.rootEventId === panel.root
+    computation: (panel, previous) => {
+      if (panel?.kind !== 'thread') return null;
+      // Adopted only straight from the panel it was opened over: a request whose URL went
+      // elsewhere first was dropped, and a later visit to that root mustn't replay its reveal.
+      const requested = untracked(this.requestedThread);
+      if (
+        requested?.thread.rootEventId === panel.root &&
+        sameWorkspacePanel(previous?.source ?? null, requested.from)
+      ) {
+        return requested.thread;
+      }
+      return previous?.value?.rootEventId === panel.root
         ? previous.value
-        : null,
+        : null;
+    },
   });
+
+  private readonly loadingThread = computed<LoadingThreadSurface | null>(
+    () => {
+      const panel = this.panel();
+      return panel?.kind === 'thread'
+        ? { kind: 'thread', rootEventId: panel.root, loading: true }
+        : null;
+    },
+    { equal: (a, b) => a?.rootEventId === b?.rootEventId },
+  );
 
   /** The roster was open when the temporary panel now open replaced it. */
   private readonly membersBelow = signal(false);
@@ -160,12 +193,14 @@ export class RoomSurfaceLifecycle {
   readonly jumpRevision = computed(
     () => this.writableState()?.jumpRevision ?? 0,
   );
-  /** A thread the URL names renders once its root has loaded. */
+  /** A thread the URL names shows its loading state until its root has loaded. */
   readonly renderedSurface = computed<RenderedRoomSurface | null>(() => {
+    // Read on every panel change, so the thread it holds sees each panel it moves through.
+    const thread = this.openedThread();
     const panel = this.panel();
     if (!panel) return null;
     if (panel.kind !== 'thread') return SURFACES[panel.kind];
-    return this.openedThread();
+    return thread?.rootEventId === panel.root ? thread : this.loadingThread();
   });
   /** The roster is visible, not merely remembered behind a temporary surface. */
   readonly membersVisible = computed(
@@ -177,14 +212,21 @@ export class RoomSurfaceLifecycle {
     effect(() => {
       if (!this.panel()) untracked(() => this.membersBelow.set(false));
     });
-    // Reveal once the panel's close has committed, so the row is measured without it.
+    // Reveal once the panel's close has committed, so the row is measured without it. A
+    // newer panel means the close was dropped, and so is the reveal.
     effect(() => {
       const state = this.writableState();
-      if (!state?.pendingReveal || this.panel()) return;
-      const { eventId, token } = state.pendingReveal;
+      const panel = this.panel();
+      if (!state?.pendingReveal) return;
+      const { eventId, token, from } = state.pendingReveal;
+      if (panel && sameWorkspacePanel(panel, from)) return;
       untracked(() => {
         this.writableState.set({ ...state, pendingReveal: null });
-        this.scheduleReveal(state.conversation, eventId, token);
+        if (panel) {
+          this.reveal.invalidate();
+        } else {
+          this.scheduleReveal(state.conversation, eventId, token);
+        }
       });
     });
 
@@ -212,13 +254,20 @@ export class RoomSurfaceLifecycle {
       case 'open-members':
         return this.open({ kind: OPENED_KIND[intent.kind] });
 
-      case 'open-thread':
-        this.openedThread.set({
+      case 'open-thread': {
+        const thread: ThreadRoomSurface = {
           kind: 'thread',
           rootEventId: intent.rootEventId,
           revealEventId: intent.revealEventId,
-        });
+        };
+        const panel = this.panel();
+        if (panel?.kind === 'thread' && panel.root === intent.rootEventId) {
+          this.openedThread.set(thread);
+        } else {
+          this.requestedThread.set({ thread, from: panel });
+        }
         return this.open({ kind: 'thread', root: intent.rootEventId });
+      }
 
       case 'toggle-members':
         if (this.membersVisible()) {
@@ -241,13 +290,19 @@ export class RoomSurfaceLifecycle {
         }
         return this.dismiss();
 
-      case 'reveal-message':
-        if (this.panel()) this.workspace.closePanel();
+      case 'reveal-message': {
+        const from = this.panel();
+        if (from) this.workspace.closePanel();
         this.writableState.set({
           ...state,
-          pendingReveal: { eventId: intent.eventId, token: this.reveal.next() },
+          pendingReveal: {
+            eventId: intent.eventId,
+            token: this.reveal.next(),
+            from,
+          },
         });
         return { kind: 'applied' };
+      }
     }
   }
 

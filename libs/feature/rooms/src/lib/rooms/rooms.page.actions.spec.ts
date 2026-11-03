@@ -1206,13 +1206,16 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     expect(ref.close).not.toHaveBeenCalled();
 
-    setRouteRoom('!other:hs');
+    shell.routing.onSelectRoomSelection(
+      { accountId: '@me:hs', roomId: '!other:hs' },
+      'room-list',
+    );
     await settleWorkspace();
 
     expect(ref.close).toHaveBeenCalledWith();
     expect(createDirectMessage).not.toHaveBeenCalled();
-    // The roster is the Room's URL, so it closes with the Room too.
-    expect(shell.surfaces.renderedSurface()).toBeNull();
+    // The roster itself follows into the next Room of the same Account.
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('keeps the roster when Message reuses the active DM', async () => {

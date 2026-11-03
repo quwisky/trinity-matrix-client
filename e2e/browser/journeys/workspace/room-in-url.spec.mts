@@ -156,6 +156,21 @@ test.describe('The open room lives in the URL', () => {
     await registerUser(request, user, pass);
     const account = await passwordLogin(request, hs, user, pass);
     const roomId = await createRoom(request, hs, account, roomName);
+    // Enough history to scroll, so the timeline's position is something to keep.
+    for (let line = 0; line < 30; line++) {
+      await send(request, hs, account, roomId, { body: `history ${line}` });
+    }
+    const plainId = await send(request, hs, account, roomId, {
+      body: `plain message ${runId}`,
+    });
+    const redactedRootId = await send(request, hs, account, roomId, {
+      body: `soon redacted ${runId}`,
+    });
+    await send(request, hs, account, roomId, {
+      body: `reply under a redacted root ${runId}`,
+      'm.relates_to': { rel_type: 'm.thread', event_id: redactedRootId },
+    });
+    await redact(request, hs, account, roomId, redactedRootId);
     const rootBody = `thread root ${runId}`;
     const rootId = await send(request, hs, account, roomId, { body: rootBody });
     await send(request, hs, account, roomId, {
@@ -181,6 +196,44 @@ test.describe('The open room lives in the URL', () => {
     const pinned = page.getByTestId('pinned-panel');
     const search = page.getByRole('complementary', { name: 'Search messages' });
 
+    // A half-typed draft and the timeline's position survive a panel opening and closing,
+    // and Back and Forward through it, now that each is a navigation.
+    const composer = page.getByTestId('composer-input');
+    await composer.fill(`half typed ${runId}`);
+    const scroller = page.locator('.scroll').first();
+    await expect(
+      page.locator('.scroll .msg[data-mid]', { hasText: 'history 29' }),
+    ).toBeVisible({ timeout: 20_000 });
+    await scroller.evaluate(
+      (el) => (el.scrollTop = Math.max(0, el.scrollTop - 400)),
+    );
+    const anchor = () =>
+      scroller.evaluate((el) => {
+        const top = el.getBoundingClientRect().top;
+        const row = [
+          ...el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
+        ].find((candidate) => candidate.getBoundingClientRect().bottom > top);
+        return row
+          ? {
+              id: row.dataset['mid'],
+              offset: Math.round(row.getBoundingClientRect().top - top),
+            }
+          : null;
+      });
+    await expect.poll(anchor).not.toBeNull();
+    const before = await anchor();
+    await page.getByTestId('open-threads').click();
+    await expect(threads).toBeVisible({ timeout: 10_000 });
+    await threads.getByRole('button', { name: 'Close threads' }).click();
+    await expect(threads).toBeHidden();
+    await page.goForward();
+    await expect(threads).toBeVisible();
+    await page.goBack();
+    await expect(threads).toBeHidden();
+    await expect(composer).toHaveValue(`half typed ${runId}`);
+    await expect.poll(anchor).toEqual(before);
+    await composer.fill('');
+
     // Every opener names its panel in the URL, the roster's wide column included.
     await page.getByTestId('toggle-members').click();
     await expect(members).toBeVisible({ timeout: 10_000 });
@@ -202,10 +255,38 @@ test.describe('The open room lives in the URL', () => {
     await expect.poll(panelOf).toEqual(['search', null]);
     expect(page.url()).not.toContain('secret');
 
-    // Closing a panel opened over the roster returns to the roster.
+    // Closing a panel opened over the roster steps back to the roster's own entry.
     await search.getByRole('button', { name: /^Close/ }).click();
     await expect(members).toBeVisible();
     await expect.poll(panelOf).toEqual(['members', null]);
+    // Back from a panel opened over the roster returns to it, too.
+    await page.getByTestId('open-threads').click();
+    await expect.poll(panelOf).toEqual(['threads', null]);
+    await page.goBack();
+    await expect(members).toBeVisible();
+    await expect.poll(panelOf).toEqual(['members', null]);
+    // Neither left a second roster entry: the next Back closes the roster.
+    await page.goBack();
+    await expect(members).toBeHidden();
+    await expect.poll(panelOf).toEqual([null, null]);
+
+    // The thread draft is kept across Back to the threads list and Forward again.
+    await page.getByTestId('open-threads').click();
+    await threads.locator('.thread-item').first().click();
+    await expect(thread).toContainText(`thread reply ${runId}`, {
+      timeout: 15_000,
+    });
+    const threadComposer = thread.getByTestId('composer-input');
+    await threadComposer.fill(`thread draft ${runId}`);
+    await page.goBack();
+    await expect(threads).toBeVisible();
+    await page.goForward();
+    await expect(threadComposer).toHaveValue(`thread draft ${runId}`, {
+      timeout: 15_000,
+    });
+    await threadComposer.fill('');
+    await thread.getByRole('button', { name: 'Close thread' }).click();
+    await expect(thread).toBeHidden();
 
     // A reload, or the same link opened fresh, restores each kind.
     const withPanel = (query: Record<string, string>) => {
@@ -250,6 +331,18 @@ test.describe('The open room lives in the URL', () => {
     await expect(page.getByText('Could not load that message.')).toHaveCount(0);
     await page.goBack();
     await expect(page).toHaveURL(same(threadUrl));
+
+    // A link to a thread whose root was redacted still opens it, as its replies remain; a
+    // link to an ordinary message opens its empty thread, as Reply in thread does.
+    await page.goto(withPanel({ panel: 'thread', root: redactedRootId }));
+    await expect(thread).toContainText(`reply under a redacted root ${runId}`, {
+      timeout: 30_000,
+    });
+    await page.goto(withPanel({ panel: 'thread', root: plainId }));
+    await expect(thread).toContainText(`plain message ${runId}`, {
+      timeout: 30_000,
+    });
+    await expect.poll(panelOf).toEqual(['thread', plainId]);
 
     // A deep link to a message, then a thread from its list: Back steps to the list, and
     // closing the thread closes the panel, as its close button did before it had a URL. The
@@ -337,6 +430,23 @@ async function send(
   );
   expect(res.ok()).toBe(true);
   return (await res.json()).event_id as string;
+}
+
+async function redact(
+  request: APIRequestContext,
+  hs: string,
+  account: AccountSession,
+  roomId: string,
+  eventId: string,
+): Promise<void> {
+  const res = await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/redact/${encodeURIComponent(eventId)}/${Date.now()}`,
+    {
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+      data: {},
+    },
+  );
+  expect(res.ok()).toBe(true);
 }
 
 async function putState(

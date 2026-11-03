@@ -164,6 +164,35 @@ describe('ThreadsService.loadThreadRoot, on a real SDK room', () => {
     expect(room.getThread(ROOT)?.id).toBe(ROOT);
   });
 
+  // A link to a thread whose root was later redacted still opens that thread, as its
+  // replies are still there; a link to an ordinary message opens its empty thread, as
+  // "Reply in thread" does (above).
+  it('makes the thread from a redacted root the server still returns', async () => {
+    const { threads, room, fetchRoot } = build();
+    fetchRoot.mockResolvedValue({
+      ...rootEvent(),
+      content: {},
+      unsigned: {
+        ...rootEvent().unsigned,
+        redacted_because: {
+          event_id: '$redaction',
+          room_id: '!r:hs',
+          type: 'm.room.redaction',
+          sender: '@a:hs',
+          origin_server_ts: 3,
+          content: {},
+          redacts: ROOT,
+          unsigned: {},
+        },
+      },
+    });
+
+    await expect(firstValueFrom(threads.loadThreadRoot(ROOT))).resolves.toBe(
+      true,
+    );
+    expect(room.getThread(ROOT)?.rootEvent?.isRedacted()).toBe(true);
+  });
+
   it('answers false, making no thread, when the root cannot be fetched', async () => {
     const { threads, room, fetchRoot } = build();
     fetchRoot.mockRejectedValue(new Error('not found'));

@@ -90,6 +90,12 @@ export class AccountRoutingService {
     { injector: this.injector },
   );
 
+  /** The open Room's timeline says this Account can't open it. */
+  private readonly roomUnavailable = computed(() => {
+    const load = this.conversations.timeline.loadState();
+    return load.kind === 'error' && load.reason === 'room-unavailable';
+  });
+
   constructor() {
     // A published event anchor (`?event=`, a notification) is revealed once its room is the
     // focused, live-synced Conversation, paging the event in like a linked-room jump. A
@@ -111,16 +117,16 @@ export class AccountRoutingService {
       const panel = this.workspace.panel();
       const accountId = this.store.activeAccountId();
       const roomId = this.store.activeRoomId();
+      const shown = this.roomSurfaces.renderedSurface();
       if (
         panel?.kind !== 'thread' ||
         !accountId ||
         !roomId ||
-        this.roomSurfaces.renderedSurface()
+        (shown?.kind === 'thread' && !('loading' in shown))
       ) {
         return;
       }
-      const load = this.conversations.timeline.loadState();
-      if (load.kind === 'error' && load.reason === 'room-unavailable') {
+      if (this.roomUnavailable()) {
         untracked(() => this.roomSurfaces.transition({ kind: 'clear' }));
         return;
       }

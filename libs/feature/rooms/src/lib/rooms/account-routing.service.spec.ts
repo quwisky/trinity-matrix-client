@@ -718,6 +718,31 @@ describe('AccountRoutingService.openInboxRow', () => {
     expect(loadRoot).toHaveBeenCalledTimes(1);
   });
 
+  it('loads a thread the URL names while its loading state shows, once', () => {
+    const page = new Subject<boolean>();
+    const { transition, loadRoot, loadState, shown } = build({
+      activeRoomId: '!r:hs',
+      panel: { kind: 'thread', root: '$root' },
+      loadRoot: vi.fn(() => page),
+    });
+    shown.set({ kind: 'thread', rootEventId: '$root', loading: true });
+    TestBed.tick();
+    expect(loadRoot).toHaveBeenCalledOnce();
+
+    // The timeline moving on (a backfill, a stopped sync) doesn't restart the load.
+    loadState.set({ kind: 'error', reason: 'sync-stopped' });
+    TestBed.tick();
+    loadState.set({ kind: 'ready' });
+    TestBed.tick();
+    expect(loadRoot).toHaveBeenCalledOnce();
+
+    page.next(true);
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'open-thread',
+      rootEventId: '$root',
+    });
+  });
+
   it('closes a thread the URL names whose root will not load, without an error', () => {
     const { transition, showError } = build({
       activeRoomId: '!r:hs',

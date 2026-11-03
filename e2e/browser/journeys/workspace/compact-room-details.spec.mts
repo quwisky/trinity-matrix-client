@@ -321,16 +321,17 @@ test.describe('Mobile room navigation', () => {
     await expect(members).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
-    // The roster is the Room's panel, so another Room opens without it.
+    // The open roster follows into the Account's next Room, and a closed one stays closed.
     const otherRoom = page
       .locator('.channel', { hasText: otherRoomName })
       .first();
     await otherRoom.waitFor({ state: 'visible', timeout: 30_000 });
     await otherRoom.click();
-    await expect(members).toBeHidden();
+    await expect(members).toBeVisible();
+    await expect(page).toHaveURL(/panel=members/);
 
     await toggle.click();
-    await expect(members).toBeVisible();
+    await expect(members).toBeHidden();
     await firstRoom.click();
     await expect(members).toBeHidden();
   });
