@@ -247,6 +247,8 @@ describe('cascade layer contract', () => {
       "textarea:not([data-slot='input'], [data-slot='textarea']):focus-visible",
     );
 
+    expect(base).toMatch(/html\s*\{\s*touch-action:\s*manipulation;/);
+
     const components = layerBodies(
       'apps/trinity/src/global.scss',
       'components',
