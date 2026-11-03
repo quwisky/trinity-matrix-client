@@ -125,6 +125,23 @@ describe('TrnActionListComponent', () => {
       expect(closed).toHaveBeenCalledOnce();
     });
 
+    it('keeps a reaction-tile row as a menu item', () => {
+      surfaces.openActions(
+        {
+          buttons: [
+            { text: 'More reactions…', reactionTile: true, handler: vi.fn() },
+          ],
+        },
+        { anchor: opener },
+      );
+      tick();
+
+      expect(
+        screen.getByRole('menuitem', { name: 'More reactions…' }),
+      ).toBeTruthy();
+      expect(screen.queryByTestId('action-sheet-group')).toBeNull();
+    });
+
     it('names each reaction from its visible emoji', () => {
       surfaces.openActions(data(), { anchor: opener });
       tick();
@@ -255,6 +272,74 @@ describe('TrnActionListComponent', () => {
       tick();
 
       expectReactionNamedFromItsEmoji();
+    });
+
+    it('groups the rows into cards at each separator and for Cancel', () => {
+      surfaces.openActions(data());
+      tick();
+
+      const cards = screen.getAllByTestId('action-sheet-group');
+      expect(
+        cards.map((card) =>
+          [...card.querySelectorAll('button')].map(
+            (row) => row.dataset['testid'],
+          ),
+        ),
+      ).toEqual([['row-create', 'row-archive'], ['row-leave'], ['row-cancel']]);
+      // A rule between rows inside a card, inset past the icon column; none after the last.
+      const dividers = screen.getAllByTestId('action-sheet-divider');
+      expect(dividers).toHaveLength(1);
+      expect(dividers[0].parentElement).toBe(cards[0]);
+      expect(dividers[0].classList).toContain('ms-14');
+      expect(cards[0].lastElementChild).toBe(screen.getByTestId('row-archive'));
+      expect(
+        screen.getByTestId('row-leave').getAttribute('data-trn-variant'),
+      ).toBe('danger');
+      expect(screen.getByTestId('row-archive')).toBeDisabled();
+    });
+
+    it('marks a row that opens another sheet with a chevron', () => {
+      surfaces.openActions({
+        buttons: [
+          {
+            text: 'Format',
+            icon: 'pencil',
+            submenu: true,
+            testId: 'row-format',
+          },
+          { text: 'Poll', icon: 'vote', testId: 'row-poll' },
+        ],
+      });
+      tick();
+
+      const chevrons = screen.getAllByTestId('action-sheet-chevron');
+      expect(chevrons).toHaveLength(1);
+      expect(screen.getByTestId('row-format').contains(chevrons[0])).toBe(true);
+    });
+
+    it('shows a reaction-tile row as the last quick-reaction tile, not a row', () => {
+      const more = vi.fn();
+      surfaces.openActions({
+        reactions: [{ key: '👍', handler: vi.fn() }],
+        buttons: [
+          {
+            text: 'More reactions…',
+            icon: 'smile',
+            reactionTile: true,
+            testId: 'row-more',
+            handler: more,
+          },
+          { text: 'Reply', testId: 'row-reply' },
+        ],
+      });
+      tick();
+
+      const tiles = screen.getByRole('group', { name: 'Quick reactions' });
+      const tile = screen.getByRole('button', { name: 'More reactions…' });
+      expect(tiles.lastElementChild).toBe(tile);
+      expect(screen.getAllByTestId('action-sheet-group')).toHaveLength(1);
+      tile.click();
+      expect(more).toHaveBeenCalledOnce();
     });
 
     it('slides in like every other sheet', () => {

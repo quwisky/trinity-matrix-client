@@ -133,6 +133,7 @@ export class MessageActionSheetService {
         icon: 'smile',
         testId: 'sheet-react-more',
         handler: act('react-more'),
+        reactionTile: true,
       });
     }
     if (caps.editable) {
@@ -143,12 +144,13 @@ export class MessageActionSheetService {
         handler: act('edit'),
       });
     }
+    // Reply, Reply in thread and Edit make the first group; the rest start a second one.
+    const rest = buttons.length;
     if (caps.deletable) {
       buttons.push({
         text: 'Delete',
         icon: 'trash-2',
         variant: 'danger',
-        separatorBefore: true,
         testId: 'sheet-delete',
         handler: act('delete'),
       });
@@ -229,6 +231,9 @@ export class MessageActionSheetService {
             },
           ]),
     );
+    if (rest > 0) {
+      buttons[rest] = { ...buttons[rest], separatorBefore: true };
+    }
     buttons.push({ text: 'Cancel', role: 'cancel' });
 
     this.dismiss();

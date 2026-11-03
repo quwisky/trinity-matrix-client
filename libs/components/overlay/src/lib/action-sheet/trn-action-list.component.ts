@@ -41,8 +41,12 @@ export interface ActionSheetButton {
   handler?: () => void;
   /** Leading icon. */
   icon?: TrnIconName;
-  /** Draw a rule above this row — separating a destructive action from the rest. */
+  /** Start a new group here: a rule in a menu, a new card in a sheet. */
   separatorBefore?: boolean;
+  /** The row opens another menu or sheet; a sheet marks it with a trailing chevron. */
+  submenu?: boolean;
+  /** A sheet shows this row as the last quick-reaction tile; a menu keeps it as a row. */
+  reactionTile?: boolean;
   /** Harness hook. The Playwright specs drive these rows by id. */
   testId?: string;
 }
@@ -94,6 +98,27 @@ export class TrnActionListComponent {
     this.popover
       ? this.data().buttons.filter((button) => button.role !== 'cancel')
       : this.data().buttons,
+  );
+
+  /** The sheet's cards: a new one at each separator and for Cancel. */
+  protected readonly groups = computed(() => {
+    const groups: ActionSheetButton[][] = [];
+    for (const button of this.rows()) {
+      if (button.reactionTile) continue;
+      const last = groups.at(-1);
+      if (last && !button.separatorBefore && button.role !== 'cancel') {
+        last.push(button);
+      } else {
+        groups.push([button]);
+      }
+    }
+    return groups.map((rows) => ({
+      rows,
+      icons: rows.some((row) => row.icon),
+    }));
+  });
+  protected readonly reactionTiles = computed(() =>
+    this.data().buttons.filter((button) => button.reactionTile),
   );
 
   readonly data = input.required<ActionSheetData>();

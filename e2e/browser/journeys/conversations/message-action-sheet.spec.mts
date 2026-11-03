@@ -342,6 +342,92 @@ test.describe('Message actions on a phone', () => {
     );
   });
 
+  test('groups the actions into cards under a row of reaction tiles', async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 'g');
+    await longPress(page, rowSel);
+    const sheet = page
+      .getByRole('dialog', { name: 'Message actions' })
+      .getByTestId('action-sheet-surface');
+    await sheetAtRest(sheet);
+
+    const layout = await sheet.evaluate((surface) => {
+      const box = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return {
+          left: r.left,
+          right: r.right,
+          width: r.width,
+          height: r.height,
+        };
+      };
+      const tiles = surface.querySelector(
+        '[role=group][aria-label="Quick reactions"]',
+      );
+      const cards = [
+        ...surface.querySelectorAll('[data-testid=action-sheet-group]'),
+      ];
+      return {
+        sheet: box(surface),
+        tiles: [...(tiles?.querySelectorAll('button') ?? [])].map((tile) => ({
+          id: tile.dataset['testid'],
+          ...box(tile),
+        })),
+        cards: cards.map((card) => ({
+          ...box(card),
+          rows: [...card.querySelectorAll('button')].map((row) => ({
+            id: row.dataset['testid'] ?? row.textContent?.trim(),
+            height: row.getBoundingClientRect().height,
+            label: row.querySelector('span.flex-1')!.getBoundingClientRect()
+              .left,
+            icon: row.querySelector('trn-icon')?.getBoundingClientRect().right,
+          })),
+          dividers: [
+            ...card.querySelectorAll('[data-testid=action-sheet-divider]'),
+          ].map((divider) => divider.getBoundingClientRect().left),
+          endsOnRow: card.lastElementChild?.tagName === 'BUTTON',
+        })),
+      };
+    });
+
+    // Equal square tiles, the full picker last.
+    expect(layout.tiles.at(-1)?.id).toBe('sheet-react-more');
+    expect(layout.tiles).toHaveLength(7);
+    for (const tile of layout.tiles) {
+      expect(Math.abs(tile.width - layout.tiles[0].width)).toBeLessThanOrEqual(
+        0.01,
+      );
+      expect(Math.abs(tile.height - tile.width)).toBeLessThanOrEqual(0.01);
+      expect(tile.width).toBeGreaterThanOrEqual(43.99);
+    }
+
+    // Replies and Edit first, Delete opening the next card, Cancel on its own.
+    const ids = layout.cards.map((card) => card.rows.map((row) => row.id));
+    expect(ids[0]).toEqual(['sheet-reply', 'sheet-thread', 'sheet-edit']);
+    expect(ids[1][0]).toBe('sheet-delete');
+    expect(ids.at(-1)).toEqual(['Cancel']);
+    expect(ids.flat()).not.toContain('sheet-react-more');
+
+    for (const card of layout.cards) {
+      // A 16px margin on each side of the sheet.
+      expect(card.left - layout.sheet.left).toBeCloseTo(16, 0);
+      expect(layout.sheet.right - card.right).toBeCloseTo(16, 0);
+      expect(card.endsOnRow).toBe(true);
+      expect(card.dividers).toHaveLength(card.rows.length - 1);
+      for (const left of card.dividers) {
+        // Inset to the label (give or take the row's 1px focus border), clear of the icon.
+        expect(Math.abs(left - card.rows[0].label)).toBeLessThanOrEqual(1.01);
+        expect(left).toBeGreaterThan(card.rows[0].icon ?? card.left);
+      }
+      for (const row of card.rows) {
+        expect(row.height).toBeGreaterThanOrEqual(55.99);
+        expect(row.height).toBeLessThanOrEqual(64.01);
+      }
+    }
+  });
+
   test('tapping outside closes the sheet without acting', async ({
     page,
     request,

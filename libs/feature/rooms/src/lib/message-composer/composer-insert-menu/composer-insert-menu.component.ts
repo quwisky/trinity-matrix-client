@@ -243,6 +243,10 @@ export class ComposerInsertMenuComponent {
       icon: action.icon,
       testId: action.testId,
       disabled: action.disabled,
+      // Attach and capture first; the composed kinds, then Format and its own sheet.
+      separatorBefore:
+        action.testId === 'insert-poll' || action.testId === 'insert-format',
+      submenu: action.testId === 'insert-format',
       handler: () => {
         const current = invocation;
         if (!current) return;

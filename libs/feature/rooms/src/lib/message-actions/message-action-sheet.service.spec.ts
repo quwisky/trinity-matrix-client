@@ -187,6 +187,49 @@ describe('MessageActionSheetService', () => {
     expect(reactions.length).toBeGreaterThan(0);
   });
 
+  it('groups the replies apart from the rest, and makes More reactions a tile', () => {
+    let buttons: readonly {
+      testId?: string;
+      separatorBefore?: boolean;
+      reactionTile?: boolean;
+    }[] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        MockProvider(RecentEmojiService, { record: vi.fn() }),
+        MockProvider(TrnSurfaceService, {
+          openActions: vi.fn((options: { buttons: typeof buttons }) => {
+            buttons = options.buttons;
+            return {
+              presentation: 'sheet',
+              closed: new Subject<void>(),
+              close: vi.fn(),
+            } as never;
+          }),
+        }),
+      ],
+    });
+    const sheet = TestBed.inject(MessageActionSheetService);
+    const starts = () =>
+      buttons.filter((b) => b.separatorBefore).map((b) => b.testId);
+
+    sheet.open({}, { canRespond: true, canQuote: true } as SheetCaps, vi.fn());
+    expect(starts()).toEqual(['sheet-quote']);
+    expect(buttons.filter((b) => b.reactionTile).map((b) => b.testId)).toEqual([
+      'sheet-react-more',
+    ]);
+
+    sheet.open(
+      {},
+      { canRespond: true, editable: true, deletable: true } as SheetCaps,
+      vi.fn(),
+    );
+    expect(starts()).toEqual(['sheet-delete']);
+
+    // Nothing above the rest, so no group to rule off.
+    sheet.open({}, { canRespond: false } as SheetCaps, vi.fn());
+    expect(starts()).toEqual([]);
+  });
+
   it('records a reaction picked from the sheet as a recently used emoji', () => {
     const record = vi.fn();
     let reactions: readonly ActionSheetReaction[] = [];

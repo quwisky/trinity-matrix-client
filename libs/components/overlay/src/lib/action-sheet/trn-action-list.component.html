@@ -62,24 +62,47 @@
         {{ data().header }}
       </p>
     }
-    @if (data().reactions?.length) {
+    @if (data().reactions?.length || reactionTiles().length) {
+      <!-- Equal square tiles across the width; below 44px each they wrap onto a new line. -->
       <div
-        class="flex shrink-0 items-center justify-around gap-1 px-1 pb-1.5"
+        class="grid shrink-0 grid-cols-[repeat(auto-fit,minmax(2.75rem,1fr))] gap-1 px-2.5 pb-4"
         role="group"
         aria-label="Quick reactions"
+        data-testid="action-sheet-tiles"
       >
         @for (reaction of data().reactions; track reaction.key) {
           <button
             trnBtn
             type="button"
             variant="secondary"
-            presentation="ghost"
-            size="lg"
-            class="min-h-11 min-w-11 px-0 text-xl"
+            shape="row"
+            class="aspect-square min-h-11 rounded-[var(--trinity-radius-xl)] px-0 text-2xl"
             [attr.data-testid]="'sheet-react-' + reaction.key"
             (click)="onReact(reaction)"
           >
-            <span class="sr-only">React with</span> {{ reaction.key }}
+            <!-- The row shape starts its content; the span centres it. -->
+            <span class="flex flex-1 justify-center"
+              ><span class="sr-only">React with</span> {{ reaction.key }}</span
+            >
+          </button>
+        }
+        @for (button of reactionTiles(); track $index) {
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            shape="row"
+            class="aspect-square min-h-11 rounded-[var(--trinity-radius-xl)] px-0"
+            [disabled]="button.disabled"
+            [attr.data-testid]="button.testId"
+            (click)="onClick(button)"
+          >
+            <span class="flex flex-1 justify-center">
+              @if (button.icon) {
+                <trn-icon [name]="button.icon" size="xl" />
+              }
+            </span>
+            <span class="sr-only">{{ button.text }}</span>
           </button>
         }
       </div>
@@ -87,27 +110,58 @@
     <!-- The scroller. min-h-0 because a flex child will not shrink below its content
          height without it, which would push the max-height back off the screen. -->
     <div class="min-h-0 flex-1 overflow-y-auto pb-1.5">
-      @for (button of rows(); track $index) {
-        @if (button.separatorBefore) {
-          <div class="my-1 h-px bg-border" role="separator"></div>
+      @for (group of groups(); track $index) {
+        @if (!$first) {
+          <div class="h-4" role="separator"></div>
         }
-        <button
-          trnBtn
-          [variant]="
-            buttonVariant(button) === 'danger' ? 'danger' : 'secondary'
-          "
-          presentation="ghost"
-          class="min-h-11 w-full justify-start gap-3"
-          [disabled]="button.disabled"
-          [attr.data-trn-variant]="buttonVariant(button)"
-          [attr.data-testid]="button.testId"
-          (click)="onClick(button)"
+        <div
+          class="mx-2.5 flex flex-col rounded-[var(--trinity-radius-xl)] bg-[color:var(--trinity-neutral-fill-surface)]"
+          data-testid="action-sheet-group"
         >
-          @if (button.icon) {
-            <trn-icon [name]="button.icon" />
+          @for (button of group.rows; track $index) {
+            @if (!$first) {
+              <!-- Inset to the label: px-4, the 1.5rem icon, gap-4. -->
+              <div
+                class="h-px shrink-0 bg-[color:var(--trinity-surface-overlay)]"
+                [class.ms-14]="group.icons"
+                [class.ms-4]="!group.icons"
+                data-testid="action-sheet-divider"
+              ></div>
+            }
+            <!-- Height from padding: the touch-target rule fixes min-height at 44px. -->
+            <button
+              trnBtn
+              shape="row"
+              [variant]="
+                buttonVariant(button) === 'danger' ? 'danger' : 'secondary'
+              "
+              [presentation]="
+                buttonVariant(button) === 'danger' ? 'ghost' : 'solid'
+              "
+              class="relative gap-4 rounded-none px-4 py-4 text-base first:rounded-t-[var(--trinity-radius-xl)] last:rounded-b-[var(--trinity-radius-xl)] focus-visible:z-[var(--trinity-z-sticky)]"
+              [disabled]="button.disabled"
+              [attr.data-trn-variant]="buttonVariant(button)"
+              [attr.data-testid]="button.testId"
+              (click)="onClick(button)"
+            >
+              @if (button.icon) {
+                <trn-icon [name]="button.icon" size="xl" />
+              } @else if (group.icons) {
+                <span class="size-6 shrink-0"></span>
+              }
+              <span class="min-w-0 flex-1">{{ button.text }}</span>
+              @if (button.submenu) {
+                <trn-icon
+                  name="chevron-right"
+                  size="lg"
+                  variant="muted"
+                  class="rtl:-scale-x-100"
+                  data-testid="action-sheet-chevron"
+                />
+              }
+            </button>
           }
-          {{ button.text }}
-        </button>
+        </div>
       }
     </div>
   </trn-sheet-frame>
