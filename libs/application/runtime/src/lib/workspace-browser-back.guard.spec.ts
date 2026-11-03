@@ -220,13 +220,23 @@ describe('workspaceBrowserBackGuard', () => {
     expect(test.back).not.toHaveBeenCalled();
   });
 
-  it('still offers a Conversation with no list below to Workspace', async () => {
+  // A dismissal started here would supersede this popstate and be cancelled with it.
+  it('lets history leave a Conversation with no list below, such as one hopped to (#1888)', () => {
     const test = setup('popstate', { active: true, conversation: true });
 
-    expect(isObservable(test.result)).toBe(true);
-    await expect(
-      firstValueFrom(test.result as Observable<boolean>),
-    ).resolves.toBe(false);
-    expect(test.back).toHaveBeenCalledOnce();
+    expect(test.result).toBe(true);
+    expect(test.back).not.toHaveBeenCalled();
+  });
+
+  it('still closes an unowned dialog over a Conversation first', () => {
+    const test = setup('popstate', {
+      active: true,
+      conversation: true,
+      dialogOpen: true,
+    });
+
+    expect(test.result).toBe(false);
+    expect(test.closeTopmost).toHaveBeenCalledOnce();
+    expect(test.back).not.toHaveBeenCalled();
   });
 });
