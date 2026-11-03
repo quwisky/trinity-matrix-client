@@ -310,16 +310,17 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
 
     await page.goBack();
 
-    await expect.poll(() => page.url(), { timeout: 5_000 }).not.toBe(roomB);
-    const left = new URL(page.url());
-    if (left.searchParams.get('pane') === 'list') {
-      await expect(shellSide(page)).toBeVisible();
-      await expect(page.getByTestId('back-to-rooms')).toBeHidden();
-    } else {
-      expect(page.url()).toBe(roomA);
-      await expect(heading).toContainText(ROOM_NAME);
-      await expect(heading).not.toContainText(OTHER_ROOM_NAME);
-    }
+    await expect.poll(() => page.url(), { timeout: 5_000 }).toBe(roomA);
+    await expect(heading).toContainText(ROOM_NAME);
+    await expect(heading).not.toContainText(OTHER_ROOM_NAME);
+    // A was opened over the list, so its entry still has the list below it.
+    expect(
+      await page.evaluate(
+        () =>
+          (history.state as { trinityListBelow?: boolean } | null)
+            ?.trinityListBelow,
+      ),
+    ).toBe(true);
     expect(await paneSlides()).toEqual([]);
   });
 
