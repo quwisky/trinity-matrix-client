@@ -23,7 +23,7 @@ export class ReactionsDialogService {
       return this.dialog
         .openAndWait$<void, ReactionsDialogComponent>(
           ReactionsDialogComponent,
-          { inputs: { eventId } },
+          { inputs: { eventId }, detents: ['medium', 'large'] },
         )
         .pipe(
           map(() => undefined),

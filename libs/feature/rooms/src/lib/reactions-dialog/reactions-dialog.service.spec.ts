@@ -27,6 +27,7 @@ describe('ReactionsDialogService', () => {
 
     expect(dialog.openAndWait$).toHaveBeenCalledWith(ReactionsDialogComponent, {
       inputs: { eventId: '$m' },
+      detents: ['medium', 'large'],
     });
   });
 

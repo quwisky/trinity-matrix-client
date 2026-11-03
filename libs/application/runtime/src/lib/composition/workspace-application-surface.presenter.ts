@@ -152,6 +152,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         },
         ariaLabel: 'Settings',
         autoFocus: '[data-settings-autofocus]',
+        detents: ['medium', 'large'],
       });
     }
     if (surface.flow === 'setup') return this.navigate(request);

@@ -170,6 +170,7 @@ describe('Workspace application-surface composition adapter', () => {
       },
       ariaLabel: 'Settings',
       autoFocus: '[data-settings-autofocus]',
+      detents: ['medium', 'large'],
     });
     await expect(
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
