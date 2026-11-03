@@ -100,9 +100,13 @@ test.describe('Mobile composer insert sheet', () => {
       ).toBeGreaterThan(0);
 
       const trigger = page.getByTestId('composer-insert');
-      const triggerBox = await trigger.boundingBox();
-      expect(triggerBox?.width ?? 0).toBeGreaterThanOrEqual(44);
-      expect(triggerBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+      // The room's entry transition can still be settling when the room opens.
+      await expect
+        .poll(async () => (await trigger.boundingBox())?.width ?? 0)
+        .toBeGreaterThanOrEqual(44);
+      await expect
+        .poll(async () => (await trigger.boundingBox())?.height ?? 0)
+        .toBeGreaterThanOrEqual(44);
       await trigger.click();
 
       const dialog = page.getByRole('dialog', { name: 'Add to message' });
