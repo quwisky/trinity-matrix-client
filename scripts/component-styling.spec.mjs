@@ -162,8 +162,9 @@ describe('component styling reach', () => {
     const panels = [
       'libs/feature/rooms/src/lib/message-search/message-search.component.html',
       'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.html',
-      'libs/feature/rooms/src/lib/thread/thread-view.component.html',
       'libs/feature/rooms/src/lib/thread/threads-list.component.html',
+      // The thread's composer pads the inset itself, in the chat colour: a root `safe-bottom`
+      // doubled it and showed a band of the panel's colour under the composer.
       // Member info is no longer a screen-edge panel (#1041): as a sheet the sheet frame pads
       // the safe area, and embedded in settings the settings column does.
     ];
@@ -173,6 +174,17 @@ describe('component styling reach', () => {
     );
 
     expect(unpadded).toEqual([]);
+  });
+
+  it('pads the thread bottom inset once, in its composer, not on the thread root', () => {
+    expect(
+      read(
+        'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
+      ),
+    ).toContain('env(safe-area-inset-bottom)');
+    expect(
+      read('libs/feature/rooms/src/lib/thread/thread-view.component.html'),
+    ).not.toContain('safe-bottom');
   });
 });
 

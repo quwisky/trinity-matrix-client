@@ -3,11 +3,12 @@
   variant="neutral"
   size="md"
   layout="fullscreen"
-  class="safe-bottom flex flex-col"
+  class="flex flex-col"
   data-testid="thread-view"
 >
   <trn-side-panel-header
     title="Thread"
+    [subtitle]="roomName()"
     closeLabel="Close thread"
     [focusClose]="true"
     (closed)="close()"
