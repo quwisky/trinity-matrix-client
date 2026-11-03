@@ -51,7 +51,7 @@
       </trn-empty-state>
     }
 
-    <div class="vpad" [style.height.px]="topPad()"></div>
+    <div class="vpad vpad--top" [style.height.px]="topPad()"></div>
 
     @for (row of windowedRows(); track row.id) {
       @if (row.daySeparator; as day) {

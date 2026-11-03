@@ -178,11 +178,31 @@
     }
   }
 
-  // Touch devices have no hover, so the kebab (the only way into a room's options and its
-  // Notifications submenu) would be invisible; keep it shown there. Keyboard users reveal it via the
-  // :focus-within rule on .channel-row above. Lives here because `.channel__menu` is rendered by THIS
-  // component, and under emulated encapsulation a parent copy silently matches nothing.
-  @media (hover: none) {
+  // Touch devices open the same actions by holding the row, so the kebab leaves the layout. It stays
+  // in the accessibility tree and focusable (VoiceOver, TalkBack, a keyboard on a tablet), and a
+  // focused kebab shows itself. Lives here because `.channel__menu` is rendered by THIS component,
+  // and under emulated encapsulation a parent copy silently matches nothing.
+  // `any-hover` too: a touch tablet with a mouse attached keeps the kebab, since a mouse cannot long press.
+  @media (hover: none) and (any-hover: none) {
+    .channel-row {
+      position: relative;
+    }
+
+    .channel__menu:not(:focus-visible) {
+      position: absolute;
+      inset-inline-end: 0;
+      width: 1px;
+      height: 1px;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+  }
+
+  // A touch tablet with a mouse: a mouse cannot long press, so the kebab stays shown. No :hover rule
+  // here, which would stick on a row a finger just touched.
+  @media (hover: none) and (any-hover: hover) {
     .channel__menu {
       opacity: 1;
     }

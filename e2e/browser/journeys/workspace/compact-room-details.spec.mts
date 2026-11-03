@@ -135,6 +135,28 @@ test.describe('Mobile room navigation', () => {
     await expect(page.getByTestId('overflow-toggle-members')).toBeVisible();
   });
 
+  test('opens room details from the room title', async ({ page, request }) => {
+    const runId = `${testResourceId('run')}t`;
+    const { reader, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+
+    const title = page
+      .getByRole('heading', { level: 1 })
+      .getByRole('button', { name: roomName });
+    const box = await title.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await title.click();
+    await expect(
+      page.getByRole('dialog', { name: 'Room settings' }),
+    ).toBeVisible();
+  });
+
   test('opens the member list as a dismissible drawer', async ({
     page,
     request,

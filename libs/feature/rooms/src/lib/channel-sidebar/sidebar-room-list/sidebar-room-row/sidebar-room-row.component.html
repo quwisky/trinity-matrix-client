@@ -5,7 +5,13 @@
     [class.channel--selected]="active()"
     [class.channel--unread]="r.hasUnread"
     [class.channel--muted]="mode() === 'mute'"
-    (click)="action.emit({ kind: 'select', room: r })"
+    (click)="select()"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="cancelPress($event)"
+    (pointercancel)="cancelPress($event)"
+    (pointerleave)="cancelPress($event)"
+    (contextmenu)="onContextMenu($event)"
   >
     <trn-avatar
       class="channel__avatar"

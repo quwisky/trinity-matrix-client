@@ -4,7 +4,10 @@ import {
   type ActionSheetReaction,
 } from '@trinity/components/overlay';
 import { RecentEmojiService } from '@trinity/data-access/media';
-import { DateTimeFormatService } from '@trinity/platform-native';
+import {
+  DateTimeFormatService,
+  HapticsService,
+} from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -44,6 +47,33 @@ describe('MessageActionSheetService', () => {
 
     sheet.open({}, { addToEmoji: true } as SheetCaps, vi.fn());
     expect(testIds).toContain('sheet-add-to-emoji');
+  });
+
+  it('gives one haptic per press that opens the sheet', () => {
+    const gestureCommitted = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        MockProvider(RecentEmojiService, { record: vi.fn() }),
+        MockProvider(HapticsService, { gestureCommitted }),
+        MockProvider(TrnSurfaceService, {
+          openActions: vi.fn(
+            () =>
+              ({
+                presentation: 'sheet',
+                closed: new Subject<void>(),
+                close: vi.fn(),
+              }) as never,
+          ),
+        }),
+      ],
+    });
+    const sheet = TestBed.inject(MessageActionSheetService);
+
+    sheet.open({}, {} as SheetCaps, vi.fn());
+    expect(gestureCommitted).toHaveBeenCalledOnce();
+
+    sheet.open({}, {} as SheetCaps, vi.fn());
+    expect(gestureCommitted).toHaveBeenCalledTimes(2);
   });
 
   it('puts Edit and Delete ahead of the rarely used actions, and never offers Report on your own message', () => {
