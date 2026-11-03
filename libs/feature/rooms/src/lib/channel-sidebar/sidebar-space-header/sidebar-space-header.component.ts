@@ -29,6 +29,7 @@ import {
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
 } from '@trinity/data-access/room-library';
+import { searchAffordance } from '../../shared/search-affordance';
 
 /**
  * What the header asks the sidebar to do. The sidebar maps each kind onto an existing output, so
@@ -81,6 +82,8 @@ export type SidebarSpaceAction =
   ],
 })
 export class SidebarSpaceHeaderComponent {
+  protected readonly search = searchAffordance();
+
   /** The orderings offered in the "Order rooms" submenu. */
   protected readonly sortModes = TRINITY_ROOM_SORTS;
 

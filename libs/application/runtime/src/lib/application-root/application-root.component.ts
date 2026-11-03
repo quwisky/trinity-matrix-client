@@ -233,7 +233,7 @@ function startupStep(stage: ApplicationStartupStage): string {
     case 'session-capabilities':
       return 'Preparing messaging…';
     case 'workspace-restoration':
-      return 'Opening your Workspace…';
+      return 'Opening your chats…';
     case 'readiness':
       return 'Finishing startup…';
     default: {
