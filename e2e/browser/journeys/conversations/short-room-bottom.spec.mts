@@ -219,12 +219,22 @@ test.describe('Short rooms on a phone', () => {
     await expect.poll(() => gapAboveComposer(page)).toBeLessThan(0.2);
 
     const scroll = page.locator('.scroll');
+    // A slow server: history paged in from the pin past full must not hold the reader up there.
+    await page.route(/\/messages\?.*dir=b/, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      await route.continue();
+    });
+    const landed = page.waitForResponse(/\/messages\?.*dir=b/);
     for (let i = 0; i < 8; i++) await send(`Growing ${i}: ${LONG_BODY}`);
     await expect(scroll.getByText('Growing 7:')).toBeVisible();
     expect(
       await scroll.evaluate((el) => el.scrollHeight - el.clientHeight),
     ).toBeGreaterThan(0);
     await expect.poll(() => distanceFromBottom(scroll)).toBeLessThan(50);
+    // Still there once the held page has landed above.
+    await landed;
+    await expect.poll(() => distanceFromBottom(scroll)).toBeLessThan(50);
+    await page.unrouteAll({ behavior: 'wait' });
   });
 
   test('a message arriving while scrolled up leaves the position alone', async ({

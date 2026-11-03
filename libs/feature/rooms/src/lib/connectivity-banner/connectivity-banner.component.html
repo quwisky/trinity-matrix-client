@@ -4,7 +4,7 @@
 <span class="sr-only" role="status" aria-live="polite">
   {{ liveText() }}
 </span>
-@if (offline() || waitingText()) {
+@if (shown()) {
   <trn-banner variant="neutral">
     @if (offline()) {
       <trn-icon trnBannerIcon name="cloud-off" />

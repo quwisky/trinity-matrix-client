@@ -4,7 +4,7 @@
      A placeholder prompt (a forecast, or a held prompt the live status no longer
      supports) is never announced: only a confirmed one fills the region. -->
 <span class="sr-only" role="status" aria-live="polite">
-  {{ visible() && !pending() ? message() : '' }}
+  {{ announcement() }}
 </span>
 @if (visible()) {
   <!-- A placeholder prompt is laid out to hold its space, but hidden, out of the
@@ -17,11 +17,14 @@
     [attr.aria-hidden]="pending() ? 'true' : null"
     [attr.inert]="pending() ? '' : null"
   >
-    <trn-banner variant="accent" [placement]="placement()">
+    <trn-banner
+      [variant]="compact() ? 'neutral' : 'accent'"
+      [placement]="placement()"
+    >
       <trn-icon trnBannerIcon name="lock" />
-      {{ message() }}
+      {{ compact() ? shortMessage() : message() }}
       <span trnBannerActions>
-        @for (action of actions(); track action.kind) {
+        @for (action of shownActions(); track action.kind) {
           <button
             trnBtn
             class="banner__action"
@@ -31,6 +34,18 @@
             {{ action.label }}
           </button>
         }
+        <button
+          trnBtn
+          class="banner__action"
+          presentation="outline"
+          size="sm"
+          type="button"
+          aria-label="Dismiss encryption prompt"
+          data-dismiss
+          (click)="dismiss()"
+        >
+          Dismiss
+        </button>
       </span>
     </trn-banner>
   </div>

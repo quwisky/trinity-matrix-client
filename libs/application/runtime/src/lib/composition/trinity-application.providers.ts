@@ -171,6 +171,12 @@ export function provideTrinityApplication(
               })
             | null
           >,
+          announcedPrompt: status.announcedPrompt,
+          shellDisplayed: (compact) => status.shellDisplayed(compact),
+          shellLeft: () => status.shellLeft(),
+          releaseLateBanners: () => status.releaseLateBanners(),
+          settleBanner: (want, urgent) => status.settleBanner(want, urgent),
+          dismissEncryption: () => status.dismissEncryption(),
           dismissSignInAgain: () => status.dismissSignInAgain(),
           show: () => visibility.show(),
         };

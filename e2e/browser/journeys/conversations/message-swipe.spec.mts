@@ -18,6 +18,7 @@ import {
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
 import { cdpSwipe as swipe } from '../../../support/touch-platform.mts';
+import { expectForecastStored } from '../../support/encryption-journey.mts';
 import { createRoom } from '../../support/space-journey.mts';
 import { settleOpenedRoom } from '../../../support/message-composer.mts';
 
@@ -110,16 +111,19 @@ async function openRoom(
   await page.getByTestId('rail-rooms').click();
   const channel = page.locator('.channel', { hasText: roomName });
   await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+  // On a phone the encryption prompt of a fresh account waits for the next page switch, so
+  // let its status arrive first: opening the room then shows it, and it cannot reflow the
+  // surface between boundingBox() and touchStart under parallel load.
+  await expectForecastStored(page, 'needs-setup');
   await channel.first().click();
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 20_000,
   });
   await settleOpenedRoom(page);
-  // Fresh accounts resolve their crypto state after the room becomes interactive. Wait for
-  // the resulting banner before measuring a row, or its insertion can reflow the mobile
-  // surface between boundingBox() and touchStart under parallel load.
   await expect(
-    page.locator('trn-banner').getByText('Set up encryption'),
+    page
+      .locator('trn-encryption-banner trn-banner')
+      .getByRole('button', { name: 'Set up', exact: true }),
   ).toBeVisible();
 
   if (filler > 0) {
