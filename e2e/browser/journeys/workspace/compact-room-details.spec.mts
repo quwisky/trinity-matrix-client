@@ -684,58 +684,56 @@ test.describe('Room panel pages across a room change', () => {
     page,
     request,
   }) => {
-    const hs = session.hs as string;
     const runId = `${testResourceId('run')}hop`;
-    const { reader, roomName } = await seedRoom(request, hs, runId);
-    const actor = await apiLogin(
+    const { reader, roomName, buddyName } = await seedRoom(
       request,
-      hs,
-      reader.user as string,
-      reader.pass as string,
+      session.hs as string,
+      runId,
     );
-    const otherRoomName = `Mobile Hop ${runId}`;
-    const otherRoomId = await createRoom(request, hs, actor, otherRoomName);
 
     await login(page, reader);
     await openRoomMobile(page, roomName);
+    await openOverflowMenu(page);
+    await page.getByTestId('overflow-toggle-members').click();
+    const members = page.locator('.chat-members');
+    await expectPage(page, members);
+    const roomAUrl = page.url();
+    expect(roomAUrl).toContain('panel=members');
     const slides = await watchPanelSlides(page);
-    const threads = page.getByRole('complementary', { name: 'Threads' });
-    await page.getByTestId('open-threads').click();
-    await expectPage(page, threads);
-    const before = (await slides()).length;
 
-    // A room opened in place over the page, as a notification tap or an inbound link does:
-    // the page's own room-opening workflow, reached through Angular's dev-mode handle,
-    // since no control on a phone page opens another room.
-    await page.evaluate(
-      ({ accountId, roomId }) => {
-        const ng = (
-          window as unknown as {
-            ng: {
-              getComponent(element: Element): {
-                routing: {
-                  onSelectRoomSelection(
-                    selection: { accountId: string; roomId: string },
-                    origin: string,
-                  ): void;
-                };
-              };
-            };
-          }
-        ).ng;
-        ng.getComponent(
-          document.querySelector('trn-rooms')!,
-        ).routing.onSelectRoomSelection({ accountId, roomId }, 'rail-unread');
-      },
-      { accountId: actor.userId, roomId: otherRoomId },
+    // Member info's "Message" opens the direct message in place, over the members page.
+    await members
+      .locator('[data-testid="member-row"]', { hasText: buddyName })
+      .first()
+      .click();
+    const sheet = page.getByRole('dialog', { name: 'Member info' });
+    await sheet.getByTestId('member-info-message').click();
+    await expect(page.getByTestId('room-title')).toContainText(buddyName, {
+      timeout: 30_000,
+    });
+    // The page leaves at once rather than sliding off over the new room.
+    await expect(members).toBeHidden();
+    await expectNoSlideStarted(page);
+    expect(await slides()).toEqual([]);
+    await expect(sheet).toBeHidden();
+    await expect(page).not.toHaveURL(/panel=/);
+    const roomPath = (url: string) => new URL(url).pathname;
+    expect(roomPath(page.url())).toMatch(/^\/rooms\/[^/]+$/);
+    expect(roomPath(page.url())).not.toBe(roomPath(roomAUrl));
+    await expect(page.locator('trn-room-header')).not.toHaveAttribute(
+      'inert',
+      '',
     );
-    await expect(
-      page.getByRole('heading', { level: 1, name: otherRoomName }),
-    ).toBeVisible({ timeout: 15_000 });
-    // It leaves at once rather than sliding off over the new room.
-    await expect(threads).toBeHidden();
-    await expectSettled(page);
-    expect((await slides()).slice(before)).toEqual([]);
+    // A room opened from the app moves focus into it, as any room opening does: the
+    // conversation's main content, not the body the removed page left behind.
+    await expect(page.locator('main.main')).toBeFocused();
+
+    // No members entry was left above the new room: one Back returns to the room the page
+    // covered, with its members page as it was.
+    await page.goBack();
+    await expect(page).toHaveURL(roomAUrl);
+    await expect(page.getByTestId('room-title')).toContainText(roomName);
+    await expect(members).toBeVisible();
   });
 });
 

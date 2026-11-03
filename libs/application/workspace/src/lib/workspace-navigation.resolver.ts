@@ -98,12 +98,14 @@ export function resolveWorkspaceNavigation(
           scope: roomScope(intent, current),
           roomId: intent.roomId,
           pane: 'conversation',
-          // Choosing the open Room again keeps its panel, so it stays a no-op. The roster
-          // is a column the person keeps open, so it follows them to the Account's next Room.
+          // Choosing the open Room again keeps its panel, so it stays a no-op. The wide
+          // layout's roster is a column the person keeps open, so it follows them to the
+          // Account's next Room; on a phone it is a page over the Room, and the Room opened
+          // is what they asked to see.
           panel:
             current.accountId === intent.accountId &&
             (current.roomId === intent.roomId ||
-              current.panel?.kind === 'members')
+              (!history.compact && current.panel?.kind === 'members'))
               ? current.panel
               : null,
         },

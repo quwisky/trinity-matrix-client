@@ -122,7 +122,7 @@ test.describe('Member info', () => {
     await expect(page).toHaveURL(/panel=members/);
     await memberRow.first().waitFor({ state: 'visible' });
     expect((await memberRow.first().boundingBox())?.height).toBe(44);
-    // Member info opens over the drawer, which stays under it.
+    // Member info opens over the members page, which stays under it.
     await memberRow.first().click();
     const sheet = page.getByRole('dialog', { name: 'Member info' });
     await expect(sheet.getByTestId('member-info')).toBeVisible({
