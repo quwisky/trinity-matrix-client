@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { resolveWorkspaceNavigation } from './workspace-navigation.resolver';
+import {
+  resolveWorkspaceNavigation,
+  resolveWorkspacePanel,
+} from './workspace-navigation.resolver';
 import type {
   WorkspaceNavigationScope,
   WorkspaceRoomNavigationOrigin,
@@ -11,6 +14,7 @@ const view = (over: Partial<WorkspaceView> = {}): WorkspaceView => ({
   scope: { kind: 'home' },
   roomId: null,
   pane: 'list',
+  panel: null,
   ...over,
 });
 
@@ -47,6 +51,7 @@ describe("resolveWorkspaceNavigation — 'rail-unread'", () => {
       scope: { kind: 'rooms' },
       roomId: '!chat:hs',
       pane: 'conversation',
+      panel: null,
     });
     expect(resolved?.options).toMatchObject({
       source: 'user',
@@ -145,6 +150,7 @@ describe("resolveWorkspaceNavigation — 'rail-unread'", () => {
       scope: { kind: 'recent' },
       roomId: '!chat:hs',
       pane: 'conversation',
+      panel: null,
     });
   });
 
@@ -191,6 +197,7 @@ describe('resolveWorkspaceNavigation — a room opened from a space', () => {
       scope: space,
       roomId: '!chat:hs',
       pane: 'conversation',
+      panel: null,
     });
   });
 
@@ -324,5 +331,138 @@ describe('resolveWorkspaceNavigation — the inbox scope', () => {
     expect(scopeOf(view({ scope: inbox }), ['recent', 'home'])).toEqual({
       kind: 'recent',
     });
+  });
+});
+
+describe('resolveWorkspacePanel — panel history', () => {
+  const room = view({ roomId: '!chat:hs', pane: 'conversation' });
+  const members = { kind: 'members' } as const;
+  const threads = { kind: 'threads' } as const;
+  const thread = { kind: 'thread', root: '$root:hs' } as const;
+
+  it('pushes a panel opened over the bare Room', () => {
+    expect(resolveWorkspacePanel(members, room, { panelBelow: false })).toEqual(
+      {
+        destination: { ...room, accountId: '@a:hs', panel: members },
+        options: { source: 'user', history: 'push', withinRoom: true },
+      },
+    );
+  });
+
+  it('replaces one panel with another', () => {
+    expect(
+      resolveWorkspacePanel(
+        { kind: 'pinned' },
+        { ...room, panel: members },
+        { panelBelow: true },
+      )?.options.history,
+    ).toBe('replace');
+    expect(
+      resolveWorkspacePanel(
+        threads,
+        { ...room, panel: thread },
+        {
+          panelBelow: true,
+        },
+      )?.options.history,
+    ).toBe('replace');
+  });
+
+  it('pushes a thread opened from the threads list, so Back returns to the list', () => {
+    expect(
+      resolveWorkspacePanel(
+        thread,
+        { ...room, panel: threads },
+        {
+          panelBelow: true,
+        },
+      )?.options.history,
+    ).toBe('push');
+  });
+
+  it('pops a panel pushed over its Room on close, and replaces one without the mark', () => {
+    const open = { ...room, panel: members };
+    expect(
+      resolveWorkspacePanel(null, open, { panelBelow: true }),
+    ).toMatchObject({
+      destination: { roomId: '!chat:hs', panel: null },
+      options: { history: 'back', withinRoom: true },
+    });
+    expect(
+      resolveWorkspacePanel(null, open, { panelBelow: false })?.options.history,
+    ).toBe('replace');
+  });
+
+  it('opens a panel on a Room shown beside its list as its Conversation', () => {
+    expect(
+      resolveWorkspacePanel(members, view({ roomId: '!chat:hs' }), {
+        panelBelow: false,
+      })?.destination,
+    ).toMatchObject({ pane: 'conversation', panel: members });
+  });
+
+  it('rejects a panel with no Room open', () => {
+    expect(
+      resolveWorkspacePanel(members, view(), { panelBelow: false }),
+    ).toBeNull();
+  });
+});
+
+describe('resolveWorkspaceNavigation — the open panel', () => {
+  const members = { kind: 'members' } as const;
+  const open = view({
+    roomId: '!chat:hs',
+    pane: 'conversation',
+    panel: members,
+  });
+
+  it('drops the panel when the Room or Account changes', () => {
+    expect(
+      resolveWorkspaceNavigation(
+        {
+          kind: 'room',
+          accountId: '@a:hs',
+          roomId: '!other:hs',
+          origin: 'room-list',
+        },
+        open,
+      )?.destination.panel,
+    ).toBeNull();
+    expect(
+      resolveWorkspaceNavigation({ kind: 'account', accountId: '@b:hs' }, open)
+        ?.destination.panel,
+    ).toBeNull();
+    expect(
+      resolveWorkspaceNavigation(
+        { kind: 'scope', accountId: '@b:hs', scope: { kind: 'rooms' } },
+        open,
+      )?.destination.panel,
+    ).toBeNull();
+  });
+
+  it('keeps the panel when the scope changes around the same Room', () => {
+    expect(
+      resolveWorkspaceNavigation(
+        { kind: 'scope', accountId: '@a:hs', scope: { kind: 'rooms' } },
+        open,
+      )?.destination.panel,
+    ).toEqual(members);
+  });
+
+  it('restores the panel a reload or deep link names', () => {
+    expect(
+      resolveWorkspaceNavigation(
+        {
+          kind: 'restoration',
+          accountId: '@a:hs',
+          scope: { kind: 'recent' },
+          roomId: '!chat:hs',
+          pane: 'conversation',
+          panel: members,
+          canonical: true,
+        },
+        view(),
+      )?.destination.panel,
+    ).toEqual(members);
   });
 });
