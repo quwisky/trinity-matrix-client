@@ -269,9 +269,10 @@ export class TrinityHostNavigationAdapter {
     return new Observable(() => {
       const policy = effect(
         () => {
-          // A routed surface, or a Conversation pushed over its list, is browser history,
-          // as in workspaceBrowserBackGuard, so the history swipe may navigate it; dialogs
-          // and panels must consume Back.
+          // A routed surface, or a Conversation pushed over its list, is browser history, so
+          // the history swipe may navigate it; dialogs and panels must consume Back. This is
+          // deliberately narrower than workspaceBrowserBackGuard, which lets history leave any
+          // compact Conversation: without a list below, the swipe stays off.
           const active = this.workspaceBack.activeSurface();
           const historyBack =
             active === null ||
