@@ -69,7 +69,10 @@ import { JoinRequestsBannerComponent } from '../join-requests-banner/join-reques
 import { type SwipeDirection } from '../message-row/message-row.component';
 import { showRoomIntro } from './room-intro';
 import { RoomShellStore } from './room-shell-store';
-import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
+import {
+  RoomSurfaceLifecycle,
+  type RenderedRoomSurface,
+} from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -285,6 +288,46 @@ export class RoomsPage {
   /** Below md an open panel is a page over the room, which stays mounted but inert. */
   protected readonly panelPage = computed(
     () => this.mobileMasterDetail() && !!this.roomSurfaces.renderedSurface(),
+  );
+
+  /**
+   * A panel page pushed over its room, or popped off it, slides the way a room does over its
+   * list ({@link paneSlide}). Null for a history traversal, whose edge swipe draws the motion
+   * natively, and for a page arriving with the room, which rides the room's own slide.
+   */
+  protected readonly panelSlide = linkedSignal<
+    boolean,
+    'open' | 'close' | null
+  >({
+    source: () => !!this.roomSurfaces.renderedSurface(),
+    computation: (open, previous) => {
+      if (
+        !previous ||
+        !this.workspace.committedInApp ||
+        // Tracked, as in `paneSlide`: crossing md mid-slide must clear it.
+        !this.mobileMasterDetail() ||
+        untracked(this.paneSlide) !== null
+      ) {
+        return null;
+      }
+      return open ? 'open' : 'close';
+    },
+  });
+
+  /** The panel on screen: the open one, or the one sliding off until its slide ends. */
+  protected readonly shownSurface = linkedSignal<
+    RenderedRoomSurface | null,
+    RenderedRoomSurface | null
+  >({
+    source: () => this.roomSurfaces.renderedSurface(),
+    computation: (surface, previous) =>
+      surface ??
+      (this.panelSlide() === 'close' ? (previous?.value ?? null) : null),
+  });
+
+  /** The shown panel is only sliding away; it takes no input. */
+  protected readonly panelLeaving = computed(
+    () => !!this.shownSurface() && !this.roomSurfaces.renderedSurface(),
   );
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
@@ -511,6 +554,13 @@ export class RoomsPage {
   /** Descendants' animations bubble here too; only `.main`'s own ends the slide. */
   protected onMainAnimationEnd(event: AnimationEvent): void {
     if (event.target === event.currentTarget) this.paneSlide.set(null);
+    if (
+      event.target instanceof Element &&
+      event.target.hasAttribute('data-right-panel-surface')
+    ) {
+      this.panelSlide.set(null);
+      this.shownSurface.set(this.roomSurfaces.renderedSurface());
+    }
   }
 
   /**

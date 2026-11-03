@@ -391,6 +391,9 @@ async function expectPage(page: Page, panel: Locator): Promise<void> {
       panel.evaluate((element) => element.contains(document.activeElement)),
     )
     .toBe(true);
+  await expect(page.locator('[data-shell-root]')).not.toHaveAttribute(
+    'data-panel-slide',
+  );
   // Arriving with the room's own slide, the page rides it, and it does not slide in again
   // once that slide has ended.
   expect(
@@ -409,6 +412,66 @@ async function expectPage(page: Page, panel: Locator): Promise<void> {
       return [during, surface.getAnimations().length];
     }),
   ).toEqual([0, 0]);
+}
+
+/**
+ * Record each panel-page slide as it starts: its direction, and the duration of the page's
+ * own slide animation then (-1 when the page has none).
+ */
+async function watchPanelSlides(
+  page: Page,
+): Promise<() => Promise<[string, number][]>> {
+  await page.evaluate(() => {
+    const root = document.querySelector('[data-shell-root]')!;
+    const seen: [string, number][] = [];
+    Object.assign(window, { panelSlides: seen });
+    new MutationObserver(() => {
+      const slide = root.getAttribute('data-panel-slide');
+      if (!slide) return;
+      const keyframes = slide === 'open' ? 'pane-over-in' : 'pane-over-out';
+      const run = root
+        .querySelector('[data-right-panel-surface]')
+        ?.getAnimations()
+        .find(
+          (animation) =>
+            animation instanceof CSSAnimation &&
+            animation.animationName.endsWith(keyframes),
+        );
+      seen.push([
+        slide,
+        run ? Number(run.effect!.getComputedTiming().duration) : -1,
+      ]);
+    }).observe(root, {
+      attributes: true,
+      attributeFilter: ['data-panel-slide'],
+    });
+  });
+  return () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { panelSlides: [string, number][] }).panelSlides,
+    );
+}
+
+/** Two frames after the slide has cleared, nothing on the page or the room is still moving. */
+async function expectSettled(page: Page): Promise<void> {
+  await expect(page.locator('[data-shell-root]')).not.toHaveAttribute(
+    'data-panel-slide',
+  );
+  expect(
+    await page.evaluate(async () => {
+      const frame = () => new Promise((done) => requestAnimationFrame(done));
+      await frame();
+      await frame();
+      return [
+        ...document.querySelectorAll(
+          '[data-right-panel-surface], .main > *, .chat-body > *',
+        ),
+      ].flatMap((element) =>
+        element.getAnimations().map((a) => (a as CSSAnimation).animationName),
+      );
+    }),
+  ).toEqual([]);
 }
 
 for (const viewport of [
@@ -498,10 +561,19 @@ for (const viewport of [
           page.getByRole('complementary', { name: 'Search messages' }),
         ],
       ];
+      const slides = await watchPanelSlides(page);
+      let slid = 0;
       for (const [kind, open, panel] of panels) {
         await open();
         await expect(page).toHaveURL(new RegExp(`panel=${kind}`));
         await expectPage(page, panel);
+        // Pushed over the room, the page slides in once, as a room does over its list.
+        const opened = await slides();
+        expect(opened.slice(slid).map(([slide]) => slide)).toEqual(['open']);
+        expect(opened[slid][1]).toBeGreaterThan(100);
+        slid = opened.length;
+        await expectSettled(page);
+        // History Back draws no slide: the platform's own swipe already did.
         await page.goBack();
         await expect(panel).toBeHidden();
         await expect(page.locator('trn-room-header')).not.toHaveAttribute(
@@ -527,6 +599,11 @@ for (const viewport of [
       await expectPage(page, threads);
       await threads.getByRole('button', { name: 'Back', exact: true }).click();
       await expect(threads).toBeHidden();
+      // The in-app Back slides the page off once, as leaving a room does.
+      const closed = (await slides()).slice(-2);
+      expect(closed.map(([slide]) => slide)).toEqual(['open', 'close']);
+      expect(closed[1][1]).toBeGreaterThan(100);
+      await expectSettled(page);
       await expect(page.getByTestId('open-threads')).toBeFocused();
 
       await expect(composer).toHaveValue(`half typed ${runId}`);
@@ -534,6 +611,38 @@ for (const viewport of [
     });
   });
 }
+
+test.describe('Room panel pages with Reduce Motion', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('opens and closes a page with no slide', async ({ page, request }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const runId = `${testResourceId('run')}rm`;
+    const { reader, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+    const slides = await watchPanelSlides(page);
+    const threads = page.getByRole('complementary', { name: 'Threads' });
+
+    await page.getByTestId('open-threads').click();
+    await expectPage(page, threads);
+    await threads.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(threads).toBeHidden();
+    await expectSettled(page);
+    // The room slide's handling: the same slide, collapsed to an instant.
+    const seen = await slides();
+    expect(seen.map(([slide]) => slide)).toEqual(['open', 'close']);
+    for (const [, duration] of seen) {
+      expect(duration).toBeGreaterThanOrEqual(0);
+      expect(duration).toBeLessThan(1);
+    }
+  });
+});
 
 test.describe('Room panels across widths', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

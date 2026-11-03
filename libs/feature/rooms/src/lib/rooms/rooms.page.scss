@@ -395,9 +395,37 @@
       box-shadow: none;
       transition: none;
 
-      // No entrance of its own: a page arriving with the room rides `.main`'s slide, and an
-      // entrance suppressed only for the slide's length would replay once it ended.
+      // No drawer entrance: a page moves only with the page slide below, and a page arriving
+      // with the room rides `.main`'s.
       animation: none;
+    }
+
+    // Pushing a page over its room, or popping it off, is the room-over-list slide one level
+    // in: the page moves over a room that shifts underneath (`paneSlide`, above).
+    [data-panel-slide] :is(.chat-members, .chat-panel) {
+      box-shadow: var(--trinity-shadow-overlay);
+    }
+
+    [data-panel-slide='open'] :is(.chat-members, .chat-panel) {
+      animation: pane-over-in var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-panel-slide='close'] :is(.chat-members, .chat-panel) {
+      animation: pane-over-out var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-panel-slide='open'] .main > :not(.chat-body),
+    [data-panel-slide='open'] .chat-body > :not([data-right-panel-surface]) {
+      animation: pane-under-out var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
+    }
+
+    [data-panel-slide='close'] .main > :not(.chat-body),
+    [data-panel-slide='close'] .chat-body > :not([data-right-panel-surface]) {
+      animation: pane-under-in var(--trinity-duration-base)
+        var(--trinity-ease-standard) both;
     }
   }
 

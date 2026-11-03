@@ -308,6 +308,31 @@ describe('RoomSurfaceLifecycle', () => {
     }
   });
 
+  it('returns focus to the opener while the closed page is still sliding off', () => {
+    stubMedia({ [BELOW_MEMBERS_QUERY]: true, [BELOW_MD_QUERY]: true });
+    const { lifecycle } = build();
+    const trigger = document.createElement('button');
+    const { slot, button } = slotWithHeaderButton();
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      lifecycle.transition({ kind: 'open-threads' });
+      TestBed.tick();
+      TestBed.tick();
+      expect(document.activeElement).toBe(button);
+
+      // The page leaves the DOM only when its slide ends; its Back button still has focus.
+      lifecycle.transition({ kind: 'dismiss' });
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
   it('leaves focus alone when a wide panel switches to one with no marked target', () => {
     stubMedia({ [BELOW_MEMBERS_QUERY]: false, [BELOW_MD_QUERY]: false });
     const { lifecycle } = build();

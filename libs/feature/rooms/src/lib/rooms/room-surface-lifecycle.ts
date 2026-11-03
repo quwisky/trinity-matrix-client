@@ -395,7 +395,9 @@ export class RoomSurfaceLifecycle {
             if (
               this.renderedSurface() === null &&
               target.isConnected &&
-              document.activeElement === document.body
+              // A page sliding off still holds the focus its Back button had.
+              (document.activeElement === document.body ||
+                !!document.activeElement?.closest('[data-right-panel-surface]'))
             ) {
               target.focus();
             }
