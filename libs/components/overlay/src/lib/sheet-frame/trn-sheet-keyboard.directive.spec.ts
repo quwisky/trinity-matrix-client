@@ -130,7 +130,7 @@ describe('TrnSheetKeyboardAvoidance (on every sheet frame)', () => {
   });
 
   it('leaves the keyboard to the overlay layer in the iOS shell, even before the inset arrives', async () => {
-    // WebKit's viewport resize can land before the plugin's keyboardWillShow sets the inset.
+    // WebKit's viewport resize can land before `KeyboardFrame` sets the inset.
     platform.ios = true;
     try {
       await openSheet();

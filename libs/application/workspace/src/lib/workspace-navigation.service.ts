@@ -44,6 +44,7 @@ import { WorkspaceVisitHistoryService } from './workspace-visit-history.service'
 import {
   RECENT_WORKSPACE_SCOPE,
   sameWorkspaceDestination,
+  sameWorkspacePlace,
   type WorkspaceDestination,
   type WorkspaceOpenOptions,
   type WorkspaceOpenOutcome,
@@ -52,8 +53,12 @@ import {
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 import { WorkspaceAvailability } from './workspace-availability';
-import { resolveWorkspaceNavigation } from './workspace-navigation.resolver';
+import {
+  resolveWorkspaceNavigation,
+  resolveWorkspacePanel,
+} from './workspace-navigation.resolver';
 import { WorkspaceSpaceRepair } from './workspace-space-repair';
+import type { WorkspacePanel } from './workspace-surface.models';
 
 /**
  * The application workflow that owns the semantic Workspace destination.
@@ -95,6 +100,9 @@ export class WorkspaceNavigationService {
   private projectionsActive = false;
   private hasProjected = false;
   private lastCommitInApp = false;
+  /** The latest panel open or close not yet applied; a newer one replaces it. */
+  private panelRequest: PanelRequest | null = null;
+  private panelRunning = false;
 
   readonly view = this.workspaceView.asReadonly();
   readonly eventTarget = this.eventTargetState.asReadonly();
@@ -132,6 +140,8 @@ export class WorkspaceNavigationService {
   readonly roomsView = computed(() => this.view().scope.kind === 'rooms');
   readonly activeRoomId = computed(() => this.view().roomId);
   readonly pane = computed(() => this.view().pane);
+  /** The open Room panel, as the URL names it. */
+  readonly panel = computed(() => this.view().panel);
   readonly placement = computed(() =>
     this.compact() ? this.view().pane : 'split',
   );
@@ -157,6 +167,7 @@ export class WorkspaceNavigationService {
             scope: parsed.destination.scope,
             roomId: parsed.destination.roomId,
             pane: parsed.destination.pane,
+            panel: parsed.destination.panel,
             ...(parsed.eventId ? { eventId: parsed.eventId } : {}),
             canonical: parsed.canonical,
           });
@@ -182,6 +193,7 @@ export class WorkspaceNavigationService {
                 scope: RECENT_WORKSPACE_SCOPE,
                 roomId: view.roomId,
                 pane: view.pane,
+                panel: view.panel,
               },
               { source: 'repair', history: 'replace' },
             )
@@ -211,7 +223,8 @@ export class WorkspaceNavigationService {
           this.project(view);
         },
         commit: (view, committedOptions) => {
-          const changed = !sameWorkspaceDestination(this.view(), view);
+          // A panel opening or closing keeps the Room's focus and media.
+          const changed = !sameWorkspacePlace(this.view(), view);
           const needsProjection = changed || !this.projectionsActive;
           this.lastCommitInApp =
             committedOptions.source !== 'restore' &&
@@ -232,6 +245,7 @@ export class WorkspaceNavigationService {
           }
           if (
             committedOptions.source === 'user' &&
+            !committedOptions.withinRoom &&
             view.accountId &&
             view.roomId
           ) {
@@ -305,6 +319,79 @@ export class WorkspaceNavigationService {
         }),
       );
     });
+  }
+
+  /** Open a panel in the open Room, replacing any other; without a Room open, nothing happens. */
+  openPanel(panel: WorkspacePanel): void {
+    this.changePanel(panel);
+  }
+
+  /** Close the open Room panel. */
+  closePanel(): void {
+    this.changePanel(null);
+  }
+
+  /**
+   * Panel taps are applied one at a time and the last one wins: a close tapped while an open
+   * is still being written, or while another transition holds Workspace, runs once that
+   * settles instead of being dropped. A request for a Room no longer open is dropped.
+   */
+  private changePanel(panel: WorkspacePanel | null): void {
+    const { accountId, roomId } = this.view();
+    this.panelRequest = { panel, accountId, roomId };
+    if (!this.panelRunning) this.runPanelRequest();
+  }
+
+  private runPanelRequest(): void {
+    const request = this.panelRequest;
+    this.panelRequest = null;
+    this.panelRunning = request !== null;
+    if (!request) return;
+    const next = (): void => this.runPanelRequest();
+    this.applyPanel(request)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ complete: next, error: next });
+  }
+
+  /**
+   * Resolve a panel request only once no transition holds Workspace, so it reads the view an
+   * open just committed or a restoration just landed, and skip it if a newer tap replaced it
+   * meanwhile. `busy` clears when its attempt settles; Router promises settle, and a pop is
+   * bounded by the location adapter's settle timeout.
+   */
+  private applyPanel(request: PanelRequest): Observable<unknown> {
+    return defer(() =>
+      this.workflow.busy()
+        ? toObservable(this.workflow.busy, { injector: this.injector }).pipe(
+            filter((busy) => !busy),
+            take(1),
+          )
+        : of(null),
+    ).pipe(
+      switchMap(() => {
+        const view = this.view();
+        if (
+          this.panelRequest ||
+          view.accountId !== request.accountId ||
+          view.roomId !== request.roomId
+        ) {
+          return EMPTY;
+        }
+        const resolved = resolveWorkspacePanel(request.panel, view, {
+          panelBelow: this.location.panelBelow(),
+        });
+        if (!resolved) return EMPTY;
+        return this.transition(resolved.destination, resolved.options).pipe(
+          switchMap((outcome) =>
+            // Retry behind the transition that holds Workspace; with none holding it, the
+            // outcome came from a cancelled attempt, and retrying at once would never end.
+            outcome.kind === 'transition-in-progress' && this.workflow.busy()
+              ? this.applyPanel(request)
+              : EMPTY,
+          ),
+        );
+      }),
+    );
   }
 
   private navigateHistory(
@@ -479,6 +566,7 @@ export class WorkspaceNavigationService {
       scope: RECENT_WORKSPACE_SCOPE,
       roomId: null,
       pane: 'list',
+      panel: null,
     });
   }
 
@@ -500,6 +588,12 @@ export class WorkspaceNavigationService {
       this.availability.roomKept(destination.accountId, destination.roomId)
     );
   }
+}
+
+interface PanelRequest {
+  readonly panel: WorkspacePanel | null;
+  readonly accountId: string | null;
+  readonly roomId: string | null;
 }
 
 function normalizeEventId(eventId: string | undefined): string | null {
