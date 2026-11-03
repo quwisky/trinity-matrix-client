@@ -139,6 +139,14 @@
     // inset is under the keyboard then, and the bottom bars already pad by it, so they give up
     // only the rest.
     --trinity-keyboard-inset: 0px;
+
+    // Each move's own duration, curve and start offset, also written inline as it starts.
+    // UIKit's keyboard curve (7) is private; the default is a fit from
+    // developer.apple.com/forums/thread/48088, RMS error 17px over 960px of travel (iOS 27.2
+    // Simulator). Other curves arrive as their CSS keyword.
+    --trinity-keyboard-duration: 250ms;
+    --trinity-keyboard-easing: cubic-bezier(0.38, 0.7, 0.125, 1);
+    --trinity-keyboard-delay: 0ms;
     --trinity-keyboard-shrink: max(
       0px,
       var(--trinity-keyboard-inset) - env(safe-area-inset-bottom, 0px)
@@ -209,7 +217,8 @@
     --trinity-duration-fast: 120ms; // hover/focus tints — must not be perceptible as motion
     --trinity-duration-base: 200ms; // the default for anything entering or leaving
     --trinity-duration-overlay: 150ms; // dialog entrance and scrim fade
-    --trinity-duration-keyboard: 250ms; // the iOS keyboard's own slide, which the app follows
+    --trinity-duration-keyboard: var(--trinity-keyboard-duration);
+    --trinity-delay-keyboard: var(--trinity-keyboard-delay);
 
     // Two durations for motion that is not a transition. They are named by role, not length,
     // because they are not points on the scale above: those say how fast something moves
@@ -218,14 +227,13 @@
     --trinity-duration-pulse: 1s; // an ambient loop — must read as alive, not as urgent
     --trinity-duration-flash: 1.6s; // a one-shot cue, long enough to find with your eye
     --trinity-ease-standard: cubic-bezier(0.2, 0, 0, 1); // most things
+    --trinity-ease-keyboard: var(--trinity-keyboard-easing);
     --trinity-ease-decelerate: cubic-bezier(
       0,
       0,
       0,
       1
     ); // entering: fast in, settles
-    // UIKit's keyboard curve (7) is private; fit from developer.apple.com/forums/thread/48088.
-    --trinity-ease-keyboard: cubic-bezier(0.38, 0.7, 0.125, 1);
 
     // --- Code size (Mode- & Theme-agnostic) ---------------------------------------
     // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85% optical
