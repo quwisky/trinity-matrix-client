@@ -1,8 +1,9 @@
 @use '../styles/mixins' as *;
 
 @layer components {
-  // The room shell holds the app-global banners above the rail + chat columns. The top
-  // safe-area inset is the application root's, so the root's own banners clear it too.
+  // The room shell holds the app-global banners above the rail + chat columns. Under a phone's
+  // status bar, the first banner (global.scss) or else the bar at the top of each column takes
+  // the top inset, so the status bar is that bar's colour, also mid-slide.
   .rooms-shell {
     background: var(--trinity-surface-app);
   }
@@ -85,18 +86,22 @@
     }
 
     // Outer-left column: clear the left cutout on a landscape notch (left) and the home
-    // indicator (bottom, where the user footer sits). The top inset is on .rooms-shell.
+    // indicator (bottom, where the user footer sits).
     padding-bottom: var(--trinity-navigation-safe-area-bottom);
     padding-left: env(safe-area-inset-left);
   }
 
   .shell-side__rail {
+    padding-top: var(--trinity-top-inset);
     grid-column: 1;
     grid-row: 1 / -1;
     min-height: 0;
   }
 
+  // Both of its views open with a navigation header, which can be another tone than the column.
   .shell-side__rooms {
+    border-top: var(--trinity-top-inset) solid
+      var(--trinity-surface-navigation-header);
     grid-column: 2;
     grid-row: 1;
     min-width: 0;
@@ -126,8 +131,9 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden; // contain the header + body so the timeline scrolls internally
-    // Outer-right column: keep content clear of a right-side landscape cutout. The top
-    // inset lives on .rooms-shell (above the banners).
+    // Outer-right column: keep content clear of a right-side landscape cutout. The room
+    // header paints the workspace surface, the same as this pane, so padding carries it up.
+    padding-top: var(--trinity-top-inset);
     padding-right: env(safe-area-inset-right);
     background: var(--trinity-surface-pane);
     box-shadow:

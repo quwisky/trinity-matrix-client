@@ -8,7 +8,10 @@ export type ResolvedAppearance = Omit<AppearanceValue, 'mode'> & {
 
 /** The complete Appearance information native chrome is allowed to observe. */
 export interface NativeChromeAppearance {
+  /** The Mode of the surface under the status bar, which picks the status bar's content. */
   readonly mode: ResolvedThemeMode;
+  /** That surface as `#rrggbb` for a browser's theme colour; null when it could not be read. */
+  readonly color: string | null;
 }
 
 /** Resolve policy only; browser and native APIs stay behind adapters. */
@@ -22,11 +25,36 @@ export function resolveAppearance(
   });
 }
 
-/** Narrow the application projection before it crosses the native boundary. */
+/**
+ * Narrow the application projection before it crosses the native boundary. The surface under
+ * the status bar decides its Mode, so an accent banner or the media viewer keeps contrast in
+ * either Mode; without a reading the resolved Mode stands in.
+ */
 export function toNativeChromeAppearance(
   appearance: ResolvedAppearance,
+  statusAreaColor: string | null = null,
 ): NativeChromeAppearance {
-  return Object.freeze({ mode: appearance.mode });
+  return Object.freeze({
+    mode: statusAreaColor ? surfaceMode(statusAreaColor) : appearance.mode,
+    color: statusAreaColor,
+  });
+}
+
+/**
+ * `dark` when white content has more contrast on `#rrggbb` than black content does. The two
+ * contrasts are equal at a relative luminance of about 0.179.
+ */
+export function surfaceMode(hex: string): ResolvedThemeMode {
+  const [r, g, b] = [1, 3, 5].map((start) => {
+    const channel = Number.parseInt(hex.slice(start, start + 2), 16) / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.05
+    ? 'dark'
+    : 'light';
 }
 
 /** Compare all seven resolved axes without serializing the value. */

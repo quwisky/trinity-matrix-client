@@ -17,6 +17,10 @@ import {
   type AppearanceNativeChromeAdapter,
 } from './appearance-native-chrome.adapter';
 import {
+  APPEARANCE_STATUS_AREA_SOURCE,
+  type AppearanceStatusAreaSource,
+} from './appearance-status-area.source';
+import {
   APPEARANCE_SYSTEM_MODE_SOURCE,
   type AppearanceSystemModeSource,
 } from './appearance-system-mode.source';
@@ -61,12 +65,18 @@ describe('AppearanceEffects', () => {
     TestBed.flushEffects();
     expect(effects.resolved()?.mode).toBe('light');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(1);
-    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({ mode: 'light' });
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'light',
+      color: null,
+    });
 
     systemMode.next('dark');
     expect(effects.resolved()?.mode).toBe('dark');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(2);
-    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({ mode: 'dark' });
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'dark',
+      color: null,
+    });
 
     committed.set({ ...committed(), mode: 'light' });
     TestBed.flushEffects();
@@ -89,6 +99,48 @@ describe('AppearanceEffects', () => {
     committed.set({ ...committed(), mode: 'dark' });
     TestBed.flushEffects();
     expect(documentAdapter.apply).toHaveBeenCalledTimes(4);
+  });
+
+  it('gives native chrome the Mode and colour of the surface under the status bar', () => {
+    const committed = signal({ ...defaults(), mode: 'dark' as const });
+    const systemMode = new BehaviorSubject<'light' | 'dark'>('dark');
+    const statusArea = new BehaviorSubject<string | null>('#151618');
+    const nativeAdapter: AppearanceNativeChromeAdapter = {
+      apply: vi.fn(() => of(void 0)),
+    };
+    configureEffects(
+      { value: committed.asReadonly() },
+      systemMode,
+      { apply: vi.fn() },
+      nativeAdapter,
+      statusArea,
+    );
+    const effects = TestBed.inject(AppearanceEffects);
+
+    const subscription = effects.run().subscribe();
+    TestBed.flushEffects();
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'dark',
+      color: '#151618',
+    });
+
+    // An accent banner reaches the top in dark Mode: its pale surface needs dark content.
+    statusArea.next('#7f8ff1');
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'light',
+      color: '#7f8ff1',
+    });
+
+    statusArea.next('#7f8ff1');
+    expect(nativeAdapter.apply).toHaveBeenCalledTimes(2);
+
+    // Unreadable again: the resolved Mode stands in.
+    statusArea.next(null);
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'dark',
+      color: null,
+    });
+    subscription.unsubscribe();
   });
 
   it('keeps the document effect alive without a native adapter', () => {
@@ -317,10 +369,17 @@ function configureEffects(
   systemMode: BehaviorSubject<'light' | 'dark'>,
   documentAdapter: AppearanceDocumentAdapter,
   nativeAdapter?: AppearanceNativeChromeAdapter,
+  statusArea = new BehaviorSubject<string | null>(null),
 ): void {
   TestBed.configureTestingModule({
     providers: [
       { provide: AppearancePreferences, useValue: appearance },
+      {
+        provide: APPEARANCE_STATUS_AREA_SOURCE,
+        useValue: {
+          observe: () => statusArea,
+        } satisfies AppearanceStatusAreaSource,
+      },
       {
         provide: APPEARANCE_SYSTEM_MODE_SOURCE,
         useValue: {

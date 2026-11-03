@@ -10,8 +10,8 @@ import {
   ignoreElements,
   map,
   merge,
-  of,
   shareReplay,
+  switchMap,
   take,
   tap,
   type Observable,
@@ -25,6 +25,7 @@ import {
   toNativeChromeAppearance,
   type ResolvedAppearance,
 } from './appearance-resolution';
+import { APPEARANCE_STATUS_AREA_SOURCE } from './appearance-status-area.source';
 import { APPEARANCE_SYSTEM_MODE_SOURCE } from './appearance-system-mode.source';
 
 /**
@@ -42,6 +43,7 @@ export class AppearanceEffects {
   private readonly nativeChrome = inject(APPEARANCE_NATIVE_CHROME_ADAPTER, {
     optional: true,
   });
+  private readonly statusArea = inject(APPEARANCE_STATUS_AREA_SOURCE);
   private readonly committed = toObservable(this.preferences.value);
   private readonly _resolved = signal<ResolvedAppearance | undefined>(
     undefined,
@@ -92,15 +94,22 @@ export class AppearanceEffects {
         }),
         ignoreElements(),
       );
+      const nativeChrome = this.nativeChrome;
+      if (!nativeChrome) return documentEffects;
       const nativeChromeEffects = resolved.pipe(
-        map(toNativeChromeAppearance),
-        distinctUntilChanged((left, right) => left.mode === right.mode),
+        switchMap((appearance) =>
+          this.statusArea
+            .observe()
+            .pipe(map((color) => toNativeChromeAppearance(appearance, color))),
+        ),
+        distinctUntilChanged(
+          (left, right) =>
+            left.mode === right.mode && left.color === right.color,
+        ),
         concatMap((appearance) =>
-          defer(() =>
-            this.nativeChrome
-              ? this.nativeChrome.apply(appearance)
-              : of(void 0),
-          ).pipe(catchError(() => EMPTY)),
+          defer(() => nativeChrome.apply(appearance)).pipe(
+            catchError(() => EMPTY),
+          ),
         ),
         ignoreElements(),
       );

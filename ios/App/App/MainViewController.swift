@@ -25,6 +25,11 @@ class MainViewController: CAPBridgeViewController {
             webView?.backgroundColor = launchBackground
             webView?.scrollView.backgroundColor = launchBackground
         }
+        // The page paints the status bar's strip in the colour of the bar below it (#1868); the
+        // scroll view's top edge effect would tint that strip in dark mode.
+        if #available(iOS 26.0, *) {
+            webView?.scrollView.topEdgeEffect.isHidden = true
+        }
         bridge?.registerPluginInstance(NativeNavigationPlugin())
         bridge?.registerPluginInstance(AppSettingsPlugin())
     }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AppearanceValue } from './appearance-preferences';
 import {
   resolveAppearance,
+  surfaceMode,
   toNativeChromeAppearance,
 } from './appearance-resolution';
 
@@ -32,12 +33,36 @@ describe('Appearance resolution', () => {
     expect(resolveAppearance(committed('dark'), 'light').mode).toBe('dark');
   });
 
-  it('projects only resolved Mode to native chrome', () => {
+  it('projects only resolved Mode to native chrome without a status area reading', () => {
     const native = toNativeChromeAppearance(
       resolveAppearance(committed('system'), 'dark'),
     );
 
-    expect(native).toEqual({ mode: 'dark' });
-    expect(Object.keys(native)).toEqual(['mode']);
+    expect(native).toEqual({ mode: 'dark', color: null });
+    expect(Object.keys(native)).toEqual(['mode', 'color']);
+  });
+
+  it('takes the Mode of the surface under the status bar over the resolved Mode', () => {
+    const light = resolveAppearance(committed('light'), 'light');
+    const dark = resolveAppearance(committed('dark'), 'dark');
+
+    // The dark Graphite accent banner: white content would measure 2.96:1, black 7.1:1.
+    expect(toNativeChromeAppearance(dark, '#7f8ff1')).toEqual({
+      mode: 'light',
+      color: '#7f8ff1',
+    });
+    // The media viewer's black matte in light Mode.
+    expect(toNativeChromeAppearance(light, '#000000').mode).toBe('dark');
+    expect(toNativeChromeAppearance(light, '#f5f3ef').mode).toBe('light');
+  });
+
+  it('picks the content colour with more contrast on the surface', () => {
+    expect(surfaceMode('#ffffff')).toBe('light');
+    expect(surfaceMode('#000000')).toBe('dark');
+    // The light accent banner: black 4.0:1, white 5.25:1.
+    expect(surfaceMode('#5358ee')).toBe('dark');
+    // Either side of the 0.179 luminance where both contrasts meet.
+    expect(surfaceMode('#757575')).toBe('dark');
+    expect(surfaceMode('#777777')).toBe('light');
   });
 });

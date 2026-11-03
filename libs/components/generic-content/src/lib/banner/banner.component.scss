@@ -1,5 +1,9 @@
 @layer components {
   :host {
+    // Set by the shell on the banner at the top of a phone screen: the banner then reaches under
+    // the status bar, which takes its colour.
+    --trn-banner-inset: var(--trinity-banner-inset-top, 0px);
+
     display: block;
   }
 
@@ -10,6 +14,9 @@
     gap: var(--trinity-density-row-gap);
     padding: var(--trinity-density-row-padding-block)
       var(--trinity-density-row-padding-inline);
+    padding-block-start: calc(
+      var(--trinity-density-row-padding-block) + var(--trn-banner-inset)
+    );
     font-size: var(--trinity-type-body-size);
     font-weight: var(--trinity-type-body-weight);
     line-height: var(--trinity-type-body-line-height);
@@ -61,7 +68,9 @@
   // (about 31rem; the margin covers wider fonts). The banner stories sweep the widths.
   @container (width < 34rem) {
     .banner[data-placement='global'] {
-      --trn-banner-pad: calc(2 * var(--trinity-density-row-padding-block));
+      --trn-banner-pad: calc(
+        2 * var(--trinity-density-row-padding-block) + var(--trn-banner-inset)
+      );
       --trn-banner-line: calc(
         var(--trinity-type-body-size) * var(--trinity-type-body-line-height)
       );
