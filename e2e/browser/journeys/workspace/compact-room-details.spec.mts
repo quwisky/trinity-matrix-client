@@ -480,6 +480,53 @@ async function expectNoSlideStarted(page: Page): Promise<void> {
   ).toEqual({ slide: null, moving: [] });
 }
 
+/**
+ * Sample every frame until read: whatever shows the room from under the page, as a slide
+ * attribute, an animation on the page or the room, or a frame with no page covering `.main`.
+ */
+async function watchInPlace(page: Page): Promise<() => Promise<string[]>> {
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    const state = { seen, on: true };
+    Object.assign(window, { inPlace: state });
+    const main = document.querySelector('main.main')!;
+    const sample = () => {
+      if (!state.on) return;
+      const slide = document
+        .querySelector('[data-shell-root]')!
+        .getAttribute('data-panel-slide');
+      if (slide) seen.push(`slide ${slide}`);
+      const surface = document.querySelector('[data-right-panel-surface]');
+      const box = surface?.getBoundingClientRect();
+      const room = main.getBoundingClientRect();
+      if (
+        !box ||
+        Math.round(box.left) !== Math.round(room.left) ||
+        Math.round(box.width) !== Math.round(room.width)
+      ) {
+        seen.push('room uncovered');
+      }
+      for (const element of document.querySelectorAll(
+        '[data-right-panel-surface], .main > *, .chat-body > *',
+      )) {
+        for (const animation of element.getAnimations()) {
+          seen.push(`moving ${(animation as CSSAnimation).animationName}`);
+        }
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  return () =>
+    page.evaluate(() => {
+      const state = (
+        window as unknown as { inPlace: { seen: string[]; on: boolean } }
+      ).inPlace;
+      state.on = false;
+      return [...new Set(state.seen)];
+    });
+}
+
 /** Two frames after the slide has cleared, nothing on the page or the room is still moving. */
 async function expectSettled(page: Page): Promise<void> {
   await expect(page.locator('[data-shell-root]')).not.toHaveAttribute(
@@ -616,17 +663,24 @@ for (const viewport of [
         timeout: 15_000,
       });
       await expectPage(page, page.locator('.chat-panel'));
-      // The threads page slid in, then the thread pushed over it slides in like any page.
-      const pushed = await slides();
-      expect(pushed.slice(slid).map(([slide]) => slide)).toEqual([
-        'open',
-        'open',
-      ]);
-      expect(pushed[slid + 1][1]).toBeGreaterThan(100);
-      slid = pushed.length;
-      await expectSettled(page);
       await page.goBack();
       await expect(threads).toBeVisible();
+      await page.goBack();
+      await expect(threads).toBeHidden();
+
+      // Between the threads list and a thread the page changes in place, both ways: no
+      // slide, nothing moving, and the room never shows from under it.
+      await page.getByTestId('open-threads').click();
+      await expectPage(page, threads);
+      await expectSettled(page);
+      const seen = await watchInPlace(page);
+      await threads.locator('.thread-item').first().click();
+      await expect(thread).toBeVisible({ timeout: 15_000 });
+      // Back to the list is a history step; the thread's own Back closes it to the room.
+      await page.goBack();
+      await expect(threads).toBeVisible();
+      await expect(thread).toBeHidden();
+      expect(await seen()).toEqual([]);
       await page.goBack();
       await expect(threads).toBeHidden();
 

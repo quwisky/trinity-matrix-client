@@ -179,9 +179,9 @@ export class RoomsPage {
    * `roomSurfaces.renderedSurface()` is the expression `[drawerOpen]` is bound to below, so
    * the two cannot drift. It is NOT what stops the row gesture competing with the panel:
    * while one is open, the drawer's `fixed inset-0` backdrop covers the viewport, or below md
-   * the page makes `trn-message-list` inert, so no `pointerdown` reaches a timeline row. The clause mirrors the drawer's own arming condition, so a
-   * gesture that is off is off for a stated reason rather than by a side effect of somebody
-   * else's markup.
+   * the page makes `trn-message-list` inert, so no `pointerdown` reaches a timeline row. The
+   * clause mirrors the drawer's own arming condition, so a gesture that is off is off for a
+   * stated reason rather than by a side effect of somebody else's markup.
    *
    * The thread panel is the deliberate exception and is handled at the row: it only EXISTS
    * while the drawer is open, so this rule would make the gesture permanently dead there. It
@@ -291,27 +291,20 @@ export class RoomsPage {
 
   /**
    * A panel page pushed over its room, or popped off it, slides the way a room does over its
-   * list ({@link paneSlide}); a thread pushed over the threads page slides in too. Null for a
-   * history traversal, whose edge swipe draws the motion natively, and for a page arriving
-   * with the room, which rides the room's own slide.
+   * list ({@link paneSlide}). Moving between pages, such as threads to a thread, happens in
+   * place. Null for a history traversal, whose edge swipe draws the motion natively, and for a
+   * page arriving with the room, which rides the room's own slide.
    */
   protected readonly panelSlide = linkedSignal<
-    { readonly open: boolean; readonly thread: boolean; readonly room: string },
+    { readonly open: boolean; readonly room: string },
     'open' | 'close' | null
   >({
     source: computed(
-      () => {
-        const surface = this.roomSurfaces.renderedSurface();
-        return {
-          open: !!surface,
-          thread: surface?.kind === 'thread',
-          room: `${this.store.activeAccountId()} ${this.store.activeRoomId()}`,
-        };
-      },
-      {
-        equal: (a, b) =>
-          a.open === b.open && a.thread === b.thread && a.room === b.room,
-      },
+      () => ({
+        open: !!this.roomSurfaces.renderedSurface(),
+        room: `${this.store.activeAccountId()} ${this.store.activeRoomId()}`,
+      }),
+      { equal: (a, b) => a.open === b.open && a.room === b.room },
     ),
     computation: (source, previous) => {
       if (
@@ -331,9 +324,7 @@ export class RoomsPage {
       ) {
         return null;
       }
-      if (!source.open) return 'close';
-      // Back from a thread to its list changes the page in place: only one surface renders.
-      return !previous.source.open || source.thread ? 'open' : null;
+      return source.open ? 'open' : 'close';
     },
   });
 
