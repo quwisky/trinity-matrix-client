@@ -39,10 +39,15 @@ interface WorkspaceLocationProjection {
   readonly eventId?: string | null;
   /** The person did not make this navigation (a repair): their focus stays where it is. */
   readonly background?: boolean;
+  /** A panel change inside the open Room (see `WorkspaceOpenOptions.withinRoom`). */
+  readonly withinRoom?: boolean;
 }
 
 /** History-state key on a Conversation entry pushed straight over its list. */
 const LIST_BELOW = 'trinityListBelow';
+
+/** History-state key on a panel entry pushed over another entry of the same Room. */
+const PANEL_BELOW = 'trinityPanelBelow';
 
 /** How long a popped entry may take to settle before Back writes the list in place. */
 const POP_SETTLE_MS = 3_000;
@@ -52,11 +57,14 @@ const POP_SETTLE_MS = 3_000;
 export class WorkspaceLocationAdapter {
   private readonly router = inject(Router);
   private readonly location = inject(Location);
-  private readonly listBelowState = signal(this.readListBelow());
+  private readonly listBelowState = signal(this.readMark(LIST_BELOW));
+  private readonly panelBelowState = signal(this.readMark(PANEL_BELOW));
   private pendingProjections = 0;
 
   /** The current history entry is a Conversation pushed straight over its list. */
   readonly listBelow = this.listBelowState.asReadonly();
+  /** The current history entry is a panel pushed over another entry of its Room. */
+  readonly panelBelow = this.panelBelowState.asReadonly();
 
   /**
    * A Router navigation is in flight, whoever started it: Workspace, or the person heading
@@ -72,7 +80,10 @@ export class WorkspaceLocationAdapter {
         filter((event) => event instanceof NavigationEnd),
         takeUntilDestroyed(),
       )
-      .subscribe(() => this.listBelowState.set(this.readListBelow()));
+      .subscribe(() => {
+        this.listBelowState.set(this.readMark(LIST_BELOW));
+        this.panelBelowState.set(this.readMark(PANEL_BELOW));
+      });
   }
 
   get projecting(): boolean {
@@ -119,7 +130,7 @@ export class WorkspaceLocationAdapter {
       try {
         navigation =
           options.history === 'back'
-            ? this.popTo(projection)
+            ? this.popTo(destination, projection)
             : this.write(projection, destination, options);
       } catch (error) {
         this.pendingProjections -= 1;
@@ -143,14 +154,24 @@ export class WorkspaceLocationAdapter {
     destination: WorkspaceDestination,
     options: WorkspaceLocationProjection,
   ): Promise<boolean> {
-    const overList =
-      options.history === 'push' &&
-      options.overList === true &&
-      this.rewriteListBelow(destination);
+    const withinRoom = options.withinRoom === true;
+    const listBelow =
+      options.history === 'push' && options.overList === true
+        ? this.rewriteListBelow(destination)
+        : withinRoom && this.readMark(LIST_BELOW);
+    const panelBelow =
+      withinRoom && (options.history === 'push' || this.readMark(PANEL_BELOW));
     return this.router.navigate([...projection.commands], {
       queryParams: { ...projection.queryParams },
       replaceUrl: options.history === 'replace',
-      ...(overList ? { state: { [LIST_BELOW]: true } } : {}),
+      ...(listBelow || panelBelow
+        ? {
+            state: {
+              ...(listBelow ? { [LIST_BELOW]: true } : {}),
+              ...(panelBelow ? { [PANEL_BELOW]: true } : {}),
+            },
+          }
+        : {}),
       ...(options.background ? { info: BACKGROUND_NAVIGATION_INFO } : {}),
     });
   }
@@ -173,37 +194,60 @@ export class WorkspaceLocationAdapter {
   }
 
   /**
-   * Pop the current entry and resolve once the Router has settled on the one below. When
-   * that is not the expected projection, or nothing settles, write the projection in place.
+   * Pop the current entry and resolve once the Router has settled on the one below, popping on
+   * through a Room's panel entries while the destination lies below them. When the entry
+   * reached is not the expected projection, or nothing settles, write the projection in place.
    */
   private async popTo(
+    destination: WorkspaceDestination,
     projection: ReturnType<typeof workspaceUrlOf>,
   ): Promise<boolean> {
-    const settled = firstValueFrom(
-      race(
-        this.router.events.pipe(
-          filter(
-            (event) =>
-              event instanceof NavigationEnd ||
-              event instanceof NavigationCancel ||
-              event instanceof NavigationError ||
-              event instanceof NavigationSkipped,
+    const target = this.urlOf(projection);
+    for (;;) {
+      const onRoom = this.readMark(PANEL_BELOW);
+      const settled = firstValueFrom(
+        race(
+          this.router.events.pipe(
+            filter(
+              (event) =>
+                event instanceof NavigationEnd ||
+                event instanceof NavigationCancel ||
+                event instanceof NavigationError ||
+                event instanceof NavigationSkipped,
+            ),
           ),
+          timer(POP_SETTLE_MS).pipe(map(() => null)),
         ),
-        timer(POP_SETTLE_MS).pipe(map(() => null)),
-      ),
-    );
-    this.location.back();
-    const event = await settled;
-    if (
-      event instanceof NavigationEnd &&
-      this.router.url === this.urlOf(projection)
-    )
-      return true;
+      );
+      this.location.back();
+      const event = await settled;
+      if (!(event instanceof NavigationEnd)) break;
+      if (this.router.url === target) return true;
+      if (!onRoom || !this.stillAbove(destination)) break;
+    }
+    const keepListBelow =
+      destination.pane === 'conversation' && this.readMark(LIST_BELOW);
     return this.router.navigate([...projection.commands], {
       queryParams: { ...projection.queryParams },
       replaceUrl: true,
+      ...(keepListBelow ? { state: { [LIST_BELOW]: true } } : {}),
     });
+  }
+
+  /**
+   * After a pop off a panel entry, whether the destination (a closed panel or the list) is
+   * still below: the entry reached is another of the Room's panels, or the Room itself while
+   * the destination is its list.
+   */
+  private stillAbove(destination: WorkspaceDestination): boolean {
+    const here = this.current(destination.accountId);
+    const landed = here.kind === 'workspace' ? here.parsed.destination : null;
+    return (
+      landed !== null &&
+      landed.roomId === destination.roomId &&
+      (landed.panel !== null ||
+        (landed.pane === 'conversation' && destination.pane === 'list'))
+    );
   }
 
   private urlOf(projection: ReturnType<typeof workspaceUrlOf>): string {
@@ -214,12 +258,12 @@ export class WorkspaceLocationAdapter {
     );
   }
 
-  private readListBelow(): boolean {
+  private readMark(key: typeof LIST_BELOW | typeof PANEL_BELOW): boolean {
     const state: unknown = this.location.getState();
     return (
       typeof state === 'object' &&
       state !== null &&
-      (state as Record<string, unknown>)[LIST_BELOW] === true
+      (state as Record<string, unknown>)[key] === true
     );
   }
 }

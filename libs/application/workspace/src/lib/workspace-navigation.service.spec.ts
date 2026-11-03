@@ -53,6 +53,8 @@ interface HarnessOptions {
   readonly routeView?: string;
   readonly routeSpaceId?: string;
   readonly routeEventId?: string;
+  /** The `panel` query value, such as a reload on an open roster. */
+  readonly routePanel?: string;
   readonly rooms?: Readonly<Record<string, readonly string[]>>;
   readonly compact?: boolean;
   /** The mixed view: its selected Accounts, and the Spaces any of them has joined. */
@@ -85,6 +87,7 @@ function harness(options: HarnessOptions = {}) {
         ? { space: encodeRoomSegment(options.routeSpaceId) }
         : {}),
       ...(options.routeEventId ? { event: options.routeEventId } : {}),
+      ...(options.routePanel ? { panel: options.routePanel } : {}),
     }),
   );
   const locationMode = new BehaviorSubject<'workspace' | 'outside'>(
@@ -205,16 +208,19 @@ function harness(options: HarnessOptions = {}) {
           ),
         } as const);
   const listBelow = signal(false);
+  const panelBelow = signal(false);
   // A Router navigation Workspace did not start, such as one to Settings, still resolving.
   const routerNavigating = signal(false);
   const projections: {
     readonly history: 'push' | 'replace' | 'back';
     readonly overList?: boolean;
     readonly background?: boolean;
+    readonly withinRoom?: boolean;
   }[] = [];
   const popHistory = vi.fn();
   const location = {
     listBelow: listBelow.asReadonly(),
+    panelBelow: panelBelow.asReadonly(),
     navigating: routerNavigating.asReadonly(),
     get projecting() {
       return locationWrites > 0;
@@ -231,6 +237,7 @@ function harness(options: HarnessOptions = {}) {
         readonly overList?: boolean;
         readonly eventId?: string | null;
         readonly background?: boolean;
+        readonly withinRoom?: boolean;
       },
     ) =>
       defer(() => {
@@ -238,6 +245,7 @@ function harness(options: HarnessOptions = {}) {
           history: projectionOptions.history,
           overList: projectionOptions.overList,
           ...(projectionOptions.background ? { background: true } : {}),
+          ...(projectionOptions.withinRoom ? { withinRoom: true } : {}),
         });
         if (projectionOptions.history === 'back') {
           popHistory();
@@ -310,6 +318,7 @@ function harness(options: HarnessOptions = {}) {
   return {
     service,
     listBelow,
+    panelBelow,
     projections,
     popHistory,
     activeAccountId,
@@ -378,6 +387,7 @@ describe('WorkspaceNavigationService', () => {
       scope: { kind: 'recent' },
       roomId: null,
       pane: 'list',
+      panel: null,
     });
     expect(h.conversations.focus).not.toHaveBeenCalled();
     expect(h.conversations.blur).not.toHaveBeenCalled();
@@ -402,6 +412,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'rooms' },
         roomId: null,
         pane: 'list',
+        panel: null,
       }),
     );
     expect(h.navigate).not.toHaveBeenCalled();
@@ -448,6 +459,7 @@ describe('WorkspaceNavigationService', () => {
       accountId: BOB,
       roomId: ROOM,
       pane: 'conversation',
+      panel: null,
     });
     expect(h.conversations.focus).toHaveBeenLastCalledWith({
       accountId: BOB,
@@ -466,6 +478,7 @@ describe('WorkspaceNavigationService', () => {
     expect(h.service.view()).toMatchObject({
       roomId: '!missing:example.org',
       pane: 'conversation',
+      panel: null,
     });
     // The anchor must survive for a room the client has yet to hold: the list jumps to it
     // once the room loads.
@@ -500,6 +513,7 @@ describe('WorkspaceNavigationService', () => {
       scope: { kind: 'recent' },
       roomId: ROOM,
       pane: 'conversation',
+      panel: null,
       canonical: false,
     });
     h.activeAccountId.set(BOB);
@@ -510,6 +524,7 @@ describe('WorkspaceNavigationService', () => {
       scope: { kind: 'recent' },
       roomId: ROOM,
       pane: 'conversation',
+      panel: null,
       canonical: false,
     });
     expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
@@ -584,6 +599,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'recent' },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
       });
     });
     expect(h.switchActiveAccount).toHaveBeenCalledWith(
@@ -617,6 +633,7 @@ describe('WorkspaceNavigationService', () => {
       scope: { kind: 'recent' },
       roomId: null,
       pane: 'list',
+      panel: null,
     });
     expect(h.navigate).toHaveBeenLastCalledWith(
       ['/rooms', encodeRoomSegment(ROOM)],
@@ -636,6 +653,7 @@ describe('WorkspaceNavigationService', () => {
       accountId: ALICE,
       roomId: ROOM,
       pane: 'conversation',
+      panel: null,
     });
   });
 
@@ -686,6 +704,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'recent' },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
       });
       expect(h.navigate).toHaveBeenLastCalledWith(
         ['/rooms', encodeRoomSegment(ROOM)],
@@ -737,6 +756,7 @@ describe('WorkspaceNavigationService', () => {
       expect(h.service.view()).toMatchObject({
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
       });
       expect(h.navigate).toHaveBeenCalledOnce();
       expect(h.conversations.focus).toHaveBeenCalledWith({
@@ -837,6 +857,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'home' },
         roomId: null,
         pane: 'list',
+        panel: null,
       });
 
       await expect(
@@ -853,6 +874,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'space', spaceId },
         roomId: null,
         pane: 'list',
+        panel: null,
       });
       expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
         queryParams: { account: BOB, space: encodeRoomSegment(spaceId) },
@@ -893,6 +915,7 @@ describe('WorkspaceNavigationService', () => {
           scope: { kind: 'space', spaceId: SPACE },
           roomId: ROOM,
           pane: 'conversation',
+          panel: null,
         });
         expect(h.navigate).toHaveBeenLastCalledWith(
           ['/rooms', encodeRoomSegment(ROOM)],
@@ -921,6 +944,7 @@ describe('WorkspaceNavigationService', () => {
           scope: { kind: 'space', spaceId: SPACE },
           roomId: ROOM,
           pane: 'conversation',
+          panel: null,
         });
       });
 
@@ -940,6 +964,7 @@ describe('WorkspaceNavigationService', () => {
             scope: { kind: 'recent' },
             roomId: ROOM,
             pane: 'conversation',
+            panel: null,
           }),
         );
       });
@@ -970,6 +995,7 @@ describe('WorkspaceNavigationService', () => {
             scope: { kind: 'recent' },
             roomId: ROOM,
             pane: 'conversation',
+            panel: null,
           });
         });
         expect(h.navigate).toHaveBeenCalledExactlyOnceWith(
@@ -1034,6 +1060,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'space', spaceId: SPACE },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
       } as const;
 
       it('seeds a cold start naming an unconfirmed space', () => {
@@ -1128,11 +1155,38 @@ describe('WorkspaceNavigationService', () => {
             scope: { kind: 'recent' },
             roomId: ROOM,
             pane: 'conversation',
+            panel: null,
           });
         });
         expect(h.navigate).toHaveBeenCalledExactlyOnceWith(
           ['/rooms', encodeRoomSegment(ROOM)],
           { queryParams: { account: ALICE }, replaceUrl: true },
+        );
+      });
+
+      it('keeps the open Room panel through the repair', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+        h.service.openPanel({ kind: 'members' });
+        await settle();
+        h.navigate.mockClear();
+
+        drop(h, ALICE, SPACE);
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view()).toMatchObject({
+            scope: { kind: 'recent' },
+            roomId: ROOM,
+            panel: { kind: 'members' },
+          });
+        });
+        expect(h.navigate).toHaveBeenCalledExactlyOnceWith(
+          ['/rooms', encodeRoomSegment(ROOM)],
+          {
+            queryParams: { account: ALICE, panel: 'members' },
+            replaceUrl: true,
+          },
         );
       });
 
@@ -1210,6 +1264,7 @@ describe('WorkspaceNavigationService', () => {
             scope: { kind: 'recent' },
             roomId: OTHER,
             pane: 'conversation',
+            panel: null,
           });
         });
         expect(h.navigate).toHaveBeenCalledTimes(2);
@@ -1232,6 +1287,7 @@ describe('WorkspaceNavigationService', () => {
             scope: { kind: 'recent' },
             roomId: ROOM,
             pane: 'conversation',
+            panel: null,
           });
         });
       });
@@ -1259,6 +1315,7 @@ describe('WorkspaceNavigationService', () => {
             scope: { kind: 'recent' },
             roomId: ROOM,
             pane: 'conversation',
+            panel: null,
           });
         });
       });
@@ -1303,6 +1360,7 @@ describe('WorkspaceNavigationService', () => {
             scope: { kind: 'recent' },
             roomId: ROOM,
             pane: 'conversation',
+            panel: null,
           }),
         );
         expect(h.navigate).toHaveBeenCalledExactlyOnceWith(
@@ -1367,6 +1425,7 @@ describe('WorkspaceNavigationService', () => {
           scope: { kind: 'recent' },
           roomId: ROOM,
           pane: 'conversation',
+          panel: null,
         });
       });
     });
@@ -1407,6 +1466,7 @@ describe('WorkspaceNavigationService', () => {
       expect(h.service.view()).toMatchObject({
         roomId: ROOM,
         pane: 'list',
+        panel: null,
       });
       expect(h.navigate).toHaveBeenLastCalledWith(
         ['/rooms', encodeRoomSegment(ROOM)],
@@ -1628,6 +1688,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'home' },
         roomId: dm,
         pane: 'conversation',
+        panel: null,
       });
       expect(h.navigate).toHaveBeenNthCalledWith(1, ['/rooms'], {
         queryParams: { account: BOB, view: 'home' },
@@ -1717,6 +1778,7 @@ describe('WorkspaceNavigationService', () => {
         accountId: BOB,
         roomId: '!missing:example.org',
         pane: 'conversation',
+        panel: null,
       });
       expect(h.conversations.focus).toHaveBeenLastCalledWith(
         expect.objectContaining({ roomId: '!missing:example.org' }),
@@ -1741,6 +1803,7 @@ describe('WorkspaceNavigationService', () => {
       accountId: ALICE,
       roomId: ROOM,
       pane: 'list',
+      panel: null,
     });
     expect(h.navigate).toHaveBeenCalledOnce();
   });
@@ -1757,6 +1820,7 @@ describe('WorkspaceNavigationService', () => {
           scope: { kind: 'home' },
           roomId: '!missing:example.org',
           pane: 'conversation',
+          panel: null,
           canonical: false,
         }),
       ),
@@ -1769,6 +1833,7 @@ describe('WorkspaceNavigationService', () => {
       scope: { kind: 'home' },
       roomId: '!missing:example.org',
       pane: 'conversation',
+      panel: null,
     });
     expect(h.navigate).toHaveBeenLastCalledWith(
       ['/rooms', encodeRoomSegment('!missing:example.org')],
@@ -1897,6 +1962,7 @@ describe('WorkspaceNavigationService', () => {
       scope: { kind: 'rooms' },
       roomId: null,
       pane: 'list',
+      panel: null,
     });
     expect(h.navigate).toHaveBeenCalledTimes(2);
     await expect(
@@ -1927,6 +1993,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'rooms' },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
         canonical: false,
       })
       .subscribe();
@@ -1945,6 +2012,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'rooms' },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
       });
     });
     expect(h.conversations.focus).toHaveBeenLastCalledWith({
@@ -1974,6 +2042,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'rooms' },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
         canonical: false,
       })
       .subscribe();
@@ -1990,6 +2059,7 @@ describe('WorkspaceNavigationService', () => {
       scope: { kind: 'recent' },
       roomId: null,
       pane: 'list',
+      panel: null,
     });
     expect(h.queryParamMap.value.get('account')).toBe(ALICE);
   });
@@ -2019,6 +2089,7 @@ describe('WorkspaceNavigationService', () => {
         scope: { kind: 'rooms' },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
         canonical: false,
       })
       .subscribe();
@@ -2155,6 +2226,7 @@ describe('the Inbox scope', () => {
       scope: inbox,
       roomId: ROOM,
       pane: 'conversation',
+      panel: null,
     });
     expect(h.projections.at(-1)).toEqual({ history: 'push', overList: true });
   });
@@ -2199,6 +2271,7 @@ describe('the Inbox scope', () => {
         scope: { kind: 'recent' },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
       });
     });
     expect(h.projections.at(-1)).toMatchObject({
@@ -2243,6 +2316,7 @@ describe('the Inbox scope', () => {
         scope: { kind: 'recent' },
         roomId: ROOM,
         pane: 'conversation',
+        panel: null,
       }),
     );
   });
@@ -2259,6 +2333,7 @@ describe('the Inbox scope', () => {
       scope: { kind: 'recent' },
       roomId: ROOM,
       pane: 'conversation',
+      panel: null,
     });
   });
 
@@ -2293,6 +2368,7 @@ describe('the Inbox scope', () => {
         scope: { kind: 'recent' },
         roomId: '!other:example.org',
         pane: 'conversation',
+        panel: null,
       });
     });
     expect(h.navigate).toHaveBeenCalledTimes(2);
@@ -2352,5 +2428,211 @@ describe('the Inbox scope', () => {
     await settle();
 
     expect(h.service.view().scope).toEqual(inbox);
+  });
+});
+
+describe('room panels', () => {
+  const members = { kind: 'members' } as const;
+  const threads = { kind: 'threads' } as const;
+  const thread = { kind: 'thread', root: '$root:example.org' } as const;
+  const roomCommands = ['/rooms', encodeRoomSegment(ROOM)];
+
+  async function inRoom(options: HarnessOptions = {}) {
+    const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM, ...options });
+    await settle();
+    h.navigate.mockClear();
+    h.media.releaseAll.mockClear();
+    h.conversations.focus.mockClear();
+    return h;
+  }
+
+  it('pushes an opened panel without refocusing the Room', async () => {
+    const h = await inRoom();
+
+    h.service.openPanel(members);
+    await settle();
+
+    expect(h.service.panel()).toEqual(members);
+    expect(h.service.view()).toMatchObject({
+      roomId: ROOM,
+      pane: 'conversation',
+      panel: members,
+    });
+    expect(h.projections.at(-1)).toEqual({
+      history: 'push',
+      overList: false,
+      withinRoom: true,
+    });
+    expect(h.navigate).toHaveBeenCalledExactlyOnceWith(roomCommands, {
+      queryParams: { account: ALICE, panel: 'members' },
+      replaceUrl: false,
+    });
+    expect(h.media.releaseAll).not.toHaveBeenCalled();
+    expect(h.conversations.focus).not.toHaveBeenCalled();
+  });
+
+  it('treats opening the open panel again as a no-op', async () => {
+    const h = await inRoom();
+    h.service.openPanel(thread);
+    await settle();
+    h.navigate.mockClear();
+
+    h.service.openPanel({ kind: 'thread', root: thread.root });
+    await settle();
+
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
+
+  it('replaces one panel with another, but pushes a thread from the threads list', async () => {
+    const h = await inRoom();
+    h.service.openPanel(members);
+    await settle();
+
+    h.service.openPanel(threads);
+    await settle();
+    expect(h.projections.at(-1)?.history).toBe('replace');
+
+    h.service.openPanel(thread);
+    await settle();
+    expect(h.projections.at(-1)?.history).toBe('push');
+    expect(h.navigate).toHaveBeenLastCalledWith(roomCommands, {
+      queryParams: { account: ALICE, panel: 'thread', root: thread.root },
+      replaceUrl: false,
+    });
+  });
+
+  it('closes a panel pushed over its Room by popping history', async () => {
+    const h = await inRoom();
+    h.service.openPanel(members);
+    await settle();
+    h.panelBelow.set(true);
+    h.navigate.mockClear();
+
+    h.service.closePanel();
+    await settle();
+
+    expect(h.projections.at(-1)).toEqual({
+      history: 'back',
+      overList: false,
+      withinRoom: true,
+    });
+    expect(h.popHistory).toHaveBeenCalledOnce();
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.service.panel()).toBeNull();
+  });
+
+  it('closes a panel with nothing below it, such as after a reload, in place', async () => {
+    const h = await inRoom({ routePanel: 'members' });
+    expect(h.service.panel()).toEqual(members);
+
+    h.service.closePanel();
+    await settle();
+
+    expect(h.popHistory).not.toHaveBeenCalled();
+    expect(h.navigate).toHaveBeenCalledExactlyOnceWith(roomCommands, {
+      queryParams: { account: ALICE },
+      replaceUrl: true,
+    });
+    expect(h.service.panel()).toBeNull();
+  });
+
+  it('lands a history step off a panel without writing the URL again', async () => {
+    const h = await inRoom();
+    h.service.openPanel(members);
+    await settle();
+    h.navigate.mockClear();
+
+    // Browser Back: the Router has already landed on the Room's own entry.
+    h.queryParamMap.next(convertToParamMap({ account: ALICE }));
+    await settle();
+
+    expect(h.service.panel()).toBeNull();
+    expect(h.service.committedInApp).toBe(false);
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.media.releaseAll).not.toHaveBeenCalled();
+  });
+
+  it('restores a panel a reload or deep link names', async () => {
+    const h = await inRoom({ routePanel: 'members' });
+
+    expect(h.service.view()).toMatchObject({
+      roomId: ROOM,
+      panel: members,
+    });
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
+
+  it('drops the panel when the Room or the Account changes', async () => {
+    const other = '!other:example.org';
+    const h = await inRoom({
+      rooms: { [ALICE]: [ROOM, other], [BOB]: [ROOM] },
+    });
+    h.service.openPanel(members);
+    await settle();
+
+    await go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: other,
+      origin: 'room-list',
+    });
+    expect(h.service.panel()).toBeNull();
+
+    await go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: ROOM,
+      origin: 'room-list',
+    });
+    h.service.openPanel(members);
+    await settle();
+    await go(h, { kind: 'account', accountId: BOB });
+    expect(h.service.view()).toMatchObject({ accountId: BOB, panel: null });
+  });
+
+  it('ignores a panel with no Room open', async () => {
+    const h = harness({ routeAccountId: ALICE });
+    await settle();
+    h.navigate.mockClear();
+
+    h.service.openPanel(members);
+    await settle();
+
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.service.panel()).toBeNull();
+  });
+
+  it('rolls a cancelled transition back to the URL with its panel', async () => {
+    const h = await inRoom();
+    h.service.openPanel(members);
+    await settle();
+    const adapterPreparation = new Subject<void>();
+    h.switchActiveAccount.mockImplementationOnce((accountId, coordination) =>
+      coordination.prepare().pipe(
+        switchMap(() => adapterPreparation),
+        tap(() => coordination.onCommitStarted?.()),
+        tap(() => h.activeAccountId.set(accountId)),
+        map(() => ({ kind: 'ready' as const, accountId })),
+      ),
+    );
+    h.navigate.mockClear();
+    const subscription = h.service
+      .navigate({ kind: 'account', accountId: BOB })
+      .subscribe();
+    await vi.waitFor(() => expect(h.navigate).toHaveBeenCalledOnce());
+
+    subscription.unsubscribe();
+    adapterPreparation.next();
+    adapterPreparation.complete();
+
+    await vi.waitFor(() => expect(h.navigate).toHaveBeenCalledTimes(2));
+    expect(h.navigate).toHaveBeenLastCalledWith(roomCommands, {
+      queryParams: { account: ALICE, panel: 'members' },
+      replaceUrl: true,
+    });
+    expect(h.service.view()).toMatchObject({
+      accountId: ALICE,
+      panel: members,
+    });
   });
 });

@@ -44,6 +44,7 @@ import { WorkspaceVisitHistoryService } from './workspace-visit-history.service'
 import {
   RECENT_WORKSPACE_SCOPE,
   sameWorkspaceDestination,
+  sameWorkspacePlace,
   type WorkspaceDestination,
   type WorkspaceOpenOptions,
   type WorkspaceOpenOutcome,
@@ -52,8 +53,12 @@ import {
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 import { WorkspaceAvailability } from './workspace-availability';
-import { resolveWorkspaceNavigation } from './workspace-navigation.resolver';
+import {
+  resolveWorkspaceNavigation,
+  resolveWorkspacePanel,
+} from './workspace-navigation.resolver';
 import { WorkspaceSpaceRepair } from './workspace-space-repair';
+import type { WorkspacePanel } from './workspace-surface.models';
 
 /**
  * The application workflow that owns the semantic Workspace destination.
@@ -132,6 +137,8 @@ export class WorkspaceNavigationService {
   readonly roomsView = computed(() => this.view().scope.kind === 'rooms');
   readonly activeRoomId = computed(() => this.view().roomId);
   readonly pane = computed(() => this.view().pane);
+  /** The open Room panel, as the URL names it. */
+  readonly panel = computed(() => this.view().panel);
   readonly placement = computed(() =>
     this.compact() ? this.view().pane : 'split',
   );
@@ -157,6 +164,7 @@ export class WorkspaceNavigationService {
             scope: parsed.destination.scope,
             roomId: parsed.destination.roomId,
             pane: parsed.destination.pane,
+            panel: parsed.destination.panel,
             ...(parsed.eventId ? { eventId: parsed.eventId } : {}),
             canonical: parsed.canonical,
           });
@@ -182,7 +190,7 @@ export class WorkspaceNavigationService {
                 scope: RECENT_WORKSPACE_SCOPE,
                 roomId: view.roomId,
                 pane: view.pane,
-                panel: null,
+                panel: view.panel,
               },
               { source: 'repair', history: 'replace' },
             )
@@ -212,7 +220,8 @@ export class WorkspaceNavigationService {
           this.project(view);
         },
         commit: (view, committedOptions) => {
-          const changed = !sameWorkspaceDestination(this.view(), view);
+          // A panel opening or closing keeps the Room's focus and media.
+          const changed = !sameWorkspacePlace(this.view(), view);
           const needsProjection = changed || !this.projectionsActive;
           this.lastCommitInApp =
             committedOptions.source !== 'restore' &&
@@ -233,6 +242,7 @@ export class WorkspaceNavigationService {
           }
           if (
             committedOptions.source === 'user' &&
+            !committedOptions.withinRoom &&
             view.accountId &&
             view.roomId
           ) {
@@ -306,6 +316,29 @@ export class WorkspaceNavigationService {
         }),
       );
     });
+  }
+
+  /** Open a panel in the open Room, replacing any other; without a Room open, nothing happens. */
+  openPanel(panel: WorkspacePanel): void {
+    this.changePanel(panel);
+  }
+
+  /** Close the open Room panel. */
+  closePanel(): void {
+    this.changePanel(null);
+  }
+
+  private changePanel(panel: WorkspacePanel | null): void {
+    defer(() => {
+      const resolved = resolveWorkspacePanel(panel, this.view(), {
+        panelBelow: this.location.panelBelow(),
+      });
+      return resolved
+        ? this.transition(resolved.destination, resolved.options)
+        : EMPTY;
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   private navigateHistory(
@@ -480,6 +513,7 @@ export class WorkspaceNavigationService {
       scope: RECENT_WORKSPACE_SCOPE,
       roomId: null,
       pane: 'list',
+      panel: null,
     });
   }
 

@@ -2,7 +2,10 @@ import type {
   WorkspaceNavigationScope,
   WorkspaceView,
 } from './workspace-navigation.models';
-import type { WorkspacePanel } from './workspace-surface.models';
+import {
+  sameWorkspacePanel,
+  type WorkspacePanel,
+} from './workspace-surface.models';
 
 export type {
   WorkspaceEventTarget,
@@ -40,6 +43,11 @@ export interface WorkspaceOpenOptions {
   readonly eventId?: string | null;
   /** Re-attach projections when the semantic state survived outside the Workspace route. */
   readonly force?: boolean;
+  /**
+   * A panel change inside the open Room: its entry keeps the Room's list mark, and a pushed
+   * one is marked as sitting on that Room so closing it can pop.
+   */
+  readonly withinRoom?: boolean;
 }
 
 export type WorkspaceOpenFailure =
@@ -68,16 +76,26 @@ export const RECENT_WORKSPACE_SCOPE: WorkspaceScope = Object.freeze({
 export function workspaceViewOf(
   destination: WorkspaceDestination,
 ): WorkspaceView {
-  const { panel: _panel, ...view } = destination;
   return Object.freeze({
-    ...view,
+    ...destination,
     scope: Object.freeze({ ...destination.scope }),
   });
 }
 
 export function sameWorkspaceDestination(
-  left: Pick<WorkspaceView, 'accountId' | 'scope' | 'roomId' | 'pane'>,
-  right: Pick<WorkspaceView, 'accountId' | 'scope' | 'roomId' | 'pane'>,
+  left: WorkspaceView,
+  right: WorkspaceView,
+): boolean {
+  return (
+    sameWorkspacePlace(left, right) &&
+    sameWorkspacePanel(left.panel, right.panel)
+  );
+}
+
+/** The same Account, scope, Room and pane, whatever panel is open. */
+export function sameWorkspacePlace(
+  left: WorkspaceView,
+  right: WorkspaceView,
 ): boolean {
   return (
     left.accountId === right.accountId &&

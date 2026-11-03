@@ -1,3 +1,5 @@
+import type { WorkspacePanel } from './workspace-surface.models';
+
 /** Sidebar scope selected by the user without exposing a URL projection. */
 export type WorkspaceNavigationScope =
   | { readonly kind: 'recent' }
@@ -119,6 +121,7 @@ export interface WorkspaceRestorationNavigationIntent {
   readonly scope: WorkspaceNavigationScope;
   readonly roomId: string | null;
   readonly pane: 'list' | 'conversation';
+  readonly panel?: WorkspacePanel | null;
   readonly eventId?: string;
   readonly canonical: boolean;
 }
@@ -157,6 +160,8 @@ export interface WorkspaceView {
   readonly scope: WorkspaceNavigationScope;
   readonly roomId: string | null;
   readonly pane: 'list' | 'conversation';
+  /** The open Room panel; always null on a list. */
+  readonly panel: WorkspacePanel | null;
 }
 
 export type WorkspacePlacement = 'list' | 'conversation' | 'split';
