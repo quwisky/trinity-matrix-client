@@ -4,6 +4,7 @@ import {
   expect,
   type APIRequestContext,
 } from '../../../fixtures.mts';
+import { nextTestResourceId } from '../../../support/namespace.mts';
 import {
   login,
   homeserverSession,
@@ -420,7 +421,7 @@ async function send(
   roomId: string,
   content: Record<string, unknown>,
 ): Promise<string> {
-  const txn = testResourceId('txn');
+  const txn = nextTestResourceId('txn');
   const res = await request.put(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
     {
