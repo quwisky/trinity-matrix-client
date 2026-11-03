@@ -30,9 +30,10 @@ export function workspaceBrowserBackGuard(): boolean | Observable<boolean> {
   if (!dialog.hasOpen()) {
     const active = back.activeSurface();
     if (active !== null && routed.owns(active)) return true;
-    // A Conversation pushed over its list: this history step lands on that list.
-    if (active?.layer === 'conversation' && workspace.conversationOverList())
-      return true;
+    // A compact Conversation: the step lands on the entry below (its list, or the room hopped
+    // from) and Workspace restores it. Dismissing here would navigate inside this popstate,
+    // supersede it and, as that cancels the dismissal, write the Conversation back (#1888).
+    if (active?.layer === 'conversation') return true;
   }
   if (back.hasActive()) {
     // `hasActive` is a cached projection; `back()` re-reads the surface when it runs. If

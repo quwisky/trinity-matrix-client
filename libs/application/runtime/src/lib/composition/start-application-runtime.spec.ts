@@ -1,5 +1,8 @@
 import { ErrorHandler, type ApplicationRef } from '@angular/core';
-import { NativeKeyboardInsetAdapter } from '@trinity/platform-native';
+import {
+  NativeKeyboardInsetAdapter,
+  NativeStatusBarTapAdapter,
+} from '@trinity/platform-native';
 import { Subject, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ApplicationRuntimeService } from '../application-runtime.service';
@@ -12,6 +15,7 @@ function fakeApplication() {
   const markers = new Subject<never>();
   const handover = new Subject<never>();
   const keyboardInset = new Subject<never>();
+  const statusBarTap = new Subject<never>();
   const stop = vi.fn(() => of(undefined));
   const handleError = vi.fn();
   const destroyers: (() => void)[] = [];
@@ -21,6 +25,7 @@ function fakeApplication() {
     [DiagnosticMarkersBinding, { run: () => markers }],
     [SessionHandoverWorkflow, { run: () => handover }],
     [NativeKeyboardInsetAdapter, { run: () => keyboardInset }],
+    [NativeStatusBarTapAdapter, { run: () => statusBarTap }],
   ]);
   const applicationRef = {
     injector: { get: (token: unknown) => services.get(token) },
@@ -32,6 +37,7 @@ function fakeApplication() {
     markers,
     handover,
     keyboardInset,
+    statusBarTap,
     stop,
     handleError,
     destroy: () => destroyers.forEach((destroy) => destroy()),
@@ -48,6 +54,7 @@ describe('startApplicationRuntime', () => {
     expect(app.markers.observed).toBe(true);
     expect(app.handover.observed).toBe(true);
     expect(app.keyboardInset.observed).toBe(true);
+    expect(app.statusBarTap.observed).toBe(true);
 
     app.destroy();
 
@@ -55,6 +62,7 @@ describe('startApplicationRuntime', () => {
     expect(app.markers.observed).toBe(false);
     expect(app.handover.observed).toBe(false);
     expect(app.keyboardInset.observed).toBe(false);
+    expect(app.statusBarTap.observed).toBe(false);
     expect(app.stop).toHaveBeenCalledOnce();
   });
 

@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { Injectable, InjectionToken, inject } from '@angular/core';
+import { DestroyRef, Injectable, InjectionToken, inject } from '@angular/core';
 import {
   CODE_LINE_PRESENTATION_PREFERENCE,
   CODE_SIZE_OPTIONS,
@@ -10,7 +10,6 @@ import {
   DENSITY_PREFERENCE,
   ROOM_LIST_PREFERENCE,
   TEXT_SIZE_OPTIONS,
-  TEXT_SIZE_PREFERENCE,
 } from './design-system-appearance-preferences';
 import type { ResolvedAppearance } from './appearance-resolution';
 
@@ -20,6 +19,40 @@ const DENSITY_ATTRIBUTE = 'data-density';
 const ROOM_LIST_ATTRIBUTE = 'data-room-list';
 const CODE_LINE_ATTRIBUTE = 'data-code-lines';
 const CODE_SIZE_PROPERTY = '--trinity-code-scale';
+/** iOS body text at its default Large Dynamic Type size. */
+const IOS_DEFAULT_BODY_PX = 17;
+const IOS_BODY_FONT = '-apple-system-body';
+/** Largest root scale the device size and the app's option may reach together. */
+export const MAX_ROOT_PERCENT = 250;
+
+/**
+ * A hidden element whose font is iOS body text, so its size follows Dynamic Type. Only a
+ * touch-first WebKit knows `-apple-system-body`, so Mac Safari, Android and other browsers
+ * get null and a scale of 1.
+ */
+function createDeviceTextProbe(doc: Document): HTMLElement | null {
+  const win = doc.defaultView;
+  if (
+    !win ||
+    typeof win.matchMedia !== 'function' ||
+    !win.matchMedia('(hover: none) and (pointer: coarse)').matches ||
+    !CSS.supports('font', IOS_BODY_FONT)
+  ) {
+    return null;
+  }
+  const probe = doc.createElement('span');
+  probe.style.cssText = `font:${IOS_BODY_FONT};display:none`;
+  doc.documentElement.append(probe);
+  return probe;
+}
+
+/** How much larger than its default the device's text size is. */
+export function deviceTextScale(probe: Element | null, win: Window): number {
+  const px = probe
+    ? Number.parseFloat(win.getComputedStyle(probe).fontSize)
+    : 0;
+  return px > 0 ? px / IOS_DEFAULT_BODY_PX : 1;
+}
 
 /** Imperative boundary that owns Appearance's document-root carriers. */
 export interface AppearanceDocumentAdapter {
@@ -28,9 +61,29 @@ export interface AppearanceDocumentAdapter {
 
 @Injectable({ providedIn: 'root' })
 export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapter {
-  private readonly root = inject(DOCUMENT).documentElement;
+  private readonly document = inject(DOCUMENT);
+  private readonly root = this.document.documentElement;
+  private readonly probe = createDeviceTextProbe(this.document);
+  private last: ResolvedAppearance | undefined;
+
+  constructor() {
+    // WebKit fires no event for a Dynamic Type change, so read it again whenever the app
+    // returns from Settings.
+    if (this.probe) {
+      const reapply = (): void => this.reapply();
+      const win = this.document.defaultView;
+      this.document.addEventListener('visibilitychange', reapply);
+      win?.addEventListener('focus', reapply);
+      inject(DestroyRef).onDestroy(() => {
+        this.document.removeEventListener('visibilitychange', reapply);
+        win?.removeEventListener('focus', reapply);
+        this.probe?.remove();
+      });
+    }
+  }
 
   apply(appearance: ResolvedAppearance): void {
+    this.last = appearance;
     this.root.classList.toggle(DARK_CLASS, appearance.mode === 'dark');
     this.applyTheme(appearance);
     this.applyTextSize(appearance);
@@ -38,6 +91,10 @@ export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapt
     this.applyRoomList(appearance);
     this.applyCodeSize(appearance);
     this.applyCodeLines(appearance);
+  }
+
+  private reapply(): void {
+    if (this.last) this.applyTextSize(this.last);
   }
 
   private applyTheme(appearance: ResolvedAppearance): void {
@@ -51,11 +108,20 @@ export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapt
     const option = TEXT_SIZE_OPTIONS.find(
       ({ id }) => id === appearance.textSize,
     );
-    if (!option || option.id === TEXT_SIZE_PREFERENCE.defaultValue) {
+    const win = this.document.defaultView;
+    const percent = Math.min(
+      MAX_ROOT_PERCENT,
+      Math.round(
+        (option?.percent ?? 100) *
+          (win ? deviceTextScale(this.probe, win) : 1) *
+          10,
+      ) / 10,
+    );
+    if (percent === 100) {
       this.root.style.removeProperty('font-size');
       return;
     }
-    this.root.style.setProperty('font-size', `${option.percent}%`);
+    this.root.style.setProperty('font-size', `${percent}%`);
   }
 
   private applyDensity(appearance: ResolvedAppearance): void {
