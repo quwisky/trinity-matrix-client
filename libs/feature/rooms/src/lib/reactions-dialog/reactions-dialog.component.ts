@@ -10,13 +10,20 @@ import {
 } from '@angular/core';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnDialogShellComponent } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnDialogShellComponent,
+} from '@trinity/components/overlay';
 import {
   ConversationRuntime,
   type ReactionDetail,
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { textScaledViewportSignal } from '@trinity/util/ui';
+import {
+  BELOW_MD_QUERY,
+  mediaQuerySignal,
+  textScaledViewportSignal,
+} from '@trinity/util/ui';
 
 /**
  * Dialog listing everyone who reacted to a message, one section per emoji. Reads the reactors
@@ -38,6 +45,8 @@ import { textScaledViewportSignal } from '@trinity/util/ui';
 })
 export class ReactionsDialogComponent implements OnInit {
   private readonly timeline = inject(ConversationRuntime).timeline;
+  private readonly ref = inject(TrnDialogRef, { optional: true });
+  private readonly phone = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
 
   readonly eventId = input.required<string>();
 
@@ -60,6 +69,11 @@ export class ReactionsDialogComponent implements OnInit {
 
   /** Keep the directory and detail panes together only when the text scale permits it. */
   readonly wide = textScaledViewportSignal(48, inject(DestroyRef));
+
+  /** A phone detent sheet sizes the list to its content; elsewhere it keeps its fixed height. */
+  readonly fitContent = computed(
+    () => !!this.ref?.detents.length && this.phone(),
+  );
 
   // Read here, not in the constructor: TrnSurfaceService sets the inputs after creation but
   // before the first change detection. Nothing to react to afterwards; the list is a snapshot.

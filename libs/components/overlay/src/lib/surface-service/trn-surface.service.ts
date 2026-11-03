@@ -22,7 +22,10 @@ export interface TrnSurfaceOptions<C = object> extends DialogDetents {
   /** The dialog's accessible name; pass its visible title. */
   ariaLabel?: string;
   ariaDescribedBy?: string;
-  /** A selector, `'first-heading'`, `'dialog'` or `false`; the first tabbable otherwise. */
+  /**
+   * A selector, `'first-heading'`, `'dialog'` or `false`; otherwise the first tabbable, or the
+   * dialog for a phone sheet opened with `detents`.
+   */
   autoFocus?: TrnDialogAutoFocus;
   /** No X, handle or swipe; Esc, backdrop and Back are ignored. */
   disableClose?: boolean;

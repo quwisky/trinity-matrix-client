@@ -29,8 +29,8 @@ const OWN_GESTURE =
  *
  * It is for a layout in a dialog: WebKit's own history swipe is off while one is open. The
  * routed page leaves the swipe to the platform. The drag writes styles, not signals, so no
- * render runs per frame; a sheet's downward drag lets a sideways touch go, and this lets a
- * downward one go, so the two never both claim a touch.
+ * render runs per frame; a sheet's vertical drag lets a sideways touch go, and this lets a
+ * vertical one go, so the two never both claim a touch.
  */
 @Directive({ selector: '[trnSettingsSwipeBack]' })
 export class TrnSettingsSwipeBack {

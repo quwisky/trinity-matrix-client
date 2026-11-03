@@ -5,10 +5,8 @@ export type TrnSheetDetent = 'medium' | 'large';
 export const SHEET_LARGE_HEIGHT =
   'calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px))';
 
-export const SHEET_DETENT_HEIGHT = {
-  medium: '50svh',
-  large: SHEET_LARGE_HEIGHT,
-} as const satisfies Record<TrnSheetDetent, string>;
+/** Half the small viewport, so the sheet doesn't jump when the browser toolbar collapses. */
+export const SHEET_MEDIUM_HEIGHT = '50svh';
 
 /** A drag past this fraction of the lowest height closes the sheet. */
 export const DISMISS_FRACTION = 0.25;
@@ -34,11 +32,7 @@ export function nextDetent(
   dy: number,
   velocity: number,
   available: readonly TrnSheetDetent[],
-  heights: SheetDetentHeights = {
-    start: current === 'large' ? window.innerHeight : window.innerHeight / 2,
-    medium: window.innerHeight / 2,
-    large: window.innerHeight,
-  },
+  heights: SheetDetentHeights,
 ): TrnSheetDetent | 'dismiss' {
   const both = available.includes('medium') && available.includes('large');
   const lowest: TrnSheetDetent = available.includes('medium')

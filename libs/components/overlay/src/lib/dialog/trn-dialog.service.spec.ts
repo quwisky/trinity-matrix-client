@@ -5,6 +5,7 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom, NEVER } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@trinity/testing';
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { TrnAlertService } from '../alert/trn-alert.service';
 import { TrnDialogShellComponent } from '../dialog-shell/trn-dialog-shell.component';
 import { TrnDialogRef } from './trn-dialog-ref';
@@ -30,6 +31,19 @@ class TestDialogComponent {
   }
 }
 
+/** Answers `BELOW_MD_QUERY` with `below`, and every other query with false. */
+function mockBelowMd(below: boolean): void {
+  vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query: string) =>
+      ({
+        matches: below && query === BELOW_MD_QUERY,
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }) as unknown as MediaQueryList,
+  );
+}
+
 /** Click the open test dialog's own close button, so it closes with its label. */
 const clickClose = () =>
   document.querySelector<HTMLButtonElement>('[data-testid="close"]')?.click();
@@ -52,7 +66,10 @@ class FocusDialogComponent {}
 class ShellDialogComponent {}
 
 describe('TrnDialogService — dialog shell', () => {
-  afterEach(() => TestBed.inject(TrnDialogService).closeAll());
+  afterEach(() => {
+    TestBed.inject(TrnDialogService).closeAll();
+    vi.restoreAllMocks();
+  });
 
   it('exposes one dialog role, named by the shell title', () => {
     const svc = TestBed.inject(TrnDialogService);
@@ -236,8 +253,9 @@ describe('TrnDialogService', () => {
     ],
     [{}, 'first-tabbable'],
   ] as const)(
-    "focuses a detent sheet's dialog, not its height button, unless told otherwise (%o)",
+    "focuses a phone detent sheet's dialog, not its height button, unless told otherwise (%o)",
     (options, expected) => {
+      mockBelowMd(true);
       const open = vi.spyOn(TestBed.inject(Dialog), 'open');
       const ref = TestBed.inject(TrnDialogService).open(TestDialogComponent, {
         placement: 'bottom',
@@ -245,6 +263,24 @@ describe('TrnDialogService', () => {
       });
 
       expect(open.mock.calls[0]?.[1]?.autoFocus).toBe(expected);
+      ref.close();
+    },
+  );
+
+  it.each([
+    ['a sheet at md and wider', 'bottom'],
+    ['a centred dialog', 'center'],
+  ] as const)(
+    'keeps the first tabbable for %s opened with detents',
+    (_name, placement) => {
+      mockBelowMd(placement === 'center');
+      const open = vi.spyOn(TestBed.inject(Dialog), 'open');
+      const ref = TestBed.inject(TrnDialogService).open(TestDialogComponent, {
+        placement,
+        detents: ['medium', 'large'],
+      });
+
+      expect(open.mock.calls[0]?.[1]?.autoFocus).toBe('first-tabbable');
       ref.close();
     },
   );

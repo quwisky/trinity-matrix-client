@@ -4,8 +4,8 @@ import { Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import {
-  SHEET_DETENT_HEIGHT,
   SHEET_LARGE_HEIGHT,
+  SHEET_MEDIUM_HEIGHT,
   type TrnSheetDetent,
 } from '../sheet-frame/sheet-detent';
 import {
@@ -523,9 +523,9 @@ describe('TrnSheetDrag detents', () => {
     const heightOf = (css: string): number =>
       css.endsWith('px')
         ? parseFloat(css)
-        : css === SHEET_DETENT_HEIGHT.large
+        : css === SHEET_LARGE_HEIGHT
           ? PHONE.large
-          : css === SHEET_DETENT_HEIGHT.medium
+          : css === SHEET_MEDIUM_HEIGHT
             ? PHONE.medium
             : css === 'auto'
               ? Math.min(content, cap())
@@ -725,6 +725,22 @@ describe('TrnSheetDrag detents', () => {
     expect(pull(by('row'), 0, -300)).toBe(true);
     expect(drag.detent()).toBe('large');
     expect(by('list').scrollTop).toBe(0);
+  });
+
+  it('expands on an upward drag of a list already scrolled down at medium', async () => {
+    const { drag, by } = await setupDetents();
+    by('list').scrollTop = 40;
+    expect(pull(by('row'), 0, -300)).toBe(true);
+    expect(drag.detent()).toBe('large');
+    expect(by('list').scrollTop).toBe(40);
+  });
+
+  it('leaves a downward drag of a list scrolled down at medium to the list', async () => {
+    const { drag, by } = await setupDetents();
+    by('list').scrollTop = 40;
+    expect(pull(by('row'), 0, 250)).toBe(false);
+    expect(drag.detent()).toBe('medium');
+    expect(dismiss).not.toHaveBeenCalled();
   });
 
   it('leaves an upward content drag at large to the list', async () => {

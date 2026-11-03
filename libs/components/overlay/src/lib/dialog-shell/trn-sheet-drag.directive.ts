@@ -19,8 +19,8 @@ import {
   DISMISS_FRACTION,
   FLING_MIN_DISTANCE,
   FLING_VELOCITY,
-  SHEET_DETENT_HEIGHT,
   SHEET_LARGE_HEIGHT,
+  SHEET_MEDIUM_HEIGHT,
   nextDetent,
   type SheetDetentHeights,
   type TrnSheetDetent,
@@ -59,7 +59,7 @@ const OWN_GESTURE =
 const RESTING = {
   medium: {
     height: 'auto',
-    max: `min(${SHEET_DETENT_HEIGHT.medium}, ${SHEET_LARGE_HEIGHT})`,
+    max: `min(${SHEET_MEDIUM_HEIGHT}, ${SHEET_LARGE_HEIGHT})`,
   },
   large: { height: SHEET_LARGE_HEIGHT, max: SHEET_LARGE_HEIGHT },
 } as const satisfies Record<TrnSheetDetent, { height: string; max: string }>;
@@ -105,6 +105,7 @@ export class TrnSheetDrag {
   private unsnap: ReturnType<typeof setTimeout> | undefined;
   /** The click that ends a drag on the handle button is not a toggle. */
   private dragged = false;
+  private undrag: ReturnType<typeof setTimeout> | undefined;
   /** Whether the content has been measured once, whatever the detent it opened at. */
   private measured = false;
 
@@ -156,6 +157,7 @@ export class TrnSheetDrag {
     inject(DestroyRef).onDestroy(() => {
       observer?.disconnect();
       clearTimeout(this.unsnap);
+      clearTimeout(this.undrag);
       this.stopDrag?.();
       this.host.removeEventListener('scroll', scrolled, { capture: true });
       this.host.removeEventListener('touchstart', start);
@@ -291,7 +293,8 @@ export class TrnSheetDrag {
         this.stopDrag?.();
         if (Math.abs(dy) >= CLAIM_SLOP) {
           this.dragged = true;
-          setTimeout(() => (this.dragged = false));
+          clearTimeout(this.undrag);
+          this.undrag = setTimeout(() => (this.dragged = false));
         }
         if (cancelled) {
           this.settle(detent, heights);
@@ -321,7 +324,7 @@ export class TrnSheetDrag {
     const content = this.measure('auto');
     const heights = {
       start,
-      medium: Math.min(content, this.measure(SHEET_DETENT_HEIGHT.medium)),
+      medium: Math.min(content, this.measure(SHEET_MEDIUM_HEIGHT)),
       large: this.measure(SHEET_LARGE_HEIGHT),
     };
     this.host.style.height = `${start}px`;
@@ -381,7 +384,7 @@ export class TrnSheetDrag {
     if (detent === 'large' && this.measured) return;
     this.measured = true;
     const content = this.measure('auto');
-    const fits = content + 1 < this.measure(SHEET_DETENT_HEIGHT.medium);
+    const fits = content + 1 < this.measure(SHEET_MEDIUM_HEIGHT);
     this.host.style.height = '';
     if (fits && this.toggleable()) this.keepFocus();
     this.fits.set(fits);
@@ -409,6 +412,9 @@ export class TrnSheetDrag {
     ) {
       return;
     }
+    // Scrolled content only grows a `medium` sheet; a downward pull on it scrolls the content.
+    const atTop = !scrolledDown(event.target as Element, this.host);
+    if (!atTop && this.toggleable() !== 'expand') return;
     this.stopDrag?.();
     const { clientX: x0, clientY: y0 } = touch;
     // Decided once, on the first move past the slop: a vertical pull the sheet can follow
@@ -431,6 +437,7 @@ export class TrnSheetDrag {
         if (
           Math.abs(dx) > Math.abs(dy) ||
           (dy < 0 && !grows) ||
+          (dy > 0 && !atTop) ||
           !e.cancelable
         ) {
           return stop();
@@ -458,7 +465,7 @@ export class TrnSheetDrag {
     this.stopDrag = stop;
   }
 
-  /** Only content resting at its top, with nothing inside that owns the gesture, may pull the sheet. */
+  /** Content may pull the sheet unless it is coasting or something inside owns the gesture. */
   private contentCanDrag(target: Element | null): boolean {
     if (!target || target.closest(OWN_GESTURE)) return false;
     if (performance.now() - this.lastScroll < MOMENTUM_MS) return false;
@@ -467,7 +474,6 @@ export class TrnSheetDrag {
     for (let el: Element | null = target; el;) {
       const style = getComputedStyle(el);
       if (
-        el.scrollTop > 0 ||
         /^(none|pan-x)$/.test(style.touchAction) ||
         (el.scrollWidth > el.clientWidth && /auto|scroll/.test(style.overflowX))
       ) {
@@ -477,6 +483,18 @@ export class TrnSheetDrag {
     }
     return true;
   }
+}
+
+/** Whether `target` or a scroller around it, up to `host`, is scrolled away from its top. */
+function scrolledDown(target: Element, host: Element): boolean {
+  for (
+    let el: Element | null = target;
+    el;
+    el = el === host ? null : el.parentElement
+  ) {
+    if (el.scrollTop > 0) return true;
+  }
+  return false;
 }
 
 /** The part of a sheet (grab handle, header) that starts a drag. */

@@ -52,7 +52,9 @@ export interface DialogOptions<C = object> extends DialogDetents {
    */
   ariaDescribedBy?: string;
   /**
-   * Which element takes focus when the dialog opens, defaulting to CDK's `'first-tabbable'`.
+   * Which element takes focus when the dialog opens, defaulting to CDK's `'first-tabbable'`
+   * (`'dialog'` for a phone sheet opened with `detents`, whose first tabbable is its height
+   * button).
    * That default is wrong for a dialog whose header carries a Cancel/Close button ahead of the
    * field the user came to type in, and a component-side `focus()` can't fix it: CDK focuses
    * *after* attach and overrides the earlier call. Name the element instead: a CSS selector
@@ -303,9 +305,15 @@ export class TrnDialogService {
       ariaDescribedBy: opts.ariaDescribedBy,
       // Spelled out rather than left off: CDK merges the config over its defaults with a spread,
       // so an `autoFocus: undefined` key would clobber the default.
-      // A detent sheet's first tabbable is its height button; the title-labelled dialog is better.
+      // A phone detent sheet's first tabbable is its height button; the labelled dialog is
+      // better. Wider, detents are off and the first control keeps focus, read once at open.
       autoFocus:
-        opts.autoFocus ?? (opts.detents?.length ? 'dialog' : 'first-tabbable'),
+        opts.autoFocus ??
+        (opts.detents?.length &&
+        opts.placement === 'bottom' &&
+        matchesQuery(BELOW_MD_QUERY)
+          ? 'dialog'
+          : 'first-tabbable'),
       // The pressed control, not only what held focus: a WebKit tap never focuses it.
       restoreFocus:
         opts.restoreFocus === false ? false : this.opener.restoreTarget(),

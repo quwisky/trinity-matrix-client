@@ -9,8 +9,9 @@ import { isNativeIos } from './mobile-os';
  *
  * The pane is the nearest scrollable ancestor of whatever sits at the centre of the topmost open
  * sheet or dialog, or of the screen when none is open, so the timeline, room list, settings pages
- * and threads need no wiring, and a sheet in front takes the tap instead of the page behind it. A timeline stops at the oldest message it
- * has loaded; its normal near-top paging then adds older ones without moving the reader.
+ * and threads need no wiring, and a sheet in front takes the tap instead of the page behind it.
+ * A timeline stops at the oldest message it has loaded; its normal near-top paging then adds
+ * older ones without moving the reader.
  */
 @Injectable({ providedIn: 'root' })
 export class NativeStatusBarTapAdapter {
