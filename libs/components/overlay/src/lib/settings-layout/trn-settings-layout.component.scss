@@ -341,6 +341,13 @@
     padding-inline: var(--settings-layout-gutter);
   }
 
+  // A dialog or sheet already stops below the status bar, so its panes don't pad for it again.
+  :host(:not([data-presentation='fullscreen']))
+    .settings-layout[data-compact='true']
+    :is(.settings-layout__nav, .settings-layout__column) {
+    padding-block-start: var(--settings-layout-inset);
+  }
+
   :host([data-presentation='dialog']) .settings-layout {
     block-size: min(44rem, calc(var(--settings-layout-viewport) - 6rem));
   }
