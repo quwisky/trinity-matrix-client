@@ -4,6 +4,7 @@ import {
   test,
   expect,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '../../../fixtures.mts';
 import {
@@ -566,6 +567,20 @@ test.describe('On-demand composer formatting', () => {
   });
 });
 
+/** On a phone Format is an entry in the `+` sheet, not a button beside the field. */
+async function openFormatFromInsertSheet(
+  page: Page,
+  touchPlatform: {
+    dismissKeyboard(page: Page): Promise<void>;
+    tap(page: Page, target: Locator): Promise<void>;
+  },
+): Promise<void> {
+  await touchPlatform.dismissKeyboard(page);
+  await touchPlatform.tap(page, page.getByTestId('composer-insert'));
+  const insert = page.getByRole('dialog', { name: 'Add to message' });
+  await touchPlatform.tap(page, insert.getByTestId('insert-format'));
+}
+
 test.describe('On-demand composer formatting on mobile', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
   test.use({
@@ -584,12 +599,8 @@ test.describe('On-demand composer formatting on mobile', () => {
     const { composer } = await openComposer(page, request, 'menu-mobile');
     await composer.fill('say hello');
     await selectWord(page, 'hello');
-    const trigger = page.getByTestId('composer-format');
-    const target = await trigger.boundingBox();
-    expect(target?.width).toBeGreaterThanOrEqual(44);
-    expect(target?.height).toBeGreaterThanOrEqual(44);
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, trigger);
+    await expect(page.getByTestId('composer-format')).toHaveCount(0);
+    await openFormatFromInsertSheet(page, touchPlatform);
 
     const dialog = page.getByRole('dialog', { name: 'Format message' });
     const sheet = dialog.getByTestId('action-sheet-surface');
@@ -626,24 +637,20 @@ test.describe('On-demand composer formatting on mobile', () => {
     );
     await composer.fill('**bold** and plain');
     await selectWord(page, 'bold');
-    const trigger = page.getByTestId('composer-format');
     const dialog = page.getByRole('dialog', { name: 'Format message' });
 
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, trigger);
+    await openFormatFromInsertSheet(page, touchPlatform);
     await touchPlatform.tap(page, dialog.getByTestId('format-cancel'));
     await expect(dialog).toBeHidden();
     await expect(composer).toHaveValue('**bold** and plain');
     await expect(composer).toHaveJSProperty('selectionStart', 2);
     await expect(composer).toHaveJSProperty('selectionEnd', 6);
 
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, trigger);
+    await openFormatFromInsertSheet(page, touchPlatform);
     await touchPlatform.tap(page, dialog.getByTestId('format-preview'));
     const preview = page.getByTestId('composer-preview');
     await expect(preview.locator('strong')).toHaveText('bold');
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, trigger);
+    await openFormatFromInsertSheet(page, touchPlatform);
     await touchPlatform.tap(page, dialog.getByTestId('format-preview'));
     await expect(preview).toBeHidden();
     await expect(composer).toBeFocused();
@@ -651,7 +658,7 @@ test.describe('On-demand composer formatting on mobile', () => {
     await expect(composer).toHaveJSProperty('selectionEnd', 6);
     await expect(page.getByTestId('composer-send')).toBeVisible();
   });
-  test('keeps Format and Send reachable at compact width with larger text', async ({
+  test('keeps Format (in the sheet) and Send reachable at compact width with larger text', async ({
     page,
     request,
     touchPlatform,
@@ -664,7 +671,8 @@ test.describe('On-demand composer formatting on mobile', () => {
     await expect(composer).toBeVisible();
     await expect(page.locator('html')).toHaveCSS('font-size', '20px');
     await composer.fill('compact draft');
-    for (const id of ['composer-format', 'composer-send']) {
+    await expect(page.getByTestId('composer-format')).toHaveCount(0);
+    for (const id of ['composer-insert', 'composer-send']) {
       const control = page.getByTestId(id);
       await expect(control).toBeVisible();
       const box = await control.boundingBox();
@@ -673,15 +681,13 @@ test.describe('On-demand composer formatting on mobile', () => {
       expect(box!.x).toBeGreaterThanOrEqual(0);
       expect(box!.x + box!.width).toBeLessThanOrEqual(320.5);
     }
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, page.getByTestId('composer-format'));
+    await openFormatFromInsertSheet(page, touchPlatform);
     const dialog = page.getByRole('dialog', { name: 'Format message' });
     await touchPlatform.tap(page, dialog.getByTestId('format-preview'));
     await expect(page.getByTestId('composer-preview')).toHaveText(
       'compact draft',
     );
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, page.getByTestId('composer-format'));
+    await openFormatFromInsertSheet(page, touchPlatform);
     await touchPlatform.tap(page, dialog.getByTestId('format-preview'));
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue('compact draft');
