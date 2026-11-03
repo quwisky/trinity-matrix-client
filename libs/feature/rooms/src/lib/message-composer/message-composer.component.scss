@@ -55,8 +55,9 @@
   // guessed `min-height`, and toggling preview would resize the composer.
   // `align-items: end` pins the buttons to the last line as the textarea grows, with no
   // hand-measured offsets; a `position: absolute` or a fixed `height` here breaks that.
-  // Five columns: insert, input and three trailing buttons. The send column is dropped in the
-  // recording state (below) because an empty track still gets its gutter.
+  // Five columns at most: insert, input, Format, emoji and send. Send is dropped while recording
+  // and, on touch, while idle; Format is dropped where it lives in the insert sheet. An empty
+  // track still gets its gutter, so each case below declares its own column count.
   .composer__field {
     display: grid;
     grid-template-columns: auto 1fr auto auto auto;
@@ -92,8 +93,25 @@
     // 6px leading one. Declare one column fewer for that state instead. Shortening the base
     // template is not an option: with fewer columns than items, the last would wrap to an
     // implicit second row.
-    &:not(:has(.composer__send)) {
+    &:not(:has(.composer__send)),
+    &.composer__field--format-in-sheet {
       grid-template-columns: auto 1fr auto auto;
+    }
+
+    &.composer__field--format-in-sheet:not(:has(.composer__send)) {
+      grid-template-columns: auto 1fr auto;
+    }
+
+    @media (pointer: coarse) {
+      &:not(:has(.composer__send:not(.composer__send--idle))) {
+        grid-template-columns: auto 1fr auto auto;
+      }
+
+      &.composer__field--format-in-sheet:not(
+          :has(.composer__send:not(.composer__send--idle))
+        ) {
+        grid-template-columns: auto 1fr auto;
+      }
     }
   }
 
@@ -271,6 +289,10 @@
   // Touch targets: 44px minimum on touch devices only (inert on a mouse, so desktop keeps its
   // 36/40px buttons).
   @media (pointer: coarse) {
+    .composer__send--idle {
+      display: none;
+    }
+
     .composer__emoji,
     .composer__send {
       min-width: var(--trinity-interaction-target-min-size);

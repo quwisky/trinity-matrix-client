@@ -238,6 +238,21 @@ describe('MatrixConversationMessageAdapter', () => {
     });
   });
 
+  // #1868: the SDK keeps a resent echo where it was first added, but the server stamps it with
+  // the time of the resend, so a 11:09 message sat above an 11:08 one.
+  it('moves a retried echo to the end of the timeline, where its new send time belongs', async () => {
+    const { adapter, room } = setup({
+      eventStatus: EventStatus.NOT_SENT,
+    });
+    const newer = fakeEvent({ id: '$newer', sender: '@bob:hs' });
+    const order = room.getLiveTimeline().getEvents();
+    order.push(newer);
+
+    await firstValueFrom(adapter.retry({ key: KEY, messageId: '$message' }));
+
+    expect(order.map((e) => e.getId())).toEqual(['$newer', '$message']);
+  });
+
   it('cancels only a NOT_SENT echo', async () => {
     const waiting = setup({ eventStatus: EventStatus.NOT_SENT });
     await expect(

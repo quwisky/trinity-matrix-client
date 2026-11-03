@@ -21,6 +21,7 @@ import {
   annotationContent,
   isTransientMatrixError,
   myReactionIds,
+  resendAtEnd,
 } from '@trinity/util/matrix';
 import type {
   ConversationMessageActionRequest,
@@ -163,7 +164,7 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       ) {
         return of(this.rejected('retry', 'event-not-retryable'));
       }
-      return from(context.client.resendEvent(event, context.room)).pipe(
+      return from(resendAtEnd(context.client, event, context.room)).pipe(
         map(() => this.applied('retry')),
         catchError((error: unknown) =>
           of(this.requestRejected('retry', error)),

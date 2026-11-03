@@ -1248,11 +1248,10 @@ describe('LoginPage', () => {
       expect(button()?.disabled).toBe(true);
     });
 
-    it('keeps the danger action ghost instead of making it the primary surface', async () => {
-      // The public danger/ghost recipe owns the red label and tint. A filled destructive
-      // surface would out-weigh signing in, which remains the task this screen is for.
-      // Browser coverage measures the actual themed result; jsdom can only pin the recipe
-      // class boundary here.
+    it('keeps the erase action a quiet link instead of a red surface', async () => {
+      // A red or filled control would out-weigh signing in, which remains the task this
+      // screen is for. Browser coverage measures the actual themed result; jsdom can only
+      // pin the recipe boundary here.
       const { fixture } = await renderLogin(
         {} as unknown as Partial<AuthService>,
       );
@@ -1261,6 +1260,7 @@ describe('LoginPage', () => {
       );
 
       expect(button.className).not.toContain('bg-destructive');
+      expect(button.getAttribute('data-trn-variant')).not.toBe('danger');
     });
 
     it('erases nothing when the word is mistyped, and says so', async () => {

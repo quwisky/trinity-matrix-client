@@ -1,70 +1,72 @@
-@if (mobileInteraction) {
-  <button
-    #trigger
-    type="button"
-    trnIconButton
-    class="composer__format"
-    trnTooltip="Format"
-    aria-label="Format message"
-    aria-haspopup="dialog"
-    [attr.aria-expanded]="mobileSheetOpen()"
-    data-testid="composer-format"
-    [disabled]="disabled()"
-    (click)="openMobileSheet()"
-  >
-    <trn-icon name="case-sensitive" motion="pop" />
-  </button>
-} @else {
-  <button
-    #trigger
-    type="button"
-    trnIconButton
-    class="composer__format"
-    trnTooltip="Format"
-    aria-label="Format message"
-    data-testid="composer-format"
-    [disabled]="disabled()"
-    [trnDropdownMenuTrigger]="formatMenu"
-    side="top"
-    align="end"
-    (trnDropdownMenuOpened)="onDesktopOpened()"
-    (trnDropdownMenuClosed)="onDesktopClosed()"
-  >
-    <trn-icon name="case-sensitive" motion="pop" />
-  </button>
-  <ng-template #formatMenu>
-    <div
-      trnDropdownMenu
+@if (!inSheet()) {
+  @if (mobileInteraction) {
+    <button
+      #trigger
+      type="button"
+      trnIconButton
+      class="composer__format"
+      trnTooltip="Format"
       aria-label="Format message"
-      data-testid="composer-format-menu"
+      aria-haspopup="dialog"
+      [attr.aria-expanded]="mobileSheetOpen()"
+      data-testid="composer-format"
+      [disabled]="disabled()"
+      (click)="openMobileSheet()"
     >
-      @for (entry of entries; track entry.action) {
+      <trn-icon name="case-sensitive" motion="pop" />
+    </button>
+  } @else {
+    <button
+      #trigger
+      type="button"
+      trnIconButton
+      class="composer__format"
+      trnTooltip="Format"
+      aria-label="Format message"
+      data-testid="composer-format"
+      [disabled]="disabled()"
+      [trnDropdownMenuTrigger]="formatMenu"
+      side="top"
+      align="end"
+      (trnDropdownMenuOpened)="onDesktopOpened()"
+      (trnDropdownMenuClosed)="onDesktopClosed()"
+    >
+      <trn-icon name="case-sensitive" motion="pop" />
+    </button>
+    <ng-template #formatMenu>
+      <div
+        trnDropdownMenu
+        aria-label="Format message"
+        data-testid="composer-format-menu"
+      >
+        @for (entry of entries; track entry.action) {
+          <button
+            trnDropdownMenuItem
+            class="composer__format-item"
+            [attr.data-testid]="'format-' + entry.action"
+            (triggered)="choose(entry.action)"
+          >
+            <trn-icon [name]="entry.icon" />{{ entry.text }}
+          </button>
+        }
         <button
           trnDropdownMenuItem
           class="composer__format-item"
-          [attr.data-testid]="'format-' + entry.action"
-          (triggered)="choose(entry.action)"
+          data-testid="format-preview"
+          (triggered)="choose('preview')"
         >
-          <trn-icon [name]="entry.icon" />{{ entry.text }}
+          <trn-icon [name]="previewing() ? 'pencil' : 'eye'" />
+          {{ previewing() ? 'Edit message' : 'Preview' }}
         </button>
-      }
-      <button
-        trnDropdownMenuItem
-        class="composer__format-item"
-        data-testid="format-preview"
-        (triggered)="choose('preview')"
-      >
-        <trn-icon [name]="previewing() ? 'pencil' : 'eye'" />
-        {{ previewing() ? 'Edit message' : 'Preview' }}
-      </button>
-      <button
-        trnDropdownMenuItem
-        class="composer__format-item"
-        data-testid="format-cancel"
-        (triggered)="cancel()"
-      >
-        Cancel
-      </button>
-    </div>
-  </ng-template>
+        <button
+          trnDropdownMenuItem
+          class="composer__format-item"
+          data-testid="format-cancel"
+          (triggered)="cancel()"
+        >
+          Cancel
+        </button>
+      </div>
+    </ng-template>
+  }
 }

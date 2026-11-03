@@ -1,6 +1,7 @@
 import {
   isTemporarySendError,
   isWaitingToSend,
+  resendAtEnd,
   stripReplyFallbackText,
 } from '@trinity/util/matrix';
 import {
@@ -142,7 +143,7 @@ export async function resendWaitingEchoes(
         if (!live()) return;
         if (!isWaitingToSend(event)) continue;
         try {
-          await client.resendEvent(event, room);
+          await resendAtEnd(client, event, room);
         } catch (error: unknown) {
           if (isTemporarySendError(error)) return;
         }

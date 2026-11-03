@@ -63,6 +63,7 @@ import {
   type MentionMember,
 } from '../message-composer/message-composer.component';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
+import { dismissKeyboardOnDrag } from './drag-dismiss-keyboard';
 import { observeScrollerHeight } from './scroller-height-anchor';
 import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
 import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
@@ -586,8 +587,10 @@ export abstract class MessageListBase {
     for (const type of events) {
       el.addEventListener(type, stop, { passive: true });
     }
+    const stopDismissing = dismissKeyboardOnDrag(el);
     this.listDestroyRef.onDestroy(() => {
       for (const type of events) el.removeEventListener(type, stop);
+      stopDismissing();
     });
   }
 

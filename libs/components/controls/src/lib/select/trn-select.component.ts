@@ -80,6 +80,7 @@ export interface TrnSelectOption<T> {
       <hlm-select-content *hlmSelectPortal>
         @for (option of options(); track option.value) {
           <hlm-select-item
+            class="pointer-coarse:min-h-11"
             [value]="option.value"
             [disabled]="option.disabled ?? false"
             [attr.data-testid]="option.testId"

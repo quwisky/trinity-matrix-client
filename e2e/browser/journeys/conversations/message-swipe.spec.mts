@@ -20,6 +20,7 @@ import {
 import { cdpSwipe as swipe } from '../../../support/touch-platform.mts';
 import { expectForecastStored } from '../../support/encryption-journey.mts';
 import { createRoom } from '../../support/space-journey.mts';
+import { settleOpenedRoom } from '../../../support/message-composer.mts';
 
 // Swiping a message row sideways to edit or reply to it (#222), on a real phone profile.
 //
@@ -118,6 +119,7 @@ async function openRoom(
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 20_000,
   });
+  await settleOpenedRoom(page);
   await expect(
     page
       .locator('trn-encryption-banner trn-banner')

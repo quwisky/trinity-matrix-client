@@ -291,6 +291,11 @@ export function fakeRoom(
     loadMembersIfNeeded: () => Promise.resolve(true),
     getLiveTimeline: () => ({
       getEvents: () => events,
+      removeEvent: (id: string) => {
+        const at = events.findIndex((e) => e.getId() === id);
+        return at < 0 ? null : events.splice(at, 1)[0];
+      },
+      addEvent: (event: (typeof events)[number]) => void events.push(event),
       getPaginationToken: () => null,
       getState: () => ({
         hasSufficientPowerLevelFor: (_action: string, level: number) =>

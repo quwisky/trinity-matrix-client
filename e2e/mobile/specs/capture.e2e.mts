@@ -108,7 +108,7 @@ async function captureOutcome(timeout: number): Promise<CaptureOutcome> {
 describe('mobile camera capture', () => {
   beforeEach(resetApp);
 
-  it('offers Photos, Take photo and Record video right after Attach', async () => {
+  it('offers Photos, Take photo and Record video right after Attach, and Format last', async () => {
     await openFreshRoom('capture-menu');
     await openInsertSheet();
 
@@ -125,6 +125,8 @@ describe('mobile camera capture', () => {
       'insert-take-photo',
       'insert-record-video',
     ]);
+    // Format closes the sheet, after every send-side action.
+    expect(order.at(-1)).toBe('insert-format');
   });
 
   it('takes a photo through the Simulator camera and stages it', async function () {
