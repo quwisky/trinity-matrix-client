@@ -51,8 +51,13 @@ public protocol TokenLease: Sendable {
 /// a holder suspended past its expiry no longer holds it when it wakes. A restart begins it again
 /// near zero, so an older lease reads as further ahead than any lease can be, and is stale.
 ///
-/// What is left: a holder learns it lost the lease only when it next asks `holds`, so a holder
-/// suspended between that check and its next step acts once without it. And a discard empties the
+/// What is left: a holder learns it lost the lease only when it next asks `holds`, which the
+/// refresher does just before it sends a grant. A holder suspended from that check until its answer
+/// is written lets the lease lapse while its grant is in flight, and another process can then read
+/// the unchanged vault and send the same refresh token. Compare-before-write keeps the vault
+/// consistent, but the provider has seen the token twice; only the provider can fence that. The app
+/// starts a grant only with background time (`mayStartAppGrant`), and iOS ends the extension rather
+/// than suspending it, which is the lost answer instead. And a discard empties the
 /// names, so numbering starts again: a taker with a read from before the discard can then claim a
 /// number above a new holder's. A discard removes the account's tokens, so neither has any to send.
 public final class AppGroupTokenLease: TokenLease {
@@ -82,7 +87,7 @@ public final class AppGroupTokenLease: TokenLease {
     }
 
     /// - Parameter rename: `renamex_np`, answering 0 or the errno; a test replaces it to force a race.
-    init(
+    package init(
         containerURL: URL, uptime: @escaping @Sendable () -> TimeInterval = AppGroupTokenLease.continuousUptime,
         rename: @escaping @Sendable (String, String, UInt32) -> Int32 = AppGroupTokenLease.systemRename
     ) {
@@ -91,12 +96,12 @@ public final class AppGroupTokenLease: TokenLease {
         self.rename = rename
     }
 
-    static let systemRename: @Sendable (String, String, UInt32) -> Int32 = { from, to, flags in
+    package static let systemRename: @Sendable (String, String, UInt32) -> Int32 = { from, to, flags in
         renamex_np(from, to, flags) == 0 ? 0 : errno
     }
 
     /// Since boot, counting sleep, never adjusted: the same value in every process.
-    static let continuousUptime: @Sendable () -> TimeInterval = {
+    package static let continuousUptime: @Sendable () -> TimeInterval = {
         TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000_000
     }
 
@@ -181,6 +186,7 @@ public final class AppGroupTokenLease: TokenLease {
             return .busy
         }
         for generation in all where generation <= seen { unlink(leaseURL(account, generation).path) }
+        removeOrphanedCandidates(account)
         return .taken(LeaseTicket(account: account, owner: owner, generation: seen + 1))
     }
 
@@ -190,6 +196,21 @@ public final class AppGroupTokenLease: TokenLease {
               case .contents(let data) = read(leaseURL(ticket.account, ticket.generation))
         else { return false }
         return decoded(data)?.owner == ticket.owner
+    }
+
+    /// A taker killed between writing its candidate and claiming leaves it. One that old can't be
+    /// in use: no take lasts longer than a lease. The wall clock is enough for tidying.
+    private func removeOrphanedCandidates(_ account: String) {
+        let prefix = Self.hash(account) + ".lease."
+        let cutoff = Date().addingTimeInterval(-TokenBudgets.longestLifetime)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in names where name.hasPrefix(prefix) {
+            let path = directory.appendingPathComponent(name).path
+            guard let modified = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date,
+                  modified < cutoff
+            else { continue }
+            unlink(path)
+        }
     }
 
     /// The account's lease numbers, empty when there are none; nil when the directory can't be listed.

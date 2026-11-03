@@ -438,9 +438,17 @@ a renderer that need a token at the same time make one grant, and the second tak
 first stored. iOS's lease is numbered files in the app group, each claimed once with
 `RENAME_EXCL` and never moved, expiring on the system's continuous clock: no file lock is held
 (a process suspended holding one is killed with `0xdead10cc`), a wall-clock change can't hand a
-live lease over, and a taker killed at any step strands nothing. A holder checks it still holds the
-lease right before it sends a grant, so one suspended past the lease's expiry starts again under a
-new lease instead of sending a token another process may have spent. Android's is a table in the process with a
+live lease over, and a taker killed at any step strands nothing (the next winner removes a
+candidate file older than 30 s). A holder checks it still holds the lease right before it sends a
+grant, so one suspended past the lease's expiry starts again under a new lease instead of sending a
+token another process may have spent. The window that stays open runs from that check until the
+answer is written: a holder suspended while its grant is in flight lets the lease lapse, and another
+process can read the unchanged vault and send the same refresh token. Compare-before-write keeps the
+vault consistent, but the provider sees the token twice, and only the provider can fence that. A
+check after the answer would not help: the token is spent by then, and dropping the answer loses
+the only valid pair. The app narrows it by starting a grant only with background time
+(`mayStartAppGrant`); iOS ends the extension rather than suspending it, which is the lost answer
+instead. Android's is a table in the process with a
 21 s expiry (twice the 8 s budget plus a 5 s margin), so it can lapse while its holder is
 frozen and is not a plain mutex. On both platforms, once the compare under the lease finds a
 grant is needed, a refresh with under 3 s of its budget left answers `transient` and sends
@@ -499,6 +507,11 @@ Nothing here has run on a device or against matrix.org; the suites above use loc
   pair and pushes can spend it for as long as the app holds the unsaved one. In the extension the
   unsaved pair lives only in its process's memory, which dies with the process: the vault keeps the
   spent pair and the next refresh, in either process, is refused.
+- Overlapping pushes in one iOS extension instance (a known limit, unchanged here):
+  `serviceExtensionTimeWillExpire` delivers every pending request of the instance, so the first
+  request's expiry ends a later request's run early, possibly while its grant is in flight. That
+  answer is then lost, the token is spent, and the next refresh is refused. Whether iOS calls the
+  expiry per request or per instance is unverified.
 - A grant in flight after Android's fallback fires keeps running without an interrupt; if the
   process dies before it stores the answer, the token is spent and the next refresh is refused.
 

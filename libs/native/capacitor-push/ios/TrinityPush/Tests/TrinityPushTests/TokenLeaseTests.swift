@@ -174,6 +174,27 @@ final class TokenLeaseTests: XCTestCase {
         XCTAssertEqual(try allFiles().map(\.lastPathComponent), [inFlight.lastPathComponent])
     }
 
+    /// A taker killed between writing its candidate and claiming leaves the candidate. The next
+    /// winner removes the account's candidates older than any lease lives, never a fresh one.
+    func testAWinnerRemovesCandidatesLeftByKilledTakers() async throws {
+        try FileManager.default.createDirectory(at: leasesDirectory, withIntermediateDirectories: true)
+        let orphan = leasesDirectory.appendingPathComponent(Self.hash(account) + ".lease.orphan")
+        let inFlight = leasesDirectory.appendingPathComponent(Self.hash(account) + ".lease.in-flight")
+        let otherAccount = leasesDirectory.appendingPathComponent(Self.hash("@b:hs") + ".lease.orphan")
+        for file in [orphan, inFlight, otherAccount] { try Data().write(to: file) }
+        let old = Date(timeIntervalSinceNow: -(TokenBudgets.longestLifetime + 60))
+        for file in [orphan, otherAccount] {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path)
+        }
+
+        _ = try await held()
+
+        let left = Set(try allFiles().map(\.lastPathComponent))
+        XCTAssertFalse(left.contains(orphan.lastPathComponent))
+        XCTAssertTrue(left.contains(inFlight.lastPathComponent), "a fresh candidate may be another taker's")
+        XCTAssertTrue(left.contains(otherAccount.lastPathComponent), "another account's is its own winner's")
+    }
+
     func testDiscardAllWithNoDirectoryIsANoOp() {
         lease.discardAll()
     }

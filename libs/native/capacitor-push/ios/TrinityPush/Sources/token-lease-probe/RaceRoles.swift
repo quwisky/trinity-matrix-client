@@ -1,5 +1,5 @@
 import Foundation
-@testable import TrinityPush
+import TrinityPush
 
 /// The two sides of a race over one account: the real refresher, lease, grant client and renderer,
 /// over a file standing in for the keychain, which a macOS tool without entitlements cannot share.
