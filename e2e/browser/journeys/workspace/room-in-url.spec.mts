@@ -420,7 +420,7 @@ async function send(
   roomId: string,
   content: Record<string, unknown>,
 ): Promise<string> {
-  const txn = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const txn = testResourceId('txn');
   const res = await request.put(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
     {
