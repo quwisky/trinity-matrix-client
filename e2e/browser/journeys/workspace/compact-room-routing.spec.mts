@@ -25,6 +25,7 @@ const session = homeserverSession();
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 let ROOM_NAME = '';
+let OTHER_ROOM_NAME = '';
 
 // A dedicated user (registered in beforeAll) instead of the shared session account.
 // The shared account is bloated by other specs (gif, multi-account,
@@ -53,24 +54,27 @@ const ROOM_ATTACH_TIMEOUT = 30_000;
  * show up without switching views (which the mobile drawer tests, running the
  * closed-drawer assertion first, don't want to have to do).
  */
-async function seedRoom(
+async function seedRooms(
   hs: string,
   token: string,
   userId: string,
-  name: string,
+  names: readonly string[],
 ): Promise<void> {
-  const res = await fetch(`${hs}/_matrix/client/v3/createRoom`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) {
-    throw new Error(await describeFailure('CS-API createRoom failed', res));
+  const roomIds: string[] = [];
+  for (const name of names) {
+    const res = await fetch(`${hs}/_matrix/client/v3/createRoom`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      throw new Error(await describeFailure('CS-API createRoom failed', res));
+    }
+    roomIds.push(((await res.json()) as { room_id: string }).room_id);
   }
-  const { room_id: roomId } = (await res.json()) as { room_id: string };
 
   // Tag the room as a DM against a placeholder peer (the peer never needs to
   // exist/join — m.direct is just account data mapping a user id to room ids;
@@ -83,7 +87,7 @@ async function seedRoom(
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ '@ghost:localhost': [roomId] }),
+      body: JSON.stringify({ '@ghost:localhost': roomIds }),
     },
   );
   if (!dmRes.ok) {
@@ -146,6 +150,7 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
   test.beforeAll(async ({ request, workerResourceNamespace }) => {
     const runId = workerResourceNamespace.role('mobile-nav');
     ROOM_NAME = `Mobile drawer ${runId}`;
+    OTHER_ROOM_NAME = `Mobile hop ${runId}`;
     MOBILE_USER = `mobile-user-${runId}`;
     MOBILE_PASS = `${MOBILE_USER}-pass`;
     mobileSession = {
@@ -161,7 +166,10 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
       MOBILE_USER,
       MOBILE_PASS,
     );
-    await seedRoom(mobileSession.hs as string, token, userId, ROOM_NAME);
+    await seedRooms(mobileSession.hs as string, token, userId, [
+      ROOM_NAME,
+      OTHER_ROOM_NAME,
+    ]);
   });
 
   test.beforeEach(async ({ page }) => {
@@ -277,6 +285,43 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
     await expect(page.getByTestId('back-to-rooms')).toBeHidden();
     // The list keeps the room it left selected, as the in-app button does.
     expect(new URL(page.url()).searchParams.get('pane')).toBe('list');
+  });
+
+  // #1888: a room hopped to has no list below it. Back must still visibly leave it, and
+  // the browser drew its own motion for the step, so the shell must not slide again.
+  test('Back after a room hop leaves the room', async ({ page }) => {
+    const first = page.locator('button.channel', { hasText: ROOM_NAME });
+    await page
+      .locator('button.channel', { hasText: OTHER_ROOM_NAME })
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
+    await first.first().waitFor({ state: 'attached' });
+    await first.first().click();
+    const heading = page.getByRole('heading', { level: 1 });
+    await expect(heading).toContainText(ROOM_NAME);
+    const roomA = page.url();
+
+    // The list walk wraps, so with two rooms one step hops to the other one.
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect(heading).toContainText(OTHER_ROOM_NAME);
+    const roomB = page.url();
+    expect(roomB).not.toBe(roomA);
+    const paneSlides = await watchPaneSlides(page);
+
+    await page.goBack();
+
+    await expect.poll(() => page.url(), { timeout: 5_000 }).toBe(roomA);
+    await expect(heading).toContainText(ROOM_NAME);
+    await expect(heading).not.toContainText(OTHER_ROOM_NAME);
+    // A was opened over the list, so its entry still has the list below it.
+    expect(
+      await page.evaluate(
+        () =>
+          (history.state as { trinityListBelow?: boolean } | null)
+            ?.trinityListBelow,
+      ),
+    ).toBe(true);
+    expect(await paneSlides()).toEqual([]);
   });
 
   test('after the in-app back button, browser Back does not reopen the room', async ({
